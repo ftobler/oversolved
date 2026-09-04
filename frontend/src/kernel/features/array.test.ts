@@ -271,13 +271,16 @@ describe('buildCircularTransforms', () => {
 
   it('emits count copies when the source is excluded', () => {
     const t = buildCircularTransforms(makeFake(), scope, { count: 4, include_source: false, axis: 'az' }, zRepo, {})
-    expect(t).toHaveLength(4)
+    // Default step = 360/4 = 90. step*count = 360 (full wrap), so the last
+    // copy that would land on the source position is dropped: 3 transforms.
+    expect(t).toHaveLength(3)
   })
 
   it('honours an explicit step_angle over the 360/count default', () => {
     const t = buildCircularTransforms(makeFake(), scope, { count: 3, step_angle: 30, include_source: false, axis: 'az' }, zRepo, {})
     const angles = rotations(t).map((r) => Math.round((r.angle * 180) / Math.PI))
-    expect(angles).toEqual([30, 60, 90])
+    // Sweeps from the seed angle (0): 0, 30, 60.
+    expect(angles).toEqual([0, 30, 60])
   })
 
   it('rotates about the picked axis through its origin', () => {

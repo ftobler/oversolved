@@ -115,14 +115,25 @@ export function applyBodyOperation(
       if (existingBody.shape === null) continue
       const oldShape = table.get<OccShape>(existingBody.shape)
       // Skip targets the tool does not actually intersect (volume ~ 0).
-      // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
+      // Use a bare BRepAlgoAPI_Common (no history, no unify) for speed.
       const unifyOpts = { unifyFaces: !existingBody.imported }
       try {
         const probe = new DisposeScope()
         try {
-          const { shape: inter } = booleanWithDiff(oc, probe, oldShape, toolShape, 'common', unifyOpts)
-          probe.track(inter)
-          if (volumeOf(oc, probe, inter) < 1e-10) continue
+          const algo = probe.track(new oc.BRepAlgoAPI_Common_1())
+          const args = probe.track(new oc.TopTools_ListOfShape_1())
+          args.Append_1(oldShape)
+          const tools = probe.track(new oc.TopTools_ListOfShape_1())
+          tools.Append_1(toolShape)
+          algo.SetArguments(args)
+          algo.SetTools(tools)
+          algo.SetToFillHistory(false)
+          algo.Build()
+          if (algo.IsDone()) {
+            const inter = algo.Shape()
+            probe.track(inter)
+            if (volumeOf(oc, probe, inter) < 1e-10) continue
+          }
         } finally {
           probe.dispose()
         }
@@ -134,6 +145,17 @@ export function applyBodyOperation(
 
       const { shape: newShape, diff, faceOrigin } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
       scope.track(newShape)
+
+      // If the cut consumed the entire body, remove it rather than registering
+      // an empty compound.  Mirrors deleteBody.ts:39 for auto-deletion.
+      if (countSolids(oc, scope, newShape) === 0) {
+        if (existingBody.shape !== null) table.release(existingBody.shape)
+        delete bodyStore[bid]
+        cutAnything = true
+        cutBodyIds.push(bid)
+        continue
+      }
+
       const names = transferBooleanNames(oc, scope, {
         bodyShape: newShape,
         faceOrigin,

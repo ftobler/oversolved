@@ -15,7 +15,7 @@ import { Repository, parseAncestry, makeAncestryQuery, ref } from '../query'
 import { faceCentroid, faceNormal } from '../occ/primitives'
 import { faceGeometryHash } from '../geomHash'
 import { extractOccFace, extractFaceLoops, computeFaceDatumFrame } from '../occ/faceLoops'
-import { extractProfileLoops, parseSketchEntityRef, registerTopFace, sketchIdFromQuery, surfaceEntityIds, type PlaneLike } from './shared'
+import { extractProfileLoops, parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds, type PlaneLike } from './shared'
 
 type Dict = Record<string, unknown>
 type EdgeDict = Record<string, unknown>
@@ -234,6 +234,10 @@ interface ExtrudeLoops {
   plane: PlaneLike
   sketchId: string
   face: OccShape | null
+  // Only set on the `$sketch` path; needed by the caller for registerTopFace.
+  surfaces?: Dict[]
+  // Only set on the `$sketch` path; needed by the caller for registerTopFace.
+  pt?: PlaneLike
 }
 
 /**
@@ -306,8 +310,6 @@ export function collectExtrudeLoops(
   scope: DisposeScope,
   table: HandleTable,
   sketchRef: string,
-  featureId: string,
-  distance: number,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
 ): ExtrudeLoops {
@@ -332,8 +334,9 @@ export function collectExtrudeLoops(
   if (pt === undefined) throw new Error(`sketch not found: ${sketchId}`)
   const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
   const surfaces = (topo.surfaces as Dict[]) ?? []
-  registerTopFace(globalRepo, featureId, pt, surfaces, distance)
-  return { loops: extractProfileLoops(surfaces), plane: pt, sketchId, face: null }
+  // registerTopFace is now called by the caller (extrude.ts) after
+  // resolveDirection, so it uses the effective distance.
+  return { loops: extractProfileLoops(surfaces), plane: pt, sketchId, face: null, surfaces, pt }
 }
 
 // Re-export Frame3D for consumers building plane inputs.

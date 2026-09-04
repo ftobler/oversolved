@@ -407,7 +407,7 @@ export function solveSweep(
   for (const sketchRef of [...new Set(regionRefs)]) {
     let resolved
     try {
-      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, featureId, 0.0, globalRepo, bodyStore)
+      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, bodyStore)
     } catch (exc) {
       profileErrors.push(extractErrorMessage(exc))
       continue

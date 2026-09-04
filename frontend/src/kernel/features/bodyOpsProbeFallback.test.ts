@@ -96,17 +96,21 @@ describe('cut intersection probe failures', () => {
     expect(() => cut(table, store(table))).toThrow(/cut boom/)
   })
 
-  it('still skips a genuine zero-volume miss and reports no intersection', () => {
+  it('falls through to the real cut when the probe is unavailable (OCC null)', () => {
+    // The probe now uses BRepAlgoAPI_Common directly (M18), so it cannot be
+    // intercepted via the booleanWithDiff mock.  When oc is null the probe
+    // throws, the catch block catches it, and the real cut proceeds.
     mocks.booleanWithDiff.mockImplementation(
       (_oc: unknown, _s: unknown, _a: unknown, _b: unknown, op: string) => {
-        if (op !== 'common') throw new Error(`cut should not run, got ${op}`)
+        if (op !== 'cut') throw new Error(`unexpected op ${op}`)
         return { shape: { delete: () => {} }, diff: emptyBrepDiff(), faceOrigin: [] }
       },
     )
-    mocks.volumeOf.mockReturnValue(0)
     const table = new HandleTable({ finalizerGuard: false })
-    expect(() => cut(table, store(table))).toThrow(/does not intersect/)
+    const result = cut(table, store(table))
+    expect(result.status).toBe('ok')
+    expect(result.operation).toBe('cut')
     const cutCalls = mocks.booleanWithDiff.mock.calls.filter((c) => c[4] === 'cut')
-    expect(cutCalls).toHaveLength(0)
+    expect(cutCalls).toHaveLength(1)
   })
 })

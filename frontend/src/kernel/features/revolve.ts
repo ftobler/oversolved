@@ -237,7 +237,7 @@ export function solveRevolve(
   for (const sketchRef of sketchRefs) {
     let resolved
     try {
-      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, featureId, 0.0, globalRepo, bodyStore)
+      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, bodyStore)
     } catch (exc) {
       profileErrors.push(extractErrorMessage(exc))
       continue
@@ -322,12 +322,12 @@ export function solveRevolve(
       // UUIDs, avoiding collisions at the shared seam.
       const half = angle / 2.0
       const pos = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, half, firstSketchId, featureId + '|sym|pos')
+      const posTracked = scope.track(pos.solid)
       const neg = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, -half, firstSketchId, featureId + '|sym|neg')
-      const posT = scope.track(pos.solid)
-      const negT = scope.track(neg.solid)
-      toolShape = scope.track(fuse(oc, scope, posT, negT))
-      scope.release(posT)
-      scope.release(negT)
+      const negTracked = scope.track(neg.solid)
+      toolShape = scope.track(fuse(oc, scope, posTracked, negTracked))
+      scope.release(posTracked)
+      scope.release(negTracked)
       Object.assign(faceNames, pos.faceNames, neg.faceNames)
       Object.assign(edgeNames, pos.edgeNames, neg.edgeNames)
       Object.assign(faceAncestry, pos.faceAncestry, neg.faceAncestry)

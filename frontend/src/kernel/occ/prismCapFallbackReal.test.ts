@@ -150,10 +150,12 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
       }
       const maps = buildPrismLineageMap(occ, scope, face, stub, square, planeXY, 'feat', 'sk1')
 
-      // Exactly the 4 generated lateral faces are named; the caps stay absent
-      // from faceNames AND faceAncestry (no corner reclassification).
-      expect(Object.keys(maps.faceNames).length).toBe(4)
-      expect(Object.keys(maps.faceAncestry).length).toBe(4)
+      // The 4 generated lateral faces plus the end cap (which the M7 fix no
+      // longer classifies as a cap-role face because it is rotated by the arc
+      // spine) are named.  The start cap (parallel to the profile) stays
+      // absent from faceNames AND faceAncestry.
+      expect(Object.keys(maps.faceNames).length).toBe(5)
+      expect(Object.keys(maps.faceAncestry).length).toBe(5)
       // Every rim edge still resolves as a single-face seam (its cap is
       // unnamed, exactly the old wire), and the lateral-lateral edges as pairs.
       expect(Object.keys(maps.edgeNames).length).toBe(12)

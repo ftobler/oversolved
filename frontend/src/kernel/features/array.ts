@@ -144,9 +144,18 @@ export function buildCircularTransforms(
   const invert = (feature.invert_axis as boolean) ?? false
   const axisDirection = invert ? resolvedDirection.map((c) => (c === 0 ? 0 : -c)) : resolvedDirection
   const trsfs: OccTrsf[] = []
-  const num = includeSource ? count - 1 : count
-  for (let i = 1; i <= num; i++) {
-    trsfs.push(makeRotationTrsf(oc, scope, axisOrigin, axisDirection, ((step * i) * Math.PI) / 180))
+  if (includeSource) {
+    // Source occupies the seed (0-degree) slot; sweep from step.
+    for (let i = 1; i < count; i++) {
+      trsfs.push(makeRotationTrsf(oc, scope, axisOrigin, axisDirection, ((step * i) * Math.PI) / 180))
+    }
+  } else {
+    // No source slot; sweep from the seed angle, stopping before the
+    // full-360 wrap that would place the last copy on the source position.
+    const n = (step !== 0 && Math.abs((step * count) % 360) < 1e-9) ? count - 1 : count
+    for (let i = 0; i < n; i++) {
+      trsfs.push(makeRotationTrsf(oc, scope, axisOrigin, axisDirection, ((step * i) * Math.PI) / 180))
+    }
   }
   return trsfs
 }

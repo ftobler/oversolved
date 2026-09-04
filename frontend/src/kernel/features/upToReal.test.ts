@@ -105,7 +105,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, bodyStore))
       const n = faceNormal(occ, scope, face) as Vec3
       const c = faceCentroid(occ, scope, face)
-      const planeEntry = { origin: [c[0] + 7 * n[0], c[1] + 7 * n[1], c[2] + 7 * n[2]], normal: n }
+      const planeEntry = { type: 'flatface', origin: [c[0] + 7 * n[0], c[1] + 7 * n[1], c[2] + 7 * n[2]], normal: n }
 
       const result = solveExtrude(
         occ, scope, table,
@@ -131,7 +131,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       const c = faceCentroid(occ, scope, face)
       // Plane 5 behind the profile along the extrude direction: the pick, not the
       // direction toggle, decides which way the material grows.
-      const planeEntry = { origin: [c[0] - 5 * n[0], c[1] - 5 * n[1], c[2] - 5 * n[2]], normal: n }
+      const planeEntry = { type: 'flatface', origin: [c[0] - 5 * n[0], c[1] - 5 * n[1], c[2] - 5 * n[2]], normal: n }
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: loop, distance: 999, termination: 'up_to', up_to: 'plane_q', operation: 'new' } },
@@ -154,7 +154,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, bodyStore))
       const n = faceNormal(occ, scope, face) as Vec3
       const c = faceCentroid(occ, scope, face)
-      const planeEntry = { origin: [c[0], c[1], c[2]], normal: n }
+      const planeEntry = { type: 'flatface', origin: [c[0], c[1], c[2]], normal: n }
       expect(() =>
         solveExtrude(
           occ, scope, table,

@@ -295,5 +295,5 @@ export function solveMirror(
   const newIds = registerSplitBodies(oc, scope, table, bodyStore, scope.track(mirrored), {
     id: newBodyId, createdBy: featureId, sketchId: sourceBody.sketch_id, ...mirroredNames,
   })
-  return { status: 'ok', body_id: newIds[0], body_ids: [sourceBody.id, ...newIds], operation: 'new' }
+  return { status: 'ok', body_id: newIds[0], body_ids: newIds, operation: 'new' }
 }

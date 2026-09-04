@@ -546,7 +546,6 @@ function geometricCapFaces(
       continue
     }
     if (Math.abs(a - pa) > 1e-6 * Math.max(1, pa)) continue
-    capRoleGhs.add(faceGh(oc, scope, f))
     // Parallel (or anti-parallel): the face is a translation, not a rotation.
     const cross = [
       n[1] * pn[2] - n[2] * pn[1],
@@ -554,6 +553,8 @@ function geometricCapFaces(
       n[0] * pn[1] - n[1] * pn[0],
     ]
     if (Math.hypot(cross[0], cross[1], cross[2]) > 1e-6) continue
+    // Only after passing the parallel test, classify as a cap candidate.
+    capRoleGhs.add(faceGh(oc, scope, f))
     // The centroid offset is along the profile normal only (the sweep leaves no
     // in-plane shift), so (c - pc) - d*pn is zero.
     const d = (c[0] - pc[0]) * pn[0] + (c[1] - pc[1]) * pn[1] + (c[2] - pc[2]) * pn[2]
@@ -566,7 +567,9 @@ function geometricCapFaces(
     candidates.push({ face: f as OccSubShape, d })
   }
   if (candidates.length !== 2) return { caps: [], capRoleGhs }
-  candidates.sort((x, y) => x.d - y.d)
+  // Sort by absolute distance so the cap coincident with the profile plane is
+  // always `start`, regardless of which side the sweep extends toward.
+  candidates.sort((x, y) => Math.abs(x.d) - Math.abs(y.d))
   return {
     caps: [
       { face: candidates[0].face, which: 'start' },
@@ -925,23 +928,23 @@ export function canonicalizeFaceCirclesWith(
   holes: OccShape[],
 ): OccShape | null {
   let changed = false
-  const canonicalHoles: OccShape[] = []
+  const canonicalHoles: { wire: OccShape; owned: boolean }[] = []
   for (const w of holes) {
     const canon = collapseCircleWire(oc, scope, w)
     if (canon !== null) {
       changed = true
-      canonicalHoles.push(canon)
+      canonicalHoles.push({ wire: canon, owned: true })
     } else {
-      canonicalHoles.push(w)
+      canonicalHoles.push({ wire: w, owned: false })
     }
   }
   if (!changed) return null
-  // The rebuilt canonical wires are folded into the face; the caller's
-  // outer+holes are not ours to free.
+  // The rebuilt canonical wires are folded into the face; only the wires we
+  // built (owned) are released here. The caller's wires are not ours to free.
   try {
-    return makeFaceFromWire(oc, scope, outerWire, canonicalHoles)
+    return makeFaceFromWire(oc, scope, outerWire, canonicalHoles.map((h) => h.wire))
   } finally {
-    for (const cw of canonicalHoles) scope.release(cw)
+    for (const h of canonicalHoles) if (h.owned) scope.release(h.wire)
   }
 }
 
@@ -1381,9 +1384,9 @@ export function attemptPipeShellSweep(
   for (const mode of modes) {
     lastError = null
     const builder = scope.track(new oc.BRepOffsetAPI_MakePipeShell(spineWire))
-    builder.SetTransitionMode(mode)
-    builder.Add_1(outerWire, false, false)
     try {
+      builder.SetTransitionMode(mode)
+      builder.Add_1(outerWire, false, false)
       builder.Build()
       if (builder.IsDone() && builder.MakeSolid()) {
         return { result: { solid: builder.Shape(), pipeBuilder: builder }, lastError: null }

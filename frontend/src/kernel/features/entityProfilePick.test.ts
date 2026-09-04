@@ -44,7 +44,7 @@ function repoFor(name: string): { repo: Repository; sketchId: string } {
 
 function resolve(name: string, ref: string) {
   const { repo } = repoFor(name)
-  return collectExtrudeLoops(oc, null as never, table, ref, 'ex1', 5, repo, bodyStore)
+  return collectExtrudeLoops(oc, null as never, table, ref, repo, bodyStore)
 }
 
 /**
@@ -114,7 +114,7 @@ describe('profile pick of a sketch entity', () => {
     const repo = new Repository()
     repo.register('_pt_skW', { ...PLANE })
     repo.register('_topo_skW', washerTopo(divided))
-    return collectExtrudeLoops(oc, null as never, table, 'entity:skW:co', 'ex1', 5, repo, bodyStore).loops
+    return collectExtrudeLoops(oc, null as never, table, 'entity:skW:co', repo, bodyStore).loops
   }
 
   it('extrudes what the picked circle encloses, hole included', () => {
@@ -150,7 +150,7 @@ describe('profile pick of a sketch entity', () => {
 
   it('reports the missing sketch, not a missing entity', () => {
     const { repo } = repoFor('standalone_circle')
-    expect(() => collectExtrudeLoops(oc, null as never, table, 'entity:gone:ci', 'ex1', 5, repo, bodyStore))
+    expect(() => collectExtrudeLoops(oc, null as never, table, 'entity:gone:ci', repo, bodyStore))
       .toThrow(/sketch not found: gone/)
   })
 })

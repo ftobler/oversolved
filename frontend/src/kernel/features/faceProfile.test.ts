@@ -67,8 +67,6 @@ describe('collectExtrudeLoops $sketch path parity', () => {
       null as never,
       table,
       '$' + fx.sketch_id,
-      fx.feature_id,
-      fx.distance,
       repo,
       bodyStore,
     )
@@ -87,12 +85,7 @@ describe('collectExtrudeLoops $sketch path parity', () => {
     expect(result.sketchId).toBe(fx.expected.returned_sketch_id)
     expect(result.face).toBeNull()
 
-    // top-face registration side effect.
-    const got: Record<string, unknown> = {}
-    for (const key of Object.keys(fx.expected.top_face)) {
-      const el = repo.elements.get(key)
-      if (el !== undefined) got[key] = el
-    }
-    expectClose(got, fx.expected.top_face, 'top_face')
+    // top-face registration is now done by the caller (extrude.ts) after
+    // resolveDirection, so collectExtrudeLoops no longer has this side effect.
   })
 })

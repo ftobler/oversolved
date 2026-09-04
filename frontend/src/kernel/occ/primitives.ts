@@ -599,6 +599,10 @@ export function faceNormal(oc: OccModule, scope: DisposeScope, face: OccShape): 
   const u = (adaptor.FirstUParameter() + adaptor.LastUParameter()) / 2
   const v = (adaptor.FirstVParameter() + adaptor.LastVParameter()) / 2
   const props = scope.track(new oc.BRepLProp_SLProps_1(adaptor, u, v, 1, 1e-9))
+  if (!props.IsNormalDefined()) {
+    const kind = adaptor.GetType().value
+    throw new Error(`faceNormal: normal is not defined at the UV midpoint (surface type ${kind})`)
+  }
   const n = props.Normal()
   const sign = isReversed(oc, face) ? -1 : 1
   const out: Vec3 = [n.X() * sign, n.Y() * sign, n.Z() * sign]

@@ -196,7 +196,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
   it('up_to extrude (trim half-space) keeps per-build disposal flat', () => {
     const { released, volumes } = repeatedLeaf(4, (scope, fx) => {
       // Cut plane 7 ahead of the z=0 profile along +z.
-      const repo = { query: () => ({ origin: [5, 5, 7], normal: [0, 0, 1] }) } as unknown as Repository
+      const repo = { query: () => ({ type: 'flatface', origin: [5, 5, 7], normal: [0, 0, 1] }) } as unknown as Repository
       const result = solveExtrude(
         occ, scope, fx.table,
         { id: 'ex9', extrude: { sketch: fx.loop, distance: 999, termination: 'up_to', up_to: 'plane_q', operation: 'new' } },

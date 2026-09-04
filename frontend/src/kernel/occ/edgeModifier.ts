@@ -50,6 +50,7 @@ export interface EdgeModifierResult {
   reason: string | null
   names: NewNames | null
   diff: BrepDiff
+  skippedEdges: string[]
 }
 
 function asFace(oc: OccModule, s: OccShape): OccSubShape {
@@ -324,6 +325,7 @@ function applyEdgeModifier(
     reason,
     names: null,
     diff: emptyBrepDiff(),
+    skippedEdges: [],
   })
 
   if ((shape as unknown as { IsNull(): boolean }).IsNull()) return fail('null_shape')
@@ -337,13 +339,19 @@ function applyEdgeModifier(
   }
 
   const appliedEdges: OccShape[] = []
+  const skippedQueries: string[] = []
   for (const edge of edges) {
-    if (!shapeEdges.some((se) => (se as OccSubShape).IsSame(edge as OccSubShape))) continue  // skipped
+    if (!shapeEdges.some((se) => (se as OccSubShape).IsSame(edge as OccSubShape))) {
+      // Edge not found in the built shape -- caller should report as unresolved.
+      skippedQueries.push(edgeGh(oc, scope, edge) ?? '')
+      continue
+    }
     try {
       spec.addEdge(maker, edge)
       appliedEdges.push(edge)
     } catch {
       // failed edge -- mirror Python's failed_count (no throw)
+      skippedQueries.push(edgeGh(oc, scope, edge) ?? '')
     }
   }
 
@@ -358,19 +366,27 @@ function applyEdgeModifier(
     return fail('build_failed')
   }
 
+  // On success, `built` is untracked (caller owns it via the returned shape).
+  // On failure, the old shape is returned unchanged and the caller must not
+  // release it (it is still scope-owned).
   let names: NewNames | null = null
-  if (trackLineage && oldNames !== null) {
-    names = extractNames(oc, scope, maker, shape, built, appliedEdges, oldNames)
-  }
-
   let diff: BrepDiff
   try {
-    diff = edgeModifierDiff(oc, scope, maker, shape, built)
-  } catch {
-    diff = emptyBrepDiff()
+    if (trackLineage && oldNames !== null) {
+      names = extractNames(oc, scope, maker, shape, built, appliedEdges, oldNames)
+    }
+    try {
+      diff = edgeModifierDiff(oc, scope, maker, shape, built)
+    } catch {
+      diff = emptyBrepDiff()
+    }
+  } catch (e) {
+    // Release the built shape so a throw does not leak it.
+    scope.release(built)
+    throw e
   }
 
-  return { shape: built, success: true, reason: null, names, diff }
+  return { shape: built, success: true, reason: null, names, diff, skippedEdges: skippedQueries }
 }
 
 function filletSpec(oc: OccModule, radius: number): ModifierSpec {

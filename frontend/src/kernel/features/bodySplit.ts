@@ -259,7 +259,14 @@ export function resplitBody(
     // Nothing disconnected: register the solid itself when there is one, so a
     // compound wrapper never survives as a body shape and `countSolids === 1`
     // stays literally true.
-    body.shape = table.register(scope.detach(solids.length === 1 ? solids[0] : newShape), featureId)
+    if (solids.length === 0) {
+      // The boolean produced an empty result -- release the old handle and
+      // signal deletion to the caller.
+      if (oldHandle !== null) table.release(oldHandle)
+      body.shape = null
+      return []
+    }
+    body.shape = table.register(scope.detach(solids[0]), featureId)
     if (oldHandle !== null) table.release(oldHandle)
     return ids
   }

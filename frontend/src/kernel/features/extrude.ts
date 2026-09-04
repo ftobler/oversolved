@@ -18,7 +18,7 @@ import { AmbiguousQueryError } from '../query'
 import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { resolveDirection, surfaceEntityIds, sketchToWorld2d, unbuildableAreaReasons, type PlaneLike } from './shared'
+import { resolveDirection, registerTopFace, surfaceEntityIds, sketchToWorld2d, unbuildableAreaReasons, type PlaneLike } from './shared'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
@@ -108,6 +108,8 @@ export function solveExtrude(
   const cqFaces: OccShape[] = []
   let firstPt: PlaneLike | null = null
   let firstSketchId = ''
+  let firstSurfaces: Dict[] | undefined
+  let firstPtData: PlaneLike | undefined
   const profileErrors: string[] = []
   const profileQueries: string[] = []
   const unbuildableReasons: string[] = []
@@ -124,8 +126,6 @@ export function solveExtrude(
         scope,
         table,
         sketchRef,
-        featureId,
-        distance,
         globalRepo,
         bodyStore,
       )
@@ -149,6 +149,8 @@ export function solveExtrude(
     if (firstPt === null) {
       firstPt = resolved.plane
       firstSketchId = resolved.sketchId
+      firstSurfaces = resolved.surfaces
+      firstPtData = resolved.pt
     }
   }
 
@@ -287,6 +289,11 @@ export function solveExtrude(
       direction,
       distance,
     )
+    // Register the top face with the effective distance (after direction
+    // resolution) so reverse/symmetric extrudes place it correctly.
+    if (firstSurfaces !== undefined && firstPtData !== undefined) {
+      registerTopFace(globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance)
+    }
     const length = cutPlane !== null ? UP_TO_REACH : effectiveDistance
     const sweepDir = cutPlane !== null
       ? orientToTarget(cutPlane, effectivePlane.origin, directionVec as Vec3)

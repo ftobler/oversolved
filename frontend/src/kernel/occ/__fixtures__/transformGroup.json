@@ -397,7 +397,6 @@
         "status": "ok",
         "body_id": "body_mi2",
         "body_ids": [
-          "body_s",
           "body_mi2"
         ],
         "operation": "new"

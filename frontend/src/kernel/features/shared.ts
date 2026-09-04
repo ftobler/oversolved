@@ -546,6 +546,24 @@ export function resolveMergeTargets(
 // ─── BrepDiff predicate ───
 
 /**
+ * Merge two BrepDiffs by concatenating every classification list.
+ * Returns `b` when `a` is null (first cut in a loop).
+ */
+export function mergeBrepDiff(a: BrepDiff | null, b: BrepDiff): BrepDiff {
+  if (a === null) return b
+  return {
+    new_faces: [...a.new_faces, ...b.new_faces],
+    inherited_faces: [...a.inherited_faces, ...b.inherited_faces],
+    new_edges: [...a.new_edges, ...b.new_edges],
+    inherited_edges: [...a.inherited_edges, ...b.inherited_edges],
+    modified_input_faces: [...a.modified_input_faces, ...b.modified_input_faces],
+    deleted_input_faces: [...a.deleted_input_faces, ...b.deleted_input_faces],
+    modified_input_edges: [...a.modified_input_edges, ...b.modified_input_edges],
+    deleted_input_edges: [...a.deleted_input_edges, ...b.deleted_input_edges],
+  }
+}
+
+/**
  * True if a BrepDiff has no geometry change (mirrors `_brep_diff_is_empty`).
  * A null diff returns false (it represents "not computed", not "empty").
  */
@@ -638,11 +656,13 @@ function resolveQueryToLine(
     }
   }
 
-  // Cylindrical face: cylinder axis anchored at the centroid.
+  // Cylindrical face: prefer surface_frame (the analytic axis origin) over
+  // the centroid, which for a partial cylinder may not lie on the axis.
   if (data.axis && data.type === 'cylinderface') {
     const dir = normalize3(data.axis as number[])
     if (dir) {
-      const origin = (data.origin as number[] | undefined) ?? (data.centroid as number[] | undefined) ?? [0, 0, 0]
+      const sf = (data.surface_frame as { origin?: number[]; axis?: number[] } | undefined)
+      const origin = sf?.origin ?? (data.origin as number[] | undefined) ?? (data.centroid as number[] | undefined) ?? [0, 0, 0]
       return { start: [...origin], dir }
     }
   }

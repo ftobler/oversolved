@@ -20,7 +20,7 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { parseSketchEntityRef, resolveBody, sketchIdFromQuery, soleEntityInQuery } from './shared'
+import { parseSketchEntityRef, resolveBody, sketchIdFromQuery, soleEntityInQuery, mergeBrepDiff } from './shared'
 import { makeCylinder, type Vec3 } from '../occ/primitives'
 import { bodyFrame } from '../occ/tessellation'
 import { booleanWithDiff } from '../occ/booleans'
@@ -195,7 +195,7 @@ export function solveHole(
 
   let skippedCount = 0
   const skippedEntityIds: string[] = []
-  let lastDiff: BrepDiff | null = targetBody.brep_diff
+  let accumulatedDiff: BrepDiff | null = targetBody.brep_diff
   let cutAny = false
 
   for (let i = 0; i < drilled.length; i++) {
@@ -233,7 +233,8 @@ export function solveHole(
     scope.release(cyl)
     if (i > 0) scope.release(currentShape)
     currentShape = scope.track(res.shape)
-    lastDiff = res.diff
+    // Accumulate per-cut diffs so all rims survive, not just the last.
+    accumulatedDiff = mergeBrepDiff(accumulatedDiff, res.diff)
     cutAny = true
   }
 
@@ -253,7 +254,7 @@ export function solveHole(
     // A hole is a cut, so it can sever the body: a through-hole wider than the
     // web between two features leaves two disconnected solids.
     bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, currentShape, feature.id as string)
-    targetBody.brep_diff = lastDiff
+    targetBody.brep_diff = accumulatedDiff
     targetBody.modified_by.push(feature.id as string)
   }
 

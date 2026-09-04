@@ -16,7 +16,7 @@ import { AmbiguousQueryError } from '../query'
 import type { Vec3 } from '../occ/primitives'
 import { makePrism } from '../occ/primitives'
 import { dot, cross } from './vec3'
-import { booleanWithHistory } from '../occ/booleans'
+import { booleanWithHistory, countSolids } from '../occ/booleans'
 import { extractOccFace, computeFacePlane } from '../occ/faceLoops'
 
 type Dict = Record<string, unknown>
@@ -29,16 +29,18 @@ export interface CutPlane {
 /** Reach used for the over-length prism and the trimming half-space (model units). */
 export const UP_TO_REACH = 1e4
 
-function normalize(v: number[]): Vec3 {
+function normalize(v: number[]): Vec3 | null {
   const l = Math.hypot(v[0], v[1], v[2])
-  return l > 1e-12 ? [v[0] / l, v[1] / l, v[2] / l] : [0, 0, 1]
+  return l > 1e-12 ? [v[0] / l, v[1] / l, v[2] / l] : null
 }
 
 /** Two orthonormal in-plane axes for a plane with the given normal. */
 function inPlaneAxes(normal: Vec3): [Vec3, Vec3] {
   const seed: Vec3 = Math.abs(normal[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
   const u = normalize(cross(seed, normal))
+  if (u === null) throw new Error('extrude up_to: degenerate in-plane axis')
   const v = normalize(cross(normal, u))
+  if (v === null) throw new Error('extrude up_to: degenerate in-plane axis')
   return [u, v]
 }
 
@@ -74,9 +76,13 @@ export function resolveUpToPlane(
   if (entry === null) return null
 
   // Registered plane / flatface (datum plane, an extrude top_face, ...).
+  // Gate on `type === 'flatface'` so body-face entries (which also carry
+  // origin+normal) fall through to the planarity check below.
   const planeOrigin = (entry.origin ?? entry.centroid) as number[] | undefined
-  if (Array.isArray(entry.normal) && Array.isArray(planeOrigin)) {
-    return { origin: [...(planeOrigin as number[])] as Vec3, normal: normalize(entry.normal as number[]) }
+  if (entry.type === 'flatface' && Array.isArray(entry.normal) && Array.isArray(planeOrigin)) {
+    const n = normalize(entry.normal as number[])
+    if (n === null) throw new Error('extrude up_to: degenerate normal on registered plane')
+    return { origin: [...(planeOrigin as number[])] as Vec3, normal: n }
   }
 
   // Planar body face.
@@ -92,13 +98,17 @@ export function resolveUpToPlane(
     } catch {
       throw new Error('extrude up_to: target face is not planar (v1 supports planar targets only)')
     }
-    return { origin: [...plane.origin] as Vec3, normal: normalize(plane.normal) }
+    const n = normalize(plane.normal)
+    if (n === null) throw new Error('extrude up_to: degenerate face normal')
+    return { origin: [...plane.origin] as Vec3, normal: n }
   }
 
   // Point / vertex: the plane through the point, perpendicular to the extrude.
   const pt = (entry.point ?? entry.position) as number[] | undefined
   if (Array.isArray(pt) && pt.length === 3) {
-    return { origin: [...pt] as Vec3, normal: normalize(directionVec) }
+    const n = normalize(directionVec)
+    if (n === null) throw new Error('extrude up_to: degenerate direction vector')
+    return { origin: [...pt] as Vec3, normal: n }
   }
 
   return null
@@ -125,6 +135,9 @@ export function orientToTarget(cut: CutPlane, profileOrigin: number[], direction
   const signed = upToDistance(cut, profileOrigin, directionVec)
   if (Math.abs(signed) <= 1e-9) {
     throw new Error('extrude up_to: target passes through the profile; no distance to extrude')
+  }
+  if (Math.abs(signed) > UP_TO_REACH) {
+    throw new Error(`extrude up_to: target is beyond reach (${Math.abs(signed).toFixed(1)} > ${UP_TO_REACH})`)
   }
   return signed > 0 ? directionVec : (directionVec.map((c) => -c) as Vec3)
 }
@@ -169,7 +182,11 @@ export function trimAtPlane(
   // re-solved up_to feature does not leave one of each behind per edit.
   const halfSpace = scope.track(makePrism(oc, scope, capFace, keepDir, big + UP_TO_REACH))
   try {
-    return booleanWithHistory(oc, scope, solid, halfSpace, 'common').shape
+    const result = booleanWithHistory(oc, scope, solid, halfSpace, 'common').shape
+    if (countSolids(oc, scope, result) === 0) {
+      throw new Error('extrude up_to: boolean Common produced no solid')
+    }
+    return result
   } finally {
     scope.release(capFace)
     scope.release(halfSpace)

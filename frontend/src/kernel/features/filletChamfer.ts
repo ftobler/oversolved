@@ -491,6 +491,10 @@ function applyEdgeFeature(
       body.face_ancestry = res.names.faceAncestry
       body.edge_ancestry = res.names.edgeAncestry
     }
+    // Skipped/failed edges force a partial status so the user sees the warning.
+    if (res.skippedEdges.length > 0) {
+      unresolved.push(...qlist.filter((q) => res.skippedEdges.includes(q)))
+    }
     // A chamfer removes material and can sever a thin web, so even this leaf
     // can turn one body into two.
     applied.push(...resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId))

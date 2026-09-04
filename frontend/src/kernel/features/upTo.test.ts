@@ -20,7 +20,7 @@ const noTable = null as unknown as HandleTable
 
 describe('resolveUpToPlane', () => {
   it('resolves a registered plane / flatface to origin + normal', () => {
-    const repo = repoReturning({ origin: [0, 0, 7], normal: [0, 0, 1] })
+    const repo = repoReturning({ type: 'flatface', origin: [0, 0, 7], normal: [0, 0, 1] })
     const cut = resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})
     expect(cut).toEqual({ origin: [0, 0, 7], normal: [0, 0, 1] })
   })
@@ -59,7 +59,7 @@ describe('resolveUpToPlane', () => {
   })
 
   it('normalizes the plane normal', () => {
-    const repo = repoReturning({ origin: [0, 0, 0], normal: [0, 0, 5] })
+    const repo = repoReturning({ type: 'flatface', origin: [0, 0, 0], normal: [0, 0, 5] })
     const cut = resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})
     expect(cut!.normal).toEqual([0, 0, 1])
   })
