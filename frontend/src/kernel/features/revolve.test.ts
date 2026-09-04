@@ -3,16 +3,33 @@
 // exercise the validation/error branches of solveRevolve that run before any OCC
 // call, so `oc`/`table` are never touched.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Repository } from '../query'
 import { solveRevolve, resolveRevolveAxis } from './revolve'
+import { collectExtrudeLoops } from './faceProfile'
 import type { HandleTable } from '../occ/handleTable'
-import type { OccModule } from '../occ/occTypes'
+import type { OccModule, OccShape } from '../occ/occTypes'
 import type { Body } from '../types3d'
+
+// The mixed-profile refusal needs a profile that resolves to a body face, which
+// the OCC-free harness cannot produce (a face only ever comes out of an OCC face
+// read). Drive collectExtrudeLoops with a call-through double so the pre-existing
+// tests keep the real $sketch path, and override it per-test to hand solveRevolve
+// a face+loops profile.
+vi.mock('./faceProfile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./faceProfile')>()
+  return { ...actual, collectExtrudeLoops: vi.fn(actual.collectExtrudeLoops) }
+})
 
 const oc = null as unknown as OccModule
 const scope = null as never
 const table = null as unknown as HandleTable
+
+const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+
+afterEach(() => {
+  vi.mocked(collectExtrudeLoops).mockRestore()
+})
 
 describe('solveRevolve guard paths', () => {
   it('requires at least one profile reference', () => {
@@ -72,6 +89,55 @@ describe('solveRevolve guard paths', () => {
     expect(() =>
       solveRevolve(oc, scope, table, { id: 'f1', revolve: { sketch: '$sk', angle: 0 } }, repo, {}),
     ).toThrow(/angle must be non-zero/)
+  })
+
+  it('refuses a profile mixing a picked body face with sketch loops', () => {
+    // Both a face ref and a loop ref resolved; only one branch below can consume
+    // them, so the mixed pick must be refused by name instead of silently
+    // dropping the faces (which would leave profile_queries naming geometry the
+    // body does not contain).
+    const repo = new Repository()
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => {
+      if (sketchRef === '@b1/face/0') {
+        return { loops: [], plane, sketchId: 'skA', face: {} as OccShape }
+      }
+      return { loops: [[{ entity_id: 'e1' }]], plane, sketchId: 'skB', face: null }
+    })
+    expect(() =>
+      solveRevolve(
+        oc,
+        scope,
+        table,
+        { id: 'f1', revolve: { sketch: ['@b1/face/0', '$sk'], angle: 90 } },
+        repo,
+        {},
+      ),
+    ).toThrow(/mixing picked faces\/edges with sketch areas/)
+  })
+
+  it('refuses a profile spanning two different sketch planes', () => {
+    // Two sketches on different planes: every loop is lifted through the FIRST
+    // sketch's frame, so the second profile would silently build in the wrong
+    // place and orientation. The refusal compares planes, not sketch ids -- two
+    // sketches on one datum plane stay a legitimate multi-sketch profile.
+    const repo = new Repository()
+    const top = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => {
+      if (sketchRef === '$skB') {
+        return { loops: [[{ entity_id: 'e1' }]], plane: top, sketchId: 'skB', face: null }
+      }
+      return { loops: [[{ entity_id: 'e0' }]], plane, sketchId: 'skA', face: null }
+    })
+    expect(() =>
+      solveRevolve(
+        oc,
+        scope,
+        table,
+        { id: 'f1', revolve: { sketch: ['$skA', '$skB'], angle: 90 } },
+        repo,
+        {},
+      ),
+    ).toThrow(/spans two different sketch planes/)
   })
 })
 

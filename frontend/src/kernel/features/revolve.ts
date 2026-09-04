@@ -17,7 +17,7 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { sketchToWorld2d, surfaceEntityIds, unbuildableAreaReasons, type PlaneLike } from './shared'
+import { samePlane, sketchToWorld2d, surfaceEntityIds, unbuildableAreaReasons, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
 import { faceCentroid, type Vec3 } from '../occ/primitives'
@@ -246,6 +246,20 @@ export function solveRevolve(
       cqFaces.push(resolved.face)
     } else {
       allLoops.push(...resolved.loops)
+      if (firstPt === null) {
+        firstPt = resolved.plane
+        firstSketchId = resolved.sketchId
+      } else if (!samePlane(firstPt, resolved.plane)) {
+        // Every loop below is lifted through firstPt's frame, so a second sketch
+        // on a different plane would build its loops in the wrong place and
+        // orientation; refuse it by name instead of building the wrong solid.
+        // Face picks stay out of this guard: each face carries its own 3D frame,
+        // and the mixed guard below owns them.
+        throw new Error(
+          `revolve: profile spans two different sketch planes ('${firstSketchId}' and ` +
+          `'${resolved.sketchId}'); build one feature per plane`,
+        )
+      }
     }
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
     // Why an area the user could see and pick will not build. Collected here
@@ -254,10 +268,6 @@ export function solveRevolve(
     unbuildableReasons.push(...unbuildableAreaReasons((topo.surfaces as Dict[]) ?? []))
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
-    }
-    if (firstPt === null) {
-      firstPt = resolved.plane
-      firstSketchId = resolved.sketchId
     }
   }
 
@@ -280,6 +290,16 @@ export function solveRevolve(
     result.exception = `revolve: no closed profile found in the referenced sketch${why}; no part created`
     result.mesh_warning = 'no closed profile found; body has no shape'
     return result
+  }
+
+  if (cqFaces.length > 0 && allLoops.length > 0) {
+    // Both were built; only one branch below can consume them, and the silent
+    // drop reached applyBodyOperation with profile_queries naming geometry the
+    // body does not contain. sweep.ts:459 refuses the same mix by name.
+    throw new Error(
+      'revolve: a profile mixing picked faces/edges with sketch areas is not supported; ' +
+        'use one or the other',
+    )
   }
 
   // Throws when no axis was picked or stored -- never a sweep about world Z.

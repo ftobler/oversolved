@@ -17,6 +17,7 @@ import {
   brepDiffIsEmpty,
   resolveDirectionQuery,
   resolveAxisQuery,
+  samePlane,
   surfaceEntityIds,
   unbuildableAreaReasons,
   type PlaneLike,
@@ -519,5 +520,47 @@ describe('resolveAxisQuery parity', () => {
     const [origin, direction] = resolveAxisQuery('@a1', repo, [9, 9, 9], [0, 1, 0])
     expect(origin).toEqual([9, 9, 9])
     expect(direction).toEqual([0, 1, 0])
+  })
+})
+
+// The multi-sketch profile refusal compares PLANES, not sketch ids: two sketches
+// on one datum plane are legitimate (the wave-7 fence fixtures), two on
+// different planes are refused. The full frame must match -- same oriented
+// normal, same offset, and same in-plane rotation -- because every loop is
+// lifted through the FIRST sketch's frame.
+describe('samePlane', () => {
+  const front = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+
+  it('accepts two identical frames (one datum plane, two sketches)', () => {
+    expect(samePlane(front, { ...front, x_axis: [...front.x_axis], y_axis: [...front.y_axis], normal: [...front.normal] })).toBe(true)
+  })
+
+  it('refuses a frame rotated in-plane about the normal (x_axis spun 30 deg)', () => {
+    // Same origin, same normal, same plane: only the in-plane rotation differs,
+    // and that alone maps a second sketch's loop coords to a different 3D locus.
+    const c = Math.cos(Math.PI / 6), s = Math.sin(Math.PI / 6)
+    const spun = {
+      origin: [0, 0, 0],
+      x_axis: [c, s, 0],
+      y_axis: [-s, c, 0],
+      normal: [0, 0, 1],
+    }
+    expect(samePlane(front, spun)).toBe(false)
+  })
+
+  it('refuses parallel planes offset along the normal', () => {
+    expect(samePlane(front, { ...front, origin: [0, 0, 1e-3] })).toBe(false)
+  })
+
+  it('refuses perpendicular normals', () => {
+    const right = { origin: [0, 0, 0], x_axis: [0, 0, -1], y_axis: [0, 1, 0], normal: [1, 0, 0] }
+    expect(samePlane(front, right)).toBe(false)
+  })
+
+  it('refuses an anti-parallel (mirrored) frame', () => {
+    // A flipped normal is not the same oriented plane: its loop coords map to a
+    // different 3D locus even though the un-oriented plane is identical.
+    const mirrored = { origin: [0, 0, 0], x_axis: [-1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, -1] }
+    expect(samePlane(front, mirrored)).toBe(false)
   })
 })

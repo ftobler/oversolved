@@ -2,9 +2,10 @@
 // sweep), resolves the path reference to an ordered chain of world-space spine edges, sweeps
 // the profile's outer boundary along the spine with per-entity lineage, and applies the body
 // operation. Includes the path-collection helpers (_path_ref_to_sketch_id,
-// _order_edges_into_chain, _collect_path_edges). Spine arcs are built from their exact in-plane
-// angle data (spineArcEdge), chain-forward, with the joints snapped so the wire assembles
-// regardless of solver-level endpoint precision.
+// _order_edges_into_chain, _collect_path_edges). Curved spine edges (arcs,
+// elliptical arcs, splines) are built from their exact in-plane descriptors
+// (spineCurvedEdge and its arms), chain-forward, with the joints snapped so the
+// wire assembles regardless of solver-level endpoint precision.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import { extractErrorMessage } from '../errors'
@@ -14,10 +15,10 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { parseAncestry } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
-import { sketchToWorld2d, extractProfileLoops, parseSketchEntityRef, surfaceEntityIds, type PlaneLike } from './shared'
+import { samePlane, sketchToWorld2d, extractProfileLoops, parseSketchEntityRef, surfaceEntityIds, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage } from '../occ/prismLineage'
-import { makeLineEdge, makeArcEdge, type Vec3 } from '../occ/primitives'
+import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, type Vec3 } from '../occ/primitives'
 
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
@@ -152,6 +153,14 @@ function pathRefWorldEdges(ref: string, globalRepo: Repository): [Dict[], string
 
   const worldEdges: Dict[] = []
   for (const e of selected) {
+    // A closed curve is not a path segment: it has no start/end to chain from,
+    // and sketchToWorld2d(undefined) would throw a raw TypeError below.
+    if (e.kind === 'ellipse') {
+      throw new Error(
+        `sweep: path entity '${e.entity_id as string}' is a closed ellipse; ` +
+        `a sweep path must be an open chain`,
+      )
+    }
     const we: Dict = {
       kind: e.kind,
       edge_index: e.edge_index,
@@ -175,6 +184,19 @@ function pathRefWorldEdges(ref: string, globalRepo: Repository): [Dict[], string
         angle_end_deg: Number(e.angle_end_deg),
         ccw: (e.ccw as boolean) ?? true,
       }
+    } else if (e.kind === 'ellipse_arc') {
+      we._plane = plane
+      we._ellipse = {
+        center: e.center as number[],
+        a: Number(e.a), b: Number(e.b),
+        theta: Number(e.theta ?? 0),
+        angle_start_deg: Number(e.angle_start_deg),
+        angle_end_deg: Number(e.angle_end_deg),
+        ccw: (e.ccw as boolean) ?? true,
+      }
+    } else if (e.kind === 'spline') {
+      we._plane = plane
+      we._spline = { start: e.start as number[], c1: e.c1 as number[], c2: e.c2 as number[], end: e.end as number[] }
     }
     worldEdges.push(we)
   }
@@ -217,6 +239,25 @@ type ArcParams = {
   angle_start_deg: number
   angle_end_deg: number
   ccw: boolean
+}
+
+/** The 2D in-plane descriptor of a spine elliptical arc, carried from topology. */
+type EllipseParams = {
+  center: number[]
+  a: number
+  b: number
+  theta: number
+  angle_start_deg: number
+  angle_end_deg: number
+  ccw: boolean
+}
+
+/** The 2D control polygon of a spine cubic Bezier, carried from topology. */
+type SplineParams = {
+  start: number[]
+  c1: number[]
+  c2: number[]
+  end: number[]
 }
 
 /**
@@ -267,6 +308,85 @@ function spineArcEdge(
   return makeArcEdge(oc, scope, center3d, flipped, xAxis, arc.radius, -startA, u1)
 }
 
+/**
+ * The exact OCC edge for a curved spine segment, or null for a straight one.
+ * Every arm reads the STORED descriptor (sketch-2D centre + angle span + winding
+ * + its plane) rather than reconstructing the curve from world endpoints, which
+ * is ill-conditioned for shallow spans -- the reason spineArcEdge exists.
+ */
+function spineCurvedEdge(
+  oc: OccModule, scope: DisposeScope, e: Dict, reversed: boolean,
+): OccShape | null {
+  if (e.kind === 'arc' && '_arc' in e) {
+    return spineArcEdge(oc, scope, e._plane as PlaneLike, e._arc as ArcParams, reversed)
+  }
+  if (e.kind === 'ellipse_arc' && '_ellipse' in e) {
+    return spineEllipseArcEdge(oc, scope, e._plane as PlaneLike, e._ellipse as EllipseParams, reversed)
+  }
+  if (e.kind === 'spline' && '_spline' in e) {
+    return spineSplineEdge(oc, scope, e._plane as PlaneLike, e._spline as SplineParams, reversed)
+  }
+  return null
+}
+
+/**
+ * Build a spine elliptical-arc edge, porting spineArcEdge's endpoint/winding
+ * handling onto makeEllipseEdge. Deliberately NOT buildEllipseArcEdge (the
+ * profile builder): a profile edge's direction is free until ShapeFix_Face
+ * normalizes the face, but a spine edge's direction IS the sweep path, so a
+ * backward chain walk must swap the endpoints AND flip the turn direction
+ * exactly as spineArcEdge does -- the swap without the XOR flip re-introduces
+ * the major-complement bug sweep.test.ts guards against.
+ */
+function spineEllipseArcEdge(
+  oc: OccModule, scope: DisposeScope, plane: PlaneLike, el: EllipseParams, reversed: boolean,
+): OccShape {
+  const center3d = sketchToWorld2d(el.center, plane) as Vec3
+  const theta = (el.theta * Math.PI) / 180
+  const majorAxis = uvDirTo3d(plane, Math.cos(theta), Math.sin(theta))
+  const u0 = (el.angle_start_deg * Math.PI) / 180
+  const u1 = (el.angle_end_deg * Math.PI) / 180
+  // Stored sweep: u0 -> u1, turning ccw ? +1 : -1. Walking the chain backward
+  // swaps the endpoints AND flips the turn direction (as spineArcEdge does).
+  const startU = reversed ? u1 : u0
+  const endU = reversed ? u0 : u1
+  const turnCcw = el.ccw !== reversed  // ccw XOR reversed
+  if (turnCcw) {
+    // Increasing param in the (majorAxis, normal x majorAxis) frame is CCW.
+    let ue = endU
+    while (ue <= startU) ue += 2 * Math.PI
+    return makeEllipseEdge(oc, scope, center3d, plane.normal as Vec3, majorAxis, el.a, el.b, startU, ue)
+  }
+  // CW: flip the arc plane normal so the CW turn becomes increasing param, and
+  // negate the params the way spineArcEdge does. The ellipse is symmetric about
+  // both axes, so flipping the normal while keeping the same majorAxis only
+  // reverses the parameterization direction; the curve itself is unchanged.
+  const flipped: Vec3 = [-plane.normal[0], -plane.normal[1], -plane.normal[2]]
+  let ue = -endU
+  while (ue <= -startU) ue += 2 * Math.PI
+  return makeEllipseEdge(oc, scope, center3d, flipped, majorAxis, el.a, el.b, -startU, ue)
+}
+
+/**
+ * Build a spine cubic-Bezier edge, lifting the 4-point control polygon exactly
+ * as the profile spline builder does (prismLineage buildWire's spline arm) and
+ * reversing the pole order for a backward chain walk. A cubic Bezier reversed
+ * pole-wise is the same curve traversed the other way.
+ */
+function spineSplineEdge(
+  oc: OccModule, scope: DisposeScope, plane: PlaneLike, sp: SplineParams, reversed: boolean,
+): OccShape {
+  const poles = [sp.start, sp.c1, sp.c2, sp.end].map((p) => sketchToWorld2d(p, plane) as Vec3)
+  return makeBezierEdge(oc, scope, reversed ? [...poles].reverse() : poles)
+}
+
+/** A sketch-plane direction lifted to 3D (no origin offset), for the ellipse axis. */
+function uvDirTo3d(plane: PlaneLike, du: number, dv: number): Vec3 {
+  const x = plane.x_axis
+  const y = plane.y_axis
+  return [du * x[0] + dv * y[0], du * x[1] + dv * y[1], du * x[2] + dv * y[2]]
+}
+
 /** The two endpoint coordinates of an edge (the explorer yields its 2 vertices). */
 function edgeEndpoints(oc: OccModule, scope: DisposeScope, edge: OccShape): [number[], number[]] {
   const pts: number[][] = []
@@ -291,13 +411,13 @@ function dist3(a: number[], b: number[]): number {
  * selection). All contributed edges must form one connected chain. Returns
  * [spineEdges, firstPathSketchId].
  *
- * Joint snapping: an arc edge's endpoints are forced onto the ideal circle by
+ * Joint snapping: a curved edge's endpoints are forced onto its ideal curve by
  * OCC, so they sit ~1e-7..1e-6 off the solver's joint point (this is normal
  * kernel precision, NOT a solver defect). That sub-micron gap is above
- * BRepBuilderAPI_MakeWire's confusion tolerance, so a line FOLLOWING an arc
- * fails to attach and the wire collapses (the "second segment broken" bug).
- * We make the arc endpoints authoritative and build the neighbouring line
- * edges to those exact coordinates, so every joint coincides and the wire
+ * BRepBuilderAPI_MakeWire's confusion tolerance, so a line FOLLOWING a curved
+ * edge fails to attach and the wire collapses (the "second segment broken"
+ * bug). We make the curved endpoints authoritative and build the neighbouring
+ * line edges to those exact coordinates, so every joint coincides and the wire
  * assembles without relying on the solver hitting any particular precision.
  */
 export function collectPathEdges(
@@ -313,30 +433,34 @@ export function collectPathEdges(
   const S = ordered.map(({ edge: e, reversed }) => (reversed ? e.end : e.start) as number[])
   const T = ordered.map(({ edge: e, reversed }) => (reversed ? e.start : e.end) as number[])
 
-  // Build arcs first and record their ACTUAL occ endpoints (the rigid joints
-  // lines snap to). Match each occ vertex to the intended s/t by proximity.
-  const arcShape: (OccShape | null)[] = new Array(n).fill(null)
-  const aStart: number[][] = new Array(n)
-  const aEnd: number[][] = new Array(n)
+  // Build curved edges first and record their ACTUAL occ endpoints (the rigid
+  // joints lines snap to). Match each occ vertex to the intended s/t by
+  // proximity. A curved edge's endpoints are forced onto its ideal curve by
+  // OCC, so they sit off the solver's joint point -- the reason the joints are
+  // snapped here at all.
+  const curvedShape: (OccShape | null)[] = new Array(n).fill(null)
+  const cStart: number[][] = new Array(n)
+  const cEnd: number[][] = new Array(n)
   ordered.forEach(({ edge: e, reversed }, i) => {
-    if (e.kind === 'arc' && '_arc' in e) {
-      const shp = spineArcEdge(oc, scope, e._plane as PlaneLike, e._arc as ArcParams, reversed)
-      const [v0, v1] = edgeEndpoints(oc, scope, shp)
-      ;[aStart[i], aEnd[i]] = dist3(v0, S[i]) <= dist3(v1, S[i]) ? [v0, v1] : [v1, v0]
-      arcShape[i] = shp
-    }
+    const shp = spineCurvedEdge(oc, scope, e, reversed)
+    if (shp === null) return
+    const [v0, v1] = edgeEndpoints(oc, scope, shp)
+    ;[cStart[i], cEnd[i]] = dist3(v0, S[i]) <= dist3(v1, S[i]) ? [v0, v1] : [v1, v0]
+    curvedShape[i] = shp
   })
 
-  // Canonical joint coordinate at each edge boundary: an adjacent arc's actual
-  // endpoint wins; two lines already share an exact topology vertex.
+  // Canonical joint coordinate at each edge boundary: an adjacent curved
+  // edge's actual endpoint wins; two lines already share an exact topology
+  // vertex.
   const startOf = (i: number): number[] =>
-    arcShape[i] ? aStart[i] : i > 0 && arcShape[i - 1] ? aEnd[i - 1] : S[i]
+    curvedShape[i] ? cStart[i] : i > 0 && curvedShape[i - 1] ? cEnd[i - 1] : S[i]
   const endOf = (i: number): number[] =>
-    arcShape[i] ? aEnd[i] : i < n - 1 && arcShape[i + 1] ? aStart[i + 1] : T[i]
+    curvedShape[i] ? cEnd[i] : i < n - 1 && curvedShape[i + 1] ? cStart[i + 1] : T[i]
 
   const spineEdges: OccShape[] = ordered.map(({ edge: e }, i) => {
-    if (e.kind === 'arc' && '_arc' in e) {
-      return scope.track(arcShape[i] as OccShape)
+    if (curvedShape[i] !== null) return scope.track(curvedShape[i] as OccShape)
+    if (e.kind !== 'line') {
+      throw new Error(`sweep: path edge kind '${e.kind as string}' is not supported`)
     }
     return scope.track(makeLineEdge(oc, scope, startOf(i) as Vec3, endOf(i) as Vec3))
   })
@@ -416,14 +540,22 @@ export function solveSweep(
       cqFaces.push(resolved.face)
     } else {
       allLoops.push(...resolved.loops)
+      if (firstPt === null) {
+        firstPt = resolved.plane
+        firstSketchId = resolved.sketchId
+      } else if (!samePlane(firstPt, resolved.plane)) {
+        // Every loop below is lifted through firstPt's frame, so a second sketch
+        // on a different plane would build its loops in the wrong place and
+        // orientation; refuse it by name instead of building the wrong solid.
+        throw new Error(
+          `sweep: profile spans two different sketch planes ('${firstSketchId}' and ` +
+          `'${resolved.sketchId}'); build one feature per plane`,
+        )
+      }
     }
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
-    }
-    if (firstPt === null) {
-      firstPt = resolved.plane
-      firstSketchId = resolved.sketchId
     }
   }
 
@@ -449,11 +581,28 @@ export function solveSweep(
     if (firstPt === null) {
       firstPt = plane
       firstSketchId = sketchId
+    } else if (!samePlane(firstPt, plane)) {
+      // Every loop below is lifted through firstPt's frame, so a second sketch
+      // on a different plane would build its loops in the wrong place and
+      // orientation; refuse it by name instead of building the wrong solid.
+      throw new Error(
+        `sweep: profile spans two different sketch planes ('${firstSketchId}' and ` +
+        `'${sketchId}'); build one feature per plane`,
+      )
     }
   }
 
   if (profileErrors.length && cqFaces.length === 0 && allLoops.length === 0) {
     throw new Error(profileErrors.join('; '))
+  }
+  if (cqFaces.length > 0 && allLoops.length > 0) {
+    // Both were built; the leaf sweeps only the loops, so a mixed pick would
+    // silently drop the faces and leave profile_queries naming geometry the
+    // body does not contain. Refuse it by name instead.
+    throw new Error(
+      'sweep: a profile mixing picked faces/edges with sketch areas is not supported; ' +
+        'use one or the other',
+    )
   }
   if (cqFaces.length > 0 && allLoops.length === 0) {
     throw new Error('sweep: face profiles are not yet supported; use a sketch profile')

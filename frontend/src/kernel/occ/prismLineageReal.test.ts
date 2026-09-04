@@ -19,11 +19,11 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
 import { volumeOf } from './booleans'
-import { extrudeProfileWithLineage, canonicalizeFaceCirclesWith } from './prismLineage'
-import { makeArcEdge, makeLineEdge, makeWire, makeFaceFromWire, faceNormal, faceSurfaceType, type Vec3 } from './primitives'
+import { extrudeProfileWithLineage, canonicalizeFaceCirclesWith, buildPrismLineageMap, sketchLoopsToFace } from './prismLineage'
+import { makeArcEdge, makeLineEdge, makeWire, makeFaceFromWire, healWire, faceNormal, faceSurfaceType, type Vec3 } from './primitives'
 import type { PlaneLike } from '../features/shared'
 import type { LoopEdge } from '../profileLoops'
-import type { OccModule, OccShape } from './occTypes'
+import type { OccModule, OccShape, OccListOfShape } from './occTypes'
 import fixture from './__fixtures__/extrude.json'
 
 const oc = await loadOcc()
@@ -261,6 +261,83 @@ describe.skipIf(!oc)('extrudeProfileWithLineage multi-group (real OCC)', () => {
       const { solid } = extrudeProfileWithLineage(occ, scope, loops, plane, [0, 0, 1], 5, 'sk', 'feat')
       // Two 2x2 prisms of height 5 -> 2 * (4 * 5) = 40.
       expect(volumeOf(occ, scope, solid)).toBeCloseTo(40, 3)
+    } finally {
+      scope.dispose()
+    }
+  })
+})
+
+/**
+ * The sweep's M11 lineage fix (plan_wave7 Change 2): the sweep heals the
+ * profile's outer wire before sweeping it, and ShapeFix_Wire may REBUILD an
+ * edge (a reorder/trim, not a merge). The builder then knows only the healed
+ * wire's edges, so asking Generated() about the face's pre-heal edge answers
+ * empty and every side face goes unnamed. The fix hands the healed wire to
+ * buildPrismLineageMap as sweptProfile. This drives the builder directly with
+ * a wire whose edges are REBUILT copies of the face's (same geometry, fresh
+ * TShapes) and asserts the loud guard fires without the sweptProfile argument
+ * and does not fire with it.
+ */
+describe.skipIf(!oc)('sweptProfile lineage off a rebuilt wire (real OCC)', () => {
+  let occ: OccModule
+  beforeAll(() => {
+    if (!oc) throw new Error('unreachable: skipIf guards this')
+    occ = oc
+  })
+
+  it('refuses a pre-heal face when the builder swept a rebuilt wire, and names every side face off that wire', () => {
+    const scope = new DisposeScope()
+    try {
+      const planeXY: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+      const square: LoopEdge[][] = [[
+        { kind: 'line', start: [-2, -2], end: [2, -2], id: 'b' },
+        { kind: 'line', start: [2, -2], end: [2, 2], id: 'r' },
+        { kind: 'line', start: [2, 2], end: [-2, 2], id: 't' },
+        { kind: 'line', start: [-2, 2], end: [-2, -2], id: 'l' },
+      ]]
+      const face = sketchLoopsToFace(occ, scope, square, planeXY)
+      // Rebuilt copies of the face's outer-wire edges: identical geometry,
+      // fresh TShapes -- the shape a ShapeFix_Wire edge rebuild leaves behind.
+      const faceWire = scope.track(occ.BRepTools.OuterWire(face))
+      const rebuiltEdges: OccShape[] = []
+      const eexp = scope.track(new occ.TopExp_Explorer_2(faceWire, occ.TopAbs_ShapeEnum.TopAbs_EDGE, occ.TopAbs_ShapeEnum.TopAbs_SHAPE))
+      for (; eexp.More(); eexp.Next()) {
+        const raw = scope.track(eexp.Current())
+        const edge = scope.track(occ.TopoDS.Edge_1(raw))
+        const ad = scope.track(new occ.BRepAdaptor_Curve_2(edge))
+        const sp = ad.Value(ad.FirstParameter())
+        const ep = ad.Value(ad.LastParameter())
+        const s: Vec3 = [sp.X(), sp.Y(), sp.Z()]
+        const t: Vec3 = [ep.X(), ep.Y(), ep.Z()]
+        sp.delete()
+        ep.delete()
+        rebuiltEdges.push(makeLineEdge(occ, scope, s, t))
+      }
+      const rebuiltWire = makeWire(occ, scope, rebuiltEdges)
+
+      const spineEdges = [makeLineEdge(occ, scope, [0, 0, 0], [0, 0, 3])]
+      const spineWire = healWire(occ, scope, makeWire(occ, scope, spineEdges))
+      const builder = scope.track(new occ.BRepOffsetAPI_MakePipeShell(spineWire))
+      builder.SetTransitionMode(occ.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner)
+      builder.Add_1(rebuiltWire, false, false)
+      builder.Build()
+      if (!builder.IsDone() || !builder.MakeSolid()) throw new Error('probe pipe shell failed')
+      const stub = {
+        Shape: (): OccShape => builder.Shape(),
+        Generated: (s: OccShape): OccListOfShape => builder.Generated(s),
+      }
+
+      // Without sweptProfile the builder is asked about the face's pre-heal
+      // edges, which never went through the shell: the loud guard fires.
+      expect(() => buildPrismLineageMap(occ, scope, face, stub, square, planeXY, 'feat', 'sk1')).toThrow(
+        /generated no face for any profile edge/,
+      )
+
+      // With sweptProfile the explorer walks the rebuilt wire, Generated()
+      // answers, and all four lateral faces plus both caps get named.
+      const maps = buildPrismLineageMap(occ, scope, face, stub, square, planeXY, 'feat', 'sk1', 0, rebuiltWire)
+      expect(Object.keys(maps.faceNames).length).toBe(6)
+      expect(Object.values(maps.faceAncestry).filter((tokens) => tokens.length > 0).length).toBe(4)
     } finally {
       scope.dispose()
     }

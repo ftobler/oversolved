@@ -13,9 +13,10 @@ import { HandleTable } from '../occ/handleTable'
 import { solidToMesh } from '../occ/tessellation'
 import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
 import { build, type BuildDeps, type BuildResponse } from '../builder'
-import { initGlobalRepo } from '../query'
+import { initGlobalRepo, Repository } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from './postRegister'
+import { solveSweep } from './sweep'
 import { setSketchSolver, resetSketchSolver } from './sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
@@ -83,6 +84,45 @@ function circleSketch(sketchId: string, r: number, plane = '@builtin_plane_right
     id: sketchId, kind: 'sketch' as const, label: 'Profile', plane,
     entities: [{ id: 'c0', kind: 'circle' as const }],
     initial: { c0: [0, 0, r] },
+    constraints: [],
+  }
+}
+
+// A circle profile at an explicit sketch (cx, cy), so it anchors an offset
+// spine start (the ellipse-arc path starts at a rim point, not the origin).
+function circleAtSketch(sketchId: string, r: number, cx: number, cy: number, plane: string) {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Profile', plane,
+    entities: [{ id: 'c0', kind: 'circle' as const }],
+    initial: { c0: [cx, cy, r] },
+    constraints: [],
+  }
+}
+
+// One open cubic Bezier path edge on the top plane: (0,0) -> (4,0) bowing to
+// local y=-3 (world +z), so the swept body bulges to z ~ +2.25 while its
+// straight chord stays at z=0. The pre-fix spine built that chord.
+function splinePathSketch(sketchId: string) {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Path', plane: '@builtin_plane_top',
+    entities: [{ id: 'sp0', kind: 'spline' }],
+    initial: { sp0: [0, 0, 0, -3, 4, -3, 4, 0] },
+    constraints: [],
+  }
+}
+
+// An ellipse (a=5, b=3) sliced by a line through the rim points (5,0) and
+// (0,3): the topology emits two ellipse_arc edges that together close the
+// full ellipse. Picking the ellipse entity selects both arcs, so the spine is
+// the exact closed ellipse, not the (5,0)->(0,3) chord the line carries.
+function ellipseArcPathSketch(sketchId: string) {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Path', plane: '@builtin_plane_top',
+    entities: [{ id: 'el0', kind: 'ellipse' }, { id: 'ln0', kind: 'line' }],
+    initial: {
+      el0: [0, 0, 5, 3, 0],
+      ln0: [5, 0, 0, 3],
+    },
     constraints: [],
   }
 }
@@ -325,5 +365,89 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     })
     expect(res(result, 'sw1').status).toBe('ok')
     expect(res(result, 'sw1').operation).toBe('cut')
+  })
+
+  it('spline spine sweeps along the real curve, not its chord (H14)', () => {
+    // A circular profile swept along one cubic Bezier: the body must bulge to
+    // z ~ +2.25 where the straight chord between the spline's endpoints sits at
+    // z=0, so the pre-fix chord spine could never reach the bbox this asserts.
+    const result = run({
+      features: [
+        circleSketch('prof', 0.5, '@builtin_plane_front'),
+        splinePathSketch('pth'),
+        sweepSpec('sw1', 'prof', 'pth'),
+      ],
+    })
+    expect(res(result, 'sw1').status).toBe('ok')
+    const mesh = body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      assertMeshValid(mesh)
+      const bb = bbox(mesh)
+      // The spline's apex is at world z ~ +2.25; the chord maxes at z=+0.5
+      // (the profile radius alone). A chord-spine body fails this by ~1.75.
+      expect(bb.max[2]).toBeGreaterThan(2)
+    }
+  })
+
+  it('elliptical-arc spine sweeps the arc, not the chord (H14)', () => {
+    // A circular profile swept along a sliced ellipse: the spine is the exact
+    // closed ellipse (quarter arcs), so the tube dips to z ~ -3.5 at the
+    // ellipse's bottom. The pre-fix chord spine (the (5,0)->(0,3) line doubled)
+    // collapses the sweep and never reaches z=-3.
+    const result = run({
+      features: [
+        circleAtSketch('prof', 0.5, 5, 0, '@builtin_plane_front'),
+        ellipseArcPathSketch('pth'),
+        { id: 'sw1', kind: 'sweep', label: 'Sweep',
+          sweep: { sketch: ['$prof'], path: 'entity:pth:el0', operation: 'new' } },
+      ],
+    })
+    expect(res(result, 'sw1').status).toBe('ok')
+    const mesh = body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) {
+      assertMeshValid(mesh)
+      const bb = bbox(mesh)
+      // The ellipse's bottom rim (0,0,-3) is off-chord: the chord between the
+      // arc endpoints runs to z=-1.5 only, so a chord-spine body stays above.
+      expect(bb.min[2]).toBeLessThan(-3)
+      // And the tube extends past the rim by the profile radius.
+      expect(bb.max[0]).toBeGreaterThan(5)
+    }
+  })
+
+  it('refuses a closed ellipse path entity by name through the real pipeline (H14)', () => {
+    // The Rust area builder never emits a full `ellipse` edge into topo.edges
+    // (a standalone ellipse appears only as a surface), so drive solveSweep
+    // against a hand-seeded repo: the new pathRefWorldEdges guard must refuse
+    // the closed curve by name instead of a raw TypeError.
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    const repo = new Repository()
+    const FRONT = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    const TOP = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }
+    repo.register('_pt_skP', FRONT)
+    repo.register('_topo_skP', {
+      surfaces: [{
+        boundary: [
+          { kind: 'line', start: [0, 0], end: [2, 0] },
+          { kind: 'line', start: [2, 0], end: [2, 3] },
+          { kind: 'line', start: [2, 3], end: [0, 3] },
+          { kind: 'line', start: [0, 3], end: [0, 0] },
+        ],
+      }],
+    })
+    repo.register('_pt_skPath', TOP)
+    repo.register('_topo_skPath', {
+      edges: [{ entity_id: 'E1', edge_index: 0, kind: 'ellipse', center: [0, 0], a: 5, b: 3, theta: 0 }],
+    })
+    try {
+      expect(() =>
+        solveSweep(oc!, scope, table, { id: 'sw1', sweep: { sketch: ['$skP'], path: '$skPath' } }, repo, {}),
+      ).toThrow(/closed ellipse/)
+    } finally {
+      scope.dispose()
+    }
   })
 })

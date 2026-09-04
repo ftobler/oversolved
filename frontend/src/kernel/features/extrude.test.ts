@@ -3,16 +3,42 @@
 // only exercise the validation/error branches of solveExtrude that run before
 // any OCC call, so `oc`/`table` are never touched.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Repository } from '../query'
 import { solveExtrude } from './extrude'
+import { collectExtrudeLoops } from './faceProfile'
+import { faceNormal, faceCentroid } from '../occ/primitives'
 import type { HandleTable } from '../occ/handleTable'
-import type { OccModule } from '../occ/occTypes'
+import type { OccModule, OccShape } from '../occ/occTypes'
 import type { Body } from '../types3d'
+
+// The mixed-profile and non-coplanar refusals need a profile that resolves to a
+// body face, which the OCC-free harness cannot produce (a face only ever comes
+// out of an OCC face read). Drive collectExtrudeLoops with a call-through double
+// so the pre-existing tests keep the real $sketch path, and override it per-test
+// to hand solveExtrude a face+loops or a multi-face profile.
+vi.mock('./faceProfile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./faceProfile')>()
+  return { ...actual, collectExtrudeLoops: vi.fn(actual.collectExtrudeLoops) }
+})
+// The coplanar guard reads face normals and centroids; the OCC-free harness has
+// no oc, so the read is stubbed for the one test that reaches it.
+vi.mock('../occ/primitives', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../occ/primitives')>()
+  return { ...actual, faceNormal: vi.fn(), faceCentroid: vi.fn() }
+})
 
 const oc = null as unknown as OccModule
 const scope = null as never
 const table = null as unknown as HandleTable
+
+const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+
+afterEach(() => {
+  vi.mocked(collectExtrudeLoops).mockRestore()
+  vi.mocked(faceNormal).mockReset()
+  vi.mocked(faceCentroid).mockReset()
+})
 
 describe('solveExtrude guard paths', () => {
   it('requires at least one profile reference', () => {
@@ -82,5 +108,75 @@ describe('solveExtrude guard paths', () => {
     expect(result.status).toBe('error')
     expect(result.exception).toMatch(/no closed profile/)
     expect(result.mesh_warning).toMatch(/no closed profile/)
+  })
+
+  it('refuses a profile mixing a picked body face with sketch loops', () => {
+    // Both a face ref and a loop ref resolved; only one branch below can consume
+    // them, so the mixed pick must be refused by name instead of silently
+    // dropping the faces (which would leave profile_queries naming geometry the
+    // body does not contain).
+    const repo = new Repository()
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => {
+      if (sketchRef === '@b1/face/0') {
+        return { loops: [], plane, sketchId: 'skA', face: {} as OccShape }
+      }
+      return { loops: [[{ entity_id: 'e1' }]], plane, sketchId: 'skB', face: null }
+    })
+    expect(() =>
+      solveExtrude(
+        oc,
+        scope,
+        table,
+        { id: 'f1', extrude: { sketch: ['@b1/face/0', '$sk'], distance: 3 } },
+        repo,
+        {},
+      ),
+    ).toThrow(/mixing picked faces\/edges with sketch areas/)
+  })
+
+  it('refuses a multi-face pick whose faces are not coplanar', () => {
+    // Two picked faces on different planes: the prisms below are all swept along
+    // face 0's normal, so the second face would grow out of its own plane.
+    const repo = new Repository()
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => {
+      return { loops: [], plane, sketchId: 'sk' + sketchRef, face: { face: sketchRef } as unknown as OccShape }
+    })
+    vi.mocked(faceNormal).mockReturnValueOnce([0, 0, 1]).mockReturnValue([1, 0, 0])
+    vi.mocked(faceCentroid).mockReturnValueOnce([0, 0, 0]).mockReturnValue([5, 0, 0])
+    expect(() =>
+      solveExtrude(
+        oc,
+        scope,
+        table,
+        { id: 'f1', extrude: { sketch: ['@b1/face/0', '@b2/face/0'], distance: 3 } },
+        repo,
+        {},
+      ),
+    ).toThrow(/not coplanar/)
+  })
+
+  it('refuses a profile spanning two different sketch planes', () => {
+    // Two sketches on different planes: every loop is lifted through the FIRST
+    // sketch's frame, so the second profile would silently build in the wrong
+    // place and orientation. The refusal compares planes, not sketch ids -- two
+    // sketches on one datum plane stay a legitimate multi-sketch profile.
+    const repo = new Repository()
+    const top = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => {
+      if (sketchRef === '$skB') {
+        return { loops: [[{ entity_id: 'e1' }]], plane: top, sketchId: 'skB', face: null }
+      }
+      return { loops: [[{ entity_id: 'e0' }]], plane, sketchId: 'skA', face: null }
+    })
+    expect(() =>
+      solveExtrude(
+        oc,
+        scope,
+        table,
+        { id: 'f1', extrude: { sketch: ['$skA', '$skB'], distance: 3 } },
+        repo,
+        {},
+      ),
+    ).toThrow(/spans two different sketch planes/)
   })
 })

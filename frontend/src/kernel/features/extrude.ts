@@ -18,7 +18,7 @@ import { AmbiguousQueryError } from '../query'
 import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { resolveDirection, registerTopFace, surfaceEntityIds, sketchToWorld2d, unbuildableAreaReasons, type PlaneLike } from './shared'
+import { resolveDirection, registerTopFace, samePlane, surfaceEntityIds, sketchToWorld2d, unbuildableAreaReasons, type PlaneLike } from './shared'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
@@ -137,6 +137,22 @@ export function solveExtrude(
       cqFaces.push(resolved.face)
     } else {
       allLoops.push(...resolved.loops)
+      if (firstPt === null) {
+        firstPt = resolved.plane
+        firstSketchId = resolved.sketchId
+        firstSurfaces = resolved.surfaces
+        firstPtData = resolved.pt
+      } else if (!samePlane(firstPt, resolved.plane)) {
+        // Every loop below is lifted through firstPt's frame, so a second sketch
+        // on a different plane would build its loops in the wrong place and
+        // orientation; refuse it by name instead of building the wrong solid.
+        // Face picks stay out of this guard: each face carries its own 3D frame,
+        // and the mixed/coplanar guards below own them.
+        throw new Error(
+          `extrude: profile spans two different sketch planes ('${firstSketchId}' and ` +
+          `'${resolved.sketchId}'); build one feature per plane`,
+        )
+      }
     }
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
     // Why an area the user could see and pick will not build. Collected here
@@ -145,12 +161,6 @@ export function solveExtrude(
     unbuildableReasons.push(...unbuildableAreaReasons((topo.surfaces as Dict[]) ?? []))
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
-    }
-    if (firstPt === null) {
-      firstPt = resolved.plane
-      firstSketchId = resolved.sketchId
-      firstSurfaces = resolved.surfaces
-      firstPtData = resolved.pt
     }
   }
 
@@ -184,6 +194,35 @@ export function solveExtrude(
     result.exception = `extrude: no closed profile found in the referenced sketch${why}; no part created`
     result.mesh_warning = 'no closed profile found; body has no shape'
     return result
+  }
+
+  if (cqFaces.length > 0 && allLoops.length > 0) {
+    // Both were built; only one branch below can consume them, and the silent
+    // drop reached applyBodyOperation with profile_queries naming geometry the
+    // body does not contain. sweep.ts:459 refuses the same mix by name.
+    throw new Error(
+      'extrude: a profile mixing picked faces/edges with sketch areas is not supported; ' +
+        'use one or the other',
+    )
+  }
+
+  if (cqFaces.length > 1) {
+    const n0 = faceNormal(oc, scope, cqFaces[0])
+    const c0 = faceCentroid(oc, scope, cqFaces[0])
+    for (let i = 1; i < cqFaces.length; i++) {
+      const ni = faceNormal(oc, scope, cqFaces[i])
+      const ci = faceCentroid(oc, scope, cqFaces[i])
+      const dot = Math.abs(n0[0] * ni[0] + n0[1] * ni[1] + n0[2] * ni[2])
+      const off = (ci[0] - c0[0]) * n0[0] + (ci[1] - c0[1]) * n0[1] + (ci[2] - c0[2]) * n0[2]
+      if (Math.abs(dot - 1) > 1e-6 || Math.abs(off) > 1e-5) {
+        // Every prism below is swept along face 0's normal, and an up_to target
+        // is oriented from face 0's centroid alone: a face on another plane would
+        // grow out of its own plane, or be trimmed to nothing.
+        throw new Error(
+          'extrude: picked faces are not coplanar; extrude them one plane at a time',
+        )
+      }
+    }
   }
 
   // Up-to termination: resolve the cut plane once, using a representative extrude

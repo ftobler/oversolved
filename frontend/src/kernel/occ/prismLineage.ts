@@ -607,13 +607,23 @@ export function buildPrismLineageMap(
   createdBy = '',
   sketchId = '',
   groupIndex = 0,
+  /**
+   * The shape whose edges were handed to the builder, when that is not the
+   * face itself. The sweep heals its outer wire before sweeping it, and
+   * ShapeFix_Wire may rebuild an edge -- asking Generated() about the face's
+   * (pre-heal) edge then answers empty and every side face goes unnamed.
+   */
+  sweptProfile: OccShape | null = null,
 ): LineageMaps {
   const E = oc.TopAbs_ShapeEnum
   const solid = scope.track(prismBuilder.Shape())
 
-  // Profile edges in explorer order, with their entity ids.
+  // Profile edges in explorer order, with their entity ids. entityForEdges
+  // maps by geometry, not identity, so a healed wire's rebuilt edges still
+  // land on their sketch entities.
   const profEdges: OccShape[] = []
-  const fexp = scope.track(new oc.TopExp_Explorer_2(occFace, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  const profSource = sweptProfile ?? occFace
+  const fexp = scope.track(new oc.TopExp_Explorer_2(profSource, E.TopAbs_EDGE, E.TopAbs_SHAPE))
   for (; fexp.More(); fexp.Next()) {
     const raw = scope.track(fexp.Current())
     profEdges.push(scope.track(oc.TopoDS.Edge_1(raw)))
@@ -641,6 +651,12 @@ export function buildPrismLineageMap(
         genFaces.push({ face: scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape, eid })
       }
     }
+  }
+  if (profEdges.length > 0 && edgeEids.some((e) => e) && genFaces.length === 0) {
+    throw new Error(
+      'sweep/prism lineage: the builder generated no face for any profile edge ' +
+      `(${profEdges.length} edges); the swept wire and the queried edges disagree`,
+    )
   }
 
   // Caps named from the builder's FirstShape/LastShape; when the builder omits
@@ -1439,11 +1455,15 @@ export function sweepProfileWithLineage(
   }
   if (result === null) throw new Error('sweep: could not build a solid from the swept shell')
   const { solid, pipeBuilder } = result
-  // The shell builder holds its own handles to both wires.
+  // The shell builder holds its own handle to the spine wire.
   scope.release(spineWire)
-  scope.release(outerWire)
 
-  const lineage = buildPrismLineageMap(oc, scope, face, pipeBuilder, loops, plane, createdBy, sketchId)
+  const lineage = buildPrismLineageMap(
+    oc, scope, face, pipeBuilder, loops, plane, createdBy, sketchId, 0, outerWire,
+  )
+  // The shell builder held its own handle to the outer wire; it must outlive
+  // the lineage call above, which explores its edges for the profile mapping.
+  scope.release(outerWire)
   prefixLineageMaps(lineage, sketchId ? `@${sketchId}/` : '@')
   scope.release(face)
   return { solid, ...lineage }

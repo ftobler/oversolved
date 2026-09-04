@@ -90,13 +90,11 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
     }
   })
 
-  it('failLouds on an edge every adjacent face stayed unnamed on (unrescued topology)', () => {
+  it('loudly refuses a builder that generated no face for any profile edge (total lineage miss)', () => {
     const scope = new DisposeScope()
     try {
       const occ = oc as OccModule
       const planeXY: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
-      // A 90-deg revolve: its caps are angular sectors, NOT translations of the
-      // profile, so the geometric cap fallback cannot find them either.
       const rect: LoopEdge[][] = [[
         { kind: 'line', start: [2, 0], end: [5, 0], id: 'e1' },
         { kind: 'line', start: [5, 0], end: [5, 4], id: 'e2' },
@@ -106,15 +104,16 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
       const face = sketchLoopsToFace(occ, scope, rect, planeXY)
       const solid = revolveFace(occ, scope, face, [0, 0, 0], [0, 1, 0], 90)
       const emptyList = scope.track(new occ.TopTools_ListOfShape_1())
-      // A builder that reports no generated side faces and no caps: nothing can
-      // be named, so every edge has 0 named adjacent faces and the diagnostic
-      // fires instead of the old silent skip.
+      // A builder that reports no generated side faces: every profile edge maps
+      // to an entity but none of them produced a face, so the M11 guard fires
+      // by name instead of every edge limping to the old unrescued-topology
+      // diagnostic.
       const stub = {
         Shape: (): OccShape => solid,
         Generated: (): OccListOfShape => emptyList,
       }
       expect(() => buildPrismLineageMap(occ, scope, face, stub, rect, planeXY, 'feat', 'sk1')).toThrow(
-        /expected 1 or 2.*unrescued topology/,
+        /generated no face for any profile edge/,
       )
     } finally {
       scope.dispose()

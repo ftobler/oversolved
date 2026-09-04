@@ -21,9 +21,9 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-function rectSketch(sketchId: string, w: number, h: number, offsetX: number, offsetY: number) {
+function rectSketch(sketchId: string, w: number, h: number, offsetX: number, offsetY: number, plane = '@builtin_plane_front') {
   return {
-    id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane: '@builtin_plane_front',
+    id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane,
     entities: [
       { id: 'bottom', kind: 'line' as const }, { id: 'right', kind: 'line' as const },
       { id: 'top', kind: 'line' as const }, { id: 'left', kind: 'line' as const },
@@ -372,6 +372,26 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
       expect(Math.max(...ys)).toBeCloseTo(2, 0)
       expect(Math.min(...ys)).toBeCloseTo(0, 0)
     }
+  })
+
+  it('revolve with two sketches on different planes refuses by name', () => {
+    // The multi-sketch profile accumulates loops across every referenced sketch
+    // and lifts them all through the FIRST sketch's plane frame; a second sketch
+    // on another plane would silently build its loops in the wrong place. Same
+    // plane, two sketches, is the legitimate multi-sketch profile (the fence
+    // cases above); different planes are refused by name.
+    const result = run({
+      version: 1, kind: 'part',
+      features: [
+        rectSketch('sk1', 1, 1, 1, 0, '@builtin_plane_front'),
+        rectSketch('sk2', 1, 1, 3, 2, '@builtin_plane_top'),
+        { id: 'rev1', kind: 'revolve', label: 'Revolve',
+          sketch: ['$sk1', '$sk2'], angle: 360,
+          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+      ],
+    })
+    expect(res(result, 'rev1').status).toBe('exception')
+    expect(String(res(result, 'rev1').exception)).toMatch(/spans two different sketch planes/)
   })
 
   it('revolve from sketch surface query (circle profile)', () => {

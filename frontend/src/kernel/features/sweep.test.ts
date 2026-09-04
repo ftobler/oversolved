@@ -2,18 +2,33 @@
 // ordering, path-ref resolution, and solveSweep guard paths. The geometry-
 // producing path is gated in occ/sweepReal.test.ts.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Repository } from '../query'
 import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, orderedPathWorldEdges, type ChainEdge } from './sweep'
+import { collectExtrudeLoops } from './faceProfile'
 import type { HandleTable } from '../occ/handleTable'
-import type { OccModule } from '../occ/occTypes'
+import type { OccModule, OccShape } from '../occ/occTypes'
 import type { Body } from '../types3d'
+
+// The mixed-profile refusal needs a profile that resolves to a body face, which
+// the OCC-free harness cannot produce (a face only ever comes out of an OCC face
+// read). Drive collectExtrudeLoops with a call-through double so the pre-existing
+// tests keep the real $sketch path, and override it per-test to hand solveSweep
+// a face+loops profile.
+vi.mock('./faceProfile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./faceProfile')>()
+  return { ...actual, collectExtrudeLoops: vi.fn(actual.collectExtrudeLoops) }
+})
 
 const oc = null as unknown as OccModule
 const scope = null as never
 const table = null as unknown as HandleTable
 
 type Edge = Record<string, unknown>
+
+afterEach(() => {
+  vi.mocked(collectExtrudeLoops).mockRestore()
+})
 
 describe('orderEdgesIntoChain', () => {
   it('orders a shuffled chain so consecutive edges connect', () => {
@@ -186,6 +201,58 @@ describe('orderedPathWorldEdges', () => {
     // Chain endpoints match: free end of L1 is [0,0,0], free end of L2 is [-1.33,-6.12,0].
     expect(chainEnds(edges)).toEqual([JSON.stringify([-1.33, -6.12, 0]), JSON.stringify([0, 0, 0])])
   })
+
+  it('refuses a closed ellipse path entity by name (H14)', () => {
+    // A full ellipse carries no start/end, so the pre-fix code threw a raw
+    // TypeError out of sketchToWorld2d(undefined). It must refuse by name
+    // instead: a closed curve has no open-chain endpoints to walk from.
+    const repo = new Repository()
+    repo.register('_pt_skE', planeXY)
+    repo.register('_topo_skE', {
+      edges: [{ entity_id: 'E1', edge_index: 0, kind: 'ellipse', center: [0, 0], a: 5, b: 3, theta: 0 }],
+    })
+    expect(() => orderedPathWorldEdges(['$skE'], repo)).toThrow(/closed ellipse/)
+  })
+
+  it('carries the exact ellipse_arc descriptor for a curved spine edge (H14)', () => {
+    const repo = new Repository()
+    repo.register('_pt_skE', planeXY)
+    repo.register('_topo_skE', {
+      edges: [{
+        entity_id: 'EA1', edge_index: 0, kind: 'ellipse_arc',
+        center: [0, 0], a: 5, b: 3, theta: 30,
+        angle_start_deg: 0, angle_end_deg: 90, ccw: true,
+        start: [5, 0], end: [0, 3],
+      }],
+    })
+    const [edges] = orderedPathWorldEdges(['$skE'], repo)
+    expect(edges).toHaveLength(1)
+    const e = edges[0].edge
+    expect(e._plane).toEqual(planeXY)
+    expect(e._ellipse).toEqual({
+      center: [0, 0], a: 5, b: 3, theta: 30,
+      angle_start_deg: 0, angle_end_deg: 90, ccw: true,
+    })
+    // World start/end are still carried for chaining across sketches.
+    expect(e.start).toEqual([5, 0, 0])
+    expect(e.end).toEqual([0, 3, 0])
+  })
+
+  it('carries the exact spline descriptor for a curved spine edge (H14)', () => {
+    const repo = new Repository()
+    repo.register('_pt_skS', planeXY)
+    repo.register('_topo_skS', {
+      edges: [{
+        entity_id: 'S1', edge_index: 0, kind: 'spline',
+        start: [0, 0], c1: [0, -3], c2: [4, -3], end: [4, 0],
+      }],
+    })
+    const [edges] = orderedPathWorldEdges(['$skS'], repo)
+    expect(edges).toHaveLength(1)
+    const e = edges[0].edge
+    expect(e._plane).toEqual(planeXY)
+    expect(e._spline).toEqual({ start: [0, 0], c1: [0, -3], c2: [4, -3], end: [4, 0] })
+  })
 })
 
 describe('pathRefToSketchId', () => {
@@ -233,6 +300,30 @@ describe('solveSweep guard paths', () => {
         bodyStore,
       ),
     ).toThrow(/sketch not found: missing/)
+  })
+
+  it('refuses a profile mixing a picked body face with sketch loops', () => {
+    // Both a face ref and a loop ref resolved; the leaf sweeps only the loops,
+    // so the mixed pick must be refused by name instead of silently dropping
+    // the faces (which would leave profile_queries naming geometry the body
+    // does not contain).
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => {
+      if (sketchRef === '@b1/face/0') {
+        return { loops: [], plane, sketchId: 'skF', face: {} as OccShape }
+      }
+      return { loops: [[{ entity_id: 'e1' }]], plane, sketchId: 'skP', face: null }
+    })
+    expect(() =>
+      solveSweep(
+        oc,
+        scope,
+        table,
+        { id: 'sw1', sweep: { sketch: ['@b1/face/0', '$sk'], path: '$p' } },
+        new Repository(),
+        {},
+      ),
+    ).toThrow(/mixing picked faces\/edges with sketch areas/)
   })
 
   it('resolves entity-selection profile refs to their parent sketch (bug: sweep_20260613)', () => {

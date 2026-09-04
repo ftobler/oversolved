@@ -933,6 +933,39 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     }
   })
 
+  it('two non-coplanar body faces picked together are refused', () => {
+    // Extrude sweeps every picked face along face 0's normal; a second face on a
+    // different plane would grow out of its own plane, so the pick is refused by
+    // name instead of silently building the wrong solid. The top face and a
+    // front/back side face of one box are perpendicular, so their normals differ.
+    const first = run(fullRectExtrudeSpec(10, 10, 5))
+    expect(res(first, 'ex1').status).toBe('ok')
+    const faceQ = (q: string) => makeAncestryQuery([q, '@ex1', '@body_ex1'], 'flatface')
+    const mesh = body(first, 'body_ex1').mesh as
+      | { face_data?: Array<{ normal: number[]; surface_type?: string }> }
+      | undefined
+    const fd = mesh?.face_data ?? []
+    const topIdx = fd.findIndex((f) => f.normal[2] > 0.9 && f.surface_type === 'flatface')
+    const sideIdx = fd.findIndex((f) => Math.abs(f.normal[1]) > 0.9 && f.surface_type === 'flatface')
+    expect(topIdx).toBeGreaterThanOrEqual(0)
+    expect(sideIdx).toBeGreaterThanOrEqual(0)
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
+        extrudeSpec('sk1', 'ex1', { distance: 5 }),
+        {
+          id: 'ex2', kind: 'extrude',
+          extrude: {
+            sketch: [faceQ(`@body_ex1/face${topIdx}`), faceQ(`@body_ex1/face${sideIdx}`)],
+            distance: 3, direction: 'normal', operation: 'new',
+          },
+        },
+      ],
+    })
+    expect(res(result, 'ex2').status).toBe('exception')
+    expect(String(res(result, 'ex2').exception)).toContain('not coplanar')
+  })
+
   // ─── Fillet + extrude chain (face query after fillet topology change) ───
 
   it('extrude from brep face after fillet', () => {
