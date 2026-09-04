@@ -66,7 +66,10 @@ function explore(
 ): OccShape[] {
   const out: OccShape[] = []
   const exp = scope.track(new oc.TopExp_Explorer_2(shape, kind, oc.TopAbs_ShapeEnum.TopAbs_SHAPE))
-  for (; exp.More(); exp.Next()) out.push(scope.track(cast(exp.Current())))
+  for (; exp.More(); exp.Next()) {
+    const raw = scope.track(exp.Current())
+    out.push(scope.track(cast(raw)))
+  }
   return out
 }
 
@@ -349,6 +352,7 @@ function applyEdgeModifier(
   let built: OccShape
   try {
     maker.Build()
+    if (!maker.IsDone()) return fail('build_not_done')
     built = maker.Shape()
   } catch {
     return fail('build_failed')

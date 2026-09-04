@@ -22,6 +22,9 @@ export function makeRotationTrsf(
   direction: number[],
   angleRad: number,
 ): OccTrsf {
+  if (Math.hypot(direction[0], direction[1], direction[2]) < 1e-10) {
+    throw new Error('rotation axis direction must be a non-zero vector')
+  }
   const ax = scope.track(
     new oc.gp_Ax1_2(
       scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
@@ -40,6 +43,9 @@ export function makeScaleTrsf(oc: OccModule, scope: DisposeScope, center: number
 }
 
 export function makeMirrorTrsf(oc: OccModule, scope: DisposeScope, origin: number[], normal: number[]): OccTrsf {
+  if (Math.hypot(normal[0], normal[1], normal[2]) < 1e-10) {
+    throw new Error('mirror normal must be a non-zero vector')
+  }
   const ax2 = scope.track(
     new oc.gp_Ax2_3(
       scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
@@ -55,6 +61,7 @@ export function makeMirrorTrsf(oc: OccModule, scope: DisposeScope, origin: numbe
 export function transformCopy(oc: OccModule, scope: DisposeScope, shape: OccShape, trsf: OccTrsf): OccShape {
   const builder = scope.track(new oc.BRepBuilderAPI_Transform_2(shape, trsf, true))
   builder.Build()
+  if (!builder.IsDone()) throw new Error('transform builder did not complete')
   return builder.Shape()
 }
 

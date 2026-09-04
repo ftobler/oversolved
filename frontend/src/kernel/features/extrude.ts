@@ -223,8 +223,8 @@ export function solveExtrude(
       const dirVec = orientToTarget(cutPlane, faceCentroid(oc, scope, cqFaces[0]), nominal)
       const tool = fuseChain(
         oc, scope,
-        makePrism(oc, scope, cqFaces[0], dirVec, UP_TO_REACH),
-        cqFaces.slice(1).map((f) => makePrism(oc, scope, f, dirVec, UP_TO_REACH)),
+        scope.track(makePrism(oc, scope, cqFaces[0], dirVec, UP_TO_REACH)),
+        cqFaces.slice(1).map((f) => scope.track(makePrism(oc, scope, f, dirVec, UP_TO_REACH))),
       )
       // The trim's Common consumes the over-length prism.
       toolShape = scope.track(trimAtPlane(oc, scope, tool, cutPlane, dirVec))
@@ -253,14 +253,14 @@ export function solveExtrude(
     } else if (direction === 'reverse') {
       toolShape = fuseChain(
         oc, scope,
-        makePrism(oc, scope, cqFaces[0], reverseVec, distance),
-        cqFaces.slice(1).map((f) => makePrism(oc, scope, f, reverseVec, distance)),
+        scope.track(makePrism(oc, scope, cqFaces[0], reverseVec, distance)),
+        cqFaces.slice(1).map((f) => scope.track(makePrism(oc, scope, f, reverseVec, distance))),
       )
     } else {
       toolShape = fuseChain(
         oc, scope,
-        makePrism(oc, scope, cqFaces[0], faceNormalVec, distance),
-        cqFaces.slice(1).map((f) => makePrism(oc, scope, f, faceNormalVec, distance)),
+        scope.track(makePrism(oc, scope, cqFaces[0], faceNormalVec, distance)),
+        cqFaces.slice(1).map((f) => scope.track(makePrism(oc, scope, f, faceNormalVec, distance))),
       )
     }
     // Seed face names from the source body so nameFacesFromNeighbours can

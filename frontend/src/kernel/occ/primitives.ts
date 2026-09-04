@@ -215,7 +215,8 @@ export function wireVertexCount(oc: OccModule, scope: DisposeScope, wire: OccSha
   const dedup = new SubShapeDedup()
   let n = 0
   for (; exp.More(); exp.Next()) {
-    const v = scope.track(oc.TopoDS.Vertex_1(exp.Current())) as OccSubShape
+    const raw = scope.track(exp.Current())
+    const v = scope.track(oc.TopoDS.Vertex_1(raw)) as OccSubShape
     if (dedup.add(v)) n++
   }
   return n
@@ -886,7 +887,8 @@ export function readSolidEdges(
   const dedup = new SubShapeDedup()
   const uniq: OccSubShape[] = []
   for (; exp.More(); exp.Next()) {
-    const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
+    const raw = scope.track(exp.Current())
+    const edge = scope.track(oc.TopoDS.Edge_1(raw)) as OccSubShape
     if (!dedup.add(edge)) continue
     if (oc.BRep_Tool.Degenerated?.(edge)) continue
     uniq.push(edge)
@@ -901,7 +903,8 @@ export function readSolidVertices(oc: OccModule, scope: DisposeScope, solid: Occ
   const dedup = new SubShapeDedup()
   const out: Vec3[] = []
   for (; exp.More(); exp.Next()) {
-    const v = scope.track(oc.TopoDS.Vertex_1(exp.Current())) as OccSubShape
+    const raw = scope.track(exp.Current())
+    const v = scope.track(oc.TopoDS.Vertex_1(raw)) as OccSubShape
     if (!dedup.add(v)) continue
     const p = oc.BRep_Tool.Pnt(v)
     out.push([p.X(), p.Y(), p.Z()])
@@ -929,7 +932,8 @@ export function readEdgeSamplePoints(
   const dedup = new SubShapeDedup()
   const out: Vec3[] = []
   for (; exp.More(); exp.Next()) {
-    const edge = scope.track(oc.TopoDS.Edge_1(exp.Current())) as OccSubShape
+    const raw = scope.track(exp.Current())
+    const edge = scope.track(oc.TopoDS.Edge_1(raw)) as OccSubShape
     if (!dedup.add(edge)) continue
     if (oc.BRep_Tool.Degenerated?.(edge)) continue
     const ad = scope.track(new oc.BRepAdaptor_Curve_2(edge))

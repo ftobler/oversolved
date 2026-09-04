@@ -484,7 +484,8 @@ function capGeneratedFaces(
     if ((trackedShape as unknown as { IsNull(): boolean }).IsNull()) return
     const exp = scope.track(new oc.TopExp_Explorer_2(trackedShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
     for (; exp.More(); exp.Next()) {
-      out.push({ face: scope.track(oc.TopoDS.Face_1(exp.Current())) as OccSubShape, which })
+      const raw = scope.track(exp.Current())
+      out.push({ face: scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape, which })
     }
   }
   collect(builder.FirstShape, 'start')
@@ -531,7 +532,8 @@ function geometricCapFaces(
   const capRoleGhs = new Set<string>()
   const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   for (; fexp.More(); fexp.Next()) {
-    const f = scope.track(oc.TopoDS.Face_1(fexp.Current()))
+    const raw = scope.track(fexp.Current())
+    const f = scope.track(oc.TopoDS.Face_1(raw))
     let n: Vec3
     let a: number
     let c: Vec3
@@ -609,7 +611,10 @@ export function buildPrismLineageMap(
   // Profile edges in explorer order, with their entity ids.
   const profEdges: OccShape[] = []
   const fexp = scope.track(new oc.TopExp_Explorer_2(occFace, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-  for (; fexp.More(); fexp.Next()) profEdges.push(scope.track(oc.TopoDS.Edge_1(fexp.Current())))
+  for (; fexp.More(); fexp.Next()) {
+    const raw = scope.track(fexp.Current())
+    profEdges.push(scope.track(oc.TopoDS.Edge_1(raw)))
+  }
   const edgeEids = entityForEdges(oc, scope, profEdges, loops, plane)
 
   // profile edge -> generated lateral face(s) via Generated(). Match these to
@@ -629,7 +634,8 @@ export function buildPrismLineageMap(
     for (const g of generated) {
       const gexp = scope.track(new oc.TopExp_Explorer_2(g, E.TopAbs_FACE, E.TopAbs_SHAPE))
       for (; gexp.More(); gexp.Next()) {
-        genFaces.push({ face: scope.track(oc.TopoDS.Face_1(gexp.Current())) as OccSubShape, eid })
+        const raw = scope.track(gexp.Current())
+        genFaces.push({ face: scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape, eid })
       }
     }
   }
@@ -663,7 +669,8 @@ export function buildPrismLineageMap(
   const edgeShapes: Record<string, OccShape> = {}  // edge gh -> a representative edge
   const faceExp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   for (; faceExp.More(); faceExp.Next()) {
-    const sf = scope.track(oc.TopoDS.Face_1(faceExp.Current()))
+    const raw = scope.track(faceExp.Current())
+    const sf = scope.track(oc.TopoDS.Face_1(raw))
     const gh = faceGh(oc, scope, sf)
     const match = genFaces.find((gf) => (sf as OccSubShape).IsSame(gf.face))
     faceLineage[gh] = match !== undefined ? [match.eid] : []
@@ -683,7 +690,8 @@ export function buildPrismLineageMap(
     }
     const eExp = scope.track(new oc.TopExp_Explorer_2(sf, E.TopAbs_EDGE, E.TopAbs_SHAPE))
     for (; eExp.More(); eExp.Next()) {
-      const edge = scope.track(oc.TopoDS.Edge_1(eExp.Current()))
+      const raw = scope.track(eExp.Current())
+      const edge = scope.track(oc.TopoDS.Edge_1(raw))
       const egh = edgeGh(oc, scope, edge)
       if (egh === null) continue
       ;(adjacency[egh] ??= new Set()).add(gh)
@@ -825,7 +833,10 @@ function collapseCircleWire(oc: OccModule, scope: DisposeScope, wire: OccShape):
   const E = oc.TopAbs_ShapeEnum
   const edges: OccShape[] = []
   const exp = scope.track(new oc.TopExp_Explorer_2(wire, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-  for (; exp.More(); exp.Next()) edges.push(scope.track(oc.TopoDS.Edge_1(exp.Current())))
+  for (; exp.More(); exp.Next()) {
+    const raw = scope.track(exp.Current())
+    edges.push(scope.track(oc.TopoDS.Edge_1(raw)))
+  }
   if (edges.length < 2) return null
 
   let center: Vec3 | null = null
@@ -891,7 +902,8 @@ function canonicalizeFaceCircles(oc: OccModule, scope: DisposeScope, face: OccSh
   const holes: OccShape[] = []
   const wexp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_WIRE, E.TopAbs_SHAPE))
   for (; wexp.More(); wexp.Next()) {
-    const w = scope.track(oc.TopoDS.Wire_1(wexp.Current()))
+    const raw = scope.track(wexp.Current())
+    const w = scope.track(oc.TopoDS.Wire_1(raw))
     if (!(w as OccSubShape).IsSame(outerWire)) holes.push(w)
   }
   const rebuilt = canonicalizeFaceCirclesWith(oc, scope, outerWire, holes)
@@ -974,8 +986,11 @@ function tryCanonicalMergedProfile(
     // the prior running solid the moment a replacement is tracked -- leaving
     // the old one scope-owned strands one dead solid per group-boundary per
     // edit until the whole scope drains.
-    const prismOf = (face: OccShape): OccShape =>
-      (scope.track(new oc.BRepPrimAPI_MakePrism_1(face, vec, true, true)) as OccPrismBuilder).Shape()
+    const prismOf = (face: OccShape): OccShape => {
+      const b = scope.track(new oc.BRepPrimAPI_MakePrism_1(face, vec, true, true)) as OccPrismBuilder
+      if (!b.IsDone()) throw new Error('prism builder did not complete')
+      return b.Shape()
+    }
     let solid: OccShape = scope.track(prismOf(faces[0]))
     scope.release(faces[0])
     for (let i = 1; i < faces.length; i++) {
@@ -1022,7 +1037,8 @@ function tryCanonicalMergedProfile(
       plane.origin[2] * plane.normal[2]
     let entrance: OccShape | null = null
     for (; fexp.More(); fexp.Next()) {
-      const f = scope.track(oc.TopoDS.Face_1(fexp.Current()))
+      const raw = scope.track(fexp.Current())
+      const f = scope.track(oc.TopoDS.Face_1(raw))
       if (faceSurfaceType(oc, scope, f) !== 'flatface') continue
       const n = faceNormal(oc, scope, f)
       const dot = n[0] * directionVec[0] + n[1] * directionVec[1] + n[2] * directionVec[2]
@@ -1080,6 +1096,7 @@ function prismFaceWithLineage(
       true,
     ),
   ) as OccPrismBuilder
+  if (!builder.IsDone()) throw new Error('prism builder did not complete')
   const solid = builder.Shape()
   // The profile face is read one last time here; afterwards the solid keeps
   // the shared TShapes alive, so the proxy itself can go.
@@ -1129,6 +1146,7 @@ function perGroupPrismWithLineage(
         true,
       ),
     ) as OccPrismBuilder
+    if (!builder.IsDone()) throw new Error('prism builder did not complete')
     const part = builder.Shape()
     // Each group's prism and each fuse output is consumed by the next fuse
     // except the survivor returned at the end; scope-own them all here and
@@ -1249,6 +1267,7 @@ export function revolveFace(
   const builder = scope.track(
     new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, (angleDeg * Math.PI) / 180, true),
   )
+  if (!builder.IsDone()) throw new Error('revolve builder did not complete')
   return builder.Shape()
 }
 
@@ -1282,6 +1301,7 @@ export function revolveProfileWithLineage(
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
     const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
     const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
+    if (!builder.IsDone()) throw new Error('revolve builder did not complete')
     const solid = builder.Shape()
     const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
     prefixLineageMaps(lineage, tokenPrefix)
@@ -1302,6 +1322,7 @@ export function revolveProfileWithLineage(
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
     const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
     const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
+    if (!builder.IsDone()) throw new Error('revolve builder did not complete')
     const part = builder.Shape()
     // Each group's solid and each fuse output is consumed by the next fuse
     // except the survivor returned at the end; scope-own them all here and

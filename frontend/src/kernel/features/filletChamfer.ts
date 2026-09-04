@@ -4,6 +4,7 @@
 // edges of a face, resolved by face UUID). Geometry-based tiers (descriptor and
 // geom-hash) were deliberately dropped so resolution survives geometry edits.
 
+import type { EdgeData } from '@/types/cad'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
@@ -52,7 +53,10 @@ function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
   const E = oc.TopAbs_ShapeEnum
   const out: OccShape[] = []
   const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-  for (; exp.More(); exp.Next()) out.push(scope.track(oc.TopoDS.Edge_1(exp.Current())))
+  for (; exp.More(); exp.Next()) {
+    const raw = scope.track(exp.Current())
+    out.push(scope.track(oc.TopoDS.Edge_1(raw)))
+  }
   return out
 }
 
@@ -60,7 +64,10 @@ function exploreFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
   const E = oc.TopAbs_ShapeEnum
   const out: OccShape[] = []
   const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; exp.More(); exp.Next()) out.push(scope.track(oc.TopoDS.Face_1(exp.Current())))
+  for (; exp.More(); exp.Next()) {
+    const raw = scope.track(exp.Current())
+    out.push(scope.track(oc.TopoDS.Face_1(raw)))
+  }
   return out
 }
 
@@ -128,7 +135,15 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   const { center, half } = bodyFrame(oc, scope, shape)
 
   uniq.forEach((te, idx) => {
-    const { ed } = edgeToGeom(oc, scope, te)
+    let ed: EdgeData
+    try {
+      const geom = edgeToGeom(oc, scope, te)
+      ed = geom.ed
+    } catch {
+      // On failure, skip geometry processing but still register the body:edge:N alias
+      queryToEdge.set(`?${body.id}:edge:${idx}`, te)
+      return
+    }
     const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
     const geomHash = edgeGeometryHash(ed as unknown as Record<string, unknown>)
     if (body.created_by) {

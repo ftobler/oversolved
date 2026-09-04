@@ -184,8 +184,12 @@ export function resolveFaceProfile(
     const matched = allSurfaces.filter((s) => {
       const q = (s.query as string) ?? ''
       if (!q.startsWith('?')) return false
-      const [ids] = parseAncestry(q)
-      return ids.length === targetIds.length && ids.every((v, i) => v === targetIds[i])
+      try {
+        const [ids] = parseAncestry(q)
+        return ids.length === targetIds.length && ids.every((v, i) => v === targetIds[i])
+      } catch {
+        return false
+      }
     })
     return {
       loops: extractProfileLoops(matched.length ? matched : allSurfaces),

@@ -219,6 +219,7 @@ export function solveRevolve(
   const angle = Number((merged.angle as number | null | undefined) ?? 360.0)
 
   if (!Number.isFinite(angle) || angle === 0) throw new Error('revolve: angle must be non-zero')
+  if (Math.abs(angle) > 360) throw new Error('revolve: angle must be between -360 and 360')
   if (sketchRefs.length === 0) throw new Error('revolve: requires at least one profile reference')
 
   const allLoops: Dict[][] = []

@@ -34,6 +34,7 @@ export function transformCopyWithMapping(
 ): { shape: OccShape; builder: OccTransformBuilder } {
   const builder = scope.track(new oc.BRepBuilderAPI_Transform_2(shape, trsf, true))
   builder.Build()
+  if (!builder.IsDone()) throw new Error('transform builder did not complete')
   return { shape: builder.Shape(), builder }
 }
 
@@ -66,12 +67,14 @@ export function remapFaceNamesForInstance(
   const instanceFaces: OccSubShape[] = []
   const instanceExp = scope.track(new oc.TopExp_Explorer_2(instanceShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
   for (; instanceExp.More(); instanceExp.Next()) {
-    instanceFaces.push(scope.track(oc.TopoDS.Face_1(instanceExp.Current())) as OccSubShape)
+    const raw = scope.track(instanceExp.Current())
+    instanceFaces.push(scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape)
   }
 
   const sourceExp = scope.track(new oc.TopExp_Explorer_2(sourceShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
   for (; sourceExp.More(); sourceExp.Next()) {
-    const sourceFace = scope.track(oc.TopoDS.Face_1(sourceExp.Current())) as OccSubShape
+    const raw = scope.track(sourceExp.Current())
+    const sourceFace = scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape
     const sourceUuid = sourceFaceNames[faceGh(oc, scope, sourceFace)]
     if (!sourceUuid) continue
     const transformed = drainList(scope, builder.Modified(sourceFace))
@@ -111,12 +114,14 @@ export function rekeyFaceNamesForTransform(
   const transformedFaces: OccSubShape[] = []
   const texp = scope.track(new oc.TopExp_Explorer_2(transformedShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
   for (; texp.More(); texp.Next()) {
-    transformedFaces.push(scope.track(oc.TopoDS.Face_1(texp.Current())) as OccSubShape)
+    const raw = scope.track(texp.Current())
+    transformedFaces.push(scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape)
   }
 
   const sourceExp = scope.track(new oc.TopExp_Explorer_2(sourceShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
   for (; sourceExp.More(); sourceExp.Next()) {
-    const sourceFace = scope.track(oc.TopoDS.Face_1(sourceExp.Current())) as OccSubShape
+    const raw = scope.track(sourceExp.Current())
+    const sourceFace = scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape
     const sourceUuid = sourceFaceNames[faceGh(oc, scope, sourceFace)]
     if (!sourceUuid) continue
     const transformed = drainList(scope, builder.Modified(sourceFace))

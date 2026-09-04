@@ -55,7 +55,10 @@ export function exploreSolids(oc: OccModule, scope: DisposeScope, shape: OccShap
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_SOLID, E.TopAbs_SHAPE))
   const out: OccShape[] = []
-  for (; exp.More(); exp.Next()) out.push(scope.track(oc.TopoDS.Solid_1(exp.Current())))
+  for (; exp.More(); exp.Next()) {
+    const raw = scope.track(exp.Current())
+    out.push(scope.track(oc.TopoDS.Solid_1(raw)))
+  }
   return out
 }
 

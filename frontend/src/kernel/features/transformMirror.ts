@@ -148,6 +148,9 @@ export function solveTransform(
   }
   if (rotationAngle) {
     const dir = rotationAxisDirection ?? [0, 0, 1]
+    if (Math.hypot(dir[0], dir[1], dir[2]) < 1e-10) {
+      throw new Error('transform: rotation axis direction must be a non-zero vector')
+    }
     combined.Multiply(makeRotationTrsf(oc, scope, rotationAxisOrigin ?? [0, 0, 0], dir, (rotationAngle * Math.PI) / 180))
   }
   if (scale !== 1.0) {
@@ -241,6 +244,9 @@ export function solveMirror(
     faceAncestry: sourceBody.face_ancestry ?? {},
     edgeNames: sourceBody.edge_names ?? {},
     edgeAncestry: sourceBody.edge_ancestry ?? {},
+  }
+  if (Math.hypot(normal[0], normal[1], normal[2]) < 1e-10) {
+    throw new Error('mirror: plane normal must be a non-zero vector')
   }
   const trsf = makeMirrorTrsf(oc, scope, [origin[0], origin[1], origin[2]], [normal[0], normal[1], normal[2]])
   const { shape: mirroredRaw, builder } = transformCopyWithMapping(oc, scope, sourceShape, trsf)

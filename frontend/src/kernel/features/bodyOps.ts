@@ -121,6 +121,7 @@ export function applyBodyOperation(
         const probe = new DisposeScope()
         try {
           const { shape: inter } = booleanWithDiff(oc, probe, oldShape, toolShape, 'common', unifyOpts)
+          probe.track(inter)
           if (volumeOf(oc, probe, inter) < 1e-10) continue
         } finally {
           probe.dispose()

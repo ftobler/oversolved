@@ -116,7 +116,8 @@ function namesForSolid(oc: OccModule, scope: DisposeScope, solid: OccShape, temp
   const E = oc.TopAbs_ShapeEnum
   const faceExp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   for (; faceExp.More(); faceExp.Next()) {
-    const gh = faceGh(oc, scope, scope.track(oc.TopoDS.Face_1(faceExp.Current())))
+    const rawFace = scope.track(faceExp.Current())
+    const gh = faceGh(oc, scope, scope.track(oc.TopoDS.Face_1(rawFace)))
     const uuid = srcFaceNames[gh]
     if (uuid === undefined) continue
     out.faceNames[gh] = uuid
@@ -124,7 +125,8 @@ function namesForSolid(oc: OccModule, scope: DisposeScope, solid: OccShape, temp
   }
   const edgeExp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
   for (; edgeExp.More(); edgeExp.Next()) {
-    const gh = edgeGh(oc, scope, scope.track(oc.TopoDS.Edge_1(edgeExp.Current())))
+    const rawEdge = scope.track(edgeExp.Current())
+    const gh = edgeGh(oc, scope, scope.track(oc.TopoDS.Edge_1(rawEdge)))
     if (gh === null) continue
     const uuid = srcEdgeNames[gh]
     if (uuid === undefined) continue

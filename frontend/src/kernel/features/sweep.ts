@@ -277,6 +277,7 @@ function edgeEndpoints(oc: OccModule, scope: DisposeScope, edge: OccShape): [num
     pts.push([p.X(), p.Y(), p.Z()])
     exp.Next()
   }
+  if (pts.length < 2) throw new Error('sweep: edge has fewer than 2 vertices')
   return [pts[0], pts[pts.length - 1]]
 }
 

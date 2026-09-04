@@ -94,6 +94,7 @@ export function solveBoolean(
       let intersects = true
       try {
         const { shape: inter } = booleanWithDiff(oc, probe, resultShape, toolShape, 'common', { unifyFaces })
+        probe.track(inter)
         if (volumeOf(oc, probe, inter) < 1e-10) intersects = false
       } catch {
         // A failed probe is not evidence of disjointness: let the real boolean
@@ -108,8 +109,10 @@ export function solveBoolean(
       }
     }
 
+    const prevShape = resultShape
     const res = booleanWithDiff(oc, scope, resultShape, toolShape, op, { unifyFaces })
     resultShape = scope.track(res.shape)
+    if (foldedAny) scope.release(prevShape)
     const names = transferBooleanNames(oc, scope, {
       bodyShape: resultShape,
       faceOrigin: res.faceOrigin,

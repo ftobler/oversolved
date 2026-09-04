@@ -24,7 +24,8 @@ function sortedFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccSh
   const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
   const items: { face: OccShape; key: number[] }[] = []
   for (; exp.More(); exp.Next()) {
-    const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
+    const raw = scope.track(exp.Current())
+    const face = scope.track(oc.TopoDS.Face_1(raw))
     items.push({
       face,
       key: faceSortKey({
@@ -110,7 +111,8 @@ function collectFaceWires(
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_WIRE, E.TopAbs_SHAPE))
   for (; exp.More(); exp.Next()) {
-    const w = scope.track(oc.TopoDS.Wire_1(exp.Current())) as OccSubShape
+    const raw = scope.track(exp.Current())
+    const w = scope.track(oc.TopoDS.Wire_1(raw)) as OccSubShape
     // Dedup against the outer wire by topological identity (Python uses hash()).
     if (!(outer as OccSubShape).IsSame(w) && !holes.some((h) => (h as OccSubShape).IsSame(w))) {
       holes.push(w)

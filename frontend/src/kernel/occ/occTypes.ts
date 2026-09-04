@@ -43,6 +43,9 @@ export interface OccFaceBuilder extends OccDisposable {
 
 export interface OccPrismBuilder extends OccDisposable {
   Shape(): OccShape
+  // False when the prism/revolve builder could not complete (invalid profile,
+  // degenerate axis, ...).
+  IsDone(): boolean
   // Sub-shapes generated from a profile sub-shape: the lineage sharp edge.
   Generated(s: OccShape): OccListOfShape
   // The start (profile-side) generated shape; used to name the start cap.
@@ -685,6 +688,7 @@ export interface OccTrsf extends OccDisposable {
 
 export interface OccTransformBuilder extends OccDisposable {
   Build(): void
+  IsDone(): boolean
   Shape(): OccShape
   Modified(s: OccShape): OccListOfShape
   /** The single transformed counterpart of `s`. `Modified()` returns a list

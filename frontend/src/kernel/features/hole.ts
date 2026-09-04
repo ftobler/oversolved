@@ -153,6 +153,11 @@ export function solveHole(
   const direction = (sub.direction as string) ?? 'normal'
   const targetRef = (sub.target as string) ?? ''
 
+  if (!Number.isFinite(diameter) || diameter <= 0) throw new Error('hole: diameter must be positive')
+  if (depthMode !== 'through_all') {
+    if (!Number.isFinite(depth) || depth <= 0) throw new Error('hole: depth must be positive')
+  }
+
   const radius = diameter / 2.0
 
   const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
@@ -193,7 +198,8 @@ export function solveHole(
   let lastDiff: BrepDiff | null = targetBody.brep_diff
   let cutAny = false
 
-  for (const entity of drilled) {
+  for (let i = 0; i < drilled.length; i++) {
+    const entity = drilled[i]
     const eid = entity.id as string
     const site = drillSite(globalRepo, sketchId, entity, radius)
     if (site === null) {
@@ -225,6 +231,7 @@ export function solveHole(
     const cyl = scope.track(makeCylinder(oc, scope, start3d, axis, site.radius, h))
     const res = booleanWithDiff(oc, scope, currentShape, cyl, 'cut', { unifyFaces: !targetBody.imported })
     scope.release(cyl)
+    if (i > 0) scope.release(currentShape)
     currentShape = scope.track(res.shape)
     lastDiff = res.diff
     cutAny = true

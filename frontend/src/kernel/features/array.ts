@@ -106,6 +106,8 @@ export function buildArrayTransforms(
         )
       }
     }
+  } else {
+    throw new Error(`array: unknown mode '${mode}'`)
   }
   return trsfs
 }
@@ -236,11 +238,6 @@ function applyArray(
   }
   if (instances.length === 0) throw new Error(`${opLabel} produced no instances`)
 
-  if (instances.length === 1) {
-    body.modified_by.push(featureId)
-    body.brep_diff = null
-    return { status: 'ok', body_id: body.id, body_ids: [body.id], operation: 'add' }
-  }
   let fused = instances[0]
   let fusedNames = instanceNames[0]
   let lastDiff: BrepDiff | null = null
