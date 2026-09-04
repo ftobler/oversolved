@@ -36,7 +36,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     return {
       body_b: {
         id: 'body_b', created_by: 'ex1', modified_by: [],
-        shape: table.register(scope.detach(box), 'ex1'), sketch_id: 'sk',
+        shape: table.register(box, 'ex1'), sketch_id: 'sk',
         brep_diff: null, profile_queries: [],
       },
     }

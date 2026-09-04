@@ -217,7 +217,54 @@ function resolveFaceToEdges(
   return []
 }
 
-/** Resolve edge queries against a prebuilt index. */
+/**
+ * Same resolution as `resolveEdgesWithIndex`, but keyed by the query that
+ * produced each edge. A query that matches nothing comes back with an empty
+ * list rather than vanishing into the flat result -- which is what let a stale
+ * pick fillet three of four edges and report ok.
+ */
+export function resolveEdgesByQuery(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  body: Body,
+  index: EdgeIndex,
+  edgeQueries: string[],
+  bodyStore: Record<string, unknown> | null = null,
+): Map<string, OccShape[]> {
+  const isFaceQuery = (q: string): boolean => {
+    try {
+      const [, typeRestriction] = parseAncestry(q)
+      return typeRestriction === 'face' || typeRestriction === 'flatface' || typeRestriction === 'cylinderface'
+    } catch {
+      return false
+    }
+  }
+
+  const out = new Map<string, OccShape[]>()
+  for (const q of edgeQueries) {
+    // An ambiguous exact hit (a query claimed by 2+ distinct edges) is refused,
+    // not guessed: treat it as a miss so it falls through to the ancestry tier,
+    // which fails safe on the same lineage rather than filleting the wrong edge.
+    const edges: OccShape[] = []
+    const dedup = new SubShapeDedup()
+    const addUnique = (e: OccShape): void => {
+      if (dedup.add(e as OccSubShape)) edges.push(e)
+    }
+    let edge = index.ambiguousQueries.has(q) ? undefined : index.queryToEdge.get(q)
+    if (edge === undefined && q.startsWith('?') && !isFaceQuery(q)) {
+      edge = resolveByStableAncestry(index.ancestryRepo, q, bodyStore)
+    }
+    if (edge === undefined && isFaceQuery(q)) {
+      for (const fe of resolveFaceToEdges(oc, scope, table, q, body)) addUnique(fe)
+    }
+    if (edge !== undefined) addUnique(edge)
+    out.set(q, edges)
+  }
+  return out
+}
+
+/** Resolve edge queries against a prebuilt index (flat, deduped across queries). */
 export function resolveEdgesWithIndex(
   oc: OccModule,
   scope: DisposeScope,
@@ -228,32 +275,11 @@ export function resolveEdgesWithIndex(
   bodyStore: Record<string, unknown> | null = null,
 ): OccShape[] {
   const result: OccShape[] = []
+  // The per-query lists are deduped internally; a query that names an edge an
+  // earlier query already claimed must not duplicate it in the flat result.
   const dedup = new SubShapeDedup()
-  const addUnique = (e: OccShape): void => {
-    if (dedup.add(e as OccSubShape)) result.push(e)
-  }
-
-  const isFaceQuery = (q: string): boolean => {
-    try {
-      const [, typeRestriction] = parseAncestry(q)
-      return typeRestriction === 'face' || typeRestriction === 'flatface' || typeRestriction === 'cylinderface'
-    } catch {
-      return false
-    }
-  }
-
-  for (const q of edgeQueries) {
-    // An ambiguous exact hit (a query claimed by 2+ distinct edges) is refused,
-    // not guessed: treat it as a miss so it falls through to the ancestry tier,
-    // which fails safe on the same lineage rather than filleting the wrong edge.
-    let edge = index.ambiguousQueries.has(q) ? undefined : index.queryToEdge.get(q)
-    if (edge === undefined && q.startsWith('?') && !isFaceQuery(q)) {
-      edge = resolveByStableAncestry(index.ancestryRepo, q, bodyStore)
-    }
-    if (edge === undefined && isFaceQuery(q)) {
-      for (const fe of resolveFaceToEdges(oc, scope, table, q, body)) addUnique(fe)
-    }
-    if (edge !== undefined) addUnique(edge)
+  for (const es of resolveEdgesByQuery(oc, scope, table, body, index, edgeQueries, bodyStore).values()) {
+    for (const e of es) if (dedup.add(e as OccSubShape)) result.push(e)
   }
   return result
 }
@@ -369,7 +395,9 @@ function applyEdgeFeature(
   const indexFor = (bid: string): EdgeIndex => {
     let idx = indexCache.get(bid)
     if (idx === undefined) {
-      idx = buildEdgeIndex(oc, scope, table, bodyStore[bid])
+      const body = bodyStore[bid]
+      if (body === undefined) throw new Error(`${featureKind}: source body '${bid}' not found`)
+      idx = buildEdgeIndex(oc, scope, table, body)
       indexCache.set(bid, idx)
     }
     return idx
@@ -397,6 +425,16 @@ function applyEdgeFeature(
         )
       }
       if (ids.length === 1) resolvedSrc = ids[0]
+      else {
+        // Viewport-prefix forms (body:<id>, face:<id>:...) are accepted by
+        // resolveBody but invisible to resolveBodyIds; ask the resolver itself so
+        // the group key is always a real bodyStore id.
+        try {
+          resolvedSrc = resolveBody(sourceBody, bodyStore).id
+        } catch {
+          throw new Error(`${featureKind}: source body '${sourceBody}' not found`)
+        }
+      }
     }
     groups.set(resolvedSrc, [...edges])
   } else {
@@ -450,9 +488,23 @@ function applyEdgeFeature(
       continue
     }
 
-    const topoEdges = resolveEdgesWithIndex(oc, scope, table, body, indexFor(bid), qlist, bodyStore)
+    const byQuery = resolveEdgesByQuery(oc, scope, table, body, indexFor(bid), qlist, bodyStore)
+    const topoEdges: OccShape[] = []
+    const dedup = new SubShapeDedup()
+    const queryOf = new Map<OccShape, string>()  // edge -> the query that named it
+    for (const [q, es] of byQuery) {
+      if (es.length === 0) {
+        unresolved.push(q)
+        continue
+      }
+      for (const e of es) if (dedup.add(e as OccSubShape)) {
+        topoEdges.push(e)
+        queryOf.set(e, q)
+      }
+    }
     if (topoEdges.length === 0) {
-      unresolved.push(...qlist)
+      // Every query resolved to nothing, so each is already in unresolved from
+      // the loop above; the group contributes no edges to fillet.
       continue
     }
 
@@ -492,12 +544,26 @@ function applyEdgeFeature(
       body.edge_ancestry = res.names.edgeAncestry
     }
     // Skipped/failed edges force a partial status so the user sees the warning.
-    if (res.skippedEdges.length > 0) {
-      unresolved.push(...qlist.filter((q) => res.skippedEdges.includes(q)))
+    if (res.skippedEdgeIndices.length > 0) {
+      // The indices are positions in the `edges` argument, which is topoEdges;
+      // map each back to the query that named it via queryOf.
+      for (const i of res.skippedEdgeIndices) {
+        const q = queryOf.get(topoEdges[i])
+        if (q !== undefined) unresolved.push(q)
+      }
     }
     // A chamfer removes material and can sever a thin web, so even this leaf
     // can turn one body into two.
-    applied.push(...resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId))
+    const ids = resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId)
+    if (ids.length === 0) {
+      // A fillet/chamfer cannot consume its whole body, so this is defensive:
+      // the resplit deleted the body, and the applied count must not grow from
+      // a body that no longer exists. The failure entry makes the throw below
+      // say what happened instead of "no edges resolved".
+      modifierFailures.push(`${bid}: the modifier removed the whole body`)
+      continue
+    }
+    applied.push(...ids)
     body.brep_diff = res.diff
     body.modified_by.push(featureId)
   }

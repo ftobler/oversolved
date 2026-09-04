@@ -23,6 +23,7 @@ interface ArrayResult {
   body_id: string
   body_ids: string[]
   operation: string
+  solver_warning?: string
 }
 
 /**
@@ -191,15 +192,11 @@ function applyArray(
     // Every spawned body is an independent copy; remap construction UUIDs so
     // identical instances do not collide.
     const instances: { shape: OccShape; names: NameMaps }[] = []
-    if (includeSource) {
-      const identity = scope.track(new oc.gp_Trsf_1())
-      const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, identity)
-      const shape = scope.track(instShape)
-      instances.push({
-        shape,
-        names: rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, 0, builder),
-      })
-    }
+    // `include_source` needs no instance here: with operation 'new' the SOURCE
+    // BODY is instance 0. Copying it produced a second body coincident with the
+    // first -- two Parts rows for one visible solid. The transforms below are
+    // still numbered from 1 when include_source is set, so instance UUIDs keep
+    // their meaning across an edit that toggles the flag.
     for (let i = 0; i < transforms.length; i++) {
       const idx = includeSource ? i + 1 : i
       const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
@@ -209,7 +206,13 @@ function applyArray(
         names: rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, idx, builder),
       })
     }
-    if (instances.length === 0) throw new Error(`${opLabel} produced no instances`)
+    if (instances.length === 0) {
+      // count_x=1 with include_source: no transformed instances, and the source
+      // IS the array. A no-op, not an error -- mirror the add path's early
+      // return below so toggling include_source on a 1-count new array does not
+      // throw.
+      return { status: 'ok', body_id: body.id, body_ids: [body.id], operation: 'new' }
+    }
     // One instance is normally one solid, so this normally mints exactly the
     // old `body_<feat>`, `body_<feat>_1`, ... run. Going through bodySplit is
     // what keeps that true when the source body is itself multi-solid: the
@@ -282,6 +285,18 @@ function applyArray(
   // part leaves that fuse disjoint: the union of N non-touching copies is an
   // N-solid compound, which is N parts, not one.
   const bodyIds = resplitBody(oc, scope, table, bodyStore, body, fused, featureId)
+  if (bodyIds.length === 0) {
+    // A union can only be empty through a failed boolean, so this is defensive:
+    // resplitBody deleted the body, and body_ids must not hand back a live id
+    // for a body that is gone.
+    return {
+      status: 'ok',
+      body_id: body.id,
+      body_ids: [],
+      operation: 'add',
+      solver_warning: `array: the add removed all of body '${body.id}'; the body was deleted`,
+    }
+  }
   return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'add' }
 }
 
@@ -309,7 +324,12 @@ function resolveSourceBody(
   return body
 }
 
-/** Solve a linear/rectangular array (mirrors `_solve_array`). */
+/**
+ * Solve a linear/rectangular array (mirrors `_solve_array`).
+ *
+ * `include_source` with `operation: 'new'` means the source body stands as
+ * instance 0; only the transformed instances become new bodies.
+ */
 export function solveArray(
   oc: OccModule,
   scope: DisposeScope,

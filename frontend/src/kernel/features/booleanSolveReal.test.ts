@@ -52,7 +52,7 @@ function bodyFromSpec(
     id,
     created_by: createdBy,
     modified_by: [],
-    shape: table.register(scope.detach(box), createdBy),
+    shape: table.register(box, createdBy),
     sketch_id: id === 'body_t' ? 'sk_t' : 'sk_u',
     brep_diff: null,
     profile_queries: [],
@@ -194,6 +194,48 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
         // Target volume is unchanged (no empty compound replaced it).
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(targetVol, 3)
         expect(result.solver_warning).toContain('does not intersect')
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('a cut whose tool swallows the target deletes the body and reports nothing survives', () => {
+      // M15-b: when the boolean consumes the whole target, resplitBody removes
+      // it from the store. The result must return body_ids: [] (not a live id),
+      // and a later feature targeting the gone body must fail by name rather
+      // than read a null shape.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[-5, -5, -5], [20, 20, 20]]),
+        }
+
+        const result = solveBoolean(
+          occ, scope, table,
+          { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
+          new Repository(),
+          bodyStore,
+        )
+        expect(result.status).toBe('ok')
+        expect(result.body_ids).toEqual([])
+        expect(result.body_id).toBe('body_t')  // still names the consumed body
+        expect(result.solver_warning).toMatch(/removed all of body 'body_t'; the body was deleted/)
+        expect('body_t' in bodyStore).toBe(false)
+        // The tool is consumed too (keep_tools false), leaving an empty store.
+        expect('body_u0' in bodyStore).toBe(false)
+
+        // A second feature naming the deleted target fails by name, not with a
+        // null-shape error.
+        expect(() =>
+          solveBoolean(
+            occ, scope, table,
+            { id: 'bool2', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
+            new Repository(),
+            bodyStore,
+          ),
+        ).toThrow(/body not found for ref 'body_t'/)
       } finally {
         scope.dispose()
       }

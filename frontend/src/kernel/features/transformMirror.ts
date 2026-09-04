@@ -26,6 +26,7 @@ export interface TransformResult {
   body_id: string
   operation: string
   body_ids?: string[]
+  solver_warning?: string
 }
 
 /** Query-result -> [start, end] (mirrors `_get_edge_3d`). */
@@ -159,6 +160,7 @@ export function solveTransform(
 
   const operation = (cfg.operation as string) ?? 'new'
   const bodyIds: string[] = []
+  let consumedReplace: string | null = null  // a source the replace resplit deleted (defensive)
   sources.forEach(({ body: sourceBody, shape: sourceHandle }, index) => {
     const sourceShape = table.get<OccShape>(sourceHandle)
     const sourceNames: NameMaps = {
@@ -178,7 +180,15 @@ export function solveTransform(
       // A rigid transform cannot disconnect a body, but a non-uniform scale is in
       // the same composed Trsf, so this goes through the one path anyway rather
       // than resting on that argument.
-      bodyIds.push(...resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(newShape), featureId))
+      const ids = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(newShape), featureId)
+      if (ids.length === 0) {
+        // Defensive: a transform copy cannot consume its source, but if the
+        // resplit ever deleted it there is nothing to register here; the
+        // post-loop guard turns that into a "nothing survives" result.
+        consumedReplace = sourceBody.id
+        return
+      }
+      bodyIds.push(...ids)
       sourceBody.modified_by = [...(sourceBody.modified_by ?? []), featureId]
       return
     }
@@ -191,6 +201,18 @@ export function solveTransform(
       id: 'body_' + featureId, createdBy: featureId, sketchId: sourceBody.sketch_id, ...names,
     }))
   })
+  if (bodyIds.length === 0 && consumedReplace !== null) {
+    // Every picked source was consumed (defensive; see the replace branch).
+    // body_ids: [] says nothing survives; body_id names the body the feature
+    // row points at.
+    return {
+      status: 'ok',
+      body_id: consumedReplace,
+      body_ids: [],
+      operation: 'replace',
+      solver_warning: `transform: the replace removed all of body '${consumedReplace}'; the body was deleted`,
+    }
+  }
   return {
     status: 'ok',
     body_id: bodyIds[0],
@@ -263,6 +285,17 @@ export function solveMirror(
     sourceBody.edge_names = mirroredNames.edgeNames
     sourceBody.edge_ancestry = mirroredNames.edgeAncestry
     const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(mirrored), featureId)
+    if (bodyIds.length === 0) {
+      // Defensive: mirroring cannot consume a body, but if the resplit ever
+      // deleted it, body_ids must not name a live id for a body that is gone.
+      return {
+        status: 'ok',
+        body_id: sourceBody.id,
+        body_ids: [],
+        operation: 'replace',
+        solver_warning: `mirror: the replace removed all of body '${sourceBody.id}'; the body was deleted`,
+      }
+    }
     sourceBody.modified_by.push(featureId)
     return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'replace' }
   }
@@ -286,6 +319,17 @@ export function solveMirror(
     // "merge" is a fuse, and a body mirrored across a plane it does not reach
     // fuses into two disjoint solids: two parts, not one merged part.
     const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(res.shape), featureId)
+    if (bodyIds.length === 0) {
+      // Defensive: a fuse of a body with its mirror cannot consume it, but if
+      // the resplit ever deleted it, report the deletion rather than a live id.
+      return {
+        status: 'ok',
+        body_id: sourceBody.id,
+        body_ids: [],
+        operation: 'merge',
+        solver_warning: `mirror: the merge removed all of body '${sourceBody.id}'; the body was deleted`,
+      }
+    }
     sourceBody.modified_by.push(featureId)
     sourceBody.brep_diff = res.diff
     return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'merge' }

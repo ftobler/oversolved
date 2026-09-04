@@ -12,6 +12,7 @@ import {
   pickFaceByDescriptor,
   registerExactEdge,
   resolveEdgesWithIndex,
+  resolveEdgesByQuery,
   type EdgeIndex,
 } from './filletChamfer'
 import type { DisposeScope } from '../occ/disposeScope'
@@ -63,6 +64,18 @@ describe('solveFillet guard paths', () => {
     expect(() =>
       solveFillet(oc, scope, table, { id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2 } }, repo, {}),
     ).toThrow(/no bodies in body_store/)
+  })
+
+  it('an unknown viewport-form source_body throws the named error, never a TypeError', () => {
+    // M21: a 'body:<id>' ref is invisible to resolveBodyIds, so the group key
+    // used to stay the raw ref and indexFor dereferenced bodyStore[undefined]
+    // into a TypeError. The resolver itself must reject it by name, before any
+    // OCC call -- hence oc = null is fine here.
+    expect(() =>
+      solveFillet(oc, scope, table, {
+        id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: 'body:body_nope' },
+      }, repo, oneBody()),
+    ).toThrow(/source body 'body:body_nope' not found/)
   })
 })
 
@@ -200,5 +213,73 @@ describe('exact-match edge tier ambiguity refusal', () => {
 
     const resolved = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [q])
     expect(resolved).toEqual([edge])
+  })
+})
+
+/**
+ * resolveEdgesByQuery is the provenance-preserving sibling of
+ * resolveEdgesWithIndex: a query that matches nothing must come back as an
+ * empty list under its own key (so the caller can report it unresolved) instead
+ * of vanishing into the flat result, and a matched query must resolve to the
+ * same edges the flat resolver returns.
+ */
+describe('resolveEdgesByQuery provenance', () => {
+  const scopeNull = null as unknown as DisposeScope
+  const fakeEdge = (): OccShape => {
+    const self = { IsSame: (o: OccSubShape) => o === (self as unknown as OccSubShape) }
+    return self as unknown as OccShape
+  }
+
+  const emptyIndex = (): EdgeIndex => ({
+    queryToEdge: new Map<string, OccShape>(),
+    ambiguousQueries: new Set<string>(),
+    ancestryRepo: new Repository(),
+  })
+
+  it('an unmatched query comes back with an empty list under its own key', () => {
+    const index = emptyIndex()
+    const q = makeAncestryQuery(['@ex1', '@body_b'], 'straightedge')
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [q])
+    expect(byQuery.has(q)).toBe(true)
+    expect(byQuery.get(q)).toEqual([])
+  })
+
+  it('a matched query resolves to the same edges as resolveEdgesWithIndex', () => {
+    const index = emptyIndex()
+    const q = makeAncestryQuery(['@ex1', '@body_b'], 'straightedge')
+    const edge = fakeEdge()
+    registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edge)
+
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [q])
+    const flat = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [q])
+    expect(byQuery.get(q)).toEqual([edge])
+    expect(flat).toEqual([edge])
+  })
+
+  it('mixed matched and unmatched queries keep both under their own keys', () => {
+    const index = emptyIndex()
+    const qGood = makeAncestryQuery(['@ex1', '@body_b'], 'straightedge')
+    const qBad = makeAncestryQuery(['@ex9', '@body_b'], 'straightedge')
+    const edge = fakeEdge()
+    registerExactEdge(index.queryToEdge, index.ambiguousQueries, qGood, edge)
+
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [qGood, qBad])
+    expect(byQuery.get(qGood)).toEqual([edge])
+    expect(byQuery.get(qBad)).toEqual([])
+  })
+
+  it('the same edge under two queries still dedups in the flat result', () => {
+    const index = emptyIndex()
+    const qA = makeAncestryQuery(['@ex1', '@body_b'], 'straightedge')
+    const qB = makeAncestryQuery(['@ex2', '@body_b'], 'straightedge')
+    const edge = fakeEdge()
+    registerExactEdge(index.queryToEdge, index.ambiguousQueries, qA, edge)
+    registerExactEdge(index.queryToEdge, index.ambiguousQueries, qB, edge)
+
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [qA, qB])
+    const flat = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [qA, qB])
+    expect(byQuery.get(qA)).toEqual([edge])
+    expect(byQuery.get(qB)).toEqual([edge])
+    expect(flat).toEqual([edge])
   })
 })

@@ -21,6 +21,12 @@
 //     was of wrong behaviour; it now expects 4 resp. 2 bodies of one solid each.
 // Their total volumes are unchanged, which is what says the geometry did not
 // move -- only its division into parts did.
+//
+// `array_linear_new` was re-frozen again by M33: `new` + `include_source` used
+// to copy the source body in place (an identity transform producing a second,
+// coincident body). The source now STANDS as instance 0, so the case mints only
+// the two transformed instances (body_ids `['body_arr2','body_arr2_1']`, 3
+// bodies in the store) instead of three copies plus a duplicate source.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
@@ -93,7 +99,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             id: 'body_s',
             created_by: 'ex_s',
             modified_by: [],
-            shape: table.register(scope.detach(box), 'ex_s'),
+            shape: table.register(box, 'ex_s'),
             sketch_id: 'sk_s',
             brep_diff: null,
             profile_queries: [],
@@ -129,7 +135,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       id,
       created_by: createdBy,
       modified_by: [],
-      shape: table.register(scope.detach(box), createdBy),
+      shape: table.register(box, createdBy),
       sketch_id: 'sk_' + id,
       brep_diff: null,
       profile_queries: [],
@@ -418,7 +424,9 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // ─── Circular array: new operation (split bodies) ───
 
     it('circular_array new operation creates split bodies', () => {
-      // operation=new creates 4 split bodies (source + 3 copies).
+      // operation=new creates one split body per transformed copy; the source
+      // stands as instance 0 (M33), so count=4 with include_source yields 3 new
+      // bodies, not 4 -- the source is no longer duplicated in place.
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
@@ -440,7 +448,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         }, repo, bodyStore)
         expect(result.status).toBe('ok')
         const bodyIds = Object.keys(bodyStore).filter((b) => b.startsWith('body_ca1')).sort()
-        expect(bodyIds.length).toBe(4)
+        expect(bodyIds.length).toBe(3)
+        expect(result.body_ids).not.toContain('body_s')
         for (const bid of bodyIds) {
           expect(bodyStore[bid].shape).not.toBeNull()
           expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore[bid].shape!))).toBeGreaterThan(0)

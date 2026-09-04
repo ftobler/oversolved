@@ -127,7 +127,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
       const box = makeBox(occ, scope, 10, 10, 10)
       const bodyB: Body = {
         id: 'body_b', created_by: 'seed', modified_by: [],
-        shape: table.register(scope.detach(box), 'seed'), sketch_id: 'sk',
+        shape: table.register(box, 'seed'), sketch_id: 'sk',
         brep_diff: null, profile_queries: [],
       }
       const { edges, edge_queries } = solidToEdges(occ, table, bodyB.shape!, {

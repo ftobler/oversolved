@@ -80,6 +80,25 @@ describe('DisposeScope', () => {
     expect(kept.deleted).toBe(0)
   })
 
+  it('isTracked reports whether an object is currently in the scope', () => {
+    const scope = new DisposeScope()
+    const obj = new FakeObj('x', [])
+    expect(scope.isTracked(obj)).toBe(false)
+    scope.track(obj)
+    expect(scope.isTracked(obj)).toBe(true)
+    scope.detach(obj)
+    expect(scope.isTracked(obj)).toBe(false)
+  })
+
+  it('detach throws on an object the scope never tracked', () => {
+    const scope = new DisposeScope()
+    const foreign = new FakeObj('foreign', [])
+    expect(() => scope.detach(foreign)).toThrow(/untracked/)
+    // A no-op detach would hand the caller a shape it does not own; registering
+    // it puts a second owner on a proxy someone else will delete.
+    expect(scope.size()).toBe(0)
+  })
+
   it('skips objects already deleted', () => {
     const order: string[] = []
     const obj = new FakeObj('y', order)

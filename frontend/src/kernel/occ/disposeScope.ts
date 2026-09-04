@@ -40,11 +40,24 @@ export class DisposeScope {
    * Remove `obj` from the scope so `dispose()` will not delete it. Used when
    * ownership of a shape transfers out of the operation (e.g. into the
    * HandleTable as a persisted body).
+   *
+   * Throws when `obj` was never tracked: a silent no-op detach means the
+   * caller is handing away a shape it does not own, and registering it puts a
+   * second owner on a proxy someone else will delete. Producers return
+   * untracked shapes by contract (primitives.ts) -- register those directly.
    */
   detach<T extends Disposable>(obj: T): T {
     const i = this.tracked.lastIndexOf(obj)
-    if (i >= 0) this.tracked.splice(i, 1)
+    if (i < 0) {
+      throw new Error('DisposeScope: detach() of an untracked object')
+    }
+    this.tracked.splice(i, 1)
     return obj
+  }
+
+  // True when `obj` is currently tracked by this scope.
+  isTracked(obj: Disposable): boolean {
+    return this.tracked.includes(obj)
   }
 
   /**

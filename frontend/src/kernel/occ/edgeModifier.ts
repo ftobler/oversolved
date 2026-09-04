@@ -50,7 +50,10 @@ export interface EdgeModifierResult {
   reason: string | null
   names: NewNames | null
   diff: BrepDiff
-  skippedEdges: string[]
+  /** Indices into the `edges` argument that were not applied (not in the shape,
+   *  or `addEdge` threw). Indices, not geom hashes: only the caller knows which
+   *  query produced each edge, and a hash cannot be matched back to one. */
+  skippedEdgeIndices: number[]
 }
 
 function asFace(oc: OccModule, s: OccShape): OccSubShape {
@@ -90,7 +93,7 @@ function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
  * the filleted edge's UUID. Edge names are derived from the output face
  * adjacency. Geometry never enters an identity, only the split ordering.
  */
-function extractNames(
+export function extractNames(
   oc: OccModule,
   scope: DisposeScope,
   maker: OccEdgeModifierMaker,
@@ -101,6 +104,11 @@ function extractNames(
 ): NewNames {
   const faceNames: Names = {}
   const faceAncestry: Lineage = {}
+  // Keys a merge collision already cancelled: the two faces that merged into
+  // one dropped their names, so the key is up for grabs. A third face
+  // modifying to the same output must not re-claim it -- topology order would
+  // pick whichever, and the name was deliberately left to the neighbours.
+  const mergedAway = new Set<string>()
   // Generated-face centroids are world coordinates: normalize them by the new
   // solid's span so the split-sibling refusal is relative, not unit-dependent.
   let frame: NormalFrame | null = null
@@ -135,7 +143,19 @@ function extractNames(
       faceNames[faceGh(oc, scope, asFace(oc, oldF))] = uuid
       faceAncestry[uuid] = [...ancestry]
     } else if (mods.length === 1) {
-      faceNames[builtGh(mods[0])] = uuid
+      const key = builtGh(mods[0])
+      const prior = faceNames[key]
+      if (prior !== undefined && prior !== uuid) {
+        // Two named faces merged into one. Whichever we kept would be picked by
+        // topology order, which is not construction-stable. Drop both and let
+        // nameFacesFromNeighbours mint a name from the surviving neighbourhood.
+        delete faceNames[key]
+        delete faceAncestry[prior]
+        mergedAway.add(key)
+        continue
+      }
+      if (mergedAway.has(key)) continue
+      faceNames[key] = uuid
       faceAncestry[uuid] = [...ancestry]
     } else {
       const ordered = orderSplitChildren(
@@ -325,7 +345,7 @@ function applyEdgeModifier(
     reason,
     names: null,
     diff: emptyBrepDiff(),
-    skippedEdges: [],
+    skippedEdgeIndices: [],
   })
 
   if ((shape as unknown as { IsNull(): boolean }).IsNull()) return fail('null_shape')
@@ -339,11 +359,12 @@ function applyEdgeModifier(
   }
 
   const appliedEdges: OccShape[] = []
-  const skippedQueries: string[] = []
-  for (const edge of edges) {
+  const skippedIdx: number[] = []
+  for (let i = 0; i < edges.length; i++) {
+    const edge = edges[i]
     if (!shapeEdges.some((se) => (se as OccSubShape).IsSame(edge as OccSubShape))) {
       // Edge not found in the built shape -- caller should report as unresolved.
-      skippedQueries.push(edgeGh(oc, scope, edge) ?? '')
+      skippedIdx.push(i)
       continue
     }
     try {
@@ -351,7 +372,7 @@ function applyEdgeModifier(
       appliedEdges.push(edge)
     } catch {
       // failed edge -- mirror Python's failed_count (no throw)
-      skippedQueries.push(edgeGh(oc, scope, edge) ?? '')
+      skippedIdx.push(i)
     }
   }
 
@@ -386,7 +407,7 @@ function applyEdgeModifier(
     throw e
   }
 
-  return { shape: built, success: true, reason: null, names, diff, skippedEdges: skippedQueries }
+  return { shape: built, success: true, reason: null, names, diff, skippedEdgeIndices: skippedIdx }
 }
 
 function filletSpec(oc: OccModule, radius: number): ModifierSpec {

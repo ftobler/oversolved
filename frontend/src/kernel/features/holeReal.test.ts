@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBox, makeCylinder } from '../occ/primitives'
+import { makeBox, makeBoxAt, makeCylinder } from '../occ/primitives'
 import { volumeOf, booleanWithDiff } from '../occ/booleans'
 import { Repository } from '../query'
 import { solveHole } from './hole'
@@ -62,7 +62,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
             id: 'body_t',
             created_by: 'ex_t',
             modified_by: [],
-            shape: table.register(scope.detach(box), 'ex_t'),
+            shape: table.register(box, 'ex_t'),
             sketch_id: 'sk_t',
             brep_diff: null,
             profile_queries: [],
@@ -100,17 +100,22 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
   describe('hole inline cases', () => {
     it('reverse direction drills from opposite side', () => {
       // Hole with direction='reverse' drills from opposite side of the target.
+      // The box sits BELOW the sketch plane (z = -10..0), so only a reverse
+      // hole (drilling down from the plane) cuts it. The old fixture put the
+      // box ABOVE the plane, where the reverse cylinder was flush with the
+      // box's bottom face: OCC cut no material and the test's volume drop was
+      // float noise, which the per-site probe now correctly reports instead.
       const scope = new DisposeScope()
       const table = new HandleTable({ finalizerGuard: false })
       try {
         const repo = new Repository()
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/p1/xy', { external_xy: [10, 10] })
-        const box = makeBox(occ, scope, 20, 20, 10)
+        const box = makeBoxAt(occ, scope, [0, 0, -10], 20, 20, 10)
         const bodyStore: Record<string, Body> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
-            shape: table.register(scope.detach(box), 'ex_t'),
+            shape: table.register(box, 'ex_t'),
             sketch_id: 'sk_t', brep_diff: null,
             profile_queries: [],
           },
@@ -142,7 +147,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const bodyStore: Record<string, Body> = {
           body_first: {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
-            shape: table.register(scope.detach(box), 'ex_first'),
+            shape: table.register(box, 'ex_first'),
             sketch_id: 'sk_first', brep_diff: null,
             profile_queries: [],
           },
@@ -168,7 +173,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       return {
         body_t: {
           id: 'body_t', created_by: 'ex_t', modified_by: [],
-          shape: table.register(scope.detach(box), 'ex_t'),
+          shape: table.register(box, 'ex_t'),
           sketch_id: 'sk_t', brep_diff: null,
           profile_queries: [],
         },
@@ -244,7 +249,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const bodyStore: Record<string, Body> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
-            shape: table.register(scope.detach(cyl), 'ex_t'),
+            shape: table.register(cyl, 'ex_t'),
             sketch_id: 'sk_t', brep_diff: null,
             profile_queries: [],
           },
@@ -283,7 +288,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const bodyStore: Record<string, Body> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
-            shape: table.register(scope.detach(box), 'ex_t'),
+            shape: table.register(box, 'ex_t'),
             sketch_id: 'sk_t', brep_diff: null,
             profile_queries: [],
           },
@@ -305,6 +310,103 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const volAfterDeep = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
         // Deeper hole removes more material.
         expect(volAfterDeep).toBeLessThan(volAfterShallow)
+      } finally {
+        scope.dispose()
+      }
+    })
+  })
+
+  describe('hole: a drill that removes nothing, or everything, says so', () => {
+    function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, Body> {
+      const box = makeBox(occ, scope, 20, 20, 10)
+      return {
+        body_t: {
+          id: 'body_t', created_by: 'ex_t', modified_by: [],
+          shape: table.register(box, 'ex_t'),
+          sketch_id: 'sk_t', brep_diff: null,
+          profile_queries: [],
+        },
+      }
+    }
+    const PLANE = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+
+    it('a hole placed entirely off the body warns that nothing was removed', () => {
+      // M31: a drill site that had geometry but cut nothing used to report ok
+      // with hole_count: 1 and an unchanged body. The site-only emptiness probe
+      // must surface it as a warning, and hole_count drops to 0.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', PLANE)
+        repo.register('sk/p1/xy', { external_xy: [100, 100] })
+        const bodyStore = boxTarget(occ, scope, table)
+        const boxVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: '@sk', diameter: 4, depth: 5, target: 'body_t' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+
+        expect(result.status).toBe('ok')
+        expect(result.hole_count).toBe(0)
+        expect(result.solver_warning).toMatch(/none of the 1 drill site\(s\) intersect body 'body_t'; nothing was removed/)
+        expect(result.body_ids).toEqual(['body_t'])
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(boxVol, 6)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('a through-hole wider than the body deletes the body and names the deletion', () => {
+      // A cutter that encloses the whole body in the plane returns an empty
+      // result; resplitBody's deletion path must remove the body from the store
+      // and the leaf must report body_ids: [] instead of a live id.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', PLANE)
+        repo.register('sk/p1/xy', { external_xy: [10, 10] })
+        const bodyStore = boxTarget(occ, scope, table)
+
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: '@sk', diameter: 30, depth_mode: 'through_all', target: 'body_t' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+
+        expect(result.status).toBe('ok')
+        expect(result.body_ids).toEqual([])
+        expect(result.body_id).toBe('body_t')  // still names the consumed body
+        expect(result.solver_warning).toMatch(/the cut removed all of body 'body_t'; the body was deleted/)
+        expect('body_t' in bodyStore).toBe(false)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('a mixed fixture reports partial and names the site that missed', () => {
+      // One site cuts, one removes nothing: partial, with the miss named so the
+      // user knows which pick to move. hole_count counts sites that cut.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const repo = new Repository()
+        repo.register('_pt_sk', PLANE)
+        repo.register('sk/p1/xy', { external_xy: [5, 5] })
+        repo.register('sk/p2/xy', { external_xy: [100, 100] })
+        const bodyStore = boxTarget(occ, scope, table)
+
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: '@sk', diameter: 4, depth: 5, target: 'body_t' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }] } })
+
+        expect(result.status).toBe('partial')
+        expect(result.hole_count).toBe(1)
+        expect(result.exception).toMatch(/1\/2 drill site\(s\) did not intersect body 'body_t': p2/)
+        expect(result.solver_warning).toBeUndefined()
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeLessThan(20 * 20 * 10)
       } finally {
         scope.dispose()
       }

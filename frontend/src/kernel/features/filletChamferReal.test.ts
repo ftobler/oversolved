@@ -62,7 +62,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
         id: 'body_b',
         created_by: 'ex1',
         modified_by: [],
-        shape: table.register(scope.detach(box), 'ex1'),
+        shape: table.register(box, 'ex1'),
         sketch_id: 'sk',
         brep_diff: null,
         profile_queries: [],
@@ -96,6 +96,29 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       // Original face construction names survive onto the trimmed output faces.
       expect(Object.keys(body.face_names ?? {}).length).toBeGreaterThan(0)
       expect(body.brep_diff).not.toBeNull()
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a viewport-form source_body resolves onto the real body and the fillet builds', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBody(scope, table)
+      const result = solveFillet(
+        occ,
+        scope,
+        table,
+        { id: 'fil1', fillet: { edges: ['?body_b:edge:0'], radius: 2, source_body: 'body:body_b' } },
+        new Repository(),
+        bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      expect(result.body_ids).toEqual(['body_b'])
+      // The viewport prefix resolves to the real body, so the group key is the
+      // bodyStore id and the edge index builds against it.
+      expect(bodyStore.body_b.modified_by).toEqual(['fil1'])
     } finally {
       scope.dispose()
     }

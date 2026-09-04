@@ -16,10 +16,10 @@ import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
 import { countSolids, volumeOf, booleanWithDiff } from '../occ/booleans'
-import { makeBoxAt, readSolidVertices } from '../occ/primitives'
+import { makeBoxAt, readSolidVertices, solidCentroid } from '../occ/primitives'
 import { faceGh } from '../occ/lineageHash'
 import { Repository } from '../query'
-import { bareBody } from './shared'
+import { bareBody, resolveBody } from './shared'
 import { solveBoolean } from './boolean'
 import { solveArray } from './array'
 import { solveMirror, solveTransform } from './transformMirror'
@@ -164,6 +164,24 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     expect(resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1')).toEqual(['body_t', 'body_t_1'])
     expect(r.store.body_t).toBe(body)  // identity preserved, not replaced
     expectOnePartEach(r, 2)
+    r.scope.dispose()
+  })
+
+  it('resplitBody deleting the body also removes it from the store', () => {
+    // The Wave 6.2 empty-result fix left the body in the store with shape:null,
+    // so a later feature resolved it and failed with "has no shape" instead of
+    // "body not found", and the parts list kept a shapeless row. The deletion
+    // must be complete: store entry gone, handle released, unresolvable.
+    const r = rig()
+    const body = seedBox(r, 'body_t', [0, 0, 0], 10)
+    const oldHandle = body.shape
+    const emptyShape = compoundOf(r.scope, [])
+    expect(resplitBody(oc, r.scope, r.table, r.store, body, emptyShape, 'f1')).toEqual([])
+    expect('body_t' in r.store).toBe(false)
+    // seedBox always registers a shape, so the handle existed and the deletion
+    // released it.
+    expect(r.table.has(oldHandle!)).toBe(false)
+    expect(() => resolveBody('body_t', r.store)).toThrow(/not found/)
     r.scope.dispose()
   })
 
@@ -470,8 +488,39 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
         include_source: true, count_x: 3, pitch_x: 50, direction_x_query: '@dx',
       },
     }, repo, r.store)
-    expect(res.body_ids).toEqual(['body_arr1', 'body_arr1_1', 'body_arr1_2'])
-    expectOnePartEach(r, 4)  // the source body survives alongside the instances
+    // M33: with operation 'new' the source body is NOT duplicated; it stands as
+    // instance 0 and only the transformed instances become new bodies.
+    expect(res.body_ids).toEqual(['body_arr1', 'body_arr1_1'])
+    expectOnePartEach(r, 3)
+    // The source body survives alongside the instances, and exactly once: one
+    // body sits at the source's centroid, not a second coincident copy.
+    const src = solidCentroid(oc, r.scope, r.table.get<OccShape>(r.store.body_src.shape!))
+    const atSource = Object.keys(r.store).filter((id) => {
+      const b = r.store[id]
+      if (b.shape === null) return false
+      const c = solidCentroid(oc, r.scope, r.table.get<OccShape>(b.shape))
+      return c.every((v, i) => Math.abs(v - src[i]) < 1e-9)
+    })
+    expect(atSource).toEqual(['body_src'])
+    r.scope.dispose()
+  })
+
+  it('array new with include_source mints one body per transformed instance, never one for the source', () => {
+    const r = rig()
+    seedBox(r, 'body_src', [0, 0, 0], 10)
+    const repo = new Repository()
+    repo.elements.set('dx', { start: [0, 0, 0], end: [1, 0, 0] })
+    const res = solveArray(oc, r.scope, r.table, {
+      id: 'arr1',
+      array: {
+        source_body: '@body_src', mode: 'linear', operation: 'new',
+        include_source: true, count_x: 3, pitch_x: 50, direction_x_query: '@dx',
+      },
+    }, repo, r.store)
+    // count_x=3 with the source included yields two transforms; body_ids must
+    // carry exactly those, and the source id must be absent from the result.
+    expect(res.body_ids).toHaveLength(2)
+    expect(res.body_ids).not.toContain('body_src')
     r.scope.dispose()
   })
 

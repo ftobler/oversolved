@@ -224,7 +224,8 @@ export function registerSplitBodies(
 /**
  * Re-seat an existing body on `newShape`, splitting it into extra sibling
  * bodies when the operation disconnected it. Returns every id the body now
- * occupies, `body.id` first.
+ * occupies, `body.id` first. `newShape` must be tracked by `scope`; ownership
+ * transfers to the HandleTable.
  *
  * `body` keeps its identity (id, created_by, modified_by, sketch_id,
  * brep_diff, profile_queries, imported) and takes the first solid; siblings are
@@ -241,6 +242,15 @@ export function registerSplitBodies(
  * Passing the id explicitly rather than trusting the caller to have pushed it
  * first is deliberate -- the leaves disagree on whether they push before or
  * after this call.
+ *
+ * An EMPTY result (the new shape holds no solid) deletes the body from the
+ * store and returns `[]`, so a caller that re-resolves the old id later fails
+ * with "body not found" instead of reading a `shape: null`. `body_ids: []`
+ * deliberately means "nothing survives", the opposite of the auto-delete
+ * convention in bodyOps.ts (which keeps the consumed id in `body_ids`); do not
+ * reconcile the two. The deletion is complete here (store entry gone, handle
+ * released); the build loop's eviction pass (builder.ts) clears the body's
+ * repo registrations, the same path a consumed boolean tool takes.
  */
 export function resplitBody(
   oc: OccModule,
@@ -260,10 +270,11 @@ export function resplitBody(
     // compound wrapper never survives as a body shape and `countSolids === 1`
     // stays literally true.
     if (solids.length === 0) {
-      // The boolean produced an empty result -- release the old handle and
-      // signal deletion to the caller.
+      // The operation consumed the whole body. Release the handle AND drop the
+      // body: leaving it behind with shape:null keeps it resolvable as a later
+      // feature's target and puts a shapeless row in the parts list.
       if (oldHandle !== null) table.release(oldHandle)
-      body.shape = null
+      delete bodyStore[body.id]
       return []
     }
     body.shape = table.register(scope.detach(solids[0]), featureId)

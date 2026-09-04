@@ -75,8 +75,7 @@
         "body_id": "body_arr2",
         "body_ids": [
           "body_arr2",
-          "body_arr2_1",
-          "body_arr2_2"
+          "body_arr2_1"
         ],
         "operation": "new"
       },
@@ -87,11 +86,6 @@
           "modified_by": []
         },
         "body_arr2_1": {
-          "volume": 63.999999999999986,
-          "created_by": "arr2",
-          "modified_by": []
-        },
-        "body_arr2_2": {
           "volume": 63.999999999999986,
           "created_by": "arr2",
           "modified_by": []

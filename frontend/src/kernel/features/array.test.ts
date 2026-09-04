@@ -499,6 +499,24 @@ describe('array no-op hygiene', () => {
   })
 })
 
+// The new-path equivalent of the add-path no-op: with the identity instance
+// gone, `new` + include_source + count_x=1 has zero transforms and the source
+// body IS the array. The early return mirrors the add path so toggling
+// include_source on a one-count new array does not throw "produced no
+// instances".
+describe('array new-path count_x=1 no-op', () => {
+  it('new with count_x=1 and include_source returns the source as the array', () => {
+    const body = { ...bareBody('body_ex1', 'ex1'), shape: 1 as never }
+    const table = { get: () => null } as unknown as HandleTable
+    const r = solveArray(
+      makeFake(), scope, table,
+      { id: 'ar9', array: { source_body: 'body_ex1', mode: 'linear', count_x: 1, pitch_x: 10, direction_x_query: 'qx', include_source: true, operation: 'new' } },
+      xyRepo, { body_ex1: body },
+    )
+    expect(r).toEqual({ status: 'ok', body_id: 'body_ex1', body_ids: ['body_ex1'], operation: 'new' })
+  })
+})
+
 function expectCloseVec(actual: number[], expected: number[], tol = 1e-9): void {
   expect(actual).toHaveLength(expected.length)
   for (let i = 0; i < expected.length; i++) {

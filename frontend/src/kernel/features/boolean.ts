@@ -81,6 +81,17 @@ export function solveBoolean(
   for (const toolRef of toolRefs) {
     const toolBody = resolveBody(toolRef, bodyStore)
     if (toolBody.shape === null) throw new Error(`boolean: tool '${toolRef}' has no shape`)
+    if (toolBody.id === targetBody.id) {
+      // The target and the tool resolved to the same body. A union/common is a
+      // no-op with a real cost, a cut eats the whole target, and the tool
+      // cleanup below would release the target's handle and then resplitBody
+      // would release it again. Refuse before any OCC work, even with
+      // keep_tools: target-as-tool is a spec error regardless.
+      throw new Error(
+        `boolean: tool '${toolRef}' resolves to the target body '${targetBody.id}'; ` +
+        'a body cannot be its own tool',
+      )
+    }
     const toolShape = table.get<OccShape>(toolBody.shape)
     const unifyFaces = !(targetBody.imported || toolBody.imported)
 
@@ -176,6 +187,17 @@ export function solveBoolean(
   }
 
   const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId)
+
+  if (bodyIds.length === 0) {
+    // The operation ate the whole target (a subtract whose tool swallows it).
+    // resplitBody deleted the body from the store; report the deletion with
+    // body_id still naming the consumed body and body_ids: [] for "nothing
+    // survives" (the convention stated in resplitBody's docstring).
+    const msg = `boolean: the ${operation} removed all of body '${targetBody.id}'; the body was deleted`
+    result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
+    result.body_ids = []
+    return result
+  }
 
   result.body_ids = bodyIds
   return result

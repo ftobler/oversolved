@@ -34,7 +34,7 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
       const target = makeBox(occ, scope, 10, 10, 10)
       const tool = makeBox(occ, scope, 4, 4, 4)
       const { shape } = booleanWithHistory(occ, scope, target, tool, 'cut')
-      const handle = table.register(scope.detach(shape), 'featCutter')
+      const handle = table.register(shape, 'featCutter')
       const mesh = solidToMesh(occ, table, handle)
       // A 10x10x10 box has 6 faces. Cut by a 4x4x4 box adds interior faces.
       expect(mesh.face_data.length).toBeGreaterThan(6)
@@ -52,7 +52,7 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
       const target = makeBox(occ, scope, 10, 10, 10)
       const tool = makeBox(occ, scope, 4, 4, 4)
       const { shape } = booleanWithHistory(occ, scope, target, tool, 'cut')
-      const handle = table.register(scope.detach(shape), 'featCutter')
+      const handle = table.register(shape, 'featCutter')
       const vol = volumeOf(occ, scope, table.get(handle))
       expect(vol).toBeLessThan(1000)  // less than 10*10*10
       expect(vol).toBeGreaterThan(0)
@@ -70,7 +70,7 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
       const target = makeBox(occ, scope, 10, 10, 10)
       const tool = makeBox(occ, scope, 4, 4, 4)
       const { shape } = booleanWithHistory(occ, scope, target, tool, 'cut')
-      const handle = table.register(scope.detach(shape), 'featCutter')
+      const handle = table.register(shape, 'featCutter')
       const mesh = solidToMesh(occ, table, handle)
       expect(mesh.vertices.length).toBeGreaterThan(0)
       expect(mesh.faces.length).toBeGreaterThan(0)

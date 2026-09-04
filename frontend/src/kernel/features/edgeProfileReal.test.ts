@@ -32,7 +32,7 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
         id: 'body_b',
         created_by: 'ex1',
         modified_by: [],
-        shape: table.register(scope.detach(box), 'ex1'),
+        shape: table.register(box, 'ex1'),
         sketch_id: 'sk',
         brep_diff: null,
         profile_queries: [],

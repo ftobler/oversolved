@@ -15,15 +15,21 @@
 // Sampling the edges (the cap circles) recovers the true extent, matching
 // Python's Bnd_Box-sized cylinder.
 
-import type { DisposeScope } from '../occ/disposeScope'
+import { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { parseSketchEntityRef, resolveBody, sketchIdFromQuery, soleEntityInQuery, mergeBrepDiff } from './shared'
+import {
+  parseSketchEntityRef,
+  resolveBody,
+  sketchIdFromQuery,
+  soleEntityInQuery,
+  mergeBrepDiff,
+} from './shared'
 import { makeCylinder, type Vec3 } from '../occ/primitives'
 import { bodyFrame } from '../occ/tessellation'
-import { booleanWithDiff } from '../occ/booleans'
+import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
 import type { PlaneLike } from './shared'
 
@@ -135,7 +141,50 @@ function bodySpan(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
   return 2.0 * Math.max(half[0], half[1], half[2])
 }
 
-/** Solve a hole feature into the body store (mirrors `_solve_hole`). */
+/** True when `tool` shares any volume with `shape`.
+ *
+ *  The same bare BRepAlgoAPI_Common probe bodyOps and boolean run before a cut
+ *  to skip disjoint tools. The cut's BrepDiff cannot decide this: a disjoint
+ *  cut still writes a NON-empty diff because OCC's history marks the whole
+ *  tool as deleted, which reads as "material removed" even though the body is
+ *  untouched. A failed probe is not evidence of disjointness (mirror bodyOps),
+ *  so the cut proceeds and surfaces its own failure. */
+function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
+  const probe = new DisposeScope()
+  try {
+    const algo = probe.track(new oc.BRepAlgoAPI_Common_1())
+    const args = probe.track(new oc.TopTools_ListOfShape_1())
+    args.Append_1(shape)
+    const tools = probe.track(new oc.TopTools_ListOfShape_1())
+    tools.Append_1(tool)
+    algo.SetArguments(args)
+    algo.SetTools(tools)
+    algo.SetToFillHistory(false)
+    algo.Build()
+    if (!algo.IsDone()) return true
+    const inter = algo.Shape()
+    probe.track(inter)
+    return volumeOf(oc, probe, inter) >= 1e-10
+  } catch {
+    return true
+  } finally {
+    probe.dispose()
+  }
+}
+
+/**
+ * Solve a hole feature into the body store (mirrors `_solve_hole`).
+ *
+ * The result's accounting split: a site is MISSED when it had geometry but the
+ * boolean removed nothing. `hole_count` is sites that removed material (placed
+ * minus missed). A hole where SOME sites cut and some missed is `partial` and
+ * names the missed sites; a hole where every site missed keeps `status: 'ok'`
+ * with a solver warning (the body is unchanged, and a warning beats the old
+ * silent ok), matching the bodyOps warning-with-ok convention. `partial` is
+ * reserved for the mixed case. A hole that consumes the whole body (a
+ * through-hole wider than the body) goes through resplitBody's deletion path:
+ * the body leaves the store and the result reports it with `body_ids: []`.
+ */
 export function solveHole(
   oc: OccModule,
   scope: DisposeScope,
@@ -196,6 +245,7 @@ export function solveHole(
   let skippedCount = 0
   const skippedEntityIds: string[] = []
   let accumulatedDiff: BrepDiff | null = targetBody.brep_diff
+  const missedSites: string[] = []
   let cutAny = false
 
   for (let i = 0; i < drilled.length; i++) {
@@ -229,6 +279,14 @@ export function solveHole(
     }
 
     const cyl = scope.track(makeCylinder(oc, scope, start3d, axis, site.radius, h))
+    if (!intersects(oc, currentShape, cyl)) {
+      // The cutter does not reach the body: a drill site that removes nothing.
+      // Skipping the cut keeps it out of accumulatedDiff, so the body's stored
+      // diff never gains a "whole tool deleted" entry for a miss.
+      scope.release(cyl)
+      missedSites.push(eid)
+      continue
+    }
     const res = booleanWithDiff(oc, scope, currentShape, cyl, 'cut', { unifyFaces: !targetBody.imported })
     scope.release(cyl)
     if (i > 0) scope.release(currentShape)
@@ -254,20 +312,45 @@ export function solveHole(
     // A hole is a cut, so it can sever the body: a through-hole wider than the
     // web between two features leaves two disconnected solids.
     bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, currentShape, feature.id as string)
+    if (bodyIds.length === 0) {
+      // The cut ate the whole body: resplitBody deleted it from the store.
+      // Report the deletion with body_id still naming the consumed body (that
+      // is what the feature row points at) and body_ids: [] for "nothing
+      // survives".
+      return {
+        status: 'ok',
+        body_id: targetBody.id,
+        body_ids: [],
+        // "removed material" matches the docstring: sites that cut minus those
+        // that missed and therefore removed nothing.
+        hole_count: placed - missedSites.length,
+        solver_warning: `hole: the cut removed all of body '${targetBody.id}'; the body was deleted`,
+      }
+    }
     targetBody.brep_diff = accumulatedDiff
     targetBody.modified_by.push(feature.id as string)
   }
 
   const result: HoleResult = {
-    status: skippedCount > 0 ? 'partial' : 'ok',
+    status: skippedCount > 0 || (missedSites.length > 0 && missedSites.length < placed) ? 'partial' : 'ok',
     body_id: bodyIds[0],
     body_ids: bodyIds,
-    hole_count: placed,
+    hole_count: placed - missedSites.length,
   }
   if (skippedCount > 0) {
     // Wording pinned by the frozen parity snapshot (occ/__fixtures__/hole.json,
     // case `partial_skip`): reword it and the golden result stops matching.
     result.exception = `hole: ${skippedCount}/${total} point(s) skipped, no XY data for: ${skippedEntityIds.join(', ')}`
+  } else if (missedSites.length > 0 && missedSites.length < placed) {
+    // Some sites cut, some removed nothing: name the misses so the user knows
+    // which picks to move.
+    result.exception = `hole: ${missedSites.length}/${placed} drill site(s) did not intersect body '${targetBody.id}': ${missedSites.join(', ')}`
+  }
+  if (placed > 0 && missedSites.length === placed) {
+    // Every site had geometry but none removed material. The body is unchanged;
+    // ok with this warning beats the old silent ok with hole_count: N.
+    result.solver_warning =
+      `hole: none of the ${placed} drill site(s) intersect body '${targetBody.id}'; nothing was removed`
   }
   return result
 }

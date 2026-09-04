@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../query'
 import { solveBoolean } from './boolean'
-import type { HandleTable } from '../occ/handleTable'
+import { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
 
@@ -63,5 +63,37 @@ describe('solveBoolean guard paths', () => {
         body_u0: body('body_u0'),
       }),
     ).toThrow(/body not found/)
+  })
+
+  it('target listed in tools throws the named error before any boolean runs', () => {
+    // The refusal sits in the tool loop, so the target must reach it: a real
+    // shape (any disposable) keeps the pre-loop "has no shape" guard from
+    // firing first. The throw happens before any OCC work.
+    const table = new HandleTable({ finalizerGuard: false })
+    const target = body('body_t')
+    target.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    expect(() =>
+      solveBoolean(oc, scope, table, {
+        id: 'b', boolean: { operation: 'union', target: 'body_t', tools: ['body_t'] },
+      }, repo, {
+        body_t: target,
+      }),
+    ).toThrow(/cannot be its own tool/)
+  })
+
+  it('an alias tool ref that resolves to the target is refused the same way', () => {
+    // The id comparison catches aliases too: '@ex1' and 'body_t' are the same
+    // body, and resolving the tool must not be allowed to eat the target.
+    const table = new HandleTable({ finalizerGuard: false })
+    const target = body('body_t')
+    target.created_by = 'ex1'
+    target.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    expect(() =>
+      solveBoolean(oc, scope, table, {
+        id: 'b', boolean: { operation: 'union', target: 'body_t', tools: ['@ex1'] },
+      }, repo, {
+        body_t: target,
+      }),
+    ).toThrow(/cannot be its own tool/)
   })
 })

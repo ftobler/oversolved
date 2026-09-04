@@ -66,7 +66,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
           id: 'body_t',
           created_by: 'featT',
           modified_by: [],
-          shape: table.register(scope.detach(target), 'featT'),
+          shape: table.register(target, 'featT'),
           sketch_id: 'skT',
           brep_diff: null,
           profile_queries: [],
@@ -131,7 +131,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
       try {
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
-          id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(scope.detach(target), 'featT'),
+          id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(target, 'featT'),
           sketch_id: 'skT', brep_diff: null, profile_queries: [],
         }
         // Tool box is far away (no intersection with target at origin).
@@ -163,7 +163,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
       try {
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
-          id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(scope.detach(target), 'featT'),
+          id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(target, 'featT'),
           sketch_id: 'skT', brep_diff: null, profile_queries: [],
         }
         // Tool box is far away (no overlap with target).
@@ -201,7 +201,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         // through the middle, splitting the target into two halves.
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
-          id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(scope.detach(target), 'featT'),
+          id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(target, 'featT'),
           sketch_id: 'skT', brep_diff: null, profile_queries: [],
         }
         // Tool cuts through the center: spans from y=4 to y=6, x from -1 to 11, z from 0 to 10.
@@ -244,7 +244,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         for (const [bid, x] of [['body_a', 0], ['body_b', 20]] as [string, number][]) {
           const box = makeBoxAt(occ, scope, [x, 0, 0], 10, 10, 10)
           bodyStore[bid] = {
-            id: bid, created_by: `feat_${bid}`, modified_by: [], shape: table.register(scope.detach(box), `feat_${bid}`),
+            id: bid, created_by: `feat_${bid}`, modified_by: [], shape: table.register(box, `feat_${bid}`),
             sketch_id: 'skT', brep_diff: null, profile_queries: [],
           }
         }
