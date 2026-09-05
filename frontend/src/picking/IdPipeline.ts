@@ -20,12 +20,6 @@ export {
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
   FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
 }
-export const SKETCH_ENTITY_FAT_PIXELS = 8
-export const SKETCH_VERTEX_FAT_PIXELS = 12
-export const ORIGIN_FAT_PIXELS = 14
-// Matches the visible-pass hit radius after Linear.tsx's per-frame
-// `30 * p2w(camera)` scale on the unit circleGeometry hit mesh.
-export const DIMENSION_LABEL_FAT_PIXELS = 18
 
 /**
  * Edge of the square pick window, in CSS pixels; the reach it stands for is the
@@ -100,6 +94,17 @@ function scaledWindowSize(cssSize: number, ratio: number): number {
 // face it sits on in the depth buffer.
 export const VERTEX_PICK_CUBE_PIXELS = 3
 
+// The largest device-pixel window `readWindow` can ever ask for: the default CSS
+// window scaled by the DPR ceiling, plus the one-pixel margin it reads on every
+// side. The clipped sub-region read is bounded by this, so one buffer this size
+// is reused for every hover instead of a fresh Uint8Array per sub-read.
+const MAX_READ_WINDOW_DEVICE_SIZE = scaledWindowSize(DEFAULT_WINDOW_SIZE, MAX_PICK_PIXEL_RATIO) + 2
+// Deliberately the exact worst-case common-path sub-read size, so the grow check
+// in readWindow never fires for the default window. If a scaledWindowSize
+// rounding change ever makes the common path exceed this, size up to keep that
+// path allocation-free -- it must never reallocate at read time.
+const MAX_READ_WINDOW_BYTES = MAX_READ_WINDOW_DEVICE_SIZE * MAX_READ_WINDOW_DEVICE_SIZE * 4
+
 export interface IdPipelineOptions {
   width: number
   height: number
@@ -164,6 +169,21 @@ export class IdPipeline {
   // Layers that hit the failure threshold and are now skipped entirely. The
   // buffer is allowed to go clean without them.
   private latchedOutLayers = new Set<string>()
+  // Cached layer name to priority map. Rebuilt lazily and only invalidated by
+  // addLayer; resolveSync/resolveAllSync read it on every hover, so a fresh
+  // Record per call was pure churn.
+  private layerPriorityCache: Readonly<Record<string, number>> | null = null
+  // Reusable scratch for readWindow's clipped sub-region read, pre-sized to the
+  // largest window the DPR cap allows. Grows only if a caller ever configures a
+  // window larger than the default. Held here and not beside the resolver's
+  // decode scratch because only readWindow stitches through it.
+  private subScratch = new Uint8Array(MAX_READ_WINDOW_BYTES)
+
+  // Reused across render()'s renderer-state save/restore so a hover frame mints
+  // no THREE objects, mirroring the pose-buffer reuse in IdPickingDriver.
+  private readonly prevClearColorScratch = new THREE.Color()
+  private readonly prevViewportScratch = new THREE.Vector4()
+  private readonly prevScissorScratch = new THREE.Vector4()
 
   constructor(opts: IdPipelineOptions) {
     this.registry = new IdRegistry()
@@ -260,6 +280,9 @@ export class IdPipeline {
   addLayer(layer: IdLayer): void {
     this.layers.push(layer)
     this.layers.sort((a, b) => a.priority - b.priority)
+    // The priority map is derived from this.layers. Also invalidate here if a
+    // removeLayer is ever added.
+    this.layerPriorityCache = null
   }
 
   // Snapshot of mounted layers in render order.
@@ -269,8 +292,10 @@ export class IdPipeline {
 
   // Layer name → priority mapping for the resolver.
   getLayerPriority(): Readonly<Record<string, number>> {
+    if (this.layerPriorityCache) return this.layerPriorityCache
     const map: Record<string, number> = {}
     for (const l of this.layers) map[l.name] = l.priority
+    this.layerPriorityCache = map
     return map
   }
 
@@ -344,11 +369,11 @@ export class IdPipeline {
   render(renderer: THREE.WebGLRenderer, camera: THREE.Camera): void {
     const prevTarget = renderer.getRenderTarget()
     const prevAutoClear = renderer.autoClear
-    const prevClearColor = new THREE.Color()
+    const prevClearColor = this.prevClearColorScratch
     renderer.getClearColor(prevClearColor)
     const prevClearAlpha = renderer.getClearAlpha()
-    const prevViewport = new THREE.Vector4()
-    const prevScissor = new THREE.Vector4()
+    const prevViewport = this.prevViewportScratch
+    const prevScissor = this.prevScissorScratch
     const hasViewportApi = typeof renderer.getViewport === 'function' && typeof renderer.setViewport === 'function'
     const hasScissorApi = typeof renderer.getScissor === 'function'
       && typeof renderer.setScissor === 'function'
@@ -557,7 +582,16 @@ export class IdPipeline {
     const clampH = Math.min(h - clampY, readH - (clampY - y0))
     if (clampW <= 0 || clampH <= 0) return null
 
-    const sub = new Uint8Array(clampW * clampH * 4)
+    // Reuse the pre-sized scratch; grow it only if a caller ever configures a
+    // window past the DPR-capped default. The buffer must be zeroed first, like
+    // the fresh Uint8Array it replaced: readRenderTargetPixels has early-return
+    // paths (no framebuffer yet, context loss) that leave it untouched, and a
+    // stale tail from the previous hover would then stitch into the resolver
+    // scratch and decode a phantom entity instead of resolving null.
+    const subBytes = clampW * clampH * 4
+    if (this.subScratch.length < subBytes) this.subScratch = new Uint8Array(subBytes)
+    this.subScratch.fill(0, 0, subBytes)
+    const sub = this.subScratch.subarray(0, subBytes)
     renderer.readRenderTargetPixels(this.target.target, clampX, clampY, clampW, clampH, sub)
 
     // Stitch sub into scratch at the right offset. Row 0 of sub corresponds
