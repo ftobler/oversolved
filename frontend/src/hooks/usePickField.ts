@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { failLoud } from '@/stores/stateInvariants'
 import { isPickAllowed } from '@/utils/query/pickOrder'
+import { useNotifySafe } from '@/contexts/ToastContext'
 
 /**
  * Layer-2 pick-field consumer. A pick chip is a consumer of normal selection,
@@ -12,7 +13,9 @@ import { isPickAllowed } from '@/utils/query/pickOrder'
  * When a new (non-chip-owned) item appears in `normalSelection`, it calls
  * `onPick(selectionId)` so the editor can dispatch its mutation, then clears
  * the selection so the chip's sync effect re-populates chip-owned items.
- * Single-pick fields auto-close after one pick; `multi` fields stay open.
+ * Single-pick fields auto-close after one pick; `multi` fields stay open and
+ * consume every new id (a rubber-band box lands as one `normalSelection` set,
+ * so all N boxed edges reach `onPick`, not just the first).
  *
  * Re-clicking an already-picked element toggles it out of `normalSelection`
  * (the viewport click path is symmetric). A chip-owned id that has dropped out
@@ -55,26 +58,47 @@ export function usePickField(
   const features = opts?.features
   const activePickField = useSketchEditorStore(s => s.activePickField)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  const notify = useNotifySafe()
   const isPicking = activePickField?.featureId === featureId && activePickField?.field === field
 
   useEffect(() => {
     if (!isPicking) return
     const s = useSketchEditorStore.getState()
+
+    // Consume every new (non-chip-owned) pick. A single field takes the first
+    // id and closes; a multi field loops over the whole set so a rubber-band
+    // box adds every edge instead of just the first one (g2-M3).
+    let hasNewPick = false
+    let refused = false
     for (const id of s.normalSelection) {
-      if (!s.chipOwnedSelection.has(id)) {
-        if (features && !isPickAllowed(id, featureId, features)) {
-          // Circular dependency: the host would reference its own output or a
-          // later feature's. Drop the pick but keep the field open (unlike an
-          // accepted pick) so the user can go straight for valid geometry.
+      if (s.chipOwnedSelection.has(id)) continue
+      hasNewPick = true
+      if (features && !isPickAllowed(id, featureId, features)) {
+        // Circular dependency: the host would reference its own output or a
+        // later feature's. Drop the pick but keep the field open (unlike an
+        // accepted pick) so the user can go straight for valid geometry.
+        if (!refused) {
+          refused = true
+          notify('Pick refused: can only reference earlier features', 'warning')
+        }
+        if (!multi) {
           s.clearNormalSelection()
           return
         }
-        onPick(id)
+        continue  // multi: skip the rejected id, keep consuming the box
+      }
+      onPick(id)
+      if (!multi) {
         s.clearNormalSelection()
-        if (!multi) s.setActivePickField(null)
+        s.setActivePickField(null)
         return
       }
     }
+    if (hasNewPick) {
+      s.clearNormalSelection()
+      return
+    }
+
     // No new pick: a chip-owned id missing from normalSelection is a re-click
     // toggle-off, so remove it from the chip.
     for (const id of s.chipOwnedSelection) {
@@ -99,7 +123,7 @@ export function usePickField(
         return
       }
     }
-  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId, field])
+  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId, field, notify])
 
   const toggle = useCallback(() => {
     const s = useSketchEditorStore.getState()

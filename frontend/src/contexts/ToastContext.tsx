@@ -66,9 +66,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- module also exports the useNotify hook alongside the ToastProvider component
+// eslint-disable-next-line react-refresh/only-export-components -- module also exports the notify hooks alongside the ToastProvider component
 export function useNotify(): (message: string, severity?: Severity) => void {
   const ctx = useContext(ToastContext)
   if (!ctx) throw new Error('useNotify must be used inside ToastProvider')
   return ctx.notify
+}
+
+// Lenient variant for optional-feedback sites (pick-rejection toasts) that can
+// render in test harnesses without a provider: no provider means no toast, and
+// that must not crash the render. Production always sits under ToastProvider.
+// The no-op fallback is module-stable so a provider-less caller's `notify`
+// identity never churns a useMemo/effect dependency.
+const noopNotify = () => undefined
+// eslint-disable-next-line react-refresh/only-export-components -- the safe notify hook is a sibling of useNotify, same rule exemption
+export function useNotifySafe(): (message: string, severity?: Severity) => void {
+  const ctx = useContext(ToastContext)
+  return ctx ? ctx.notify : noopNotify
 }

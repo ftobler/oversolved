@@ -5,10 +5,11 @@
  * the chip -- usePickField is what rejects it.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { ToastProvider } from '@/contexts/ToastContext'
 import type { PartFeature } from '@/types/cad'
 
 const FEATURES: PartFeature[] = [
@@ -78,5 +79,50 @@ describe('pick chip circular-dependency guard', () => {
 
     pick('@sk1')
     expect(onMutation).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('rejected-pick feedback', () => {
+  it('a validatePick refusal shows a toast and dispatches no mutation', () => {
+    // Fillet/chamfer gate their edge field with validatePick: only `?` queries
+    // carry a named query, so a topo-fallback edge (@body_<id>/edge/N) must be
+    // refused with a reason instead of vanishing silently. No `features` prop:
+    // the build-order guard would otherwise reject this very pick first.
+    const schema: FeatureEditorSchema = {
+      mutationPrefix: 'set_test', subKey: 'test', defaults: { edges: [] },
+      fields: [{ type: 'pick', key: 'edges', label: 'Edges', multi: true,
+        addMutationType: 'add_test_edge', addValueKey: 'edgeQuery',
+        validatePick: (id) => id.startsWith('?') }],
+    }
+    const onMutation = vi.fn()
+    const feature = { id: 'ex1', kind: 'test', test: { edges: [] } } as unknown as PartFeature
+    render(
+      <ToastProvider>
+        <FeatureEditor feature={feature} onMutation={onMutation} schema={schema} />
+      </ToastProvider>,
+    )
+    fireEvent.click(document.querySelector('.feature-pick-chip')!)
+
+    pick('@body_ex1/edge/0')
+
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(screen.getByText('Pick refused: this edge has no named query')).toBeInTheDocument()
+  })
+
+  it('a build-order rejection shows a toast but keeps the field open', () => {
+    const onMutation = vi.fn()
+    const feature = { id: 'ex1', kind: 'test', test: { body: '' } } as unknown as PartFeature
+    render(
+      <ToastProvider>
+        <FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={SCHEMA} />
+      </ToastProvider>,
+    )
+    fireEvent.click(document.querySelector('.feature-pick-chip')!)
+
+    pick('@body_ex1')
+
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(screen.getByText('Pick refused: can only reference earlier features')).toBeInTheDocument()
+    expect(document.querySelector('.feature-pick-chip')!.classList.contains('picking')).toBe(true)
   })
 })

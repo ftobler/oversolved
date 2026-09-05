@@ -1,6 +1,7 @@
 import type { Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
+import { useNotifySafe } from '@/contexts/ToastContext'
 import type { PickFieldWidgetProps } from './fieldTypes'
 
 export function PickFieldWidget({
@@ -8,9 +9,16 @@ export function PickFieldWidget({
 }: PickFieldWidgetProps) {
   const isMulti = field.multi ?? false
   const rawValues: unknown = data[field.key]
+  const notify = useNotifySafe()
 
   const pickCallback = (selectionId: string) => {
-    if (field.validatePick && !field.validatePick(selectionId)) return
+    if (field.validatePick && !field.validatePick(selectionId)) {
+      // A refused pick must not vanish silently: the fillet/chamfer edge gate
+      // only accepts `?` queries, so a topo-fallback edge (no named query)
+      // de-highlights with nothing added. Surface the reason instead.
+      notify('Pick refused: this edge has no named query', 'warning')
+      return
+    }
     const transformed = field.transform ? field.transform(selectionId) : selectionId
 
     if (isMulti) {

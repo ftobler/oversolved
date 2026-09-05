@@ -27,7 +27,7 @@ function mountPickField(
   featureId: string,
   field: string,
   onPick: (id: string) => void,
-  opts?: { multi?: boolean; onUnpick?: (id: string) => void },
+  opts?: { multi?: boolean; onUnpick?: (id: string) => void; features?: readonly { id: string }[] },
 ) {
   function Spy() {
     const { isPicking, toggle } = usePickField(featureId, field, onPick, opts)
@@ -225,6 +225,50 @@ describe('usePickField  -  auto-close (multi vs single)', () => {
     })
     expect(onPick).toHaveBeenCalledTimes(2)
     expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+  })
+
+  it('multi field consumes every boxed id, skipping build-order-rejected ones', () => {
+    // A rubber-band box lands a Set wholesale (useRubberBandSelect commits
+    // setNormalSelection(new Set(keys))). The boxed ex1's own body sits in the
+    // middle to prove a rejected id is skipped without aborting the loop, so
+    // the two earlier sketch picks still land.
+    const onPick = vi.fn()
+    const features = [
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'sk2', kind: 'sketch' },
+      { id: 'ex1', kind: 'extrude' },
+    ]
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'edges', multi: true })
+    })
+    mountPickField('ex1', 'edges', onPick, { multi: true, features })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set(['@body_ex1', '@sk1', '@sk2']))
+    })
+
+    expect(onPick).toHaveBeenCalledTimes(2)
+    expect(onPick).toHaveBeenNthCalledWith(1, '@sk1')
+    expect(onPick).toHaveBeenNthCalledWith(2, '@sk2')
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+  })
+
+  it('single field still takes only the first boxed id', () => {
+    // Single fields keep the first-id behavior: the rest of a box is dropped.
+    const onPick = vi.fn()
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'plane' })
+    })
+    mountPickField('sk1', 'plane', onPick)
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set(['@builtin_plane_top', '@builtin_plane_front']))
+    })
+
+    expect(onPick).toHaveBeenCalledTimes(1)
+    expect(onPick).toHaveBeenCalledWith('@builtin_plane_top')
+    expect(useSketchEditorStore.getState().activePickField).toBeNull()
   })
 })
 
