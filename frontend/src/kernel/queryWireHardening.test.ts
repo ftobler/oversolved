@@ -176,6 +176,36 @@ describe("empty ancestry id list", () => {
     expect(() => makeAncestryQuery([""])).toThrow()
     expect(() => emitWire(ancestry([""]))).toThrow()
   })
+
+  it("rejects a type/classifier tail that would not round-trip (silent corruption guard)", () => {
+    // The :type@cls tail is raw concatenation after length-framed ids: "fo@o"
+    // emits ":fo@o", which parseAncestryTail reads back as type "fo" classifier
+    // "o" - a silent round-trip corruption. Any '@' or ':' inside either field
+    // splits the tail grammar, so both emitters refuse it instead.
+    expect(() => makeAncestryQuery(["@a"], "fo@o")).toThrow()
+    expect(() => makeAncestryQuery(["@a"], "face:extra")).toThrow()
+    expect(() => makeAncestryQuery(["@a"], null, "in:ner")).toThrow()
+    expect(() => makeAncestryQuery(["@a"], null, "inn@er")).toThrow()
+    expect(() => emitWire(ancestry(["@a"], "fo@o"))).toThrow()
+    expect(() => emitWire(ancestry(["@a"], null, "in:ner"))).toThrow()
+  })
+
+  it("legal :type@cls tails still emit and round-trip", () => {
+    expect(makeAncestryQuery(["@a"], "face")).toBe("?2;@a:face")
+    expect(makeAncestryQuery(["@a"], null, "inner")).toBe("?2;@a@inner")
+    expect(makeAncestryQuery(["@a"], "face", "inner")).toBe("?2;@a:face@inner")
+    expect(emitWire(parseQuery("?2;@a:face@inner"))).toBe("?2;@a:face@inner")
+    // The legal ?0; forms stay pinned.
+    expect(emitWire(parseQuery("?0;:face"))).toBe("?0;:face")
+    expect(emitWire(parseQuery("?0;@inner"))).toBe("?0;@inner")
+  })
+
+  it("accepts an omitted (undefined) classifier, as emitWire forwards", () => {
+    // makeAncestryQuery's classifier param is string|null, but emitWire forwards
+    // an optional AncestryQuery classifier that may be undefined; the guard must
+    // not throw on it.
+    expect(() => makeAncestryQuery(["@a"], "face", undefined)).not.toThrow()
+  })
 })
 
 // Zero-length segments and unconsumed trailing data fail loud instead of

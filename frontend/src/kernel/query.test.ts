@@ -2875,6 +2875,44 @@ describe("queryAll", () => {
     expect(repo.queryAll(makeAncestryQuery(["@feat1", "@cls_zp"]))).toEqual([])
   })
 
+  it("queryAll / queryAllTyped write _lastTier honestly on every return path", () => {
+    // _lastTier is the "did this silently downgrade a tier" signal. queryAll used
+    // to leave it stale from a previous query; an interleaved enumeration then
+    // reported a tier it did not resolve. Every path must label itself.
+    const repo = new Repository()
+    repo.registerAncestor(
+      ["@feat1"],
+      { type: "flatface", tag: "zp", classifiers: ["cls_zp"] },
+      "u_aaa",
+    )
+    repo.registerAncestor(["@feat1"], { type: "flatface", tag: "zn", classifiers: ["cls_zn"] })
+
+    // uuid bucket return.
+    repo.queryAll(makeAncestryQuery([constructionUuidToken("u_aaa")]))
+    expect(repo._lastTier).toBe("uuid")
+
+    // special-only guard: classifier-only query enumerates nothing.
+    repo.queryAll(makeAncestryQuery(["@cls_zp"]))
+    expect(repo._lastTier).toBe("miss")
+
+    // classifier veto: both candidates carry non-empty evidence lacking the
+    // wanted token, so the set narrows to [].
+    repo.queryAll(makeAncestryQuery(["@feat1", "@cls_zz"]))
+    expect(repo._lastTier).toBe("miss")
+
+    // final ancestral enumeration.
+    repo.queryAll(makeAncestryQuery(["@feat1"], "face"))
+    expect(repo._lastTier).toBe("ancestral")
+
+    // queryAllTyped routes through the same resolver and labels itself too.
+    repo.queryAllTyped(ancestry([constructionUuidToken("u_aaa")]))
+    expect(repo._lastTier).toBe("uuid")
+    repo.queryAllTyped(ancestry(["@feat1"], "face"))
+    expect(repo._lastTier).toBe("ancestral")
+    repo.queryAllTyped(ancestry(["@cls_zp"]))
+    expect(repo._lastTier).toBe("miss")
+  })
+
   it("uuid tier resolves ignoring classifiers", () => {
     // Same alignment as the resolver's "UUID resolves even with contradictory
     // classifiers": the uuid bucket answers first and the classifier tokens never

@@ -160,21 +160,12 @@ export function emitWire(q: QueryType): string {
       if (q.eid) return "@" + q.featureId + "/" + q.eid + (q.sub ? "/" + q.sub : "")
       return "@" + q.featureId
     }
-    case "ancestry": {
-      // An empty id is un-frameable: "?0;" reads back as zero ids, so emitting
-      // one would silently lose it.
-      if (q.ancestorIds.some(id => id.length === 0)) {
-        throw new Error(`ancestry query cannot frame an empty id: ${JSON.stringify(q.ancestorIds)}`)
-      }
-      // An empty id list is framed as "?0;" (the parseable canonical form;
-      // "?;" has an empty length header that parseAncestry rejects).
-      const lengths = q.ancestorIds.length ? q.ancestorIds.map(i => i.length.toString(16)).join(",") : "0"
-      let body = "?" + lengths + ";" + q.ancestorIds.join("")
-      // An empty type restriction is null on the wire: never emit a trailing ":".
-      if (q.typeRestriction) body += ":" + q.typeRestriction
-      if (q.classifier) body += "@" + q.classifier
-      return body
-    }
+    case "ancestry":
+      // Delegate to makeAncestryQuery so the wire tail (:type@cls) is validated
+      // once: the ids are length-framed but the tail is raw concatenation, so an
+      // ill-formed restriction/classifier would silently re-parse differently
+      // (see makeAncestryQuery).
+      return makeAncestryQuery(q.ancestorIds, q.typeRestriction, q.classifier)
   }
 }
 
@@ -316,6 +307,23 @@ export function makeAncestryQuery(
   // has an empty length header that parseAncestry rejects).
   const lengths = ids.length ? ids.map(i => i.length.toString(16)).join(",") : "0"
   let s = "?" + lengths + ";" + ids.join("")
+  // The :type@cls tail is raw concatenation after length-framed ids, so a
+  // character parseAncestryTail would re-read differently is a silent
+  // round-trip corruption: "fo@o" emits ":fo@o", which parses back as type
+  // "fo" classifier "o". Reject the two characters that split the tail grammar
+  // instead of emitting a string that re-parses into a different query.
+  if (typeRestriction !== null && (typeRestriction.includes("@") || typeRestriction.includes(":"))) {
+    throw new Error(
+      `ancestry query type restriction ${JSON.stringify(typeRestriction)} contains ` +
+        `'@' or ':' and would not round-trip`,
+    )
+  }
+  if (classifier != null && (classifier.includes("@") || classifier.includes(":"))) {
+    throw new Error(
+      `ancestry query classifier ${JSON.stringify(classifier)} contains ` +
+        `'@' or ':' and would not round-trip`,
+    )
+  }
   // An empty type restriction is null on the wire: never emit a trailing ":".
   if (typeRestriction) s += ":" + typeRestriction
   if (classifier) s += "@" + classifier
@@ -670,6 +678,36 @@ export class Repository {
       const entry = this.ancestral.get(key)
       if (entry === undefined) continue  // index rot: a dangling key resolves to nothing
       if (isSubset(querySet, entry.set)) out.push(entry)
+    }
+    return out
+  }
+
+  /** Live element ids of every entry whose set is a SUBSET of `querySet` - the
+   *  ancestral-partial tier's candidate set, in `ancestral` insertion order.
+   *
+   *  The full scan it replaces tested `isSubset(entry.set, querySet)` over every
+   *  entry on the miss path (the common case for a stale persisted query,
+   *  repeated per frame during hover/selection over a large import). Here the
+   *  candidate keys are found through `byAncestorId`: union the bucket of every
+   *  query id (a partial match shares at least one query id, so it is indexed
+   *  under one of them), plus the empty-set entries that no bucket carries (an
+   *  entry with no ancestors is a subset of every query set). Then `ancestral`
+   *  is re-walked once in insertion order, keeping only those candidate keys and
+   *  re-applying the real `isSubset` predicate so the index cannot invent a
+   *  match - the per-entry set arithmetic is gone, replaced by an O(1) key
+   *  membership test, and order is preserved exactly. Exposed (not private) so
+   *  the resolver parity tests can assert the enumeration order directly. */
+  partialEntryEids(querySet: ReadonlySet<string>): string[] {
+    const keys = new Set<string>()
+    for (const id of querySet) {
+      const bucket = this.byAncestorId.get(id)
+      if (bucket) for (const k of bucket) keys.add(k)
+    }
+    const out: string[] = []
+    for (const [key, entry] of this.ancestral) {
+      if (keys.has(key) || entry.set.size === 0) {
+        if (isSubset(entry.set, querySet)) out.push(...this.liveEntryEids(entry))
+      }
     }
     return out
   }
@@ -1109,10 +1147,7 @@ export class Repository {
     }
 
     if (!candidateIds.length && nonHashIds.length) {
-      let partialCandidates: string[] = []
-      for (const entry of this.ancestral.values()) {
-        if (isSubset(entry.set, querySet)) partialCandidates.push(...this.liveEntryEids(entry))
-      }
+      let partialCandidates = this.partialEntryEids(querySet)
       partialCandidates = orderFilter([...new Set(partialCandidates)])
       if (typeRestriction !== null) {
         partialCandidates = partialCandidates.filter(
@@ -1271,6 +1306,7 @@ export class Repository {
           }
           // A type-excluded live uuid returns [] (no weaker-tier fallback), so the
           // caller never sees a different element enumerated in the uuid's place.
+          this._lastTier = "uuid"
           return filtered.map(eid => this.elements.get(eid))
         }
         // Order-hidden bucket falls through like the resolver's "continue": the
@@ -1281,7 +1317,10 @@ export class Repository {
     // Guard: no non-special ids means the query set is empty; subset({}, set) is
     // trivially true for every entry, so without this check a classifier/hash-only
     // query would enumerate the whole repo (the original trap).
-    if (!nonHashIds.length) return []
+    if (!nonHashIds.length) {
+      this._lastTier = "miss"
+      return []
+    }
 
     const querySet = new Set(nonHashIds)
     let candidateIds: string[] = []
@@ -1308,7 +1347,10 @@ export class Repository {
             coercedResults.push(coerced)
           }
         }
-        if (coercedResults.length) return coercedResults
+        if (coercedResults.length) {
+          this._lastTier = "ancestral"
+          return coercedResults
+        }
         candidateIds = []
       }
     }
@@ -1329,6 +1371,9 @@ export class Repository {
       }
     }
 
+    // The tier is honest about an empty enumeration: a classifier veto or a type
+    // coercion that narrowed to nothing is a miss, not an ancestral hit.
+    this._lastTier = candidateIds.length ? "ancestral" : "miss"
     return candidateIds.map(eid => this.elements.get(eid))
   }
 }

@@ -68,6 +68,26 @@ function fullScanCandidates(repo: Repository, queryIds: string[]): string[] {
   return out
 }
 
+/** What a full scan of the ancestral-partial tier produces: the live eids of
+ *  every entry whose ancestor set is a SUBSET of the query set (the reverse
+ *  direction from `fullScanCandidates`), in `ancestral` insertion order. */
+function fullScanPartialCandidates(repo: Repository, queryIds: string[]): string[] {
+  const want = new Set(queryIds)
+  const out: string[] = []
+  for (const entry of repo.ancestral.values()) {
+    let sub = true
+    for (const id of entry.set) {
+      if (!want.has(id)) {
+        sub = false
+        break
+      }
+    }
+    if (!sub) continue
+    for (const eid of entry.eids) if (repo.elements.has(eid)) out.push(eid)
+  }
+  return out
+}
+
 describe("reverse-index narrowing of the ancestry resolver", () => {
   it("resolves exactly what a full ancestral scan resolves", () => {
     const { repo, idSets } = corpusRepo(120, 7)
@@ -138,5 +158,41 @@ describe("reverse-index narrowing of the ancestry resolver", () => {
 
     expect(scan).not.toHaveBeenCalled()
     scan.mockRestore()
+  })
+
+  it("indexed ancestral-partial candidates match a full scan, with empty-set entries and order", () => {
+    // The ancestral-partial tier used to scan all of `ancestral` testing
+    // `entry.set <= querySet` (the reverse direction). The indexed replacement
+    // must return the same live eids in the same `ancestral` insertion order.
+    const { repo, idSets } = corpusRepo(80, 29)
+    // Empty-set entries are subsets of every query set but are indexed under no
+    // id, so only the explicit empty-set branch of the index can find them.
+    repo.registerAncestor([], { type: "flatface", n: 9000 })
+    repo.registerAncestor([], { type: "flatface", n: 9001 })
+    const emptyEids = new Set(
+      [...repo.ancestral.values()].flatMap(e => (e.set.size === 0 ? e.eids : [])),
+    )
+
+    const rnd = lcg(19)
+    let partialMatched = 0
+    let emptySeen = false
+    for (const ids of idSets) {
+      // Probe a superset of the entry's own ids plus two random pool members, so
+      // every probe has the entry (and the empty-set entries) as partial matches
+      // by construction, and a real partial match is exercised each time.
+      const extra = new Set(ids)
+      extra.add(TAG_POOL[Math.floor(rnd() * TAG_POOL.length)])
+      extra.add(TAG_POOL[Math.floor(rnd() * TAG_POOL.length)])
+      const probe = [...extra]
+      const got = repo.partialEntryEids(new Set(probe))
+      expect(got).toEqual(fullScanPartialCandidates(repo, probe))
+      for (const eid of got) if (emptyEids.has(eid)) emptySeen = true
+      partialMatched++
+    }
+
+    // Both claims must actually hold: partial matches occur, and the empty-set
+    // entries are found by the index.
+    expect(partialMatched).toBeGreaterThan(0)
+    expect(emptySeen).toBe(true)
   })
 })
