@@ -166,12 +166,27 @@ describe("parse/emit round-trips", () => {
     expect(ref("body_x")).toBe("@body_x")
     const wire = makeAncestryQuery(["@body_ex1edge0", "@body_ex1"])
     expect(bodyIdOf(wire, { body_ex1: {} })).toBe("body_ex1")
-    expect(bodyIdOf(wire)).toBe("body_ex1edge0")
+    // "body_ex1edge0" is a fabricated concatenation of the two ancestor tokens
+    // ("body_ex1" + "edge0"), never a real body: it must not resolve when no
+    // store (or a store holding no candidate) is present.
+    expect(bodyIdOf(wire)).toBeNull()
+    expect(bodyIdOf(wire, { other: {} })).toBeNull()
     expect(bodyIdOf("?1;@a")).toBeNull()
 
-    // Slash-joined current-format token: the no-store branch must strip the
-    // "/face0" tail and return just the body id, not the full token.
-    expect(bodyIdOf(makeAncestryQuery(["@body_ex1/face0"]))).toBe("body_ex1")
+    // Slash-joined current-format token: with a store the "/face0" tail is
+    // stripped and the body id verified; without one nothing is verified.
+    expect(bodyIdOf(makeAncestryQuery(["@body_ex1/face0"]), { body_ex1: {} })).toBe("body_ex1")
+    expect(bodyIdOf(makeAncestryQuery(["@body_ex1/face0"]))).toBeNull()
+  })
+
+  it("bodyIdOf verifies against the store and never fabricates an id", () => {
+    // A legitimately-formed single body token (a split-sibling id) resolves
+    // only when the store actually holds it; a no-store or no-candidate call
+    // returns null rather than handing back an unverified token.
+    const splitSibling = makeAncestryQuery(["@body_ex1_1"])
+    expect(bodyIdOf(splitSibling, { body_ex1_1: {} })).toBe("body_ex1_1")
+    expect(bodyIdOf(splitSibling)).toBeNull()
+    expect(bodyIdOf(splitSibling, { body_ex1: {} })).toBeNull()
   })
 })
 
@@ -202,6 +217,31 @@ describe("local query key shape (context + eid[/sub])", () => {
     const repo = new Repository()
     repo.register("sk1/e3/start", { external_xy: [1, 2], sketch_id: "sk1" })
     expect(repo.query(local("e3", "start"), "sk1/")).toEqual({ external_xy: [1, 2], sketch_id: "sk1" })
+  })
+
+  it("string and typed local queries agree on a minted id ending in a vertex-key word", () => {
+    // Parity: `repo.query("$...")` and `repo.query(parseQuery("$..."))` must
+    // resolve the SAME way. The wire string "$pwfYD59xKWiSyQhmcenter" parses to
+    // local("pwfYD59xKWiSyQhm", "center"), but a bare element registered under
+    // the WHOLE id (context + eid + sub concatenated) must win the full-id-first
+    // tie-break in BOTH paths.
+    const repo = new Repository()
+    const fullId = "sk1/pwfYD59xKWiSyQhmcenter"
+    repo.register(fullId, { v: 1, sketch_id: "sk1" })
+    const wire = "$pwfYD59xKWiSyQhmcenter"
+    expect(repo.query(wire, "sk1/")).toEqual({ v: 1, sketch_id: "sk1" })
+    expect(repo.query(parseQuery(wire), "sk1/")).toEqual({ v: 1, sketch_id: "sk1" })
+  })
+
+  it("string and typed local queries agree on the suffix-ambiguous sub shapes", () => {
+    // A sub-point registered under the slash key resolves identically whether
+    // it arrives as the wire string or as the parsed typed local.
+    const repo = new Repository()
+    repo.register("sk1/e3/start", { external_xy: [1, 2], sketch_id: "sk1" })
+    repo.register("sk1/a1/xy", { external_xy: [3, 4], sketch_id: "sk1" })
+    for (const wire of ["$e3start", "$a1xy"]) {
+      expect(repo.query(wire, "sk1/")).toEqual(repo.query(parseQuery(wire), "sk1/"))
+    }
   })
 
   it("postRegister slash registrations are reachable from local queries", () => {
@@ -314,6 +354,38 @@ describe("query coercion", () => {
     const result = repo.query(q, null, bodyStore)
     expect(result).not.toBeNull()
     expect(result).toHaveProperty("type", "flatface")
+  })
+
+  it("a contradicted subtype candidate with a classifier veto misses instead of resolving", () => {
+    // The type/coerce block alone would return the lone flatface (subtype of
+    // :face) BEFORE the classifier veto ran; a wanted @cls_zp over a candidate
+    // carrying only cls_zn is a contradiction and must miss, never resolve the
+    // contradicted element.
+    const repo = new Repository()
+    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    repo.registerAncestor(
+      ["@ex1"],
+      { ...makeFacePayload("body_ex1", "ex1", 0), classifiers: ["cls_zn"] },
+    )
+    const q = makeAncestryQuery(["@ex1", "@cls_zp"], "face")
+    expect(repo.query(q, null, bodyStore)).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+
+  it("a matching classifier still resolves through the subtype coerce path", () => {
+    // Same lone flatface but with the wanted classifier: the classifier narrows
+    // first, then the :face coerce path returns the flatface as before.
+    const repo = new Repository()
+    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    repo.registerAncestor(
+      ["@ex1"],
+      { ...makeFacePayload("body_ex1", "ex1", 0), classifiers: ["cls_zp"] },
+    )
+    const q = makeAncestryQuery(["@ex1", "@cls_zp"], "face")
+    const result = repo.query(q, null, bodyStore)
+    expect(result).not.toBeNull()
+    expect(result).toHaveProperty("type", "flatface")
+    expect((result as Payload).classifiers).toEqual(["cls_zp"])
   })
 
   it("fails loud when body store missing for upward coercion", () => {
@@ -1248,6 +1320,32 @@ describe("classifier veto semantics", () => {
     const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_zp"])
     expect(repo.query(q)).toBeNull()
     expect(repo.queryAll(q)).toEqual([])
+  })
+})
+
+describe("restored snapshot with a non-array classifiers payload", () => {
+  it("resolves without throwing when the classifier payload is not an array", () => {
+    // A snapshot-restored repo is the untrusted route: an element whose
+    // `classifiers` field is not an array (a string, number, object) must be
+    // treated as NO evidence inside narrowByClassifier, never throw TypeError.
+    // A sibling with real matching evidence outranks it; without the guard the
+    // whole narrow would crash before reaching that ranking.
+    const snapshot = {
+      elements: {
+        el0: { type: "flatface", classifiers: 42 },
+        el1: { type: "flatface", classifiers: ["cls_zp"] },
+      },
+      ancestral: {
+        [canonical(["@ex1", "@body1"])]: { set: ["@ex1", "@body1"], eids: ["el0", "el1"] },
+      },
+      byUuid: {},
+    }
+    const repo = repoFromSnapshot(snapshot)
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_zp"])
+    expect(() => repo.query(q)).not.toThrow()
+    expect(repo.query(q)).toBe(repo.elements.get("el1"))
+    expect(() => repo.queryAll(q)).not.toThrow()
+    expect(repo.queryAll(q)).toEqual([repo.elements.get("el1")])
   })
 })
 

@@ -211,10 +211,14 @@ export function bodyIdOf(queryStr: string, bodyStore?: Record<string, unknown> |
   let m: RegExpExecArray | null
   BODY_AT_RE.lastIndex = 0
   while ((m = BODY_AT_RE.exec(queryStr)) !== null) candidates.push(m[1])
-  if (bodyStore != null) {
-    for (const c of candidates) if (c in bodyStore) return c
-  }
-  return candidates.length ? candidates[0] : null
+  // Only a store-verified body id is authoritative: BODY_AT_RE's greedy capture
+  // can frame a fabricated id out of concatenated ancestor tokens (e.g.
+  // "@body_abc" + "x1" frames "@body_abcx1"), so an absent store or one holding
+  // no candidate must return null, never the unverified first capture. Call
+  // sites treat the result as a hint with a full-store fallback.
+  if (bodyStore == null) return null
+  for (const c of candidates) if (c in bodyStore) return c
+  return null
 }
 
 /** Parse `?A,B;<idA><idB>` or `...:<TYPE>` or `...:<TYPE>@<cls>`.
@@ -703,7 +707,11 @@ export class Repository {
     const noEvidence: string[] = []
     for (const eid of candidateIds) {
       const el = this.elements.get(eid)
-      const cls = new Set((isDict(el) ? (el["classifiers"] as string[]) : null) ?? [])
+      // Only an array is real classifier evidence; a snapshot-restored element
+      // can carry a non-array `classifiers` payload (the untrusted route), and
+      // `new Set(nonIterable)` throws, so guard before building the set.
+      const rawCls = isDict(el) ? el["classifiers"] : null
+      const cls = new Set(Array.isArray(rawCls) ? (rawCls as string[]) : [])
       if (cls.size === 0) {
         noEvidence.push(eid)
       } else if (isSubset(wanted, cls)) {
@@ -862,18 +870,11 @@ export class Repository {
     if (!queryStr) return null
     const start = queryStr[0]
     if (start === "$") {
-      if (context === null) return null
-      this.assertLocalContext(context)
-      const local = queryStr.slice(1)
-      // Full-id-first tie-break, mirroring resolveLocal in partDocToSketches.ts
-      // and resolveQueryRef in geometryMapping.ts: a minted base64url id can
-      // itself end in a vertex-key word, so a registered element whose WHOLE
-      // local string is the id wins; the suffix split only applies when the
-      // full string is not an entity (the `$pwfYD59xKWiSyQhmcenter` sub-point
-      // case whose residual is the known entity).
-      const full = this.elements.get(context + local)
-      if (full !== undefined) return full
-      return this.elements.get(localKeyFor(context, localFromString(queryStr))) ?? null
+      // Parse then route through queryTyped so the string and typed local paths
+      // share ONE lookup (the full-id-first tie-break plus the slash-key
+      // fallback); localFromString's split has eid + sub == the whole body, so
+      // the shared probe reads identically from either entry point.
+      return this.queryTyped(localFromString(queryStr), context, bodyStore, currentFeatureId)
     }
     if (start === "@") {
       // Strict: route through parseAbsolute so the string and typed paths agree
@@ -900,6 +901,22 @@ export class Repository {
     }
   }
 
+  /** Shared local lookup for the string and typed paths. `q.eid + (q.sub ?? "")`
+   *  is the authoritative whole-id reading (it reconstructs the wire body that
+   *  `localFromString` split), so a registered element whose WHOLE id is that
+   *  string wins the tie-break first - a minted base64url id ending in a
+   *  vertex-key word still resolves as the whole id, not as the shorter id plus
+   *  a phantom sub (mirroring resolveLocal in partDocToSketches.ts and
+   *  resolveQueryRef in geometryMapping.ts). The slash key
+   *  `context + eid + "/" + sub` is the fallback, hit only when the full id is
+   *  not an entity (the `$pwfYD59xKWiSyQhmcenter` sub-point case whose residual
+   *  is the known entity). */
+  private resolveLocalKey(q: LocalQuery, context: string): unknown {
+    const full = this.elements.get(context + q.eid + (q.sub ?? ""))
+    if (full !== undefined) return full
+    return this.elements.get(localKeyFor(context, q)) ?? null
+  }
+
   private queryTyped(
     q: QueryType,
     context: string | null,
@@ -907,10 +924,11 @@ export class Repository {
     currentFeatureId: string | null,
   ): unknown {
     switch (q.kind) {
-      case "local":
+      case "local": {
         if (context === null) return null
         this.assertLocalContext(context)
-        return this.elements.get(localKeyFor(context, q)) ?? null
+        return this.resolveLocalKey(q, context)
+      }
       case "absolute": {
         const key = q.eid ? q.featureId + "/" + q.eid + (q.sub ? "/" + q.sub : "") : q.featureId
         return this.elements.get(key) ?? null
@@ -1015,6 +1033,39 @@ export class Repository {
     }
     candidateIds = orderFilter(candidateIds)
 
+    if (classifierIds.length && candidateIds.length) {
+      // Classifier tier: narrow the subset candidates by the wanted @cls_* set.
+      // It runs BEFORE the type/coerce block so a contradicted candidate is
+      // vetoed even when the type restriction would otherwise coerce it to a
+      // supertype and return early (the M1 bug: `:face` over a lone flatface
+      // returned the contradicted element without ever consulting the wanted
+      // classifier). The veto is scoped to REAL evidence (narrowByClassifier):
+      // an empty payload is no evidence and never vetoes, so a lone edge whose
+      // registered payload collapses to [] (the pre-existing solidToEdges vs
+      // edgeAncestryPayload asymmetry) still resolves as it did before, and a
+      // candidate sharing ANY wanted token is positive evidence, not a
+      // contradiction (a wanted set snapshots an earlier geometry - a moved face
+      // can lose a token, and the legacy descriptor tier exists to rescue that
+      // persisted query). Only a PURE contradiction (every candidate's non-empty
+      // payload has NO wanted token in common) vetoes: a lone candidate is
+      // refused as a miss, and a multi-candidate set is vetoed as a whole -
+      // candidateIds empties exactly like queryAll's unconditional assignment,
+      // so the descriptor tier and the descriptor-only fallback cannot shrink
+      // the contradictory set to a wrong winner. Narrowing here works on repo
+      // eids only, so coerceType's upward `:solid` body-store object (not an
+      // eid, no payload) is naturally never classified - a non-contradicted
+      // upward coercion still resolves to the body, a contradicted one misses.
+      const narrowed = this.narrowByClassifier(candidateIds, classifierIds)
+      if (narrowed.length) {
+        candidateIds = narrowed
+      } else if (candidateIds.length === 1) {
+        return null
+      } else {
+        candidateIds = []
+        classifierVetoFired = true
+      }
+    }
+
     if (typeRestriction !== null && candidateIds.length) {
       const exactMatches = candidateIds.filter(
         eid => objType(this.elements.get(eid)) === typeRestriction,
@@ -1039,32 +1090,6 @@ export class Repository {
           )
         }
         candidateIds = []
-      }
-    }
-
-    if (classifierIds.length && candidateIds.length) {
-      // Classifier tier: narrow the subset candidates by the wanted @cls_* set.
-      // The veto is scoped to REAL evidence (narrowByClassifier): an empty
-      // payload is no evidence and never vetoes, so a lone edge whose registered
-      // payload collapses to [] (the pre-existing solidToEdges vs
-      // edgeAncestryPayload asymmetry) still resolves as it did before, and a
-      // candidate sharing ANY wanted token is positive evidence, not a
-      // contradiction (a wanted set snapshots an earlier geometry - a moved face
-      // can lose a token, and the legacy descriptor tier exists to rescue that
-      // persisted query). Only a PURE contradiction (every candidate's non-empty
-      // payload has NO wanted token in common) vetoes: a lone candidate is
-      // refused as a miss, and a multi-candidate set is vetoed as a whole -
-      // candidateIds empties exactly like queryAll's unconditional assignment,
-      // so the descriptor tier and the descriptor-only fallback cannot shrink
-      // the contradictory set to a wrong winner.
-      const narrowed = this.narrowByClassifier(candidateIds, classifierIds)
-      if (narrowed.length) {
-        candidateIds = narrowed
-      } else if (candidateIds.length === 1) {
-        return null
-      } else {
-        candidateIds = []
-        classifierVetoFired = true
       }
     }
 
