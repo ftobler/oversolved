@@ -637,6 +637,11 @@ export class IdPipeline {
     this.inFlightAsync = null
     this.nextAsync = null
     this.disposed = true
+    // Mark the target dirty before tearing it down: readWindow bails on a dirty
+    // target before any GL call, so a resolveSync or a late async microtask that
+    // races dispose answers null instead of calling readRenderTargetPixels on a
+    // disposed WebGLRenderTarget (which silently re-creates its GPU buffers).
+    this.target.markDirty()
     for (const layer of this.layers) layer.dispose()
     this.target.dispose()
     this.registry.clear()

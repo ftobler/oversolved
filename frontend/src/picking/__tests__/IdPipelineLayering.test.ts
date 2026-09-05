@@ -94,6 +94,29 @@ describe('IdPipeline layering', () => {
     await expect(p.resolveAsync(renderer, { x: 1, y: 1 })).resolves.toBeNull()
   })
 
+  it('resolveSync on a disposed pipeline returns null without touching the target', () => {
+    // Precondition: a CLEAN target (a fresh one starts dirty, which would make
+    // readWindow bail regardless of dispose). Render once so it is clean, then
+    // dispose: the dispose() markDirty is what re-blocks readWindow before it
+    // calls readRenderTargetPixels on the torn-down target.
+    const p = new IdPipeline({ width: 32, height: 32 })
+    registerOneFace(p, 'b1')
+    p.markDirty()
+    p.render(fakeRenderer(null), new THREE.Camera())
+    expect(p.isDirty()).toBe(false)
+
+    p.dispose()
+    let touched = false
+    const renderer = new Proxy({}, {
+      get() { touched = true; return () => undefined },
+    }) as unknown as THREE.WebGLRenderer
+    expect(p.resolveSync(renderer, { x: 1, y: 1 })).toBeNull()
+    // Without the dispose() markDirty the clean target lets readWindow through
+    // to readRenderTargetPixels on the torn-down target: touched flips true.
+    expect(touched).toBe(false)
+    expect(p.isDirty()).toBe(true)
+  })
+
   describe('layer render failure', () => {
     it('leaves the buffer dirty and warns with the failing layer name', () => {
       const p = new IdPipeline({ width: 32, height: 32 })

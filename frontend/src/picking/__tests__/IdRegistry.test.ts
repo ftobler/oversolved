@@ -63,6 +63,23 @@ describe('IdRegistry', () => {
     expect(c).toBe(a)
   })
 
+  it('recycles freed ids without bumpCycle once enough have piled up', () => {
+    // A canvas that stops rendering never calls bumpCycle. Reclamation must not
+    // stall: repeated free/allocate with no bump has to recycle ids rather than
+    // march nextId toward MAX_ID. Once the deferred set reaches its bound, free()
+    // promotes it itself.
+    const seen = new Set<number>()
+    for (let i = 0; i < 8000; i++) {
+      const id = reg.allocate('face', `face@e1#${i}`)
+      seen.add(id)
+      reg.free(id)
+    }
+    // With no reclamation this would climb to ~8000; the self-promotion keeps
+    // both the id ceiling and the distinct-id count well under it.
+    expect(Math.max(...seen)).toBeLessThan(2500)
+    expect(seen.size).toBeLessThan(2500)
+  })
+
   it('lookup stays valid after free until bumpCycle (so async readbacks decode)', () => {
     const id = reg.allocate('face', 'face@e1#1')
     reg.free(id)

@@ -42,6 +42,27 @@ describe('cameraPoseChanged', () => {
     expect(cameraPoseChanged(prev, orthoCamera(1))).toBe(false)
   })
 
+  it('accepts an identical pose twice at a working-distance magnitude', () => {
+    // A translation element that is not exactly float32-representable. The old
+    // Float32Array snapshot rounded 103.9230484541326 by ~1.5e-6, above EPSILON,
+    // so after the first orbit an unmoved camera re-read as changed every frame.
+    const cam = new THREE.PerspectiveCamera(50, 1.5, 0.1, 500)
+    cam.position.set(103.9230484541326, 20, 100)
+    cam.lookAt(0, 0, 0)
+    cam.updateProjectionMatrix()
+    cam.updateMatrixWorld()
+    const prev = snapshotCameraPose(cam)
+    expect(cameraPoseChanged(prev, cam)).toBe(false)
+
+    // A real orbit from that pose is still detected.
+    const moved = new THREE.PerspectiveCamera(50, 1.5, 0.1, 500)
+    moved.position.set(90, 30, 110)
+    moved.lookAt(0, 0, 0)
+    moved.updateProjectionMatrix()
+    moved.updateMatrixWorld()
+    expect(cameraPoseChanged(prev, moved)).toBe(true)
+  })
+
   it('accepts an unchanged perspective camera', () => {
     const cam = perspectiveCamera()
     const prev = snapshotCameraPose(cam)
@@ -61,12 +82,12 @@ describe('cameraPoseChanged', () => {
 // ─── Per-frame allocation (VP-L2) ───
 
 // IdPickingDriver's useFrame compares the camera pose every frame. The old path
-// called snapshotCameraPose (two fresh Float32Arrays) on each frame; now it
+// called snapshotCameraPose (two fresh typed arrays) on each frame; now it
 // copies into a reused buffer (createCameraPose + recordCameraPoseInto) so the
 // camera-change check stops allocating 32 floats per frame.
 
 describe('camera pose reuse', () => {
-  it('reuses the same Float32Array instances across frames', () => {
+  it('reuses the same typed-array instances across frames', () => {
     const pose = createCameraPose()
     const cam = orthoCamera(1)
     recordCameraPoseInto(pose, cam)

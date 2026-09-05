@@ -1,6 +1,22 @@
 import { MAX_ID } from './idEncoding'
 import { markCell, markCellKey, marksCoincide, MARK_CELL_NEIGHBOURS } from './markPosition'
 
+// Upper bound on frees deferred without an intervening render. `bumpCycle()`
+// normally promotes `pendingFree` into `freeList` once per ID-buffer render, but
+// a canvas that never renders (a background tab with rAF paused, a permanently
+// dirty pipeline) never bumps: every re-registration frees then allocates, and
+// with an empty free list the allocation consumes `nextId++`, marching toward
+// the MAX_ID throw. At the bound the registry promotes on its own so a
+// non-rendering canvas recycles ids; well below it the "not reused within a
+// dirty cycle" contract is untouched.
+//
+// Self-promotion is safe only because of an invariant the registry cannot
+// enforce itself: every free() caller synchronously marks the pipeline dirty
+// before any async decode, and every id-decoding path (readWindow, resolveSync,
+// resolveAsync) gates on isDirty(), so a recycled id can never be decoded
+// against a still-live ID buffer.
+const MAX_PENDING_FREE = 1024
+
 // Shared empty result so the common "this id marks no point" answer allocates
 // nothing on a path that runs once per candidate per resolve.
 const EMPTY_MARK_IDS: readonly number[] = []
@@ -27,7 +43,9 @@ interface MarkPosition {
  *   handed back out within the same dirty-cycle: `bumpCycle()` must be
  *   called (the pipeline does this on each render) before a freed slot
  *   becomes eligible for reuse. This keeps debugging traces and async
- *   readbacks consistent within a single ID-buffer lifetime.
+ *   readbacks consistent within a single ID-buffer lifetime. A canvas that
+ *   stops rendering still recycles: once `MAX_PENDING_FREE` frees pile up
+ *   with no bump, `free()` promotes them itself so `nextId` stays bounded.
  */
 export interface IdRecord {
   id: number
@@ -98,7 +116,11 @@ export class IdRegistry {
     // Drop the key index immediately so a re-allocation of the same pickKey
     // gets a fresh ID, but keep the byId record until bumpCycle() so async
     // readbacks pending against the current ID buffer still decode correctly.
-    this.byKey.delete(this.composeKey(record.layer, record.pickKey))
+    // Only drop the key if it still points at THIS id: one query-keyed id can be
+    // co-held by two bodies, and if one body re-registered first the key now
+    // names its fresh id, so the other body's free must not orphan it.
+    const k = this.composeKey(record.layer, record.pickKey)
+    if (this.byKey.get(k) === id) this.byKey.delete(k)
     // Dropped now rather than at bumpCycle, unlike the byId record: a freed id
     // is about to be handed to a re-registered primitive at a possibly different
     // position, and a stale entry would co-locate it with whatever used to be
@@ -106,6 +128,9 @@ export class IdRegistry {
     const mark = this.markPositionById.get(id)
     if (mark !== undefined) this.dropMarkPosition(id, mark.cellKey)
     this.pendingFree.add(id)
+    // A non-rendering canvas never calls bumpCycle(); promote here once the
+    // deferred set reaches its bound so ids recycle instead of climbing nextId.
+    if (this.pendingFree.size >= MAX_PENDING_FREE) this.promotePendingFree()
   }
 
   lookup(id: number): IdRecord | undefined {
@@ -185,8 +210,13 @@ export class IdRegistry {
     return this.byKey.get(this.composeKey(layer, entityKey))
   }
 
-  // Promote pending frees into the reusable pool. Called once per ID-buffer render.
+  // Promote pending frees into the reusable pool. Called once per ID-buffer
+  // render, and from free() itself when the deferred set reaches its bound.
   bumpCycle(): void {
+    this.promotePendingFree()
+  }
+
+  private promotePendingFree(): void {
     if (this.pendingFree.size === 0) return
     for (const id of this.pendingFree) {
       this.byId.delete(id)

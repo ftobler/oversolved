@@ -87,7 +87,7 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
   // must start with a clean pose slate, otherwise the stale previous pipeline's
   // pose would suppress the first post-reveal dirty mark (and its render).
   const camState = useRef<
-    Map<IdPipeline, { lastCamPose: CameraPoseSnapshot | null; cameraMoved: boolean }>
+    Map<IdPipeline, { lastCamPose: CameraPoseSnapshot | null }>
   >(new Map())
 
   useFrame(({ camera }) => {
@@ -101,7 +101,7 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
 
     let cs = camState.current.get(pipeline)
     if (!cs) {
-      cs = { lastCamPose: null, cameraMoved: false }
+      cs = { lastCamPose: null }
       camState.current.set(pipeline, cs)
     }
 
@@ -116,7 +116,7 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
     if (!cs.lastCamPose) cs.lastCamPose = createCameraPose()
     const changed = cameraPoseChanged(cs.lastCamPose, camera)
     // Copy the current pose in place: the reused buffer is what next frame's
-    // comparison reads, so no Float32Array is minted per frame.
+    // comparison reads, so no typed array is minted per frame.
     recordCameraPoseInto(cs.lastCamPose, camera)
 
     if (changed) {
@@ -127,12 +127,9 @@ export default function IdPickingDriver({ onReady }: IdPickingDriverProps) {
       // the sole reason for dirtiness is this frame's camera motion.
       const hadGeometryDirty = pipeline.isDirty()
       pipeline.markDirty('camera-projection')
-      cs.cameraMoved = true
       if (!pipeline.pickDuringCameraMotion && !hadGeometryDirty) {
         return  // defer render until the camera settles
       }
-    } else {
-      cs.cameraMoved = false
     }
     tryRender(gl, camera)
   })  // default priority: do not take over the render loop

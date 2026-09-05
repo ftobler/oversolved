@@ -243,6 +243,32 @@ describe('id layers share one allocator', () => {
     expect(reg.allocate('crossBodyFree', 'alpha')).not.toBe(reg.allocate('crossBodyFree', 'beta'))
   })
 
+  it('one co-holder re-registering does not orphan the other body\'s live id', () => {
+    // Two bodies share one query -> one id, held by both. b1 re-registers: its
+    // pre-clear frees the shared id, then a fresh alloc (free list empty, no
+    // bumpCycle) mints a new id and rebinds the query key to it. b2's later
+    // teardown frees the now-stale id; the free must NOT drop the query key,
+    // which by then names b1's live id.
+    const layer = new FaceIdLayer(reg, { name: 'coHeldReReg' })
+    registerOneFace(layer, 'b1', 'shared')
+    registerOneFace(layer, 'b2', 'shared')
+    const shared = reg.lookupKey('coHeldReReg', 'shared')!
+
+    registerOneFace(layer, 'b1', 'shared')  // b1 re-registers
+    const rebound = reg.lookupKey('coHeldReReg', 'shared')!
+    expect(rebound).not.toBe(shared)
+
+    layer.unregisterBody('b2')  // frees the stale `shared` id
+    expect(reg.lookupKey('coHeldReReg', 'shared')).toBe(rebound)
+    expect(reg.lookup(rebound)).toBeDefined()
+
+    // No leaked record: the cycle promotes only the stale id out of byId.
+    reg.bumpCycle()
+    expect(reg.lookup(shared)).toBeUndefined()
+    expect(reg.lookup(rebound)).toBeDefined()
+    expect(reg.size()).toBe(1)
+  })
+
   it('the face layer tags the diagnostic with its configured layer name', () => {
     // FaceIdLayer is reused as the sketch-surface layer; the class name would say
     // nothing you could not read off the noun, the instance name identifies it.
