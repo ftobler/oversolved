@@ -10,7 +10,7 @@ import type {
 } from './occTypes'
 import { makeScaleTrsf } from './transforms'
 import { readShapeFaces, assembleMesh } from './tessellation'
-import { SubShapeIndexMap } from './primitives'
+import { SubShapeIndexMap, unplacer } from './primitives'
 import { faceGh } from './lineageHash'
 import { encodeBinaryStl } from '../stl'
 
@@ -315,42 +315,6 @@ class UnplacedFaceIndex {
   at(face: OccSubShape): number[] {
     const canonical = this.canonical.get(face)
     return canonical < 0 ? [] : (this.positions.get(canonical) ?? [])
-  }
-}
-
-/**
- * Strip a shape's placement, so `IsSame` and `HashCode` compare TShapes alone.
- *
- * Needed because a STEP file with several roots comes back with each root under
- * its own `TopLoc_Location`, and the transfer binders hold the UNPLACED faces:
- * across a two-solid file, binder face vs explorer face is `IsPartner` for all
- * 12 and `IsSame` for none, so a plain `SubShapeIndexMap` silently matched
- * nothing and the whole import went unnamed. Both sides are normalised here.
- *
- * Two placements of ONE part (a repeated assembly instance) therefore collapse
- * to the same key. That is handled, not tolerated: `UnplacedFaceIndex` hands
- * the entity id to every instance, and the per-solid index folded into the UUID
- * path keeps their queries apart.
- *
- * `keep` copies live in `scope` because the index holds them; `borrow` is for a
- * lookup that ends inside the callback, and releases immediately.
- */
-function unplacer(oc: OccModule, scope: DisposeScope): {
-  keep: (shape: OccShape) => OccSubShape
-  borrow: <T>(shape: OccShape, read: (bare: OccSubShape) => T) => T
-} {
-  const identity = scope.track(new oc.TopLoc_Location_1())
-  const strip = (shape: OccShape): OccSubShape => (shape as OccSubShape).Located(identity) as OccSubShape
-  return {
-    keep: (shape) => scope.track(strip(shape)),
-    borrow: (shape, read) => {
-      const bare = strip(shape)
-      try {
-        return read(bare)
-      } finally {
-        bare.delete()
-      }
-    },
   }
 }
 

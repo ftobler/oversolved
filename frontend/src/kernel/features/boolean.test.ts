@@ -1,12 +1,38 @@
 // Always-on tests for the boolean leaf's OCC-free guard paths (phase 2f). The
 // geometry paths are gated in booleanSolveReal.test.ts.
+//
+// The ../occ/booleans module is mocked so a subtract can be driven without OCC
+// and its booleanWithDiff call count inspected (M18). The guard-path tests
+// below survive the mock: they throw before any OCC call.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { DisposeScope } from '../occ/disposeScope'
+import { emptyBrepDiff } from '../types3d'
 import { Repository } from '../query'
 import { solveBoolean } from './boolean'
 import { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
+
+const mocks = vi.hoisted(() => ({
+  booleanWithDiff: vi.fn(),
+  volumeOf: vi.fn(),
+  shapesIntersect: vi.fn(),
+}))
+
+vi.mock('../occ/booleans', () => ({
+  booleanWithDiff: mocks.booleanWithDiff,
+  volumeOf: mocks.volumeOf,
+  shapesIntersect: mocks.shapesIntersect,
+}))
+vi.mock('./booleanLineage', () => ({
+  transferBooleanNames: () => ({
+    face_names: {}, edge_names: {}, face_ancestry: {}, edge_ancestry: {},
+  }),
+}))
+vi.mock('./bodySplit', () => ({
+  resplitBody: () => ['body_t'],
+}))
 
 const oc = null as unknown as OccModule
 const scope = null as never
@@ -26,6 +52,12 @@ function body(id: string): Body {
 }
 
 describe('solveBoolean guard paths', () => {
+  beforeEach(() => {
+    mocks.booleanWithDiff.mockReset()
+    mocks.volumeOf.mockReset()
+    mocks.shapesIntersect.mockReset()
+  })
+
   it('requires a target', () => {
     expect(() =>
       solveBoolean(oc, scope, table, { id: 'b', boolean: { tools: ['body_u0'] } }, repo, { body_u0: body('body_u0') }),
@@ -95,5 +127,36 @@ describe('solveBoolean guard paths', () => {
         body_t: target,
       }),
     ).toThrow(/cannot be its own tool/)
+  })
+
+  it('folds each tool through the real boolean; the probe is shapesIntersect, not a booleanWithDiff call (M18)', () => {
+    // The subtract probe (boolean.ts) is shapesIntersect, a bare Common with
+    // history off, so it never runs the booleanWithDiff pipeline. A folding
+    // subtract pays for exactly ONE booleanWithDiff call per tool -- the real
+    // 'cut'. Pre-Change 5 the probe ran the whole pipeline a second time
+    // ('common').
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    const target = body('body_t')
+    target.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    const tool = body('body_u0')
+    tool.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    const dummy = {
+      shape: { delete: () => {}, isDeleted: () => false },
+      diff: emptyBrepDiff(),
+      faceOrigin: [],
+    }
+    mocks.booleanWithDiff.mockReturnValue(dummy)
+    mocks.shapesIntersect.mockReturnValue(true)  // the probe reports overlap
+
+    const result = solveBoolean(
+      oc, scope, table,
+      { id: 'b', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
+      repo, { body_t: target, body_u0: tool },
+    )
+    expect(result.status).toBe('ok')
+    const ops = mocks.booleanWithDiff.mock.calls.map((c) => c[4])
+    expect(ops).toEqual(['cut'])
+    expect(mocks.shapesIntersect).toHaveBeenCalledTimes(1)
   })
 })

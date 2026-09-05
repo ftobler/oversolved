@@ -16,9 +16,10 @@
  * builder keeps the scope open across the lineage transfer that reads them.
  */
 
-import { drainList, type DisposeScope } from './disposeScope'
+import { drainList, DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
 import { canonicalizeCylinderFaces, type CanonicalFaceSwap } from './canonicalSurfaces'
+import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex } from './primitives'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
 export type BooleanOp = 'cut' | 'fuse' | 'common'
@@ -80,11 +81,79 @@ export function countSolids(oc: OccModule, scope: DisposeScope, shape: OccShape)
   return countSubShapes(oc, scope, shape, oc.TopAbs_ShapeEnum.TopAbs_SOLID)
 }
 
-/** Volume of a (closed) shape (mirrors cadquery Solid.Volume / GProp mass). */
+/**
+ * Volume of a (closed) shape (mirrors cadquery Solid.Volume / GProp mass).
+ * VolumeProperties runs with OnlyClosed = true (the first flag), so a solid
+ * whose shell is not closed integrates to ~0 -- that is the L5 trap: use a
+ * solid count, not this, when the question is "do two shapes share material".
+ */
 export function volumeOf(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
   const props = scope.track(new oc.GProp_GProps_1())
   oc.BRepGProp.VolumeProperties_1(shape, props, true, false, false)
   return props.Mass()
+}
+
+/**
+ * Do these two shapes share any material? A bare Common with history off: the
+ * probe's only output is a boolean, so nothing downstream of the algorithm --
+ * history classification, cylinder canonicalisation, the unify pass, the diff
+ * and origin composition -- is worth paying for (M18). Its own DisposeScope is
+ * disposed in a finally, so no probe proxy reaches the caller's build scope.
+ *
+ * The verdict is a solid count, not a volume: an intersection whose shell is
+ * not closed integrates to zero mass under volumeOf's OnlyClosed=true and
+ * would read as disjoint while being a plain overlap (L5). The narrow face
+ * fallback (neither operand is a solid) exists so a shell-only imported body
+ * still probes true on a face Common; two solids that merely touch face-to-face
+ * are correctly answered false.
+ *
+ * Returns TRUE when the probe itself fails. A failed probe is not evidence of
+ * disjointness; skipping on a throw reported "does not intersect" for cuts the
+ * real cut would have performed. `features/bodyOpsProbeFallback.test.ts` pins
+ * all three outcomes.
+ *
+ * The intended next step this deliberately skips is an AABB (Bnd_Box) prefilter
+ * ahead of the Common: it introduces a second tolerance story, and a false
+ * negative there silently skips a cut -- the exact user-visible failure L5 is
+ * fixing. It belongs in its own change with its own real-OCC tolerance fixtures.
+ */
+export function shapesIntersect(oc: OccModule, target: OccShape, tool: OccShape): boolean {
+  const s = new DisposeScope()
+  try {
+    const algo = s.track(new oc.BRepAlgoAPI_Common_1())
+    const args = s.track(new oc.TopTools_ListOfShape_1())
+    args.Append_1(target)
+    const tools = s.track(new oc.TopTools_ListOfShape_1())
+    tools.Append_1(tool)
+    algo.SetArguments(args)
+    algo.SetTools(tools)
+    algo.SetToFillHistory(false)
+    algo.Build()
+    // A failed build leaves no Common shape to read; not evidence of
+    // disjointness, so report intersect and let the real cut decide.
+    if (!algo.IsDone()) return true
+    const inter = s.track(algo.Shape())
+    // A solid count, not a volume. An intersection whose shell is not closed
+    // integrates to zero mass under volumeOf's OnlyClosed=true and would read as
+    // disjoint while being a plain overlap (L5). This also drops the
+    // unit-dependent absolute 1e-10 threshold from the decision.
+    if (countSolids(oc, s, inter) > 0) return true
+    // Face fallback ONLY when neither operand is a solid at all -- a shell-only
+    // imported body, whose Common can never produce a solid. Two solids that
+    // merely touch face-to-face produce a face-only Common today and are
+    // correctly SKIPPED; widening the fallback to them would start running
+    // degenerate cuts and move fixtures for a case L5 is not about.
+    if (countSolids(oc, s, target) === 0 && countSolids(oc, s, tool) === 0) {
+      return countSubShapes(oc, s, inter, oc.TopAbs_ShapeEnum.TopAbs_FACE) > 0
+    }
+    return false
+  } catch {
+    // A failed probe is not evidence of disjointness: report intersect so the
+    // caller runs the real cut and its own failure surfaces instead.
+    return true
+  } finally {
+    s.dispose()
+  }
 }
 
 function makeBooleanOp(oc: OccModule, op: BooleanOp) {
@@ -128,15 +197,26 @@ export function booleanWithHistory(
   if (!algo.HasHistory()) return { shape: result, diff, faceOrigin: [] }
   const history = scope.track(algo.History()).get()
 
+  // Six walks, one per (shape, kind), instead of ten: today the target/tool
+  // faces are walked twice each (classify/record + collectPairs) and the
+  // result's faces three times (walkOutputs + collectPairs' unchanged branch +
+  // the origin loop) (M19). All six pools are shared by the closures below.
+  const targetFaces = explore(oc, scope, targetShape, E.TopAbs_FACE)
+  const targetEdges = explore(oc, scope, targetShape, E.TopAbs_EDGE)
+  const toolFaces = explore(oc, scope, toolShape, E.TopAbs_FACE)
+  const toolEdges = explore(oc, scope, toolShape, E.TopAbs_EDGE)
+  const resultFaces = explore(oc, scope, result, E.TopAbs_FACE)
+  const resultEdges = explore(oc, scope, result, E.TopAbs_EDGE)
+
   // Classify target sub-shapes: build the pool of output preimages reachable
   // from surviving target inputs (these inherit the target body's lineage).
   const classifyTarget = (
-    kind: object,
+    subShapes: OccSubShape[],
   ): { modified: OccSubShape[]; deleted: OccSubShape[]; preimages: OccSubShape[] } => {
     const modified: OccSubShape[] = []
     const deleted: OccSubShape[] = []
     const preimages: OccSubShape[] = []
-    for (const s of explore(oc, scope, targetShape, kind)) {
+    for (const s of subShapes) {
       if (history.IsRemoved(s)) {
         deleted.push(s)
       } else {
@@ -153,10 +233,10 @@ export function booleanWithHistory(
   }
 
   // Tool tracking is informational: just record modified/deleted tool inputs.
-  const recordTool = (kind: object): { modified: OccSubShape[]; deleted: OccSubShape[] } => {
+  const recordTool = (subShapes: OccSubShape[]): { modified: OccSubShape[]; deleted: OccSubShape[] } => {
     const modified: OccSubShape[] = []
     const deleted: OccSubShape[] = []
-    for (const s of explore(oc, scope, toolShape, kind)) {
+    for (const s of subShapes) {
       if (history.IsRemoved(s)) {
         deleted.push(s)
       } else if (scope.track(history.Modified(s)).Size() > 0) {
@@ -167,31 +247,36 @@ export function booleanWithHistory(
   }
 
   // Walk the output: IsSame against the inherited pool -> inherited, else new.
+  // The pool is pre-seeded into a SubShapeDedup read as a membership set via
+  // `has` (NOT `add`: add would register each query and reclassify the second
+  // explorer occurrence of a shared new edge as inherited).
   const walkOutputs = (
-    kind: object,
+    subShapes: OccSubShape[],
     inheritedPool: OccSubShape[],
   ): { newList: OccSubShape[]; inheritedList: OccSubShape[] } => {
     const newList: OccSubShape[] = []
     const inheritedList: OccSubShape[] = []
-    for (const s of explore(oc, scope, result, kind)) {
-      if (inheritedPool.some((p) => s.IsSame(p))) inheritedList.push(s)
+    const pool = new SubShapeDedup()
+    for (const p of inheritedPool) pool.add(p)
+    for (const s of subShapes) {
+      if (pool.has(s)) inheritedList.push(s)
       else newList.push(s)
     }
     return { newList, inheritedList }
   }
 
-  const tF = classifyTarget(E.TopAbs_FACE)
-  const tE = classifyTarget(E.TopAbs_EDGE)
-  const uF = recordTool(E.TopAbs_FACE)
-  const uE = recordTool(E.TopAbs_EDGE)
+  const tF = classifyTarget(targetFaces)
+  const tE = classifyTarget(targetEdges)
+  const uF = recordTool(toolFaces)
+  const uE = recordTool(toolEdges)
 
   diff.modified_input_faces = [...tF.modified, ...uF.modified]
   diff.deleted_input_faces = [...tF.deleted, ...uF.deleted]
   diff.modified_input_edges = [...tE.modified, ...uE.modified]
   diff.deleted_input_edges = [...tE.deleted, ...uE.deleted]
 
-  const oF = walkOutputs(E.TopAbs_FACE, tF.preimages)
-  const oE = walkOutputs(E.TopAbs_EDGE, tE.preimages)
+  const oF = walkOutputs(resultFaces, tF.preimages)
+  const oE = walkOutputs(resultEdges, tE.preimages)
   diff.new_faces = oF.newList
   diff.inherited_faces = oF.inheritedList
   diff.new_edges = oE.newList
@@ -201,29 +286,43 @@ export function booleanWithHistory(
   // derived from, by Modified()/IsSame subshape identity. A source that maps to
   // several images is a genuine split; the name transfer orders those children.
   const facePairs: FaceOrigin[] = []
-  // Hoisted once (mirrors walkOutputs): the unchanged-face branch below would
-  // otherwise re-explore the result's faces per input face.
-  const resultFaces = explore(oc, scope, result, E.TopAbs_FACE)
-  const collectPairs = (shape: OccShape, fromTool: boolean): void => {
-    for (const s of explore(oc, scope, shape, E.TopAbs_FACE)) {
+  // Both key spaces are result-face identities matched with IsSame, so the
+  // per-input find and the per-result filter collapse to hash lookups instead
+  // of O(n^2) boundary crossings (M19).
+  const resultFaceIdx = new SubShapeIndexMap()
+  resultFaces.forEach((f, i) => resultFaceIdx.set(f, i))
+  const pairsByOutput = new SubShapeMultiIndex<FaceOrigin>()
+  const collectPairs = (subShapes: OccSubShape[], fromTool: boolean): void => {
+    for (const s of subShapes) {
       if (history.IsRemoved(s)) continue
       const mods = drainList(scope, history.Modified(s)) as OccSubShape[]
       if (mods.length > 0) {
-        for (const m of mods) facePairs.push({ output: m, source: s, fromTool })
+        for (const m of mods) {
+          const p: FaceOrigin = { output: m, source: s, fromTool }
+          facePairs.push(p)
+          pairsByOutput.add(m, p)
+        }
         continue
       }
       // Unchanged face: the input handle does NOT live in the result, so find
       // the result face that is IsSame to it. Without this, faces untouched by
       // the boolean get no origin entry and lose their construction UUID.
-      const outFace = resultFaces.find((f) => f.IsSame(s))
-      if (outFace) facePairs.push({ output: outFace, source: s, fromTool })
+      const at = resultFaceIdx.get(s)
+      if (at >= 0) {
+        const p: FaceOrigin = { output: resultFaces[at], source: s, fromTool }
+        facePairs.push(p)
+        pairsByOutput.add(resultFaces[at], p)
+      }
     }
   }
-  collectPairs(targetShape, false)
-  collectPairs(toolShape, true)
+  collectPairs(targetFaces, false)
+  collectPairs(toolFaces, true)
   const faceOrigin: FaceOrigin[] = []
-  for (const of of explore(oc, scope, result, E.TopAbs_FACE)) {
-    const matches = facePairs.filter((p) => of.IsSame(p.output))
+  for (const of of resultFaces) {
+    // SubShapeMultiIndex.get is insertion-ordered and collectPairs runs the
+    // target first, so target-before-tool survives the index and the
+    // find(!fromTool) ?? matches[0] tie-break picks the source the filter did.
+    const matches = pairsByOutput.get(of)
     const chosen = matches.find((p) => !p.fromTool) ?? matches[0]
     if (chosen) faceOrigin.push({ output: of, source: chosen.source, fromTool: chosen.fromTool })
   }

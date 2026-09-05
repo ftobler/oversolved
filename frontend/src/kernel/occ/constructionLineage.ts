@@ -4,10 +4,21 @@
 // after any producer has minted the face names. Multiplicity (a face pair
 // sharing >1 edge) is ordered by `orderSplitChildren` and refuses on a near-tie.
 
-import { type DisposeScope } from './disposeScope'
-import type { OccModule, OccShape } from './occTypes'
-import { edgeToGeom, faceCentroid, faceNormal, faceArea, readSolidVertices } from './primitives'
-import { faceGh, edgeGh } from './lineageHash'
+import { DisposeScope } from './disposeScope'
+import type { OccModule, OccShape, OccSubShape } from './occTypes'
+import {
+  edgeToGeom,
+  faceCentroid,
+  faceNormal,
+  faceArea,
+  faceSurfaceType,
+  readSolidVertices,
+  SubShapeIndexMap,
+  type SurfaceType,
+  type Vec3,
+} from './primitives'
+import { edgeGh } from './lineageHash'
+import { faceGeometryHash } from '../geomHash'
 import { normalToFrame, projectWorldToFrame } from '../types3d'
 import {
   deriveEdgeUuid,
@@ -163,6 +174,167 @@ export function faceSplitKey(oc: OccModule, scope: DisposeScope, parent: OccShap
 }
 
 /**
+ * One row of `FaceEdgeTable`: a face plus every per-face value the naming
+ * passes re-derive. Rows are in TopExp_Explorer order, which is what makes
+ * first-wins tie-breaks (deriveEdgeNames' `edgeShapes[egh] ??= edge`,
+ * nameFacesFromNeighbours' `seen` dedupe) reproduce byte-for-byte.
+ */
+export interface FaceRow {
+  // Tracked TopoDS_Face on the CALLER's scope; outlives the table.
+  face: OccSubShape
+  // faceGh, or null when the geometry read threw (undefined normal).
+  gh: string | null
+  // The error faceGh threw, for consumers that must still fail loud.
+  ghError: unknown
+  centroid: Vec3 | null
+  normal: Vec3 | null
+  /** This face's edges in explorer order; edges whose edgeGh failed are dropped,
+   *  exactly as every consumer drops them today. */
+  edges: { egh: string; edge: OccShape }[]
+}
+
+/**
+ * One traversal of a shape's faces and their edges, with the geometry-hash keys
+ * every construction-naming pass re-derives. Rows are in TopExp_Explorer order,
+ * which is what makes first-wins tie-breaks (deriveEdgeNames' `edgeShapes[egh]
+ * ??= edge`, nameFacesFromNeighbours' `seen` dedupe) reproduce byte-for-byte.
+ *
+ * `area` and `surfaceType` are computed lazily per row, because only the prism
+ * cap pass wants them and charging every caller a second adaptor + a second
+ * GProp integration would make this table a cost REGRESSION for the five
+ * callers that need only `gh`.
+ *
+ * A row whose `faceGh` threw (an undefined UV-midpoint normal) carries
+ * `gh: null` + the error: consumers that tolerate it (the cap pass) skip the
+ * row, consumers that must fail loud rethrow `ghError`.
+ *
+ * LIFETIME: a memo keyed on shape identity must not outlive the shapes. One
+ * table per pass over one shape, never a module-level singleton, never carried
+ * across a feature boundary. The `face`/`edge` proxies belong to the scope
+ * passed to `read`, not to the table.
+ */
+export class FaceEdgeTable {
+  static read(oc: OccModule, scope: DisposeScope, shape: OccShape): FaceEdgeTable {
+    const E = oc.TopAbs_ShapeEnum
+    const rows: FaceRow[] = []
+    const rowIndex = new SubShapeIndexMap()
+    const faceExp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+    for (; faceExp.More(); faceExp.Next()) {
+      const face = scope.track(oc.TopoDS.Face_1(faceExp.Current())) as OccSubShape
+      let gh: string | null = null
+      let ghError: unknown = null
+      let centroid: Vec3 | null = null
+      let normal: Vec3 | null = null
+      try {
+        // One centroid + one normal per face, and the geometry hash derived from
+        // them (lineageHash.faceGh is exactly this composition): the cap pass
+        // needs the raw values, the naming passes the hash, and neither should
+        // pay for the other's read twice.
+        centroid = faceCentroid(oc, scope, face)
+        normal = faceNormal(oc, scope, face)
+        gh = faceGeometryHash(centroid, normal)
+      } catch (e) {
+        ghError = e
+      }
+      const edges: { egh: string; edge: OccShape }[] = []
+      const eExp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+      for (; eExp.More(); eExp.Next()) {
+        const edge = scope.track(oc.TopoDS.Edge_1(eExp.Current()))
+        const egh = edgeGh(oc, scope, edge)
+        if (egh === null) continue
+        edges.push({ egh, edge })
+      }
+      const row: FaceRow = { face, gh, ghError, centroid, normal, edges }
+      rowIndex.set(face as OccSubShape, rows.push(row) - 1)
+    }
+    return new FaceEdgeTable(oc, rows, shape, rowIndex)
+  }
+
+  private readonly oc: OccModule
+  // Lazy per-row caches: `undefined` means not yet computed, so a row whose read
+  // threw is memoized as null and not recomputed on every access.
+  private readonly lazyArea = new Map<FaceRow, number | null>()
+  private readonly lazySurfaceType = new Map<FaceRow, SurfaceType | null>()
+  readonly rows: readonly FaceRow[]
+  // The shape the table was read from; the naming passes normalize their split
+  // ordering keys in ITS frame (shapeNormalFrame).
+  readonly shape: OccShape
+  private readonly rowIndex: SubShapeIndexMap
+
+  private constructor(
+    oc: OccModule,
+    rows: readonly FaceRow[],
+    shape: OccShape,
+    rowIndex: SubShapeIndexMap,
+  ) {
+    this.oc = oc
+    this.rows = rows
+    this.shape = shape
+    this.rowIndex = rowIndex
+  }
+
+  // Row for a face by topological identity (SubShapeIndexMap), or null.
+  rowOf(face: OccSubShape): FaceRow | null {
+    const at = this.rowIndex.get(face)
+    return at >= 0 ? this.rows[at] : null
+  }
+
+  // Face area, computed on first use and memoized per row.
+  area(row: FaceRow): number | null {
+    const cached = this.lazyArea.get(row)
+    if (cached !== undefined) return cached
+    const s = new DisposeScope()
+    let out: number | null
+    try {
+      out = faceArea(this.oc, s, row.face)
+    } catch {
+      out = null
+    } finally {
+      s.dispose()
+    }
+    this.lazyArea.set(row, out)
+    return out
+  }
+
+  // Surface type, computed on first use and memoized per row.
+  surfaceType(row: FaceRow): SurfaceType | null {
+    const cached = this.lazySurfaceType.get(row)
+    if (cached !== undefined) return cached
+    const s = new DisposeScope()
+    let out: SurfaceType | null
+    try {
+      out = faceSurfaceType(this.oc, s, row.face)
+    } catch {
+      out = null
+    } finally {
+      s.dispose()
+    }
+    this.lazySurfaceType.set(row, out)
+    return out
+  }
+}
+
+/**
+ * Name the faces no source reached off their named neighbours, then derive the
+ * edge names from the resulting face adjacency -- the pair every naming pass
+ * runs back to back, over ONE traversal instead of two. The order matters and
+ * is fixed here: neighbour naming must complete before edge derivation, which
+ * needs both faces of an edge named (prismLineage.ts:724-727).
+ */
+export function nameNeighboursAndDeriveEdges(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  faceNames: Record<string, string>,
+  faceAncestry: Record<string, string[]>,
+  skipGhs?: ReadonlySet<string>,
+): { edgeNames: Record<string, string>; edgeAncestry: Record<string, string[]> } {
+  const t = FaceEdgeTable.read(oc, scope, shape)
+  nameFacesFromNeighbours(oc, scope, t, faceNames, faceAncestry, skipGhs)
+  return deriveEdgeNames(oc, scope, t, faceNames, faceAncestry)
+}
+
+/**
  * Name the faces the producer left unnamed, from the set of their NAMED
  * neighbours (`deriveCornerFaceUuid`) -- the face analogue of the vertex rule in
  * `vertexUuidsFromFaces`. Must run BEFORE `deriveEdgeNames`, whose derivation
@@ -191,31 +363,31 @@ export function faceSplitKey(oc: OccModule, scope: DisposeScope, parent: OccShap
 export function nameFacesFromNeighbours(
   oc: OccModule,
   scope: DisposeScope,
-  shape: OccShape,
+  source: OccShape | FaceEdgeTable,
   faceNames: Record<string, string>,
   faceAncestry: Record<string, string[]>,
   skipGhs?: ReadonlySet<string>,
 ): void {
-  const E = oc.TopAbs_ShapeEnum
+  const t = source instanceof FaceEdgeTable ? source : FaceEdgeTable.read(oc, scope, source)
   const faces: { gh: string; face: OccShape; edges: string[] }[] = []
   const facesOnEdge: Record<string, Set<string>> = {}  // edge gh -> face ghs touching it
   const seen = new Set<string>()
-  const faceExp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; faceExp.More(); faceExp.Next()) {
-    const face = scope.track(oc.TopoDS.Face_1(faceExp.Current()))
-    const gh = faceGh(oc, scope, face)
+  for (const row of t.rows) {
+    // A row whose faceGh read failed must still fail loud, exactly where the
+    // direct read did: rows are explorer order, so the throw lands on the same
+    // face at the same point of this pass. Only the cap pass tolerates such a
+    // row (it skips gh: null); every naming pass rethrows.
+    if (row.gh === null) throw row.ghError
+    const gh = row.gh
     if (seen.has(gh)) continue
     seen.add(gh)
     if (skipGhs?.has(gh)) continue
     const edges: string[] = []
-    const eExp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-    for (; eExp.More(); eExp.Next()) {
-      const egh = edgeGh(oc, scope, scope.track(oc.TopoDS.Edge_1(eExp.Current())))
-      if (egh === null) continue
+    for (const { egh } of row.edges) {
       edges.push(egh)
       ;(facesOnEdge[egh] ??= new Set()).add(gh)
     }
-    faces.push({ gh, face, edges })
+    faces.push({ gh, face: row.face, edges })
   }
 
   type Residual = { gh: string; face: OccShape }
@@ -242,7 +414,7 @@ export function nameFacesFromNeighbours(
       // The centroid key must be in the shape's OWN normalized frame, not raw
       // world coordinates: a uniform resize otherwise scales the absolute
       // distance under SPLIT_EPS and makes the refusal unit-dependent.
-      frame ??= shapeNormalFrame(oc, scope, shape)
+      frame ??= shapeNormalFrame(oc, scope, t.shape)
       const f = frame
       ordered = orderSplitChildren(
         group.map<SplitChild<Residual>>((r) => ({
@@ -271,23 +443,20 @@ export function nameFacesFromNeighbours(
 export function deriveEdgeNames(
   oc: OccModule,
   scope: DisposeScope,
-  shape: OccShape,
+  source: OccShape | FaceEdgeTable,
   faceNames: Record<string, string>,
   faceAncestry: Record<string, string[]>,
 ): { edgeNames: Record<string, string>; edgeAncestry: Record<string, string[]> } {
-  const E = oc.TopAbs_ShapeEnum
+  const t = source instanceof FaceEdgeTable ? source : FaceEdgeTable.read(oc, scope, source)
   const adjacency: Record<string, Set<string>> = {}  // edge gh -> set of adjacent face uuid
   const edgeShapes: Record<string, OccShape> = {}  // edge gh -> a representative edge
-  const faceExp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; faceExp.More(); faceExp.Next()) {
-    const face = scope.track(oc.TopoDS.Face_1(faceExp.Current()))
-    const uuid = faceNames[faceGh(oc, scope, face)]
+  for (const row of t.rows) {
+    // Same fail-loud rule as nameFacesFromNeighbours: the direct faceGh call
+    // sat at the top of every face iteration and threw on an undefined normal.
+    if (row.gh === null) throw row.ghError
+    const uuid = faceNames[row.gh]
     if (!uuid) continue
-    const eExp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-    for (; eExp.More(); eExp.Next()) {
-      const edge = scope.track(oc.TopoDS.Edge_1(eExp.Current()))
-      const egh = edgeGh(oc, scope, edge)
-      if (egh === null) continue
+    for (const { egh, edge } of row.edges) {
       ;(adjacency[egh] ??= new Set()).add(uuid)
       edgeShapes[egh] ??= edge
     }
@@ -315,7 +484,7 @@ export function deriveEdgeNames(
     if (eghs.length > 1) {
       // Edge midpoints are world coordinates: normalize them by the parent
       // shape's span so a uniform resize cancels and the refusal is relative.
-      frame ??= shapeNormalFrame(oc, scope, shape)
+      frame ??= shapeNormalFrame(oc, scope, t.shape)
       const f = frame
       const children: SplitChild<string>[] = eghs.map((egh) => ({
         item: egh,
@@ -335,7 +504,7 @@ export function deriveEdgeNames(
   for (const [faceUuid, eghs] of Object.entries(bySingle)) {
     let ordered: string[] | null = eghs
     if (eghs.length > 1) {
-      frame ??= shapeNormalFrame(oc, scope, shape)
+      frame ??= shapeNormalFrame(oc, scope, t.shape)
       const f = frame
       const children: SplitChild<string>[] = eghs.map((egh) => ({
         item: egh,

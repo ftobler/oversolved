@@ -14,7 +14,7 @@ import type { Body, Frame3D } from '../types3d'
 import { Repository, parseAncestry, makeAncestryQuery, ref } from '../query'
 import { faceCentroid, faceNormal } from '../occ/primitives'
 import { faceGeometryHash } from '../geomHash'
-import { extractOccFace, extractFaceLoops, computeFaceDatumFrame } from '../occ/faceLoops'
+import { extractOccFace, extractFaceLoops, sortedFacesOf, faceLoopsOfFace, computeFaceDatumFrame } from '../occ/faceLoops'
 import { extractProfileLoops, parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds, type PlaneLike } from './shared'
 
 type Dict = Record<string, unknown>
@@ -36,6 +36,8 @@ function bodyShape(table: HandleTable, body: Body): OccShape {
  * Resolve an old sorted face index to the current index via the face's geometry
  * hash (mirrors `_resolve_face_index_via_hash`). Returns null when resolution
  * fails (index out of range, geometry read error, or hash not in the repo).
+ * `faces` supplies a pre-sorted face list in place of the internal traversal,
+ * for callers that already sorted the shape once (M45).
  */
 export function resolveFaceIndexViaHash(
   oc: OccModule,
@@ -45,10 +47,18 @@ export function resolveFaceIndexViaHash(
   globalRepo: Repository,
   bodyStore: Record<string, unknown> | null = null,
   faceNames?: Record<string, string>,
+  faces?: OccShape[],
 ): number | null {
   let targetFace: OccShape
   try {
-    targetFace = extractOccFace(oc, scope, shape, oldIndex)
+    if (faces !== undefined) {
+      // Replicates extractOccFace's out-of-range refusal; the caller already
+      // sorted this shape, so the list is the same index space.
+      if (oldIndex >= faces.length) throw new Error(`face_index ${oldIndex} out of range`)
+      targetFace = faces[oldIndex]
+    } else {
+      targetFace = extractOccFace(oc, scope, shape, oldIndex)
+    }
   } catch {
     return null
   }
@@ -138,9 +148,15 @@ export function resolveFaceProfile(
     const body = findBodyForRef(bodyStore, refId)
     if (body === null) throw new Error(`No body found for '${refId}'`)
     const shape = bodyShape(table, body)
-    const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_names)
+    // One sorted traversal serves both the index resolution and the loop
+    // extraction. Both index the same shape with the same sort, so the two
+    // index spaces are identical even though the remap returns a different
+    // index than the literal one it resolved (M45).
+    const faces = sortedFacesOf(oc, scope, shape)
+    const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_names, faces)
     if (resolved !== null) faceIndex = resolved
-    return extractLoopsFromOccFace(oc, scope, shape, faceIndex)
+    if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
+    return faceLoopsOfFace(oc, scope, faces[faceIndex])
   }
 
   const faceEntry = globalRepo.query(sketchRef, null, bodyStore) as Dict | null
@@ -223,10 +239,13 @@ export function resolveFaceSlashFrame(
   const body = findBodyForRef(bodyStore, refId)
   if (body === null) throw new Error(`No body found for '${refId}'`)
   const shape = bodyShape(table, body)
-  const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_names)
+  // Same one-traversal-per-pick deal as resolveFaceProfile's slash branch: the
+  // remap and the final pick both index the same sorted list (M45).
+  const faces = sortedFacesOf(oc, scope, shape)
+  const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_names, faces)
   if (resolved !== null) faceIndex = resolved
-  const face = extractOccFace(oc, scope, shape, faceIndex)
-  return computeFaceDatumFrame(oc, scope, face)
+  if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
+  return computeFaceDatumFrame(oc, scope, faces[faceIndex])
 }
 
 interface ExtrudeLoops {

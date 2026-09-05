@@ -7,7 +7,7 @@
 // are pinned without a WASM build.
 
 import { describe, it, expect } from 'vitest'
-import { SubShapeDedup, SubShapeIndexMap } from './primitives'
+import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex } from './primitives'
 import type { OccSubShape } from './occTypes'
 
 // A stub sub-shape: `_id` is its identity, `hash` lets a test force collisions.
@@ -42,6 +42,20 @@ describe('SubShapeDedup', () => {
     expect(d.add(stub(1, 7))).toBe(false)  // confirms against the right twin in the bucket
     expect(d.add(stub(2, 7))).toBe(false)
   })
+
+  it('has answers membership without registering the query (read-only test)', () => {
+    // booleanWithHistory pre-seeds a dedup from the inherited pool, then asks
+    // "is this output shape in the pool?" for every output. `add` would be a
+    // membership test only while the query set never grows; `has` must not
+    // register a new shape, or the second explorer occurrence of a shared new
+    // edge would read as inherited and halve every new_edges count.
+    const d = new SubShapeDedup()
+    d.add(stub(1, 10))
+    expect(d.has(stub(1, 10))).toBe(true)
+    expect(d.has(stub(2, 20))).toBe(false)
+    expect(d.has(stub(2, 20))).toBe(false)  // still absent: the query was not registered
+    expect(d.has(stub(3, 30))).toBe(false)
+  })
 })
 
 describe('SubShapeIndexMap', () => {
@@ -64,5 +78,53 @@ describe('SubShapeIndexMap', () => {
     m.set(stub(2, 7), 1)
     expect(m.get(stub(1, 7))).toBe(0)
     expect(m.get(stub(2, 7))).toBe(1)
+  })
+})
+
+describe('SubShapeMultiIndex', () => {
+  it('returns every value registered per identity, in insertion order', () => {
+    const m = new SubShapeMultiIndex<number>()
+    const a = stub(1, 10)
+    m.add(a, 0)
+    m.add(stub(2, 20), 1)
+    m.add(stub(1, 10), 2)
+    m.add(a, 3)
+    // Insertion order is load-bearing: Change 4b's `find(!fromTool) ?? matches[0]`
+    // tie-break relies on target-before-tool ordering surviving the index.
+    expect(m.get(stub(1, 10))).toEqual([0, 2, 3])
+    expect(m.get(stub(2, 20))).toEqual([1])
+  })
+
+  it('returns [] for an unknown identity', () => {
+    const m = new SubShapeMultiIndex<string>()
+    m.add(stub(1, 10), 'a')
+    expect(m.get(stub(3, 30))).toEqual([])
+  })
+
+  it('preserves target-before-tool order for the find(!fromTool) tie-break', () => {
+    // The whole naming outcome of a fuse hangs on this: collectPairs runs the
+    // target first, so for an output face that both a target and a tool input
+    // reached, the target pair must sit before the tool pair in the bucket.
+    const m = new SubShapeMultiIndex<{ fromTool: boolean }>()
+    const out = stub(1, 10)
+    m.add(out, { fromTool: false })  // target pair first, exactly as collectPairs
+    m.add(out, { fromTool: true })   // tool pair second
+    const matches = m.get(stub(1, 10))
+    expect(matches.find((p) => !p.fromTool) ?? matches[0]).toEqual({ fromTool: false })
+    // A tool-only output still picks the first tool pair, not undefined.
+    const out2 = stub(2, 20)
+    m.add(out2, { fromTool: true })
+    m.add(out2, { fromTool: true })
+    const m2 = m.get(stub(2, 20))
+    expect(m2.find((p) => !p.fromTool) ?? m2[0]).toEqual({ fromTool: true })
+  })
+
+  it('keeps identities distinct inside one HashCode-collision bucket', () => {
+    const m = new SubShapeMultiIndex<number>()
+    m.add(stub(1, 7), 10)
+    m.add(stub(2, 7), 20)  // bucket collision, but IsSame says distinct
+    m.add(stub(2, 7), 21)
+    expect(m.get(stub(1, 7))).toEqual([10])
+    expect(m.get(stub(2, 7))).toEqual([20, 21])
   })
 })

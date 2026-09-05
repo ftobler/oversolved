@@ -11,7 +11,7 @@ import type { Repository } from '../query'
 import { resolveBody, AmbiguousBodyRefError, resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
-import { transformCopyWithMapping, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
+import { transformCopyWithMapping, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
 
@@ -197,13 +197,19 @@ function applyArray(
     // first -- two Parts rows for one visible solid. The transforms below are
     // still numbered from 1 when include_source is set, so instance UUIDs keep
     // their meaning across an edit that toggles the flag.
+    // The source rows are identical for every instance, so they are read once
+    // above the instance loop instead of re-explored and re-hashed per copy
+    // (M37 Change 2a). The count_x=1 no-op below never reads them.
+    const rows = transforms.length > 0
+      ? readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
+      : []
     for (let i = 0; i < transforms.length; i++) {
       const idx = includeSource ? i + 1 : i
       const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
       const shape = scope.track(instShape)
       instances.push({
         shape,
-        names: rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, idx, builder),
+        names: rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, idx, builder),
       })
     }
     if (instances.length === 0) {
@@ -241,12 +247,15 @@ function applyArray(
     instances.push(sourceShape)
     instanceNames.push(sourceNames)
   }
+  // Same one-read-per-instance-loop hoist as the new branch: the source rows
+  // are identical for every instance (M37 Change 2a).
+  const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
   for (let i = 0; i < transforms.length; i++) {
     const idx = includeSource ? i + 1 : i
     const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
     const shape = scope.track(instShape)
     instances.push(shape)
-    instanceNames.push(rebuildNamesForTransformedCopy(oc, scope, shape, sourceShape, sourceNames, featureId, idx, builder))
+    instanceNames.push(rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, idx, builder))
   }
   if (instances.length === 0) throw new Error(`${opLabel} produced no instances`)
 
@@ -254,6 +263,7 @@ function applyArray(
   let fusedNames = instanceNames[0]
   let lastDiff: BrepDiff | null = null
   for (let i = 1; i < instances.length; i++) {
+    const prev = fused
     const r = booleanWithDiff(oc, scope, fused, instances[i], 'fuse', { unifyFaces: !body.imported })
     fused = scope.track(r.shape)
     const names = transferBooleanNames(oc, scope, {
@@ -274,6 +284,23 @@ function applyArray(
       edgeAncestry: names.edge_ancestry,
     }
     lastDiff = r.diff
+    // Release ONLY here, never above. `r.faceOrigin`'s `source` entries are
+    // sub-shapes OF THE OPERANDS, and transferBooleanNames downcasts and hashes
+    // them (booleanLineage.ts:81-82). Freeing an operand before that line is a
+    // use-after-free that reads plausibly and fails nowhere.
+    //
+    // instances[0] is the HandleTable-owned `sourceShape` when include_source is
+    // set (array.ts:180, :238). scope.release() deletes a foreign object it was
+    // never tracking (disposeScope.ts:60-70), so releasing it would free the
+    // table's shape out from under every later feature.
+    const prevIsTableOwned = i === 1 && includeSource
+    if (!prevIsTableOwned) scope.release(prev)
+    scope.release(instances[i])
+    // The releases do not invalidate what survives the loop: body.brep_diff is
+    // lastDiff, whose sub-shape handles are independent embind wrappers holding
+    // their own refcounted TShape, so deleting an operand wrapper does not free
+    // geometry the diff still references (same argument as boolean.ts:115 and
+    // extrude.ts:317-320).
   }
   body.modified_by.push(featureId)
   body.brep_diff = lastDiff

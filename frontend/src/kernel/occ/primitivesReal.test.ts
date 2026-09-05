@@ -9,8 +9,10 @@
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'
-import { HandleTable } from './handleTable'
+import { HandleTable, type OccHandle } from './handleTable'
 import { DisposeScope } from './disposeScope'
+import { CountingScope } from './countingScope'
+import { sortedFacesOf } from './faceLoops'
 import { buildBox, buildCylinder, buildExtrudedProfile } from './shapes'
 import {
   faceCentroid,
@@ -18,6 +20,7 @@ import {
   faceArea,
   faceSurfaceFrame,
   faceSurfaceType,
+  faceSurfaceTypeAndNormal,
   makeBezierEdge,
   makeFaceFromWire,
   makePrism,
@@ -251,6 +254,30 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
     table.assertNoLeaks()
   })
 
+  it('faceSurfaceTypeAndNormal matches faceSurfaceType + faceNormal on all six box faces', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
+    const scope = new DisposeScope()
+    try {
+      const E = occ.TopAbs_ShapeEnum
+      const exp = scope.track(new occ.TopExp_Explorer_2(table.get(h), E.TopAbs_FACE, E.TopAbs_SHAPE))
+      let checked = 0
+      for (; exp.More(); exp.Next()) {
+        const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
+        const both = faceSurfaceTypeAndNormal(occ, scope, f)
+        // One-adaptor read must agree with the two single readers it replaced,
+        // including the REVERSED sign flip the six-face outward-normal test pins.
+        expect(both.surfaceType).toBe(faceSurfaceType(occ, scope, f))
+        expect(both.normal).toEqual(faceNormal(occ, scope, f))
+        checked++
+      }
+      expect(checked).toBe(6)
+    } finally {
+      scope.dispose()
+      table.release(h)
+    }
+  })
+
 
   // Create a 1x1 square face in the XY plane via makeFaceFromWire.
   function makeUnitSquareFace(occ2: OccModule, scope: DisposeScope): OccShape {
@@ -464,5 +491,51 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
     }
     expect(table.liveCount()).toBe(0)
     table.assertNoLeaks()
+  })
+
+  it('sortedFacesOf keeps the build-scope live set at ~2 proxies per face (M45)', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    // Build the solids on their own scope so the measurement sees only the
+    // traversal's own track() traffic, not the profile builders'.
+    const build = new DisposeScope()
+    let h100: OccHandle
+    let h150: OccHandle
+    try {
+      const ring = (n: number): Vec3[] => Array.from({ length: n }, (_, i) => {
+        const a = (i / n) * 2 * Math.PI
+        return [20 * Math.cos(a), 20 * Math.sin(a), 0]
+      })
+      h100 = buildExtrudedProfile(occ, table, { loop: ring(100), direction: [0, 0, 1], distance: 5, owner: 'p100' })
+      h150 = buildExtrudedProfile(occ, table, { loop: ring(150), direction: [0, 0, 1], distance: 5, owner: 'p150' })
+    } finally {
+      build.dispose()
+    }
+    // A fresh scope per solid keeps the peak proportional to that solid's own
+    // faces: the returned faces stay live on the scope (they are the caller's
+    // list), so a shared scope would let the first solid's faces inflate the
+    // second solid's peak and blur the per-face multiplier. Two face counts
+    // then pin the per-face multiplier, not an absolute peak an unrelated
+    // change would re-tune.
+    try {
+      for (const handle of [h100, h150]) {
+        const scope = new CountingScope()
+        try {
+          const faces = sortedFacesOf(occ, scope, table.get<OccShape>(handle))
+          expect(faces.length).toBeGreaterThan(100)
+          // The returned Face_1 plus its explorer raw Current are both tracked
+          // on the caller's scope (2 per face); the geometry readers (GProp,
+          // adaptor, SLProps) are transient via withTransientScope. The pre-M45
+          // code kept 6 per face and would blow past the 2x + slack bound here.
+          // Slack covers the explorer itself and embind bookkeeping.
+          expect(scope.peakLive).toBeLessThanOrEqual(2 * faces.length + 8)
+        } finally {
+          scope.dispose()
+        }
+      }
+    } finally {
+      table.release(h100)
+      table.release(h150)
+      table.assertNoLeaks()
+    }
   })
 })

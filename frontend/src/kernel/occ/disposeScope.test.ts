@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DisposeScope, drainList, type Disposable } from './disposeScope'
+import { DisposeScope, drainList, withTransientScope, type Disposable } from './disposeScope'
 import type { OccListOfShape, OccShape } from './occTypes'
 
 class FakeObj implements Disposable {
@@ -189,5 +189,49 @@ describe('drainList', () => {
     expect(list.deleted).toBe(1)
     expect(a.deleted).toBe(1)
     expect(b.deleted).toBe(1)
+  })
+})
+
+describe('withTransientScope', () => {
+  it('disposes the child scope on the return path', () => {
+    const order: string[] = []
+    const out = withTransientScope((s) => {
+      s.track(new FakeObj('inner', order))
+      return 'result'
+    })
+    expect(out).toBe('result')
+    expect(order).toEqual(['inner'])
+  })
+
+  it('disposes the child scope on the throw path and rethrows unchanged', () => {
+    const order: string[] = []
+    const boom = new Error('boom')
+    let caught: unknown
+    try {
+      withTransientScope((s) => {
+        s.track(new FakeObj('inner', order))
+        throw boom
+      })
+    } catch (e) {
+      caught = e
+    }
+    // The same error object must surface, not a rewrap -- a caller's
+    // `extractErrorMessage` downstream sees the original message.
+    expect(caught).toBe(boom)
+    expect(order).toEqual(['inner'])
+  })
+
+  it('does not dispose the caller-owned scope the child reads from', () => {
+    const order: string[] = []
+    const outer = new DisposeScope()
+    outer.track(new FakeObj('outer', order))
+    const out = withTransientScope((s) => {
+      s.track(new FakeObj('inner', order))
+      return outer.size()
+    })
+    expect(out).toBe(1)  // the child's dispose() must not touch the outer scope
+    expect(order).toEqual(['inner'])
+    outer.dispose()
+    expect(order).toEqual(['inner', 'outer'])
   })
 })

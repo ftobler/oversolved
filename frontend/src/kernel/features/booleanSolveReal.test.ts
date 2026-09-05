@@ -16,7 +16,8 @@ import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
 import { makeBoxAt, type Vec3 } from '../occ/primitives'
-import { volumeOf } from '../occ/booleans'
+import { volumeOf, countSolids } from '../occ/booleans'
+import { makeTranslationTrsf, transformCopy } from '../occ/transforms'
 import { Repository } from '../query'
 import { solveBoolean } from './boolean'
 import type { Body } from '../types3d'
@@ -57,6 +58,39 @@ function bodyFromSpec(
     brep_diff: null,
     profile_queries: [],
   }
+}
+
+// The L5 fixture: a solid whose shell is open by a hairline. A box's top face
+// is lowered 0.001 so its edges no longer meet the side walls, then the six
+// faces are sewn into a shell and BRepBuilderAPI_MakeSolid is called on it --
+// the shape is still a TopoDS_Solid, but VolumeProperties with OnlyClosed=true
+// integrates it to ~0. double_with_hole.step was probed first and is properly
+// closed (its import reads a real volume), and a STEP round-trip of this shape
+// heals the gap back into a plain shell, so the fixture is built here rather
+// than read from a file.
+function makeOpenShellBox(occ: OccModule, scope: DisposeScope): OccShape {
+  const occAny = occ as unknown as {
+    TopoDS_Shell: new () => { delete(): void }
+    BRep_Builder: new () => {
+      MakeShell(shell: unknown): void
+      Add(shell: unknown, part: unknown): void
+      delete(): void
+    }
+    BRepBuilderAPI_MakeSolid_3: new (shell: unknown) => { Shape(): unknown; delete(): void }
+  }
+  const E = occ.TopAbs_ShapeEnum
+  const base = makeBoxAt(occ, scope, [0, 0, 0], 10, 10, 10)
+  const faces: OccShape[] = []
+  const exp = scope.track(new occ.TopExp_Explorer_2(base, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  for (; exp.More(); exp.Next()) faces.push(scope.track(exp.Current()) as OccShape)
+  const shell = scope.track(new occAny.TopoDS_Shell())
+  const builder = scope.track(new occAny.BRep_Builder())
+  builder.MakeShell(shell)
+  const top = scope.track(transformCopy(occ, scope, faces[5], makeTranslationTrsf(occ, scope, 0, 0, -0.001)))
+  for (let i = 0; i < 5; i++) builder.Add(shell, faces[i])
+  builder.Add(shell, top)
+  const maker = scope.track(new occAny.BRepBuilderAPI_MakeSolid_3(shell))
+  return maker.Shape() as OccShape
 }
 
 describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
@@ -194,6 +228,95 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
         // Target volume is unchanged (no empty compound replaced it).
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(targetVol, 3)
         expect(result.solver_warning).toContain('does not intersect')
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('runs the clean pass exactly once per folded tool (M18 pin)', () => {
+      // M18's evidence: the probe used to run the whole booleanWithDiff
+      // pipeline (boolean.ts:107) just to read one number, so a folding
+      // subtract constructed ShapeUpgrade_UnifySameDomain_2 TWICE per tool:
+      // once for the probe's common, once for the real cut. The probe is now
+      // shapesIntersect (a bare Common, history off), so this is exactly ONE
+      // per folded tool -- the real boolean only.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[0, 0, 0], [2, 2, 2]]),
+        }
+
+        const occAny = occ as unknown as { ShapeUpgrade_UnifySameDomain_2: unknown }
+        const ctor = occAny.ShapeUpgrade_UnifySameDomain_2 as new (...args: unknown[]) => { delete: () => void }
+        let count = 0
+        occAny.ShapeUpgrade_UnifySameDomain_2 = function (this: unknown, ...args: unknown[]) {
+          count++
+          return new ctor(...args)
+        }
+        try {
+          const result = solveBoolean(
+            occ, scope, table,
+            { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
+            new Repository(),
+            bodyStore,
+          )
+          expect(result.status).toBe('ok')
+        } finally {
+          occAny.ShapeUpgrade_UnifySameDomain_2 = ctor
+        }
+        expect(count).toBe(1)
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('consumes an overlapping tool on an open-shell body the volume oracle read as disjoint (L5)', () => {
+      // The L5 finding pinned on the built fixture: a cut whose Common is a
+      // solid (countSolids > 0) that integrates to ~0 under volumeOf's
+      // OnlyClosed=true. The OLD probe skipped such a cut with a "does not
+      // intersect" warning; the solid-count oracle sees the Common's solid and
+      // the cut runs. The tool crosses the open seam, which is what makes the
+      // Common's own shell open.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const targetShape = makeOpenShellBox(occ, scope)
+        const tool = makeBoxAt(occ, scope, [5, -5, -5], 10, 10, 20)
+
+        const algo = scope.track(new occ.BRepAlgoAPI_Common_1())
+        const args = scope.track(new occ.TopTools_ListOfShape_1())
+        args.Append_1(targetShape)
+        const tools = scope.track(new occ.TopTools_ListOfShape_1())
+        tools.Append_1(tool)
+        algo.SetArguments(args)
+        algo.SetTools(tools)
+        algo.SetToFillHistory(false)
+        algo.Build()
+        const inter = scope.track(algo.Shape())
+        expect(countSolids(occ, scope, inter)).toBeGreaterThan(0)
+        expect(volumeOf(occ, scope, inter)).toBeLessThan(1e-10)
+
+        const bodyStore: Record<string, Body> = {
+          body_t: {
+            id: 'body_t', created_by: 'ex_t', modified_by: [], sketch_id: '',
+            shape: table.register(targetShape, 'ex_t'), brep_diff: null, profile_queries: [], imported: true,
+          },
+          body_u0: {
+            id: 'body_u0', created_by: 'ex_u0', modified_by: [], sketch_id: 'sk',
+            shape: table.register(tool, 'ex_u0'), brep_diff: null, profile_queries: [],
+          },
+        }
+        const result = solveBoolean(
+          occ, scope, table,
+          { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
+          new Repository(), bodyStore,
+        )
+        expect(result.status).toBe('ok')
+        expect(result.solver_warning).toBeUndefined()
+        expect('body_u0' in bodyStore).toBe(false)  // the tool was consumed, not skipped
+        expect('body_t' in bodyStore).toBe(true)    // the cut ran and the body survived
       } finally {
         scope.dispose()
       }

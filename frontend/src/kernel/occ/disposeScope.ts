@@ -107,6 +107,25 @@ export class DisposeScope {
   }
 }
 
+/**
+ * Run `fn` against a child scope disposed the moment it returns or throws, so a
+ * per-face or per-edge geometry read leaves nothing behind on the build-lifetime
+ * scope. `features/bodyOps.ts:120-144` already does this by hand for its
+ * intersection probe; this names the shape of it.
+ *
+ * The result must be plain data -- numbers, strings, arrays of them. A proxy
+ * returned through here is freed before the caller can read it, and no type can
+ * say so; the reviewer's job is to check the return type is not an Occ* handle.
+ */
+export function withTransientScope<T>(fn: (s: DisposeScope) => T): T {
+  const s = new DisposeScope()
+  try {
+    return fn(s)
+  } finally {
+    s.dispose()
+  }
+}
+
 /** Drain a TopTools_ListOfShape into an array (Size/First_1/RemoveFirst). */
 export function drainList(scope: DisposeScope, list: OccListOfShape): OccShape[] {
   scope.track(list)  // the list container itself owns native memory too

@@ -10,30 +10,39 @@
  * centroid), so the index matches the rest of the kernel.
  */
 
-import type { DisposeScope } from './disposeScope'
+import { withTransientScope, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccOrientedShape, OccSubShape } from './occTypes'
 import type { Frame3D } from '../types3d'
-import { faceCentroid, faceNormal, faceSurfaceType } from './primitives'
+import { faceCentroid, faceSurfaceTypeAndNormal } from './primitives'
 import { faceSortKey, compareFaceSortKeys } from './shapes'
 
 const TWO_PI = 2 * Math.PI
 
-/** Faces of a shape sorted by `_face_sort_key` (flat-before-curved, normal, centroid). */
-function sortedFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
+/**
+ * Faces of a shape sorted by `_face_sort_key` (flat-before-curved, normal,
+ * centroid). The returned Face proxies are tracked on the caller's scope.
+ *
+ * Deliberately NOT memoized per shape handle: a Map<OccHandle, OccShape[]>
+ * would cache proxies against a shape a later feature may replace, and the
+ * cache would need invalidation on every HandleTable.release. A caller that
+ * needs two indexes over one shape (a face pick's index resolution + loop
+ * extraction) shares ONE call across both instead (M45).
+ */
+export function sortedFacesOf(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
   const items: { face: OccShape; key: number[] }[] = []
   for (; exp.More(); exp.Next()) {
     const raw = scope.track(exp.Current())
     const face = scope.track(oc.TopoDS.Face_1(raw))
-    items.push({
-      face,
-      key: faceSortKey({
-        centroid: faceCentroid(oc, scope, face),
-        normal: faceNormal(oc, scope, face),
-        surfaceType: faceSurfaceType(oc, scope, face),
-      }),
-    })
+    // The face is returned, so it must outlive the loop. Its geometry readers
+    // must not: they are the 20k-proxy half of M45, and the loop keeps only
+    // numbers from them.
+    const key = withTransientScope((s) => faceSortKey({
+      centroid: faceCentroid(oc, s, face),
+      ...faceSurfaceTypeAndNormal(oc, s, face),  // ONE adaptor, Change 0b
+    }))
+    items.push({ face, key })
   }
   items.sort((a, b) => compareFaceSortKeys(a.key, b.key))
   return items.map((it) => it.face)
@@ -46,7 +55,7 @@ export function extractOccFace(
   shape: OccShape,
   faceIndex: number,
 ): OccShape {
-  const faces = sortedFaces(oc, scope, shape)
+  const faces = sortedFacesOf(oc, scope, shape)
   if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
   return faces[faceIndex]
 }
@@ -234,6 +243,25 @@ function buildLoopFromWire(
 }
 
 /**
+ * 2D boundary loops + plane of ONE already-resolved face (mirrors
+ * `ocp_extract_face_loops` minus the shape re-sort). Empty loops are dropped.
+ * A caller that already holds the sorted face list indexes it once and hands
+ * the face here, so a face pick does not traverse the shape twice (M45).
+ */
+export function faceLoopsOfFace(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+): { loops: EdgeDict[][]; plane: Frame3D; face: OccShape } {
+  const plane = computeFacePlane(oc, scope, face)
+  const { outer, holes } = collectFaceWires(oc, scope, face)
+  const loops = [outer, ...holes]
+    .map((w) => buildLoopFromWire(oc, scope, w, face))
+    .filter((loop) => loop.length > 0)
+  return { loops, plane, face }
+}
+
+/**
  * 2D boundary loops + plane of a solid's face at sorted `faceIndex` (mirrors
  * `ocp_extract_face_loops`). Empty loops are dropped.
  */
@@ -244,10 +272,5 @@ export function extractFaceLoops(
   faceIndex: number,
 ): { loops: EdgeDict[][]; plane: Frame3D; face: OccShape } {
   const face = extractOccFace(oc, scope, shape, faceIndex)
-  const plane = computeFacePlane(oc, scope, face)
-  const { outer, holes } = collectFaceWires(oc, scope, face)
-  const loops = [outer, ...holes]
-    .map((w) => buildLoopFromWire(oc, scope, w, face))
-    .filter((loop) => loop.length > 0)
-  return { loops, plane, face }
+  return faceLoopsOfFace(oc, scope, face)
 }

@@ -12,10 +12,11 @@
 // needed.
 
 import { describe, it, expect } from 'vitest'
-import { DisposeScope } from './disposeScope'
+import { DisposeScope, drainList } from './disposeScope'
 import { extractNames, type NewNames, type OldNames } from './edgeModifier'
 import { faceGh } from './lineageHash'
-import type { OccModule, OccShape, OccEdgeModifierMaker } from './occTypes'
+import { SubShapeIndexMap } from './primitives'
+import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from './occTypes'
 
 type Vec3 = [number, number, number]
 
@@ -28,12 +29,14 @@ const pnt = (v: Vec3) => ({
 
 // A face double carrying the geometry faceCentroid/faceNormal read, plus the
 // topological identity builtGh needs (identity IsSame: each face is its own
-// built-solid twin).
+// built-solid twin). A constant HashCode forces every face into one
+// SubShapeIndexMap bucket, which the IsSame confirm then splits apart.
 function makeFace(centroid: Vec3, normal: Vec3): OccShape {
   const face = {
     centroid,
     normal,
     IsSame: (other: unknown): boolean => other === face,
+    HashCode: () => 1,
     Orientation_1: () => ({ value: 0 }),  // FORWARD
     delete: () => {},
   }
@@ -142,14 +145,26 @@ function run(oldFaces: OccShape[], newFace: OccShape, uuids: string[]): NewNames
     old.faceNames[faceGh(oc, scope, f)] = uuids[i]
     old.faceAncestry[uuids[i]] = ['extrude1']
   })
+  const maker = makeMaker(newFace)
+  // Mirror applyEdgeModifier's shared Modified() drain: one drain per old face,
+  // keyed through a SubShapeIndexMap.
+  const oldFaceIdx = new SubShapeIndexMap()
+  oldFaces.forEach((f, i) => oldFaceIdx.set(f as OccSubShape, i))
+  const oldFaceModified = new Map<number, OccShape[]>()
+  for (const f of oldFaces) {
+    oldFaceModified.set(oldFaceIdx.get(f as OccSubShape), drainList(scope, maker.Modified(f)))
+  }
   return extractNames(
     oc,
     scope,
-    makeMaker(newFace),
-    { faces: oldFaces } as unknown as OccShape,
+    maker,
     { faces: [newFace] } as unknown as OccShape,
     [],
     old,
+    oldFaces,
+    [newFace],
+    oldFaceIdx,
+    oldFaceModified,
   )
 }
 

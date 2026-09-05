@@ -1,19 +1,22 @@
 // Always-on coverage for the cut path's intersection-probe failure handling.
-// The probe's catch must not treat a thrown kernel error as a zero-volume
-// miss: that reported "does not intersect" for cuts the real cut would have
-// performed. Mocks stand in for OCC so both probe outcomes are drivable.
+// shapesIntersect (a bare Common with history off) returns TRUE when its own
+// probe throws: a failed probe must not be treated as a zero-volume miss, which
+// reported "does not intersect" for cuts the real cut would have performed.
+// Mocks stand in for OCC so both probe outcomes are drivable.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   booleanWithDiff: vi.fn(),
   volumeOf: vi.fn(),
+  shapesIntersect: vi.fn(),
 }))
 
 vi.mock('../occ/booleans', () => ({
   booleanWithDiff: mocks.booleanWithDiff,
   volumeOf: mocks.volumeOf,
   countSolids: () => 1,
+  shapesIntersect: mocks.shapesIntersect,
 }))
 vi.mock('./booleanLineage', () => ({
   transferBooleanNames: () => ({
@@ -66,15 +69,18 @@ describe('cut intersection probe failures', () => {
   beforeEach(() => {
     mocks.booleanWithDiff.mockReset()
     mocks.volumeOf.mockReset()
+    mocks.shapesIntersect.mockReset()
   })
 
   it('falls through to the real cut when the probe throws', () => {
+    // shapesIntersect returns TRUE when its own probe throws (its docstring
+    // contract: a failed probe is not evidence of disjointness), so the throw
+    // must not read as a skip. The real cut runs.
+    mocks.shapesIntersect.mockReturnValue(true)
     const table = new HandleTable({ finalizerGuard: false })
     const bodies = store(table)
-    // The common probe explodes, but the real cut would work.
     mocks.booleanWithDiff.mockImplementation(
       (_oc: unknown, _s: unknown, _a: unknown, _b: unknown, op: string) => {
-        if (op === 'common') throw new Error('probe exploded')
         if (op !== 'cut') throw new Error(`unexpected op ${op}`)
         return { shape: { delete: () => {} }, diff: emptyBrepDiff(), faceOrigin: [] }
       },
@@ -87,6 +93,7 @@ describe('cut intersection probe failures', () => {
 
   it('surfaces the real cut failure, not "does not intersect"', () => {
     // Probe and cut fail alike; the error the user sees must be the cut's.
+    mocks.shapesIntersect.mockReturnValue(true)
     mocks.booleanWithDiff.mockImplementation(
       (_oc: unknown, _s: unknown, _a: unknown, _b: unknown, op: string) => {
         throw new Error(`${op} boom`)
@@ -97,9 +104,12 @@ describe('cut intersection probe failures', () => {
   })
 
   it('falls through to the real cut when the probe is unavailable (OCC null)', () => {
-    // The probe now uses BRepAlgoAPI_Common directly (M18), so it cannot be
-    // intercepted via the booleanWithDiff mock.  When oc is null the probe
-    // throws, the catch block catches it, and the real cut proceeds.
+    // The probe is now shapesIntersect (a bare BRepAlgoAPI_Common, history
+    // off), so it cannot be intercepted via the booleanWithDiff mock. When oc
+    // is null the Common throws inside shapesIntersect, which answers true,
+    // and the real cut proceeds -- exactly one booleanWithDiff call, nothing
+    // from the probe.
+    mocks.shapesIntersect.mockReturnValue(true)
     mocks.booleanWithDiff.mockImplementation(
       (_oc: unknown, _s: unknown, _a: unknown, _b: unknown, op: string) => {
         if (op !== 'cut') throw new Error(`unexpected op ${op}`)

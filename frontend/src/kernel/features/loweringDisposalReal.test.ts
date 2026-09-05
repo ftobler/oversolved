@@ -22,6 +22,7 @@ import { solidToEdges } from '../occ/tessellation'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { solveExtrude } from './extrude'
 import { solveRevolve } from './revolve'
+import { solveArray } from './array'
 import type { Repository } from '../query'
 import type { Body } from '../types3d'
 import type { OccModule, OccShape } from '../occ/occTypes'
@@ -231,4 +232,57 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     volumes.forEach((v) => expect(v).toBeGreaterThan(0))
     expectFlat(released)
   })
+
+  // H21: the array add fuse loop releases the superseded fused solid and the
+  // consumed instance at the end of every iteration (array.ts:250-274). The
+  // loop is the ONLY release traffic on this path (booleans/transformLineage/
+  // bodySplit never call scope.release), so releasedCount is exactly 2 per
+  // extra instance minus one: iteration 1 skips the table-owned source and
+  // contributes a single release, every later iteration two.
+  function arrayRun(countX: number): { released: number } {
+    const table = new HandleTable({ finalizerGuard: false })
+    const scope = new CountingScope()
+    try {
+      const box = makeBox(occ, scope, 10, 10, 10)
+      const bodyB: Body = {
+        id: 'body_b', created_by: 'seed', modified_by: [],
+        shape: table.register(box, 'seed'), sketch_id: 'sk',
+        brep_diff: null, profile_queries: [],
+      }
+      const bodyStore: Record<string, Body> = { body_b: bodyB }
+      // The direction query resolves to a straight edge along +X so the leaf
+      // does not refuse the array.
+      const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository
+      const result = solveArray(
+        occ, scope, table,
+        { id: 'ar9', array: {
+          source_body: 'body_b', mode: 'linear', count_x: countX, pitch_x: 20,
+          include_source: true, operation: 'add', direction_x_query: 'qx',
+        } },
+        repo, bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      return { released: scope.releasedCount }
+    } finally {
+      scope.dispose()
+      table.disposeAll()
+    }
+  }
+
+  it('array add releases exactly two objects per extra instance, flat across rebuilds', () => {
+    // Fresh identical geometry per run, so any flatness violation is release
+    // traffic that scales with something other than the instance count.
+    const c4: number[] = []
+    for (let i = 0; i < 3; i++) c4.push(arrayRun(4).released)
+    expectFlat(c4)
+    const c12: number[] = []
+    for (let i = 0; i < 3; i++) c12.push(arrayRun(12).released)
+    expectFlat(c12)
+    // Eight extra instances (4 -> 12) each add two releases: the superseded
+    // fused and the consumed instance. Pre-fix the loop released nothing.
+    expect(c12[0] - c4[0]).toBe(16)
+    // Six full array solves (three at count 4, three at count 12) can run long
+    // under the suite's parallel load; the default 5s timeout has flaked this
+    // case, so it gets its own generous budget.
+  }, 20_000)
 })

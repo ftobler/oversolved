@@ -26,7 +26,7 @@ import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
 import { resolveUpToPlane, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
 import { faceGh } from '../occ/lineageHash'
-import { nameFacesFromNeighbours, deriveEdgeNames } from '../occ/constructionLineage'
+import { nameNeighboursAndDeriveEdges } from '../occ/constructionLineage'
 
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
@@ -230,6 +230,11 @@ export function solveExtrude(
   const termination = (merged.termination as string) ?? 'blind'
   const upToRef = (merged.up_to as string) ?? ''
   const usingFaces = cqFaces.length > 0 && allLoops.length === 0
+  // One BRepAdaptor_Surface + BRepLProp_SLProps for the whole solve. Lazy, not
+  // eager: faceNormal throws when the UV-midpoint normal is undefined
+  // (primitives.ts:601), and only the branches that reach it today may throw.
+  let faceNormal0: Vec3 | null = null
+  const profileNormal = (): Vec3 => (faceNormal0 ??= faceNormal(oc, scope, cqFaces[0]))
   let cutPlane: CutPlane | null = null
   if (termination === 'up_to' && upToRef) {
     if (direction === 'symmetric') {
@@ -237,8 +242,8 @@ export function solveExtrude(
     }
     const probeDir: Vec3 = usingFaces
       ? (direction === 'reverse'
-          ? (faceNormal(oc, scope, cqFaces[0]).map((n) => -n) as Vec3)
-          : (faceNormal(oc, scope, cqFaces[0]) as Vec3))
+          ? (profileNormal().map((n) => -n) as Vec3)
+          : (profileNormal() as Vec3))
       : (resolveDirection((firstPt?.normal as number[]) ?? [0, 0, 1], firstPt as PlaneLike, direction, distance)[0] as Vec3)
     try {
       cutPlane = resolveUpToPlane(oc, scope, table, upToRef, probeDir, globalRepo, bodyStore)
@@ -257,7 +262,7 @@ export function solveExtrude(
 
   let toolShape: OccShape
   if (usingFaces) {
-    const faceNormalVec = faceNormal(oc, scope, cqFaces[0])
+    const faceNormalVec = profileNormal()
     const reverseVec = faceNormalVec.map((n) => -n) as Vec3
     if (cutPlane !== null) {
       const nominal = (direction === 'reverse' ? reverseVec : faceNormalVec) as Vec3
@@ -316,8 +321,7 @@ export function solveExtrude(
         break
       }
     }
-    nameFacesFromNeighbours(oc, scope, toolShape, faceNames, faceAncestry)
-    const edgeResult = deriveEdgeNames(oc, scope, toolShape, faceNames, faceAncestry)
+    const edgeResult = nameNeighboursAndDeriveEdges(oc, scope, toolShape, faceNames, faceAncestry)
     Object.assign(edgeNames, edgeResult.edgeNames)
     Object.assign(edgeAncestry, edgeResult.edgeAncestry)
   } else {
@@ -372,7 +376,7 @@ export function solveExtrude(
     let handleDir: number[] | null = null
     let handleBase: number[] | null = null
     if (usingFaces) {
-      const n = faceNormal(oc, scope, cqFaces[0])
+      const n = profileNormal()
       handleDir = direction === 'reverse' ? (n.map((c) => -c) as Vec3) : n
       handleBase = faceCentroid(oc, scope, cqFaces[0])
     } else if (firstPt !== null && allLoops.length > 0) {

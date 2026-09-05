@@ -15,7 +15,7 @@ import { bestDescriptorMatch, type GeomDescriptor } from '../geomDescriptor'
 import { resolveBody, resolveBodyIds } from './shared'
 import { resplitBody } from './bodySplit'
 import { bodyFrame, edgeRepresentativePoint } from '../occ/tessellation'
-import { faceCentroid, faceNormal, edgeToGeom, SubShapeDedup, type Vec3 } from '../occ/primitives'
+import { faceCentroid, faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
   applyFilletWithLineage,
@@ -173,6 +173,28 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
 }
 
 /**
+ * Per-body EdgeIndex cache for one solve. Building the index explores every edge
+ * of a body and computes geometry, a hash, classifiers and a bodyFrame, so the
+ * two callers that resolve several refs across several bodies must share one
+ * (L11). One instance per feature solve; it holds scope-tracked shapes.
+ */
+export function makeEdgeIndexCache(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+): (body: Body) => EdgeIndex {
+  const indexCache = new Map<string, EdgeIndex>()
+  return (body: Body): EdgeIndex => {
+    let idx = indexCache.get(body.id)
+    if (idx === undefined) {
+      idx = buildEdgeIndex(oc, scope, table, body)
+      indexCache.set(body.id, idx)
+    }
+    return idx
+  }
+}
+
+/**
  * Descriptor-tier face picker (the @gdf| half of `resolveFaceToEdges`).
  * Pure: returns the winning candidate or undefined when the match is
  * tight-ambiguous or a near-tie (fail-safe -- the caller returns no edges
@@ -315,7 +337,11 @@ function resolveByStableAncestry(
   return undefined
 }
 
-/** Resolve edge queries to OCC edges on a body (mirrors `_resolve_fillet_edges`). */
+/**
+ * Resolve edge queries to OCC edges on a body (mirrors `_resolve_fillet_edges`).
+ * Builds a fresh index; use `makeEdgeIndexCache` when resolving more than one
+ * ref against the same body.
+ */
 export function resolveFilletEdges(
   oc: OccModule,
   scope: DisposeScope,
@@ -356,12 +382,22 @@ function edgeHandleGeometry(
   mid.delete()
 
   const normals: Vec3[] = []
+  // One face walk building an edge-identity -> faces index, then a single
+  // lookup -- today this explored every face and every edge of each face to
+  // test one IsSame (L15). The review's TopExp.MapShapesAndAncestors is not
+  // implementable in this build: TopTools_IndexedDataMapOfShapeListOfShape is
+  // not a bound class (occ/booleans.ts:9-11), so the SubShapeMultiIndex shape
+  // deriveEdgeNames already uses gives the same asymptotics with no missing
+  // binding. The two-normal cap is the first two entries of the bucket, in
+  // face-explorer order, so the anchor direction is unchanged.
+  const facesByEdge = new SubShapeMultiIndex<OccShape>()
   for (const face of exploreFaces(oc, scope, shape)) {
-    const owns = exploreEdges(oc, scope, face).some((e) =>
-      (e as OccSubShape).IsSame(edge as OccSubShape))
-    if (!owns) continue
+    for (const fe of exploreEdges(oc, scope, face)) {
+      facesByEdge.add(fe as OccSubShape, face)
+    }
+  }
+  for (const face of facesByEdge.get(edge as OccSubShape).slice(0, 2)) {
     normals.push(faceNormal(oc, scope, face))
-    if (normals.length === 2) break
   }
   if (normals.length === 0) return null
   const sum: Vec3 = normals.reduce<Vec3>((a, n) => [a[0] + n[0], a[1] + n[1], a[2] + n[2]], [0, 0, 0])
@@ -391,21 +427,11 @@ function applyEdgeFeature(
   if (Object.keys(bodyStore).length === 0) throw new Error(`${featureKind}: no bodies in body_store`)
 
   const sourceBody = (feature.source_body as string) ?? ''
-  const indexCache = new Map<string, EdgeIndex>()
-  const indexFor = (bid: string): EdgeIndex => {
-    let idx = indexCache.get(bid)
-    if (idx === undefined) {
-      const body = bodyStore[bid]
-      if (body === undefined) throw new Error(`${featureKind}: source body '${bid}' not found`)
-      idx = buildEdgeIndex(oc, scope, table, body)
-      indexCache.set(bid, idx)
-    }
-    return idx
-  }
+  const indexFor = makeEdgeIndexCache(oc, scope, table)
   const contains = (bid: string, q: string): boolean => {
     const body = bodyStore[bid]
     if (body === undefined || body.shape === null) return false
-    return resolveEdgesWithIndex(oc, scope, table, body, indexFor(bid), [q], bodyStore).length > 0
+    return resolveEdgesWithIndex(oc, scope, table, body, indexFor(body), [q], bodyStore).length > 0
   }
 
   const groups = new Map<string, string[]>()
@@ -488,7 +514,7 @@ function applyEdgeFeature(
       continue
     }
 
-    const byQuery = resolveEdgesByQuery(oc, scope, table, body, indexFor(bid), qlist, bodyStore)
+    const byQuery = resolveEdgesByQuery(oc, scope, table, body, indexFor(body), qlist, bodyStore)
     const topoEdges: OccShape[] = []
     const dedup = new SubShapeDedup()
     const queryOf = new Map<OccShape, string>()  // edge -> the query that named it

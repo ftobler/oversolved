@@ -14,7 +14,7 @@
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
 import { mintFaceUuid, importedInstanceFacePath } from '../constructionName'
-import { deriveEdgeNames, nameFacesFromNeighbours } from './constructionLineage'
+import { nameNeighboursAndDeriveEdges } from './constructionLineage'
 import { faceGh } from './lineageHash'
 
 export interface ImportedNameMaps {
@@ -85,9 +85,7 @@ export function importedNameMaps(
   // A face the transfer map did not cover (a sewn or healed face, or a shell
   // the reader rebuilt) is named off its named neighbours instead, so the edges
   // around it do not all fall back to the body-wide ancestral string. Must run
-  // before `deriveEdgeNames`, which needs both faces of an edge named.
-  nameFacesFromNeighbours(oc, scope, shape, faceNames, faceAncestry)
-
-  const { edgeNames, edgeAncestry } = deriveEdgeNames(oc, scope, shape, faceNames, faceAncestry)
+  // before the edge derivation, which needs both faces of an edge named.
+  const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, shape, faceNames, faceAncestry)
   return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }

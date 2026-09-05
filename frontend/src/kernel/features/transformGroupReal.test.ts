@@ -389,6 +389,66 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
+    it('the 2x2 array instance faces match by the unplaced index, never by IsPartner', () => {
+      /**
+       * M37 Change 2b fast-path assertion. IsPartner is only called from
+       * transformLineage, so a zero count across the whole solve proves the
+       * placement-stripped SubShapeIndexMap replaced the scan. A hit also means
+       * the transformed image and the shell-oriented face share a TShape, which
+       * is the docstring claim at transformLineage.ts:46-48; a miss would have
+       * thrown "no shell-oriented partner" and failed the solve.
+       */
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const repo = new Repository()
+        repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
+        repo.register('dir_y', { start: [0, 0, 0], end: [0, 1, 0] })
+        const bodyStore: Record<string, Body> = {
+          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
+        }
+        const shapeClass = (
+          occ as unknown as {
+            TopoDS_Shape: { prototype: { IsPartner: (o: unknown) => boolean } }
+          }
+        ).TopoDS_Shape
+        let partnerCalls = 0
+        const original = shapeClass.prototype.IsPartner
+        shapeClass.prototype.IsPartner = function (this: unknown, o: unknown): boolean {
+          partnerCalls++
+          return original.call(this, o)
+        }
+        try {
+          // Prove the spy intercepts BEFORE the solve: a silent prototype-chain
+          // miss would make the zero assertion below pass vacuously.
+          const E = occ.TopAbs_ShapeEnum
+          const exp = scope.track(new occ.TopExp_Explorer_2(table.get<OccShape>(bodyStore.body_s.shape!), E.TopAbs_FACE, E.TopAbs_SHAPE))
+          const firstFace = scope.track(occ.TopoDS.Face_1(exp.Current()))
+          shapeClass.prototype.IsPartner.call(firstFace, firstFace)
+          expect(partnerCalls).toBe(1)
+          partnerCalls = 0
+
+          const result = solveArray(occ, scope, table, {
+            id: 'arr1',
+            array: {
+              source_body: 'body_s',
+              mode: 'rectangular',
+              count_x: 2, pitch_x: 15, direction_x_query: '@dir_x',
+              count_y: 2, pitch_y: 15, direction_y_query: '@dir_y',
+              include_source: true,
+              operation: 'add',
+            },
+          }, repo, bodyStore)
+          expect(result.status).toBe('ok')
+          expect(partnerCalls).toBe(0)
+        } finally {
+          shapeClass.prototype.IsPartner = original
+        }
+      } finally {
+        scope.dispose()
+      }
+    })
+
     // ─── Transform: combined rotation + translation ───
 
     it('transform_rotate_translate_replace applies rotation then translation', () => {

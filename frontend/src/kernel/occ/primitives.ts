@@ -14,7 +14,7 @@
  */
 
 import type { DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccOrientedShape, OccSubShape } from './occTypes'
+import type { OccModule, OccShape, OccOrientedShape, OccSubShape, OccSurfaceAdaptor } from './occTypes'
 import type { EdgeData } from '@/types/cad'
 
 export type Vec3 = [number, number, number]
@@ -522,6 +522,54 @@ export function tessellateFace(
 
 export type SurfaceType = 'flatface' | 'cylinderface' | 'coneface' | 'sphereface' | 'torusface' | 'face'
 
+/** The GeomAbs_SurfaceType enum mapping, factored so every reader of an adaptor
+ *  shares one copy (`faceSurfaceType` and `faceSurfaceTypeAndNormal` both call
+ *  it). A surface type outside the six modelled kinds collapses to 'face'. */
+function surfaceTypeOf(oc: OccModule, adaptor: OccSurfaceAdaptor): SurfaceType {
+  const t = adaptor.GetType().value
+  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Plane.value) return 'flatface'
+  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) return 'cylinderface'
+  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Cone.value) return 'coneface'
+  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Sphere.value) return 'sphereface'
+  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Torus.value) return 'torusface'
+  return 'face'
+}
+
+/** The outward normal read off an adaptor the caller already built, with the
+ *  single `IsNormalDefined` refusal every normal reader shares. The REVERSED
+ *  sign flip and the throw message are pinned by primitivesReal.test.ts. */
+function normalFromAdaptor(oc: OccModule, scope: DisposeScope, adaptor: OccSurfaceAdaptor, face: OccShape): Vec3 {
+  const u = (adaptor.FirstUParameter() + adaptor.LastUParameter()) / 2
+  const v = (adaptor.FirstVParameter() + adaptor.LastVParameter()) / 2
+  const props = scope.track(new oc.BRepLProp_SLProps_1(adaptor, u, v, 1, 1e-9))
+  if (!props.IsNormalDefined()) {
+    const kind = adaptor.GetType().value
+    throw new Error(`faceNormal: normal is not defined at the UV midpoint (surface type ${kind})`)
+  }
+  const n = props.Normal()
+  const sign = isReversed(oc, face) ? -1 : 1
+  const out: Vec3 = [n.X() * sign, n.Y() * sign, n.Z() * sign]
+  n.delete()
+  return out
+}
+
+export function faceSurfaceType(oc: OccModule, scope: DisposeScope, face: OccShape): SurfaceType {
+  return surfaceTypeOf(oc, scope.track(new oc.BRepAdaptor_Surface_2(face, true)))
+}
+
+/**
+ * Surface type + outward normal from ONE BRepAdaptor_Surface. `faceSortKey`
+ * wants both for every face of a shape, and building the adaptor twice per face
+ * was the largest single term in the face-pick cost (M45). `faceNormal` and
+ * `faceSurfaceType` stay as they are for the callers that want one.
+ */
+export function faceSurfaceTypeAndNormal(
+  oc: OccModule, scope: DisposeScope, face: OccShape,
+): { surfaceType: SurfaceType; normal: Vec3 } {
+  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  return { surfaceType: surfaceTypeOf(oc, adaptor), normal: normalFromAdaptor(oc, scope, adaptor, face) }
+}
+
 export function faceCentroid(oc: OccModule, scope: DisposeScope, face: OccShape): Vec3 {
   const props = scope.track(new oc.GProp_GProps_1())
   oc.BRepGProp.SurfaceProperties_1(face, props, false, false)
@@ -549,17 +597,6 @@ export function solidCentroid(oc: OccModule, scope: DisposeScope, solid: OccShap
   const out: Vec3 = [c.X(), c.Y(), c.Z()]
   c.delete()
   return out
-}
-
-export function faceSurfaceType(oc: OccModule, scope: DisposeScope, face: OccShape): SurfaceType {
-  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
-  const t = adaptor.GetType().value
-  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Plane.value) return 'flatface'
-  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) return 'cylinderface'
-  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Cone.value) return 'coneface'
-  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Sphere.value) return 'sphereface'
-  if (t === oc.GeomAbs_SurfaceType.GeomAbs_Torus.value) return 'torusface'
-  return 'face'
 }
 
 /**
@@ -595,19 +632,7 @@ function isReversed(oc: OccModule, face: OccShape): boolean {
  * orientation-aware normal. Verified sign-for-sign against the Python box.
  */
 export function faceNormal(oc: OccModule, scope: DisposeScope, face: OccShape): Vec3 {
-  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
-  const u = (adaptor.FirstUParameter() + adaptor.LastUParameter()) / 2
-  const v = (adaptor.FirstVParameter() + adaptor.LastVParameter()) / 2
-  const props = scope.track(new oc.BRepLProp_SLProps_1(adaptor, u, v, 1, 1e-9))
-  if (!props.IsNormalDefined()) {
-    const kind = adaptor.GetType().value
-    throw new Error(`faceNormal: normal is not defined at the UV midpoint (surface type ${kind})`)
-  }
-  const n = props.Normal()
-  const sign = isReversed(oc, face) ? -1 : 1
-  const out: Vec3 = [n.X() * sign, n.Y() * sign, n.Z() * sign]
-  n.delete()
-  return out
+  return normalFromAdaptor(oc, scope, scope.track(new oc.BRepAdaptor_Surface_2(face, true)), face)
 }
 
 /**
@@ -849,6 +874,16 @@ export class SubShapeDedup {
     bucket.push(shape)
     return true
   }
+  // Pure membership test, read-only. `add` doubles as one only while the query
+  // set never grows; the boolean lineage passes pre-seed a pool then query NEW
+  // shapes against it, where `add` would register the queries and reclassify
+  // their second explorer occurrence (every shared new edge appears twice).
+  has(shape: OccSubShape): boolean {
+    const hashFn = (shape as unknown as { HashCode?: (n: number) => number }).HashCode
+    if (typeof hashFn !== 'function') return this.flat.some((u) => u.IsSame(shape))
+    const bucket = this.buckets.get(hashFn.call(shape, SHAPE_HASH_UPPER))
+    return bucket !== undefined && bucket.some((u) => u.IsSame(shape))
+  }
 }
 
 /**
@@ -877,6 +912,81 @@ export class SubShapeIndexMap {
     if (bucket === undefined) return -1
     const hit = bucket.find((b) => b.shape.IsSame(shape))
     return hit ? hit.index : -1
+  }
+}
+
+/**
+ * Every value registered under a sub-shape's topological identity, not just the
+ * first -- the multi-valued counterpart to `SubShapeIndexMap`. Same HashCode
+ * bucketing, same IsSame bucket confirm, so a `pairs.filter((p) => x.IsSame(p.k))`
+ * inside a loop over `pairs`'s own key space collapses from O(n^2) crossings to
+ * O(n) hashes.
+ *
+ * `stepIo`'s `UnplacedFaceIndex` hand-rolls this same map over a
+ * `SubShapeIndexMap`; it is left alone because its identity semantics are
+ * placement-sensitive in ways this map is not, but the general shape is here.
+ */
+export class SubShapeMultiIndex<T> {
+  private readonly buckets = new Map<number, { shape: OccSubShape; values: T[] }[]>()
+  // Record `shape -> value`, appending to the identity's value list so `get`
+  // returns values in insertion order (Change 4b's `find(!fromTool) ?? matches[0]`
+  // tie-break depends on it).
+  add(shape: OccSubShape, value: T): void {
+    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const bucket = this.buckets.get(key)
+    if (bucket === undefined) {
+      this.buckets.set(key, [{ shape, values: [value] }])
+      return
+    }
+    const entry = bucket.find((b) => b.shape.IsSame(shape))
+    if (entry !== undefined) {
+      entry.values.push(value)
+      return
+    }
+    bucket.push({ shape, values: [value] })
+  }
+  // Every value registered for this identity, or [] when unknown.
+  get(shape: OccSubShape): readonly T[] {
+    const bucket = this.buckets.get(shape.HashCode(SHAPE_HASH_UPPER))
+    if (bucket === undefined) return []
+    const entry = bucket.find((b) => b.shape.IsSame(shape))
+    return entry !== undefined ? entry.values : []
+  }
+}
+
+/**
+ * Strip a shape's placement, so `IsSame` and `HashCode` compare TShapes alone.
+ *
+ * Needed because a STEP file with several roots comes back with each root under
+ * its own `TopLoc_Location`, and the transfer binders hold the UNPLACED faces:
+ * across a two-solid file, binder face vs explorer face is `IsPartner` for all
+ * 12 and `IsSame` for none, so a plain `SubShapeIndexMap` silently matched
+ * nothing and the whole import went unnamed. Both sides are normalised here.
+ *
+ * Two placements of ONE part (a repeated assembly instance) therefore collapse
+ * to the same key. That is handled, not tolerated: `UnplacedFaceIndex` hands
+ * the entity id to every instance, and the per-solid index folded into the UUID
+ * path keeps their queries apart.
+ *
+ * `keep` copies live in `scope` because the index holds them; `borrow` is for a
+ * lookup that ends inside the callback, and releases immediately.
+ */
+export function unplacer(oc: OccModule, scope: DisposeScope): {
+  keep: (shape: OccShape) => OccSubShape
+  borrow: <T>(shape: OccShape, read: (bare: OccSubShape) => T) => T
+} {
+  const identity = scope.track(new oc.TopLoc_Location_1())
+  const strip = (shape: OccShape): OccSubShape => (shape as OccSubShape).Located(identity) as OccSubShape
+  return {
+    keep: (shape) => scope.track(strip(shape)),
+    borrow: (shape, read) => {
+      const bare = strip(shape)
+      try {
+        return read(bare)
+      } finally {
+        bare.delete()
+      }
+    },
   }
 }
 

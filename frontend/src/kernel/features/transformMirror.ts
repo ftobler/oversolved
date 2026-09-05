@@ -15,7 +15,7 @@ import type { PlaneLike } from './shared'
 import { resolveBody, resolveBodyRefList } from './shared'
 import { makeMirrorTrsf, makeTranslationTrsf, makeRotationTrsf, makeScaleTrsf } from '../occ/transforms'
 import { booleanWithDiff } from '../occ/booleans'
-import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesForTransformedCopy, type NameMaps } from '../occ/transformLineage'
+import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
 
@@ -169,6 +169,9 @@ export function solveTransform(
       edgeNames: sourceBody.edge_names ?? {},
       edgeAncestry: sourceBody.edge_ancestry ?? {},
     }
+    // One transform copy per source body, so there is nothing per-instance to
+    // hoist: the source rows are read once here, per body (M37 Change 2a).
+    const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
     const { shape: newShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, combined)
 
     if (operation === 'replace') {
@@ -196,7 +199,7 @@ export function solveTransform(
     // UUIDs from, so two picked bodies cannot end up sharing face/edge UUIDs.
     // The new-body ids all share one base: `registerSplitBodies`' collision walk
     // then composes them into one flat, gap-free `body_<feature>[_n]` run.
-    const names = rebuildNamesForTransformedCopy(oc, scope, newShape, sourceShape, sourceNames, featureId, index, builder)
+    const names = rebuildNamesForTransformedCopy(oc, scope, newShape, rows, featureId, index, builder)
     bodyIds.push(...registerSplitBodies(oc, scope, table, bodyStore, scope.track(newShape), {
       id: 'body_' + featureId, createdBy: featureId, sketchId: sourceBody.sketch_id, ...names,
     }))
@@ -267,6 +270,9 @@ export function solveMirror(
     edgeNames: sourceBody.edge_names ?? {},
     edgeAncestry: sourceBody.edge_ancestry ?? {},
   }
+  // One mirror copy of one source body: no per-instance repetition, so the rows
+  // are simply read once here (M37 Change 2a).
+  const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
   if (Math.hypot(normal[0], normal[1], normal[2]) < 1e-10) {
     throw new Error('mirror: plane normal must be a non-zero vector')
   }
@@ -277,7 +283,7 @@ export function solveMirror(
   // UUIDs so existing picks survive. When spawning a new body, mint fresh UUIDs.
   const mirroredNames = !keepOriginal
     ? rekeyNamesForTransformedBody(oc, scope, mirrored, sourceShape, sourceNames, builder)
-    : rebuildNamesForTransformedCopy(oc, scope, mirrored, sourceShape, sourceNames, featureId, 0, builder)
+    : rebuildNamesForTransformedCopy(oc, scope, mirrored, rows, featureId, 0, builder)
 
   if (!keepOriginal) {
     sourceBody.face_names = mirroredNames.faceNames

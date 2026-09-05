@@ -12,12 +12,12 @@
 // remain valid only while `scope` is open. The builder keeps `scope` open across post-boolean
 // ancestry registration (the same lifetime the diff already had in 2d's design).
 
-import { DisposeScope } from '../occ/disposeScope'
+import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { Body } from '../types3d'
 import type { HandleTable } from '../occ/handleTable'
 import { resolveMergeTargets, brepDiffIsEmpty } from './shared'
-import { booleanWithDiff, volumeOf, countSolids } from '../occ/booleans'
+import { booleanWithDiff, countSolids, shapesIntersect } from '../occ/booleans'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
 
@@ -114,35 +114,13 @@ export function applyBodyOperation(
       const existingBody = bodyStore[bid]
       if (existingBody.shape === null) continue
       const oldShape = table.get<OccShape>(existingBody.shape)
-      // Skip targets the tool does not actually intersect (volume ~ 0).
-      // Use a bare BRepAlgoAPI_Common (no history, no unify) for speed.
-      const unifyOpts = { unifyFaces: !existingBody.imported }
-      try {
-        const probe = new DisposeScope()
-        try {
-          const algo = probe.track(new oc.BRepAlgoAPI_Common_1())
-          const args = probe.track(new oc.TopTools_ListOfShape_1())
-          args.Append_1(oldShape)
-          const tools = probe.track(new oc.TopTools_ListOfShape_1())
-          tools.Append_1(toolShape)
-          algo.SetArguments(args)
-          algo.SetTools(tools)
-          algo.SetToFillHistory(false)
-          algo.Build()
-          if (algo.IsDone()) {
-            const inter = algo.Shape()
-            probe.track(inter)
-            if (volumeOf(oc, probe, inter) < 1e-10) continue
-          }
-        } finally {
-          probe.dispose()
-        }
-      } catch {
-        // A failed probe is not evidence of disjointness: skipping here reported
-        // "does not intersect" for cuts that would succeed. Fall through to the
-        // real cut and let its own failure surface instead.
-      }
+      // Skip targets the tool does not actually intersect. A bare Common probe
+      // with history off; the verdict is a solid count, not a volume, so an
+      // open-shelled imported body is not read as disjoint (L5). A failed probe
+      // returns true, so nothing here can skip on a throw.
+      if (!shapesIntersect(oc, oldShape, toolShape)) continue
 
+      const unifyOpts = { unifyFaces: !existingBody.imported }
       const { shape: newShape, diff, faceOrigin } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
       scope.track(newShape)
 

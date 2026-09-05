@@ -45,9 +45,9 @@ import {
   healWire,
   wireEndpointGaps,
   SubShapeDedup,
+  SubShapeMultiIndex,
   type Vec3,
 } from './primitives'
-import { faceGh, edgeGh } from './lineageHash'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
 import { booleanWithHistory, cleanWithHistory, countSolids } from './booleans'
 import {
@@ -55,6 +55,7 @@ import {
   shapeNormalFrame,
   normalizedWorldKey,
   edgeMidpoint,
+  FaceEdgeTable,
   type NormalFrame,
 } from './constructionLineage'
 import { failLoud } from '@/stores/stateInvariants'
@@ -514,7 +515,7 @@ function capGeneratedFaces(
 function geometricCapFaces(
   oc: OccModule,
   scope: DisposeScope,
-  solid: OccShape,
+  faces: FaceEdgeTable,
   occFace: OccShape,
 ): { caps: { face: OccSubShape; which: 'start' | 'end' }[]; capRoleGhs: ReadonlySet<string> } {
   let pc: Vec3
@@ -527,24 +528,18 @@ function geometricCapFaces(
   } catch {
     return { caps: [], capRoleGhs: new Set() }
   }
-  const E = oc.TopAbs_ShapeEnum
   const candidates: { face: OccSubShape; d: number }[] = []
   const capRoleGhs = new Set<string>()
-  const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; fexp.More(); fexp.Next()) {
-    const raw = scope.track(fexp.Current())
-    const f = scope.track(oc.TopoDS.Face_1(raw))
-    let n: Vec3
-    let a: number
-    let c: Vec3
-    try {
-      if (faceSurfaceType(oc, scope, f) !== 'flatface') continue
-      n = faceNormal(oc, scope, f)
-      a = faceArea(oc, scope, f)
-      c = faceCentroid(oc, scope, f)
-    } catch {
-      continue
-    }
+  for (const row of faces.rows) {
+    // A row whose centroid/normal read failed (undefined UV-midpoint normal) is
+    // skipped exactly as the old per-face try/catch-continue over `solid` did.
+    if (row.gh === null) continue
+    const n = row.normal
+    const c = row.centroid
+    if (n === null || c === null) continue
+    const a = faces.area(row)
+    if (a === null) continue  // the area read failed -> same skip as the catch
+    if (faces.surfaceType(row) !== 'flatface') continue
     if (Math.abs(a - pa) > 1e-6 * Math.max(1, pa)) continue
     // Parallel (or anti-parallel): the face is a translation, not a rotation.
     const cross = [
@@ -554,7 +549,7 @@ function geometricCapFaces(
     ]
     if (Math.hypot(cross[0], cross[1], cross[2]) > 1e-6) continue
     // Only after passing the parallel test, classify as a cap candidate.
-    capRoleGhs.add(faceGh(oc, scope, f))
+    capRoleGhs.add(row.gh)
     // The centroid offset is along the profile normal only (the sweep leaves no
     // in-plane shift), so (c - pc) - d*pn is zero.
     const d = (c[0] - pc[0]) * pn[0] + (c[1] - pc[1]) * pn[1] + (c[2] - pc[2]) * pn[2]
@@ -564,7 +559,7 @@ function geometricCapFaces(
       (c[2] - pc[2]) - d * pn[2],
     )
     if (inPlane > 1e-6) continue
-    candidates.push({ face: f as OccSubShape, d })
+    candidates.push({ face: row.face as OccSubShape, d })
   }
   if (candidates.length !== 2) return { caps: [], capRoleGhs }
   // Sort by absolute distance so the cap coincident with the profile plane is
@@ -617,6 +612,9 @@ export function buildPrismLineageMap(
 ): LineageMaps {
   const E = oc.TopAbs_ShapeEnum
   const solid = scope.track(prismBuilder.Shape())
+  // The ONLY walk of `solid`: the cap pass, the main lineage loop and the
+  // neighbour pass all read this one table (L4).
+  const faces = FaceEdgeTable.read(oc, scope, solid)
 
   // Profile edges in explorer order, with their entity ids. entityForEdges
   // maps by geometry, not identity, so a healed wire's rebuilt edges still
@@ -635,6 +633,10 @@ export function buildPrismLineageMap(
   // can return a face whose orientation -- and therefore normal-sign-dependent
   // geom hash -- differs from the same face as it sits in the solid shell.
   const genFaces: { face: OccSubShape; eid: string }[] = []
+  // Multi, not single: one generated face can be reached from more than one
+  // profile edge, and the main loop's old genFaces.find took the FIRST -- so
+  // the index must too, hence get()[0] preserves the first-wins tie-break.
+  const genIdx = new SubShapeMultiIndex<{ face: OccSubShape; eid: string }>()
   for (let i = 0; i < profEdges.length; i++) {
     const eid = edgeEids[i]
     if (!eid) continue
@@ -648,7 +650,9 @@ export function buildPrismLineageMap(
       const gexp = scope.track(new oc.TopExp_Explorer_2(g, E.TopAbs_FACE, E.TopAbs_SHAPE))
       for (; gexp.More(); gexp.Next()) {
         const raw = scope.track(gexp.Current())
-        genFaces.push({ face: scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape, eid })
+        const entry = { face: scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape, eid }
+        genFaces.push(entry)
+        genIdx.add(entry.face, entry)
       }
     }
   }
@@ -665,7 +669,7 @@ export function buildPrismLineageMap(
   const capCandidates = createdBy ? capGeneratedFaces(oc, scope, prismBuilder) : []
   let capRoleGhs: ReadonlySet<string> | undefined
   if (createdBy && capCandidates.length < 2) {
-    const geo = geometricCapFaces(oc, scope, solid, occFace)
+    const geo = geometricCapFaces(oc, scope, faces, occFace)
     // Seed with the builder's own caps so the geometric fallback neither
     // re-adds one of them nor duplicates itself across the loop.
     const capSeen = new SubShapeDedup()
@@ -686,12 +690,14 @@ export function buildPrismLineageMap(
   const faceAncestry: Record<string, string[]> = {}
   const adjacency: Record<string, Set<string>> = {}  // edge gh -> set of adjacent face gh
   const edgeShapes: Record<string, OccShape> = {}  // edge gh -> a representative edge
-  const faceExp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; faceExp.More(); faceExp.Next()) {
-    const raw = scope.track(faceExp.Current())
-    const sf = scope.track(oc.TopoDS.Face_1(raw))
-    const gh = faceGh(oc, scope, sf)
-    const match = genFaces.find((gf) => (sf as OccSubShape).IsSame(gf.face))
+  for (const row of faces.rows) {
+    // Same fail-loud rule as the naming passes: the direct faceGh call sat at
+    // the top of every face iteration, and rows are explorer order, so the
+    // throw lands on the same face at the same point as before.
+    if (row.gh === null) throw row.ghError
+    const gh = row.gh
+    const sf = row.face
+    const match = genIdx.get(sf)[0]
     faceLineage[gh] = match !== undefined ? [match.eid] : []
     if (createdBy) {
       let uuid: string | null = null
@@ -699,6 +705,8 @@ export function buildPrismLineageMap(
         const slot = sketchId ? `${sketchId}/${match.eid}` : match.eid
         uuid = mintFaceUuid(sideFacePath(createdBy, slot))
       } else {
+        // capCandidates is at most two faces; a linear IsSame find over it is
+        // cheaper than an index build, so it stays a find.
         const cap = capCandidates.find((c) => (sf as OccSubShape).IsSame(c.face))
         if (cap) uuid = mintFaceUuid(capFacePath(createdBy, cap.which, groupIndex))
       }
@@ -707,12 +715,7 @@ export function buildPrismLineageMap(
         faceAncestry[uuid] = [...faceLineage[gh]]
       }
     }
-    const eExp = scope.track(new oc.TopExp_Explorer_2(sf, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-    for (; eExp.More(); eExp.Next()) {
-      const raw = scope.track(eExp.Current())
-      const edge = scope.track(oc.TopoDS.Edge_1(raw))
-      const egh = edgeGh(oc, scope, edge)
-      if (egh === null) continue
+    for (const { egh, edge } of row.edges) {
       ;(adjacency[egh] ??= new Set()).add(gh)
       edgeShapes[egh] ??= edge
     }
@@ -725,7 +728,7 @@ export function buildPrismLineageMap(
   // edge named. Cap-role faces are skipped: their only legitimate name comes
   // from the cap path, and a cap the path could not reach stays unnamed so the
   // output stays byte-identical to the pre-neighbour-pass wire.
-  nameFacesFromNeighbours(oc, scope, solid, faceNames, faceAncestry, capRoleGhs)
+  nameFacesFromNeighbours(oc, scope, faces, faceNames, faceAncestry, capRoleGhs)
 
   // solid edge -> tokens, gathered from adjacent faces' ancestry.
   const edgeLineage: Record<string, string[]> = {}

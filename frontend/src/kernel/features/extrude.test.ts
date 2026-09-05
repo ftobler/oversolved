@@ -110,6 +110,26 @@ describe('solveExtrude guard paths', () => {
     expect(result.mesh_warning).toMatch(/no closed profile/)
   })
 
+  it('does not read a face normal on a sketch-profile solve', () => {
+    // L2 fence: profileNormal is a lazy memo, and the three sites that read it
+    // are all inside face-profile guards. An eager hoist would index cqFaces[0]
+    // on this empty profile and throw before the "no closed profile" return.
+    const repo = new Repository()
+    repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+    repo.register('_topo_sk', { surfaces: [] })
+    const result = solveExtrude(
+      oc,
+      scope,
+      table,
+      { id: 'f1', extrude: { sketch: '$sk', distance: 3 } },
+      repo,
+      {},
+    )
+    expect(result.status).toBe('error')
+    expect(result.exception).toMatch(/no closed profile/)
+    expect(vi.mocked(faceNormal)).not.toHaveBeenCalled()
+  })
+
   it('refuses a profile mixing a picked body face with sketch loops', () => {
     // Both a face ref and a loop ref resolved; only one branch below can consume
     // them, so the mixed pick must be refused by name instead of silently

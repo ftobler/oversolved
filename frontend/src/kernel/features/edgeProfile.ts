@@ -18,7 +18,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { bodyIdOf, parseAncestry } from '../query'
 import { makeWire } from '../occ/primitives'
-import { resolveFilletEdges } from './filletChamfer'
+import { makeEdgeIndexCache, resolveEdgesWithIndex } from './filletChamfer'
 
 /**
  * True when a profile ref addresses a B-rep edge rather than a sketch/face.
@@ -74,6 +74,10 @@ export function resolveProfileEdges(
   edgeRefs: string[],
   bodyStore: Record<string, Body>,
 ): OccShape[] {
+  // One edge index per body for the whole ref set: a fresh index build explores
+  // every edge and computes geometry, a hash, classifiers and a bodyFrame, and
+  // the double loop below can reach the same body once per ref (L11).
+  const indexFor = makeEdgeIndexCache(oc, scope, table)
   const edges: OccShape[] = []
   for (const refStr of edgeRefs) {
     const named = bodyIdOf(refStr, bodyStore)
@@ -85,7 +89,7 @@ export function resolveProfileEdges(
     for (const bid of order) {
       const body = bodyStore[bid]
       if (body === undefined || body.shape === null) continue
-      resolved = resolveFilletEdges(oc, scope, table, body, [refStr], bodyStore)
+      resolved = resolveEdgesWithIndex(oc, scope, table, body, indexFor(body), [refStr], bodyStore)
       if (resolved.length > 0) break
     }
     if (resolved.length === 0) {

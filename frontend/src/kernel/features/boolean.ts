@@ -21,7 +21,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { resolveBody, brepDiffIsEmpty } from './shared'
-import { booleanWithDiff, volumeOf } from '../occ/booleans'
+import { booleanWithDiff, volumeOf, shapesIntersect } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 
@@ -99,22 +99,10 @@ export function solveBoolean(
     // overlap before folding so a disjoint tool is neither consumed nor left
     // silent. A subtract of a non-overlapping tool would otherwise eat the body
     // with no visible effect; an intersect of disjoint bodies yields an empty
-    // compound that must not be reported as 'ok'.
+    // compound that must not be reported as 'ok'. The probe is a bare Common
+    // with history off (M18); the fuse path never probed and must not start.
     if (op === 'cut' || op === 'common') {
-      const probe = new DisposeScope()
-      let intersects = true
-      try {
-        const { shape: inter } = booleanWithDiff(oc, probe, resultShape, toolShape, 'common', { unifyFaces })
-        probe.track(inter)
-        if (volumeOf(oc, probe, inter) < 1e-10) intersects = false
-      } catch {
-        // A failed probe is not evidence of disjointness: let the real boolean
-        // run and surface its own failure rather than skipping the tool.
-        intersects = true
-      } finally {
-        probe.dispose()
-      }
-      if (!intersects) {
+      if (!shapesIntersect(oc, resultShape, toolShape)) {
         result.solver_warning = `${operation}: tool '${toolRef}' does not intersect the target; skipped`
         continue
       }

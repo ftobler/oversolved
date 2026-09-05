@@ -10,15 +10,14 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from './occTypes'
-import { faceCentroid, edgeToGeom } from './primitives'
+import { faceCentroid, edgeToGeom, SubShapeIndexMap } from './primitives'
 import { edgeGeometryHash } from '../geomHash'
 import { faceGh, edgeGh } from './lineageHash'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
 import {
-  deriveEdgeNames,
+  nameNeighboursAndDeriveEdges,
   faceSplitKey,
-  nameFacesFromNeighbours,
   shapeNormalFrame,
   normalizedWorldKey,
   type NormalFrame,
@@ -97,10 +96,13 @@ export function extractNames(
   oc: OccModule,
   scope: DisposeScope,
   maker: OccEdgeModifierMaker,
-  oldShape: OccShape,
   newShape: OccShape,
   modifiedEdges: OccShape[],
   old: OldNames,
+  oldFaces: OccShape[],
+  newFaces: OccShape[],
+  oldFaceIdx: SubShapeIndexMap,
+  oldFaceModified: Map<number, OccShape[]>,
 ): NewNames {
   const faceNames: Names = {}
   const faceAncestry: Lineage = {}
@@ -119,15 +121,22 @@ export function extractNames(
   // outward. faceGh is normal-signed, so the two disagree for any face the op
   // reshaped, leaving its edges unnamed. Canonicalize every minted key to the
   // built-solid face reached by IsSame (orientation-independent identity).
-  const builtFaces = exploreFaces(oc, scope, newShape)
+  const builtFaces = newFaces
+  const builtIdx = new SubShapeIndexMap()
+  const builtGhMemo = new Array<string>(builtFaces.length)
+  builtFaces.forEach((bf, i) => builtIdx.set(bf as OccSubShape, i))
   const builtGh = (f: OccShape): string => {
-    const same = builtFaces.find((bf) => (bf as OccSubShape).IsSame(f as OccSubShape))
-    return faceGh(oc, scope, asFace(oc, same ?? f))
+    // `same ?? f` fallback: a Modified() image with no built-solid counterpart
+    // is still hashed as itself.
+    const at = builtIdx.get(f as OccSubShape)
+    if (at >= 0) return (builtGhMemo[at] ??= faceGh(oc, scope, asFace(oc, builtFaces[at])))
+    return faceGh(oc, scope, asFace(oc, f))
   }
 
   // Step 1: old named faces -> output faces via Modified() (subshape identity).
-  for (const oldF of exploreFaces(oc, scope, oldShape)) {
-    const uuid = old.faceNames[faceGh(oc, scope, asFace(oc, oldF))]
+  for (const oldF of oldFaces) {
+    const oldGh = faceGh(oc, scope, asFace(oc, oldF))
+    const uuid = old.faceNames[oldGh]
     if (!uuid) continue
     let deleted = false
     try {
@@ -137,10 +146,10 @@ export function extractNames(
     }
     if (deleted) continue
     const ancestry = old.faceAncestry[uuid] ?? []
-    const mods = drainList(scope, maker.Modified(oldF))
+    const mods = oldFaceModified.get(oldFaceIdx.get(oldF as OccSubShape)) ?? []
     if (mods.length === 0) {
       // Unchanged face: its geom-hash key persists, so the UUID carries by key.
-      faceNames[faceGh(oc, scope, asFace(oc, oldF))] = uuid
+      faceNames[oldGh] = uuid
       faceAncestry[uuid] = [...ancestry]
     } else if (mods.length === 1) {
       const key = builtGh(mods[0])
@@ -208,9 +217,7 @@ export function extractNames(
 
   // Step 3: the corner patches steps 1-2 cannot reach (generated from a vertex
   // where blends meet), named off their neighbours so their edges stay pickable.
-  nameFacesFromNeighbours(oc, scope, newShape, faceNames, faceAncestry)
-
-  const { edgeNames, edgeAncestry } = deriveEdgeNames(oc, scope, newShape, faceNames, faceAncestry)
+  const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, newShape, faceNames, faceAncestry)
   return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }
 
@@ -223,13 +230,18 @@ function edgeModifierDiff(
   oc: OccModule,
   scope: DisposeScope,
   maker: OccEdgeModifierMaker,
-  oldShape: OccShape,
-  newShape: OccShape,
+  oldFaces: OccShape[],
+  oldEdges: OccShape[],
+  newFaces: OccShape[],
+  newEdges: OccShape[],
+  oldFaceIdx: SubShapeIndexMap,
+  oldFaceModified: Map<number, OccShape[]>,
 ): BrepDiff {
   const diff = emptyBrepDiff()
 
   const classify = (
     inputs: OccShape[],
+    modsOf: (s: OccShape) => OccShape[],
   ): { modified: OccShape[]; deleted: OccShape[]; preimages: OccShape[] } => {
     const modified: OccShape[] = []
     const deleted: OccShape[] = []
@@ -245,7 +257,7 @@ function edgeModifierDiff(
         deleted.push(s)
         continue
       }
-      const mods = drainList(scope, maker.Modified(s))
+      const mods = modsOf(s)
       if (mods.length > 0) {
         modified.push(s)
         preimages.push(...mods)
@@ -256,8 +268,10 @@ function edgeModifierDiff(
     return { modified, deleted, preimages }
   }
 
-  const faces = classify(exploreFaces(oc, scope, oldShape))
-  const edges = classify(exploreEdges(oc, scope, oldShape))
+  // Faces read the shared drain from applyEdgeModifier; edges keep their own
+  // drain here (the two stay separate maps).
+  const faces = classify(oldFaces, (s) => oldFaceModified.get(oldFaceIdx.get(s as OccSubShape)) ?? [])
+  const edges = classify(oldEdges, (s) => drainList(scope, maker.Modified(s)))
   diff.modified_input_faces = faces.modified
   diff.deleted_input_faces = faces.deleted
   diff.modified_input_edges = edges.modified
@@ -315,9 +329,9 @@ function edgeModifierDiff(
     return { fresh, inherited }
   }
 
-  const oldEdgeKeys = new Set(exploreEdges(oc, scope, oldShape).flatMap((e) => edgeGeomKeys(e)))
-  const of = walk(exploreFaces(oc, scope, newShape), faces.preimages)
-  const oe = walk(exploreEdges(oc, scope, newShape), edges.preimages, oldEdgeKeys, edgeGeomKeys)
+  const oldEdgeKeys = new Set(oldEdges.flatMap((e) => edgeGeomKeys(e)))
+  const of = walk(newFaces, faces.preimages)
+  const oe = walk(newEdges, edges.preimages, oldEdgeKeys, edgeGeomKeys)
   diff.new_faces = of.fresh
   diff.inherited_faces = of.inherited
   diff.new_edges = oe.fresh
@@ -350,7 +364,11 @@ function applyEdgeModifier(
 
   if ((shape as unknown as { IsNull(): boolean }).IsNull()) return fail('null_shape')
 
-  const shapeEdges = exploreEdges(oc, scope, shape)
+  // Old-shape face/edge walks hoisted here for extractNames, edgeModifierDiff
+  // and the membership check below -- together they explored the same shape up
+  // to five times per solve, minting fresh proxies each pass (L15).
+  const oldFaces = exploreFaces(oc, scope, shape)
+  const oldEdges = exploreEdges(oc, scope, shape)
   let maker: OccEdgeModifierMaker
   try {
     maker = scope.track(spec.makeMaker(shape))
@@ -362,7 +380,7 @@ function applyEdgeModifier(
   const skippedIdx: number[] = []
   for (let i = 0; i < edges.length; i++) {
     const edge = edges[i]
-    if (!shapeEdges.some((se) => (se as OccSubShape).IsSame(edge as OccSubShape))) {
+    if (!oldEdges.some((se) => (se as OccSubShape).IsSame(edge as OccSubShape))) {
       // Edge not found in the built shape -- caller should report as unresolved.
       skippedIdx.push(i)
       continue
@@ -393,11 +411,26 @@ function applyEdgeModifier(
   let names: NewNames | null = null
   let diff: BrepDiff
   try {
+    // Drain the maker's Modified() history ONCE per old face, shared by
+    // extractNames and the diff classify -- both drained the same query per
+    // face today (L15). BRepFilletAPI is an unreliable narrator (see the
+    // geometry fallback in edgeModifierDiff), so this edit is last and alone:
+    // if the history is order- or call-count-sensitive, the shared drain
+    // shows up as a diff-count change in edgeModifierReal.test.ts with one
+    // candidate cause. The edge drain stays separate, in classify.
+    const oldFaceIdx = new SubShapeIndexMap()
+    oldFaces.forEach((f, i) => oldFaceIdx.set(f as OccSubShape, i))
+    const oldFaceModified = new Map<number, OccShape[]>()
+    for (const f of oldFaces) {
+      oldFaceModified.set(oldFaceIdx.get(f as OccSubShape), drainList(scope, maker.Modified(f)))
+    }
+    const newFaces = exploreFaces(oc, scope, built)
+    const newEdges = exploreEdges(oc, scope, built)
     if (trackLineage && oldNames !== null) {
-      names = extractNames(oc, scope, maker, shape, built, appliedEdges, oldNames)
+      names = extractNames(oc, scope, maker, built, appliedEdges, oldNames, oldFaces, newFaces, oldFaceIdx, oldFaceModified)
     }
     try {
-      diff = edgeModifierDiff(oc, scope, maker, shape, built)
+      diff = edgeModifierDiff(oc, scope, maker, oldFaces, oldEdges, newFaces, newEdges, oldFaceIdx, oldFaceModified)
     } catch {
       diff = emptyBrepDiff()
     }
