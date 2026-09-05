@@ -6,6 +6,11 @@ import { PickChip } from '@/components/sketch/PickChip'
 import dragHandleIcon from '@/assets/icons/toolbar-menu.svg'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
+// Count queryLabel calls so the memoization (L4) is observable: the label
+// computation must not rerun when values/features/partLabels are unchanged.
+const queryLabelSpy = vi.hoisted(() => vi.fn((query: string) => query))
+vi.mock('@/utils/query/queryLabel', () => ({ queryLabel: queryLabelSpy }))
+
 const SRC = join(__dirname, '..', '..', '..')
 
 beforeEach(() => {
@@ -296,6 +301,59 @@ describe('PickChip', () => {
         .map(f => f.slice(SRC.length + 1))
 
       expect(offenders).toEqual([])
+    })
+  })
+
+  describe('queryLabel memoization', () => {
+    beforeEach(() => {
+      queryLabelSpy.mockClear()
+    })
+
+    it('does not recompute labels when values/features/partLabels are unchanged', () => {
+      const features = [{ id: 'ex1', kind: 'extrude', label: 'Extrude 1' }]
+      const partLabels = { ex1: 'Part X' }
+      // Same reference across rerenders, like a chip whose data did not change.
+      const values = ['@ex1']
+      const { rerender } = render(
+        <PickChip
+          values={values}
+          isPicking={false}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+          features={features}
+          partLabels={partLabels}
+        />
+      )
+      const callsAfterMount = queryLabelSpy.mock.calls.length
+      expect(callsAfterMount).toBeGreaterThan(0)
+
+      // A re-render with fresh callback identities but identical label inputs
+      // must hit the memo, not re-run the label function per value.
+      rerender(
+        <PickChip
+          values={values}
+          isPicking={false}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+          features={features}
+          partLabels={partLabels}
+        />
+      )
+      expect(queryLabelSpy.mock.calls.length).toBe(callsAfterMount)
+
+      // A values change does recompute, once per value.
+      const moreValues = [...values, '@sk1']
+      rerender(
+        <PickChip
+          values={moreValues}
+          isPicking={false}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+          features={features}
+          partLabels={partLabels}
+        />
+      )
+      expect(queryLabelSpy.mock.calls.length).toBe(callsAfterMount + 2)
     })
   })
 

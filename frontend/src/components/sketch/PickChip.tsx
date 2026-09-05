@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import dragHandleIcon from '@/assets/icons/toolbar-menu.svg'
 import type { PartFeature } from '@/types/cad'
 import { queryLabel } from '@/utils/query/queryLabel'
@@ -29,6 +29,14 @@ export function PickChip({
   const clearChipSelection = useSketchEditorStore(s => s.clearChipSelection)
   const isEmpty = values.length === 0
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
+
+  // Each label is a parse plus a linear feature scan; PickFieldWidget hands us
+  // fresh callback identities every render, so without this memo the whole
+  // chip re-labelled on every keystroke elsewhere in the editor (g2-L4).
+  const labels = useMemo(
+    () => (features ? values.map(v => queryLabel(v, features, partLabels)) : null),
+    [values, features, partLabels],
+  )
 
   // Two effects so a values-only change does not flicker through clear→re-add.
   // Activate/deactivate: cleanup fires only on isPicking flipping false or unmount.
@@ -120,7 +128,7 @@ export function PickChip({
                   <img src={dragHandleIcon} alt="" draggable={false} />
                 </span>
               )}
-              <span className="feature-pick-chip-item-text">{features ? queryLabel(v, features, partLabels) : v}</span>
+              <span className="feature-pick-chip-item-text">{labels ? labels[i] : v}</span>
               <button
                 className="feature-pick-chip-item-remove"
                 onClick={(e) => { e.stopPropagation(); onRemove(i) }}
