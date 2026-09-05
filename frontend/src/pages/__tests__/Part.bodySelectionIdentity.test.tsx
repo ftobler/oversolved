@@ -201,4 +201,20 @@ describe('Add plane on a face selection', () => {
       })
     )
   })
+
+  it('defines an on_face plane from a flatface ancestry query', async () => {
+    // Real planar picks carry the OCC surface type as the type restriction
+    // (`:flatface`), which the old `:face` substring test never matched.
+    await renderPartInFeatureMode()
+
+    act(() => { useSketchEditorStore.getState().addToNormalSelection('?9;@ex1face0:flatface') })
+    fireEvent.click(screen.getByTitle('Add plane'))
+
+    expect(mockHandleMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'add_plane',
+        definition: { mode: 'on_face', face: '?9;@ex1face0:flatface' },
+      })
+    )
+  })
 })

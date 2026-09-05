@@ -5,6 +5,8 @@ import type { ViewportHandle } from '@/components/Viewport'
 import type { PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
 import { randomId, migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
+import { parseQuery } from '@/utils/query'
+import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { consumedSketchIds } from '@/utils/query/consumedSketches'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
@@ -605,15 +607,23 @@ export default function Part() {
     const featureId = randomId(18)
     const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
     const label = `plane ${planeCount + 1}`
-    const faceQuery = [...selection].find(id =>
-      // `?`-ancestry face queries (flatface/cylinderface/face), `face:` wrappers
-      // (owner attribution; stored as their inner query), and topo-fallback
-      // `@<bodyId>/face/<idx>` refs all resolve to a face in the kernel. A
-      // whole-body pick (`@body_...`) names no face and must not match.
-      (id.startsWith('?') && id.includes(':face'))
-      || id.startsWith('face:')
-      || parseTopoFallbackQuery(id)?.kind === 'face'
-    )
+    const faceQuery = [...selection].find(id => {
+      // `?`-ancestry face queries carry the OCC surface type as the type
+      // restriction (flatface/cylinderface/face, classified by the shared
+      // kernel classifier); `face:` wrappers (owner attribution; stored as
+      // their inner query) and topo-fallback `@<bodyId>/face/<idx>` refs also
+      // resolve to a face in the kernel. A whole-body pick (`@body_...`) names
+      // no face and must not match.
+      if (id.startsWith('?')) {
+        try {
+          const q = parseQuery(id)
+          return q.kind === 'ancestry' && isFaceRestriction(q.typeRestriction)
+        } catch {
+          return false
+        }
+      }
+      return id.startsWith('face:') || parseTopoFallbackQuery(id)?.kind === 'face'
+    })
     const definition = faceQuery
       ? { mode: 'on_face', face: stripSelectionWrapper(faceQuery) } as const
       : undefined
