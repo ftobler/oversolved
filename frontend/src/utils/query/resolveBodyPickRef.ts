@@ -1,3 +1,5 @@
+import { stripSelectionWrapper } from './selectionId'
+
 // Collapse a `body:`/`@.../` selection to a single segment, then coerce any
 // bare `@ref` into the canonical `@body_<...>` form. Inputs that match no
 // branch pass through. `@body_ex1_1/face/0` keeps its sibling suffix: the
@@ -20,7 +22,8 @@ function normalizeBodyRef(ref: string): string {
  * Picking a face of the body is the natural gesture, so a `face:` selection
  * yields its inner ancestry query and a `?` query passes through untouched:
  * both are body-exact and resolve to the owning body in the kernel
- * (`resolveBody` / `resolveBodyIds`).
+ * (`resolveBody` / `resolveBodyIds`). An `edge:` pick now yields its inner
+ * query too, through the shared wrapper stripper, and resolves the same way.
  *
  * The merge-target field used to have its own variant that mapped a `?` query
  * to `'@body_' + id.slice(1).split('/')[0]` -- meaningless string surgery on a
@@ -29,25 +32,19 @@ function normalizeBodyRef(ref: string): string {
  * resolve. The two fields want the same thing; there is one function.
  */
 export function resolveBodyPickRef(id: string): string {
-  if (id.startsWith('face:')) {
-    return id.split(':').slice(2).join(':')
+  if (id.startsWith('face:') || id.startsWith('edge:')) {
+    return stripSelectionWrapper(id)
   }
   return normalizeBodyRef(id)
 }
 
 /**
  * Convert a viewport selection ID to a revolve axis query. face/edge selections
- * keep their inner ancestry query; an entity selection becomes an absolute ref.
+ * keep their inner ancestry query; an entity/vertex selection becomes an
+ * absolute ref. That is exactly the shared wrapper strip, so the whole function
+ * is one call into it (entity, vertex and edge all used to be handled by
+ * hand-rolled copies that drifted).
  */
 export function resolveAxisQuery(selectionId: string): string {
-  if (selectionId.startsWith('face:')) {
-    return selectionId.split(':').slice(2).join(':')
-  }
-  if (selectionId.startsWith('entity:')) {
-    return '@' + selectionId.split(':').slice(1).join('/')
-  }
-  if (selectionId.startsWith('edge:')) {
-    return selectionId.split(':').slice(2).join(':')
-  }
-  return selectionId
+  return stripSelectionWrapper(selectionId)
 }

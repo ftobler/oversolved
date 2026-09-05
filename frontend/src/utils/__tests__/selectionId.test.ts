@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sel, selectionKey, parseSelectionId, selectionToQuery, emitAbsoluteSelectionQuery, parseTopoFallbackQuery, topoFallbackQuery } from '@/utils/query/selectionId'
+import { sel, selectionKey, parseSelectionId, selectionToQuery, emitAbsoluteSelectionQuery, parseTopoFallbackQuery, topoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
 import type { LocalQuery, AbsoluteQuery } from '@/types/query'
 
@@ -22,6 +22,9 @@ describe('parseSelectionId', () => {
   it('plane @ref',    () => expect(parseSelectionId('@sk1')).toEqual({ kind: 'plane', featureId: 'sk1' }))
   it('builtin plane', () => expect(parseSelectionId('@builtin_plane_front')).toEqual({ kind: 'plane', featureId: 'builtin_plane_front' }))
   it('throws on unknown', () => expect(() => parseSelectionId('unknown:x')).toThrow())
+  it('throws on a face id with no query segment', () => expect(() => parseSelectionId('face:sk1')).toThrow())
+  it('throws on an edge id with no query segment', () => expect(() => parseSelectionId('edge:sk1')).toThrow())
+  it('throws on an entity id with no eid segment', () => expect(() => parseSelectionId('entity:sk1')).toThrow())
 })
 
 describe('parseSelectionId round-trips via selectionKey', () => {
@@ -128,8 +131,8 @@ describe('emitAbsoluteSelectionQuery', () => {
   it('plane @ ref pass through', () => {
     expect(emitAbsoluteSelectionQuery('@builtin_plane_front')).toBe('@builtin_plane_front')
   })
-  it('edge pass through (verbatim)', () => {
-    expect(emitAbsoluteSelectionQuery('edge:ex1:?9;@ex1edge0:edge')).toBe('edge:ex1:?9;@ex1edge0:edge')
+  it('edge strips prefix like face', () => {
+    expect(emitAbsoluteSelectionQuery('edge:ex1:?9;@ex1edge0:edge')).toBe('?9;@ex1edge0:edge')
   })
   it('unknown pass through', () => {
     expect(emitAbsoluteSelectionQuery('someRawString')).toBe('someRawString')
@@ -148,7 +151,7 @@ describe('emitAbsoluteSelectionQuery', () => {
       ['entity:S1:L1', '@S1/L1'],
       ['entity:sketch2:A1', '@sketch2/A1'],
       ['@builtin_plane_front', '@builtin_plane_front'],
-      ['edge:ex1:?9;@ex1edge0:edge', 'edge:ex1:?9;@ex1edge0:edge'],
+      ['edge:ex1:?9;@ex1edge0:edge', '?9;@ex1edge0:edge'],
       ['body:body_ex1', 'body:body_ex1'],
     ]
     cases.forEach(([input, expected]) => {
@@ -156,6 +159,51 @@ describe('emitAbsoluteSelectionQuery', () => {
         expect(emitAbsoluteSelectionQuery(input)).toBe(expected)
       })
     })
+  })
+})
+
+describe('stripSelectionWrapper', () => {
+  it('strips a face wrapper to its inner query', () => {
+    expect(stripSelectionWrapper('face:ex1:?4;@ex1:face')).toBe('?4;@ex1:face')
+  })
+
+  it('keeps colons inside the face inner query', () => {
+    expect(stripSelectionWrapper('face:ex1:?4;@ex1:face:flatface')).toBe('?4;@ex1:face:flatface')
+  })
+
+  it('strips an edge wrapper to its inner query', () => {
+    expect(stripSelectionWrapper('edge:ex1:?9;@ex1edge0:edge')).toBe('?9;@ex1edge0:edge')
+  })
+
+  it('converts an entity wrapper to an absolute ref', () => {
+    expect(stripSelectionWrapper('entity:sk1:l1')).toBe('@sk1/l1')
+  })
+
+  it('converts a vertex wrapper to an absolute ref with sub', () => {
+    expect(stripSelectionWrapper('vertex:sk1:l1:start')).toBe('@sk1/l1/start')
+  })
+
+  it('passes a bare query / ref through unchanged', () => {
+    for (const s of ['?4;@ex1:face', '@builtin_plane_front', '@body_ex1', 'body:body_ex1', 'someRawString']) {
+      expect(stripSelectionWrapper(s)).toBe(s)
+    }
+  })
+
+  it('throws on a malformed wrapper', () => {
+    expect(() => stripSelectionWrapper('face:sk1')).toThrow()
+    expect(() => stripSelectionWrapper('entity:sk1')).toThrow()
+  })
+
+  it('round-trips with parseSelectionId + selectionKey for every wrapper prefix', () => {
+    const cases = [
+      'face:sk1:?c;@a',
+      'edge:sk1:?c;@a',
+      'entity:sk1:l1',
+      'vertex:sk1:l1:start',
+    ]
+    for (const s of cases) {
+      expect(stripSelectionWrapper(selectionKey(parseSelectionId(s)))).toBe(stripSelectionWrapper(s))
+    }
   })
 })
 

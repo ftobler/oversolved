@@ -27,6 +27,12 @@ describe('resolveBodyPickRef', () => {
       .toBe('?9,9;@ex1face0@ex1face1:face')
   })
 
+  it('extracts inner query from edge: selection ID (unified wrapper strip)', () => {
+    // The shared stripper now treats edge: like face: for body-naming fields;
+    // the inner query resolves to the owning body in the kernel.
+    expect(resolveBodyPickRef('edge:ex1:?4;@ex1edge0:edge')).toBe('?4;@ex1edge0:edge')
+  })
+
   it('extracts inner query when face inner query contains colons', () => {
     expect(resolveBodyPickRef('face:ex1:?4;@ex1:face')).toBe('?4;@ex1:face')
   })
@@ -60,6 +66,10 @@ describe('resolveAxisQuery', () => {
 
   it('converts an entity: selection ID to an absolute ref', () => {
     expect(resolveAxisQuery('entity:sk1:line1')).toBe('@sk1/line1')
+  })
+
+  it('converts a vertex: selection ID to an absolute ref with sub', () => {
+    expect(resolveAxisQuery('vertex:sk1:line1:start')).toBe('@sk1/line1/start')
   })
 
   it('passes other strings through unchanged', () => {

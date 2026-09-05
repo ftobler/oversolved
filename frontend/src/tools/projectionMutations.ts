@@ -7,6 +7,7 @@
 import type { Mutation } from '@/types/cad'
 import { parseQuery, emitWire, absolute } from '@/utils/query'
 import { isWholeBodySelectionId } from '@/utils/query/selectionId'
+import { isFaceRestriction, isEdgeRestriction } from '@/kernel/occ/primitives'
 import { projectedKindForEdge } from '@/tools/dimensionProjection'
 
 /** Everything the pure lowering needs from the outside world, injected so the
@@ -66,11 +67,13 @@ export function projectionMutationsForId(
       const q = parseQuery(id)
       if (q.kind === 'ancestry' && q.typeRestriction) {
         const tr = q.typeRestriction
-        if (tr === 'edge' || tr === 'straightedge') {
+        if (isEdgeRestriction(tr)) {
           // The query alone can't tell a line from a circle/arc; the source
           // edge's curve kind (when known) selects the base entity kind.
           kind = projectedKindForEdge(resolvers.edgeKind(id))
-        } else if (tr === 'face' || tr === 'flatface' || tr === 'cylinderface') {
+        } else if (isFaceRestriction(tr)) {
+          // Conic/sphere/torus faces are faces too: they must take the
+          // boundary-wire branch below, not the centroid-as-point fallback.
           isFace = true
         }
       }

@@ -541,6 +541,22 @@ export function tessellateFace(
 
 export type SurfaceType = 'flatface' | 'cylinderface' | 'coneface' | 'sphereface' | 'torusface' | 'face'
 
+// The typeRestriction vocabulary of an ancestry query, classified by the
+// geometric kind it names. One shared copy so every consumer (queryLabel,
+// projectionMutations, later g2-H1) agrees on what counts as a face or an
+// edge, instead of each hand-maintaining a partial list (g2-M2).
+export function isFaceRestriction(tr: string | null): boolean {
+  return tr === 'flatface' || tr === 'cylinderface' || tr === 'coneface' || tr === 'sphereface' || tr === 'torusface' || tr === 'face'
+}
+
+export function isEdgeRestriction(tr: string | null): boolean {
+  return tr === 'edge' || tr === 'straightedge'
+}
+
+export function isVertexRestriction(tr: string | null): boolean {
+  return tr === 'vertex'
+}
+
 /** The GeomAbs_SurfaceType enum mapping, factored so every reader of an adaptor
  *  shares one copy (`faceSurfaceType` and `faceSurfaceTypeAndNormal` both call
  *  it). A surface type outside the six modelled kinds collapses to 'face'. */

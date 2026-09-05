@@ -1,7 +1,8 @@
 import type { PartFeature } from '@/types/cad'
 import type { EntitySelectionId, VertexSelectionId } from '@/types/query'
 import { parseQuery } from '@/utils/query'
-import { parseSelectionId } from './selectionId'
+import { parseSelectionId, parseTopoFallbackQuery } from './selectionId'
+import { isFaceRestriction, isEdgeRestriction, isVertexRestriction } from '@/kernel/occ/primitives'
 
 export function extractFeatureId(ancestorId: string): string | null {
   // Special tokens (@u|<uuid>, @cls_* classifiers, @gd*| descriptors, @g*_
@@ -45,10 +46,9 @@ export function extractFeatureId(ancestorId: string): string | null {
 }
 
 function entityTypeFromRestriction(typeRestriction: string | null): string {
-  if (!typeRestriction) return 'Entity'
-  if (typeRestriction === 'flatface' || typeRestriction === 'cylinderface') return 'Face'
-  if (typeRestriction === 'straightedge' || typeRestriction === 'edge') return 'Edge'
-  if (typeRestriction === 'vertex') return 'Vertex'
+  if (isFaceRestriction(typeRestriction)) return 'Face'
+  if (isEdgeRestriction(typeRestriction)) return 'Edge'
+  if (isVertexRestriction(typeRestriction)) return 'Vertex'
   return 'Entity'
 }
 
@@ -66,11 +66,15 @@ export function queryLabel(
   // user unless it is named here. An id missing its entity segment names no
   // geometry, so it falls through to the query paths rather than being labelled.
   if (query.startsWith('entity:') || query.startsWith('vertex:')) {
-    const sel = parseSelectionId(query) as EntitySelectionId | VertexSelectionId
-    if (sel.eid) {
-      const feature = features.find(f => f.id === sel.featureId)
-      const owner = feature ? (feature.label || feature.id) : sel.featureId
-      return `${sel.kind === 'vertex' ? 'Vertex' : 'Entity'} of ${owner}`
+    try {
+      const sel = parseSelectionId(query) as EntitySelectionId | VertexSelectionId
+      if (sel.eid) {
+        const feature = features.find(f => f.id === sel.featureId)
+        const owner = feature ? (feature.label || feature.id) : sel.featureId
+        return `${sel.kind === 'vertex' ? 'Vertex' : 'Entity'} of ${owner}`
+      }
+    } catch {
+      // Malformed id (no entity segment) falls through to the query paths.
     }
   }
 
@@ -78,6 +82,22 @@ export function queryLabel(
   if (query === '@builtin_plane_top') return 'Top'
   if (query === '@builtin_plane_right') return 'Right'
   if (query === '@builtin_origin') return 'Origin'
+
+  // A topo-fallback ref (`@<bodyId>/<kind>/<idx>`) is a body-primitive pick:
+  // `@body_ex1/face/3` must render as "Face of <owner>", not as the whole part
+  // label that its absolute-query parse would produce. `@body_ex1` (no slash)
+  // is NOT a topo fallback, so the whole-body case keeps rendering as today.
+  const topo = parseTopoFallbackQuery(query)
+  if (topo) {
+    const kind = topo.kind.charAt(0).toUpperCase() + topo.kind.slice(1)
+    // The full query is the ancestor token extractFeatureId expects
+    // (@<bodyId>/<kind>/<idx>); it maps the body tag to the owning feature,
+    // split-sibling suffix included.
+    const featureId = extractFeatureId(query)
+    const feature = featureId ? features.find(f => f.id === featureId) : undefined
+    const owner = feature ? (feature.label || feature.id) : (featureId ?? topo.bodyId)
+    return `${kind} of ${owner}`
+  }
 
   try {
     const parsed = parseQuery(query)

@@ -73,9 +73,19 @@ describe('projectionMutationsForId', () => {
     expect(muts.map(m => m.type === 'add_projected_entity' && m.kind)).toEqual(['line', 'arc'])
   })
 
+  it('projects a conic/sphere/torus face by its boundary wire, not the centroid point', () => {
+    // The isFace decision must cover every SurfaceType kind; before the shared
+    // restriction vocabulary these three fell through to the centroid branch.
+    const faceEdges = [{ source: '?a;@b:edge', kind: 'arc' }]
+    for (const tr of ['coneface', 'sphereface', 'torusface']) {
+      const muts = projectionMutationsForId(`?4,4;@bxx@fww:${tr}`, FEATURE, resolvers({ faceEdges: () => faceEdges }))
+      expect(muts).toEqual([{ type: 'add_projected_entity', featureId: FEATURE, kind: 'arc', source: '?a;@b:edge' }])
+    }
+  })
+
   it('falls back to the face centroid point when boundary edges are unknown', () => {
-    const muts = projectionMutationsForId(FACE_Q, FEATURE, noResolvers)
-    expect(muts).toEqual([{ type: 'add_projected_entity', featureId: FEATURE, kind: 'point', source: FACE_Q }])
+    const muts = projectionMutationsForId('?4,4;@bxx@fww:coneface', FEATURE, noResolvers)
+    expect(muts).toEqual([{ type: 'add_projected_entity', featureId: FEATURE, kind: 'point', source: '?4,4;@bxx@fww:coneface' }])
   })
 })
 

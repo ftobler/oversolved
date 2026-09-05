@@ -69,6 +69,22 @@ describe('queryLabel', () => {
       expect(queryLabel(q, features)).toBe('Face of My Extrude')
     })
 
+    it('returns Face for a coneface restriction', () => {
+      // @extrude1face0 = 14 chars → hex "e"
+      const q = '?e;@extrude1face0:coneface'
+      expect(queryLabel(q, features)).toBe('Face of My Extrude')
+    })
+
+    it('returns Face for a sphereface restriction', () => {
+      const q = '?e;@extrude1face0:sphereface'
+      expect(queryLabel(q, features)).toBe('Face of My Extrude')
+    })
+
+    it('returns Face for a torusface restriction', () => {
+      const q = '?e;@extrude1face0:torusface'
+      expect(queryLabel(q, features)).toBe('Face of My Extrude')
+    })
+
     it('returns Edge for a bare "edge" restriction', () => {
       // @fillet2edge0 = 13 chars → hex "d"
       const q = '?d;@fillet2edge0:edge'
@@ -199,6 +215,35 @@ describe('queryLabel', () => {
 
     it('returns feature ID for unknown feature', () => {
       expect(queryLabel('@nonexistent', features)).toBe('nonexistent')
+    })
+  })
+
+  describe('topo-fallback queries', () => {
+    it('names a topo-fallback face as Face of the owning feature', () => {
+      expect(queryLabel('@body_ex1/face/3', features)).toBe('Face of My Extrude')
+    })
+
+    it('names a topo-fallback edge as Edge of the owning feature', () => {
+      expect(queryLabel('@body_ex1/edge/1', features)).toBe('Edge of My Extrude')
+    })
+
+    it('names a topo-fallback vertex as Vertex of the owning feature', () => {
+      expect(queryLabel('@body_ex1/vertex/2', features)).toBe('Vertex of My Extrude')
+    })
+
+    it('resolves a split-sibling body tag to its owning feature', () => {
+      expect(queryLabel('@body_ex1_1/face/0', features)).toBe('Face of My Extrude')
+    })
+
+    it('falls back to the body id when the owning feature is unknown', () => {
+      expect(queryLabel('@body_ghost1/face/0', features)).toBe('Face of ghost1')
+    })
+
+    it('leaves the whole-body ref rendering as a part, not a primitive pick', () => {
+      // No slash, so parseTopoFallbackQuery rejects it and the absolute-query
+      // branch (with partLabels) still names the whole body.
+      const partLabels = { body_ex1: 'Part 3' }
+      expect(queryLabel('@body_ex1', features, partLabels)).toBe('Part 3')
     })
   })
 

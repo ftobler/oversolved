@@ -4,7 +4,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { ViewportHandle } from '@/components/Viewport'
 import type { PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
 import { randomId, migrateLegacyBodyPicks } from '@/utils/yamlMutations'
-import { isWholeBodySelectionId, parseTopoFallbackQuery } from '@/utils/query/selectionId'
+import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { consumedSketchIds } from '@/utils/query/consumedSketches'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
@@ -615,7 +615,7 @@ export default function Part() {
       || parseTopoFallbackQuery(id)?.kind === 'face'
     )
     const definition = faceQuery
-      ? { mode: 'on_face', face: faceQuery.startsWith('face:') ? faceQuery.split(':').slice(2).join(':') : faceQuery } as const
+      ? { mode: 'on_face', face: stripSelectionWrapper(faceQuery) } as const
       : undefined
     setRollbackForNewFeature(features)
     handleMutation({ type: 'add_plane', featureId, label, definition })

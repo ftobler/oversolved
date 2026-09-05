@@ -637,6 +637,23 @@ describe('parseTarget for face IDs', () => {
   })
 })
 
+// 6d: parseTarget for edge: IDs. Before the unified wrapper stripper an edge:
+// selection became the dead ref `$edge:sketch0:?...`; it must now yield its
+// inner query like a face: ID does.
+describe('parseTarget for edge IDs', () => {
+  it('returns raw query for edge from a different feature', () => {
+    expect(parseTarget('edge:sketch0:?3;@sketch0abc', 'sketch1')).toBe('?3;@sketch0abc')
+  })
+
+  it('returns raw query for edge from the same feature', () => {
+    expect(parseTarget('edge:sketch1:?3;@sketch1abc', 'sketch1')).toBe('?3;@sketch1abc')
+  })
+
+  it('preserves colon in the edge type restriction suffix', () => {
+    expect(parseTarget('edge:sketch0:?9,9;@sketch0la@sketch0lb:straightedge', 'sketch1')).toBe('?9,9;@sketch0la@sketch0lb:straightedge')
+  })
+})
+
 // 6b: applyAddConstraint stores face query verbatim
 describe('applyAddConstraint with face target', () => {
   it('stores face ancestry query verbatim as constraint field', () => {

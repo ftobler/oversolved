@@ -1,6 +1,6 @@
 import type { PartDoc, PartFeature, PartConstraint, PartEntityDef, PartTarget } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
-import { selectionToQuery, parseSelectionId } from '@/utils/query/selectionId'
+import { selectionToQuery, parseSelectionId, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
 
 export const warn = import.meta.env.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined
@@ -20,17 +20,18 @@ export function findFeature(doc: PartDoc, featureId: string): PartFeature | unde
 /** Convert a selection ID to a query string.
  *  If the target belongs to a different feature than the host, use `@<featId>/<eleId>[/<sub>]`
  *  (absolute ref, slash-joined). Otherwise use `$<eleId>` (local ref).
- *  For `face:` IDs, returns the raw ancestry query verbatim (already globally scoped).
+ *  For `face:`/`edge:` IDs, returns the raw ancestry query verbatim (already globally scoped).
  *
  *  entity/vertex IDs are serialized through the query engine (selectionToQuery +
  *  emitWire) rather than hand-built here, so the `@`/`$` wire format lives in one
- *  place (kernel/query.ts, re-exported by utils/query). face passthrough and the
- *  lenient `@`/`$` fallbacks are kept as-is. */
+ *  place (kernel/query.ts, re-exported by utils/query). face/edge wrappers and the
+ *  lenient `@`/`$` fallbacks are stripped through the shared wrapper stripper
+ *  (selectionId.ts stripSelectionWrapper) rather than a hand-rolled split. */
 export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
   if (t.startsWith('entity:') || t.startsWith('vertex:')) {
     return emitWire(selectionToQuery(parseSelectionId(t), hostFeatureId))
   }
-  if (t.startsWith('face:')) return t.split(':').slice(2).join(':')
+  if (t.startsWith('face:') || t.startsWith('edge:')) return stripSelectionWrapper(t)
   if (t.startsWith('@')) return t  // builtin/absolute query, pass through as-is
   return '$' + t
 }

@@ -3,22 +3,7 @@ import {
   normalizeRefList,
 } from '@/utils/yamlMutations'
 import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
-
-function stripFacePrefix(selectionId: string): string {
-  return selectionId.startsWith('face:') ? selectionId.split(':').slice(2).join(':') : selectionId
-}
-
-function stripFaceOrEdgePrefix(selectionId: string): string {
-  if (selectionId.startsWith('face:') || selectionId.startsWith('edge:')) return selectionId.split(':').slice(2).join(':')
-  return selectionId
-}
-
-function resolveTransformQuery(selectionId: string): string {
-  if (selectionId.startsWith('face:')) return selectionId.split(':').slice(2).join(':')
-  if (selectionId.startsWith('entity:')) return '@' + selectionId.split(':').slice(1).join('/')
-  if (selectionId.startsWith('vertex:')) return '@' + selectionId.split(':').slice(1).join('/')
-  return selectionId
-}
+import { stripSelectionWrapper } from '@/utils/query/selectionId'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- schema data is a heterogeneous bag of editor values
 type SchemaData = Record<string, any>
@@ -38,7 +23,7 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       options: [{ value: 'blind', label: 'Blind' }, { value: 'up_to', label: 'Up to' }] },
     { type: 'pick', key: 'up_to', label: 'Up to',
       showWhen: (d) => d.termination === 'up_to',
-      transform: stripFaceOrEdgePrefix, removeValue: undefined,
+      transform: stripSelectionWrapper, removeValue: undefined,
       emptyText: '(pick plane, point, or face)' },
     { type: 'number', key: 'distance', label: 'Distance', default: 10,
       showWhen: (d) => d.termination !== 'up_to', validate: (v) => v > 0 },
@@ -84,10 +69,10 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
   fields: [
     { type: 'pick', key: 'path', label: 'Path', multi: true,
       addMutationType: 'add_sweep_path', addValueKey: 'pathQuery',
-      removeMutationType: 'remove_sweep_path', transform: stripFacePrefix },
+      removeMutationType: 'remove_sweep_path', transform: stripSelectionWrapper },
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_sweep_profile', addValueKey: 'sketchQuery',
-      removeMutationType: 'remove_sweep_profile', transform: stripFacePrefix },
+      removeMutationType: 'remove_sweep_profile', transform: stripSelectionWrapper },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
@@ -146,7 +131,7 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
   subKey: 'hole',
   defaults: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' },
   fields: [
-    { type: 'pick', key: 'sketch', label: 'Sketch', transform: stripFacePrefix },
+    { type: 'pick', key: 'sketch', label: 'Sketch', transform: stripSelectionWrapper },
     { type: 'number', key: 'diameter', label: 'Diameter', default: 10, validate: (v) => v > 0, unit: 'mm' },
     { type: 'select', key: 'depth_mode', label: 'Depth mode', default: 'blind',
       options: [{ value: 'blind', label: 'Blind' }, { value: 'through_all', label: 'Through All' }] },
@@ -176,9 +161,9 @@ export const TRANSFORM_SCHEMA: FeatureEditorSchema = {
     { type: 'number', key: 'translation', label: 'Y', arrayField: 'translation', arrayIndex: 1, default: 0 },
     { type: 'number', key: 'translation', label: 'Z', arrayField: 'translation', arrayIndex: 2, default: 0 },
     { type: 'number', key: 'rotation_angle', label: 'Angle (deg)', default: 0 },
-    { type: 'pick', key: 'rotation_axis', label: 'Axis', transform: resolveTransformQuery },
+    { type: 'pick', key: 'rotation_axis', label: 'Axis', transform: stripSelectionWrapper },
     { type: 'number', key: 'scale', label: 'Factor', default: 1 },
-    { type: 'pick', key: 'scale_center_from', label: 'Origin', transform: resolveTransformQuery },
+    { type: 'pick', key: 'scale_center_from', label: 'Origin', transform: stripSelectionWrapper },
   ],
 }
 
@@ -188,7 +173,7 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
   defaults: { body: '', plane: '', keep_original: true, merge: true },
   fields: [
     { type: 'pick', key: 'body', label: 'Body' },
-    { type: 'pick', key: 'plane', label: 'Mirror Plane', transform: stripFacePrefix },
+    { type: 'pick', key: 'plane', label: 'Mirror Plane', transform: stripSelectionWrapper },
     { type: 'checkbox', key: 'keep_original', label: 'Keep Original', default: true },
     { type: 'checkbox', key: 'merge', label: 'Merge', default: true },
   ],

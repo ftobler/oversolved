@@ -101,8 +101,12 @@ export function topoFallbackQuery(
 }
 
 function _splitEntity(s: string): EntitySelectionId {
-  const [, featureId, eid] = s.split(":")
-  return { kind: "entity", featureId, eid }
+  // entity:<featureId>:<eid>. A missing second colon is malformed, not an
+  // empty eid: the caller would otherwise persist a bogus ref that can never
+  // resolve. Throw like parseSelectionId does for an unknown prefix.
+  const colon = s.indexOf(":", "entity:".length)
+  if (colon < 0) throw new Error(`Malformed entity selection ID: ${s}`)
+  return { kind: "entity", featureId: s.slice("entity:".length, colon), eid: s.slice(colon + 1) }
 }
 
 function _splitVertex(s: string): VertexSelectionId {
@@ -111,13 +115,16 @@ function _splitVertex(s: string): VertexSelectionId {
 }
 
 function _splitFace(s: string): FaceSelectionId {
-  // face:<featureId>:<query> -- query may itself contain ':'
+  // face:<featureId>:<query> -- query may itself contain ':'. A missing second
+  // colon is malformed (no featureId to attribute to) and must throw.
   const colon = s.indexOf(":", "face:".length)
+  if (colon < 0) throw new Error(`Malformed face selection ID: ${s}`)
   return { kind: "face", featureId: s.slice("face:".length, colon), query: s.slice(colon + 1) }
 }
 
 function _splitEdge(s: string): EdgeSelectionId {
   const colon = s.indexOf(":", "edge:".length)
+  if (colon < 0) throw new Error(`Malformed edge selection ID: ${s}`)
   return { kind: "edge", featureId: s.slice("edge:".length, colon), query: s.slice(colon + 1) }
 }
 
@@ -127,22 +134,40 @@ function _splitConstraint(s: string): ConstraintSelId {
 }
 
 /**
+ * Strip a selection wrapper from a raw selection ID string, returning the
+ * backend query it names. The one authoritative way to do this: every other
+ * module used to hand-roll its own copy and drifted apart (g2-H2), so they all
+ * route through here.
+ *
+ * - `face:` / `edge:` (owner-attribution wrappers) yield their inner wire
+ *   query verbatim (`face:ex1:?4;@ex1:face` -> `?4;@ex1:face`).
+ * - `entity:` / `vertex:` yield the always-absolute `@a/b[/sub]` ref, the same
+ *   bytes the engine emits for a cross-feature selection.
+ * - anything else (a bare `?`/`@`/`$` query, a `body:` ref, a raw string)
+ *   passes through unchanged.
+ *
+ * Malformed wrappers (a missing second colon) throw, matching parseSelectionId.
+ */
+export function stripSelectionWrapper(id: string): string {
+  if (id.startsWith('face:') || id.startsWith('edge:')) {
+    return (parseSelectionId(id) as FaceSelectionId | EdgeSelectionId).query
+  }
+  if (id.startsWith('entity:') || id.startsWith('vertex:')) {
+    return emitWire(selectionToQuery(parseSelectionId(id), ''))
+  }
+  return id
+}
+
+/**
  * Emit an always-absolute backend query from a raw selection ID string.
  *
  * Used where there is no host concept (e.g. PlaneEditor picking).
- * Never emits `$` local form. face/edge inner queries are passed through
- * verbatim rather than re-serialized. The `@` / `$` wire format for entity
- * and vertex selections is produced by the engine (selectionToQuery + emitWire).
+ * Never emits `$` local form. A unified wrapper strip -- see
+ * stripSelectionWrapper -- now handles every prefix, including `edge:`, which
+ * was the one prefix this function used to let slip through unstripped.
  */
 export function emitAbsoluteSelectionQuery(selectionId: string): string {
-  if (selectionId.startsWith('face:')) {
-    return selectionId.split(':').slice(2).join(':')
-  }
-  if (selectionId.startsWith('vertex:') || selectionId.startsWith('entity:')) {
-    const sel = parseSelectionId(selectionId)
-    return emitWire(selectionToQuery(sel, ''))
-  }
-  return selectionId
+  return stripSelectionWrapper(selectionId)
 }
 
 /**
