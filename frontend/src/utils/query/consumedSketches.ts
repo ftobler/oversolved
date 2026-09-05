@@ -18,9 +18,21 @@ function refList(ref: string | string[] | undefined): string[] {
 /** The sketch features one stored pick query derives from. */
 export function sketchIdsInQuery(query: string, features: PartFeature[]): string[] {
   if (!query) return []
-  const known = new Set(features.map(f => f.id))
+  const byId = new Map(features.map(f => [f.id, f] as const))
+  return sketchIdsInQueryWith(query, byId, new Set(byId.keys()))
+}
+
+// The per-query variant: `known` and `byId` are built once by the caller so a
+// multi-ref feature (consumedSketchIds) does not rebuild the feature set per
+// stored ref (g2-L5).
+function sketchIdsInQueryWith(
+  query: string,
+  byId: ReadonlyMap<string, PartFeature>,
+  known: ReadonlySet<string>,
+): string[] {
+  if (!query) return []
   return selectionSourceFeatureIds(query, known)
-    .filter(id => features.find(f => f.id === id)?.kind === 'sketch')
+    .filter(id => byId.get(id)?.kind === 'sketch')
 }
 
 /**
@@ -36,9 +48,11 @@ export function consumedSketchIds(feature: PartFeature, features: PartFeature[])
     ...refList(feature.sweep?.path),
     ...refList(feature.hole?.sketch),
   ]
+  const byId = new Map(features.map(f => [f.id, f] as const))
+  const known = new Set(byId.keys())
   const out = new Set<string>()
   for (const q of queries) {
-    for (const id of sketchIdsInQuery(q, features)) out.add(id)
+    for (const id of sketchIdsInQueryWith(q, byId, known)) out.add(id)
   }
   return [...out]
 }
