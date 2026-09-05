@@ -115,13 +115,23 @@ export function soleEntityInQuery(query: string, sketchId: string): string | nul
 
 // ─── Profile loops ───
 
+/** A boundary chain that did not form a clean closed loop, for reporting. */
+export type ProfileLoopDiag =
+  | { kind: 'unclosed'; startedAt: number[]; used: number; total: number }
+  | { kind: 'leftover'; leftover: number; total: number }
+
 /**
  * Assemble surface boundaries into ordered closed loops (mirrors
  * `_extract_profile_loops`). Each surface's boundary edges are chained by
  * endpoint proximity (within TOL_LOOP_CLOSURE), reversing edges as needed; a
  * reversed arc swaps its angles and flips `ccw`.
+ *
+ * The optional `diagnostics` out-param collects every boundary that did NOT
+ * form a clean closed loop (an unclosed chain, or leftover edges after the
+ * first closure). What is BUILT is unchanged - the same `allLoops` as always -
+ * but a caller that wants to name the failure can read these alongside it.
  */
-export function extractProfileLoops(surfaces: Dict[]): Dict[][] {
+export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopDiag[]): Dict[][] {
   if (!surfaces || surfaces.length === 0) return []
   const TOL = TOL_LOOP_CLOSURE
 
@@ -186,11 +196,31 @@ export function extractProfileLoops(surfaces: Dict[]): Dict[][] {
           break
         }
       }
-      if (!foundNext) break
-      if (dist2d([...rawEdges[0][0]], current) <= TOL && loop.length >= 1) {
-        allLoops.push(loop)
+      if (!foundNext) {
+        // The chain ran out before closing: the remaining edges cannot form
+        // this loop. Emitting nothing made the caller report "no closed profile
+        // found", which is true but names neither the area nor the gap.
+        diagnostics?.push({ kind: 'unclosed', startedAt: rawEdges[0][0], used: used.size, total: rawEdges.length })
         break
       }
+      if (dist2d([...rawEdges[0][0]], current) <= TOL && loop.length >= 1) {
+        allLoops.push(loop)
+        // The chain closed, but any edge left unconsumed is a second defect:
+        // it is part of the same boundary and is being silently discarded.
+        const leftover = rawEdges.length - used.size
+        if (leftover > 0) {
+          diagnostics?.push({ kind: 'leftover', leftover, total: rawEdges.length })
+        }
+        break
+      }
+    }
+    // The outer bound is rawEdges.length, so a chain that consumed EVERY edge
+    // without closing back to the start never reaches the foundNext=false
+    // branch above (it runs out of iterations first). Same failure, one bound
+    // later: name it too. The `used === total` test keeps the two from
+    // double-reporting (foundNext=false only fires while edges remain).
+    if (loop.length > 0 && rawEdges.length - used.size === 0) {
+      diagnostics?.push({ kind: 'unclosed', startedAt: rawEdges[0][0], used: used.size, total: rawEdges.length })
     }
     }
   }
@@ -214,6 +244,29 @@ export function unbuildableAreaReasons(surfaces: Dict[]): string[] {
     if (surface.buildable !== false) continue
     const reason = typeof surface.reason === 'string' ? surface.reason : 'no reason recorded'
     if (!out.includes(reason)) out.push(reason)
+  }
+  return out
+}
+
+/**
+ * Turn `extractProfileLoops`'s loop-chain diagnostics into the same kind of
+ * sentences `unbuildableAreaReasons` produces, so a caller that collects one
+ * list for its "no closed profile found" message can fold both in.
+ */
+export function loopDiagReasons(diags: ProfileLoopDiag[]): string[] {
+  const out: string[] = []
+  for (const d of diags) {
+    if (d.kind === 'unclosed') {
+      out.push(
+        `a sketch-area boundary chain is unclosed (${d.used} of ${d.total} edges ` +
+        'connected before the chain ran out)',
+      )
+    } else {
+      out.push(
+        `a sketch-area boundary left ${d.leftover} of ${d.total} edge(s) unused ` +
+        'after its first closed loop',
+      )
+    }
   }
   return out
 }

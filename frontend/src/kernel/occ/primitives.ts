@@ -24,6 +24,8 @@ export type EdgeSortKey = (number | string)[]
 
 // ─── primitive solids ───
 
+/** Axis-aligned box of given dimensions (BRepPrimAPI_MakeBox(dx, dy, dz)).
+ * @returns untracked - caller owns. */
 export function makeBox(oc: OccModule, scope: DisposeScope, dx: number, dy: number, dz: number): OccShape {
   const builder = scope.track(new oc.BRepPrimAPI_MakeBox_1(dx, dy, dz))
   return builder.Shape()
@@ -43,6 +45,8 @@ export function makeBoxAt(
   return builder.Shape()
 }
 
+/** Cylinder around `axis` through `center` (BRepPrimAPI_MakeCylinder(ax2, r, h)).
+ * @returns untracked - caller owns. */
 export function makeCylinder(
   oc: OccModule,
   scope: DisposeScope,
@@ -65,7 +69,8 @@ export function makeCylinder(
 
 // ─── profile -> face -> prism ───
 
-/** A straight edge between two world points (cadquery Edge.makeLine). */
+/** A straight edge between two world points (cadquery Edge.makeLine).
+ * @returns untracked - caller owns. */
 export function makeLineEdge(oc: OccModule, scope: DisposeScope, start: Vec3, end: Vec3): OccShape {
   const a = scope.track(new oc.gp_Pnt_3(start[0], start[1], start[2]))
   const b = scope.track(new oc.gp_Pnt_3(end[0], end[1], end[2]))
@@ -73,7 +78,8 @@ export function makeLineEdge(oc: OccModule, scope: DisposeScope, start: Vec3, en
   return builder.Edge()
 }
 
-/** A full-circle edge (ocp_make_circle + ocp_make_edge_from_circle). */
+/** A full-circle edge (ocp_make_circle + ocp_make_edge_from_circle).
+ * @returns untracked - caller owns. */
 export function makeCircleEdge(
   oc: OccModule,
   scope: DisposeScope,
@@ -90,6 +96,7 @@ export function makeCircleEdge(
 /**
  * A circular or arc edge, mirroring cadquery `make_arc_edge`: a ~2pi span is a
  * full circle, otherwise a trimmed arc via GC_MakeArcOfCircle. Angles in radians.
+ * @returns untracked - caller owns.
  */
 export function makeArcEdge(
   oc: OccModule,
@@ -117,7 +124,8 @@ export function makeArcEdge(
   return builder.Edge()
 }
 
-/** A cubic Bezier edge from 4 control points (sketch spline -> OCC edge). */
+/** A cubic Bezier edge from 4 control points (sketch spline -> OCC edge).
+ * @returns untracked - caller owns. */
 export function makeBezierEdge(oc: OccModule, scope: DisposeScope, poles: Vec3[]): OccShape {
   const arr = scope.track(new oc.TColgp_Array1OfPnt_2(1, poles.length))
   poles.forEach((p, i) => arr.SetValue(i + 1, scope.track(new oc.gp_Pnt_3(p[0], p[1], p[2]))))
@@ -133,6 +141,7 @@ export function makeBezierEdge(oc: OccModule, scope: DisposeScope, poles: Vec3[]
  * the semi-major/semi-minor radii. When `u0`/`u1` (eccentric angles, radians)
  * are given and do not span a full turn, a trimmed elliptical arc is built (the
  * sliced-ellipse case); otherwise the full closed ellipse.
+ * @returns untracked - caller owns.
  */
 export function makeEllipseEdge(
   oc: OccModule,
@@ -145,6 +154,13 @@ export function makeEllipseEdge(
   u0?: number,
   u1?: number,
 ): OccShape {
+  // gp_Elips_2 throws a raw Standard_ConstructionError for b > a, and the
+  // bindings may not propagate it as a catchable JS error at all. Refuse the
+  // degenerate input here so a sketch that flips its ellipse axes fails by name
+  // instead of building a parameterized-but-wrong curve.
+  if (!(a > 0) || !(b > 0) || a < b) {
+    throw new Error(`make_ellipse_edge: needs a >= b > 0 (got a=${a}, b=${b})`)
+  }
   const ax2 = scope.track(
     new oc.gp_Ax2_2(
       scope.track(new oc.gp_Pnt_3(center[0], center[1], center[2])),
@@ -357,6 +373,7 @@ function healWireFromEdges(oc: OccModule, scope: DisposeScope, edges: OccShape[]
  * (FixReorder + FixConnected). Use when the wire may have been built successfully
  * but carries endpoint imprecision that can destabilize downstream
  * operations (e.g. MakePipeShell).
+ * @returns untracked - caller owns.
  */
 export function healWire(oc: OccModule, scope: DisposeScope, wire: OccShape): OccShape {
   const sfw = scope.track(new oc.ShapeFix_Wire_1())
@@ -373,6 +390,7 @@ export function healWire(oc: OccModule, scope: DisposeScope, wire: OccShape): Oc
  * ShapeFix_Face.FixOrientation pass as `ocp_make_face_from_wire` so the face
  * normal sign matches Python. Hole wires are added with MakeFace.Add before the
  * orientation fix, mirroring the Python builder's `Add` loop.
+ * @returns untracked - caller owns.
  */
 export function makeFaceFromWire(
   oc: OccModule,
@@ -411,7 +429,8 @@ export function makeFaceFromWire(
   }
 }
 
-/** Linear extrusion of a face along direction * distance (ocp_make_prism, Copy=True). */
+/** Linear extrusion of a face along direction * distance (ocp_make_prism, Copy=True).
+ * @returns untracked - caller owns. */
 export function makePrism(
   oc: OccModule,
   scope: DisposeScope,

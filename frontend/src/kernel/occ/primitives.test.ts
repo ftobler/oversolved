@@ -7,7 +7,7 @@
 // are pinned without a WASM build.
 
 import { describe, it, expect } from 'vitest'
-import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex } from './primitives'
+import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex, makeEllipseEdge } from './primitives'
 import type { OccSubShape } from './occTypes'
 
 // A stub sub-shape: `_id` is its identity, `hash` lets a test force collisions.
@@ -126,5 +126,35 @@ describe('SubShapeMultiIndex', () => {
     m.add(stub(2, 7), 21)
     expect(m.get(stub(1, 7))).toEqual([10])
     expect(m.get(stub(2, 7))).toEqual([20, 21])
+  })
+})
+
+describe('makeEllipseEdge radius validation', () => {
+  // The guard runs before any OCC object is built, so a stub oc is enough to
+  // prove the refusal (no WASM build needed for B2).
+  const stub = ({} as never)
+
+  it('refuses a minor radius larger than the major (b > a) by name', () => {
+    expect(() =>
+      makeEllipseEdge(stub, stub, [0, 0, 0], [0, 0, 1], [1, 0, 0], 2, 3),
+    ).toThrow(/make_ellipse_edge: needs a >= b > 0 \(got a=2, b=3\)/)
+  })
+
+  it('refuses a non-positive major radius', () => {
+    expect(() =>
+      makeEllipseEdge(stub, stub, [0, 0, 0], [0, 0, 1], [1, 0, 0], 0, 2),
+    ).toThrow(/make_ellipse_edge: needs a >= b > 0 \(got a=0, b=2\)/)
+  })
+
+  it('refuses a non-positive minor radius', () => {
+    expect(() =>
+      makeEllipseEdge(stub, stub, [0, 0, 0], [0, 0, 1], [1, 0, 0], 2, 0),
+    ).toThrow(/make_ellipse_edge: needs a >= b > 0 \(got a=2, b=0\)/)
+  })
+
+  it('accepts a >= b > 0 (the validation does not fire)', () => {
+    expect(() =>
+      makeEllipseEdge(stub, stub, [0, 0, 0], [0, 0, 1], [1, 0, 0], 4, 2),
+    ).not.toThrow(/make_ellipse_edge: needs/)
   })
 })

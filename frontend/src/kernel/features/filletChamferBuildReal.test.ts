@@ -180,7 +180,10 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
      */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: ['?body_ex1:edge:0'], radius: 1 })
-    spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: ['?body_ex1:edge:4'], distance: 0.5 })
+    // The alias is numbered by the geometric sort index (the same order the
+    // display emits), not TopExp traversal order; edge 1 is a surviving straight
+    // edge, away from the blend's corner that OCC refuses to modify again.
+    spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: ['?body_ex1:edge:1'], distance: 0.5 })
     const r = h.run(spec)
     expect(h.res(r, 'fillet1').status).toBe('ok')
     expect(h.res(r, 'chamfer1').status).toBe('ok')

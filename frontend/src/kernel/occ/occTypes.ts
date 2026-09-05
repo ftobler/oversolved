@@ -288,7 +288,15 @@ export interface OccEdgeBuilder extends OccDisposable {
   Edge(): OccShape
 }
 
-/** A handle (e.g. Handle_Geom_TrimmedCurve) whose `.get()` yields the object. */
+/**
+ * A handle (e.g. Handle_Geom_TrimmedCurve) whose `.get()` yields the object.
+ * `.get()` mints a FRESH embind wrapper per call in this build (probed in
+ * occ/primitivesReal.test.ts, wave 10 D2): never rely on two results being the
+ * same JS object. Each wrapper is a borrowed view of a C++ object the handle
+ * owns, so it must NOT be `.delete()`d (that frees the object out from under
+ * the handle, stepIo.ts:189-191); each call only strands a small JS-side
+ * wrapper registration.
+ */
 export interface OccGeomHandle extends OccDisposable {
   get(): OccDisposable | null
 }
@@ -705,6 +713,12 @@ export interface OccCopyBuilder extends OccDisposable {
  * An OCC `Handle(...)` as embind hands it back: a smart-pointer wrapper whose
  * `.get()` reaches the object. Not to be confused with `handleTable`'s
  * `OccHandle`, which is our own integer shape slot.
+ *
+ * Measured (occ/primitivesReal.test.ts, wave 10 D2): `.get()` returns a FRESH
+ * embind wrapper per call, so two results are never the same JS object. Each is
+ * a borrowed view of a C++ object the handle owns: do not `.delete()` a result
+ * (that frees the object out from under the handle, stepIo.ts:189-191); the
+ * per-call cost is only a small JS-side wrapper registration.
  */
 export interface OccTransientHandle<T> extends OccDisposable {
   get(): T

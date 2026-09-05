@@ -17,7 +17,7 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { samePlane, sketchToWorld2d, surfaceEntityIds, unbuildableAreaReasons, type PlaneLike } from './shared'
+import { samePlane, sketchToWorld2d, surfaceEntityIds, unbuildableAreaReasons, loopDiagReasons, type PlaneLike } from './shared'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
 import { faceCentroid, type Vec3 } from '../occ/primitives'
@@ -266,6 +266,9 @@ export function solveRevolve(
     // because this is the one place the sketch's areas are in hand; used only if
     // the profile ends up empty below.
     unbuildableReasons.push(...unbuildableAreaReasons((topo.surfaces as Dict[]) ?? []))
+    // The profile handoff also refuses boundaries that never closed or left
+    // edges behind; fold those reasons in with the area stamps.
+    unbuildableReasons.push(...loopDiagReasons(resolved.loopDiags ?? []))
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
     }

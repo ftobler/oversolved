@@ -20,7 +20,9 @@ import {
   samePlane,
   surfaceEntityIds,
   unbuildableAreaReasons,
+  loopDiagReasons,
   type PlaneLike,
+  type ProfileLoopDiag,
 } from './shared'
 import { describeProfile, validateSketchArea } from '../profileDiagnostics'
 import { TOL_LOOP_CLOSURE, TOL_TOPOLOGY_MERGE } from '../solverConstants'
@@ -197,6 +199,72 @@ describe('extractProfileLoops on a nested sketch', () => {
   // loops, so the per-area gate must not refuse a plain ring.
   it('leaves a single ring surface buildable', () => {
     expect(validateSketchArea(ring())).toEqual({ buildable: true })
+  })
+})
+
+// The chainer emits nothing for a boundary that never closes, and stops at the
+// first closure, discarding any leftover edges. Both were silent; the
+// diagnostics out-param turns them into reportable facts alongside allLoops.
+describe('extractProfileLoops diagnostics', () => {
+  it('reports an unclosed boundary chain by name', () => {
+    const surface = {
+      boundary: [
+        { kind: 'line', start: [0, 0], end: [10, 0] },
+        { kind: 'line', start: [10, 0], end: [10, 10] },
+        // the chain walks off instead of closing back to [0, 0]
+        { kind: 'line', start: [10, 10], end: [20, 20] },
+      ],
+      query: '?x',
+    }
+    const diags: ProfileLoopDiag[] = []
+    // Same build result as before the guard: no loop is emitted.
+    expect(extractProfileLoops([surface], diags)).toHaveLength(0)
+    expect(diags).toEqual([{ kind: 'unclosed', startedAt: [0, 0], used: 3, total: 3 }])
+  })
+
+  it('reports an unclosed chain when an edge cannot be reached at all', () => {
+    const surface = {
+      boundary: [
+        { kind: 'line', start: [0, 0], end: [10, 0] },
+        { kind: 'line', start: [10, 0], end: [10, 10] },
+        // a dangling edge that touches nothing the chain reached
+        { kind: 'line', start: [50, 50], end: [60, 60] },
+      ],
+      query: '?x',
+    }
+    const diags: ProfileLoopDiag[] = []
+    expect(extractProfileLoops([surface], diags)).toHaveLength(0)
+    expect(diags).toEqual([{ kind: 'unclosed', startedAt: [0, 0], used: 2, total: 3 }])
+  })
+
+  it('reports leftover edges after the first closure', () => {
+    const surface = {
+      boundary: [
+        { kind: 'line', start: [0, 0], end: [10, 0] },
+        { kind: 'line', start: [10, 0], end: [10, 10] },
+        { kind: 'line', start: [10, 10], end: [0, 10] },
+        { kind: 'line', start: [0, 10], end: [0, 0] },
+        // a dangling edge the closed square never consumes
+        { kind: 'line', start: [50, 50], end: [60, 60] },
+      ],
+      query: '?x',
+    }
+    const diags: ProfileLoopDiag[] = []
+    // The closed square still builds; only the dangling edge is reported.
+    const loops = extractProfileLoops([surface], diags)
+    expect(loops).toHaveLength(1)
+    expect(loops[0]).toHaveLength(4)
+    expect(diags).toEqual([{ kind: 'leftover', leftover: 1, total: 5 }])
+  })
+
+  it('formats the diagnostics as reasons a "no closed profile" message can join', () => {
+    expect(loopDiagReasons([
+      { kind: 'unclosed', startedAt: [0, 0], used: 3, total: 4 },
+      { kind: 'leftover', leftover: 2, total: 6 },
+    ])).toEqual([
+      'a sketch-area boundary chain is unclosed (3 of 4 edges connected before the chain ran out)',
+      'a sketch-area boundary left 2 of 6 edge(s) unused after its first closed loop',
+    ])
   })
 })
 

@@ -128,6 +128,20 @@ export class HandleTable {
   }
 
   /**
+   * Drop the reference `owner` holds on `h`, and its owner tag with it. Use this
+   * where a specific owner's claim is being settled (a superseded body shape),
+   * so a later `releaseOwner(owner)` cannot decrement a second time for a claim
+   * that is already gone. Decrements only when `owner` was actually recorded,
+   * like `releaseOwner`; `release()` stays the untagged form.
+   */
+  releaseFor(h: OccHandle, owner: string): void {
+    const s = this.slot(h)
+    if (!s.owners.delete(owner)) return
+    s.refcount--
+    if (s.refcount <= 0) this.finalize(h, s)
+  }
+
+  /**
    * Drop the reference every handle holds for `owner` (checkpoint eviction).
    * Handles still referenced by another owner survive; handles that hit zero
    * are finalized.

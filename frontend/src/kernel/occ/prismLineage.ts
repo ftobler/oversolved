@@ -50,6 +50,7 @@ import {
 } from './primitives'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
 import { booleanWithHistory, cleanWithHistory, countSolids } from './booleans'
+import { copyShape } from './transforms'
 import {
   nameFacesFromNeighbours,
   shapeNormalFrame,
@@ -929,7 +930,11 @@ function canonicalizeFaceCircles(oc: OccModule, scope: DisposeScope, face: OccSh
     if (!(w as OccSubShape).IsSame(outerWire)) holes.push(w)
   }
   const rebuilt = canonicalizeFaceCirclesWith(oc, scope, outerWire, holes)
-  return rebuilt ?? face
+  // Both branches return an UNTRACKED face the caller owns: the rebuilt one from
+  // makeFaceFromWire, and, when nothing needed canonicalizing, a copy of the
+  // entrance face rather than the entrance face itself, so the caller never has
+  // to ask which branch it took.
+  return rebuilt ?? copyShape(oc, scope, face)
 }
 
 /**
@@ -1079,6 +1084,7 @@ function tryCanonicalMergedProfile(
     // shapes are no longer referenced, so drop it instead of letting a dead
     // solid ride the scope to the end of the build.
     const out = canonicalizeFaceCircles(oc, scope, entrance)
+    scope.release(entrance)  // the returned face is the caller's copy; the original can go
     scope.release(solid)
     return out
   } catch {
@@ -1215,9 +1221,11 @@ function perGroupPrismWithLineage(
 /**
  * Extrude profile loops to a solid and return (solid + construction-name maps)
  * (mirrors `extrude_profile_with_lineage`). Disjoint loop groups are extruded
- * and fused; nested loops become holes. The returned solid is raw and lives in
- * `scope` -- the caller registers/disposes it (typically via applyBodyOperation).
- * Lineage tokens are `@sketch_id/entity`.
+ * and fused; nested loops become holes. Lineage tokens are `@sketch_id/entity`.
+ * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
+ * it or hand it to a registrar (`applyBodyOperation`, `registerSplitBodies`),
+ * and is responsible for releasing it. This is the same contract every
+ * `occ/primitives.ts` producer keeps; see the module header there.
  *
  * Multi-group extrudes take the "pre-prism profile union" path: the groups'
  * loops are extruded the legacy way (per-group prisms fused + cleaned), which
@@ -1301,6 +1309,10 @@ export function revolveFace(
  * separate bodies (one Body == one OCC solid). A single group keeps the raw
  * one-face revolve. Lineage tokens are `@sketch_id/entity`; a multi-group
  * revolve keeps each group's tokens, merged onto the fused solid.
+ * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
+ * it or hand it to a registrar (`applyBodyOperation`, `registerSplitBodies`),
+ * and is responsible for releasing it. This is the same contract every
+ * `occ/primitives.ts` producer keeps; see the module header there.
  */
 export function revolveProfileWithLineage(
   oc: OccModule,
@@ -1424,6 +1436,10 @@ export function attemptPipeShellSweep(
  * Python); lineage still comes from MakePipeShell.Generated() over the face's
  * profile edges. The spine edges are pre-built world-space OCC edges. RightCorner
  * transition gives a clean mitre at sharp (C0) spine joints.
+ * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
+ * it or hand it to a registrar (`applyBodyOperation`, `registerSplitBodies`),
+ * and is responsible for releasing it. This is the same contract every
+ * `occ/primitives.ts` producer keeps; see the module header there.
  */
 export function sweepProfileWithLineage(
   oc: OccModule,

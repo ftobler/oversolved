@@ -226,7 +226,7 @@ function applyArray(
     const bodyIds: string[] = []
     for (const inst of instances) {
       bodyIds.push(...registerSplitBodies(oc, scope, table, bodyStore, inst.shape, {
-        id: resultBodyId, createdBy: featureId, ...inst.names,
+        id: resultBodyId, createdBy: featureId, profileQueries: body.profile_queries, ...inst.names,
       }))
     }
     return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'new' }

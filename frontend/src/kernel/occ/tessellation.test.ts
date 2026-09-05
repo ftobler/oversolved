@@ -153,4 +153,12 @@ describe('compareEdgeSortKeys', () => {
     const sorted = [...keys].sort(compareEdgeSortKeys)
     expect(sorted.map((k) => k[1])).toEqual(['line', 'line', 'arc', 'circle'])
   })
+
+  it('throws on a NaN numeric component instead of returning a permutation-dependent order', () => {
+    const a = [0, 'line', 1, 0, 0, 0, 0, 0]
+    const bad = [...a]
+    bad[2] = NaN  // a coordinate component
+    expect(() => compareEdgeSortKeys(a, bad)).toThrow(/edge sort key component 2 is NaN/)
+    expect(() => compareEdgeSortKeys(bad, a)).toThrow(/edge sort key component 2 is NaN/)
+  })
 })

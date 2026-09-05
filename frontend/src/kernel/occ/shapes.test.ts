@@ -51,4 +51,12 @@ describe('faceSortKey / compareFaceSortKeys', () => {
     const b = faceSortKey(flat([1, 0, 0], [1.0000002, 0, 0]))
     expect(compareFaceSortKeys(a, b)).toBe(0)
   })
+
+  it('throws on a NaN component instead of returning a permutation-dependent order', () => {
+    const k = faceSortKey(flat([0, 0, 1], [0, 0, 0]))
+    const bad = [...k]
+    bad[1] = NaN  // a normal component
+    expect(() => compareFaceSortKeys(k, bad)).toThrow(/face sort key component 1 is NaN/)
+    expect(() => compareFaceSortKeys(bad, k)).toThrow(/face sort key component 1 is NaN/)
+  })
 })

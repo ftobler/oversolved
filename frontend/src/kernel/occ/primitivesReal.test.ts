@@ -22,6 +22,7 @@ import {
   faceSurfaceType,
   faceSurfaceTypeAndNormal,
   makeBezierEdge,
+  makeBox,
   makeFaceFromWire,
   makePrism,
   makeWire,
@@ -536,6 +537,58 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
       table.release(h100)
       table.release(h150)
       table.assertNoLeaks()
+    }
+  })
+
+  // Wave 10 D2: does Handle.get() allocate a fresh embind wrapper per call?
+  // The trimmed-curve get() at primitives.ts:119/:177 and the triangulation
+  // get() at :504 are read and never deleted, on the intent that get() borrows
+  // (occTypes.ts). First run (2026-09-05) observed a FRESH wrapper per call
+  // (a !== b): each call strands one small JS-side wrapper registration. It is
+  // still a borrow in the don't-delete sense (stepIo.ts:189-191) and NOT a C++
+  // leak, so .delete() stays out and the three sites are correct as written.
+  it('Handle_Geom_TrimmedCurve.get() mints a fresh wrapper per call (D2)', () => {
+    const scope = new DisposeScope()
+    try {
+      // Exactly what makeArcEdge builds, up to the handle.
+      const ax2 = scope.track(
+        new occ.gp_Ax2_2(
+          scope.track(new occ.gp_Pnt_3(0, 0, 0)),
+          scope.track(new occ.gp_Dir_4(0, 0, 1)),
+          scope.track(new occ.gp_Dir_4(1, 0, 0)),
+        ),
+      )
+      const circ = scope.track(new occ.gp_Circ_2(ax2, 2))
+      const arc = scope.track(new occ.GC_MakeArcOfCircle_1(circ, 0, Math.PI, true))
+      const trimmed = scope.track(arc.Value())  // Handle_Geom_TrimmedCurve
+      const a = trimmed.get()
+      const b = trimmed.get()
+      // Fresh wrapper per call (recorded); never expect identity between two
+      // get() results.
+      expect(a).not.toBe(b)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('Handle_Poly_Triangulation.get() mints a fresh wrapper per call (D2)', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(occ, scope, 10, 10, 10)
+      // tessellateFace meshes before reading the triangulation; the mesher is
+      // deleted immediately (its side effect lives on the face TShape).
+      new occ.BRepMesh_IncrementalMesh_2(box, 0.1, true, 0.5, false).delete()
+      const E = occ.TopAbs_ShapeEnum
+      const exp = scope.track(new occ.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      const face = scope.track(occ.TopoDS.Face_1(exp.Current()))
+      const loc = scope.track(new occ.TopLoc_Location_1())
+      const handle = scope.track(occ.BRep_Tool.Triangulation(face, loc))  // meshed box face
+      expect(handle.IsNull()).toBe(false)
+      const a = handle.get()
+      const b = handle.get()
+      expect(a).not.toBe(b)
+    } finally {
+      scope.dispose()
     }
   })
 })

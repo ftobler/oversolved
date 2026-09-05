@@ -49,6 +49,37 @@ describe('HandleTable', () => {
     expect(t.has(h)).toBe(false)
   })
 
+  it('releaseFor removes the settled owner tag so releaseOwner cannot over-decrement', () => {
+    const t = table()
+    const s = new FakeShape('superseded')
+    const h = t.register(s, 'A')
+    t.releaseFor(h, 'A')
+    expect(s.deleted).toBe(1)
+    expect(t.has(h)).toBe(false)
+    // The claim is gone; the later eviction of A is a no-op, not a second
+    // decrement on a live slot.
+    t.releaseOwner('A')
+    expect(t.liveCount()).toBe(0)
+    expect(s.deleted).toBe(1)
+  })
+
+  it('releaseFor drops one owner so the other owner finalizes exactly once', () => {
+    const t = table()
+    const s = new FakeShape('stale-tag')
+    const h = t.register(s, 'A')
+    t.retain(h, 'B')
+    // A's claim is settled (superseded); B still holds it.
+    t.releaseFor(h, 'A')
+    expect(s.deleted).toBe(0)
+    expect(t.has(h)).toBe(true)
+    // Eviction of B must finalize exactly once -- the stale A tag is already
+    // gone, so releaseOwner('B') is the single remaining decrement.
+    t.releaseOwner('B')
+    expect(s.deleted).toBe(1)
+    expect(t.has(h)).toBe(false)
+    expect(t.liveCount()).toBe(0)
+  })
+
   it('releaseOwner drops every handle a checkpoint held', () => {
     const t = table()
     const a = new FakeShape('a')

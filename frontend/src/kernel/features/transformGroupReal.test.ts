@@ -32,12 +32,15 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBoxAt, readSolidVertices, type Vec3 } from '../occ/primitives'
+import { makeBoxAt, readSolidVertices, edgeToGeom, type Vec3 } from '../occ/primitives'
 import { volumeOf } from '../occ/booleans'
 import { faceGh } from '../occ/lineageHash'
-import { Repository } from '../query'
+import { bodyFrame, edgeRepresentativePoint, solidToEdges } from '../occ/tessellation'
+import { geometryClassifiers } from '../geomHash'
+import { Repository, ref, makeAncestryQuery } from '../query'
 import { solveArray, solveCircularArray } from './array'
 import { solveTransform, solveMirror } from './transformMirror'
+import { resolveFilletEdges } from './filletChamfer'
 import type { Body } from '../types3d'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable as HT } from '../occ/handleTable'
@@ -660,6 +663,68 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         expect(result.status).toBe('ok')
         // Body replaced with single translated copy, volume unchanged
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_s.shape!))).toBeCloseTo(srcVol, 2)
+      } finally {
+        scope.dispose()
+      }
+    })
+  })
+
+  describe('mirror new body keeps the source profile queries (L22)', () => {
+    // A profile-derived pick is a query built from the body's `profile_queries`
+    // (the fallback ancestry of an edge with no construction UUID). The mirror
+    // "new" template omitted them, so registerSplitBodies defaulted the copy to
+    // [] and the same pick resolved differently on the copy than on the source.
+    const exactQueryFor = (scope: DisposeScope, table: HandleTable, body: Body, target: Vec3): string => {
+      const shape = table.get<OccShape>(body.shape!)
+      const { center, half } = bodyFrame(occ, scope, shape)
+      const { edges } = solidToEdges(occ, table, body.shape!, {})
+      const ed = edges.find((e) => {
+        const pt = edgeRepresentativePoint(e)
+        return pt !== null && pt.every((c, i) => c === target[i])
+      })
+      if (ed === undefined) throw new Error('no edge at ' + JSON.stringify(target))
+      const classifiers = geometryClassifiers(edgeRepresentativePoint(ed)!, center, half)
+      const ids = [ref(body.created_by), ref(body.id), ...body.profile_queries, ...classifiers.map(ref)]
+      return makeAncestryQuery(ids, ed.kind === 'line' ? 'straightedge' : 'edge')
+    }
+
+    it('a profile-derived query resolves on the copy to the mirror of the source edge', () => {
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+        }
+        bodyStore.body_a.profile_queries = ['@sk_a']
+        const repo = new Repository()
+        repo.register('builtin_plane_front', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
+        const result = solveMirror(occ, scope, table, {
+          id: 'mi1', mirror: { body: 'body_a', plane: '@builtin_plane_front', keep_original: true, merge: false },
+        }, repo, bodyStore)
+        expect(result.status).toBe('ok')
+        expect(result.operation).toBe('new')
+        const copy = bodyStore[result.body_id]
+        // THE fix: the copy must carry the source's profile queries.
+        expect(copy.profile_queries).toEqual(['@sk_a'])
+
+        // The source's bottom-back edge (y=0, z=4) mirrors across the z=0 plane
+        // to the copy's bottom-back edge (y=0, z=-4); the profile-derived query
+        // must resolve to exactly that edge on each body.
+        const srcQ = exactQueryFor(scope, table, bodyStore.body_a, [2, 0, 4])
+        const srcResolved = resolveFilletEdges(occ, scope, table, bodyStore.body_a, [srcQ])
+        expect(srcResolved.length).toBe(1)
+        const copyQ = exactQueryFor(scope, table, copy, [2, 0, -4])
+        const copyResolved = resolveFilletEdges(occ, scope, table, copy, [copyQ])
+        expect(copyResolved.length).toBe(1)
+        const srcEd = edgeToGeom(occ, scope, srcResolved[0]).ed
+        const copyEd = edgeToGeom(occ, scope, copyResolved[0]).ed
+        if (srcEd.kind !== 'line' || copyEd.kind !== 'line') {
+          throw new Error('C3 mirror fixture expected line edges')
+        }
+        const mirror = (p: number[]): number[] => [p[0], p[1], -p[2]]
+        const endpoints = (ed: { start: number[]; end: number[] }): number[][] =>
+          JSON.stringify(ed.start) < JSON.stringify(ed.end) ? [ed.start, ed.end] : [ed.end, ed.start]
+        expect(endpoints(copyEd)).toEqual(endpoints({ start: mirror(srcEd.start), end: mirror(srcEd.end) }))
       } finally {
         scope.dispose()
       }

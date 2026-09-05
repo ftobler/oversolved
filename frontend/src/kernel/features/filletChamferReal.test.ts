@@ -17,7 +17,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBox, faceCentroid, faceNormal } from '../occ/primitives'
+import { makeBox, makeCylinder, faceCentroid, faceNormal, edgeToGeom } from '../occ/primitives'
 import { volumeOf } from '../occ/booleans'
 import { faceGeometryHash } from '../geomHash'
 import { deriveEdgeNames } from '../occ/constructionLineage'
@@ -267,6 +267,43 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       const allEdgeQueries = Array.from({ length: 24 }, (_, i) => `?body_b:edge:${i}`)
       const edges = resolveFilletEdges(occ, scope, table, bodyStore.body_b, allEdgeQueries)
       expect(edges.length).toBe(12)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('the ?body:edge:N alias numbers edges by the DISPLAYED geometric sort index', () => {
+    // L12: the alias used to number edges in TopExp traversal order, so a spec
+    // written against the edge_index the user sees selected a different edge.
+    // A cylinder mixes one vertical seam LINE with two circular cap edges, so
+    // the line sorts first (type_order 0) and the circles after -- the exact
+    // split that explorer order does not guarantee.
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const cyl = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 3, 10)
+      const bodyStore: Record<string, Body> = {
+        body_c: {
+          id: 'body_c',
+          created_by: 'ex_c',
+          modified_by: [],
+          shape: table.register(cyl, 'ex_c'),
+          sketch_id: 'sk_c',
+          brep_diff: null,
+          profile_queries: [],
+        },
+      }
+      const body = bodyStore.body_c
+      const { edges } = solidToEdges(occ, table, body.shape!, {})
+      expect(edges.length).toBe(3)
+      // The first emitted edge is the straight seam; the other two are circular.
+      expect(edges[0].kind).toBe('line')
+      for (let idx = 0; idx < edges.length; idx++) {
+        const resolved = resolveFilletEdges(occ, scope, table, body, [`?body_c:edge:${idx}`])
+        expect(resolved.length).toBe(1)
+        const { ed } = edgeToGeom(occ, scope, resolved[0])
+        expect(ed).toEqual(edges[idx])
+      }
     } finally {
       scope.dispose()
     }

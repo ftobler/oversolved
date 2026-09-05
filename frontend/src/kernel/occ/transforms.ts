@@ -69,10 +69,12 @@ export function transformCopy(oc: OccModule, scope: DisposeScope, shape: OccShap
  * Independent defensive copy of a shape, mirroring builder.py `_copy_shape`
  * (BRepBuilderAPI_Copy with copyGeom=true). The result shares no topology with
  * the original, so storing it in a checkpoint and later mutating/freeing the
- * live body cannot corrupt the copy. (An identity BRepBuilderAPI_Transform does
- * NOT suffice in this OCC build -- it shares the source TShape, which a later
- * in-place fillet/boolean then frees underneath the snapshot.) The result
- * outlives ``scope``; only the transient copy builder is tracked.
+ * live body cannot corrupt the copy. An identity BRepBuilderAPI_Transform is
+ * equally safe in this OCC build: copy=true forces a real rebuild of the TShape
+ * tree, so it does NOT alias the source (probe recorded in
+ * occ/transformsReal.test.ts: IsPartner/IsSame between the source and an
+ * identity-transformed copy read false). The result outlives ``scope``; only
+ * the transient copy builder is tracked.
  */
 export function copyShape(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape {
   const maker = scope.track(new oc.BRepBuilderAPI_Copy_2(shape, true, false))

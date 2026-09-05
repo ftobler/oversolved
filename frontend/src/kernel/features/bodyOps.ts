@@ -127,7 +127,11 @@ export function applyBodyOperation(
       // If the cut consumed the entire body, remove it rather than registering
       // an empty compound.  Mirrors deleteBody.ts:39 for auto-deletion.
       if (countSolids(oc, scope, newShape) === 0) {
-        if (existingBody.shape !== null) table.release(existingBody.shape)
+        // The owner tag is settled with the body, so a later `releaseOwner`
+        // cannot over-decrement (see releaseFor).
+        if (existingBody.shape !== null) {
+          table.releaseFor(existingBody.shape, existingBody.modified_by.at(-1) ?? existingBody.created_by)
+        }
         delete bodyStore[bid]
         cutAnything = true
         cutBodyIds.push(bid)

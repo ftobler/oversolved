@@ -38,7 +38,9 @@ export function isEdgeProfileRef(refStr: string): boolean {
 
 /**
  * Assemble coplanar B-rep edges into one planar profile face. Throws when the
- * edges do not chain into a single connected loop, or are not coplanar.
+ * edges do not chain into a single connected loop, or are not coplanar. The
+ * returned face is UNTRACKED and the caller owns it (typically scope.track() or
+ * a HandleTable.register); the scope only owns the wire and builders.
  */
 export function edgesToProfileFace(oc: OccModule, scope: DisposeScope, edges: OccShape[]): OccShape {
   if (edges.length === 0) throw new Error('extrude: no edges to build a profile from')
@@ -100,7 +102,10 @@ export function resolveProfileEdges(
   return edges
 }
 
-/** Resolve edge refs and assemble them into a single planar profile face. */
+/**
+ * Resolve edge refs and assemble them into a single planar profile face. The
+ * returned face is UNTRACKED and the caller owns it, same as edgesToProfileFace.
+ */
 export function resolveEdgeProfileFace(
   oc: OccModule,
   scope: DisposeScope,

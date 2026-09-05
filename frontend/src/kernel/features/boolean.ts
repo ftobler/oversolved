@@ -169,7 +169,12 @@ export function solveBoolean(
   for (const key of new Set(consumedKeys)) {
     const tool = bodyStore[key]
     if (tool !== undefined) {
-      if (tool.shape !== null) table.release(tool.shape)
+      if (tool.shape !== null) {
+        // The consumed tool's shape was minted by its own producer (last
+        // modifier, else creator); settle that exact claim so its eviction-time
+        // `releaseOwner` cannot over-decrement (see releaseFor).
+        table.releaseFor(tool.shape, tool.modified_by.at(-1) ?? tool.created_by)
+      }
       delete bodyStore[key]
     }
   }

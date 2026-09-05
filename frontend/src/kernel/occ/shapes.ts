@@ -56,6 +56,12 @@ export function faceSortKey(item: FaceSortItem): number[] {
 /** Lexicographic comparator over `faceSortKey` outputs. */
 export function compareFaceSortKeys(a: number[], b: number[]): number {
   for (let i = 0; i < a.length; i++) {
+    if (Number.isNaN(a[i]) || Number.isNaN(b[i])) {
+      // A NaN component makes every comparison false, so the sort silently
+      // returns an order that depends on the input permutation - and face
+      // indices are stored picks. Fail loudly instead.
+      throw new Error(`face sort key component ${i} is NaN`)
+    }
     if (a[i] < b[i]) return -1
     if (a[i] > b[i]) return 1
   }

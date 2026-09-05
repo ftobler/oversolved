@@ -265,6 +265,21 @@ export function resplitBody(
   const oldHandle = body.shape
   const ids = [body.id]
 
+  // The superseded handle's owner tag is the feature that minted the shape
+  // being replaced, never `featureId` (a modifier re-seating another feature's
+  // body) and never `created_by` when a modifier already ran. Read it with the
+  // same last-entry test the history line uses: the caller may push
+  // `featureId` before OR after this call, and either way every sibling ends
+  // up with the same history the parent has. Pass the producer to `releaseFor`
+  // so the settled claim's tag is cleared and eviction-time `releaseOwner`
+  // cannot over-decrement (see releaseFor's docstring).
+  const last = body.modified_by[body.modified_by.length - 1]
+  const history = last === featureId ? [...body.modified_by] : [...body.modified_by, featureId]
+  const oldProducer =
+    last === featureId
+      ? (body.modified_by[body.modified_by.length - 2] ?? body.created_by)
+      : (last ?? body.created_by)
+
   if (solids.length <= 1) {
     // Nothing disconnected: register the solid itself when there is one, so a
     // compound wrapper never survives as a body shape and `countSolids === 1`
@@ -273,12 +288,12 @@ export function resplitBody(
       // The operation consumed the whole body. Release the handle AND drop the
       // body: leaving it behind with shape:null keeps it resolvable as a later
       // feature's target and puts a shapeless row in the parts list.
-      if (oldHandle !== null) table.release(oldHandle)
+      if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
       delete bodyStore[body.id]
       return []
     }
     body.shape = table.register(scope.detach(solids[0]), featureId)
-    if (oldHandle !== null) table.release(oldHandle)
+    if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
     return ids
   }
 
@@ -296,16 +311,13 @@ export function resplitBody(
 
   // The caller may push `featureId` onto the parent before OR after this call;
   // either way every sibling ends up with the same history the parent has.
-  const last = body.modified_by[body.modified_by.length - 1]
-  const history = last === featureId ? [...body.modified_by] : [...body.modified_by, featureId]
-
   const names0 = namesForSolid(oc, scope, solids[0], template)
   body.shape = table.register(scope.detach(solids[0]), featureId)
   body.face_names = names0.faceNames
   body.edge_names = names0.edgeNames
   body.face_ancestry = names0.faceAncestry
   body.edge_ancestry = names0.edgeAncestry
-  if (oldHandle !== null) table.release(oldHandle)
+  if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
 
   for (let i = 1; i < solids.length; i++) {
     const id = mintSiblingId(body.id, i, bodyStore)

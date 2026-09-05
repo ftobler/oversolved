@@ -15,7 +15,7 @@ import { Repository, parseAncestry, makeAncestryQuery, ref } from '../query'
 import { faceCentroid, faceNormal } from '../occ/primitives'
 import { faceGeometryHash } from '../geomHash'
 import { extractOccFace, extractFaceLoops, sortedFacesOf, faceLoopsOfFace, computeFaceDatumFrame } from '../occ/faceLoops'
-import { extractProfileLoops, parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds, type PlaneLike } from './shared'
+import { extractProfileLoops, parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds, type PlaneLike, type ProfileLoopDiag } from './shared'
 
 type Dict = Record<string, unknown>
 type EdgeDict = Record<string, unknown>
@@ -25,6 +25,8 @@ interface FaceProfile {
   plane: PlaneLike
   // The OCC face when resolved from a body, else null (topo-surface paths).
   face: OccShape | null
+  // Why some boundary did not form a closed loop (extractProfileLoops diags).
+  loopDiags?: ProfileLoopDiag[]
 }
 
 function bodyShape(table: HandleTable, body: Body): OccShape {
@@ -184,7 +186,9 @@ export function resolveFaceProfile(
       y_axis: (faceEntry.y_axis as number[]) ?? [0, 1, 0],
       normal: (faceEntry.normal as number[]) ?? [0, 0, 1],
     }
-    return { loops: extractProfileLoops(surfaces), plane: effectivePlane, face: null }
+    const diags: ProfileLoopDiag[] = []
+    const loops = extractProfileLoops(surfaces, diags)
+    return { loops, plane: effectivePlane, face: null, loopDiags: diags }
   }
 
   if (sketchRef.startsWith('?')) {
@@ -207,10 +211,13 @@ export function resolveFaceProfile(
         return false
       }
     })
+    const diags: ProfileLoopDiag[] = []
+    const loops = extractProfileLoops(matched.length ? matched : allSurfaces, diags)
     return {
-      loops: extractProfileLoops(matched.length ? matched : allSurfaces),
+      loops,
       plane: surfacePt,
       face: null,
+      loopDiags: diags,
     }
   }
 
@@ -253,6 +260,8 @@ interface ExtrudeLoops {
   plane: PlaneLike
   sketchId: string
   face: OccShape | null
+  // Why some boundary did not form a closed loop (extractProfileLoops diags).
+  loopDiags?: ProfileLoopDiag[]
   // Only set on the `$sketch` path; needed by the caller for registerTopFace.
   surfaces?: Dict[]
   // Only set on the `$sketch` path; needed by the caller for registerTopFace.
@@ -307,14 +316,15 @@ function collectEntityProfileLoops(
   const boundary = ownArea !== undefined
     ? ((ownArea.boundary as Dict[]) ?? [])
     : ((topo.edges as Dict[]) ?? []).filter((e) => e.entity_id === eid)
-  const loops = boundary.length > 0 ? extractProfileLoops([{ boundary }]) : []
+  const diags: ProfileLoopDiag[] = []
+  const loops = boundary.length > 0 ? extractProfileLoops([{ boundary }], diags) : []
   if (loops.length === 0) {
     throw new Error(
       `profile entity '${eid}' of sketch ${sketchId} bounds no closed area; ` +
       'pick the area itself, or a closed entity such as a circle',
     )
   }
-  return { loops, plane, sketchId, face: null }
+  return { loops, plane, sketchId, face: null, loopDiags: diags }
 }
 
 /**
@@ -344,8 +354,8 @@ export function collectExtrudeLoops(
     } else {
       sketchId = sketchRef.slice(1).split('/')[0]
     }
-    const { loops, plane, face } = resolveFaceProfile(oc, scope, table, sketchRef, globalRepo, bodyStore)
-    return { loops, plane, sketchId, face }
+    const { loops, plane, face, loopDiags } = resolveFaceProfile(oc, scope, table, sketchRef, globalRepo, bodyStore)
+    return { loops, plane, sketchId, face, loopDiags }
   }
 
   const sketchId = sketchRef.replace(/^\$+/, '')
@@ -355,7 +365,9 @@ export function collectExtrudeLoops(
   const surfaces = (topo.surfaces as Dict[]) ?? []
   // registerTopFace is now called by the caller (extrude.ts) after
   // resolveDirection, so it uses the effective distance.
-  return { loops: extractProfileLoops(surfaces), plane: pt, sketchId, face: null, surfaces, pt }
+  const diags: ProfileLoopDiag[] = []
+  const loops = extractProfileLoops(surfaces, diags)
+  return { loops, plane: pt, sketchId, face: null, surfaces, pt, loopDiags: diags }
 }
 
 // Re-export Frame3D for consumers building plane inputs.

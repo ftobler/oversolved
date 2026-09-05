@@ -36,7 +36,11 @@ export function solveDeleteBody(
 
   for (const bodyKey of keys) {
     const body = bodyStore[bodyKey]
-    if (body !== undefined && body.shape !== null) table.release(body.shape)
+    if (body !== undefined && body.shape !== null) {
+      // The owner tag is settled with the body, so a later `releaseOwner`
+      // cannot over-decrement (see releaseFor).
+      table.releaseFor(body.shape, body.modified_by.at(-1) ?? body.created_by)
+    }
     if (body !== undefined) clearConsumedBodyAncestry(globalRepo, body.id, body.created_by || '')
     delete bodyStore[bodyKey]
   }

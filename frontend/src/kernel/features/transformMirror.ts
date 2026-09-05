@@ -201,7 +201,8 @@ export function solveTransform(
     // then composes them into one flat, gap-free `body_<feature>[_n]` run.
     const names = rebuildNamesForTransformedCopy(oc, scope, newShape, rows, featureId, index, builder)
     bodyIds.push(...registerSplitBodies(oc, scope, table, bodyStore, scope.track(newShape), {
-      id: 'body_' + featureId, createdBy: featureId, sketchId: sourceBody.sketch_id, ...names,
+      id: 'body_' + featureId, createdBy: featureId, sketchId: sourceBody.sketch_id,
+      profileQueries: sourceBody.profile_queries, ...names,
     }))
   })
   if (bodyIds.length === 0 && consumedReplace !== null) {
@@ -343,7 +344,8 @@ export function solveMirror(
 
   const newBodyId = 'body_' + featureId
   const newIds = registerSplitBodies(oc, scope, table, bodyStore, scope.track(mirrored), {
-    id: newBodyId, createdBy: featureId, sketchId: sourceBody.sketch_id, ...mirroredNames,
+    id: newBodyId, createdBy: featureId, sketchId: sourceBody.sketch_id,
+    profileQueries: sourceBody.profile_queries, ...mirroredNames,
   })
   return { status: 'ok', body_id: newIds[0], body_ids: newIds, operation: 'new' }
 }

@@ -366,6 +366,12 @@ export function compareEdgeSortKeys(a: EdgeSortKey, b: EdgeSortKey): number {
     const x = a[i]
     const y = b[i]
     if (typeof x === 'number' && typeof y === 'number') {
+      if (Number.isNaN(x) || Number.isNaN(y)) {
+        // A NaN component makes every comparison false, so the sort silently
+        // returns an order that depends on the input permutation. Same hazard as
+        // compareFaceSortKeys; refuse it loudly here too.
+        throw new Error(`edge sort key component ${i} is NaN`)
+      }
       if (x < y) return -1
       if (x > y) return 1
     } else {

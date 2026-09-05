@@ -133,7 +133,7 @@ function collectFaceWires(
 type EdgeDict = Record<string, unknown>
 
 /** 2D edge dicts for a wire on a face (mirrors `_build_loop_from_wire`). */
-function buildLoopFromWire(
+export function buildLoopFromWire(
   oc: OccModule,
   scope: DisposeScope,
   wire: OccShape,
@@ -144,10 +144,13 @@ function buildLoopFromWire(
   const circleType = oc.GeomAbs_CurveType.GeomAbs_Circle.value
   const lineType = oc.GeomAbs_CurveType.GeomAbs_Line.value
   const we = scope.track(new oc.BRepTools_WireExplorer_3(wire, face))
+  let total = 0
+  let dropped = 0
   for (; we.More(); we.Next()) {
     // Current() hands back a fresh edge proxy per step; the reads below end
     // inside the iteration, so it is dropped with it.
     const edge = scope.track(we.Current())
+    total++
     try {
       const c2d = scope.track(new oc.BRepAdaptor_Curve2d_2(edge, face))
       let first = c2d.FirstParameter()
@@ -236,8 +239,17 @@ function buildLoopFromWire(
         }
       }
     } catch {
-      // Per-edge failure: drop it (matches Python's per-edge try/except).
+      // A pcurve read failure used to drop the edge silently, which returned a
+      // gapped loop that then travelled to makeWire as a WRONG profile instead
+      // of a named failure. Count it and refuse below.
+      dropped++
     }
+  }
+  if (dropped > 0) {
+    throw new Error(
+      `face loop: ${dropped} of ${total} boundary edge(s) could not be read; ` +
+      'the loop would be gapped',
+    )
   }
   return loop
 }

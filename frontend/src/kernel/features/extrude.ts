@@ -18,7 +18,7 @@ import { AmbiguousQueryError } from '../query'
 import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { resolveDirection, registerTopFace, samePlane, surfaceEntityIds, sketchToWorld2d, unbuildableAreaReasons, type PlaneLike } from './shared'
+import { resolveDirection, registerTopFace, samePlane, surfaceEntityIds, sketchToWorld2d, unbuildableAreaReasons, loopDiagReasons, type PlaneLike } from './shared'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
@@ -159,6 +159,9 @@ export function solveExtrude(
     // because this is the one place the sketch's areas are in hand; used only if
     // the profile ends up empty below.
     unbuildableReasons.push(...unbuildableAreaReasons((topo.surfaces as Dict[]) ?? []))
+    // The profile handoff also refuses boundaries that never closed or left
+    // edges behind; fold those reasons in with the area stamps.
+    unbuildableReasons.push(...loopDiagReasons(resolved.loopDiags ?? []))
     for (const surface of (topo.surfaces as Dict[]) ?? []) {
       profileQueries.push(...surfaceEntityIds(surface))
     }

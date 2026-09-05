@@ -11,11 +11,10 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId, constructionUuidToken } from '../query'
 import { edgeGeometryHash, faceGeometryHash, geometryClassifiers } from '../geomHash'
-import { bestDescriptorMatch, type GeomDescriptor } from '../geomDescriptor'
 import { resolveBody, resolveBodyIds } from './shared'
 import { resplitBody } from './bodySplit'
-import { bodyFrame, edgeRepresentativePoint } from '../occ/tessellation'
-import { faceCentroid, faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type Vec3 } from '../occ/primitives'
+import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
+import { faceCentroid, faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
   applyFilletWithLineage,
@@ -134,16 +133,34 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   const newEdgeHashes = hasModifier ? brepDiffNewEdgeHashes(oc, scope, body.brep_diff) : new Set<string>()
   const { center, half } = bodyFrame(oc, scope, shape)
 
-  uniq.forEach((te, idx) => {
-    let ed: EdgeData
+  // Number the `?body:edge:N` alias by the DISPLAYED geometric sort order
+  // (solidToEdges sorts readSolidEdges by compareEdgeSortKeys), not by TopExp
+  // traversal order, so a spec written against the edge_index the user sees
+  // selects the same edge. Degenerated edges are skipped, mirroring
+  // readSolidEdges, and an edge whose geometry cannot be read has no sort key
+  // and never appears on the display side, so it is numbered AFTER the sorted,
+  // geometry-bearing edges where it cannot shift a displayed index.
+  type IndexEntry = { te: OccShape; geom: { ed: EdgeData; sortKey: EdgeSortKey } | null }
+  const indexEntries: IndexEntry[] = []
+  for (const te of uniq) {
+    if (oc.BRep_Tool.Degenerated?.(te)) continue
     try {
-      const geom = edgeToGeom(oc, scope, te)
-      ed = geom.ed
+      indexEntries.push({ te, geom: edgeToGeom(oc, scope, te) })
     } catch {
+      indexEntries.push({ te, geom: null })
+    }
+  }
+  const withGeom = indexEntries.filter((e): e is IndexEntry & { geom: { ed: EdgeData; sortKey: EdgeSortKey } } => e.geom !== null)
+  withGeom.sort((a, b) => compareEdgeSortKeys(a.geom.sortKey, b.geom.sortKey))
+  const sorted = [...withGeom, ...indexEntries.filter((e) => e.geom === null)]
+
+  sorted.forEach(({ te, geom }, idx) => {
+    if (geom === null) {
       // On failure, skip geometry processing but still register the body:edge:N alias
       queryToEdge.set(`?${body.id}:edge:${idx}`, te)
       return
     }
+    const ed = geom.ed
     const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
     const geomHash = edgeGeometryHash(ed as unknown as Record<string, unknown>)
     if (body.created_by) {
@@ -192,20 +209,6 @@ export function makeEdgeIndexCache(
     }
     return idx
   }
-}
-
-/**
- * Descriptor-tier face picker (the @gdf| half of `resolveFaceToEdges`).
- * Pure: returns the winning candidate or undefined when the match is
- * tight-ambiguous or a near-tie (fail-safe -- the caller returns no edges
- * rather than filleting the wrong face's edges). Extracted so the refusal
- * contract can be unit-tested without OCC.
- */
-export function pickFaceByDescriptor<T>(
-  qd: GeomDescriptor,
-  candidates: Array<[T, GeomDescriptor]>,
-): T | undefined {
-  return bestDescriptorMatch(qd, candidates)
 }
 
 /** Resolve a face ancestry query to all OCC edges of the matching face. */
