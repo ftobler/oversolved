@@ -4,15 +4,9 @@
 // frozenset semantics: Python keys `ancestral` by a frozenset of ancestor ids and tests
 // subset/superset containment hot in the drag loop. JS Set is not a value type and cannot be a
 // Map key, so each entry stores both the Set (for containment) and a canonical sorted-join
-// string (the Map key, deduping permutations exactly as frozenset does). See queryHeuristics.ts
-// for scoring.
+// string (the Map key, deduping permutations exactly as frozenset does).
 
-import {
-  BUILTIN_PLANES,
-  FRONT_PLANE,
-  isPlaneType,
-  resolveBarePlaneId,
-} from "./solverConstants"
+import { BUILTIN_PLANES } from "./solverConstants"
 import {
   DEFAULT_DESCRIPTOR_MATCH,
   descriptorDistance,
@@ -1378,15 +1372,6 @@ export class Repository {
   }
 }
 
-/** Return the build-order index of the element's owning feature, or null when
- *  the element has no owner or its owner is not in the current order. The
- *  ordering guard does not use this: it reads the tri-state directly so an
- *  orphaned owner is excluded instead of conflated with built-in. */
-export function featureIdxOfElement(repo: Repository, eid: string): number | null {
-  const state = ownerStateOfElement(repo, eid)
-  return state.kind === "indexed" ? state.idx : null
-}
-
 type OwnerState =
   | { kind: "builtin" }
   | { kind: "orphaned" }
@@ -1539,36 +1524,4 @@ export function getPoint3d(ref: Record<string, unknown>, globalRepo: Repository)
   if ("origin" in ref && !("normal" in ref)) return ref["origin"] as number[]
   if ("origin" in ref && "normal" in ref) throw new Error("reference is a plane, not a point")
   throw new Error("point reference has no coordinates")
-}
-
-/** Resolve a plane query string (e.g. "$f1", "@builtin_plane_right", "Front")
- *  to a plane dict. Falls back to FRONT_PLANE on unresolvable input. */
-export function resolvePlaneEarly(
-  planeQuery: string | null,
-  globalRepo: Repository | null,
-): Record<string, unknown> {
-  if (!planeQuery) throw new Error("sketch has no plane assignment")
-
-  const bareName = resolveBarePlaneId(planeQuery)
-  if (bareName) return BUILTIN_PLANES[bareName] as Record<string, unknown>
-
-  if (planeQuery.startsWith("@")) {
-    const builtin = BUILTIN_PLANES[planeQuery.slice(1)]
-    if (builtin) return builtin as Record<string, unknown>
-    if (globalRepo !== null) {
-      const p = globalRepo.elements.get(planeQuery.slice(1))
-      if (isDict(p) && isPlaneType(p)) return p
-    }
-    return FRONT_PLANE as Record<string, unknown>
-  }
-
-  if (planeQuery.startsWith("$") && globalRepo !== null) {
-    const p = globalRepo.elements.get(planeQuery.slice(1))
-    if (isDict(p)) {
-      if (isPlaneType(p)) return p
-    }
-    return FRONT_PLANE as Record<string, unknown>
-  }
-
-  return FRONT_PLANE as Record<string, unknown>
 }

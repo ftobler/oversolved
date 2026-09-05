@@ -6,7 +6,6 @@ import {
   initGlobalRepo,
   evictAncestryAndRegister,
   setCurrentFeatureId,
-  featureIdxOfElement,
   isGeomHashId,
   isClassifierId,
   parseQuery,
@@ -20,19 +19,9 @@ import {
   ref,
   bodyIdOf,
   getPoint3d,
-  resolvePlaneEarly,
   constructionUuidToken,
 } from "./query"
 import type { AncestryQuery } from "./query"
-import {
-  Outcome,
-  DEFAULT_HEURISTIC_CONFIG,
-  scoreOverlap,
-  scoreGeometryLeaf,
-  pickBest,
-  weightFor,
-} from "./queryHeuristics"
-import type { HeuristicConfig } from "./queryHeuristics"
 import { isPlaneType, isPointType } from "./solverConstants"
 import { postRegister, clearFeatureGeometryRegistrations } from "./features/postRegister"
 import { repoFromSnapshot } from "./builder"
@@ -1591,14 +1580,6 @@ describe("ordering guard", () => {
     expect(resolved.type).toBe("plane")
   })
 
-  it("featureIdxOfElement returns null for built-in element", () => {
-    const repo = new Repository()
-    repo.setFeatureOrder(["f0"])
-    const eid = repo.registerAncestor(["@builtin"], { type: "plane" })
-
-    expect(featureIdxOfElement(repo, eid)).toBeNull()
-  })
-
   it("absolute queries are never ordering-gated", () => {
     // Absolute references are explicit and not ordering-gated, even forward.
     const repo = new Repository()
@@ -2405,33 +2386,6 @@ describe("getPoint3d", () => {
   })
 })
 
-describe("resolvePlaneEarly", () => {
-  it("resolves face via $ prefix", () => {
-    const repo = initGlobalRepo()
-    const face = {
-      type: "face",
-      centroid: [0, 0, 0],
-      normal: [0, 0, 1],
-      origin: [0, 0, 0],
-      x_axis: [1, 0, 0],
-      y_axis: [0, 1, 0],
-    }
-    repo.register("f1", face)
-    const result = resolvePlaneEarly("$f1", repo)
-    expect(result).toBe(face)
-  })
-
-  it("rejects vertex via $ prefix (falls back to FRONT_PLANE)", () => {
-    const repo = initGlobalRepo()
-    const vertex = { type: "vertex", origin: [1.0, 2.0, 3.0] }
-    repo.register("v1", vertex)
-    const result = resolvePlaneEarly("$v1", repo)
-    expect(isPlaneType(result)).toBe(true)
-    // Should not return the vertex, falls back to FRONT_PLANE
-    expect(result).not.toBe(vertex)
-  })
-})
-
 // ─── B-rep vertex / face integration (requires OCC build pipeline, skipped in this suite) ───
 
 describe("makeAncestryQuery construction details", () => {
@@ -2552,128 +2506,6 @@ describe("B-rep vertex and face integration", () => {
 
   it.skip("plane on face mode from brep face", () => {
     // Requires build() with OCC.js + on_face plane mode
-  })
-})
-
-// ─── HeuristicConfig / scoreOverlap / pickBest ───
-
-describe("HeuristicConfig defaults", () => {
-  // DEFAULT_HEURISTIC_CONFIG has sensible defaults.
-  it("defaults are sensible", () => {
-    const cfg = DEFAULT_HEURISTIC_CONFIG
-    expect(cfg.overlapThreshold).toBe(0.5)
-    expect(cfg.ambiguityMargin).toBe(0.0)
-    expect(cfg.geometryLeafTolerance).toBe(0.01)
-    expect(cfg.kindWeights).toEqual({})
-    expect(weightFor(cfg, "any")).toBe(1.0)
-    expect(weightFor(cfg, "edge")).toBe(1.0)
-  })
-})
-
-describe("scoreOverlap", () => {
-  // score_overlap handles empty sets and perfect matches.
-  it("edge cases and exact matches", () => {
-    expect(scoreOverlap(new Set(), new Set())).toBe(0.0)
-    expect(scoreOverlap(new Set(["a"]), new Set())).toBe(0.0)
-    expect(scoreOverlap(new Set(["a", "b"]), new Set(["a", "b"]))).toBe(1.0)
-    expect(scoreOverlap(new Set(["a", "b"]), new Set(["b", "c"]))).toBe(0.5)
-    expect(scoreOverlap(new Set(["a", "b", "c"]), new Set(["a"]))).toBeCloseTo(1.0 / 3.0)
-  })
-})
-
-describe("pickBest", () => {
-  // pick_best with one candidate returns RESOLVED.
-  it("single candidate returns RESOLVED", () => {
-    const cfg = DEFAULT_HEURISTIC_CONFIG
-    const [outcome, winner] = pickBest([["item", 0.8]], cfg)
-    expect(outcome).toBe(Outcome.RESOLVED)
-    expect(winner).toBe("item")
-  })
-
-  // pick_best with one candidate beating another by > margin.
-  it("clear winner beats runner-up by > margin", () => {
-    const cfg: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, ambiguityMargin: 0.2 }
-    const [outcome, winner] = pickBest(
-      [["A", 0.9], ["B", 0.5]],
-      cfg,
-    )
-    expect(outcome).toBe(Outcome.RESOLVED)
-    expect(winner).toBe("A")
-  })
-
-  // pick_best with scores within margin returns AMBIGUOUS.
-  it("ambiguous within margin", () => {
-    const cfg: HeuristicConfig = { ...DEFAULT_HEURISTIC_CONFIG, ambiguityMargin: 0.3 }
-    const [outcome, winner] = pickBest(
-      [["A", 0.8], ["B", 0.7]],
-      cfg,
-    )
-    expect(outcome).toBe(Outcome.AMBIGUOUS)
-    expect(winner).toBeNull()
-  })
-
-  // pick_best with no candidates returns UNRESOLVED.
-  it("empty returns UNRESOLVED", () => {
-    const [outcome, winner] = pickBest([], DEFAULT_HEURISTIC_CONFIG)
-    expect(outcome).toBe(Outcome.UNRESOLVED)
-    expect(winner).toBeNull()
-  })
-})
-
-describe("scoreGeometryLeaf", () => {
-  const cfg = DEFAULT_HEURISTIC_CONFIG
-
-  // A null hint on either side is treated as a non-penalty (perfect score).
-  it("null hints incur no penalty", () => {
-    expect(scoreGeometryLeaf(null, { x: 1 }, cfg)).toBe(1.0)
-    expect(scoreGeometryLeaf({ x: 1 }, null, cfg)).toBe(1.0)
-    expect(scoreGeometryLeaf(null, null, cfg)).toBe(1.0)
-  })
-
-  // With no keys shared between the hints there is nothing to agree on.
-  it("no shared keys scores zero", () => {
-    expect(scoreGeometryLeaf({ x: 1 }, { y: 2 }, cfg)).toBe(0.0)
-    expect(scoreGeometryLeaf({}, {}, cfg)).toBe(0.0)
-  })
-
-  // Numbers within the relative tolerance count as a match, beyond it do not.
-  it("numeric comparison honours the relative tolerance", () => {
-    // 0.5 / 100 = 0.005 <= 0.01 default tolerance.
-    expect(scoreGeometryLeaf({ r: 100 }, { r: 100.5 }, cfg)).toBe(1.0)
-    // 2 / 100 = 0.02 > 0.01.
-    expect(scoreGeometryLeaf({ r: 100 }, { r: 102 }, cfg)).toBe(0.0)
-  })
-
-  // Two near-zero magnitudes are equal regardless of relative difference.
-  it("treats both-near-zero values as matching", () => {
-    expect(scoreGeometryLeaf({ x: 0 }, { x: 0 }, cfg)).toBe(1.0)
-    expect(scoreGeometryLeaf({ x: 1e-13 }, { x: -1e-13 }, cfg)).toBe(1.0)
-  })
-
-  // Non-numeric values fall back to strict equality.
-  it("non-numeric values compare by equality", () => {
-    expect(scoreGeometryLeaf({ kind: "arc" }, { kind: "arc" }, cfg)).toBe(1.0)
-    expect(scoreGeometryLeaf({ kind: "arc" }, { kind: "line" }, cfg)).toBe(0.0)
-  })
-
-  // Null/undefined leaf values match only when both sides are absent.
-  it("null and undefined leaf values match only when both absent", () => {
-    expect(scoreGeometryLeaf({ x: null }, { x: null }, cfg)).toBe(1.0)
-    expect(scoreGeometryLeaf({ x: undefined }, { x: undefined }, cfg)).toBe(1.0)
-    expect(scoreGeometryLeaf({ x: null }, { x: 5 }, cfg)).toBe(0.0)
-  })
-
-  // Score is the fraction of shared keys that agree; absent keys are ignored.
-  it("scores the fraction of agreeing shared keys", () => {
-    // x agrees (numeric), y disagrees, z is not shared and ignored.
-    expect(scoreGeometryLeaf({ x: 1, y: 2, z: 9 }, { x: 1, y: 3 }, cfg)).toBe(0.5)
-  })
-
-  // A tighter tolerance from config rejects a difference a looser one accepts.
-  it("respects a custom geometryLeafTolerance", () => {
-    const strict: HeuristicConfig = { ...cfg, geometryLeafTolerance: 0.001 }
-    expect(scoreGeometryLeaf({ r: 100 }, { r: 100.5 }, strict)).toBe(0.0)
-    expect(scoreGeometryLeaf({ r: 100 }, { r: 100.5 }, cfg)).toBe(1.0)
   })
 })
 

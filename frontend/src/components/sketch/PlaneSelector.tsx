@@ -6,10 +6,10 @@ import { resolveBarePlaneId } from '@/kernel/solverConstants'
 /**
  * The query a chip may mirror into the selection. A sketch saved before the
  * builtin planes got query ids can still carry a bare `Top`/`Front`/`Right`,
- * which both kernel resolvers still accept (`resolveSketchPlane`,
- * `resolvePlaneEarly`), so such documents remain loadable and are not migrated
- * on read. That legacy spelling is not a selection id though, and mirroring it
- * verbatim would put an unrecognized entry into normalSelection.
+ * which the kernel resolver still accepts (`resolveSketchPlane`), so such
+ * documents remain loadable and are not migrated on read. That legacy
+ * spelling is not a selection id though, and mirroring it verbatim
+ * would put an unrecognized entry into normalSelection.
  */
 function planeSelectionQuery(plane: string | undefined): string | null {
   if (!plane) return null

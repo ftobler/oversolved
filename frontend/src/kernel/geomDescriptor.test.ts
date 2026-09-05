@@ -1,15 +1,12 @@
 // Tests for geometric descriptor tokens (query-descriptor-identity): wire
 // round-trip, per-kind derivation, and the tolerance-matching gates the
-// resolver and fillet/chamfer consumers rely on.
+// resolver's legacy descriptor tier relies on.
 
 import { describe, it, expect } from "vitest"
 import {
-  bestDescriptorMatch,
-  DEFAULT_DESCRIPTOR_MATCH,
   descriptorDistance,
   descriptorOfElement,
   edgeDescriptorOf,
-  emitVertexDescriptor,
   isGeomDescriptorId,
   narrowByDescriptor,
   parseGeomDescriptorId,
@@ -21,7 +18,7 @@ const face = (point: number[], axis: number[]): GeomDescriptor => ({ kind: "face
 
 describe("wire format", () => {
   it("vertex token round-trips", () => {
-    const d = parseGeomDescriptorId(emitVertexDescriptor([4, 5, 6]))
+    const d = parseGeomDescriptorId("@gdv|4.0,5.0,6.0")
     expect(d).toEqual({ kind: "vertex", point: [4, 5, 6] })
   })
 
@@ -43,7 +40,7 @@ describe("wire format", () => {
   })
 
   it("tokens contain no spaces (safe for the canonical space-join)", () => {
-    const tok = emitVertexDescriptor([-0.0001, 9999.9999, 0])
+    const tok = "@gdv|-0.0001,9999.9999,0.0"
     expect(tok.includes(" ")).toBe(false)
   })
 })
@@ -342,51 +339,3 @@ describe("narrowByDescriptor (graceful resolver tier)", () => {
   })
 })
 
-describe("bestDescriptorMatch (strict actuating consumers)", () => {
-  it("unique tight hit wins", () => {
-    const q = face([0, 0, 10], [0, 0, 1])
-    const winner = bestDescriptorMatch(q, [
-      ["a", face([0, 0, 10.0002], [0, 0, 1])],
-      ["b", face([0, 0, 12], [0, 0, 1])],
-    ])
-    expect(winner).toBe("a")
-  })
-
-  it("two tight hits are ambiguous -> undefined", () => {
-    const q = face([0, 0, 10], [0, 0, 1])
-    const winner = bestDescriptorMatch(q, [
-      ["a", face([0, 0, 10.0001], [0, 0, 1])],
-      ["b", face([0, 0, 9.9999], [0, 0, 1])],
-    ])
-    expect(winner).toBeUndefined()
-  })
-
-  it("near-tie outside the tight window -> undefined", () => {
-    const q = face([0, 0, 10], [0, 0, 1])
-    const winner = bestDescriptorMatch(q, [
-      ["a", face([0, 0, 11], [0, 0, 1])],
-      ["b", face([0, 0, 11.5], [0, 0, 1])],
-    ])
-    expect(winner).toBeUndefined()
-  })
-
-  it("nothing passes the gate -> undefined (never a wild guess)", () => {
-    const q = face([0, 0, 10], [0, 0, 1])
-    expect(bestDescriptorMatch(q, [["a", face([0, 0, 10], [1, 0, 0])]])).toBeUndefined()
-    expect(bestDescriptorMatch(q, [])).toBeUndefined()
-  })
-
-  it("respects a custom config", () => {
-    const q = face([0, 0, 10], [0, 0, 1])
-    const loose = { ...DEFAULT_DESCRIPTOR_MATCH, ratioMargin: 1.1 }
-    const winner = bestDescriptorMatch(
-      q,
-      [
-        ["a", face([0, 0, 11], [0, 0, 1])],
-        ["b", face([0, 0, 11.5], [0, 0, 1])],
-      ],
-      loose,
-    )
-    expect(winner).toBe("a")
-  })
-})

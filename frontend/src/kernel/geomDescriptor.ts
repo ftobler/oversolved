@@ -1,18 +1,13 @@
 // Geometric descriptor tokens (@gdf|/@gde|/@gdv|). No producer emits these into a
 // persisted query anymore: they were replaced by @u| construction UUIDs plus
-// ancestral tokens (query-naming-by-construction). Two consumers keep this
-// module alive:
-//   - the resolver's legacy descriptor tier, resolving @gd*| tokens in queries
-//     saved before the switch (backward compat only);
-//   - `bestDescriptorMatch`, a transient solve-time face/edge picker in
-//     filletChamfer that builds a descriptor from live geometry (never persisted).
+// ancestral tokens (query-naming-by-construction). One consumer keeps this
+// module alive: the resolver's legacy descriptor tier, resolving @gd*| tokens in
+// queries saved before the switch (backward compat only).
 //
 // Wire format:
 //   @gdf|x,y,z|nx,ny,nz                  face: centroid + normal
 //   @gde|kind|x,y,z|ax,ay,az|scalar      edge: point + axis + length/radius
 //   @gdv|x,y,z                          vertex: the point
-
-import { pyRound4Str } from "./geomHash"
 
 export interface FaceDescriptor {
   kind: "face"
@@ -43,14 +38,6 @@ export function isGeomDescriptorId(idStr: string): boolean {
     idStr.startsWith(EDGE_PREFIX) ||
     idStr.startsWith(VERTEX_PREFIX)
   )
-}
-
-function nums(v: number[]): string {
-  return v.map(pyRound4Str).join(",")
-}
-
-export function emitVertexDescriptor(pt: number[]): string {
-  return VERTEX_PREFIX + nums(pt)
 }
 
 function parseNums(s: string): number[] | null {
@@ -374,30 +361,3 @@ export function narrowByDescriptor<T>(
   return gated.map(([id]) => id)
 }
 
-/**
- * Strict single-winner variant for consumers that actuate on the result
- * (fillet/chamfer resolve an edge and cut metal): exactly one tight hit, or
- * a nearest with clear margin -- anything ambiguous returns undefined instead
- * of gracefully passing candidates through.
- */
-export function bestDescriptorMatch<T>(
-  q: GeomDescriptor,
-  candidates: Array<[T, GeomDescriptor | null]>,
-  cfg: DescriptorMatchConfig = DEFAULT_DESCRIPTOR_MATCH,
-): T | undefined {
-  const gated: Array<[T, number]> = []
-  for (const [id, desc] of candidates) {
-    if (desc === null) continue
-    const d = descriptorDistance(q, desc, cfg)
-    if (d !== null) gated.push([id, d])
-  }
-  if (gated.length === 0) return undefined
-  const tight = gated.filter(([, d]) => d <= cfg.tightTol)
-  if (tight.length === 1) return tight[0][0]
-  if (tight.length > 1) return undefined
-  gated.sort((a, b) => a[1] - b[1])
-  if (gated.length === 1 || gated[0][1] * cfg.ratioMargin <= gated[1][1]) {
-    return gated[0][0]
-  }
-  return undefined
-}
