@@ -2,6 +2,7 @@ import type { PartFeature } from '@/types/cad'
 import type { EntitySelectionId, VertexSelectionId } from '@/types/query'
 import { parseQuery } from '@/utils/query'
 import { parseSelectionId, parseTopoFallbackQuery } from './selectionId'
+import { featureIdOfToken } from './pickOrder'
 import { isFaceRestriction, isEdgeRestriction, isVertexRestriction } from '@/kernel/occ/primitives'
 
 export function extractFeatureId(ancestorId: string): string | null {
@@ -59,6 +60,14 @@ export function queryLabel(
 ): string {
   if (!query || query === 'None') return 'None'
 
+  // The known-set resolver (shared with pickOrder) is the authoritative answer
+  // to "which feature owns this token": a body ref `@body_ex1_1` names the
+  // feature `ex1_1` when one exists, not a stripped `ex1`. The regex
+  // extractFeatureId remains the no-known-set fallback for refs to features
+  // that are not in the list, so a ghost ref still renders its id.
+  const known = new Set(features.map(f => f.id))
+  const ownerOf = (token: string) => featureIdOfToken(token, known) ?? extractFeatureId(token)
+
   // Sketch picks are stored as the selection id the viewport toggled, not as a
   // query (a rewritten value would no longer match the re-click that unpicks
   // it), so they never reach parseQuery. Extrude/revolve/sweep take them as
@@ -90,10 +99,10 @@ export function queryLabel(
   const topo = parseTopoFallbackQuery(query)
   if (topo) {
     const kind = topo.kind.charAt(0).toUpperCase() + topo.kind.slice(1)
-    // The full query is the ancestor token extractFeatureId expects
+    // The full query is the ancestor token ownerOf expects
     // (@<bodyId>/<kind>/<idx>); it maps the body tag to the owning feature,
     // split-sibling suffix included.
-    const featureId = extractFeatureId(query)
+    const featureId = ownerOf(query)
     const feature = featureId ? features.find(f => f.id === featureId) : undefined
     const owner = feature ? (feature.label || feature.id) : (featureId ?? topo.bodyId)
     return `${kind} of ${owner}`
@@ -122,7 +131,7 @@ export function queryLabel(
         // earlier id in the same chain names the owning feature.
         let featureId: string | null = null
         for (let i = parsed.ancestorIds.length - 1; i >= 0; i--) {
-          featureId = extractFeatureId(parsed.ancestorIds[i])
+          featureId = ownerOf(parsed.ancestorIds[i])
           if (featureId) break
         }
         const entityType = entityTypeFromRestriction(parsed.typeRestriction)

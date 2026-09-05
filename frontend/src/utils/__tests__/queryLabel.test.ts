@@ -235,6 +235,15 @@ describe('queryLabel', () => {
       expect(queryLabel('@body_ex1_1/face/0', features)).toBe('Face of My Extrude')
     })
 
+    it('prefers a feature literally named ex1_1 over the body-suffix strip', () => {
+      // The label resolver shares pickOrder's known-set longest-prefix
+      // resolution: when a feature really is named `ex1_1`, the sibling suffix
+      // belongs to it, not to `ex1`. extractFeatureId (no known set) still
+      // strips, but queryLabel must not.
+      const withSibling = [...features, { id: 'ex1_1', kind: 'extrude', label: 'Ex1 One' }]
+      expect(queryLabel('@body_ex1_1/face/0', withSibling)).toBe('Face of Ex1 One')
+    })
+
     it('falls back to the body id when the owning feature is unknown', () => {
       expect(queryLabel('@body_ghost1/face/0', features)).toBe('Face of ghost1')
     })

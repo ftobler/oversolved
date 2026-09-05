@@ -39,6 +39,15 @@ describe('selectionSourceFeatureIds', () => {
     expect(selectionSourceFeatureIds('@body_ex1_1/face/3', KNOWN)).toEqual(['ex1'])
   })
 
+  it('prefers a feature literally named ex1_1 over the body-suffix strip', () => {
+    // The collision case the label resolver shares (queryLabel): a real
+    // feature named `ex1_1` owns the `_1` suffix, so the guard and the label
+    // must agree on `ex1_1` rather than stripping to `ex1`.
+    const known = new Set(['ex1', 'ex1_1'])
+    expect(selectionSourceFeatureIds('@body_ex1_1', known)).toEqual(['ex1_1'])
+    expect(selectionSourceFeatureIds('@body_ex1_1/face/3', known)).toEqual(['ex1_1'])
+  })
+
   it('reads the owner out of the topo fallback query', () => {
     expect(selectionSourceFeatureIds('@ex1/face/3', KNOWN)).toEqual(['ex1'])
     expect(selectionSourceFeatureIds('@ex1/edge/2', KNOWN)).toEqual(['ex1'])

@@ -22,8 +22,11 @@ const BODY_PREFIX = 'body_'
  * Geom-descriptor tokens (`@gdf|...`), classifiers and builtin planes own no
  * feature and resolve to null. The concatenated `@<featureId><eid>` form is a
  * legacy fallback for tokens persisted before the slash-joined format.
+ *
+ * Exported for the label resolver (queryLabel) so display text and the pick
+ * guard answer "which feature owns this token" the same way.
  */
-function featureIdOfToken(token: string, known: ReadonlySet<string>): string | null {
+export function featureIdOfToken(token: string, known: ReadonlySet<string>): string | null {
   if (!token.startsWith('@')) return null
   let id = token.slice(1)
   const slash = id.indexOf('/')
