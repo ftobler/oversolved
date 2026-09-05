@@ -87,6 +87,29 @@ describe('IdPipeline layering', () => {
     })
   }
 
+  // A renderer that fails the given scene and counts clearDepth calls, so the
+  // depth-clear decision for later layers can be asserted after a throw.
+  function countingRenderer(failScene: THREE.Scene | null): {
+    renderer: THREE.WebGLRenderer
+    clearDepthCalls: () => number
+  } {
+    let clearDepthCalls = 0
+    const renderer = {
+      getRenderTarget: () => null,
+      setRenderTarget: () => {},
+      autoClear: true,
+      getClearColor: () => {},
+      getClearAlpha: () => 0,
+      setClearColor: () => {},
+      clear: () => {},
+      clearDepth: () => { clearDepthCalls++ },
+      render: (scene: THREE.Scene) => {
+        if (scene === failScene) throw new Error('layer render exploded')
+      },
+    } as unknown as THREE.WebGLRenderer
+    return { renderer, clearDepthCalls: () => clearDepthCalls }
+  }
+
   it('resolveAsync on a disposed pipeline answers null', async () => {
     const p = new IdPipeline({ width: 32, height: 32 })
     const renderer = {} as unknown as THREE.WebGLRenderer
@@ -144,6 +167,90 @@ describe('IdPipeline layering', () => {
         p.render(fakeRenderer(null), new THREE.Camera())
         expect(warn).not.toHaveBeenCalled()
         expect(p.isDirty()).toBe(false)
+      } finally {
+        warn.mockRestore()
+        p.dispose()
+      }
+    })
+
+    // H1: a layer that fails every frame must not disable all picking forever.
+    it('latches the layer out after two consecutive failures and marks the buffer clean', () => {
+      const p = new IdPipeline({ width: 32, height: 32 })
+      registerOneFace(p, 'b1')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const camera = new THREE.Camera()
+      try {
+        // First failure: today's behaviour, buffer stays dirty for a retry.
+        p.markDirty()
+        p.render(fakeRenderer(p.faceLayer.scene), camera)
+        expect(p.isDirty()).toBe(true)
+
+        // Second consecutive failure: the layer latches out and the buffer is
+        // allowed to go clean without it.
+        p.markDirty()
+        p.render(fakeRenderer(p.faceLayer.scene), camera)
+        expect(p.isDirty()).toBe(false)
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('latched out'))
+
+        // Subsequent renders skip the layer entirely: no more warns, and a
+        // renderer that would throw on that scene is never handed it.
+        warn.mockClear()
+        const failingAgain = fakeRenderer(p.faceLayer.scene)
+        p.markDirty()
+        expect(() => p.render(failingAgain, camera)).not.toThrow()
+        expect(p.isDirty()).toBe(false)
+        expect(warn).not.toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+        p.dispose()
+      }
+    })
+
+    it('a successful render resets the consecutive-failure count', () => {
+      const p = new IdPipeline({ width: 32, height: 32 })
+      registerOneFace(p, 'b1')
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const camera = new THREE.Camera()
+      try {
+        p.markDirty()
+        p.render(fakeRenderer(p.faceLayer.scene), camera)  // failure 1
+        p.markDirty()
+        p.render(fakeRenderer(null), camera)  // success resets
+        expect(p.isDirty()).toBe(false)
+
+        // A fresh failure is once again just failure 1: buffer stays dirty, no
+        // latch.
+        p.markDirty()
+        p.render(fakeRenderer(p.faceLayer.scene), camera)
+        expect(p.isDirty()).toBe(true)
+        expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('latched out'))
+      } finally {
+        warn.mockRestore()
+        p.dispose()
+      }
+    })
+
+    // L4: a throw mid-render must not leave firstLayer stale, or the next
+    // clear-then-fresh layer skips its depth clear and depth-tests against the
+    // failed layer's partial buffer.
+    it('the next clear-then-fresh layer still clears depth after a throwing first layer', () => {
+      const p = new IdPipeline({ width: 32, height: 32 })
+      registerOneFace(p, 'b1')  // faceLayer, clear-then-fresh, rendered first
+      p.sketchEntityLayer.registerBody({
+        bodyKey: 'sk1',
+        segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
+        segmentToEdge: new Uint32Array([0]),
+        edgeQueries: ['entity@q'],
+      })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const { renderer, clearDepthCalls } = countingRenderer(p.faceLayer.scene)
+      try {
+        p.markDirty()
+        p.render(renderer, new THREE.Camera())
+        // sketchEntity is the next clear-then-fresh layer with content; it must
+        // have issued its own clearDepth because the throwing face layer no
+        // longer holds firstLayer true.
+        expect(clearDepthCalls()).toBe(1)
       } finally {
         warn.mockRestore()
         p.dispose()

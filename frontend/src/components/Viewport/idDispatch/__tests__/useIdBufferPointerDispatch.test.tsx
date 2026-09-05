@@ -502,6 +502,10 @@ describe('useIdBufferPointerDispatch', () => {
       layer: DIMENSION_LABEL_LAYER_NAME, entityKey: 'dim:c1',
     }
     pipeline.resolveAsync = vi.fn().mockImplementation(async () => nextHit ? { ...nextHit, id: 1, distancePx: 0 } : null)
+    // A clean buffer: a null resolve here means empty space, so the hover clears.
+    // A stale (dirty) buffer would retain the highlight instead (see the
+    // dedicated stale-hover test below).
+    pipeline.target.markClean()
 
     renderHook(() => useIdBufferPointerDispatch({
       glRef: glRef as { current: import('three').WebGLRenderer | null },
@@ -523,6 +527,78 @@ describe('useIdBufferPointerDispatch', () => {
     })
     await flushHoverFrame()
     expect(onOut).toHaveBeenCalledTimes(1)
+  })
+
+  // M2: hover and click must agree on what a stale-buffer null means. Click
+  // already refuses to treat a dirty-buffer miss as empty space
+  // (lastClickWasStale); hover now retains the current highlight rather than
+  // tearing it down and flickering on every solver commit.
+  describe('stale-buffer null hover', () => {
+    it('retains the current highlight when the resolve lands null while the buffer is dirty', async () => {
+      const onOver = vi.fn()
+      const onOut = vi.fn()
+      registerDimCallbacks('c1', { onOver, onOut, onClick: () => {}, onDoubleClick: () => {}, onPointerDown: () => {} })
+
+      let nextHit: { layer: string; entityKey: string } | null = {
+        layer: DIMENSION_LABEL_LAYER_NAME, entityKey: 'dim:c1',
+      }
+      pipeline.resolveAsync = vi.fn().mockImplementation(async () => nextHit ? { ...nextHit, id: 1, distancePx: 0 } : null)
+
+      // First move on a clean buffer establishes the highlight.
+      pipeline.target.markClean()
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+      }))
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+        await Promise.resolve()
+      })
+      expect(onOver).toHaveBeenCalledTimes(1)
+
+      // The geometry is rebuilding: buffer goes dirty and the readback lands null.
+      nextHit = null
+      pipeline.markDirty('rebuild')
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 700, clientY: 50 }))
+        await Promise.resolve()
+      })
+      await flushHoverFrame()
+      // Highlight held: no onOut, and no redundant re-apply.
+      expect(onOut).not.toHaveBeenCalled()
+      expect(onOver).toHaveBeenCalledTimes(1)
+    })
+
+    it('still clears on a clean-buffer null', async () => {
+      const onOver = vi.fn()
+      const onOut = vi.fn()
+      registerDimCallbacks('c1', { onOver, onOut, onClick: () => {}, onDoubleClick: () => {}, onPointerDown: () => {} })
+
+      let nextHit: { layer: string; entityKey: string } | null = {
+        layer: DIMENSION_LABEL_LAYER_NAME, entityKey: 'dim:c1',
+      }
+      pipeline.resolveAsync = vi.fn().mockImplementation(async () => nextHit ? { ...nextHit, id: 1, distancePx: 0 } : null)
+      pipeline.target.markClean()
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+      }))
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+        await Promise.resolve()
+      })
+      expect(onOver).toHaveBeenCalledTimes(1)
+
+      // Buffer stays clean: a null here is genuine empty space.
+      nextHit = null
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 700, clientY: 50 }))
+        await Promise.resolve()
+      })
+      await flushHoverFrame()
+      expect(onOut).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('coalesces a burst of moves within one frame into one trailing resolve', async () => {

@@ -68,6 +68,15 @@ const MIN_PICK_PIXEL_RATIO = 1
 const MAX_PICK_PIXEL_RATIO = 8
 
 /**
+ * Consecutive per-layer render failures tolerated before the layer is latched
+ * out of the pipeline. One transient throw keeps today's behaviour (buffer
+ * stays dirty, retry next frame); a layer that fails this many frames in a row
+ * is broken, and holding the whole buffer dirty for it disables every pick.
+ * Latching it out trades that layer's picks for the rest of the scene's.
+ */
+const LAYER_FAILURE_LATCH_THRESHOLD = 2
+
+/**
  * A CSS-pixel window edge converted to a device-pixel one.
  *
  * The DPR scale is applied to the window's RADIUS, not its edge, because the
@@ -150,6 +159,11 @@ export class IdPipeline {
   private nextAsync: PendingAsyncQuery | null = null
   private inFlightAsync: PendingAsyncQuery | null = null
   private disposed = false
+  // Consecutive render-failure count per layer name; reset to 0 on any success.
+  private layerFailureStreak = new Map<string, number>()
+  // Layers that hit the failure threshold and are now skipped entirely. The
+  // buffer is allowed to go clean without them.
+  private latchedOutLayers = new Set<string>()
 
   constructor(opts: IdPipelineOptions) {
     this.registry = new IdRegistry()
@@ -360,6 +374,10 @@ export class IdPipeline {
       for (const layer of this.layers) {
         if (layer.inertWhen?.()) continue
         if (layer.scene.children.length === 0) continue
+        // A latched-out layer is a known-broken pass. Skipping it before the
+        // depth-clear switch keeps a later clear-then-fresh layer from
+        // inheriting its stale decision, exactly as a throw would.
+        if (this.latchedOutLayers.has(layer.name)) continue
         try {
           layer.onBeforeRender?.(w, h)
 
@@ -381,12 +399,27 @@ export class IdPipeline {
               // culled by faces. No clear.
               break
           }
-          renderer.render(layer.scene, camera)
+          // Advance before the render call, not after: a throw inside render()
+          // must still leave the depth-clear decision correct for the layers
+          // that follow.
           firstLayer = false
+          renderer.render(layer.scene, camera)
+          this.layerFailureStreak.set(layer.name, 0)
         } catch (err) {
           // Skip only the failing layer; keep the pipeline alive.
           failedLayers.push(layer.name)
+          const streak = (this.layerFailureStreak.get(layer.name) ?? 0) + 1
+          this.layerFailureStreak.set(layer.name, streak)
           console.warn(`ID layer render failed: ${layer.name}`, err)
+          if (streak >= LAYER_FAILURE_LATCH_THRESHOLD) {
+            // One warn at the latch transition, not one per frame: the pipeline
+            // has no useNotify, so this is the only channel the loss gets.
+            this.latchedOutLayers.add(layer.name)
+            console.warn(
+              `ID layer latched out after ${streak} consecutive render failures; `
+              + `picking on it is disabled until reload: ${layer.name}`,
+            )
+          }
         }
       }
 
@@ -403,11 +436,14 @@ export class IdPipeline {
     }
 
     if (completed) {
-      // A failed layer leaves the buffer amputated: marking it clean would
-      // make every later resolve answer from a partial image. Stay dirty so
-      // the next frame retries; the caller's rAF loop already paces that at
-      // one attempt per frame, which bounds even a persistently failing layer.
-      if (failedLayers.length === 0) this.target.markClean()
+      // A freshly failed layer leaves the buffer amputated: marking it clean
+      // would make every later resolve answer from a partial image. Stay dirty
+      // so the next frame retries; the caller's rAF loop already paces that at
+      // one attempt per frame. A layer that has been latched out is a
+      // deliberate amputation the pipeline has already accepted and warned
+      // about, so it must not keep the buffer dirty forever.
+      const blocking = failedLayers.filter(name => !this.latchedOutLayers.has(name))
+      if (blocking.length === 0) this.target.markClean()
       this.registry.bumpCycle()
       this.renderCount++
     }
@@ -620,7 +656,21 @@ export class IdPipeline {
     //   "INVALID_OPERATION: readPixels: PIXEL_PACK buffer should not be bound"
     // when async and sync reads interleave. resolveSync avoids that path.
     Promise.resolve().then(() => {
-      const hit = this.resolveSync(renderer, query.cursorPx, query.opts)
+      // dispose() already settled every subscriber with null and nulled the
+      // queues; re-entering done() here would double-settle and resurrect a
+      // queue on a dead pipeline.
+      if (this.disposed) return
+      let hit: ResolvedHit | null = null
+      try {
+        hit = this.resolveSync(renderer, query.cursorPx, query.opts)
+      } catch (err) {
+        // A throwing readback used to strand every later hover: done() never
+        // ran, inFlightAsync stayed set, and each pointermove leaked a
+        // never-settled promise. Settle with null and let done() drain the
+        // queue. The warn keeps the failure from vanishing as an unhandled
+        // rejection.
+        console.warn('ID async resolve read failed', err)
+      }
       done(hit)
     })
   }

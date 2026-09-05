@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import * as THREE from 'three'
 import { IdPipeline } from '../IdPipeline'
 
@@ -89,5 +89,30 @@ describe('IdPipeline.resolveAsync ordering', () => {
     const { p, renderer } = pipelineWhoseReadsThrow()
     p.dispose()
     await expect(p.resolveAsync(renderer, { x: 3, y: 3 })).resolves.toBeNull()
+  })
+
+  // H3: a throwing readback with NO preceding dispose used to wedge the async
+  // hover path forever: done() never ran, inFlightAsync stayed set, and every
+  // later resolveAsync leaked a never-settled promise onto nextAsync.
+  it('a throwing resolveSync settles the caller with null and frees the queue', async () => {
+    const { p, renderer } = pipelineWhoseReadsThrow()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const first = p.resolveAsync(renderer, { x: 1, y: 1 })
+      const second = p.resolveAsync(renderer, { x: 2, y: 2 })  // coalesces behind first
+      await expect(first).resolves.toBeNull()
+      await expect(second).resolves.toBeNull()
+      expect(warn).toHaveBeenCalledWith('ID async resolve read failed', expect.any(Error))
+
+      // The path is not wedged: a fresh resolve runs and settles too.
+      p.resolveSync = ((_r: unknown, cursor: { x: number; y: number }) => ({
+        id: 1, layer: 'face', entityKey: `cursor:${cursor.x},${cursor.y}`, distancePx: 0,
+      })) as unknown as typeof p.resolveSync
+      await expect(p.resolveAsync(renderer, { x: 5, y: 5 }))
+        .resolves.toMatchObject({ entityKey: 'cursor:5,5' })
+    } finally {
+      warn.mockRestore()
+      p.dispose()
+    }
   })
 })

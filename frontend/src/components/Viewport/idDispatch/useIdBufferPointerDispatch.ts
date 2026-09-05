@@ -250,6 +250,13 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
           // disallowed layer) since this readback launched must win: applying
           // a hit now would resurrect a hover the clear was meant to end.
           if (epoch !== hoverEpoch) return
+          // A null while the buffer is mid-rebuild is a transient transition,
+          // not empty space: retain the current highlight instead of tearing
+          // it down. This is the hover twin of the click path's
+          // lastClickWasStale, and it trades a highlight briefly outliving its
+          // geometry for no flicker on every solver commit. A clean-buffer
+          // null still clears.
+          if (hit === null && pipeline.isDirty()) return
           applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null, hit?.pickKey)
         })
         // Never silent: a swallowed apply error would kill the hover state
