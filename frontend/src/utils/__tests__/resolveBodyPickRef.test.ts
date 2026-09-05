@@ -53,6 +53,18 @@ describe('resolveBodyPickRef', () => {
     expect(resolveBodyPickRef('@body_ex1_1/face/0')).toBe('@body_ex1_1')
     expect(resolveBodyPickRef('body:body_ex1_1')).toBe('@body_ex1_1')
   })
+
+  // A datum-plane pick owns no body: minting '@body_' + tail persisted
+  // '@body_builtin_plane_front', which resolveBody throws on every solve.
+  // Pass the honest ref through so the kernel reports the plane pick itself.
+  it('passes a builtin plane ref through unchanged', () => {
+    expect(resolveBodyPickRef('@builtin_plane_front')).toBe('@builtin_plane_front')
+    expect(resolveBodyPickRef('@builtin_plane_top')).toBe('@builtin_plane_top')
+  })
+
+  it('passes a sketch plane ref through unchanged', () => {
+    expect(resolveBodyPickRef('@sk1')).toBe('@sk1')
+  })
 })
 
 describe('resolveAxisQuery', () => {

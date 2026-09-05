@@ -11,6 +11,18 @@ function normalizeBodyRef(ref: string): string {
     ref = '@' + ref.slice(1).split('/')[0]
   }
   if (ref.startsWith('@') && !ref.startsWith('@body_')) {
+    // A bare feature ref names a BODY only when the feature owns one. A pick
+    // that names a plane owns no body: minting '@body_' + tail turns
+    // `@builtin_plane_front` / a sketch plane into a ref nothing can resolve,
+    // so every later solve throws on it (g2-M5). Pass those through: the
+    // kernel then reports the plane pick as its honest "not a body" error
+    // instead of a corrupted id. Only `@builtin_plane_*` refs, and the
+    // `sk\d+` / `sketch\d+` shape of test fixtures, pass through unchanged.
+    // Production sketch ids are randomId(18), the same shape as body-owning
+    // feature refs, so a sketch-plane pick cannot be told apart at the string
+    // level and still gets rewritten to `@body_<randomId>`. That rewrite is
+    // an accepted limitation.
+    if (ref.startsWith('@builtin_') || /^@sk(?:etch)?\d+$/.test(ref)) return ref
     ref = '@body_' + ref.slice(1)
   }
   return ref
