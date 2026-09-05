@@ -17,6 +17,17 @@ export function buildFaceQuery(
 ): string | null {
   if (!createdBy) return null
   if (bodyId) {
+    // Collision guard: without the construction UUID the query carries no
+    // per-face identity token. `faceIdx` is deliberately excluded (an index is
+    // not stable identity; the render layer's topoFallbackQuery exists for
+    // that), so when the face also supplies no distinguishing ancestry or
+    // classifiers the minted string is createdBy+bodyId(+body-wide profile
+    // queries) -- byte-identical for every sibling sharing that ancestry, and
+    // the resolver throws AmbiguousQueryError on the pick. Return null so the
+    // caller falls back to the index-keyed topoFallbackQuery instead.
+    if (!uuid && !(ancestorTokens && ancestorTokens.length) && !(classifiers && classifiers.length)) {
+      return null
+    }
     const ids: string[] = []
     if (uuid) ids.push(constructionUuidToken(uuid))
     ids.push(ref(createdBy), ref(bodyId))

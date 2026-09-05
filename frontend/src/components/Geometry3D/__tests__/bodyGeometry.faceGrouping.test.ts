@@ -5,6 +5,7 @@ import {
   extractFaceGeometry,
   groupTrianglesByFace,
   lazyFaceTriangles,
+  resolveFaceQueries,
 } from '@/components/Geometry3D/bodyGeometry'
 
 /**
@@ -71,6 +72,30 @@ describe('lazyFaceTriangles', () => {
     expect(lookup.get(1)).toEqual([2, 3])
     expect(lookup.get(1)).toBe(lookup.get(1))
     expect(lookup.get(2)).toEqual([4, 5])
+  })
+})
+
+describe('resolveFaceQueries empty-string fallback', () => {
+  // M5: tessellation pushes the `''` placeholder for a face whose buildFaceQuery
+  // returned null, and bodyGeometry pads the tail with the topo fallback. The
+  // fallback used `??`, which treats `''` as a value, so an empty-string entry
+  // stayed empty and the face got a selection id that resolves to null. `||`
+  // makes both the placeholder and a missing tail land on the index-keyed
+  // topoFallbackQuery.
+  it('replaces an empty-string face_queries entry with the topo fallback for that index', () => {
+    const mesh: Mesh3D = {
+      vertices: new Float32Array(5 * 2 * 3),
+      faces: new Uint32Array(4 * 2 * 3),
+      face_queries: ['?2;@ex1:flatface', ''],
+      triangle_to_face: [0, 0, 1, 1, 2, 2, 3, 3],
+    }
+    const out = resolveFaceQueries(mesh, 'body_ex1')!
+    expect(out).toEqual([
+      '?2;@ex1:flatface',
+      '@body_ex1/face/1',
+      '@body_ex1/face/2',
+      '@body_ex1/face/3',
+    ])
   })
 })
 

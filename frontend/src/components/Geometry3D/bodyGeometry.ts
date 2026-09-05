@@ -119,7 +119,7 @@ export function resolveFaceQueries(mesh: Mesh3D, bodyId: string): string[] | nul
   }
   if (rendered === face_queries.length) return face_queries
   return Array.from({ length: rendered }, (_, i) =>
-    face_queries[i] ?? topoFallbackQuery(bodyId, 'face', i))
+    face_queries[i] || topoFallbackQuery(bodyId, 'face', i))
 }
 
 /**

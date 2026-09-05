@@ -11,7 +11,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable, OccHandle } from '../occ/handleTable'
 import type { Body, Frame3D } from '../types3d'
-import { Repository, parseAncestry, makeAncestryQuery, ref } from '../query'
+import { Repository, parseAncestry, makeAncestryQuery, ref, constructionUuidToken } from '../query'
 import { faceCentroid, faceNormal } from '../occ/primitives'
 import { faceGeometryHash } from '../geomHash'
 import { extractOccFace, extractFaceLoops, sortedFacesOf, faceLoopsOfFace, computeFaceDatumFrame } from '../occ/faceLoops'
@@ -35,11 +35,12 @@ function bodyShape(table: HandleTable, body: Body): OccShape {
 }
 
 /**
- * Resolve an old sorted face index to the current index via the face's geometry
- * hash (mirrors `_resolve_face_index_via_hash`). Returns null when resolution
- * fails (index out of range, geometry read error, or hash not in the repo).
- * `faces` supplies a pre-sorted face list in place of the internal traversal,
- * for callers that already sorted the shape once (M45).
+ * Resolve an old sorted face index to the current index via the face's
+ * construction UUID (mirrors `_resolve_face_index_via_hash`). Returns null when
+ * resolution fails (index out of range, geometry read error, the face's
+ * geom-hash is unnamed, or the UUID does not resolve in the repo). `faces`
+ * supplies a pre-sorted face list in place of the internal traversal, for
+ * callers that already sorted the shape once (M45).
  */
 export function resolveFaceIndexViaHash(
   oc: OccModule,
@@ -68,31 +69,24 @@ export function resolveFaceIndexViaHash(
   const normal = faceNormal(oc, scope, targetFace)
   const geomHash = faceGeometryHash(centroid, normal)
 
-  // Try UUID-based resolution first: look up the construction UUID from the
-  // body's face_names via the geometry hash, then query the repo by UUID
-  // (identity tier, exact match). This avoids the geometry-hash tier which can
-  // match an unrelated face with the same centroid+normal.
+  // Construction-UUID tier: the body's face_names maps the current geom-hash to
+  // the stable construction UUID, and the repo resolves the UUID to the
+  // CURRENT face index. The query token must be the wire `@u|<uuid>` form; a
+  // bare `u_...` string is in no ancestral set, so the resolver never matches
+  // it. The old geometry-hash tier (`@gface_...`) is gone: the resolver
+  // filters geom-hash tokens out of the ancestral tiers entirely, so a query
+  // naming only a geom-hash could never resolve either.
   if (faceNames && geomHash in faceNames) {
     const uuid = faceNames[geomHash]
     try {
-      const uuidQuery = makeAncestryQuery([uuid], 'face')
+      const uuidQuery = makeAncestryQuery([constructionUuidToken(uuid)], 'face')
       const faceEntry = globalRepo.query(uuidQuery, null, bodyStore) as Dict | null
       if (faceEntry && 'face_index' in faceEntry) {
         return faceEntry.face_index as number
       }
     } catch {
-      // UUID query failure -> fall through to geometry hash fallback
+      // query failure -> null; the call site decides whether that is a miss
     }
-  }
-
-  try {
-    const queryStr = makeAncestryQuery([ref(geomHash)], 'face')
-    const faceEntry = globalRepo.query(queryStr, null, bodyStore) as Dict | null
-    if (faceEntry && 'face_index' in faceEntry) {
-      return faceEntry.face_index as number
-    }
-  } catch {
-    // query failure -> fall through to null (use the caller's old index)
   }
   return null
 }
@@ -131,6 +125,44 @@ function findBodyForRef(bodyStore: Record<string, Body>, id: string): Body | nul
 const SLASH_FACE = /^@([^/]+)\/face\/(\d+)$/
 
 /**
+ * The remap verdict for a persisted `@<body>/face/<N>` ref. Returns the face
+ * index the body's face identity resolved, else keeps the raw index.
+ *
+ * A body that carries face identity (`face_names`) but whose face at the old
+ * index has no resolvable construction UUID is a genuine remap miss: the body
+ * was rebuilt and the persisted index may name a DIFFERENT face now, so keeping
+ * the raw index would silently rebind the pick. That fails loud, naming the ref
+ * and the body. A body with NO face identity (a plain sketch extrude never
+ * names its faces) has nothing to remap against, so the raw index is the only
+ * answer and is kept as-is. That fallback is safe only when the face count is
+ * unchanged; a shrunken count trips the caller's out-of-range guard, and a
+ * grown count with no identity is accepted because there is no signal to
+ * detect the shift against (the identity-bearing case, where the shift is
+ * detectable, fails loud above).
+ */
+function remapFaceIndex(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  faceIndex: number,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  body: Body,
+  faces: OccShape[],
+  refStr: string,
+): number {
+  const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_names, faces)
+  if (resolved !== null) return resolved
+  if (body.face_names && Object.keys(body.face_names).length > 0) {
+    throw new Error(
+      `Cannot remap persisted face ref '${refStr}': body '${body.id}' carries face identity ` +
+        `but its face at index ${faceIndex} has no resolvable construction UUID`,
+    )
+  }
+  return faceIndex
+}
+
+/**
  * Resolve a profile reference to (loops, plane, face) (mirrors
  * `_resolve_face_profile`). Handles the body-face slash form `@body/face/N`,
  * repo entries carrying body_id+face_index, `@feat`/`?...` topo-surface forms.
@@ -155,8 +187,7 @@ export function resolveFaceProfile(
     // index spaces are identical even though the remap returns a different
     // index than the literal one it resolved (M45).
     const faces = sortedFacesOf(oc, scope, shape)
-    const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_names, faces)
-    if (resolved !== null) faceIndex = resolved
+    faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, sketchRef)
     if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
     return faceLoopsOfFace(oc, scope, faces[faceIndex])
   }
@@ -249,8 +280,7 @@ export function resolveFaceSlashFrame(
   // Same one-traversal-per-pick deal as resolveFaceProfile's slash branch: the
   // remap and the final pick both index the same sorted list (M45).
   const faces = sortedFacesOf(oc, scope, shape)
-  const resolved = resolveFaceIndexViaHash(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_names, faces)
-  if (resolved !== null) faceIndex = resolved
+  faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, ref)
   if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
   return computeFaceDatumFrame(oc, scope, faces[faceIndex])
 }

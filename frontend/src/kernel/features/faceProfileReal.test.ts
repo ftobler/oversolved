@@ -13,9 +13,11 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBox, makeBoxAt } from '../occ/primitives'
+import { makeBox, makeBoxAt, faceCentroid, faceNormal } from '../occ/primitives'
+import { sortedFacesOf } from '../occ/faceLoops'
 import { Repository } from '../query'
-import { resolveFaceProfile } from './faceProfile'
+import { resolveFaceProfile, resolveFaceIndexViaHash } from './faceProfile'
+import { faceGeometryHash } from '../geomHash'
 import type { Body } from '../types3d'
 import type { OccModule } from '../occ/occTypes'
 import faceLoopsFixture from '../occ/__fixtures__/faceLoops.json'
@@ -131,6 +133,119 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
       expect(sibling1[0] - sibling0[0]).toBeCloseTo(SEP, 6)
       // A ref naming the FEATURE keeps its documented meaning: the first body.
       expect(resolve('@feat/face/0')).toEqual(sibling0)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  // g1-H1: the persisted `@<body>/face/<N>` pick survives a rebuild. The remap
+  // (resolveFaceIndexViaHash) finds the CURRENT face at the old index, looks up
+  // its construction UUID in the body's face_names, and returns the repo's
+  // face_index for that uuid. The repo registration below deliberately carries
+  // a rebuilt index space (the pick named face 1, and after the rebuild that
+  // face is registered at index 5), so a resolving remap must answer 5, not the
+  // raw 1 -- and the fix under test is the `@u|` token: with the bare uuid the
+  // UUID tier could never resolve and this returned null.
+  it('remaps a UUID-bearing face to the rebuilt face index', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
+      const faces = sortedFacesOf(occ, scope, box)
+      expect(faces.length).toBe(6)
+      const geomHashOf = (i: number) =>
+        faceGeometryHash(faceCentroid(occ, scope, faces[i]), faceNormal(occ, scope, faces[i]))
+
+      const uuids = faces.map((_, i) => `u_face${i}`)
+      const faceNames: Record<string, string> = {}
+      faces.forEach((_, i) => { faceNames[geomHashOf(i)] = uuids[i] })
+
+      const rebuilt = [0, 5, 2, 3, 4, 1]
+      const repo = new Repository()
+      faces.forEach((_, i) => {
+        repo.registerAncestor(
+          ['@feat'],
+          { type: 'face', body_id: 'body_feat', created_by: 'feat', face_index: rebuilt[i] },
+          uuids[i],
+        )
+      })
+
+      const bodyStore: Record<string, Body> = {
+        body_feat: {
+          id: 'body_feat',
+          created_by: 'feat',
+          modified_by: [],
+          shape: table.register(box, 'feat'),
+          sketch_id: 'sk',
+          brep_diff: null,
+          profile_queries: [],
+          face_names: faceNames,
+        },
+      }
+      const remapped = resolveFaceIndexViaHash(occ, scope, box, 1, repo, bodyStore, faceNames, faces)
+      expect(remapped).toBe(5)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  // g1-H1 fail-loud: a body that carries face identity but whose face at the
+  // persisted index resolves to no registered element is a genuine remap miss.
+  // Keeping the raw index would silently rebind the pick to the new occupant,
+  // so the call site throws instead, naming the ref and the body.
+  it('throws on a remap miss instead of silently keeping the raw index', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
+      const faces = sortedFacesOf(occ, scope, box)
+      const gh1 = faceGeometryHash(faceCentroid(occ, scope, faces[1]), faceNormal(occ, scope, faces[1]))
+      const faceNames = { [gh1]: 'u_ghost' }  // a uuid with no registered element
+      const bodyStore: Record<string, Body> = {
+        body_feat: {
+          id: 'body_feat',
+          created_by: 'feat',
+          modified_by: [],
+          shape: table.register(box, 'feat'),
+          sketch_id: 'sk',
+          brep_diff: null,
+          profile_queries: [],
+          face_names: faceNames,
+        },
+      }
+      const repo = new Repository()
+      expect(() => resolveFaceProfile(occ, scope, table, '@body_feat/face/1', repo, bodyStore))
+        .toThrow(/Cannot remap persisted face ref '@body_feat\/face\/1'/)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  // The documented no-UUID path: a body with no face_names has nothing to remap
+  // against, so the raw index is the only answer and is kept as-is. This is
+  // what every plain sketch-extrude pick rides on, and what the extrude/plane
+  // slash-ref real tests resolve.
+  it('keeps the raw index for a body with no face identity', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
+      const faces = sortedFacesOf(occ, scope, box)
+      const bodyStore: Record<string, Body> = {
+        body_feat: {
+          id: 'body_feat',
+          created_by: 'feat',
+          modified_by: [],
+          shape: table.register(box, 'feat'),
+          sketch_id: 'sk',
+          brep_diff: null,
+          profile_queries: [],
+        },
+      }
+      const repo = new Repository()
+      expect(resolveFaceIndexViaHash(occ, scope, box, 1, repo, bodyStore, undefined, faces)).toBeNull()
+      const { face } = resolveFaceProfile(occ, scope, table, '@body_feat/face/1', repo, bodyStore)
+      expect(face).not.toBeNull()
     } finally {
       scope.dispose()
     }
