@@ -70,26 +70,43 @@ export function useSketchIdRegistration(params: {
     if (inferred.length > 0) {
       const dv = new THREE.Vector3()
       for (const dc of inferred) {
+        // Skip a non-finite contact position: the sketch vertex layer publishes
+        // every mark position, and a NaN one buckets at the origin and reads as
+        // coincident with every mark there (see VertexIdLayer / markPosition).
+        if (!Number.isFinite(dc.position[0]) || !Number.isFinite(dc.position[1])) continue
         dv.set(dc.position[0], dc.position[1], 0).applyMatrix4(m)
+        if (!Number.isFinite(dv.x) || !Number.isFinite(dv.y) || !Number.isFinite(dv.z)) continue
         vtx.vertices.push([dv.x, dv.y, dv.z])
         vtx.vertexQueries.push(dc.id)
       }
     }
 
+    // Wrapped so a registerBody throw (24-bit ID exhaustion) does not escape the
+    // effect: a passive-effect throw has no error boundary above it here and
+    // would unmount the viewport root. The sibling surface hook already guards
+    // this way.
     if (seg.edgeQueries.length > 0) {
-      pipeline.sketchEntityLayer.registerBody({
-        bodyKey: featureId,
-        segmentPositions: seg.segmentPositions,
-        segmentToEdge: seg.segmentToEdge,
-        edgeQueries: seg.edgeQueries,
-      })
+      try {
+        pipeline.sketchEntityLayer.registerBody({
+          bodyKey: featureId,
+          segmentPositions: seg.segmentPositions,
+          segmentToEdge: seg.segmentToEdge,
+          edgeQueries: seg.edgeQueries,
+        })
+      } catch (err) {
+        console.warn('Sketch entity ID registration failed; continuing without it', { featureId, err })
+      }
     }
     if (vtx.vertices.length > 0) {
-      pipeline.sketchVertexLayer.registerBody({
-        bodyKey: featureId,
-        vertices: vtx.vertices,
-        vertexQueries: vtx.vertexQueries,
-      })
+      try {
+        pipeline.sketchVertexLayer.registerBody({
+          bodyKey: featureId,
+          vertices: vtx.vertices,
+          vertexQueries: vtx.vertexQueries,
+        })
+      } catch (err) {
+        console.warn('Sketch vertex ID registration failed; continuing without it', { featureId, err })
+      }
     }
     pipeline.markDirty()
 

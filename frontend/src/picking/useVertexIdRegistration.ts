@@ -1,6 +1,7 @@
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
 import { bodyKeyFor } from './pickKey'
+import { resolveVertexQueries } from '@/components/Geometry3D/bodyGeometry'
 
 /**
  * Hook used by Body3D to register a body's vertices with the vertex ID
@@ -19,9 +20,13 @@ export function useVertexIdRegistration(params: {
 
   useRegisteredBody(pipeline, enabled, bodyKey,
     (p) => {
-      if (!vertices || vertices.length === 0 || !vertexQueries || vertexQueries.length === 0) return false
+      if (!vertices || vertices.length === 0) return false
+      // The padded query list Body3D's vertex HighlightIndex counts from, so a
+      // vertex the kernel left unnamed picks where it highlights.
+      const resolvedQueries = resolveVertexQueries(vertices, vertexQueries, bodyId)
+      if (!resolvedQueries) return false
       try {
-        p.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries, perPrimitivePickKeys: true })
+        p.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries: resolvedQueries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
         console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey, err })

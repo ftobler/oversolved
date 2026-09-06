@@ -175,6 +175,34 @@ describe('EdgeIdLayer', () => {
     expect(reg.size()).toBe(1)
   })
 
+  it('a fully-filtered body adds nothing to the scene (g4-L3)', () => {
+    // Both segments point at out-of-range edges, so drawn === 0. The old code
+    // still added an empty LineSegments, defeating the pipeline's empty-layer
+    // skip.
+    layer.registerBody({
+      bodyKey: 'all-unnamed',
+      segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2, 0]),
+      segmentToEdge: new Uint32Array([5, 6]),
+      edgeQueries: ['e0'],
+    })
+    expect(layer.bodyCount()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+    expect(reg.size()).toBe(0)
+  })
+
+  it('a fully-filtered re-register still clears the prior body (g4-L3)', () => {
+    layer.registerBody(makeReg())
+    expect(layer.bodyCount()).toBe(1)
+    layer.registerBody({
+      bodyKey: 'b',
+      segmentPositions: new Float32Array([NaN, 0, 0, 1, 0, 0]),
+      segmentToEdge: new Uint32Array([0]),
+      edgeQueries: ['edge@A'],
+    })
+    expect(layer.bodyCount()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+  })
+
   it('frees ids allocated before a mid-loop allocation failure', () => {
     const realAllocate = reg.allocate.bind(reg)
     let calls = 0

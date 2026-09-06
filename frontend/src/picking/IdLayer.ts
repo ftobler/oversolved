@@ -29,10 +29,12 @@ export interface IdLayer {
   inertWhen?: () => boolean
   /**
    * Optional pre-render hook. The pipeline calls this with the current
-   * render-target dimensions so the layer can update viewport-dependent
-   * shader uniforms (screen-space fattening, depth bias).
+   * render-target dimensions (device pixels) and its device-pixel ratio so the
+   * layer can update viewport-dependent shader uniforms (screen-space
+   * fattening, depth bias). The ratio matters where a screen-space size has to
+   * match the CSS-pixel pick window, which is DPR-scaled at read time.
    */
-  onBeforeRender?(width: number, height: number): void
+  onBeforeRender?(width: number, height: number, pixelRatio: number): void
   // Dispose all GPU resources owned by the layer.
   dispose(): void
 }

@@ -2,7 +2,7 @@ import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
 import { bodyKeyFor } from './pickKey'
 import type { EdgeData } from '@/types/cad'
-import { buildEdgeSegmentGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { buildEdgeSegmentGeometry, resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
 
 /**
  * Hook used by Body3D to register a body's edges with the edge ID layer.
@@ -27,7 +27,12 @@ export function useEdgeIdRegistration(params: {
 
   useRegisteredBody(pipeline, enabled, bodyKey,
     (p) => {
-      if (!edges || edges.length === 0 || !edgeQueries || edgeQueries.length === 0) return false
+      if (!edges || edges.length === 0) return false
+      // The padded query list Body3D's edge HighlightIndex counts from, so a
+      // tail edge the kernel left unnamed picks where it highlights instead of
+      // being highlight-only.
+      const resolvedQueries = resolveEdgeQueries(edges, edgeQueries, bodyId)
+      if (!resolvedQueries) return false
       const { positions: segmentPositions, segmentToEdge } = buildEdgeSegmentGeometry(edges)
       if (segmentPositions.length === 0) return false
       // Drift assert: positions and map come from one traversal, so any future
@@ -40,7 +45,7 @@ export function useEdgeIdRegistration(params: {
         )
       }
       try {
-        p.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries, perPrimitivePickKeys: true })
+        p.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries: resolvedQueries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
         console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey, err })

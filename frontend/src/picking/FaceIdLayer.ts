@@ -119,6 +119,11 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
       }
 
       const drawn = drawable.length
+      // Every triangle was filtered out (all unnamed or non-finite): add nothing
+      // to the scene so the pipeline's empty-layer skip (scene.children.length
+      // === 0) holds and this layer's z-policy pass does not run for an empty
+      // mesh. The unregister pre-clear above already dropped any prior body.
+      if (drawn === 0) return
       // Zero-copy fast path when every triangle draws (the common case).
       const outPositions = drawn === numTris ? positions : new Float32Array(drawn * 9)
       const colors = new Float32Array(drawn * 9)

@@ -101,10 +101,35 @@ describe('vertex pick cubes', () => {
   it('onBeforeRender feeds the viewport height the shader needs for pixel sizing', () => {
     const layer = cubeLayer(new IdRegistry())
     const mat = (layer.scene.children[0] as THREE.Mesh).material as THREE.ShaderMaterial
-    layer.onBeforeRender(1024, 768)
+    layer.onBeforeRender(1024, 768, 1)
     expect(mat.uniforms.uViewportHeight.value).toBe(768)
+    // At DPR 1 the cube is cubePixels device pixels: half-extent cubePixels / 2.
     expect(mat.uniforms.uHalfPixels.value).toBe(VERTEX_PICK_CUBE_PIXELS / 2)
     layer.dispose()
+  })
+
+  it('scales uHalfPixels by the DPR so the cube keeps its CSS-pixel size', () => {
+    // g3-L5: uViewportHeight is device pixels, so units-per-pixel in the shader
+    // is per device pixel. Without the DPR scale a 3px cube covers 1.5 CSS px at
+    // DPR 2 while the pick window stays CSS-sized. The odd device size (5) keeps
+    // the lit centre pixel the vertex's own, mirroring scaledWindowSize.
+    const layer = cubeLayer(new IdRegistry())
+    const mat = (layer.scene.children[0] as THREE.Mesh).material as THREE.ShaderMaterial
+    layer.onBeforeRender(2048, 1536, 2)
+    expect(mat.uniforms.uHalfPixels.value).toBe(2.5)  // device size 5
+    // A non-finite / non-positive ratio falls back to 1 rather than NaN.
+    layer.onBeforeRender(2048, 1536, NaN)
+    expect(mat.uniforms.uHalfPixels.value).toBe(VERTEX_PICK_CUBE_PIXELS / 2)
+    layer.dispose()
+  })
+
+  it('the pipeline threads its pixel ratio into the vertex layer onBeforeRender', () => {
+    const p = new IdPipeline({ width: 100, height: 100, pixelRatio: 2 })
+    p.vertexLayer.registerBody({ bodyKey: 'b', vertices: VERTICES, vertexQueries: QUERIES, perPrimitivePickKeys: true })
+    const mat = (p.vertexLayer.scene.children[0] as THREE.Mesh).material as THREE.ShaderMaterial
+    p.vertexLayer.onBeforeRender(100, 100, p.getPixelRatio())
+    expect(mat.uniforms.uHalfPixels.value).toBe(2.5)
+    p.dispose()
   })
 
   it('half extent from the shared formula is 1.5px, enough to clear the face it sits on', () => {
@@ -114,6 +139,15 @@ describe('vertex pick cubes', () => {
     const half = pixelCubeHalfExtent(VERTEX_PICK_CUBE_PIXELS, cam.projectionMatrix.elements[5], 600, 1)
     expect(half).toBeGreaterThan(0)
     expect(half / (1 / cam.zoom)).toBeCloseTo(1.5, 8)
+  })
+
+  it('the cube vertex shader guards the projectionMatrix[1][1] divide (never compiled in jsdom)', async () => {
+    const { CUBE_VERT_SHADER } = await import('../VertexIdLayer')
+    // Mirrors screenSpaceScale.ts:24: a zero / NaN Y-scale must degrade to zero
+    // size, not Inf/NaN corner positions.
+    expect(CUBE_VERT_SHADER).toMatch(/projYValid/)
+    expect(CUBE_VERT_SHADER).toMatch(/projY > 0\.0 \|\| projY < 0\.0/)
+    expect(CUBE_VERT_SHADER).toMatch(/projYValid\s*\n?\s*\?[\s\S]*:\s*0\.0/)
   })
 
   it('skips vertices without a query in cube mode too', () => {

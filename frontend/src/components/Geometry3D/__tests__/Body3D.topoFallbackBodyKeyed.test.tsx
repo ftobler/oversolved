@@ -81,9 +81,12 @@ describe('Body3D topo-fallback queries are keyed on the body', () => {
   })
 
   // Cheap guard for a mint site added later, which the assertions above would
-  // not see: no site may take the feature id, however many there are.
-  it('has no feature-keyed mint site left in Body3D', () => {
-    const src = readFileSync(join(__dirname, '..', 'Body3D.tsx'), 'utf8')
+  // not see: no site may take the feature id, however many there are. The
+  // edge/vertex/face resolvers moved to bodyGeometry (one padded list feeds both
+  // the highlight index and the ID-layer registration), so scan both files.
+  it('has no feature-keyed mint site left in Body3D or bodyGeometry', () => {
+    const src = ['Body3D.tsx', 'bodyGeometry.ts']
+      .map(f => readFileSync(join(__dirname, '..', f), 'utf8')).join('\n')
     const sites = [...src.matchAll(/topoFallbackQuery\(\s*(\w+)/g)].map(m => m[1])
     expect(sites.length).toBeGreaterThanOrEqual(3)  // edge, vertex, face
     expect(sites.filter(s => s !== 'bodyId')).toEqual([])

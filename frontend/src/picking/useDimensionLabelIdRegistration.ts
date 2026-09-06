@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import type { PlaneTransform } from '@/types/cad'
 import { buildPlaneMatrix, useRegisteredBody } from './idRegistrationUtils'
+import { planeTransformKey } from './planeTransformKey'
 
 /**
  * Register a dimension label hit circle into the dimensionLabel ID layer.
@@ -30,7 +31,13 @@ export function useDimensionLabelIdRegistration(params: {
   const { constraintId, position, sub, enabled = true, planeTransform } = params
   const [px, py, pz] = position
 
-  const matrix = useMemo(() => buildPlaneMatrix(planeTransform), [planeTransform])
+  // Keyed on the plane's VALUE, not the prop reference: an equal-valued fresh
+  // PlaneTransform per render must not re-register (mirrors the two sketch
+  // hooks). The Matrix4 is rebuilt only when the key changes and the key, not
+  // the Matrix4, is the effect dep.
+  const planeKey = useMemo(() => planeTransformKey(planeTransform), [planeTransform])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- planeKey stands in for planeTransform's value; see note above
+  const matrix = useMemo(() => buildPlaneMatrix(planeTransform), [planeKey])
 
   const entityKey = sub ? `dim:${constraintId}:${sub}` : `dim:${constraintId}`
 
@@ -40,14 +47,22 @@ export function useDimensionLabelIdRegistration(params: {
     entityKey,
     (p) => {
       const v = new THREE.Vector3(px, py, pz).applyMatrix4(matrix)
-      p.dimensionLabelLayer.registerBody({
-        bodyKey: entityKey,
-        vertices: [[v.x, v.y, v.z]],
-        vertexQueries: [entityKey],
-      })
-      return true
+      try {
+        p.dimensionLabelLayer.registerBody({
+          bodyKey: entityKey,
+          vertices: [[v.x, v.y, v.z]],
+          vertexQueries: [entityKey],
+        })
+        return true
+      } catch (err) {
+        // A passive-effect registerBody throw has no error boundary above it and
+        // would unmount the viewport root. Warn and return false like the body
+        // hooks; useRegisteredBody skips markDirty on false.
+        console.warn('Dimension label ID registration failed; continuing without it', { entityKey, err })
+        return false
+      }
     },
     (p) => p.dimensionLabelLayer.unregisterBody(entityKey),
-    [px, py, pz, matrix],
+    [px, py, pz, planeKey],
   )
 }

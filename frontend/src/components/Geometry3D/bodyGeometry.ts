@@ -123,6 +123,48 @@ export function resolveFaceQueries(mesh: Mesh3D, bodyId: string): string[] | nul
 }
 
 /**
+ * The query list every rendered B-rep edge indexes, padded so each has one:
+ * raw `edgeQueries` where the kernel supplied a full set, else a topo fallback
+ * per missing tail edge. Mirrors `resolveFaceQueries`: the ONE list both the
+ * edge HighlightIndex and the ID layer's registration count from, so a body
+ * whose kernel returns fewer edge queries than it has edges still lets the tail
+ * edges pick. Returns the raw array unchanged when no padding is needed
+ * (reference-stable for the HighlightIndex memo), and null when there is nothing
+ * to index at all (no edges and no queries).
+ */
+export function resolveEdgeQueries(
+  edges: ReadonlyArray<unknown> | undefined,
+  edgeQueries: ReadonlyArray<string> | undefined,
+  bodyId: string,
+): string[] | null {
+  const numEdges = edges?.length ?? 0
+  const supplied = edgeQueries?.length ?? 0
+  const total = Math.max(numEdges, supplied)
+  if (total === 0) return null
+  if (edgeQueries && supplied >= numEdges) return edgeQueries as string[]
+  return Array.from({ length: total }, (_, i) =>
+    edgeQueries?.[i] ?? topoFallbackQuery(bodyId, 'edge', i))
+}
+
+/**
+ * The query list every rendered B-rep vertex indexes, padded like
+ * `resolveEdgeQueries`. Null when the body has no vertices (the one state where
+ * Body3D drops the whole vertex highlight index), otherwise one query per
+ * vertex, raw where the kernel covered them and a topo fallback where it fell
+ * short.
+ */
+export function resolveVertexQueries(
+  vertices: ReadonlyArray<[number, number, number]> | undefined,
+  vertexQueries: ReadonlyArray<string> | undefined,
+  bodyId: string,
+): string[] | null {
+  if (!vertices || vertices.length === 0) return null
+  const supplied = vertexQueries?.length ?? 0
+  if (vertexQueries && supplied >= vertices.length) return vertexQueries as string[]
+  return vertices.map((_, i) => vertexQueries?.[i] ?? topoFallbackQuery(bodyId, 'vertex', i))
+}
+
+/**
  * Triangle indices of the mesh grouped by the B-rep face they belong to, in one
  * pass. Pass the result to the per-face helpers below: without it each of them
  * scans the WHOLE triangle list to find its face's triangles, so asking for

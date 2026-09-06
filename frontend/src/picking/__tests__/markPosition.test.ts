@@ -64,6 +64,30 @@ describe('marksCoincide', () => {
   })
 })
 
+describe('NaN feed (g4-H2: the layers must filter before this point)', () => {
+  // These document WHY VertexIdLayer / useSketchIdRegistration reject non-finite
+  // positions: fed a NaN, the index silently co-locates it with the origin.
+  it('axisCell buckets NaN into the origin cell', () => {
+    expect(axisCell(NaN)).toBe(0)
+  })
+
+  it('marksCoincide reads any NaN pair as coincident', () => {
+    expect(marksCoincide(NaN, 0, 0, 0, 0, 0)).toBe(true)
+    expect(marksCoincide(NaN, NaN, NaN, 5, 5, 5)).toBe(true)
+  })
+
+  it('a NaN mark, once published, answers every query near the origin', () => {
+    const reg = new IdRegistry()
+    const origin = reg.allocate('originMarker', 'origin')
+    const bad = reg.allocate('sketchVertex', 'nan-vertex')
+    reg.setMarkPosition(origin, 0, 0, 0)
+    reg.setMarkPosition(bad, NaN, 0, 0)
+    // This is the bug the layer filter prevents: the NaN mark is offered
+    // alongside the origin.
+    expect(reg.coincidentMarkIds(origin)).toContain(bad)
+  })
+})
+
 describe('axisCell', () => {
   it('is monotone, so cell order is coordinate order', () => {
     const xs = [-1e6, -50, -1, -MARK_ABS_TOL * 2, 0, MARK_ABS_TOL * 2, 1, 50, 1e6]

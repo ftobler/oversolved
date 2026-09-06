@@ -19,12 +19,21 @@ export function useOriginMarkerIdRegistration(params: {
 
   useRegisteredBody(pipeline, enabled, selectionId,
     (p) => {
-      p.originLayer.registerBody({
-        bodyKey: selectionId,
-        vertices: [[0, 0, 0]],
-        vertexQueries: [selectionId],
-      })
-      return true
+      try {
+        p.originLayer.registerBody({
+          bodyKey: selectionId,
+          vertices: [[0, 0, 0]],
+          vertexQueries: [selectionId],
+        })
+        return true
+      } catch (err) {
+        // A registerBody throw (24-bit ID exhaustion) in a passive effect
+        // escalates to the nearest error boundary, and there is none: the whole
+        // viewport root would unmount. Swallow it like the body hooks do;
+        // useRegisteredBody skips markDirty on false.
+        console.warn('Origin marker ID registration failed; continuing without it', { selectionId, err })
+        return false
+      }
     },
     (p) => p.originLayer.unregisterBody(selectionId),
     [selectionId],

@@ -404,7 +404,7 @@ export class IdPipeline {
         // inheriting its stale decision, exactly as a throw would.
         if (this.latchedOutLayers.has(layer.name)) continue
         try {
-          layer.onBeforeRender?.(w, h)
+          layer.onBeforeRender?.(w, h, this.pixelRatio)
 
           switch (layer.zPolicy) {
             case 'clear-then-fresh':

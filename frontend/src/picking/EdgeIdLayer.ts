@@ -160,6 +160,11 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
       }
 
       const drawn = drawable.length
+      // Every segment was filtered out (all unnamed or non-finite): add nothing
+      // to the scene so the pipeline's empty-layer skip (scene.children.length
+      // === 0) holds. The unregister pre-clear and the numSegments === 0 exit
+      // above already handled the other empty cases.
+      if (drawn === 0) return
       // Zero-copy fast path when every segment draws (the common case).
       const outPositions = drawn === numSegments ? segmentPositions : new Float32Array(drawn * 6)
       const colors = new Float32Array(drawn * 6)

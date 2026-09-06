@@ -26,6 +26,8 @@ import {
   faceCount,
   lazyFaceTriangles,
   resolveFaceQueries,
+  resolveEdgeQueries,
+  resolveVertexQueries,
 } from '@/components/Geometry3D/bodyGeometry'
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
@@ -82,6 +84,10 @@ const DOT_COLOR_SELECTED = new THREE.Color(COLOR_SELECTED)
 // and effect keyed on `edges` -- including the geometry builds and the dispatch
 // registration, which now indexes the body's queries when it runs.
 const NO_EDGES: EdgeData[] = []
+
+// Shared empty resolved-query list so a body with no edges keeps one identity
+// for the edge HighlightIndex memo dep across renders.
+const NO_QUERIES: string[] = []
 
 interface Body3DProps {
   featureId: string
@@ -175,14 +181,15 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   )
 
   // Resolved query per edge (real query, else a topo fallback). The single
-  // primitive list every edge highlight decision indexes into. The fallback is
-  // keyed on the BODY: this feature's split siblings each index their own edges
-  // from 0, so a feature-keyed fallback gave two different edges one query.
-  const edgeQueriesResolved = useMemo(() => {
-    const numEdges = Math.max(edgeQueries?.length ?? 0, edges.length)
-    return Array.from({ length: numEdges }, (_, i) =>
-      edgeQueries?.[i] ?? topoFallbackQuery(bodyId, 'edge', i))
-  }, [bodyId, edgeQueries, edges])
+  // primitive list every edge highlight decision indexes into, and the SAME
+  // list the edge ID layer registers from (see useEdgeIdRegistration) so a
+  // padded tail edge is pickable exactly when it is highlightable. The fallback
+  // is keyed on the BODY: this feature's split siblings each index their own
+  // edges from 0, so a feature-keyed fallback gave two different edges one query.
+  const edgeQueriesResolved = useMemo(
+    () => resolveEdgeQueries(edges, edgeQueries, bodyId) ?? NO_QUERIES,
+    [bodyId, edgeQueries, edges],
+  )
 
   // One highlight index per (body, layer). It answers "nothing of mine is
   // active" without touching the primitives and always with the SAME all-false
@@ -238,11 +245,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     [faceHighlightIndex, hoverActive],
   )
 
-  // Resolved query per vertex, mirroring edges.
-  const vertexQueriesResolved = useMemo(() => {
-    if (!vertices || vertices.length === 0) return null
-    return vertices.map((_, i) => vertexQueries?.[i] ?? topoFallbackQuery(bodyId, 'vertex', i))
-  }, [bodyId, vertices, vertexQueries])
+  // Resolved query per vertex, mirroring edges: the same padded list the vertex
+  // ID layer registers from, so a fallback vertex picks where it highlights.
+  const vertexQueriesResolved = useMemo(
+    () => resolveVertexQueries(vertices, vertexQueries, bodyId),
+    [bodyId, vertices, vertexQueries],
+  )
 
   const vertexHighlightIndex = useMemo(
     () => vertexQueriesResolved && new HighlightIndex(bodyKey, VERTEX_LAYER_NAME, vertexQueriesResolved),

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { IdRegistry } from '../IdRegistry'
 import { VertexIdLayer, VERTEX_LAYER_NAME } from '../VertexIdLayer'
 import { rgbToId } from '../idEncoding'
@@ -78,6 +78,43 @@ describe('VertexIdLayer', () => {
     expect(reg.size()).toBe(1)
     const pts = layer.scene.children[0] as import('three').Points
     expect(pts.geometry.getAttribute('position').count).toBe(1)
+  })
+
+  it('excludes vertices with non-finite positions so they cannot mark the origin (g4-H2)', () => {
+    // markPosition: axisCell(NaN) buckets at the origin and axisCoincides reads
+    // a NaN pair as coincident, so an un-filtered NaN vertex would be offered as
+    // a candidate for every click near 0,0,0. Skip it like the face/edge layers.
+    layer.registerBody({
+      bodyKey: 'nan',
+      vertices: [[0, 0, 0], [NaN, 0, 0], [1, 0, 0]],
+      vertexQueries: ['vtx@A', 'vtx@B', 'vtx@C'],
+    })
+    const pts = layer.scene.children[0] as import('three').Points
+    expect(pts.geometry.getAttribute('position').count).toBe(2)  // B dropped
+    expect(reg.size()).toBe(2)  // no id allocated for the NaN vertex
+    // The origin vertex A is alone at its position, not co-located with B.
+    const aId = reg.lookupKey(VERTEX_LAYER_NAME, 'vtx@A')!
+    expect(reg.coincidentMarkIds(aId)).toEqual([aId])
+  })
+
+  it('frees ids allocated before a mid-loop allocation failure (g4-M1)', () => {
+    const realAllocate = reg.allocate.bind(reg)
+    let calls = 0
+    const spy = vi.spyOn(reg, 'allocate').mockImplementation((layerName, entityKey, pickKey) => {
+      if (++calls > 1) throw new Error('IdRegistry: exhausted 24-bit ID space')
+      return realAllocate(layerName, entityKey, pickKey)
+    })
+    expect(() => layer.registerBody(makeReg())).toThrow(/exhausted/)
+    spy.mockRestore()
+    // Nothing leaked: the first id (and its published mark position) freed back,
+    // nothing registered.
+    expect(reg.size()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+    // The freed id's mark position is gone too, so a recycled id is not
+    // co-located with the orphan.
+    reg.bumpCycle()
+    const recycled = reg.allocate('sketchVertex', 'elsewhere')
+    expect(reg.coincidentMarkIds(recycled)).toEqual([])
   })
 
   it('unregister removes Points and frees ids', () => {

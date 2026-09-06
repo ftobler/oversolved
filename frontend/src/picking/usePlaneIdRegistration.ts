@@ -46,8 +46,16 @@ export function usePlaneIdRegistration(params: {
       ])
       const triangleToFace = new Uint32Array([0, 0])
       const faceQueries = [selectionId]
-      p.planeLayer.registerBody({ bodyKey: selectionId, positions, triangleToFace, faceQueries })
-      return true
+      try {
+        p.planeLayer.registerBody({ bodyKey: selectionId, positions, triangleToFace, faceQueries })
+        return true
+      } catch (err) {
+        // A registerBody throw in a passive effect has no error boundary above
+        // it and would unmount the viewport root. Match the body hooks: warn
+        // and return false so useRegisteredBody skips markDirty.
+        console.warn('Plane ID registration failed; continuing without it', { selectionId, err })
+        return false
+      }
     },
     (p) => p.planeLayer.unregisterBody(selectionId),
     [selectionId, size, rx, ry, rz, ox, oy, oz],

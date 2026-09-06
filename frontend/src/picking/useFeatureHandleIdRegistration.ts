@@ -34,13 +34,21 @@ export function useFeatureHandleIdRegistration(params: {
     enabled,
     entityKey,
     (p) => {
-      p.featureHandleLayer.registerBody({
-        bodyKey: entityKey,
-        segmentPositions: new Float32Array([sx, sy, sz, ex, ey, ez]),
-        segmentToEdge: [0],
-        edgeQueries: [entityKey],
-      })
-      return true
+      try {
+        p.featureHandleLayer.registerBody({
+          bodyKey: entityKey,
+          segmentPositions: new Float32Array([sx, sy, sz, ex, ey, ez]),
+          segmentToEdge: [0],
+          edgeQueries: [entityKey],
+        })
+        return true
+      } catch (err) {
+        // No error boundary above a passive effect throw here: a registerBody
+        // failure would unmount the viewport root. Warn and return false, as
+        // the body hooks do; useRegisteredBody skips markDirty on false.
+        console.warn('Feature handle ID registration failed; continuing without it', { entityKey, err })
+        return false
+      }
     },
     (p) => p.featureHandleLayer.unregisterBody(entityKey),
     [sx, sy, sz, ex, ey, ez],

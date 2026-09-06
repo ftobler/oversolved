@@ -206,6 +206,35 @@ describe('FaceIdLayer', () => {
     expect(reg.size()).toBe(1)
   })
 
+  it('a fully-filtered body adds nothing to the scene (g4-L3)', () => {
+    // Every triangle points at an out-of-range face, so drawn === 0. The old
+    // code still created an empty mesh and added it, defeating the pipeline's
+    // scene.children.length === 0 empty-layer skip.
+    layer.registerBody({
+      bodyKey: 'all-unnamed',
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 2, 1, 0, 1, 2, 0]),
+      triangleToFace: new Uint32Array([5, 6]),
+      faceQueries: ['q0'],
+    })
+    expect(layer.bodyCount()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+    expect(reg.size()).toBe(0)
+  })
+
+  it('a fully-filtered re-register still clears the prior body (g4-L3)', () => {
+    layer.registerBody(makeRegistration())
+    expect(layer.bodyCount()).toBe(1)
+    layer.registerBody({
+      bodyKey: 'feat1/body1',
+      positions: new Float32Array([NaN, 0, 0, 1, 0, 0, 0, 1, 0]),
+      triangleToFace: new Uint32Array([0]),
+      faceQueries: ['face@feat1#0'],
+    })
+    // Pre-clear ran before the drawn === 0 exit: the good geometry is gone.
+    expect(layer.bodyCount()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+  })
+
   it('frees ids allocated before a mid-loop allocation failure', () => {
     const realAllocate = reg.allocate.bind(reg)
     let calls = 0

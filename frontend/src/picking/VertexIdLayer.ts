@@ -94,7 +94,7 @@ const FRAG_SHADER = `
 // shader because under a perspective camera the pixel size depends on each
 // vertex's own view depth; projectionMatrix[2][3] is -1 for perspective and 0
 // for orthographic, which selects the right clip-space w.
-const CUBE_VERT_SHADER = `
+export const CUBE_VERT_SHADER = `
   attribute vec3 aColor;
   attribute vec3 aCorner;
   uniform float uHalfPixels;
@@ -106,7 +106,16 @@ const CUBE_VERT_SHADER = `
     vColor = aColor;
     vec4 view = modelViewMatrix * vec4(position, 1.0);
     float clipW = projectionMatrix[2][3] == 0.0 ? 1.0 : -view.z;
-    float unitsPerPixel = (2.0 * clipW) / (projectionMatrix[1][1] * max(uViewportHeight, 1.0));
+    // Guard the divide like worldUnitsPerPixel() does (screenSpaceScale.ts:24):
+    // a zero or NaN projection Y-scale degrades the corner offset to zero size
+    // instead of the Inf/NaN vertex positions that would blow up the draw.
+    // GLSL ES 1.0 has no isnan(); NaN fails every ordered compare, so
+    // (projY > 0.0 || projY < 0.0) is false for both zero and NaN.
+    float projY = projectionMatrix[1][1];
+    bool projYValid = projY > 0.0 || projY < 0.0;
+    float unitsPerPixel = projYValid
+      ? (2.0 * clipW) / (projY * max(uViewportHeight, 1.0))
+      : 0.0;
     view.xyz += aCorner * (uHalfPixels * unitsPerPixel);
     vec4 clip = projectionMatrix * view;
     clip.z += uDepthBias * clip.w;
@@ -212,9 +221,22 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
   // Screen-space cube size in pixels, or undefined when drawing flat points.
   getCubePixels(): number | undefined { return this.cubePixels }
 
-  onBeforeRender(_width: number, height: number): void {
-    const u = this.material.uniforms?.uViewportHeight
-    if (u) u.value = height
+  onBeforeRender(_width: number, height: number, pixelRatio = 1): void {
+    const u = this.material.uniforms
+    if (!u) return
+    if (u.uViewportHeight) u.uViewportHeight.value = height
+    // The cube must cover `cubePixels` CSS pixels, but `uViewportHeight` is
+    // device pixels, so the shader's units-per-pixel is per DEVICE pixel. Scale
+    // the half-extent by the DPR and rebuild an ODD device size from the radius,
+    // so the lit centre pixel stays the vertex's own (mirrors scaledWindowSize
+    // in IdPipeline). Without this the cube shrinks to `cubePixels / DPR` CSS
+    // pixels while the pick window keeps its CSS size.
+    if (u.uHalfPixels && this.cubePixels !== undefined) {
+      const ratio = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1
+      const cssRadius = (this.cubePixels - 1) / 2
+      const deviceSize = 2 * Math.round(cssRadius * ratio) + 1
+      u.uHalfPixels.value = deviceSize / 2
+    }
   }
 
   registerBody(reg: VertexBodyRegistration): void {
@@ -227,48 +249,62 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
     const colors    = new Float32Array(count * 3)
     const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
 
-    let written = 0
-    for (let i = 0; i < count; i++) {
-      const query = vertexQueries[i]
-      if (query === undefined) continue
-      // Keyed on the vertex's own index i, not on `written`: the pick key has to
-      // match what Body3D recomputes from the registration's vertex list, which
-      // includes the query-less vertices this loop skips.
-      const id = ids.idFor(i, query)
-      const [r, g, b] = idToRGBNormalized(id)
-      const v = vertices[i]
-      // Publish where this mark lands. A vertex marks a POINT -- one pixel here,
-      // one small cube in the b-rep path -- so a second vertex at the same place
-      // does not sit beside it, it overwrites it outright and leaves nothing in
-      // the buffer to resolve. Telling the registry where each mark is lets the
-      // resolver hand back everything at that position instead of only whichever
-      // draw happened to be last. See `IdRegistry.setMarkPosition`.
-      this.registry.setMarkPosition(id, v[0], v[1], v[2])
-      const base = written * 3
-      positions[base]     = v[0]
-      positions[base + 1] = v[1]
-      positions[base + 2] = v[2]
-      colors[base]      = r
-      colors[base + 1]  = g
-      colors[base + 2]  = b
-      written++
+    try {
+      let written = 0
+      for (let i = 0; i < count; i++) {
+        const query = vertexQueries[i]
+        if (query === undefined) continue
+        const v = vertices[i]
+        // Skip a non-finite vertex before allocating its id, like the face and
+        // edge layers filter non-finite coords. `axisCell(NaN)` buckets at the
+        // origin and `axisCoincides` reads a NaN pair as coincident, so one NaN
+        // B-rep vertex would make clicking the origin offer it as a candidate.
+        if (!Number.isFinite(v[0]) || !Number.isFinite(v[1]) || !Number.isFinite(v[2])) continue
+        // Keyed on the vertex's own index i, not on `written`: the pick key has
+        // to match what Body3D recomputes from the registration's vertex list,
+        // which includes the vertices this loop skips.
+        const id = ids.idFor(i, query)
+        const [r, g, b] = idToRGBNormalized(id)
+        // Publish where this mark lands. A vertex marks a POINT -- one pixel
+        // here, one small cube in the b-rep path -- so a second vertex at the
+        // same place does not sit beside it, it overwrites it outright and
+        // leaves nothing in the buffer to resolve. Telling the registry where
+        // each mark is lets the resolver hand back everything at that position
+        // instead of only whichever draw happened to be last. See
+        // `IdRegistry.setMarkPosition`.
+        this.registry.setMarkPosition(id, v[0], v[1], v[2])
+        const base = written * 3
+        positions[base]     = v[0]
+        positions[base + 1] = v[1]
+        positions[base + 2] = v[2]
+        colors[base]      = r
+        colors[base + 1]  = g
+        colors[base + 2]  = b
+        written++
+      }
+
+      if (written === 0) return
+
+      const finalPositions = written === count ? positions : positions.subarray(0, written * 3)
+      const finalColors    = written === count ? colors    : colors.subarray(0, written * 3)
+
+      const geometry = this.cubePixels === undefined
+        ? buildPointGeometry(finalPositions, finalColors)
+        : buildCubeGeometry(finalPositions, finalColors, written)
+
+      const mesh = this.cubePixels === undefined
+        ? new THREE.Points(geometry, this.material)
+        : new THREE.Mesh(geometry, this.material)
+      mesh.frustumCulled = false
+      this.scene.add(mesh)
+      this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
+    } catch (err) {
+      // A mid-loop allocation failure (24-bit ID exhaustion) must not leak the
+      // ids already taken for this pass, nor their published mark positions
+      // (marks ride along via IdRegistry.free). Matches the sibling layers.
+      for (const id of ids.allocatedIds) this.registry.free(id)
+      throw err
     }
-
-    if (written === 0) return
-
-    const finalPositions = written === count ? positions : positions.subarray(0, written * 3)
-    const finalColors    = written === count ? colors    : colors.subarray(0, written * 3)
-
-    const geometry = this.cubePixels === undefined
-      ? buildPointGeometry(finalPositions, finalColors)
-      : buildCubeGeometry(finalPositions, finalColors, written)
-
-    const mesh = this.cubePixels === undefined
-      ? new THREE.Points(geometry, this.material)
-      : new THREE.Mesh(geometry, this.material)
-    mesh.frustumCulled = false
-    this.scene.add(mesh)
-    this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
   }
 
   dispose(): void {

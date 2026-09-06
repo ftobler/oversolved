@@ -51,9 +51,20 @@ function edgeArgs(queries: string[] = ['edge@q']) {
   return { edges, edgeQueries: queries }
 }
 
+// After g4-H1 geometry, not queries, gates registration: an edge the kernel
+// left unnamed still registers with a topo fallback. "Empty" therefore means
+// no geometry at all.
+function edgeArgsEmpty() {
+  return { edges: [] as EdgeData[], edgeQueries: [] as string[] }
+}
+
 function vertexArgs(queries: string[] = ['vertex@q']) {
   const vertices: [number, number, number][] = [[0, 0, 0]]
   return { vertices, vertexQueries: queries }
+}
+
+function vertexArgsEmpty() {
+  return { vertices: [] as [number, number, number][], vertexQueries: [] as string[] }
 }
 
 interface HookCase {
@@ -77,7 +88,7 @@ const cases: HookCase[] = [
   {
     name: 'edge',
     makeValid: () => edgeArgs(),
-    makeEmpty: () => edgeArgs([]),
+    makeEmpty: () => edgeArgsEmpty(),
     useRun: (a) => {
       const x = a as ReturnType<typeof edgeArgs>
       useEdgeIdRegistration({ featureId: 'f', bodyId: 'b', edges: x.edges, edgeQueries: x.edgeQueries })
@@ -88,7 +99,7 @@ const cases: HookCase[] = [
   {
     name: 'vertex',
     makeValid: () => vertexArgs(),
-    makeEmpty: () => vertexArgs([]),
+    makeEmpty: () => vertexArgsEmpty(),
     useRun: (a) => {
       const x = a as ReturnType<typeof vertexArgs>
       useVertexIdRegistration({ featureId: 'f', bodyId: 'b', vertices: x.vertices, vertexQueries: x.vertexQueries })
