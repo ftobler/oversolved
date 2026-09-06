@@ -223,7 +223,16 @@ export function useSolver(
     // primitive, so every claim recorded before this solve is stale. Clear them
     // here, the one point every applied solve converges on, so computeHighlight
     // re-highlights by the durable query membership until the user picks again.
-    useSketchEditorStore.getState().clearSelectedPicks()
+    // Hover is the same live identity through the same builder (hoverActiveFrom),
+    // so a re-tessellation can shift its pickKey exactly as it can a click's:
+    // clear it on the same seam. click-select and hover-highlight are one
+    // mechanism. hoveredFaceNormal/hoveredFaceCenter are left alone -- they are
+    // recomputed on the next hover resolve, and clearing them here would flicker
+    // the "Normal to" readout on every solve.
+    const sketchStore = useSketchEditorStore.getState()
+    sketchStore.clearSelectedPicks()
+    sketchStore.setHoveredSelectionId(null)
+    sketchStore.setHoveredPickKey(null)
     // A fresh result for a feature supersedes any retained pre-delete snapshot
     // of it (usePartDoc's undo stash). Only an APPLIED solve reaches this point
     // (the request-id staleness guard runs before applyBuildResponse calls us),
