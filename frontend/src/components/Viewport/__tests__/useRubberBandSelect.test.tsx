@@ -114,7 +114,7 @@ function sweepWith(gl: THREE.WebGLRenderer): void {
   // driver re-renders the ID target every frame, so clean is the normal state.
   getLivePipeline()?.target.markClean()
   act(() => {
-    result.current.onPointerDown(pointerEvent(10, 10), false)
+    result.current.onPointerDown(pointerEvent(10, 10))
     result.current.onPointerMove(pointerEvent(40, 40))
     result.current.onPointerUp()
   })
@@ -141,16 +141,8 @@ describe('useRubberBandSelect band start gates', () => {
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
     const started = result.current.onPointerDown(
       { clientX: 10, clientY: 10, button: 2 } as unknown as React.PointerEvent,
-      false,
     )
     expect(started).toBe(false)
-  })
-
-  it('does not start on an id-buffer hit', () => {
-    const { gl } = glForEntityId(0)
-    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
-    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
-    expect(result.current.onPointerDown(pointerEvent(10, 10), true)).toBe(false)
   })
 
   it('does not start while the camera is rotating', () => {
@@ -158,14 +150,14 @@ describe('useRubberBandSelect band start gates', () => {
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
     useSketchEditorStore.setState({ isRotating: true })
-    expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(false)
+    expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(false)
   })
 
   it('starts on a left-click on empty space while idle', () => {
     const { gl } = glForEntityId(0)
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
-    expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+    expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
   })
 
   // The drag flag means "a box is open", not "a press is live". A stationary
@@ -177,7 +169,7 @@ describe('useRubberBandSelect band start gates', () => {
     const { gl } = glForEntityId(0)
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
-    act(() => { result.current.onPointerDown(pointerEvent(10, 10), false) })
+    act(() => { result.current.onPointerDown(pointerEvent(10, 10)) })
     expect(result.current.state.isDraggingRef.current).toBe(false)
     // A sub-threshold twitch is still no box.
     act(() => { result.current.onPointerMove(pointerEvent(12, 12)) })
@@ -192,7 +184,7 @@ describe('useRubberBandSelect band start gates', () => {
     const { gl } = glForEntityId(0)
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
-    expect(result.current.onPointerDown(pointerEvent(10, 10, 1, 'touch'), false)).toBe(false)
+    expect(result.current.onPointerDown(pointerEvent(10, 10, 1, 'touch'))).toBe(false)
     expect(result.current.state.isDraggingRef.current).toBe(false)
   })
 
@@ -200,7 +192,7 @@ describe('useRubberBandSelect band start gates', () => {
     const { gl } = glForEntityId(0)
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
-    expect(result.current.onPointerDown(pointerEvent(10, 10, 1, 'pen'), false)).toBe(false)
+    expect(result.current.onPointerDown(pointerEvent(10, 10, 1, 'pen'))).toBe(false)
   })
 
   it('a mouse press on empty space still starts and commits a band', () => {
@@ -216,6 +208,18 @@ describe('useRubberBandSelect band start gates', () => {
       setLivePipeline(null)
       p.dispose()
     }
+  })
+
+  it('the hook has no id-buffer gate of its own: a mouse press on empty space always arms', () => {
+    // Post-M1: idBufferHitExists is gone. The hook arms on any left mouse press
+    // that clears the button/rotation/pointerType checks; deciding whether the
+    // press is "over geometry" is the Viewport's job (shouldOpenRubberBand's
+    // hasHover), not this hook's. This test pins that the hook does not silently
+    // re-grow a geometry gate.
+    const { gl } = glForEntityId(0)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
   })
 })
 
@@ -307,7 +311,7 @@ describe('useRubberBandSelect stale-buffer guard', () => {
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
     act(() => {
-      result.current.onPointerDown(pointerEvent(10, 10), false)
+      result.current.onPointerDown(pointerEvent(10, 10))
       result.current.onPointerMove(pointerEvent(40, 40))
       result.current.onPointerUp()
     })
@@ -360,7 +364,7 @@ describe('useRubberBandSelect degenerate-rect exit', () => {
       const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
       getLivePipeline()?.target.markClean()
       act(() => {
-        expect(result.current.onPointerDown(pointerEvent(199.5, 10), false)).toBe(true)
+        expect(result.current.onPointerDown(pointerEvent(199.5, 10))).toBe(true)
         result.current.onPointerMove(pointerEvent(260, 40))
         result.current.onPointerUp()
       })
@@ -391,7 +395,7 @@ describe('useRubberBandSelect off-pane release guards', () => {
       useSketchEditorStore.getState().toggleNormalSelection('sk1/keep')
       const result = liveDrag(entityId)
       act(() => {
-        expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+        expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
         result.current.onPointerMove(pointerEvent(40, 40))
         expect(result.current.state.isDraggingRef.current).toBe(true)
         // The release landed outside the pane, so moves keep arriving with
@@ -417,7 +421,7 @@ describe('useRubberBandSelect off-pane release guards', () => {
       const entityId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/eB')
       const result = liveDrag(entityId)
       act(() => {
-        expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+        expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
         result.current.onPointerMove(pointerEvent(40, 40))
         result.current.onPointerCancel()
       })
@@ -426,7 +430,7 @@ describe('useRubberBandSelect off-pane release guards', () => {
       // The gesture the browser tore away must not wedge the hook: the next
       // press starts a fresh band and commits normally.
       act(() => {
-        expect(result.current.onPointerDown(pointerEvent(20, 20), false)).toBe(true)
+        expect(result.current.onPointerDown(pointerEvent(20, 20))).toBe(true)
         result.current.onPointerMove(pointerEvent(60, 60))
         result.current.onPointerUp()
       })
@@ -499,7 +503,7 @@ describe('useRubberBandSelect commit readback equivalence', () => {
       const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
       getLivePipeline()?.target.markClean()
       act(() => {
-        result.current.onPointerDown(pointerEvent(10, 10), false)
+        result.current.onPointerDown(pointerEvent(10, 10))
         result.current.onPointerMove(pointerEvent(60, 60))
         result.current.onPointerUp()
       })
@@ -538,7 +542,7 @@ describe('useRubberBandSelect commit readback equivalence', () => {
       const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
       getLivePipeline()?.target.markClean()
       act(() => {
-        result.current.onPointerDown(pointerEvent(5, 5), false)
+        result.current.onPointerDown(pointerEvent(5, 5))
         result.current.onPointerMove(pointerEvent(1195, 895))
         result.current.onPointerUp()
       })
@@ -620,7 +624,7 @@ describe('band visibility transition drives capture', () => {
   it('onPointerMove returns false while the box is still under the 4px threshold', () => {
     const result = liveHook()
     act(() => {
-      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       // A 3px nudge is below the box threshold: still an ordinary click.
       expect(result.current.onPointerMove(pointerEvent(12, 11))).toBe(false)
       expect(result.current.onPointerMove(pointerEvent(13, 12))).toBe(false)
@@ -630,7 +634,7 @@ describe('band visibility transition drives capture', () => {
   it('onPointerMove returns true exactly once, on the move that first opens the box', () => {
     const result = liveHook()
     act(() => {
-      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       expect(result.current.onPointerMove(pointerEvent(12, 11))).toBe(false)
       // Crossing 4px opens the box: this move is the one transition.
       expect(result.current.onPointerMove(pointerEvent(20, 12))).toBe(true)
@@ -640,7 +644,7 @@ describe('band visibility transition drives capture', () => {
   it('onPointerMove keeps returning false for every later move of the same box', () => {
     const result = liveHook()
     act(() => {
-      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       expect(result.current.onPointerMove(pointerEvent(20, 12))).toBe(true)
       expect(result.current.onPointerMove(pointerEvent(30, 30))).toBe(false)
       expect(result.current.onPointerMove(pointerEvent(40, 40))).toBe(false)
@@ -650,14 +654,14 @@ describe('band visibility transition drives capture', () => {
   it('a fresh gesture after endDrag reports the transition again', () => {
     const result = liveHook()
     act(() => {
-      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       expect(result.current.onPointerMove(pointerEvent(20, 12))).toBe(true)
       result.current.onPointerUp()
     })
     act(() => {
       // A second drag must report its own open transition; a latched flag
       // surviving endDrag would hide it.
-      expect(result.current.onPointerDown(pointerEvent(50, 50), false)).toBe(true)
+      expect(result.current.onPointerDown(pointerEvent(50, 50))).toBe(true)
       expect(result.current.onPointerMove(pointerEvent(60, 52))).toBe(true)
     })
   })
@@ -665,7 +669,7 @@ describe('band visibility transition drives capture', () => {
    it('a move with no button held drops the band and reports no transition', () => {
     const result = liveHook()
     act(() => {
-      expect(result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       expect(result.current.onPointerMove(pointerEvent(20, 12))).toBe(true)
     })
     act(() => {
@@ -688,7 +692,7 @@ describe('the band flag and a plain click', () => {
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
     act(() => {
-      result.current.onPointerDown(pointerEvent(10, 10), false)
+      result.current.onPointerDown(pointerEvent(10, 10))
       result.current.onPointerUp()
     })
     expect(takeBandClickConsumed()).toBe(false)
@@ -699,7 +703,7 @@ describe('the band flag and a plain click', () => {
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
     act(() => {
-      result.current.onPointerDown(pointerEvent(10, 10), false)
+      result.current.onPointerDown(pointerEvent(10, 10))
       result.current.onPointerMove(pointerEvent(13, 10))
       result.current.onPointerUp()
     })
@@ -712,7 +716,7 @@ describe('the band flag and a plain click', () => {
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
     getLivePipeline()?.target.markClean()
     act(() => {
-      result.current.onPointerDown(pointerEvent(10, 10), false)
+      result.current.onPointerDown(pointerEvent(10, 10))
       result.current.onPointerMove(pointerEvent(70, 70))
       result.current.onPointerUp()
     })

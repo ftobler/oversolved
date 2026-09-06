@@ -443,7 +443,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         // trailing click onto this div and starves all of them. A stationary press is
         // an ordinary click and must keep its own target; the band takes capture on
         // the move that first opens a box instead (handlePointerMove).
-        rubberBand.onPointerDown(e, false)
+        rubberBand.onPointerDown(e)
       }
     }
   }, [closeContextMenu, rubberBand])

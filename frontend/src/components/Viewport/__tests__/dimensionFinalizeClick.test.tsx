@@ -170,7 +170,7 @@ describe('dimension finalize click reaches the dispatcher', () => {
     const spy = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement')
 
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       h.result.current.onPointerMove(pointerEvent(60, 60))
       h.result.current.onPointerUp()
     })

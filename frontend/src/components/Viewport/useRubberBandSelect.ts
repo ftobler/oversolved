@@ -41,7 +41,7 @@ export function useRubberBandSelect(
 ): {
   state: RubberBandState
   // Call on the root container's onPointerDown. Returns true if the box drag consumed the event.
-  onPointerDown: (e: React.PointerEvent, idBufferHitExists: boolean) => boolean
+  onPointerDown: (e: React.PointerEvent) => boolean
   // Call on the root container's onPointerMove. Returns true on the single move
   // that first opens a visible box (so the pane can take pointer capture only
   // then), false otherwise.
@@ -92,10 +92,9 @@ export function useRubberBandSelect(
     return scratch
   }, [])
 
-  const onPointerDown = useCallback((e: React.PointerEvent, idBufferHitExists: boolean): boolean => {
+  const onPointerDown = useCallback((e: React.PointerEvent): boolean => {
     // Only left-click on empty space starts a box drag.
     if (e.button !== 0) return false
-    if (idBufferHitExists) return false
     // Mouse only: band-start reads the async hover state as its geometry
     // guard, and touch/pen first contact has no hover resolved yet, so a
     // finger landing on a body would open a box over geometry instead of

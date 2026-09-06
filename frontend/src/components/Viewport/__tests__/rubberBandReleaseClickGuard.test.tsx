@@ -124,7 +124,7 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     pipeline = h.pipeline
 
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       h.result.current.onPointerMove(pointerEvent(60, 60))
       h.result.current.onPointerUp()
     })
@@ -159,7 +159,7 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     const spy = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement')
 
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       h.result.current.onPointerMove(pointerEvent(60, 60))
       h.result.current.onPointerUp()
     })
@@ -177,7 +177,7 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     useSketchEditorStore.getState().toggleNormalSelection('sk1/keep')
 
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       h.result.current.onPointerMove(pointerEvent(40, 40))
       h.result.current.onPointerCancel()
     })
@@ -197,7 +197,7 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     pipeline = h.pipeline
 
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       h.result.current.onPointerMove(pointerEvent(40, 40))
       h.result.current.onPointerMove(pointerEvent(60, 60, 0))
     })
@@ -218,7 +218,7 @@ describe('band release vs the trailing native click (VP-M1)', () => {
 
     // Strand a band, leaving the flag with no trailing click to consume it.
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       h.result.current.onPointerMove(pointerEvent(40, 40))
       h.result.current.onPointerMove(pointerEvent(60, 60, 0))
     })
@@ -246,7 +246,7 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     pipeline = h.pipeline
 
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       h.result.current.onPointerUp()  // no move: rectRef stays null
     })
 
@@ -274,7 +274,7 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     const spy = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement')
 
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       h.result.current.onPointerUp()  // no move: rectRef stays null, no band flag
     })
 
@@ -293,7 +293,7 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     pipeline = h.pipeline
 
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       expect(h.result.current.onPointerMove(pointerEvent(60, 60))).toBe(true)
       h.result.current.onPointerUp()
     })
@@ -301,7 +301,7 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     expect(takeBandClickConsumed()).toBe(true)
 
     await act(async () => {
-      expect(h.result.current.onPointerDown(pointerEvent(10, 10), false)).toBe(true)
+      expect(h.result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
       expect(h.result.current.onPointerMove(pointerEvent(11, 10))).toBe(false)  // under 4px
       h.result.current.onPointerUp()
     })
