@@ -66,6 +66,26 @@ describe('collectEntitiesFromPixels', () => {
     expect(result).toHaveLength(1)
   })
 
+  it('collapses two ids that decode to the same (layer, entityKey) pair', () => {
+    // A query collision: same layer + entityKey, distinct pickKey -> distinct id.
+    const idA = registry.allocate('face', '@feat/face', 'pickA')
+    const idB = registry.allocate('face', '@feat/face', 'pickB')
+    expect(idA).not.toBe(idB)
+
+    const rgb = (id: number): [number, number, number] =>
+      [(id >> 16) & 0xFF, (id >> 8) & 0xFF, id & 0xFF]
+    const [ar, ag, ab] = rgb(idA)
+    const [br, bg, bb] = rgb(idB)
+    const pixels: [number, number, number, number][] = [
+      [ar, ag, ab, 255], [br, bg, bb, 255],
+      [ar, ag, ab, 255], [br, bg, bb, 255],
+    ]
+    const buf = fillBuffer(pixels, 2, 2)
+
+    const result = collectEntitiesFromPixels(buf, 2, 2, registry)
+    expect(result).toEqual([{ layer: 'face', entityKey: '@feat/face' }])
+  })
+
   it('skips pixels with alpha=0', () => {
     const id = registry.allocate('face', 'face@1')
     const r = (id >> 16) & 0xFF
