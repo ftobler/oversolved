@@ -134,6 +134,14 @@ export interface AssemblyEditorData {
    * the old one. Retired by the solve that re-bakes them.
    */
   settlingOffsets: Record<string, Transform3D>
+  /**
+   * Set when a committed manipulation has handed the doc a new pose but
+   * `pickGeometry` is still baked at the pre-drag one (the re-solve is a worker
+   * round trip away). The selection highlight reads `pickGeometry`, so it must
+   * stay hidden through this window or it hangs detached from the drawn parts.
+   * Cleared by `setSolveResult`, which installs the re-baked `pickGeometry`.
+   */
+  pickGeometryStale: boolean
   isSolving: boolean
   solveError: string | null
   undoStack: AssemblyUndoEntry[]
@@ -165,6 +173,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   manipulation: null,
   gizmoDrag: null,
   settlingOffsets: {},
+  pickGeometryStale: false,
   isSolving: false,
   solveError: null,
   undoStack: [],
@@ -226,6 +235,7 @@ export function sameInstances(a: readonly PartInstance[], b: readonly PartInstan
 // here keeps setSnapshot's "React-mirrored state only" contract intact.
 const STORE_OWNED_FIELDS = [
   'selectedPartHandle', 'manipulation', 'gizmoDrag', 'settlingOffsets',
+  'pickGeometryStale',
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'selection', 'hoveredEntity', 'showPickDebug',
@@ -406,6 +416,9 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // Every body comes back baked at its solved pose, which is what the settling
     // offsets were standing in for until now.
     settlingOffsets: {},
+    // pickGeometry is now re-baked at the solved pose, so the selection highlight
+    // may draw again (same rationale as settlingOffsets).
+    pickGeometryStale: false,
   }),
 
   setDragSolveResult: (result) => set((prev) => ({
@@ -605,6 +618,11 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
           prev.settlingOffsets[manipulation.handle] ?? IDENTITY_TRANSFORM,
         ),
       },
+      // The doc is dirtied and a re-solve requested, but pickGeometry stays baked
+      // at the pre-drag pose until it lands. The selection highlight reads
+      // pickGeometry and sits outside the drawn part groups, so hide it through
+      // this window rather than letting it hang detached from the parts.
+      pickGeometryStale: true,
     }))
     // Bake every follower's live-solved pose into its seed before committing the
     // grabbed part's new seed. A drag otherwise writes back only the grabbed
@@ -624,7 +642,10 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // grabbed part restores itself, drawn from its own bodies once the offset is
     // gone. A session that never moved has nothing to restore.
     const moved = manipulation != null && !transformsEqual(manipulation.current, manipulation.seed)
-    set({ manipulation: null, gizmoDrag: null })
+    // A cancelled-but-moved session also leaves followers at live-solved poses
+    // and pickGeometry at the pre-drag pose with a restoring re-solve pending, so
+    // the selection highlight must stay hidden until that solve lands.
+    set({ manipulation: null, gizmoDrag: null, pickGeometryStale: moved })
     if (moved) callbacks?.requestSolve()
   },
 

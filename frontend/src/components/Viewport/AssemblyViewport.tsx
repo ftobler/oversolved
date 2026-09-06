@@ -126,6 +126,11 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // With no chip armed the viewport is a plain B-rep selector instead (faces,
   // edges, planes for measurement), which is the part editor's normal mode.
   const aiming = useAssemblyStore(s => s.activeMateField !== null)
+  // A committed drag has handed the doc a new pose but pickGeometry is still
+  // baked at the pre-drag one until the re-solve lands: the selection highlight
+  // reads pickGeometry and hangs detached from the drawn parts through that
+  // window, so gate it on this rather than the live-session `manipulating` flag.
+  const pickGeometryStale = useAssemblyStore(s => s.pickGeometryStale)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pipelineRef = useRef<IdPipeline | null>(null)
@@ -349,7 +354,11 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
       if (store.activeMateField !== null) {
         store.setHoverHits(hits, pending.ctrlKey)
       } else {
-        store.setHoveredEntity(hits[0]?.entityKey ?? null)
+        // A gizmo handle under the cursor occludes the entity behind it exactly
+        // as it does for a click (handleGizmoPointerDownCapture claims the
+        // pointer-down, and gestureAllowsSelect then rejects the release):
+        // highlighting that entity advertises a selection the pixel cannot make.
+        store.setHoveredEntity(gizmoHit ? null : (hits[0]?.entityKey ?? null))
       }
     })
   }, [clearHover, resolveHitsAt])
@@ -612,9 +621,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
         {/* B-rep selection highlight, only in the plain selector mode: the
             aiming mode shows anchor triads over the same geometry instead. It is
-            also hidden mid-drag, where the pickGeometry it reads still holds the
-            pre-drag pose and would leave the highlight detached from the part. */}
-        {!aiming && !manipulating && (
+            also hidden mid-drag, and while a committed drag's re-solve is in
+            flight (`pickGeometryStale`): `pickGeometry` still holds the pre-drag
+            pose and the overlay sits outside the drawn part groups. */}
+        {!aiming && !manipulating && !pickGeometryStale && (
           <AssemblySelectionHighlight
             pickBodies={pickGeometry}
             selection={selection}

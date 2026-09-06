@@ -79,8 +79,8 @@ describe('assemblyStore part manipulation', () => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().cancelPartManipulation()
     // Store-owned, so setSnapshot preserves it: a committed drag would otherwise
-    // carry its offset into the next test.
-    useAssemblyStore.setState({ settlingOffsets: {} })
+    // carry its offset (and its stale-pickGeometry flag) into the next test.
+    useAssemblyStore.setState({ settlingOffsets: {}, pickGeometryStale: false })
     setAssemblyCallbacks(null)
   })
 
@@ -342,5 +342,54 @@ describe('assemblyStore part manipulation', () => {
 
     expect(useAssemblyStore.getState().manipulation?.current.tx).toBe(2)
     expect(useAssemblyStore.getState().selectedPartHandle).toBe('p1')
+  })
+
+  // M3: the selection highlight reads `pickGeometry`, which stays baked at the
+  // pre-drag pose until the post-commit re-solve lands -- and `manipulating`
+  // flips false the instant the pointer lifts, a solve round trip before that.
+  // `pickGeometryStale` marks exactly that window so the overlay stays hidden.
+  describe('pickGeometryStale lifecycle', () => {
+    const emptySolve = {
+      transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: {},
+      anchors: {}, pickGeometry: [], mateResults: {},
+    }
+
+    it('marks pickGeometry stale from a committed drag until the next full solve', () => {
+      mountHost(docWith(instance('p1'), instance('p2')))
+      const s = useAssemblyStore.getState()
+      expect(s.beginPartManipulation('p1')).toBe(true)
+      s.dragPartTranslate([2, 0, 0])
+      useAssemblyStore.getState().endPartManipulation()
+      expect(useAssemblyStore.getState().pickGeometryStale).toBe(true)
+
+      useAssemblyStore.getState().setSolveResult(emptySolve)
+      expect(useAssemblyStore.getState().pickGeometryStale).toBe(false)
+    })
+
+    it('a click that never moved the part leaves pickGeometry fresh', () => {
+      mountHost(docWith(instance('p1')))
+      const s = useAssemblyStore.getState()
+      s.beginPartManipulation('p1')
+      useAssemblyStore.getState().endPartManipulation()  // no drag move
+      expect(useAssemblyStore.getState().pickGeometryStale).toBe(false)
+    })
+
+    it('a cancelled but moved manipulation also marks pickGeometry stale', () => {
+      mountHost(docWith(instance('p1')))
+      const s = useAssemblyStore.getState()
+      s.beginPartManipulation('p1')
+      s.dragPartTranslate([1, 0, 0])
+      useAssemblyStore.getState().cancelPartManipulation()
+      expect(useAssemblyStore.getState().pickGeometryStale).toBe(true)
+    })
+
+    it('setSnapshot preserves pickGeometryStale (store-owned)', () => {
+      mountHost(docWith(instance('p1')))
+      useAssemblyStore.setState({ pickGeometryStale: true })
+      useAssemblyStore.getState().setSnapshot({
+        ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: docWith(instance('p1')),
+      })
+      expect(useAssemblyStore.getState().pickGeometryStale).toBe(true)
+    })
   })
 })
