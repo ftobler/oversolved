@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import type * as THREE from 'three'
 import { getLivePipeline, type ResolvedHit } from '@/picking'
-import { getToolAllowedLayers } from '@/registry/toolPickConfig'
+import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 
@@ -53,10 +53,7 @@ export default function IdPickReadout({ glRef }: { glRef: RefObject<THREE.WebGLR
       // is exactly the state a mid-rebuild click lands in.
       if (pipeline.isDirty()) { setNote('id buffer DIRTY -- every resolve returns null'); setHits([]); return }
       const tool = useSketchEditorStore.getState().activeTool
-      const allowed = getToolAllowedLayers(tool)
-      const layers = allowed === null
-        ? PART_EDITOR_CONSUMED_LAYERS
-        : new Set([...PART_EDITOR_CONSUMED_LAYERS].filter(l => allowed.has(l)))
+      const layers = effectiveAllowedLayers(PART_EDITOR_CONSUMED_LAYERS, tool)
       const all = pipeline.resolveAllSync(gl, px, { allowedLayers: layers })
       setHits(all)
       setNote(all.length === 0 ? 'nothing in the pick disc' : `tool=${tool ?? 'idle'}`)

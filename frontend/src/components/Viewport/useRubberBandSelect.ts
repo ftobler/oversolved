@@ -3,7 +3,7 @@ import type * as THREE from 'three'
 import { getLivePipeline } from '@/picking'
 import { collectEntitiesFromPixels } from '@/picking/collectEntitiesFromPixels'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { getToolAllowedLayers } from '@/registry/toolPickConfig'
+import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 import { SWALLOW_ONLY_PICK_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { markBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
 import { planBandReads } from '@/components/Viewport/bandReadPlan'
@@ -183,9 +183,11 @@ export function useRubberBandSelect(
 
     committedRef.current = true
 
-    // Determine tool-based layer filter.
+    // The editor's consumed set intersected with the active tool's filter, from
+    // the one shared composition so the band and the click dispatcher cannot
+    // drift.
     const tool = useSketchEditorStore.getState().activeTool
-    const allowed = getToolAllowedLayers(tool)
+    const allowed = effectiveAllowedLayers(consumedLayers, tool)
 
     const w = pipeline.target.getWidth()
     const h = pipeline.target.getHeight()
@@ -231,9 +233,8 @@ export function useRubberBandSelect(
     // sweep over a handle or label pixel must never leak a fhandle:/dim: key
     // into normalSelection. The tool's allowedLayers filter applies on top.
     const filtered = entities.filter(e =>
-      consumedLayers.has(e.layer)
-      && !SWALLOW_ONLY_PICK_LAYERS.has(e.layer)
-      && (allowed === null || allowed.has(e.layer)))
+      allowed.has(e.layer)
+      && !SWALLOW_ONLY_PICK_LAYERS.has(e.layer))
 
     // An empty or swallowed-only box commits nothing: replacing with the empty
     // set would wipe the selection on an accidental sweep across a feature

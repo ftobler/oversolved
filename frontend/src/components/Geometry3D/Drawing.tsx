@@ -15,9 +15,11 @@ import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
-import { shouldClearSelectionOnBackplaneClick, resolvePickAtEvent } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import {
+  shouldClearSelectionOnBackplaneClick, resolvePickAtEvent, PART_EDITOR_CONSUMED_LAYERS,
+} from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
-import { getToolAllowedLayers } from '@/registry/toolPickConfig'
+import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 
 export function DrawPreview({ featureId, activeFeatureId }: { featureId?: string; activeFeatureId?: string }) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
@@ -204,7 +206,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
             e.nativeEvent as PointerEvent,
             gl.domElement,
             gl,
-            getToolAllowedLayers('project') ?? new Set<string>(),
+            effectiveAllowedLayers(PART_EDITOR_CONSUMED_LAYERS, 'project'),
           )
           pickedSelectionId = hit?.entityKey ?? null
         }

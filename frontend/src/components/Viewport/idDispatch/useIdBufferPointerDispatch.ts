@@ -10,7 +10,8 @@ import { sketchEntityAdapter } from './sketchEntityAdapter'
 import { sketchVertexAdapter } from './sketchVertexAdapter'
 import { planeAdapter } from './planeAdapter'
 import { originAdapter } from './originAdapter'
-import { getToolAllowedLayers } from '@/registry/toolPickConfig'
+import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
+import type { ActiveTool } from '@/types/cad'
 import { findEdgeKindForQuery } from './bodyDispatchCallbacks'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
@@ -18,21 +19,19 @@ import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
-  SKETCH_SURFACE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
+  SKETCH_SURFACE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME, PART_EDITOR_PICK_LAYER_NAMES,
 } from '@/picking'
 
 /**
  * The layers the part-editor id-buffer dispatcher consumes from the pick
  * buffer: everything it routes (handles, labels, B-rep, sketch, plane, origin).
- * `Viewport/index.tsx` passes this to both the dispatcher and the rubber-band
- * select so the two can never disagree about what the editor consumes.
+ * Built from the one canonical pick-layer list so it stays a partition of the
+ * same list the tool presets exclude from (toolPickConfig.ts), not a
+ * hand-kept copy. `Viewport/index.tsx` passes this to both the dispatcher and
+ * the rubber-band select so the two can never disagree about what the editor
+ * consumes.
  */
-export const PART_EDITOR_CONSUMED_LAYERS: ReadonlySet<string> = new Set([
-  DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
-  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
-  PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
-  SKETCH_SURFACE_LAYER_NAME,
-])
+export const PART_EDITOR_CONSUMED_LAYERS: ReadonlySet<string> = new Set(PART_EDITOR_PICK_LAYER_NAMES)
 
 /**
  * Layers the dispatcher resolves but never toggles into normalSelection:
@@ -150,13 +149,6 @@ export function resolvePickAtEvent(
   return hit
 }
 
-function intersect(a: ReadonlySet<string>, b: ReadonlySet<string> | null): ReadonlySet<string> {
-  if (!b) return a
-  const out = new Set<string>()
-  for (const x of a) if (b.has(x)) out.add(x)
-  return out
-}
-
 // Map layer name → hover adapter. The optional second arg is the hovered
 // primitive's per-primitive pick key (b-rep layers), used to isolate a single
 // primitive when its query string is not unique.
@@ -173,6 +165,26 @@ const hoverAdapters: Record<string, ((entityKey: string, pickKey?: string) => vo
   // Handle hover rides hoveredSelectionId: the arrow derives its highlight
   // from the store key, and a hovered handle blocks the rubber-band start.
   [FEATURE_HANDLE_LAYER_NAME]: setSelectionIdOnHover,
+}
+
+/**
+ * Layer names the hover router will act on: every hoverAdapters entry with a
+ * defined handler, plus dimensionLabel which applyHoverHit routes through its
+ * own onOver/onOut. The click router's default is "toggle into normalSelection"
+ * for any unmatched layer, so a consumed layer missing here is selectable but
+ * never highlighted, silently. The dev assertion below fails that fast.
+ */
+export const HOVER_ROUTED_LAYERS: ReadonlySet<string> = new Set<string>([
+  ...Object.keys(hoverAdapters).filter(name => hoverAdapters[name] !== undefined),
+  DIMENSION_LABEL_LAYER_NAME,
+])
+
+if (import.meta.env?.DEV) {
+  for (const layer of PART_EDITOR_CONSUMED_LAYERS) {
+    if (!HOVER_ROUTED_LAYERS.has(layer)) {
+      console.error(`[idDispatch] consumed layer '${layer}' has no hover route; it will be selectable but never highlighted`)
+    }
+  }
 }
 
 /**
@@ -203,9 +215,21 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     // alone cannot stop an already-launched readback from landing late.
     let hoverEpoch = 0
 
+    // The effective allowed set is re-read on every pointermove and again on the
+    // rAF flush; under a filtered tool that is a fresh Set allocation each call.
+    // Cache it keyed on activeTool: consumedLayers is a stable prop (the effect
+    // re-runs if it changes), so the set only turns over on a tool switch, and
+    // effectiveAllowedLayers returns consumedLayers by identity under no filter
+    // so idle hover still allocates nothing.
+    let allowedCache: ReadonlySet<string> | null = null
+    let allowedCacheTool: ActiveTool | undefined
     const computeAllowed = (): ReadonlySet<string> => {
       const tool = useSketchEditorStore.getState().activeTool
-      return intersect(consumedLayers, getToolAllowedLayers(tool))
+      if (allowedCache === null || tool !== allowedCacheTool) {
+        allowedCacheTool = tool
+        allowedCache = effectiveAllowedLayers(consumedLayers, tool)
+      }
+      return allowedCache
     }
 
     const resolveSync = (e: PointerEvent | MouseEvent, canvas: HTMLCanvasElement): ResolvedHit | null => {
@@ -276,6 +300,69 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       applyHoverHit(null, null)
     }
     clearHoverRef.current = clearHover
+
+    // The dedup cache (lastHover*) is this dispatcher's private record of what is
+    // hovered, but the store's hover fields have other writers, and the active
+    // tool's layer filter is applied only at resolve time. This listener keeps
+    // both in step the instant the store changes, without waiting for a pointer
+    // event. Re-entrancy latch: clearHover -> applyHoverHit -> clearAllHover
+    // writes the store again while this listener is on the stack.
+    let handlingStoreHoverChange = false
+    const unsubStoreHover = useSketchEditorStore.subscribe((state, prev) => {
+      if (handlingStoreHoverChange) return
+      handlingStoreHoverChange = true
+      try {
+        // ─── L6: a keyboard tool switch changed which layers may hover ───
+        // The dispatcher only re-filters on the next pointer event, so state it
+        // has already produced under the old tool would otherwise outlive the
+        // switch until a pixel of movement.
+        if (state.activeTool !== prev.activeTool) {
+          // Invalidate any in-flight resolve unconditionally, even with nothing
+          // hovered yet: a readback launched under the old tool could still be
+          // between resolveAsync and its .then, and landing it now would paint
+          // a highlight for a layer the new tool forbids.
+          hoverEpoch++
+          if (hoverFrame) cancelAnimationFrame(hoverFrame)
+          hoverFrame = 0
+          queuedHover = null
+          // clearHover() also runs the correct teardown (dim-label onOut), so
+          // only call it when a highlight is actually applied and the new
+          // filter rejects it.
+          if (lastHoverLayer !== null) {
+            const allowed = computeAllowed()
+            if (allowed.size === 0 || !allowed.has(lastHoverLayer)) {
+              clearHover()
+              return
+            }
+          }
+        }
+        // ─── M1: another writer cleared the store hover under us ───
+        // Body3D's per-body callback teardown (fires on every solve commit) and
+        // Part.tsx resetTransientState both null hoveredSelectionId directly.
+        // The dedup cache still names the old primitive, so the next same-pixel
+        // move returns at applyHoverHit's guard and the highlight never comes
+        // back. Drop the cache (no adapter call: the store is already clear) so
+        // that move re-resolves and re-applies.
+        // This branch also fires during the dispatcher's own applyHoverHit
+        // teardown (clearAllHover nulls the store mid-apply, and the latch is
+        // not held then because that call comes from resolveHover().then, not
+        // this listener). It is net-zero only because applyHoverHit
+        // unconditionally re-assigns all three lastHover* locals after the
+        // apply step; do not weaken that.
+        if (
+          prev.hoveredSelectionId !== null
+          && state.hoveredSelectionId === null
+          && lastHoverLayer !== null
+          && lastHoverLayer !== DIMENSION_LABEL_LAYER_NAME
+        ) {
+          lastHoverEntity = null
+          lastHoverLayer = null
+          lastHoverPickKey = null
+        }
+      } finally {
+        handlingStoreHoverChange = false
+      }
+    })
 
     /**
      * Hover resolves are capped at ~two per animation frame: the first move in a
@@ -467,6 +554,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
 
     return () => {
       if (raf) cancelAnimationFrame(raf)
+      unsubStoreHover()
       // Also bumps hoverEpoch, so a readback launched just before unmount
       // cannot write a stale hover into the store after this hook is gone.
       clearHover()

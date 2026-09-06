@@ -18,3 +18,17 @@ export const FEATURE_HANDLE_LAYER_NAME = 'featureHandle'
 // featureHandle: both editors share the layer-name namespace, and a part-editor
 // dispatch switch must never see an assembly gizmo id.
 export const GIZMO_HANDLE_LAYER_NAME = 'gizmoHandle'
+
+/**
+ * Every ID layer the part editor picks from, in one place so the tool presets
+ * (toolPickConfig.ts) and the dispatcher's consumed set
+ * (useIdBufferPointerDispatch.ts) are partitions of a single list rather than
+ * hand-kept inclusion lists that silently drop a newly added layer. gizmoHandle
+ * is deliberately absent: it is the assembly editor's namespace.
+ */
+export const PART_EDITOR_PICK_LAYER_NAMES = [
+  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+  PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME,
+  SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
+  DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
+] as const

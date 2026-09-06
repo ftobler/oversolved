@@ -1,8 +1,8 @@
 import type { ActiveTool } from '@/types/cad'
 import {
   FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
-  PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME,
-  ORIGIN_LAYER_NAME,
+  SKETCH_SURFACE_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
+  PART_EDITOR_PICK_LAYER_NAMES,
 } from '@/picking/layerNames'
 
 /**
@@ -44,37 +44,42 @@ export interface ToolPickConfig {
   staysArmedAfterCommit: boolean
 }
 
-// Sketch-plane pick layers shared by every sketch tool: the sketch's own
-// geometry plus the plane and origin used for snapping. Body geometry the user
-// can snap to during drawing arrives here too, projected into sketch-snap
-// entities (see buildBodySnapSketch), so drawing tools never need the B-rep
-// layers directly.
-const SKETCH_PICK_LAYERS = [
-  PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
+// Every filtered preset is the full pick-layer list minus an explicit exclusion
+// set, so a layer added to PART_EDITOR_PICK_LAYER_NAMES is pickable under every
+// tool until that tool deliberately excludes it. The exclusion lists are the
+// policy; keep them exhaustive.
+function allExcept(excluded: readonly string[]): ReadonlySet<string> {
+  const drop = new Set(excluded)
+  return new Set(PART_EDITOR_PICK_LAYER_NAMES.filter(name => !drop.has(name)))
+}
+
+// Drawing tools: no dimension labels (clicks must reach draw points), no feature
+// handles, no B-rep (a body face under the cursor is never selected mid-stroke;
+// body snap arrives via buildBodySnapSketch), no sketch surface.
+export const SKETCH_DRAW_EXCLUDED = [
+  DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
+  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
+  SKETCH_SURFACE_LAYER_NAME,
 ] as const
 
-// The 3D solid layers. Always mounted in the pick buffer (the collision pass is
-// always live) and lower-priority than sketch layers, so sketch items win where
-// they overlap. Whether a B-rep hit resolves is decided by the per-tool
-// allowedLayers filter: select/drag/null and dimension resolve B-rep hits,
-// SKETCH_DRAW tools do not, and the project tool adds the layers back.
-const BREP_PICK_LAYERS = [FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME] as const
+// Project tool: adds the B-rep layers back so 3D geometry can be projected;
+// still no dimension labels or feature handles. sketchSurface stays excluded
+// for byte-parity with the historical preset; whether project should be able to
+// pick a sketch surface as a projection target can be revisited.
+export const PROJECT_EXCLUDED = [
+  DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME,
+] as const
 
 // ─── Presets: the only sites where a new field's default is decided ───
 // Select / drag / dimension / offset can pick anything (no filter). The
-// dimension tool additionally wipes selection on enter. Drawing tools see a
-// sketch-only subset: it excludes dimensionLabel (so labels don't intercept
-// strokes) and the B-rep layers (so a body face under the cursor is never
-// selected mid-stroke). The project tool adds the B-rep layers back so the user
-// can pick 3D geometry to project onto the sketch plane.
+// dimension tool additionally wipes selection on enter.
 const FULL_PICK: ToolPickConfig = { allowedLayers: null, clearsSelectionOnEnter: false, staysArmedAfterCommit: false }
 const DIMENSION_PICK: ToolPickConfig = { allowedLayers: null, clearsSelectionOnEnter: true, staysArmedAfterCommit: true }
 const SKETCH_DRAW: ToolPickConfig = {
-  allowedLayers: new Set(SKETCH_PICK_LAYERS), clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
+  allowedLayers: allExcept(SKETCH_DRAW_EXCLUDED), clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
 }
 const PROJECT_PICK: ToolPickConfig = {
-  allowedLayers: new Set([...BREP_PICK_LAYERS, ...SKETCH_PICK_LAYERS]),
-  clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
+  allowedLayers: allExcept(PROJECT_EXCLUDED), clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
 }
 
 /**
@@ -115,4 +120,22 @@ export function getToolPickConfig(tool: ActiveTool): ToolPickConfig {
  */
 export function getToolAllowedLayers(tool: ActiveTool): ReadonlySet<string> | null {
   return getToolPickConfig(tool).allowedLayers
+}
+
+/**
+ * The layers a pick may resolve from for `tool`, given the consumer's own
+ * consumed-layer set: the tool's allowedLayers intersected with `consumed`, or
+ * `consumed` itself (by identity) when the tool applies no filter. The single
+ * place the `consumed ∩ toolAllowed` composition lives, so the dispatcher, the
+ * rubber band, the project-commit resolve and the debug readout cannot drift.
+ */
+export function effectiveAllowedLayers(
+  consumed: ReadonlySet<string>,
+  tool: ActiveTool,
+): ReadonlySet<string> {
+  const allowed = getToolAllowedLayers(tool)
+  if (!allowed) return consumed
+  const out = new Set<string>()
+  for (const layer of consumed) if (allowed.has(layer)) out.add(layer)
+  return out
 }

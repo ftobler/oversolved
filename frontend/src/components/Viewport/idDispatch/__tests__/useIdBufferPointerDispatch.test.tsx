@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch } from '../useIdBufferPointerDispatch'
+import {
+  useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch,
+  HOVER_ROUTED_LAYERS, PART_EDITOR_CONSUMED_LAYERS,
+} from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
 import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, EDGE_LAYER_NAME, FACE_LAYER_NAME, ORIGIN_LAYER_NAME, PLANE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
@@ -852,5 +855,165 @@ describe('useIdBufferPointerDispatch', () => {
       expect(wasLastClickConsumedByIdDispatch()).toBe(true)
       expect(useSketchEditorStore.getState().normalSelection.has('fhandle:extrude1')).toBe(false)
     })
+  })
+
+  // M1: the dedup cache is this dispatcher's private record of what is hovered.
+  // Another writer that nulls the store hover (Body3D teardown on a solve
+  // commit, Part.tsx resetTransientState) leaves the cache naming the old
+  // primitive, so the next same-pixel move returns at applyHoverHit's guard and
+  // the highlight never comes back. The store subscription drops the cache so
+  // that move re-resolves.
+  it('re-applies the hover after an external writer clears the store hover fields', async () => {
+    pipeline.target.markClean()
+    pipeline.resolveAsync = vi.fn().mockImplementation(async () => ({
+      id: 1, layer: EDGE_LAYER_NAME, entityKey: 'edgeQ', pickKey: 'b#edge#0', distancePx: 0,
+    })) as unknown as typeof pipeline.resolveAsync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+      await Promise.resolve()
+    })
+    await flushHoverFrame()
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('edgeQ')
+
+    act(() => {
+      const s = useSketchEditorStore.getState()
+      s.setHoveredSelectionId(null)
+      s.setHoveredPickKey(null)
+    })
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+      await Promise.resolve()
+    })
+    await flushHoverFrame()
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('edgeQ')
+  })
+
+  // L5a: the effective allowed set is cached keyed on activeTool; a tool switch
+  // must invalidate that cache so the next event re-derives the filter.
+  it('re-derives the allowed layer set on the next event after a tool change', async () => {
+    useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+    pipeline.resolveSync = vi.fn().mockImplementation(
+      (_gl: unknown, _cursor: unknown, opts?: { allowedLayers?: ReadonlySet<string> }) => {
+        if (opts?.allowedLayers && !opts.allowedLayers.has(EDGE_LAYER_NAME)) return null
+        return { id: 1, layer: EDGE_LAYER_NAME, entityKey: 'e', pickKey: 'b#edge#0', distancePx: 0 }
+      },
+    ) as unknown as typeof pipeline.resolveSync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME, PLANE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 10, clientY: 10 }))
+    })
+    expect(wasLastClickConsumedByIdDispatch()).toBe(true)
+
+    act(() => { useSketchEditorStore.setState({ activeTool: 'line' }) })  // line forbids EDGE
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 10, clientY: 10 }))
+    })
+    expect(wasLastClickConsumedByIdDispatch()).toBe(false)
+  })
+
+  // L6: a hover applied under one tool's filter must not survive a keyboard tool
+  // switch that forbids the layer until the next pointer move.
+  it('drops a B-rep hover the instant a keyboard tool switch forbids the layer', async () => {
+    useSketchEditorStore.setState({ activeTool: null })
+    pipeline.target.markClean()
+    pipeline.resolveAsync = vi.fn().mockImplementation(async () => ({
+      id: 1, layer: EDGE_LAYER_NAME, entityKey: 'edgeQ', pickKey: 'b#edge#0', distancePx: 0,
+    })) as unknown as typeof pipeline.resolveAsync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME, PLANE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 40, clientY: 40 }))
+      await Promise.resolve()
+    })
+    await flushHoverFrame()
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('edgeQ')
+
+    act(() => { useSketchEditorStore.setState({ activeTool: 'line' }) })  // line forbids EDGE
+
+    // No further pointer event.
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+  })
+
+  it('keeps a still-allowed hover across a tool switch that does not forbid the layer', async () => {
+    useSketchEditorStore.setState({ activeTool: null })
+    pipeline.target.markClean()
+    pipeline.resolveAsync = vi.fn().mockImplementation(async () => ({
+      id: 1, layer: PLANE_LAYER_NAME, entityKey: '@builtin_front', pickKey: '@builtin_front', distancePx: 0,
+    })) as unknown as typeof pipeline.resolveAsync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([PLANE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 40, clientY: 40 }))
+      await Promise.resolve()
+    })
+    await flushHoverFrame()
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('@builtin_front')
+
+    act(() => { useSketchEditorStore.setState({ activeTool: 'drag' }) })  // drag applies no filter
+
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('@builtin_front')
+  })
+
+  // L6 in-flight gap: a tool switch between resolveHover launching the readback
+  // and its promise resolving, with nothing hovered yet, must still invalidate
+  // that readback so it cannot paint a highlight the new tool forbids.
+  it('invalidates an in-flight hover readback on a tool switch even with nothing hovered', async () => {
+    useSketchEditorStore.setState({ activeTool: null })
+    let landReadback: (hit: unknown) => void = () => {}
+    pipeline.resolveAsync = vi.fn().mockImplementation(
+      () => new Promise(resolve => { landReadback = resolve }),
+    ) as unknown as typeof pipeline.resolveAsync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME, PLANE_LAYER_NAME]),
+    }))
+
+    act(() => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+    })
+
+    // Tool switch before the readback resolves; no hover was ever applied.
+    act(() => { useSketchEditorStore.setState({ activeTool: 'line' }) })
+
+    await act(async () => {
+      landReadback({ id: 1, layer: EDGE_LAYER_NAME, entityKey: 'edgeQ', pickKey: 'b#edge#0', distancePx: 0 })
+      await Promise.resolve()
+    })
+
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+  })
+})
+
+// L1: the click router's default is "select", the hover router's default is
+// "do nothing", so a consumed layer with no hover route is selectable but never
+// highlighted, silently. Both tables are exhaustive today; this pins it.
+describe('hover route coverage', () => {
+  it('every consumed layer has a hover route', () => {
+    for (const layer of PART_EDITOR_CONSUMED_LAYERS) {
+      expect(HOVER_ROUTED_LAYERS.has(layer), layer).toBe(true)
+    }
   })
 })

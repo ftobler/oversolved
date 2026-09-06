@@ -28,4 +28,5 @@ export { useDimensionLabelIdRegistration } from './useDimensionLabelIdRegistrati
 export { useFeatureHandleIdRegistration, featureHandleKey } from './useFeatureHandleIdRegistration'
 export { getLivePipeline } from './IdPipelineContext'
 export { idToRGB, rgbToId, idToRGBNormalized, EMPTY_ID, MAX_ID } from './idEncoding'
+export { PART_EDITOR_PICK_LAYER_NAMES } from './layerNames'
 export type { IdLayer, LayerZPolicy } from './IdLayer'
