@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { bodyKeyFor, primitivePickKey, pickedIndicesForBody, parsePickKeyIndex } from '../pickKey'
+import { bodyKeyFor, primitivePickKey, pickedIndicesForBody, parsePickKeyIndex, isPickKeyString } from '../pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNames'
 import { IdPipeline } from '../IdPipeline'
 import { setLivePipeline } from '../IdPipelineContext'
@@ -58,6 +58,31 @@ describe('parsePickKeyIndex (prefix + digit tail -> index)', () => {
   it('bounds the index by a finite count when one is given', () => {
     expect(parsePickKeyIndex(`${prefix}4`, prefix, 5)).toBe(4)
     expect(parsePickKeyIndex(`${prefix}9`, prefix, 5)).toBe(-1)
+  })
+})
+
+describe('isPickKeyString (structural pickKey test, no concrete prefix)', () => {
+  it('accepts a well-formed pickKey', () => {
+    expect(isPickKeyString('ex1/body_ex1#edge#3')).toBe(true)
+  })
+
+  it('accepts a pickKey whose bodyKey contains #, and agrees with parsePickKeyIndex', () => {
+    expect(isPickKeyString('ex1/bo#dy#edge#3')).toBe(true)
+    expect(parsePickKeyIndex('ex1/bo#dy#edge#3', 'ex1/bo#dy#edge#')).toBe(3)
+  })
+
+  it('rejects a bare query', () => {
+    expect(isPickKeyString('?4;@ex1:edge')).toBe(false)
+    expect(isPickKeyString('@builtin_plane_xy')).toBe(false)
+  })
+
+  it('rejects a non-integer index tail', () => {
+    expect(isPickKeyString('a#b#c')).toBe(false)
+  })
+
+  it('rejects an empty bodyKey or layer', () => {
+    expect(isPickKeyString('#edge#3')).toBe(false)
+    expect(isPickKeyString('b##3')).toBe(false)
   })
 })
 

@@ -26,6 +26,17 @@ export function primitivePickKey(bodyKey: string, primitiveIndex: number, layer:
   return `${bodyKey}#${layer}#${primitiveIndex}`
 }
 
+// Structural "is this string a per-primitive pickKey" test, tolerant of a body
+// key that itself contains '#' (matched from the RIGHT): a pickKey ends
+// `#<layer>#<index>` with a non-empty layer and a bare non-negative integer
+// index, and has a non-empty bodyKey before it. parsePickKeyIndex uses the exact
+// same shape when it has the concrete prefix in hand; this is for callers (state
+// invariants) that only have the string.
+const PICK_KEY_SHAPE = /^.+#[^#]+#\d+$/
+export function isPickKeyString(claim: string): boolean {
+  return PICK_KEY_SHAPE.test(claim)
+}
+
 /**
  * Which primitive indices of `(bodyKey, layer)` the live pick set claims.
  *

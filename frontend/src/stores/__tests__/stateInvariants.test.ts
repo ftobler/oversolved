@@ -15,6 +15,8 @@ function defaultSelectionState(): SelectionInvariantState {
     selectedPicks: new Map<string, Set<string>>(),
     chipOwnedSelection: new Set<string>(),
     selectionDomain: 'sketch_2d' as const,
+    hoveredSelectionId: null,
+    hoveredPickKey: null,
   }
 }
 
@@ -199,6 +201,74 @@ describe('validateSelectionState', () => {
       normalSelection: new Set(['dim:c1', 'fhandle:ex1:distance']),
     }
     expect(() => validateSelectionState(state)).not.toThrow()
+  })
+})
+
+describe('validateSelectionState hover framing', () => {
+  it('passes with both hover fields null', () => {
+    expect(() => validateSelectionState(defaultSelectionState())).not.toThrow()
+  })
+
+  it('passes with a valid paired hoveredSelectionId + hoveredPickKey', () => {
+    expect(() => validateSelectionState({
+      ...defaultSelectionState(),
+      hoveredSelectionId: '?edge_q',
+      hoveredPickKey: 'ex1/body_ex1#edge#3',
+    })).not.toThrow()
+  })
+
+  it('throws when hoveredPickKey is set with no hoveredSelectionId', () => {
+    expect(() => validateSelectionState({
+      ...defaultSelectionState(),
+      hoveredPickKey: 'ex1/body_ex1#edge#3',
+    })).toThrow('hoveredPickKey')
+  })
+
+  it('throws when hoveredPickKey holds a query instead of a pickKey', () => {
+    expect(() => validateSelectionState({
+      ...defaultSelectionState(),
+      hoveredSelectionId: '@builtin_plane_xy',
+      hoveredPickKey: '@builtin_plane_xy',
+    })).toThrow('is not a pickKey')
+  })
+})
+
+describe('repairSelectionState hover framing', () => {
+  it('drops an orphan hoveredPickKey', () => {
+    const patches = repairSelectionState({
+      ...defaultSelectionState(),
+      hoveredPickKey: 'ex1/body_ex1#edge#3',
+    })
+    expect(patches).toEqual({ hoveredPickKey: null })
+  })
+
+  it('drops a query written into hoveredPickKey and leaves the query field', () => {
+    const patches = repairSelectionState({
+      ...defaultSelectionState(),
+      hoveredSelectionId: '@builtin_plane_xy',
+      hoveredPickKey: '@builtin_plane_xy',
+    })
+    expect(patches).toEqual({ hoveredPickKey: null })
+  })
+
+  it('leaves a valid hover pair alone', () => {
+    expect(repairSelectionState({
+      ...defaultSelectionState(),
+      hoveredSelectionId: '?edge_q',
+      hoveredPickKey: 'ex1/body_ex1#edge#3',
+    })).toBeNull()
+  })
+})
+
+describe('pickKey claim detection is shared with pickKey.ts', () => {
+  it('a claim under a bodyKey containing # is seen by the duplicate check', () => {
+    const key = 'ex1/bo#dy#edge#3'
+    expect(() => validateSelectionState({
+      ...defaultSelectionState(),
+      normalSelection: new Set(['qA', 'qB']),
+      selectedPicks: new Map([['qA', new Set([key])], ['qB', new Set([key])]]),
+      selectionDomain: 'body_3d',
+    })).toThrow('claimed by both')
   })
 })
 

@@ -13,6 +13,7 @@
 
 import type { SelectionDomain } from '@/types/cad'
 import { drawingToolIds, isDrawingTool } from '@/registry/toolRegistry'
+import { isPickKeyString } from '@/picking/pickKey'
 
 export const devOnly = import.meta.env?.DEV ?? false
 export const testMode = import.meta.env?.MODE === 'test'
@@ -45,6 +46,11 @@ export interface SelectionInvariantState {
   selectedPicks: Map<string, Set<string>>
   chipOwnedSelection: Set<string>
   selectionDomain: SelectionDomain
+  // The transient hover framing flows through the SAME computeHighlight as the
+  // durable selection, so it gets the same shape checks. Optional: not every
+  // caller of validateSelectionState mirrors these.
+  hoveredSelectionId?: string | null
+  hoveredPickKey?: string | null
 }
 
 // Prefixes that mark an id family as first-class selection input. An id that
@@ -112,16 +118,6 @@ function isSketchQuery(query: string): boolean {
   return bucketOfId(query) === 'sketch'
 }
 
-// A per-primitive pickKey is `bodyKey#layer#index` (pickKey.ts). The index tail
-// is a bare integer; anything else (a query, an overlay key) is not a claim.
-function isPickKeyClaim(claim: string): boolean {
-  const parts = claim.split('#')
-  return parts.length === 3
-    && parts[0].length > 0
-    && parts[1].length > 0
-    && /^\d+$/.test(parts[2])
-}
-
 export function deriveSelectionDomain(ids: ReadonlySet<string>): SelectionDomain {
   if (ids.size === 0) return 'sketch_2d'
   let hasSketch = false
@@ -186,7 +182,7 @@ export function validateSelectionState(state: SelectionInvariantState): void {
     const claimedBy = new Map<string, string>()
     for (const [q, claims] of selectedPicks.entries()) {
       for (const c of claims) {
-        if (!isPickKeyClaim(c)) continue
+        if (!isPickKeyString(c)) continue
         const first = claimedBy.get(c)
         if (first !== undefined && first !== q) {
           failLoud(
@@ -196,6 +192,19 @@ export function validateSelectionState(state: SelectionInvariantState): void {
           claimedBy.set(c, q)
         }
       }
+    }
+  }
+
+  // A hovered pickKey without its paired query is meaningless (the query is what
+  // gives the key its highlight target), and a non-null hoveredPickKey that is
+  // not a pickKey shape is a query written where a per-primitive key belongs
+  // (the hover/click "one mechanism" put different values in the paired fields).
+  if (state.hoveredPickKey != null) {
+    if (state.hoveredSelectionId == null) {
+      failLoud(`[invariant] hoveredPickKey '${state.hoveredPickKey}' set with no hoveredSelectionId`)
+    }
+    if (!isPickKeyString(state.hoveredPickKey)) {
+      failLoud(`[invariant] hoveredPickKey '${state.hoveredPickKey}' is not a pickKey`)
     }
   }
 
@@ -274,7 +283,7 @@ export function repairSelectionState(state: SelectionInvariantState): Partial<Se
       const kept = new Set<string>()
       let stripped = false
       for (const c of claims) {
-        if (!isPickKeyClaim(c)) {
+        if (!isPickKeyString(c)) {
           kept.add(c)
           continue
         }
@@ -305,6 +314,13 @@ export function repairSelectionState(state: SelectionInvariantState): Partial<Se
   const expectedDomain = deriveSelectionDomain(live)
   if (selectionDomain !== expectedDomain) {
     patches.selectionDomain = expectedDomain
+  }
+
+  // Drop an orphaned or malformed hovered pickKey. The query field is left
+  // alone: a bare hoveredSelectionId with no pickKey is the normal state.
+  if (state.hoveredPickKey != null
+      && (state.hoveredSelectionId == null || !isPickKeyString(state.hoveredPickKey))) {
+    patches.hoveredPickKey = null
   }
 
   return Object.keys(patches).length > 0 ? patches : null
