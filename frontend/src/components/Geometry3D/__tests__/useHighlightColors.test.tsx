@@ -48,6 +48,9 @@ describe('useHighlightColors', () => {
     )
 
     const attribute = geometry.getAttribute('color') as THREE.BufferAttribute
+    // Simulate the renderer's first upload consuming the initial full paint's
+    // buffer-covering range (three.js clears ranges at the end of updateBuffer).
+    attribute.clearUpdateRanges()
     const version = attribute.version
 
     rerender({ hovered: hoverFlags(2) })
@@ -94,6 +97,30 @@ describe('useHighlightColors', () => {
 
     rerender({ hovered: null, selected: null })
     expect(colorAt(attribute, firstVertexOf(3))).toEqual(f32(PALETTE.base))
+  })
+
+  it('a full apply followed by a partial one both reach the attribute as pending uploads that cover the whole buffer', () => {
+    const geometry = makeGeometry()
+    const { rerender } = renderHook(
+      ({ palette, hovered }: { palette: HighlightPalette; hovered: boolean[] | null }) =>
+        useHighlightColors({ geometry, runs: RUNS, selected: null, hovered, palette }),
+      { initialProps: { palette: PALETTE, hovered: null as boolean[] | null } },
+    )
+    const attribute = geometry.getAttribute('color') as THREE.BufferAttribute
+    attribute.clearUpdateRanges()
+
+    // A palette change forces a full apply; a partial hover lands before any
+    // simulated renderer flush. The union of pending ranges must still cover the
+    // whole buffer, so three.js re-uploads everything the full paint wrote.
+    const movedPalette: HighlightPalette = { ...PALETTE, base: paletteRGB('#123456') }
+    rerender({ palette: movedPalette, hovered: null })  // full: body colour moved
+    rerender({ palette: movedPalette, hovered: hoverFlags(4) })  // partial
+
+    const covered = new Set<number>()
+    for (const r of attribute.updateRanges) {
+      for (let f = r.start; f < r.start + r.count; f++) covered.add(f)
+    }
+    for (let f = 0; f < TRI_COUNT * 9; f++) expect(covered.has(f)).toBe(true)
   })
 
   it('is inert on a geometry with no colour attribute', () => {

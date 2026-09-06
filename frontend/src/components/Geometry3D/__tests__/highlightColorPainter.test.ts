@@ -207,6 +207,18 @@ describe('primitive layouts', () => {
     expect(collect(runs, 1)).toEqual([])
     expect(collect(runs, 2)).toEqual([[4, 6]])
   })
+
+  it('edgeRuns offsets stay inside a buffer sized from the same counts', () => {
+    const counts = [1, 0, 0, 64, 2]  // includes skipped (0) edges
+    const runs = edgeRuns(counts)
+    const totalSegments = counts.reduce((a, b) => a + b, 0)
+    const bufferFloats = totalSegments * 6
+    for (let i = 0; i < runs.count; i++) {
+      runs.eachRun(i, (vertexStart, vertexCount) => {
+        expect((vertexStart + vertexCount) * 3).toBeLessThanOrEqual(bufferFloats)
+      })
+    }
+  })
 })
 
 describe('uploadPaint', () => {
@@ -218,11 +230,11 @@ describe('uploadPaint', () => {
     expect(attribute.cleared).toBe(0)
   })
 
-  it('clears the ranges on a full result so three.js re-uploads everything', () => {
+  it('queues one buffer-covering range on a full result so three.js re-uploads everything', () => {
     const attribute = fakeAttribute()
     uploadPaint(attribute, { ranges: [], full: true, repainted: 8 })
     expect(attribute.cleared).toBe(1)
-    expect(attribute.added).toEqual([])
+    expect(attribute.added).toEqual([[0, 36]])
     expect(attribute.needsUpdate).toBe(true)
   })
 
@@ -231,6 +243,18 @@ describe('uploadPaint', () => {
     uploadPaint(attribute, { ranges: [], full: false, repainted: 0 })
     expect(attribute.needsUpdate).toBe(false)
     expect(attribute.cleared).toBe(0)
+  })
+
+  it('a full result then a partial one before the renderer reads keeps the full-buffer range', () => {
+    const attribute = fakeAttribute()
+    uploadPaint(attribute, { ranges: [], full: true, repainted: 8 })
+    uploadPaint(attribute, { ranges: [{ start: 9, count: 9 }], full: false, repainted: 1 })
+    // The full-buffer range is still queued alongside the partial one, so three.js
+    // uploads the whole buffer, not just floats 9..17.
+    const covered = new Set<number>()
+    for (const [start, count] of attribute.added) for (let f = start; f < start + count; f++) covered.add(f)
+    for (let f = 0; f < attribute.array.length; f++) expect(covered.has(f)).toBe(true)
+    expect(attribute.needsUpdate).toBe(true)
   })
 })
 
@@ -248,6 +272,7 @@ interface FakeAttribute extends UpdatableAttribute {
 function fakeAttribute(): FakeAttribute {
   return {
     needsUpdate: false,
+    array: { length: 36 },
     added: [],
     cleared: 0,
     clearUpdateRanges() { this.cleared++; this.added = [] },

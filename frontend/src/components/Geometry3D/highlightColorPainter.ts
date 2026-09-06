@@ -257,20 +257,29 @@ function samePalette(a: HighlightPalette, b: HighlightPalette): boolean {
  */
 export interface UpdatableAttribute {
   needsUpdate: boolean
+  // Float length of the colour buffer, so a `full` result can be expressed as
+  // one buffer-covering update range rather than as an empty range list (which
+  // a later partial apply would silently override before the renderer reads it).
+  readonly array: { readonly length: number }
   clearUpdateRanges(): void
   addUpdateRange(start: number, count: number): void
 }
 
 /**
  * Flush a paint result to the attribute. A partial result uploads only its
- * ranges; `full` clears them so three.js re-uploads the whole buffer; an
- * unchanged buffer leaves `needsUpdate` alone, which is what keeps a pointer
- * move over an already-highlighted primitive free.
+ * ranges; `full` queues one buffer-covering range so three.js re-uploads the
+ * whole buffer; an unchanged buffer leaves `needsUpdate` alone, which is what
+ * keeps a pointer move over an already-highlighted primitive free.
  */
 export function uploadPaint(attribute: UpdatableAttribute, result: PaintResult): void {
   if (result.repainted === 0) return
   if (result.full) {
+    // One buffer-covering range, NOT an empty list: an empty list means "full"
+    // to three.js only until the next addUpdateRange, and a partial apply landing
+    // in the same frame would then drop the full upload entirely. three.js
+    // sorts+merges ranges, so a later partial range just merges into this one.
     attribute.clearUpdateRanges()
+    attribute.addUpdateRange(0, attribute.array.length)
   } else {
     for (const range of result.ranges) attribute.addUpdateRange(range.start, range.count)
   }

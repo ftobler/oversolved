@@ -109,6 +109,47 @@ describe('VertexInstancePainter', () => {
     expect(scaleOf(target, 0)).toBe(0)
   })
 
+  it('repaints when the selected colour object changes identity at otherwise-identical inputs', () => {
+    const painter = new VertexInstancePainter()
+    const target = fakeTarget()
+    const base = {
+      target, vertices: VERTICES, scale: 0.5,
+      selected: [true, false, false], hovered: null,
+      hoveredColor: HOVER,
+    }
+    painter.sync({ ...base, selectedColor: new THREE.Color('#ff8800') })
+    target.reset()
+    expect(painter.sync({ ...base, selectedColor: new THREE.Color('#00ff88') })).toBe(true)
+    expect(target.colors.get(0)?.getHexString()).toBe('00ff88')
+  })
+
+  it('repaints when the hovered colour object changes identity', () => {
+    const painter = new VertexInstancePainter()
+    const target = fakeTarget()
+    const base = {
+      target, vertices: VERTICES, scale: 0.5,
+      selected: null, hovered: [true, false, false],
+      selectedColor: SELECTED,
+    }
+    painter.sync({ ...base, hoveredColor: new THREE.Color('#111111') })
+    target.reset()
+    expect(painter.sync({ ...base, hoveredColor: new THREE.Color('#222222') })).toBe(true)
+    expect(target.colors.get(0)?.getHexString()).toBe('222222')
+  })
+
+  it('still skips an identical sync when the colour objects are the same reference', () => {
+    const painter = new VertexInstancePainter()
+    const target = fakeTarget()
+    const paint = {
+      target, vertices: VERTICES, scale: 0.5,
+      selected: [true, false, false] as boolean[], hovered: null,
+      selectedColor: SELECTED, hoveredColor: HOVER,
+    }
+    painter.sync(paint)
+    target.reset()
+    expect(painter.sync(paint)).toBe(false)
+  })
+
   it('leaves instanceColor alone on an unflagged pass', () => {
     const painter = new VertexInstancePainter()
     const target = fakeTarget()

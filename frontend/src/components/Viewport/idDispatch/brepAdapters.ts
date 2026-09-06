@@ -17,6 +17,17 @@ import {
  * toggles normalSelection. These adapters carry no onClick.
  */
 
+/**
+ * The click router records no per-primitive claim when the hit's pickKey IS its
+ * query (plane / origin / sketch-surface / feature-handle: layers with no
+ * per-primitive identity -- `hit.pickKey === key ? undefined : hit.pickKey`).
+ * Hover must put the same value in the paired field, or the two halves of the
+ * one selection/hover mechanism disagree for one hit.
+ */
+function hoverPickKey(entityKey: string, pickKey?: string): string | null {
+  return pickKey != null && pickKey !== entityKey ? pickKey : null
+}
+
 export const brepFaceAdapter = {
   onHover(entityKey: string, pickKey?: string): void {
     const s = useSketchEditorStore.getState()
@@ -31,7 +42,7 @@ export const brepFaceAdapter = {
       return
     }
     s.setHoveredSelectionId(entityKey)
-    s.setHoveredPickKey(pickKey ?? null)
+    s.setHoveredPickKey(hoverPickKey(entityKey, pickKey))
     applyHoveredFaceGeometry(found)
   },
 }
@@ -56,7 +67,7 @@ export const brepVertexAdapter = {
 export function setSelectionIdOnHover(entityKey: string, pickKey?: string): void {
   const s = useSketchEditorStore.getState()
   s.setHoveredSelectionId(entityKey)
-  s.setHoveredPickKey(pickKey ?? null)
+  s.setHoveredPickKey(hoverPickKey(entityKey, pickKey))
 }
 
 /**

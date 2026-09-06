@@ -11,8 +11,9 @@ import * as THREE from 'three'
  * pays whether or not anything is being picked.
  *
  * One painter per instanced mesh. It re-paints when any of its inputs changes
- * identity, so a re-solve (new `vertices` array) or a remounted mesh repaints even
- * at an unchanged scale.
+ * identity -- including the two colour objects it writes through `setColorAt` --
+ * so a re-solve (new `vertices` array) or a remounted mesh repaints even at an
+ * unchanged scale.
  */
 
 /** The InstancedMesh surface a paint writes. Structural so tests need no GL. */
@@ -54,6 +55,8 @@ export class VertexInstancePainter {
   private scale = -1
   private selected: readonly boolean[] | null | undefined = undefined
   private hovered: readonly boolean[] | null | undefined = undefined
+  private selectedColor: THREE.Color | undefined = undefined
+  private hoveredColor: THREE.Color | undefined = undefined
 
   // Write the instances if anything changed. Returns whether it painted.
   sync(paint: VertexPaint): boolean {
@@ -64,6 +67,8 @@ export class VertexInstancePainter {
     this.scale = scale
     this.selected = selected
     this.hovered = hovered
+    this.selectedColor = paint.selectedColor
+    this.hoveredColor = paint.hoveredColor
 
     const flagged = selected != null || hovered != null
     this.scaleVec.set(scale, scale, scale)
@@ -90,5 +95,7 @@ export class VertexInstancePainter {
       || this.scale !== paint.scale
       || this.selected !== paint.selected
       || this.hovered !== paint.hovered
+      || this.selectedColor !== paint.selectedColor
+      || this.hoveredColor !== paint.hoveredColor
   }
 }
