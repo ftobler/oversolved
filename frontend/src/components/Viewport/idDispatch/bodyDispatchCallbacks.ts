@@ -13,6 +13,8 @@
 
 import type { Mesh3D } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { FACE_LAYER_NAME } from '@/picking/layerNames'
+import { parsePickKeyIndex } from '@/picking/pickKey'
 
 export interface BodyDispatchCallbacks {
   featureId: string
@@ -29,10 +31,12 @@ export interface BodyDispatchCallbacks {
 }
 
 /** A registration plus its query -> index maps. The maps are null exactly when
- *  the matching query array is absent, so the ownership test below can keep the
- *  original `??` fall-through semantics (a present-but-missing array decides). */
+ *  the matching query array is absent. `bodyKey` is stored so a resolved face
+ *  hit can name its owning body without a reverse walk (face-geometry owner
+ *  tracking, pickKey lookup). */
 interface BodyEntry {
   cb: BodyDispatchCallbacks
+  bodyKey: string
   faceIndex: Map<string, number> | null
   edgeIndex: Map<string, number> | null
   vertexIndex: Map<string, number> | null
@@ -44,6 +48,12 @@ const byBodyKey = new Map<string, BodyEntry>()
 // one wins the lookup, which is the order the old full scan resolved in.
 const faceOwners = new Map<string, BodyEntry[]>()
 const edgeOwners = new Map<string, BodyEntry[]>()
+
+// The one body whose updateFaceGeometryForIndex last wrote the shared
+// hoveredFaceNormal / hoveredFaceCenter store fields. Only one body's geometry
+// is ever live (one pair of fields), so a hover teardown only has to touch that
+// body, not walk every registered one on every transition.
+let faceGeometryOwnerKey: string | null = null
 
 /** First index of each query (duplicates keep the earliest, matching indexOf). */
 function buildIndex(queries: readonly string[] | undefined): Map<string, number> | null {
@@ -79,6 +89,7 @@ function dropEntry(bodyKey: string, entry: BodyEntry): void {
   byBodyKey.delete(bodyKey)
   removeOwner(faceOwners, entry.faceIndex, entry)
   removeOwner(edgeOwners, entry.edgeIndex, entry)
+  if (bodyKey === faceGeometryOwnerKey) faceGeometryOwnerKey = null
 }
 
 export function registerBodyCallbacks(bodyKey: string, cb: BodyDispatchCallbacks): () => void {
@@ -89,6 +100,7 @@ export function registerBodyCallbacks(bodyKey: string, cb: BodyDispatchCallbacks
 
   const entry: BodyEntry = {
     cb,
+    bodyKey,
     faceIndex: buildIndex(cb.mesh.face_queries),
     edgeIndex: buildIndex(cb.edgeQueries),
     vertexIndex: buildIndex(cb.vertexQueries),
@@ -112,16 +124,19 @@ export function registerBodyCallbacks(bodyKey: string, cb: BodyDispatchCallbacks
 }
 
 /**
- * Whether `entry` owns `query`. Mirrors the original
- * `face_queries?.includes(q) ?? edgeQueries?.includes(q) ?? vertexQueries?.includes(q)`
- * chain: `??` only falls through on an absent array, so a present face array
- * decides the answer even when it does not contain the query.
+ * Whether `entry` registered `query` in any of its three primitive maps. The
+ * old form was `face_queries?.includes(q) ?? edge... ?? vertex...`, whose `??`
+ * stopped at the first present array, so a body that has face_queries (almost
+ * every real body) could not recognise its own hovered edge or vertex and its
+ * teardown stranded the hover. Checking all three is the fix; it matches how
+ * faceOwners / edgeOwners are actually built.
  */
 function ownsQuery(entry: BodyEntry, query: string): boolean {
-  if (entry.faceIndex) return entry.faceIndex.has(query)
-  if (entry.edgeIndex) return entry.edgeIndex.has(query)
-  if (entry.vertexIndex) return entry.vertexIndex.has(query)
-  return false
+  return (
+    (entry.faceIndex?.has(query) ?? false)
+    || (entry.edgeIndex?.has(query) ?? false)
+    || (entry.vertexIndex?.has(query) ?? false)
+  )
 }
 
 /**
@@ -135,10 +150,36 @@ export function findEdgeKindForQuery(q: string): string | undefined {
   return entry.cb.edgeKinds?.[entry.edgeIndex!.get(q)!]
 }
 
-export function findBodyForFaceQuery(q: string): { body: BodyDispatchCallbacks; index: number } | null {
+/** A resolved face hit: the owning body, its dispatch callbacks and the B-rep
+ *  face index. `bodyKey` names the owner so the face-geometry teardown can
+ *  target it without walking every body. */
+export interface ResolvedFace {
+  bodyKey: string
+  body: BodyDispatchCallbacks
+  index: number
+}
+
+export function findBodyForFaceQuery(q: string): ResolvedFace | null {
   const entry = faceOwners.get(q)?.[0]
   if (!entry) return null
-  return { body: entry.cb, index: entry.faceIndex!.get(q)! }
+  return { bodyKey: entry.bodyKey, body: entry.cb, index: entry.faceIndex!.get(q)! }
+}
+
+/**
+ * Resolve a hovered face to its owning body and B-rep face index using the
+ * hit's per-primitive pickKey (`${bodyKey}#face#${index}`). The pickKey names
+ * the exact primitive under the cursor, whereas a face query can be shared by
+ * two faces of one body (no minted UUID), in which case findBodyForFaceQuery
+ * returns whichever face registered first. Returns null when the key does not
+ * name a live registered face.
+ */
+export function findBodyFaceByPickKey(pickKey: string): ResolvedFace | null {
+  for (const [bodyKey, entry] of byBodyKey) {
+    const count = entry.cb.mesh.face_queries?.length ?? 0
+    const index = parsePickKeyIndex(pickKey, `${bodyKey}#${FACE_LAYER_NAME}#`, count)
+    if (index >= 0) return { bodyKey, body: entry.cb, index }
+  }
+  return null
 }
 
 /**
@@ -159,11 +200,22 @@ export function findFaceBoundaryEdges(q: string): { source: string; kind: string
   })
 }
 
-/** Clear face geometry on every registered body. */
+/**
+ * Compute and store the hovered face's geometry, recording the owning body so a
+ * later clearAllBodyHover can target it without a walk. Takes the resolved face
+ * (from findBodyFaceByPickKey or findBodyForFaceQuery) so the index it feeds
+ * updateFaceGeometryForIndex names the same primitive the highlight isolates.
+ */
+export function applyHoveredFaceGeometry(found: ResolvedFace): void {
+  faceGeometryOwnerKey = found.bodyKey
+  found.body.updateFaceGeometryForIndex(found.index)
+}
+
+/** Clear the face geometry of the one body that last computed it. */
 export function clearAllBodyHover(): void {
-  for (const entry of byBodyKey.values()) {
-    entry.cb.clearFaceGeometry()
-  }
+  if (faceGeometryOwnerKey === null) return
+  byBodyKey.get(faceGeometryOwnerKey)?.cb.clearFaceGeometry()
+  faceGeometryOwnerKey = null
 }
 
 /** Test helper. */
@@ -171,4 +223,5 @@ export function resetBodyCallbacksForTest(): void {
   byBodyKey.clear()
   faceOwners.clear()
   edgeOwners.clear()
+  faceGeometryOwnerKey = null
 }

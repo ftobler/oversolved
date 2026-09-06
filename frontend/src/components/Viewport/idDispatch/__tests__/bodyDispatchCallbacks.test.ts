@@ -8,6 +8,7 @@ import {
   resetBodyCallbacksForTest,
   type BodyDispatchCallbacks,
 } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
+import { brepFaceAdapter } from '@/components/Viewport/idDispatch/brepAdapters'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Mesh3D } from '@/types/cad'
 
@@ -113,6 +114,23 @@ describe('registerBodyCallbacks', () => {
   // nullish left side, a present `face_queries` (even when it does not contain the
   // hovered id) decides the result, and the edge/vertex arms are reached only when
   // the earlier arrays are absent.
+  // L4: `??` stopped at the first present array, so a body with face_queries
+  // (almost every real body) could not recognise its own hovered edge/vertex
+  // and its teardown stranded the hover. ownsQuery now checks all three maps.
+  it('unregister clears a hovered edge query even when face_queries is present', () => {
+    const unregister = registerBodyCallbacks('b1', makeCallbacks())  // all three arrays present
+    useSketchEditorStore.getState().setHoveredSelectionId('edgeQ0')
+    unregister()
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+  })
+
+  it('unregister clears a hovered vertex query even when face and edge arrays are present', () => {
+    const unregister = registerBodyCallbacks('b1', makeCallbacks())  // all three arrays present
+    useSketchEditorStore.getState().setHoveredSelectionId('vtxQ0')
+    unregister()
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+  })
+
   it('unregister clears a hovered edge query when face_queries is absent', () => {
     const cb = makeCallbacks({ mesh: makeMesh({ face_queries: undefined }) })
     const unregister = registerBodyCallbacks('b1', cb)
@@ -288,14 +306,27 @@ describe('reverse index upkeep', () => {
 })
 
 describe('clearAllBodyHover', () => {
-  it('calls clearFaceGeometry on every registered body', () => {
-    const a = makeCallbacks()
-    const b = makeCallbacks({ mesh: makeMesh({ face_queries: ['x'] }) })
-    registerBodyCallbacks('b1', a)
-    registerBodyCallbacks('b2', b)
+  // L5b: only one body's face geometry is ever live (one pair of store fields),
+  // so the teardown targets that body instead of walking every registered one.
+  it('clears only the body that last computed face geometry', () => {
+    const a = makeCallbacks({ mesh: makeMesh({ face_queries: ['fa'] }) })
+    const b = makeCallbacks({ mesh: makeMesh({ face_queries: ['fb'] }) })
+    registerBodyCallbacks('feat/a', a)
+    registerBodyCallbacks('feat/b', b)
+
+    brepFaceAdapter.onHover('fa', 'feat/a#face#0')  // body a becomes the owner
     clearAllBodyHover()
+
     expect(a.clearFaceGeometry).toHaveBeenCalledTimes(1)
-    expect(b.clearFaceGeometry).toHaveBeenCalledTimes(1)
+    expect(b.clearFaceGeometry).not.toHaveBeenCalled()
+  })
+
+  it('does not throw after the owning body has unregistered', () => {
+    const a = makeCallbacks({ mesh: makeMesh({ face_queries: ['fa'] }) })
+    const unregister = registerBodyCallbacks('feat/a', a)
+    brepFaceAdapter.onHover('fa', 'feat/a#face#0')
+    unregister()
+    expect(() => clearAllBodyHover()).not.toThrow()
   })
 
   it('is a no-op with no registered bodies', () => {

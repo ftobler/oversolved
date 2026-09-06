@@ -55,21 +55,62 @@ describe('body3dHoverViaIdBuffer', () => {
   })
 
   it('face hover propagates the pick key so Body3D can isolate one of two shared-query faces', () => {
+    let faceIndexCalled = -1
     registerBodyCallbacks('feat1b/b1', {
       featureId: 'feat1b',
       bodyId: 'b1',
       mesh: stubMesh(['@feat1b/face/dup', '@feat1b/face/dup']),
       edgeQueries: undefined,
       vertexQueries: undefined,
-      updateFaceGeometryForIndex: () => {},
+      updateFaceGeometryForIndex: (i: number) => { faceIndexCalled = i },
       clearFaceGeometry: () => {},
     })
 
-    brepFaceAdapter.onHover('@feat1b/face/dup', 'feat1b/b1#1')
+    // The real 3-segment pickKey shape: `${bodyKey}#${layer}#${index}`.
+    brepFaceAdapter.onHover('@feat1b/face/dup', 'feat1b/b1#face#1')
 
     const s = useSketchEditorStore.getState()
     expect(s.hoveredSelectionId).toBe('@feat1b/face/dup')
-    expect(s.hoveredPickKey).toBe('feat1b/b1#1')
+    expect(s.hoveredPickKey).toBe('feat1b/b1#face#1')
+    expect(faceIndexCalled).toBe(1)  // the pickKey index, not the first query owner (0)
+  })
+
+  // M3: the geometry the highlight isolates (via hoveredPickKey) and the
+  // normal/centre fed into "Align to face" must name the same face. Two faces
+  // sharing a query used to light face k while the camera oriented to face j.
+  it('computes face geometry from the pickKey index, not the first query owner', () => {
+    let calledIndex = -1
+    registerBodyCallbacks('feat/b1', {
+      featureId: 'feat',
+      bodyId: 'b1',
+      mesh: stubMesh(['dup', 'dup']),
+      edgeQueries: undefined,
+      vertexQueries: undefined,
+      updateFaceGeometryForIndex: (i: number) => { calledIndex = i },
+      clearFaceGeometry: () => {},
+    })
+
+    brepFaceAdapter.onHover('dup', 'feat/b1#face#1')
+
+    expect(calledIndex).toBe(1)
+    expect(useSketchEditorStore.getState().hoveredPickKey).toBe('feat/b1#face#1')
+  })
+
+  it('falls back to the first query owner when the hit carries no pickKey', () => {
+    let calledIndex = -1
+    registerBodyCallbacks('feat/b1', {
+      featureId: 'feat',
+      bodyId: 'b1',
+      mesh: stubMesh(['dup', 'dup']),
+      edgeQueries: undefined,
+      vertexQueries: undefined,
+      updateFaceGeometryForIndex: (i: number) => { calledIndex = i },
+      clearFaceGeometry: () => {},
+    })
+
+    brepFaceAdapter.onHover('dup')
+
+    expect(calledIndex).toBe(0)
   })
 
   it('edge hover sets hoveredSelectionId', () => {

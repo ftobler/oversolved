@@ -1,6 +1,8 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import {
   findBodyForFaceQuery,
+  findBodyFaceByPickKey,
+  applyHoveredFaceGeometry,
   clearAllBodyHover,
 } from './bodyDispatchCallbacks'
 
@@ -18,16 +20,19 @@ import {
 export const brepFaceAdapter = {
   onHover(entityKey: string, pickKey?: string): void {
     const s = useSketchEditorStore.getState()
-    const found = findBodyForFaceQuery(entityKey)
+    // The pickKey names the exact face; the query alone can name two faces of
+    // one body. Prefer the pickKey path so the highlight and the stored
+    // normal/centre geometry (feeds "Align to face") name the same primitive.
+    // Fall back to the first query owner only when the hit carries no key.
+    const found = (pickKey ? findBodyFaceByPickKey(pickKey) : null)
+      ?? findBodyForFaceQuery(entityKey)
     if (!found) {
       clearAllBodyHover()
       return
     }
     s.setHoveredSelectionId(entityKey)
-    // pickKey isolates the single hovered face when its query collides with a
-    // sibling's; the caller (applyHoverHit) cleared it to null beforehand.
     s.setHoveredPickKey(pickKey ?? null)
-    found.body.updateFaceGeometryForIndex(found.index)
+    applyHoveredFaceGeometry(found)
   },
 }
 
