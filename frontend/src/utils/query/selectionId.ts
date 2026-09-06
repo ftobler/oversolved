@@ -91,10 +91,13 @@ export function selectionToQuery(selection: SelectionId, hostFeatureId: string):
  * creating feature made `body_ex1` and `body_ex1_1` mint the same query for two
  * different edges. The kernel's real query minting is body-scoped for the same
  * reason (kernel/faceQuery.ts, occ/tessellation.ts push `ref(bodyId)`).
+ *
+ * `tri` is the legacy per-triangle highlight fallback (Body3D), kept distinct
+ * from `face` so a triangle index is never resolved as a B-rep face index.
  */
 export function topoFallbackQuery(
   bodyId: string,
-  kind: "edge" | "face" | "vertex",
+  kind: "edge" | "face" | "vertex" | "tri",
   idx: number,
 ): string {
   return `@${bodyId}/${kind}/${idx}`
@@ -187,7 +190,7 @@ export function isWholeBodySelectionId(id: string): boolean {
  * back into its components. The inverse of topoFallbackQuery().
  * Returns null if the string is not a valid topo-fallback query.
  */
-export function parseTopoFallbackQuery(query: string): { bodyId: string; kind: 'edge' | 'face' | 'vertex'; idx: number } | null {
+export function parseTopoFallbackQuery(query: string): { bodyId: string; kind: 'edge' | 'face' | 'vertex' | 'tri'; idx: number } | null {
   if (!query.startsWith('@')) return null
   const slash1 = query.indexOf('/', 1)
   const slash2 = query.indexOf('/', slash1 + 1)
@@ -195,6 +198,6 @@ export function parseTopoFallbackQuery(query: string): { bodyId: string; kind: '
   const bodyId = query.slice(1, slash1)
   const kind = query.slice(slash1 + 1, slash2)
   const idx = parseInt(query.slice(slash2 + 1), 10)
-  if ((kind !== 'edge' && kind !== 'face' && kind !== 'vertex') || isNaN(idx)) return null
-  return { bodyId, kind: kind as 'edge' | 'face' | 'vertex', idx }
+  if ((kind !== 'edge' && kind !== 'face' && kind !== 'vertex' && kind !== 'tri') || isNaN(idx)) return null
+  return { bodyId, kind: kind as 'edge' | 'face' | 'vertex' | 'tri', idx }
 }

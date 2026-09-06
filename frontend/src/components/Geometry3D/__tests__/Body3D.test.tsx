@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildBodyGeometry, buildEdgeSegments, buildEdgeSegmentGeometry, getEdgeSegmentCounts, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '@/components/Geometry3D/bodyGeometry'
+import { buildBodyGeometry, buildEdgeSegments, buildEdgeSegmentGeometry, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '@/components/Geometry3D/bodyGeometry'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { ARC_SEGMENTS } from '@/components/Geometry3D/constants'
 
@@ -232,6 +232,41 @@ describe('buildEdgeSegmentGeometry segment -> edge map', () => {
     expect(positions.length).toBe((1 + ARC_SEGMENTS) * 6)
     expect([...segmentToEdge]).toEqual([0, ...new Array(ARC_SEGMENTS).fill(1)])
   })
+
+  it('edgeSegmentCounts is parallel to the input edges, zero for a skipped one', () => {
+    const edges: EdgeData[] = [
+      { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] },          // 1 segment
+      { kind: 'line', start: [1, 0, 0], end: [Infinity, 0, 0] },   // skipped -> 0
+      { kind: 'spline', points: [[0, 0, 0], [1, NaN, 0]] },        // skipped -> 0
+      { kind: 'spline', points: [[2, 0, 0], [3, 0, 0], [4, 1, 0]] },  // 2 segments
+    ]
+    const geo = buildEdgeSegmentGeometry(edges)
+    expect(geo.edgeSegmentCounts).toEqual([1, 0, 0, 2])
+  })
+
+  it('edgeSegmentCounts sums to the number of built segments', () => {
+    const edges: EdgeData[] = [
+      { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] },
+      { kind: 'line', start: [1, 0, 0], end: [Infinity, 0, 0] },
+      { kind: 'spline', points: [[2, 0, 0], [3, 0, 0], [4, 1, 0]] },
+    ]
+    const geo = buildEdgeSegmentGeometry(edges)
+    const total = geo.edgeSegmentCounts.reduce((a, b) => a + b, 0)
+    expect(total).toBe(geo.segmentToEdge.length)
+    expect(total * 6).toBe(geo.positions.length)
+  })
+
+  it('a NaN-angle arc contributes zero, not NaN', () => {
+    const edges: EdgeData[] = [
+      { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] },
+      { kind: 'arc', center: [0, 0, 0], radius: 1, axis: [0, 0, 1], x_axis: [1, 0, 0],
+        angle_start: NaN, angle_end: NaN },
+      { kind: 'line', start: [2, 0, 0], end: [3, 0, 0] },
+    ]
+    const geo = buildEdgeSegmentGeometry(edges)
+    expect(geo.edgeSegmentCounts).toEqual([1, 0, 1])
+    expect(Number.isNaN(geo.edgeSegmentCounts[1])).toBe(false)
+  })
 })
 
 describe('buildEdgeSegments circle', () => {
@@ -284,14 +319,13 @@ describe('buildEdgeSegments arc', () => {
   })
 })
 
-describe('getEdgeSegmentCounts', () => {
+describe('buildEdgeSegmentGeometry edgeSegmentCounts by kind', () => {
   it('returns 1 for each line edge', () => {
     const edges: EdgeData[] = [
       { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] },
       { kind: 'line', start: [1, 0, 0], end: [1, 1, 0] },
     ]
-    const counts = getEdgeSegmentCounts(edges)
-    expect(counts).toEqual([1, 1])
+    expect(buildEdgeSegmentGeometry(edges).edgeSegmentCounts).toEqual([1, 1])
   })
 
   it('returns ARC_SEGMENTS for a full circle', () => {
@@ -304,8 +338,7 @@ describe('getEdgeSegmentCounts', () => {
       angle_start: 0,
       angle_end: 2 * Math.PI,
     }]
-    const counts = getEdgeSegmentCounts(edges)
-    expect(counts).toEqual([ARC_SEGMENTS])
+    expect(buildEdgeSegmentGeometry(edges).edgeSegmentCounts).toEqual([ARC_SEGMENTS])
   })
 
   it('returns fewer segments for a quarter arc', () => {
@@ -318,7 +351,7 @@ describe('getEdgeSegmentCounts', () => {
       angle_start: 0,
       angle_end: Math.PI / 2,
     }]
-    const counts = getEdgeSegmentCounts(edges)
+    const counts = buildEdgeSegmentGeometry(edges).edgeSegmentCounts
     // Quarter arc should have roughly 1/4 the segments of a full circle
     expect(counts[0]).toBeLessThan(ARC_SEGMENTS / 2)
     expect(counts[0]).toBeGreaterThanOrEqual(2)
@@ -329,14 +362,12 @@ describe('getEdgeSegmentCounts', () => {
       kind: 'spline',
       points: [[0, 0, 0], [1, 0, 0], [2, 1, 0], [3, 0, 0]],
     }]
-    const counts = getEdgeSegmentCounts(edges)
     // 4 points = 3 segments
-    expect(counts).toEqual([3])
+    expect(buildEdgeSegmentGeometry(edges).edgeSegmentCounts).toEqual([3])
   })
 
   it('returns empty array for empty edges', () => {
-    const counts = getEdgeSegmentCounts([])
-    expect(counts).toEqual([])
+    expect(buildEdgeSegmentGeometry([]).edgeSegmentCounts).toEqual([])
   })
 
   it('handles mixed edge types', () => {
@@ -345,7 +376,7 @@ describe('getEdgeSegmentCounts', () => {
       { kind: 'circle', center: [0, 0, 0], radius: 1, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI },
       { kind: 'spline', points: [[0, 0, 0], [1, 0, 0], [2, 0, 0]] },
     ]
-    const counts = getEdgeSegmentCounts(edges)
+    const counts = buildEdgeSegmentGeometry(edges).edgeSegmentCounts
     expect(counts.length).toBe(3)
     expect(counts[0]).toBe(1)  // line
     expect(counts[1]).toBe(ARC_SEGMENTS)  // circle

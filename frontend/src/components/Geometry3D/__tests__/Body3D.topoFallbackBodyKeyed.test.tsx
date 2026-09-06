@@ -21,7 +21,7 @@ vi.mock('@/utils/query/selectionId', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/utils/query/selectionId')>()
   return {
     ...actual,
-    topoFallbackQuery: (id: string, kind: 'edge' | 'face' | 'vertex', idx: number) => {
+    topoFallbackQuery: (id: string, kind: 'edge' | 'face' | 'vertex' | 'tri', idx: number) => {
       const q = actual.topoFallbackQuery(id, kind, idx)
       minted.push(q)
       return q
@@ -57,14 +57,14 @@ async function renderSibling(bodyId: string) {
 }
 
 describe('Body3D topo-fallback queries are keyed on the body', () => {
-  // All three mint sites run during this render: the face one is reached
-  // through `legacyFaceQueries`, the per-triangle paint path taken when the
-  // mesh carries no `face_queries`.
+  // All three mint sites run during this render: the legacy per-triangle one is
+  // reached through `legacyFaceQueries` and mints a `tri` token, the paint path
+  // taken when the mesh carries no `face_queries`.
   it('names the body, not the feature that created it', async () => {
     await renderSibling('body_ex1')
     expect(minted).toContain('@body_ex1/edge/0')
     expect(minted).toContain('@body_ex1/vertex/0')
-    expect(minted).toContain('@body_ex1/face/0')
+    expect(minted).toContain('@body_ex1/tri/0')
     expect(minted.some(q => q.startsWith('@ex1/'))).toBe(false)
   })
 

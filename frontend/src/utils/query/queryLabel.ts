@@ -98,7 +98,10 @@ export function queryLabel(
   // is NOT a topo fallback, so the whole-body case keeps rendering as today.
   const topo = parseTopoFallbackQuery(query)
   if (topo) {
-    const kind = topo.kind.charAt(0).toUpperCase() + topo.kind.slice(1)
+    // `tri` is the legacy per-triangle face fallback; it still names a face to
+    // the user, so it labels as "Face", not "Tri".
+    const labelKind = topo.kind === 'tri' ? 'face' : topo.kind
+    const kind = labelKind.charAt(0).toUpperCase() + labelKind.slice(1)
     // The full query is the ancestor token ownerOf expects
     // (@<bodyId>/<kind>/<idx>); it maps the body tag to the owning feature,
     // split-sibling suffix included.

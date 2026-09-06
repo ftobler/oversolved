@@ -244,12 +244,25 @@ describe('parseTopoFallbackQuery', () => {
     expect(parseTopoFallbackQuery('@builtin_plane_front')).toBeNull()
   })
 
+  describe('tri token (legacy per-triangle fallback)', () => {
+    it('mints @<body>/tri/<idx> for the legacy per-triangle fallback', () => {
+      expect(topoFallbackQuery('body_ex1', 'tri', 2)).toBe('@body_ex1/tri/2')
+    })
+    it('parseTopoFallbackQuery round-trips the tri token', () => {
+      expect(parseTopoFallbackQuery('@body_ex1/tri/2')).toEqual({ bodyId: 'body_ex1', kind: 'tri', idx: 2 })
+    })
+    it('a tri query is not a face query', () => {
+      expect(parseTopoFallbackQuery('@body_ex1/tri/2')!.kind).not.toBe('face')
+    })
+  })
+
   describe('round-trip with topoFallbackQuery', () => {
-    const cases: Array<{ bodyId: string; kind: 'edge' | 'face' | 'vertex'; idx: number }> = [
+    const cases: Array<{ bodyId: string; kind: 'edge' | 'face' | 'vertex' | 'tri'; idx: number }> = [
       { bodyId: 'body_ex1', kind: 'edge', idx: 0 },
       { bodyId: 'body_ex1_1', kind: 'edge', idx: 0 },
       { bodyId: 'body1', kind: 'face', idx: 5 },
       { bodyId: 'sk1', kind: 'vertex', idx: 99 },
+      { bodyId: 'body_ex1', kind: 'tri', idx: 2 },
     ]
     cases.forEach(({ bodyId, kind, idx }) => {
       it(`${bodyId} ${kind}/${idx}`, () => {

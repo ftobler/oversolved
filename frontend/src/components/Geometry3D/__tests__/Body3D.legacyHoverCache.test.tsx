@@ -63,8 +63,8 @@ vi.mock('@/utils/query/selectionId', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/utils/query/selectionId')>()
   return {
     ...actual,
-    topoFallbackQuery: (id: string, kind: 'edge' | 'face' | 'vertex', idx: number) => {
-      if (kind === 'face') faceMints.n++
+    topoFallbackQuery: (id: string, kind: 'edge' | 'face' | 'vertex' | 'tri', idx: number) => {
+      if (kind === 'tri') faceMints.n++
       return actual.topoFallbackQuery(id, kind, idx)
     },
   }
@@ -139,7 +139,7 @@ describe('legacy triangle highlight shares the HighlightIndex cache', () => {
     await renderBodies(N)
     const before = settledFaceCalls(N)
 
-    await setState({ hoveredSelectionId: '@body_1/face/0', hoveredPickKey: null })
+    await setState({ hoveredSelectionId: '@body_1/tri/0', hoveredPickKey: null })
 
     const after = settledFaceCalls(N)
     for (let i = 0; i < N; i++) {
@@ -160,7 +160,7 @@ describe('legacy triangle highlight shares the HighlightIndex cache', () => {
     await renderBodies(N)
     for (const pointed of [2, 0]) {
       const before = settledFaceCalls(N)
-      await setState({ hoveredSelectionId: `@body_${pointed}/face/0`, hoveredPickKey: null })
+      await setState({ hoveredSelectionId: `@body_${pointed}/tri/0`, hoveredPickKey: null })
       const after = settledFaceCalls(N)
       // Only the newly pointed body, plus the previously pointed one returning
       // to all-false, may change reference. Every other body is untouched.
@@ -180,7 +180,7 @@ describe('legacy triangle highlight shares the HighlightIndex cache', () => {
     // The selection really grows: each step keeps every earlier query.
     const selection = new Set<string>()
     for (let other = 1; other < N; other++) {
-      selection.add(`@body_${other}/face/0`)
+      selection.add(`@body_${other}/tri/0`)
       await setState({ normalSelection: new Set(selection) })
     }
     const after = settledFaceCalls(N)[0]
@@ -198,7 +198,7 @@ describe('legacy triangle highlight shares the HighlightIndex cache', () => {
     expect(mountMints).toBe(N * FACES_PER_BODY)
 
     for (const pointed of [1, 2, 3]) {
-      await setState({ hoveredSelectionId: `@body_${pointed}/face/0`, hoveredPickKey: null })
+      await setState({ hoveredSelectionId: `@body_${pointed}/tri/0`, hoveredPickKey: null })
     }
     // Hovers mint nothing: the materialized array and its index serve every
     // move, so the per-triangle work stays at one body's worth, never N.
@@ -208,7 +208,7 @@ describe('legacy triangle highlight shares the HighlightIndex cache', () => {
 
 describe('legacy fallback still paints the hovered/selected triangles exactly as before', () => {
   it('marks exactly the selected triangle, not the whole mesh', async () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1/face/1']) } as never)
+    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1/tri/1']) } as never)
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacyMesh()} />)
 
@@ -217,7 +217,7 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
   })
 
   it('marks exactly the hovered triangle', async () => {
-    useSketchEditorStore.setState({ hoveredSelectionId: '@body_ex1/face/0' } as never)
+    useSketchEditorStore.setState({ hoveredSelectionId: '@body_ex1/tri/0' } as never)
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacyMesh()} />)
 
@@ -227,8 +227,8 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
 
   it('paints selection and hover through the same per-triangle runs as before', async () => {
     useSketchEditorStore.setState({
-      normalSelection: new Set(['@body_ex1/face/0']),
-      hoveredSelectionId: '@body_ex1/face/1',
+      normalSelection: new Set(['@body_ex1/tri/0']),
+      hoveredSelectionId: '@body_ex1/tri/1',
     } as never)
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacyMesh()} />)

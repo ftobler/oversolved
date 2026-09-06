@@ -334,6 +334,11 @@ export interface EdgeSegmentGeometry {
   positions: Float32Array
   // Per-segment edge index into the input `edges` array.
   segmentToEdge: Uint32Array
+  // Segments produced per INPUT edge, parallel to `edges` (NOT to
+  // `segmentToEdge`): 0 for an edge the builder skipped. Comes from the same
+  // single traversal, so the painter's run offsets can never disagree with the
+  // built buffer the way an unconditional count did.
+  edgeSegmentCounts: number[]
 }
 
 // Build the flat segment buffer and its segment -> edge map in one pass, with
@@ -425,35 +430,20 @@ export function buildEdgeSegmentGeometry(edges: EdgeData[]): EdgeSegmentGeometry
     }
   }
 
-  return { positions: new Float32Array(parts), segmentToEdge: new Uint32Array(owners) }
+  // Per-edge counts from the SAME owners the traversal already collected: a
+  // skipped edge contributes nothing to `owners`, so its count is 0 rather than
+  // the unconditional estimate that shifted every later painter run offset.
+  const edgeSegmentCounts = new Array<number>(edges.length).fill(0)
+  for (let i = 0; i < owners.length; i++) edgeSegmentCounts[owners[i]]++
+  return {
+    positions: new Float32Array(parts),
+    segmentToEdge: new Uint32Array(owners),
+    edgeSegmentCounts,
+  }
 }
 
 // Build a flat Float32Array of line segment endpoints from edge descriptors.
 // Each segment contributes 6 floats: [x0,y0,z0, x1,y1,z1].
 export function buildEdgeSegments(edges: EdgeData[]): Float32Array {
   return buildEdgeSegmentGeometry(edges).positions
-}
-
-// Get the number of line segments each edge produces.
-// Used to map from raycasted segment index back to edge index for the VISIBLE
-// line pass. Counts unconditionally, so it disagrees with the built positions
-// whenever an edge is skipped; ID registration must use buildEdgeSegmentGeometry,
-// whose map shares the builder's skip conditions.
-export function getEdgeSegmentCounts(edges: EdgeData[]): number[] {
-  const counts: number[] = []
-  for (const edge of edges) {
-    if (edge.kind === 'line') {
-      counts.push(1)
-    } else if (edge.kind === 'circle' || edge.kind === 'arc') {
-      const sweep = edge.angle_end - edge.angle_start
-      const segs = Math.max(2, Math.round(ARC_SEGMENTS * Math.abs(sweep) / (2 * Math.PI)))
-      counts.push(segs)
-    } else if (edge.kind === 'spline') {
-      counts.push(Math.max(0, edge.points.length - 1))
-    } else if (edge.kind === 'ellipse') {
-      const sweep = edge.angle_end - edge.angle_start
-      counts.push(Math.max(2, Math.round(ARC_SEGMENTS * Math.abs(sweep) / (2 * Math.PI))))
-    }
-  }
-  return counts
 }

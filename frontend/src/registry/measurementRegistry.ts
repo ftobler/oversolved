@@ -341,7 +341,10 @@ function findBodyElement(
   // `bodies` is keyed by body id, which is exactly what the render fallback
   // mints, so this lookup lands on the sibling the user actually picked.
   const parsed = parseTopoFallbackQuery(id)
-  if (parsed) {
+  // `tri` is the legacy per-triangle highlight fallback (Body3D): it is
+  // highlight-only and a triangle index is NOT a B-rep element index, so it must
+  // never resolve to a face/edge/vertex here.
+  if (parsed && parsed.kind !== 'tri') {
     const { bodyId, kind, idx: index } = parsed
     const body = bodies[bodyId]
     if (body) return { body, kind, index }

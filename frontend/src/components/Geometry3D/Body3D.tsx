@@ -22,7 +22,7 @@ import {
   extractFaceGeometry,
   calculateFaceProperties,
   buildEdgeSegments,
-  getEdgeSegmentCounts,
+  buildEdgeSegmentGeometry,
   faceCount,
   lazyFaceTriangles,
   resolveFaceQueries,
@@ -39,39 +39,12 @@ import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/l
 import { HighlightIndex, type ActiveHighlight } from '@/picking/selectionHighlight'
 import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP } from '@/picking/highlightActive'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
-import { EDGE_DEPTH_BIAS } from '@/picking/EdgeIdLayer'
+import { buildEdgeMaterial } from '@/components/Geometry3D/edgeLineMaterial'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
 import { registerBodyCallbacks } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 
-const EDGE_VERT_SHADER = `
-  varying vec3 vColor;
-  uniform float uDepthBias;
-  void main() {
-    vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    clip.z += uDepthBias * clip.w;
-    vColor = color;
-    gl_Position = clip;
-  }
-`
-
-const EDGE_FRAG_SHADER = `
-  varying vec3 vColor;
-  void main() {
-    gl_FragColor = vec4(vColor, 1.0);
-  }
-`
-
 function useDispose<T extends { dispose(): void }>(obj: T | null | undefined): void {
   useEffect(() => { return () => { obj?.dispose() } }, [obj])
-}
-
-function buildEdgeMaterial(): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    vertexShader: EDGE_VERT_SHADER,
-    fragmentShader: EDGE_FRAG_SHADER,
-    uniforms: { uDepthBias: { value: EDGE_DEPTH_BIAS } },
-    vertexColors: true,
-  })
 }
 
 // Vertex-dot colours, hoisted out of the frame loop: three.js Color parsing is not
@@ -268,6 +241,18 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     [vertexHighlightIndex, hoverActive],
   )
 
+  // hasAny is O(1) for the shared all-false answer but O(vertices) otherwise, and
+  // useFrame asks it twice a frame. Cache it next to the flags it reads so a
+  // picked body pays the scan once per pick, not once per frame.
+  const hasVertexSelection = useMemo(
+    () => vertexHighlightIndex?.hasAny(vertexSelectionFlags) ?? false,
+    [vertexHighlightIndex, vertexSelectionFlags],
+  )
+  const hasVertexHover = useMemo(
+    () => vertexHighlightIndex?.hasAny(vertexHoverFlags) ?? false,
+    [vertexHighlightIndex, vertexHoverFlags],
+  )
+
   const geometry = useMemo(() => {
     const indexed = new THREE.BufferGeometry()
     const { positions, indices } = buildBodyGeometry(mesh)
@@ -291,9 +276,15 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
 
   useDispose(geometry)
 
+  // Positions AND the per-edge segment counts from ONE traversal, so the
+  // painter's run offsets and the colour buffer it writes can never disagree
+  // about which edges were skipped (a degenerate edge shifted every later offset
+  // before).
+  const edgeSegmentGeometry = useMemo(() => buildEdgeSegmentGeometry(edges), [edges])
+
   const edgeGeometry = useMemo(() => {
     const geo = new THREE.BufferGeometry()
-    const pts = buildEdgeSegments(edges)
+    const pts = edgeSegmentGeometry.positions
     geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
     // Pre-fill color attribute so vertexColors=true doesn't flash black on first render.
     const { r, g, b } = new THREE.Color(COLOR_BODY_EDGE)
@@ -303,15 +294,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     }
     geo.setAttribute('color', new THREE.BufferAttribute(initialColors, 3))
     return geo
-  }, [edges])
+  }, [edgeSegmentGeometry])
 
   useDispose(edgeGeometry)
 
   const edgeMaterial = useMemo(() => buildEdgeMaterial(), [])
   useDispose(edgeMaterial)
-
-  // Precompute segment counts for edge index mapping
-  const edgeSegmentCounts = useMemo(() => getEdgeSegmentCounts(edges), [edges])
 
   // The whole surface is one decision (see bodySurfaceLook for the precedence).
   const surface = bodySurfaceLook({
@@ -368,7 +356,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         if (query !== undefined) return query
       }
     }
-    return topoFallbackQuery(bodyId, 'face', triangleIndex)
+    return topoFallbackQuery(bodyId, 'tri', triangleIndex)
   }, [mesh, bodyId])
 
   // Which primitives the face colour buffer is divided into: B-rep faces when the
@@ -392,7 +380,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // such body allocate on every hover; the flags memos below now run the index
   // and skip on the identity of its answer.
   //
-  // The retained cost is the string array itself: one `@body/face/<tri>` query
+  // The retained cost is the string array itself: one `@body/tri/<tri>` query
   // per triangle, plus the index's query Set, held for the body's lifetime. On
   // a very large imported legacy mesh that is O(triangles) of strings, the same
   // order as the triangle data the mesh already holds, and is the price of
@@ -461,7 +449,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     palette: facePalette,
   })
 
-  const edgePaintRuns = useMemo(() => edgeRuns(edgeSegmentCounts), [edgeSegmentCounts])
+  const edgePaintRuns = useMemo(() => edgeRuns(edgeSegmentGeometry.edgeSegmentCounts), [edgeSegmentGeometry])
 
   useHighlightColors({
     geometry: edgeGeometry,
@@ -482,6 +470,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const dotPainter = useMemo(() => new VertexInstancePainter(), [])
 
   useFrame(({ camera }) => {
+    // A hidden body (rollback bar, per-body hide) is still mounted as
+    // <Body3D visible={false}>; without this every camera move recomposes and
+    // re-uploads one matrix per vertex for geometry nobody can see.
+    if (!visible) return
     const vmesh = vertexMeshRef.current
     if (!vmesh || !vertices?.length) return
 
@@ -492,14 +484,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     if (dmesh) {
       // Only show visual dots when a vertex is hovered or selected. Both are
       // resolved by pick key (via vertexSelectionFlags / vertexHoverFlags) so a
-      // shared-query sibling does not co-show, mirroring the face path.
-      // hasAny short-circuits on the shared all-false answer, so the common
-      // "nothing of mine is picked" case costs one identity check per frame
-      // instead of a scan per vertex per body.
-      const hasHover = vertexHighlightIndex?.hasAny(vertexHoverFlags) ?? false
-      const hasSelection = vertexHighlightIndex?.hasAny(vertexSelectionFlags) ?? false
-
-      dmesh.visible = hasHover || hasSelection
+      // shared-query sibling does not co-show, mirroring the face path. The
+      // hasAny results are memoized above so a resting frame costs nothing.
+      dmesh.visible = hasVertexHover || hasVertexSelection
       if (dmesh.visible) {
         dotPainter.sync({
           target: dmesh,

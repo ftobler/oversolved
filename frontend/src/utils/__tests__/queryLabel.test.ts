@@ -231,6 +231,10 @@ describe('queryLabel', () => {
       expect(queryLabel('@body_ex1/vertex/2', features)).toBe('Vertex of My Extrude')
     })
 
+    it('names the legacy per-triangle tri fallback as Face, not Tri', () => {
+      expect(queryLabel('@body_ex1/tri/7', features)).toBe('Face of My Extrude')
+    })
+
     it('resolves a split-sibling body tag to its owning feature', () => {
       expect(queryLabel('@body_ex1_1/face/0', features)).toBe('Face of My Extrude')
     })

@@ -1,8 +1,8 @@
 // Body B-rep ellipse edges (full-brep-projection) render as a closed polyline.
-// Guards the ellipse arms of buildEdgeSegments / getEdgeSegmentCounts that the
-// circle/arc/spline arms previously did not cover.
+// Guards the ellipse arms of buildEdgeSegmentGeometry that the circle/arc/spline
+// arms previously did not cover.
 import { describe, it, expect } from 'vitest'
-import { buildEdgeSegments, buildEdgeSegmentGeometry, getEdgeSegmentCounts } from '@/components/Geometry3D/bodyGeometry'
+import { buildEdgeSegments, buildEdgeSegmentGeometry } from '@/components/Geometry3D/bodyGeometry'
 import type { EdgeData } from '@/types/cad'
 
 describe('buildEdgeSegments ellipse', () => {
@@ -19,7 +19,7 @@ describe('buildEdgeSegments ellipse', () => {
 
   it('emits one closed loop of ARC_SEGMENTS segments', () => {
     const segs = buildEdgeSegments([ellipse])
-    const count = getEdgeSegmentCounts([ellipse])[0]
+    const count = buildEdgeSegmentGeometry([ellipse]).edgeSegmentCounts[0]
     // 6 floats per segment.
     expect(segs.length).toBe(count * 6)
     // The one-traversal map attributes every built segment to the ellipse edge.
@@ -36,9 +36,9 @@ describe('buildEdgeSegments ellipse', () => {
     // endpoints sit at the major (t=0) and minor (t=pi/2) axis points.
     const arc: EdgeData = { ...ellipse, angle_start: 0, angle_end: Math.PI / 2 }
     const segs = buildEdgeSegments([arc])
-    const count = getEdgeSegmentCounts([arc])[0]
+    const count = buildEdgeSegmentGeometry([arc]).edgeSegmentCounts[0]
     expect(segs.length).toBe(count * 6)
-    expect(count).toBeLessThan(getEdgeSegmentCounts([ellipse])[0])
+    expect(count).toBeLessThan(buildEdgeSegmentGeometry([ellipse]).edgeSegmentCounts[0])
     // Last point at t=pi/2: center + b*v = [1, 2+2, 0].
     const n = segs.length
     expect(segs[n - 3]).toBeCloseTo(1)

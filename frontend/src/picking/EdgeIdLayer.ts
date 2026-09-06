@@ -63,7 +63,11 @@ const VERT_SHADER = `
   }
 `
 
-const FRAG_SHADER = `
+// Writes the packed id straight to the RGBA8 pick target: NO tone mapping and
+// NO output-colorspace encoding, on purpose. The pick buffer must hold the
+// exact bytes the id encodes. The visible wireframe shader (edgeLineMaterial.ts)
+// is the mirror image and DOES apply both transforms.
+export const EDGE_ID_FRAG_SHADER = `
   varying vec3 vColor;
   void main() {
     gl_FragColor = vec4(vColor, 1.0);
@@ -73,7 +77,7 @@ const FRAG_SHADER = `
 function buildEdgeIdMaterial(opts?: { depthBias?: number; depthTest?: boolean; depthWrite?: boolean }): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: VERT_SHADER,
-    fragmentShader: FRAG_SHADER,
+    fragmentShader: EDGE_ID_FRAG_SHADER,
     uniforms: {
       uDepthBias: { value: opts?.depthBias ?? EDGE_DEPTH_BIAS },
     },
