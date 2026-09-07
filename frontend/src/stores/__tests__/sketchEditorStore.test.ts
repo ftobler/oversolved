@@ -126,6 +126,33 @@ describe('sketchEditorStore', () => {
       expect(s.selectedPicks.get('Q')).toEqual(new Set(['ex1/b0#edge#0', 'ex1/b0#edge#1']))
     })
 
+    it('a claim-shrink click on a multi-key orphan re-asserts the query it left unselected', () => {
+      // Orphan: another writer cleared normalSelection but left a 2-key claim under Q.
+      // Clicking one of those keys removes it AND must heal Q back into
+      // normalSelection, exactly as the colliding-sibling branch does for a 1-key orphan.
+      useSketchEditorStore.setState({
+        normalSelection: new Set(),
+        selectedPicks: new Map([['Q', new Set(['ex1/b0#edge#0', 'ex1/b0#edge#1'])]]),
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('Q', 'ex1/b0#edge#0')
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('Q')).toBe(true)
+      expect(s.selectedPicks.get('Q')).toEqual(new Set(['ex1/b0#edge#1']))
+    })
+
+    it('a claim-shrink click that empties a single-key orphan removes the query entirely', () => {
+      // The full-deselect outcome must still fully remove: the re-assert belongs
+      // only to the path that leaves keys behind.
+      useSketchEditorStore.setState({
+        normalSelection: new Set(),
+        selectedPicks: new Map([['Q', new Set(['ex1/b0#edge#0'])]]),
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('Q', 'ex1/b0#edge#0')
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.has('Q')).toBe(false)
+      expect(s.selectedPicks.has('Q')).toBe(false)
+    })
+
     it('leaves the pickKey channel untouched for selections with no pickKey', () => {
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
       expect(useSketchEditorStore.getState().selectedPicks.size).toBe(0)

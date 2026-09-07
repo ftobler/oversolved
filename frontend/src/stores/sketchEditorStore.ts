@@ -617,6 +617,11 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
           nextPicks.delete(id)
           next.delete(id)
         } else {
+          // Re-assert the query on any outcome short of a full deselect, the
+          // way the colliding-sibling branch below does: a multi-key claim left
+          // behind by another writer must heal back into normalSelection rather
+          // than shrink under a query nobody has selected.
+          next.add(id)
           nextPicks.set(id, remaining)
         }
       } else {
