@@ -25,6 +25,12 @@ vi.mock('three', () => {
   return { BufferGeometry, BufferAttribute }
 })
 
+// Real tessellation, but counted: the overlay must not pass over one edge twice.
+vi.mock('@/components/Geometry3D/bodyGeometry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/Geometry3D/bodyGeometry')>()
+  return { ...actual, buildEdgeSegments: vi.fn(actual.buildEdgeSegments) }
+})
+
 // Render lineSegments as a div for DOM inspection.
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -41,6 +47,7 @@ function mockLineSegments({ renderOrder, children }: {
 vi.stubGlobal('lineSegments', mockLineSegments)
 
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
+import { buildEdgeSegments as tessellateSpy } from '@/components/Geometry3D/bodyGeometry'
 
 function makeItem(key: string, edges: EdgeData[], edgeQueries?: string[]): BodyRenderItem {
   return {
@@ -140,6 +147,18 @@ describe('PreviewEdgeOverlay', () => {
     const previewItem = makeItem('b1', [lineEdge])
     const { container } = render(<PreviewEdgeOverlay items={[previewItem]} />)
     expect(container.innerHTML).not.toBe('')
+  })
+
+  it('tessellates each edge once, not once per pass', () => {
+    vi.mocked(tessellateSpy).mockClear()
+    const previewEdge: EdgeData = { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }
+    const pickEdge: EdgeData = { kind: 'line', start: [50, 0, 0], end: [51, 0, 0] }
+    render(
+      <PreviewEdgeOverlay items={[makeItem('b1', [previewEdge])]} pickItems={[makeItem('b1', [pickEdge])]} />
+    )
+    // One pass for the pick edge (existingGeom) and one for the preview edge;
+    // the surviving preview edge must not be re-tessellated to build the buffer.
+    expect(vi.mocked(tessellateSpy).mock.calls.length).toBe(2)
   })
 
   it('preview is immutable: emits only non-interactive lineSegments (no onClick / onPointerOver)', () => {

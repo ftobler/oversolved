@@ -39,21 +39,36 @@ function geomKeyFromSegments(pts: Float32Array): string {
 }
 
 function PreviewBodyEdges({ edges, existingGeom }: PreviewBodyEdgesProps) {
-  const filteredEdges = useMemo(() => {
-    if (!existingGeom) return edges
-    return edges.filter((edge) => {
-      const key = geomKeyFromSegments(buildEdgeSegments([edge]))
-      return !key || !existingGeom.has(key)
-    })
-  }, [edges, existingGeom])
+  // Tessellate each edge once; the point array feeds both the suppression key
+  // and, for the survivors, the merged BufferGeometry.
+  const tessellated = useMemo(
+    () => edges.map((edge) => {
+      const pts = buildEdgeSegments([edge])
+      return { pts, key: geomKeyFromSegments(pts) }
+    }),
+    [edges],
+  )
 
   const geo = useMemo(() => {
-    const pts = buildEdgeSegments(filteredEdges)
-    if (pts.length === 0) return null
+    const survivors = existingGeom
+      ? tessellated.filter(t => !t.key || !existingGeom.has(t.key))
+      : tessellated
+    let total = 0
+    for (const t of survivors) total += t.pts.length
+    if (total === 0) return null
+    // buildEdgeSegmentGeometry carries no state across edges, so the batch call
+    // over a list is exactly its per-edge buffers joined in order. Splicing the
+    // first-pass arrays therefore yields a byte-identical buffer for free.
+    const merged = new Float32Array(total)
+    let offset = 0
+    for (const t of survivors) {
+      merged.set(t.pts, offset)
+      offset += t.pts.length
+    }
     const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.BufferAttribute(pts, 3))
+    g.setAttribute('position', new THREE.BufferAttribute(merged, 3))
     return g
-  }, [filteredEdges])
+  }, [tessellated, existingGeom])
 
   useEffect(() => {
     return () => { geo?.dispose() }
