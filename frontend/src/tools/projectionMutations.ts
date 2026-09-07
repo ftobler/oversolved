@@ -1,7 +1,7 @@
 // PURE LOGIC -- no Three.js, no React, no store reads.
 // Lowers a pickable ID (body face/edge/vertex query, or a foreign sketch
-// entity) into the `add_projected_entity` mutations that pull it onto the
-// active sketch plane. Shared by the project tool's click path (drawLogic) and
+// entity or vertex) into the `add_projected_entity` mutations that pull it
+// onto the active sketch plane. Shared by the project tool's click path (drawLogic) and
 // by the pre-selection path, so both agree on kind resolution and face-wire
 // expansion.
 import type { Mutation } from '@/types/cad'
@@ -57,6 +57,27 @@ export function projectionMutationsForId(
     const ek = resolvers.entityKind(sourceFeatureId, sourceEntityId)
     const kind = ek && PROJECTABLE_KINDS.includes(ek) ? ek : 'line'
     return [{ type: 'add_projected_entity', featureId, kind, source }]
+  }
+
+  // Foreign sketch vertex pick: vertex:<featureId>:<entityId>:<sub>
+  // An endpoint or control point of another sketch's entity is real,
+  // projectable point geometry, the same as the body-vertex ancestry query
+  // handled below. A vertex of the active sketch is excluded for the same
+  // reason its entities are: a sketch cannot project onto its own plane.
+  if (id.startsWith('vertex:')) {
+    const parts = id.split(':')
+    // A sub-point ref needs an actual sub key: without it the source would
+    // degrade to the whole entity, projecting a curve where a point was picked.
+    if (parts.length < 4 || parts[3] === '') return []
+    const sourceFeatureId = parts[1]
+    const sourceEntityId = parts[2]
+    const sub = parts[3]
+    if (sourceFeatureId === featureId) return []
+
+    // Projection is carried by `source`: emit the absolute sub-point ref plus
+    // the fixed point kind (a vertex has no curve kind to resolve).
+    const source = emitWire(absolute(sourceFeatureId, sourceEntityId, sub))
+    return [{ type: 'add_projected_entity', featureId, kind: 'point', source }]
   }
 
   // Body geometry pick: ancestry query from face/edge/vertex layer

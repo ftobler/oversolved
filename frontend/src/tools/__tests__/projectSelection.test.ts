@@ -63,6 +63,22 @@ describe('projectionMutationsForId', () => {
     expect(muts[0]).toMatchObject({ kind: 'point', source: VERTEX_Q })
   })
 
+  it('projects a foreign sketch vertex as a point', () => {
+    const muts = projectionMutationsForId('vertex:S2:L1:end', FEATURE, noResolvers)
+    expect(muts).toEqual([
+      { type: 'add_projected_entity', featureId: FEATURE, kind: 'point', source: '@S2/L1/end' },
+    ])
+  })
+
+  it('skips a vertex of the sketch being projected onto', () => {
+    expect(projectionMutationsForId(`vertex:${FEATURE}:L1:end`, FEATURE, noResolvers)).toEqual([])
+  })
+
+  it('skips a malformed vertex id that carries no sub-point', () => {
+    expect(projectionMutationsForId('vertex:S2:L1', FEATURE, noResolvers)).toEqual([])
+    expect(projectionMutationsForId('vertex:S2:L1:', FEATURE, noResolvers)).toEqual([])
+  })
+
   it('expands a face into one projected entity per boundary edge', () => {
     const faceEdges = [
       { source: '?a;@b:edge', kind: 'line' },
@@ -94,6 +110,14 @@ describe('projectionMutationsForSelection', () => {
     const ids = [`entity:${FEATURE}:L1`, STRAIGHT_Q, 'constraint:S1:C1', VERTEX_Q]
     const muts = projectionMutationsForSelection(ids, FEATURE, noResolvers)
     expect(muts.map(m => m.type === 'add_projected_entity' && m.source)).toEqual([STRAIGHT_Q, VERTEX_Q])
+  })
+
+  it('projects a foreign sketch vertex inside a mixed selection', () => {
+    const ids = ['vertex:S2:L1:end', 'constraint:S1:C1']
+    const muts = projectionMutationsForSelection(ids, FEATURE, noResolvers)
+    expect(muts).toEqual([
+      { type: 'add_projected_entity', featureId: FEATURE, kind: 'point', source: '@S2/L1/end' },
+    ])
   })
 
   it('returns nothing for a wholly unprojectable selection', () => {
