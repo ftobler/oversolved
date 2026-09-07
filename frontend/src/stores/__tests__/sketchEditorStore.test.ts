@@ -1107,10 +1107,17 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     })
 
-    it('seed activate keeps existing normal selection', () => {
-      useSketchEditorStore.setState({ normalSelection: new Set(['@something']) })
-      useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' }, { seed: true })
-      expect(useSketchEditorStore.getState().normalSelection.has('@something')).toBe(true)
+    it('activating a pick field wipes a stray selection and its claims', () => {
+      useSketchEditorStore.setState({
+        normalSelection: new Set(['@ex1/edge/0']),
+        selectedPicks: new Map([['@ex1/edge/0', new Set(['ex1#b0#3'])]]),
+        selectionDomain: 'body_3d',
+      })
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'S1', field: 'plane' })
+      const s = useSketchEditorStore.getState()
+      expect(s.normalSelection.size).toBe(0)
+      expect(s.selectedPicks.size).toBe(0)
+      expect(s.chipOwnedSelection.size).toBe(0)
     })
   })
 
@@ -1380,6 +1387,25 @@ describe('sketchEditorStore', () => {
         const s = useSketchEditorStore.getState()
         expect(s.activePickField).toEqual({ featureId: 'F1', field: 'profile' })
         expect(s.modeStack).toEqual(['pick'])
+      })
+
+      it('entering a drawing tool with an open pick field prunes claims by query, not a blanket wipe', () => {
+        const s = useSketchEditorStore.getState()
+        s.setActivePickField({ featureId: 'ex1', field: 'edges', multi: true })
+        // A non-chip entry that survives the switch (box-select does not gate on
+        // the open field). Its claim must ride along with its still-selected query.
+        useSketchEditorStore.setState({
+          normalSelection: new Set(['@ex1/edge/0']),
+          selectedPicks: new Map([['@ex1/edge/0', new Set(['ex1#b0#3'])]]),
+          selectionDomain: 'body_3d',
+        })
+
+        s.setActiveTool('line')
+
+        const after = useSketchEditorStore.getState()
+        expect(after.activePickField).toBeNull()
+        expect(after.normalSelection.has('@ex1/edge/0')).toBe(true)
+        expect(after.selectedPicks.get('@ex1/edge/0')).toEqual(new Set(['ex1#b0#3']))
       })
 
       it('clears the pick field and chip selection when entering a drawing tool', () => {

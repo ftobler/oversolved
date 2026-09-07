@@ -398,7 +398,7 @@ interface SketchEditorState {
   clearDimensionPicks: () => void
   setDimensionCursorWorld: (p: [number, number] | null) => void
   finalizeDimensionPlacement: (clientPos: [number, number]) => void
-  setActivePickField: (field: ActivePickField | null, opts?: { seed?: boolean }) => void
+  setActivePickField: (field: ActivePickField | null) => void
 }
 
 // Snapshot the current state into the ToolContext a tool lifecycle hook expects.
@@ -754,7 +754,10 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         const nextNormal = new Set(baseNormal)
         for (const v of state.chipOwnedSelection) nextNormal.delete(v)
         updates.normalSelection = nextNormal
-        updates.selectedPicks = new Map<string, Set<string>>()
+        // Prune by the surviving queries rather than wiping wholesale, matching
+        // syncChipSelection/clearChipSelection: an entry that outlives the
+        // switch keeps the claim that names which primitive it is.
+        updates.selectedPicks = prunePickClaims(state.selectedPicks, nextNormal)
         if (state.modeStack[state.modeStack.length - 1] === 'pick') {
           updates.modeStack = state.modeStack.slice(0, -1)
         }
@@ -1167,7 +1170,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     })
   },
 
-  setActivePickField: (field, opts) => {
+  setActivePickField: (field) => {
     // Leaving any prior pick: drop its mode and chip-owned mirror. The field is
     // cleared before the pop for the same reason deactivateTool clears the tool:
     // popMode revalidates on an empty stack and an armed pick field with no
@@ -1205,16 +1208,18 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // than skip silently.
     deactivateTool(get, set, get().activeTool)
 
-    // Manual activate clears the existing normal selection so a stray prior
-    // selection is not instantly consumed as a pick. `seed: true` (used by
-    // auto-activate-on-insert) keeps it so it becomes the chip's initial picks.
+    // Activating a pick field clears the existing normal selection so a stray
+    // prior selection is not instantly consumed as a pick.
     set({
       activePickField: field,
       activeTool: null,
       drawPoints: [],
       drawHover: null,
       drawSnapRefs: [],
-      ...(opts?.seed ? {} : { normalSelection: new Set<string>(), selectedPicks: new Map<string, Set<string>>(), chipOwnedSelection: new Set<string>(), selectionDomain: 'sketch_2d' as SelectionDomain }),
+      normalSelection: new Set<string>(),
+      selectedPicks: new Map<string, Set<string>>(),
+      chipOwnedSelection: new Set<string>(),
+      selectionDomain: 'sketch_2d' as SelectionDomain,
     })
     get().pushMode('pick')
 
