@@ -119,6 +119,11 @@ interface HarnessOptions {
   metaOmits?: string[]
   // Body ids whose blob carries edges/vertices but no `edge_queries`/`vertex_queries`.
   queryless?: string[]
+  /** Body ids for which the face-hash diff throws, standing in for a throw from deep
+   *  inside the registrar (edgeGeometryHash on a malformed arc, a NaN sort key). */
+  registrarThrows?: string[]
+  // Body ids for which the METADATA extractor throws outright instead of omitting.
+  metaThrows?: string[]
 }
 
 class Harness {
@@ -157,8 +162,17 @@ class Harness {
       postRegister: () => {},
       initGlobalRepo: () => new Repository(),
       tessellateBodies: (store) => this.meta(store, false),
-      extractBrepMetadata: (store) => this.meta(store, true),
-      brepDiffNewFaceHashes: (body) => { this.faceRegistrations.push(body.id); return new Set() },
+      extractBrepMetadata: (store) => {
+        for (const bid of Object.keys(store)) {
+          if (this.options.metaThrows?.includes(bid)) throw new Error('synthetic metadata throw')
+        }
+        return this.meta(store, true)
+      },
+      brepDiffNewFaceHashes: (body) => {
+        this.faceRegistrations.push(body.id)
+        if (this.options.registrarThrows?.includes(body.id)) throw new Error('synthetic registrar throw')
+        return new Set()
+      },
       brepDiffNewEdgeHashes: (body) => { this.edgeRegistrations.push(body.id); return new Set() },
       brepDiffNewVertexHashes: () => new Set(),
     }
@@ -390,15 +404,16 @@ describe('fallback meshes', () => {
   })
 })
 
+// Ids of the ancestry elements a checkpoint carries for one body, by payload field.
+function elementsOf(state: BuildState, fid: string, bodyId: string, field: string): string[] {
+  const elements = (state.checkpoints[fid].repo_snapshot as Record<string, unknown>)
+    .elements as Record<string, Record<string, unknown>>
+  return Object.keys(elements).filter(
+    (eid) => elements[eid]?.body_id === bodyId && elements[eid]?.[field] !== undefined,
+  )
+}
+
 describe('a body the solve loop could not identify', () => {
-  // Ids of the ancestry elements a checkpoint carries for one body, by payload field.
-  function elementsOf(state: BuildState, fid: string, bodyId: string, field: string): string[] {
-    const elements = (state.checkpoints[fid].repo_snapshot as Record<string, unknown>)
-      .elements as Record<string, Record<string, unknown>>
-    return Object.keys(elements).filter(
-      (eid) => elements[eid]?.body_id === bodyId && elements[eid]?.[field] !== undefined,
-    )
-  }
 
   // `extractBrepMetadata` fails per body and silently: it logs and omits that body from
   // its output. `tessellateBodies` is a different producer and may still succeed, which
@@ -424,5 +439,38 @@ describe('a body the solve loop could not identify', () => {
     const state = r._build_state
     expect(elementsOf(state, 'f2', 'body_f1', 'edge_index').length).toBe(2)
     expect(elementsOf(state, 'f2', 'body_f1', 'vertex_index').length).toBe(2)
+  })
+})
+
+// ─── checkpoint-recovery pass error contract (M1) ───
+
+describe('a throwing registrar in the checkpoint-recovery pass', () => {
+  it('completes the solve; the throwing body just loses its B-rep ancestry', () => {
+    const h = new Harness({ registrarThrows: ['body_f1'] })
+    const r = h.run({ features: [{ id: 'f1', kind: 'make' }, { id: 'f2', kind: 'make' }] })
+    const result = r.result as Record<string, Record<string, unknown>>
+    expect(result.f1.status).toBe('ok')
+    expect(result.f2.status).toBe('ok')
+    const state = r._build_state
+    // Both passes failed for body_f1: no face ancestry in any checkpoint.
+    expect(elementsOf(state, 'f1', 'body_f1', 'face_index')).toEqual([])
+    expect(elementsOf(state, 'f2', 'body_f1', 'face_index')).toEqual([])
+    // Unconditional solid ancestry still lands (registered in the solve loop),
+    // and the control body is fully identified.
+    expect(elementsOf(state, 'f2', 'body_f1', 'body_id').length).toBeGreaterThanOrEqual(1)
+    expect(elementsOf(state, 'f2', 'body_f2', 'face_index').length).toBe(2)
+  })
+
+  it('a throwing metadata extractor costs only the needing body its ancestry', () => {
+    // The last checkpoint recovers off the render mesh (tessellateBodies, which does
+    // not throw); the earlier checkpoint that must re-extract loses the ancestry.
+    const h = new Harness({ metaThrows: ['body_f1'] })
+    const r = h.run({ features: [{ id: 'f1', kind: 'make' }, { id: 'f2', kind: 'make' }] })
+    const result = r.result as Record<string, Record<string, unknown>>
+    expect(result.f1.status).toBe('ok')
+    expect(result.f2.status).toBe('ok')
+    const state = r._build_state
+    expect(elementsOf(state, 'f1', 'body_f1', 'face_index')).toEqual([])  // re-extract threw
+    expect(elementsOf(state, 'f2', 'body_f1', 'face_index').length).toBe(2)  // off the render mesh
   })
 })

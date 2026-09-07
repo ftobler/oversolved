@@ -824,6 +824,26 @@ export function registerBodyBrepFromMeta(
   if (verts.length) _registerBrepVertexAncestry(repo, body, verts, vertQueries, vertUuids, deps)
 }
 
+// One registrar, one error contract, honoured by BOTH registration passes: a body that
+// cannot be identified still solves, it just loses its B-rep ancestry. The solve loop
+// (`_registerBodyFaces`) always had this; the checkpoint-recovery pass did not, so a
+// throw from the registrar's own geometry code (`edgeGeometryHash` on a malformed arc,
+// a NaN face/edge sort key) or from a deps wiring that does not shield per body aborted
+// the whole build instead of costing one body its ancestry.
+function _tryRegisterBodyBrepFromMeta(
+  repo: Repository,
+  body: Body,
+  meta: Record<string, unknown>,
+  deps?: BuildDeps,
+): boolean {
+  try {
+    registerBodyBrepFromMeta(repo, body, meta, deps)
+    return true
+  } catch {
+    return false  // partial state possible (clearBodyAncestry already ran); the loop lives with the same
+  }
+}
+
 // Read one body's B-rep and register its ancestry into the live repo. Called
 // per feature in the build loop so a later feature's face/edge/vertex query
 // resolves against an earlier body's geometry (e.g. a circular_array axis edge
@@ -848,10 +868,10 @@ function _registerBodyFaces(
     const extract = extractCached ?? deps.extractBrepMetadata ?? deps.tessellateBodies
     const out = extract({ [body.id]: body }, globalRepo)[body.id]
     if (!out) return false
-    registerBodyBrepFromMeta(globalRepo, body, out, deps)
-    return true
+    return _tryRegisterBodyBrepFromMeta(globalRepo, body, out, deps)  // shared error contract
   } catch {
-    // Non-fatal: a body that fails to identify just lacks B-rep ancestry, and
+    // Only the extractor call can still throw to here; the registrar throw is handled
+    // inside the wrapper. Non-fatal either way: the body just lacks B-rep ancestry, and
     // the build continues.
     return false
   }
@@ -922,7 +942,7 @@ function _snapshotWithBrepGeometry(
     // rehydrated here: `needing` is empty for a body whose version has not moved since
     // the loop registered it, and its ancestry is therefore already in the snapshot.
     if (needing && !needing.has(bodyId)) continue
-    registerBodyBrepFromMeta(repo, body, bodiesOut[bodyId] ?? {}, deps)
+    _tryRegisterBodyBrepFromMeta(repo, body, bodiesOut[bodyId] ?? {}, deps)
     if (body.created_by) {
       ownedFids.add(body.created_by)
       // A needing body is shaped (the loop only attempts shaped bodies), so the
@@ -1369,9 +1389,19 @@ export function build(
     // (`checkpointRegistrationReal.test.ts`), which is what makes the loop's
     // metadata-based registration count for this checkpoint too. Earlier checkpoints
     // identify off cheap mesh-free metadata and stay lazy (empty bodies snapshot).
-    const cpMeta = isLast
-      ? bodiesOut
-      : extractMetaCached(_pickBodies(checkpoint.body_store_snapshot, needing), null)
+    // Same error contract as the solve loop: a metadata read that throws (a future
+    // BuildDeps that does not shield per body the way the real extractors do) costs the
+    // needing bodies their ancestry for THIS checkpoint, not the whole build. Batch
+    // granularity, not per body: `needing` is usually empty and the real extractors
+    // already isolate each body, so one call per needing body buys nothing.
+    let cpMeta: Record<string, Record<string, unknown>>
+    try {
+      cpMeta = isLast
+        ? bodiesOut
+        : extractMetaCached(_pickBodies(checkpoint.body_store_snapshot, needing), null)
+    } catch {
+      cpMeta = {}
+    }
     const bodiesSnapshot = isLast
       ? Object.fromEntries(
           Object.keys(checkpoint.body_store_snapshot).map((bid) => [bid, bodiesOut[bid] ?? {}]),
