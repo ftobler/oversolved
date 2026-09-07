@@ -16,10 +16,11 @@ describe('parseTarget local-ref fallback', () => {
     expect(parseTarget('arc7', 'sketchB')).toBe('$arc7')
   })
 
-  it('does not double-prefix an already-local $ token', () => {
-    // A token that itself starts with `$` is not specially recognized, so it is
-    // passed through the local branch and gains another `$`. Pinning the actual
-    // behavior so a future change to the fallback is caught.
-    expect(parseTarget('$lineA', 'sketch1')).toBe('$$lineA')
+  it('passes an already-local $ token through unchanged', () => {
+    // A token that already carries the `$` local prefix is a wire ref, not a
+    // bare element name. Prefixing it again would produce an unresolvable `$$`
+    // ref, so re-running a persisted constraint target through parseTarget must
+    // be a no-op.
+    expect(parseTarget('$lineA', 'sketch1')).toBe('$lineA')
   })
 })

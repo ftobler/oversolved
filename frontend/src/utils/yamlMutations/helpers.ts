@@ -26,13 +26,18 @@ export function findFeature(doc: PartDoc, featureId: string): PartFeature | unde
  *  emitWire) rather than hand-built here, so the `@`/`$` wire format lives in one
  *  place (kernel/query.ts, re-exported by utils/query). face/edge wrappers and the
  *  lenient `@`/`$` fallbacks are stripped through the shared wrapper stripper
- *  (selectionId.ts stripSelectionWrapper) rather than a hand-rolled split. */
+ *  (selectionId.ts stripSelectionWrapper) rather than a hand-rolled split.
+ *
+ *  An input that already carries the `$` local prefix is passed through
+ *  unchanged, so re-running a persisted local ref through parseTarget is a
+ *  no-op rather than a double-`$` corruption. */
 export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
   if (t.startsWith('entity:') || t.startsWith('vertex:')) {
     return emitWire(selectionToQuery(parseSelectionId(t), hostFeatureId))
   }
   if (t.startsWith('face:') || t.startsWith('edge:')) return stripSelectionWrapper(t)
   if (t.startsWith('@')) return t  // builtin/absolute query, pass through as-is
+  if (t.startsWith('$')) return t  // already a host-local wire ref; re-targeting a stored ref must not add a second $
   return '$' + t
 }
 
