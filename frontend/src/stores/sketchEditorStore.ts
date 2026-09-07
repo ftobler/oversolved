@@ -259,6 +259,13 @@ interface SketchEditorState {
   setHoveredPickKey: (key: string | null) => void
   setIsPointerDown: (down: boolean) => void
   clearNormalSelection: () => void
+  // Retires the whole selection subsystem AND every hover field at once, for a
+  // context change that invalidates both (leaving a sketch).
+  // clearNormalSelection covers selection but not hover; resetTransientState
+  // covers both but also tears down tools/modes/dialogs a feature-to-feature
+  // switch must keep. setActiveFeatureId delegates here so that transition
+  // cannot hand-list a subset the way its drag reset once did.
+  clearSelectionAndHover: () => void
   // Empties the per-primitive claims WITHOUT touching normalSelection. This is
   // the solve seam hook: a re-solve can shift primitive indices, so the claim a
   // pickKey encodes becomes stale and must not survive. The durable queries stay
@@ -539,6 +546,21 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   clearNormalSelection: () => set({ normalSelection: new Set(), selectedPicks: new Map(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d' }),
 
+  clearSelectionAndHover: () => set({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    chipOwnedSelection: new Set(),
+    selectionDomain: 'sketch_2d',
+    hoveredSelectionId: null,
+    hoveredPickKey: null,
+    hoveredConstraintEntityIds: new Set(),
+    hoveredVertexId: null,
+    hoveredVertexPosition: null,
+    hoveredSnapKind: null,
+    hoveredFaceNormal: null,
+    hoveredFaceCenter: null,
+  }),
+
   // Guarded so a solve that has nothing to clear does not mint a fresh map and
   // notify subscribers: this runs on every applied solve, and most solves carry
   // no claims at all.
@@ -553,18 +575,8 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   // from.
   resetTransientState: () => {
     get().clearDragState()
+    get().clearSelectionAndHover()
     set({
-      normalSelection: new Set(),
-      selectedPicks: new Map(),
-      selectionDomain: 'sketch_2d',
-      hoveredSelectionId: null,
-      hoveredPickKey: null,
-      hoveredConstraintEntityIds: new Set(),
-      hoveredVertexId: null,
-      hoveredFaceNormal: null,
-      hoveredFaceCenter: null,
-      hoveredVertexPosition: null,
-      hoveredSnapKind: null,
       activeTool: null,
       activeFeatureId: null,
       drawPoints: [],
@@ -577,7 +589,6 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       contextMenu: null,
       modeStack: [],
       activePickField: null,
-      chipOwnedSelection: new Set(),
     })
   },
 
@@ -809,6 +820,20 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // cannot drift from the canonical one when its field set grows.
     if (state.activeFeatureId !== id) {
       get().clearDragState()
+    }
+    // Leaving a feature retires its selection and hover. A sketch-scoped query
+    // (entity:S1:l1) that outlives the sketch resolves against nothing:
+    // deleteSelected filters on parts[1] === activeFeatureId (now null) so
+    // Delete silently no-ops and, dispatching no mutation, does not even clear
+    // the selection as a side effect; a stale hovered face normal could still
+    // feed the "Normal to" context-menu item for a face that is gone.
+    // Unconditional for the same reason the undo path routes through
+    // resetTransientState: re-resolving every query against the new context on
+    // each exit is worse than a clean slate. A null -> feature transition is
+    // exempt: a selection made in part view before pressing Edit is a valid
+    // carry-in.
+    if (state.activeFeatureId !== null && state.activeFeatureId !== id) {
+      get().clearSelectionAndHover()
     }
     set(state => {
       if (state.activeFeatureId !== null && id === null) {

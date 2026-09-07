@@ -34,6 +34,9 @@ features:
 // seam (useSolver applySolveResult -> clearSelectedPicks) while the durable
 // query selection survives, so computeHighlight re-highlights by query
 // membership. A stale positional claim must never survive a re-tessellation.
+// The sketch entry is the re-solve this straddles: leaving the sketch is a
+// context change that retires the whole selection subsystem, so the survival
+// half has to be read before the exit and the exit is asserted for what it is.
 describe('selection across a re-solve (clearSelectedPicks contract)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -49,7 +52,7 @@ describe('selection across a re-solve (clearSelectedPicks contract)', () => {
     usePartEditorStore.setState({ editingFeatureId: null })
   })
 
-  it('clears the pick claims but keeps the query when an edit enter/exit re-solves', async () => {
+  it('clears the pick claims but keeps the query across an edit-enter re-solve', async () => {
     partDocStoreMock({ content: SKETCH_DOC })
 
     render(
@@ -77,6 +80,10 @@ describe('selection across a re-solve (clearSelectedPicks contract)', () => {
     await act(async () => { await new Promise(r => setTimeout(r, 0)) })  // flush the enter's solve
     expect(solveMock.mock.calls.length).toBeGreaterThan(solvesBeforeEnter)
 
+    const afterEnter = useSketchEditorStore.getState()
+    expect(afterEnter.normalSelection.has('?02;ab:face')).toBe(true)
+    expect(afterEnter.selectedPicks.size).toBe(0)
+
     const solvesBeforeExit = solveMock.mock.calls.length
     fireEvent.click(screen.getByTitle('OK'))
     await waitFor(() => { expect(usePartEditorStore.getState().editingFeatureId).toBeNull() })
@@ -84,8 +91,8 @@ describe('selection across a re-solve (clearSelectedPicks contract)', () => {
     await act(async () => { await new Promise(r => setTimeout(r, 50)) })
     expect(solveMock.mock.calls.length).toBeGreaterThan(solvesBeforeExit)
 
-    const s = useSketchEditorStore.getState()
-    expect(s.normalSelection.has('?02;ab:face')).toBe(true)
-    expect(s.selectedPicks.size).toBe(0)
+    // Leaving the sketch is not a re-solve question: setActiveFeatureId retires
+    // the selection wholesale so a sketch-scoped query cannot outlive its sketch.
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
   })
 })

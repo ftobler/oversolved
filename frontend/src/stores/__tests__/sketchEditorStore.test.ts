@@ -888,6 +888,85 @@ describe('sketchEditorStore', () => {
       expect(s.alignmentSnapPoint).toBeNull()
       expect(s.alignmentSnapKind).toBeNull()
     })
+
+    it('retires selection, picks, chip-owned entries and hover on sketch exit', () => {
+      const s = useSketchEditorStore.getState()
+      s.setActiveFeatureId('S1')
+      s.toggleNormalSelection('entity:S1:l1')
+      s.syncChipSelection(['@builtin_plane_front'])
+      useSketchEditorStore.setState({
+        hoveredSelectionId: 'entity:S1:l1',
+        hoveredPickKey: 'ex1#b0#3',
+        hoveredConstraintEntityIds: new Set(['entity:S1:l1']),
+        hoveredFaceNormal: [0, 0, 1],
+        hoveredFaceCenter: [1, 2, 3],
+      })
+
+      s.setActiveFeatureId(null)
+
+      const after = useSketchEditorStore.getState()
+      expect(after.normalSelection.size).toBe(0)
+      expect(after.selectedPicks.size).toBe(0)
+      expect(after.chipOwnedSelection.size).toBe(0)
+      expect(after.selectionDomain).toBe('sketch_2d')
+      expect(after.hoveredSelectionId).toBeNull()
+      expect(after.hoveredPickKey).toBeNull()
+      expect(after.hoveredConstraintEntityIds.size).toBe(0)
+      expect(after.hoveredFaceNormal).toBeNull()
+      expect(after.hoveredFaceCenter).toBeNull()
+    })
+
+    it('retires selection when switching directly from one sketch to another', () => {
+      const s = useSketchEditorStore.getState()
+      s.setActiveFeatureId('S1')
+      s.toggleNormalSelection('entity:S1:l1')
+      s.setActiveFeatureId('S2')
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    })
+
+    it('keeps a pre-existing selection when entering a sketch from the part view', () => {
+      const s = useSketchEditorStore.getState()
+      s.toggleNormalSelection('@builtin_plane_front')
+      s.setActiveFeatureId('S1')
+      expect(useSketchEditorStore.getState().normalSelection.has('@builtin_plane_front')).toBe(true)
+    })
+
+    it('leaves selection untouched when the active feature is re-asserted unchanged', () => {
+      const s = useSketchEditorStore.getState()
+      s.setActiveFeatureId('S1')
+      s.toggleNormalSelection('entity:S1:l1')
+      s.setActiveFeatureId('S1')
+      expect(useSketchEditorStore.getState().normalSelection.has('entity:S1:l1')).toBe(true)
+    })
+  })
+
+  describe('resetTransientState', () => {
+    it('still clears every selection and hover field (delegates to clearSelectionAndHover)', () => {
+      useSketchEditorStore.setState({
+        normalSelection: new Set(['entity:S1:l1']),
+        selectedPicks: new Map([['@ex1/edge/0', new Set(['ex1#b0#3'])]]),
+        chipOwnedSelection: new Set(['entity:S1:l1']),
+        selectionDomain: 'mixed',
+        hoveredSelectionId: 'x',
+        hoveredPickKey: 'y',
+        hoveredConstraintEntityIds: new Set(['z']),
+        hoveredVertexId: 'v',
+        hoveredVertexPosition: [1, 1],
+        hoveredSnapKind: 'path',
+        hoveredFaceNormal: [0, 0, 1],
+        hoveredFaceCenter: [0, 0, 0],
+      })
+      useSketchEditorStore.getState().resetTransientState()
+      const s = useSketchEditorStore.getState()
+      for (const v of [s.hoveredSelectionId, s.hoveredPickKey, s.hoveredVertexId, s.hoveredVertexPosition, s.hoveredSnapKind, s.hoveredFaceNormal, s.hoveredFaceCenter]) {
+        expect(v).toBeNull()
+      }
+      expect(s.normalSelection.size).toBe(0)
+      expect(s.selectedPicks.size).toBe(0)
+      expect(s.chipOwnedSelection.size).toBe(0)
+      expect(s.hoveredConstraintEntityIds.size).toBe(0)
+      expect(s.selectionDomain).toBe('sketch_2d')
+    })
   })
 
   describe('draw tool state', () => {
