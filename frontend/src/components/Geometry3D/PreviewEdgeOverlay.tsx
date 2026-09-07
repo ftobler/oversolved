@@ -11,7 +11,6 @@ interface PreviewEdgeOverlayProps {
 }
 
 interface PreviewBodyEdgesProps {
-  bodyKey: string
   edges: EdgeData[]
   existingGeom: Set<string> | null
 }
@@ -86,7 +85,6 @@ export default function PreviewEdgeOverlay({ items, pickItems }: PreviewEdgeOver
         return (
           <PreviewBodyEdges
             key={item.key}
-            bodyKey={item.key}
             edges={item.edges}
             existingGeom={existingGeom}
           />
