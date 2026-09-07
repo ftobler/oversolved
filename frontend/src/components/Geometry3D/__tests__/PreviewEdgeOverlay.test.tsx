@@ -102,6 +102,40 @@ describe('PreviewEdgeOverlay', () => {
     expect(container.innerHTML).not.toBe('')
   })
 
+  it('suppresses a preview edge coincident with a ghost edge walked in the opposite direction', () => {
+    // Regression (Group 7 M2): a rebuild that re-topologizes a body without
+    // moving an edge can hand OCC the reversed orientation. Same physical
+    // curve, so the preview line is still redundant and must not be redrawn
+    // over the ghost.
+    const forward: EdgeData = { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }
+    const reversed: EdgeData = { kind: 'line', start: [1, 0, 0], end: [0, 0, 0] }
+    const { container } = render(
+      <PreviewEdgeOverlay items={[makeItem('b1', [reversed])]} pickItems={[makeItem('b1', [forward])]} />
+    )
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('suppresses a coincident polyline sampled from the other end', () => {
+    // Same set of sampled points, reverse emission order.
+    const fwd: EdgeData = { kind: 'spline', points: [[0, 0, 0], [1, 0, 0], [2, 0, 0]] }
+    const rev: EdgeData = { kind: 'spline', points: [[2, 0, 0], [1, 0, 0], [0, 0, 0]] }
+    const { container } = render(
+      <PreviewEdgeOverlay items={[makeItem('b1', [rev])]} pickItems={[makeItem('b1', [fwd])]} />
+    )
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('still draws a genuinely relocated edge (canonicalization is not identity-blind)', () => {
+    // Guard against over-suppression: a moved edge occupies a different point
+    // set and must survive the order-independent key.
+    const here: EdgeData = { kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }
+    const moved: EdgeData = { kind: 'line', start: [100, 0, 0], end: [101, 0, 0] }
+    const { container } = render(
+      <PreviewEdgeOverlay items={[makeItem('b1', [moved])]} pickItems={[makeItem('b1', [here])]} />
+    )
+    expect(container.innerHTML).not.toBe('')
+  })
+
   it('draws every preview edge when no pickItems are provided', () => {
     const previewItem = makeItem('b1', [lineEdge])
     const { container } = render(<PreviewEdgeOverlay items={[previewItem]} />)

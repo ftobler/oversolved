@@ -15,28 +15,34 @@ interface PreviewBodyEdgesProps {
   existingGeom: Set<string> | null
 }
 
-// A position-bearing key for one edge, derived from its sampled polyline. Two
-// edges match iff they are geometrically coincident. This is what the overlay
-// must compare on: construction queries are (by design) position-independent
-// identity, so an edge that is rigidly moved keeps the same query but a
-// different geometry key. Comparing queries would suppress a moved edge as if
-// it were unchanged, hiding the whole preview of a transform/mirror that only
-// repositions a body (regression from removing geom tokens from queries).
-function edgeGeomKey(edge: EdgeData): string {
-  const pts = buildEdgeSegments([edge])
+// A position-bearing key for one edge, derived from its sampled polyline and
+// made independent of the direction and start parameter the kernel happened to
+// choose. Two edges match iff they occupy the same rounded set of sampled
+// points, i.e. they are geometrically coincident however OCC walked them: a
+// rebuild that re-topologizes a body without moving an edge may hand back the
+// reversed orientation, and that edge is still redundant with its ghost. Keyed
+// on geometry, never on the (position-independent) construction query: a
+// rigidly moved edge keeps its query but lands on a different point set, so a
+// transform/mirror preview is not wrongly suppressed.
+function geomKeyFromSegments(pts: Float32Array): string {
   if (pts.length === 0) return ''
-  // Quantize to absorb float32 tessellation noise; a moved edge lands in a
-  // different cell while a truly-unchanged edge hashes identically.
-  let key = ''
-  for (let i = 0; i < pts.length; i++) key += Math.round(pts[i] * 1000) + ','
-  return key
+  const cells = new Set<string>()
+  for (let i = 0; i + 3 <= pts.length; i += 3) {
+    // Quantize to absorb float32 tessellation noise; a moved point lands in a
+    // different cell, a truly-unchanged point in the same one.
+    const x = Math.round(pts[i] * 1000)
+    const y = Math.round(pts[i + 1] * 1000)
+    const z = Math.round(pts[i + 2] * 1000)
+    cells.add(x + ',' + y + ',' + z)
+  }
+  return Array.from(cells).sort().join(';')
 }
 
 function PreviewBodyEdges({ edges, existingGeom }: PreviewBodyEdgesProps) {
   const filteredEdges = useMemo(() => {
     if (!existingGeom) return edges
     return edges.filter((edge) => {
-      const key = edgeGeomKey(edge)
+      const key = geomKeyFromSegments(buildEdgeSegments([edge]))
       return !key || !existingGeom.has(key)
     })
   }, [edges, existingGeom])
@@ -71,7 +77,7 @@ export default function PreviewEdgeOverlay({ items, pickItems }: PreviewEdgeOver
     const set = new Set<string>()
     for (const item of pickItems) {
       for (const edge of item.edges) {
-        const key = edgeGeomKey(edge)
+        const key = geomKeyFromSegments(buildEdgeSegments([edge]))
         if (key) set.add(key)
       }
     }
