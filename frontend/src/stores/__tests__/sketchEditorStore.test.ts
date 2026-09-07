@@ -407,6 +407,69 @@ describe('sketchEditorStore', () => {
       expect(handler).not.toHaveBeenCalled()
     })
 
+    it('returns a rejection message (naming the kinds) when operand kinds are not allowed', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:A1': 'arc',
+        'entity:Sketch1:A2': 'arc',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:A1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:A2')
+
+      const reason = useSketchEditorStore.getState().applyConstraint('parallel')
+
+      expect(reason).toBeTruthy()
+      expect(reason).toMatch(/parallel/i)
+      expect(reason).toMatch(/arc/)
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('returns null when the constraint is authored', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:L2': 'line',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
+
+      expect(useSketchEditorStore.getState().applyConstraint('parallel')).toBeNull()
+      expect(handler).toHaveBeenCalledOnce()
+    })
+
+    it('returns a rejection message for a single non-line horizontal target', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({ 'entity:Sketch1:C1': 'circle' })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+
+      const reason = useSketchEditorStore.getState().applyConstraint('horizontal')
+
+      expect(reason).toMatch(/line/i)
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('returns a rejection message for a malformed midpoint operand set', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
+
+      expect(useSketchEditorStore.getState().applyConstraint('midpoint')).toBeTruthy()
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('returns null (no toast) when there is nothing to act on', () => {
+      setSketchCallback('onMutation', vi.fn())
+      expect(useSketchEditorStore.getState().applyConstraint('horizontal')).toBeNull()
+    })
+
     it('rejects parallel mixing a line and a circle', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

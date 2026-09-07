@@ -50,7 +50,10 @@ export function constraintCommandFn(
 ): () => void {
   return c.implemented === false
     ? () => { showMessage({ title: 'Not Implemented', message: `Constraint "${c.label}" is not yet implemented.`, variant: 'info' }); }
-    : () => getState().applyConstraint(c.kind)
+    : () => {
+        const reason = getState().applyConstraint(c.kind)
+        if (reason !== null) showMessage({ title: 'Cannot apply constraint', message: reason, variant: 'error' })
+      }
 }
 
 /**

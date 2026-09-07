@@ -392,7 +392,11 @@ interface SketchEditorState {
   setShowDebugHit: (enabled: boolean) => void
   setShowConstraintTiles: (show: boolean) => void
   setEntityKindMap: (map: Record<string, string>) => void
-  applyConstraint: (kind: string) => void
+  // Returns a human-readable rejection when the selection cannot carry the
+  // constraint (incompatible operand kinds), or null when the constraint was
+  // authored or there was simply nothing to act on. The caller surfaces the
+  // message; a devOnly console.warn reached nobody in a production build.
+  applyConstraint: (kind: string) => string | null
   applyOffset: (distance: number) => void
   toggleConstruction: () => void
   deleteSelected: () => void
@@ -870,12 +874,12 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   applyConstraint: (kind) => {
     const { normalSelection: selection, activeFeatureId, entityKindMap } = get()
     const onMutation = requireMutation('applyConstraint')
-    if (!onMutation) return
-    if (selection.size === 0 || !activeFeatureId) return
+    if (!onMutation) return null
+    if (selection.size === 0 || !activeFeatureId) return null
     const targets = [...selection].filter(t =>
       t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_') || t.startsWith('dock:') || t.startsWith('isect:')
     )
-    if (targets.length === 0) return
+    if (targets.length === 0) return null
 
     // Reject operand kinds the constraint cannot represent before authoring it.
     // A parallel between two arcs (or a concentric on a line) otherwise lands in
@@ -885,6 +889,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // kind must fall in one common group. An unknown kind (not in entityKindMap
     // yet) is tolerated so this never blocks on a transient/empty map.
     const def = CONSTRAINT_BY_KIND.get(kind)
+    const label = def?.label ?? kind
     if (def?.entityKindGroups) {
       const groups = def.entityKindGroups
       const kinds = targets
@@ -893,8 +898,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         .filter((k): k is string => k !== undefined)
       const allOk = groups.some(g => kinds.every(k => g.includes(k)))
       if (!allOk) {
-        if (devOnly) console.warn(`[sketchEditorStore] applyConstraint(${kind}): operand kinds [${kinds.join(', ')}] not allowed.`)
-        return
+        return `${label} cannot be applied to those entity kinds (${kinds.join(', ')}).`
       }
     }
 
@@ -904,8 +908,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
         if (entityTargets.length === 1) {
           const ek = entityKindMap[entityTargets[0]]
           if (ek !== undefined && ek !== 'line') {
-            if (devOnly) console.warn(`[sketchEditorStore] applyConstraint(${kind}): single target must be a line, got '${ek}'.`)
-            return
+            return `${label} applies to a line; the selected entity is a ${ek}.`
           }
         }
       }
@@ -916,10 +919,13 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
       const vertexTargets = targets.filter(t => t.startsWith('vertex:'))
       const validLinePoint = entityTargets.length === 1 && vertexTargets.length === 1
       const validThreeVertex = vertexTargets.length === 3 && entityTargets.length === 0
-      if (!validLinePoint && !validThreeVertex) return
+      if (!validLinePoint && !validThreeVertex) {
+        return 'Midpoint needs a line and a point, or three points.'
+      }
     }
 
     onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
+    return null
   },
 
   // Offset the selected sketch entities by a signed distance. Each selected

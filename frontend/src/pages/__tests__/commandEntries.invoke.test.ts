@@ -123,7 +123,7 @@ describe('command callbacks that drive the sketch editor store', () => {
 
   it('apply_concentric applies the constraint and never shows a toast', () => {
     const store = useSketchEditorStore.getState()
-    const applyConstraint = vi.spyOn(store, 'applyConstraint').mockImplementation(noop)
+    const applyConstraint = vi.spyOn(store, 'applyConstraint').mockReturnValue(null)
     const showMessage = vi.fn()
 
     const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, showMessage)
@@ -132,6 +132,22 @@ describe('command callbacks that drive the sketch editor store', () => {
 
     expect(applyConstraint).toHaveBeenCalledWith('concentric')
     expect(showMessage).not.toHaveBeenCalled()
+  })
+
+  it('surfaces an operand-kind rejection from applyConstraint via showMessage', () => {
+    const store = useSketchEditorStore.getState()
+    vi.spyOn(store, 'applyConstraint').mockReturnValue('Parallel cannot be applied to those entity kinds (arc, arc).')
+    const showMessage = vi.fn()
+
+    const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, showMessage)
+    entries.find(x => x.name === 'apply_parallel')!.fn()
+
+    expect(showMessage).toHaveBeenCalledOnce()
+    expect(showMessage).toHaveBeenCalledWith({
+      title: 'Cannot apply constraint',
+      message: 'Parallel cannot be applied to those entity kinds (arc, arc).',
+      variant: 'error',
+    })
   })
 
   it('a synthetic implemented:false constraint still surfaces the toast', () => {

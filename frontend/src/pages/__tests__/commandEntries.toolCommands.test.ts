@@ -48,7 +48,7 @@ describe('apply commands for toolbar constraints', () => {
   it('every showInToolbar constraint with implemented !== false routes to applyConstraint', () => {
     const noop = () => {}
     const store = useSketchEditorStore.getState()
-    const applyConstraint = vi.spyOn(store, 'applyConstraint').mockImplementation(noop)
+    const applyConstraint = vi.spyOn(store, 'applyConstraint').mockReturnValue(null)
     const showMessage = vi.fn()
     const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, showMessage)
 
