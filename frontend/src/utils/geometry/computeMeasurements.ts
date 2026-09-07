@@ -132,6 +132,16 @@ export function computeMeasurements(
     return []
   }
 
+  // An ambiguous multi-entity selection has no single well-defined measurement.
+  // The pair loop and the vertex-plane loop below would each silently return the
+  // measurement of whichever pair the selection was built in first and drop the
+  // rest with no readout and no count, indistinguishable from a genuine
+  // two-entity pick. Mirror the "3+ vertices only" refusal above: a pair rule
+  // consumes exactly two non-plane entities and a point-to-plane rule consumes
+  // exactly one point, so anything past that is a guess, not a measurement.
+  if (lines.length + arcs.length + circles.length + points.length >= 3) return []
+  if (points.length >= 2 && planes.length > 0) return []
+
   // Use registry to evaluate single-entity measurements only if there's exactly one entity total
   const totalEntities = arcs.length + circles.length + lines.length + points.length
   if (totalEntities === 1) {

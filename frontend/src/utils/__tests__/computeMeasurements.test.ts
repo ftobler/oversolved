@@ -585,4 +585,45 @@ describe('Measurement Selection and Evaluation', () => {
       expect(result).toEqual(['dist: 4.000 mm'])  // dist([0,2], [0,-2])
     })
   })
+
+  describe('29. ambiguous multi-entity selections refuse rather than guess', () => {
+    // Mirrors block "3. three+ vertices only": once a selection holds more
+    // measurable entities than any single rule can consume, there is no
+    // well-defined measurement, so the result is empty rather than an arbitrary
+    // first pair.
+    it('refuses three selected lines instead of measuring an arbitrary pair', () => {
+      const result = computeMeasurements(sel(entity('L1'), entity('L2'), entity('L3')), sketch)
+      expect(result).toEqual([])
+    })
+
+    it('refuses a mixed two-line-plus-arc selection', () => {
+      const result = computeMeasurements(sel(entity('L1'), entity('L3'), entity('A1')), sketch)
+      expect(result).toEqual([])
+    })
+
+    it('refuses two points plus a plane instead of measuring only the first point', () => {
+      const solveResults = {
+        builtin_plane_front: {
+          plane: {
+            origin: [0, 0, 5] as [number, number, number],
+            normal: [0, 0, 1] as [number, number, number],
+            x_axis: [1, 0, 0] as [number, number, number],
+            y_axis: [0, 1, 0] as [number, number, number],
+          },
+        },
+      }
+      const result = computeMeasurements(
+        sel(vertex('L1', 'start'), vertex('L1', 'end'), '@builtin_plane_front'),
+        sketch,
+        solveResults,
+      )
+      expect(result).toEqual([])
+    })
+
+    it('still measures a genuine two-line selection (guard is not over-broad)', () => {
+      const result = computeMeasurements(sel(entity('L1'), entity('L3')), sketch)
+      expect(result).toHaveLength(1)
+      expect(result[0]).toContain('angle')
+    })
+  })
 })
