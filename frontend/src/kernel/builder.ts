@@ -342,7 +342,7 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
 // `{a:null}`; a Map also collides with a plain object carrying the same entries.
 // Equal hashes are therefore a coarser equality than content identity: only
 // payloads that really differ as JSON-clean JSON are guaranteed to hash
-// differently. The collisions are pre-existing and shared by the three uses
+// differently. The collisions are pre-existing and shared by the two uses
 // above, so they can never diverge live vs restored, but a future payload that
 // accidentally carries an undefined or NaN value will silently merge distinct
 // elements. It is NOT the only payload-equality predicate in the codebase:
@@ -801,10 +801,10 @@ export function registerBodyBrepFromMeta(
   clearBodyAncestry(repo, body.id)
   const mesh = meta['mesh'] as TessMesh | undefined
   if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(repo, body, mesh, deps)
-  // Non-array geometry is treated as absent rather than trusted: the checkpoint pass has
-  // no exception guard (the solve loop's `_registerBodyFaces` does), so a deps wiring that
-  // hands back the wrong shape would abort the whole build instead of costing one body
-  // its ancestry. `arrayOr` keeps both callers on the loop's forgiving contract.
+  // Non-array geometry is treated as absent rather than trusted: both registration
+  // passes route the registrar through `_tryRegisterBodyBrepFromMeta`, so a throw
+  // costs one body its ancestry, but a deps wiring that hands back the wrong shape
+  // still needs `arrayOr` to degrade it to empty rather than throw on it.
   const edges = arrayOr<Record<string, unknown>>(meta['edges'])
   const edgeQueries = arrayOr<string>(meta['edge_queries'], edges.map(() => ''))
   if (edges.length) _registerBrepEdgeAncestry(repo, body, edges, edgeQueries, deps)
