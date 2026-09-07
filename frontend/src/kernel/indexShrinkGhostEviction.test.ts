@@ -144,6 +144,11 @@ describe('index range shrink across a re-registration', () => {
     registerBodyBrepFromMeta(repo, makeBody('body_a', 1, 'ex1', 2), metaOf(1, 2))
 
     expect(repo.ancestral.size).toBe(before)
+    // The payload-equality dedup-skip is gone; idempotency now rests entirely on
+    // clearBodyAncestry + evictAncestryAndRegister. Pin exactly one element per face
+    // key so a reintroduced additive registration is caught here.
+    expect(repo.ancestral.get(faceKey('body_a', 0))?.eids).toHaveLength(1)
+    expect(repo.ancestral.get(faceKey('body_a', 1))?.eids).toHaveLength(1)
     expect(repo.ancestral.has(faceKey('body_a', 0))).toBe(true)
     expect(repo.ancestral.has(faceKey('body_a', 1))).toBe(true)
     expect(repo.query(faceQuery('body_a', 'ex1', 0))).not.toBeNull()

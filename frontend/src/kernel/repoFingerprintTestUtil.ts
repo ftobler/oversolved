@@ -11,7 +11,7 @@
 // the snapshot already carries is therefore unobservable, and that is exactly the redundancy
 // `double-registration-pass` removed. Losing a payload entirely is NOT hidden.
 //
-// The payload hash is the SAME predicate `_dedupeRepo` and the live dedup-skip use
+// The payload hash is the SAME predicate `_dedupeRepo` uses
 // (`stableJson`, builder.ts) -- recursive key sort, Map-aware, `-0` normalised. One
 // predicate everywhere is what makes the replay above agree with the restore, so a
 // dedupe regression shows up here as a fingerprint that no longer matches the source.

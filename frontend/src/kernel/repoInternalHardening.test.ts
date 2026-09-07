@@ -9,9 +9,10 @@
 //      classifiers (@cls_*), body tags (@body_*), geom-hash refs (@gface_ etc.)
 //      and legacy descriptors (@gdf| etc.) counted as feature refs. Tags are
 //      now classified before they are treated as feature references.
-//   3. builder.ts derived its ancestry key by re-implementing the canonical
-//      sorted-NUL-join inline, so a change to canonical() would silently desync
-//      the two sites. It now calls canonical(); the source-scan below pins that.
+//   3. builder.ts once re-implemented the canonical sorted-NUL-join inline in a
+//      face-ancestry dedup-skip (since deleted). It must never do so again: the
+//      source-scan below pins that no inline NUL-join returns, and that the
+//      remaining canonical() calls stay the one key derivation.
 
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
@@ -120,16 +121,15 @@ describe("gc tag classification", () => {
 })
 
 describe("single-implementation canonical", () => {
-  it("builder.ts derives its ancestry key from canonical(), never a second inline join", () => {
-    // The dedup-skip in `_registerBrepFaceAncestry` used to re-implement the
-    // canonical sorted-NUL-join inline. This is the headstone: if canonical()
-    // ever changes (escaping, framing), the builder key must follow. The scan
-    // matches `join(` with either quote style, so a reintroduced double-quoted
-    // NUL escape cannot slip through.
+  it("builder.ts never re-implements canonical()'s NUL-join inline", () => {
+    // The deleted face-ancestry dedup-skip used to. This is the headstone: if
+    // canonical() ever changes (escaping, framing) the builder must not carry a
+    // second copy of its join. The scan matches `join(` with either quote style,
+    // so a reintroduced double-quoted NUL escape cannot slip through.
     const src = readFileSync(join(__dirname, "builder.ts"), "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/(?:^|\s)\/\/[^\n]*/g, "")
     expect(src).not.toMatch(/join\(\s*['"](?:\\0|\\u0000)/)
-    expect(src).toContain("canonical(ancestorIds)")
+    expect(src).toContain("canonical(")  // still the one key derivation, never an inline join
   })
 })

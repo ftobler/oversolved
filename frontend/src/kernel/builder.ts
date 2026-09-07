@@ -284,9 +284,9 @@ function _dedupeRepo(repo: Repository): void {
     for (const elementId of entry.eids) {
       const payload = repo.elements.get(elementId)
       if (payload === undefined) continue
-      // The payload-equality predicate shared with the live dedup-skip and the
-      // parity fingerprint (`stableJson`, see its doc comment; the structural
-      // `payloadEqual` in postRegister.ts is the other, stricter one):
+      // The payload-equality predicate shared with the parity fingerprint
+      // (`stableJson`, see its doc comment; the structural `payloadEqual` in
+      // postRegister.ts is the other, stricter one):
       // recursive stable JSON, so nested object content is hashed. The old
       // allowlist serializer (`Object.keys(payload).sort()`) is a per-level
       // property allowlist, not a key sorter, so nested objects always
@@ -331,9 +331,9 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
 
 // ─── Hash / validation helpers ───
 
-// The canonical payload-equality predicate for the restore dedupe (`_dedupeRepo`),
-// the live dedup-skip (`_registerBrepFaceAncestry`) and the parity fingerprint
-// (`repoFingerprintTestUtil`). Stable under object key order (recursive key sort)
+// The canonical payload-equality predicate for the restore dedupe (`_dedupeRepo`)
+// and the parity fingerprint (`repoFingerprintTestUtil`). Stable under object key
+// order (recursive key sort)
 // and Map entry order (Maps become sorted-key objects), and normalizes `-0` to
 // `0`. It does NOT hash every content difference: JSON.stringify drops
 // undefined-valued object keys (`{a:1,b:undefined}` hashes like `{a:1}`) and
@@ -560,16 +560,6 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       classifiers: faceInfo.classifiers ?? [],
       ...(uuid !== null ? { uuid } : {}),
       ...(axis ? { axis } : {}),
-    }
-    const key = canonical(ancestorIds)
-    const entry = globalRepo.ancestral.get(key)
-    const existingIds = entry ? entry.eids : []
-    // Hoist the payload serialization out of the dedup scan: the entry can hold
-    // many elements, and recomputing stableJson(payload) per comparison is the
-    // O(n) repeat the edge/vertex paths already avoid.
-    const payloadJson = stableJson(payload)
-    if (existingIds.some((eid) => stableJson(globalRepo.elements.get(eid)) === payloadJson)) {
-      continue
     }
     const indexTag = emitWire(absolute(body.id, `face${faceIdx}`))
     evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
@@ -902,10 +892,8 @@ export function bodyVersion(b: Body): string {
  * The feature loop registers a body's B-rep ancestry into the LIVE repo, and the
  * checkpoint's `repo_snapshot` is taken after that -- so the snapshot the post-loop pass
  * rehydrates already contains the ancestry for every body version the loop registered.
- * Re-registering it is pure cost: identical face payloads hit the skip guard in
- * `_registerBrepFaceAncestry` (after a `stableJson` per candidate AND per existing
- * element), while edges and vertices churn through `evictAncestryAndRegister` and mint
- * fresh eids for the same payloads.
+ * Re-registering it is pure cost: every face, edge and vertex churns through
+ * `evictAncestryAndRegister` and mints fresh eids for the same payloads.
  *
  * `registeredVersions` maps body id -> the version whose ancestry actually landed in the
  * repo this checkpoint was snapshotted from. A body is missing from it when the loop
@@ -1366,7 +1354,7 @@ export function build(
   // register the B-rep ancestry of any body the solve loop did NOT already register into
   // that checkpoint's own repo snapshot. Usually that is no body at all -- the snapshot is
   // taken after the loop's registration pass, so it already carries the ancestry, and
-  // re-registering it only churned eids and burned `stableJson` per face per checkpoint.
+  // re-registering it only churned eids for the same payloads, once per checkpoint.
   // The remainder still gets its pass here: a null-shape body, a body whose shape handle
   // moved (the `modified_by` check in the loop misses a body that changed without a push,
   // `bodyVersion` does not), and a body whose loop-side identification failed -- that last
