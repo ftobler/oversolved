@@ -22,7 +22,7 @@ import type { Repository } from '../query'
 import type { Body } from '../types3d'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
-import { encodeInput, decodeOutput, STATUS_NAME, type FlatInput } from '@/wasm-kernel/codec'
+import { encodeInput, decodeOutput, STATUS_NAME, type FlatInput, type SolverOutput } from '@/wasm-kernel/codec'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes } from '../topologyDecorate'
@@ -218,6 +218,70 @@ function lowerProjectedEntities(
  * the solver treats it as immovable. This mirrors Python's
  * ``_project_source_to_params`` + ``_resolve_source_geometry``.
  */
+/**
+ * Refuse a solver output whose declared counts disagree with the layout we sent.
+ *
+ * The solver writes its OWN `entity_status` / `params_solved` lengths onto the
+ * wire (`codec.rs` emits `out.entity_status.len()`); nothing ties either of them
+ * to the `layout` this side built, and the zips downstream are positional. A
+ * TRUNCATED buffer already fails loudly -- DataView throws reading past the end
+ * -- but a well-formed buffer whose counts merely disagree does not: the zips
+ * then read off the end and put `undefined` into fields typed `string`
+ * (`STATUS_NAME[...]`) and `number` (`params[0]` in paramsToPreview), with no
+ * throw and nothing to fail a test. An entity would silently lose its geometry
+ * and report `status: undefined`.
+ *
+ * The skew is not hypothetical for this codec: a stale js/wasm pairing shipped
+ * once already and decoded shifted offsets instead of failing, which is why the
+ * magic number became the version handshake. The magic catches a LAYOUT change;
+ * it cannot catch a COUNT disagreement. This is the other half of that guard,
+ * and it has to live here because the layout is only in scope on this side.
+ *
+ * `skipStatusPass` is the caller's own request flag, not a second opinion about
+ * it: the wire contract is `n_entities_status == layout.length`, or 0 when the
+ * request set `skip_status_pass` (codec.rs:51 documents the 0). Every drag call
+ * site asks for the skip, because that path reads the params and the overall
+ * status only. Deriving the expectation from the flag that was actually sent
+ * means neither call site has to hand-maintain a boolean, and an empty status
+ * array is checked as the REQUIRED answer there rather than merely tolerated.
+ *
+ * Throwing matches what solveSketch already does for every other unusable input
+ * (an unlowerable sketch, an uninitialised solver): a wrong sketch is worse than
+ * an absent one, because the wrong one gets built on.
+ */
+export function assertSolverOutputMatchesLayout(
+  out: SolverOutput,
+  layout: EntityLayout[],
+  featureId: string,
+  skipStatusPass: boolean,
+): void {
+  const expectedStatuses = skipStatusPass ? 0 : layout.length
+  if (out.entityStatus.length !== expectedStatuses) {
+    throw new Error(
+      `sketch '${featureId}': solver returned ${out.entityStatus.length} entity statuses, expected ${expectedStatuses}`,
+    )
+  }
+  let needed = 0
+  for (const ent of layout) needed = Math.max(needed, ent.offset + ent.size)
+  if (out.paramsSolved.length < needed) {
+    throw new Error(
+      `sketch '${featureId}': solver returned ${out.paramsSolved.length} params, layout needs ${needed}`,
+    )
+  }
+  // Codes are indices into STATUS_NAME. An out-of-range one is the same skew
+  // arriving as a value rather than as a length, and reads back `undefined`.
+  if (out.overallStatus >= STATUS_NAME.length) {
+    throw new Error(`sketch '${featureId}': solver returned unknown status code ${out.overallStatus}`)
+  }
+  for (let i = 0; i < out.entityStatus.length; i++) {
+    if (out.entityStatus[i] >= STATUS_NAME.length) {
+      throw new Error(
+        `sketch '${featureId}': solver returned unknown status code ${out.entityStatus[i]} for entity ${layout[i].id}`,
+      )
+    }
+  }
+}
+
 export function solveSketch(
   feature: Dict,
   globalRepo: Repository,
@@ -252,6 +316,7 @@ export function solveSketch(
   const { sketch } = extract.sketches[0]
   const { input, layout } = lowerSketch(sketch)
   const out = decodeOutput(solverBytes(encodeInput(input)))
+  assertSolverOutputMatchesLayout(out, layout, featureId, input.options.skipStatusPass)
   const status = STATUS_NAME[out.overallStatus]
 
   // Reconstruct per-entity geometry and status maps, plus rich geometry for
@@ -642,6 +707,12 @@ export function solveSketchDrag(
   let out
   try {
     out = decodeOutput(solverBytes(encodeInput(input)))
+    // Inside the try on purpose. The hard solve throws on a count skew because a
+    // wrong sketch is worse than an absent one, but this is the per-frame drag
+    // path: it already degrades a failed solve to null so the caller holds the
+    // last good preview, and throwing out of a pointer handler is strictly
+    // worse. Same check, same detection, the response the path already chose.
+    assertSolverOutputMatchesLayout(out, layout, 'drag', input.options.skipStatusPass)
   } catch {
     return null
   }
