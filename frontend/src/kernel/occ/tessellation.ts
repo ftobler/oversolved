@@ -155,12 +155,19 @@ export function assembleMesh(rawFaces: RawFaceGeom[]): TessMesh {
   const triangleToFace: number[] = []
   const faceData: FaceDatum[] = []
 
-  sorted.forEach((rf, faceIdx) => {
+  // `triangle_to_face` must index `faceData`, NOT the position in `sorted`: a
+  // face that tessellates to nothing is dropped from `faceData` below, and
+  // numbering by sorted position would then point every later face's triangles
+  // one slot past its own data (verified: three faces, empty middle, yields
+  // triangle_to_face [0, 2] against a face_data of length 2). Since a dropped
+  // face contributes no triangles, `faceData.length` is exactly the index the
+  // entry about to be pushed will occupy.
+  sorted.forEach((rf) => {
     const { faceArea: area, triangleCount } = appendFaceTriangles(
       vertices,
       faces,
       triangleToFace,
-      faceIdx,
+      faceData.length,
       rf.vertices,
       rf.triangles,
     )

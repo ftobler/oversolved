@@ -162,3 +162,34 @@ describe('compareEdgeSortKeys', () => {
     expect(() => compareEdgeSortKeys(bad, a)).toThrow(/edge sort key component 2 is NaN/)
   })
 })
+
+describe('assembleMesh face indexing', () => {
+  // Regression: `triangle_to_face` numbered faces by their position in the
+  // sorted list while `face_data` skipped zero-triangle faces, so every face
+  // after an empty one pointed at the next face's data (or past the end).
+  const face = (hasTriangles: boolean, z: number): RawFaceGeom => ({
+    vertices: hasTriangles ? [[0, 0, z], [1, 0, z], [0, 1, z]] : [],
+    triangles: hasTriangles ? [[0, 1, 2]] : [],
+    centroid: [0, 0, z],
+    normal: [0, 0, 1],
+    surfaceType: 'flatface',
+    surfaceFrame: null,
+  })
+
+  it('keeps triangle_to_face pointing into face_data when a face tessellates to nothing', () => {
+    const mesh = assembleMesh([face(true, 0), face(false, 1), face(true, 2)])
+
+    expect(mesh.face_data).toHaveLength(2)
+    // Not [0, 2]: the empty face takes no slot, so the third face is index 1.
+    expect(mesh.triangle_to_face).toEqual([0, 1])
+    for (const idx of mesh.triangle_to_face) {
+      expect(idx).toBeLessThan(mesh.face_data.length)
+    }
+  })
+
+  it('is unchanged when every face tessellates', () => {
+    const mesh = assembleMesh([face(true, 0), face(true, 1), face(true, 2)])
+    expect(mesh.face_data).toHaveLength(3)
+    expect(mesh.triangle_to_face).toEqual([0, 1, 2])
+  })
+})
