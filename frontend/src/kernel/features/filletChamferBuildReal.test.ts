@@ -162,6 +162,54 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     if (mesh) assertMeshValid(mesh)
   })
 
+  it('fillet partial flags an edge the modifier refused as failed_edges', () => {
+    // A radius that fits a large box but not a tiny one: the large edge
+    // applies, the tiny edge RESOLVES but the modifier refuses it. The partial
+    // result must report the tiny query in failed_edges (red in the UI), never
+    // in unresolved_edges (strikethrough): re-picking cannot fix a bad radius.
+    const skA = rectSketch('skA', 10, 10)
+    const exA = { id: 'exA', kind: 'extrude', sketch: '$skA', distance: 5, direction: 'normal', operation: 'new' }
+    const skB = {
+      ...rectSketch('skB', 0.5, 0.5),
+      initial: { bottom: [30, 0, 30.5, 0], right: [30.5, 0, 30.5, 0.5], top: [30.5, 0.5, 30, 0.5], left: [30, 0.5, 30, 0] },
+    }
+    const exB = { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 0.5, direction: 'normal', operation: 'new' }
+    const r0 = h.run({ features: [skA, exA as Record<string, unknown>, skB as Record<string, unknown>, exB as Record<string, unknown>] })
+    const qA = (h.body(r0, 'body_exA').edge_queries as string[])[0]
+    const qB = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+    const spec = {
+      features: [skA, exA as Record<string, unknown>, skB as Record<string, unknown>, exB as Record<string, unknown>,
+        { id: 'fil', kind: 'fillet', edges: [qA, qB], radius: 1 }],
+    }
+    const r = h.run(spec)
+    expect(h.res(r, 'fil').status).toBe('partial')
+    expect((h.res(r, 'fil').failed_edges as string[] | undefined) ?? []).toEqual([qB])
+    expect((h.res(r, 'fil').unresolved_edges as string[] | undefined) ?? []).toEqual([])
+  })
+
+  it('fillet partial keeps unresolved and refused edges disjoint', () => {
+    // A group can hold both a pick that resolves to nothing and one the
+    // modifier refuses (radius too big for a tiny box). The stale pick must be
+    // reported as unresolved (strikethrough) and the refused edge as failed
+    // (red); the same query must never appear in both lists. A large box group
+    // applies so the feature is partial, not a hard exception.
+    const skA = rectSketch('skA', 10, 10)
+    const exA = { id: 'exA', kind: 'extrude', sketch: '$skA', distance: 5, direction: 'normal', operation: 'new' }
+    const skB = rectSketch('skB', 0.5, 0.5)
+    const exB = { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 0.5, direction: 'normal', operation: 'new' }
+    const r0 = h.run({ features: [skA, exA as Record<string, unknown>, skB, exB as Record<string, unknown>] })
+    const qA = (h.body(r0, 'body_exA').edge_queries as string[])[0]
+    const qB = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+    const spec = {
+      features: [skA, exA as Record<string, unknown>, skB, exB as Record<string, unknown>,
+        { id: 'fil', kind: 'fillet', edges: [qA, '?body_exB:edge:99', qB], radius: 1 }],
+    }
+    const r = h.run(spec)
+    expect(h.res(r, 'fil').status).toBe('partial')
+    expect((h.res(r, 'fil').unresolved_edges as string[] | undefined) ?? []).toEqual(['?body_exB:edge:99'])
+    expect((h.res(r, 'fil').failed_edges as string[] | undefined) ?? []).toEqual([qB])
+  })
+
   it('fillet partial when some edges unresolvable', () => {
     // One resolvable + one missing edge → partial status, body still filleted.
     const spec = fullRectExtrudeSpec(10, 10, 5)
@@ -171,9 +219,10 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const r = h.run(spec)
     expect(h.res(r, 'fil').status).toBe('partial')
     expect((h.res(r, 'fil').body_ids as string[]) ?? []).toEqual(['body_ex1'])
-    // The UI marks the exact pick chips that failed, so the partial result must
-    // name the missing query (and only the missing one).
-    expect((h.res(r, 'fil').failed_edges as string[] | undefined) ?? []).toEqual(['?body_nonexistent:edge:0'])
+    // The stale pick matched no edge, so the UI strikes it through; it must not
+    // be reported as a resolved-but-refused edge.
+    expect((h.res(r, 'fil').unresolved_edges as string[] | undefined) ?? []).toEqual(['?body_nonexistent:edge:0'])
+    expect((h.res(r, 'fil').failed_edges as string[] | undefined) ?? []).toEqual([])
   })
 
   it('fillet then chamfer on same body', () => {

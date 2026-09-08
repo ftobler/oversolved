@@ -79,22 +79,41 @@ describe('PickChip', () => {
     expect(items.length).toBe(3)
   })
 
-  it('marks only the chips the last solve could not resolve', () => {
+  it('strikes through only the chips the last solve could not resolve', () => {
     render(
       <PickChip
         values={['@edge_ok', '@edge_gone']}
         isPicking={false}
         onActivate={vi.fn()}
         onRemove={vi.fn()}
-        faultyValues={new Set(['@edge_gone'])}
+        unresolvedValues={new Set(['@edge_gone'])}
       />
     )
     const items = document.querySelectorAll('.feature-pick-chip-item')
     expect(items.length).toBe(2)
-    expect(items[0].classList.contains('faulty')).toBe(false)
-    expect(items[1].classList.contains('faulty')).toBe(true)
-    // The faulty chip explains itself in its tooltip.
-    expect(items[1].getAttribute('title')).toContain('Not applied')
+    expect(items[0].classList.contains('unresolved')).toBe(false)
+    expect(items[1].classList.contains('unresolved')).toBe(true)
+    expect(items[1].classList.contains('failed')).toBe(false)
+    // The struck chip explains itself in its tooltip.
+    expect(items[1].getAttribute('title')).toContain('re-pick')
+  })
+
+  it('marks red only the chips whose edge the modifier refused or skipped', () => {
+    render(
+      <PickChip
+        values={['@edge_ok', '@edge_bad']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+        failedValues={new Set(['@edge_bad'])}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    expect(items.length).toBe(2)
+    expect(items[0].classList.contains('failed')).toBe(false)
+    expect(items[1].classList.contains('failed')).toBe(true)
+    expect(items[1].classList.contains('unresolved')).toBe(false)
+    expect(items[1].getAttribute('title')).toContain('Could not be applied')
   })
 
   it('applies picking class when isPicking is true', () => {

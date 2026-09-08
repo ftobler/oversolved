@@ -13,10 +13,13 @@ export interface PickChipProps {
   emptyText?: string
   features?: PartFeature[]
   partLabels?: Record<string, string>
-  // Values the last solve could not apply (kernel `failed_edges`: unresolved,
-  // or refused/skipped by the modifier). Rendered with a warning class so the
-  // user sees which picks need attention.
-  faultyValues?: ReadonlySet<string>
+  // Values the last solve could not match to a current edge (kernel
+  // `unresolved_edges`: a stale or deleted pick). Struck through so the user
+  // re-picks them.
+  unresolvedValues?: ReadonlySet<string>
+  // Values whose edge resolved but the modifier did not apply (kernel
+  // `failed_edges`, e.g. a radius past what the geometry admits). Marked red.
+  failedValues?: ReadonlySet<string>
 }
 
 export function PickChip({
@@ -28,7 +31,8 @@ export function PickChip({
   emptyText,
   features,
   partLabels,
-  faultyValues,
+  unresolvedValues,
+  failedValues,
 }: PickChipProps) {
   const syncChipSelection = useSketchEditorStore(s => s.syncChipSelection)
   const clearChipSelection = useSketchEditorStore(s => s.clearChipSelection)
@@ -118,17 +122,20 @@ export function PickChip({
           const isDragging = draggingIndex === i
           const isDropTarget = dropTargetIndex === i
           const dropClass = isDropTarget && dropSide ? `drop-target-${dropSide}` : ''
-          const faulty = faultyValues?.has(v) ?? false
+          const unresolved = unresolvedValues?.has(v) ?? false
+          const failed = failedValues?.has(v) ?? false
+          const faultyClass = unresolved ? ' unresolved' : failed ? ' failed' : ''
           return (
             <div
               key={`${v}-${i}`}
-              className={`feature-pick-chip-item ${isDragging ? 'dragging' : ''} ${dropClass}${faulty ? ' faulty' : ''}`}
+              className={`feature-pick-chip-item ${isDragging ? 'dragging' : ''} ${dropClass}${faultyClass}`}
               draggable={!!onReorder}
               onDragStart={(e) => handleDragStart(e, i)}
               onDragOver={(e) => handleDragOver(e, i)}
               onDrop={(e) => handleDrop(e, i)}
               onDragEnd={handleDragEnd}
-              title={faulty ? 'Not applied in the last solve' : undefined}
+              title={unresolved ? 'Could not be resolved; re-pick this edge'
+                : failed ? 'Could not be applied in the last solve' : undefined}
             >
               {onReorder && (
                 <span className="feature-pick-chip-item-drag" title="Drag to reorder">

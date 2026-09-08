@@ -1245,9 +1245,19 @@
   padding-right: 2px;
 }
 
-.feature-pick-chip-item.faulty {
+.feature-pick-chip-item.unresolved {
   background: #6d4f1a;
   outline: 1px solid #ecad2b;
+  outline-offset: -1px;
+}
+
+.feature-pick-chip-item.unresolved .feature-pick-chip-item-text {
+  text-decoration: line-through;
+}
+
+.feature-pick-chip-item.failed {
+  background: #7d2a25;
+  outline: 1px solid #f44336;
   outline-offset: -1px;
 }
 

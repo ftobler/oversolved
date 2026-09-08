@@ -30,9 +30,14 @@ interface EdgeFeatureResult {
   status: string
   body_id: string
   body_ids: string[]
-  // Query strings that did not apply this solve (unresolved, or refused or
-  // skipped by the modifier), so the UI can point at the exact pick chips that
-  // need attention. Only on the partial result.
+  // Query strings that matched no current edge (a stale or deleted pick), so
+  // the UI can strike them through in the pick field: re-picking is the fix.
+  // Only on the partial result.
+  unresolved_edges?: string[]
+  // Query strings whose edge DID resolve but the modifier refused or skipped it
+  // (a radius past what the geometry admits), so the UI can mark them red:
+  // re-picking will not help, the parameter or geometry is the fix. Only on the
+  // partial result.
   failed_edges?: string[]
 }
 
@@ -442,7 +447,12 @@ function applyEdgeFeature(
   }
 
   const groups = new Map<string, string[]>()
+  // A pick whose query matched no current edge (stale/gone). The chip strikes
+  // these through; re-picking is the fix.
   const unresolved: string[] = []
+  // A pick whose edge resolved but the modifier refused or skipped it. The chip
+  // marks these red; the parameter or geometry is the fix, not the pick.
+  const failed: string[] = []
   if (sourceBody) {
     // `resolveBodyIds` rather than a local created_by scan: a feature ref can
     // name several bodies, and every edge would otherwise be grouped onto
@@ -525,11 +535,16 @@ function applyEdgeFeature(
     const topoEdges: OccShape[] = []
     const dedup = new SubShapeDedup()
     const queryOf = new Map<OccShape, string>()  // edge -> the query that named it
+    // Queries in this group that DID resolve to an edge. A modifier refusal
+    // pushes only these to `failed`: a query whose edge matched nothing is
+    // already in `unresolved`, and must not also be flagged as refused.
+    const resolvedQueries = new Set<string>()
     for (const [q, es] of byQuery) {
       if (es.length === 0) {
         unresolved.push(q)
         continue
       }
+      resolvedQueries.add(q)
       for (const e of es) if (dedup.add(e as OccSubShape)) {
         topoEdges.push(e)
         queryOf.set(e, q)
@@ -566,7 +581,7 @@ function applyEdgeFeature(
       // push modified_by and overwrite brep_diff with an empty diff while the
       // feature reports ok. Report the kernel reason and leave the body alone.
       modifierFailures.push(`${bid}: ${res.reason ?? 'unknown failure'}`)
-      unresolved.push(...qlist)
+      failed.push(...qlist.filter((q) => resolvedQueries.has(q)))
       continue
     }
 
@@ -582,7 +597,7 @@ function applyEdgeFeature(
       // map each back to the query that named it via queryOf.
       for (const i of res.skippedEdgeIndices) {
         const q = queryOf.get(topoEdges[i])
-        if (q !== undefined) unresolved.push(q)
+        if (q !== undefined) failed.push(q)
       }
     }
     // A chamfer removes material and can sever a thin web, so even this leaf
@@ -594,6 +609,7 @@ function applyEdgeFeature(
       // a body that no longer exists. The failure entry makes the throw below
       // say what happened instead of "no edges resolved".
       modifierFailures.push(`${bid}: the modifier removed the whole body`)
+      failed.push(...qlist.filter((q) => resolvedQueries.has(q)))
       continue
     }
     applied.push(...ids)
@@ -610,19 +626,20 @@ function applyEdgeFeature(
 
   if (applied.length === 0) throw new Error(`${featureKind}: no edges resolved`)
 
-  if (unresolved.length > 0 || modifierFailures.length > 0) {
+  if (unresolved.length > 0 || failed.length > 0 || modifierFailures.length > 0) {
     const parts: string[] = []
-    if (unresolved.length > 0) parts.push(`${unresolved.length} edge(s) could not be resolved`)
+    const notApplied = [...new Set([...unresolved, ...failed])]
+    if (notApplied.length > 0) parts.push(`${notApplied.length} edge(s) could not be applied`)
     parts.push(...modifierFailures)
-    // A query can land in unresolved twice (a group whose modifier refused the
-    // op pushes the whole qlist after the per-query loop already flagged its
-    // empty hits), so the chip marker dedupes: the chips render one entry each.
-    const failedEdges = [...new Set(unresolved)]
+    // The edges list could repeat a query (a duplicate pick), so each chip
+    // marker dedupes: the chips render one entry each. The two lists stay
+    // disjoint by construction: `failed` only gets queries that resolved.
     return {
       status: 'partial',
       body_id: applied[0],
       body_ids: applied,
-      failed_edges: failedEdges,
+      unresolved_edges: [...new Set(unresolved)],
+      failed_edges: [...new Set(failed)],
       exception: `${featureKind}: ${parts.join('; ')}`,
       ...(handle !== null && { handle }),
     }

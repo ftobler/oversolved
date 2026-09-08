@@ -162,11 +162,30 @@ describe('FeatureEditor pick field', () => {
     expect(chip.classList.contains('picking')).toBe(false)
   })
 
-  it('marks chips named by the last solve failed_edges as faulty', () => {
-    // The pick field must surface which picks did not apply in the last solve
-    // (kernel partial result `failed_edges`) so the user sees what to re-pick.
+  it('marks chips red whose edge the modifier refused', () => {
+    // A pick that resolved but whose fillet/chamfer the kernel refused (kernel
+    // `failed_edges`) renders red, distinct from a stale pick.
     usePartEditorStore.setState({
-      solveResults: { f1: { status: 'partial', failed_edges: ['@edge_gone'] } },
+      solveResults: { f1: { status: 'partial', failed_edges: ['@edge_refused'] } },
+    })
+    render(
+      <FeatureEditor
+        feature={makeFeature('fillet', 'fillet', { edges: ['@edge_ok', '@edge_refused'], radius: 1 })}
+        onMutation={vi.fn()}
+        schema={FILLET_SCHEMA}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    expect(items.length).toBe(2)
+    expect(items[0].classList.contains('failed')).toBe(false)
+    expect(items[1].classList.contains('failed')).toBe(true)
+  })
+
+  it('strikes through chips the last solve could not resolve', () => {
+    // A stale pick (kernel `unresolved_edges`) must be struck through, distinct
+    // from a resolved-but-refused edge (failed_edges).
+    usePartEditorStore.setState({
+      solveResults: { f1: { status: 'partial', unresolved_edges: ['@edge_gone'] } },
     })
     render(
       <FeatureEditor
@@ -177,8 +196,9 @@ describe('FeatureEditor pick field', () => {
     )
     const items = document.querySelectorAll('.feature-pick-chip-item')
     expect(items.length).toBe(2)
-    expect(items[0].classList.contains('faulty')).toBe(false)
-    expect(items[1].classList.contains('faulty')).toBe(true)
+    expect(items[0].classList.contains('unresolved')).toBe(false)
+    expect(items[1].classList.contains('unresolved')).toBe(true)
+    expect(items[1].classList.contains('failed')).toBe(false)
   })
 })
 

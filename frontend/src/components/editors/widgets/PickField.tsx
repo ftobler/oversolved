@@ -49,6 +49,15 @@ export function PickFieldWidget({
     }
   }
 
+  // Removing a chip arms the field so the user can immediately re-pick the
+  // value they just took out (a stale chamfer edge, say) instead of having to
+  // click the chip again. The unpick (viewport re-click) path keeps plain
+  // removeAt: there the user is already in picking mode.
+  const removeAndActivate = (index: number) => {
+    removeAt(index)
+    activate()
+  }
+
   // Re-clicking an already-picked element should remove it. The chip stores the
   // transformed value, so map the toggled-off selectionId back to its index.
   const unpickCallback = (selectionId: string) => {
@@ -57,19 +66,22 @@ export function PickFieldWidget({
   }
 
   const pickState = usePickField(fid, field.key, pickCallback, { multi: isMulti, onUnpick: unpickCallback, features })
+  const { toggle, activate } = pickState
 
-  // The feature's last solve names the picks that did not apply (kernel
-  // `failed_edges`, only present on a partial result). Chips holding those
-  // values render as faulty so the user can see what needs attention without
-  // guessing from a tooltip. Values added since the solve simply are not in the
+  // The feature's last solve splits the picks that did not apply into two kinds
+  // (kernel partial result): `unresolved_edges` matched no current edge (stale,
+  // shown struck through -- re-picking is the fix) and `failed_edges` resolved
+  // but the modifier refused/skipped them (shown red -- the parameter or
+  // geometry is the fix). Values added since the solve simply are not in either
   // set and stay neutral.
   const solveResult = usePartEditorStore(s => s.solveResults?.[fid])
-  const failedEdges = ((): string[] => {
-    if (typeof solveResult !== 'object' || solveResult === null) return []
-    const raw = (solveResult as { failed_edges?: unknown }).failed_edges
-    return Array.isArray(raw) ? (raw as string[]) : []
-  })()
-  const faultyValues = failedEdges.length > 0 ? new Set(failedEdges) : undefined
+  const edgeSet = (key: string): ReadonlySet<string> | undefined => {
+    if (typeof solveResult !== 'object' || solveResult === null) return undefined
+    const raw = (solveResult as Record<string, unknown>)[key]
+    return Array.isArray(raw) && raw.length > 0 ? new Set(raw as string[]) : undefined
+  }
+  const unresolvedValues = edgeSet('unresolved_edges')
+  const failedValues = edgeSet('failed_edges')
 
   return (
     <div className="feature-field-row feature-field-row--stacked">
@@ -77,8 +89,8 @@ export function PickFieldWidget({
       <PickChip
         values={normalizedValues}
         isPicking={pickState.isPicking}
-        onActivate={pickState.toggle}
-        onRemove={removeAt}
+        onActivate={toggle}
+        onRemove={removeAndActivate}
         onReorder={isMulti
           ? (from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: field.key, fromIndex: from, toIndex: to } as Mutation)
           : undefined
@@ -86,7 +98,8 @@ export function PickFieldWidget({
         emptyText={field.emptyText}
         features={features}
         partLabels={partLabels}
-        faultyValues={faultyValues}
+        unresolvedValues={unresolvedValues}
+        failedValues={failedValues}
       />
     </div>
   )

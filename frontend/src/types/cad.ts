@@ -239,10 +239,14 @@ export interface BodyFeatureResult {
   body_id?: string
   body_ids?: string[]
   exception?: string
-  // Picked refs (query strings) that did not apply this solve (unresolved, or
-  // refused or skipped by the modifier), so the pick field can mark exactly the
-  // chips that need attention. Filled only on a partial result (a feature that
-  // threw cannot name its failed picks).
+  // Picked refs (query strings) that matched no current edge this solve (a
+  // stale or deleted pick); the pick field strikes these through, re-picking is
+  // the fix. Filled only on a partial result (a feature that threw cannot name
+  // its failed picks).
+  unresolved_edges?: string[]
+  // Picked refs whose edge DID resolve but the modifier refused or skipped it
+  // (e.g. a radius past what the geometry admits); the pick field marks these
+  // red. Filled only on a partial result.
   failed_edges?: string[]
   mesh_warning?: string
   solver_warning?: string

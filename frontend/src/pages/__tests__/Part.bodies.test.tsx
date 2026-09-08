@@ -124,10 +124,10 @@ describe('extrude feature name error state', () => {
     const filletFeature: PartFeature = { id: 'fil1', kind: 'fillet', fillet: { edges: ['?x'], radius: 1 } }
     renderSidebar(
       [filletFeature],
-      { fil1: { status: 'partial', body_id: 'body_ex1', exception: '1 edge(s) could not be resolved' } },
+      { fil1: { status: 'partial', body_id: 'body_ex1', exception: '1 edge(s) could not be applied' } },
       TEST_BODIES,
     )
-    const name = screen.getByTitle('1 edge(s) could not be resolved')
+    const name = screen.getByTitle('1 edge(s) could not be applied')
     expect(name.classList.contains('feature-name-warning')).toBe(true)
     expect(name.classList.contains('feature-name-error')).toBe(false)
   })

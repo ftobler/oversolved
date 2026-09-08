@@ -40,8 +40,10 @@ import { useNotifySafe } from '@/contexts/ToastContext'
  * rule "you may only pick from features before you" is enforced here once
  * instead of in each editor.
  *
- * Returns `{ isPicking, toggle }`: `toggle` activates this field (clearing any
- * other active field) or deactivates it if already active.
+ * Returns `{ isPicking, toggle, activate }`: `toggle` activates this field
+ * (clearing any other active field) or deactivates it if already active;
+ * `activate` unconditionally arms this field, used after a chip is removed so
+ * the user can immediately re-pick the value they just took out.
  */
 export function usePickField(
   featureId: string,
@@ -52,7 +54,7 @@ export function usePickField(
     onUnpick?: (selectionId: string) => void
     features?: readonly { id: string }[]
   },
-): { isPicking: boolean; toggle: () => void } {
+): { isPicking: boolean; toggle: () => void; activate: () => void } {
   const multi = opts?.multi ?? false
   const onUnpick = opts?.onUnpick
   const features = opts?.features
@@ -135,5 +137,12 @@ export function usePickField(
     }
   }, [featureId, field, multi])
 
-  return { isPicking, toggle }
+  // Unconditional arming, unlike `toggle`: idempotent when this field is already
+  // the active one (setActivePickField re-arms the same entry), so a caller can
+  // fire it after a remove without worrying about whether the field was active.
+  const activate = useCallback(() => {
+    useSketchEditorStore.getState().setActivePickField({ featureId, field, multi })
+  }, [featureId, field, multi])
+
+  return { isPicking, toggle, activate }
 }
