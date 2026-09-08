@@ -179,6 +179,31 @@ describe('toBodyMesh', () => {
     expect(result.edges[1].id).toBe('@gde|line2')
   })
 
+  // The consumer half of the entity<->query array contract. A BodyResult can
+  // still arrive with more edges than queries (a bundle cached before
+  // solidToEdges padded, or one from outside this kernel); the positional zip
+  // must not put `undefined` into `EdgeCurve.id`, which is typed `string`.
+  // Nothing throws on that -- it just yields a bundle of edges whose id nothing
+  // matches, which is why it went unnoticed.
+  it('never leaves EdgeCurve.id undefined when edge_queries is short', () => {
+    const body: BodyResult = {
+      id: 'body_short',
+      created_by: '',
+      modified_by: [],
+      edges: [
+        { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
+        { kind: 'line', start: [10, 0, 0], end: [10, 5, 0] },
+      ],
+      edge_queries: [],
+    }
+    const result = toBodyMesh(body)
+    expect(result.edges).toHaveLength(2)
+    for (const e of result.edges) {
+      expect(e.id).toBeDefined()
+      expect(typeof e.id).toBe('string')
+    }
+  })
+
   it('handles a body with no mesh (produces empty typed arrays)', () => {
     const body: BodyResult = {
       id: 'body_3',

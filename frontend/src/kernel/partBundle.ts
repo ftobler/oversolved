@@ -287,7 +287,12 @@ export function toBodyMesh(bodyResult: BodyResult): BodyMesh {
   const edges: EdgeCurve[] = []
   if (bodyResult.edges && bodyResult.edge_queries) {
     for (let i = 0; i < bodyResult.edges.length; i++) {
-      edges.push(toEdgeCurve(bodyResult.edges[i], bodyResult.edge_queries[i]))
+      // `?? ''` because the zip is positional and `edge_queries` can be shorter
+      // than `edges` (a bundle produced before solidToEdges padded, or one that
+      // arrived from outside this kernel). An unguarded index puts `undefined`
+      // into `id`, which is typed `string`: no throw, just a bundle of edges
+      // whose id nothing matches.
+      edges.push(toEdgeCurve(bodyResult.edges[i], bodyResult.edge_queries[i] ?? ''))
     }
   }
   if (!mesh) {
@@ -402,13 +407,13 @@ function edgeAnchorAxis(ed: EdgeData): Vec3 {
  * Returns the full id including the `@` prefix.
  */
 function findDescriptorInQuery(query: string | undefined, prefix: string): string | null {
-  // Absent is "no descriptor", never a throw. solidToEdges/solidToVertices emit
-  // an EMPTY query array when the body has no `created_by`, while still
-  // returning every edge and vertex, so the positional zip below can run off
-  // the end. The face path is already immune (solidToMesh pushes '' placeholders
-  // to keep face_queries aligned with face_data); this makes the other two
-  // degrade the same way instead of taking the whole bundle's anchors down with
-  // a TypeError -- toPartBundle's body loop has no per-body catch.
+  // Absent is "no descriptor", never a throw. solidToEdges/solidToVertices now
+  // pad their arrays with '' so the positional zip below cannot run off the end,
+  // the way solidToMesh has always padded face_queries -- but a BodyResult can
+  // also arrive from outside this kernel (a cached bundle, a remote solve), so
+  // this stays a real guard rather than an assertion. Degrading to "unnamed"
+  // beats taking the whole bundle's anchors down with a TypeError:
+  // toPartBundle's body loop has no per-body catch.
   if (query === undefined) return null
   const searchToken = '@' + prefix
   const idx = query.indexOf(searchToken)
