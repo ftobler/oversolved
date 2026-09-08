@@ -163,9 +163,26 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     setGizmoDrag: (d) => useAssemblyStore.getState().setGizmoDrag(d),
   }), [])
 
+  // Same readiness story as Viewport: a fit can be armed (first geometry
+  // arriving) while the scene tree has not rendered yet, so the camera is
+  // still absent and the only other retry (a bodies change) has already
+  // fired. The two sources stay separate: onCreated fires before the scene
+  // tree in R3F, so the camera arrival is usually the later event and must
+  // not be swallowed by a shared one-shot. onSceneReady needs no latch of
+  // its own -- it is called from scene-tree effects (never mid-render) and
+  // is one-shot per instance inside SceneController.
+  const [sceneTick, setSceneTick] = useState(0)
+  const onSceneReady = useCallback(() => setSceneTick(t => t + 1), [])
+
+  const createdLiveRef = useRef(false)
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
     sceneRef.current = state.scene
+    // Latched: a caller may invoke onCreated while rendering, and re-entering
+    // setState from there would loop renders.
+    if (createdLiveRef.current) return
+    createdLiveRef.current = true
+    setSceneTick(t => t + 1)
   }, [])
 
   useImperativeHandle(ref, () => ({
@@ -265,7 +282,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
     if (fitToContent(camera, controlsRef.current, bodies, sceneRef.current)) fittedRef.current = true
-  }, [bodies, manipulating])
+  }, [bodies, manipulating, sceneTick])
 
   // A drag continues while the pointer is outside the pane, so the move/up
   // listeners live on the wrapper (which captures the pointer), not on the
@@ -591,6 +608,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
           cameraRef={cameraRef}
           controlsRef={controlsRef}
           orbitEnabled={!manipulating}
+          onReady={onSceneReady}
         />
 
         <IdPickingDriver onReady={onPipelineReady} />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
@@ -281,9 +281,32 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     : new Set<string>()), [])
   const clearIdBufferHover = useIdBufferPointerDispatch({ glRef, consumedLayers })
 
+  // Bumped when the scene-side prerequisites of a fit become live (the
+  // Canvas-owned camera via SceneController, gl/scene via onCreated). R3F
+  // renders the scene tree on a later frame than this component's mount, so a
+  // fit armed by a warm second-document first solve can fire while the camera
+  // is still absent -- tryFit then stays pending, and without this tick the
+  // only retry (a bodies change) has already fired and never fires again.
+  // The two sources must stay separate: onCreated fires before the scene tree
+  // in R3F, so the camera arrival is usually the later event and must not be
+  // swallowed by a shared one-shot. onSceneReady needs no latch of its own --
+  // it is called from scene-tree effects (never mid-render) and is one-shot
+  // per instance inside SceneController.
+  const [sceneTick, setSceneTick] = useState(0)
+  const onSceneReady = useCallback(() => setSceneTick(t => t + 1), [])
+
+  const createdLiveRef = useRef(false)
   const onCreated = useCallback((state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
     glRef.current = state.gl
     sceneRef.current = state.scene
+    // Rides the same readiness tick as the scene camera: tryFit's
+    // empty-document fallback reads sceneRef, so its availability must also
+    // re-attempt a fit that was armed before the Canvas had rendered. Latched:
+    // a caller may invoke onCreated while rendering, and re-entering setState
+    // from there would loop renders.
+    if (createdLiveRef.current) return
+    createdLiveRef.current = true
+    setSceneTick(t => t + 1)
   }, [])
 
   const captureScreenshot = useCallback(async (): Promise<string | null> => {
@@ -336,14 +359,17 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     tryFit(force)
   }, [tryFit])
 
-  // Re-attempt only as bodies arrive: the initial (first-solve) fit retries
-  // here as geometry populates. We deliberately do NOT react to edit-state
-  // (activeFeatureId) changes: a fit must only land for the initial solve or
-  // the manual Reset Viewport button, never on edit-exit, undo, or any other
-  // solve. tryFit no-ops unless a fit is armed, so steady-state solves are inert.
+  // Re-attempt only as bodies arrive or as the scene becomes live: the initial
+  // (first-solve) fit retries here as geometry populates AND when the
+  // Canvas-owned camera appears (sceneTick), because a warm second-document
+  // solve can arm the fit before the scene tree has ever rendered. We
+  // deliberately do NOT react to edit-state (activeFeatureId) changes: a fit
+  // must only land for the initial solve or the manual Reset Viewport button,
+  // never on edit-exit, undo, or any other solve. tryFit no-ops unless a fit is
+  // armed, so steady-state solves are inert.
   useEffect(() => {
     tryFit()
-  }, [bodies, tryFit])
+  }, [bodies, sceneTick, tryFit])
 
   // Disarm any pending (deferred) fit so a subsequent doc/body change cannot
   // reframe the camera. Undo/redo use this: undo exits the active sketch edit,
@@ -631,6 +657,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           snapRef={snapRef}
           cameraRef={cameraRef}
           controlsRef={controlsRef}
+          onReady={onSceneReady}
         />
 
         {ENABLE_ID_BUFFER_PICKING && <IdPickingDriver onReady={onIdPipelineReady} />}

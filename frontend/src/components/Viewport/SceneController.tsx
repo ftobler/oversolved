@@ -51,9 +51,16 @@ interface SceneControllerProps {
    * drag; it blocks the camera while a part is being dragged instead.
    */
   orbitEnabled?: boolean
+  /**
+   * Fired once the Canvas-owned camera is exposed through cameraRef. The R3F
+   * scene tree renders on a later frame than the host component's mount, so a
+   * caller that armed work before this render (e.g. a first-solve camera fit)
+   * needs this signal to know the camera can now be driven.
+   */
+  onReady?: () => void
 }
 
-export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled }: SceneControllerProps) {
+export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled, onReady }: SceneControllerProps) {
   const { camera, gl } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
   const cameraRefStable = useRef(camera)
@@ -111,6 +118,18 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
   // Expose the Canvas-owned camera to the parent Viewport (for fitToContent).
   // eslint-disable-next-line react-hooks/refs -- expose the Canvas-owned camera to the parent Viewport without a re-render
   cameraRef.current = camera
+
+  // Announce the camera live after it is exposed above. One-shot and gated on
+  // a truthy camera: the production race is this component not having rendered
+  // at all yet (R3F builds the scene tree a frame late), so a single
+  // announcement per instance covers it, and a latch keeps a caller-side
+  // setState from looping back through here when the camera identity churns.
+  const announcedRef = useRef(false)
+  useEffect(() => {
+    if (announcedRef.current || !camera) return
+    announcedRef.current = true
+    onReady?.()
+  }, [camera, onReady])
 
   // Right-button mapping: shift/ctrl/meta override the default rotate action.
   // Bound to the renderer canvas, not the gizmo overlay: OrbitControls listens
