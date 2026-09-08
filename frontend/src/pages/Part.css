@@ -1333,6 +1333,8 @@
   padding: 0;
   min-width: 220px;
   max-width: min(360px, calc(100vw - 32px));
+  /* #root centers text app-wide; a list of actions reads left-aligned. */
+  text-align: left;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   pointer-events: none;
   margin-top: 4px;
