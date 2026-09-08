@@ -125,12 +125,18 @@ export function resolveFaceQueries(mesh: Mesh3D, bodyId: string): string[] | nul
 /**
  * The query list every rendered B-rep edge indexes, padded so each has one:
  * raw `edgeQueries` where the kernel supplied a full set, else a topo fallback
- * per missing tail edge. Mirrors `resolveFaceQueries`: the ONE list both the
+ * per missing edge. Mirrors `resolveFaceQueries`: the ONE list both the
  * edge HighlightIndex and the ID layer's registration count from, so a body
  * whose kernel returns fewer edge queries than it has edges still lets the tail
  * edges pick. Returns the raw array unchanged when no padding is needed
  * (reference-stable for the HighlightIndex memo), and null when there is nothing
  * to index at all (no edges and no queries).
+ *
+ * An EMPTY query counts as missing, not as supplied. `solidToEdges` pads its
+ * array with '' so the positional zip holds for consumers that index it; those
+ * slots mean "the kernel could not name this edge", which is exactly the case
+ * the topo fallback exists for. Reading them as supplied would hand every edge
+ * of a body with no `created_by` the same blank key and make none of them pick.
  */
 export function resolveEdgeQueries(
   edges: ReadonlyArray<unknown> | undefined,
@@ -141,17 +147,17 @@ export function resolveEdgeQueries(
   const supplied = edgeQueries?.length ?? 0
   const total = Math.max(numEdges, supplied)
   if (total === 0) return null
-  if (edgeQueries && supplied >= numEdges) return edgeQueries as string[]
+  if (edgeQueries && supplied >= numEdges && !edgeQueries.some((q) => !q)) return edgeQueries as string[]
   return Array.from({ length: total }, (_, i) =>
-    edgeQueries?.[i] ?? topoFallbackQuery(bodyId, 'edge', i))
+    edgeQueries?.[i] || topoFallbackQuery(bodyId, 'edge', i))
 }
 
 /**
  * The query list every rendered B-rep vertex indexes, padded like
  * `resolveEdgeQueries`. Null when the body has no vertices (the one state where
  * Body3D drops the whole vertex highlight index), otherwise one query per
- * vertex, raw where the kernel covered them and a topo fallback where it fell
- * short.
+ * vertex, raw where the kernel named them and a topo fallback where it fell
+ * short -- an '' placeholder from `solidToVertices` counting as short.
  */
 export function resolveVertexQueries(
   vertices: ReadonlyArray<[number, number, number]> | undefined,
@@ -160,8 +166,8 @@ export function resolveVertexQueries(
 ): string[] | null {
   if (!vertices || vertices.length === 0) return null
   const supplied = vertexQueries?.length ?? 0
-  if (vertexQueries && supplied >= vertices.length) return vertexQueries as string[]
-  return vertices.map((_, i) => vertexQueries?.[i] ?? topoFallbackQuery(bodyId, 'vertex', i))
+  if (vertexQueries && supplied >= vertices.length && !vertexQueries.some((q) => !q)) return vertexQueries as string[]
+  return vertices.map((_, i) => vertexQueries?.[i] || topoFallbackQuery(bodyId, 'vertex', i))
 }
 
 /**

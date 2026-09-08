@@ -308,4 +308,38 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
       table.assertNoLeaks()
     }
   })
+
+  // The entity<->query ARRAY CONTRACT. Both producers return every entity but
+  // could only build queries under `createdBy`, so a body without one yielded N
+  // entities and 0 queries -- and every caller passes `body.created_by || ''`.
+  // Consumers zip the two by index, so the short array silently handed them
+  // `undefined` in a field typed `string` (partBundle's toBodyMesh) or ran off
+  // the end (extractBodyAnchors). solidToMesh has always padded face_queries
+  // with ''; these two now do the same, which is what makes the consumer guards
+  // belt-and-braces instead of load-bearing.
+  it('emits one query per entity even with no createdBy (positional zip contract)', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
+    try {
+      // Exactly what the callers pass for a body with a falsy `created_by`.
+      const e = solidToEdges(occ, table, h, { createdBy: '', bodyId: 'body_ex1' })
+      expect(e.edges.length).toBe(12)
+      expect(e.edge_queries.length, 'edge_queries must line up with edges').toBe(e.edges.length)
+      expect(e.edge_queries.every((q) => q === '')).toBe(true)
+
+      const v = solidToVertices(occ, table, h, { createdBy: '', bodyId: 'body_ex1' })
+      expect(v.vertices.length).toBe(8)
+      expect(v.vertex_queries.length, 'vertex_queries must line up with vertices').toBe(v.vertices.length)
+      expect(v.vertex_queries.every((q) => q === '')).toBe(true)
+
+      // And with no opts at all (the default-`{}` call sites).
+      const bare = solidToEdges(occ, table, h)
+      expect(bare.edge_queries.length).toBe(bare.edges.length)
+      const bareV = solidToVertices(occ, table, h)
+      expect(bareV.vertex_queries.length).toBe(bareV.vertices.length)
+    } finally {
+      table.release(h)
+      table.assertNoLeaks()
+    }
+  })
 })

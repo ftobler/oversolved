@@ -566,9 +566,11 @@ function _solidToEdgesNewEdgeHashes(oc: OccModule, scope: DisposeScope, diff: Br
 
 /**
  * Unique edge geometry of a solid, sorted into deterministic indices, plus the
- * per-edge ancestry `edge_queries`. Queries are
- * emitted only when `createdBy` is set; the geom-hash token they carry is what
- * the fillet/chamfer resolver matches a picked edge against.
+ * per-edge ancestry `edge_queries`, ALWAYS one per edge. A real query is built
+ * only when `createdBy` is set; the rest are '' placeholders that keep the
+ * positional zip `edges[i]` <-> `edge_queries[i]` intact. The geom-hash token a
+ * real query carries is what the fillet/chamfer resolver matches a picked edge
+ * against.
  */
 export function solidToEdges(
   oc: OccModule,
@@ -629,6 +631,15 @@ export function solidToEdges(
         }
       }
     }
+    // Pad to one query per edge, like solidToMesh does for faces (see the
+    // reasoning there). Without `createdBy` the loop above emits NOTHING while
+    // `edges` still holds every edge, and every caller passes
+    // `body.created_by || ''` -- so N edges / 0 queries is a state the codebase
+    // routinely produces. Consumers zip the two by index, and an unpadded array
+    // hands them `undefined` in a field typed `string`. '' is the safe
+    // placeholder: it carries no descriptor and no ancestry, so an edge with no
+    // query is skipped rather than silently taking a neighbour's identity.
+    while (edge_queries.length < edges.length) edge_queries.push('')
     return { edges, edge_queries }
   } finally {
     scope.dispose()
@@ -709,7 +720,8 @@ export function solidToFaceEdgeQueries(
 }
 
 /**
- * Unique B-rep vertices of a solid plus per-vertex ancestry `vertex_queries`.
+ * Unique B-rep vertices of a solid plus per-vertex ancestry `vertex_queries`,
+ * always one per vertex ('' where there is no `createdBy` to name it by).
  * Vertices are not sorted, so the order follows OCC iteration; callers that
  * need geometry parity compare as a set.
  */
@@ -748,6 +760,9 @@ export function solidToVertices(
         vertex_queries.push(makeAncestryQuery(ids, 'vertex'))
       }
     }
+    // One query per vertex even with no `createdBy`, for the reason spelled out
+    // in solidToEdges: the positional zip is the contract, '' is the placeholder.
+    while (vertex_queries.length < vertices.length) vertex_queries.push('')
     return { vertices, vertex_queries, vertex_uuids }
   } finally {
     scope.dispose()

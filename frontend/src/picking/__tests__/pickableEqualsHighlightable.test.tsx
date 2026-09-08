@@ -41,6 +41,20 @@ describe('pickable equals highlightable (g4-H1)', () => {
     expect(resolveVertexQueries(undefined, undefined, 'body_x')).toBeNull()
   })
 
+  // solidToEdges/solidToVertices pad their arrays with '' for entities they
+  // could not name, so the array is now FULL LENGTH but blank. That must still
+  // reach the topo fallback: read as supplied, every edge of a body with no
+  // `created_by` would share one blank key and none of them would pick.
+  it('treats an empty query as missing, not as supplied', () => {
+    expect(resolveEdgeQueries([{}, {}], ['', ''], 'body_x'))
+      .toEqual([topoFallbackQuery('body_x', 'edge', 0), topoFallbackQuery('body_x', 'edge', 1)])
+    expect(resolveEdgeQueries([{}, {}], ['e0', ''], 'body_x'))
+      .toEqual(['e0', topoFallbackQuery('body_x', 'edge', 1)])
+    const v: [number, number, number][] = [[0, 0, 0], [1, 0, 0]]
+    expect(resolveVertexQueries(v, ['', 'v1'], 'body_x'))
+      .toEqual([topoFallbackQuery('body_x', 'vertex', 0), 'v1'])
+  })
+
   it('resolveVertexQueries pads a short list', () => {
     const v: [number, number, number][] = [[0, 0, 0], [1, 0, 0]]
     expect(resolveVertexQueries(v, ['v0'], 'body_x'))

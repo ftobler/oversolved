@@ -337,6 +337,10 @@ function findBodyElement(
   id: string,
   bodies: Record<string, BodyResult>
 ): { body: BodyResult; kind: 'edge' | 'face' | 'vertex'; index: number } | null {
+  // An EMPTY id names nothing. The query arrays are padded with '' placeholders
+  // for entities the kernel could not name (solidToEdges/solidToVertices), so
+  // the `indexOf` below would otherwise resolve '' to the first unnamed element.
+  if (!id) return null
   // Simple slash format: @bodyId/edge/N, @bodyId/face/N, or @bodyId/vertex/N.
   // `bodies` is keyed by body id, which is exactly what the render fallback
   // mints, so this lookup lands on the sibling the user actually picked.
