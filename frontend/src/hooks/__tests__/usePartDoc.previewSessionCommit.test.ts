@@ -64,7 +64,7 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   })
 
   it('a sketch session commit resolves an open preview, so a later Apply cannot key a stale preview_commit', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })  // sketch: not suppressed
@@ -110,7 +110,7 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   })
 
   it('a sketch session commit leaves no previewOriginalDoc behind and clears suppression', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })
@@ -131,7 +131,7 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   })
 
   it('a sketch session commit with no preview open pushes nothing extra', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })
@@ -144,7 +144,7 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   })
 
   it('a suppressed session commit with an open preview keeps the [preview_commit, edit_session] order', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -162,7 +162,7 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   })
 
   it('cancelling a sketch session with an open preview drops the refs so the later Cancel is inert', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })

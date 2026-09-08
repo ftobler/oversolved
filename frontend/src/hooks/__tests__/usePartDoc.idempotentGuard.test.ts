@@ -95,7 +95,7 @@ function makeDoc(rollback?: number): PartDoc {
 }
 
 function renderPartDoc() {
-  return renderHookStrict(() => usePartDoc('test-uuid', 'feature', vi.fn(), { solveOnLoad: false }))
+  return renderHookStrict(() => usePartDoc('test-uuid', { solveOnLoad: false }))
 }
 
 // One doc per remove_* handler, each with a list long enough that a valid index

@@ -37,7 +37,7 @@ export function solveVariable(
   const varName = String(feature.label ?? feature.id ?? '')
 
   // Defense in depth: the mutation layer also prevents these, but a hand-edited
-  // doc (code mode) can still carry an invalid or colliding name.
+  // or imported doc can still carry an invalid or colliding name.
   if (!isValidVariableName(varName)) {
     return { status: 'exception', exception: `Invalid variable name: "${varName}". Must be a valid identifier.` }
   }

@@ -95,7 +95,7 @@ function edgeDrag(currentWorld: [number, number]): VertexOrEdgeDrag {
  *  forwarded to the store. Returns the mutation that was (or was not) committed. */
 function commitDrag(drag: VertexOrEdgeDrag, lastDragSolve: Parameters<typeof computeDragMutation>[4]) {
   docRef.current = makeDoc()
-  const { result } = renderHook(() => usePartDoc('doc1', 'feature', vi.fn(), { solveOnLoad: false }))
+  const { result } = renderHook(() => usePartDoc('doc1', { solveOnLoad: false }))
   const m = computeDragMutation([200, 200], drag, null, null, lastDragSolve)
   if (m) act(() => { result.current.handleMutation(m as Mutation) })
   return { m, result }
@@ -146,7 +146,7 @@ describe('circle-rim drag commit accounting', () => {
 
   it('resize_circle bypasses the checkpoint cache like the other drag commits', () => {
     docRef.current = makeDoc()
-    const { result } = renderHook(() => usePartDoc('doc1', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHook(() => usePartDoc('doc1', { solveOnLoad: false }))
     act(() => {
       result.current.handleMutation({
         type: 'resize_circle',

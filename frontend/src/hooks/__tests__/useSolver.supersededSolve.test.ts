@@ -29,7 +29,7 @@ function makeDoc(): PartDoc {
 function setupHook() {
   const docRef = { current: makeDoc() }
   const { result } = renderHook(() =>
-    useSolver(undefined, vi.fn(), { current: 'feature' }, {}, docRef, vi.fn()),
+    useSolver(undefined, {}, docRef, vi.fn()),
   )
   return result
 }
@@ -51,7 +51,6 @@ describe('useSolver superseded solve', () => {
     })
 
     expect(result.current.solveError).toBeNull()
-    expect(result.current.solveResult).toBe('')
   })
 
   it('leaves the solving flag to the newer solve that replaced it', async () => {

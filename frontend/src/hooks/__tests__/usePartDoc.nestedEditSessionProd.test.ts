@@ -57,7 +57,7 @@ describe('usePartDoc nested edit session guard (prod: failLoud warns, does not t
   })
 
   it('a nested startEditSession call does not overwrite the outer snapshot', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })

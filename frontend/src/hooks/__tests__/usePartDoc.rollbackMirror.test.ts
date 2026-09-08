@@ -73,7 +73,7 @@ function makeDoc(rollback?: number): PartDoc {
 }
 
 function renderPartDoc() {
-  return renderHook(() => usePartDoc('test-uuid', 'feature', vi.fn(), { solveOnLoad: false }))
+  return renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
 }
 
 describe('doc.rollback mirrors the rollback bar', () => {

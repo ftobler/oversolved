@@ -19,24 +19,15 @@ import featureMirrorIcon from '@/assets/icons/feature-mirror.svg'
 import featureVariableIcon from '@/assets/icons/feature-variable.svg'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
-import featureCodeIcon from '@/assets/icons/icon-code.svg'
 import featureAddPlaneIcon from '@/assets/icons/feature-add-plane.svg'
-import toolbarPlayIcon from '@/assets/icons/toolbar-play.svg'
-import toolbarCopyCodeIcon from '@/assets/icons/toolbar-copy-code.svg'
-import toolbarCopyResultIcon from '@/assets/icons/toolbar-copy-result.svg'
 import featureImportIcon from '@/assets/icons/icon-upload.svg'
 import featureExportIcon from '@/assets/icons/icon-download.svg'
 
 interface PartEditorPanelProps {
   children: ReactNode
   rightPanel?: ReactNode
-  mode: string
-  setMode: (newMode: 'sketch' | 'feature' | 'code') => void
-  codeText: string
-  setCodeText: (v: string) => void
-  solving: boolean
-  solveResult: string | null
-  handleRun: () => void
+  mode: 'sketch' | 'feature'
+  setMode: (newMode: 'sketch' | 'feature') => void
   solveError: string | null
   setSolveError: (v: string | null) => void
   error: string | null
@@ -58,9 +49,6 @@ export default function PartEditorPanel({
   children,
   rightPanel,
   mode, setMode,
-  codeText, setCodeText,
-  solving, solveResult,
-  handleRun,
   solveError, setSolveError,
   error, setError,
   loading,
@@ -87,25 +75,8 @@ export default function PartEditorPanel({
             <button className={`mode-btn ${mode === 'feature' ? 'active' : ''}`} onClick={() => setMode('feature')} title="Feature mode">
               <img src={featurePartIcon} alt="Feature" />
             </button>
-            <button className={`mode-btn ${mode === 'code' ? 'active' : ''}`} onClick={() => setMode('code')} title="Code mode">
-              <img src={featureCodeIcon} alt="Code" />
-            </button>
           </div>
           <div className="toolbar-separator" />
-          {mode === 'code' && (
-            <>
-              <button className="editor-btn" title="Run" onClick={handleRun} disabled={solving}>
-                <img src={toolbarPlayIcon} alt="Run" />
-              </button>
-              <div className="toolbar-separator" />
-              <button className="editor-btn" title="Copy code" onClick={() => navigator.clipboard.writeText(codeText)}>
-                <img src={toolbarCopyCodeIcon} alt="Copy code" />
-              </button>
-              <button className="editor-btn" title="Copy result" onClick={() => navigator.clipboard.writeText(solveResult ?? '')}>
-                <img src={toolbarCopyResultIcon} alt="Copy result" />
-              </button>
-            </>
-          )}
           {mode === 'sketch' && <SketchToolbar onResetViewport={() => viewportRef.current?.autoZoomToFit(true)} />}
           {mode === 'feature' && (
             <>
@@ -142,18 +113,7 @@ export default function PartEditorPanel({
             onDismiss={() => { setSolveError(null); setError(null) }}
           />
         )}
-        {!loading && mode === 'code' && (
-          <div className="code-split">
-            <textarea className="code-input" value={codeText} onChange={e => setCodeText(e.target.value)} placeholder="Document content..." spellCheck="false" />
-            <div className="code-result">
-              {solving ? <span className="code-result-status">Solving...</span> : solveResult ? <pre>{solveResult}</pre> : <span className="code-result-status">Press Run to solve</span>}
-            </div>
-          </div>
-        )}
-        {/* Keep the Viewport mounted across mode switches (hidden in code mode).
-            Unmounting would remount it on return and re-arm its auto-fit, which
-            reframes/re-scales the camera. We only want the first-solve fit. */}
-        <div style={{ position: 'relative', width: '100%', flex: 1, display: mode === 'code' ? 'none' : undefined }}>
+        <div style={{ position: 'relative', width: '100%', flex: 1 }}>
           <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} />
           <LoadingOverlay isDocumentLoading={loading} />
         </div>

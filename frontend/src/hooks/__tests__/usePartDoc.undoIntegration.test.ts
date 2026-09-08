@@ -73,7 +73,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a plain mutation is undone and redone as one step', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('second')) })
     expect(labelOf()).toBe('second')
@@ -91,7 +91,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('an edit session collapses its mutations into one undo step', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -116,7 +116,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('an edit session that changed nothing leaves no undo step', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -126,7 +126,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a cancelled edit session restores the doc and leaves the stack untouched', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('kept')) })
     expect(result.current.undoStack).toHaveLength(1)
@@ -153,7 +153,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const before = structuredClone(docRef.current)
 
     act(() => { result.current.startPreviewMode(before) })
@@ -179,7 +179,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
@@ -198,7 +198,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     const prePreview = structuredClone(docRef.current)
     act(() => { result.current.startPreviewMode(prePreview) })
@@ -215,7 +215,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a new mutation after an undo discards the redo branch', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     act(() => { result.current.handleUndo() })
@@ -227,7 +227,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('undo exits any open edit and marks the doc unsaved', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
@@ -253,7 +253,7 @@ describe('usePartDoc undo/redo integration', () => {
   // pins is only half covered: a redo must tear the session down just the same,
   // or the swallow it left standing would eat every later edit with no undo step.
   it('redo exits any open edit and clears its suppression', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     act(() => { result.current.handleUndo() })
@@ -284,7 +284,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
@@ -308,7 +308,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
@@ -326,7 +326,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('committing an edit session orphaned by an undo pushes nothing', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
@@ -347,7 +347,7 @@ describe('usePartDoc undo/redo integration', () => {
   // Redo shares applyUndoRedo with undo, so this exists to keep the teardown out
   // of an undo-only branch if that function is ever split.
   it('committing an edit session orphaned by a redo pushes nothing', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     act(() => { result.current.handleUndo() })
@@ -369,7 +369,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('cancelling an edit session orphaned by an undo does not revert the undo', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
@@ -389,7 +389,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('undo restores the rollback position the doc was saved with', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     usePartEditorStore.getState().setRollbackPosition(0)
@@ -400,30 +400,8 @@ describe('usePartDoc undo/redo integration', () => {
     expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
   })
 
-  it('discardSessions re-enables undo pushes without clearing the stacks', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
-
-    act(() => { result.current.handleMutation(renameTo('kept')) })
-    expect(result.current.undoStack).toHaveLength(1)
-
-    // A preview started while the code tab is open sets suppressUndoRef, which
-    // the code-tab exit must clear or every later tree edit is silently lost.
-    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
-    expect(result.current.undoStack).toHaveLength(1)
-
-    act(() => { result.current.discardSessions() })
-
-    act(() => { result.current.handleMutation(renameTo('after')) })
-    // The pre-existing entry survives (stacks untouched) and the new edit is
-    // undoable again (suppression cleared). The pushed entry stores the doc
-    // before the edit, which is the suppressed preview frame.
-    expect(result.current.undoStack).toHaveLength(2)
-    expect(labelOf()).toBe('after')
-  })
-
   it('a sketch session leaves one entry per action and no aggregate edit_session', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })  // sketch: not suppressed
@@ -453,7 +431,7 @@ describe('usePartDoc undo/redo integration', () => {
   // each push clears the redo branch, so a cancel must restore the PARKED
   // pre-session stacks - including the redo branch the pushes invalidated.
   it('cancelling a sketch session with per-action entries restores both stacks and resurrects the pre-session redo', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     // Build a redo branch: undo a mutation so the pre-session redo has content.
     act(() => { result.current.handleMutation(renameTo('a')) })
@@ -487,7 +465,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a suppressed feature session folds N actions into exactly one entry', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -502,7 +480,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a no-op rename pushes nothing and neither dirties nor re-solves', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     useUnsavedChangesStore.getState().setDirty(false)
     reSolve.mockClear()
 
@@ -529,7 +507,7 @@ describe('usePartDoc undo/redo integration', () => {
         { id: 'f2', kind: 'extrude' },
       ],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     useUnsavedChangesStore.getState().setDirty(false)
     reSolve.mockClear()
 
@@ -547,7 +525,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     useUnsavedChangesStore.getState().setDirty(false)
     reSolve.mockClear()
 
@@ -565,7 +543,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#ff0000' }) })
@@ -581,7 +559,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     useUnsavedChangesStore.getState().setDirty(false)
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
@@ -600,7 +578,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
     act(() => {
@@ -625,7 +603,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'sk1', kind: 'sketch' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
@@ -655,7 +633,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000', transparency: 0 } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const prePreview = structuredClone(docRef.current)
 
     // Apply path: slider moves are swallowed, exactly one preview_commit.
@@ -687,7 +665,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -725,7 +703,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000', transparency: 0 } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -787,7 +765,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -814,7 +792,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -840,7 +818,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -871,7 +849,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const baseline = structuredClone(docRef.current)
 
     act(() => { result.current.startPreviewMode(baseline) })
@@ -895,7 +873,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
     // No slider was touched. A solve reconciles part_style and fabricates an
@@ -913,7 +891,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'sk1', kind: 'sketch' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
@@ -936,7 +914,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('an end-snapped line committed as a group is one undo step restoring both', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => {
       result.current.commitMutationGroup([
@@ -958,7 +936,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('projecting N faces is one undo step', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => {
       result.current.commitMutationGroup([
@@ -987,7 +965,7 @@ describe('usePartDoc undo/redo integration', () => {
         { id: 'f4', kind: 'chamfer' },
       ],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => {
       result.current.commitMutationGroup([
@@ -1015,7 +993,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -1042,7 +1020,7 @@ describe('usePartDoc undo/redo integration', () => {
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
@@ -1075,7 +1053,7 @@ describe('usePartDoc undo/redo integration', () => {
       kind: 'part',
       features: [{ id: 'f1', kind: 'sketch' }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     useUnsavedChangesStore.getState().setDirty(false)
     reSolve.mockClear()
 
@@ -1098,7 +1076,7 @@ describe('usePartDoc undo/redo integration', () => {
       kind: 'part',
       features: [{ id: 'f1', kind: 'fillet', fillet: { edges: ['?edge1'] } }],
     } as unknown as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation({ type: 'add_fillet_edge', featureId: 'f1', edgeQuery: '?edge1' }) })
 
@@ -1110,7 +1088,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a two-pick brep dimension is one undo step that drops both projections', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const store = useSketchEditorStore.getState()
     setSketchCallback('onMutation', result.current.handleMutation)
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
@@ -1147,7 +1125,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('an unrelated mutation mid-gesture clears the brep withhold and owns the projection', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const store = useSketchEditorStore.getState()
     setSketchCallback('onMutation', result.current.handleMutation)
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
@@ -1197,7 +1175,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a non-dimension add_constraint mid-gesture clears the withhold instead of consuming it', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const store = useSketchEditorStore.getState()
     setSketchCallback('onMutation', result.current.handleMutation)
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
@@ -1246,7 +1224,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a rename-steal mid-gesture undoes per step and never strands the projection', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const store = useSketchEditorStore.getState()
     setSketchCallback('onMutation', result.current.handleMutation)
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
@@ -1295,7 +1273,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a brep dimension pick and its OK commit are one undo step', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const store = useSketchEditorStore.getState()
     setSketchCallback('onMutation', result.current.handleMutation)
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
@@ -1335,7 +1313,7 @@ describe('usePartDoc undo/redo integration', () => {
   // armed withhold (like the suppression branch does), or it strands the arm
   // and the NEXT real mutation gets swallowed as the never-arriving projection.
   it('a mid-gesture no-op rename consumes the brep withhold so a later edit pushes normally', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.beginBrepProjection() })
     // An idempotent rename dispatching its current label changes nothing, so
@@ -1351,7 +1329,7 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a fully no-op mutation group consumes the brep withhold so a later edit pushes normally', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.beginBrepProjection() })
     // A group whose handlers all no-op takes the group early return.
@@ -1365,7 +1343,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('cancelling a brep dimension pick removes the projection and its entry', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const store = useSketchEditorStore.getState()
     setSketchCallback('onMutation', result.current.handleMutation)
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
@@ -1398,7 +1376,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a projection group run while a brep withhold is pending restores the pre-pick doc in one entry', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     // A pick armed the withhold; the N-face projection lands through the
     // gesture-group seam instead of the single-mutation funnel. The group must
@@ -1436,7 +1414,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a brep arm made while suppression is on does not leak past the suppression boundary', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     usePartEditorStore.getState().setEditingFeatureId('sk1')
 
     // A suppressed feature session is the undo owner; a brep pick armed inside

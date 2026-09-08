@@ -191,10 +191,7 @@ function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
 
 type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _restoreSolveResults?: Record<string, SketchData> }) => Promise<void> | void
 
-export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: (t: string) => void, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
-  const modeRef = useRef(mode)
-  useEffect(() => { modeRef.current = mode }, [mode])
-
+export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
   const reSolveRef = useRef<ReSolveFn | null>(null)
 
   // Retained pruned solve results, keyed by feature id, held across the undo
@@ -228,10 +225,10 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
 
   const {
     solveResults, setSolveResults, bodies, pickBodies, pickStateReady,
-    solving, solveError, setSolveError, solveResult,
+    solving, solveError, setSolveError,
     featureTimings, reSolve,
     validation,
-  } = useSolver(uuid, setCodeText, modeRef, { onFirstSolve, onSolveApplied: clearStashForSolved }, docRef, setDoc)
+  } = useSolver(uuid, { onFirstSolve, onSolveApplied: clearStashForSolved }, docRef, setDoc)
 
   useEffect(() => { reSolveRef.current = reSolve }, [reSolve])
 
@@ -314,35 +311,9 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
   }, [])
 
   const {
-    undoStack, redoStack, suppressUndoRef, pushUndo, clearStacks, handleUndo, handleRedo,
+    undoStack, redoStack, suppressUndoRef, pushUndo, handleUndo, handleRedo,
     saveUndoStackSnapshot, restoreUndoStackSnapshot, clearUndoStackSnapshot,
   } = useUndoRedo(docRef, setDoc, restoreAwareReSolve, tearDownEditorState)
-
-  // Abandons open edit/preview sessions and re-enables undo pushes, WITHOUT
-  // touching the stacks. The code tab's own exit path runs the full
-  // discardHistoryAndSessions (a doc swap clears the history), but a plain
-  // exit with no typed text still has to drop a session a preview started in
-  // code mode, or its suppressUndoRef keeps swallowing every later edit.
-  const discardSessions = useCallback(() => {
-    suppressUndoRef.current = false
-    tearDownEditorState()
-  }, [suppressUndoRef, tearDownEditorState])
-
-  // What the code tab calls before it swaps the document in from text. The swap
-  // leaves every open session describing a world the document no longer has --
-  // the same staleness an undo creates -- so it gets the same teardown, and the
-  // history goes with it because no entry can be paired with the swap.
-  // Without the teardown a cancel taken afterwards would rewind the doc to a
-  // pre-code-tab snapshot, and restoreUndoStackSnapshot would silently do
-  // nothing because the snapshot it wants was dropped here.
-  const discardHistoryAndSessions = useCallback(() => {
-    discardSessions()
-    clearStacks()
-    // The retained snapshots describe the old doc's history; the swapped-in
-    // doc could reuse the same feature ids, so holding them would risk a stale
-    // restore. The undo stacks they exist to serve are dropped here too.
-    restoreStashRef.current = {}
-  }, [discardSessions, clearStacks])
 
   const startPreviewMode = useCallback((originalDoc: PartDoc) => {
     if (previewOriginalDoc.current !== null) {
@@ -860,7 +831,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     solving,
     solveError,
     setSolveError,
-    solveResult,
     undoStack,
     redoStack,
     reSolve,
@@ -871,8 +841,6 @@ export function usePartDoc(uuid: string | undefined, mode: string, setCodeText: 
     cancelBrepProjection,
     handleUndo,
     handleRedo,
-    discardHistoryAndSessions,
-    discardSessions,
     saveDoc,
     renameDoc,
     cloneDoc,

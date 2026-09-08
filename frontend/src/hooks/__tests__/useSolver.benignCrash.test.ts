@@ -29,7 +29,7 @@ function makeDoc(): PartDoc {
 function setupHook() {
   const docRef = { current: makeDoc() }
   const { result } = renderHook(() =>
-    useSolver(undefined, vi.fn(), { current: 'feature' }, {}, docRef, vi.fn()),
+    useSolver(undefined, {}, docRef, vi.fn()),
   )
   return result
 }
@@ -43,7 +43,6 @@ describe('useSolver benign crash strings', () => {
 
     await act(async () => { await result.current.reSolve(makeDoc()) })
     expect(result.current.solveError).toBeNull()
-    expect(result.current.solveResult).toBe('')
   })
 
   it('a cooldown backoff rejection does not paint a banner', async () => {
@@ -52,7 +51,6 @@ describe('useSolver benign crash strings', () => {
 
     await act(async () => { await result.current.reSolve(makeDoc()) })
     expect(result.current.solveError).toBeNull()
-    expect(result.current.solveResult).toBe('')
   })
 
   it('a genuinely non-benign failure still paints the banner', async () => {

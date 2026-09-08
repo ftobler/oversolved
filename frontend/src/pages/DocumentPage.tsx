@@ -67,8 +67,8 @@ export default function DocumentPage() {
   // when the keyed instance tears down.
   //
   // Deliberate behavior changes this introduces, not bugs: the camera auto-fits
-  // the fresh instance (firstSolveDone is per-instance), mode/codeText/color
-  // popover reset to per-doc defaults, and the Viewport (three.js scene) is
+  // the fresh instance (firstSolveDone is per-instance), the panel mode and
+  // colour popover reset to per-doc defaults, and the Viewport (three.js scene) is
   // rebuilt. The solver Worker checkpoint cache is per doc-id, so B's
   // incremental solve is preserved.
   return <Part key={uuid} />

@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation, FeatureHandleData } from '@/types/cad'
 import { useSolverStore } from '@/stores/solverStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -82,8 +81,6 @@ export function reconcilePartStyle(doc: PartDoc, bodies: Record<string, BodyResu
 
 export function useSolver(
   uuid: string | undefined,
-  setCodeText: (t: string) => void,
-  modeRef: React.MutableRefObject<string>,
   { onFirstSolve, onSolveApplied }: { onFirstSolve?: () => void; onSolveApplied?: (featureIds: string[]) => void } = {},
   docRef: React.MutableRefObject<PartDoc | null>,
   setDoc: React.Dispatch<React.SetStateAction<PartDoc | null>>,
@@ -105,7 +102,6 @@ export function useSolver(
   const [featureTimings, setFeatureTimings] = useState<Record<string, number>>({})
   const [solveTime, setSolveTime] = useState<number | null>(null)
   const [solveError, setSolveError] = useState<string | null>(null)
-  const [solveResult, setSolveRawResult] = useState<string>('')
   const [validation, setValidation] = useState<RebuildValidation | null>(null)
   const firstSolveDone = useRef(false)
   const requestIdRef = useRef(0)
@@ -256,20 +252,12 @@ export function useSolver(
       setDoc(cloned)
       docRef.current = cloned
     }
-    // The result dump only feeds the code tab's read-only pane. Serialize it
-    // lazily (and as JSON, the native shape of the JS result object) only when
-    // that tab is open, instead of on every solve. The document codeText stays
-    // YAML -- that is the editable input representation.
-    if (modeRef.current === 'code') {
-      setSolveRawResult(JSON.stringify(data.result, null, 2))
-      setCodeText(stringifyYaml(cloned))
-    }
     setSolveError(null)
     if (solveTimeMs !== undefined) {
       setSolveTime(solveTimeMs)
     }
     return cloned
-  }, [setCodeText, modeRef, docRef, setDoc, onSolveApplied])
+  }, [docRef, setDoc, onSolveApplied])
 
   const applyBuildResponse = useCallback((d: PartDoc, data: BuildResponse, solveTimeMs?: number, expectedRequestId?: number): PartDoc | null => {
     // Stale-guard: if a newer reSolve has been issued, discard this response.
@@ -376,7 +364,6 @@ export function useSolver(
         const missing = [...unportedKinds(solveFeatures)].join(', ')
         const msg = `Cannot solve: unported feature kinds: ${missing}`
         setSolveError(msg)
-        setSolveRawResult(msg)
         restorePrunedResults()
         if (!cancelledRef.current) setSolving(false)
         return
@@ -403,7 +390,6 @@ export function useSolver(
       if (!local) {
         const msg = 'Local solver unavailable (OCC.js failed to load)'
         setSolveError(msg)
-        setSolveRawResult(msg)
         restorePrunedResults()
         if (!cancelledRef.current) setSolving(false)
         return
@@ -432,7 +418,6 @@ export function useSolver(
       if (isStale()) return
       if (!BENIGN_SOLVE_FAILURES.has(reason)) {
         setSolveError(String(e))
-        setSolveRawResult(String(e))
       }
     } finally {
       if (isCurrent()) setSolving(false)
@@ -482,8 +467,6 @@ export function useSolver(
     solveTime,
     solveError,
     setSolveError,
-    solveResult,
-    setSolveRawResult,
     featureTimings,
     reSolve,
     validation,

@@ -32,7 +32,7 @@ function setupHook() {
   const docRef = { current: makeDoc() }
   const setDoc = vi.fn()
   const { result } = renderHook(() =>
-    useSolver(undefined, vi.fn(), { current: 'feature' }, {}, docRef, setDoc),
+    useSolver(undefined, {}, docRef, setDoc),
   )
   return result
 }

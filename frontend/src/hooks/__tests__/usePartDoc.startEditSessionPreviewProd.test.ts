@@ -68,7 +68,7 @@ describe('usePartDoc startEditSession with an open preview (prod: failLoud warns
   }
 
   it('a preview open at session start is resolved BEFORE the snapshot, so commit lands [preview_commit, edit_session]', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     openAndSwallowPreview(result)
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
@@ -100,7 +100,7 @@ describe('usePartDoc startEditSession with an open preview (prod: failLoud warns
   })
 
   it('cancelling a session with a pre-session preview keeps the color with its own preview_commit entry', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     openAndSwallowPreview(result)
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
@@ -123,7 +123,7 @@ describe('usePartDoc startEditSession with an open preview (prod: failLoud warns
   })
 
   it('a non-suppressed (sketch) session start also resolves an open preview', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     openAndSwallowPreview(result)
 
     act(() => { result.current.startEditSession(false) })

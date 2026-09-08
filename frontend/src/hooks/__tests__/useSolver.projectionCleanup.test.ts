@@ -70,10 +70,8 @@ function setupHook() {
       docRef.current = updater as PartDoc
     }
   })
-  const modeRef = { current: 'feature' }
-  const setCodeText = vi.fn()
   const { result, unmount } = renderHook(() =>
-    useSolver(undefined, setCodeText, modeRef, {}, docRef, setDoc as never),
+    useSolver(undefined, {}, docRef, setDoc as never),
   )
   return { result, unmount, docRef, setDoc }
 }

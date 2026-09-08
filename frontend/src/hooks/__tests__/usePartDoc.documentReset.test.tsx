@@ -55,7 +55,7 @@ const labelOf = () => (docRef.current.features?.[0] as { label?: string }).label
 // test reads it, because tests only read after act().
 const harness = { latest: null as null | ReturnType<typeof usePartDoc> }
 function Harness({ uuid }: { uuid: string }) {
-  const result = usePartDoc(uuid, 'feature', vi.fn(), { solveOnLoad: false })
+  const result = usePartDoc(uuid, { solveOnLoad: false })
   useEffect(() => { harness.latest = result })
   return null
 }

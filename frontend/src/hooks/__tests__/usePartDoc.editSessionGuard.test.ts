@@ -32,7 +32,6 @@ vi.mock('@/hooks/useSolver', () => ({
     solveError: null,
     setSolveError: vi.fn(),
     solveResult: null,
-    setSolveRawResult: vi.fn(),
     featureTimings: {},
     reSolve: vi.fn(),
     setRollbackPos: vi.fn(),
@@ -62,47 +61,47 @@ vi.mock('@/hooks/mutationDispatch', () => ({
 
 describe('usePartDoc edit session guards', () => {
   it('throws on nested startEditSession', () => {
-    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
     result.current.startEditSession(true)
     expect(() => result.current.startEditSession(true)).toThrow('[usePartDoc] startEditSession called while an edit session is already active')
   })
 
   it('does not throw on commitEditSession without start', () => {
-    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
     expect(() => result.current.commitEditSession()).not.toThrow()
   })
 
   it('does not throw on cancelEditSession without start', () => {
-    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
     expect(() => result.current.cancelEditSession()).not.toThrow()
   })
 
   it('throws on nested startPreviewMode', () => {
-    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
     result.current.startPreviewMode({ features: [] } as never)
     expect(() => result.current.startPreviewMode({ features: [] } as never)).toThrow('[usePartDoc] startPreviewMode called while a preview is already active')
   })
 
   it('throws on startEditSession with a live preview (half-open session start)', () => {
-    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
     result.current.startPreviewMode({ features: [] } as never)
     result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' } as never)
     expect(() => result.current.startEditSession(true)).toThrow('[usePartDoc] startEditSession called while a preview is active')
   })
 
   it('throws on commitPreview without start', () => {
-    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
     expect(() => result.current.commitPreview({ type: 'test' } as never)).toThrow('[usePartDoc] commitPreview called with no active preview')
   })
 
   it('does not throw on start+commit sequence', () => {
-    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
     result.current.startEditSession(true)
     expect(() => result.current.commitEditSession()).not.toThrow()
   })
 
   it('does not throw on start+cancel sequence', () => {
-    const { result } = renderHook(() => usePartDoc('test-uuid', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
     result.current.startEditSession(true)
     expect(() => result.current.cancelEditSession()).not.toThrow()
   })

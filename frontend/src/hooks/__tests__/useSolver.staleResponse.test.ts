@@ -33,10 +33,8 @@ function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
 function setupHook() {
   const docRef = { current: makeDoc() }
   const setDoc = vi.fn()
-  const modeRef = { current: 'feature' }
-  const setCodeText = vi.fn()
   const { result, unmount } = renderHook(() =>
-    useSolver(undefined, setCodeText, modeRef, {}, docRef, setDoc),
+    useSolver(undefined, {}, docRef, setDoc),
   )
   return { result, unmount }
 }
@@ -229,14 +227,13 @@ describe('useSolver stale-result guard', () => {
     // setState on a dead component) still runs for a reply nobody can render.
     const docRef = { current: makeDoc() }
     const setDoc = vi.fn()
-    const modeRef = { current: 'feature' }
     const onSolveApplied = vi.fn()
 
     let release!: (v: unknown) => void
     mockSolveLocally.mockReturnValue(new Promise(r => { release = r }))
 
     const { result, unmount } = renderHook(() =>
-      useSolver(undefined, vi.fn(), modeRef, { onSolveApplied }, docRef, setDoc),
+      useSolver(undefined, { onSolveApplied }, docRef, setDoc),
     )
     let p!: Promise<void>
     act(() => { p = result.current.reSolve(makeDoc()) })

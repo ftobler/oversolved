@@ -13,10 +13,7 @@ interface UseEditFeatureInput {
   cancelEditSession: () => void
   docRef: React.MutableRefObject<PartDoc | null>
   reSolve: (doc: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => void | Promise<void>
-  // Returns false when the page refuses to leave the mode it is in (the code tab
-  // holds text that is not a document). A refusal aborts whatever the caller was
-  // arranging around the switch.
-  setMode: (mode: 'sketch' | 'feature' | 'code') => boolean
+  setMode: (mode: 'sketch' | 'feature') => void
   clearPlaneSelection?: () => void
 }
 
@@ -115,9 +112,7 @@ export function useEditFeature({
       // open below (plane-on-face arms it on the newly-created sketch before
       // this runs), so only drop it when it belongs to something else. It is
       // consumed synchronously by the enter that follows in this same call,
-      // so there is no window for a stale value to leak; code mode cannot be
-      // active here either, since entering it already tears down any open
-      // session (setMode('code') -> discardHistoryAndSessions/discardSessions).
+      // so there is no window for a stale value to leak.
       const pickField = useSketchEditorStore.getState().activePickField
       // resetEditState does not itself re-solve -- only the tail of this
       // function does -- so closing the old editor and opening this one
@@ -161,13 +156,10 @@ export function useEditFeature({
     commitEditFeature()
   }, [commitEditFeature])
 
-  // The mode switch goes FIRST because it can be refused: starting the session
-  // and then failing to leave the code tab strands a half-open edit behind the
-  // textarea, with no sketch toolbar and the viewport hidden. Asking first also
-  // means the session snapshots the document the code tab just applied, rather
-  // than the one it replaced.
+  // The mode switch goes first so the sketch toolbar is already up by the time
+  // the session opens.
   const enterEditSketch = useCallback((featureId: string) => {
-    if (!setMode('sketch')) return
+    setMode('sketch')
     enterEditFeature(featureId, false)  // sketch: don't suppress undo
   }, [enterEditFeature, setMode])
 

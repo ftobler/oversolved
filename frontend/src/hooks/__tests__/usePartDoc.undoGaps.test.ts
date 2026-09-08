@@ -1,7 +1,7 @@
 // The dead-entry and invalidation branches of the part undo funnel that the
 // main undoIntegration suite does not cover: commitMutationGroup no-op / empty
-// / suppressed groups, the code-tab doc swap (discardHistoryAndSessions), the
-// null-docRef early return, the preview label fallback and redo's dirty flag.
+// / suppressed groups, the null-docRef early return, the preview label
+// fallback and redo's dirty flag.
 // Mirrors the undoIntegration harness: real useUndoRedo, real handlers.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
@@ -63,7 +63,7 @@ describe('usePartDoc undo edge cases', () => {
   })
 
   it('a no-op mutation group pushes nothing and neither dirties nor re-solves', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     // A re-dropped selection whose handlers all no-op (rename to the current
     // label) must not leave a dead entry or waste a solve, mirroring the
@@ -78,7 +78,7 @@ describe('usePartDoc undo edge cases', () => {
   })
 
   it('an empty mutation group is a harmless no-op', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     expect(() => {
       act(() => { result.current.commitMutationGroup([]) })
@@ -91,7 +91,7 @@ describe('usePartDoc undo edge cases', () => {
 
   it('a mutation group inside a suppressed session pushes no dead entry', () => {
     docRef.current = makeSketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     usePartEditorStore.getState().setEditingFeatureId('sk1')
     act(() => { result.current.startEditSession(true) })
 
@@ -111,34 +111,10 @@ describe('usePartDoc undo edge cases', () => {
     expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
   })
 
-  it('discardHistoryAndSessions clears the stacks and leaves a post-swap cancel inert', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
-
-    act(() => { result.current.handleMutation(renameTo('a')) })
-    expect(result.current.undoStack).toHaveLength(1)
-
-    // The code tab swaps the document in while an edit session is open; the
-    // session parked a stack snapshot on start.
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
-    act(() => { result.current.startEditSession(true) })
-    act(() => { result.current.handleMutation(renameTo('in-edit')) })
-
-    act(() => { result.current.discardHistoryAndSessions() })
-
-    expect(result.current.undoStack).toHaveLength(0)
-    expect(result.current.redoStack).toHaveLength(0)
-
-    // The cancelled session must not resurrect the history the code tab just
-    // dropped: restoreUndoStackSnapshot (via cancelEditSession) is inert.
-    act(() => { result.current.cancelEditSession() })
-    expect(result.current.undoStack).toHaveLength(0)
-    expect(result.current.redoStack).toHaveLength(0)
-  })
-
   it('handleMutation with a null docRef is a no-op that pushes nothing', () => {
     docRef.current = null
     reSolve.mockClear()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     expect(() => {
       act(() => { result.current.handleMutation(renameTo('x')) })
@@ -150,7 +126,7 @@ describe('usePartDoc undo edge cases', () => {
   })
 
   it('a preview commit whose change is outside part_style keeps the passed mutation as the label', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const prePreview = structuredClone(docRef.current!)
 
     act(() => { result.current.startPreviewMode(prePreview) })
@@ -170,7 +146,7 @@ describe('usePartDoc undo edge cases', () => {
   })
 
   it('a redo also marks the doc unsaved', () => {
-    const { result } = renderHookStrict(() => usePartDoc('u', 'code', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
     act(() => { result.current.handleUndo() })

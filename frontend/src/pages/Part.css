@@ -893,70 +893,6 @@
   filter: invert(0.8);
 }
 
-.code-split {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-.code-input {
-  flex: 1;
-  padding: 16px;
-  background: #111;
-  color: #ccc;
-  border: none;
-  border-right: 1px solid #333;
-  font-family: 'Roboto Mono', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  resize: none;
-}
-
-.code-input:focus {
-  outline: none;
-  color: #fff;
-}
-
-.code-result {
-  flex: 1;
-  padding: 16px;
-  background: #0d0d0d;
-  overflow-y: auto;
-  font-family: 'Roboto Mono', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  color: #ccc;
-  text-align: left;
-}
-
-.code-result pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.code-result-status {
-  color: #555;
-  font-style: italic;
-}
-
-.doc-editor textarea {
-  flex: 1;
-  padding: 16px;
-  background: #111;
-  color: #ccc;
-  border: none;
-  font-family: 'Roboto Mono', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  resize: none;
-}
-
-.doc-editor textarea:focus {
-  outline: none;
-  color: #fff;
-}
-
 .doc-editor .status {
   display: flex;
   align-items: center;
@@ -985,11 +921,6 @@
     max-height: 150px;
     border-right: none;
     border-bottom: 1px solid #333;
-  }
-
-  .doc-editor textarea {
-    font-size: 12px;
-    padding: 12px;
   }
 }
 

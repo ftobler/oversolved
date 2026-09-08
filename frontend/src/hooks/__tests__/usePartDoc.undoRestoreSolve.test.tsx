@@ -100,7 +100,7 @@ describe('undo restore of pruned solve results', () => {
     docRef.current = importDoc()
     mockSolveViaWorker.mockImplementation(okImpl)
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     // Any real edit drives a solve, which gives the feature a solve result to
     // prune later.
@@ -127,7 +127,7 @@ describe('undo restore of pruned solve results', () => {
     docRef.current = importDoc()
     mockSolveViaWorker.mockImplementation(okImpl)
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('imp1', 'edited')) })
     await flush()
@@ -147,7 +147,7 @@ describe('undo restore of pruned solve results', () => {
     docRef.current = extrudeDoc('ex1', 'ex2', 'ex3')
     mockSolveViaWorker.mockImplementation(okImpl)
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('ex1', 'edited')) })
     await flush()
@@ -175,7 +175,7 @@ describe('undo restore of pruned solve results', () => {
     docRef.current = extrudeDoc('ex1')
     mockSolveViaWorker.mockImplementation(okImpl)
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('ex1', 'edited')) })
     await flush()
@@ -207,7 +207,7 @@ describe('undo restore of pruned solve results', () => {
     docRef.current = extrudeDoc('ex1', 'ex2')
     mockSolveViaWorker.mockImplementation(okImpl)
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('ex1', 'edited')) })
     await flush()
@@ -244,7 +244,7 @@ describe('undo restore of pruned solve results', () => {
     docRef.current = sketchDoc()
     mockSolveViaWorker.mockImplementation(okImpl)
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('sk1', 'edited')) })
     await flush()

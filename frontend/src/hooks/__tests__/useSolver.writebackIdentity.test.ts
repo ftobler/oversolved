@@ -54,7 +54,7 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
       docRef.current = typeof d === 'function' ? d(docRef.current) : d
     })
     const { result } = renderHook(() =>
-      useSolver(undefined, vi.fn(), { current: 'feature' }, {}, docRef, setDoc),
+      useSolver(undefined, {}, docRef, setDoc),
     )
 
     mockSolveViaWorker.mockResolvedValue(response({ l1: [0, 0, 1, 0], l2: [0, 5, 1, 5] }))
@@ -75,7 +75,7 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
       docRef.current = typeof d === 'function' ? d(docRef.current) : d
     })
     const { result } = renderHook(() =>
-      useSolver(undefined, vi.fn(), { current: 'feature' }, {}, docRef, setDoc),
+      useSolver(undefined, {}, docRef, setDoc),
     )
 
     mockSolveViaWorker.mockResolvedValue(response({ l1: [0, 0, 1, 0], l2: [0, 5, 1, 5] }))

@@ -179,7 +179,7 @@ describe('solver write-back undo round-trip', () => {
     docRef.current = makeSuperfluousDoc()
     mockSolveViaWorker.mockResolvedValue(superfluousResponse())
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     // A plain edit that flags the constraint superfluous on solve.
     act(() => { result.current.handleMutation(renameTo('edited')) })
@@ -211,7 +211,7 @@ describe('solver write-back undo round-trip', () => {
     docRef.current = makeProjectionDoc()
     mockSolveViaWorker.mockResolvedValue(projectionResponse())
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('edited')) })
     await flush()
@@ -236,7 +236,7 @@ describe('solver write-back undo round-trip', () => {
     docRef.current = makeTwoSketchDoc()
     mockSolveViaWorker.mockResolvedValue(sk1Response())
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('edited')) })
     await flush()
@@ -263,7 +263,7 @@ describe('solver write-back undo round-trip', () => {
     docRef.current = makePartialDeleteDoc()
     mockSolveViaWorker.mockResolvedValue(sk1Response())
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('edited')) })
     await flush()
@@ -287,7 +287,7 @@ describe('solver write-back undo round-trip', () => {
     docRef.current = makeTwoSketchDoc()
     mockSolveViaWorker.mockResolvedValue(sk1Response())
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('edited')) })
     await flush()
@@ -332,7 +332,7 @@ describe('solver write-back undo round-trip', () => {
     docRef.current = makeSuperfluousDoc()
     mockSolveViaWorker.mockResolvedValue(superfluousResponse())
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('edited')) })
     await flush()
@@ -367,7 +367,7 @@ describe('solver write-back undo round-trip', () => {
       return Promise.resolve({ solve_ms: 0, result, bodies: {}, _build_state: null })
     })
 
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('edited')) })
     await flush()

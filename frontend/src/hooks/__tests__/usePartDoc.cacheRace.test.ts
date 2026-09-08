@@ -20,10 +20,8 @@ function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
 function setupHook(uuid?: string) {
   const docRef = { current: makeDoc() }
   const setDoc = vi.fn()
-  const modeRef = { current: 'feature' }
-  const setCodeText = vi.fn()
   const { result, unmount } = renderHook(() =>
-    useSolver(uuid, setCodeText, modeRef, {}, docRef, setDoc),
+    useSolver(uuid, {}, docRef, setDoc),
   )
   return { result, unmount, setDoc }
 }

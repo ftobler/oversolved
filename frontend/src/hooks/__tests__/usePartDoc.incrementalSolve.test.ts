@@ -79,7 +79,7 @@ function makeDoc(): PartDoc {
 /** Apply one mutation through the hook and return the options reSolve got. */
 function solveOptionsFor(m: Mutation): Record<string, unknown> | undefined {
   docRef.current = makeDoc()
-  const { result } = renderHook(() => usePartDoc('doc1', 'feature', vi.fn(), { solveOnLoad: false }))
+  const { result } = renderHook(() => usePartDoc('doc1', { solveOnLoad: false }))
   act(() => { result.current.handleMutation(m) })
   expect(reSolve).toHaveBeenCalledTimes(1)
   return reSolve.mock.calls[0][1] as Record<string, unknown> | undefined

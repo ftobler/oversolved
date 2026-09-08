@@ -263,7 +263,7 @@ describe('re-import through the real funnel', () => {
     const payloadA = 'AAAA'.repeat(1024)
     const payloadB = 'BBBB'.repeat(1024)
     docRef.current = { oversolved: 1, kind: 'part', features: [] } as PartDoc
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => result.current.handleMutation({ type: 'add_import_step', featureId: 'imp1', fileData: payloadA, label: 'a.step' } as Mutation))
     act(() => result.current.handleMutation({ type: 'add_import_step', featureId: 'imp2', fileData: payloadB, label: 'b.step' } as Mutation))

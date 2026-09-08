@@ -37,7 +37,7 @@ function makeDoc(): PartDoc {
 function setupHook() {
   const docRef = { current: makeDoc() }
   const { result } = renderHook(() =>
-    useSolver(undefined, vi.fn(), { current: 'feature' }, {}, docRef, vi.fn()),
+    useSolver(undefined, {}, docRef, vi.fn()),
   )
   return result
 }

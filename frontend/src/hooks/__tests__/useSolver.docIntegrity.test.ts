@@ -36,7 +36,7 @@ describe('useSolver doc integrity', () => {
     const docRef = { current: makeDoc() }
     const setDoc = vi.fn()
     const { result } = renderHook(() =>
-      useSolver('test-uuid', vi.fn(), { current: 'feature' }, {}, docRef, setDoc),
+      useSolver('test-uuid', {}, docRef, setDoc),
     )
 
     const originalDoc = makeDoc()

@@ -27,11 +27,9 @@ describe('useSolver solve-race guards', () => {
     // arrives after B started. A must be discarded via isStale() guard.
     const docRef = { current: makeDoc() }
     const setDoc = vi.fn()
-    const modeRef = { current: 'feature' }
-    const setCodeText = vi.fn()
 
     const { result } = renderHook(() =>
-      useSolver(undefined, setCodeText, modeRef, {}, docRef, setDoc),
+      useSolver(undefined, {}, docRef, setDoc),
     )
 
     let resolveA!: (v: unknown) => void
@@ -78,11 +76,9 @@ describe('useSolver solve-race guards', () => {
     // overwriting B's result when A's WS response arrives.
     const docRef = { current: makeDoc() }
     const setDoc = vi.fn()
-    const modeRef = { current: 'feature' }
-    const setCodeText = vi.fn()
 
     const { result } = renderHook(() =>
-      useSolver(undefined, setCodeText, modeRef, {}, docRef, setDoc),
+      useSolver(undefined, {}, docRef, setDoc),
     )
 
     let resolveA!: (v: unknown) => void

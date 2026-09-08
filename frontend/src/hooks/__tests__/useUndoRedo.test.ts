@@ -226,7 +226,7 @@ describe('useUndoRedo', () => {
     act(() => { result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA) })
     expect(result.current.undoStack).toHaveLength(2)
 
-    // The code tab invalidated the parked session snapshot; a later cancel must
+    // A doc swap invalidated the parked session snapshot; a later cancel must
     // not rewind the stack to the one-entry pre-session content.
     act(() => { result.current.clearUndoStackSnapshot() })
     act(() => { result.current.restoreUndoStackSnapshot() })

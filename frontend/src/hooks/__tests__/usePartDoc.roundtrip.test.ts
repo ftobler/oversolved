@@ -389,7 +389,7 @@ describe.each(ROUND_TRIPS)('round-trip: $name', ({ makeDoc, mutation }) => {
   it('forward, undo and redo each land on the expected doc', () => {
     docRef.current = makeDoc()
     solveResults = {}
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const before = structuredClone(docRef.current)
 
     act(() => { result.current.handleMutation(mutation) })
@@ -445,7 +445,7 @@ describe('round-trip side effects', () => {
       solveResults = next
     })
     solveResults = { sk1: { status: 'ok', solved: {} } }
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'sk1' } as Mutation) })
     expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['ex1'])
@@ -473,7 +473,7 @@ describe('round-trip side effects', () => {
     // before the mutation, or pruneSolveResults has nothing to restore.
     solveResults = { sk1: { status: 'ok', solved: {} } }
     reSolve.mockClear()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'sk1' } as Mutation) })
 
@@ -487,7 +487,7 @@ describe('round-trip side effects', () => {
 
   it('move_vertex adopts the drag frame and undo restores the pre-drag spec', () => {
     docRef.current = sketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     const pre = structuredClone(docRef.current)
 
     act(() => {
@@ -510,7 +510,7 @@ describe('round-trip side effects', () => {
 
   it('move_vertex_with_constraint adds the snap constraint and undo drops it with the frame', () => {
     docRef.current = sketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => {
       result.current.handleMutation({
@@ -532,7 +532,7 @@ describe('round-trip side effects', () => {
 
   it('move_entity adopts the drag frame without applying the delta on top', () => {
     docRef.current = sketchDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => {
       result.current.handleMutation({
@@ -561,7 +561,7 @@ describe('round-trip side effects', () => {
       ],
     } as unknown as PartDoc
     usePartEditorStore.getState().setRollbackPosition(1)
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 1 }) })
     expect(docRef.current!.rollback).toBe(1)
@@ -599,7 +599,7 @@ describe('undo/redo restore of the pruned-solve-result stash', () => {
     } as unknown as PartDoc
     solveResults = { ex1: { status: 'ok', solved: {} } }
     reSolve.mockClear()
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'ex1' } as Mutation) })
     // The forward delete path is unchanged: the direct restorable is handed to
@@ -640,7 +640,7 @@ describe('undo/redo restore of the pruned-solve-result stash', () => {
       ex2: { status: 'ok', solved: {} },
       ex3: { status: 'ok', solved: {} },
     }
-    const { result } = renderHookStrict(() => usePartDoc('u', 'feature', vi.fn(), { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'ex2' } as Mutation) })
     act(() => { result.current.handleMutation({ type: 'delete_feature', featureId: 'ex3' } as Mutation) })
