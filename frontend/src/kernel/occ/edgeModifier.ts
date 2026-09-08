@@ -9,7 +9,7 @@
 // the modifying feature.
 
 import { drainList, type DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from './occTypes'
+import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccShapeEnumValue } from './occTypes'
 import { faceCentroid, edgeToGeom, SubShapeIndexMap } from './primitives'
 import { edgeGeometryHash } from '../geomHash'
 import { faceGh, edgeGh } from './lineageHash'
@@ -339,6 +339,84 @@ function edgeModifierDiff(
   return diff
 }
 
+/** Whole-shape validity, geometric checks included. A throwing analyzer is
+ *  not a vote of confidence, so it reads as invalid. */
+function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
+  try {
+    const analyzer = new oc.BRepCheck_Analyzer(shape, true)
+    try {
+      return analyzer.IsValid_2()
+    } finally {
+      scope.release(analyzer)
+    }
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Repair an invalid modifier result, or null when it cannot be trusted.
+ *
+ * ShapeFix is a projector, not a rebuilder: the defect it is meant to clear
+ * here is a missing pcurve on an edge the blend shares with a corner patch.
+ * The guards mirror `canonicalSurfaces`: the healed shape must actually come
+ * out valid, keep the same solid/face/edge counts, and hold the same volume.
+ * A heal that changes the topology count has invented or dropped a face rather
+ * than projected a curve, which is the corrupt case wearing a repair, so it is
+ * refused. The returned shape is DETACHED, matching `maker.Shape()`: the
+ * caller owns it exactly as it owns an unhealed result.
+ */
+function healShape(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape | null {
+  const before = topoCounts(oc, scope, shape)
+  let healed: OccShape
+  try {
+    const fixer = scope.track(new oc.ShapeFix_Shape_2(shape))
+    fixer.Perform(scope.track(new oc.Handle_Message_ProgressIndicator_1()))
+    healed = scope.track(fixer.Shape())
+  } catch {
+    return null
+  }
+  const reject = (): null => {
+    scope.release(healed)
+    return null
+  }
+  if (!isValidShape(oc, scope, healed)) return reject()
+  const after = topoCounts(oc, scope, healed)
+  if (after.solids !== before.solids || after.faces !== before.faces || after.edges !== before.edges) {
+    return reject()
+  }
+  const v0 = shapeVolume(oc, scope, shape)
+  const v1 = shapeVolume(oc, scope, healed)
+  if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return reject()
+  return scope.detach(healed)
+}
+
+/** Solid/face/edge occurrence counts, the structural fingerprint the heal guard compares. */
+function topoCounts(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+): { solids: number; faces: number; edges: number } {
+  const E = oc.TopAbs_ShapeEnum
+  const count = (type: OccShapeEnumValue): number => {
+    const exp = scope.track(new oc.TopExp_Explorer_2(shape, type, E.TopAbs_SHAPE))
+    let n = 0
+    for (; exp.More(); exp.Next()) n++
+    scope.release(exp)
+    return n
+  }
+  return { solids: count(E.TopAbs_SOLID), faces: count(E.TopAbs_FACE), edges: count(E.TopAbs_EDGE) }
+}
+
+/** Volume via BRepGProp; the heal guard's "same material" test. */
+function shapeVolume(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  const props = scope.track(new oc.GProp_GProps_1())
+  oc.BRepGProp.VolumeProperties_1(shape, props, true, false, false)
+  const mass = props.Mass()
+  scope.release(props)
+  return mass
+}
+
 interface ModifierSpec {
   makeMaker(shape: OccShape): OccEdgeModifierMaker
   addEdge(maker: OccEdgeModifierMaker, edge: OccShape): void
@@ -403,6 +481,33 @@ function applyEdgeModifier(
     built = maker.Shape()
   } catch {
     return fail('build_failed')
+  }
+
+  // IsDone() is not a validity claim. On a pick whose blend runs into a
+  // neighbouring face, BRepFilletAPI still reports done and hands back a
+  // corrupt shell: faces that overlap, an edge left lying across a face it
+  // never split, a vertex dropped onto an edge without dividing it. Nothing
+  // downstream looks, so that shape becomes the body and only the render shows
+  // it -- edges poking through a face, a face with no border, a hole.
+  //
+  // Invalid does not mean corrupt, though. The common case is a blend meeting
+  // at a corner whose shared edges simply lack pcurves on the new surfaces;
+  // ShapeFix projects those and the shape is sound. Healing separates the two:
+  // what heals was benign and we adopt the repaired shape, what does not heal
+  // is the corruption above and the operation is refused. The caller reports
+  // the refusal like any other modifier failure, leaving the body untouched.
+  if (!isValidShape(oc, scope, built)) {
+    const healed = healShape(oc, scope, built)
+    if (healed === null) {
+      scope.release(built)
+      // This string reaches the user as the feature's failure message
+      // (utils/core/featureFailure.ts), so it names a way out rather than a
+      // kernel code: the reported document recovers at radius 0.1 where it
+      // corrupts at 0.15.
+      return fail('the operation produced invalid geometry; try a smaller radius/distance or fewer edges at once')
+    }
+    scope.release(built)
+    built = healed
   }
 
   // On success, `built` is untracked (caller owns it via the returned shape).

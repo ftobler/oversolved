@@ -1,0 +1,171 @@
+[
+  {
+    "id": "ekISVf71mWteTf7QD6J02cDH",
+    "kind": "sketch",
+    "label": "sketch 1",
+    "plane": "@builtin_plane_front",
+    "entities": [
+      {
+        "id": "wvbsXsxOCIb6FYgP",
+        "kind": "circle"
+      },
+      {
+        "id": "MKn327ovt_SB3N3A",
+        "kind": "line"
+      },
+      {
+        "id": "onlXleriLA9RPZqu",
+        "kind": "line"
+      },
+      {
+        "id": "F2F1xvHRlqmQOcLL",
+        "kind": "line"
+      },
+      {
+        "id": "O3t5KfPmOkyb45yu",
+        "kind": "line"
+      }
+    ],
+    "initial": {
+      "wvbsXsxOCIb6FYgP": [
+        -0.78021240234375,
+        0.628679633140564,
+        0.912979006767273
+      ],
+      "MKn327ovt_SB3N3A": [
+        -0.78021240234375,
+        0.628679633140564,
+        1.2127127647399902,
+        0.628679633140564
+      ],
+      "onlXleriLA9RPZqu": [
+        1.2127127647399902,
+        0.628679633140564,
+        1.2127127647399902,
+        -1.371320366859436
+      ],
+      "F2F1xvHRlqmQOcLL": [
+        1.2127127647399902,
+        -1.371320366859436,
+        -0.78021240234375,
+        -1.371320366859436
+      ],
+      "O3t5KfPmOkyb45yu": [
+        -0.78021240234375,
+        -1.371320366859436,
+        -0.78021240234375,
+        0.628679633140564
+      ]
+    },
+    "constraints": [
+      {
+        "id": "c_coincident_A_HXOC-5",
+        "kind": "coincident",
+        "a": "$MKn327ovt_SB3N3Aend",
+        "b": "$onlXleriLA9RPZqustart"
+      },
+      {
+        "id": "c_coincident_BMt4J7JM",
+        "kind": "coincident",
+        "a": "$onlXleriLA9RPZquend",
+        "b": "$F2F1xvHRlqmQOcLLstart"
+      },
+      {
+        "id": "c_coincident_wLug8gBS",
+        "kind": "coincident",
+        "a": "$F2F1xvHRlqmQOcLLend",
+        "b": "$O3t5KfPmOkyb45yustart"
+      },
+      {
+        "id": "c_coincident_-XB2udhp",
+        "kind": "coincident",
+        "a": "$O3t5KfPmOkyb45yuend",
+        "b": "$MKn327ovt_SB3N3Astart"
+      },
+      {
+        "id": "c_equal_length_v1ITbMMm",
+        "kind": "equal_length",
+        "a": "$MKn327ovt_SB3N3A",
+        "b": "$F2F1xvHRlqmQOcLL"
+      },
+      {
+        "id": "c_equal_length_CD5iA_Sx",
+        "kind": "equal_length",
+        "a": "$onlXleriLA9RPZqu",
+        "b": "$O3t5KfPmOkyb45yu"
+      },
+      {
+        "id": "c_horizontal_H4tmK87L",
+        "kind": "horizontal",
+        "target": "$MKn327ovt_SB3N3A"
+      },
+      {
+        "id": "c_vertical_Zxi27ZQi",
+        "kind": "vertical",
+        "target": "$onlXleriLA9RPZqu"
+      },
+      {
+        "id": "c_length__mfA3Imi",
+        "kind": "length",
+        "target": "$onlXleriLA9RPZqu",
+        "value": 2
+      },
+      {
+        "id": "c_coincident_3kPpwnhX",
+        "kind": "coincident",
+        "a": "$O3t5KfPmOkyb45yuend",
+        "b": "$wvbsXsxOCIb6FYgPcenter"
+      }
+    ],
+    "visible": false
+  },
+  {
+    "id": "XQve4bZ3hUdqFK-heNCKkm0T",
+    "kind": "extrude",
+    "label": "extrude 1",
+    "extrude": {
+      "sketch": [
+        "?2a,2a,2a,9,19,1a,1a;@ekISVf71mWteTf7QD6J02cDH/MKn327ovt_SB3N3A@ekISVf71mWteTf7QD6J02cDH/O3t5KfPmOkyb45yu@ekISVf71mWteTf7QD6J02cDH/wvbsXsxOCIb6FYgPsurface:0@ekISVf71mWteTf7QD6J02cDH@cls_ld_MKn327ovt_SB3N3A_p@cls_ld_O3t5KfPmOkyb45yu_p:flatface"
+      ],
+      "distance": 1,
+      "direction": "normal"
+    }
+  },
+  {
+    "id": "EOvC6_TiiTec0XZuKCcwJYlz",
+    "kind": "fillet",
+    "label": "fillet 2",
+    "fillet": {
+      "edges": [
+        "?17,19,1e,2a,7;@gedge_bcf1c5337bbcaab7@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@ekISVf71mWteTf7QD6J02cDH/wvbsXsxOCIb6FYgP@cls_zp:edge"
+      ],
+      "radius": 0.3
+    }
+  },
+  {
+    "id": "hwxVBDxDF7b5EOWhqESDSQlu",
+    "kind": "chamfer",
+    "label": "chamfer 2",
+    "chamfer": {
+      "edges": [
+        "?17,19,1e,7;@gedge_156495784f369f83@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@cls_zp:straightedge",
+        "?15,19,1e,2a,7;@u|e_a2de177f1b9e2beb@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@ekISVf71mWteTf7QD6J02cDH/MKn327ovt_SB3N3A@cls_zp:straightedge"
+      ],
+      "distance": 0.1,
+      "kind": "distance",
+      "angle": 45
+    }
+  },
+  {
+    "id": "YrOFu4qequmOjI-UO1K_PMc-",
+    "kind": "fillet",
+    "label": "fillet 2",
+    "fillet": {
+      "edges": [
+        "?17,19,1e;@gedge_68cec626671cb772@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T:edge",
+        "?15,19,1e,2a,2a,7;@u|e_d45c7dd832026dcf@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@ekISVf71mWteTf7QD6J02cDH/O3t5KfPmOkyb45yu@ekISVf71mWteTf7QD6J02cDH/wvbsXsxOCIb6FYgP@cls_yn:straightedge"
+      ],
+      "radius": 0.2
+    }
+  }
+]
