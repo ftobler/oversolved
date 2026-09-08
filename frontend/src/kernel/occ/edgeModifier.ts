@@ -493,11 +493,16 @@ function applyEdgeModifier(
   // Invalid does not mean corrupt, though. The common case is a blend meeting
   // at a corner whose shared edges simply lack pcurves on the new surfaces;
   // ShapeFix projects those and the shape is sound. Healing separates the two:
-  // what heals was benign and we adopt the repaired shape, what does not heal
-  // is the corruption above and the operation is refused. The caller reports
-  // the refusal like any other modifier failure, leaving the body untouched.
+  // what heals was benign and its repair is adopted at the return below, what
+  // does not heal is the corruption above and the operation is refused. The
+  // caller reports the refusal like any other modifier failure, leaving the
+  // body untouched.
+  //
+  // Only the DECISION happens here. The repair is substituted at the return,
+  // after the name and diff extraction below have read the maker's own output.
+  let healed: OccShape | null = null
   if (!isValidShape(oc, scope, built)) {
-    const healed = healShape(oc, scope, built)
+    healed = healShape(oc, scope, built)
     if (healed === null) {
       scope.release(built)
       // This string reaches the user as the feature's failure message
@@ -506,8 +511,6 @@ function applyEdgeModifier(
       // corrupts at 0.15.
       return fail('the operation produced invalid geometry; try a smaller radius/distance or fewer edges at once')
     }
-    scope.release(built)
-    built = healed
   }
 
   // On success, `built` is untracked (caller owns it via the returned shape).
@@ -540,9 +543,25 @@ function applyEdgeModifier(
       diff = emptyBrepDiff()
     }
   } catch (e) {
-    // Release the built shape so a throw does not leak it.
+    // Release both candidate shapes so a throw does not leak either.
     scope.release(built)
+    if (healed !== null) scope.release(healed)
     throw e
+  }
+
+  // Substitute the repair only now, as the returned geometry. `names` and
+  // `diff` above correlate the maker's Modified() history to its output by
+  // sub-shape identity, and ShapeFix re-makes every face rather than editing it
+  // in place (measured: zero IsSame survivors on a repaired blend). Reading them
+  // off the healed shape instead left every inherited face looking fresh -- 11
+  // of 12 on the corner corpus against 6 truly new -- so the builder
+  // re-attributed the whole body's ancestry to this feature and evicted the
+  // picks stored against it, the same eviction the edge geometry fallback in
+  // edgeModifierDiff exists to prevent. The hand-off to the healed shape is by
+  // geometry hash, which the heal guard's unchanged counts and volume keep valid.
+  if (healed !== null) {
+    scope.release(built)
+    return { shape: healed, success: true, reason: null, names, diff, skippedEdgeIndices: skippedIdx }
   }
 
   return { shape: built, success: true, reason: null, names, diff, skippedEdgeIndices: skippedIdx }

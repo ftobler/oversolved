@@ -131,6 +131,37 @@ describe.skipIf(!oc || !solveBytes)('fillet corner-patch naming (real OCC + Rust
     expect(new Set(queries).size).toBe(queries.length)
   })
 
+  it('keeps inherited faces inherited when the result had to be healed', () => {
+    // This corpus heals: the corner blend comes out of BRepFilletAPI invalid
+    // (missing pcurves) and ShapeFix repairs it. ShapeFix re-makes every face
+    // rather than editing in place, so reading the names and the BrepDiff off
+    // the HEALED shape breaks the sub-shape identity that ties them to the
+    // maker's Modified() history -- every inherited face then looks fresh, the
+    // builder re-attributes the whole body's ancestry to this fillet, and the
+    // picks stored against those faces are evicted. Faces have no geometry
+    // fallback in edgeModifierDiff (only edges do), so nothing else catches it.
+    const rims = edgeQueriesOf(h, { features: [sketch, extrude, array] })
+      .filter((q) => q.endsWith(':edge') && q.includes(`${SK}/${OUTER}`))
+    const result = h.run({
+      features: [sketch, extrude, array, {
+        id: FIL, kind: 'fillet', label: 'fillet 1', fillet: { radius: 0.4, edges: rims },
+      }],
+    })
+
+    const state = result._build_state as unknown as {
+      checkpoints: Record<string, { body_store_snapshot: Record<string, { brep_diff: { new_faces: unknown[]; inherited_faces: unknown[] } | null }> }>
+    }
+    const diff = state.checkpoints[FIL].body_store_snapshot[BODY].brep_diff
+    expect(diff).not.toBeNull()
+    // The flats, bores and bottoms predate the fillet and must stay inherited;
+    // only the blend faces and their corner patch are new. Reading off the
+    // healed shape collapsed this to 11 new / 1 inherited.
+    expect(diff!.inherited_faces.length).toBeGreaterThan(1)
+    expect(diff!.new_faces.length).toBeLessThan(
+      diff!.new_faces.length + diff!.inherited_faces.length,
+    )
+  })
+
   it('names the corner patch the same way on a rebuild', () => {
     const rims = edgeQueriesOf(h, { features: [sketch, extrude, array] })
       .filter((q) => q.endsWith(':edge') && q.includes(`${SK}/${OUTER}`))
