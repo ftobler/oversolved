@@ -433,6 +433,12 @@ export interface BodyAnchorExtraction {
  * Skips freeform (bspline) faces, ellipse/spline edges. All vertices are kept.
  * A skipped entity keeps its slot in `entityAnchors` with an empty list, so the
  * positional join to `faceIdsPerTriangle` / `edges` / `vertices` stays intact.
+ * Each loop below is therefore bounded by its ENTITY array -- `face_data`,
+ * `edges`, `vertices` -- and never by the parallel query array. Bounding by the
+ * queries is the bug this whole seam keeps producing: the query array is the one
+ * that can come up short, and a short `entityAnchors` list silently drops the
+ * tail entities out of the join (`assemblyPick` even reads
+ * `entityAnchors.faces.length` as the face count).
  * @param mintId factory for deterministic anchor ids within this bundle, keyed
  *        on the anchor's own geom_hash + kind.
  */
@@ -453,14 +459,16 @@ export function extractBodyAnchors(
   // Face anchors: centroid + normal from face_data, kind from surface_type.
   const fqs = bodyResult.mesh?.face_queries
   const fds = bodyResult.mesh?.face_data
-  if (fqs && fds) {
-    for (let i = 0; i < fqs.length; i++) {
+  if (fds) {
+    for (let i = 0; i < fds.length; i++) {
       entityAnchors.faces.push([])
-      const desc = findDescriptorInQuery(fqs[i], 'u|') ?? findDescriptorInQuery(fqs[i], 'gdf|')
+      const fd = fds[i]
+      const fq = fqs?.[i]
+      const desc = findDescriptorInQuery(fq, 'u|') ?? findDescriptorInQuery(fq, 'gdf|')
       if (!desc) continue
-      const kind = faceTypeToAnchorKind(fds[i]?.surface_type)
+      const kind = faceTypeToAnchorKind(fd?.surface_type)
       if (!kind) continue
-      const pa = faceAnchorPointAxis(kind, fds[i])
+      const pa = faceAnchorPointAxis(kind, fd)
       if (!pa) continue
       emit(entityAnchors.faces, {
         kind,
@@ -473,13 +481,14 @@ export function extractBodyAnchors(
   }
 
   // Edge anchors: representative point + axis from EdgeData.
-  if (bodyResult.edges && bodyResult.edge_queries) {
+  if (bodyResult.edges) {
     for (let i = 0; i < bodyResult.edges.length; i++) {
       entityAnchors.edges.push([])
       const ed = bodyResult.edges[i]
       const kind = edgeAnchorKind(ed)
       if (!kind) continue
-      const desc = findDescriptorInQuery(bodyResult.edge_queries[i], 'u|') ?? findDescriptorInQuery(bodyResult.edge_queries[i], 'gde|')
+      const eq = bodyResult.edge_queries?.[i]
+      const desc = findDescriptorInQuery(eq, 'u|') ?? findDescriptorInQuery(eq, 'gde|')
       if (!desc) continue
       emit(entityAnchors.edges, {
         kind,
@@ -492,10 +501,11 @@ export function extractBodyAnchors(
   }
 
   // Vertex anchors: point from vertices array.
-  if (bodyResult.vertices && bodyResult.vertex_queries) {
+  if (bodyResult.vertices) {
     for (let i = 0; i < bodyResult.vertices.length; i++) {
       entityAnchors.vertices.push([])
-      const desc = findDescriptorInQuery(bodyResult.vertex_queries[i], 'u|') ?? findDescriptorInQuery(bodyResult.vertex_queries[i], 'gdv|')
+      const vq = bodyResult.vertex_queries?.[i]
+      const desc = findDescriptorInQuery(vq, 'u|') ?? findDescriptorInQuery(vq, 'gdv|')
       if (!desc) continue
       emit(entityAnchors.vertices, {
         kind: 'point',

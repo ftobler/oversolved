@@ -369,6 +369,40 @@ describe('extractBodyAnchors', () => {
     return () => { n++; return `a${n}` }
   }
 
+  // entityAnchors is indexed by ENTITY index -- assemblyPick even reads
+  // `entityAnchors.faces.length` as the body's face count. The loops must
+  // therefore be bounded by face_data / edges / vertices, never by the parallel
+  // query array, which is the one that can come up short.
+  it('gives every entity a slot even when the query arrays are short or absent', () => {
+    const body: BodyResult = {
+      id: 'body_short_anchors',
+      created_by: '',
+      modified_by: [],
+      mesh: {
+        vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+        faces: [[0, 1, 2]],
+        face_data: [
+          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' },
+          { centroid: [0, 0, 1], normal: [0, 0, 1], area: 1, surface_type: 'flatface' },
+        ],
+        face_queries: [],  // N faces, 0 queries
+      },
+      edges: [
+        { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
+        { kind: 'line', start: [10, 0, 0], end: [10, 5, 0] },
+      ],
+      // edge_queries / vertex_queries absent entirely
+      vertices: [[0, 0, 0], [10, 0, 0], [10, 5, 0]],
+    }
+    const { entityAnchors } = extractBodyAnchors(body, mintFactory())
+    expect(entityAnchors.faces).toHaveLength(2)
+    expect(entityAnchors.edges).toHaveLength(2)
+    expect(entityAnchors.vertices).toHaveLength(3)
+    expect(entityAnchors.faces.flat()).toEqual([])
+    expect(entityAnchors.edges.flat()).toEqual([])
+    expect(entityAnchors.vertices.flat()).toEqual([])
+  })
+
   it('skips entities instead of throwing when the query array runs short', () => {
     // solidToEdges/solidToVertices return every edge and vertex but an EMPTY
     // query array when the body carries no `created_by`, so the positional zip
