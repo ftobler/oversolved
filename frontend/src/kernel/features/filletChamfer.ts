@@ -30,6 +30,10 @@ interface EdgeFeatureResult {
   status: string
   body_id: string
   body_ids: string[]
+  // Query strings that did not apply this solve (unresolved, or refused or
+  // skipped by the modifier), so the UI can point at the exact pick chips that
+  // need attention. Only on the partial result.
+  failed_edges?: string[]
 }
 
 export interface EdgeIndex {
@@ -610,10 +614,15 @@ function applyEdgeFeature(
     const parts: string[] = []
     if (unresolved.length > 0) parts.push(`${unresolved.length} edge(s) could not be resolved`)
     parts.push(...modifierFailures)
+    // A query can land in unresolved twice (a group whose modifier refused the
+    // op pushes the whole qlist after the per-query loop already flagged its
+    // empty hits), so the chip marker dedupes: the chips render one entry each.
+    const failedEdges = [...new Set(unresolved)]
     return {
       status: 'partial',
       body_id: applied[0],
       body_ids: applied,
+      failed_edges: failedEdges,
       exception: `${featureKind}: ${parts.join('; ')}`,
       ...(handle !== null && { handle }),
     }

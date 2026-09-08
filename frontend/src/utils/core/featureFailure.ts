@@ -30,11 +30,16 @@ const NON_FAILURE_STATUSES: ReadonlySet<string> = new Set<string>([...STATUS_NAM
 export interface FeatureFailure {
   // True when the feature should render as failed.
   failed: boolean
+  // How failed: 'warning' means the feature built something valid but only
+  // partially fulfilled its intent (status 'partial' -- some picks resolved,
+  // the rest need re-picking); 'error' means nothing built or invalid geometry.
+  // null when not failed.
+  level: 'error' | 'warning' | null
   // Human-readable cause, '' when the result carried none.
   message: string
 }
 
-const OK: FeatureFailure = { failed: false, message: '' }
+const OK: FeatureFailure = { failed: false, level: null, message: '' }
 
 /**
  * Whether `featureId` failed in the last solve, and why.
@@ -44,6 +49,11 @@ const OK: FeatureFailure = { failed: false, message: '' }
  * redden the row: a feature owns every body it made
  * (kernel/features/bodySplit.ts), so reading only `body_id` left a split sibling
  * rendering nothing behind a healthy-looking feature.
+ *
+ * The severity split is intentional: a `partial` result (fillet/chamfer, hole,
+ * extrude/revolve/sweep profile fan-out) built a valid solid from the picks that
+ * resolved -- downstream stays solvable, so it is a warning, not the hard-error
+ * red of an `exception`.
  */
 export function featureFailure(
   featureId: string,
@@ -69,6 +79,10 @@ export function featureFailure(
   const exception = (result as { exception?: unknown }).exception
   return {
     failed: true,
+    // Only the kernel's own 'partial' status is a warning; anything else that
+    // failed -- including a partial result whose own body will not tessellate
+    // (mesh_error) -- is an error.
+    level: status === 'partial' && !meshError ? 'warning' : 'error',
     message: (typeof exception === 'string' ? exception : undefined) ?? meshError ?? '',
   }
 }

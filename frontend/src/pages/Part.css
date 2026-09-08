@@ -320,6 +320,10 @@
   color: #f44336;
 }
 
+.feature-name.feature-name-warning {
+  color: #ecad2b;
+}
+
 .feature-name.feature-name-suppressed {
   text-decoration: line-through;
   opacity: 0.5;
@@ -1239,6 +1243,12 @@
   font-size: 12px;
   color: #fff;
   padding-right: 2px;
+}
+
+.feature-pick-chip-item.faulty {
+  background: #6d4f1a;
+  outline: 1px solid #ecad2b;
+  outline-offset: -1px;
 }
 
 .feature-pick-chip-item-remove {

@@ -11,7 +11,7 @@ import { STATUS_NAME } from '@/wasm-kernel/codec'
 describe('featureFailure', () => {
   it('reports no failure for a healthy result', () => {
     expect(featureFailure('ex1', { ex1: { status: 'ok', body_id: 'body_ex1' } }, {}))
-      .toEqual({ failed: false, message: '' })
+      .toEqual({ failed: false, level: null, message: '' })
   })
 
   it('reports no failure when the feature has no result at all', () => {
@@ -23,7 +23,7 @@ describe('featureFailure', () => {
   it('reports the exception a thrown leaf was caught with', () => {
     // kernel/builder.ts writes exactly this for EVERY kind that throws.
     expect(featureFailure('db1', { db1: { status: 'exception', exception: 'body not found' } }, {}))
-      .toEqual({ failed: true, message: 'body not found' })
+      .toEqual({ failed: true, level: 'error', message: 'body not found' })
   })
 
   it('does not care which kind the result came from', () => {
@@ -31,7 +31,7 @@ describe('featureFailure', () => {
     // sketch, plane. The result shape is identical, so the answer must be too.
     for (const fid of ['db1', 'imp1', 'mir1', 'sk1', 'pl1']) {
       const r = featureFailure(fid, { [fid]: { status: 'exception', exception: 'boom' } }, {})
-      expect(r, fid).toEqual({ failed: true, message: 'boom' })
+      expect(r, fid).toEqual({ failed: true, level: 'error', message: 'boom' })
     }
   })
 
@@ -52,13 +52,23 @@ describe('featureFailure', () => {
     // 'error' is what extrude/revolve report for "no closed profile found".
     // A status word invented later must show up, not disappear.
     expect(featureFailure('ex1', { ex1: { status: 'error', exception: 'no closed profile found' } }, {}))
-      .toEqual({ failed: true, message: 'no closed profile found' })
+      .toEqual({ failed: true, level: 'error', message: 'no closed profile found' })
     expect(featureFailure('ex1', { ex1: { status: 'something_new' } }, {}).failed).toBe(true)
   })
 
-  it('counts a partial result as a failure', () => {
+  it('marks a partial result as a warning, not a hard error', () => {
+    // A partial fillet/chamfer built a valid solid from the picks that resolved:
+    // downstream stays solvable, so it must render as a warning, not the red of
+    // an exception. The message still says how many picks failed.
     expect(featureFailure('fl1', { fl1: { status: 'partial', exception: '2 edges skipped' } }, {}))
-      .toEqual({ failed: true, message: '2 edges skipped' })
+      .toEqual({ failed: true, level: 'warning', message: '2 edges skipped' })
+  })
+
+  it('promotes a partial result to a hard error when its own body will not tessellate', () => {
+    // The warning level only applies to a partial result whose solid is valid.
+    // A partial whose body fails to tessellate is as broken as any error.
+    expect(featureFailure('fl1', { fl1: { status: 'partial', body_id: 'body_ex1' } }, { body_ex1: { mesh_error: 'no shape' } }))
+      .toEqual({ failed: true, level: 'error', message: 'no shape' })
   })
 
   it('fails when ANY body the feature made will not tessellate', () => {
@@ -67,7 +77,7 @@ describe('featureFailure', () => {
     // healthy row.
     const result = { ex1: { status: 'ok', body_id: 'body_ex1', body_ids: ['body_ex1', 'body_ex1_1'] } }
     const bodies = { body_ex1: {}, body_ex1_1: { mesh_error: 'no shape' } }
-    expect(featureFailure('ex1', result, bodies)).toEqual({ failed: true, message: 'no shape' })
+    expect(featureFailure('ex1', result, bodies)).toEqual({ failed: true, level: 'error', message: 'no shape' })
   })
 
   it('prefers the exception message over a mesh error', () => {
@@ -78,6 +88,6 @@ describe('featureFailure', () => {
 
   it('still fails with an empty message when the result carried none', () => {
     expect(featureFailure('ex1', { ex1: { status: 'exception' } }, {}))
-      .toEqual({ failed: true, message: '' })
+      .toEqual({ failed: true, level: 'error', message: '' })
   })
 })

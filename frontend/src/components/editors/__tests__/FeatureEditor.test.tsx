@@ -4,6 +4,7 @@ import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
 import { EXTRUDE_SCHEMA, FILLET_SCHEMA, VARIABLE_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { useState } from 'react'
 import { initializeTools } from '@/tools'
@@ -13,6 +14,7 @@ beforeEach(() => {
   toolRegistry.reset()
   initializeTools()
   useSketchEditorStore.setState({ normalSelection: new Set(), activePickField: null, modeStack: [], chipOwnedSelection: new Set() })
+  usePartEditorStore.setState({ solveResults: {} })
 })
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test fixture type; schema values are heterogeneous
@@ -158,6 +160,25 @@ describe('FeatureEditor pick field', () => {
     expect(chip.classList.contains('picking')).toBe(true)
     fireEvent.click(chip)
     expect(chip.classList.contains('picking')).toBe(false)
+  })
+
+  it('marks chips named by the last solve failed_edges as faulty', () => {
+    // The pick field must surface which picks did not apply in the last solve
+    // (kernel partial result `failed_edges`) so the user sees what to re-pick.
+    usePartEditorStore.setState({
+      solveResults: { f1: { status: 'partial', failed_edges: ['@edge_gone'] } },
+    })
+    render(
+      <FeatureEditor
+        feature={makeFeature('fillet', 'fillet', { edges: ['@edge_ok', '@edge_gone'], radius: 1 })}
+        onMutation={vi.fn()}
+        schema={FILLET_SCHEMA}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    expect(items.length).toBe(2)
+    expect(items[0].classList.contains('faulty')).toBe(false)
+    expect(items[1].classList.contains('faulty')).toBe(true)
   })
 })
 

@@ -13,6 +13,10 @@ export interface PickChipProps {
   emptyText?: string
   features?: PartFeature[]
   partLabels?: Record<string, string>
+  // Values the last solve could not apply (kernel `failed_edges`: unresolved,
+  // or refused/skipped by the modifier). Rendered with a warning class so the
+  // user sees which picks need attention.
+  faultyValues?: ReadonlySet<string>
 }
 
 export function PickChip({
@@ -24,6 +28,7 @@ export function PickChip({
   emptyText,
   features,
   partLabels,
+  faultyValues,
 }: PickChipProps) {
   const syncChipSelection = useSketchEditorStore(s => s.syncChipSelection)
   const clearChipSelection = useSketchEditorStore(s => s.clearChipSelection)
@@ -113,15 +118,17 @@ export function PickChip({
           const isDragging = draggingIndex === i
           const isDropTarget = dropTargetIndex === i
           const dropClass = isDropTarget && dropSide ? `drop-target-${dropSide}` : ''
+          const faulty = faultyValues?.has(v) ?? false
           return (
             <div
               key={`${v}-${i}`}
-              className={`feature-pick-chip-item ${isDragging ? 'dragging' : ''} ${dropClass}`}
+              className={`feature-pick-chip-item ${isDragging ? 'dragging' : ''} ${dropClass}${faulty ? ' faulty' : ''}`}
               draggable={!!onReorder}
               onDragStart={(e) => handleDragStart(e, i)}
               onDragOver={(e) => handleDragOver(e, i)}
               onDrop={(e) => handleDrop(e, i)}
               onDragEnd={handleDragEnd}
+              title={faulty ? 'Not applied in the last solve' : undefined}
             >
               {onReorder && (
                 <span className="feature-pick-chip-item-drag" title="Drag to reorder">

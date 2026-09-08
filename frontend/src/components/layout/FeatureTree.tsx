@@ -216,14 +216,17 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   // No kind gate: the kernel reports a failure the same way for
                   // every kind, so the tree asks the same question for every
                   // kind (utils/core/featureFailure.ts).
-                  const { failed, message } = featureFailure(feature.id, solveResults, bodies)
+                  const { failed, level, message } = featureFailure(feature.id, solveResults, bodies)
                   // Variables surface their solved value inline: `width = 100`.
                   // The store holds results as `unknown`, hence the cast.
                   const varValue = feature.kind === 'variable' && !failed
                     ? (solveResults?.[feature.id] as { value?: number } | undefined)?.value : undefined
+                  const failedClass = failed
+                    ? level === 'warning' ? ' feature-name-warning' : ' feature-name-error'
+                    : ''
                   return (
                     <span
-                      className={`feature-name${failed ? ' feature-name-error' : ''}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
+                      className={`feature-name${failedClass}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
                       title={message}
                     >
                       {feature.label || feature.id}

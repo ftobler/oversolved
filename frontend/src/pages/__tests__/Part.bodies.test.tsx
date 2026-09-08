@@ -118,6 +118,20 @@ describe('extrude feature name error state', () => {
     expect(name.classList.contains('feature-name-error')).toBe(true)
   })
 
+  it('shows a warning name, not an error, when the feature solved partially', () => {
+    // A partial fillet/chamfer built a valid solid; the row must warn in the
+    // app accent rather than redden like an exception.
+    const filletFeature: PartFeature = { id: 'fil1', kind: 'fillet', fillet: { edges: ['?x'], radius: 1 } }
+    renderSidebar(
+      [filletFeature],
+      { fil1: { status: 'partial', body_id: 'body_ex1', exception: '1 edge(s) could not be resolved' } },
+      TEST_BODIES,
+    )
+    const name = screen.getByTitle('1 edge(s) could not be resolved')
+    expect(name.classList.contains('feature-name-warning')).toBe(true)
+    expect(name.classList.contains('feature-name-error')).toBe(false)
+  })
+
   it('shows neutral name when no solve result', () => {
     renderSidebar([extrudeFeature], undefined, undefined)
     const name = document.querySelector('.feature-name')

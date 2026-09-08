@@ -1,6 +1,7 @@
 import type { Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useNotifySafe } from '@/contexts/ToastContext'
 import type { PickFieldWidgetProps } from './fieldTypes'
 
@@ -57,6 +58,19 @@ export function PickFieldWidget({
 
   const pickState = usePickField(fid, field.key, pickCallback, { multi: isMulti, onUnpick: unpickCallback, features })
 
+  // The feature's last solve names the picks that did not apply (kernel
+  // `failed_edges`, only present on a partial result). Chips holding those
+  // values render as faulty so the user can see what needs attention without
+  // guessing from a tooltip. Values added since the solve simply are not in the
+  // set and stay neutral.
+  const solveResult = usePartEditorStore(s => s.solveResults?.[fid])
+  const failedEdges = ((): string[] => {
+    if (typeof solveResult !== 'object' || solveResult === null) return []
+    const raw = (solveResult as { failed_edges?: unknown }).failed_edges
+    return Array.isArray(raw) ? (raw as string[]) : []
+  })()
+  const faultyValues = failedEdges.length > 0 ? new Set(failedEdges) : undefined
+
   return (
     <div className="feature-field-row feature-field-row--stacked">
       <span className="feature-field-label">{field.label}</span>
@@ -72,6 +86,7 @@ export function PickFieldWidget({
         emptyText={field.emptyText}
         features={features}
         partLabels={partLabels}
+        faultyValues={faultyValues}
       />
     </div>
   )

@@ -171,6 +171,9 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const r = h.run(spec)
     expect(h.res(r, 'fil').status).toBe('partial')
     expect((h.res(r, 'fil').body_ids as string[]) ?? []).toEqual(['body_ex1'])
+    // The UI marks the exact pick chips that failed, so the partial result must
+    // name the missing query (and only the missing one).
+    expect((h.res(r, 'fil').failed_edges as string[] | undefined) ?? []).toEqual(['?body_nonexistent:edge:0'])
   })
 
   it('fillet then chamfer on same body', () => {
