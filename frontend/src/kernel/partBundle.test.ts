@@ -344,6 +344,30 @@ describe('extractBodyAnchors', () => {
     return () => { n++; return `a${n}` }
   }
 
+  it('skips entities instead of throwing when the query array runs short', () => {
+    // solidToEdges/solidToVertices return every edge and vertex but an EMPTY
+    // query array when the body carries no `created_by`, so the positional zip
+    // runs off the end. That used to throw out of findDescriptorInQuery and,
+    // since toPartBundle's body loop has no per-body catch, cost EVERY body its
+    // anchors -- not just this one.
+    const body: BodyResult = {
+      id: 'b1', created_by: '', modified_by: [],
+      mesh: { vertices: [], faces: [], face_queries: [], face_data: [] },
+      edges: [{ kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }],
+      edge_queries: [],
+      vertices: [[0, 0, 0], [1, 0, 0]],
+      vertex_queries: [],
+    } as unknown as BodyResult
+
+    const { anchors, entityAnchors } = extractBodyAnchors(body, mintFactory())
+
+    expect(anchors).toEqual({})
+    // Each entity still keeps its positional slot, empty, so the join to
+    // `edges` / `vertices` by index stays intact.
+    expect(entityAnchors.edges).toEqual([[]])
+    expect(entityAnchors.vertices).toEqual([[], []])
+  })
+
   it('emits face anchors for flatface, cylinderface, coneface, sphereface, torusface', () => {
     // Curved kinds carry a surface_frame (Stage A); flatface has none because
     // the normal already IS its axis.

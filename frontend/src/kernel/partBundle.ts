@@ -401,7 +401,15 @@ function edgeAnchorAxis(ed: EdgeData): Vec3 {
  * `?<hex>;<id1><id2>...:<typeRestriction>`. Each id starts with `@`.
  * Returns the full id including the `@` prefix.
  */
-function findDescriptorInQuery(query: string, prefix: string): string | null {
+function findDescriptorInQuery(query: string | undefined, prefix: string): string | null {
+  // Absent is "no descriptor", never a throw. solidToEdges/solidToVertices emit
+  // an EMPTY query array when the body has no `created_by`, while still
+  // returning every edge and vertex, so the positional zip below can run off
+  // the end. The face path is already immune (solidToMesh pushes '' placeholders
+  // to keep face_queries aligned with face_data); this makes the other two
+  // degrade the same way instead of taking the whole bundle's anchors down with
+  // a TypeError -- toPartBundle's body loop has no per-body catch.
+  if (query === undefined) return null
   const searchToken = '@' + prefix
   const idx = query.indexOf(searchToken)
   if (idx === -1) return null
