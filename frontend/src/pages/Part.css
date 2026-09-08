@@ -1330,7 +1330,9 @@
   background: #1e1e1e;
   border: none;
   border-radius: 16px;
-  padding: 0;
+  /* The last item's own 6px is too little under a 16px corner radius; this
+     brings the space below the final line up to the 16px used at the sides. */
+  padding: 0 0 10px;
   min-width: 220px;
   max-width: min(360px, calc(100vw - 32px));
   /* #root centers text app-wide; a list of actions reads left-aligned. */
