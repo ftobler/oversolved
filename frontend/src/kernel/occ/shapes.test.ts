@@ -59,4 +59,20 @@ describe('faceSortKey / compareFaceSortKeys', () => {
     expect(() => compareFaceSortKeys(k, bad)).toThrow(/face sort key component 1 is NaN/)
     expect(() => compareFaceSortKeys(bad, k)).toThrow(/face sort key component 1 is NaN/)
   })
+
+  // A shorter key must not read as EQUAL. Indexing past the end yields
+  // `undefined`, which slips through the NaN guard above (Number.isNaN(undefined)
+  // is false) and then compares false in both directions -- so the comparator
+  // returned 0 and the sort went permutation-dependent, the exact outcome that
+  // guard exists to prevent. faceSortKey always emits 7 components, so this is
+  // unreachable through it; the comparator is exported and must be total anyway.
+  // compareEdgeSortKeys already works this way, and has to: edge keys run
+  // 8/11/12 components by curve kind.
+  it('orders a shorter key before its own prefix rather than calling them equal', () => {
+    const k = faceSortKey(flat([0, 0, 1], [1, 2, 3]))
+    const short = k.slice(0, 4)
+    expect(compareFaceSortKeys(short, k)).toBeLessThan(0)
+    expect(compareFaceSortKeys(k, short)).toBeGreaterThan(0)
+    expect(compareFaceSortKeys(k, [...k])).toBe(0)
+  })
 })

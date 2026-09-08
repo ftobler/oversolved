@@ -55,7 +55,17 @@ export function faceSortKey(item: FaceSortItem): number[] {
 
 /** Lexicographic comparator over `faceSortKey` outputs. */
 export function compareFaceSortKeys(a: number[], b: number[]): number {
-  for (let i = 0; i < a.length; i++) {
+  // Bound by the SHORTER key, with the length itself as the final tiebreak --
+  // the same shape as compareEdgeSortKeys, which needs it because edge keys run
+  // 8/11/12 components by curve kind. Face keys are always faceSortKey's 7, so
+  // this changes no ordering today. It closes the failure the NaN guard below
+  // exists to prevent: indexing `b` past its end yields `undefined`, which slips
+  // THROUGH that guard (`Number.isNaN(undefined)` is false) and then compares
+  // false both ways, so the comparator returns 0 and the sort silently goes
+  // permutation-dependent. Face indices are stored picks; that must not be
+  // reachable by a caller passing a key this file did not build.
+  const n = Math.min(a.length, b.length)
+  for (let i = 0; i < n; i++) {
     if (Number.isNaN(a[i]) || Number.isNaN(b[i])) {
       // A NaN component makes every comparison false, so the sort silently
       // returns an order that depends on the input permutation - and face
@@ -65,7 +75,7 @@ export function compareFaceSortKeys(a: number[], b: number[]): number {
     if (a[i] < b[i]) return -1
     if (a[i] > b[i]) return 1
   }
-  return 0
+  return a.length - b.length
 }
 
 // ─── body building ───
