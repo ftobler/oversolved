@@ -49,6 +49,8 @@ import { hasDanglingContentInDoc } from '@/utils/yamlMutations/solveResult'
 
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
+type PartColorPopoverState = { bodyId: string; position: [number, number]; session: number } | null
+
 function setRollbackForNewFeature(features: PartFeature[]) {
   usePartEditorStore.getState().setRollbackPosition(features.length + 1)
 }
@@ -100,7 +102,17 @@ export default function Part() {
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
   // Non-null while the clone prompt is open; holds the name it was seeded with.
   const [cloneName, setCloneName] = useState<string | null>(null)
-  const [partColorPopover, setPartColorPopover] = useState<{ bodyId: string; position: [number, number]; session: number } | null>(null)
+  const [partColorPopover, setPartColorPopoverState] = useState<PartColorPopoverState>(null)
+  // Mirrors the popover state for the handlers that may be called from a stale
+  // closure. The context menu keeps its items in state, so an item built one
+  // render ago still holds that render's callbacks; a guard reading the
+  // captured `partColorPopover` would see a popover that has since opened as
+  // still closed and skip resolving its preview.
+  const partColorPopoverRef = useRef<PartColorPopoverState>(null)
+  const setPartColorPopover = useCallback((next: PartColorPopoverState) => {
+    partColorPopoverRef.current = next
+    setPartColorPopoverState(next)
+  }, [])
   const colorPopoverSession = useRef(0)
 
   const [debugOpen, setDebugOpen] = useState(false)
@@ -325,7 +337,7 @@ export default function Part() {
     setPartColorPopover(null)
     // The sketch toolbar has nothing left to act on once the sketch edit is gone.
     if (wasSketchEdit) setMode('feature')
-  }, [features, resetEditState])
+  }, [features, resetEditState, setPartColorPopover])
 
   useEffect(() => {
     registerUndoTeardown(tearDownEditorState)
@@ -781,7 +793,7 @@ export default function Part() {
   }, [handleMutation])
 
   const handleColorCancel = useCallback(() => {
-    if (!partColorPopover) return
+    if (!partColorPopoverRef.current) return
     const originalDoc = cancelPreview()
     if (originalDoc && docRef.current) {
       docRef.current = originalDoc
@@ -789,12 +801,33 @@ export default function Part() {
       reSolve(originalDoc)
     }
     setPartColorPopover(null)
-  }, [partColorPopover, cancelPreview, docRef, setDoc, reSolve])
+  }, [cancelPreview, docRef, setDoc, reSolve, setPartColorPopover])
 
   const handleColorApply = useCallback((mutation: Mutation) => {
     commitPreview(mutation)
     setPartColorPopover(null)
-  }, [commitPreview])
+  }, [commitPreview, setPartColorPopover])
+
+  // Opening the popover puts the document into preview mode, and only a commit
+  // or a cancel takes it out again. So the closing side must go through
+  // handleColorCancel rather than just dropping the popover state: a bare
+  // setPartColorPopover(null) leaves the preview live behind a closed popover,
+  // where the abandoned color stays in the doc, later color edits are swallowed
+  // with no undo entry, and the next unrelated edit escape-commits the
+  // abandoned preview as an entry of its own. handleColorCancel's
+  // no-popover-open guard is the wanted behaviour here: nothing open means this
+  // path started no preview. A truthy `opts` with a null docRef lands here too,
+  // where no preview can start, and any preview an earlier popover left open is
+  // resolved rather than stranded.
+  const handleSetPartColorPopover = useCallback((opts: { bodyId: string; position: [number, number] } | null) => {
+    if (opts && docRef.current) {
+      startPreviewMode(docRef.current)
+      colorPopoverSession.current++
+      setPartColorPopover({ ...opts, session: colorPopoverSession.current })
+    } else {
+      handleColorCancel()
+    }
+  }, [docRef, startPreviewMode, handleColorCancel, setPartColorPopover])
 
   const handleAlignCameraToSketchPlane = useCallback(() => {
     if (!activeSketchFeatureId || !features) return
@@ -900,15 +933,7 @@ export default function Part() {
         const s = useSketchEditorStore.getState()
         s.setShowConstraintTiles(!s.showConstraintTiles)
       },
-      onSetPartColorPopover: (opts) => {
-        if (opts && docRef.current) {
-          startPreviewMode(docRef.current)
-          colorPopoverSession.current++
-          setPartColorPopover({ ...opts, session: colorPopoverSession.current })
-        } else {
-          setPartColorPopover(null)
-        }
-      },
+      onSetPartColorPopover: handleSetPartColorPopover,
       onExportBody: (bodyId, name) => exportImportRef.current?.openExport(bodyId, name),
       onNewSketchOnPlane: handleNewSketchOnPlane,
       onShowContextMenu: (items, tid) => setContextMenu({ position: pos, targetId: tid, items }),
@@ -918,7 +943,7 @@ export default function Part() {
   }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
     handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent,
-    viewportRef, docRef, startPreviewMode])
+    viewportRef, handleSetPartColorPopover])
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
