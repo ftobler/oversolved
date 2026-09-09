@@ -31,8 +31,6 @@ import {
   moveMate,
   removeInstance,
   removeMate,
-  replaceInstance,
-  replaceMate,
   setBuiltinVisible,
   setInstanceVisible,
   setInstancePosition,
@@ -44,7 +42,7 @@ import {
   type MateParamPatch,
 } from '@/utils/assemblyMutations'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
-import { MATE_KINDS, MATE_KIND_LABELS, EMPTY_MATE_REF } from '@/utils/mateKinds'
+import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
 import type { AssemblyDoc, MateKind, MateFeatureDef, PartInstance } from '@/types/cad'
@@ -117,16 +115,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const mateResults = useAssemblyStore(s => s.mateResults)
   const solveError = useAssemblyStore(s => s.solveError)
   const showPickDebug = useAssemblyStore(s => s.showPickDebug)
-
-  // Snapshots taken when editing begins, so Cancel can revert every live edit
-  // (mates and instances edit the doc in place; there is no other undo point).
-  const mateSnapshot = useRef<{ id: string; def: MateFeatureDef } | null>(null)
-  const instanceSnapshot = useRef<{ handle: string; inst: PartInstance } | null>(null)
-  // The dirty flag captured when an editor opened, so Cancel can restore it.
-  // The revert re-runs through `mutate`, which always sets dirty true, but the
-  // reverted doc equals the pre-edit doc, so the flag must return to whatever
-  // it was -- a Cancel on a clean doc must not leave the save prompt lit.
-  const editOpenDirtyRef = useRef(false)
 
   // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
   // A failed list is swallowed on purpose: names are a nicety here and the tree
@@ -303,32 +291,23 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // so each subject's edits land in their own step and no two editors ever share
   // the one pending buffer.
   const closeOpenEditor = useCallback(() => {
-    if (editingMateId) {
-      setEditingMateId(null)
-      mateSnapshot.current = null
-    }
-    if (editingInstanceHandle) {
-      setEditingInstanceHandle(null)
-      instanceSnapshot.current = null
-    }
+    setEditingMateId(null)
+    setEditingInstanceHandle(null)
     commitSession()
-  }, [editingMateId, editingInstanceHandle, commitSession])
+  }, [commitSession])
 
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. No solve yet:
-  // an unreferenced mate has nothing to constrain. The snapshot is the empty
-  // mate, so Cancel restores it to that pre-edit state.
+  // an unreferenced mate has nothing to constrain.
   const handleInsertMate = useCallback((kind: MateKind) => {
     // The append is a structural op: mutateOneShot pushes its own step even when
     // another editor is open (and about to be replaced), so cancelling the new
     // editor can never lose the insert. The open editor is closed first so the
-    // fresh mate never folds into the previous editor's coalescing session.
+    // fresh mate never folds into the previous editor's coalescing session. That
+    // commit is also what leaves the session unpinned across the insert, so a
+    // Cancel with no reference picked rewinds to the doc holding the empty mate.
     const id = mintFeatureId()
     closeOpenEditor()
-    mateSnapshot.current = {
-      id,
-      def: { kind, ref_a: { ...EMPTY_MATE_REF }, ref_b: { ...EMPTY_MATE_REF } },
-    }
     mutateOneShot('Add mate', d => appendMate(d, kind, id))
     const store = useAssemblyStore.getState()
     store.setSelectedMateId(id)
@@ -339,18 +318,12 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // The [Delete] key maps to `delete_selected` (CORE_KEYBINDINGS); the store
   // decides whether that is the selected mate or the selected part. The delete
   // is a one-shot (mutateDoc), so it closes any open coalescing session itself;
-  // an editor on the deleted subject closes with it and drops its snapshot.
+  // an editor on the deleted subject closes with it.
   const handleDeleteSelected = useCallback(() => {
-    if (editingMateId) {
-      setEditingMateId(null)
-      mateSnapshot.current = null
-    }
-    if (editingInstanceHandle) {
-      setEditingInstanceHandle(null)
-      instanceSnapshot.current = null
-    }
+    setEditingMateId(null)
+    setEditingInstanceHandle(null)
     useAssemblyStore.getState().deleteSelected()
-  }, [editingMateId, editingInstanceHandle])
+  }, [])
 
   // Ctrl+Z / Ctrl+Shift+Z land here via CORE_KEYBINDINGS (dispatchKey). Undo
   // always exits an open editor: the coalesced session is discarded by the hook
@@ -359,16 +332,12 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const handleUndoCommand = useCallback(() => {
     setEditingMateId(null)
     setEditingInstanceHandle(null)
-    mateSnapshot.current = null
-    instanceSnapshot.current = null
     handleUndo()
   }, [handleUndo])
 
   const handleRedoCommand = useCallback(() => {
     setEditingMateId(null)
     setEditingInstanceHandle(null)
-    mateSnapshot.current = null
-    instanceSnapshot.current = null
     handleRedo()
   }, [handleRedo])
 
@@ -410,12 +379,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // removing a part frees the mates that referenced it, so a re-solve straight
     // from the stale placement seeds could snap the remaining parts back to their
     // drop spots. Baked first, only the freed DOF relaxes.
-    // Deleting the instance whose editor is open closes it and drops its revert
-    // snapshot; the delete's one-shot commits any open session itself.
-    if (editingInstanceHandle === handle) {
-      setEditingInstanceHandle(null)
-      instanceSnapshot.current = null
-    }
+    // Deleting the instance whose editor is open closes it; the delete's
+    // one-shot commits any open session itself.
+    if (editingInstanceHandle === handle) setEditingInstanceHandle(null)
     const transforms = useAssemblyStore.getState().transforms
     mutateOneShot('Delete part', d => removeInstance(bakeSolvedTransforms(d, transforms), handle))
     if (useAssemblyStore.getState().selectedPartHandle === handle) {
@@ -464,20 +430,17 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     useAssemblyStore.getState().setSelectedPartHandle(handle)
   }, [])
 
-  // Instance edit: snapshot for revert, open the inline editor, and attach the
-  // gizmo to the part being edited. Switching editors commits any open session
-  // so each edited subject's changes land in their own step.
+  // Instance edit: open the inline editor and attach the gizmo to the part being
+  // edited. Switching editors commits any open session so each edited subject's
+  // changes land in their own step. Cancel needs no snapshot of the instance:
+  // the hook pins the whole pre-session doc on the session's first edit.
   const handleEditInstance = useCallback((handle: string) => {
     closeOpenEditor()
-    const inst = doc ? findInstance(doc, handle) : undefined
-    instanceSnapshot.current = inst ? { handle, inst: { ...inst } } : null
-    editOpenDirtyRef.current = useUnsavedChangesStore.getState().dirty
     setEditingInstanceHandle(handle)
     useAssemblyStore.getState().setSelectedPartHandle(handle)
-  }, [doc, closeOpenEditor])
+  }, [closeOpenEditor])
 
   const handleCommitInstance = useCallback(() => {
-    instanceSnapshot.current = null
     // Accept closes the coalescing session: every live position/rotation/fixed
     // edit lands as one undo step.
     commitSession()
@@ -485,17 +448,14 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   }, [commitSession])
 
   const handleCancelInstance = useCallback(() => {
-    const snap = instanceSnapshot.current
-    if (snap) mutate('Reset instance', d => replaceInstance(d, snap.handle, snap.inst))
-    instanceSnapshot.current = null
-    // Cancel discards the coalesced session: the snapshot reverted the edits,
-    // so there is nothing to record. The revert re-dirtied the doc; restore the
-    // flag to what it was when the editor opened.
-    useUnsavedChangesStore.getState().setDirty(editOpenDirtyRef.current)
+    // The rewind belongs to the session, not to the edited instance: every one
+    // of this editor's controls bakes EVERY non-fixed instance's solved pose
+    // into its seed, so restoring the edited instance alone would leave those
+    // rewritten seeds behind with no undo entry and a clean dirty flag.
     cancelSession()
     setEditingInstanceHandle(null)
     requestSolve()  // undo any live position/fixed edit
-  }, [mutate, requestSolve, cancelSession])
+  }, [requestSolve, cancelSession])
 
   const handleSetFixed = fixOrUnfix
 
@@ -527,52 +487,41 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // coalesced session commits as one step.
   const handleSelectMate = useCallback((featureId: string) => {
     if (editingMateId && editingMateId !== featureId) {
-      mateSnapshot.current = null
       commitSession()
       setEditingMateId(null)
     }
     useAssemblyStore.getState().setSelectedMateId(featureId)
   }, [editingMateId, commitSession])
 
-  // The pencil opens the inline editor. Snapshot the current def so Cancel
-  // reverts. Insert already primed the snapshot for the mate it created.
-  // Switching editors commits any open session so each mate's edits land in
-  // their own step instead of merging under the earlier session's pre-doc.
+  // The pencil opens the inline editor. Switching editors commits any open
+  // session so each mate's edits land in their own step instead of merging under
+  // the earlier session's pre-doc; that commit is also what leaves this mate's
+  // own session unpinned, so its Cancel rewinds to the doc as it opens here.
   const handleEditMate = useCallback((featureId: string) => {
     closeOpenEditor()
-    if (mateSnapshot.current?.id !== featureId) {
-      const def = doc ? findMate(doc, featureId) : undefined
-      mateSnapshot.current = def ? { id: featureId, def: { ...def } } : null
-      editOpenDirtyRef.current = useUnsavedChangesStore.getState().dirty
-    }
     useAssemblyStore.getState().setSelectedMateId(featureId)
     setEditingMateId(featureId)
-  }, [doc, closeOpenEditor])
+  }, [closeOpenEditor])
 
   // Accept: leaving the mate disarms its field, which settles the owed solve,
   // and the coalesced session commits as one undo step.
   const handleCommitMate = useCallback(() => {
-    mateSnapshot.current = null
     commitSession()
     setEditingMateId(null)
     useAssemblyStore.getState().setSelectedMateId(null)
   }, [commitSession])
 
   const handleCancelMate = useCallback(() => {
-    const snap = mateSnapshot.current
     const store = useAssemblyStore.getState()
     store.setActiveMateField(null)  // stop aiming before we rewrite the slots
-    if (snap) mutate('Reset mate', d => replaceMate(d, snap.id, snap.def))
-    mateSnapshot.current = null
-    // Cancel discards the coalesced session: the snapshot reverted the edits,
-    // so there is nothing to record. The revert re-dirtied the doc; restore the
-    // flag to what it was when the editor opened.
-    useUnsavedChangesStore.getState().setDirty(editOpenDirtyRef.current)
+    // Whole-session rewind, same as the instance editor's Cancel: nothing on the
+    // mate path bakes today, but a partial revert of the mate def alone is the
+    // shape that let the instance editor's bakes escape, so it is not repeated.
     cancelSession()
     setEditingMateId(null)
     store.setSelectedMateId(null)
     requestSolve()  // restore the solved pose the reverted refs imply
-  }, [mutate, requestSolve, cancelSession])
+  }, [requestSolve, cancelSession])
 
   const handleDeleteMate = useCallback((featureId: string) => {
     // Freeze the on-screen configuration into the seeds before dropping the
@@ -581,13 +530,10 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // solver at the placement poses and snap every part -- especially the one the
     // deleted mate positioned -- back to its drop spot, reading as parts
     // vanishing. Baked first, the re-solve relaxes only the freed DOF.
-    // Deleting the mate whose editor is open closes it and drops its revert
-    // snapshot; the delete's one-shot commits any open session itself, so a
-    // different mate's editor stays open and keeps its own coalesced step.
-    if (editingMateId === featureId) {
-      setEditingMateId(null)
-      mateSnapshot.current = null
-    }
+    // Deleting the mate whose editor is open closes it; the delete's one-shot
+    // commits any open session itself, so a different mate's editor stays open
+    // and keeps its own coalesced step.
+    if (editingMateId === featureId) setEditingMateId(null)
     const transforms = useAssemblyStore.getState().transforms
     mutateOneShot('Delete mate', d => removeMate(bakeSolvedTransforms(d, transforms), featureId))
     if (useAssemblyStore.getState().selectedMateId === featureId) {

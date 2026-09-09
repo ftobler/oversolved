@@ -21,8 +21,12 @@ export function useAssemblyUndoRedo(
   requestSolve: () => void,
 ) {
   // The coalesced pre-session doc of the open editor, or null between sessions.
-  // The first mutation pins it; a close commits it as one entry, a cancel drops it.
-  const pendingSession = useRef<{ doc: AssemblyDoc; label: string } | null>(null)
+  // The first mutation pins it; a close commits it as one entry, a cancel rewinds
+  // to it. The unsaved-changes flag rides along so the cancel can put it back:
+  // pinning it here rather than when the editor opened is what makes it right, as
+  // a one-shot landing between the open and the first session edit dirties the doc
+  // for a reason the cancel has no business undoing.
+  const pendingSession = useRef<{ doc: AssemblyDoc; label: string; dirty: boolean } | null>(null)
 
   // Read the stacks from the store so the hook re-renders (and tests can assert)
   // exactly like the part editor's hook does.
@@ -41,7 +45,12 @@ export function useAssemblyUndoRedo(
   }, [])
 
   const recordSessionEdit = useCallback((doc: AssemblyDoc, label: string) => {
-    if (!pendingSession.current) pendingSession.current = { doc, label }
+    // The page's `mutate` calls this BEFORE it applies the mutation and before it
+    // sets the doc dirty, so both the doc and the flag read here are still the
+    // pre-session ones cancelSession has to restore.
+    if (!pendingSession.current) {
+      pendingSession.current = { doc, label, dirty: useUnsavedChangesStore.getState().dirty }
+    }
   }, [])
 
   const commitSession = useCallback(() => {
@@ -61,9 +70,32 @@ export function useAssemblyUndoRedo(
     pushUndo(pending.doc, pending.label)
   }, [pushUndo, docRef])
 
+  // Cancel rewinds the WHOLE doc to the pinned pre-session one. Reverting only
+  // the feature whose editor is open under-reverts: the instance editor's
+  // position, rotation and fixed controls each bake every non-fixed instance's
+  // solved pose into its seed (bakeSolvedTransforms), so the other instances'
+  // rewritten seeds would stay in the document with no undo entry to reach them
+  // and a restored clean flag telling the guard there was nothing to warn about.
+  //
+  // Doc rewind, pin drop and dirty restore are ONE unit, mirroring useUndoRedo's
+  // snapshot PAIRING CONTRACT and usePartDoc's cancelEditSession. The undo stacks
+  // need no adjustment: a pinned session pushed nothing (that is what the pin is
+  // for), so they already describe the pre-session doc, which is exactly the doc
+  // becoming live again. The re-solve is left to the callers, which owe one
+  // whether or not anything was pinned.
   const cancelSession = useCallback(() => {
+    const pending = pendingSession.current
     pendingSession.current = null
-  }, [])
+    // No pin means the session mutated nothing: there is nothing to rewind, and
+    // no dirty flag was set on its behalf to restore.
+    if (!pending) return
+    // Same null-doc guard as commitSession: the live doc is gone (a teardown
+    // after a failed load), so there is nothing left to rewind.
+    if (!docRef.current) return
+    docRef.current = pending.doc
+    setDoc(pending.doc)
+    useUnsavedChangesStore.getState().setDirty(pending.dirty)
+  }, [docRef, setDoc])
 
   const applyUndoRedo = useCallback((direction: 'undo' | 'redo') => {
     const store = useAssemblyStore.getState()

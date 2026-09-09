@@ -414,11 +414,106 @@ describe('useAssemblyUndoRedo', () => {
 
     act(() => { result.current.recordSessionEdit(docRef.current!, 'Edit mate') })
     act(() => { result.current.cancelSession() })
-    // Cancel already reverted the edits via its snapshot, so closing the editor
-    // must not charge an entry to the dropped session.
+    // Cancel rewound the doc to the pin, so closing the editor must not charge
+    // an entry to the dropped session.
     act(() => { result.current.commitSession() })
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(0)
+  })
+
+  // The cancel owns the rewind, so a partial revert by the caller cannot
+  // under-revert what the session touched (the instance editor's controls bake
+  // EVERY non-fixed instance's seed, not just the edited one's). Doc, dirty flag
+  // and pin move as one unit; the stacks stay put because a pinned session
+  // pushed nothing, so they already describe the doc becoming live again.
+  it('cancelSession rewinds the doc and the dirty flag to the pin, leaving the stacks alone', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docRef = { current: docA }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    act(() => { result.current.pushUndo(docA, 'Add part') })  // history predating the editor
+    act(() => { result.current.recordSessionEdit(docA, 'Set position') })
+    // What the page's `mutate` does after pinning: apply the edit, mark dirty.
+    docRef.current = docB
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    act(() => { result.current.cancelSession() })
+
+    expect(setDoc).toHaveBeenCalledWith(docA)
+    expect(docRef.current).toBe(docA)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+    expect(result.current.undoStack.map(e => e.label)).toEqual(['Add part'])
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
+  it('cancelSession with no pinned session rewinds nothing', () => {
+    const docB = docWith(['a', 'b'])
+    const docRef = { current: docB }
+    const setDoc = vi.fn()
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    // Cancel on an editor that changed nothing: no pin, so there is no
+    // pre-session doc to go back to and no flag that was set on its behalf.
+    useUnsavedChangesStore.getState().setDirty(true)
+    act(() => { result.current.cancelSession() })
+
+    expect(setDoc).not.toHaveBeenCalled()
+    expect(docRef.current).toBe(docB)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  // Why the flag is pinned by the session's first edit rather than by the editor
+  // opening: a one-shot landing in between is a real unsaved change with its own
+  // undo entry, and the cancel has no business marking the document clean again.
+  it('cancelSession restores the dirty flag as of the pin, not of the editor open', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docC = docWith(['a', 'b', 'c'])
+    const docRef = { current: docA }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    // The editor opened on a saved doc, then a one-shot (a tree visibility
+    // toggle) landed before the first session edit.
+    act(() => { result.current.pushUndo(docA, 'Toggle visibility') })
+    docRef.current = docB
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    act(() => { result.current.recordSessionEdit(docB, 'Set position') })
+    docRef.current = docC
+
+    act(() => { result.current.cancelSession() })
+
+    expect(docRef.current).toBe(docB)  // back to the one-shot's doc, not the saved one
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('cancelSession with a null live doc drops the pin and rewinds nothing', () => {
+    const docRef = { current: null }
+    const setDoc = vi.fn()
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    // The doc went away while the editor was pinned, mirroring commitSession's
+    // null-doc no-op: there is nothing left to rewind it to.
+    act(() => { result.current.recordSessionEdit(docWith(['a']), 'Edit mate') })
+    act(() => { result.current.cancelSession() })
+
+    expect(setDoc).not.toHaveBeenCalled()
+    expect(docRef.current).toBeNull()
+
+    // The pin went with it: a later commit pushes nothing.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack).toHaveLength(0)
   })
 
   // The unmount path: AssemblyEditor's cleanup commits the pinned session before

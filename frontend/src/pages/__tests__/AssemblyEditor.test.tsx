@@ -1004,6 +1004,123 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(0)
   })
 
+  // Solve results that actually place the parts. The shared beforeEach answers
+  // with an empty transforms map, under which bakeSolvedTransforms is a silent
+  // no-op and the whole class of bug below cannot appear.
+  function solveWithPoses(pose: { tx: number; ty: number }) {
+    h.solveAssemblyViaWorker.mockImplementation(async (_uuid: string, parts: Array<{ handle: string }>) => ({
+      payload: {
+        transforms: Object.fromEntries(parts.map(p => [
+          p.handle, { tx: pose.tx, ty: pose.ty, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 },
+        ])),
+        bodies: {},
+        mateResults: {},
+      },
+    }))
+  }
+
+  const seeds = () => useAssemblyStore.getState().instances.map(i => ({ ...i.transform }))
+
+  // Stand in for a save without driving the save path: what these tests need is
+  // a meaningful pre-session value for Cancel to restore, not a persisted doc.
+  const markSaved = () => act(() => { useUnsavedChangesStore.getState().setDirty(false) })
+
+  // Every control in the instance editor (position, rotation, Fixed) bakes the
+  // solved pose of EVERY non-fixed instance into its seed before applying the
+  // edit, so a Cancel that restored only the edited instance left the other
+  // instances' rewritten seeds in the document: no undo entry reaches them and
+  // the restored clean flag tells the unsaved-changes guard there is nothing to
+  // warn about. Repeated open/edit/cancel cycles compound solver error into the
+  // seeds that way, which is exactly what the bake's own comment warns against.
+  // The single-instance test above cannot see it: with one instance, the edited
+  // one and the baked set are the same part.
+  it('cancelling an instance edit reverts every instance the session baked, not just the edited one', async () => {
+    solveWithPoses({ tx: 4, ty: 5 })
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    await insertPart('Bracket')
+    markSaved()
+    const before = seeds()
+    const stackBefore = undoStack().length
+
+    // Edit the FIRST instance; the second is the innocent bystander whose seed
+    // the bake rewrites.
+    fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+    expect(seeds()[1]).not.toEqual(before[1])  // the bake landed on the other part too
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()  // let the rewind's re-solve settle
+
+    expect(seeds()).toEqual(before)
+    expect(undoStack()).toHaveLength(stackBefore)
+    expect(redoStack()).toHaveLength(0)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  // The other half of the same contract: a Cancel that reverts a real change is
+  // only safe because a Cancel that reverts nothing touches nothing. With no
+  // session pinned there is no pre-session doc, so the doc object must survive
+  // the close by identity and the dirty flag must be left where it stands.
+  it('cancelling an instance edit that changed nothing rewinds nothing', async () => {
+    solveWithPoses({ tx: 4, ty: 5 })
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    markSaved()
+    const docBefore = useAssemblyStore.getState().doc
+    const stackBefore = undoStack().length
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()
+
+    expect(useAssemblyStore.getState().doc).toBe(docBefore)
+    expect(undoStack()).toHaveLength(stackBefore)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  // The dirty flag is pinned by the session's first edit, not by the editor
+  // opening: a one-shot landing in between (here a visibility toggle on the
+  // other row) is a real unsaved change with its own undo entry, and the Cancel
+  // must leave the save prompt lit for it.
+  it('cancelling an instance edit keeps the doc dirty for a one-shot that landed mid-editor', async () => {
+    solveWithPoses({ tx: 4, ty: 5 })
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    await insertPart('Bracket')
+    markSaved()
+
+    fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
+    // The editor is open but has pinned nothing yet; the other row's eye is a
+    // one-shot with its own step.
+    fireEvent.click(screen.getByLabelText('Hide part'))
+    await tick()
+    expect(useAssemblyStore.getState().instances[1].visible).toBe(false)
+    const afterToggle = seeds()
+    const stackAfterToggle = undoStack().length
+
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    await tick()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await tick()
+    await tick()
+
+    expect(seeds()).toEqual(afterToggle)
+    expect(useAssemblyStore.getState().instances[1].visible).toBe(false)
+    expect(undoStack()).toHaveLength(stackAfterToggle)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
   it('a visibility toggle records one undo step and undo restores it', async () => {
     renderEditor()
     await tick()
