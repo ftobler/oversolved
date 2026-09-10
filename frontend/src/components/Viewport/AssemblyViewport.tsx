@@ -492,6 +492,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // too, with the ID buffer's layer priority as the single arbiter of what the
   // pixel under the cursor belongs to.
   const handleGizmoPointerDownCapture = useCallback((e: React.PointerEvent) => {
+    // A second touch must not open a session over the live one. Mirror the body
+    // grab's guard: the machine would refuse the foreign pointer, but the store
+    // write happens first unless this returns here.
+    if (adapter.isActive()) return
     if (e.button !== 0 || e.ctrlKey || !selectedPartHandle || !triad) return
     const handle = parseGizmoHandleKey(decideAssemblyHit(resolveHitsAt(e)).gizmoHandle)
     if (!handle) return
@@ -518,7 +522,9 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // Record before the active-gesture early-out: the mesh handler has already
     // opened the grab by the time this bubbles up, so an early return here would
     // lose the down position a plain select needs.
-    adapter.pointerDown(pointerOf(e), e.clientX, e.clientY)
+    // The false return means a pointer already owns the gesture: a second touch
+    // must neither capture nor fall through to the aim branch.
+    if (!adapter.pointerDown(pointerOf(e), e.clientX, e.clientY)) return
     if (adapter.isActive()) {
       e.currentTarget.setPointerCapture(e.pointerId)
       return
@@ -567,13 +573,14 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const handlePointerLeave = useCallback(() => { clearHover() }, [clearHover])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     // A release that does not own the gesture (another button, another pointer)
-    // ends nothing: it must not commit a pose the user is still holding. On the
-    // owned release the machine also closes the click tracker, and the click
-    // event that decides whether to deselect arrives later and reads its verdict.
+    // ends nothing: it must not commit a pose the user is still holding, and it
+    // must not drop the pointer capture the live drag still needs. On the owned
+    // release the machine also closes the click tracker, and the click event
+    // that decides whether to deselect arrives later and reads its verdict.
     const outcome = adapter.onPointerUp(pointerOf(e), e.clientX, e.clientY)
     if (!outcome.owned) return
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     // Selection mode: a left click that never became a drag toggles the top
     // entity under the cursor into the measurement set. Which gestures are still
     // a click is gestureAllowsSelect's call, not this handler's: a triad handle

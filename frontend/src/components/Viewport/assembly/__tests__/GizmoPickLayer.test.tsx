@@ -48,7 +48,7 @@ beforeEach(() => {
 
 describe('GizmoPickLayer disabled registration', () => {
   it('does not build or register the soup while disabled', () => {
-    const { pipeline, registerBody } = fakePipeline()
+    const { pipeline, keys, registerBody, unregisterBody } = fakePipeline()
     const view = render(tree(pipeline, <GizmoPickLayer origin={[0, 0, 0]} orientation={[0, 0, 0, 1]} enabled={false} />))
     for (let i = 1; i <= 10; i++) {
       view.rerender(tree(pipeline, <GizmoPickLayer origin={[i, 0, 0]} orientation={[0, 0, 0, 1]} enabled={false} />))
@@ -61,10 +61,13 @@ describe('GizmoPickLayer disabled registration', () => {
     view.rerender(tree(pipeline, <GizmoPickLayer origin={[11, 0, 0]} orientation={[0, 0, 0, 1]} enabled />))
     expect(buildGizmoPickGeometry).toHaveBeenCalledTimes(1)
     expect(registerBody).toHaveBeenCalledTimes(1)
+    expect(keys.size).toBe(1)
 
     // Disabling again stops the build, and the registration is retired.
     view.rerender(tree(pipeline, <GizmoPickLayer origin={[12, 0, 0]} orientation={[0, 0, 0, 1]} enabled={false} />))
     expect(buildGizmoPickGeometry).toHaveBeenCalledTimes(1)
+    expect(unregisterBody).toHaveBeenCalledTimes(1)
+    expect(keys.size).toBe(0)
   })
 })
 

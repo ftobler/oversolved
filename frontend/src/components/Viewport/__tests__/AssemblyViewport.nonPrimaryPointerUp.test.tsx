@@ -146,4 +146,27 @@ describe('AssemblyViewport non-primary pointer-up', () => {
     expect(host.mutateDoc.mock.calls[0][0]).toBe('Move part')
     expect(useAssemblyStore.getState().manipulation).toBeNull()
   })
+
+  it('a second touch while active leaves the first session live', () => {
+    const { container } = render(<AssemblyViewport />)
+    const el = container.firstChild as Element
+
+    act(() => { fireEvent.pointerDown(el, { button: 0, isPrimary: true, pointerId: 1, clientX: 32, clientY: 32 }) })
+    const first = useAssemblyStore.getState().manipulation
+    expect(first).not.toBeNull()
+    expect(useAssemblyStore.getState().gizmoDrag).toEqual({ kind: 'axis', axis: 'x' })
+
+    // A second finger lands on the gizmo. It must neither open over the live
+    // session nor fall through the store write the machine would then refuse.
+    act(() => { fireEvent.pointerDown(el, { button: 0, isPrimary: false, pointerId: 2, clientX: 40, clientY: 32 }) })
+    expect(useAssemblyStore.getState().manipulation).toBe(first)
+    expect(useAssemblyStore.getState().gizmoDrag).toEqual({ kind: 'axis', axis: 'x' })
+
+    // The second pointer's release is inert; the first still owns the drag.
+    act(() => { fireEvent.pointerUp(el, { button: 0, isPrimary: false, pointerId: 2, clientX: 40, clientY: 32 }) })
+    expect(useAssemblyStore.getState().manipulation).toBe(first)
+
+    act(() => { fireEvent.pointerUp(el, { button: 0, isPrimary: true, pointerId: 1, clientX: 32, clientY: 32 }) })
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+  })
 })

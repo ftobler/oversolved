@@ -32,12 +32,17 @@ export interface GestureOutcome {
   moved: boolean
 }
 
-const REJECTED: GestureOutcome = { owned: false, source: null, moved: false }
+// Shared and frozen: an unowned release must never be mutated into a commit.
+const REJECTED: GestureOutcome = Object.freeze({ owned: false, source: null, moved: false })
 
 export interface AssemblyGestureMachine {
   // Records the first pointer and starts its click origin. Returns false for a
   // second pointer while one is down, so multi-touch cannot hijack a live drag.
   pointerDown: (pointer: PointerRef, x: number, y: number) => boolean
+  // Whether a pointer may open a session: true for the recorded opener, and for
+  // any pointer while none is recorded (the capture-before-pointerDown window).
+  // Lets the adapter refuse a foreign pointer before it touches the store.
+  canOpen: (pointer: PointerRef) => boolean
   // Confirms the geometry layer that just opened belongs to the opening pointer.
   // Refuses a pointer that is not the opener once one is recorded.
   open: (source: GestureSource, pointer: PointerRef) => boolean
@@ -48,8 +53,9 @@ export interface AssemblyGestureMachine {
   // other release is inert and leaves the gesture open.
   pointerUp: (pointer: PointerRef, x: number, y: number) => GestureOutcome
   // Cancels only when the pointer is the opener, so a secondary pointer going
-  // away cannot abandon the primary's gesture.
-  pointerCancel: (pointer: PointerRef) => void
+  // away cannot abandon the primary's gesture. Returns whether it cancelled, so
+  // the caller can unwind the store session it owns.
+  pointerCancel: (pointer: PointerRef) => boolean
   // The single abandonment transition. Escape, pointercancel and unmount all
   // land here, so none of them can forget a slice of the state.
   cancel: () => void
@@ -83,12 +89,14 @@ export function createAssemblyGestureMachine(): AssemblyGestureMachine {
     return true
   }
 
+  // Id-only by design: a session opens in the capture phase, before the
+  // wrapper's pointerDown has recorded the button, so there is no button to
+  // compare against yet. The button is enforced on the release, which is where
+  // a mismatch could actually commit the wrong thing.
+  const canOpen = (pointer: PointerRef): boolean => !opener || opener.id === pointer.id
+
   const open = (from: GestureSource, pointer: PointerRef): boolean => {
-    // The viewport opens a gizmo session in the CAPTURE phase, before the
-    // wrapper's pointerDown records the opener later in the same native event.
-    // So with no opener yet this is the first pointer and is accepted; once an
-    // opener is recorded, only that pointer may open.
-    if (opener && opener.id !== pointer.id) return false
+    if (!canOpen(pointer)) return false
     source = from
     moved = false
     return true
@@ -108,13 +116,15 @@ export function createAssemblyGestureMachine(): AssemblyGestureMachine {
     return outcome
   }
 
-  const pointerCancel = (pointer: PointerRef): void => {
-    if (!opener || opener.id !== pointer.id) return
+  const pointerCancel = (pointer: PointerRef): boolean => {
+    if (!opener || opener.id !== pointer.id) return false
     cancel()
+    return true
   }
 
   return {
     pointerDown,
+    canOpen,
     open,
     markMoved,
     pointerMove,

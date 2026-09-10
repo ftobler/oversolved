@@ -192,6 +192,9 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
   }
 
   const onBodyPointerDown = (handle: string, grab: Vec3, viewNormal: Vec3, pointer: PointerRef): boolean => {
+    // Refuse a foreign pointer before any store write: otherwise a second touch
+    // would overwrite the live session before the machine could reject it.
+    if (!machine.canOpen(pointer)) return false
     store.selectPart(handle)
     if (!store.beginBodyDrag(handle, grab)) return false
     return openGesture({ kind: 'bodyDrag', grab, normal: viewNormal }, 'body', pointer)
@@ -207,6 +210,8 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     ray: Ray,
     pointer: PointerRef,
   ): boolean => {
+    // Same foreign-pointer refusal before the store write as the body grab.
+    if (!machine.canOpen(pointer)) return false
     // closestParamOnAxis measures in unit-axis steps, so the slide delta below
     // is only a distance if the axis it scales is unit too.
     const axis = normalize(rawAxis)
@@ -328,10 +333,18 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     store.cancelPartManipulation()
   }
 
+  // A browser pointercancel is the same abandonment as Escape when it belongs to
+  // the opener: the machine owns the lifecycle, so its cancel must take the
+  // store session and gizmoDrag with it, or the camera stays locked with no
+  // later pointerup to release it.
+  const pointerCancel = (pointer: PointerRef): void => {
+    if (machine.pointerCancel(pointer)) cancel()
+  }
+
   return {
     pointerDown: machine.pointerDown,
     pointerMove: machine.pointerMove,
-    pointerCancel: machine.pointerCancel,
+    pointerCancel,
     onBodyPointerDown,
     onGizmoPointerDown,
     onPointerMove,

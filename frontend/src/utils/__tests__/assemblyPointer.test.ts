@@ -565,6 +565,32 @@ describe('gizmoDrag state', () => {
     expect(gizmoDrag()).toBeNull()
   })
 
+  // A browser pointercancel is the same abandonment as Escape: the machine owns
+  // the opener, so its cancel must take the store session with it. Before this
+  // the adapter only cleared the machine, leaving `manipulation` live and the
+  // camera locked with no later pointerup to release it.
+  it('pointerCancel from the opener clears the session and the drag', () => {
+    const { adapter, P } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0))
+    adapter.onPointerMove(armAt(30))
+    expect(useAssemblyStore.getState().manipulation).not.toBeNull()
+
+    adapter.pointerCancel(P)
+
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+    expect(gizmoDrag()).toBeNull()
+  })
+
+  it('pointerCancel from a foreign pointer leaves the session live', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], armAt(0))
+
+    adapter.pointerCancel({ id: 99, button: 0 })
+
+    expect(useAssemblyStore.getState().manipulation).not.toBeNull()
+    expect(gizmoDrag()).not.toBeNull()
+  })
+
   // The belt-and-braces branch that cleared a gesture-less drag is gone: a drag
   // can only be published by a successful session open, so the owned release and
   // cancel are the only transitions that clear it. A foreign release must leave

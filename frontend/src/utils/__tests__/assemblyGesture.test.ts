@@ -84,18 +84,29 @@ describe('assembly gesture machine', () => {
     expect(m.pointerUp(primary, 5, 5)).toEqual({ owned: false, source: null, moved: false })
   })
 
-  it('pointerCancel cancels only for the opener', () => {
+  it('pointerCancel cancels only for the opener and reports it', () => {
     const m = createAssemblyGestureMachine()
 
     m.pointerDown(primary, 0, 0)
     m.open('body', primary)
 
-    m.pointerCancel(other)
+    expect(m.pointerCancel(other)).toBe(false)
     expect(m.isActive()).toBe(true)
 
-    m.pointerCancel(primary)
+    expect(m.pointerCancel(primary)).toBe(true)
     expect(m.isActive()).toBe(false)
     expect(m.phase).toBe('idle')
+  })
+
+  it('canOpen accepts the opener and any pointer before one is recorded', () => {
+    const m = createAssemblyGestureMachine()
+
+    // Capture runs before the opener is recorded, so the first call is open.
+    expect(m.canOpen(primary)).toBe(true)
+
+    m.pointerDown(primary, 0, 0)
+    expect(m.canOpen(primary)).toBe(true)
+    expect(m.canOpen(other)).toBe(false)
   })
 
   it('tracks click travel through the pointerMove transition', () => {
