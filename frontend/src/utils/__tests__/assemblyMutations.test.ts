@@ -3,6 +3,7 @@ import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import {
   appendMate,
   appendPartInstance,
+  assemblyDocEquals,
   bakeSolvedTransforms,
   defaultMateName,
   duplicateInstance,
@@ -307,6 +308,35 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     expect(inst.transform).toBe(seed)
   })
 
+  // Re-setting fixed=false on an already-unfixed part changes nothing. The
+  // materialized `{ fixed: undefined }` on the untouched sibling must not read
+  // as a change, and every untouched feature object must keep its reference.
+  it('setInstanceFixedFromSolved is a no-op for a no-op unfix', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    doc = appendPartInstance(doc, 'doc-B', 1)
+    const [a, b] = instances(doc)
+
+    const next = setInstanceFixedFromSolved(doc, a.handle, false, { [b.handle]: { ...b.transform } })
+
+    expect(next.features![0]).toBe(doc.features![0])
+    expect(next.features![1]).toBe(doc.features![1])
+    expect(assemblyDocEquals(doc, next)).toBe(true)
+  })
+
+  // The funnel's compare ignores a key set to undefined: the YAML round-trip
+  // cannot tell `{ fixed: undefined }` from an absent `fixed`, so neither may
+  // the no-op guard.
+  it('assemblyDocEquals ignores an undefined-valued key', () => {
+    const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const withUndefined: AssemblyDoc = {
+      ...doc,
+      features: (doc.features ?? []).map(f => f.kind === 'part_instance'
+        ? { ...f, instance: { ...f.instance!, fixed: undefined } }
+        : f),
+    }
+    expect(assemblyDocEquals(doc, withUndefined)).toBe(true)
+  })
+
   // The assembly frame's reserved MateRef handle must never be a value a real
   // instance can be minted with, or a part-anchor lookup would shadow the
   // assembly built-ins. randomId(8) is an 11-char base64url string; the
@@ -459,12 +489,27 @@ describe('appendMate', () => {
 })
 
 describe('defaultMateName', () => {
-  it('counts the mates of that kind already in the doc', () => {
+  it('picks the lowest free ordinal for the kind', () => {
     expect(defaultMateName(emptyDoc, 'fixed')).toBe('Fixed 1')
     const doc = appendMate(appendMate(emptyDoc, 'fixed', 'm1'), 'parallel', 'm2')
     expect(defaultMateName(doc, 'fixed')).toBe('Fixed 2')
     expect(defaultMateName(doc, 'parallel')).toBe('Parallel 2')
     expect(defaultMateName(doc, 'spherical')).toBe('Spherical 1')
+  })
+
+  // A gap left by an earlier clear is reused, not skipped: this is what keeps
+  // names collision-free when `exceptId` excludes the mate being renamed.
+  it('reuses the lowest free ordinal after a gap', () => {
+    let doc = appendMate(appendMate(emptyDoc, 'fixed', 'm1'), 'fixed', 'm2')
+    doc = setMateLabel(doc, 'm1', '')
+    expect(findMate(doc, 'm1')!.label).toBe('Fixed 1')
+    expect(defaultMateName(doc, 'fixed')).toBe('Fixed 3')
+  })
+
+  // A custom name must not reserve an ordinal.
+  it('ignores labels that are not the kind label plus a number', () => {
+    const doc = setMateLabel(appendMate(emptyDoc, 'fixed', 'm1'), 'm1', 'Base clamp')
+    expect(defaultMateName(doc, 'fixed')).toBe('Fixed 1')
   })
 })
 
@@ -487,6 +532,22 @@ describe('setMateLabel', () => {
     // Removing the first mate does not renumber the stored second label.
     doc = removeMate(doc, 'm1')
     expect(findMate(doc, 'm2')!.label).toBe('Fixed 2')
+  })
+
+  // Clearing the FIRST of two mates must not mint the second's ordinal: the
+  // old count-based re-mint would store "Fixed 2" and duplicate m2.
+  it('re-mints a non-last cleared mate without duplicating an existing name', () => {
+    let doc = appendMate(appendMate(emptyDoc, 'fixed', 'm1'), 'fixed', 'm2')
+    doc = setMateLabel(doc, 'm1', '')
+
+    const labels = mateFeatures(doc).map(m => m.mate.label)
+    expect(new Set(labels).size).toBe(labels.length)
+    expect(findMate(doc, 'm1')!.label).toBe('Fixed 1')
+    expect(findMate(doc, 'm2')!.label).toBe('Fixed 2')
+
+    // A later append still finds a free ordinal above both.
+    doc = appendMate(doc, 'fixed', 'm3')
+    expect(findMate(doc, 'm3')!.label).toBe('Fixed 3')
   })
 })
 

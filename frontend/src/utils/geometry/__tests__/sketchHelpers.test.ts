@@ -15,7 +15,7 @@ describe('p2w', () => {
   // shipping screen-space sizes that are wrong by the whole zoom factor.
   it('throws for a perspective camera instead of silently returning 1', () => {
     const persp = new THREE.PerspectiveCamera(50, 1, 0.1, 100)
-    expect(() => p2w(persp as never)).toThrow(/orthographic/i)
+    expect(() => p2w(persp)).toThrow(/orthographic/i)
   })
 
   it('throws for a non-finite zoom rather than dividing by it', () => {

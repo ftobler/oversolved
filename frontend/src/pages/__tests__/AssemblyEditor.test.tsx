@@ -789,8 +789,8 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     fireEvent.click(screen.getByLabelText('Mate options'))
     fireEvent.click(screen.getByText('Rename'))
 
-    // The dialog seeds from the name the row was showing, so an unlabelled mate
-    // starts at its default rather than blank.
+    // The dialog seeds from the name the row was showing: the mate's stored
+    // default label, not the bare kind.
     const input = screen.getByLabelText('Name') as HTMLInputElement
     expect(input.value).toBe('Fixed 1')
 

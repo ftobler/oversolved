@@ -74,7 +74,8 @@ interface AssemblyTreeProps {
   onDeleteMate: (featureId: string) => void
   // A rename gesture only names its subject; the owner collects the new label in
   // a dialog, the same split the part editor's context menu uses. The current
-  // name is what the row shows, so an unlabelled mate seeds 'Fixed 1'.
+  // name is what the row shows: the mate's stored label, or the bare kind label
+  // for a legacy mate that never had one.
   onRequestRenameMate: (featureId: string, currentName: string) => void
   // Rendered inside the mate's row while it is being edited.
   renderMateEditor: (mate: MateFeature) => ReactNode
@@ -389,7 +390,7 @@ export function AssemblyTree({
             // only serves legacy docs that never had one; the tree deliberately
             // keeps no render ordinal, which is what used to renumber a mate
             // when an earlier sibling of the same kind was deleted.
-            const name = mate.label || MATE_KIND_LABELS[mate.kind] || mate.kind
+            const name = mate.label || MATE_KIND_LABELS[mate.kind]
             const mateMark = mateFailure(id, status ?? null, [mate.ref_a.part, mate.ref_b.part])
             // mateFailure owns the cause: 'stale' keeps the legacy unresolved-ref
             // look, a model cause reddens the name with its own message.

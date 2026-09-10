@@ -27,10 +27,19 @@ export function emptyAssemblyDoc(): AssemblyDoc {
 }
 
 // Deep structural equality that treats object key order as insignificant. The
-// point is the cleared-label no-op: `setMateLabel` deletes the key, and a later
-// re-add can insert it at a different position than the original literal, which
-// `JSON.stringify` reads as a change. Arrays stay order-significant (a reorder
-// IS a change). Recurses so a nested object the same way is compared the same.
+// point is the cleared-label no-op: a later re-add can insert a key at a
+// different position than the original literal, which `JSON.stringify` reads as
+// a change. Arrays stay order-significant (a reorder IS a change).
+//
+// Keys whose value is `undefined` are ignored on both sides. The document is
+// serialized to YAML, where absent and undefined are the same document, and a
+// mutation that materializes `{ fixed: undefined }` over an instance that never
+// had the key must not read as a change.
+function definedKeys(o: object): string[] {
+  const rec = o as Record<string, unknown>
+  return Object.keys(rec).filter(k => rec[k] !== undefined)
+}
+
 function deepEquals(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
@@ -41,18 +50,21 @@ function deepEquals(a: unknown, b: unknown): boolean {
     }
     return true
   }
-  const ak = Object.keys(a as object)
-  const bk = Object.keys(b as object)
+  const ak = definedKeys(a)
+  const bk = definedKeys(b)
   if (ak.length !== bk.length) return false
+  const ar = a as Record<string, unknown>
+  const br = b as Record<string, unknown>
   for (const key of ak) {
-    if (!Object.prototype.hasOwnProperty.call(b, key)) return false
-    if (!deepEquals((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) return false
+    if (!(key in br)) return false
+    if (!deepEquals(ar[key], br[key])) return false
   }
   return true
 }
 
-// Everything but `features`. Both sides get an explicit `features: undefined`, so
-// the key sets match whether or not a side carried the key at all.
+// Everything but `features`. Setting the key to `undefined` drops it from the
+// comparison, which lets the compare stay key-set based whether or not a side
+// carried the key at all.
 function withoutFeatures(doc: AssemblyDoc): Record<string, unknown> {
   return { ...(doc as unknown as Record<string, unknown>), features: undefined }
 }
@@ -223,14 +235,22 @@ export function setInstanceFixedFromSolved(
       // rounding persists it and the next commit re-rounds, walking the part by
       // roughly one f32 ulp per commit and putting every part in every diff.
       const moved = solved !== undefined && !transformApproxEqual(solved, inst.transform)
-      return {
-        ...f,
-        instance: {
-          ...inst,
-          transform: moved ? { ...solved } : inst.transform,
-          fixed: inst.handle === handle ? fixed : inst.fixed,
-        },
+      const isTarget = inst.handle === handle
+      // An absent `fixed` means false: re-setting false is a no-op, not a
+      // change. Treating it as one charged a dead undo entry and materialized a
+      // `fixed: false` key over an instance that never had one.
+      const flagChanged = isTarget && (inst.fixed ?? false) !== fixed
+      // Nothing to write: keep the existing feature object by reference, so a
+      // toggle that touches one instance cannot churn the identity of the rest.
+      if (!moved && !flagChanged) return f
+      const instance: PartInstance = {
+        ...inst,
+        transform: moved ? { ...solved } : inst.transform,
       }
+      const nextFixed = flagChanged ? fixed : inst.fixed
+      if (nextFixed === undefined) delete instance.fixed
+      else instance.fixed = nextFixed
+      return { ...f, instance }
     }),
   }
 }
@@ -392,8 +412,8 @@ export function findMate(doc: AssemblyDoc, featureId: string): MateFeatureDef | 
 }
 
 /**
- * The default display name for a newly created mate: the kind's label and its
- * one-based ordinal among the mates of that kind already in the doc.
+ * The default display name for a newly created mate: the kind's label and the
+ * lowest one-based ordinal its same-kind siblings do not already use.
  *
  * Minting it at creation (appendMate) rather than deriving it at render is what
  * keeps the name stable: a render ordinal renumbers every later mate when an
@@ -402,16 +422,27 @@ export function findMate(doc: AssemblyDoc, featureId: string): MateFeatureDef | 
  * nowhere, so it keeps the kind label alone until first renamed; `setMateLabel`
  * re-mints a stable default on the first clear.
  *
- * `exceptId` excludes the mate being renamed, so re-minting a cleared label
- * lands on that mate's own ordinal instead of one past the last sibling.
+ * The free-ordinal walk, not a count, is what makes a clear collision-free: with
+ * `m1=Fixed 1` and `m2=Fixed 2`, clearing `m1` must take "Fixed 1" (its own
+ * slot), not "Fixed 3" and never a duplicate of `m2`. `exceptId` excludes the
+ * mate being renamed from the used set; only labels shaped `<kind label> <n>`
+ * reserve an ordinal, so a custom name reserves nothing.
  */
 export function defaultMateName(doc: AssemblyDoc, kind: MateKind, exceptId?: string): string {
   const label = MATE_KIND_LABELS[kind] ?? kind
-  let count = 0
+  const prefix = `${label} `
+  const used = new Set<number>()
   for (const f of features(doc)) {
-    if (f.kind === 'mate' && f.mate?.kind === kind && f.id !== exceptId) count++
+    if (f.kind !== 'mate' || f.id === exceptId || f.mate?.kind !== kind) continue
+    const stored = f.mate.label
+    if (stored !== undefined && stored.startsWith(prefix)) {
+      const suffix = stored.slice(prefix.length)
+      if (/^\d+$/.test(suffix)) used.add(Number(suffix))
+    }
   }
-  return `${label} ${count + 1}`
+  let ordinal = 1
+  while (used.has(ordinal)) ordinal++
+  return `${label} ${ordinal}`
 }
 
 /**

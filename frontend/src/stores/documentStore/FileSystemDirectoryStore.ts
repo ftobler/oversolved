@@ -38,8 +38,10 @@ function toSummary(entry: IndexEntry, preview?: string): DocSummary {
     is_owner: true,
     owner_username: DIRECTORY_OWNER,
     is_public: entry.is_public,
-    // Absent on an entry written before the field: the picker treats an absent
-    // kind as insertable, and the next save backfills it.
+    // Absent on an entry whose index row predates the field. The picker treats
+    // an absent kind as insertable; a later save that actually writes the
+    // document backfills it from the content (a byte-identical no-op save
+    // returns before the index is touched).
     kind: entry.kind,
     preview_image: preview,
     meta: { ...entry.meta },
