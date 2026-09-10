@@ -27,7 +27,6 @@ import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
-import { useShallow } from 'zustand/react/shallow'
 import { backendBundle } from '@/adapters/backend'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
@@ -465,25 +464,20 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     }
   }, [doc, selectedPartHandle])
 
-  // The composed drawn pose, read through the store accessor (raw transforms /
-  // settlingOffsets are confined to the pose plumbing). This is only the
-  // fallback for an editor not opened through handleEditInstance; the open
-  // editor edits its frozen `poseBasis` so a background solve cannot move its
-  // fields.
-  const settled = useAssemblyStore(useShallow(s => s.settledPoses()))
-
-  const renderInstanceEditor = useCallback((inst: PartInstance) => {
-    const frozen = poseBasis?.handle === inst.handle ? poseBasis.pose : undefined
-    return (
-      <PartInstanceEditor
-        instance={inst}
-        pose={frozen ?? settled[inst.handle] ?? inst.transform}
-        onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
-        onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
-        onSetRotation={euler => executeCommand('set_part_rotation', { handle: inst.handle, euler })}
-      />
-    )
-  }, [poseBasis, settled])
+  // The editor edits the pose basis frozen when it opened, so a background
+  // solve cannot move its fields. No live pose subscription is needed (and a
+  // shallow one over settledPoses would churn while a drag is settling): the
+  // seed is the only fallback, for an editor not opened through
+  // handleEditInstance.
+  const renderInstanceEditor = useCallback((inst: PartInstance) => (
+    <PartInstanceEditor
+      instance={inst}
+      pose={(poseBasis?.handle === inst.handle ? poseBasis.pose : undefined) ?? inst.transform}
+      onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
+      onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
+      onSetRotation={euler => executeCommand('set_part_rotation', { handle: inst.handle, euler })}
+    />
+  ), [poseBasis])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor
