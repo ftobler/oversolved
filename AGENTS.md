@@ -69,20 +69,33 @@ When asked to plan a feature:
 - Write a detailed plan including test specs
 - Do NOT execute the plan or touch any other files
 - Read existing `feature/*.md` files first to know what is already in development
-- Keep an overview and order of exection of features to apply documented in `feature/overview.md`. Keep it very short. One line per feature.
+- Keep an overview and order of execution of features to apply documented in `feature/overview.md`. Keep it very short. One line per feature.
 
 When asked to implement a feature:
 - consult `feature/overview.md` to find the next feature to implement in sequence.
 - you read the `feature/<topic>.md` and execute according to content.
 - Always make tests. Especially on bugs.
 - Code review using a subagent.
-- when done update `feature/overview.md` to mark as complete and remove the `*.md` file you implemented the feature from.
+- when done append a one-line shipped entry to `feature/overview.md` and remove the `*.md` file you implemented the feature from.
 
 When the user asks to plan a feature but mentions of making it light or quick:
 - do not do research
 - dump his intent + your immediate knowledge (if you have any) inside the feature plan
 - do not play the architect, that is here the implementers job.
 - can be as simple as a mental note or a TODO item.
+
+## feature/overview.md
+
+An index, not a history. Its job is to be scannable in seconds. Rules:
+
+- One line per entry, always. No continuation lines, no paragraph prose.
+- Every entry starts with its state: pending, shipped, or deferred.
+- Findings, rationale and detail live in the plan, the review file, or git, never here. A plan file is deleted once shipped, so the one-liner is all that remains.
+- Pending: `- [pending] topic (feature/<topic>.md): one-line intent.`
+- Shipped: `- [shipped] <hash> topic: one-line outcome.` The hash is the main-repo tip commit, or the batch tip for a multi-commit entry.
+- Deferred: `- [deferred] topic: one-line note.`
+- Append new shipped entries at the very end (oldest first). Never prepend.
+- Agents auto-prune: on every touch, collapse the file back to one line per entry and move anything that needs a second sentence into the plan, the review file, or git.
 
 ## knowledge base
 
