@@ -55,14 +55,14 @@ function rowByName(container: HTMLElement, name: string): HTMLElement {
 
 describe('AssemblyTree cross-highlight', () => {
   it('selecting a part marks the mates that reference it as related', () => {
-    const { container } = renderTree({ selectedHandle: 'p1' })
+    const { container } = renderTree({ subject: { kind: 'part', handle: 'p1' } })
     expect(rowByName(container, 'Fixed 1').className).toContain('related')  // m1: p1-p2
     expect(rowByName(container, 'Fixed 3').className).toContain('related')  // m3: self-mate on p1
     expect(rowByName(container, 'Fixed 2').className).not.toContain('related')  // m2: p2-p3
   })
 
   it('selecting a mate marks its two parts as related, not itself', () => {
-    const { container } = renderTree({ selectedMateId: 'm1' })
+    const { container } = renderTree({ subject: { kind: 'mate', id: 'm1' } })
     expect(rowByName(container, 'doc-p1').className).toContain('related')
     expect(rowByName(container, 'doc-p2').className).toContain('related')
     expect(rowByName(container, 'doc-p3').className).not.toContain('related')
@@ -70,7 +70,7 @@ describe('AssemblyTree cross-highlight', () => {
   })
 
   it('a self-mate highlights its one part row once', () => {
-    const { container } = renderTree({ selectedMateId: 'm3' })
+    const { container } = renderTree({ subject: { kind: 'mate', id: 'm3' } })
     const p1Row = rowByName(container, 'doc-p1')
     expect(p1Row.className).toContain('related')
     // querySelectorAll would only ever find the row once either way (handles
@@ -87,7 +87,7 @@ describe('AssemblyTree cross-highlight', () => {
   })
 
   it('the selected row itself keeps .selected and never gains .related from its own selection', () => {
-    const { container } = renderTree({ selectedHandle: 'p1' })
+    const { container } = renderTree({ subject: { kind: 'part', handle: 'p1' } })
     const p1Row = rowByName(container, 'doc-p1')
     expect(p1Row.className).toContain('selected')
     expect(p1Row.className).not.toContain('related')

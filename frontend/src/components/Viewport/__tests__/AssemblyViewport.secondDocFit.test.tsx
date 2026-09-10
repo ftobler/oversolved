@@ -77,7 +77,7 @@ beforeEach(() => {
   probe.camera = null
   probe.gen = 0
   useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
-  useAssemblyStore.setState({ pickGeometryPose: {}, selection: new Set() } as never)
+  useAssemblyStore.setState({ pickGeometryPose: {}, entitySelection: new Set() } as never)
 })
 
 describe('AssemblyViewport fit on a late scene camera', () => {

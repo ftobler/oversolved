@@ -55,7 +55,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
   getState().setActiveMateField(null)
-  getState().setSelectedMateId(null)
+  getState().selectMate(null)
   getState().clearPickCandidates()
   getState().setPickScopeEntity(null)
   getState().setSolveResult(SOLVE_RESULT)
@@ -163,20 +163,20 @@ describe('closing a mate field', () => {
   })
 
   it('leaving the mate settles the solve its picks owe', () => {
-    getState().setSelectedMateId('m1')
+    getState().selectMate('m1')
     getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
     getState().pickFromHitsOrCycle(CORNER_HITS)
-    getState().setSelectedMateId(null)
+    getState().selectMate(null)
     expect(requestSolve).toHaveBeenCalledTimes(1)
     expect(getState().activeMateField).toBeNull()
   })
 
   it('selecting another mate disarms the previous one', () => {
-    getState().setSelectedMateId('m1')
+    getState().selectMate('m1')
     getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
-    getState().setSelectedMateId('m2')
+    getState().selectMate('m2')
     expect(getState().activeMateField).toBeNull()
-    expect(getState().selectedMateId).toBe('m2')
+    expect(getState().subject).toEqual({ kind: 'mate', id: 'm2' })
   })
 })
 
@@ -291,10 +291,10 @@ describe('mate results', () => {
   })
 
   it('setSnapshot leaves the authoring state alone (it is store-owned)', () => {
-    getState().setSelectedMateId('m1')
+    getState().selectMate('m1')
     getState().setActiveMateField({ featureId: 'm1', field: 'ref_b' })
-    getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, entityMateRefs: ENTITY_MATE_REFS })
-    expect(getState().selectedMateId).toBe('m1')
+    useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, entityMateRefs: ENTITY_MATE_REFS })
+    expect(getState().subject).toEqual({ kind: 'mate', id: 'm1' })
     expect(getState().activeMateField).toEqual({ featureId: 'm1', field: 'ref_b' })
   })
 })

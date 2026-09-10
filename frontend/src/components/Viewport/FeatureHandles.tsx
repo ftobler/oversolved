@@ -9,7 +9,8 @@ import {
 } from '@/stores/sketchEditorStore'
 import { useFeatureHandleIdRegistration, featureHandleKey } from '@/picking'
 import { registerFeatureHandleCallbacks } from '@/components/Viewport/idDispatch/featureHandleCallbacks'
-import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '@/components/Geometry3D/featureHandleMath'
+import { handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '@/components/Geometry3D/featureHandleMath'
+import { closestParamOnAxis } from '@/utils/gizmoMath'
 import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { evalExpr } from '@/kernel/evalExpr'
@@ -220,7 +221,7 @@ function HandleArrow({ featureId, feature, handle }: {
     rc.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera)
     const o = rc.ray.origin
     const d = rc.ray.direction
-    return closestAxisParam([o.x, o.y, o.z], [d.x, d.y, d.z], axisOrigin, axisDir)
+    return closestParamOnAxis({ origin: [o.x, o.y, o.z], direction: [d.x, d.y, d.z] }, axisOrigin, axisDir)
   }
 
   const handleMoveRef = useRef<((e: PointerEvent) => void) | null>(null)

@@ -43,7 +43,7 @@ export interface AssemblyPointerStore {
   rotatePartGizmo: (axis: Vec3, angle: number, pivot?: Vec3) => void
   endPartManipulation: () => void
   cancelPartManipulation: () => void
-  setSelectedPartHandle: (handle: string | null) => void
+  selectPart: (handle: string | null) => void
   // Ending a session clears this store-side; the adapter only ever sets it.
   setGizmoDrag: (drag: GizmoDragState | null) => void
 }
@@ -175,7 +175,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
   }
 
   const onBodyPointerDown = (handle: string, grab: Vec3, viewNormal: Vec3): boolean => {
-    store.setSelectedPartHandle(handle)
+    store.selectPart(handle)
     if (!store.beginBodyDrag(handle, grab)) return false
     return open({ kind: 'bodyDrag', grab, normal: viewNormal }, 'body')
   }

@@ -99,9 +99,9 @@ describe('AssemblyEditor (Stage 6b)', () => {
     h.save.mockResolvedValue(undefined)
     h.captureScreenshotForSaving.mockResolvedValue('data:image/png;base64,QVNN')
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
-    useAssemblyStore.getState().setSelectedPartHandle(null)
+    useAssemblyStore.getState().selectPart(null)
     useAssemblyStore.getState().setActiveMateField(null)
-    useAssemblyStore.getState().setSelectedMateId(null)
+    useAssemblyStore.getState().selectMate(null)
     useAssemblyStore.setState({ editingSubject: { kind: 'none' } })
   })
 
@@ -201,14 +201,14 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await renderLoaded()
     await insertPart('Bracket')
     const handle = useAssemblyStore.getState().instances[0].handle
-    useAssemblyStore.getState().setSelectedPartHandle(handle)
+    useAssemblyStore.getState().selectPart(handle)
 
     fireEvent.click(screen.getByLabelText('Part options'))
     fireEvent.click(screen.getByText('Delete'))
     await tick()
     await tick()  // let the delete's re-solve settle
 
-    expect(useAssemblyStore.getState().selectedPartHandle).toBeNull()
+    expect(useAssemblyStore.getState().subject).toBeNull()
     expect(useAssemblyStore.getState().instances).toHaveLength(0)
   })
 
@@ -426,7 +426,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     fireEvent.click(screen.getByText('Bracket'))
     await tick()
     // A click selects, it does not navigate into the part.
-    expect(useAssemblyStore.getState().selectedPartHandle).toBe(handle)
+    expect(useAssemblyStore.getState().subject).toEqual({ kind: 'part', handle })
     expect(navigateSpy).not.toHaveBeenCalledWith('/documents/part-1')
   })
 
@@ -490,7 +490,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     })
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().setActiveMateField(null)
-    useAssemblyStore.getState().setSelectedMateId(null)
+    useAssemblyStore.getState().selectMate(null)
     useAssemblyStore.setState({ editingSubject: { kind: 'none' } })
   })
 
@@ -750,7 +750,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     await tick()
     await tick()  // let the revert's re-solve settle
-    expect(useAssemblyStore.getState().selectedMateId).toBeNull()
+    expect(useAssemblyStore.getState().subject).toBeNull()
     expect(mateDef().offset).toBeUndefined()
   })
 
@@ -819,7 +819,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
     h.exportAssemblyViaWorker.mockResolvedValue(new Uint8Array([1, 2, 3]))
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().setActiveMateField(null)
-    useAssemblyStore.getState().setSelectedMateId(null)
+    useAssemblyStore.getState().selectMate(null)
   })
 
   async function openExportDialog() {
@@ -920,7 +920,7 @@ describe('AssemblyEditor undo/redo', () => {
     // The stacks are store-owned, so setSnapshot does not clear them.
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
     useAssemblyStore.getState().setActiveMateField(null)
-    useAssemblyStore.getState().setSelectedMateId(null)
+    useAssemblyStore.getState().selectMate(null)
   })
 
   const undoStack = () => useAssemblyStore.getState().undoStack
@@ -970,14 +970,14 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(1)
   })
 
-  it('undo with a stale selectedPartHandle does not crash the delete-selected render', async () => {
+  it('undo with a stale selected subject does not crash the delete-selected render', async () => {
     renderEditor()
     await tick()
     await tick()
     await insertPart('Bracket')
     expect(undoStack()).toHaveLength(1)
     const handle = useAssemblyStore.getState().instances[0].handle
-    act(() => { useAssemblyStore.getState().setSelectedPartHandle(handle) })
+    act(() => { useAssemblyStore.getState().selectPart(handle) })
 
     act(() => { executeCommand('undo') })
     await tick()
@@ -987,20 +987,20 @@ describe('AssemblyEditor undo/redo', () => {
     // lookup and the Delete key both no-op on a vanished handle, but the
     // dangling value is exactly the class the undo reset exists to prevent.
     expect(useAssemblyStore.getState().instances).toHaveLength(0)
-    expect(useAssemblyStore.getState().selectedPartHandle).toBeNull()
+    expect(useAssemblyStore.getState().subject).toBeNull()
   })
 
   // The safety effect, not the undo reset: a live doc change (a reload, or a
   // tree edit that removes the selected instance without routing through the
   // tree delete's own clear) must retire a handle the loaded doc cannot resolve.
   it('a live doc change removing the selected instance clears the handle on the next render', async () => {
-    act(() => { useAssemblyStore.getState().setSelectedPartHandle('ghost') })
+    act(() => { useAssemblyStore.getState().selectPart('ghost') })
 
     renderEditor()
     await tick()
     await tick()
 
-    expect(useAssemblyStore.getState().selectedPartHandle).toBeNull()
+    expect(useAssemblyStore.getState().subject).toBeNull()
   })
 
   it('Ctrl+Z in the assembly dispatches undo instead of being eaten', async () => {

@@ -4,51 +4,6 @@
 
 import { COLOR_HOVER, COLOR_PREVIEW_EDGE } from '@/utils/core/partColors'
 
-export type Vec3 = readonly [number, number, number]
-
-function dot(a: Vec3, b: Vec3): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-function sub(a: Vec3, b: Vec3): [number, number, number] {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-/**
- * Signed travel `t` along the axis line `axisOrigin + t * axisDir` of the
- * point on the axis closest to the cursor ray. This is the standard
- * closest-point-between-two-lines solve; it degrades gracefully when the
- * cursor is off the axis (the drag follows the axis-parallel component of
- * the cursor motion). Returns null when ray and axis are near-parallel
- * (axis seen end-on: travel along it is unobservable, so the drag must
- * hold its last value rather than jump).
- *
- * Directions need not be unit length; the parameter is in `axisDir` units,
- * so callers pass the descriptor's unit direction to get world units.
- */
-export function closestAxisParam(
-  rayOrigin: Vec3,
-  rayDir: Vec3,
-  axisOrigin: Vec3,
-  axisDir: Vec3,
-): number | null {
-  // Degenerate inputs: a zero-length axis has no direction to travel along,
-  // and a zero-length ray can't form a closest-point solve. Both must hold
-  // their last value rather than produce NaN.
-  const a = dot(axisDir, axisDir)
-  if (a < 1e-12) return null
-  const c = dot(rayDir, rayDir)
-  if (c < 1e-12) return null
-  const w = sub(axisOrigin, rayOrigin)
-  const b = dot(axisDir, rayDir)
-  const d = dot(w, axisDir)
-  const e = dot(w, rayDir)
-  const denom = a * c - b * b
-  // Near-parallel threshold, scaled so it is invariant to direction lengths.
-  if (denom < 1e-9 * a * c) return null
-  return (b * e - c * d) / denom
-}
-
 /**
  * Map axis travel (world units from the drag's reference point) to the new
  * field value: value = start + travel / unitScale, clamped to [min, max].

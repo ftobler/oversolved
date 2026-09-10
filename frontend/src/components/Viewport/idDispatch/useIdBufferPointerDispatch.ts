@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import type * as THREE from 'three'
 import { getLivePipeline } from '@/picking'
 import type { ResolvedHit } from '@/picking'
+import { HoverScheduler } from '@/picking/HoverScheduler'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { dimensionLabelAdapter } from './dimensionLabelAdapter'
 import { featureHandleAdapter } from './featureHandleAdapter'
@@ -203,17 +204,6 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     let lastHoverPickKey: string | null = null
     let attached: HTMLCanvasElement | null = null
     let raf = 0
-    // The claimed hover frame, and the cursor waiting for it. See onPointerMove.
-    // The allowed set is deliberately NOT captured here: it is re-derived when
-    // the trailing frame flushes.
-    let hoverFrame = 0
-    let queuedHover: { cursor: { x: number; y: number } } | null = null
-    // Bumped by clearHover to invalidate any resolveAsync promise already in
-    // flight: unlike the AssemblyViewport hover path (which defers the whole
-    // GPU readback into the rAF callback), resolveHover here fires the async
-    // readback immediately on the first move of a frame, so cancelling the rAF
-    // alone cannot stop an already-launched readback from landing late.
-    let hoverEpoch = 0
 
     // The effective allowed set is re-read on every pointermove and again on the
     // rAF flush; under a filtered tool that is a fresh Set allocation each call.
@@ -262,41 +252,38 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       lastHoverPickKey = pick
     }
 
-    const resolveHover = (cursor: { x: number; y: number }, allowed: ReadonlySet<string>) => {
-      const pipeline = getLivePipeline()
-      const gl = glRef.current
-      if (!pipeline || !gl) return
-      const epoch = hoverEpoch
-      void pipeline
-        .resolveAsync(gl, cursor, { allowedLayers: allowed })
-        .then(hit => {
-          // A clearHover (pointer-leave, unmount, tool switch to a
-          // disallowed layer) since this readback launched must win: applying
-          // a hit now would resurrect a hover the clear was meant to end.
-          if (epoch !== hoverEpoch) return
-          // A null while the buffer is mid-rebuild is a transient transition,
-          // not empty space: retain the current highlight instead of tearing
-          // it down. This is the hover twin of the click path's
-          // lastClickWasStale, and it trades a highlight briefly outliving its
-          // geometry for no flicker on every solver commit. A clean-buffer
-          // null still clears.
-          if (hit === null && pipeline.isDirty()) return
-          applyHoverHit(hit?.layer ?? null, hit?.entityKey ?? null, hit?.pickKey)
-        })
-        // Never silent: a swallowed apply error would kill the hover state
-        // machine with no trace. The warn keeps the control flow identical.
-        .catch(err => console.warn('hover apply failed', err))
-    }
+    // One coalescing and cancellation owner for the hover resolve, shared with
+    // the assembly viewport. The resolve wrapper turns the pipeline's single
+    // hit into the scheduler's hit list; onHits applies it.
+    const hoverScheduler = new HoverScheduler({
+      resolve: async (q) => {
+        const pipeline = getLivePipeline()
+        const gl = glRef.current
+        if (!pipeline || !gl) return []
+        const hit = await pipeline.resolveAsync(gl, q.cursor, { allowedLayers: q.allowed })
+        return hit ? [hit] : []
+      },
+      onHits: (hits) => {
+        // A missing hit while the buffer is mid-rebuild is a transient
+        // transition, not empty space: retain the current highlight instead of
+        // tearing it down. This is the hover twin of the click path's
+        // lastClickWasStale, and it trades a highlight briefly outliving its
+        // geometry for no flicker on every solver commit. A clean-buffer miss
+        // still clears.
+        const pipeline = getLivePipeline()
+        if (hits.length === 0 && pipeline?.isDirty()) return
+        const top = hits[0]
+        applyHoverHit(top?.layer ?? null, top?.entityKey ?? null, top?.pickKey)
+      },
+    })
 
-    // Tear the hover down AND make sure it cannot come back: cancels the
-    // queued trailing-frame resolve and bumps hoverEpoch so an
-    // already-launched resolveAsync readback lands as a no-op instead of
-    // re-applying a hover for a cursor position that no longer applies.
+    // Tear the hover down AND make sure it cannot come back. The scheduler's
+    // clear bumps its epoch and cancels the queued trailing frame, so an
+    // already-launched resolveAsync readback lands as a no-op; the explicit
+    // applyHoverHit(null, null) tears down even when the stale guard in onHits
+    // would have skipped the scheduler's empty report.
     const clearHover = () => {
-      hoverEpoch++
-      if (hoverFrame) cancelAnimationFrame(hoverFrame)
-      hoverFrame = 0
-      queuedHover = null
+      hoverScheduler.clear()
       applyHoverHit(null, null)
     }
     clearHoverRef.current = clearHover
@@ -321,10 +308,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
           // hovered yet: a readback launched under the old tool could still be
           // between resolveAsync and its .then, and landing it now would paint
           // a highlight for a layer the new tool forbids.
-          hoverEpoch++
-          if (hoverFrame) cancelAnimationFrame(hoverFrame)
-          hoverFrame = 0
-          queuedHover = null
+          hoverScheduler.invalidate()
           // clearHover() also runs the correct teardown (dim-label onOut), so
           // only call it when a highlight is actually applied and the new
           // filter rejects it.
@@ -345,8 +329,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // that move re-resolves and re-applies.
         // This branch also fires during the dispatcher's own applyHoverHit
         // teardown (clearAllHover nulls the store mid-apply, and the latch is
-        // not held then because that call comes from resolveHover().then, not
-        // this listener). It is net-zero only because applyHoverHit
+        // not held then because that call comes from the scheduler's resolve,
+        // not this listener). It is net-zero only because applyHoverHit
         // unconditionally re-assigns all three lastHover* locals after the
         // apply step; do not weaken that.
         if (
@@ -365,17 +349,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     })
 
     /**
-     * Hover resolves are capped at ~two per animation frame: the first move in a
-     * frame resolves immediately, and every further move until the next frame
-     * collapses into one trailing resolve at the last cursor.
-     *
-     * Reading the ID buffer means `readRenderTargetPixels`, which blocks the main
-     * thread until the GPU has drained its queue -- on a heavy model that is the
-     * better part of a frame, EACH TIME. A high-rate pointer delivers several moves
-     * per frame, and resolving each one stacked those stalls until hovering alone
-     * dropped the viewport below 1 fps. Coalescing them costs at most one frame of
-     * hover latency and nothing else: clicks and drags resolve synchronously on
-     * their own events and are untouched.
+     * Hover resolves are capped at ~two per animation frame by the scheduler:
+     * the first move in a frame resolves immediately, and every further move
+     * until the next frame collapses into one trailing resolve at the last
+     * cursor. Reading the ID buffer blocks the main thread until the GPU has
+     * drained its queue, so coalescing costs at most one frame of hover latency
+     * and avoids stacking those stalls on every pointer event.
      */
     const onPointerMove = (e: MouseEvent) => {
       if (!attached) return
@@ -388,27 +367,10 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         clearHover()
         return
       }
-      const cursor = cursorFromEvent(e, attached)
-      if (hoverFrame !== 0) {
-        queuedHover = { cursor }
-        return
-      }
-      resolveHover(cursor, allowed)
-      hoverFrame = requestAnimationFrame(() => {
-        hoverFrame = 0
-        const queued = queuedHover
-        queuedHover = null
-        if (!queued) return
-        // Re-derive the allowed set at flush time: a tool switch within the
-        // frame must not replay the queue-time set, or a now-disallowed layer
-        // would hold a hover for one frame with no event left to remove it.
-        const flushedAllowed = computeAllowed()
-        if (flushedAllowed.size === 0) {
-          clearHover()
-          return
-        }
-        resolveHover(queued.cursor, flushedAllowed)
-      })
+      // A tool switch inside the frame cancels the queued resolve (the store
+      // listener calls invalidate), so the trailing query always carries the
+      // current allowed set rather than a stale one.
+      hoverScheduler.schedule({ cursor: cursorFromEvent(e, attached), allowed })
     }
 
     const onClick = (e: MouseEvent) => {

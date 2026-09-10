@@ -50,6 +50,49 @@ describe('closestParamOnAxis', () => {
   it('returns null when the ray is parallel to the axis (no slide is readable)', () => {
     expect(closestParamOnAxis(ray([0, 1, 0], [1, 0, 0]), [0, 0, 0], [1, 0, 0])).toBeNull()
   })
+
+  // The feature-handle drag moved onto this one implementation, so its cases
+  // live here now. It normalizes the axis and returns world units; callers pass
+  // a unit axis direction, which the handle descriptors already provide.
+  it('hits the exact axis point when the ray crosses the axis', () => {
+    // Axis +Z from origin; ray shooting -X passes through (0, 0, 4).
+    expect(closestParamOnAxis(ray([10, 0, 4], [-1, 0, 0]), [0, 0, 0], [0, 0, 1])).toBeCloseTo(4, 9)
+  })
+
+  it('is signed along the axis direction', () => {
+    expect(closestParamOnAxis(ray([10, 0, -3], [-1, 0, 0]), [0, 0, 0], [0, 0, 1])).toBeCloseTo(-3, 9)
+  })
+
+  it('uses the closest point for a skew ray', () => {
+    // Ray parallel to X at y=5, z=7: the closest axis point is z=7 regardless
+    // of the y offset.
+    expect(closestParamOnAxis(ray([10, 5, 7], [-1, 0, 0]), [0, 0, 0], [0, 0, 1])).toBeCloseTo(7, 9)
+  })
+
+  it('offsets by the axis origin', () => {
+    expect(closestParamOnAxis(ray([10, 0, 4], [-1, 0, 0]), [0, 0, 1], [0, 0, 1])).toBeCloseTo(3, 9)
+  })
+
+  it('handles a diagonal camera ray (orthographic-style)', () => {
+    // Axis +X; ray direction (-1,-1,-1)/sqrt(3) from (6,4,4): the closest point
+    // on the axis is x = 2 (the perpendicular offset splits evenly between y and z).
+    const s = 1 / Math.sqrt(3)
+    expect(closestParamOnAxis(ray([6, 4, 4], [-s, -s, -s]), [0, 0, 0], [1, 0, 0])).toBeCloseTo(2, 9)
+  })
+
+  it('accepts a non-unit ray direction', () => {
+    // The ray direction length must not change the parameter: the result is in
+    // world units along the normalized axis.
+    expect(closestParamOnAxis(ray([10, 0, 4], [-2, 0, 0]), [0, 0, 0], [0, 0, 1])).toBeCloseTo(4, 9)
+  })
+
+  it('returns null for a zero-length axis (degenerate descriptor)', () => {
+    expect(closestParamOnAxis(ray([10, 0, 4], [-1, 0, 0]), [0, 0, 0], [0, 0, 0])).toBeNull()
+  })
+
+  it('returns null for a zero-length ray (no cursor direction)', () => {
+    expect(closestParamOnAxis(ray([10, 0, 4], [0, 0, 0]), [0, 0, 0], [0, 0, 1])).toBeNull()
+  })
 })
 
 describe('signedAngleAbout', () => {

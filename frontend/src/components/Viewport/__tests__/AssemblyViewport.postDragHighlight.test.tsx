@@ -65,7 +65,7 @@ beforeEach(() => {
   useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
   useAssemblyStore.setState({
     pickGeometry: [], pickGeometryPose: {}, transforms: {}, settlingOffsets: {},
-    selection: new Set(),
+    entitySelection: new Set(),
   } as never)
 })
 

@@ -15,7 +15,7 @@ function resetStore() {
   useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
   useAssemblyStore.setState({
     undoStack: [], redoStack: [],
-    selectedMateId: null, activeMateField: null, mateFieldDirty: false,
+    subject: null, activeMateField: null, mateFieldDirty: false,
     pickCandidates: [], pickIndex: -1,
     editingSubject: { kind: 'none' },
   })
@@ -244,7 +244,7 @@ describe('useAssemblyUndoRedo', () => {
     expect(useAssemblyStore.getState().mateFieldDirty).toBe(false)
     expect(useAssemblyStore.getState().pickCandidates).toEqual([])
     expect(useAssemblyStore.getState().pickIndex).toBe(-1)
-    expect(useAssemblyStore.getState().selectedMateId).toBeNull()
+    expect(useAssemblyStore.getState().subject).toBeNull()
   })
 
   // applyUndoRedo's transient-field reset must delegate to the store's own
@@ -278,9 +278,9 @@ describe('useAssemblyUndoRedo', () => {
 
     act(() => {
       useAssemblyStore.setState({
-        selection: new Set([assemblyEntityKey('b', 0, 'face', 0)]),
+        entitySelection: new Set([assemblyEntityKey('b', 0, 'face', 0)]),
         hoveredEntity: assemblyEntityKey('b', 0, 'face', 0),
-        selectedPartHandle: 'b',
+        subject: { kind: 'part', handle: 'b' },
       })
       result.current.pushUndo(docA, 'Add part')
     })
@@ -288,9 +288,9 @@ describe('useAssemblyUndoRedo', () => {
 
     const after = useAssemblyStore.getState()
     // The restored doc has no part b, so nothing may keep selecting or hovering it.
-    expect(after.selection.size).toBe(0)
+    expect(after.entitySelection.size).toBe(0)
     expect(after.hoveredEntity).toBeNull()
-    expect(after.selectedPartHandle).toBeNull()
+    expect(after.subject).toBeNull()
   })
 
   // The deleted instance's handle and its B-rep selection must not survive the
@@ -319,9 +319,9 @@ describe('useAssemblyUndoRedo', () => {
 
     const bFace = assemblyEntityKey('b', 0, 'face', 0)
     act(() => {
-      useAssemblyStore.getState().setSelectedPartHandle('b')
+      useAssemblyStore.getState().selectPart('b')
       useAssemblyStore.setState({
-        selection: new Set([bFace]),
+        entitySelection: new Set([bFace]),
         hoveredEntity: bFace,
       })
       useAssemblyStore.getState().deleteSelected()
@@ -334,8 +334,8 @@ describe('useAssemblyUndoRedo', () => {
     // The restored doc has part b again, but the selection must not aim into it.
     expect((docRef.current!.features ?? []).some(f => f.kind === 'part_instance' && f.instance?.handle === 'b'))
       .toBe(true)
-    expect(after.selectedPartHandle).toBeNull()
-    expect(after.selection.size).toBe(0)
+    expect(after.subject).toBeNull()
+    expect(after.entitySelection.size).toBe(0)
     expect(after.hoveredEntity).toBeNull()
   })
 
@@ -665,7 +665,7 @@ describe('useAssemblyUndoRedo', () => {
     act(() => { useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial }) })
 
     act(() => {
-      useAssemblyStore.getState().setSelectedMateId('m1')
+      useAssemblyStore.getState().selectMate('m1')
       useAssemblyStore.getState().deleteSelected()
     })
     act(() => {

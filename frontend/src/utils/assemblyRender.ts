@@ -116,7 +116,7 @@ export function getAssemblyPartGroups(
   bodies: Record<string, BodyResult> | undefined,
   instances: PartInstance[],
   manipulation: ManipulationSession | null,
-  selectedPartHandle: string | null,
+  selectedParts: ReadonlySet<string>,
   settlingOffsets: Record<string, Transform3D> = {},
 ): AssemblyPartGroup[] {
   const byHandle = new Map<string, BodyRenderItem[]>()
@@ -142,7 +142,7 @@ export function getAssemblyPartGroups(
       handle: inst.handle,
       position: transformTranslation(offset),
       quaternion: transformQuat(offset),
-      selected: inst.handle === selectedPartHandle,
+      selected: selectedParts.has(inst.handle),
       manipulating,
       items,
     })

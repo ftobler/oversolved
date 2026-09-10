@@ -18,6 +18,7 @@ import {
   mintFeatureId,
 } from '@/utils/assemblyMutations'
 import { runAssemblyOperation, type AssemblyOperationId } from '@/utils/assemblyOperations'
+import type { AssemblySubject } from '@/utils/assemblySelection'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
@@ -92,8 +93,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     handleUndo,
     handleRedo,
   } = useAssemblyUndoRedo(docRef, setDoc, requestSolve)
-  const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
-  const selectedMateId = useAssemblyStore(s => s.selectedMateId)
+  // One store-owned tagged subject instead of two independent ids: the part
+  // handle and the mate id are read off its two arms, so both can never be live.
+  const subject = useAssemblyStore(s => s.subject)
+  const selectedPartHandle = subject?.kind === 'part' ? subject.handle : null
+  const selectedMateId = subject?.kind === 'mate' ? subject.id : null
   const activeMateField = useAssemblyStore(s => s.activeMateField)
   const solveStatus = useAssemblyStore(s => s.solveStatus)
   const showPickDebug = useAssemblyStore(s => s.showPickDebug)
@@ -253,7 +257,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // run add_mate); this is only the editor side effect after it lands.
   const handleMateInserted = useCallback((id: string, _kind: MateKind) => {
     const store = useAssemblyStore.getState()
-    store.setSelectedMateId(id)
+    store.selectMate(id)
     store.openMateEditor(id)  // a fresh mate opens straight into its editor
     store.setActiveMateField({ featureId: id, field: 'ref_a' })
   }, [])
@@ -263,6 +267,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // the deleted subject.
   const handleDeleteSelected = useCallback(() => {
     useAssemblyStore.getState().deleteSelected()
+  }, [])
+
+  // The tree row's delete action. It routes through the same store action as the
+  // [Delete] key, so the two cannot drift; the store closes the editor that named
+  // the deleted subject.
+  const handleDeleteSubject = useCallback((subjectToDelete: AssemblySubject) => {
+    useAssemblyStore.getState().deleteSubject(subjectToDelete)
   }, [])
 
   // The picker's commit runs the add_part operation through the registry, the
@@ -280,12 +291,12 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // close an editor on the removed instance.
   const handleAfterDeletePart = useCallback((handle: string) => {
     const store = useAssemblyStore.getState()
-    if (store.selectedPartHandle === handle) store.setSelectedPartHandle(null)
+    if (store.subject?.kind === 'part' && store.subject.handle === handle) store.selectPart(null)
     if (store.editingSubject.kind === 'instance' && store.editingSubject.handle === handle) store.closeEditor()
   }, [])
 
   const handleSelect = useCallback((handle: string) => {
-    useAssemblyStore.getState().setSelectedPartHandle(handle)
+    useAssemblyStore.getState().selectPart(handle)
   }, [])
 
   // Instance edit: open the inline editor and attach the gizmo to the part being
@@ -295,7 +306,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const handleEditInstance = useCallback((handle: string) => {
     closeOpenEditor()
     useAssemblyStore.getState().openInstanceEditor(handle)
-    useAssemblyStore.getState().setSelectedPartHandle(handle)
+    useAssemblyStore.getState().selectPart(handle)
   }, [closeOpenEditor])
 
   const handleCommitInstance = useCallback(() => {
@@ -324,7 +335,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
       commitSession()
       store.closeEditor()
     }
-    store.setSelectedMateId(featureId)
+    store.selectMate(featureId)
   }, [commitSession])
 
   // The pencil opens the inline editor. Switching editors commits any open
@@ -334,7 +345,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const handleEditMate = useCallback((featureId: string) => {
     closeOpenEditor()
     const store = useAssemblyStore.getState()
-    store.setSelectedMateId(featureId)
+    store.selectMate(featureId)
     store.openMateEditor(featureId)
   }, [closeOpenEditor])
 
@@ -344,7 +355,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     commitSession()
     const store = useAssemblyStore.getState()
     store.closeEditor()
-    store.setSelectedMateId(null)
+    store.selectMate(null)
   }, [commitSession])
 
   const handleCancelMate = useCallback(() => {
@@ -355,7 +366,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // shape that let the instance editor's bakes escape, so it is not repeated.
     cancelSession()
     store.closeEditor()
-    store.setSelectedMateId(null)
+    store.selectMate(null)
     requestSolve()  // restore the solved pose the reverted refs imply
   }, [requestSolve, cancelSession])
 
@@ -363,7 +374,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // close an editor on the removed mate.
   const handleAfterDeleteMate = useCallback((featureId: string) => {
     const store = useAssemblyStore.getState()
-    if (store.selectedMateId === featureId) store.setSelectedMateId(null)
+    if (store.subject?.kind === 'mate' && store.subject.id === featureId) store.selectMate(null)
     if (store.editingSubject.kind === 'mate' && store.editingSubject.id === featureId) store.closeEditor()
   }, [])
 
@@ -438,7 +449,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // into a feature that no longer exists.
   useEffect(() => {
     if (doc && selectedMateId && !selectedMate) {
-      useAssemblyStore.getState().setSelectedMateId(null)
+      useAssemblyStore.getState().selectMate(null)
       // editingMateId is left as-is: no row matches a vanished mate's id, so its
       // editor is already gone. It is overwritten the next time one is edited.
     }
@@ -451,7 +462,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // effect above was built for, so it clears for the same reason.
   useEffect(() => {
     if (doc && selectedPartHandle && !findInstance(doc, selectedPartHandle)) {
-      useAssemblyStore.getState().setSelectedPartHandle(null)
+      useAssemblyStore.getState().selectPart(null)
     }
   }, [doc, selectedPartHandle])
 
@@ -514,8 +525,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             mates={mates}
             status={solveStatus}
             labelFor={labelFor}
-            selectedHandle={selectedPartHandle}
-            selectedMateId={selectedMateId}
+            subject={subject}
             editingMateId={editingMateId}
             editingInstanceHandle={editingInstanceHandle}
             onSelectPart={handleSelect}
@@ -523,7 +533,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onReorderMate={(movingId, beforeId) => executeCommand('reorder_mate', { movingId, beforeId })}
             onOpenPartNewTab={handleOpenPartNewTab}
             onDuplicateInstance={(handle) => executeCommand('duplicate_part', handle)}
-            onDeleteInstance={(handle) => executeCommand('delete_part', handle)}
+            onDeleteInstance={(handle) => handleDeleteSubject({ kind: 'part', handle })}
             onToggleVisible={(handle, visible) => executeCommand('set_part_visible', { handle, visible })}
             onToggleFixed={(handle, fixed) => executeCommand('set_part_fixed_oneshot', { handle, fixed })}
             onToggleBuiltinVisible={(id, visible) => executeCommand('set_builtin_visible', { id, visible })}
@@ -535,7 +545,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onEditMate={handleEditMate}
             onCommitMate={handleCommitMate}
             onCancelMate={handleCancelMate}
-            onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
+            onDeleteMate={(featureId) => handleDeleteSubject({ kind: 'mate', id: featureId })}
             onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
             renderMateEditor={(m) => renderMateEditor(m)}
           />

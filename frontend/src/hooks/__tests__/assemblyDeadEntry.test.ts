@@ -17,7 +17,7 @@ function resetStore() {
   useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
   useAssemblyStore.setState({
     undoStack: [], redoStack: [],
-    selectedMateId: null, activeMateField: null, mateFieldDirty: false,
+    subject: null, activeMateField: null, mateFieldDirty: false,
     pickCandidates: [], pickIndex: -1,
   })
   useUnsavedChangesStore.getState().setDirty(false)

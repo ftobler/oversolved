@@ -56,25 +56,23 @@ import { p2w } from '@/utils/geometry/sketchHelpers'
 import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { drawnPose, isManipulable } from '@/utils/partManipulation'
 import { offsetPickBodies } from '@/utils/assemblyPick'
+import { readSelection } from '@/utils/assemblySelection'
+import { clickTarget, decideAssemblyHit, hoverTarget } from '@/utils/assemblyHitDecision'
+import { HoverScheduler } from '@/picking/HoverScheduler'
 import type { Ray } from '@/utils/gizmoMath'
 import { rotateVector, transformQuat, type Vec3 } from '@/utils/transform3d'
 import type { Transform3D } from '@/types/cad'
 
-// Everything an assembly can mate to: a part's B-rep entities and the
-// assembly's own frame. The sketch layers never render here, but naming the
-// set explicitly keeps a future layer from silently becoming pickable.
+// Everything an assembly can resolve from one pixel: a part's B-rep entities,
+// the assembly's own frame, and the triad handle. One set for hover, click,
+// aim and gizmo capture, so decideAssemblyHit is the single arbiter of what is
+// on top; the gizmo is no longer kept out of the pick set and filtered by hand
+// at each call site. A handle is a drag affordance, never a mate reference or a
+// measurement target, and decideAssemblyHit is what enforces that now.
 const ASSEMBLY_PICK_LAYERS: ReadonlySet<string> = new Set([
   FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME, PLANE_LAYER_NAME, ORIGIN_LAYER_NAME,
+  GIZMO_HANDLE_LAYER_NAME,
 ])
-
-// Kept out of ASSEMBLY_PICK_LAYERS on purpose: a triad handle is a drag
-// affordance, never a mate reference or a measurement target, so the mate
-// picker and the selection toggle must not be able to resolve one.
-const GIZMO_PICK_LAYERS: ReadonlySet<string> = new Set([GIZMO_HANDLE_LAYER_NAME])
-
-// Hover asks both questions in one readback: the ID buffer is read at most once
-// per frame, so a second resolve for the gizmo would double the GPU stall.
-const HOVER_PICK_LAYERS: ReadonlySet<string> = new Set([...ASSEMBLY_PICK_LAYERS, GIZMO_HANDLE_LAYER_NAME])
 
 // Stable identity: AssemblyBody memoizes its edge buffer on `curves`, so a fresh
 // [] per render would rebuild every body's line geometry on every frame.
@@ -104,14 +102,17 @@ export interface AssemblyViewportProps {
 export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(function AssemblyViewport({ hud }, ref) {
   const doc = useAssemblyStore(s => s.doc)
   const mates = useAssemblyStore(s => s.mates)
-  const selectedMateId = useAssemblyStore(s => s.selectedMateId)
+  // One subject slot instead of two independent selected fields: the part handle
+  // and the mate id are read off the union, so they can never both be live.
+  const subject = useAssemblyStore(s => s.subject)
+  const selectedPartHandle = subject?.kind === 'part' ? subject.handle : null
+  const selectedMateId = subject?.kind === 'mate' ? subject.id : null
   const bodies = useAssemblyStore(s => s.bodies)
   const edgeCurves = useAssemblyStore(s => s.edgeCurves)
   const instances = useAssemblyStore(s => s.instances)
   const transforms = useAssemblyStore(s => s.transforms)
   const manipulation = useAssemblyStore(s => s.manipulation)
   const settlingOffsets = useAssemblyStore(s => s.settlingOffsets)
-  const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
   const gizmoDrag = useAssemblyStore(s => s.gizmoDrag)
   const pickGeometry = useAssemblyStore(s => s.pickGeometry)
   const pickGeometryPose = useAssemblyStore(s => s.pickGeometryPose)
@@ -121,7 +122,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const pickScopeEntity = useAssemblyStore(s => s.pickScopeEntity)
   const pickCandidates = useAssemblyStore(s => s.pickCandidates)
   const pickIndex = useAssemblyStore(s => s.pickIndex)
-  const selection = useAssemblyStore(s => s.selection)
+  const entitySelection = useAssemblyStore(s => s.entitySelection)
   const hoveredEntity = useAssemblyStore(s => s.hoveredEntity)
   const showPickDebug = useAssemblyStore(s => s.showPickDebug)
   // An armed mate chip turns the whole scene into a reference picker: a plain
@@ -156,7 +157,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     rotatePartGizmo: (a, angle, pivot) => useAssemblyStore.getState().rotatePartGizmo(a, angle, pivot),
     endPartManipulation: () => useAssemblyStore.getState().endPartManipulation(),
     cancelPartManipulation: () => useAssemblyStore.getState().cancelPartManipulation(),
-    setSelectedPartHandle: (h) => useAssemblyStore.getState().setSelectedPartHandle(h),
+    selectPart: (h) => useAssemblyStore.getState().selectPart(h),
     setGizmoDrag: (d) => useAssemblyStore.getState().setGizmoDrag(d),
   }), [])
 
@@ -186,9 +187,15 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     captureScreenshotForSaving: () => captureThumbnail(glRef.current, sceneRef.current, cameraRef.current),
   }), [])
 
+  // The subject's part half as a set, which is what the render groups take so a
+  // future multi-part subject widens in the one accessor rather than here.
+  const selectedParts = useMemo(
+    () => readSelection(subject, entitySelection).parts,
+    [subject, entitySelection],
+  )
   const groups = useMemo(
-    () => getAssemblyPartGroups(bodies, instances, manipulation, selectedPartHandle, settlingOffsets),
-    [bodies, instances, manipulation, selectedPartHandle, settlingOffsets],
+    () => getAssemblyPartGroups(bodies, instances, manipulation, selectedParts, settlingOffsets),
+    [bodies, instances, manipulation, selectedParts, settlingOffsets],
   )
   // The drawn pose of every handle, the same offset the render groups carry.
   const drawnPoses = useMemo(() => {
@@ -324,41 +331,82 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // entity-reference authority for mate picks and B-rep selection. Both read the
   // drawn pose now, so neither can answer "what is under this pixel" with a
   // layout the other does not have.
-  const resolveHitsAt = useCallback((
-    e: { clientX: number; clientY: number },
+  const cursorFromPointer = useCallback((e: { clientX: number; clientY: number }) => {
+    const gl = glRef.current
+    if (!gl) return null
+    const canvas = gl.domElement
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return null
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    }
+  }, [])
+
+  const resolveHitsAtCursor = useCallback((
+    cursor: { x: number; y: number },
     layers: ReadonlySet<string> = ASSEMBLY_PICK_LAYERS,
   ) => {
     const gl = glRef.current
     const pipeline = pipelineRef.current
     if (!gl || !pipeline) return []
-    const canvas = gl.domElement
-    const rect = canvas.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return []
-    const cursor = {
-      x: (e.clientX - rect.left) * (canvas.width / rect.width),
-      y: (e.clientY - rect.top) * (canvas.height / rect.height),
-    }
     return pipeline.resolveAllSync(gl, cursor, { allowedLayers: layers })
   }, [])
 
-  // One GPU readback per frame at most. A pointermove fires far faster than the
-  // ID buffer can be re-read, and a sync readback stalls the pipeline.
-  const hoverFrame = useRef(0)
-  const hoverEvent = useRef<{ clientX: number; clientY: number; ctrlKey: boolean } | null>(null)
+  const resolveHitsAt = useCallback((
+    e: { clientX: number; clientY: number },
+    layers: ReadonlySet<string> = ASSEMBLY_PICK_LAYERS,
+  ) => {
+    const cursor = cursorFromPointer(e)
+    return cursor ? resolveHitsAtCursor(cursor, layers) : []
+  }, [cursorFromPointer, resolveHitsAtCursor])
+
+  // Ctrl as of the latest move. The scheduler's onHits receives only the hits,
+  // and the scope rides the hover, so the modifier is carried across the (short)
+  // gap between schedule and resolve in a ref.
+  const hoverCtrlRef = useRef(false)
+
+  // One GPU readback per frame at most, and the one cancellation owner for the
+  // hover. The scheduler caps resolves and drops any readback a clear overtook.
+  // eslint-disable-next-line react-hooks/refs -- onHits reads hoverCtrlRef when a hit lands, never during render
+  const hoverScheduler = useMemo(() => new HoverScheduler({
+    resolve: (q) => resolveHitsAtCursor(q.cursor, q.allowed),
+    onHits: (hits) => {
+      const store = useAssemblyStore.getState()
+      const decision = decideAssemblyHit(hits)
+      setHoveredGizmo(decision.gizmoHandle)
+      // Aiming reveals the hovered entity's anchor triads; the plain selector
+      // just highlights the single top entity a click would toggle. Read the
+      // mode from the store, not a captured prop, so a mid-hover mode switch is
+      // never one frame stale.
+      if (store.activeMateField !== null) {
+        // The anchor resolver only knows B-rep entity keys, so the handle is
+        // stripped from what it sees: a triad is a drag affordance, not a dock
+        // connector, and it must not appear in the hover set.
+        const entityHits = decision.gizmoHandle === null
+          ? hits
+          : hits.filter(h => h.layer !== GIZMO_HANDLE_LAYER_NAME)
+        store.setHoverHits(entityHits, hoverCtrlRef.current)
+      } else {
+        // A gizmo handle under the cursor occludes the entity behind it exactly
+        // as it does for a click, so hoverTarget is null there and the entity is
+        // not advertised as selectable.
+        store.setHoveredEntity(hoverTarget(decision))
+      }
+    },
+  }), [resolveHitsAtCursor])
 
   // Dropping the hover means dropping the frame that would restore it. A move
   // from a fraction of a frame ago is still queued when the user grabs the part
   // or leaves the pane, and letting it land would re-draw the anchors the clear
   // was for, with nothing left to clear them again.
   const clearHover = useCallback(() => {
-    if (hoverFrame.current) cancelAnimationFrame(hoverFrame.current)
-    hoverFrame.current = 0
-    hoverEvent.current = null
+    hoverScheduler.clear()
     setHoveredGizmo(null)
     const store = useAssemblyStore.getState()
     store.clearHover()  // the aiming-mode anchor hover
     store.setHoveredEntity(null)  // the selection-mode B-rep hover
-  }, [])
+  }, [hoverScheduler])
 
   const scheduleHover = useCallback((e: React.PointerEvent) => {
     // A held button means an orbit is in progress. Every frame of it would
@@ -368,34 +416,14 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
       clearHover()
       return
     }
-    hoverEvent.current = { clientX: e.clientX, clientY: e.clientY, ctrlKey: e.ctrlKey }
-    if (hoverFrame.current) return
-    hoverFrame.current = requestAnimationFrame(() => {
-      hoverFrame.current = 0
-      const pending = hoverEvent.current
-      if (!pending) return
-      const store = useAssemblyStore.getState()
-      const all = resolveHitsAt(pending, HOVER_PICK_LAYERS)
-      // A triad handle outranks every entity, so it can only be first. Split it
-      // off before the entity paths see the list: a handle is never an entity.
-      const gizmoHit = all[0]?.layer === GIZMO_HANDLE_LAYER_NAME ? all[0].entityKey : null
-      setHoveredGizmo(gizmoHit)
-      const hits = gizmoHit ? all.filter(h => h.layer !== GIZMO_HANDLE_LAYER_NAME) : all
-      // Aiming reveals the hovered entity's anchor triads; the plain selector
-      // just highlights the single top entity a click would toggle. Read the
-      // mode from the store, not a captured prop, so a mid-hover mode switch is
-      // never one frame stale.
-      if (store.activeMateField !== null) {
-        store.setHoverHits(hits, pending.ctrlKey)
-      } else {
-        // A gizmo handle under the cursor occludes the entity behind it exactly
-        // as it does for a click (handleGizmoPointerDownCapture claims the
-        // pointer-down, and gestureAllowsSelect then rejects the release):
-        // highlighting that entity advertises a selection the pixel cannot make.
-        store.setHoveredEntity(gizmoHit ? null : (hits[0]?.entityKey ?? null))
-      }
-    })
-  }, [clearHover, resolveHitsAt])
+    const cursor = cursorFromPointer(e)
+    if (!cursor) {
+      clearHover()
+      return
+    }
+    hoverCtrlRef.current = e.ctrlKey
+    hoverScheduler.schedule({ cursor, allowed: ASSEMBLY_PICK_LAYERS })
+  }, [clearHover, cursorFromPointer, hoverScheduler])
 
   // Unmounting mid-hover leaves the store's anchor/highlight fields behind:
   // they are module-level and only pointer events clear them, so a remount
@@ -449,8 +477,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // pixel under the cursor belongs to.
   const handleGizmoPointerDownCapture = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0 || e.ctrlKey || !selectedPartHandle || !triad) return
-    const hit = resolveHitsAt(e, GIZMO_PICK_LAYERS)[0]
-    const handle = parseGizmoHandleKey(hit?.entityKey)
+    const handle = parseGizmoHandleKey(decideAssemblyHit(resolveHitsAt(e)).gizmoHandle)
     if (!handle) return
     const ray = rayFromEvent(e)
     if (!ray) return
@@ -495,7 +522,12 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // advances the cycle, so a corner's seven entities are all reachable without
     // moving the mouse.
     if (e.button === 0 && (e.ctrlKey || aiming)) {
-      useAssemblyStore.getState().pickFromHitsOrCycle(resolveHitsAt(e))
+      const hits = resolveHitsAt(e)
+      // A gizmo handle on top makes the pixel a drag affordance, never a mate
+      // reference, so it cannot aim either.
+      if (decideAssemblyHit(hits).gizmoHandle === null) {
+        useAssemblyStore.getState().pickFromHitsOrCycle(hits)
+      }
     }
   }, [adapter, aiming, resolveHitsAt])
 
@@ -541,8 +573,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     const store = useAssemblyStore.getState()
     if (store.activeMateField !== null || e.button !== 0 || e.ctrlKey) return
     if (click.button !== 0 || click.wasDrag) return
-    const hits = resolveHitsAt(e)
-    if (hits.length > 0) store.toggleSelection(hits[0].entityKey)
+    const target = clickTarget(decideAssemblyHit(resolveHitsAt(e)))
+    if (target !== null) store.toggleSelection(target)
   }, [adapter, resolveHitsAt])
 
   // The browser tore the gesture away (a touch became a scroll, the pointer was
@@ -587,11 +619,13 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // wiping the selection.
     if (!missClearsSelection(clickGesture.current.state, adapter.isActive())) return
     const store = useAssemblyStore.getState()
-    store.setSelectedPartHandle(null)
-    store.setSelectedMateId(null)
-    // An empty-space click clears the B-rep selection too, the same "click off to
-    // deselect" the part editor gives. Not while aiming: the mate picker owns the
-    // click there and a miss simply aims at nothing.
+    // A miss deselects the one subject (part or mate), and disarms an armed
+    // field just as the old two-field clear did.
+    store.selectPart(null)
+    store.setActiveMateField(null)
+    // An empty-space click clears the B-rep entity selection too, the same "click
+    // off to deselect" the part editor gives. Not while aiming: the mate picker
+    // owns the click there and a miss simply aims at nothing.
     if (store.activeMateField === null) store.clearSelection()
   }, [adapter])
 
@@ -662,7 +696,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         {!aiming && !manipulating && (
           <AssemblySelectionHighlight
             pickBodies={drawnPickGeometry}
-            selection={selection}
+            selection={entitySelection}
             hovered={hoveredEntity}
             mateHighlighted={mateHighlighted}
           />

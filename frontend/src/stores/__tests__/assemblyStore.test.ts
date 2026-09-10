@@ -13,7 +13,7 @@ const FAILED_STATUS = {
 describe('assemblyStore', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
-    useAssemblyStore.getState().setSelectedPartHandle(null)
+    useAssemblyStore.getState().selectPart(null)
     useAssemblyStore.getState().setIsSolving(false)
     useAssemblyStore.setState({ solveStatus: null })
     // Everything from the two calls above down is store-owned, so setSnapshot
@@ -29,12 +29,12 @@ describe('assemblyStore', () => {
     expect(state.instances).toEqual([])
     expect(state.mates).toEqual([])
     expect(state.transforms).toEqual({})
-    expect(state.selectedPartHandle).toBeNull()
+    expect(state.subject).toBeNull()
     expect(state.isSolving).toBe(false)
     expect(state.solveStatus).toBeNull()
   })
 
-  // `selectedPartHandle` stands in for the whole STORE_OWNED_FIELDS mechanic
+  // `subject` stands in for the whole STORE_OWNED_FIELDS mechanic
   // here: the page rebuilds the snapshot from the document on every doc change,
   // and a field the store owns must survive that. The specimen used to be
   // `activePartHandle`, which was deleted as vestigial; picking another owned
@@ -44,16 +44,16 @@ describe('assemblyStore', () => {
   // so only ownership stops a snapshot from clearing them mid-solve.
   it('setSnapshot replaces mirrored fields but preserves owned fields', () => {
     const { getState } = useAssemblyStore
-    getState().setSelectedPartHandle('part-1')
+    getState().selectPart('part-1')
     getState().setIsSolving(true)
     useAssemblyStore.setState({ solveStatus: FAILED_STATUS })
     getState().setSnapshot({
       ...DEFAULT_ASSEMBLY_EDITOR_DATA,
       doc: { kind: 'assembly', features: [] },
-      selectedPartHandle: null,
+      subject: null,
     })
-    // selectedPartHandle is a store-owned field, preserved from setter.
-    expect(getState().selectedPartHandle).toBe('part-1')
+    // subject is a store-owned field, preserved from setter.
+    expect(getState().subject).toEqual({ kind: 'part', handle: 'part-1' })
     // The snapshot's own false/null for these must not win over the setters.
     expect(getState().isSolving).toBe(true)
     expect(getState().solveStatus).toBe(FAILED_STATUS)
@@ -83,16 +83,16 @@ describe('assemblyStore', () => {
     expect(getState().redoStack).toBe(redoStack)
   })
 
-  it('setSelectedPartHandle survives a snapshot that names a different handle', () => {
+  it('selectPart survives a snapshot that names a different subject', () => {
     const { getState } = useAssemblyStore
-    getState().setSelectedPartHandle('abc')
-    expect(getState().selectedPartHandle).toBe('abc')
+    getState().selectPart('abc')
+    expect(getState().subject).toEqual({ kind: 'part', handle: 'abc' })
     // setSnapshot should not overwrite
     getState().setSnapshot({
       ...DEFAULT_ASSEMBLY_EDITOR_DATA,
-      selectedPartHandle: 'ignored',
+      subject: { kind: 'mate', id: 'ignored' },
     })
-    expect(getState().selectedPartHandle).toBe('abc')
+    expect(getState().subject).toEqual({ kind: 'part', handle: 'abc' })
   })
 
   it('setIsSolving toggles the flag', () => {
@@ -288,32 +288,32 @@ describe('assemblyStore', () => {
     it('toggleSelection adds then removes an entity key', () => {
       const { getState } = useAssemblyStore
       getState().toggleSelection('P|0|face|2')
-      expect([...getState().selection]).toEqual(['P|0|face|2'])
+      expect([...getState().entitySelection]).toEqual(['P|0|face|2'])
       getState().toggleSelection('P|0|face|2')
-      expect(getState().selection.size).toBe(0)
+      expect(getState().entitySelection.size).toBe(0)
     })
 
     it('accumulates multiple selected entities', () => {
       const { getState } = useAssemblyStore
       getState().toggleSelection('a')
       getState().toggleSelection('b')
-      expect(getState().selection).toEqual(new Set(['a', 'b']))
+      expect(getState().entitySelection).toEqual(new Set(['a', 'b']))
     })
 
     it('clearSelection empties the set', () => {
       const { getState } = useAssemblyStore
       getState().toggleSelection('a')
       getState().clearSelection()
-      expect(getState().selection.size).toBe(0)
+      expect(getState().entitySelection.size).toBe(0)
     })
 
     it('setHoveredEntity is a no-op when the key is unchanged', () => {
       const { getState } = useAssemblyStore
       getState().setHoveredEntity('a')
-      const first = getState().selection  // any stable ref to detect a re-set
+      const first = getState().entitySelection  // any stable ref to detect a re-set
       getState().setHoveredEntity('a')
       expect(getState().hoveredEntity).toBe('a')
-      expect(getState().selection).toBe(first)
+      expect(getState().entitySelection).toBe(first)
     })
 
     it('a re-solve clears selection and hover (positional keys renumber)', () => {
@@ -321,7 +321,7 @@ describe('assemblyStore', () => {
       getState().toggleSelection('P|0|face|2')
       getState().setHoveredEntity('P|0|edge|1')
       getState().setSolveResult(EMPTY_SOLVE)
-      expect(getState().selection.size).toBe(0)
+      expect(getState().entitySelection.size).toBe(0)
       expect(getState().hoveredEntity).toBeNull()
     })
 

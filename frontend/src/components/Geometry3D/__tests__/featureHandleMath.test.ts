@@ -1,59 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { closestAxisParam, handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '../featureHandleMath'
+import { handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '../featureHandleMath'
 import { COLOR_HOVER, COLOR_PREVIEW_EDGE } from '@/utils/core/partColors'
-
-describe('closestAxisParam', () => {
-  it('hits the exact axis point when the ray crosses the axis', () => {
-    // Axis +Z from origin; ray shooting -X passes through (0, 0, 4).
-    const t = closestAxisParam([10, 0, 4], [-1, 0, 0], [0, 0, 0], [0, 0, 1])
-    expect(t).toBeCloseTo(4, 9)
-  })
-
-  it('is signed along the axis direction', () => {
-    const t = closestAxisParam([10, 0, -3], [-1, 0, 0], [0, 0, 0], [0, 0, 1])
-    expect(t).toBeCloseTo(-3, 9)
-  })
-
-  it('uses the closest point for a skew ray', () => {
-    // Ray parallel to X at y=5, z=7: closest axis point is z=7 regardless of y offset.
-    const t = closestAxisParam([10, 5, 7], [-1, 0, 0], [0, 0, 0], [0, 0, 1])
-    expect(t).toBeCloseTo(7, 9)
-  })
-
-  it('offsets by the axis origin', () => {
-    const t = closestAxisParam([10, 0, 4], [-1, 0, 0], [0, 0, 1], [0, 0, 1])
-    expect(t).toBeCloseTo(3, 9)
-  })
-
-  it('returns null when the ray is parallel to the axis (axis end-on)', () => {
-    expect(closestAxisParam([5, 5, 0], [0, 0, 1], [0, 0, 0], [0, 0, 1])).toBeNull()
-  })
-
-  it('handles a diagonal camera ray (orthographic-style)', () => {
-    // Axis +X; ray direction (-1,-1,-1)/sqrt(3) from (6,4,4): the closest
-    // point on the axis to that line is x = 2 (offset perpendicular splits
-    // evenly between y and z).
-    const s = 1 / Math.sqrt(3)
-    const t = closestAxisParam([6, 4, 4], [-s, -s, -s], [0, 0, 0], [1, 0, 0])
-    expect(t).toBeCloseTo(2, 9)
-  })
-
-  it('accepts a non-unit ray direction (parameter is in axisDir units)', () => {
-    // Same geometry as the first test but ray direction is [-2,0,0] (len 2).
-    // The closest-point parameter along the axis must be unchanged because
-    // it is expressed in axisDir (unit) units, not rayDir units.
-    const t = closestAxisParam([10, 0, 4], [-2, 0, 0], [0, 0, 0], [0, 0, 1])
-    expect(t).toBeCloseTo(4, 9)
-  })
-
-  it('returns null for a zero-length axis (degenerate descriptor)', () => {
-    expect(closestAxisParam([10, 0, 4], [-1, 0, 0], [0, 0, 0], [0, 0, 0])).toBeNull()
-  })
-
-  it('returns null for a zero-length ray (no cursor direction)', () => {
-    expect(closestAxisParam([10, 0, 4], [0, 0, 0], [0, 0, 0], [0, 0, 1])).toBeNull()
-  })
-})
 
 describe('handleValueFromTravel', () => {
   it('adds travel scaled by unitScale', () => {

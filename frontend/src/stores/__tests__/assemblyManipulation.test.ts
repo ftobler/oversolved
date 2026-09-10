@@ -46,7 +46,7 @@ function drawnPose(handle: string, baked: Transform3D): Transform3D {
     { [`${handle}:body_0`]: solvedBody(handle) },
     [instance(handle)],
     manipulation,
-    null,
+    new Set(),
     settlingOffsets,
   )[0]
   return composeTransforms(makeTransform(group.position, group.quaternion), baked)
@@ -149,7 +149,7 @@ describe('assemblyStore part manipulation', () => {
       { 'p1:body_0': solvedBody('p1') },
       [instance('p1')],
       manipulation,
-      null,
+      new Set(),
     )[0]
     const drawn = composeTransforms(makeTransform(group.position, group.quaternion), solvedP1)
 
@@ -360,7 +360,7 @@ describe('assemblyStore part manipulation', () => {
   it('setSnapshot preserves the in-flight manipulation and the selection', () => {
     mountHost(docWith(instance('p1')))
     const s = useAssemblyStore.getState()
-    s.setSelectedPartHandle('p1')
+    s.selectPart('p1')
     s.beginPartManipulation('p1')
     s.dragPartTranslate([2, 0, 0])
 
@@ -370,7 +370,7 @@ describe('assemblyStore part manipulation', () => {
     })
 
     expect(useAssemblyStore.getState().manipulation?.current.tx).toBe(2)
-    expect(useAssemblyStore.getState().selectedPartHandle).toBe('p1')
+    expect(useAssemblyStore.getState().subject).toEqual({ kind: 'part', handle: 'p1' })
   })
 
   // M3: the pick snapshot stays baked at the pre-drag pose until the post-commit

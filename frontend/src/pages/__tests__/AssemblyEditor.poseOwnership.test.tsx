@@ -70,9 +70,9 @@ describe('AssemblyEditor pose ownership', () => {
       payload: { transforms: {}, bodies: {} },
     })
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
-    useAssemblyStore.getState().setSelectedPartHandle(null)
+    useAssemblyStore.getState().selectPart(null)
     useAssemblyStore.getState().setActiveMateField(null)
-    useAssemblyStore.getState().setSelectedMateId(null)
+    useAssemblyStore.getState().selectMate(null)
   })
 
   const pickerItem = (name: string) =>

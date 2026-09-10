@@ -4,6 +4,7 @@ import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { mateFailure, partFailure, assemblyVerdict } from '@/utils/core/assemblyStatus'
 import type { AssemblyBuiltinListItem } from '@/utils/assemblyRender'
 import { relatedMateIds, relatedPartHandles } from '@/utils/assemblyTreeHighlight'
+import { readSelection, type AssemblySubject } from '@/utils/assemblySelection'
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
 import RightClickMenu, { type ContextMenuItem } from '@/components/dialogs/RightClickMenu'
@@ -26,6 +27,10 @@ const MIN_SPLIT_PERCENT = 20
 const MAX_SPLIT_PERCENT = 80
 const DEFAULT_SPLIT_PERCENT = 70
 
+// The tree has no entity selection of its own; the accessor still wants the
+// orthogonal set, and a shared empty instance keeps the read allocation-free.
+const EMPTY_ENTITIES: ReadonlySet<string> = new Set()
+
 interface AssemblyTreeProps {
   instances: PartInstance[]
   // The assembly's own origin and reference planes, hidden by default.
@@ -35,11 +40,10 @@ interface AssemblyTreeProps {
   status?: AssemblySolveStatus | null
   // Map from a part handle to a display label (the part document's name).
   labelFor?: (handle: string) => string | undefined
-  // The selected instance is the one the transform triad attaches to (Stage 6d).
-  selectedHandle?: string | null
-  // The selected mate: highlighted in the tree (and, going forward, its two
-  // parts and mated geometry in the viewport). Selecting does not open the editor.
-  selectedMateId?: string | null
+  // The tree subject: at most one part handle or mate id. The union makes "both
+  // a part and a mate selected" unrepresentable, so cross-highlight and the row
+  // `.selected` read derive from one slot instead of two independent fields.
+  subject?: AssemblySubject | null
   // The mate whose inline editor is open. Opened from the row's edit action, not
   // a plain click, so a click can select without diving into the parameter form.
   editingMateId?: string | null
@@ -89,8 +93,7 @@ export function AssemblyTree({
   mates,
   status,
   labelFor,
-  selectedHandle,
-  selectedMateId,
+  subject,
   editingMateId,
   editingInstanceHandle,
   onSelectPart,
@@ -159,8 +162,11 @@ export function AssemblyTree({
   // and a selected mate row lights up the two parts it mates. Symmetric and
   // pane-crossing only -- the row that is actually selected never also carries
   // .related, since each function only looks at the other pane's selection.
-  const highlightedMateIds = useMemo(() => relatedMateIds(mates, selectedHandle), [mates, selectedHandle])
-  const highlightedPartHandles = useMemo(() => relatedPartHandles(mates, selectedMateId), [mates, selectedMateId])
+  // Both halves come from the one subject accessor.
+  const view = readSelection(subject ?? null, EMPTY_ENTITIES)
+  const selectedPartHandle = view.parts.size > 0 ? [...view.parts][0] : null
+  const highlightedMateIds = useMemo(() => relatedMateIds(mates, selectedPartHandle), [mates, selectedPartHandle])
+  const highlightedPartHandles = useMemo(() => relatedPartHandles(mates, view.mate), [mates, view.mate])
 
   // The whole-assembly verdict, shown on a root row: overconstrained is a hard
   // error, underconstrained a warning that the assembly is valid but still has
@@ -222,7 +228,7 @@ export function AssemblyTree({
           {instances.map(inst => {
             const visible = inst.visible !== false
             const label = labelFor?.(inst.handle) || inst.doc_id
-            const selected = selectedHandle === inst.handle
+            const selected = selectedPartHandle === inst.handle
             const related = highlightedPartHandles.has(inst.handle)
             const editing = editingInstanceHandle === inst.handle
             const failMark = partFailure(inst.handle, status ?? null)
@@ -372,7 +378,7 @@ export function AssemblyTree({
             // look, a model cause reddens the name with its own message.
             const bareStale = mateMark.cause === 'stale'
             const realCause = mateMark.cause === 'error' || mateMark.cause === 'part'
-            const selected = selectedMateId === id
+            const selected = view.mate === id
             const related = highlightedMateIds.has(id)
             const editing = editingMateId === id
             const menuItems: ContextMenuItem[] = [

@@ -70,7 +70,7 @@ describe('AssemblyViewport pointercancel closes the pending click gesture', () =
     store.setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     store.clearHover()
     store.setHoveredEntity(null)
-    useAssemblyStore.setState({ selection: seededSelection(), selectedPartHandle: null })
+    useAssemblyStore.setState({ entitySelection: seededSelection(), subject: null })
     missedFn.current = null
   })
 
@@ -87,7 +87,7 @@ describe('AssemblyViewport pointercancel closes the pending click gesture', () =
     // the tracker still holding the cancelled gesture this read as a stationary
     // left click and wiped the selection.
     act(() => { missedFn.current?.() })
-    expect([...useAssemblyStore.getState().selection]).toEqual([...seededSelection()])
+    expect([...useAssemblyStore.getState().entitySelection]).toEqual([...seededSelection()])
   })
 
   it('a completed stationary click on empty space still deselects (control)', () => {
@@ -97,6 +97,6 @@ describe('AssemblyViewport pointercancel closes the pending click gesture', () =
     act(() => { fireEvent.pointerDown(el, { button: 0, isPrimary: true, pointerId: 1 }) })
     act(() => { fireEvent.pointerUp(el, { button: 0, isPrimary: true, pointerId: 1 }) })
     act(() => { missedFn.current?.() })
-    expect(useAssemblyStore.getState().selection.size).toBe(0)
+    expect(useAssemblyStore.getState().entitySelection.size).toBe(0)
   })
 })

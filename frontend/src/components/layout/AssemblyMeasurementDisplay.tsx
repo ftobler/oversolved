@@ -11,13 +11,13 @@ interface Props {
 }
 
 export default function AssemblyMeasurementDisplay({ measurementIcon }: Props) {
-  const selection = useAssemblyStore(s => s.selection)
+  const entitySelection = useAssemblyStore(s => s.entitySelection)
   const entityMateRefs = useAssemblyStore(s => s.entityMateRefs)
   const anchors = useAssemblyStore(s => s.anchors)
 
   const measurements = useMemo(
-    () => computeAssemblyMeasurements(selection, entityMateRefs, anchors),
-    [selection, entityMateRefs, anchors],
+    () => computeAssemblyMeasurements(entitySelection, entityMateRefs, anchors),
+    [entitySelection, entityMateRefs, anchors],
   )
 
   if (measurements.length === 0) return null

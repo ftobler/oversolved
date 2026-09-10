@@ -130,10 +130,9 @@ describe('assembly owned state reset on doc swap', () => {
       pickIndex: 0,
       pickScopeEntity: 'P|1|face|0',
       hoverHits: [{ entityKey: 'P|1|face|0' }],
-      selection: new Set(['P|1|face|0']),
+      entitySelection: new Set(['P|1|face|0']),
       hoveredEntity: 'P|1|face|0',
-      selectedPartHandle: 'pA',
-      selectedMateId: 'm1',
+      subject: { kind: 'part', handle: 'pA' },
       activeMateField: { featureId: 'm1', field: 'ref_a' },
       mateFieldDirty: true,
       showPickDebug: true,
@@ -155,10 +154,9 @@ describe('assembly owned state reset on doc swap', () => {
     expect(reset.pickIndex).toBe(-1)
     expect(reset.pickScopeEntity).toBeNull()
     expect(reset.hoverHits).toEqual([])
-    expect(reset.selection.size).toBe(0)
+    expect(reset.entitySelection.size).toBe(0)
     expect(reset.hoveredEntity).toBeNull()
-    expect(reset.selectedPartHandle).toBeNull()
-    expect(reset.selectedMateId).toBeNull()
+    expect(reset.subject).toBeNull()
     expect(reset.activeMateField).toBeNull()
     expect(reset.mateFieldDirty).toBe(false)
     expect(reset.showPickDebug).toBe(false)

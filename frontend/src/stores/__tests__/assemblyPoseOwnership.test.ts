@@ -92,7 +92,7 @@ describe('assembly pose ownership', () => {
     // Window: doc p1 = 13, settlingOffsets.p1 = 3, transforms.p1 = 10, no solve landed.
     const before = requestSolve.mock.calls.length
 
-    useAssemblyStore.getState().setSelectedPartHandle('p2')
+    useAssemblyStore.getState().selectPart('p2')
     useAssemblyStore.getState().deleteSelected()
 
     expect(findInstance(host.doc, 'p1')!.transform.tx).toBe(13)

@@ -210,7 +210,7 @@ describe('offsetPickBodies', () => {
       { [`${PART}:body_0`]: renderBody(PART) },
       [part(PART)],
       null,
-      null,
+      new Set(),
       { [PART]: offset },
     )[0]
     const groupOffset = makeTransform(group.position, group.quaternion)

@@ -63,7 +63,7 @@ function mountHost(initial: AssemblyDoc) {
     },
     endPartManipulation: store.endPartManipulation,
     cancelPartManipulation: store.cancelPartManipulation,
-    setSelectedPartHandle: store.setSelectedPartHandle,
+    selectPart: store.selectPart,
     setGizmoDrag: store.setGizmoDrag,
   })
   return { host, requestSolve, adapter, swings }
@@ -81,7 +81,7 @@ describe('assembly pointer adapter (body drag)', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().cancelPartManipulation()
-    useAssemblyStore.getState().setSelectedPartHandle(null)
+    useAssemblyStore.getState().selectPart(null)
     setAssemblyCallbacks(null)
   })
 
@@ -143,7 +143,7 @@ describe('assembly pointer adapter (body drag)', () => {
     const { host, requestSolve, adapter } = mountHost(docWith(instance('p1', { fixed: true })))
 
     expect(adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)).toBe(false)
-    expect(useAssemblyStore.getState().selectedPartHandle).toBe('p1')
+    expect(useAssemblyStore.getState().subject).toEqual({ kind: 'part', handle: 'p1' })
     expect(adapter.isActive()).toBe(false)
 
     // The move/up a viewport would still emit land nowhere.
@@ -639,7 +639,7 @@ describe('click versus manipulation at pointer-up', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().cancelPartManipulation()
-    useAssemblyStore.getState().setSelectedPartHandle(null)
+    useAssemblyStore.getState().selectPart(null)
     setAssemblyCallbacks(null)
   })
 

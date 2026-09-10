@@ -4,8 +4,10 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
-import { bakeSolvedTransforms, findInstance, findMate, removeInstance, removeMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
+import { bakeSolvedTransforms, findInstance, findMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
 import { reduceEditingSubject, type EditingSubject } from '@/utils/assemblyEditingSubject'
+import type { AssemblySubject } from '@/utils/assemblySelection'
+import { runAssemblyOperation } from '@/utils/assemblyOperations'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
@@ -90,9 +92,9 @@ export interface AssemblyEditorData {
   // The solved pose `pickGeometry` was baked at. The ID buffer offsets from this
   // onto the drawn pose, so a committed drag's pick geometry follows the parts.
   pickGeometryPose: Record<string, Transform3D>
-  selectedPartHandle: string | null
-  // The mate whose editor panel is open; null when no mate is being authored.
-  selectedMateId: string | null
+  // The tree subject: the one selected part handle or mate id, as a union so
+  // "both a part and a mate are selected" is unrepresentable.
+  subject: AssemblySubject | null
   // Which subject (if any) has its inline editor open. One tagged value instead
   // of two independent ids, so "a mate and an instance at once" is impossible.
   editingSubject: EditingSubject
@@ -121,13 +123,14 @@ export interface AssemblyEditorData {
    */
   hoverHits: EntityHit[]
   /**
-   * B-rep entities selected for measurement, keyed by `assemblyEntityKey`. This
-   * is the assembly's own selection, live only when no mate field is armed: the
-   * viewport is a dock-connector picker while authoring a mate and a plain B-rep
-   * selector otherwise. Positional keys renumber on re-solve, so a solve clears
-   * it (as it does hoverHits).
+   * B-rep entities selected for measurement, keyed by `assemblyEntityKey`. Named
+   * `entitySelection` so "which selection" has one answer: this is the entity
+   * set, orthogonal to the tree `subject`. It is live only when no mate field is
+   * armed: the viewport is a dock-connector picker while authoring a mate and a
+   * plain B-rep selector otherwise. Positional keys renumber on re-solve, so a
+   * solve clears it (as it does hoverHits).
    */
-  selection: Set<string>
+  entitySelection: Set<string>
   // The single entity under the cursor in B-rep selection mode; null when none.
   hoveredEntity: string | null
   // The ID-buffer debug renderpass overlay (mirrors the part editor's showDebugHit).
@@ -159,8 +162,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   anchors: {},
   pickGeometry: [],
   pickGeometryPose: {},
-  selectedPartHandle: null,
-  selectedMateId: null,
+  subject: null,
   editingSubject: { kind: 'none' },
   activeMateField: null,
   mateFieldDirty: false,
@@ -168,7 +170,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   pickIndex: -1,
   pickScopeEntity: null,
   hoverHits: [],
-  selection: new Set(),
+  entitySelection: new Set(),
   hoveredEntity: null,
   showPickDebug: false,
   manipulation: null,
@@ -233,12 +235,12 @@ export function sameInstances(a: readonly PartInstance[], b: readonly PartInstan
 // store into every setSnapshot, so they would survive anyway, but naming them
 // here keeps setSnapshot's "React-mirrored state only" contract intact.
 const STORE_OWNED_FIELDS = [
-  'selectedPartHandle', 'manipulation', 'gizmoDrag', 'settlingOffsets',
+  'subject', 'manipulation', 'gizmoDrag', 'settlingOffsets',
   'pickGeometryPose',
-  'selectedMateId', 'activeMateField', 'mateFieldDirty',
+  'activeMateField', 'mateFieldDirty',
   'editingSubject',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
-  'selection', 'hoveredEntity', 'showPickDebug',
+  'entitySelection', 'hoveredEntity', 'showPickDebug',
   'isSolving', 'solveStatus',
   'undoStack', 'redoStack',
 ] as const
@@ -276,9 +278,12 @@ interface AssemblyEditorState extends AssemblyEditorData {
   // tears down a half-open state (a live drag) that endPartManipulation would
   // try to commit into the new doc.
   resetTransientAssemblyState: () => void
-  setSelectedPartHandle: (handle: string | null) => void
-  // Open a mate's editor. Closing the previous one settles its owed solve.
-  setSelectedMateId: (featureId: string | null) => void
+  // Set the tree subject to one part handle, or clear it. By construction a pick
+  // drops any mate subject, so the two can never both be set.
+  selectPart: (handle: string | null) => void
+  // Set the tree subject to one mate id, or clear it. Closing or deleting a mate
+  // still disarms the armed field via the setActiveMateField side effect.
+  selectMate: (id: string | null) => void
   // The editing subject is store-owned so the undo funnel and deleteSelected can
   // read it without the page threading it through every call.
   openInstanceEditor: (handle: string) => void
@@ -347,12 +352,17 @@ interface AssemblyEditorState extends AssemblyEditorData {
   endPartManipulation: () => void
   cancelPartManipulation: () => void
   /**
-   * The [Delete] key's target: remove whatever the tree has selected. A selected
-   * mate wins over a selected part (the two selections are independent fields, so
-   * both can be set; deleting the constraint first is the less destructive of the
-   * two). No-op when nothing is selected.
+   * The [Delete] key's target: remove whatever the tree has selected, which is
+   * the one `subject`. No-op when nothing is selected.
    */
   deleteSelected: () => void
+  /**
+   * Remove one named subject. The tree's row buttons route here, so the [Delete]
+   * key and a row delete share the one implementation (which runs the delete
+   * operation through the assembly operation table). Closes an editor that
+   * named the deleted subject.
+   */
+  deleteSubject: (subject: AssemblySubject) => void
 }
 
 export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
@@ -375,7 +385,10 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     if (nextSubject !== prev.editingSubject) merged.editingSubject = nextSubject
     return merged as unknown as AssemblyEditorData
   }),
-  setSelectedPartHandle: (handle) => set({ selectedPartHandle: handle }),
+  // A part pick replaces the subject wholesale, which is what drops any
+  // previously selected mate: there is one slot, so exclusion is structural
+  // rather than a pair of clears that can disagree.
+  selectPart: (handle) => set({ subject: handle === null ? null : { kind: 'part', handle } }),
 
   openInstanceEditor: (handle) => set(prev => ({
     editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'open_instance', handle }),
@@ -401,9 +414,12 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     return next as Partial<AssemblyEditorData>
   }),
 
-  setSelectedMateId: (featureId) => {
+  // The disarm is a required coupling, not incidental: the [Delete] path routes
+  // through here so a mate delete leaves no armed field pointing at the vanished
+  // feature, and the same for closing/cancelling a mate editor.
+  selectMate: (id) => {
     get().setActiveMateField(null)  // leaving a mate settles the solve its picks owe
-    set({ selectedMateId: featureId })
+    set({ subject: id === null ? null : { kind: 'mate', id } })
   },
 
   // Disarming is where an authored mate reaches the solver. Committing a pick
@@ -435,9 +451,9 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // bundle sheds an anchor its feature deleted), so the stale set is dropped
     // rather than left pointing into the previous rev. The hover goes with it:
     // its entity keys are positional and a rebuilt body renumbers them. The
-    // B-rep selection is positional too, so it clears for the same reason.
+    // B-rep entity selection is positional too, so it clears for the same reason.
     pickCandidates: [], pickIndex: -1, hoverHits: [],
-    selection: new Set(), hoveredEntity: null,
+    entitySelection: new Set(), hoveredEntity: null,
     // Every body comes back baked at its solved pose, which is what the settling
     // offsets were standing in for until now.
     settlingOffsets: {},
@@ -532,13 +548,13 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   clearHover: () => set({ hoverHits: [], pickScopeEntity: null }),
 
   toggleSelection: (entityKey) => set((prev) => {
-    const next = new Set(prev.selection)
+    const next = new Set(prev.entitySelection)
     if (next.has(entityKey)) next.delete(entityKey)
     else next.add(entityKey)
-    return { selection: next }
+    return { entitySelection: next }
   }),
 
-  clearSelection: () => set((prev) => (prev.selection.size === 0 ? {} : { selection: new Set() })),
+  clearSelection: () => set((prev) => (prev.entitySelection.size === 0 ? {} : { entitySelection: new Set() })),
 
   // A hover that lands on the same entity re-sets an equal string, which Zustand
   // treats as a no-op; only a real change re-renders the highlight.
@@ -670,36 +686,45 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     if (moved) callbacks?.requestSolve()
   },
 
-  // Bake-then-remove, the same discipline the tree's own delete actions use
-  // (handleDelete / handleDeleteMate): the doc's seeds are stale between solves,
-  // so removing a part or mate and re-solving straight from them would snap the
-  // survivors back to their placement poses. Freezing the solved poses first
-  // leaves only the freed DOF to relax. A deleted part's referencing mates are
-  // left in place on purpose (removeInstance's contract): they surface as stale
-  // at the next solve rather than being silently cascaded away.
+  // The one delete implementation. The document mutation is the assembly
+  // operation table's delete_part/delete_mate cell (bake, one-shot, solve), so a
+  // row delete and the [Delete] key cannot drift; this wrapper adds the
+  // selection and editor cleanup the document policy does not know about. A
+  // deleted part's referencing mates are left in place on purpose
+  // (removeInstance's contract): they surface as stale at the next solve rather
+  // than being silently cascaded away.
   deleteSelected: () => {
-    const { doc, selectedMateId, selectedPartHandle, editingSubject } = get()
+    const subject = get().subject
+    if (subject) get().deleteSubject(subject)
+  },
+
+  deleteSubject: (subject) => {
+    const { doc, editingSubject } = get()
     if (!doc || !callbacks) return
-    if (selectedMateId) {
-      callbacks.mutateDoc('Delete mate', d => removeMate(bakeSolvedTransforms(d, get().settledPoses()), selectedMateId))
-      // Route through the setter, not a bare `set`, so the mate field this
-      // selection may have armed is disarmed too: a delete that leaves the
+    const host = {
+      doc,
+      transforms: get().settledPoses(),
+      mutateSession: callbacks.mutateDocSession,
+      mutateOneShot: callbacks.mutateDoc,
+      requestSolve: callbacks.requestSolve,
+      requestSolveOrDefer: () => get().requestSolveOrDefer(),
+    }
+    if (subject.kind === 'mate') {
+      runAssemblyOperation('delete_mate', subject.id, host)
+      // Clearing through the subject setter, not a bare `set`, so the mate field
+      // this selection may have armed is disarmed too: a delete that leaves the
       // armed field pointing at the just-deleted mate strands a dangling
       // reference and an owed solve that never lands.
-      get().setSelectedMateId(null)
+      get().selectMate(null)
       // An editor on the deleted subject has no doc to edit any more, so close
       // it. An editor on a DIFFERENT subject is deliberately left open: the
       // delete's one-shot already committed its session, and the user did not
       // ask to stop editing it.
-      if (editingSubject.kind === 'mate' && editingSubject.id === selectedMateId) get().closeEditor()
-      callbacks.requestSolve()
-      return
-    }
-    if (selectedPartHandle) {
-      callbacks.mutateDoc('Delete part', d => removeInstance(bakeSolvedTransforms(d, get().settledPoses()), selectedPartHandle))
-      set({ selectedPartHandle: null })
-      if (editingSubject.kind === 'instance' && editingSubject.handle === selectedPartHandle) get().closeEditor()
-      callbacks.requestSolve()
+      if (editingSubject.kind === 'mate' && editingSubject.id === subject.id) get().closeEditor()
+    } else {
+      runAssemblyOperation('delete_part', subject.handle, host)
+      set({ subject: null })
+      if (editingSubject.kind === 'instance' && editingSubject.handle === subject.handle) get().closeEditor()
     }
   },
 }))
