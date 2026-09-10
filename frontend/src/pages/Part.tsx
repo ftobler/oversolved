@@ -488,14 +488,22 @@ export default function Part() {
     }
   }, [commitMutationGroup, bodies, features])
 
+  // Adding a feature while another feature's editor is open must close that
+  // editor first (the one-open-editor discipline enterEditFeature enforces).
+  // Otherwise the new add is swallowed into the open session and Cancel or an
+  // undo rolls both features back together. Deliberately no re-solve here: the
+  // add's own funnel issues the single solve, and resetEditState only drops the
+  // transient UI. commitEditSession runs before resetEditState because its
+  // aggregate label names the store's editingFeatureId, which the reset clears.
+  const closeOpenEditorForAdd = useCallback(() => {
+    if (usePartEditorStore.getState().editingFeatureId === null) return
+    commitEditSession()
+    resetEditState()
+  }, [commitEditSession, resetEditState])
+
   const handleAddFeature = useCallback((kind: string, extra?: Record<string, unknown>) => {
     if (!doc) return
-    // One-open-editor discipline: adding a feature while another feature's
-    // session is open closes it first (committing its edits), exactly as
-    // enterEditFeature does. Without this the second startEditSession below
-    // would trip the nested-session guard, and Cancel would roll the first
-    // feature's edits back together with the add.
-    if (usePartEditorStore.getState().editingFeatureId !== null) commitEditFeature()
+    closeOpenEditorForAdd()
     const fid = randomId(18)
     const label = `${kind} ${Object.keys(bodies).length + 1}`
     const store = usePartEditorStore.getState()
@@ -521,14 +529,11 @@ export default function Part() {
     store.setEditingFeatureId(fid)
     const firstPick = FIRST_PICK_FIELD[kind]
     if (firstPick) setActivePickField({ featureId: fid, ...firstPick })
-  }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, commitEditFeature])
+  }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, closeOpenEditorForAdd])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
-    // Same one-open-editor discipline as handleAddFeature: commit the open
-    // session before opening the new one, so the add cannot be folded into the
-    // other feature's session (which Cancel would then roll back with it).
-    if (usePartEditorStore.getState().editingFeatureId !== null) commitEditFeature()
+    closeOpenEditorForAdd()
     const featureId = randomId(18)
     const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
     const label = `plane ${planeCount + 1}`
@@ -558,20 +563,22 @@ export default function Part() {
     usePartEditorStore.getState().setEditingFeatureId(featureId)
     const firstPick = FIRST_PICK_FIELD['plane']
     if (firstPick) setActivePickField({ featureId, ...firstPick })
-  }, [doc, features, handleMutation, selection, setActivePickField, startEditSession, commitEditFeature])
+  }, [doc, features, handleMutation, selection, setActivePickField, startEditSession, closeOpenEditorForAdd])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return
+    closeOpenEditorForAdd()
     const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
     setRollbackForNewFeature(features)
     handleMutation({ type: 'add_sketch', featureId, label })
     setActivePickField({ featureId, field: 'plane' })
-  }, [doc, features, handleMutation, setActivePickField])
+  }, [doc, features, handleMutation, setActivePickField, closeOpenEditorForAdd])
 
   const handleNewSketchOnPlane = useCallback((plane: string) => {
     if (!doc) return
+    closeOpenEditorForAdd()
     const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
@@ -580,7 +587,7 @@ export default function Part() {
     // enterEditSketch resolves the feature out of `features`, which React has
     // not re-rendered with the new sketch yet. Defer to the effect below.
     pendingEditSketchId.current = featureId
-  }, [doc, features, handleMutation])
+  }, [doc, features, handleMutation, closeOpenEditorForAdd])
 
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')

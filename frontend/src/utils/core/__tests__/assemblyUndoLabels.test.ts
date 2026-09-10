@@ -5,7 +5,7 @@ import { ASSEMBLY_UNDO_LABELS } from '@/utils/core/assemblyUndoLabels'
 // added to ASSEMBLY_UNDO_LABELS without joining this list fails the
 // sort-equality gate, the assembly analogue of the part side's
 // ALL_MUTATION_TYPES checklist.
-export const ALL_ASSEMBLY_UNDO_LABELS = [
+const ALL_ASSEMBLY_UNDO_LABELS = [
   'Add mate',
   'Add part',
   'Delete mate',

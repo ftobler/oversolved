@@ -39,8 +39,8 @@ describe('useUndoRedo capped history', () => {
     expect(result.current.undoStack.length + result.current.redoStack.length)
       .toBeLessThanOrEqual(MAX_UNDO_DEPTH)
 
-    // The counterpart push on every undo/redo is capped too, so repeated
-    // round-tripping can never grow a stack past the depth.
+    // Repeated round-tripping conserves the total: a move shifts exactly one
+    // entry across, so neither stack can grow past the depth.
     for (let i = 0; i < 5; i++) {
       for (let j = 0; j < 3; j++) act(() => { result.current.handleUndo() })
       for (let j = 0; j < 3; j++) act(() => { result.current.handleRedo() })

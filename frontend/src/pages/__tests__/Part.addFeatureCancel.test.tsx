@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor, fireEvent, screen, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
+import { solveViaWorker } from '@/kernel/worker/solverClient'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/usePartDoc'
@@ -93,5 +94,50 @@ describe('Part - Cancel on a just-added feature reverts the add', () => {
     await waitFor(() => expect(userFeatures().map(f => f.kind)).toEqual(['extrude']))
     // The committed first add is untouched by the second's Cancel.
     expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
+  })
+
+  it('adding a feature while another editor is open costs exactly one solve, not two', async () => {
+    await addFeatureAndWait('Add Extrude (E)')
+    vi.mocked(solveViaWorker).mockClear()
+
+    // closeOpenEditorForAdd commits and resets the open session without a
+    // re-solve, so the second add's own funnel is the only solve.
+    await act(async () => { fireEvent.click(screen.getByTitle('Add Revolve')) })
+    await waitFor(() => expect(userFeatures()).toHaveLength(2))
+
+    expect((solveViaWorker as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1)
+  })
+
+  it('adding a sketch while a just-added extrude editor is open keeps the two adds as separate entries', async () => {
+    await addFeatureAndWait('Add Extrude (E)')
+
+    // The guard commits the extrude before the sketch add, so the sketch is not
+    // swallowed into the extrude's session and one undo cannot remove both.
+    await act(async () => { fireEvent.click(screen.getByTitle('Sketch')) })
+    await waitFor(() => expect(userFeatures().filter(f => f.kind === 'sketch')).toHaveLength(1))
+    await waitFor(() => expect(usePartEditorStore.getState().undoStack).toHaveLength(2))
+
+    await act(async () => { executeCommand('undo') })
+    await waitFor(() => expect(userFeatures().filter(f => f.kind === 'sketch')).toHaveLength(0))
+    expect(userFeatures().filter(f => f.kind === 'extrude')).toHaveLength(1)
+  })
+
+  it('Ctrl+Z while a just-added extrude editor is open removes the just-added feature', async () => {
+    renderPart()
+    await screen.findByTitle('Feature mode')
+    fireEvent.click(screen.getByTitle('Feature mode'))
+    // Seed a prior real step so the undo has something to pop and reaches the
+    // open session instead of no-opping on an empty stack.
+    await act(async () => { executeCommand('toggle_sketch_plane_visibility') })
+    await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
+    await waitFor(() => expect(userFeatures().map(f => f.kind)).toEqual(['extrude']))
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
+
+    await act(async () => { executeCommand('undo') })
+
+    // The undo restored the pre-add doc and tore the session down: the feature
+    // is gone, not just its editor.
+    await waitFor(() => expect(userFeatures().filter(f => f.kind === 'extrude')).toHaveLength(0))
+    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
   })
 })

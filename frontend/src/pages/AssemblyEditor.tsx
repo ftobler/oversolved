@@ -151,7 +151,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // Commit so navigation leaves exactly one entry instead of dropping the edits
   // from undo forever. Callback de-registration is a separate effect below, so
   // a mid-session re-registration can no longer commit (and split) a session
-  // that is still being edited.
+  // that is still being edited. commitSession is stable (deps only pushUndo and
+  // docRef, both stable), so this effect never re-fires while mounted.
   useEffect(() => {
     return () => { commitSession() }
   }, [commitSession])

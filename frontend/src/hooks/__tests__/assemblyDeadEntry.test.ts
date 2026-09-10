@@ -10,7 +10,7 @@ import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import type { AssemblyDoc } from '@/types/cad'
 
-// The counterpart cap is observable only when it is small; at 50 a
+// The conservation invariant is observable only when the cap is small; at 50 a
 // `<= MAX_UNDO_DEPTH` assertion is vacuous, exactly as in the part hook's
 // useUndoRedo.undoCap.test.ts.
 vi.mock('@/config/undoConfig', () => ({ MAX_UNDO_DEPTH: 3 }))
@@ -174,8 +174,8 @@ describe('assembly dead undo entries', () => {
     expect(result.current.undoStack[0].doc).toEqual(docA)
   })
 
-  // The counterpart push on every undo/redo is capped too, so repeated
-  // round-tripping can never grow a stack past the depth.
+  // Repeated round-tripping conserves the total: a move shifts exactly one
+  // entry across, so neither stack can grow past the depth.
   it('round-trips repeatedly without either stack exceeding the depth', () => {
     const docRef = { current: docWith(['a']) }
     const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
