@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { parse as parseYaml } from 'yaml'
 import { backendBundle } from '@/adapters/backend'
+import { useEditorModeStore } from '@/stores/editorModeStore'
 import Part from '@/pages/Part'
 import AssemblyEditor from '@/pages/AssemblyEditor'
 
@@ -43,6 +44,14 @@ export default function DocumentPage() {
     loadKind()
     return () => { cancelled = true }
   }, [uuid])
+
+  // The key dispatcher must know which editor owns the document before it can
+  // pick an assembly binding, and it must stay router-free, so the page writes
+  // the mode here once the kind is known and clears it on the way out.
+  useEffect(() => {
+    useEditorModeStore.getState().setActiveEditor(kind)
+    return () => { useEditorModeStore.getState().setActiveEditor(null) }
+  }, [kind])
 
   if (kindError) {
     return <div className="document-viewer"><p>Error: {kindError}</p></div>

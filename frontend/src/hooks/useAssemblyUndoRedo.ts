@@ -14,6 +14,23 @@ import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { assemblyDocEquals } from '@/utils/assemblyMutations'
+import { isSessionOpen } from '@/utils/assemblyEditingSubject'
+
+export type AssemblyMutationDecision = 'noop' | 'push' | 'fold'
+
+// The undo decision the old page funnels spelled out inline: a value no-op
+// leaves no step, an open editor folds the next edit into its coalescing
+// session, and anything else pushes immediately. Pure so the decision can be
+// unit tested without mounting the page.
+export function decideAssemblyMutation(args: {
+  pre: AssemblyDoc | null
+  next: AssemblyDoc | null
+  sessionOpen: boolean
+}): AssemblyMutationDecision {
+  if (!args.pre || !args.next) return 'noop'
+  if (args.next === args.pre || assemblyDocEquals(args.pre, args.next)) return 'noop'
+  return args.sessionOpen ? 'fold' : 'push'
+}
 
 export function useAssemblyUndoRedo(
   docRef: React.MutableRefObject<AssemblyDoc | null>,
@@ -97,6 +114,46 @@ export function useAssemblyUndoRedo(
     useUnsavedChangesStore.getState().setDirty(pending.dirty)
   }, [docRef, setDoc])
 
+  // Apply a pure AssemblyDoc mutation and flag the doc dirty. The pre-mutation
+  // doc is captured outside the setDoc updater: reading the store doc here
+  // breaks under React batching, where two mutations in one event both see the
+  // same stale pre-doc. The undo decision is the shared pure one, and the
+  // session-open flag comes from the store, so no caller passes it.
+  const mutate = useCallback((label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    const current = docRef.current
+    if (!current) return
+    const next = fn(current)
+    const decision = decideAssemblyMutation({
+      pre: current,
+      next,
+      sessionOpen: isSessionOpen(useAssemblyStore.getState().editingSubject),
+    })
+    if (decision === 'noop') return
+    if (decision === 'fold') recordSessionEdit(current, label)
+    else pushUndo(current, label)
+    docRef.current = next
+    setDoc(next)
+    useUnsavedChangesStore.getState().setDirty(true)
+  }, [setDoc, docRef, pushUndo, recordSessionEdit])
+
+  // A structural one-shot op (rename, reorder, delete, duplicate, visibility)
+  // pushes its own step even while an editor session is open: the session's
+  // coalesced step closes first, so the one-shot's pre-doc captures the doc
+  // AFTER the session's edits and a later session commit starts from the
+  // post-op doc - pre-docs stay distinct and in order.
+  const mutateOneShot = useCallback((label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    commitSession()
+    const current = docRef.current
+    if (!current) return
+    const next = fn(current)
+    const decision = decideAssemblyMutation({ pre: current, next, sessionOpen: false })
+    if (decision === 'noop') return
+    pushUndo(current, label)
+    docRef.current = next
+    setDoc(next)
+    useUnsavedChangesStore.getState().setDirty(true)
+  }, [setDoc, docRef, pushUndo, commitSession])
+
   const applyUndoRedo = useCallback((direction: 'undo' | 'redo') => {
     const store = useAssemblyStore.getState()
     const from = direction === 'undo' ? store.undoStack : store.redoStack
@@ -157,6 +214,8 @@ export function useAssemblyUndoRedo(
     recordSessionEdit,
     commitSession,
     cancelSession,
+    mutate,
+    mutateOneShot,
     handleUndo,
     handleRedo,
   }

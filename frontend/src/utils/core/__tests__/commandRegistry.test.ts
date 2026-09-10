@@ -3,6 +3,7 @@ import {
   KEYMAP,
   FEATURE_KEYMAP,
   CORE_KEYBINDINGS,
+  ASSEMBLY_KEYBINDINGS,
   registerCommand,
   unregisterCommand,
   executeCommand,
@@ -12,7 +13,9 @@ import {
   isEditableTarget,
 } from '@/utils/core/commandRegistry'
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
+import { ASSEMBLY_COMMAND_NAMES } from '@/pages/assemblyCommandEntries'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorModeStore } from '@/stores/editorModeStore'
 import { initializeTools } from '@/tools'
 
 // Ensure clean state before each test
@@ -517,5 +520,72 @@ describe('clearAllHandlers', () => {
     executeCommand('__clear_test__')
     expect(fn).toHaveBeenCalledOnce()
     unregisterCommand('__clear_test__')
+  })
+})
+
+// ─── command payloads ───
+
+describe('executeCommand payload', () => {
+  it('passes a payload through to the handler', () => {
+    const fn = vi.fn()
+    registerCommand('__payload__', fn)
+    executeCommand('__payload__', { handle: 'h1' })
+    expect(fn).toHaveBeenCalledWith({ handle: 'h1' })
+  })
+
+  it('a zero-arg handler still works with no payload', () => {
+    const fn = vi.fn()
+    registerCommand('__zero__', fn)
+    executeCommand('__zero__')
+    expect(fn).toHaveBeenCalledOnce()
+    expect(fn).toHaveBeenCalledWith(undefined)
+  })
+})
+
+// ─── assembly keymap mode ───
+
+describe('dispatchKey assembly mode', () => {
+  beforeEach(() => {
+    useEditorModeStore.getState().setActiveEditor(null)
+    useSketchEditorStore.getState().setActiveFeatureId(null)
+  })
+
+  it('resolves an assembly-only key and the shared keys while assembly is active', () => {
+    const cancel = vi.fn()
+    const undo = vi.fn()
+    const del = vi.fn()
+    registerCommand('cancel_edit', cancel)
+    registerCommand('undo', undo)
+    registerCommand('delete_selected', del)
+    useEditorModeStore.getState().setActiveEditor('assembly')
+
+    expect(dispatchKey(fakeKey('Escape'))).toBe(true)
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(dispatchKey(fakeKey('z', { ctrlKey: true }))).toBe(true)
+    expect(undo).toHaveBeenCalledOnce()
+    expect(dispatchKey(fakeKey('Delete'))).toBe(true)
+    expect(del).toHaveBeenCalledOnce()
+  })
+
+  it('does not resolve the assembly-only command outside assembly mode', () => {
+    const cancel = vi.fn()
+    const cancelDraw = vi.fn()
+    registerCommand('cancel_edit', cancel)
+    registerCommand('cancel_draw', cancelDraw)
+
+    useEditorModeStore.getState().setActiveEditor('part')
+    expect(dispatchKey(fakeKey('Escape'))).toBe(true)
+    expect(cancel).not.toHaveBeenCalled()
+    expect(cancelDraw).toHaveBeenCalledOnce()
+
+    useEditorModeStore.getState().setActiveEditor(null)
+    expect(dispatchKey(fakeKey('Escape'))).toBe(true)
+    expect(cancel).not.toHaveBeenCalled()
+  })
+
+  it('every assembly keybinding command has a command entry', () => {
+    for (const b of ASSEMBLY_KEYBINDINGS) {
+      expect(ASSEMBLY_COMMAND_NAMES, `missing command "${b.command}"`).toContain(b.command)
+    }
   })
 })

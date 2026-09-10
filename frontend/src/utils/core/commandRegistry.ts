@@ -3,8 +3,11 @@
 
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorModeStore } from '@/stores/editorModeStore'
 
-const handlers = new Map<string, () => void>()
+type CommandHandler = (payload?: unknown) => void
+
+const handlers = new Map<string, CommandHandler>()
 
 // ─── Keymap ───
 // Key strings are built from KeyboardEvent: optional modifiers joined with '+',
@@ -64,9 +67,26 @@ export const FEATURE_KEYMAP: Record<string, string> = {
 // An override here silently shadows KEYMAP, so only add one that really differs.
 export const SKETCH_KEYMAP: Record<string, string> = {}
 
+// Assembly keymap, resolved first while DocumentPage says the assembly editor is
+// active. It ships the shared keys only (undo/redo/delete, plus Escape to cancel
+// the open edit); no assembly-specific key is invented here.
+//
+// Policy: the app default IS the user's workflow default. Whenever a shortcut
+// is later requested, it is added here as the new default, and users remain free
+// to override it.
+export const ASSEMBLY_KEYBINDINGS: readonly CoreKeybinding[] = [
+  { key: 'ctrl+z',       command: 'undo',            label: 'Undo',         description: 'Undo the last assembly change' },
+  { key: 'ctrl+shift+z', command: 'redo',            label: 'Redo',         description: 'Redo the last undone assembly change' },
+  { key: 'delete',       command: 'delete_selected', label: 'Delete',       description: 'Delete the selected part or mate' },
+  { key: 'escape',       command: 'cancel_edit',     label: 'Cancel edit',  description: 'Close the open part or mate editor' },
+]
+
+export const ASSEMBLY_KEYMAP: Record<string, string> =
+  Object.fromEntries(ASSEMBLY_KEYBINDINGS.map(b => [b.key, b.command]))
+
 // ─── Registration ───
 
-export function registerCommand(name: string, fn: () => void): void {
+export function registerCommand(name: string, fn: CommandHandler): void {
   if (import.meta.env.DEV && handlers.has(name)) {
     console.warn(`registerCommand: overwriting existing handler for "${name}"`)
   }
@@ -85,7 +105,7 @@ export function clearAllHandlers(): void {
   handlers.clear()
 }
 
-export function executeCommand(name: string): void {
+export function executeCommand(name: string, payload?: unknown): void {
   const fn = handlers.get(name)
   if (!fn) {
     // dispatchKey has already preventDefaulted by the time we get here, so an
@@ -94,7 +114,7 @@ export function executeCommand(name: string): void {
     if (import.meta.env.DEV) console.warn(`executeCommand: no handler registered for "${name}"`)
     return
   }
-  fn()
+  fn(payload)
 }
 
 // ─── Key dispatch ───
@@ -134,8 +154,11 @@ export function isEditableTarget(e: KeyboardEvent): boolean {
 export function dispatchKey(e: KeyboardEvent): boolean {
   if (isEditableTarget(e)) return false
   const key = buildKeyString(e)
+  const inAssembly = useEditorModeStore.getState().activeEditor === 'assembly'
   const inSketchEdit = !!useSketchEditorStore.getState().activeFeatureId
-  const cmd = (inSketchEdit && SKETCH_KEYMAP[key]) || (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]
+  // Assembly mode first, then the sketch/feature split as today, then the merged
+  // KEYMAP, so shared keys (Ctrl+Z, Delete) keep working in every mode.
+  const cmd = (inAssembly && ASSEMBLY_KEYMAP[key]) || (inSketchEdit && SKETCH_KEYMAP[key]) || (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]
   if (!cmd) return false
   // A keymap entry with no registered handler is a registration gap, i.e. a
   // bug: surface it and let the browser default apply rather than eating the

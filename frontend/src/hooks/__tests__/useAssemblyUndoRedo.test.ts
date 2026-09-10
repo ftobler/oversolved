@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
-import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
+import { useAssemblyUndoRedo, decideAssemblyMutation } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
@@ -33,7 +33,6 @@ function docWith(featureIds: string[]): AssemblyDoc {
 
 describe('useAssemblyUndoRedo', () => {
   beforeEach(resetStore)
-
   it('pushUndo adds to undoStack and clears redoStack', () => {
     const docRef = { current: docWith(['a']) }
     const { result } = renderHookStrict(() => useAssemblyUndoRedo(
@@ -795,5 +794,36 @@ describe('useAssemblyUndoRedo', () => {
     act(() => { result.current.handleUndo() })
     expect(findMate(docRef.current!, 'm1')!.ref_a).toEqual({ part: '', anchor: '' })
     expect(findMate(docRef.current!, 'm1')!.ref_b).toEqual({ part: '', anchor: '' })
+  })
+})
+
+describe('decideAssemblyMutation', () => {
+  it('is a no-op for an identical reference', () => {
+    const doc = docWith(['a'])
+    expect(decideAssemblyMutation({ pre: doc, next: doc, sessionOpen: false })).toBe('noop')
+  })
+
+  it('is a no-op for a structurally equal fresh reference', () => {
+    expect(decideAssemblyMutation({
+      pre: docWith(['a']), next: docWith(['a']), sessionOpen: false,
+    })).toBe('noop')
+  })
+
+  it('pushes a changed doc when no session is open', () => {
+    expect(decideAssemblyMutation({
+      pre: docWith(['a']), next: docWith(['a', 'b']), sessionOpen: false,
+    })).toBe('push')
+  })
+
+  it('folds a changed doc into an open session', () => {
+    expect(decideAssemblyMutation({
+      pre: docWith(['a']), next: docWith(['a', 'b']), sessionOpen: true,
+    })).toBe('fold')
+  })
+
+  it('is a no-op when either side has no doc', () => {
+    expect(decideAssemblyMutation({ pre: null, next: docWith(['a']), sessionOpen: false })).toBe('noop')
+    expect(decideAssemblyMutation({ pre: docWith(['a']), next: null, sessionOpen: true })).toBe('noop')
+    expect(decideAssemblyMutation({ pre: null, next: null, sessionOpen: true })).toBe('noop')
   })
 })

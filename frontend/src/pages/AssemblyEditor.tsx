@@ -8,9 +8,17 @@ import { useAssemblyStore, setAssemblyCallbacks, DEFAULT_ASSEMBLY_EDITOR_DATA, t
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
-import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
-import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
+import { useAssemblyCommands } from '@/pages/AssemblyKeyboardShortcuts'
+import { insertMateCommand, type AssemblyCommandHandlers } from '@/pages/assemblyCommandEntries'
+import { editingInstanceHandle as editingInstanceHandleOf, editingMateId as editingMateIdOf } from '@/utils/assemblyEditingSubject'
+import {
+  findInstance,
+  findMate,
+  mintFeatureId,
+} from '@/utils/assemblyMutations'
+import { runAssemblyOperation, type AssemblyOperationId } from '@/utils/assemblyOperations'
+import { executeCommand } from '@/utils/core/commandRegistry'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import { MateEditor } from '@/components/layout/MateEditor'
 import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
@@ -18,35 +26,12 @@ import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
 import { backendBundle } from '@/adapters/backend'
-import {
-  appendMate,
-  appendPartInstance,
-  assemblyDocEquals,
-  bakeSolvedTransforms,
-  duplicateInstance,
-  findInstance,
-  findMate,
-  mintFeatureId,
-  moveInstance,
-  moveMate,
-  removeInstance,
-  removeMate,
-  setBuiltinVisible,
-  setInstanceVisible,
-  setInstancePosition,
-  setInstanceRotation,
-  setInstanceFixedFromSolved,
-  setMateLabel,
-  updateMate,
-  type EulerDeg,
-  type MateParamPatch,
-} from '@/utils/assemblyMutations'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
-import type { AssemblyDoc, MateKind, MateFeatureDef, PartInstance } from '@/types/cad'
+import type { MateKind, MateFeatureDef, PartInstance } from '@/types/cad'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import exportIcon from '@/assets/icons/icon-download.svg'
 import measurementIcon from '@/assets/icons/measurement.svg'
@@ -94,19 +79,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   } = useAssemblyDoc(uuid)
   const navigate = useNavigate()
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [editingInstanceHandle, setEditingInstanceHandle] = useState<string | null>(null)
-  // Which mate has its inline parameter editor open. Distinct from the store's
-  // selectedMateId: a plain row click selects (highlights), the pencil edits.
-  const [editingMateId, setEditingMateId] = useState<string | null>(null)
   // The mate the tridot menu asked to rename, with the name the row was showing
   // so the dialog opens pre-filled even when the mate has no explicit label.
   const [renameMateTarget, setRenameMateTarget] = useState<{ id: string; currentName: string } | null>(null)
   const { requestSolve } = useAssemblySolve(uuid, doc)
   const {
-    pushUndo,
-    recordSessionEdit,
     commitSession,
     cancelSession,
+    mutate,
+    mutateOneShot,
     handleUndo,
     handleRedo,
   } = useAssemblyUndoRedo(docRef, setDoc, requestSolve)
@@ -115,6 +96,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const activeMateField = useAssemblyStore(s => s.activeMateField)
   const solveStatus = useAssemblyStore(s => s.solveStatus)
   const showPickDebug = useAssemblyStore(s => s.showPickDebug)
+  // One store-owned tagged subject instead of two useState ids. The selectors
+  // are the only place "which editor is open" is read.
+  const editingSubject = useAssemblyStore(s => s.editingSubject)
+  const editingMateId = editingMateIdOf(editingSubject)
+  const editingInstanceHandle = editingInstanceHandleOf(editingSubject)
 
   // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
   // A failed list is swallowed on purpose: names are a nicety here and the tree
@@ -151,58 +137,10 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     }
   }, [doc, instances, mates])
 
-  // Apply a pure AssemblyDoc mutation, push it into the hook's doc state, and
-  // flag the document dirty. The store re-syncs via the effect above. The pre-
-  // mutation doc is captured OUTSIDE the setDoc updater: reading the store doc
-  // here breaks under React batching, where two mutations in one event both see
-  // the same stale pre-doc. `label` names the step in the toolbar tooltip.
-  const mutate = useCallback((label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
-    const current = docRef.current
-    if (!current) return
-    const next = fn(current)
-    // A value no-op (a visibility set to what it already is, a rename to the
-    // same label) still mints a fresh doc, so the reference fast path alone
-    // misses it; the structural compare catches that class like the part
-    // editor's idempotence guard does. No step, no dirty, no redo clear.
-    if (next === current || assemblyDocEquals(current, next)) return
-    // A mate or instance editor is a coalescing session: every keystroke and
-    // pick folds into one entry, pushed when the editor closes (commitSession).
-    // Anything else pushes immediately, so each operation is its own undo step.
-    if (editingMateId !== null || editingInstanceHandle !== null) {
-      recordSessionEdit(current, label)
-    } else {
-      pushUndo(current, label)
-    }
-    docRef.current = next
-    setDoc(next)
-    useUnsavedChangesStore.getState().setDirty(true)
-  }, [setDoc, docRef, editingMateId, editingInstanceHandle, pushUndo, recordSessionEdit])
-
-  // A structural one-shot op (rename, reorder, delete, duplicate, visibility)
-  // pushes its own step even while an editor session is open: it is not a
-  // keystroke into the edited feature, so it must not fold into that step. The
-  // session's coalesced step closes first, so the one-shot's pre-doc captures
-  // the doc AFTER the session's edits and a later session commit starts from
-  // the post-op doc - pre-docs stay distinct and in order, and undoing the
-  // one-shot never drags the session's edits along with it.
-  const mutateOneShot = useCallback((label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
-    commitSession()
-    const current = docRef.current
-    if (!current) return
-    const next = fn(current)
-    // Same content-level no-op guard as mutate: a one-shot that writes back the
-    // value already held leaves no step behind.
-    if (next === current || assemblyDocEquals(current, next)) return
-    pushUndo(current, label)
-    docRef.current = next
-    setDoc(next)
-    useUnsavedChangesStore.getState().setDirty(true)
-  }, [setDoc, docRef, pushUndo, commitSession])
-
-
   // The store owns the drag/gizmo state machine but not the document; give it
-  // the doc mutators and the one-solve-per-pointer-up trigger. Drag commits and
-  // [Delete] deletes are one-shot, ref picks fold into the open edit session.
+  // the hook's doc mutators and the one-solve-per-pointer-up trigger. Drag
+  // commits and [Delete] deletes are one-shot, ref picks fold into the open
+  // edit session.
   useEffect(() => {
     setAssemblyCallbacks({
       mutateDoc: mutateOneShot,
@@ -291,81 +229,55 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // so each subject's edits land in their own step and no two editors ever share
   // the one pending buffer.
   const closeOpenEditor = useCallback(() => {
-    setEditingMateId(null)
-    setEditingInstanceHandle(null)
     commitSession()
+    useAssemblyStore.getState().closeEditor()
   }, [commitSession])
+
+  // Run a table operation against the live doc and the page's effects. The
+  // operation decides bake/undo/solve; the page only supplies the context.
+  const runOperation = useCallback((id: AssemblyOperationId, payload: unknown) => {
+    runAssemblyOperation(id, payload as never, {
+      doc: docRef.current,
+      transforms: useAssemblyStore.getState().settledPoses(),
+      mutateSession: mutate,
+      mutateOneShot,
+      requestSolve,
+      requestSolveOrDefer: () => useAssemblyStore.getState().requestSolveOrDefer(),
+    })
+  }, [docRef, mutate, mutateOneShot, requestSolve])
 
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. No solve yet:
-  // an unreferenced mate has nothing to constrain.
+  // an unreferenced mate has nothing to constrain. The append is a structural
+  // one-shot, so cancelling the fresh editor can never lose the insert, and the
+  // previously open editor is closed first so the new mate never folds into its
+  // coalescing session.
   const handleInsertMate = useCallback((kind: MateKind) => {
-    // The append is a structural op: mutateOneShot pushes its own step even when
-    // another editor is open (and about to be replaced), so cancelling the new
-    // editor can never lose the insert. The open editor is closed first so the
-    // fresh mate never folds into the previous editor's coalescing session. That
-    // commit is also what leaves the session unpinned across the insert, so a
-    // Cancel with no reference picked rewinds to the doc holding the empty mate.
     const id = mintFeatureId()
     closeOpenEditor()
-    mutateOneShot('Add mate', d => appendMate(d, kind, id))
+    runOperation('add_mate', { kind, id })
     const store = useAssemblyStore.getState()
     store.setSelectedMateId(id)
-    setEditingMateId(id)  // a fresh mate opens straight into its editor to pick refs
+    store.openMateEditor(id)  // a fresh mate opens straight into its editor
     store.setActiveMateField({ featureId: id, field: 'ref_a' })
-  }, [mutateOneShot, closeOpenEditor])
+  }, [runOperation, closeOpenEditor])
 
-  // The [Delete] key maps to `delete_selected` (CORE_KEYBINDINGS); the store
-  // decides whether that is the selected mate or the selected part. The delete
-  // is a one-shot (mutateDoc), so it closes any open coalescing session itself;
-  // an editor on the deleted subject closes with it.
+  // The [Delete] key maps to `delete_selected`; the store decides whether that
+  // is the selected mate or the selected part and closes its editor when it is
+  // the deleted subject.
   const handleDeleteSelected = useCallback(() => {
-    setEditingMateId(null)
-    setEditingInstanceHandle(null)
     useAssemblyStore.getState().deleteSelected()
   }, [])
 
-  // Ctrl+Z / Ctrl+Shift+Z land here via CORE_KEYBINDINGS (dispatchKey). Undo
-  // always exits an open editor: the coalesced session is discarded by the hook
-  // (its doc is about to be replaced), and closing the editor prevents a later
-  // commit from pushing a stale snapshot keyed to the pre-undo doc.
-  const handleUndoCommand = useCallback(() => {
-    setEditingMateId(null)
-    setEditingInstanceHandle(null)
-    handleUndo()
-  }, [handleUndo])
-
-  const handleRedoCommand = useCallback(() => {
-    setEditingMateId(null)
-    setEditingInstanceHandle(null)
-    handleRedo()
-  }, [handleRedo])
-
-  const commands = useMemo(() => [
-    { name: 'undo', fn: handleUndoCommand },
-    { name: 'redo', fn: handleRedoCommand },
-    { name: 'insert_part_instance', fn: openPicker },
-    { name: 'export_assembly', fn: openExport },
-    { name: 'delete_selected', fn: handleDeleteSelected },
-    ...MATE_KINDS.map(kind => ({ name: `insert_mate_${kind}`, fn: () => handleInsertMate(kind) })),
-  ], [openPicker, openExport, handleDeleteSelected, handleInsertMate, handleUndoCommand, handleRedoCommand])
-  useCommandRegistration(commands)
+  // Ctrl+Z / Ctrl+Shift+Z land here via the assembly keymap. Undo always exits
+  // an open editor: the hook's restore resets the store-owned editing subject,
+  // and the coalesced session is dropped by the hook itself.
+  const handleUndoCommand = handleUndo
+  const handleRedoCommand = handleRedo
 
   const handlePick = useCallback((docId: string, docRev: number) => {
-    // Bake the placed parts' solved poses into their seeds before adding one, so
-    // the re-solve that pulls in the new part keeps the existing assembly where
-    // it is on screen rather than restarting the whole solve from stale seeds.
-    mutateOneShot('Add part', d => appendPartInstance(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), docId, docRev))
-    requestSolve()  // the new instance has no bodies until the assembly re-solves
-  }, [mutateOneShot, requestSolve])
-
-  const handleDuplicate = useCallback((handle: string) => {
-    // Same baking rule as inserting a part: the copy is a new unmated body, so
-    // without freezing the solved poses first the re-solve would restart the
-    // placed parts from stale seeds and visibly shuffle the assembly.
-    mutateOneShot('Duplicate part', d => duplicateInstance(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), handle))
-    requestSolve()  // the copy has no bodies until the assembly re-solves
-  }, [mutateOneShot, requestSolve])
+    executeCommand('add_part', { docId, docRev })
+  }, [])
 
   const handleOpenPartNewTab = useCallback((handle: string) => {
     const inst = instances.find(i => i.handle === handle)
@@ -373,53 +285,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   }, [instances])
 
   const handleDelete = useCallback((handle: string) => {
-    // Freeze the on-screen poses first (same reason as handleDeleteMate):
-    // removing a part frees the mates that referenced it, so a re-solve straight
-    // from the stale placement seeds could snap the remaining parts back to their
-    // drop spots. Baked first, only the freed DOF relaxes.
-    // Deleting the instance whose editor is open closes it; the delete's
-    // one-shot commits any open session itself.
-    if (editingInstanceHandle === handle) setEditingInstanceHandle(null)
-    mutateOneShot('Delete part', d => removeInstance(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), handle))
-    if (useAssemblyStore.getState().selectedPartHandle === handle) {
-      useAssemblyStore.getState().setSelectedPartHandle(null)
-    }
-    requestSolve()  // the removed instance's bodies must leave the scene
-  }, [mutateOneShot, requestSolve, editingInstanceHandle])
-
-  const handleToggleVisible = useCallback((handle: string, visible: boolean) => {
-    mutateOneShot('Toggle visibility', d => setInstanceVisible(d, handle, visible))
-  }, [mutateOneShot])
-
-  // Showing/hiding a reference plane is a pure render change: no re-solve, since
-  // the assembly frame is pinned at the world origin and constrains nothing.
-  const handleToggleBuiltinVisible = useCallback((id: string, visible: boolean) => {
-    mutateOneShot('Toggle plane visibility', d => setBuiltinVisible(d, id, visible))
-  }, [mutateOneShot])
-
-  // Fix/unfix a part without moving anything on screen, including the
-  // camera. Fixing a part that is already in place adds no geometric
-  // constraint (the part is at its solved pose), so the current view is already
-  // correct and there is nothing to re-solve. Re-solving would only risk drift:
-  // with no fixed anchor the mate solver has gauge freedom and can slide the
-  // whole assembly along zero-gradient directions, which reads as the camera
-  // jumping. So we do NOT re-solve here; we only flip the flag.
-  //
-  // We still bake every part's current solved pose into its seed. That keeps the
-  // doc's seeds in step with what is on screen, so the next real solve (a drag,
-  // a mate edit) starts from the current configuration instead of stale seeds
-  // and the new fixed state takes effect cleanly then.
-  // The editor checkbox is part of the instance-edit session, so it folds into
-  // the coalesced step that the accept commits.
-  const fixOrUnfix = useCallback((handle: string, fixed: boolean) => {
-    mutate('Fix/unfix part', d => setInstanceFixedFromSolved(d, handle, fixed, useAssemblyStore.getState().settledPoses()))
-  }, [mutate])
-
-  // The options-menu toggle is a one-shot op, its own undo step even when an
-  // editor session happens to be open.
-  const handleToggleFixed = useCallback((handle: string, fixed: boolean) => {
-    mutateOneShot('Fix/unfix part', d => setInstanceFixedFromSolved(d, handle, fixed, useAssemblyStore.getState().settledPoses()))
-  }, [mutateOneShot])
+    runOperation('delete_part', handle)
+    const store = useAssemblyStore.getState()
+    if (store.selectedPartHandle === handle) store.setSelectedPartHandle(null)
+    if (store.editingSubject.kind === 'instance' && store.editingSubject.handle === handle) store.closeEditor()
+  }, [runOperation])
 
   const handleSelect = useCallback((handle: string) => {
     useAssemblyStore.getState().setSelectedPartHandle(handle)
@@ -431,7 +301,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // the hook pins the whole pre-session doc on the session's first edit.
   const handleEditInstance = useCallback((handle: string) => {
     closeOpenEditor()
-    setEditingInstanceHandle(handle)
+    useAssemblyStore.getState().openInstanceEditor(handle)
     useAssemblyStore.getState().setSelectedPartHandle(handle)
   }, [closeOpenEditor])
 
@@ -439,7 +309,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // Accept closes the coalescing session: every live position/rotation/fixed
     // edit lands as one undo step.
     commitSession()
-    setEditingInstanceHandle(null)
+    useAssemblyStore.getState().closeEditor()
   }, [commitSession])
 
   const handleCancelInstance = useCallback(() => {
@@ -448,60 +318,40 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // into its seed, so restoring the edited instance alone would leave those
     // rewritten seeds behind with no undo entry and a clean dirty flag.
     cancelSession()
-    setEditingInstanceHandle(null)
+    useAssemblyStore.getState().closeEditor()
     requestSolve()  // undo any live position/fixed edit
   }, [requestSolve, cancelSession])
 
-  const handleSetFixed = fixOrUnfix
-
-  const handleSetPosition = useCallback((handle: string, pos: { tx: number; ty: number; tz: number }) => {
-    // Bake first, then apply the reseat: the manual position overrides only the
-    // edited part, while every other part's seed is refreshed to its solved pose
-    // so the re-solve does not drag the rest of the assembly off screen from
-    // stale seeds. Baking before setInstancePosition also lets the edited part
-    // keep its solved orientation rather than the stale seed's.
-    mutate('Set position', d => setInstancePosition(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), handle, pos))
-    requestSolve()
-  }, [mutate, requestSolve])
-
-  // Same bake-then-reseat discipline as the position edit. This is the only
-  // orientation control a FIXED part has (the triad gizmo refuses one), so
-  // it must not be vetoed by the `fixed` flag -- setInstanceRotation is the
-  // mutation that ignores it.
-  const handleSetRotation = useCallback((handle: string, euler: EulerDeg) => {
-    mutate('Set rotation', d => setInstanceRotation(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), handle, euler))
-    requestSolve()
-  }, [mutate, requestSolve])
-
-  // A plain row click selects the mate: it highlights (and, going forward, will
-  // light up its two parts and mated geometry in the viewport). It does not open
-  // the editor. Selecting away from a mate mid-edit closes that editor, keeping
-  // whatever live edits were made (Cancel is the explicit revert), so the
-  // coalesced session commits as one step.
+  // A plain row click selects the mate: it highlights the row without opening
+  // the editor. Selecting away from a mate mid-edit commits that editor's
+  // session (Cancel is the explicit revert) and closes it.
   const handleSelectMate = useCallback((featureId: string) => {
-    if (editingMateId && editingMateId !== featureId) {
+    const store = useAssemblyStore.getState()
+    if (store.editingSubject.kind === 'mate' && store.editingSubject.id !== featureId) {
       commitSession()
-      setEditingMateId(null)
+      store.closeEditor()
     }
-    useAssemblyStore.getState().setSelectedMateId(featureId)
-  }, [editingMateId, commitSession])
+    store.setSelectedMateId(featureId)
+  }, [commitSession])
 
   // The pencil opens the inline editor. Switching editors commits any open
-  // session so each mate's edits land in their own step instead of merging under
-  // the earlier session's pre-doc; that commit is also what leaves this mate's
-  // own session unpinned, so its Cancel rewinds to the doc as it opens here.
+  // session so each mate's edits land in their own step; that commit is also
+  // what leaves this mate's own session unpinned, so its Cancel rewinds to the
+  // doc as it opens here.
   const handleEditMate = useCallback((featureId: string) => {
     closeOpenEditor()
-    useAssemblyStore.getState().setSelectedMateId(featureId)
-    setEditingMateId(featureId)
+    const store = useAssemblyStore.getState()
+    store.setSelectedMateId(featureId)
+    store.openMateEditor(featureId)
   }, [closeOpenEditor])
 
   // Accept: leaving the mate disarms its field, which settles the owed solve,
   // and the coalesced session commits as one undo step.
   const handleCommitMate = useCallback(() => {
     commitSession()
-    setEditingMateId(null)
-    useAssemblyStore.getState().setSelectedMateId(null)
+    const store = useAssemblyStore.getState()
+    store.closeEditor()
+    store.setSelectedMateId(null)
   }, [commitSession])
 
   const handleCancelMate = useCallback(() => {
@@ -511,60 +361,21 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // mate path bakes today, but a partial revert of the mate def alone is the
     // shape that let the instance editor's bakes escape, so it is not repeated.
     cancelSession()
-    setEditingMateId(null)
+    store.closeEditor()
     store.setSelectedMateId(null)
     requestSolve()  // restore the solved pose the reverted refs imply
   }, [requestSolve, cancelSession])
 
   const handleDeleteMate = useCallback((featureId: string) => {
-    // Freeze the on-screen configuration into the seeds before dropping the
-    // constraint. The doc's seeds are stale (only a dragged part's seed is
-    // written back), so re-solving straight from them would restart the mate
-    // solver at the placement poses and snap every part -- especially the one the
-    // deleted mate positioned -- back to its drop spot, reading as parts
-    // vanishing. Baked first, the re-solve relaxes only the freed DOF.
-    // Deleting the mate whose editor is open closes it; the delete's one-shot
-    // commits any open session itself, so a different mate's editor stays open
-    // and keeps its own coalesced step.
-    if (editingMateId === featureId) setEditingMateId(null)
-    mutateOneShot('Delete mate', d => removeMate(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), featureId))
-    if (useAssemblyStore.getState().selectedMateId === featureId) {
-      useAssemblyStore.getState().setSelectedMateId(null)
-    }
-    requestSolve()  // the freed DOF must let the parts settle back
-  }, [mutateOneShot, requestSolve, editingMateId])
+    runOperation('delete_mate', featureId)
+    const store = useAssemblyStore.getState()
+    if (store.selectedMateId === featureId) store.setSelectedMateId(null)
+    if (store.editingSubject.kind === 'mate' && store.editingSubject.id === featureId) store.closeEditor()
+  }, [runOperation])
 
-  const handleUpdateMate = useCallback((featureId: string, patch: MateParamPatch) => {
-    // A mate parameter edit (offset, angle, flip, ratio, radius) does not
-    // move any part on its own; the solve is the only thing that may move
-    // them.  Baking the current solved transforms into the part seeds here
-    // would incorporate the previous solve's roll into the new seed, and
-    // the solver's seed-relative angle (mate_residuals.rs) would then add
-    // the new angle on top of that, accumulating every time the user types
-    // a new value.  The part seeds stay at whatever the last position
-    // change (drag, fix toggle, mate deletion) wrote; a mate param edit
-    // only changes what the solver targets from that same seed.
-    mutate('Edit mate', d => updateMate(d, featureId, patch))
-    // Deferred while a chip is armed: a solve here would drop the candidate set
-    // the armed field is still cycling.
-    useAssemblyStore.getState().requestSolveOrDefer()
-  }, [mutate])
-
-  // Reordering is a pure authored-order edit persisted in the feature array. Like
-  // a rename or a visibility toggle it moves nothing on screen, so it does not
-  // re-solve: the new order is picked up by the next solve a real edit triggers.
-  const handleReorderInstance = useCallback((movingHandle: string, beforeHandle: string | null) => {
-    mutateOneShot('Reorder part', d => moveInstance(d, movingHandle, beforeHandle))
-  }, [mutateOneShot])
-
-  const handleReorderMate = useCallback((movingId: string, beforeId: string | null) => {
-    mutateOneShot('Reorder mate', d => moveMate(d, movingId, beforeId))
-  }, [mutateOneShot])
-
-  // Renaming is a pure label edit: no solve, it constrains nothing.
   const handleRenameMate = useCallback((featureId: string, label: string | undefined) => {
-    mutateOneShot('Rename mate', d => setMateLabel(d, featureId, label))
-  }, [mutateOneShot])
+    runOperation('rename_mate', { id: featureId, label })
+  }, [runOperation])
 
   // The dialog already trims and refuses an empty name, so whatever arrives here
   // is a label worth writing.
@@ -573,6 +384,45 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     handleRenameMate(renameMateTarget.id, label)
     setRenameMateTarget(null)
   }, [renameMateTarget, handleRenameMate])
+
+  // Escape (assembly keymap's cancel_edit) closes whichever editor is open by
+  // routing to its Cancel, which rewinds the session.
+  const handleCancelEdit = useCallback(() => {
+    const subject = useAssemblyStore.getState().editingSubject
+    if (subject.kind === 'instance') handleCancelInstance()
+    else if (subject.kind === 'mate') handleCancelMate()
+  }, [handleCancelInstance, handleCancelMate])
+
+  // Every document operation routes through runOperation; the UI-only commands
+  // (picker, export, undo/redo/delete, cancel) keep their own handlers. The mate
+  // insert commands carry the kind in the name and open the fresh mate's editor.
+  const assemblyHandlers = useMemo<AssemblyCommandHandlers>(() => ({
+    undo: handleUndoCommand,
+    redo: handleRedoCommand,
+    delete_selected: handleDeleteSelected,
+    cancel_edit: handleCancelEdit,
+    export_assembly: openExport,
+    insert_part_instance: openPicker,
+    add_part: (payload) => runOperation('add_part', payload),
+    duplicate_part: (payload) => runOperation('duplicate_part', payload),
+    delete_part: (payload) => handleDelete(payload as string),
+    set_part_visible: (payload) => runOperation('set_part_visible', payload),
+    set_builtin_visible: (payload) => runOperation('set_builtin_visible', payload),
+    set_part_fixed: (payload) => runOperation('set_part_fixed', payload),
+    set_part_fixed_oneshot: (payload) => runOperation('set_part_fixed_oneshot', payload),
+    set_part_position: (payload) => runOperation('set_part_position', payload),
+    set_part_rotation: (payload) => runOperation('set_part_rotation', payload),
+    delete_mate: (payload) => handleDeleteMate(payload as string),
+    update_mate: (payload) => runOperation('update_mate', payload),
+    reorder_part: (payload) => runOperation('reorder_part', payload),
+    reorder_mate: (payload) => runOperation('reorder_mate', payload),
+    rename_mate: (payload) => runOperation('rename_mate', payload),
+    ...Object.fromEntries(MATE_KINDS.map(kind => [insertMateCommand(kind), () => handleInsertMate(kind)])),
+  }), [
+    handleUndoCommand, handleRedoCommand, handleDeleteSelected, handleCancelEdit,
+    openExport, openPicker, runOperation, handleDelete, handleDeleteMate, handleInsertMate,
+  ])
+  useAssemblyCommands(assemblyHandlers)
 
   const handleArmMateField = useCallback((target: MateFieldTarget | null) => {
     useAssemblyStore.getState().setActiveMateField(target)
@@ -618,11 +468,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const renderInstanceEditor = useCallback((inst: PartInstance) => (
     <PartInstanceEditor
       instance={inst}
-      onSetFixed={f => handleSetFixed(inst.handle, f)}
-      onSetPosition={pos => handleSetPosition(inst.handle, pos)}
-      onSetRotation={euler => handleSetRotation(inst.handle, euler)}
+      onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
+      onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
+      onSetRotation={euler => executeCommand('set_part_rotation', { handle: inst.handle, euler })}
     />
-  ), [handleSetFixed, handleSetPosition, handleSetRotation])
+  ), [])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor
@@ -632,9 +482,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
       activeField={activeMateField}
       labelFor={labelFor}
       onArmField={handleArmMateField}
-      onUpdate={patch => handleUpdateMate(mate.id, patch)}
+      onUpdate={patch => executeCommand('update_mate', { id: mate.id, patch })}
     />
-  ), [solveStatus, activeMateField, labelFor, handleArmMateField, handleUpdateMate])
+  ), [solveStatus, activeMateField, labelFor, handleArmMateField])
 
   // The banner names the unsatisfiable mates by their authored label when they
   // have one, falling back to the feature id.
@@ -679,14 +529,14 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             editingMateId={editingMateId}
             editingInstanceHandle={editingInstanceHandle}
             onSelectPart={handleSelect}
-            onReorderInstance={handleReorderInstance}
-            onReorderMate={handleReorderMate}
+            onReorderInstance={(movingHandle, beforeHandle) => executeCommand('reorder_part', { movingHandle, beforeHandle })}
+            onReorderMate={(movingId, beforeId) => executeCommand('reorder_mate', { movingId, beforeId })}
             onOpenPartNewTab={handleOpenPartNewTab}
-            onDuplicateInstance={handleDuplicate}
-            onDeleteInstance={handleDelete}
-            onToggleVisible={handleToggleVisible}
-            onToggleFixed={handleToggleFixed}
-            onToggleBuiltinVisible={handleToggleBuiltinVisible}
+            onDuplicateInstance={(handle) => executeCommand('duplicate_part', handle)}
+            onDeleteInstance={(handle) => executeCommand('delete_part', handle)}
+            onToggleVisible={(handle, visible) => executeCommand('set_part_visible', { handle, visible })}
+            onToggleFixed={(handle, fixed) => executeCommand('set_part_fixed_oneshot', { handle, fixed })}
+            onToggleBuiltinVisible={(id, visible) => executeCommand('set_builtin_visible', { id, visible })}
             onEditInstance={handleEditInstance}
             onCommitInstance={handleCommitInstance}
             onCancelInstance={handleCancelInstance}
@@ -695,7 +545,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onEditMate={handleEditMate}
             onCommitMate={handleCommitMate}
             onCancelMate={handleCancelMate}
-            onDeleteMate={handleDeleteMate}
+            onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
             onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
             renderMateEditor={(m) => renderMateEditor(m)}
           />
@@ -706,7 +556,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
               className="editor-btn"
               title="Insert part"
               aria-label="Insert part"
-              onClick={openPicker}
+              onClick={() => executeCommand('insert_part_instance')}
             >
               <img src={featurePartIcon} alt="Insert part" />
             </button>
@@ -717,7 +567,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
                 className="editor-btn"
                 title={`Insert ${MATE_KIND_LABELS[kind]} mate`}
                 aria-label={`Insert ${MATE_KIND_LABELS[kind]} mate`}
-                onClick={() => handleInsertMate(kind)}
+                onClick={() => executeCommand(insertMateCommand(kind))}
               >
                 <img src={MATE_KIND_ICONS[kind]} alt={MATE_KIND_LABELS[kind]} />
               </button>
@@ -727,7 +577,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
               className="editor-btn"
               title="Export assembly"
               aria-label="Export assembly"
-              onClick={openExport}
+              onClick={() => executeCommand('export_assembly')}
             >
               <img src={exportIcon} alt="Export assembly" />
             </button>

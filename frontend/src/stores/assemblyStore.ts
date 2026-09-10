@@ -5,6 +5,7 @@ import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
 import { bakeSolvedTransforms, findInstance, findMate, removeInstance, removeMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
+import { reduceEditingSubject, type EditingSubject } from '@/utils/assemblyEditingSubject'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
@@ -92,6 +93,9 @@ export interface AssemblyEditorData {
   selectedPartHandle: string | null
   // The mate whose editor panel is open; null when no mate is being authored.
   selectedMateId: string | null
+  // Which subject (if any) has its inline editor open. One tagged value instead
+  // of two independent ids, so "a mate and an instance at once" is impossible.
+  editingSubject: EditingSubject
   // The reference slot an aimed pick writes into. Null means picks only aim.
   activeMateField: MateFieldTarget | null
   /**
@@ -157,6 +161,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   pickGeometryPose: {},
   selectedPartHandle: null,
   selectedMateId: null,
+  editingSubject: { kind: 'none' },
   activeMateField: null,
   mateFieldDirty: false,
   pickCandidates: [],
@@ -231,6 +236,7 @@ const STORE_OWNED_FIELDS = [
   'selectedPartHandle', 'manipulation', 'gizmoDrag', 'settlingOffsets',
   'pickGeometryPose',
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
+  'editingSubject',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'selection', 'hoveredEntity', 'showPickDebug',
   'isSolving', 'solveStatus',
@@ -273,6 +279,11 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setSelectedPartHandle: (handle: string | null) => void
   // Open a mate's editor. Closing the previous one settles its owed solve.
   setSelectedMateId: (featureId: string | null) => void
+  // The editing subject is store-owned so the undo funnel and deleteSelected can
+  // read it without the page threading it through every call.
+  openInstanceEditor: (handle: string) => void
+  openMateEditor: (id: string) => void
+  closeEditor: () => void
   // Arm a reference slot for the next pick; `null` disarms and re-solves if owed.
   setActiveMateField: (target: MateFieldTarget | null) => void
   // Push a mate edit to the solver, unless a chip is armed; then it is owed.
@@ -357,9 +368,24 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // The updater stays pure: it reads `prev` and `data`, writes only the object
     // it just built, and re-running it is a fixed point.
     if (sameInstances(prev.instances, data.instances)) merged.instances = prev.instances
+    // A doc change (undo, reload, live edit) can retire the edited subject. The
+    // reducer clears it only when the named instance or mate is gone, so an
+    // unrelated snapshot leaves an open editor alone.
+    const nextSubject = reduceEditingSubject(prev.editingSubject, { type: 'subject_removed', doc: data.doc })
+    if (nextSubject !== prev.editingSubject) merged.editingSubject = nextSubject
     return merged as unknown as AssemblyEditorData
   }),
   setSelectedPartHandle: (handle) => set({ selectedPartHandle: handle }),
+
+  openInstanceEditor: (handle) => set(prev => ({
+    editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'open_instance', handle }),
+  })),
+  openMateEditor: (id) => set(prev => ({
+    editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'open_mate', id }),
+  })),
+  closeEditor: () => set(prev => ({
+    editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'close' }),
+  })),
 
   clearAssemblyHistory: () => set({ undoStack: [], redoStack: [] }),
 
@@ -652,7 +678,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   // left in place on purpose (removeInstance's contract): they surface as stale
   // at the next solve rather than being silently cascaded away.
   deleteSelected: () => {
-    const { doc, selectedMateId, selectedPartHandle } = get()
+    const { doc, selectedMateId, selectedPartHandle, editingSubject } = get()
     if (!doc || !callbacks) return
     if (selectedMateId) {
       callbacks.mutateDoc('Delete mate', d => removeMate(bakeSolvedTransforms(d, get().settledPoses()), selectedMateId))
@@ -661,12 +687,15 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
       // armed field pointing at the just-deleted mate strands a dangling
       // reference and an owed solve that never lands.
       get().setSelectedMateId(null)
+      // An editor on the deleted subject has no doc to edit any more.
+      if (editingSubject.kind === 'mate' && editingSubject.id === selectedMateId) get().closeEditor()
       callbacks.requestSolve()
       return
     }
     if (selectedPartHandle) {
       callbacks.mutateDoc('Delete part', d => removeInstance(bakeSolvedTransforms(d, get().settledPoses()), selectedPartHandle))
       set({ selectedPartHandle: null })
+      if (editingSubject.kind === 'instance' && editingSubject.handle === selectedPartHandle) get().closeEditor()
       callbacks.requestSolve()
     }
   },

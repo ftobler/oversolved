@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand, registerCommand } from '@/utils/core/commandRegistry'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { findMate } from '@/utils/assemblyMutations'
@@ -352,6 +352,41 @@ describe('AssemblyEditor (Stage 6b)', () => {
     fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
     await tick()
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+  })
+
+  // The editing subject is one tagged value, so an instance editor replaces an
+  // open mate editor rather than stacking a second one. The store makes this
+  // structural; the page test pins that the tree renders exactly one.
+  it('opening an instance editor closes an open mate editor', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(screen.getAllByText('Pick a reference').length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await tick()
+    expect(screen.queryAllByText('Pick a reference')).toHaveLength(0)
+    expect(useAssemblyStore.getState().editingSubject.kind).toBe('instance')
+  })
+
+  // Every toolbar button routes through the command registry, so a test can
+  // replace the registered handler and prove the click reaches it.
+  it('routes the toolbar through the command registry', async () => {
+    await renderLoaded()
+    const insertPart = vi.fn()
+    const insertMate = vi.fn()
+    const exportAssembly = vi.fn()
+    registerCommand('insert_part_instance', insertPart)
+    registerCommand('insert_mate_fixed', insertMate)
+    registerCommand('export_assembly', exportAssembly)
+
+    fireEvent.click(screen.getByLabelText('Insert part'))
+    expect(insertPart).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByLabelText('Insert Fixed mate'))
+    expect(insertMate).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByLabelText('Export assembly'))
+    expect(exportAssembly).toHaveBeenCalledOnce()
   })
 
   it('clicking a part row selects it without opening the part document', async () => {

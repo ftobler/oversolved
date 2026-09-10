@@ -135,3 +135,57 @@ describe('assemblyStore deleteSelected', () => {
     expect(requestSolve).toHaveBeenCalled()
   })
 })
+
+// The editing subject is store-owned now, so its open/close/reconcile lifecycle
+// is asserted here with no React in the picture.
+describe('assemblyStore editingSubject', () => {
+  beforeEach(() => {
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.setState({ selectedPartHandle: null, selectedMateId: null, editingSubject: { kind: 'none' } })
+    setAssemblyCallbacks(null)
+  })
+
+  it('open actions replace rather than stack, and close returns to none', () => {
+    useAssemblyStore.getState().openMateEditor('fm1')
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'mate', id: 'fm1' })
+    useAssemblyStore.getState().openInstanceEditor('h1')
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'instance', handle: 'h1' })
+    useAssemblyStore.getState().closeEditor()
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+  })
+
+  it('deleteSelected closes the editor only when it names the deleted subject', () => {
+    mountHost(sampleDoc())
+    useAssemblyStore.getState().openInstanceEditor('h1')
+    useAssemblyStore.getState().setSelectedPartHandle('h2')
+
+    useAssemblyStore.getState().deleteSelected()
+
+    // The edited h1 survived, so its editor stays open.
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'instance', handle: 'h1' })
+  })
+
+  it('deleteSelected closes the editor on the deleted subject', () => {
+    mountHost(sampleDoc())
+    useAssemblyStore.getState().openMateEditor('fm1')
+    useAssemblyStore.getState().setSelectedMateId('fm1')
+
+    useAssemblyStore.getState().deleteSelected()
+
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+  })
+
+  it('setSnapshot clears the editing subject only when the new doc lacks it', () => {
+    const { host } = mountHost(sampleDoc())
+    useAssemblyStore.getState().openInstanceEditor('h1')
+
+    // A doc that still has h1 keeps the editor open.
+    useAssemblyStore.getState().setSnapshot({ ...useAssemblyStore.getState(), doc: host.doc })
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'instance', handle: 'h1' })
+
+    // A doc without h1 retires it.
+    const without = { ...host.doc, features: (host.doc.features ?? []).filter(f => f.id !== 'fp1') }
+    useAssemblyStore.getState().setSnapshot({ ...useAssemblyStore.getState(), doc: without })
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+  })
+})

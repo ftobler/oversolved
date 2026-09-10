@@ -26,7 +26,7 @@ import { registerCommand, unregisterCommand, dispatchKey } from '@/utils/core/co
 
 export interface CommandEntry {
   name: string
-  fn: () => void
+  fn: (payload?: unknown) => void
 }
 
 export function useCommandRegistration(commands: CommandEntry[]): void {

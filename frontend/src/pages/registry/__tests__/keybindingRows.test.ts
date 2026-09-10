@@ -58,3 +58,22 @@ describe('buildKeybindingRows', () => {
     }
   })
 })
+
+describe('assembly rows', () => {
+  it('advertises the assembly-only cancel with an assembly mode and copy', () => {
+    const row = rows.find(r => r.key === 'escape' && r.command === 'cancel_edit')!
+    expect(row).toBeTruthy()
+    expect(row.mode).toBe('assembly')
+    expect(row.label.length).toBeGreaterThan(0)
+    expect(row.description.length).toBeGreaterThan(0)
+  })
+
+  it('keeps the part-editor bindings and dedupes the shared keys', () => {
+    // The assembly keymap must not shadow the sketch escape, and ctrl+z is one
+    // row even though both the core and assembly lists carry it.
+    const cancelDraw = rows.find(r => r.key === 'escape' && r.command === 'cancel_draw')!
+    expect(cancelDraw.mode).toBe('both')
+    expect(rows.filter(r => r.key === 'ctrl+z').map(r => r.command)).toEqual(['undo'])
+    expect(rows.find(r => r.key === 'ctrl+z')!.mode).toBe('both')
+  })
+})
