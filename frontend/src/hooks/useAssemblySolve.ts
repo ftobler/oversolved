@@ -20,7 +20,7 @@ import { buildPickBodies } from '@/utils/assemblyPick'
 import { setRelayHandlers, clearRelayHandlers, solveAssemblyViaWorker, cancelAssemblySolver } from '@/kernel/worker/anchorSolverClient'
 import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
-import type { MateSpec } from '@/kernel/solveAssembly'
+import type { MateSpec, AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { dragTargetMate } from '@/kernel/assemblyDrag'
 import { extractErrorMessage } from '@/kernel/errors'
 import { findInstance } from '@/utils/assemblyMutations'
@@ -45,6 +45,14 @@ let fullSolveSeq = 0
 // expression binding arrives with the mate authoring UI (Stage 8).
 function numeric(v: NumberOrExpr | undefined): number | undefined {
   return typeof v === 'number' ? v : undefined
+}
+
+// A live drag tick carries the per-mate and per-part marks only. Withholding the
+// overall verdict (and its error) keeps a per-frame overconstrained from
+// flickering the banner; the pointer-up full solve owns the real verdict.
+function liveStatus(status: AssemblySolveStatus | undefined): AssemblySolveStatus | null {
+  if (!status) return null
+  return { ...status, verdict: 'none', error: undefined }
 }
 
 export function partSpecs(doc: AssemblyDoc): PartInputSpec[] {
@@ -210,7 +218,6 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
     if (!live) {
       myFullSolve = ++fullSolveSeq
       store.setIsSolving(true)
-      store.setSolveError(null)
       // Mirror into the solver store so LoadingOverlay (mounted in the assembly
       // editor) renders the spinner and cancel button for the full solve; the
       // overlay only reads the solver store.
@@ -288,7 +295,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
           transforms,
           bodies,
           edgeCurves,
-          mateResults: res.payload.mateResults ?? {},
+          solveStatus: liveStatus(res.payload.status),
         })
         return
       }
@@ -302,15 +309,11 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         entityMateRefs: buildEntityMateRefs(res.payload.bodies),
         anchors,
         pickGeometry: buildPickBodies(res.payload.bodies, anchors),
-        // Keyed by mate feature id. A mate whose reference no longer resolves
-        // comes back stale here, and that is the only thing that turns it red.
-        mateResults: res.payload.mateResults ?? {},
+        // The whole verdict: the per-mate and per-part marks plus the overall
+        // status. A mate whose reference no longer resolves comes back in
+        // `status.mates`, and that is what turns its row red.
+        solveStatus: res.payload.status ?? null,
       })
-      // The solve came back, but the mate solver itself trapped and the
-      // transforms are the placed seeds. Nothing moved; say why.
-      if (res.payload.solveError) {
-        useAssemblyStore.getState().setSolveError(res.payload.solveError)
-      }
     } catch (e) {
       // A failure from a solve a newer request superseded belongs to that older
       // request, not the one the user is waiting on: dropping it keeps a stale
@@ -320,10 +323,16 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       // would only flicker.
       if (version !== solveVersion.current) return
       // A user cancel (or a watchdog drop of a presumed-stuck worker) is not an
-      // error worth a banner - the user asked for it.
+      // error worth a banner - the user asked for it. A worker throw and a Rust
+      // overconstrained both arrive through the same `solveStatus` field.
       const reason = extractErrorMessage(e)
       if (!live && !BENIGN_ASSEMBLY_FAILURES.has(reason)) {
-        useAssemblyStore.getState().setSolveError(reason)
+        useAssemblyStore.setState({
+          solveStatus: {
+            verdict: 'failed', residualNorm: 0, rank: 0, dof: 0, iters: 0,
+            error: reason, mates: {}, parts: {},
+          },
+        })
       }
     } finally {
       if (!live) {

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, Transform3D, BodyResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
-import type { MateResult } from '@/kernel/solveAssembly'
+import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
 import { bakeSolvedTransforms, findInstance, findMate, removeInstance, removeMate, setMateRef, updateMate } from '@/utils/assemblyMutations'
@@ -73,8 +73,9 @@ export interface AssemblyEditorData {
   doc: AssemblyDoc | null
   instances: PartInstance[]
   mates: MateFeature[]
-  // Per-mate solve outcome, keyed by feature id. `stale` drives the red rendering.
-  mateResults: Record<string, MateResult>
+  // The whole solve verdict, including the per-mate and per-part marks. One
+  // field so no consumer re-derives failure from a partial signal.
+  solveStatus: AssemblySolveStatus | null
   transforms: Record<string, Transform3D>
   bodies: Record<string, BodyResult>
   // Analytic edges of the solved bodies, keyed by the same body id.
@@ -138,7 +139,6 @@ export interface AssemblyEditorData {
    */
   settlingOffsets: Record<string, Transform3D>
   isSolving: boolean
-  solveError: string | null
   undoStack: AssemblyUndoEntry[]
   redoStack: AssemblyUndoEntry[]
 }
@@ -147,7 +147,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   doc: null,
   instances: [],
   mates: [],
-  mateResults: {},
+  solveStatus: null,
   transforms: {},
   bodies: {},
   edgeCurves: {},
@@ -170,7 +170,6 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   gizmoDrag: null,
   settlingOffsets: {},
   isSolving: false,
-  solveError: null,
   undoStack: [],
   redoStack: [],
 }
@@ -179,7 +178,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
 export type AssemblySolveResult = Pick<
   AssemblyEditorData,
-  'transforms' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'pickGeometry' | 'mateResults'
+  'transforms' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'pickGeometry' | 'solveStatus'
 >
 
 /**
@@ -234,7 +233,7 @@ const STORE_OWNED_FIELDS = [
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'selection', 'hoveredEntity', 'showPickDebug',
-  'isSolving', 'solveError',
+  'isSolving', 'solveStatus',
   'undoStack', 'redoStack',
 ] as const
 
@@ -279,7 +278,6 @@ interface AssemblyEditorState extends AssemblyEditorData {
   // Push a mate edit to the solver, unless a chip is armed; then it is owed.
   requestSolveOrDefer: () => void
   setIsSolving: (solving: boolean) => void
-  setSolveError: (error: string | null) => void
   setSolveResult: (result: AssemblySolveResult) => void
   /**
    * A live-drag solve: merge the follower parts' new poses over the current
@@ -287,7 +285,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
    * drag has none) and does not clear the grabbed part's own entries, which the
    * caller drops so it keeps rendering from its drag offset.
    */
-  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'bodies' | 'edgeCurves' | 'mateResults'>) => void
+  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'bodies' | 'edgeCurves' | 'solveStatus'>) => void
   // Resolve an ordered hit list into the candidate set, aiming its first entry.
   setPickFromHits: (hits: readonly EntityHit[]) => void
   // A Ctrl+click: re-aim, or advance the cycle when it lands on the same set.
@@ -405,7 +403,6 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   },
 
   setIsSolving: (solving) => set({ isSolving: solving }),
-  setSolveError: (error) => set({ solveError: error }),
   setSolveResult: (result) => set({
     ...result,
     // A re-solve can retire the anchors the aimed candidate named (a rebuilt
@@ -427,7 +424,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     transforms: { ...prev.transforms, ...result.transforms },
     bodies: { ...prev.bodies, ...result.bodies },
     edgeCurves: { ...prev.edgeCurves, ...result.edgeCurves },
-    mateResults: result.mateResults,
+    solveStatus: result.solveStatus,
     // The parts this tick re-posed are re-baked with it; only a part it left
     // alone (the grabbed one) still owes its offset.
     settlingOffsets: Object.fromEntries(

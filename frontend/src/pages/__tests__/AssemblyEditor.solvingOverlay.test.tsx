@@ -122,7 +122,7 @@ describe('AssemblyEditor solving overlay', () => {
     await waitFor(() => {
       expect(useSolverStore.getState().isSolving).toBe(false)
       expect(useAssemblyStore.getState().isSolving).toBe(false)
-      expect(useAssemblyStore.getState().solveError).toBeNull()
+      expect(useAssemblyStore.getState().solveStatus).toBeNull()
       expect(container.querySelector('.loading-overlay.visible')).toBeNull()
     }, { timeout: 10000 })
   })
@@ -142,7 +142,7 @@ describe('AssemblyEditor solving overlay', () => {
         id: 1,
         kind: 'solveAssembly' as const,
         ok: true as const,
-        payload: { transforms: {}, bodies: {}, mateResults: {} },
+        payload: { transforms: {}, bodies: {} },
       })
     })
 

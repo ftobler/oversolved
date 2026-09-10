@@ -93,7 +93,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
       { uuid: 'part-2', name: 'Bolt', meta: { rev: 2 } },
     ]
     h.solveAssemblyViaWorker.mockResolvedValue({
-      payload: { transforms: {}, bodies: {}, mateResults: {} },
+      payload: { transforms: {}, bodies: {} },
     })
     h.save.mockResolvedValue(undefined)
     h.captureScreenshotForSaving.mockResolvedValue('data:image/png;base64,QVNN')
@@ -163,7 +163,6 @@ describe('AssemblyEditor (Stage 6b)', () => {
             edges: [],
           }],
         },
-        mateResults: {},
       },
     })
     const first = renderEditor()
@@ -182,7 +181,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(store.mates).toEqual([])
     expect(store.bodies).toEqual({})
     expect(store.transforms).toEqual({})
-    expect(store.mateResults).toEqual({})
+    expect(store.solveStatus).toBeNull()
     expect(store.edgeCurves).toEqual({})
     expect(store.anchors).toEqual({})
     expect(store.pickGeometry).toEqual([])
@@ -423,7 +422,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     h.loadContent = 'kind: assembly\nfeatures: []'
     h.list = []
     h.solveAssemblyViaWorker.mockResolvedValue({
-      payload: { transforms: {}, bodies: {}, mateResults: {} },
+      payload: { transforms: {}, bodies: {} },
     })
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().setActiveMateField(null)
@@ -435,7 +434,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     act(() => {
       useAssemblyStore.getState().setSolveResult({
         transforms: {}, bodies: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
-        entityMateRefs: ENTITY_MATE_REFS, mateResults: {},
+        entityMateRefs: ENTITY_MATE_REFS, solveStatus: null,
       })
     })
   }
@@ -633,10 +632,16 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
 
     const id = mateId()
     h.solveAssemblyViaWorker.mockResolvedValue({
-      payload: { transforms: {}, bodies: {}, mateResults: { [id]: { stale: true, staleRefs: ['ref_a'] } } },
+      payload: {
+        transforms: {}, bodies: {},
+        status: {
+          verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0,
+          mates: { [id]: { stale: true, staleRefs: ['ref_a'] } }, parts: {},
+        },
+      },
     })
     fireEvent.click(screen.getByRole('button', { name: 'OK' }))
-    await waitFor(() => expect(useAssemblyStore.getState().mateResults[id]?.stale).toBe(true))
+    await waitFor(() => expect(useAssemblyStore.getState().solveStatus?.mates[id]?.stale).toBe(true))
 
     expect(document.querySelector('.mate-item.stale')).toBeTruthy()
     expect(mateDef().ref_a).toEqual({ part: 'hA', anchor: 'a_v' })
@@ -744,7 +749,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
     h.partContent = 'features:\n  - id: Origin\n    kind: origin\n  - id: ex1\n    kind: extrude'
     h.list = [{ uuid: 'part-1', name: 'Bracket', meta: { rev: 1 } }]
     h.solveAssemblyViaWorker.mockResolvedValue({
-      payload: { transforms: { hA: SOLVED_TRANSFORM }, bodies: SOLVED_BODIES, mateResults: {} },
+      payload: { transforms: { hA: SOLVED_TRANSFORM }, bodies: SOLVED_BODIES },
     })
     h.exportAssemblyViaWorker.mockResolvedValue(new Uint8Array([1, 2, 3]))
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
@@ -810,7 +815,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
 
   it('reports rather than downloads when the assembly has no visible geometry', async () => {
     h.solveAssemblyViaWorker.mockResolvedValue({
-      payload: { transforms: { hA: SOLVED_TRANSFORM }, bodies: {}, mateResults: {} },
+      payload: { transforms: { hA: SOLVED_TRANSFORM }, bodies: {} },
     })
     await openExportDialog()
     fireEvent.click(screen.getByLabelText('STL'))
@@ -844,7 +849,7 @@ describe('AssemblyEditor undo/redo', () => {
     h.loadContent = 'kind: assembly\nfeatures: []'
     h.list = [{ uuid: 'part-1', name: 'Bracket', meta: { rev: 5 } }]
     h.solveAssemblyViaWorker.mockResolvedValue({
-      payload: { transforms: {}, bodies: {}, mateResults: {} },
+      payload: { transforms: {}, bodies: {} },
     })
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     // The stacks are store-owned, so setSnapshot does not clear them.
@@ -1014,7 +1019,6 @@ describe('AssemblyEditor undo/redo', () => {
           p.handle, { tx: pose.tx, ty: pose.ty, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 },
         ])),
         bodies: {},
-        mateResults: {},
       },
     }))
   }
@@ -1295,7 +1299,7 @@ describe('AssemblyEditor undo/redo', () => {
     act(() => {
       useAssemblyStore.getState().setSolveResult({
         transforms: {}, bodies: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
-        entityMateRefs: { [VERT]: [{ part: 'hA', anchor: 'a_v' }] }, mateResults: {},
+        entityMateRefs: { [VERT]: [{ part: 'hA', anchor: 'a_v' }] }, solveStatus: null,
       })
       useAssemblyStore.getState().setPickFromHits([{ entityKey: VERT }])
     })

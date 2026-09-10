@@ -22,7 +22,7 @@ const ENTITY_MATE_REFS: EntityMateRefs = {
 
 const SOLVE_RESULT: AssemblySolveResult = {
   transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: ENTITY_MATE_REFS, anchors: {},
-  pickGeometry: [], mateResults: {},
+  pickGeometry: [], solveStatus: null,
 }
 
 /** Resolver order at a corner: vertex wins, then the edge, then the face. */

@@ -313,7 +313,7 @@ export function findInstance(doc: AssemblyDoc, handle: string): PartInstance | u
 
 // ─── Mate features (Stage 8) ───
 
-/** The mates of an assembly, paired with the feature id `mateResults` is keyed by. */
+/** The mates of an assembly, paired with the feature id the solve status keys its marks by. */
 export function mateFeatures(doc: AssemblyDoc): MateFeature[] {
   return features(doc)
     .filter((f): f is AssemblyFeature & { mate: MateFeatureDef } => f.kind === 'mate' && !!f.mate)

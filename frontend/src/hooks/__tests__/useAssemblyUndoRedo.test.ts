@@ -769,7 +769,7 @@ describe('useAssemblyUndoRedo', () => {
           [VERT_A]: [{ part: 'p1', anchor: 'a_v' }],
           [VERT_B]: [{ part: 'p2', anchor: 'b_v' }],
         },
-        mateResults: {},
+        solveStatus: null,
       })
     })
 

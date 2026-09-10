@@ -182,7 +182,7 @@ describe('assemblyStore part manipulation', () => {
     // stood in for is retired, or the part would render 3mm past the drop.
     useAssemblyStore.getState().setSolveResult({
       transforms: { p1: { ...IDENTITY_TRANSFORM, tx: 13 } },
-      bodies: {}, edgeCurves: {}, entityMateRefs: {}, anchors: {}, pickGeometry: [], mateResults: {},
+      bodies: {}, edgeCurves: {}, entityMateRefs: {}, anchors: {}, pickGeometry: [], solveStatus: null,
     })
     expect(useAssemblyStore.getState().settlingOffsets).toEqual({})
     expect(drawnPose('p1', { ...IDENTITY_TRANSFORM, tx: 13 }).tx).toBeCloseTo(13, 9)
@@ -307,7 +307,7 @@ describe('assemblyStore part manipulation', () => {
       transforms: { p2: { ...IDENTITY_TRANSFORM, tx: 4 } },  // only the follower moved
       bodies: {},
       edgeCurves: {},
-      mateResults: {},
+      solveStatus: null,
     })
 
     const { transforms } = useAssemblyStore.getState()
@@ -323,7 +323,7 @@ describe('assemblyStore part manipulation', () => {
     const before = useAssemblyStore.getState().bodies
 
     useAssemblyStore.getState().setDragSolveResult({
-      transforms: {}, bodies: {}, edgeCurves: {}, mateResults: {},
+      transforms: {}, bodies: {}, edgeCurves: {}, solveStatus: null,
     })
 
     expect(useAssemblyStore.getState().bodies).not.toBe(before)
@@ -352,7 +352,7 @@ describe('assemblyStore part manipulation', () => {
   describe('settling offset lifecycle', () => {
     const emptySolve = {
       transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: {},
-      anchors: {}, pickGeometry: [], mateResults: {},
+      anchors: {}, pickGeometry: [], solveStatus: null,
     }
 
     it('retires a committed drag offset only when the re-bake solve lands', () => {

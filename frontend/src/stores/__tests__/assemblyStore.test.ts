@@ -4,12 +4,18 @@ import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, sameInstances } from '@
 import { partInstances, setBuiltinVisible } from '@/utils/assemblyMutations'
 import { ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
 
+const FAILED_STATUS = {
+  verdict: 'failed' as const,
+  residualNorm: 0, rank: 0, dof: 0, iters: 0,
+  error: 'boom', mates: {}, parts: {},
+}
+
 describe('assemblyStore', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().setSelectedPartHandle(null)
     useAssemblyStore.getState().setIsSolving(false)
-    useAssemblyStore.getState().setSolveError(null)
+    useAssemblyStore.setState({ solveStatus: null })
     // Everything from the two calls above down is store-owned, so setSnapshot
     // does not reset it; clear explicitly to keep the tests isolated.
     useAssemblyStore.getState().clearSelection()
@@ -25,7 +31,7 @@ describe('assemblyStore', () => {
     expect(state.transforms).toEqual({})
     expect(state.selectedPartHandle).toBeNull()
     expect(state.isSolving).toBe(false)
-    expect(state.solveError).toBeNull()
+    expect(state.solveStatus).toBeNull()
   })
 
   // `selectedPartHandle` stands in for the whole STORE_OWNED_FIELDS mechanic
@@ -40,7 +46,7 @@ describe('assemblyStore', () => {
     const { getState } = useAssemblyStore
     getState().setSelectedPartHandle('part-1')
     getState().setIsSolving(true)
-    getState().setSolveError('boom')
+    useAssemblyStore.setState({ solveStatus: FAILED_STATUS })
     getState().setSnapshot({
       ...DEFAULT_ASSEMBLY_EDITOR_DATA,
       doc: { kind: 'assembly', features: [] },
@@ -50,13 +56,13 @@ describe('assemblyStore', () => {
     expect(getState().selectedPartHandle).toBe('part-1')
     // The snapshot's own false/null for these must not win over the setters.
     expect(getState().isSolving).toBe(true)
-    expect(getState().solveError).toBe('boom')
+    expect(getState().solveStatus).toBe(FAILED_STATUS)
     expect(getState().doc).toEqual({ kind: 'assembly', features: [] })
   })
 
   // resetTransientAssemblyState is what both unmount (AssemblyEditor) and a
   // document load (useAssemblyDoc) run, so it is where a stale isSolving or
-  // solveError now actually gets cleared once setSnapshot no longer touches
+  // solveStatus now actually gets cleared once setSnapshot no longer touches
   // them. History is deliberately out of its sweep; clearAssemblyHistory owns
   // the stacks.
   it('resetTransientAssemblyState clears the solve flags but leaves the stacks alone', () => {
@@ -66,12 +72,12 @@ describe('assemblyStore', () => {
     const redoStack = [entry]
     useAssemblyStore.setState({ undoStack, redoStack })
     getState().setIsSolving(true)
-    getState().setSolveError('boom')
+    useAssemblyStore.setState({ solveStatus: FAILED_STATUS })
 
     getState().resetTransientAssemblyState()
 
     expect(getState().isSolving).toBe(false)
-    expect(getState().solveError).toBeNull()
+    expect(getState().solveStatus).toBeNull()
     // Reference identity: the reset did not rebuild the arrays either.
     expect(getState().undoStack).toBe(undoStack)
     expect(getState().redoStack).toBe(redoStack)
@@ -98,13 +104,14 @@ describe('assemblyStore', () => {
     expect(getState().isSolving).toBe(false)
   })
 
-  it('setSolveError sets and clears error', () => {
+  it('setSolveResult stores the solve status', () => {
     const { getState } = useAssemblyStore
-    expect(getState().solveError).toBeNull()
-    getState().setSolveError('boom')
-    expect(getState().solveError).toBe('boom')
-    getState().setSolveError(null)
-    expect(getState().solveError).toBeNull()
+    expect(getState().solveStatus).toBeNull()
+    getState().setSolveResult({
+      transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: {},
+      anchors: {}, pickGeometry: [], solveStatus: FAILED_STATUS,
+    })
+    expect(getState().solveStatus).toBe(FAILED_STATUS)
   })
 
   it('round-trips a full AssemblyDoc through setSnapshot', () => {
@@ -275,7 +282,7 @@ describe('assemblyStore', () => {
   describe('B-rep selection', () => {
     const EMPTY_SOLVE = {
       transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: {},
-      anchors: {}, pickGeometry: [], mateResults: {},
+      anchors: {}, pickGeometry: [], solveStatus: null,
     }
 
     it('toggleSelection adds then removes an entity key', () => {

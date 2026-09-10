@@ -15,6 +15,7 @@ import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuil
 import { canonicalPerp } from '../utils/mateOrientation'
 import { mateOffsetVector } from '../utils/mateKinds'
 import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
+import { STATUS_NAME } from '@/wasm-kernel/codec'
 
 export type { AnchorPose }
 
@@ -60,17 +61,46 @@ export interface MateResult {
   error?: string
 }
 
+/** The Rust solver's overall verdict, straight off the wire code. */
+export type MateVerdict = typeof STATUS_NAME[number]
+
+/** The assembly counterpart of a failed feature result: one part bundle that
+ *  could not be loaded or built. Runtime-only; never written to the document. */
+export interface PartSolveResult {
+  failed: boolean
+  error?: string
+}
+
+/**
+ * Everything the solve decided: the overall verdict, the solver diagnostics,
+ * the per-mate marks and the per-part bundle marks. One carrier so the UI owns
+ * a single object to consult instead of re-deriving failure from partial
+ * signals (`stale`, a throw) that drift apart.
+ */
+export interface AssemblySolveStatus {
+  // 'none' means no mates ran (a trivial echo solve), which is not a failure;
+  // 'unavailable' and 'failed' are the transport failures that used to live
+  // only in solveError.
+  verdict: MateVerdict | 'none' | 'unavailable' | 'failed'
+  residualNorm: number
+  rank: number
+  dof: number
+  iters: number
+  error?: string
+  // Per-mate result, keyed by mate feature id.
+  mates: Record<string, MateResult>
+  // Per-instance bundle failure, keyed by part handle.
+  parts: Record<string, PartSolveResult>
+}
+
 export interface AssemblyBuildResponse {
   transforms: Record<string, Transform3D>
   bodies: Record<string, MeshPayload[]>
   /** Part handle -> anchor id -> its pose. Assembly built-ins are not here: they
    *  are static and the main thread folds them in (utils/anchorGizmos.ts). */
   anchors: Record<string, Record<string, AnchorPose>>
-  mateResults: Record<string, MateResult>
-  /** The mate solve failed and every transform below is the placed seed, not a
-   *  solution. Set so the editor can say so: a silent seed echo is
-   *  indistinguishable from a mate that solved to exactly where it started. */
-  solveError?: string
+  // The solve verdict plus its per-mate and per-part marks.
+  status: AssemblySolveStatus
 }
 
 export interface MeshPayload {
@@ -325,6 +355,14 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
   return { paramsSolved, overallStatus, residualNorm, rank, dof, iters, ms }
 }
 
+// Codes are indices into STATUS_NAME. Throwing on an out-of-range code keeps a
+// codec skew loud rather than letting an undefined verdict flow into the UI.
+function mateVerdict(code: number): MateVerdict {
+  const name = STATUS_NAME[code]
+  if (!name) throw new Error(`mate solver returned unknown status code ${code}`)
+  return name
+}
+
 // ─── Main orchestration ───
 
 // Cache chatter stays dev/test-only: a quota blip (private window, storage
@@ -361,59 +399,69 @@ export async function solveAssembly(
 ): Promise<AssemblyBuildResponse> {
   const partBundles = new Map<string, { bundle: PartBundle; anchors: Record<string, Anchor> }>()
   const bodyMeshes = new Map<string, BodyMesh[]>()  // keyed by part handle
+  const partResults: Record<string, PartSolveResult> = {}
   let handleIndex = 0
   const handleToIndex = new Map<string, number>()
 
   for (const part of parts) {
-    handleToIndex.set(part.handle, handleIndex)
-    const currentRev = revs[part.doc_id] ?? part.doc_rev
+    // One bad instance must not blank the whole scene. A bundle that fails to
+    // fetch or build is recorded against its handle and the loop moves on; the
+    // part keeps its seed placement and only its row reddens.
+    try {
+      const currentRev = revs[part.doc_id] ?? part.doc_rev
 
-    // Path 1: cache hit
-    let bundle = await cachedOrUndefined('get', () => bundleCacheGet(part.doc_id, currentRev))
-    // A bundle cached before entityAnchors was introduced carries
-    // no per-body entity anchor index; its vertices, edges and face mate refs
-    // are all invisible to the assembly pick pass. Treat it as a miss so the
-    // rebuild populates entityAnchors. A bundle is a derivable artifact, so
-    // a cold rebuild costs one OCC evaluation per stale part.
-    const hasEntityAnchors = bundle ? bundle.bodies.every(b => b.entityAnchors) : false
-    if (bundle && hasEntityAnchors) {
+      // Path 1: cache hit
+      let bundle = await cachedOrUndefined('get', () => bundleCacheGet(part.doc_id, currentRev))
+      // A bundle cached before entityAnchors was introduced carries
+      // no per-body entity anchor index; its vertices, edges and face mate refs
+      // are all invisible to the assembly pick pass. Treat it as a miss so the
+      // rebuild populates entityAnchors. A bundle is a derivable artifact, so
+      // a cold rebuild costs one OCC evaluation per stale part.
+      const hasEntityAnchors = bundle ? bundle.bodies.every(b => b.entityAnchors) : false
+      if (!(bundle && hasEntityAnchors)) {
+        // Path 2: cache miss, request part doc, build bundle, migrate, cache
+        const partDoc = await relay.requestPartDoc(part.doc_id)
+        const buildResult = await relay.requestBuildBundle(part.doc_id, currentRev, partDoc)
+        bundle = buildResult as PartBundle
+        if (!bundle || !bundle.anchors) {
+          throw new Error(`bundle build failed for ${part.doc_id} rev ${currentRev}`)
+        }
+
+        // Migrate anchors against the newest cached bundle of the same doc.
+        // `bundleCacheLatestRev` is the latest-rev index lookup (one IndexedDB
+        // get); it replaces a downward scan that used to issue up to
+        // `currentRev - 1` separate `bundleCacheGet` transactions.
+        let prevBundle: { anchors: Record<string, Anchor> } | undefined
+        const latestCachedRev = await cachedOrUndefined('latest-rev lookup', () => bundleCacheLatestRev(part.doc_id))
+        if (latestCachedRev !== undefined && latestCachedRev <= currentRev) {
+          // Read the newest cached bundle even when it reads back as a
+          // schema/fingerprint miss (a cache wipe or schema bump turns the bundle
+          // at the CURRENT rev into one): tier 1 of the remap matches by geom_hash,
+          // which is schema- and code-independent, so the stale anchors are the one
+          // source of the old random-id lineage the migration chain must preserve.
+          // Deterministic anchor ids make this a no-op for new documents; it exists
+          // for documents whose mate refs predate them.
+          const cached = await cachedOrUndefined('stale read', () => bundleCacheGetStale(part.doc_id, latestCachedRev))
+          if (cached) prevBundle = { anchors: cached.anchors }
+        }
+        if (prevBundle) bundle = migrateBundle(prevBundle, bundle)
+
+        await putBundleBestEffort(bundle)
+      }
+
       partBundles.set(part.handle, { bundle, anchors: bundle.anchors })
       bodyMeshes.set(part.handle, bundle.bodies)
+      // Only a loaded part takes a solver body index: a failed part occupies
+      // none, so handleToIndex stays the single handle-to-body mapping every
+      // later pass reads.
+      handleToIndex.set(part.handle, handleIndex)
       handleIndex++
-      continue
+    } catch (e) {
+      partResults[part.handle] = {
+        failed: true,
+        error: e instanceof Error ? e.message : String(e),
+      }
     }
-
-    // Path 2: cache miss, request part doc, build bundle, migrate, cache
-    const partDoc = await relay.requestPartDoc(part.doc_id)
-    const buildResult = await relay.requestBuildBundle(part.doc_id, currentRev, partDoc)
-    bundle = buildResult as PartBundle
-    if (!bundle || !bundle.anchors) {
-      throw new Error(`bundle build failed for ${part.doc_id} rev ${currentRev}`)
-    }
-
-    // Migrate anchors against the newest cached bundle of the same doc.
-    // `bundleCacheLatestRev` is the latest-rev index lookup (one IndexedDB
-    // get); it replaces a downward scan that used to issue up to
-    // `currentRev - 1` separate `bundleCacheGet` transactions.
-    let prevBundle: { anchors: Record<string, Anchor> } | undefined
-    const latestCachedRev = await cachedOrUndefined('latest-rev lookup', () => bundleCacheLatestRev(part.doc_id))
-    if (latestCachedRev !== undefined && latestCachedRev <= currentRev) {
-      // Read the newest cached bundle even when it reads back as a
-      // schema/fingerprint miss (a cache wipe or schema bump turns the bundle
-      // at the CURRENT rev into one): tier 1 of the remap matches by geom_hash,
-      // which is schema- and code-independent, so the stale anchors are the one
-      // source of the old random-id lineage the migration chain must preserve.
-      // Deterministic anchor ids make this a no-op for new documents; it exists
-      // for documents whose mate refs predate them.
-      const cached = await cachedOrUndefined('stale read', () => bundleCacheGetStale(part.doc_id, latestCachedRev))
-      if (cached) prevBundle = { anchors: cached.anchors }
-    }
-    if (prevBundle) bundle = migrateBundle(prevBundle, bundle)
-
-    await putBundleBestEffort(bundle)
-    partBundles.set(part.handle, { bundle, anchors: bundle.anchors })
-    bodyMeshes.set(part.handle, bundle.bodies)
-    handleIndex++
   }
 
   // The assembly frame is a synthetic body pinned at identity, allocated only
@@ -558,10 +606,12 @@ export async function solveAssembly(
   const fixedMaskLen = pinnedMaskBytes(bodyCount)
   const fixedMask = new Uint8Array(fixedMaskLen)
 
-  // Read part transforms + fixed mask from parts (not bundles).
-  // Use a second pass over the part specs for clarity.
-  let pi = 0
+  // Read part transforms + fixed mask from parts (not bundles), keyed by the
+  // body index the part actually took. A failed part has no index and
+  // contributes no solver state; its seed is echoed below.
   for (const part of parts) {
+    const pi = handleToIndex.get(part.handle)
+    if (pi === undefined) continue
     const t = part.transform
     paramsInitial[pi * BPB + 0] = t.tx
     paramsInitial[pi * BPB + 1] = t.ty
@@ -575,7 +625,6 @@ export async function solveAssembly(
     // DOF so mates pull the other parts onto it rather than dragging it off its
     // placed pose.
     if (part.fixed) fixedMask[Math.floor(pi / 8)] |= (1 << (pi % 8))
-    pi++
   }
 
   // The assembly frame sits at identity and is pinned: its quaternion
@@ -588,7 +637,7 @@ export async function solveAssembly(
 
   const transforms: Record<string, Transform3D> = {}
   const encoded = encodeMateInput(bodyCount, paramsInitial, fixedMask, mateRecords)
-  let solveError: string | undefined
+  let status: AssemblySolveStatus
 
   if (solveMateFn && mateRecords.length > 0) {
     try {
@@ -600,8 +649,13 @@ export async function solveAssembly(
       // LM's tolerance. makeTransform normalizes here, once, so every
       // downstream consumer (posed anchors, transformed meshes, transformed
       // edge curves) inherits a unit quaternion and never has to again.
-      for (let i = 0; i < parts.length; i++) {
-        const handle = parts[i].handle
+      for (const part of parts) {
+        const bodyIndex = handleToIndex.get(part.handle)
+        // A failed bundle never entered the solver: keep its placement.
+        if (bodyIndex === undefined) {
+          transforms[part.handle] = { ...part.transform }
+          continue
+        }
         // A `fixed` part is echoed from its SEED, bit-exact, never from the
         // solver's output. The pin is a soft least-squares residual
         // (mate_residuals.rs), not a hard clamp: it can be outvoted, and a
@@ -611,23 +665,32 @@ export async function solveAssembly(
         // it holds only to LM tolerance -- and bakeSolvedTransforms would write
         // that error back into the seed, so the drift ratchets solve after
         // solve. Fixed means fixed: position AND orientation.
-        if (parts[i].fixed) {
-          transforms[handle] = { ...parts[i].transform }
+        if (part.fixed) {
+          transforms[part.handle] = { ...part.transform }
           continue
         }
-        transforms[handle] = makeTransform(
+        transforms[part.handle] = makeTransform(
           [
-            decoded.paramsSolved[i * BPB + 0],
-            decoded.paramsSolved[i * BPB + 1],
-            decoded.paramsSolved[i * BPB + 2],
+            decoded.paramsSolved[bodyIndex * BPB + 0],
+            decoded.paramsSolved[bodyIndex * BPB + 1],
+            decoded.paramsSolved[bodyIndex * BPB + 2],
           ],
           [
-            decoded.paramsSolved[i * BPB + 3],
-            decoded.paramsSolved[i * BPB + 4],
-            decoded.paramsSolved[i * BPB + 5],
-            decoded.paramsSolved[i * BPB + 6],
+            decoded.paramsSolved[bodyIndex * BPB + 3],
+            decoded.paramsSolved[bodyIndex * BPB + 4],
+            decoded.paramsSolved[bodyIndex * BPB + 5],
+            decoded.paramsSolved[bodyIndex * BPB + 6],
           ],
         )
+      }
+      status = {
+        verdict: mateVerdict(decoded.overallStatus),
+        residualNorm: decoded.residualNorm,
+        rank: decoded.rank,
+        dof: decoded.dof,
+        iters: decoded.iters,
+        mates: mateResults,
+        parts: partResults,
       }
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : String(e)
@@ -635,25 +698,35 @@ export async function solveAssembly(
       // WASM trap here is a solver bug, not a modelling one, and the guard used
       // to be `if (!mateResults[mate.id])` -- which never fired, because every
       // solvable mate was already recorded above. The failure was invisible.
-      solveError = errMsg
       for (const part of parts) {
         transforms[part.handle] = { ...part.transform }
       }
       for (const mate of mates) {
-        mateResults[mate.id] = { ...mateResults[mate.id], error: errMsg }
+        mateResults[mate.id] = { ...mateResults[mate.id], stale: true, error: errMsg }
+      }
+      status = {
+        verdict: 'failed', residualNorm: 0, rank: 0, dof: 0, iters: 0,
+        error: errMsg, mates: mateResults, parts: partResults,
       }
     }
   } else if (!solveMateFn && mateRecords.length > 0) {
     // No solver, but mates exist: warn so the user knows why mates do nothing.
     // The scene still draws at the placed seeds.
-    solveError = 'Mate solver not available.'
     for (const part of parts) {
       transforms[part.handle] = { ...part.transform }
+    }
+    status = {
+      verdict: 'unavailable', residualNorm: 0, rank: 0, dof: 0, iters: 0,
+      error: 'Mate solver not available.', mates: mateResults, parts: partResults,
     }
   } else {
     // No solver or no mates: echo the placed transforms
     for (const part of parts) {
       transforms[part.handle] = { ...part.transform }
+    }
+    status = {
+      verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0,
+      mates: mateResults, parts: partResults,
     }
   }
 
@@ -698,5 +771,5 @@ export async function solveAssembly(
     transformedBodies[part.handle] = transformed
   }
 
-  return { transforms, bodies: transformedBodies, anchors: posedAnchors, mateResults, solveError }
+  return { transforms, bodies: transformedBodies, anchors: posedAnchors, status }
 }

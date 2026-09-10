@@ -31,7 +31,7 @@ const ENTITY_MATE_REFS: EntityMateRefs = {
 
 const SOLVE_RESULT: AssemblySolveResult = {
   transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: ENTITY_MATE_REFS, anchors: {},
-  pickGeometry: [], mateResults: {},
+  pickGeometry: [], solveStatus: null,
 }
 
 /** Resolver order at a corner: the vertex wins, the edge sits behind it. */
@@ -266,10 +266,13 @@ describe('mate results', () => {
   it('a solve publishes the per-mate stale flags', () => {
     getState().setSolveResult({
       ...SOLVE_RESULT,
-      mateResults: { m1: { stale: true, staleRefs: ['ref_b'] } },
+      solveStatus: {
+        verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0,
+        mates: { m1: { stale: true, staleRefs: ['ref_b'] } }, parts: {},
+      },
     })
-    expect(getState().mateResults.m1.stale).toBe(true)
-    expect(getState().mateResults.m1.staleRefs).toEqual(['ref_b'])
+    expect(getState().solveStatus!.mates.m1.stale).toBe(true)
+    expect(getState().solveStatus!.mates.m1.staleRefs).toEqual(['ref_b'])
   })
 
   // The mate and its dead reference are retained: fail-safe over fail-wrong. The
@@ -277,7 +280,13 @@ describe('mate results', () => {
   it('a stale result does not clear the reference it flagged', () => {
     getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
     getState().pickFromHitsOrCycle([{ entityKey: VERT }])
-    getState().setSolveResult({ ...SOLVE_RESULT, mateResults: { m1: { stale: true, staleRefs: ['ref_a'] } } })
+    getState().setSolveResult({
+      ...SOLVE_RESULT,
+      solveStatus: {
+        verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0,
+        mates: { m1: { stale: true, staleRefs: ['ref_a'] } }, parts: {},
+      },
+    })
     expect(currentMate('m1').ref_a).toEqual({ part: PART, anchor: 'a_v' })
   })
 

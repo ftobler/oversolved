@@ -291,7 +291,7 @@ export function MateEditor({
             <span className="feature-field-label">{REF_TITLES[field]}</span>
             <button
               type="button"
-              className={chipClass(mate[field], staleRefs.has(field), picking)}
+              className={chipClass(mate[field], staleRefs.has(field) || !!result?.error, picking)}
               aria-pressed={picking}
               onClick={() => onArmField(picking ? null : { featureId, field })}
             >
@@ -313,6 +313,10 @@ export function MateEditor({
           </div>
         )
       })}
+
+      {/* The mate's own cause (an unsupported kind, a solver trap) named right
+          where the user is editing, so the chip's red is not a mystery. */}
+      {result?.error && <span className="mate-param-hint">{result.error}</span>}
 
       <div className="mate-param-list">{mateParams(mate.kind).map(renderParam)}</div>
     </div>

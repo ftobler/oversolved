@@ -73,6 +73,10 @@ pub struct MateProblem {
     /// pose. The editor's authoring capture derives its `angle` from the same
     /// frames (utils/mateOrientation.ts must mirror `canonical_perp` exactly).
     roll_frames: Vec<Option<([f64; 3], [f64; 3])>>,
+    /// Characteristic drawing length: the AABB diagonal over the seed body
+    /// translations and the mate anchors' local points, floored at 1.0. See
+    /// `geometry_scale`.
+    scale: f64,
 }
 
 /// How much stiffer the LM step damps a body's rotation params than its
@@ -122,6 +126,44 @@ fn mate_residual_count(kind: MateKind) -> usize {
         MateKind::CopyRotation => 1,
         MateKind::ParallelPlaneDistance => 2,
     }
+}
+
+/// Characteristic drawing length for the relative `mate_status` threshold.
+///
+/// Built from the AABB diagonal over the seed body translations and the mate
+/// anchors' local points. The wire carries anchor points as f32, so the f32
+/// quantum is proportional to the drawing size; scaling the threshold with the
+/// geometry keeps a correctly solved 1e4 mm assembly from reading as
+/// overconstrained purely from rounding. The floor at 1.0 preserves the
+/// historical absolute 1e-4 behaviour for models under one unit.
+fn geometry_scale(x0: &[f64], mates: &[Mate]) -> f64 {
+    let mut min = [f64::INFINITY; 3];
+    let mut max = [f64::NEG_INFINITY; 3];
+    let mut add = |p: [f64; 3]| {
+        for i in 0..3 {
+            if p[i] < min[i] {
+                min[i] = p[i];
+            }
+            if p[i] > max[i] {
+                max[i] = p[i];
+            }
+        }
+    };
+    for bi in 0..(x0.len() / 7) {
+        let off = bi * 7;
+        add([x0[off], x0[off + 1], x0[off + 2]]);
+    }
+    for m in mates {
+        add(m.a.geometry.point);
+        add(m.b.geometry.point);
+    }
+    if !min[0].is_finite() {
+        return 1.0;
+    }
+    let dx = max[0] - min[0];
+    let dy = max[1] - min[1];
+    let dz = max[2] - min[2];
+    (dx * dx + dy * dy + dz * dz).sqrt().max(1.0)
 }
 
 impl MateProblem {
@@ -204,6 +246,8 @@ impl MateProblem {
             }
         }
 
+        let scale = geometry_scale(&x0, &mates);
+
         MateProblem {
             n,
             x0,
@@ -214,7 +258,15 @@ impl MateProblem {
             seed_axes,
             seed_twist,
             roll_frames,
+            scale,
         }
+    }
+
+    /// Characteristic length of the drawing, floored at 1.0. `mate_status`
+    /// multiplies its relative residual tolerance by this so the threshold
+    /// tracks the model rather than an absolute distance in the wire's units.
+    pub fn geometry_scale(&self) -> f64 {
+        self.scale
     }
 
     /// Absolute roll: the signed angle from A's canonical reference direction to
@@ -1249,12 +1301,19 @@ fn singular_value_cutoff(smax: f64) -> f64 {
     }
 }
 
+/// Relative factor for the `mate_status` residual tolerance. The RMS residual
+/// threshold is `RESIDUAL_REL_TOL * scale`, so the same assembly reads the same
+/// regardless of the drawing unit.
+const RESIDUAL_REL_TOL: f64 = 1e-4;
+
 /// `residual_norm` is an L2 norm over `m` residuals, so it grows with the
 /// number of mates even when every individual residual is converged to the
 /// same tolerance -- an absolute threshold here would flag a large,
 /// correctly-solved assembly as overconstrained. Scale to an RMS-per-residual
-/// figure so the threshold means the same thing regardless of problem size.
-fn mate_status(residual_norm: f64, m: usize, dof: usize) -> MateStatus {
+/// figure so the threshold means the same thing regardless of problem size,
+/// then compare against the tolerance relative to the drawing's characteristic
+/// length `scale` so it also means the same thing regardless of unit.
+fn mate_status(residual_norm: f64, m: usize, dof: usize, scale: f64) -> MateStatus {
     // A non-finite norm means NaN reached the residuals (the wire codec gates
     // its floats, but a host can still seed an in-memory MateInput with one).
     // It must classify as the failing state and never as FullyConstrained:
@@ -1265,7 +1324,7 @@ fn mate_status(residual_norm: f64, m: usize, dof: usize) -> MateStatus {
         return MateStatus::Overconstrained;
     }
     let rms_residual = if m > 0 { residual_norm / (m as f64).sqrt() } else { 0.0 };
-    if rms_residual > 1e-4 {
+    if rms_residual > RESIDUAL_REL_TOL * scale {
         MateStatus::Overconstrained
     } else if dof > 0 {
         MateStatus::Underconstrained
@@ -1341,7 +1400,7 @@ fn solve_mate_with_budget(input: &MateInput, budget: usize) -> MateOutput {
     };
     let rank = (n - dof) as u32;
 
-    let status = mate_status(lm_result.residual_norm, m, dof);
+    let status = mate_status(lm_result.residual_norm, m, dof, problem.geometry_scale());
 
     let params_solved: Vec<f32> = lm_result.x.iter().map(|&v| v as f32).collect();
 
@@ -1619,10 +1678,25 @@ mod tests {
         // assembly" (m = 10_000) that is actually converged fine per-residual
         // (rms = 0.005 / sqrt(10_000) = 5e-5), the scaled threshold correctly
         // does not flag it -- the old absolute threshold would have.
-        assert_eq!(mate_status(0.005, 10_000, 0), MateStatus::FullyConstrained);
+        assert_eq!(mate_status(0.005, 10_000, 0, 1.0), MateStatus::FullyConstrained);
         // Same absolute residual_norm, concentrated in a single residual
         // (m = 1): genuinely overconstrained, still flagged.
-        assert_eq!(mate_status(0.005, 1, 0), MateStatus::Overconstrained);
+        assert_eq!(mate_status(0.005, 1, 0, 1.0), MateStatus::Overconstrained);
+    }
+
+    #[test]
+    fn overconstrained_threshold_scales_with_drawing_scale_not_absolute_residual() {
+        // The threshold is relative to the drawing's characteristic length:
+        // the same residual that fails at unit scale passes once the model is
+        // large enough that the residual is small against the geometry.
+        assert_eq!(mate_status(9.9, 1, 0, 1.0), MateStatus::Overconstrained);
+        assert_eq!(mate_status(9.9, 1, 0, 1e6), MateStatus::FullyConstrained);
+        // The concrete wire case: the f32 quantum at a 1e4-unit layout is
+        // about 6e-4, so the old absolute 1e-4 threshold flagged a correctly
+        // solved assembly as Overconstrained. Relative to the drawing it
+        // passes.
+        assert_eq!(mate_status(6e-4, 1, 0, 1.0), MateStatus::Overconstrained);
+        assert_eq!(mate_status(6e-4, 1, 0, 1e4), MateStatus::FullyConstrained);
     }
 
     #[test]
@@ -3028,6 +3102,35 @@ mod tests {
         // of freedom purely from the drawing unit.
         for scale in [1.0_f64, 1e-7, 1e-9] {
             let out = solve_mate(&three_spherical_weld_input(scale));
+            assert_eq!(out.diagnostics.dof, 0, "scale {scale:e}: dof must not depend on units");
+            assert_eq!(
+                out.overall_status,
+                MateStatus::FullyConstrained.to_u8(),
+                "scale {scale:e}: status must not depend on units"
+            );
+        }
+    }
+
+    #[test]
+    fn status_survives_large_scale_drawing_units() {
+        // One satisfiable fixed mate at unit scale and the same geometry drawn
+        // 1e4 times larger. Both must report FullyConstrained: the f32 wire
+        // quantum at 1e4 units is about 6e-4, so the old absolute 1e-4
+        // threshold read the scaled solve as Overconstrained.
+        let weld = |scale: f64| MateInput {
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                (4.0 * scale) as f32, (3.0 * scale) as f32, (2.0 * scale) as f32, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Fixed,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                false, 0.0, 1.0, 0.0)],
+        };
+        for scale in [1.0_f64, 1e4] {
+            let out = solve_mate(&weld(scale));
             assert_eq!(out.diagnostics.dof, 0, "scale {scale:e}: dof must not depend on units");
             assert_eq!(
                 out.overall_status,

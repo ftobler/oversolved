@@ -31,6 +31,7 @@ import {
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
 import { assemblyBodyId } from '@/utils/assemblyBodies'
+import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 
 function meshPayload() {
   return {
@@ -56,7 +57,7 @@ const okResponse = {
   id: 1,
   kind: 'solveAssembly' as const,
   ok: true as const,
-  payload: { transforms: {}, bodies: {}, mateResults: {} },
+  payload: { transforms: {}, bodies: {} },
 }
 
 describe('partSpecs / mateSpecs', () => {
@@ -299,8 +300,28 @@ describe('useAssemblySolve', () => {
 
     await act(async () => { result.current.requestSolve() })
 
-    expect(useAssemblyStore.getState().solveError).toMatch(/unavailable/)
+    expect(useAssemblyStore.getState().solveStatus?.error).toMatch(/unavailable/)
     expect(useAssemblyStore.getState().isSolving).toBe(false)
+  })
+
+  it('stores an overconstrained verdict from the payload so the banner predicate is true', async () => {
+    h.solveAssemblyViaWorker.mockResolvedValue({
+      id: 1, kind: 'solveAssembly' as const, ok: true as const,
+      payload: {
+        transforms: {}, bodies: {},
+        status: {
+          verdict: 'overconstrained', residualNorm: 0.5, rank: 0, dof: 0, iters: 1,
+          mates: { m1: { stale: false } }, parts: {},
+        },
+      },
+    })
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
+
+    await act(async () => { result.current.requestSolve() })
+
+    const status = useAssemblyStore.getState().solveStatus
+    expect(status?.verdict).toBe('overconstrained')
+    expect(assemblyVerdict(status).failed).toBe(true)
   })
 
   it('a live drag drops the grabbed part from the re-keyed body/edge dicts', async () => {
@@ -324,7 +345,6 @@ describe('useAssemblySolve', () => {
         // Keyed by handle: the grabbed part comes back pinned at pose+delta.
         transforms: { p1: { ...IDENTITY_TRANSFORM, tx: 10 }, p2: { ...IDENTITY_TRANSFORM } },
         bodies: { p1: [meshPayload()], p2: [meshPayload()] },
-        mateResults: {},
       },
     })
 

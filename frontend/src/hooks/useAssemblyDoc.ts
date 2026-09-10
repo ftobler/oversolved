@@ -63,8 +63,9 @@ export function useAssemblyDoc(uuid: string | undefined) {
 
   const instances = useMemo(() => partInstances(doc), [doc])
 
-  // Feature id included: `mateResults` is keyed by it, so the tree cannot mark a
-  // stale mate red without knowing which feature each row came from.
+  // Feature id included: the solve status keys its per-mate marks by it, so the
+  // tree cannot mark a stale mate red without knowing which feature each row
+  // came from.
   const mates = useMemo(() => (doc ? mateFeatures(doc) : []), [doc])
 
   const saveDoc = useCallback(async (uuid: string, document: AssemblyDoc, screenshot?: () => Promise<string | null>) => {

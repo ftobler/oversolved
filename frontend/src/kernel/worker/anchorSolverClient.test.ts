@@ -119,7 +119,7 @@ describe('solveAssemblyViaWorker', () => {
     // Simulate worker response
     fakeWorker.reply({
       id: req.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: { p1: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { p1: [] }, anchors: {}, mateResults: {} },
+      payload: { transforms: { p1: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { p1: [] }, anchors: {} },
     })
 
     const result = await resultPromise
@@ -163,7 +163,7 @@ describe('solveAssemblyViaWorker', () => {
 
     fakeWorker.reply({
       id: req.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+      payload: { transforms: {}, bodies: {}, anchors: {} },
     })
     await expect(prom).resolves.not.toBeNull()
   })
@@ -185,11 +185,11 @@ describe('solveAssemblyViaWorker', () => {
     const req2 = w2.posted[0] as SolveAssemblyRequest
     oldWorker.reply({
       id: req2.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: { stale: { tx: 9, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: {}, anchors: {}, mateResults: {} },
+      payload: { transforms: { stale: { tx: 9, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: {}, anchors: {} },
     })
     w2.reply({
       id: req2.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: { fresh: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: {}, anchors: {}, mateResults: {} },
+      payload: { transforms: { fresh: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: {}, anchors: {} },
     })
     const res = await p2
     expect(res?.payload.transforms).toEqual({ fresh: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } })
@@ -210,8 +210,8 @@ describe('solveAssemblyViaWorker', () => {
     )
 
     const [r1, r2] = fakeWorker.posted as SolveAssemblyRequest[]
-    fakeWorker.reply({ id: r1.id, kind: 'solveAssembly', ok: true, payload: { transforms: { a: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { a: [] }, anchors: {}, mateResults: {} } })
-    fakeWorker.reply({ id: r2.id, kind: 'solveAssembly', ok: true, payload: { transforms: { b: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { b: [] }, anchors: {}, mateResults: {} } })
+    fakeWorker.reply({ id: r1.id, kind: 'solveAssembly', ok: true, payload: { transforms: { a: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { a: [] }, anchors: {} } })
+    fakeWorker.reply({ id: r2.id, kind: 'solveAssembly', ok: true, payload: { transforms: { b: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }, bodies: { b: [] }, anchors: {} } })
 
     const [v1, v2] = await Promise.all([p1, p2])
     expect(v1?.payload.transforms).toHaveProperty('a')
@@ -240,7 +240,7 @@ describe('solveAssemblyViaWorker', () => {
     const req = fakeWorker.posted[0] as SolveAssemblyRequest
     fakeWorker.reply({
       id: req.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+      payload: { transforms: {}, bodies: {}, anchors: {} },
     })
     const res = await p
     expect(res).not.toBeNull()
@@ -260,7 +260,7 @@ describe('solveAssemblyViaWorker', () => {
     const req = worker.posted[0] as SolveAssemblyRequest
     worker.reply({
       id: req.id, kind: 'solveAssembly', ok: true,
-      payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+      payload: { transforms: {}, bodies: {}, anchors: {} },
     })
     await expect(p).resolves.not.toBeNull()
   }
@@ -376,7 +376,7 @@ describe('solveAssemblyViaWorker', () => {
       const req = fakeWorker.posted[0] as SolveAssemblyRequest
       fakeWorker.reply({
         id: req.id, kind: 'solveAssembly', ok: true,
-        payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+        payload: { transforms: {}, bodies: {}, anchors: {} },
       })
       await expect(p).resolves.not.toBeNull()
     })
@@ -396,7 +396,7 @@ describe('solveAssemblyViaWorker', () => {
       const req2 = w2.posted[0] as SolveAssemblyRequest
       w2.reply({
         id: req2.id, kind: 'solveAssembly', ok: true,
-        payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+        payload: { transforms: {}, bodies: {}, anchors: {} },
       })
       await expect(p2).resolves.not.toBeNull()
     })
@@ -419,7 +419,7 @@ describe('solveAssemblyViaWorker', () => {
       const req = fakeWorker.posted[0] as SolveAssemblyRequest
       fakeWorker.reply({
         id: req.id, kind: 'solveAssembly', ok: true,
-        payload: { transforms: {}, bodies: {}, anchors: {}, mateResults: {} },
+        payload: { transforms: {}, bodies: {}, anchors: {} },
       })
       await expect(p).resolves.not.toBeNull()
       vi.advanceTimersByTime(5000)  // past the ceiling: no spurious terminate

@@ -13,7 +13,7 @@
 import type { RebuildValidation } from '../builder'
 import type { PartBundle } from '../partBundle'
 import type { Transform3D } from '../../types/cad'
-import type { MateSpec, MateResult, MeshPayload, AnchorPose } from '../solveAssembly'
+import type { MateSpec, AssemblySolveStatus, MeshPayload, AnchorPose } from '../solveAssembly'
 
 /** Solve options that survive a structured clone (the OCC-free subset). */
 export interface SolveRequestOptions {
@@ -163,9 +163,10 @@ export interface AssemblySolveOkResponse {
     transforms: Record<string, Transform3D>
     bodies: Record<string, MeshPayload[]>
     anchors: Record<string, Record<string, AnchorPose>>
-    mateResults: Record<string, MateResult>
-    // The mate solve trapped; transforms are the placed seeds.
-    solveError?: string
+    /** The whole solve verdict: overall status plus per-mate and per-part marks.
+     *  Optional because a response crossing a structured clone can arrive from a
+     *  worker built before the carrier existed. */
+    status?: AssemblySolveStatus
   }
 }
 

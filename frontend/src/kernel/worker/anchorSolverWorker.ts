@@ -206,8 +206,7 @@ export async function handleSolveAssembly(
         transforms: result.transforms,
         bodies: result.bodies,
         anchors: result.anchors,
-        mateResults: result.mateResults,
-        solveError: result.solveError,
+        status: result.status,
       },
     }
   } catch (e) {

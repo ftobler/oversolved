@@ -74,7 +74,6 @@ function solveResponse(tx: number) {
     payload: {
       transforms: { p1: { ...IDENTITY_TRANSFORM, tx } },
       bodies: { p1: [meshPayload()] },
-      mateResults: {},
     },
   }
 }
@@ -89,7 +88,7 @@ describe('useAssemblySolve staleness', () => {
     // store-owned, so setSnapshot above does not reset them.
     useAssemblyStore.setState({
       manipulation: null, gizmoDrag: null, settlingOffsets: {},
-      pickScopeEntity: null, hoverHits: [],
+      pickScopeEntity: null, hoverHits: [], solveStatus: null,
     })
     setAssemblyCallbacks(null)
   })
@@ -159,7 +158,6 @@ describe('useAssemblySolve staleness', () => {
       payload: {
         transforms: { p1: { ...IDENTITY_TRANSFORM, tx }, p2: { ...IDENTITY_TRANSFORM, tx } },
         bodies: { p1: [meshPayload()], p2: [meshPayload()] },
-        mateResults: {},
       },
     })
     let releaseA!: () => void
@@ -266,7 +264,6 @@ describe('useAssemblySolve staleness', () => {
       payload: {
         transforms: { p1: { ...IDENTITY_TRANSFORM, tx }, p2: { ...IDENTITY_TRANSFORM, tx } },
         bodies: { p1: [meshPayload()], p2: [meshPayload()] },
-        mateResults: {},
       },
     })
     let releaseA!: () => void
@@ -292,11 +289,11 @@ describe('useAssemblySolve staleness', () => {
     await act(async () => {})  // the queued live tick starts and blocks on its gate
 
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
-    expect(useAssemblyStore.getState().solveError).toBe(null)  // stale failure dropped
+    expect(useAssemblyStore.getState().solveStatus?.error).toBeUndefined()  // stale failure dropped
 
     await act(async () => { releaseB(); await gateB })
     const store = useAssemblyStore.getState()
-    expect(store.solveError).toBe(null)
+    expect(store.solveStatus?.error).toBeUndefined()
     expect(store.transforms.p2.tx).toBe(5)  // the live tick applied its result
     expect(store.isSolving).toBe(false)
 

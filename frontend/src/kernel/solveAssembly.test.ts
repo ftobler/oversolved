@@ -31,6 +31,7 @@ vi.mock('./bundleCache', async (importOriginal) => {
 })
 import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '../utils/assemblyBuiltins'
 import { sampleEdgeCurve } from '../utils/edgeSampling'
+import { mateFailure, partFailure } from '../utils/core/assemblyStatus'
 import { anchorIdFor, BUNDLE_SCHEMA, type Anchor, type AnchorKind, type PartBundle } from './partBundle'
 import type { Transform3D } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
@@ -310,7 +311,7 @@ describe('solveAssembly', () => {
     expect(result.transforms).toEqual({ p1: translationTransform(1, 2, 3) })
     expect(result.bodies).toHaveProperty('p1')
     expect(result.bodies['p1']).toHaveLength(1)
-    expect(result.mateResults).toEqual({})
+    expect(result.status.mates).toEqual({})
     // No relay calls since cache hit
     expect(vi.mocked(relay.requestPartDoc)).not.toHaveBeenCalled()
   })
@@ -454,8 +455,8 @@ describe('solveAssembly', () => {
     expect(result.transforms).toHaveProperty('p2')
     expect(result.bodies).toHaveProperty('p1')
     expect(result.bodies).toHaveProperty('p2')
-    expect(result.mateResults).toHaveProperty('m1')
-    expect(result.mateResults['m1'].stale).toBe(false)
+    expect(result.status.mates).toHaveProperty('m1')
+    expect(result.status.mates['m1'].stale).toBe(false)
     // No relay calls (both cache hits)
     expect(relay.requestPartDoc).not.toHaveBeenCalled()
   })
@@ -820,8 +821,8 @@ describe('solveAssembly', () => {
 
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
 
-    expect(result.mateResults['m1'].stale).toBe(true)
-    expect(result.mateResults['m1'].staleRefs).toContain('ref_b')
+    expect(result.status.mates['m1'].stale).toBe(true)
+    expect(result.status.mates['m1'].staleRefs).toContain('ref_b')
   })
 
   it('flags a mate as stale when part is missing', async () => {
@@ -844,8 +845,8 @@ describe('solveAssembly', () => {
 
     const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, makeEchoSolver())
 
-    expect(result.mateResults['m1'].stale).toBe(true)
-    expect(result.mateResults['m1'].staleRefs).toContain('ref_b')
+    expect(result.status.mates['m1'].stale).toBe(true)
+    expect(result.status.mates['m1'].staleRefs).toContain('ref_b')
   })
 
   // ─── deterministic anchor ids + stale-bundle remap (cache-fallthrough) ───
@@ -872,13 +873,13 @@ describe('solveAssembly', () => {
     const revs = { 'doc-a': 1, 'doc-b': 1 }
 
     const r1 = await solveAssembly(parts, revs, mates, relay, makeEchoSolver())
-    expect(r1.mateResults['m1'].stale).toBe(false)
+    expect(r1.status.mates['m1'].stale).toBe(false)
 
     // A cache wipe strands the cached bundles; the cold rebuild must mint the
     // same deterministic ids, so the persisted refs still resolve.
     freshDb()
     const r2 = await solveAssembly(parts, revs, mates, relay, makeEchoSolver())
-    expect(r2.mateResults['m1'].stale).toBe(false)
+    expect(r2.status.mates['m1'].stale).toBe(false)
   })
 
   it('persisted mate refs survive a schema bump: the stale bundle still serves the remap chain', async () => {
@@ -907,7 +908,7 @@ describe('solveAssembly', () => {
     // The stale bundles were cold-rebuilt (relay called) and the remap chain
     // re-keyed the refs' random ids, so the mate is not stale-red.
     expect(relay.requestPartDoc).toHaveBeenCalled()
-    expect(result.mateResults['m1'].stale).toBe(false)
+    expect(result.status.mates['m1'].stale).toBe(false)
   })
 
   it('re-parents a ref holding a deterministic id onto the geometrically identical anchor when the dict was re-keyed', async () => {
@@ -940,7 +941,7 @@ describe('solveAssembly', () => {
     ]
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
 
-    expect(result.mateResults['m1'].stale).toBe(false)
+    expect(result.status.mates['m1'].stale).toBe(false)
   })
 
   it('refuses the geom_hash fallback when two anchors hash to one id (tier-1 collision)', async () => {
@@ -975,8 +976,8 @@ describe('solveAssembly', () => {
     ]
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
 
-    expect(result.mateResults['m1'].stale).toBe(true)
-    expect(result.mateResults['m1'].staleRefs).toContain('ref_a')
+    expect(result.status.mates['m1'].stale).toBe(true)
+    expect(result.status.mates['m1'].staleRefs).toContain('ref_a')
   })
 
   it('does not re-parent a stale random id onto an unrelated anchor (deleted element stays stale)', async () => {
@@ -998,8 +999,8 @@ describe('solveAssembly', () => {
     ]
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
 
-    expect(result.mateResults['m1'].stale).toBe(true)
-    expect(result.mateResults['m1'].staleRefs).toContain('ref_a')
+    expect(result.status.mates['m1'].stale).toBe(true)
+    expect(result.status.mates['m1'].staleRefs).toContain('ref_a')
   })
 
   // ─── error handling ───
@@ -1084,10 +1085,11 @@ describe('solveAssembly', () => {
     const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, null)
 
     expect(result.transforms['p1']).toEqual(translationTransform(1, 2, 3))
-    expect(result.solveError).toBeUndefined()
+    expect(result.status.verdict).toBe('none')
+    expect(result.status.error).toBeUndefined()
   })
 
-  it('sets solveError when solver is null but mates exist', async () => {
+  it('reports an unavailable solver when solver is null but mates exist', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
@@ -1104,7 +1106,8 @@ describe('solveAssembly', () => {
     ]
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, null)
 
-    expect(result.solveError).toContain('Mate solver not available.')
+    expect(result.status.verdict).toBe('unavailable')
+    expect(result.status.error).toContain('Mate solver not available.')
     // Scene still draws at the placed seeds.
     expect(result.transforms['p1']).toEqual(identityTransform())
     expect(result.transforms['p2']).toEqual(translationTransform(5, 0, 0))
@@ -1116,7 +1119,7 @@ describe('solveAssembly', () => {
 
     expect(result.transforms).toEqual({})
     expect(result.bodies).toEqual({})
-    expect(result.mateResults).toEqual({})
+    expect(result.status.mates).toEqual({})
   })
 
   // ─── assembly built-ins as ground (Stage 6c) ───
@@ -1141,7 +1144,7 @@ describe('solveAssembly', () => {
     const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, solver)
 
     // The mate resolved (not stale) and the part got a solved transform.
-    expect(result.mateResults['m1'].stale).toBe(false)
+    expect(result.status.mates['m1'].stale).toBe(false)
     expect(result.transforms).toHaveProperty('p1')
     // The assembly frame is synthetic: it never appears as an output transform.
     expect(result.transforms).not.toHaveProperty(ASSEMBLY_HANDLE)
@@ -1177,8 +1180,8 @@ describe('solveAssembly', () => {
     ]
     const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, makeEchoSolver())
 
-    expect(result.mateResults['m1'].stale).toBe(true)
-    expect(result.mateResults['m1'].staleRefs).toContain('ref_b')
+    expect(result.status.mates['m1'].stale).toBe(true)
+    expect(result.status.mates['m1'].staleRefs).toContain('ref_b')
   })
 
   it('flags a mate stale with an error, not fixed, for an unknown mate kind', async () => {
@@ -1199,9 +1202,9 @@ describe('solveAssembly', () => {
     const { solver, captured } = makeCaptureSolver()
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
 
-    expect(result.mateResults['bad'].stale).toBe(true)
-    expect(result.mateResults['bad'].error).toContain('not_a_real_kind')
-    expect(result.mateResults['ok'].stale).toBe(false)
+    expect(result.status.mates['bad'].stale).toBe(true)
+    expect(result.status.mates['bad'].error).toContain('not_a_real_kind')
+    expect(result.status.mates['ok'].stale).toBe(false)
     // The unknown mate contributes zero bytes to the encoded buffer -- not
     // coerced into a `fixed` (kindCode 0) record.
     expect(captured.input!.mates).toHaveLength(1)
@@ -1232,9 +1235,9 @@ describe('solveAssembly', () => {
     const { solver, captured } = makeCaptureSolver()
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
 
-    expect(result.mateResults['bad'].stale).toBe(true)
-    expect(result.mateResults['bad'].error).toContain('not_a_real_anchor_kind')
-    expect(result.mateResults['ok'].stale).toBe(false)
+    expect(result.status.mates['bad'].stale).toBe(true)
+    expect(result.status.mates['bad'].error).toContain('not_a_real_anchor_kind')
+    expect(result.status.mates['ok'].stale).toBe(false)
     expect(captured.input!.mates).toHaveLength(1)
   })
 
@@ -1256,13 +1259,13 @@ describe('solveAssembly', () => {
     const { solver, captured } = makeCaptureSolver()
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
 
-    expect(result.mateResults['self'].stale).toBe(true)
-    expect(result.mateResults['self'].error).toBe('a mate needs two different parts')
-    expect(result.mateResults['ok'].stale).toBe(false)
+    expect(result.status.mates['self'].stale).toBe(true)
+    expect(result.status.mates['self'].error).toBe('a mate needs two different parts')
+    expect(result.status.mates['ok'].stale).toBe(false)
     expect(captured.input!.mates).toHaveLength(1)
   })
 
-  it('sets solveError and falls back to seed transforms when the solve output has the wrong param count', async () => {
+  it('reports a failed solve and falls back to seed transforms when the solve output has the wrong param count', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
@@ -1286,9 +1289,124 @@ describe('solveAssembly', () => {
     }
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, shortSolver)
 
-    expect(result.solveError).toContain('params')
-    expect(result.mateResults['m1'].error).toContain('params')
+    expect(result.status.verdict).toBe('failed')
+    expect(result.status.error).toContain('params')
+    expect(result.status.mates['m1'].error).toContain('params')
     expect(result.transforms['p2']).toEqual(translationTransform(5, 0, 0))
+  })
+
+  it('isolates a part whose bundle cannot be built and keeps the healthy parts solved', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-good', { kind: 'part', features: [] })
+    // doc-bad is deliberately absent: requestPartDoc rejects with "not found".
+    await bundleCachePut(makeBundle('doc-good', 1))
+
+    const parts = [
+      { handle: 'hGood', doc_id: 'doc-good', doc_rev: 1, transform: identityTransform() },
+      { handle: 'hBad', doc_id: 'doc-bad', doc_rev: 1, transform: translationTransform(9, 0, 0) },
+    ]
+
+    const result = await solveAssembly(parts, { 'doc-good': 1, 'doc-bad': 1 }, [], relay, makeEchoSolver())
+
+    expect(result.status.parts['hBad']).toEqual({ failed: true, error: expect.stringContaining('not found') })
+    expect(result.status.parts['hGood']?.failed).toBeFalsy()
+    expect(result.transforms['hGood']).toEqual(identityTransform())
+    // A failed part keeps its seed placement so the document does not lose it.
+    expect(result.transforms['hBad']).toEqual(translationTransform(9, 0, 0))
+    expect(result.bodies['hGood']).toHaveLength(1)
+    expect(result.bodies['hBad']).toEqual([])
+    expect(partFailure('hBad', result.status).failed).toBe(true)
+    expect(partFailure('hGood', result.status).failed).toBe(false)
+  })
+
+  it('names an unsupported mate kind through the status carrier', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'worm_gear', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+
+    expect(result.status.mates['m1']).toEqual({ stale: true, error: "unsupported mate kind 'worm_gear'" })
+    expect(mateFailure('m1', result.status)).toEqual({
+      failed: true, level: 'error', message: "unsupported mate kind 'worm_gear'",
+    })
+  })
+
+  it('marks a mate whose solver trapped even without a stale flag, and sets stale too', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+    const trapping = () => { throw new Error('bad mate output magic') }
+
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, trapping)
+
+    expect(result.status.mates['m1'].error).toContain('bad mate output magic')
+    expect(result.status.mates['m1'].stale).toBe(true)
+    expect(mateFailure('m1', result.status)).toEqual({
+      failed: true, level: 'error', message: 'bad mate output magic',
+    })
+  })
+
+  it('carries an overconstrained verdict with its residual in the status', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+    ]
+    // The echo solver with status code 2 (overconstrained) and a nonzero
+    // residual: the real-WASM counterpart lives in solveAssemblyReal.test.ts.
+    const overSolver = (input: Uint8Array): Uint8Array => {
+      const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
+      const nBodies = view.getUint32(4, true)
+      const nParams = nBodies * 7
+      const paramsOffset = 20 + nBodies * 4
+      const outSize = 4 + 4 + 1 + nParams * 4 + 28
+      const out = new DataView(new ArrayBuffer(outSize))
+      let pos = 0
+      out.setUint32(pos, 0x5231544D, true); pos += 4
+      out.setUint32(pos, nParams, true); pos += 4
+      out.setUint8(pos, 2); pos += 1
+      for (let i = 0; i < nParams; i++) { out.setFloat32(pos, view.getFloat32(paramsOffset + i * 4, true), true); pos += 4 }
+      out.setFloat64(pos, 0.5, true); pos += 8
+      out.setUint32(pos, 13, true); pos += 4
+      out.setUint32(pos, 0, true); pos += 4
+      out.setUint32(pos, 1, true); pos += 4
+      out.setFloat64(pos, 0.001, true); pos += 8
+      return new Uint8Array(out.buffer)
+    }
+
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, overSolver)
+
+    expect(result.status.verdict).toBe('overconstrained')
+    expect(result.status.residualNorm).toBeGreaterThan(0)
   })
 
   // ─── fixed instances (Stage 6d) ───

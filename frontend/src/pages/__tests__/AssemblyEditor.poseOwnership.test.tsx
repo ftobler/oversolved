@@ -67,7 +67,7 @@ describe('AssemblyEditor pose ownership', () => {
     h.loadContent = 'kind: assembly\nfeatures: []'
     h.list = [{ uuid: 'part-1', name: 'Bracket', meta: { rev: 5 } }]
     h.solveAssemblyViaWorker.mockResolvedValue({
-      payload: { transforms: {}, bodies: {}, mateResults: {} },
+      payload: { transforms: {}, bodies: {} },
     })
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().setSelectedPartHandle(null)
@@ -92,7 +92,7 @@ describe('AssemblyEditor pose ownership', () => {
     let calls = 0
     h.solveAssemblyViaWorker.mockImplementation(() => {
       calls++
-      if (calls === 1) return Promise.resolve({ payload: { transforms: {}, bodies: {}, mateResults: {} } })
+      if (calls === 1) return Promise.resolve({ payload: { transforms: {}, bodies: {} } })
       return new Promise(() => {})
     })
 

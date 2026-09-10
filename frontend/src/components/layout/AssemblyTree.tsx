@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react'
 import type { PartInstance, MateFeature } from '@/types/cad'
-import type { MateResult } from '@/kernel/solveAssembly'
+import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
+import { mateFailure, partFailure } from '@/utils/core/assemblyStatus'
 import type { AssemblyBuiltinListItem } from '@/utils/assemblyRender'
 import { relatedMateIds, relatedPartHandles } from '@/utils/assemblyTreeHighlight'
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
@@ -30,8 +31,8 @@ interface AssemblyTreeProps {
   // The assembly's own origin and reference planes, hidden by default.
   builtins: AssemblyBuiltinListItem[]
   mates: MateFeature[]
-  // Per-mate solve outcome, keyed by feature id. A stale mate renders red.
-  mateResults?: Record<string, MateResult>
+  // The whole solve verdict. A failed part or mate renders red on its row.
+  status?: AssemblySolveStatus | null
   // Map from a part handle to a display label (the part document's name).
   labelFor?: (handle: string) => string | undefined
   // The selected instance is the one the transform triad attaches to (Stage 6d).
@@ -86,7 +87,7 @@ export function AssemblyTree({
   instances,
   builtins,
   mates,
-  mateResults,
+  status,
   labelFor,
   selectedHandle,
   selectedMateId,
@@ -206,6 +207,7 @@ export function AssemblyTree({
             const selected = selectedHandle === inst.handle
             const related = highlightedPartHandles.has(inst.handle)
             const editing = editingInstanceHandle === inst.handle
+            const failMark = partFailure(inst.handle, status ?? null)
             const menuItems: ContextMenuItem[] = [
               { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle) },
               { label: 'Duplicate', icon: contextDuplicateIcon, onClick: () => onDuplicateInstance(inst.handle) },
@@ -221,6 +223,7 @@ export function AssemblyTree({
                 key={inst.handle}
                 className={`feature-item${selected ? ' selected' : ''}${related ? ' related' : ''}${editing ? ' editing' : ''}${visible ? '' : ' invisible'}${dragOverKey === `part:${inst.handle}` ? ' drag-over' : ''}`}
                 aria-selected={selected}
+                title={failMark.failed ? failMark.message : undefined}
                 onClick={() => onSelectPart?.(inst.handle)}
                 // Not draggable while its inline editor is open: a draggable
                 // ancestor blocks the editor's inputs from taking focus.
@@ -244,7 +247,7 @@ export function AssemblyTree({
               >
                 <div className="feature-item-title">
                   <img className="feature-icon" src={featurePartIcon} alt="" />
-                  <span className="feature-name">{label}</span>
+                  <span className={`feature-name${failMark.failed ? ' feature-name-error' : ''}`}>{label}</span>
                   {/* A fixed part carries the fixed-mate glyph, greyed, after its
                       name -- the mark of the static frame without stealing a row
                       action. Opening the part now lives in the tridot menu. */}
@@ -346,7 +349,17 @@ export function AssemblyTree({
             kindOrdinal[mate.kind] = (kindOrdinal[mate.kind] ?? 0) + 1
             const defaultName = `${MATE_KIND_LABELS[mate.kind] ?? mate.kind} ${kindOrdinal[mate.kind]}`
             const name = mate.label || defaultName
-            const stale = !!mateResults?.[id]?.stale
+            const result = status?.mates[id]
+            const mateMark = mateFailure(id, status ?? null, [mate.ref_a.part, mate.ref_b.part])
+            // A bare unresolved reference keeps the legacy `.stale` look; a real
+            // cause (a trap, an unsupported kind, a failed part) reddens the name
+            // with its own message instead.
+            const refPartFailed = [mate.ref_a.part, mate.ref_b.part]
+              .some(p => partFailure(p, status ?? null).failed)
+            const bareStale = !!result?.stale && !result?.error && !refPartFailed
+            // A real cause reddens the name with its own class; a bare unresolved
+            // reference keeps the legacy `.stale` look.
+            const realCause = mateMark.failed && (!!result?.error || refPartFailed)
             const selected = selectedMateId === id
             const related = highlightedMateIds.has(id)
             const editing = editingMateId === id
@@ -357,9 +370,9 @@ export function AssemblyTree({
             return (
               <li
                 key={id}
-                className={`feature-item mate-item${stale ? ' stale' : ''}${selected ? ' selected' : ''}${related ? ' related' : ''}${editing ? ' editing' : ''}${dragOverKey === `mate:${id}` ? ' drag-over' : ''}`}
+                className={`feature-item mate-item${bareStale ? ' stale' : ''}${selected ? ' selected' : ''}${related ? ' related' : ''}${editing ? ' editing' : ''}${dragOverKey === `mate:${id}` ? ' drag-over' : ''}`}
                 aria-selected={selected}
-                title={stale ? 'A reference no longer resolves; re-pick it.' : undefined}
+                title={mateMark.failed ? mateMark.message : undefined}
                 onClick={() => onSelectMate?.(id)}
                 draggable={!editing}
                 onDragStart={(e) => { dragItemRef.current = { kind: 'mate', id }; e.dataTransfer.effectAllowed = 'move' }}
@@ -381,7 +394,7 @@ export function AssemblyTree({
               >
                 <div className="feature-item-title">
                   <img className="feature-icon" src={mateIcon} alt="" />
-                  <span className="feature-name">{name}</span>
+                  <span className={`feature-name${realCause ? ' feature-name-error' : ''}`}>{name}</span>
                   <div className="feature-item-actions">
                     {editing ? (
                       <>

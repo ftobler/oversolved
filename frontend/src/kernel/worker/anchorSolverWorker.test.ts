@@ -36,7 +36,8 @@ vi.mock('../solveAssembly', () => ({
   solveAssembly: vi.fn().mockResolvedValue({
     transforms: {},
     bodies: {},
-    mateResults: {},
+    anchors: {},
+    status: { verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0, mates: {}, parts: {} },
   }),
 }))
 
@@ -139,7 +140,10 @@ describe('handleSolveAssembly', () => {
       transforms: { p1: { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
       bodies: { p1: [] },
       anchors: {},
-      mateResults: { m1: { stale: false } },
+      status: {
+        verdict: 'fully_constrained' as const, residualNorm: 0, rank: 0, dof: 0, iters: 0,
+        mates: { m1: { stale: false } }, parts: {},
+      },
     }
     vi.mocked(solveAssembly).mockResolvedValue(mockResult)
 
@@ -148,7 +152,7 @@ describe('handleSolveAssembly', () => {
     const payload = (res as AssemblySolveOkResponse).payload
     expect(payload.transforms).toEqual(mockResult.transforms)
     expect(payload.bodies).toEqual(mockResult.bodies)
-    expect(payload.mateResults).toEqual(mockResult.mateResults)
+    expect(payload.status).toEqual(mockResult.status)
   })
 
   it('preserves request id in response', async () => {
@@ -554,16 +558,18 @@ describe('relay timeout + late bundle cache with solveAssembly', () => {
       const revs = { 'doc-a': 1 }
 
       // First solve: bundle cache miss, part doc answered in time, the build
-      // outruns its budget and the solve fails.
+      // outruns its budget. The timeout is isolated to the part (per-part
+      // failure isolation), so the solve resolves with a failed-part mark
+      // instead of rejecting the whole assembly.
       const first = real.solveAssembly(parts, revs, [], relay, null)
       await until(() => requests.some(r => r.subKind === 'partDocContent'), 'part doc relay')
       const partDocReq = requests.find(r => r.subKind === 'partDocContent')!
       handleRelayResponse({ kind: 'asr_relayRes', requestId: partDocReq.requestId, ok: true, payload: { kind: 'part', features: [] } })
       await until(() => requests.some(r => r.subKind === 'buildBundle'), 'build bundle relay')
       const buildReq = requests.find(r => r.subKind === 'buildBundle')!
-      const firstFails = expect(first).rejects.toThrow(/timed out/)
       await vi.advanceTimersByTimeAsync(1000)
-      await firstFails
+      const firstRes = await first
+      expect(firstRes.status.parts['p1']?.failed).toBe(true)
 
       // The finished build lands late and is cached instead of dropped.
       await handleRelayResponse({ kind: 'asr_relayRes', requestId: buildReq.requestId, ok: true, payload: makeBundle('doc-a', 1) })
@@ -692,7 +698,10 @@ describe('dispatcher', () => {
   it('routes a solveAssembly message through the actor and posts its response', async () => {
     // Earlier tests leave solveAssembly rejecting; pin the happy path here so
     // the job under test resolves.
-    vi.mocked(solveAssembly).mockResolvedValue({ transforms: {}, bodies: {}, anchors: {}, mateResults: {} })
+    vi.mocked(solveAssembly).mockResolvedValue({
+      transforms: {}, bodies: {}, anchors: {},
+      status: { verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0, mates: {}, parts: {} },
+    })
     const actor = new WorkerActor()
     const runSpy = vi.spyOn(actor, 'run')
     const posted: AssemblyWorkerResponse[] = []

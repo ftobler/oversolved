@@ -42,6 +42,7 @@ import {
   type MateParamPatch,
 } from '@/utils/assemblyMutations'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
+import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
@@ -112,8 +113,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
   const selectedMateId = useAssemblyStore(s => s.selectedMateId)
   const activeMateField = useAssemblyStore(s => s.activeMateField)
-  const mateResults = useAssemblyStore(s => s.mateResults)
-  const solveError = useAssemblyStore(s => s.solveError)
+  const solveStatus = useAssemblyStore(s => s.solveStatus)
   const showPickDebug = useAssemblyStore(s => s.showPickDebug)
 
   // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
@@ -228,8 +228,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // useAssemblyDoc resets the same fields before setDoc.
   //
   // resetTransientAssemblyState alone leaves the solved-scene fields (doc,
-  // instances, mates, bodies, transforms, edgeCurves, anchors, pickGeometry,
-  // mateResults) untouched, since those are React-mirrored via setSnapshot,
+  // instances, mates, bodies, transforms, edgeCurves, anchors, pickGeometry)
+  // untouched, since those are React-mirrored via setSnapshot,
   // not store-owned. Without also resetting them here, the module-level store
   // keeps assembly A's scene until assembly B's own first solve overwrites it,
   // so the very first render of B briefly paints A's stale bodies/transforms.
@@ -628,13 +628,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     <MateEditor
       featureId={mate.id}
       mate={mate.mate}
-      result={mateResults[mate.id]}
+      result={solveStatus?.mates[mate.id]}
       activeField={activeMateField}
       labelFor={labelFor}
       onArmField={handleArmMateField}
       onUpdate={patch => handleUpdateMate(mate.id, patch)}
     />
-  ), [mateResults, activeMateField, labelFor, handleArmMateField, handleUpdateMate])
+  ), [solveStatus, activeMateField, labelFor, handleArmMateField, handleUpdateMate])
+
+  const verdict = assemblyVerdict(solveStatus)
 
   if (loading) {
     return <div className="document-viewer"><p>Loading...</p></div>
@@ -664,7 +666,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             instances={instances}
             builtins={builtins}
             mates={mates}
-            mateResults={mateResults}
+            status={solveStatus}
             labelFor={labelFor}
             selectedHandle={selectedPartHandle}
             selectedMateId={selectedMateId}
@@ -733,11 +735,17 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
                 onCancelSolve slot, so the shared overlay renders the spinner and
                 cancel for a full (non-live) solve; it is opacity-0 when idle. */}
             <LoadingOverlay />
-            {(solveError || error) && (
+            {(verdict.failed || error) && (
               <ErrorBanner
-                message={solveError ? `Solver error: ${solveError}` : `Error: ${error}`}
+                message={verdict.failed ? `Solver error: ${verdict.message}` : `Error: ${error}`}
                 onDismiss={() => {
-                  useAssemblyStore.getState().setSolveError(null)
+                  // Retire only the verdict the banner reads; the per-mate and
+                  // per-part row marks stay, exactly as the old solveError clear
+                  // left mateResults in place.
+                  const current = useAssemblyStore.getState().solveStatus
+                  useAssemblyStore.setState({
+                    solveStatus: current ? { ...current, verdict: 'none', error: undefined } : null,
+                  })
                   setError(null)
                 }}
               />

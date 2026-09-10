@@ -70,7 +70,7 @@ async function renderLoaded() {
 describe('AssemblyEditor unsaved-changes prompting', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    h.solveAssemblyViaWorker.mockResolvedValue({ payload: { transforms: {}, bodies: {}, mateResults: {} } })
+    h.solveAssemblyViaWorker.mockResolvedValue({ payload: { transforms: {}, bodies: {} } })
     h.save.mockResolvedValue(undefined)
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useUnsavedChangesStore.getState().setDirty(false)

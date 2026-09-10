@@ -439,8 +439,8 @@ export interface MateFeatureDef {
 
 /**
  * An `AssemblyFeature` narrowed to a mate. The feature id travels with the def
- * because the solver keys `mateResults` by it: without the id a stale ref could
- * not be traced back to the row that must render red.
+ * because the solver keys its per-mate marks by it: without the id a stale ref
+ * could not be traced back to the row that must render red.
  */
 export interface MateFeature {
   id: string

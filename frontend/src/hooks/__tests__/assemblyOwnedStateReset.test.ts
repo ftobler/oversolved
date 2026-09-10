@@ -85,7 +85,6 @@ function fullSolveResponse(tx: number) {
       transforms: { pB: { ...IDENTITY_TRANSFORM, tx } },
       bodies: { pB: [meshPayload()] },
       anchors: {},
-      mateResults: {},
     },
   }
 }
@@ -218,7 +217,7 @@ describe('assembly owned state reset on doc swap', () => {
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
   })
 
-  it('a stale handle routes a failing solve to setSolveError, not the silent live path', async () => {
+  it('a stale handle routes a failing solve to a failed status, not the silent live path', async () => {
     const docA = docWith(instance('pA'))
     const docB = docWith(instance('pB'))
     h.solveAssemblyViaWorker.mockRejectedValue(new Error('solver boom'))
@@ -232,6 +231,6 @@ describe('assembly owned state reset on doc swap', () => {
 
     const store = useAssemblyStore.getState()
     expect(store.manipulation).toBeNull()
-    expect(store.solveError).toContain('solver boom')
+    expect(store.solveStatus?.error).toContain('solver boom')
   })
 })

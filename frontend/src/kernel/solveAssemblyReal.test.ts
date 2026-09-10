@@ -17,6 +17,7 @@ import { solveAssembly } from './solveAssembly'
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
 import { loadPkgNodeExport, PKG_MATE } from '../wasm-kernel/loadPkgNode'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
+import { assemblyVerdict } from '../utils/core/assemblyStatus'
 import type { Transform3D } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 
@@ -101,13 +102,39 @@ describeReal('solveAssembly with the real mate solver', () => {
 
     const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
 
-    expect(result.mateResults['m1'].stale).toBe(false)
-    expect(result.mateResults['m1'].error).toBeUndefined()
+    expect(result.status.mates['m1'].stale).toBe(false)
+    expect(result.status.mates['m1'].error).toBeUndefined()
     // The instance `fixed` pin is a soft residual, not a hard clamp, so `pa` drifts by
     // ~1e-6 rather than staying bit-exact at its seed.
     expect(dist(result.transforms['pa'])).toBeLessThan(0.001)
     // pb's anchor must land on pa's anchor, i.e. at the world origin.
     expect(dist(result.transforms['pb'])).toBeLessThan(0.01)
+  })
+
+  // An unsatisfiable-mate assembly has to tell the user instead of drawing the
+  // least-squares compromise in silence. Two fixed mates demand incompatible
+  // offsets (0 and 10 along A's axis) between the same pair, so no pose
+  // satisfies both; the Rust solve returns the overconstrained verdict and a
+  // positive residual, and the pure predicate turns that into a banner.
+  it('reports an overconstrained verdict for conflicting fixed mates', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
+    ]
+    const mates = [
+      { id: 'm1', kind: 'fixed' as const, offset: 0, ref_a: { part: 'pa', anchor: 'face' }, ref_b: { part: 'pb', anchor: 'face' } },
+      { id: 'm2', kind: 'fixed' as const, offset: 10, ref_a: { part: 'pa', anchor: 'face' }, ref_b: { part: 'pb', anchor: 'face' } },
+    ]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+
+    expect(result.status.verdict).toBe('overconstrained')
+    expect(result.status.residualNorm).toBeGreaterThan(0)
+    const mark = assemblyVerdict(result.status)
+    expect(mark.failed).toBe(true)
+    expect(mark.level).toBe('error')
+    expect(mark.message).toContain('m1')
+    expect(mark.message).toContain('m2')
   })
 
   it('leaves the fixed part exactly where it was placed', async () => {
@@ -155,7 +182,7 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(result.transforms['pa']).toEqual(seed)
     // The free part still solves onto it: the pin is not achieved by refusing
     // to solve.
-    expect(result.mateResults['m1'].error).toBeUndefined()
+    expect(result.status.mates['m1'].error).toBeUndefined()
     expect(dist({ ...result.transforms['pb'], tx: result.transforms['pb'].tx - seed.tx, ty: result.transforms['pb'].ty - seed.ty, tz: result.transforms['pb'].tz - seed.tz })).toBeLessThan(0.01)
   })
 
@@ -284,8 +311,9 @@ describeReal('solveAssembly with the real mate solver', () => {
 
     const result = await solveAssembly(parts, revs, mates, relay, trapping)
 
-    expect(result.solveError).toContain('unreachable')
-    expect(result.mateResults['m1'].error).toContain('unreachable')
+    expect(result.status.verdict).toBe('failed')
+    expect(result.status.error).toContain('unreachable')
+    expect(result.status.mates['m1'].error).toContain('unreachable')
     // The scene still draws, at the placed seeds.
     expect(result.transforms['pb'].tx).toBe(30)
   })

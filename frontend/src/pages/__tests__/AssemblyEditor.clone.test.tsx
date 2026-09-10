@@ -38,7 +38,7 @@ vi.mock('@/components/Viewport/AssemblyViewport', () => ({
   }),
 }))
 vi.mock('@/kernel/worker/anchorSolverClient', () => ({
-  solveAssemblyViaWorker: vi.fn(async () => ({ payload: { transforms: {}, bodies: {}, mateResults: {} } })),
+  solveAssemblyViaWorker: vi.fn(async () => ({ payload: { transforms: {}, bodies: {} } })),
   setRelayHandlers: vi.fn(),
   clearRelayHandlers: vi.fn(),
 }))
