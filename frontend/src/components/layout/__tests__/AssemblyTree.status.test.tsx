@@ -117,4 +117,27 @@ describe('AssemblyTree solve-status marks', () => {
     const row = rowByName(container, 'Fixed 1')
     expect(row.getAttribute('title')).toBe('The referenced part failed to load.')
   })
+
+  it('badges the assembly root row for overconstrained and underconstrained', () => {
+    const over = renderTree(status({ verdict: 'overconstrained', mates: { m1: { stale: false } } }))
+    const overRow = over.container.querySelector('.assembly-verdict')
+    expect(overRow).not.toBeNull()
+    expect(overRow!.className).toContain('assembly-verdict-error')
+    expect(overRow!.getAttribute('data-verdict')).toBe('overconstrained')
+    expect(overRow!.textContent).toContain('m1')
+    over.unmount()
+
+    const under = renderTree(status({ verdict: 'underconstrained', dof: 3 }))
+    const underRow = under.container.querySelector('.assembly-verdict')
+    expect(underRow).not.toBeNull()
+    expect(underRow!.className).toContain('assembly-verdict-warning')
+    expect(underRow!.getAttribute('data-verdict')).toBe('underconstrained')
+    // Informational: the row says how much freedom is left.
+    expect(underRow!.textContent).toContain('3')
+  })
+
+  it('shows no assembly root row for a fully constrained or trivial verdict', () => {
+    expect(renderTree(status()).container.querySelector('.assembly-verdict')).toBeNull()
+    expect(renderTree(status({ verdict: 'fully_constrained' })).container.querySelector('.assembly-verdict')).toBeNull()
+  })
 })

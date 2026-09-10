@@ -56,14 +56,14 @@ describe('assemblyVerdict', () => {
 describe('mateFailure', () => {
   it('marks an error even when stale is unset (the solver-trap shape)', () => {
     const status = stub({ mates: { m1: { error: 'bad mate output magic' } } })
-    expect(mateFailure('m1', status)).toEqual({
+    expect(mateFailure('m1', status)).toMatchObject({
       failed: true, level: 'error', message: 'bad mate output magic',
     })
   })
 
   it('renders the unsupported-kind cause rather than the re-pick text', () => {
     const status = stub({ mates: { m1: { stale: true, error: "unsupported mate kind 'worm_gear'" } } })
-    expect(mateFailure('m1', status)).toEqual({
+    expect(mateFailure('m1', status)).toMatchObject({
       failed: true, level: 'error', message: "unsupported mate kind 'worm_gear'",
     })
   })
@@ -79,7 +79,7 @@ describe('mateFailure', () => {
       mates: { m1: { stale: true, staleRefs: ['ref_a'] } },
       parts: { hBad: { failed: true, error: 'part doc not found: hBad' } },
     })
-    expect(mateFailure('m1', status, ['hBad', 'hGood'])).toEqual({
+    expect(mateFailure('m1', status, ['hBad', 'hGood'])).toMatchObject({
       failed: true, level: 'error', message: 'The referenced part failed to load.',
     })
   })
@@ -94,7 +94,7 @@ describe('mateFailure', () => {
 describe('partFailure', () => {
   it('marks a failed part and leaves healthy or absent ones alone', () => {
     const status = stub({ parts: { hBad: { failed: true, error: 'part doc not found: hBad' } } })
-    expect(partFailure('hBad', status)).toEqual({
+    expect(partFailure('hBad', status)).toMatchObject({
       failed: true, level: 'error', message: 'part doc not found: hBad',
     })
     expect(partFailure('hGood', status).failed).toBe(false)

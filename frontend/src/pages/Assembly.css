@@ -229,3 +229,33 @@
   margin: 0;
 }
 
+/* The assembly root row: the whole-solve verdict, above the part rows. An
+   overconstrained assembly is a hard error, an underconstrained one a warning;
+   both are informational and never block editing. */
+.assembly-verdict {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 8px 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid transparent;
+}
+
+.assembly-verdict-name {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: #888;
+}
+
+.assembly-verdict-error {
+  border-color: #5a2a2a;
+  background: #2a1414;
+}
+
+.assembly-verdict-warning {
+  border-color: #5a4a1a;
+  background: #2a2410;
+}
+

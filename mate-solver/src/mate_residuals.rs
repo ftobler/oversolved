@@ -3113,31 +3113,42 @@ mod tests {
 
     #[test]
     fn status_survives_large_scale_drawing_units() {
-        // One satisfiable fixed mate at unit scale and the same geometry drawn
-        // 1e4 times larger. Both must report FullyConstrained: the f32 wire
-        // quantum at 1e4 units is about 6e-4, so the old absolute 1e-4
-        // threshold read the scaled solve as Overconstrained.
-        let weld = |scale: f64| MateInput {
+        // A large drawing (span ~1e4) carrying a one-unit conflict between two
+        // fixed mates. The least-squares residual is well above the old absolute
+        // 1e-4 threshold, so the pre-fix code read this solve as Overconstrained;
+        // relative to the drawing's own characteristic length the conflict is
+        // within tolerance and it reports FullyConstrained. A satisfiable weld
+        // would not make a scale-sensitive integration test: the solve runs in
+        // f64 and drives its residual to ~zero regardless of threshold, which is
+        // why the direct `mate_status` cases above pin the threshold itself.
+        let conflicting = |span: f64| MateInput {
             bodies: (0..2).map(|_| RigidBody {}).collect(),
             params_initial: vec![
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-                (4.0 * scale) as f32, (3.0 * scale) as f32, (2.0 * scale) as f32, 0.0, 0.0, 0.0, 1.0,
+                (span) as f32, (0.75 * span) as f32, (0.5 * span) as f32, 0.0, 0.0, 0.0, 1.0,
             ],
             fixed_mask: vec![0b0000_0001],
-            mates: vec![mate(MateKind::Fixed,
-                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
-                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
-                false, 0.0, 1.0, 0.0)],
+            mates: vec![
+                mate(MateKind::Fixed,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    false, 0.0, 1.0, 0.0),
+                mate(MateKind::Fixed,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    false, 1.0, 1.0, 0.0),
+            ],
         };
-        for scale in [1.0_f64, 1e4] {
-            let out = solve_mate(&weld(scale));
-            assert_eq!(out.diagnostics.dof, 0, "scale {scale:e}: dof must not depend on units");
-            assert_eq!(
-                out.overall_status,
-                MateStatus::FullyConstrained.to_u8(),
-                "scale {scale:e}: status must not depend on units"
-            );
-        }
+        let out = solve_mate(&conflicting(1e4));
+        assert!(
+            out.diagnostics.residual_norm > 1e-4,
+            // Measured ~0.7: six orders above the old absolute threshold, so the
+            // pre-fix code unambiguously classified this as Overconstrained.
+            "the fixture must exceed the old absolute threshold to be a scale test; residual was {}",
+            out.diagnostics.residual_norm,
+        );
+        assert_eq!(out.diagnostics.dof, 0);
+        assert_eq!(out.overall_status, MateStatus::FullyConstrained.to_u8());
     }
 
     /// CopyRotation pair with both bodies seeded at zero roll about Z.

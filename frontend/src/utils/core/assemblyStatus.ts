@@ -15,6 +15,10 @@ export interface StatusMark {
   failed: boolean
   level: 'error' | 'warning' | null
   message: string
+  // Why a mate marked, so a consumer can pick the right row style without
+  // re-deriving the cause ('stale' keeps the legacy unresolved-ref look, the
+  // others redden the name with the specific message).
+  cause?: 'error' | 'stale' | 'part'
 }
 
 const OK: StatusMark = { failed: false, level: null, message: '' }
@@ -39,15 +43,15 @@ export function mateFailure(
   const result = status?.mates[id]
   if (!result) return OK
 
-  if (result.error) return { failed: true, level: 'error', message: result.error }
+  if (result.error) return { failed: true, level: 'error', message: result.error, cause: 'error' }
 
   const refPartFailed = refParts?.some(part => partFailure(part, status).failed)
   if (refPartFailed) {
-    return { failed: true, level: 'error', message: 'The referenced part failed to load.' }
+    return { failed: true, level: 'error', message: 'The referenced part failed to load.', cause: 'part' }
   }
 
   if (result.stale) {
-    return { failed: true, level: 'error', message: 'A reference no longer resolves; re-pick it.' }
+    return { failed: true, level: 'error', message: 'A reference no longer resolves; re-pick it.', cause: 'stale' }
   }
   return OK
 }
@@ -59,7 +63,7 @@ export function mateFailure(
 export function partFailure(handle: string, status: AssemblySolveStatus | null): StatusMark {
   const result = status?.parts[handle]
   if (!result?.failed) return OK
-  return { failed: true, level: 'error', message: result.error || 'The part failed to load.' }
+  return { failed: true, level: 'error', message: result.error || 'The part failed to load.', cause: 'part' }
 }
 
 /**
@@ -68,9 +72,13 @@ export function partFailure(handle: string, status: AssemblySolveStatus | null):
  * Overconstrained, failed and unavailable are hard errors. Underconstrained is
  * informational -- the assembly is valid, it just still has freedom -- so it is
  * a warning with the remaining DOF count. A trivial or absent solve is no mark.
+ *
+ * `nameFor`, when given, turns a mate id into its display label so the
+ * overconstrained message names the mates the user sees.
  */
 export function assemblyVerdict(
   status: AssemblySolveStatus | null,
+  nameFor?: (id: string) => string | undefined,
 ): StatusMark & { verdict: string } {
   const verdict = status?.verdict ?? 'none'
 
@@ -78,12 +86,14 @@ export function assemblyVerdict(
     // Name the mates that participated: every one that is not itself stale is
     // part of the conflict the user has to resolve.
     const ids = Object.keys(status?.mates ?? {}).filter(id => !status?.mates[id]?.stale)
-    const which = ids.length > 0 ? ` (${ids.join(', ')})` : ''
+    const names = ids.map(id => nameFor?.(id) ?? id)
+    const which = names.length > 0 ? `: ${names.join(', ')}` : ''
     return {
       failed: true,
       level: 'error',
-      message: `The mates cannot all be satisfied: overconstrained${which}.`,
+      message: `The mates cannot all be satisfied${which}.`,
       verdict,
+      cause: 'error',
     }
   }
   if (verdict === 'failed') {
@@ -92,6 +102,7 @@ export function assemblyVerdict(
       level: 'error',
       message: status?.error || 'The mate solver failed.',
       verdict,
+      cause: 'error',
     }
   }
   if (verdict === 'unavailable') {
@@ -100,6 +111,7 @@ export function assemblyVerdict(
       level: 'error',
       message: status?.error || 'The mate solver is not available.',
       verdict,
+      cause: 'error',
     }
   }
   if (verdict === 'underconstrained') {

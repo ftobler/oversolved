@@ -164,8 +164,8 @@ export interface AssemblySolveOkResponse {
     bodies: Record<string, MeshPayload[]>
     anchors: Record<string, Record<string, AnchorPose>>
     /** The whole solve verdict: overall status plus per-mate and per-part marks.
-     *  Optional because a response crossing a structured clone can arrive from a
-     *  worker built before the carrier existed. */
+     *  Optional only so test doubles and older reply shapes can omit it; the
+     *  current worker always sets it. */
     status?: AssemblySolveStatus
   }
 }

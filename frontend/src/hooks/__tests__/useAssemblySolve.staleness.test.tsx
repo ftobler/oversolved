@@ -246,10 +246,9 @@ describe('useAssemblySolve staleness', () => {
     expect(store.isSolving).toBe(false)
   })
 
-  it('a stale non-live failure does not surface a solveError under a newer live tick', async () => {
-    // The queued live tick owns the record: a live drag skips the full-solve
-    // error clear, so the stale full solve's failure must not write a banner
-    // the drag's success would then never clear.
+  it('a stale non-live failure does not surface an error under a newer live tick', async () => {
+    // The queued live tick owns the record: a stale full solve's failure must
+    // not write a status the drag's success would then never clear.
     setAssemblyCallbacks(null)
     useAssemblyStore.getState().setSnapshot({
       ...DEFAULT_ASSEMBLY_EDITOR_DATA,

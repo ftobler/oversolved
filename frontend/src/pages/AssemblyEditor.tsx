@@ -636,7 +636,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     />
   ), [solveStatus, activeMateField, labelFor, handleArmMateField, handleUpdateMate])
 
-  const verdict = assemblyVerdict(solveStatus)
+  // The banner names the unsatisfiable mates by their authored label when they
+  // have one, falling back to the feature id.
+  const mateNameFor = useCallback(
+    (id: string) => mates.find(m => m.id === id)?.mate.label || undefined,
+    [mates],
+  )
+  const verdict = assemblyVerdict(solveStatus, mateNameFor)
 
   if (loading) {
     return <div className="document-viewer"><p>Loading...</p></div>

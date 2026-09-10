@@ -364,6 +364,43 @@ describe('useAssemblySolve', () => {
     useAssemblyStore.getState().cancelPartManipulation()
   })
 
+  it('a live drag tick strips the verdict so a per-frame overconstrained cannot flicker the banner', async () => {
+    setAssemblyCallbacks(null)
+    useAssemblyStore.getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      doc: docWith(instance('p1'), instance('p2')),
+      transforms: { p1: { ...IDENTITY_TRANSFORM }, p2: { ...IDENTITY_TRANSFORM } },
+    })
+    useAssemblyStore.getState().beginPartManipulation('p1')
+    useAssemblyStore.getState().dragPartTranslate([10, 0, 0])
+
+    h.solveAssemblyViaWorker.mockResolvedValue({
+      id: 1, kind: 'solveAssembly' as const, ok: true as const,
+      payload: {
+        transforms: { p1: { ...IDENTITY_TRANSFORM }, p2: { ...IDENTITY_TRANSFORM } },
+        bodies: { p1: [meshPayload()], p2: [meshPayload()] },
+        // The solver calls the mid-drag preview overconstrained; the tick still
+        // must not raise the banner.
+        status: {
+          verdict: 'overconstrained', residualNorm: 0.5, rank: 0, dof: 0, iters: 1,
+          mates: { m1: { stale: false } }, parts: {},
+        },
+      },
+    })
+
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'), instance('p2'))))
+    await act(async () => { result.current.requestSolve() })
+
+    const stored = useAssemblyStore.getState().solveStatus
+    expect(stored?.verdict).toBe('none')
+    // The per-mate and per-part marks survive the strip.
+    expect(stored?.mates).toEqual({ m1: { stale: false } })
+    expect(assemblyVerdict(stored).failed).toBe(false)
+
+    setAssemblyCallbacks(null)
+    useAssemblyStore.getState().cancelPartManipulation()
+  })
+
   it('registers relay handlers that reach the document store and the OCC bundle builder', async () => {
     h.load.mockResolvedValue({ content: 'kind: part\nfeatures: []' })
     renderHook(() => useAssemblySolve('asm-1', null))

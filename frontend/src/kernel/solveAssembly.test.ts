@@ -1337,7 +1337,7 @@ describe('solveAssembly', () => {
     const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
 
     expect(result.status.mates['m1']).toEqual({ stale: true, error: "unsupported mate kind 'worm_gear'" })
-    expect(mateFailure('m1', result.status)).toEqual({
+    expect(mateFailure('m1', result.status)).toMatchObject({
       failed: true, level: 'error', message: "unsupported mate kind 'worm_gear'",
     })
   })
@@ -1362,7 +1362,7 @@ describe('solveAssembly', () => {
 
     expect(result.status.mates['m1'].error).toContain('bad mate output magic')
     expect(result.status.mates['m1'].stale).toBe(true)
-    expect(mateFailure('m1', result.status)).toEqual({
+    expect(mateFailure('m1', result.status)).toMatchObject({
       failed: true, level: 'error', message: 'bad mate output magic',
     })
   })

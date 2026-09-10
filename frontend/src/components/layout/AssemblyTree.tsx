@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react'
 import type { PartInstance, MateFeature } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
-import { mateFailure, partFailure } from '@/utils/core/assemblyStatus'
+import { mateFailure, partFailure, assemblyVerdict } from '@/utils/core/assemblyStatus'
 import type { AssemblyBuiltinListItem } from '@/utils/assemblyRender'
 import { relatedMateIds, relatedPartHandles } from '@/utils/assemblyTreeHighlight'
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
@@ -162,10 +162,28 @@ export function AssemblyTree({
   const highlightedMateIds = useMemo(() => relatedMateIds(mates, selectedHandle), [mates, selectedHandle])
   const highlightedPartHandles = useMemo(() => relatedPartHandles(mates, selectedMateId), [mates, selectedMateId])
 
+  // The whole-assembly verdict, shown on a root row: overconstrained is a hard
+  // error, underconstrained a warning that the assembly is valid but still has
+  // freedom. Fully constrained and trivial solves carry no mark.
+  const verdictMark = assemblyVerdict(status ?? null)
+
   return (
     <div className="assembly-tree" ref={rootRef}>
       <div className="sidebar-top" style={{ height: `${splitPercent}%` }}>
         <div className="sidebar-header"><span>Parts</span></div>
+        {verdictMark.level && (
+          <div
+            className={`assembly-verdict assembly-verdict-${verdictMark.level}`}
+            role="status"
+            title={verdictMark.message}
+            data-verdict={verdictMark.verdict}
+          >
+            <span className="assembly-verdict-name">Assembly</span>
+            <span className={`feature-name feature-name-${verdictMark.level === 'error' ? 'error' : 'warning'}`}>
+              {verdictMark.message}
+            </span>
+          </div>
+        )}
         <ul
           className="features-list"
           onDragOver={(e) => {
@@ -349,17 +367,11 @@ export function AssemblyTree({
             kindOrdinal[mate.kind] = (kindOrdinal[mate.kind] ?? 0) + 1
             const defaultName = `${MATE_KIND_LABELS[mate.kind] ?? mate.kind} ${kindOrdinal[mate.kind]}`
             const name = mate.label || defaultName
-            const result = status?.mates[id]
             const mateMark = mateFailure(id, status ?? null, [mate.ref_a.part, mate.ref_b.part])
-            // A bare unresolved reference keeps the legacy `.stale` look; a real
-            // cause (a trap, an unsupported kind, a failed part) reddens the name
-            // with its own message instead.
-            const refPartFailed = [mate.ref_a.part, mate.ref_b.part]
-              .some(p => partFailure(p, status ?? null).failed)
-            const bareStale = !!result?.stale && !result?.error && !refPartFailed
-            // A real cause reddens the name with its own class; a bare unresolved
-            // reference keeps the legacy `.stale` look.
-            const realCause = mateMark.failed && (!!result?.error || refPartFailed)
+            // mateFailure owns the cause: 'stale' keeps the legacy unresolved-ref
+            // look, a model cause reddens the name with its own message.
+            const bareStale = mateMark.cause === 'stale'
+            const realCause = mateMark.cause === 'error' || mateMark.cause === 'part'
             const selected = selectedMateId === id
             const related = highlightedMateIds.has(id)
             const editing = editingMateId === id
