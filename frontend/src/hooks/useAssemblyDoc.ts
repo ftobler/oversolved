@@ -20,6 +20,10 @@ export function useAssemblyDoc(uuid: string | undefined) {
   useEffect(() => {
     if (!uuid) return
     let cancelled = false
+    // A new load clears the previous failure: otherwise a stale error would
+    // keep the terminal panel (and the `!error` empty-hint guard) engaged even
+    // after a later load succeeds.
+    setError(null)
     queueMicrotask(() => { if (!cancelled) setLoading(true) })
     store.load(uuid)
       .then(data => {

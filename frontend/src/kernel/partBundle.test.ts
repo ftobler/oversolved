@@ -20,13 +20,23 @@ describe('anchorKindHasAxis', () => {
   // Every face/edge kind's axis is real geometry (a surface frame axis, a
   // plane normal, an edge direction, a circle normal). A sphere's and a vertex's
   // axis are the `[0, 0, 1]` placeholder, and an axis-reading mate on one would
-  // weld about a direction the anchor does not have.
-  const allKinds: AnchorKind[] = ['plane', 'cylinder', 'cone', 'sphere', 'torus', 'line', 'circle', 'point']
+  // weld about a direction the anchor does not have. The expected map is spelled
+  // out so a kind silently added to (or dropped from) the predicate fails here.
+  const EXPECTED: Record<AnchorKind, boolean> = {
+    plane: true,
+    cylinder: true,
+    cone: true,
+    sphere: false,
+    torus: true,
+    line: true,
+    circle: true,
+    point: false,
+  }
+  const allKinds = Object.keys(EXPECTED) as AnchorKind[]
 
-  it('is true for the kinds with a real axis', () => {
+  it('matches the explicit axis map for all eight kinds', () => {
     for (const kind of allKinds) {
-      const hasAxis = kind !== 'sphere' && kind !== 'point'
-      expect(anchorKindHasAxis(kind)).toBe(hasAxis)
+      expect(anchorKindHasAxis(kind)).toBe(EXPECTED[kind])
     }
   })
 

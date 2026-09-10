@@ -67,8 +67,12 @@ export function mateSpecs(doc: AssemblyDoc): MateSpec[] {
     .map(f => ({
       id: f.id,
       kind: f.mate!.kind,
-      ref_a: f.mate!.ref_a,
-      ref_b: f.mate!.ref_b,
+      // Rebuild each ref from its two authored fields only. A hand-edited YAML
+      // could carry a stray `inlineAnchor`; dropping it keeps the solve's
+      // inline-anchor trust exemption (drag objective only) unreachable from a
+      // document.
+      ref_a: { part: f.mate!.ref_a.part, anchor: f.mate!.ref_a.anchor },
+      ref_b: { part: f.mate!.ref_b.part, anchor: f.mate!.ref_b.anchor },
       flip: f.mate!.flip,
       // Passed through in its authored form, scalar or vector: normalizing it
       // needs the anchor axis, which only resolves inside the solve (see

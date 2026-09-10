@@ -431,6 +431,9 @@ export interface MateFeatureDef {
   ref_a: MateRef
   ref_b: MateRef
   flip?: boolean
+  // Plain number, unlike angle/radius: copy_rotation has no authoring UI, and a
+  // hand-edited expression string is caught at runtime by the solve's
+  // unresolved-parameter guard, so the document type stays narrow.
   ratio?: number
   offset?: MateOffset
   angle?: NumberOrExpr

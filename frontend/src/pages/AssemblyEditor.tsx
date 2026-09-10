@@ -27,14 +27,14 @@ import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
+import { useShallow } from 'zustand/react/shallow'
 import { backendBundle } from '@/adapters/backend'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
-import { settledTransforms } from '@/utils/partManipulation'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
-import type { MateKind, MateFeatureDef, PartInstance } from '@/types/cad'
+import type { MateKind, MateFeatureDef, PartInstance, Transform3D } from '@/types/cad'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import exportIcon from '@/assets/icons/icon-download.svg'
 import measurementIcon from '@/assets/icons/measurement.svg'
@@ -107,6 +107,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   const editingSubject = useAssemblyStore(s => s.editingSubject)
   const editingMateId = editingMateIdOf(editingSubject)
   const editingInstanceHandle = editingInstanceHandleOf(editingSubject)
+
+  // The pose basis each instance editor was opened against. Frozen so a
+  // background solve cannot move the number fields the user is typing in;
+  // recaptured when a different instance is edited. The operation bake reads
+  // the live settledPoses() fresh, so the frozen fields and the committed pose
+  // are allowed to differ while a solve is still settling.
+  const [poseBasis, setPoseBasis] = useState<{ handle: string; pose?: Transform3D } | null>(null)
 
   // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
   // A failed list is swallowed on purpose: names are a nicety here and the tree
@@ -300,7 +307,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     closeOpenEditor()
     useAssemblyStore.getState().openInstanceEditor(handle)
     useAssemblyStore.getState().selectPart(handle)
-  }, [closeOpenEditor])
+    // Freeze the drawn pose here, before any edit this session can trigger a
+    // background solve. Switching instances recaptures it. Falls back to the
+    // seed for a part no solve has posed yet, so the basis is never undefined.
+    const doc = docRef.current
+    setPoseBasis({
+      handle,
+      pose: useAssemblyStore.getState().settledPose(handle) ?? (doc ? findInstance(doc, handle)?.transform : undefined),
+    })
+  }, [closeOpenEditor, docRef])
 
   const handleCommitInstance = useCallback(() => {
     // Accept closes the coalescing session: every live position/rotation/fixed
@@ -450,26 +465,25 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     }
   }, [doc, selectedPartHandle])
 
-  // The drawn pose each instance's editor must edit from. `settledTransforms`
-  // carries the baked solve pose by any settling offset a committed drag still
-  // owes, so the editor basis and the operation bake (runOperation below, which
-  // reads the store's own settledPoses) cannot disagree.
-  const transforms = useAssemblyStore(s => s.transforms)
-  const settlingOffsets = useAssemblyStore(s => s.settlingOffsets)
-  const settled = useMemo(
-    () => settledTransforms(transforms, settlingOffsets),
-    [transforms, settlingOffsets],
-  )
+  // The composed drawn pose, read through the store accessor (raw transforms /
+  // settlingOffsets are confined to the pose plumbing). This is only the
+  // fallback for an editor not opened through handleEditInstance; the open
+  // editor edits its frozen `poseBasis` so a background solve cannot move its
+  // fields.
+  const settled = useAssemblyStore(useShallow(s => s.settledPoses()))
 
-  const renderInstanceEditor = useCallback((inst: PartInstance) => (
-    <PartInstanceEditor
-      instance={inst}
-      pose={settled[inst.handle] ?? inst.transform}
-      onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
-      onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
-      onSetRotation={euler => executeCommand('set_part_rotation', { handle: inst.handle, euler })}
-    />
-  ), [settled])
+  const renderInstanceEditor = useCallback((inst: PartInstance) => {
+    const frozen = poseBasis?.handle === inst.handle ? poseBasis.pose : undefined
+    return (
+      <PartInstanceEditor
+        instance={inst}
+        pose={frozen ?? settled[inst.handle] ?? inst.transform}
+        onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
+        onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
+        onSetRotation={euler => executeCommand('set_part_rotation', { handle: inst.handle, euler })}
+      />
+    )
+  }, [poseBasis, settled])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor

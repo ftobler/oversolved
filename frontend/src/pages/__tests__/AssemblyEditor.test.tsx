@@ -377,6 +377,43 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().instances[0].transform).toMatchObject({ tx: 5, ty: 20, tz: 30 })
   })
 
+  // The basis is frozen when the editor opens, so a background solve cannot
+  // move the number fields under the typist. Switching the edited instance
+  // recaptures it and resyncs.
+  it('freezes the open instance editor basis and resyncs only when the edited instance changes', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    await insertPart('Bolt')
+    const [a, b] = useAssemblyStore.getState().instances
+
+    fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
+    await tick()
+
+    // A background solve moves A while its editor is open.
+    act(() => {
+      useAssemblyStore.setState({
+        transforms: { [a.handle]: { tx: 10, ty: 20, tz: 30, qx: 0, qy: 0, qz: 0, qw: 1 } },
+      })
+    })
+    await tick()
+    // The fields keep the frozen basis (the seed), not the solved pose.
+    expect((screen.getByLabelText('Position Y') as HTMLInputElement).value).toBe('0')
+
+    // Switching to B recaptures its drawn pose and resyncs the fields. While A
+    // is editing its row shows OK/Cancel, so B's is the only pencil left.
+    act(() => {
+      useAssemblyStore.setState({
+        transforms: {
+          [a.handle]: { tx: 10, ty: 20, tz: 30, qx: 0, qy: 0, qz: 0, qw: 1 },
+          [b.handle]: { tx: 0, ty: 6, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 },
+        },
+      })
+    })
+    fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
+    await tick()
+    expect((screen.getByLabelText('Position Y') as HTMLInputElement).value).toBe('6')
+  })
+
   // A failed load has no document. The editor previously rendered its toolbar,
   // tree and viewport over the null doc (every mutation a silent no-op) with the
   // empty hint on top; now it is terminal, with one way back.
