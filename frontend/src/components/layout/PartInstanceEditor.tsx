@@ -15,12 +15,19 @@
 // angle unit.
 
 import { useState } from 'react'
-import type { PartInstance } from '@/types/cad'
-import { instanceRotation, type EulerDeg } from '@/utils/assemblyMutations'
+import type { PartInstance, Transform3D } from '@/types/cad'
+import { rotationFromTransform, type EulerDeg } from '@/utils/assemblyMutations'
 import { WheelNumberInput } from '@/components/editors/widgets/WheelNumberInput'
 
 interface PartInstanceEditorProps {
   instance: PartInstance
+  // The pose the viewport draws (the settled solved transform). The stored
+  // `instance.transform` is only the placement seed, which mates can have
+  // pulled away from; a position/rotation commit must re-emit the other axes
+  // from what is on screen, not from the seed, or it writes the seed back over
+  // the bake. Optional so a pure-seed caller (a test, a future inline use) still
+  // works.
+  pose?: Transform3D
   onSetFixed: (fixed: boolean) => void
   onSetPosition: (pos: { tx: number; ty: number; tz: number }) => void
   onSetRotation: (euler: EulerDeg) => void
@@ -43,21 +50,23 @@ function round3(v: number): number {
 }
 
 export function PartInstanceEditor({
-  instance, onSetFixed, onSetPosition, onSetRotation,
+  instance, pose, onSetFixed, onSetPosition, onSetRotation,
 }: PartInstanceEditorProps) {
+  // The drawn pose is the basis, not the seed: the seed can sit where the part
+  // was placed while the viewport draws it pulled onto its mates.
+  const t = pose ?? instance.transform
   // The boxes' own text, not the transform directly: a partial keystroke ("-",
   // "1.") must stay visible rather than snap back to the last committed number.
   // Resynced when a different instance is selected or its transform changes from
   // elsewhere (the gizmo), inline during render rather than in an effect.
   const [text, setText] = useState<Record<Axis, string>>(() => ({
-    tx: String(instance.transform.tx),
-    ty: String(instance.transform.ty),
-    tz: String(instance.transform.tz),
+    tx: String(t.tx),
+    ty: String(t.ty),
+    tz: String(t.tz),
   }))
   const [syncedFor, setSyncedFor] = useState({
-    handle: instance.handle, tx: instance.transform.tx, ty: instance.transform.ty, tz: instance.transform.tz,
+    handle: instance.handle, tx: t.tx, ty: t.ty, tz: t.tz,
   })
-  const t = instance.transform
   if (syncedFor.handle !== instance.handle || syncedFor.tx !== t.tx || syncedFor.ty !== t.ty || syncedFor.tz !== t.tz) {
     setSyncedFor({ handle: instance.handle, tx: t.tx, ty: t.ty, tz: t.tz })
     setText({ tx: String(t.tx), ty: String(t.ty), tz: String(t.tz) })
@@ -79,7 +88,7 @@ export function PartInstanceEditor({
   // (a rejected edit, a bake, a clamp): the boxes would silently snap back to a
   // number the user never typed.
   const [rotText, setRotText] = useState<Record<RotAxis, string>>(() => {
-    const r = instanceRotation(instance)
+    const r = rotationFromTransform(t)
     return { rx: String(round3(r.rx)), ry: String(round3(r.ry)), rz: String(round3(r.rz)) }
   })
   const [rotSyncedFor, setRotSyncedFor] = useState({
@@ -90,7 +99,7 @@ export function PartInstanceEditor({
     rotSyncedFor.qx !== t.qx || rotSyncedFor.qy !== t.qy ||
     rotSyncedFor.qz !== t.qz || rotSyncedFor.qw !== t.qw
   ) {
-    const r = instanceRotation(instance)
+    const r = rotationFromTransform(t)
     setRotSyncedFor({ handle: instance.handle, qx: t.qx, qy: t.qy, qz: t.qz, qw: t.qw })
     setRotText({ rx: String(round3(r.rx)), ry: String(round3(r.ry)), rz: String(round3(r.rz)) })
   }

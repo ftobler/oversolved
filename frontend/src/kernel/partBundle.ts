@@ -143,6 +143,18 @@ export function anchorIdFor(geomHash: string, kind: AnchorKind): string {
   return `a_${shortHash(geomHash + kind)}`
 }
 
+/**
+ * Whether an anchor kind carries a meaningful axis. A sphere's and a vertex's
+ * axis are placeholders (`[0, 0, 1]`), not geometry: every face kind's axis is
+ * its surface frame axis (a plane's normal), a line's is its direction and a
+ * circle's is its plane normal. The solve refuses an axis-reading mate on a
+ * placeholder axis instead of welding it about an invented direction.
+ */
+export function anchorKindHasAxis(kind: AnchorKind): boolean {
+  return kind === 'plane' || kind === 'cylinder' || kind === 'cone' ||
+    kind === 'torus' || kind === 'line' || kind === 'circle'
+}
+
 // ─── Conversion from BuildResponse output ───
 
 type Vec3 = [number, number, number]

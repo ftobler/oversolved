@@ -106,3 +106,43 @@ describe('PartInstanceEditor rotation', () => {
     expect(Math.abs(Number(rotBox('Z').value))).toBeCloseTo(180, 3)
   })
 })
+
+describe('PartInstanceEditor pose basis', () => {
+  // The viewport draws the solved pose while `instance.transform` is only the
+  // placement seed. A position edit must carry the other two axes from the
+  // drawn pose, not the seed, or it writes the seed back over the bake.
+  it('shows the drawn pose and commits the other axes from it', () => {
+    const onSetPosition = vi.fn()
+    const pose = { ...IDENTITY_TRANSFORM, tx: 10, ty: 20, tz: 30 }
+    render(
+      <PartInstanceEditor
+        instance={instance()}
+        pose={pose}
+        onSetFixed={vi.fn()}
+        onSetPosition={onSetPosition}
+        onSetRotation={vi.fn()}
+      />
+    )
+    expect((screen.getByLabelText('Position Y') as HTMLInputElement).value).toBe('20')
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '5' } })
+    expect(onSetPosition).toHaveBeenCalledWith({ tx: 5, ty: 20, tz: 30 })
+  })
+
+  it('derives the rotation boxes from the drawn pose and carries its other axes', () => {
+    const onSetRotation = vi.fn()
+    const [qx, qy, qz, qw] = quatFromEulerXyz([0, 0, Math.PI / 2])
+    const pose = { ...IDENTITY_TRANSFORM, qx, qy, qz, qw }
+    render(
+      <PartInstanceEditor
+        instance={instance()}
+        pose={pose}
+        onSetFixed={vi.fn()}
+        onSetPosition={vi.fn()}
+        onSetRotation={onSetRotation}
+      />
+    )
+    expect(Number(rotBox('Z').value)).toBeCloseTo(90, 3)
+    fireEvent.change(rotBox('X'), { target: { value: '45' } })
+    expect(onSetRotation).toHaveBeenCalledWith({ rx: 45, ry: 0, rz: 90 })
+  })
+})

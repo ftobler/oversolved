@@ -22,6 +22,18 @@
   z-index: 1;
 }
 
+/* A failed load is terminal: the error and a single way back, no editor behind
+   it over a null document. */
+.assembly-load-failed {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: #c8ccd0;
+}
+
 /* Fills the sidebar and hosts the top (Parts) / bottom (Mates) split, exactly as
    the part editor's Sidebar hosts Features / Parts. */
 .assembly-tree {

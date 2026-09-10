@@ -11,7 +11,7 @@
 // roll between the two anchors' canonical frames (mate_residuals.rs
 // abs_roll_residual), a control no other mate kind reads.
 
-import type { MateKind, MateOffset, MateRef } from '@/types/cad'
+import type { MateKind, MateOffset, MateRef, NumberOrExpr } from '@/types/cad'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import type { Vec3 } from '@/utils/transform3d'
 
@@ -103,6 +103,72 @@ export function mateParams(kind: MateKind): readonly MateParam[] {
 }
 
 /**
+ * Whether a mate kind reads an anchor's axis in its residual. Fixed, sliding,
+ * rotating, sliding_rotating, parallel, parallel_plane_distance and
+ * copy_rotation all weld against `mate.a.axis` / `mate.b.axis` (or the seed
+ * axes) unconditionally; spherical is point-only and tangential's axis arms
+ * fire only for anchor kinds that carry an axis, with every point/sphere pair
+ * falling to its point-only fallback. Refusing the axis readers on an anchor
+ * with no meaningful axis is what keeps a vertex-to-vertex `rotating` mate from
+ * silently welding a revolute joint about an invented local +Z.
+ */
+export function mateReadsAxis(kind: MateKind): boolean {
+  return kind === 'fixed' || kind === 'sliding' || kind === 'rotating' ||
+    kind === 'sliding_rotating' || kind === 'parallel' ||
+    kind === 'parallel_plane_distance' || kind === 'copy_rotation'
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
+/**
+ * An offset component present but not a finite number: an expression string, a
+ * non-finite value, or a vector with any such present component. An absent
+ * component is legal and reads as the solver's own 0.
+ */
+function offsetUnresolved(offset: MateOffset | undefined): boolean {
+  if (offset === undefined) return false
+  if (typeof offset === 'number') return !Number.isFinite(offset)
+  if (typeof offset === 'string') return true
+  for (const v of [offset.x, offset.y, offset.z]) {
+    if (v !== undefined && !isFiniteNumber(v)) return true
+  }
+  return false
+}
+
+/**
+ * The names of a mate's authored parameters that are present but not a finite
+ * number. Expression binding is not wired for mates yet, so an unbound formula
+ * has no value to solve against; the solve boundary rejects the mate loud
+ * rather than letting it silently read as 0.
+ *
+ * Walks the same parameter table the editor renders from, so a parameter the
+ * wire carries but this check forgets cannot slip through. An unknown kind
+ * returns `[]`: the solve's own unsupported-kind guard owns that case.
+ */
+export function unresolvedMateParams(mate: {
+  kind: string
+  offset?: MateOffset
+  angle?: NumberOrExpr
+  radius?: NumberOrExpr
+  ratio?: NumberOrExpr
+}): string[] {
+  const kind = mate.kind
+  if (!isMateKind(kind)) return []
+  const out: string[] = []
+  for (const param of mateParams(kind)) {
+    if (param === 'offset') {
+      if (offsetUnresolved(mate.offset)) out.push('offset')
+    } else if (param === 'angle' || param === 'radius' || param === 'ratio') {
+      const v = mate[param]
+      if (v !== undefined && !isFiniteNumber(v)) out.push(param)
+    }
+  }
+  return out
+}
+
+/**
  * Whether a kind reduces its offset to a single signed distance along A's anchor
  * axis (`Mate::axial_offset`, mate.rs) rather than reading the whole vector.
  *
@@ -156,9 +222,10 @@ export function normalizeMateAngleDeg(deg: number): number {
  * with no content migration anywhere in the stack, so that equivalence is the
  * back-compat guarantee, not a convenience.
  *
- * An expression string yields 0 for that component: expression binding is not
- * wired for mates yet (same posture as `numeric` in hooks/useAssemblySolve.ts),
- * and 0 is the solver's own default for an absent offset.
+ * An expression string or non-finite component still yields 0 here for display
+ * and back-compat, but the solve only reaches this after
+ * `unresolvedMateParams` has refused such a mate, so the zero branch is now only
+ * the legitimate absent-component case.
  */
 export function mateOffsetVector(offset: MateOffset | undefined, axisA: Vec3): Vec3 {
   if (typeof offset === 'number') {

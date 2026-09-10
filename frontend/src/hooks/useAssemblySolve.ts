@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { parse as parseYaml } from 'yaml'
-import type { AssemblyDoc, AssemblyFeature, NumberOrExpr, PartDoc } from '@/types/cad'
+import type { AssemblyDoc, AssemblyFeature, PartDoc } from '@/types/cad'
 import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import { backendBundle } from '@/adapters/backend'
 import { useAssemblyStore } from '@/stores/assemblyStore'
@@ -40,12 +40,6 @@ const BENIGN_ASSEMBLY_FAILURES = new Set(['assembly solve cancelled', 'anchor so
 // Live ticks never bump it, so a drag superseding a full solve keeps today's
 // behaviour (the full solve still owns and clears the assembly flag).
 let fullSolveSeq = 0
-
-// A mate offset/angle authored as an expression string is not evaluated here;
-// expression binding arrives with the mate authoring UI (Stage 8).
-function numeric(v: NumberOrExpr | undefined): number | undefined {
-  return typeof v === 'number' ? v : undefined
-}
 
 // A live drag tick carries the per-mate and per-part marks only. Withholding the
 // overall verdict (and its error) keeps a per-frame overconstrained from
@@ -80,8 +74,10 @@ export function mateSpecs(doc: AssemblyDoc): MateSpec[] {
       // needs the anchor axis, which only resolves inside the solve (see
       // `mateOffsetVector` at solveAssembly.ts's record build).
       offset: f.mate!.offset,
-      angle: numeric(f.mate!.angle),
-      radius: numeric(f.mate!.radius),
+      // Authored values, including an expression string: the solve boundary
+      // refuses an unresolved one rather than reading it as 0.
+      angle: f.mate!.angle,
+      radius: f.mate!.radius,
       ratio: f.mate!.ratio,
     }))
 }

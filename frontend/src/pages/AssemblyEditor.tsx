@@ -29,6 +29,7 @@ import RenameDialog from '@/components/dialogs/RenameDialog'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
 import { backendBundle } from '@/adapters/backend'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
+import { settledTransforms } from '@/utils/partManipulation'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
@@ -449,14 +450,26 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     }
   }, [doc, selectedPartHandle])
 
+  // The drawn pose each instance's editor must edit from. `settledTransforms`
+  // carries the baked solve pose by any settling offset a committed drag still
+  // owes, so the editor basis and the operation bake (runOperation below, which
+  // reads the store's own settledPoses) cannot disagree.
+  const transforms = useAssemblyStore(s => s.transforms)
+  const settlingOffsets = useAssemblyStore(s => s.settlingOffsets)
+  const settled = useMemo(
+    () => settledTransforms(transforms, settlingOffsets),
+    [transforms, settlingOffsets],
+  )
+
   const renderInstanceEditor = useCallback((inst: PartInstance) => (
     <PartInstanceEditor
       instance={inst}
+      pose={settled[inst.handle] ?? inst.transform}
       onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
       onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
       onSetRotation={euler => executeCommand('set_part_rotation', { handle: inst.handle, euler })}
     />
-  ), [])
+  ), [settled])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor
@@ -480,6 +493,23 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
 
   if (loading) {
     return <div className="document-viewer"><p>Loading...</p></div>
+  }
+
+  // A failed load has no document to edit. Rendering the editor over a null doc
+  // leaves a live-looking toolbar and tree whose every mutation silently
+  // no-ops, so this is terminal: the error and one way out, no retry token that
+  // would just re-expose the dead editor.
+  if (error && !doc) {
+    return (
+      <div className="document-viewer">
+        <div className="assembly-load-failed" role="alert">
+          <p>Error: {error}</p>
+          <button className="toolbar-btn" onClick={() => navigate('/documents')}>
+            Back to documents
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -589,7 +619,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
                 }}
               />
             )}
-            {instances.length === 0 && mates.length === 0 && (
+            {instances.length === 0 && mates.length === 0 && !error && (
               <p className="assembly-empty-hint">Empty assembly - insert parts to get started.</p>
             )}
           </div>

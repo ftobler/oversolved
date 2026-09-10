@@ -76,6 +76,7 @@ vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: h.downloadBlob }))
 
 import AssemblyEditor from '@/pages/AssemblyEditor'
 import { ToastProvider } from '@/contexts/ToastContext'
+import { backendBundle } from '@/adapters/backend'
 
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)) })
 
@@ -354,6 +355,39 @@ describe('AssemblyEditor (Stage 6b)', () => {
     fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
     await tick()
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+  })
+
+  // The viewport draws the settled solved pose while the stored transform is the
+  // placement seed. A position edit must carry the two untouched axes from the
+  // drawn pose; building them from the seed writes the seed back over the bake.
+  it('edits an instance from the drawn solved pose, not the seed', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    const handle = useAssemblyStore.getState().instances[0].handle
+    act(() => {
+      useAssemblyStore.setState({
+        transforms: { [handle]: { tx: 10, ty: 20, tz: 30, qx: 0, qy: 0, qz: 0, qw: 1 } },
+      })
+    })
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await tick()
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '5' } })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].transform).toMatchObject({ tx: 5, ty: 20, tz: 30 })
+  })
+
+  // A failed load has no document. The editor previously rendered its toolbar,
+  // tree and viewport over the null doc (every mutation a silent no-op) with the
+  // empty hint on top; now it is terminal, with one way back.
+  it('shows a terminal panel and no live editor when the load fails', async () => {
+    vi.mocked(backendBundle.documents.load).mockRejectedValueOnce(new Error('boom'))
+    renderEditor()
+    await tick()
+    await tick()
+    expect(screen.getByText(/Error: boom/)).toBeTruthy()
+    expect(screen.queryByText(/Empty assembly/)).toBeNull()
+    expect(screen.queryByLabelText('Insert part')).toBeNull()
   })
 
   // The editing subject is one tagged value, so an instance editor replaces an

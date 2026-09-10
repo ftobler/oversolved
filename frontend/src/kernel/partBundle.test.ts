@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, anchorIdFor, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint } from './partBundle'
+import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, anchorIdFor, anchorKindHasAxis, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint } from './partBundle'
 import type { AnchorKind } from './partBundle'
 import type { EdgeData, BodyResult, FaceData } from '../types/cad'
 
@@ -13,6 +13,26 @@ describe('BUNDLE_BUILD_FINGERPRINT drift guard', () => {
     // fingerprint, so a deploy that forgot one of the two still misses.
     expect(buildBundleFingerprint(BUNDLE_SCHEMA + 1, BUNDLE_BUILD_ID)).not.toBe(BUNDLE_BUILD_FINGERPRINT)
     expect(buildBundleFingerprint(BUNDLE_SCHEMA, BUNDLE_BUILD_ID + 1)).not.toBe(BUNDLE_BUILD_FINGERPRINT)
+  })
+})
+
+describe('anchorKindHasAxis', () => {
+  // Every face/edge kind's axis is real geometry (a surface frame axis, a
+  // plane normal, an edge direction, a circle normal). A sphere's and a vertex's
+  // axis are the `[0, 0, 1]` placeholder, and an axis-reading mate on one would
+  // weld about a direction the anchor does not have.
+  const allKinds: AnchorKind[] = ['plane', 'cylinder', 'cone', 'sphere', 'torus', 'line', 'circle', 'point']
+
+  it('is true for the kinds with a real axis', () => {
+    for (const kind of allKinds) {
+      const hasAxis = kind !== 'sphere' && kind !== 'point'
+      expect(anchorKindHasAxis(kind)).toBe(hasAxis)
+    }
+  })
+
+  it('is false for the two placeholder-axis kinds', () => {
+    expect(anchorKindHasAxis('sphere')).toBe(false)
+    expect(anchorKindHasAxis('point')).toBe(false)
   })
 })
 

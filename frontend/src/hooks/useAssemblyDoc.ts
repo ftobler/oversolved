@@ -51,6 +51,13 @@ export function useAssemblyDoc(uuid: string | undefined) {
       .catch(e => {
         if (cancelled) return
         setError(errorMessage(e, 'Failed to load document'))
+        // A failed load must not leave the previous document on screen: with
+        // the editor mounted over it, every mutate no-ops on the null doc and
+        // the stale tree looks live. Null it so the page can show a terminal
+        // panel instead.
+        docRef.current = null
+        setDoc(null)
+        setDocName('')
         // A failed load must not leave a previous document's history in the
         // module store: Ctrl+Z after the error would otherwise restore the old
         // document's content into the one that failed to load. Clearing on a
@@ -68,28 +75,43 @@ export function useAssemblyDoc(uuid: string | undefined) {
   // came from.
   const mates = useMemo(() => (doc ? mateFeatures(doc) : []), [doc])
 
+  const saveChain = useRef<Promise<void>>(Promise.resolve())
+
   const saveDoc = useCallback(async (uuid: string, document: AssemblyDoc, screenshot?: () => Promise<string | null>) => {
+    // Single-flight chain: a save landing while another is in flight waits, so
+    // arrival order is landing order. Without it, two saves started close
+    // together (the toolbar Save and Save & Exit) can reach the store out of
+    // order and leave the older bytes stored under dirty=false.
+    const prior = saveChain.current
+    let release!: () => void
+    const mine = new Promise<void>(resolve => { release = resolve })
+    saveChain.current = mine
+    await prior
     try {
-      // Reference at entry: every mutation installs a fresh doc object (never
-      // edits in place), so identity still holding after the awaits below
-      // proves no edit landed while the save was in flight.
-      const savedRef = docRef.current
-      const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
-      if (screenshot) {
-        const dataUrl = await screenshot()
-        if (dataUrl) body.preview_image = dataUrl.split(',')[1]
+      try {
+        // Reference at entry: every mutation installs a fresh doc object (never
+        // edits in place), so identity still holding after the awaits below
+        // proves no edit landed while the save was in flight.
+        const savedRef = docRef.current
+        const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
+        if (screenshot) {
+          const dataUrl = await screenshot()
+          if (dataUrl) body.preview_image = dataUrl.split(',')[1]
+        }
+        await store.save(uuid, body)
+        // Same guard as the part editor's saveDoc: an edit during the save
+        // windows postdates the stored bytes, so its dirty flag must survive
+        // or a reload would silently drop those edits.
+        if (docRef.current === savedRef) {
+          useUnsavedChangesStore.getState().setDirty(false)
+        }
+        return true
+      } catch (e) {
+        setError(errorMessage(e, 'Failed to save document'))
+        return false
       }
-      await store.save(uuid, body)
-      // Same guard as the part editor's saveDoc: an edit during the save
-      // windows postdates the stored bytes, so its dirty flag must survive
-      // or a reload would silently drop those edits.
-      if (docRef.current === savedRef) {
-        useUnsavedChangesStore.getState().setDirty(false)
-      }
-      return true
-    } catch (e) {
-      setError(errorMessage(e, 'Failed to save document'))
-      return false
+    } finally {
+      release()
     }
   }, [store])
 

@@ -13,9 +13,11 @@ import {
   mateKindCode,
   mateParams,
   mateOffsetVector,
+  mateReadsAxis,
   mateRefLabel,
   mateSummary,
   normalizeMateAngleDeg,
+  unresolvedMateParams,
 } from '@/utils/mateKinds'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import type { Vec3 } from '@/utils/transform3d'
@@ -132,6 +134,69 @@ describe('mateParams', () => {
 
   it('gives spherical, the only orientation-free joint, no parameters at all', () => {
     expect(mateParams('spherical')).toEqual([])
+  })
+})
+
+describe('mateReadsAxis', () => {
+  // The single source of truth for which kinds consume `mate.a.axis` /
+  // `mate.b.axis` (or, for copy_rotation, the seed axes). The solve refuses an
+  // axis reader on a placeholder-axis anchor, so a kind miscategorised here
+  // either welds about an invented +Z or blocks a legal point-only mate.
+  it('is true exactly for the kinds whose residual reads an axis', () => {
+    const readsAxis = MATE_KINDS.filter(k => mateReadsAxis(k))
+    expect(readsAxis).toEqual([
+      'fixed',
+      'sliding',
+      'rotating',
+      'sliding_rotating',
+      'parallel',
+      'parallel_plane_distance',
+      'copy_rotation',
+    ])
+  })
+
+  // spherical is point-only, and tangential's axis arms fire only for anchor
+  // kinds that carry an axis; a point/sphere pair falls to its point-only
+  // fallback. Keeping both false is what keeps them legal on vertex anchors.
+  it('leaves spherical and tangential axis-free', () => {
+    expect(mateReadsAxis('spherical')).toBe(false)
+    expect(mateReadsAxis('tangential')).toBe(false)
+  })
+})
+
+describe('unresolvedMateParams', () => {
+  it('names an expression-valued angle', () => {
+    expect(unresolvedMateParams({ kind: 'fixed', angle: 'w / 2' })).toEqual(['angle'])
+  })
+
+  it('names a vector offset with any expression component', () => {
+    expect(unresolvedMateParams({ kind: 'fixed', offset: { x: 'w / 2', y: 1 } })).toEqual(['offset'])
+  })
+
+  it('leaves an absent component legal', () => {
+    expect(unresolvedMateParams({ kind: 'fixed', offset: { y: 2 } })).toEqual([])
+    expect(unresolvedMateParams({ kind: 'fixed', offset: { x: 1 } })).toEqual([])
+  })
+
+  it('leaves plain numbers legal', () => {
+    expect(unresolvedMateParams({ kind: 'tangential', offset: 5, radius: 2 })).toEqual([])
+  })
+
+  it('names a non-finite value', () => {
+    expect(unresolvedMateParams({ kind: 'copy_rotation', ratio: NaN })).toEqual(['ratio'])
+    expect(unresolvedMateParams({ kind: 'fixed', offset: Infinity })).toEqual(['offset'])
+  })
+
+  // The unknown-kind guard in solveAssembly owns the not-a-kind case; this
+  // predicate must not double-report it as an unresolved parameter.
+  it('returns nothing for an unknown kind', () => {
+    expect(unresolvedMateParams({ kind: 'worm_gear', angle: 'x' })).toEqual([])
+  })
+
+  // A kind that does not read a param ignores a stray one rather than
+  // reporting it: mateParams is the authority on which params are read.
+  it('ignores a param the kind does not read', () => {
+    expect(unresolvedMateParams({ kind: 'spherical', angle: 'w / 2' })).toEqual([])
   })
 })
 

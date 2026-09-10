@@ -277,11 +277,15 @@ export function setInstanceRotation(doc: AssemblyDoc, handle: string, euler: Eul
   }))
 }
 
-/** The instance's orientation as the editor's degree triple. */
-export function instanceRotation(inst: PartInstance): EulerDeg {
-  const t = inst.transform
+/** A transform's orientation as the editor's degree triple. */
+export function rotationFromTransform(t: Transform3D): EulerDeg {
   const [rx, ry, rz] = quatToEulerXyz([t.qx, t.qy, t.qz, t.qw])
   return { rx: (rx * 180) / Math.PI, ry: (ry * 180) / Math.PI, rz: (rz * 180) / Math.PI }
+}
+
+/** The instance's orientation as the editor's degree triple. */
+export function instanceRotation(inst: PartInstance): EulerDeg {
+  return rotationFromTransform(inst.transform)
 }
 
 // Restore a whole instance to a prior snapshot. The inline editor's Cancel path

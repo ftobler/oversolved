@@ -89,7 +89,9 @@ describe('partSpecs / mateSpecs', () => {
       ref_b: { part: 'p2', anchor: 'a2' },
       flip: undefined,
       offset: 3,
-      angle: undefined,
+      // Authored as-is: the solve boundary refuses an unresolved expression
+      // rather than the producer silently dropping it to undefined.
+      angle: 'w / 2',
       radius: undefined,
       ratio: undefined,
     }])

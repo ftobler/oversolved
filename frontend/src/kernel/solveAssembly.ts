@@ -7,13 +7,13 @@
 // It is a pure async function over typed-array inputs, no React, no DOM.
 
 import { bundleCacheGet, bundleCacheGetStale, bundleCacheLatestRev, bundleCachePut } from './bundleCache'
-import { anchorIdFor, migrateBundle } from './partBundle'
+import { anchorIdFor, anchorKindHasAxis, migrateBundle } from './partBundle'
 import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
-import type { Transform3D, MateKind, MateOffset } from '../types/cad'
+import type { Transform3D, MateKind, MateOffset, NumberOrExpr } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
 import { canonicalPerp } from '../utils/mateOrientation'
-import { mateKindCode, mateOffsetVector } from '../utils/mateKinds'
+import { mateKindCode, mateOffsetVector, mateReadsAxis, unresolvedMateParams } from '../utils/mateKinds'
 import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 import { STATUS_NAME } from '@/wasm-kernel/codec'
 
@@ -50,9 +50,12 @@ export interface MateSpec {
   flip?: boolean
   // Either authoring form; `mateOffsetVector` normalizes it at the wire.
   offset?: MateOffset
-  ratio?: number
-  radius?: number
-  angle?: number
+  // Authored values, kept in their authored form. Expression binding is not
+  // wired yet, so a string is carried through to the solve boundary, which
+  // refuses it loud rather than reading it as 0.
+  ratio?: NumberOrExpr
+  radius?: NumberOrExpr
+  angle?: NumberOrExpr
   /** Row scale on this mate's solver rows. Authored mates leave it undefined
    *  (the wire writes 1); the live drag objective writes the small drag weight
    *  so it yields to the real mates. */
@@ -571,6 +574,19 @@ export async function solveAssembly(
       continue
     }
 
+    // An expression-valued parameter has no value to solve against until
+    // expression binding is wired. Refuse it loud instead of letting
+    // `mateOffsetVector`/the angle read coerce it to 0, which solved to a
+    // success the document never asked for.
+    const unresolved = unresolvedMateParams(mate)
+    if (unresolved.length > 0) {
+      mateResults[mate.id] = {
+        stale: true,
+        error: 'unresolved mate parameter(s): ' + unresolved.join(', '),
+      }
+      continue
+    }
+
     const rA = resolveRef(mate.ref_a)
     const rB = resolveRef(mate.ref_b)
     const staleRefs: ('ref_a' | 'ref_b')[] = []
@@ -595,6 +611,22 @@ export async function solveAssembly(
     if (anchorKindA === undefined || anchorKindB === undefined) {
       const badKind = anchorKindA === undefined ? rA.anchor!.kind : rB.anchor!.kind
       mateResults[mate.id] = { stale: true, error: `unsupported anchor kind '${badKind}'` }
+      continue
+    }
+
+    // A vertex or sphere anchor's axis is a placeholder, not geometry. An
+    // axis-reading mate (fixed/sliding/rotating/sliding_rotating/parallel/
+    // parallel_plane_distance/copy_rotation) would weld about that invented
+    // direction, so refuse it. Spherical and tangential are exempt: their
+    // point-only paths never read the axis, so they stay legal on these
+    // anchors. Only PART-bundle anchors can be placeholders: an inline anchor
+    // (the drag objective) and the assembly frame's own origin/planes author
+    // their axes deliberately, even when the origin's kind is a point.
+    const partAnchor = (ref: MateRefSpec) => ref.inlineAnchor === undefined && ref.part !== ASSEMBLY_HANDLE
+    const axisMissingA = partAnchor(mate.ref_a) && !anchorKindHasAxis(rA.anchor!.kind)
+    const axisMissingB = partAnchor(mate.ref_b) && !anchorKindHasAxis(rB.anchor!.kind)
+    if (mateReadsAxis(mate.kind as MateKind) && (axisMissingA || axisMissingB)) {
+      mateResults[mate.id] = { stale: true, error: `a ${mate.kind} mate needs an anchor with an axis` }
       continue
     }
 

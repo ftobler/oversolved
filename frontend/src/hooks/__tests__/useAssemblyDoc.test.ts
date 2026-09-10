@@ -12,6 +12,7 @@ const h = vi.hoisted(() => {
     make,
     loads: {} as Record<string, ReturnType<typeof make>>,
     saveGates: [] as ReturnType<typeof make>[],
+    saves: [] as Array<{ uuid: string; content: string; preview_image?: string }>,
   }
 })
 
@@ -21,9 +22,10 @@ vi.mock('@/adapters/backend', () => ({
       load: (uuid: string) => (h.loads[uuid] ??= h.make()).promise,
       // Deferred like the loads: a manual save spends multiple awaits
       // (screenshot, then the store), and tests need to hold it open.
-      save: () => {
+      save: (uuid: string, body: { content: string; preview_image?: string }) => {
         const gate = h.make()
         h.saveGates.push(gate)
+        h.saves.push({ uuid, ...body })
         return gate.promise
       },
     },
@@ -41,6 +43,7 @@ describe('useAssemblyDoc', () => {
     vi.clearAllMocks()
     h.loads = {}
     h.saveGates = []
+    h.saves = []
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
     useUnsavedChangesStore.getState().setDirty(false)
@@ -106,8 +109,32 @@ describe('useAssemblyDoc', () => {
 
     expect(result.current.error).toBeTruthy()
     expect(result.current.loading).toBe(false)
+    // A failed load must leave no document for a live editor to sit over.
+    expect(result.current.doc).toBeNull()
     expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
     expect(useAssemblyStore.getState().redoStack).toHaveLength(0)
+  })
+
+  // A rejected reload after a successful load is the dangerous case: the
+  // previous document was on screen, and leaving it there under the error made
+  // the toolbar and tree look live over a doc that failed to load.
+  it('nulls the document when a reload fails, so no stale editor survives', async () => {
+    const { result, rerender } = renderHook(({ id }: { id: string }) => useAssemblyDoc(id), {
+      initialProps: { id: 'E1' },
+    })
+    await tick()
+    await act(async () => { h.loads.E1.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
+    await tick()
+    expect(result.current.doc).not.toBeNull()
+
+    rerender({ id: 'E2' })
+    await tick()
+    await act(async () => { h.loads.E2.reject(new Error('boom')) })
+    await tick()
+
+    expect(result.current.error).toBeTruthy()
+    expect(result.current.doc).toBeNull()
+    expect(result.current.docName).toBe('')
   })
 
   // The success path is the real cross-document corruption invariant: a later
@@ -189,6 +216,52 @@ describe('useAssemblyDoc', () => {
     await act(async () => { h.saveGates[0].resolve(undefined) })
     const ok = await savePromise
     expect(ok).toBe(true)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('chains an overlapping save so the newer bytes land after the stale ones', async () => {
+    const { result } = renderHook(() => useAssemblyDoc('CH'))
+    await tick()
+    await act(async () => { h.loads.CH.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
+    await tick()
+
+    let releaseShot!: (value: string | null) => void
+    const shotGate = new Promise<string | null>(resolve => { releaseShot = resolve })
+
+    // Save 1 snapshots pre-edit bytes and parks on the screenshot.
+    let save1!: Promise<boolean>
+    await act(async () => {
+      save1 = result.current.saveDoc('CH', result.current.doc!, vi.fn(() => shotGate))
+    })
+    expect(h.saveGates).toHaveLength(0)
+
+    // The edit lands mid-flight and save 2 fires while save 1 holds the slot.
+    let save2!: Promise<boolean>
+    await act(async () => {
+      const edited = { ...result.current.doc!, marker: 'EDITED' } as NonNullable<typeof result.current.doc>
+      result.current.docRef.current = edited
+      result.current.setDoc(edited)
+      useUnsavedChangesStore.getState().setDirty(true)
+      save2 = result.current.saveDoc('CH', edited)
+    })
+    // The chained save must not reach the store while save 1 is in flight.
+    expect(h.saveGates).toHaveLength(0)
+
+    await act(async () => { releaseShot(null) })
+    expect(h.saveGates).toHaveLength(1)
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    const ok1 = await save1
+    expect(ok1).toBe(true)
+    // Save 1 landed its PRE-EDIT bytes; the edit postdates them, so the dirty
+    // flag survives even though a newer save is queued.
+    expect(h.saves[0].content).not.toContain('EDITED')
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+
+    await act(async () => { h.saveGates[1].resolve(undefined) })
+    const ok2 = await save2
+    expect(ok2).toBe(true)
+    expect(h.saves).toHaveLength(2)
+    expect(h.saves[1].content).toContain('EDITED')
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 })

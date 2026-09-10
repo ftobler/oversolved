@@ -16,7 +16,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { solveAssembly, encodeMateInput, decodeMateOutput, assemblyAnchors } from './solveAssembly'
+import { solveAssembly, encodeMateInput, decodeMateOutput, assemblyAnchors, type MateSpec } from './solveAssembly'
 import { bundleCachePut, bundleCacheGet, bundleCacheGetStale, bundleCacheLatestRev, resetBundleDbConnection } from './bundleCache'
 
 // Wraps the real bundleCache functions in spies (delegating to the actual
@@ -32,7 +32,7 @@ vi.mock('./bundleCache', async (importOriginal) => {
     bundleCachePut: vi.fn(actual.bundleCachePut),
   }
 })
-import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '../utils/assemblyBuiltins'
+import { ASSEMBLY_HANDLE, ASSEMBLY_ORIGIN_ID, ASSEMBLY_TOP_ID } from '../utils/assemblyBuiltins'
 import { sampleEdgeCurve } from '../utils/edgeSampling'
 import { mateFailure, partFailure } from '../utils/core/assemblyStatus'
 import { anchorIdFor, BUNDLE_SCHEMA, type Anchor, type AnchorKind, type PartBundle } from './partBundle'
@@ -122,6 +122,18 @@ function makeDeterministicBundle(doc_id: string, doc_rev: number): PartBundle {
     anchors[anchorIdFor(a.geom_hash, a.kind)] = a
   }
   return { ...bundle, anchors }
+}
+
+// A bundle whose a1 carries a real axis (a plane), for the wire tests that
+// exercise an axis-reading mate. `makeBundle`'s a1 is a vertex, whose axis is
+// the placeholder [0, 0, 1] the solve now refuses for an axis reader.
+function makeAxialBundle(doc_id: string, doc_rev: number): PartBundle {
+  return makeBundle(doc_id, doc_rev, {
+    anchors: {
+      a1: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '@gdf|a1', created_by: 'feat1' },
+      a2: { kind: 'point', point: [10, 0, 0], axis: [0, 0, 1], geom_hash: '@gdf|a2', created_by: 'feat1' },
+    },
+  })
 }
 
 function makeRelay(): { relay: RelayService; partDocs: Map<string, Record<string, unknown>> } {
@@ -499,8 +511,8 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', 1))
+    await bundleCachePut(makeAxialBundle('doc-b', 1))
 
     const parts = [
       { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 0, 0) },
@@ -527,8 +539,8 @@ describe('solveAssembly', () => {
   // assembly shifts. There is no document migration to lean on.
   it('expands a legacy scalar offset along the A anchor axis on the wire', async () => {
     const { relay } = makeRelay()
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', 1))
+    await bundleCachePut(makeAxialBundle('doc-b', 1))
     const parts = [
       { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 0, 0) },
       { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
@@ -550,8 +562,8 @@ describe('solveAssembly', () => {
 
   it('encodes a vector offset componentwise', async () => {
     const { relay } = makeRelay()
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', 1))
+    await bundleCachePut(makeAxialBundle('doc-b', 1))
     const parts = [
       { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 0, 0) },
       { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
@@ -1161,7 +1173,7 @@ describe('solveAssembly', () => {
   it('resolves a fixed mate from a part to the assembly Top plane through assemblyAnchors', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', 1))
 
     const parts = [
       { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 5, 0) },
@@ -1272,6 +1284,109 @@ describe('solveAssembly', () => {
     expect(result.status.mates['bad'].stale).toBe(true)
     expect(result.status.mates['bad'].error).toContain('not_a_real_anchor_kind')
     expect(result.status.mates['ok'].stale).toBe(false)
+    expect(captured.input!.mates).toHaveLength(1)
+  })
+
+  it('refuses an unresolved expression-valued parameter instead of reading it as zero', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates: MateSpec[] = [
+      {
+        id: 'bad', kind: 'fixed',
+        ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' },
+        angle: 'w / 2',
+      },
+      { id: 'ok', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a2' }, ref_b: { part: 'p2', anchor: 'a2' } },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+
+    expect(result.status.mates['bad'].stale).toBe(true)
+    expect(result.status.mates['bad'].error).toContain('angle')
+    expect(result.status.mates['ok'].stale).toBe(false)
+    // The bad mate contributes zero bytes to the encoded buffer: it is not
+    // coerced to angle 0 and encoded as a success.
+    expect(captured.input!.mates).toHaveLength(1)
+  })
+
+  it('refuses an axis-reading mate whose anchor has no meaningful axis, but keeps spherical legal', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    partDocs.set('doc-b', { kind: 'part', features: [] })
+    // makeBundle's a1/a2 are vertex anchors: their axis is the [0, 0, 1]
+    // placeholder, not geometry.
+    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-b', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+    ]
+    const mates: MateSpec[] = [
+      { id: 'rotating', kind: 'rotating', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+      { id: 'spherical', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a2' }, ref_b: { part: 'p2', anchor: 'a2' } },
+    ]
+    const { solver, captured } = makeCaptureSolver()
+    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+
+    expect(result.status.mates['rotating'].stale).toBe(true)
+    expect(result.status.mates['rotating'].error).toContain('axis')
+    // The placeholder-axis mate is not encoded; spherical, which never reads an
+    // axis, still solves.
+    expect(captured.input!.mates).toHaveLength(1)
+    expect(result.status.mates['spherical'].stale).toBe(false)
+  })
+
+  it('keeps an axis-reading mate with an inline anchor legal (the drag objective authors its own axis)', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    await bundleCachePut(makeBundle('doc-a', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+    ]
+    // The triad drag objective: a fixed mate whose anchors are synthetic points
+    // carrying an authored axis. A point kind here is not a B-rep placeholder.
+    const mates: MateSpec[] = [{
+      id: 'drag',
+      kind: 'fixed',
+      ref_a: { part: ASSEMBLY_HANDLE, anchor: 'drag', inlineAnchor: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '', created_by: 'drag' } },
+      ref_b: { part: 'p1', anchor: 'drag', inlineAnchor: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '', created_by: 'drag' } },
+    }]
+    const { solver, captured } = makeCaptureSolver()
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, solver)
+
+    expect(result.status.mates['drag'].stale).toBe(false)
+    expect(captured.input!.mates).toHaveLength(1)
+  })
+
+  it('trusts the assembly frame origin axis even though its kind is a point', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    await bundleCachePut(makeAxialBundle('doc-a', 1))
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+    ]
+    // The assembly origin is a point anchor with a deliberately canonical +Z,
+    // so a revolute joint to it is legal even though a PART vertex point is not.
+    const mates: MateSpec[] = [{
+      id: 'm1', kind: 'rotating',
+      ref_a: { part: 'p1', anchor: 'a1' },
+      ref_b: { part: ASSEMBLY_HANDLE, anchor: ASSEMBLY_ORIGIN_ID },
+    }]
+    const { solver, captured } = makeCaptureSolver()
+    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, solver)
+
+    expect(result.status.mates['m1'].stale).toBe(false)
     expect(captured.input!.mates).toHaveLength(1)
   })
 
@@ -1471,7 +1586,7 @@ describe('solveAssembly', () => {
   it('pins the fixed part alongside the assembly frame when a mate uses both', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', 1))
 
     const parts = [
       { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform(), fixed: true },
