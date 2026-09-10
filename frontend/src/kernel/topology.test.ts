@@ -128,6 +128,17 @@ describe.skipIf(!topologyAvailable)("detectTopology surface counts", () => {
     expect(ni(r)).toBe(0)  // diagonal shares corners, no new pts
   })
 
+  it("rectangle with a construction crossbar → 1 surface, 2 snap intersections", () => {
+    // Construction geometry yields reference points, never area: the crossbar
+    // crosses two sides without dividing the face or splitting those sides.
+    const r = detectTopology({
+      ...rectGeom(0, 0, 2, 2),
+      h: { ...lineGeom(-1, 1, 3, 1), construction: true },
+    })
+    expect(ns(r)).toBe(1)
+    expect(ni(r)).toBe(2)
+  })
+
   it("rectangle with horizontal midline → 2 surfaces, 2 intersections", () => {
     // Rectangle + horizontal line through the middle (intersects edges, not corners) → 2 surfaces.
     const r = detectTopology({

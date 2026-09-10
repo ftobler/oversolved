@@ -29,6 +29,23 @@ describe('sketchToIntersectionCandidates', () => {
     expect(c.kind).toBe('vertex')
   })
 
+  it('offers a construction curve crossing, baking the construction id into the handle', () => {
+    // Construction geometry exists to be snapped to, so a crossing with a
+    // construction circle is a handle like any other. The function is
+    // construction-agnostic today; this pins that a future filter here cannot
+    // silently drop the crossings the Rust builder now emits for them.
+    const sketch: Sketch = {
+      ln:   { start: [-10, 0], end: [10, 0] } as Sketch[string],
+      circ: { center: [0, 0], radius: 5, construction: true } as Sketch[string],
+    }
+    const cands = sketchToIntersectionCandidates(sketch, topo({ a: { x: 5, y: 0 }, b: { x: -5, y: 0 } }), FEATURE, 'active_sketch')
+    expect(cands).toHaveLength(2)
+    for (const c of cands) {
+      expect(c.id).toContain('ln')
+      expect(c.id).toContain('circ')
+    }
+  })
+
   it('drops a crossing that does not lie on two curves (stale/degenerate point)', () => {
     // (0,9) lies on neither the line (y=0) nor the circle (r=5).
     expect(sketchToIntersectionCandidates(makeSketch(), topo({ a: { x: 0, y: 9 } }), FEATURE, 'active_sketch')).toHaveLength(0)

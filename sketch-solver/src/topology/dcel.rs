@@ -791,12 +791,48 @@ struct Classified {
     ellipses: Vec<(String, InputEntity)>,
 }
 
+impl Classified {
+    /// Split the buckets into the real geometry, which builds vertices, edges
+    /// and faces exactly as it did before construction entities were let in,
+    /// and the construction geometry, which only ever contributes crossings.
+    /// `partition` keeps input order within each half, so the real half is
+    /// byte-for-byte the list `classify` used to return.
+    fn split_construction(self) -> (Classified, Classified) {
+        let part = |bucket: Vec<(String, InputEntity)>| bucket.into_iter().partition::<Vec<_>, _>(|(_, e)| !e.construction);
+        let (r_lines, c_lines) = part(self.lines);
+        let (r_circles, c_circles) = part(self.circles);
+        let (r_arcs, c_arcs) = part(self.arcs);
+        let (r_splines, c_splines) = part(self.splines);
+        let (r_ellipses, c_ellipses) = part(self.ellipses);
+        (
+            Classified {
+                lines: r_lines,
+                circles: r_circles,
+                arcs: r_arcs,
+                splines: r_splines,
+                ellipses: r_ellipses,
+            },
+            Classified {
+                lines: c_lines,
+                circles: c_circles,
+                arcs: c_arcs,
+                splines: c_splines,
+                ellipses: c_ellipses,
+            },
+        )
+    }
+
+    fn is_empty(&self) -> bool {
+        self.lines.is_empty() && self.circles.is_empty() && self.arcs.is_empty() && self.splines.is_empty() && self.ellipses.is_empty()
+    }
+}
+
 /// The fields the geometry pass unwraps for each kind. Everything downstream of
 /// `classify` (split seeding, the half-edge builders, the standalone-face
 /// builders) dereferences these without asking, so an entity that arrives
 /// truncated or stale would panic the Worker mid-pass. Requiring the full set
-/// here drops the bad record instead, the same way a construction entity is
-/// skipped: a partial entity contributes no edges rather than killing the solve.
+/// here drops the bad record instead: a partial entity contributes no edges
+/// rather than killing the solve.
 fn has_required_fields(kind: &str, e: &InputEntity) -> bool {
     match kind {
         "spline" => e.start.is_some() && e.end.is_some() && e.c1.is_some() && e.c2.is_some(),
@@ -818,9 +854,6 @@ fn has_required_fields(kind: &str, e: &InputEntity) -> bool {
 fn classify(geometry: &[(String, InputEntity)]) -> Classified {
     let mut c = Classified::default();
     for (eid, ent) in geometry {
-        if ent.construction {
-            continue;
-        }
         let kind = ent.kind.as_deref();
         // Which bucket an entity belongs to is decided by the same discriminating
         // fields `classifyEntities` uses; completeness is a separate question, so
@@ -846,16 +879,11 @@ fn classify(geometry: &[(String, InputEntity)]) -> Classified {
     c
 }
 
-/// Normalize arcs (force CCW span <= pi by swapping endpoints) and seed splits.
-#[allow(clippy::type_complexity)]
-fn normalize_arcs_and_init_splits(
-    arcs_in: &[(String, InputEntity)],
-    arc_verts: &mut Verts,
-) -> (HashMap<String, f64>, HashMap<String, Vec<Split>>, Vec<(String, InputEntity)>) {
-    let mut arcs: Vec<(String, InputEntity)> = arcs_in.to_vec();
-    let mut arc_a0: HashMap<String, f64> = HashMap::new();
-    let mut splits: HashMap<String, Vec<Split>> = HashMap::new();
-
+/// Force each arc's CCW span <= pi by swapping its endpoints. Every consumer of
+/// `angle_start`/`angle_end` (the split params, `angle_in_arc`) reads the
+/// normalized form, so construction arcs run through this too before their
+/// crossings are tested.
+fn normalize_arc_spans(arcs: &mut [(String, InputEntity)]) {
     for (_eid, e) in arcs.iter_mut() {
         let a0_rad = radians(e.angle_start.unwrap());
         let a1_rad = radians(e.angle_end.unwrap());
@@ -869,6 +897,19 @@ fn normalize_arcs_and_init_splits(
             e.end = en_;
         }
     }
+}
+
+/// Normalize arcs (force CCW span <= pi by swapping endpoints) and seed splits.
+#[allow(clippy::type_complexity)]
+fn normalize_arcs_and_init_splits(
+    arcs_in: &[(String, InputEntity)],
+    arc_verts: &mut Verts,
+) -> (HashMap<String, f64>, HashMap<String, Vec<Split>>, Vec<(String, InputEntity)>) {
+    let mut arcs: Vec<(String, InputEntity)> = arcs_in.to_vec();
+    let mut arc_a0: HashMap<String, f64> = HashMap::new();
+    let mut splits: HashMap<String, Vec<Split>> = HashMap::new();
+
+    normalize_arc_spans(&mut arcs);
 
     for (eid, e) in &arcs {
         let a0 = radians(e.angle_start.unwrap());
@@ -1012,6 +1053,92 @@ fn add_curve_intersections(tagged: &[Tagged], splits: &mut HashMap<String, Vec<S
                 let v = verts.vid(h.point);
                 register_hit(a, h.t_a, &v, splits, arc_a0);
                 register_hit(b, h.t_b, &v, splits, arc_a0);
+            }
+        }
+    }
+}
+
+/// Tag a bucket set with the kind names the intersection passes dispatch on.
+/// `arcs` comes in separately because the caller tags the span-normalized arc
+/// copies, not the raw `cls.arcs`.
+fn tag_entities(cls: &Classified, arcs: &[(String, InputEntity)]) -> Vec<Tagged> {
+    let mut tagged: Vec<Tagged> = Vec::new();
+    let mut push = |src: &[(String, InputEntity)], kind: &'static str| {
+        for (eid, e) in src {
+            tagged.push(Tagged {
+                eid: eid.clone(),
+                e: e.clone(),
+                kind,
+            });
+        }
+    };
+    push(&cls.lines, "line");
+    push(&cls.circles, "circle");
+    push(arcs, "arc");
+    push(&cls.ellipses, "ellipse");
+    push(&cls.splines, "spline");
+    tagged
+}
+
+/// The domain checks `register_hit` applies before it accepts a hit, without the
+/// split bookkeeping: a crossing counts only where it truly lies on the entity.
+/// Line, circle and ellipse mirror `register_hit` exactly. The spline arm is
+/// deliberately wider: `register_hit` drops a hit within `SPLIT_EPS` of either
+/// end because a real spline's endpoints are already seeded as vertices, and a
+/// construction spline's are not, so an endpoint contact here is a genuinely new
+/// reference point rather than a duplicate split.
+///
+/// The arc arm is the one that does the clipping in practice: `intersect_curves`
+/// reaches an arc only as the full `Curve::Circle` it scans over 0..2pi. Its
+/// line and bezier paths already clamp to the finite segment, so those arms are
+/// defence in depth against a future closed-form path that does not.
+fn hit_on_entity(entry: &Tagged, t: f64) -> bool {
+    match entry.kind {
+        "line" | "spline" => (-EPS..=1.0 + EPS).contains(&t),
+        "arc" => angle_in_arc(t, entry.e.radius.unwrap(), entry.e.angle_start.unwrap(), entry.e.angle_end.unwrap()),
+        _ => true,  // a circle or an ellipse is closed: every parameter is on it
+    }
+}
+
+/// Every point where `a` and `b` cross, taking the same two dispatch paths the
+/// real passes take (`intersect` for line/circle/arc, `intersect_curves` once an
+/// ellipse or a spline is involved) but yielding only world points.
+fn crossing_points(a: &Tagged, b: &Tagged, line_keys: &HashSet<String>, circle_keys: &HashSet<String>) -> Vec<Vec2> {
+    if matches!(a.kind, "ellipse" | "spline") || matches!(b.kind, "ellipse" | "spline") {
+        return intersect_curves(&to_curve(a.kind, &a.e), &to_curve(b.kind, &b.e))
+            .into_iter()
+            .filter(|h| hit_on_entity(a, h.t_a) && hit_on_entity(b, h.t_b))
+            .map(|h| h.point)
+            .collect();
+    }
+    intersect(&a.eid, &a.e, &b.eid, &b.e, line_keys, circle_keys)
+        .into_iter()
+        .map(|(_, _, pt)| pt)
+        .collect()
+}
+
+/// Construction geometry contributes reference points, never area: each
+/// construction entity is crossed against the real geometry and against the
+/// construction entities after it, and every hit is minted as a vertex and
+/// nothing else. No split is pushed into any entity, so real edge counts,
+/// `edge:N` indices and surface ancestries stay byte-identical to a document
+/// with the construction geometry deleted. Two collinear lines are deliberately
+/// not overlapped here: a construction line laid along a real one adds no
+/// reference point its own endpoints do not already offer.
+///
+/// Call after `endpoint_vids` is captured, so the minted ids also surface as
+/// intersection points, and before the half-edge build, which never sees these
+/// entities at all. One consequence of that ordering: a construction entity's
+/// own endpoint landing mid-span on a real curve mints a NEW `_vN` and reports
+/// it as an intersection point, where the same geometry drawn real would have
+/// been seeded first and merged into an existing endpoint vertex. Harmless
+/// downstream (`inferredContactCandidates` drops an intersection coinciding
+/// with a sketch vertex), but it is why the counts differ from the real case.
+fn seed_construction_crossings(real: &[Tagged], con: &[Tagged], line_keys: &HashSet<String>, circle_keys: &HashSet<String>, verts: &mut Verts) {
+    for (i, c) in con.iter().enumerate() {
+        for other in real.iter().chain(con[i + 1..].iter()) {
+            for pt in crossing_points(c, other, line_keys, circle_keys) {
+                verts.vid(pt);
             }
         }
     }
@@ -1421,7 +1548,10 @@ fn build_edge_queries(hes: &[HalfEdge], he_eid: &[String]) -> Vec<EdgeOut> {
 // ─── Main entry point ───
 
 pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
-    let cls = classify(geometry);
+    // Construction entities are split off here and rejoin only in the crossing
+    // pass below, so every stage that builds real geometry sees exactly the list
+    // it saw when `classify` dropped them outright.
+    let (cls, con) = classify(geometry).split_construction();
 
     let mut verts = Verts::new();
     let mut splits: HashMap<String, Vec<Split>> = HashMap::new();
@@ -1473,23 +1603,21 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     find_all_intersections(&elist, &line_keys, &circle_keys, &mut splits, &mut verts, &arc_a0);
 
     // Second pass: every pair involving an ellipse or a spline.
-    let mut tagged: Vec<Tagged> = Vec::new();
-    for (eid, e) in &cls.lines {
-        tagged.push(Tagged { eid: eid.clone(), e: e.clone(), kind: "line" });
-    }
-    for (eid, e) in &cls.circles {
-        tagged.push(Tagged { eid: eid.clone(), e: e.clone(), kind: "circle" });
-    }
-    for (eid, e) in &arcs {
-        tagged.push(Tagged { eid: eid.clone(), e: e.clone(), kind: "arc" });
-    }
-    for (eid, e) in &cls.ellipses {
-        tagged.push(Tagged { eid: eid.clone(), e: e.clone(), kind: "ellipse" });
-    }
-    for (eid, e) in &cls.splines {
-        tagged.push(Tagged { eid: eid.clone(), e: e.clone(), kind: "spline" });
-    }
+    let tagged = tag_entities(&cls, &arcs);
     add_curve_intersections(&tagged, &mut splits, &mut verts, &arc_a0);
+
+    if !con.is_empty() {
+        let mut c_arcs = con.arcs.clone();
+        normalize_arc_spans(&mut c_arcs);
+        let c_tagged = tag_entities(&con, &c_arcs);
+        // `intersect` reads its line/circle/arc dispatch off these key sets, so
+        // they have to name the construction entities as well.
+        let mut all_line_keys = line_keys.clone();
+        let mut all_circle_keys = circle_keys.clone();
+        all_line_keys.extend(con.lines.iter().map(|(k, _)| k.clone()));
+        all_circle_keys.extend(con.circles.iter().map(|(k, _)| k.clone()));
+        seed_construction_crossings(&tagged, &c_tagged, &all_line_keys, &all_circle_keys, &mut verts);
+    }
 
     let (hes, he_eid) = build_half_edge_graph(&cls.lines, &cls.circles, &arcs, &splits, &cls.splines, &cls.ellipses);
 
@@ -2232,5 +2360,201 @@ mod tests {
         assert_eq!(t.surfaces.len(), 1);
         assert_eq!(t.surfaces[0].boundary.len(), 1);
         assert!(matches!(t.surfaces[0].boundary[0].geom, EdgeGeom::Spline { .. }));
+    }
+
+    fn as_construction(mut e: InputEntity) -> InputEntity {
+        e.construction = true;
+        e
+    }
+
+    /// Coordinates of every emitted vertex, keyed by id, for the construction
+    /// tests that pin which `_vN` slots the real geometry keeps.
+    fn vert_map(t: &TopologyOut) -> HashMap<String, Vec2> {
+        t.vertices.iter().map(|(k, v)| (k.clone(), *v)).collect()
+    }
+
+    fn has_point(pts: &[(String, Vec2)], p: Vec2) -> bool {
+        pts.iter().any(|(_, v)| (v[0] - p[0]).abs() < 1e-6 && (v[1] - p[1]).abs() < 1e-6)
+    }
+
+    #[test]
+    fn construction_corner_diagonal_adds_no_crossing() {
+        // The frozen-fixture case: a construction diagonal whose endpoints are
+        // already real corners contributes nothing, so the golden stays valid.
+        let mut geom = square(2.0);
+        geom.push(("diag".into(), as_construction(line([0.0, 0.0], [2.0, 2.0]))));
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 1, "the construction diagonal does not divide the face");
+        assert_eq!(t.intersection_points.len(), 0);
+        assert_eq!(t.vertices.len(), 4);
+        assert_eq!(t.edges.len(), 4);
+    }
+
+    #[test]
+    fn construction_crossbar_yields_two_snap_points_and_one_face() {
+        // The headline regression: the crossings come back as snap points while
+        // the sides they cross stay single edges (the Design-B parity pin).
+        let mut geom = square(2.0);
+        geom.push(("bar".into(), as_construction(line([-1.0, 1.0], [3.0, 1.0]))));
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 1, "a construction line never splits a face");
+        assert_eq!(t.intersection_points.len(), 2);
+        assert!(has_point(&t.intersection_points, [0.0, 1.0]));
+        assert!(has_point(&t.intersection_points, [2.0, 1.0]));
+        assert_eq!(t.edges.len(), 4, "the crossed sides are not over-segmented");
+        assert_eq!(t.vertices.len(), 6, "four corners plus two crossings");
+    }
+
+    #[test]
+    fn construction_crossbar_does_not_renumber_real_vertices() {
+        // Construction crossings are minted last, so the real corners hold the
+        // same `_vN` slots whatever position the construction line takes in the
+        // input list. Saved queries against `_v0.._v3` keep resolving.
+        // The slot-by-slot mapping `square()`'s endpoint seeding produces, not
+        // merely "some corner": a swap of _v0 and _v2 IS the renumbering this
+        // test exists to catch.
+        let corners: [(&str, Vec2); 4] = [
+            ("_v0", [0.0, 0.0]),
+            ("_v1", [2.0, 0.0]),
+            ("_v2", [2.0, 2.0]),
+            ("_v3", [0.0, 2.0]),
+        ];
+        let bar = ("bar".to_string(), as_construction(line([-1.0, 1.0], [3.0, 1.0])));
+
+        let mut appended = square(2.0);
+        appended.push(bar.clone());
+        let mut prepended = vec![bar];
+        prepended.extend(square(2.0));
+
+        for geom in [appended, prepended] {
+            let vm = vert_map(&detect_topology(&geom));
+            assert_eq!(vm.len(), 6, "four corners plus the two crossings, nothing else");
+            for (id, corner) in corners {
+                let v = vm.get(id).unwrap_or_else(|| panic!("{id} missing"));
+                assert!(
+                    (corner[0] - v[0]).abs() < 1e-9 && (corner[1] - v[1]).abs() < 1e-9,
+                    "{id} moved to {v:?}, expected {corner:?}"
+                );
+            }
+            // The crossings take the slots after the real geometry, in either order.
+            let mut minted = [vm["_v4"], vm["_v5"]];
+            minted.sort_by(|p, q| p[0].total_cmp(&q[0]));
+            assert!((minted[0][0]).abs() < 1e-9 && (minted[0][1] - 1.0).abs() < 1e-9, "_v4/_v5 hold (0,1)");
+            assert!((minted[1][0] - 2.0).abs() < 1e-9 && (minted[1][1] - 1.0).abs() < 1e-9, "_v4/_v5 hold (2,1)");
+        }
+    }
+
+    #[test]
+    fn construction_circle_alone_emits_nothing() {
+        let geom = vec![("c0".into(), as_construction(circle([0.0, 0.0], 1.0)))];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 0);
+        assert_eq!(t.intersection_points.len(), 0);
+        assert_eq!(t.edges.len(), 0);
+        assert_eq!(t.vertices.len(), 0);
+    }
+
+    #[test]
+    fn construction_circle_crossing_line_yields_two_snap_points_no_face() {
+        // A pitch or clearance circle: its rim crossings are exactly the points
+        // a user aligns to, and the line it crosses stays one edge.
+        let geom = vec![
+            ("l0".into(), line([-2.0, 0.0], [2.0, 0.0])),
+            ("c0".into(), as_construction(circle([0.0, 0.0], 1.0))),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 0);
+        assert_eq!(t.intersection_points.len(), 2);
+        assert!(has_point(&t.intersection_points, [1.0, 0.0]));
+        assert!(has_point(&t.intersection_points, [-1.0, 0.0]));
+        assert_eq!(t.edges.len(), 1, "the real line is not split by the construction rim");
+    }
+
+    #[test]
+    fn two_crossing_construction_lines_yield_one_snap_point() {
+        // The crossing of two centerlines is a legitimate reference point even
+        // though neither line is real geometry.
+        let geom = vec![
+            ("x".into(), as_construction(line([0.0, 0.0], [2.0, 2.0]))),
+            ("y".into(), as_construction(line([0.0, 2.0], [2.0, 0.0]))),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 0);
+        assert_eq!(t.intersection_points.len(), 1);
+        assert!(has_point(&t.intersection_points, [1.0, 1.0]));
+        assert_eq!(t.edges.len(), 0);
+    }
+
+    #[test]
+    fn construction_arc_crosses_line_only_inside_its_sweep() {
+        // The crossing pass must reuse `angle_in_arc`, so the half of the full
+        // circle the arc does not sweep yields nothing. Built inline rather than
+        // through the `arc()` helper, which pins `end` at 180 degrees whatever
+        // `angle_end` says.
+        let quarter = as_construction(InputEntity {
+            center: Some([0.0, 0.0]),
+            radius: Some(1.0),
+            start: Some([1.0, 0.0]),
+            end: Some([0.0, 1.0]),
+            angle_start: Some(0.0),
+            angle_end: Some(90.0),
+            ..Default::default()
+        });
+        let inside = vec![
+            ("l0".into(), line([0.5, -2.0], [0.5, 2.0])),
+            ("a0".into(), quarter.clone()),
+        ];
+        let t = detect_topology(&inside);
+        assert_eq!(t.intersection_points.len(), 1, "only the first-quadrant crossing is on the arc");
+        assert!(has_point(&t.intersection_points, [0.5, (0.75f64).sqrt()]));
+
+        let outside = vec![
+            ("l0".into(), line([-2.0, -0.5], [2.0, -0.5])),
+            ("a0".into(), quarter),
+        ];
+        assert_eq!(
+            detect_topology(&outside).intersection_points.len(),
+            0,
+            "crossings past the sweep end are not snap points"
+        );
+    }
+
+    #[test]
+    fn construction_ellipse_crossing_is_clipped_to_the_line_segment() {
+        // The `intersect_curves` half of the pass, which had no construction
+        // coverage at all. The conic meets the line's infinite extension at
+        // (4,0) and (-4,0); only (4,0) is on the drawn segment, and a snap point
+        // off the end of the line the user drew would be a phantom.
+        let geom = vec![
+            ("l0".into(), line([2.5, 0.0], [10.0, 0.0])),
+            ("e0".into(), as_construction(ellipse([0.0, 0.0], 4.0, 2.0, 0.0))),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 0, "a construction ellipse encloses nothing");
+        assert_eq!(t.intersection_points.len(), 1);
+        assert!(has_point(&t.intersection_points, [4.0, 0.0]));
+        assert_eq!(t.edges.len(), 1, "the real line is not split by the construction conic");
+    }
+
+    #[test]
+    fn construction_arc_crossing_a_real_ellipse_is_clipped_to_its_sweep() {
+        // The clip `hit_on_entity` actually performs: a circle of radius 3 meets this
+        // ellipse in all four quadrants, and the quarter arc claims only the
+        // first. The real ellipse keeps its face and stays one edge.
+        let quarter = as_construction(InputEntity {
+            center: Some([0.0, 0.0]),
+            radius: Some(3.0),
+            start: Some([3.0, 0.0]),
+            end: Some([0.0, 3.0]),
+            angle_start: Some(0.0),
+            angle_end: Some(90.0),
+            ..Default::default()
+        });
+        let geom = vec![("e0".into(), ellipse([0.0, 0.0], 4.0, 2.0, 0.0)), ("a0".into(), quarter)];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 1, "the real ellipse still encloses its area");
+        assert_eq!(t.intersection_points.len(), 1, "only the first-quadrant crossing is on the arc");
+        let (x, y) = (f64::sqrt(20.0 / 3.0), f64::sqrt(7.0 / 3.0));
+        assert!(has_point(&t.intersection_points, [x, y]));
     }
 }
