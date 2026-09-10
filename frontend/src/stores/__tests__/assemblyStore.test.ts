@@ -69,7 +69,7 @@ describe('assemblyStore', () => {
   // the stacks.
   it('resetTransientAssemblyState clears the solve flags but leaves the stacks alone', () => {
     const { getState } = useAssemblyStore
-    const entry = { label: 'Add part', doc: { kind: 'assembly' as const, features: [] } }
+    const entry = { label: 'Add part' as const, doc: { kind: 'assembly' as const, features: [] } }
     const undoStack = [entry]
     const redoStack = [entry]
     useAssemblyStore.setState({ undoStack, redoStack })

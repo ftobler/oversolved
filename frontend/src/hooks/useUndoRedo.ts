@@ -13,7 +13,11 @@ export function useUndoRedo(
   reSolve: (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string } }) => void | Promise<void>,
   // Abandons every half-open edit/preview session. Must only null out transient
   // state, never write the doc back, because the doc it would write is the one
-  // undo is about to replace.
+  // undo is about to replace. It may write transient store state (rollback,
+  // pick boundary, editing id) because applyUndoRedo tears the editor down
+  // BEFORE the swap and then owns and rewrites the rollback position from the
+  // restored entry; any such store write during teardown is intentionally
+  // overwritten.
   tearDownEditorState?: () => void,
 ) {
   // The refs are the source of truth; the state mirrors them purely so the UI
@@ -45,22 +49,6 @@ export function useUndoRedo(
     commitStacks(undo, [])  // a fresh edit invalidates any redo branch
   }, [commitStacks])
 
-  // For a whole-document replacement made outside the mutation funnel that owns
-  // the stacks: there is nothing to pair an undo entry with, so the history is
-  // dropped rather than left standing. A surviving entry holds a doc from before
-  // the replacement, and popping it would revert that swap together with the
-  // last real edit, under the wrong label.
-  //
-  // Stacks only. Open edit/preview sessions are just as stale after such a
-  // replacement, but they belong to usePartDoc; a caller composes that teardown
-  // around this call the same way applyUndoRedo does above.
-  const clearStacks = useCallback(() => {
-    commitStacks([], [])
-    // A parked edit-session snapshot is the same history by another name;
-    // restoring it later would resurrect exactly the entries just dropped.
-    stackSnapshotRef.current = null
-  }, [commitStacks])
-
   const applyUndoRedo = useCallback(
     (direction: 'undo' | 'redo') => {
       const from = direction === 'undo' ? undoRef.current : redoRef.current
@@ -87,8 +75,11 @@ export function useUndoRedo(
       // mutation label round-trips in both directions. The clone mirrors
       // pushUndo: the departing doc must not be shared with the entry, and the
       // immutable import payloads stay shared (cloneDocForUndo).
+      // The conservation invariant undo.length + redo.length <= MAX_UNDO_DEPTH
+      // holds at all times: pushUndo caps the undo stack and clears redo, and a
+      // move shifts exactly one entry across, so a non-empty `from` leaves `to`
+      // at most one below the cap and `nextTo` can never exceed it.
       const nextTo = [...to, { doc: cloneDocForUndo(preDoc), mutation: entry.mutation }]
-      if (nextTo.length > MAX_UNDO_DEPTH) nextTo.shift()
 
       commitStacks(
         direction === 'undo' ? nextFrom : nextTo,
@@ -152,7 +143,6 @@ export function useUndoRedo(
     redoStack,
     suppressUndoRef,
     pushUndo,
-    clearStacks,
     handleUndo,
     handleRedo,
     saveUndoStackSnapshot,

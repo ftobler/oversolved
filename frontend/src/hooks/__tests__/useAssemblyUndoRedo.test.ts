@@ -7,6 +7,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { findInstance, findMate } from '@/utils/assemblyMutations'
 import { IDENTITY_TRANSFORM, rotateVector } from '@/utils/transform3d'
+import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import type { AssemblyDoc } from '@/types/cad'
 
 // The module store holds the stacks, so every test must start from an empty
@@ -150,7 +151,7 @@ describe('useAssemblyUndoRedo', () => {
     ))
 
     for (let i = 0; i < 55; i++) {
-      act(() => { result.current.pushUndo(docWith([`f${i}`]), `op ${i}`) })
+      act(() => { result.current.pushUndo(docWith([`f${i}`]), `op ${i}` as AssemblyUndoLabel) })
     }
 
     expect(result.current.undoStack).toHaveLength(50)
@@ -307,7 +308,7 @@ describe('useAssemblyUndoRedo', () => {
     const { pushUndo } = result.current
 
     // Stands in for the page's mutate: captures the pre-doc, then applies.
-    const pageMutate = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    const pageMutate = (label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
       const cur = docRef.current!
       pushUndo(cur, label)
       docRef.current = fn(cur)
@@ -604,7 +605,7 @@ describe('useAssemblyUndoRedo', () => {
     // Page flow for "instance editor open, then insert mate": session A is the
     // instance editor (closed and committed by the insert), session B is the
     // mate editor (dropped by its Cancel).
-    act(() => { result.current.recordSessionEdit(docA, 'Edit instance') })
+    act(() => { result.current.recordSessionEdit(docA, 'Edit instance' as AssemblyUndoLabel) })
     docRef.current = docB  // the instance edit applied
     act(() => {
       result.current.commitSession()  // the insert closes session A
@@ -647,7 +648,7 @@ describe('useAssemblyUndoRedo', () => {
     const { pushUndo } = result.current
 
     // Stands in for the page's mutate: captures the pre-doc, then applies.
-    const pageMutate = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    const pageMutate = (label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
       const cur = docRef.current!
       pushUndo(cur, label)
       docRef.current = fn(cur)
@@ -713,7 +714,7 @@ describe('useAssemblyUndoRedo', () => {
     const { pushUndo } = result.current
 
     // Stands in for the page's mutate: captures the pre-doc, then applies.
-    const pageMutate = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    const pageMutate = (label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
       const cur = docRef.current!
       pushUndo(cur, label)
       docRef.current = fn(cur)
@@ -776,14 +777,14 @@ describe('useAssemblyUndoRedo', () => {
 
     // The page funnel: an editor is open, so ref picks are session edits that
     // pin only the FIRST pre-pick doc; anything else pushes immediately.
-    const oneShot = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    const oneShot = (label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
       const cur = docRef.current!
       pushUndo(cur, label)
       docRef.current = fn(cur)
       setDoc(docRef.current)
       useAssemblyStore.getState().setSnapshot({ ...useAssemblyStore.getState(), doc: docRef.current })
     }
-    const sessionEdit = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    const sessionEdit = (label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
       const cur = docRef.current!
       recordSessionEdit(cur, label)
       docRef.current = fn(cur)

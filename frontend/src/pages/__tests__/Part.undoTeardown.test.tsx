@@ -63,6 +63,10 @@ describe('Part - undo tears down transient editor state', () => {
     await screen.findByTitle('Feature mode')
 
     fireEvent.click(screen.getByTitle('Feature mode'))
+    // A just-added feature's add is suppressed inside its edit session and is
+    // not on the stack until OK, so seed one real entry first: the undo below
+    // has to pop something to reach the teardown this test pins.
+    await act(async () => { executeCommand('toggle_sketch_plane_visibility') })
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
 
     // Adding a feature enters it and arms its first pick field, so the page is

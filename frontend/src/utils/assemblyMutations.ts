@@ -81,6 +81,12 @@ function withoutFeatures(doc: AssemblyDoc): Record<string, unknown> {
 // O(changed feature). The untouched-feature reference walk is what makes it
 // sound; the funnel keeps `next === current` in front of this so a real edit
 // never even reaches it.
+//
+// Unlike the part editor's sliced `noOpSliceFor`, which exists because an
+// imported STEP feature carries inline `file_data` that makes a whole-doc
+// compare O(payload), an assembly document holds no inline payloads (instances
+// are references, not embedded data), so even the deepEquals fallback here
+// stays affordable.
 export function assemblyDocEquals(a: AssemblyDoc, b: AssemblyDoc): boolean {
   if (a === b) return true
   const aList = a.features

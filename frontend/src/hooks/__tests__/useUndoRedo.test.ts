@@ -171,36 +171,6 @@ describe('useUndoRedo', () => {
     expect(result.current.undoStack).toHaveLength(2)  // pushUndo still pushes, suppressUndoRef is not checked inside pushUndo
   })
 
-  it('clearStacks empties both stacks', () => {
-    const docA = { version: 1, kind: 'part' } as PartDoc
-    const docRef = { current: docA }
-    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
-
-    act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA) })
-    act(() => { result.current.handleUndo() })
-    expect(result.current.redoStack).toHaveLength(1)
-
-    act(() => { result.current.clearStacks() })
-
-    expect(result.current.undoStack).toHaveLength(0)
-    expect(result.current.redoStack).toHaveLength(0)
-  })
-
-  it('clearStacks drops a parked edit-session snapshot too', () => {
-    const docA = { version: 1, kind: 'part' } as PartDoc
-    const docRef = { current: docA }
-    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
-
-    act(() => { result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA) })
-    act(() => { result.current.saveUndoStackSnapshot() })
-    act(() => { result.current.clearStacks() })
-
-    // Cancelling the still-open session must not resurrect the history the code
-    // tab just invalidated.
-    act(() => { result.current.restoreUndoStackSnapshot() })
-    expect(result.current.undoStack).toHaveLength(0)
-  })
-
   it('handleUndo on empty stack is no-op', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()

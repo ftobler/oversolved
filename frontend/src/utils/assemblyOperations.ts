@@ -11,6 +11,7 @@
 // decides for itself whether to bake. Pure: no store, no callbacks, no React.
 
 import type { AssemblyDoc, MateKind, Transform3D } from '@/types/cad'
+import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import {
   appendMate,
   appendPartInstance,
@@ -60,7 +61,7 @@ export type AssemblyOperationId = keyof AssemblyOperationInputs
 
 export interface AssemblyOperationDef<I> {
   readonly id: AssemblyOperationId
-  readonly label: string
+  readonly label: AssemblyUndoLabel
   readonly bake: boolean
   readonly undo: AssemblyUndoPolicy
   readonly solve: AssemblySolvePolicy
@@ -80,83 +81,83 @@ export const ASSEMBLY_OPERATIONS: {
   readonly [K in AssemblyOperationId]: AssemblyOperationDef<AssemblyOperationInputs[K]>
 } = {
   add_part: {
-    id: 'add_part', label: 'Add part', bake: true, undo: 'one-shot', solve: 'solve',
+    id: 'add_part', label: ASSEMBLY_UNDO_LABELS.addPart, bake: true, undo: 'one-shot', solve: 'solve',
     apply: (doc, input) => appendPartInstance(doc, input.docId, input.docRev),
   },
   duplicate_part: {
-    id: 'duplicate_part', label: 'Duplicate part', bake: true, undo: 'one-shot', solve: 'solve',
+    id: 'duplicate_part', label: ASSEMBLY_UNDO_LABELS.duplicatePart, bake: true, undo: 'one-shot', solve: 'solve',
     apply: (doc, handle) => duplicateInstance(doc, handle),
   },
   delete_part: {
-    id: 'delete_part', label: 'Delete part', bake: true, undo: 'one-shot', solve: 'solve',
+    id: 'delete_part', label: ASSEMBLY_UNDO_LABELS.deletePart, bake: true, undo: 'one-shot', solve: 'solve',
     apply: (doc, handle) => removeInstance(doc, handle),
   },
   set_part_visible: {
     // Visibility moves nothing on screen, so it neither bakes nor re-solves.
-    id: 'set_part_visible', label: 'Toggle visibility', bake: false, undo: 'one-shot', solve: 'skip',
+    id: 'set_part_visible', label: ASSEMBLY_UNDO_LABELS.toggleVisibility, bake: false, undo: 'one-shot', solve: 'skip',
     apply: (doc, input) => setInstanceVisible(doc, input.handle, input.visible),
   },
   set_builtin_visible: {
     // A reference plane is a pure render change: no bake, no solve.
-    id: 'set_builtin_visible', label: 'Toggle plane visibility', bake: false, undo: 'one-shot', solve: 'skip',
+    id: 'set_builtin_visible', label: ASSEMBLY_UNDO_LABELS.togglePlaneVisibility, bake: false, undo: 'one-shot', solve: 'skip',
     apply: (doc, input) => setBuiltinVisible(doc, input.id, input.visible),
   },
   set_part_fixed: {
     // Fixing a part adds no geometric constraint at its solved pose, so the
     // current view is already correct; baking keeps the seeds in step for the
     // next real solve. The editor checkbox folds into the session's step.
-    id: 'set_part_fixed', label: 'Fix/unfix part', bake: true, undo: 'fold', solve: 'skip',
+    id: 'set_part_fixed', label: ASSEMBLY_UNDO_LABELS.fixUnfixPart, bake: true, undo: 'fold', solve: 'skip',
     apply: (doc, input) => setInstanceFixed(doc, input.handle, input.fixed),
   },
   set_part_fixed_oneshot: {
     // The options-menu toggle is a structural op: its own step even while an
     // editor session is open.
-    id: 'set_part_fixed_oneshot', label: 'Fix/unfix part', bake: true, undo: 'one-shot', solve: 'skip',
+    id: 'set_part_fixed_oneshot', label: ASSEMBLY_UNDO_LABELS.fixUnfixPart, bake: true, undo: 'one-shot', solve: 'skip',
     apply: (doc, input) => setInstanceFixed(doc, input.handle, input.fixed),
   },
   set_part_position: {
-    id: 'set_part_position', label: 'Set position', bake: true, undo: 'fold', solve: 'solve',
+    id: 'set_part_position', label: ASSEMBLY_UNDO_LABELS.setPosition, bake: true, undo: 'fold', solve: 'solve',
     apply: (doc, input) => setInstancePosition(doc, input.handle, input.pos),
   },
   set_part_rotation: {
-    id: 'set_part_rotation', label: 'Set rotation', bake: true, undo: 'fold', solve: 'solve',
+    id: 'set_part_rotation', label: ASSEMBLY_UNDO_LABELS.setRotation, bake: true, undo: 'fold', solve: 'solve',
     apply: (doc, input) => setInstanceRotation(doc, input.handle, input.euler),
   },
   add_mate: {
     // An unreferenced mate has nothing to constrain: the editor opens and arms
     // a field, and the solve lands when that field closes.
-    id: 'add_mate', label: 'Add mate', bake: false, undo: 'one-shot', solve: 'skip',
+    id: 'add_mate', label: ASSEMBLY_UNDO_LABELS.addMate, bake: false, undo: 'one-shot', solve: 'skip',
     apply: (doc, input) => appendMate(doc, input.kind, input.id),
   },
   delete_mate: {
-    id: 'delete_mate', label: 'Delete mate', bake: true, undo: 'one-shot', solve: 'solve',
+    id: 'delete_mate', label: ASSEMBLY_UNDO_LABELS.deleteMate, bake: true, undo: 'one-shot', solve: 'solve',
     apply: (doc, id) => removeMate(doc, id),
   },
   update_mate: {
     // A mate parameter edit must NOT bake: baking would fold the previous
     // solve's roll into the seed and the solver's seed-relative angle would
     // compound every keystroke. The solve is owed while a chip is armed.
-    id: 'update_mate', label: 'Edit mate', bake: false, undo: 'fold', solve: 'defer',
+    id: 'update_mate', label: ASSEMBLY_UNDO_LABELS.editMate, bake: false, undo: 'fold', solve: 'defer',
     apply: (doc, input) => updateMate(doc, input.id, input.patch),
   },
   reorder_part: {
     // Reordering is a pure authored-order edit: no geometry moves, no solve.
-    id: 'reorder_part', label: 'Reorder part', bake: false, undo: 'one-shot', solve: 'skip',
+    id: 'reorder_part', label: ASSEMBLY_UNDO_LABELS.reorderPart, bake: false, undo: 'one-shot', solve: 'skip',
     apply: (doc, input) => moveInstance(doc, input.movingHandle, input.beforeHandle),
   },
   reorder_mate: {
-    id: 'reorder_mate', label: 'Reorder mate', bake: false, undo: 'one-shot', solve: 'skip',
+    id: 'reorder_mate', label: ASSEMBLY_UNDO_LABELS.reorderMate, bake: false, undo: 'one-shot', solve: 'skip',
     apply: (doc, input) => moveMate(doc, input.movingId, input.beforeId),
   },
   rename_mate: {
-    id: 'rename_mate', label: 'Rename mate', bake: false, undo: 'one-shot', solve: 'skip',
+    id: 'rename_mate', label: ASSEMBLY_UNDO_LABELS.renameMate, bake: false, undo: 'one-shot', solve: 'skip',
     apply: (doc, input) => setMateLabel(doc, input.id, input.label),
   },
 }
 
 export interface AssemblyOperationPlan {
   id: AssemblyOperationId
-  label: string
+  label: AssemblyUndoLabel
   // Baked if the cell says so, then mutated.
   doc: AssemblyDoc
   changed: boolean
@@ -190,8 +191,8 @@ export interface AssemblyOperationContext {
 }
 
 export interface AssemblyOperationHost extends AssemblyOperationContext {
-  mutateSession: (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => void
-  mutateOneShot: (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => void
+  mutateSession: (label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => void
+  mutateOneShot: (label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => void
   requestSolve: () => void
   requestSolveOrDefer: () => void
 }

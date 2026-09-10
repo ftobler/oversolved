@@ -180,6 +180,18 @@ describe('isEditableTarget', () => {
     expect(isEditableTarget(fakeKey('a', {}, { tagName: 'DIV' }))).toBe(false)
   })
 
+  it('returns false for a DIV explicitly marked not contenteditable', () => {
+    expect(isEditableTarget(fakeKey('a', {}, { tagName: 'DIV', isContentEditable: false }))).toBe(false)
+  })
+
+  it('returns true for a contenteditable DIV', () => {
+    expect(isEditableTarget(fakeKey('a', {}, { tagName: 'DIV', isContentEditable: true }))).toBe(true)
+  })
+
+  it('returns true for a contenteditable element of an unknown tag', () => {
+    expect(isEditableTarget(fakeKey('a', {}, { tagName: 'SPAN', isContentEditable: true }))).toBe(true)
+  })
+
   it('returns true during IME composition', () => {
     expect(isEditableTarget(fakeKey('a', { isComposing: true }))).toBe(true)
   })

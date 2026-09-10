@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
+import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 // The cap lives in its own module specifically so a test can shrink it: with
@@ -28,11 +29,15 @@ describe('useUndoRedo capped history', () => {
     for (let i = 0; i < 8; i++) act(() => { result.current.handleUndo() })
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(3)
+    expect(result.current.undoStack.length + result.current.redoStack.length)
+      .toBeLessThanOrEqual(MAX_UNDO_DEPTH)
 
     // Redo everything: undo rebuilds to the cap and redo drains.
     for (let i = 0; i < 8; i++) act(() => { result.current.handleRedo() })
     expect(result.current.redoStack).toHaveLength(0)
     expect(result.current.undoStack).toHaveLength(3)
+    expect(result.current.undoStack.length + result.current.redoStack.length)
+      .toBeLessThanOrEqual(MAX_UNDO_DEPTH)
 
     // The counterpart push on every undo/redo is capped too, so repeated
     // round-tripping can never grow a stack past the depth.
@@ -41,6 +46,10 @@ describe('useUndoRedo capped history', () => {
       for (let j = 0; j < 3; j++) act(() => { result.current.handleRedo() })
       expect(result.current.undoStack.length).toBeLessThanOrEqual(3)
       expect(result.current.redoStack.length).toBeLessThanOrEqual(3)
+      // The conservation invariant that makes the counterpart cap unnecessary:
+      // a move shifts exactly one entry across, so the sum never grows.
+      expect(result.current.undoStack.length + result.current.redoStack.length)
+        .toBeLessThanOrEqual(MAX_UNDO_DEPTH)
     }
   })
 })

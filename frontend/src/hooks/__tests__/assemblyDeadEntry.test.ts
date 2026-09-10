@@ -5,7 +5,9 @@ import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { assemblyDocEquals, setInstancePosition, setInstanceVisible, setMateLabel } from '@/utils/assemblyMutations'
+import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import type { AssemblyDoc } from '@/types/cad'
 
 // The counterpart cap is observable only when it is small; at 50 a
@@ -65,7 +67,7 @@ describe('assembly dead undo entries', () => {
     expect(result.current.redoStack).toHaveLength(1)
     useUnsavedChangesStore.getState().setDirty(false)
 
-    const funnelMutate = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    const funnelMutate = (label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
       const current = docRef.current!
       const next = fn(current)
       if (next === current || assemblyDocEquals(current, next)) return
@@ -182,7 +184,7 @@ describe('assembly dead undo entries', () => {
     ))
 
     for (let i = 0; i < 8; i++) {
-      act(() => { result.current.pushUndo(docWith([`f${i}`]), `op ${i}`) })
+      act(() => { result.current.pushUndo(docWith([`f${i}`]), `op ${i}` as AssemblyUndoLabel) })
     }
     // Only the newest 3 of the 8 pushes survive the cap.
     expect(result.current.undoStack).toHaveLength(3)
@@ -190,16 +192,24 @@ describe('assembly dead undo entries', () => {
     for (let i = 0; i < 8; i++) act(() => { result.current.handleUndo() })
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(3)
+    expect(result.current.undoStack.length + result.current.redoStack.length)
+      .toBeLessThanOrEqual(MAX_UNDO_DEPTH)
 
     for (let i = 0; i < 8; i++) act(() => { result.current.handleRedo() })
     expect(result.current.redoStack).toHaveLength(0)
     expect(result.current.undoStack).toHaveLength(3)
+    expect(result.current.undoStack.length + result.current.redoStack.length)
+      .toBeLessThanOrEqual(MAX_UNDO_DEPTH)
 
     for (let i = 0; i < 5; i++) {
       for (let j = 0; j < 3; j++) act(() => { result.current.handleUndo() })
       for (let j = 0; j < 3; j++) act(() => { result.current.handleRedo() })
       expect(result.current.undoStack.length).toBeLessThanOrEqual(3)
       expect(result.current.redoStack.length).toBeLessThanOrEqual(3)
+      // The conservation invariant that makes the counterpart cap unnecessary:
+      // a move shifts exactly one entry across, so the sum never grows.
+      expect(result.current.undoStack.length + result.current.redoStack.length)
+        .toBeLessThanOrEqual(MAX_UNDO_DEPTH)
     }
   })
 
@@ -237,7 +247,7 @@ describe('assembly dead undo entries', () => {
     expect(result.current.redoStack).toHaveLength(1)
     useUnsavedChangesStore.getState().setDirty(false)
 
-    const funnelMutate = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    const funnelMutate = (label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
       const current = docRef.current!
       const next = fn(current)
       if (next === current || assemblyDocEquals(current, next)) return

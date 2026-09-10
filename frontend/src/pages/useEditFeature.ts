@@ -74,7 +74,11 @@ export function useEditFeature({
     store.setEditingFeatureId(null)
     store.setPickBoundary(null)
     // Entering an edit pins the bar just after the edited feature; leaving it
-    // returns the bar to where the user parked it (null = end of stack).
+    // returns the bar to where the user parked it (null = end of stack). This
+    // reads the PRE-undo doc when reached through applyUndoRedo's teardown; the
+    // undo path re-clamps and re-sets the position from the restored entry after
+    // this returns, so the transient value here is intentionally overwritten.
+    // Normal exits (commitEditFeature, cancelEditFeature) rely on it directly.
     store.setRollbackPosition(docRef.current?.rollback ?? null)
   }, [docRef, clearPlaneSelection])
 

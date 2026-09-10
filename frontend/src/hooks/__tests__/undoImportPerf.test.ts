@@ -53,7 +53,7 @@ describe('measurement gate: the undo stack does not duplicate the import payload
     let depth = 0
     for (let run = 0; run < 5; run++) {
       const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
-      const { result } = renderHookStrict(() =>
+      const { result, unmount } = renderHookStrict(() =>
         useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
 
       gc?.()
@@ -68,8 +68,9 @@ describe('measurement gate: the undo stack does not duplicate the import payload
       minRetained = Math.min(minRetained, process.memoryUsage().heapUsed - baseline)
       depth = result.current.undoStack.length
       // Release this run's retained entries so the next run measures against a
-      // clean heap instead of stacking another 50 clones on top of the last.
-      act(() => result.current.clearStacks())
+      // clean heap instead of stacking another 50 clones on top of the last:
+      // unmounting drops the hook (and its refs) so the entries are collectable.
+      act(() => unmount())
     }
 
     expect(depth).toBe(MAX_UNDO_DEPTH)

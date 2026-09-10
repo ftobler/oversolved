@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent, screen } from '@testing-library/react'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
+import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 
 const mockExecuteCommand = vi.hoisted(() => vi.fn())
 
@@ -25,7 +26,7 @@ function renderToolbar() {
 }
 
 function entry(label: string): AssemblyUndoEntry {
-  return { doc: { kind: 'assembly', features: [] }, label }
+  return { doc: { kind: 'assembly', features: [] }, label: label as AssemblyUndoLabel }
 }
 
 const undoButton = () => screen.getByRole('button', { name: 'Undo' })

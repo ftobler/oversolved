@@ -98,8 +98,8 @@ describe('useAssemblyDoc', () => {
   // content into the one that failed to load.
   it('a failed load clears any previous document history from the store', async () => {
     useAssemblyStore.setState({
-      undoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'stale' }],
-      redoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'stale redo' }],
+      undoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'Add part' as const }],
+      redoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'Add mate' as const }],
     })
 
     const { result } = renderHook(() => useAssemblyDoc('D'))
@@ -149,8 +149,8 @@ describe('useAssemblyDoc', () => {
 
     // Simulate A's editing history: the entries A's own sessions pushed.
     useAssemblyStore.setState({
-      undoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'A edit' }],
-      redoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'A redo' }],
+      undoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'Edit mate' as const }],
+      redoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'Move part' as const }],
     })
     expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
 

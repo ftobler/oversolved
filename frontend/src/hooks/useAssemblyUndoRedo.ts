@@ -15,6 +15,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { assemblyDocEquals } from '@/utils/assemblyMutations'
 import { isSessionOpen } from '@/utils/assemblyEditingSubject'
+import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 
 export type AssemblyMutationDecision = 'noop' | 'push' | 'fold'
 
@@ -43,14 +44,14 @@ export function useAssemblyUndoRedo(
   // pinning it here rather than when the editor opened is what makes it right, as
   // a one-shot landing between the open and the first session edit dirties the doc
   // for a reason the cancel has no business undoing.
-  const pendingSession = useRef<{ doc: AssemblyDoc; label: string; dirty: boolean } | null>(null)
+  const pendingSession = useRef<{ doc: AssemblyDoc; label: AssemblyUndoLabel; dirty: boolean } | null>(null)
 
   // Read the stacks from the store so the hook re-renders (and tests can assert)
   // exactly like the part editor's hook does.
   const undoStack = useAssemblyStore(s => s.undoStack)
   const redoStack = useAssemblyStore(s => s.redoStack)
 
-  const pushUndo = useCallback((doc: AssemblyDoc, label: string) => {
+  const pushUndo = useCallback((doc: AssemblyDoc, label: AssemblyUndoLabel) => {
     // The entry holds a snapshot, never a reference: every caller passes the
     // live docRef object, and any path that mutates it in place would silently
     // rewrite history if the stored object were shared. Mirrors applyUndoRedo's
@@ -61,7 +62,7 @@ export function useAssemblyUndoRedo(
     useAssemblyStore.setState({ undoStack: undo, redoStack: [] })
   }, [])
 
-  const recordSessionEdit = useCallback((doc: AssemblyDoc, label: string) => {
+  const recordSessionEdit = useCallback((doc: AssemblyDoc, label: AssemblyUndoLabel) => {
     // The page's `mutate` calls this BEFORE it applies the mutation and before it
     // sets the doc dirty, so both the doc and the flag read here are still the
     // pre-session ones cancelSession has to restore.
@@ -119,7 +120,7 @@ export function useAssemblyUndoRedo(
   // breaks under React batching, where two mutations in one event both see the
   // same stale pre-doc. The undo decision is the shared pure one, and the
   // session-open flag comes from the store, so no caller passes it.
-  const mutate = useCallback((label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+  const mutate = useCallback((label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
     const current = docRef.current
     if (!current) return
     const next = fn(current)
@@ -141,7 +142,7 @@ export function useAssemblyUndoRedo(
   // coalesced step closes first, so the one-shot's pre-doc captures the doc
   // AFTER the session's edits and a later session commit starts from the
   // post-op doc - pre-docs stay distinct and in order.
-  const mutateOneShot = useCallback((label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+  const mutateOneShot = useCallback((label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
     commitSession()
     const current = docRef.current
     if (!current) return
@@ -178,8 +179,11 @@ export function useAssemblyUndoRedo(
     // round-trips in both directions. The clone mirrors pushUndo's snapshot
     // discipline: the departing doc must not be shared with the entry.
     const preDoc = docRef.current
+    // The conservation invariant undo.length + redo.length <= MAX_UNDO_DEPTH
+    // holds at all times: pushUndo caps the undo stack and clears redo, and a
+    // move shifts exactly one entry across, so a non-empty `from` leaves `to`
+    // at most one below the cap and `nextTo` can never exceed it.
     const nextTo = [...to, { doc: structuredClone(preDoc), label: entry.label }]
-    if (nextTo.length > MAX_UNDO_DEPTH) nextTo.shift()
     useAssemblyStore.setState(
       direction === 'undo'
         ? { undoStack: nextFrom, redoStack: nextTo }

@@ -142,8 +142,12 @@ const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 export function isEditableTarget(e: KeyboardEvent): boolean {
   if (e.isComposing) return true
   if (e.key === 'Unidentified') return true
-  const tag = (e.target as HTMLElement)?.tagName
-  return tag != null && EDITABLE_TAGS.has(tag)
+  // contenteditable is a property, not a tag: a plain <div contenteditable>
+  // would otherwise reach the document commands, so Ctrl+Z inside it would fire
+  // a document undo instead of the browser's native text undo.
+  const target = e.target as HTMLElement | null
+  if (target?.isContentEditable) return true
+  return target?.tagName != null && EDITABLE_TAGS.has(target.tagName)
 }
 
 /**

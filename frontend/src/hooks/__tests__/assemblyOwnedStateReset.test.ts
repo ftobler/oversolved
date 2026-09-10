@@ -176,7 +176,7 @@ describe('assembly owned state reset on doc swap', () => {
   })
 
   it('resetTransientAssemblyState preserves the undo/redo stacks', () => {
-    const entry = { doc: docWith(instance('pA')), label: 'stale' }
+    const entry = { doc: docWith(instance('pA')), label: 'Add part' as const }
     useAssemblyStore.setState({ undoStack: [entry], redoStack: [entry] })
     useAssemblyStore.setState({
       manipulation: { handle: 'pA', seed: { ...IDENTITY_TRANSFORM }, current: { ...IDENTITY_TRANSFORM } },

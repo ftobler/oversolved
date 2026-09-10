@@ -490,9 +490,21 @@ export default function Part() {
 
   const handleAddFeature = useCallback((kind: string, extra?: Record<string, unknown>) => {
     if (!doc) return
+    // One-open-editor discipline: adding a feature while another feature's
+    // session is open closes it first (committing its edits), exactly as
+    // enterEditFeature does. Without this the second startEditSession below
+    // would trip the nested-session guard, and Cancel would roll the first
+    // feature's edits back together with the add.
+    if (usePartEditorStore.getState().editingFeatureId !== null) commitEditFeature()
     const fid = randomId(18)
     const label = `${kind} ${Object.keys(bodies).length + 1}`
     const store = usePartEditorStore.getState()
+    // Start the edit session against the PRE-add doc and let it suppress the
+    // add: OK then folds the add and any in-session field edits into one
+    // aggregate step, and Cancel rewinds the add away. Starting the session
+    // after the dispatch would pin the post-add doc, so Cancel would leave the
+    // new feature standing.
+    startEditSession(true)
     // Extend rollback so the mutation-triggered reSolve includes the new
     // feature, and pre-stage pick_boundary as if the new feature were the
     // edit target. The new feature will land at non-builtin index
@@ -503,16 +515,20 @@ export default function Part() {
     store.setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
     // enterEditFeature would bail because React hasn't re-rendered with the
-    // new feature yet (features.findIndex(f => f.id === fid) returns -1).
-    // Enter edit mode eagerly without starting a session; commit/cancel
-    // handle the no-session case gracefully.
+    // new feature yet (features.findIndex(f => f.id === fid) returns -1), so
+    // the id is set eagerly; the session started above already owns commit and
+    // cancel, so unlike the old no-session path Cancel now removes the add.
     store.setEditingFeatureId(fid)
     const firstPick = FIRST_PICK_FIELD[kind]
     if (firstPick) setActivePickField({ featureId: fid, ...firstPick })
-  }, [doc, features, handleMutation, bodies, setActivePickField])
+  }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, commitEditFeature])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
+    // Same one-open-editor discipline as handleAddFeature: commit the open
+    // session before opening the new one, so the add cannot be folded into the
+    // other feature's session (which Cancel would then roll back with it).
+    if (usePartEditorStore.getState().editingFeatureId !== null) commitEditFeature()
     const featureId = randomId(18)
     const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
     const label = `plane ${planeCount + 1}`
@@ -537,11 +553,12 @@ export default function Part() {
       ? { mode: 'on_face', face: stripSelectionWrapper(faceQuery) } as const
       : undefined
     setRollbackForNewFeature(features)
+    startEditSession(true)
     handleMutation({ type: 'add_plane', featureId, label, definition })
     usePartEditorStore.getState().setEditingFeatureId(featureId)
     const firstPick = FIRST_PICK_FIELD['plane']
     if (firstPick) setActivePickField({ featureId, ...firstPick })
-  }, [doc, features, handleMutation, selection, setActivePickField])
+  }, [doc, features, handleMutation, selection, setActivePickField, startEditSession, commitEditFeature])
 
   const handleAddSketch = useCallback(() => {
     if (!doc) return

@@ -146,6 +146,23 @@ describe('usePartDoc undo/redo integration', () => {
     expect(labelOf()).toBe('first')
   })
 
+  // The L8 contract the page's add+enter now uses: a session started BEFORE an
+  // add suppresses the add, so Cancel rewinds it away and charges no entry.
+  it('cancelEditSession rewinds an add dispatched inside the session', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation({ type: 'add_sketch', featureId: 'sk-new', label: 'sketch 2' }) })
+    expect((docRef.current.features ?? []).some(f => f.id === 'sk-new')).toBe(true)
+    expect(result.current.undoStack).toHaveLength(0)
+
+    act(() => { result.current.cancelEditSession() })
+
+    expect((docRef.current.features ?? []).some(f => f.id === 'sk-new')).toBe(false)
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
   it('a committed preview is one undo step back to the pre-preview doc', () => {
     docRef.current = {
       oversolved: 1,

@@ -1744,5 +1744,66 @@ describe('AssemblyEditor undo/redo', () => {
     await tick()
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(0)
   })
+
+  // The L3 split: the callback effect used to commit the open session in its
+  // cleanup, so every re-registration closed it. This pins the close-commit
+  // invariant (one entry per editor close) that the split protects.
+  it('an instance edit commits as exactly one coalesced entry on OK', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)  // Add part
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    await tick()
+    // The keystroke is already in the doc but coalesced behind the open editor.
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+    expect(undoStack()).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    await tick()
+    expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Set position'])
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(0)
+  })
+
+  it('switching instance editors keeps each edit in its own undo step', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(2)  // two Add part steps
+
+    // Editor A: edit instance 0; its own Edit button is replaced by OK/Cancel,
+    // so the one Edit button left is instance 1's.
+    fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    await tick()
+    expect(undoStack()).toHaveLength(2)  // still coalesced
+
+    // Opening editor B closes A: A's edit lands as its own step, not merged.
+    fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
+    await tick()
+    expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Add part', 'Set position'])
+
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '9' } })
+    await tick()
+    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    await tick()
+    expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Add part', 'Set position', 'Set position'])
+
+    // Undo reverts only B's edit; A's stays.
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances[1].transform.tx).toBe(0)
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+  })
 })
 

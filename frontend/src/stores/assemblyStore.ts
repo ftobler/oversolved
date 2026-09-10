@@ -8,6 +8,7 @@ import { bakeSolvedTransforms, findInstance, findMate, setMateRef, updateMate } 
 import { reduceEditingSubject, type EditingSubject } from '@/utils/assemblyEditingSubject'
 import type { AssemblySubject } from '@/utils/assemblySelection'
 import { runAssemblyOperation } from '@/utils/assemblyOperations'
+import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
@@ -69,7 +70,7 @@ import {
 /** One undo step: the pre-mutation document plus a short label for the toolbar tooltip. */
 export interface AssemblyUndoEntry {
   doc: AssemblyDoc
-  label: string
+  label: AssemblyUndoLabel
 }
 
 export interface AssemblyEditorData {
@@ -271,9 +272,9 @@ const STORE_OWNED_FIELDS = [
  */
 export interface AssemblyCallbacks {
   // One-shot mutations push an undo step immediately.
-  mutateDoc: (label: string, fn: (doc: AssemblyDoc) => AssemblyDoc) => void
+  mutateDoc: (label: AssemblyUndoLabel, fn: (doc: AssemblyDoc) => AssemblyDoc) => void
   // A ref pick mid-authoring folds into the open edit session's coalesced step.
-  mutateDocSession: (label: string, fn: (doc: AssemblyDoc) => AssemblyDoc) => void
+  mutateDocSession: (label: AssemblyUndoLabel, fn: (doc: AssemblyDoc) => AssemblyDoc) => void
   requestSolve: () => void
 }
 
@@ -535,7 +536,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     const refA = activeMateField.field === 'ref_a' ? ref : mate?.ref_a
     const refB = activeMateField.field === 'ref_b' ? ref : mate?.ref_b
     const patch = mate ? captureMateOrientationPatch(mate, refA, refB, get().anchors) : null
-    callbacks.mutateDocSession('Pick mate reference', d => {
+    callbacks.mutateDocSession(ASSEMBLY_UNDO_LABELS.pickMateReference, d => {
       const withRef = setMateRef(d, activeMateField.featureId, activeMateField.field, ref)
       return patch ? updateMate(withRef, activeMateField.featureId, patch) : withRef
     })
@@ -686,7 +687,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // relax the whole assembly off the pose the drag just previewed. Baking
     // first (commitManipulation then overwrites the grabbed part) keeps the
     // seeds in step with the screen, the same discipline the fix toggle uses.
-    callbacks.mutateDoc('Move part', d => commitManipulation(bakeSolvedTransforms(d, solved), manipulation, solvedGrab).doc)
+    callbacks.mutateDoc(ASSEMBLY_UNDO_LABELS.movePart, d => commitManipulation(bakeSolvedTransforms(d, solved), manipulation, solvedGrab).doc)
     callbacks.requestSolve()  // one cold solve per pointer-up; no per-frame mate solve
   },
 

@@ -147,6 +147,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     }
   }, [doc, instances, mates])
 
+  // Unmount-only: the editor is going away with a pinned coalescing session.
+  // Commit so navigation leaves exactly one entry instead of dropping the edits
+  // from undo forever. Callback de-registration is a separate effect below, so
+  // a mid-session re-registration can no longer commit (and split) a session
+  // that is still being edited.
+  useEffect(() => {
+    return () => { commitSession() }
+  }, [commitSession])
+
   // The store owns the drag/gizmo state machine but not the document; give it
   // the hook's doc mutators and the one-solve-per-pointer-up trigger. Drag
   // commits and [Delete] deletes are one-shot, ref picks fold into the open
@@ -158,16 +167,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
       requestSolve,
     })
     return () => {
-      // The page is unmounting with an open mate/instance editor. Its pinned
-      // coalescing session would otherwise die with the component: the edits
-      // are already in the doc but have no undo entry to reach them, so a save
-      // after navigation persists them forever beyond undo. Commit first so
-      // navigation leaves one coalesced entry and a consistent stack. The UI
-      // state itself needs no closing, the component is going away.
-      commitSession()
+      // De-registration only. The unmount commit above is its own effect so a
+      // re-registration while a pinned session is live cannot close it.
       setAssemblyCallbacks(null)
     }
-  }, [mutateOneShot, mutate, requestSolve, commitSession])
+  }, [mutateOneShot, mutate, requestSolve])
 
   // The store is module-level and survives a remount, so a new document would
   // otherwise inherit the previous one's manipulation/picks/selection, which
