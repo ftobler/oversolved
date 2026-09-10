@@ -10,10 +10,10 @@ import {
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
 import { findInstance } from '@/utils/assemblyMutations'
-import { createAssemblyPointerAdapter, gestureAllowsSelect } from '@/utils/assemblyPointer'
+import { createAssemblyPointerAdapter, gestureAllowsSelect, type GizmoMode, type PointerRef } from '@/utils/assemblyPointer'
 import { dialCounterRotation, dialSpoke, dialTicks, nearestTickIndex } from '@/utils/angleDialGeometry'
 import { signedAngleAbout, type Ray } from '@/utils/gizmoMath'
-import { GIZMO_AXES, GIZMO_PIXELS, RING_RADIUS, type GizmoAxisDef } from '@/utils/gizmoPickGeometry'
+import { GIZMO_AXES, GIZMO_PIXELS, RING_RADIUS, type GizmoAxisDef, type GizmoAxisName } from '@/utils/gizmoPickGeometry'
 import { manipulationDelta } from '@/utils/partManipulation'
 import {
   composeTransforms, IDENTITY_TRANSFORM, quatMultiply, rotateVector, transformQuat, type Quat, type Vec3,
@@ -52,7 +52,7 @@ function mountHost(initial: AssemblyDoc) {
   // is only observable frame by frame, since +190 and -170 end in the very same
   // orientation and the committed transform cannot tell them apart.
   const swings: number[] = []
-  const adapter = createAssemblyPointerAdapter({
+  const raw = createAssemblyPointerAdapter({
     beginPartManipulation: store.beginPartManipulation,
     beginBodyDrag: store.beginBodyDrag,
     setDragTarget: store.setDragTarget,
@@ -66,7 +66,33 @@ function mountHost(initial: AssemblyDoc) {
     selectPart: store.selectPart,
     setGizmoDrag: store.setGizmoDrag,
   })
-  return { host, requestSolve, adapter, swings }
+  // The viewport records the opening pointer in its bubbling pointer-down before
+  // any session opens. These tests drive the adapter directly, so the harness
+  // stands in for that recording; the pointer-aware regressions below still pass
+  // their own pointers where the button or id is the point.
+  const P: PointerRef = { id: 1, button: 0 }
+  const adapter = {
+    pointerDown: raw.pointerDown,
+    pointerMove: raw.pointerMove,
+    pointerCancel: raw.pointerCancel,
+    onBodyPointerDown: (handle: string, grab: Vec3, normal: Vec3, pointer: PointerRef = P) => {
+      raw.pointerDown(pointer, 0, 0)
+      return raw.onBodyPointerDown(handle, grab, normal, pointer)
+    },
+    onGizmoPointerDown: (
+      handle: string, mode: GizmoMode, axisName: GizmoAxisName,
+      axis: Vec3, reference: Vec3, origin: Vec3, ray: Ray, pointer: PointerRef = P,
+    ) => {
+      raw.pointerDown(pointer, 0, 0)
+      return raw.onGizmoPointerDown(handle, mode, axisName, axis, reference, origin, ray, pointer)
+    },
+    onPointerMove: raw.onPointerMove,
+    onPointerUp: (pointer = P, x = 0, y = 0) => raw.onPointerUp(pointer, x, y),
+    cancel: raw.cancel,
+    isActive: raw.isActive,
+    get clickState() { return raw.clickState },
+  }
+  return { host, requestSolve, adapter, swings, raw, P }
 }
 
 // A body grab is solver-driven now (the rigid, grab-point rework): the adapter
@@ -539,13 +565,22 @@ describe('gizmoDrag state', () => {
     expect(gizmoDrag()).toBeNull()
   })
 
-  // A triad narrowed to a gesture nobody is holding is unusable: eight of its
-  // nine handles are gone from the screen while the pick layer still registers
-  // them. A release clears the drag even when it finds no gesture to end.
-  it('a pointer-up with no session clears a drag left standing', () => {
-    const { adapter } = mountHost(docWith(instance('p1')))
-    useAssemblyStore.getState().setGizmoDrag({ kind: 'axis', axis: 'x' })
-    adapter.onPointerUp()
+  // The belt-and-braces branch that cleared a gesture-less drag is gone: a drag
+  // can only be published by a successful session open, so the owned release and
+  // cancel are the only transitions that clear it. A foreign release must leave
+  // a live drag standing, or the triad would un-narrow while the pointer still
+  // holds it.
+  it('a foreign release leaves a live drag standing', () => {
+    const { adapter, P } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'translate', 'x', [1, 0, 0], [0, 1, 0], [0, 0, 0], ray([0, 0, 10], [0, 0, -1]))
+    expect(gizmoDrag()).toEqual({ kind: 'axis', axis: 'x' })
+
+    // Same pointer, wrong button: the gesture is still held, so the drag stays.
+    adapter.onPointerUp({ id: P.id, button: 2 })
+    expect(gizmoDrag()).toEqual({ kind: 'axis', axis: 'x' })
+
+    // The opening button now releases it.
+    adapter.onPointerUp(P)
     expect(gizmoDrag()).toBeNull()
   })
 
@@ -643,11 +678,19 @@ describe('click versus manipulation at pointer-up', () => {
     setAssemblyCallbacks(null)
   })
 
-  it('a pointer-up with no session leaves the plain click alone', () => {
+  it('a release with no opening pointer is inert and selects nothing', () => {
     const { adapter } = mountHost(docWith(instance('p1')))
-    const gesture = adapter.onPointerUp()
-    expect(gesture).toEqual({ source: null, moved: false })
-    expect(gestureAllowsSelect(gesture)).toBe(true)
+    const outcome = adapter.onPointerUp()
+    expect(outcome).toEqual({ owned: false, source: null, moved: false })
+    expect(gestureAllowsSelect(outcome)).toBe(false)
+  })
+
+  it('a plain down/up with no session is an owned click', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.pointerDown({ id: 1, button: 0 }, 0, 0)
+    const outcome = adapter.onPointerUp()
+    expect(outcome).toEqual({ owned: true, source: null, moved: false })
+    expect(gestureAllowsSelect(outcome)).toBe(true)
   })
 
   it('a body click that never moved is still a select', () => {
@@ -656,7 +699,7 @@ describe('click versus manipulation at pointer-up', () => {
     adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
     const gesture = adapter.onPointerUp()
 
-    expect(gesture).toEqual({ source: 'body', moved: false })
+    expect(gesture).toEqual({ owned: true, source: 'body', moved: false })
     expect(gestureAllowsSelect(gesture)).toBe(true)
     expect(requestSolve).not.toHaveBeenCalled()
   })
@@ -683,7 +726,7 @@ describe('click versus manipulation at pointer-up', () => {
     adapter.onPointerMove(ray([0.01, 0, 10], [0, 0, -1]))  // a hair, under any threshold
     const gesture = adapter.onPointerUp()
 
-    expect(gesture).toEqual({ source: 'body', moved: true })
+    expect(gesture).toEqual({ owned: true, source: 'body', moved: true })
     expect(gestureAllowsSelect(gesture)).toBe(false)
   })
 
@@ -699,7 +742,7 @@ describe('click versus manipulation at pointer-up', () => {
     expect(adapter.onGizmoPointerDown('p1', mode, name, axis, reference, [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))).toBe(true)
     const gesture = adapter.onPointerUp()
 
-    expect(gesture).toEqual({ source: 'gizmo', moved: false })
+    expect(gesture).toEqual({ owned: true, source: 'gizmo', moved: false })
     expect(gestureAllowsSelect(gesture)).toBe(false)
   })
 

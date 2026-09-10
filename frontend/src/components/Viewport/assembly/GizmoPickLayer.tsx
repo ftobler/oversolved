@@ -8,15 +8,13 @@
 // quantized: only a step of more than ~10% re-registers, and the resolver's
 // snap window absorbs the residual.
 
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useIdPipeline } from '@/picking'
 import { useRegisteredBody } from '@/picking/idRegistrationUtils'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { buildGizmoPickGeometry, GIZMO_PIXELS } from '@/utils/gizmoPickGeometry'
 import type { Quat, Vec3 } from '@/utils/transform3d'
-
-const BODY_KEY = 'assembly-triad-gizmo'
 
 interface GizmoPickLayerProps {
   origin: Vec3
@@ -32,6 +30,11 @@ interface GizmoPickLayerProps {
 export default function GizmoPickLayer({ origin, orientation, enabled }: GizmoPickLayerProps) {
   const pipeline = useIdPipeline()
   const { camera } = useThree()
+  // Per-instance, not a module constant: a second mount (a split view, or a
+  // StrictMode remount whose cleanup races the new register) must not overwrite
+  // the first's registration, and one instance's unregister must not remove the
+  // other's. The single-viewport-only invariant is broader than this layer.
+  const bodyKey = `assembly-triad-gizmo:${useId()}`
   const [pxToWorld, setPxToWorld] = useState(() => p2w(camera))
 
   useFrame(() => {
@@ -43,20 +46,25 @@ export default function GizmoPickLayer({ origin, orientation, enabled }: GizmoPi
   const [qx, qy, qz, qw] = orientation
   const scale = GIZMO_PIXELS * pxToWorld
 
+  // Disabled means the layer answers no picks, and useRegisteredBody returns
+  // before registering anyway. Building the 1158-triangle soup here would only
+  // throw it away the same frame, so the ternary skips the build entirely; the
+  // memo factory still runs per move while disabled, but it is now a null return.
   const geometry = useMemo(
-    () => buildGizmoPickGeometry([ox, oy, oz], [qx, qy, qz, qw], scale),
-    [ox, oy, oz, qx, qy, qz, qw, scale],
+    () => (enabled ? buildGizmoPickGeometry([ox, oy, oz], [qx, qy, qz, qw], scale) : null),
+    [enabled, ox, oy, oz, qx, qy, qz, qw, scale],
   )
 
   useRegisteredBody(
     pipeline,
     enabled,
-    BODY_KEY,
+    bodyKey,
     (p) => {
-      p.gizmoHandleLayer.registerBody({ bodyKey: BODY_KEY, ...geometry })
+      if (!geometry) return false
+      p.gizmoHandleLayer.registerBody({ bodyKey, ...geometry })
       return true
     },
-    (p) => p.gizmoHandleLayer.unregisterBody(BODY_KEY),
+    (p) => p.gizmoHandleLayer.unregisterBody(bodyKey),
     [geometry],
   )
 

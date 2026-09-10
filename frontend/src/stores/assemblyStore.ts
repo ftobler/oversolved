@@ -135,9 +135,13 @@ export interface AssemblyEditorData {
   hoveredEntity: string | null
   // The ID-buffer debug renderpass overlay (mirrors the part editor's showDebugHit).
   showPickDebug: boolean
-  // Live drag/gizmo state; null between manipulations.
+  // Live drag/gizmo state; null between manipulations. This is the single
+  // React-visible truth for "a drag is live": the viewport derives its orbit
+  // lock and render gates from it, and the gesture machine in
+  // utils/assemblyPointer is the only writer, so they cannot drift.
   manipulation: ManipulationSession | null
-  // Which triad handle is being dragged right now; null when none is.
+  // Which triad handle is being dragged right now; null when none is. Only the
+  // gesture machine's open and move transitions publish it.
   gizmoDrag: GizmoDragState | null
   /**
    * Per-handle render offsets owed by a drag that is committed but not yet

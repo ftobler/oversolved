@@ -28,9 +28,17 @@ import {
 } from '@/utils/gizmoMath'
 import { datumAngle, snapArmedAtRadius, snapSwing } from '@/utils/gizmoAngleSnap'
 import { isStationaryPrimaryClick, type ClickGestureState } from '@/utils/clickGesture'
+import {
+  createAssemblyGestureMachine,
+  type GestureOutcome,
+  type GestureSource,
+  type PointerRef,
+} from '@/utils/assemblyGesture'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
 import type { GizmoDragState } from '@/stores/assemblyStore'
 import type { Vec3 } from '@/utils/transform3d'
+
+export type { GestureOutcome, GestureSource, PointerRef } from '@/utils/assemblyGesture'
 
 /** The subset of assemblyStore the adapter drives. */
 export interface AssemblyPointerStore {
@@ -50,35 +58,23 @@ export interface AssemblyPointerStore {
 
 export type GizmoMode = 'translate' | 'rotate' | 'plane'
 
-/** Which pointer-down opened the session: the part itself, or a triad handle. */
-export type GestureSource = 'body' | 'gizmo'
-
-/** What the finished gesture was, for the caller to tell a click from a drag. */
-export interface GestureOutcome {
-  // null when pointer-down opened no session at all.
-  source: GestureSource | null
-  // The session actually moved the part, so a re-solve is owed.
-  moved: boolean
-}
-
-const NO_GESTURE: GestureOutcome = { source: null, moved: false }
-
 /**
  * Whether the pointer-up that ended this gesture may still toggle the B-rep
  * entity under the cursor into the measurement selection.
  *
- * Two things must never select. A gesture that began on a triad handle is
- * unambiguously a manipulation: the handle is drawn over the part, so the face
- * behind it is not what the user pointed at, however short the gesture was. And
- * a gesture that moved the part asked for a re-solve, which drops the selection
- * (the keys are positional) a few frames later -- selecting there only makes a
- * highlight that silently disappears.
+ * A release that did not belong to the gesture owns nothing, so it cannot
+ * select. Beyond that, two things must never select. A gesture that began on a
+ * triad handle is unambiguously a manipulation: the handle is drawn over the
+ * part, so the face behind it is not what the user pointed at, however short the
+ * gesture was. And a gesture that moved the part asked for a re-solve, which
+ * drops the selection (the keys are positional) a few frames later -- selecting
+ * there only makes a highlight that silently disappears.
  *
  * What is left is a body grab that never moved: a plain click on the part, which
  * selects exactly as it would with no session open.
  */
 export function gestureAllowsSelect(outcome: GestureOutcome): boolean {
-  return outcome.source !== 'gizmo' && !outcome.moved
+  return outcome.owned && outcome.source !== 'gizmo' && !outcome.moved
 }
 
 /**
@@ -126,13 +122,26 @@ type Gesture =
     }
 
 export interface AssemblyPointerAdapter {
+  /**
+   * Records the opening pointer and starts its click origin. A false return
+   * means a second pointer arrived while one was already down, so the caller
+   * must not open a session for it.
+   */
+  pointerDown: (pointer: PointerRef, x: number, y: number) => boolean
+  // Advances the click tracker; does not touch the session or the ray math.
+  pointerMove: (x: number, y: number) => void
+  // Abandons the gesture only when the cancelling pointer is the opener, so a
+  // secondary pointer going away cannot end the primary's drag.
+  pointerCancel: (pointer: PointerRef) => void
   // Selects the part; opens a drag session unless it is fixed.
-  onBodyPointerDown: (handle: string, grab: Vec3, viewNormal: Vec3) => boolean
+  onBodyPointerDown: (handle: string, grab: Vec3, viewNormal: Vec3, pointer: PointerRef) => boolean
   /**
    * `axis` is the world slide/swing axis, or for `plane` the plane's normal.
    * `axisName` names the same axis in part-local terms, for the drag state the
    * triad renders from. `reference` is the axis's `u` companion in world space:
    * a ring measures the grab bearing from it, and everything else ignores it.
+   * `pointer` is the pointer that opened the handle, so the machine can refuse
+   * one it does not own.
    */
   onGizmoPointerDown: (
     handle: string,
@@ -142,6 +151,7 @@ export interface AssemblyPointerAdapter {
     reference: Vec3,
     origin: Vec3,
     ray: Ray,
+    pointer: PointerRef,
   ) => boolean
   /**
    * `gizmoWorldScale` is the world size of one gizmo unit right now, which the
@@ -152,32 +162,39 @@ export interface AssemblyPointerAdapter {
    * disarming a feature the user asked for.
    */
   onPointerMove: (ray: Ray, gizmoWorldScale?: number) => void
-  // Commits the session (assemblyStore re-solves once) if one is open.
-  onPointerUp: () => GestureOutcome
+  // Commits the session when the release owns the gesture. An unowned release
+  // is inert and the session survives it. The release position closes the click
+  // tracker, so the travel from the down to the up is measured even when no
+  // pointermove landed between them.
+  onPointerUp: (pointer: PointerRef, x: number, y: number) => GestureOutcome
   cancel: () => void
   isActive: () => boolean
+  readonly clickState: ClickGestureState
 }
 
 export function createAssemblyPointerAdapter(store: AssemblyPointerStore): AssemblyPointerAdapter {
+  // The math state for one session, set by the open transitions and cleared by
+  // the owned release or cancel. `moved` lives in the machine now: it counts
+  // only moves that reached the store, so a pointermove landing back on the
+  // grab point drags by nothing and must leave a click a click.
   let gesture: Gesture | null = null
-  // What the open session is, kept beside the gesture so pointer-up can report
-  // it once the gesture itself is gone. `moved` counts only moves that reached
-  // the store: a pointermove landing back on the grab point drags by nothing and
-  // must leave a click a click.
-  let source: GestureSource | null = null
-  let moved = false
+  const machine = createAssemblyGestureMachine()
 
-  const open = (g: Gesture, from: GestureSource): true => {
+  const openGesture = (g: Gesture, from: GestureSource, pointer: PointerRef): boolean => {
+    if (!machine.open(from, pointer)) {
+      // A pointer the machine refused cannot own the session the store just
+      // opened, so unwind it rather than leaving a drag nobody is holding.
+      store.cancelPartManipulation()
+      return false
+    }
     gesture = g
-    source = from
-    moved = false
     return true
   }
 
-  const onBodyPointerDown = (handle: string, grab: Vec3, viewNormal: Vec3): boolean => {
+  const onBodyPointerDown = (handle: string, grab: Vec3, viewNormal: Vec3, pointer: PointerRef): boolean => {
     store.selectPart(handle)
     if (!store.beginBodyDrag(handle, grab)) return false
-    return open({ kind: 'bodyDrag', grab, normal: viewNormal }, 'body')
+    return openGesture({ kind: 'bodyDrag', grab, normal: viewNormal }, 'body', pointer)
   }
 
   const onGizmoPointerDown = (
@@ -188,6 +205,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     reference: Vec3,
     origin: Vec3,
     ray: Ray,
+    pointer: PointerRef,
   ): boolean => {
     // closestParamOnAxis measures in unit-axis steps, so the slide delta below
     // is only a distance if the axis it scales is unit too.
@@ -204,7 +222,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
         return false
       }
       store.setGizmoDrag({ kind: 'axis', axis: axisName })
-      return open({ kind: 'axis', axis, origin, startParam }, 'gizmo')
+      return openGesture({ kind: 'axis', axis, origin, startParam }, 'gizmo', pointer)
     }
 
     // Both remaining modes read the pointer against the plane through the gizmo
@@ -220,7 +238,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
       // The grab is on the plane already, so the drag needs no other anchor:
       // every later hit lands on the same plane and the difference is the move.
       store.setGizmoDrag({ kind: 'plane', axis: axisName })
-      return open({ kind: 'plane', grab: hit, normal: axis }, 'gizmo')
+      return openGesture({ kind: 'plane', grab: hit, normal: axis }, 'gizmo', pointer)
     }
 
     const startArm = sub(hit, origin)
@@ -229,7 +247,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     // Armed by construction: the pointer-down resolved on the ring's own grab
     // region, which is the boundary the gate is drawn at.
     store.setGizmoDrag({ kind: 'ring', axis: axisName, datum, swing: 0, snapped: true, snapArmed: true })
-    return open({ kind: 'ring', axis, axisName, origin, startArm, swing: 0, datum }, 'gizmo')
+    return openGesture({ kind: 'ring', axis, axisName, origin, startArm, swing: 0, datum }, 'gizmo', pointer)
   }
 
   const onPointerMove = (ray: Ray, gizmoWorldScale?: number): void => {
@@ -241,7 +259,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
       // A hit back on the grab point is a zero-move click: it must not ask for a
       // solve, so the release stays a plain select.
       if (hit[0] === gesture.grab[0] && hit[1] === gesture.grab[1] && hit[2] === gesture.grab[2]) return
-      moved = true
+      machine.markMoved()
       store.setDragTarget(hit)
       return
     }
@@ -250,7 +268,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
       const hit = intersectRayPlane(ray, gesture.grab, gesture.normal)
       if (!hit) return
       const delta = sub(hit, gesture.grab)
-      if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) moved = true
+      if (delta[0] !== 0 || delta[1] !== 0 || delta[2] !== 0) machine.markMoved()
       store.dragPartTranslate(delta)
       return
     }
@@ -258,7 +276,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     if (gesture.kind === 'axis') {
       const param = closestParamOnAxis(ray, gesture.origin, gesture.axis)
       if (param === null) return
-      if (param !== gesture.startParam) moved = true
+      if (param !== gesture.startParam) machine.markMoved()
       store.dragPartTranslate(scale(gesture.axis, param - gesture.startParam))
       return
     }
@@ -280,7 +298,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     // `moved` follows the angle the part receives, not the cursor's: a wobble
     // small enough to be pulled back onto zero moves nothing, and must leave a
     // click a click.
-    if (snap.angle !== 0) moved = true
+    if (snap.angle !== 0) machine.markMoved()
     store.setGizmoDrag({
       kind: 'ring',
       axis: gesture.axisName,
@@ -292,34 +310,34 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     store.rotatePartGizmo(gesture.axis, snap.angle, gesture.origin)
   }
 
-  const onPointerUp = (): GestureOutcome => {
-    if (!gesture) {
-      // Belt and braces. Nothing should be able to leave a drag published with
-      // no gesture behind it, but a triad narrowed to a gesture that is not
-      // running is unusable, so the release clears it whatever happened.
-      store.setGizmoDrag(null)
-      return NO_GESTURE
+  const onPointerUp = (pointer: PointerRef, x: number, y: number): GestureOutcome => {
+    const outcome = machine.pointerUp(pointer, x, y)
+    // A release from another button or pointer owns nothing: it must not end a
+    // live drag, so the session stays open until the opening pointer releases.
+    if (!outcome.owned) return outcome
+    if (gesture) {
+      gesture = null
+      store.endPartManipulation()
     }
-    const outcome: GestureOutcome = { source, moved }
-    gesture = null
-    source = null
-    store.endPartManipulation()
     return outcome
   }
 
   const cancel = (): void => {
-    if (!gesture) return
+    machine.cancel()
     gesture = null
-    source = null
     store.cancelPartManipulation()
   }
 
   return {
+    pointerDown: machine.pointerDown,
+    pointerMove: machine.pointerMove,
+    pointerCancel: machine.pointerCancel,
     onBodyPointerDown,
     onGizmoPointerDown,
     onPointerMove,
     onPointerUp,
     cancel,
-    isActive: () => gesture !== null,
+    isActive: machine.isActive,
+    get clickState() { return machine.clickState },
   }
 }

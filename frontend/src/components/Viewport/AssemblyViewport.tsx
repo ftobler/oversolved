@@ -51,7 +51,7 @@ import {
 } from '@/utils/assemblyRender'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearsSelection } from '@/utils/assemblyPointer'
-import { createClickGestureTracker } from '@/utils/clickGesture'
+import type { PointerRef } from '@/utils/assemblyGesture'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { drawnPose, isManipulable } from '@/utils/partManipulation'
@@ -82,6 +82,11 @@ const EMPTY_CURVES: EdgeCurve[] = []
 // accessor wants the orthogonal set: a shared empty set keeps a measurement
 // click from rebuilding the render groups.
 const EMPTY_ENTITIES: ReadonlySet<string> = new Set()
+
+// React and R3F pointer events both carry the two fields the gesture machine
+// keys on. A ThreeEvent spreads the native pointer's own fields, so the same
+// accessor reads either one.
+const pointerOf = (e: { pointerId: number; button: number }): PointerRef => ({ id: e.pointerId, button: e.button })
 
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
 const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
@@ -147,9 +152,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const raycaster = useMemo(() => new THREE.Raycaster(), [])
 
   // Orbiting must stop while a part is under the pointer, or the same drag would
-  // move the part and the camera. Mirrored into state because OrbitControls is a
-  // rendered prop, not a ref read.
-  const [manipulating, setManipulating] = useState(false)
+  // move the part and the camera. Derived from the store's manipulation session
+  // rather than mirrored into React state, so the orbit lock, the render gates
+  // and the pick layer follow the one owner an open, commit or cancel writes.
+  const manipulating = manipulation !== null
   // Which triad handle the cursor is over, so it can light up. Viewport-local:
   // it is a drag affordance's highlight, not part of the document selection.
   const [hoveredGizmo, setHoveredGizmo] = useState<string | null>(null)
@@ -460,7 +466,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     }
   }, [])
 
-  const handleGrabBody = useCallback((handle: string, point: Vec3) => {
+  const handleGrabBody = useCallback((handle: string, point: Vec3, pointer: PointerRef) => {
     const camera = cameraRef.current
     if (!camera) return
     // The triad already claimed this pointer-down in the capture phase below.
@@ -471,11 +477,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // Free drag happens in the plane facing the camera through the grab point,
     // so the part follows the cursor exactly under any view direction.
     const forward = camera.getWorldDirection(new THREE.Vector3())
-    if (adapter.onBodyPointerDown(handle, point, [forward.x, forward.y, forward.z])) {
+    if (adapter.onBodyPointerDown(handle, point, [forward.x, forward.y, forward.z], pointer)) {
       // The ID buffer keeps the solved pose while the drag offsets the drawn
       // part, so anchors held over from before the grab would trail behind it.
       clearHover()
-      setManipulating(true)
     }
   }, [adapter, clearHover])
 
@@ -499,20 +504,11 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     const axis = rotateVector(triad.orientation, handle.axis)
     const reference = rotateVector(triad.orientation, handle.reference)
     if (adapter.onGizmoPointerDown(
-      selectedPartHandle, handle.kind, handle.name, axis, reference, triad.origin, ray,
+      selectedPartHandle, handle.kind, handle.name, axis, reference, triad.origin, ray, pointerOf(e),
     )) {
       clearHover()  // the gizmo moves the part too; same stale-anchor trail
-      setManipulating(true)
     }
   }, [adapter, clearHover, rayFromEvent, resolveHitsAt, selectedPartHandle, triad])
-
-  // Which button opened the gesture and how far it has travelled, shared with
-  // the part editor so both agree on what a click is. Two readers: pointer-up
-  // (a body grab that never moved is still a select) and onPointerMissed (a
-  // camera gesture must not deselect). Every button is recorded, not just the
-  // left one, because the camera runs on the right button and the deselect
-  // guard has to be able to see that.
-  const clickGesture = useRef(createClickGestureTracker())
 
   // R3F's mesh handlers run on the canvas, whose events bubble here. Capturing
   // the pointer once a gesture has started keeps a drag alive when the cursor
@@ -522,7 +518,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // Record before the active-gesture early-out: the mesh handler has already
     // opened the grab by the time this bubbles up, so an early return here would
     // lose the down position a plain select needs.
-    clickGesture.current.down(e.button, e.clientX, e.clientY)
+    adapter.pointerDown(pointerOf(e), e.clientX, e.clientY)
     if (adapter.isActive()) {
       e.currentTarget.setPointerCapture(e.pointerId)
       return
@@ -549,7 +545,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     // Latch the travel as it happens: an orbit that swings out and comes back
     // would read as a stationary click if only the two end points were compared.
-    clickGesture.current.move(e.clientX, e.clientY)
+    adapter.pointerMove(e.clientX, e.clientY)
     if (!adapter.isActive()) {
       scheduleHover(e)
       return
@@ -572,21 +568,22 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
-    // Close the gesture unconditionally: the click event that decides whether to
-    // deselect arrives after this handler and reads the verdict left behind.
-    const click = clickGesture.current.up(e.clientX, e.clientY)
-    // Commits the seed transform and asks for one re-solve; inert with no session.
-    const gesture = adapter.onPointerUp()
-    if (gesture.source) setManipulating(false)
+    // A release that does not own the gesture (another button, another pointer)
+    // ends nothing: it must not commit a pose the user is still holding. On the
+    // owned release the machine also closes the click tracker, and the click
+    // event that decides whether to deselect arrives later and reads its verdict.
+    const outcome = adapter.onPointerUp(pointerOf(e), e.clientX, e.clientY)
+    if (!outcome.owned) return
     // Selection mode: a left click that never became a drag toggles the top
     // entity under the cursor into the measurement set. Which gestures are still
     // a click is gestureAllowsSelect's call, not this handler's: a triad handle
     // click and a drag that moved the part both end here and neither selects.
     // Aiming and Ctrl clicks are the mate picker's, handled on pointer-down, so
     // they never fall through here.
-    if (!gestureAllowsSelect(gesture)) return
+    if (!gestureAllowsSelect(outcome)) return
     const store = useAssemblyStore.getState()
     if (store.activeMateField !== null || e.button !== 0 || e.ctrlKey) return
+    const click = adapter.clickState
     if (click.button !== 0 || click.wasDrag) return
     const target = clickTarget(decideAssemblyHit(resolveHitsAt(e)))
     if (target !== null) store.toggleSelection(target)
@@ -596,13 +593,12 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // lost). Abandon it rather than commit a pose the user never released on.
   // The pending click verdict goes with it: a stale origin left open here would
   // pair with the NEXT release (or feed onPointerMissed a verdict from a
-  // gesture the browser cancelled), so the part editor's reset is mirrored
-  // rather than relying on an up always following a down.
-  const handlePointerCancel = useCallback(() => {
-    clickGesture.current.reset()
-    if (!adapter.isActive()) return
-    adapter.cancel()
-    setManipulating(false)
+  // gesture the browser cancelled). The machine's pointerCancel routes through
+  // the one cancel transition and only for the opener, so a secondary pointer
+  // going away cannot abandon the primary's gesture.
+  const handlePointerCancel = useCallback((e: React.PointerEvent) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    adapter.pointerCancel(pointerOf(e))
   }, [adapter])
 
   // Unmounting mid-drag means the pointerup never arrives, and both the session
@@ -619,7 +615,6 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       adapter.cancel()
-      setManipulating(false)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -632,7 +627,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // that R3F's own delta guard cannot reject. Deferring to the gesture (which
     // knows the orbit opened on the right button) is what keeps the camera from
     // wiping the selection.
-    if (!missClearsSelection(clickGesture.current.state, adapter.isActive())) return
+    if (!missClearsSelection(adapter.clickState, adapter.isActive())) return
     const store = useAssemblyStore.getState()
     // A miss deselects the one subject (part or mate), and disarms an armed
     // field just as the old two-field clear did.
@@ -697,7 +692,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
                 curves={edgeCurves[item.bodyId] ?? EMPTY_CURVES}
                 selected={g.selected}
                 aiming={aiming}
-                onGrab={(point) => handleGrabBody(g.handle, point)}
+                onGrab={(point, event) => handleGrabBody(g.handle, point, pointerOf(event))}
               />
             ))}
           </group>
