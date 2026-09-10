@@ -606,6 +606,8 @@ describeReal('solveAssembly with the real mate solver', () => {
 const S0: Transform3D = at(0, 0, 10)
 /** S0 rolled 30 degrees about Z, for the roll-reading rows. */
 const S0r: Transform3D = { tx: 0, ty: 0, tz: 10, qx: 0, qy: 0, qz: Math.sin(Math.PI / 12), qw: Math.cos(Math.PI / 12) }
+/** S0 pitched 40 degrees about X, so its local +Z sits off the world axis. */
+const S0x: Transform3D = { tx: 0, ty: 0, tz: 10, qx: Math.sin(Math.PI / 9), qy: 0, qz: 0, qw: Math.cos(Math.PI / 9) }
 /** Far away and rotated 90 about Y, so B's local +Z points at world +X. */
 const S1: Transform3D = { tx: 3, ty: 4, tz: 5, qx: 0, qy: Math.sin(Math.PI / 4), qz: 0, qw: Math.cos(Math.PI / 4) }
 
@@ -636,10 +638,15 @@ const kindRows: KindRow[] = [
     },
   },
   {
-    kind: 'spherical', seed: S0r,
+    kind: 'spherical', seed: S0x,
     check: (t) => {
       expect(dist(t)).toBeLessThan(0.01)
-      expect(Math.abs(rollZDeg(t) - 30)).toBeLessThan(2)
+      const [sx, sy, sz] = worldZAround(S0x)
+      const [ax, ay, az] = worldZAround(t)
+      // Point-only: the off-axis frame is preserved. Any axis mate would pull
+      // local +Z back to the world axis, which the +Z-aligned S0r seed could
+      // not distinguish from "no orientation residual at all".
+      expect(Math.hypot(ax - sx, ay - sy, az - sz)).toBeLessThan(0.01)
     },
   },
   {
@@ -688,7 +695,7 @@ const kindRows: KindRow[] = [
     },
   },
   {
-    kind: 'copy_rotation', seed: S0, params: { ratio: 2 },
+    kind: 'copy_rotation', seed: S0, anchorKindB: 'cylinder', params: { ratio: 2 },
     check: (t) => {
       expect(Math.abs(t.tz - 10)).toBeLessThan(0.01)
     },

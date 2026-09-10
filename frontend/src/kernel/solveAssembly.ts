@@ -133,6 +133,8 @@ const ANCHOR_KIND_TO_U8: Record<string, number> = {
 // `Record<MateKind, number>` so a tenth kind cannot be added without a code.
 // `mateKindCode` is imported above and is the only reader.
 
+// ─── Mate wire magic ───
+
 // Input wire magic. The header magic is the version handshake: any change to the
 // mate record's shape, field meaning or stride MUST bump this (or MATE_MAGIC_OUT
 // for the output layout) in the same commit as the mirror on the Rust side.

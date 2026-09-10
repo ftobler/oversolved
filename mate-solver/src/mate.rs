@@ -636,7 +636,10 @@ mod tests {
 
     #[test]
     fn mate_input_round_trips() {
-        let input = sample_input();
+        // A distinct B perp, not the shared +Z default: a transposition of
+        // perp_a/perp_b in the encoder would read back as identical otherwise.
+        let mut input = sample_input();
+        input.mates[0].b.geometry.perp = [1.0, 0.0, 0.0];
         let bytes = encode_mate_input(&input);
         let decoded = decode_mate_input(&bytes).expect("decode");
         assert_eq!(decoded.bodies.len(), 2);
@@ -647,6 +650,8 @@ mod tests {
         assert_eq!(decoded.mates[0].a.body_index, 0);
         assert_eq!(decoded.mates[0].b.body_index, 1);
         assert!(!decoded.mates[0].flip);
+        assert_eq!(decoded.mates[0].a.geometry.perp, [0.0, 1.0, 0.0]);
+        assert_eq!(decoded.mates[0].b.geometry.perp, [1.0, 0.0, 0.0]);
         assert!(decoded.is_fixed(0));
         assert!(!decoded.is_fixed(1));
         assert_eq!(encode_mate_input(&decoded), bytes);
@@ -655,7 +660,7 @@ mod tests {
     #[test]
     fn body_index_past_the_body_table_decodes_verbatim() {
         // Referential validity is not a wire property: a mate naming body 9 in a
-        // two-body assembly is a well-formed 84-byte record, so decode keeps it
+        // two-body assembly is a well-formed 108-byte record, so decode keeps it
         // and `MateProblem::new` is what drops it.
         let mut input = sample_input();
         input.mates[0].b.body_index = 9;

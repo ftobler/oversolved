@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { solveAssembly, encodeMateInput, decodeMateOutput, assemblyAnchors } from './solveAssembly'
@@ -49,9 +50,12 @@ function freshDb(): void {
  * instead of silently mis-solving.
  */
 function readMateWireFixture(): Record<string, number> {
-  // jsdom's `import.meta.url` is not a file URL, so the fixture is located from
-  // the frontend project root the vitest command runs in (justfile: cd frontend).
-  const text = readFileSync(path.resolve(process.cwd(), '../tests/fixtures/mate_wire.txt'), 'utf8')
+  // Derived from this module's own location, the way loadPkgNode.ts finds its
+  // build artifacts, not from the process cwd. A `new URL(relative,
+  // import.meta.url)` here is rewritten by Vite's asset handling and does not
+  // survive as a file URL for a path outside the frontend root.
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const text = readFileSync(path.resolve(here, '../../../tests/fixtures/mate_wire.txt'), 'utf8')
   const out: Record<string, number> = {}
   for (const raw of text.split('\n')) {
     const line = raw.trim()
@@ -1579,5 +1583,31 @@ describe('mate wire format', () => {
     const recordStart = 53
     const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
     expect(view.getFloat32(recordStart + 80, true)).toBeCloseTo(Math.PI / 4)
+  })
+
+  it('writes perp_a then perp_b after angle, in that order', () => {
+    // Distinct perps, read back by their exact record offsets: a swapped or
+    // mis-sized perp write is invisible when both sides share the +Z default
+    // every real-WASM row uses.
+    const params = new Float32Array(7)
+    const fixedMask = new Uint8Array([0])
+    const encoded = encodeMateInput(1, params, fixedMask, [{
+      kindCode: 0,
+      bodyA: 0, bodyB: 0,
+      anchorKindA: 0, anchorKindB: 0,
+      pointA: [0, 0, 0], axisA: [0, 0, 1],
+      pointB: [0, 0, 0], axisB: [0, 0, 1],
+      flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
+      perpA: [1, 0, 0], perpB: [0, 0, 1],
+    }])
+    // angle ends at record byte 84; perp_a is 84..96, perp_b is 96..108.
+    const recordStart = 53
+    const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
+    expect(view.getFloat32(recordStart + 84, true)).toBe(1)
+    expect(view.getFloat32(recordStart + 88, true)).toBe(0)
+    expect(view.getFloat32(recordStart + 92, true)).toBe(0)
+    expect(view.getFloat32(recordStart + 96, true)).toBe(0)
+    expect(view.getFloat32(recordStart + 100, true)).toBe(0)
+    expect(view.getFloat32(recordStart + 104, true)).toBe(1)
   })
 })
