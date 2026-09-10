@@ -12,19 +12,20 @@ import { clickTarget, decideAssemblyHit, hoverTarget, type AssemblyHit } from '@
 import { buildAssemblySelectionGeometry } from '@/utils/assemblySelectionGeometry'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 
-describe('decideAssemblyHit symmetry', () => {
+describe('decideAssemblyHit through the one layer set', () => {
+  // The divergence the shared decision removes: hover and click used to resolve
+  // over different layer sets, so the gizmo layer only occluded one of them.
+  // Both are asserted against the same decision here, not against each other.
   for (const layer of [FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME, PLANE_LAYER_NAME, ORIGIN_LAYER_NAME]) {
-    it(`hover and click name the same entity on layer '${layer}'`, () => {
-      const hits: AssemblyHit[] = [{ entityKey: 'k', layer }]
-      const decision = decideAssemblyHit(hits)
-      expect(clickTarget(decision)).toBe('k')
+    it(`names the top entity for both framings on layer '${layer}'`, () => {
+      const decision = decideAssemblyHit([{ entityKey: 'k', layer }])
+      expect(decision).toEqual({ gizmoHandle: null, entityKey: 'k' })
       expect(hoverTarget(decision)).toBe('k')
-      expect(clickTarget(decision)).toBe(hoverTarget(decision))
-      expect(decision.gizmoHandle).toBeNull()
+      expect(clickTarget(decision)).toBe('k')
     })
   }
 
-  it('a gizmo handle occludes the entity for both framings', () => {
+  it('a handle on top occludes the entity behind it for both framings', () => {
     const hits: AssemblyHit[] = [
       { entityKey: 'gizmo', layer: GIZMO_HANDLE_LAYER_NAME },
       { entityKey: 'k', layer: FACE_LAYER_NAME },
@@ -32,6 +33,8 @@ describe('decideAssemblyHit symmetry', () => {
     const decision = decideAssemblyHit(hits)
     expect(decision.gizmoHandle).toBe('gizmo')
     expect(decision.entityKey).toBeNull()
+    // A click resolving the old no-gizmo layer set would have named 'k'; the
+    // shared decision is what makes both framings agree on null.
     expect(clickTarget(decision)).toBeNull()
     expect(hoverTarget(decision)).toBeNull()
   })
@@ -74,6 +77,9 @@ function body(): AssemblyPickBody {
 }
 
 describe('assembly highlight geometry parity', () => {
+  // The regression pin: the same primitive must light the selected and hovered
+  // slots identically, the parity the part editor's highlightSymmetry test
+  // locks for its two builders.
   it('the same primitive lights the selected and hovered slots', () => {
     const selected = buildAssemblySelectionGeometry([body()], new Set(['k']), null)
     const hovered = buildAssemblySelectionGeometry([body()], new Set(), 'k')

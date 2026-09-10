@@ -29,6 +29,13 @@ export interface HoverSchedulerOptions {
   onHits: (hits: readonly ResolvedHit[]) => void
   requestFrame?: (cb: () => void) => number
   cancelFrame?: (id: number) => void
+  /**
+   * Whether the first schedule in a frame resolves immediately (default) or is
+   * deferred into the frame, so a frame costs at most one resolve. The part
+   * editor's async readback wants the leading resolve; the assembly's blocking
+   * sync readback wants the deferred mode, where it used to do one per frame.
+   */
+  leading?: boolean
 }
 
 export class HoverScheduler {
@@ -36,6 +43,7 @@ export class HoverScheduler {
   private readonly onHits: HoverSchedulerOptions['onHits']
   private readonly requestFrame: (cb: () => void) => number
   private readonly cancelFrame: (id: number) => void
+  private readonly leading: boolean
   // The claimed frame, and the query waiting for it. `frame === 0` means none.
   private frame = 0
   private queued: HoverQuery | null = null
@@ -47,13 +55,16 @@ export class HoverScheduler {
     this.onHits = options.onHits
     this.requestFrame = options.requestFrame ?? (cb => requestAnimationFrame(cb))
     this.cancelFrame = options.cancelFrame ?? (id => cancelAnimationFrame(id))
+    this.leading = options.leading ?? true
   }
 
   /**
-   * First call in a frame resolves now; later calls collapse to one trailing
-   * resolve at the latest query. A query that allows no layer tears the hover
-   * down instead, so a tool switch to a filtered set cannot hold a stale
-   * highlight with no event left to remove it.
+   * A leading scheduler resolves the first call in a frame now and collapses
+   * later calls into one trailing resolve at the latest query; a deferred one
+   * queues even the first call and resolves once when the frame flushes, so a
+   * blocking readback never runs more than once per frame. A query that allows
+   * no layer tears the hover down instead, so a tool switch to a filtered set
+   * cannot hold a stale highlight with no event left to remove it.
    */
   schedule(query: HoverQuery): void {
     if (query.allowed.size === 0) {
@@ -64,7 +75,8 @@ export class HoverScheduler {
       this.queued = query
       return
     }
-    this.run(query)
+    if (this.leading) this.run(query)
+    else this.queued = query
     this.frame = this.requestFrame(() => {
       this.frame = 0
       const queued = this.queued

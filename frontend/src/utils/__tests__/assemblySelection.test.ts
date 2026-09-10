@@ -1,7 +1,7 @@
 // T1: the pure selection accessor and the subject union. No store, no viewport.
 
 import { describe, it, expect } from 'vitest'
-import { NONE_SUBJECT, readSelection, selectedMateId, selectedPartHandles, type AssemblySubject } from '@/utils/assemblySelection'
+import { readSelection, NONE_SUBJECT, type AssemblySubject } from '@/utils/assemblySelection'
 
 describe('readSelection', () => {
   it('reads a part subject into the parts set and leaves the mate null', () => {
@@ -36,19 +36,5 @@ describe('readSelection', () => {
       const view = readSelection(subject, new Set())
       expect(view.parts.size + (view.mate === null ? 0 : 1)).toBeLessThanOrEqual(1)
     }
-  })
-})
-
-describe('state selectors', () => {
-  it('selectedPartHandles returns the part half', () => {
-    expect(selectedPartHandles({ subject: { kind: 'part', handle: 'h1' }, entitySelection: new Set() }))
-      .toEqual(new Set(['h1']))
-    expect(selectedPartHandles({ subject: { kind: 'mate', id: 'fm1' }, entitySelection: new Set() }).size)
-      .toBe(0)
-  })
-
-  it('selectedMateId returns the mate half', () => {
-    expect(selectedMateId({ subject: { kind: 'mate', id: 'fm1' }, entitySelection: new Set() })).toBe('fm1')
-    expect(selectedMateId({ subject: { kind: 'part', handle: 'h1' }, entitySelection: new Set() })).toBeNull()
   })
 })

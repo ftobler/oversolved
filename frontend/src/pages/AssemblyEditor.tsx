@@ -287,14 +287,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     if (inst) window.open(`/documents/${inst.doc_id}`, '_blank')
   }, [instances])
 
-  // After a part delete (run by the command builder), clear the selection and
-  // close an editor on the removed instance.
-  const handleAfterDeletePart = useCallback((handle: string) => {
-    const store = useAssemblyStore.getState()
-    if (store.subject?.kind === 'part' && store.subject.handle === handle) store.selectPart(null)
-    if (store.editingSubject.kind === 'instance' && store.editingSubject.handle === handle) store.closeEditor()
-  }, [])
-
   const handleSelect = useCallback((handle: string) => {
     useAssemblyStore.getState().selectPart(handle)
   }, [])
@@ -370,14 +362,6 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     requestSolve()  // restore the solved pose the reverted refs imply
   }, [requestSolve, cancelSession])
 
-  // After a mate delete (run by the command builder), clear the selection and
-  // close an editor on the removed mate.
-  const handleAfterDeleteMate = useCallback((featureId: string) => {
-    const store = useAssemblyStore.getState()
-    if (store.subject?.kind === 'mate' && store.subject.id === featureId) store.selectMate(null)
-    if (store.editingSubject.kind === 'mate' && store.editingSubject.id === featureId) store.closeEditor()
-  }, [])
-
   const handleRenameMate = useCallback((featureId: string, label: string | undefined) => {
     runOperation('rename_mate', { id: featureId, label })
   }, [runOperation])
@@ -416,12 +400,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     mintMateId: mintFeatureId,
     closeOpenEditor,
     onMateInserted: handleMateInserted,
-    afterDeletePart: handleAfterDeletePart,
-    afterDeleteMate: handleAfterDeleteMate,
+    deleteSubject: handleDeleteSubject,
   }), [
     runOperation, handleUndo, handleRedo, handleDeleteSelected, handleCancelEdit,
     openPicker, openExport, closeOpenEditor, handleMateInserted,
-    handleAfterDeletePart, handleAfterDeleteMate,
+    handleDeleteSubject,
   ])
   useAssemblyCommands(assemblyHandlers)
 
@@ -533,7 +516,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onReorderMate={(movingId, beforeId) => executeCommand('reorder_mate', { movingId, beforeId })}
             onOpenPartNewTab={handleOpenPartNewTab}
             onDuplicateInstance={(handle) => executeCommand('duplicate_part', handle)}
-            onDeleteInstance={(handle) => handleDeleteSubject({ kind: 'part', handle })}
+            onDeleteInstance={(handle) => executeCommand('delete_part', handle)}
             onToggleVisible={(handle, visible) => executeCommand('set_part_visible', { handle, visible })}
             onToggleFixed={(handle, fixed) => executeCommand('set_part_fixed_oneshot', { handle, fixed })}
             onToggleBuiltinVisible={(id, visible) => executeCommand('set_builtin_visible', { id, visible })}
@@ -545,7 +528,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
             onEditMate={handleEditMate}
             onCommitMate={handleCommitMate}
             onCancelMate={handleCancelMate}
-            onDeleteMate={(featureId) => handleDeleteSubject({ kind: 'mate', id: featureId })}
+            onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
             onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
             renderMateEditor={(m) => renderMateEditor(m)}
           />

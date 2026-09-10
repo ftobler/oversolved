@@ -44,19 +44,3 @@ export function readSelection(
   }
   return { parts, mate, entities }
 }
-
-/** The minimal state a selector needs: the subject plus the entity set. */
-export interface AssemblySelectionState {
-  subject: AssemblySubject | null
-  entitySelection: ReadonlySet<string>
-}
-
-/** The selected part handles, for consumers that need only that half. */
-export function selectedPartHandles(state: AssemblySelectionState): ReadonlySet<string> {
-  return readSelection(state.subject, state.entitySelection).parts
-}
-
-/** The selected mate id, or null, for consumers that need only that half. */
-export function selectedMateId(state: AssemblySelectionState): string | null {
-  return readSelection(state.subject, state.entitySelection).mate
-}

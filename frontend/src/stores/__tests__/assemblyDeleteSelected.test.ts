@@ -9,7 +9,7 @@ import {
   setAssemblyCallbacks,
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
-import { selectedMateId, selectedPartHandles } from '@/utils/assemblySelection'
+import { readSelection } from '@/utils/assemblySelection'
 import { EMPTY_MATE_REF } from '@/utils/mateKinds'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 
@@ -42,6 +42,12 @@ function ids(doc: AssemblyDoc, kind: AssemblyFeature['kind']): string[] {
   return (doc.features ?? []).filter(f => f.kind === kind).map(f => f.id)
 }
 
+/** The one accessor every production reader uses, applied to the live store. */
+function readSelectionOfStore() {
+  const state = useAssemblyStore.getState()
+  return readSelection(state.subject, state.entitySelection)
+}
+
 /** Stands in for the AssemblyEditor: owns the doc, counts re-solves. */
 function mountHost(initial: AssemblyDoc) {
   const requestSolve = vi.fn()
@@ -68,8 +74,9 @@ describe('assemblyStore selection subject', () => {
     store.selectMate('fm1')
     store.selectPart('h1')
 
-    expect(selectedMateId(useAssemblyStore.getState())).toBeNull()
-    expect(selectedPartHandles(useAssemblyStore.getState())).toEqual(new Set(['h1']))
+    const view = readSelectionOfStore()
+    expect(view.mate).toBeNull()
+    expect(view.parts).toEqual(new Set(['h1']))
   })
 
   it('selecting a mate clears a previously selected part', () => {
@@ -78,8 +85,9 @@ describe('assemblyStore selection subject', () => {
     store.selectPart('h1')
     store.selectMate('fm1')
 
-    expect(selectedPartHandles(useAssemblyStore.getState()).size).toBe(0)
-    expect(selectedMateId(useAssemblyStore.getState())).toBe('fm1')
+    const view = readSelectionOfStore()
+    expect(view.parts.size).toBe(0)
+    expect(view.mate).toBe('fm1')
   })
 
   it('clearing with null clears the one subject', () => {
@@ -298,5 +306,12 @@ describe('assemblyStore subject invariant', () => {
     // store may mutate it in place, or a later default would start non-empty.
     expect(DEFAULT_ASSEMBLY_EDITOR_DATA.entitySelection.size).toBe(0)
     expect(DEFAULT_ASSEMBLY_EDITOR_DATA.subject).toBeNull()
+
+    // The actual hazard: after the reset the store holds the default's Set by
+    // reference, so a subsequent toggle must copy rather than add in place.
+    useAssemblyStore.getState().toggleSelection('e2')
+    expect(useAssemblyStore.getState().entitySelection.has('e2')).toBe(true)
+    expect(DEFAULT_ASSEMBLY_EDITOR_DATA.entitySelection.size).toBe(0)
+    expect(DEFAULT_ASSEMBLY_EDITOR_DATA.entitySelection.has('e2')).toBe(false)
   })
 })

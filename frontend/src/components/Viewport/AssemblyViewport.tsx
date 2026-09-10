@@ -78,6 +78,11 @@ const ASSEMBLY_PICK_LAYERS: ReadonlySet<string> = new Set([
 // [] per render would rebuild every body's line geometry on every frame.
 const EMPTY_CURVES: EdgeCurve[] = []
 
+// The tree subject's part half does not read the entity selection, and the
+// accessor wants the orthogonal set: a shared empty set keeps a measurement
+// click from rebuilding the render groups.
+const EMPTY_ENTITIES: ReadonlySet<string> = new Set()
+
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
 const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
 // `isolation: isolate` makes this div a stacking context, penning anything drei
@@ -188,10 +193,12 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   }), [])
 
   // The subject's part half as a set, which is what the render groups take so a
-  // future multi-part subject widens in the one accessor rather than here.
+  // future multi-part subject widens in the one accessor rather than here. It
+  // reads only `subject`, so a measurement click in the viewport (which churns
+  // `entitySelection`) does not rebuild every part group.
   const selectedParts = useMemo(
-    () => readSelection(subject, entitySelection).parts,
-    [subject, entitySelection],
+    () => readSelection(subject, EMPTY_ENTITIES).parts,
+    [subject],
   )
   const groups = useMemo(
     () => getAssemblyPartGroups(bodies, instances, manipulation, selectedParts, settlingOffsets),
@@ -370,6 +377,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // hover. The scheduler caps resolves and drops any readback a clear overtook.
   // eslint-disable-next-line react-hooks/refs -- onHits reads hoverCtrlRef when a hit lands, never during render
   const hoverScheduler = useMemo(() => new HoverScheduler({
+    // resolveAllSync is a blocking GPU readback, so defer even the first move of
+    // a frame into the frame: the assembly does at most one readback per frame,
+    // as it did before the scheduler was shared.
+    leading: false,
     resolve: (q) => resolveHitsAtCursor(q.cursor, q.allowed),
     onHits: (hits) => {
       const store = useAssemblyStore.getState()
@@ -524,9 +535,13 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     if (e.button === 0 && (e.ctrlKey || aiming)) {
       const hits = resolveHitsAt(e)
       // A gizmo handle on top makes the pixel a drag affordance, never a mate
-      // reference, so it cannot aim either.
+      // reference, so it cannot aim either. The handle is also stripped from the
+      // list handed on, so the one decision is the only gizmo gate the picker
+      // relies on.
       if (decideAssemblyHit(hits).gizmoHandle === null) {
-        useAssemblyStore.getState().pickFromHitsOrCycle(hits)
+        useAssemblyStore.getState().pickFromHitsOrCycle(
+          hits.filter(h => h.layer !== GIZMO_HANDLE_LAYER_NAME),
+        )
       }
     }
   }, [adapter, aiming, resolveHitsAt])

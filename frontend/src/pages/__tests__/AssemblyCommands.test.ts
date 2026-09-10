@@ -20,7 +20,7 @@ function spyHandlers(): AssemblyCommandHandlers {
 // The page's inputs, with spies for everything but the id mint. Building the
 // handlers through the same function the page uses is what lets the coverage
 // test observe the real command-to-operation wiring.
-function handlerDeps(): AssemblyHandlerDeps & { runOperation: ReturnType<typeof vi.fn> } {
+function handlerDeps(): AssemblyHandlerDeps & { runOperation: ReturnType<typeof vi.fn>; deleteSubject: ReturnType<typeof vi.fn> } {
   return {
     runOperation: vi.fn(),
     undo: vi.fn(),
@@ -32,8 +32,7 @@ function handlerDeps(): AssemblyHandlerDeps & { runOperation: ReturnType<typeof 
     mintMateId: () => 'mate-new',
     closeOpenEditor: vi.fn(),
     onMateInserted: vi.fn(),
-    afterDeletePart: vi.fn(),
-    afterDeleteMate: vi.fn(),
+    deleteSubject: vi.fn(),
   }
 }
 
@@ -62,12 +61,20 @@ describe('useAssemblyCommands', () => {
 
 describe('assembly operation coverage', () => {
   // Every operation must be reachable from the handlers the page actually
-  // registers, not merely present in the documentation map.
+  // registers, not merely present in the documentation map. The delete commands
+  // reach their operation through the store's `deleteSubject` (which runs the
+  // operation cell), so that hand-off is what this asserts.
   it('executing the built handlers reaches every operation', () => {
     const deps = handlerDeps()
     const handlers = buildAssemblyHandlers(deps)
     for (const name of ASSEMBLY_COMMAND_NAMES) handlers[name]()
     const invoked = new Set(deps.runOperation.mock.calls.map(call => call[0] as AssemblyOperationId))
+    // The delete commands hand off to the one store delete action; its spy
+    // stands in for the delete_part/delete_mate operation reach.
+    expect(deps.deleteSubject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'part' }))
+    expect(deps.deleteSubject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'mate' }))
+    invoked.add('delete_part')
+    invoked.add('delete_mate')
     for (const id of Object.keys(ASSEMBLY_OPERATIONS) as AssemblyOperationId[]) {
       expect(invoked.has(id), `operation "${id}" is not wired to any command`).toBe(true)
     }
@@ -80,5 +87,18 @@ describe('assembly operation coverage', () => {
       const invoked = deps.runOperation.mock.calls.map(call => call[0])
       expect(invoked, `command "${command}"`).toContain(operation)
     }
+  })
+
+  // The delete commands are the one pair that does not call runOperation
+  // directly: they must both route through the store's deleteSubject, so the
+  // tree row and the [Delete] key share one implementation.
+  it('the delete commands delegate to the one deleteSubject action', () => {
+    const deps = handlerDeps()
+    const handlers = buildAssemblyHandlers(deps)
+    handlers.delete_part('p1')
+    handlers.delete_mate('m1')
+    expect(deps.deleteSubject).toHaveBeenNthCalledWith(1, { kind: 'part', handle: 'p1' })
+    expect(deps.deleteSubject).toHaveBeenNthCalledWith(2, { kind: 'mate', id: 'm1' })
+    expect(deps.runOperation).not.toHaveBeenCalled()
   })
 })

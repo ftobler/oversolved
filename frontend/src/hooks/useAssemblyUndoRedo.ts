@@ -191,8 +191,8 @@ export function useAssemblyUndoRedo(
     // A restored doc may no longer contain the mate being authored, the B-rep
     // entities being selected or the instance the tree has selected; the armed
     // field, its owed solve, its candidates and the selection state must not
-    // aim into a vanished feature. The page's safety effects clear
-    // selectedMateId and selectedPartHandle for the same reason. A mid-drag
+    // aim into a vanished feature. The page's safety effects clear the subject
+    // for the same reason. A mid-drag
     // undo must not leave the session behind either: pointer-up would
     // otherwise commit the drag onto the restored doc. Delegated to the
     // store's own reset (rather than hand-listing the fields here) so this

@@ -1,5 +1,6 @@
 import type { MateKind } from '@/types/cad'
 import { MATE_KINDS } from '@/utils/mateKinds'
+import type { AssemblySubject } from '@/utils/assemblySelection'
 import type { AssemblyOperationId } from '@/utils/assemblyOperations'
 import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
 
@@ -35,22 +36,21 @@ export type AssemblyCommandName = typeof ASSEMBLY_COMMAND_NAMES[number]
 
 /**
  * Which assembly operation each mutating command resolves to. UI-only commands
- * (undo/redo/delete_selected/cancel_edit/export/insert_part_instance) are absent:
- * they either touch no document or open a picker before the operation runs.
+ * (undo/redo/delete_selected/delete_part/delete_mate/cancel_edit/export/
+ * insert_part_instance) are absent: they either touch no document, open a picker
+ * before the operation runs, or route through the store's one delete action.
  * This is the map the coverage test reads, so a new operation without a command
  * fails to be reachable.
  */
 export const ASSEMBLY_OPERATION_BY_COMMAND: Readonly<Record<string, AssemblyOperationId>> = {
   add_part: 'add_part',
   duplicate_part: 'duplicate_part',
-  delete_part: 'delete_part',
   set_part_visible: 'set_part_visible',
   set_builtin_visible: 'set_builtin_visible',
   set_part_fixed: 'set_part_fixed',
   set_part_fixed_oneshot: 'set_part_fixed_oneshot',
   set_part_position: 'set_part_position',
   set_part_rotation: 'set_part_rotation',
-  delete_mate: 'delete_mate',
   update_mate: 'update_mate',
   reorder_part: 'reorder_part',
   reorder_mate: 'reorder_mate',
@@ -72,8 +72,10 @@ export function insertMateCommand(kind: MateKind): AssemblyCommandName {
  * The page's inputs for the command table. Every document mutation is expressed
  * here as `runOperation`, so the wiring from command name to operation is in one
  * place and a test can execute the handlers and observe which operations fired.
- * The remaining deps are the UI side effects (open the picker/export, clear the
- * selection after a delete, open a fresh mate's editor) and the id minting.
+ * The delete commands are the exception: they hand off to the store's one
+ * `deleteSubject`, which runs the delete operation cell itself, so the [Delete]
+ * key and the tree rows cannot drift. The remaining deps are the UI side effects
+ * (open the picker/export, open a fresh mate's editor) and the id minting.
  */
 export interface AssemblyHandlerDeps {
   runOperation: (id: AssemblyOperationId, payload: unknown) => void
@@ -87,13 +89,14 @@ export interface AssemblyHandlerDeps {
   mintMateId: () => string
   closeOpenEditor: () => void
   onMateInserted: (id: string, kind: MateKind) => void
-  afterDeletePart: (handle: string) => void
-  afterDeleteMate: (id: string) => void
+  // The store's one delete path, shared with the [Delete] key.
+  deleteSubject: (subject: AssemblySubject) => void
 }
 
-// The single wiring from command name to mutation. `delete_*` and `insert_mate_*`
-// run their operation and then hand off to the UI-only side effect; every other
-// mutating command is a direct runOperation call.
+// The single wiring from command name to mutation. `delete_*` hand off to the
+// store's one delete action (which runs the delete operation cell) and the
+// `insert_mate_*` commands open the new mate's editor; every other mutating
+// command is a direct runOperation call.
 export function buildAssemblyHandlers(deps: AssemblyHandlerDeps): AssemblyCommandHandlers {
   return {
     undo: deps.undo,
@@ -114,14 +117,8 @@ export function buildAssemblyHandlers(deps: AssemblyHandlerDeps): AssemblyComman
     reorder_part: (payload) => deps.runOperation('reorder_part', payload),
     reorder_mate: (payload) => deps.runOperation('reorder_mate', payload),
     rename_mate: (payload) => deps.runOperation('rename_mate', payload),
-    delete_part: (payload) => {
-      deps.runOperation('delete_part', payload)
-      deps.afterDeletePart(payload as string)
-    },
-    delete_mate: (payload) => {
-      deps.runOperation('delete_mate', payload)
-      deps.afterDeleteMate(payload as string)
-    },
+    delete_part: (payload) => deps.deleteSubject({ kind: 'part', handle: payload as string }),
+    delete_mate: (payload) => deps.deleteSubject({ kind: 'mate', id: payload as string }),
     ...Object.fromEntries(MATE_KINDS.map(kind => [insertMateCommand(kind), () => {
       const id = deps.mintMateId()
       deps.closeOpenEditor()

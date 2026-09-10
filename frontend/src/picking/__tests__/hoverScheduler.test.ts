@@ -91,6 +91,29 @@ describe('HoverScheduler', () => {
     expect(resolve).toHaveBeenCalledTimes(1)
   })
 
+  it('a deferred scheduler resolves only when the frame flushes, once at the latest cursor', () => {
+    const frames = frameController()
+    const calls: HoverQuery[] = []
+    const scheduler = new HoverScheduler({
+      leading: false,
+      resolve: (q) => { calls.push(q); return [hit('h')] },
+      onHits: vi.fn(),
+      requestFrame: frames.requestFrame,
+      cancelFrame: frames.cancelFrame,
+    })
+
+    scheduler.schedule(query(1, 1))
+    // Nothing resolves before the frame: a blocking readback runs at most once
+    // per frame, and only at the newest cursor.
+    expect(calls).toHaveLength(0)
+    scheduler.schedule(query(2, 2))
+    expect(calls).toHaveLength(0)
+
+    frames.flush()
+    expect(calls).toHaveLength(1)
+    expect(calls[0].cursor).toEqual({ x: 2, y: 2 })
+  })
+
   it('a query allowing no layers tears the hover down instead of resolving', () => {
     const frames = frameController()
     const onHits = vi.fn()
