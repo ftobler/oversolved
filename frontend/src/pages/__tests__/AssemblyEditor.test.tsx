@@ -7,6 +7,7 @@ import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates
 import { findMate } from '@/utils/assemblyMutations'
 import { MATE_KINDS } from '@/utils/mateKinds'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useEditorModeStore } from '@/stores/editorModeStore'
 
 const navigateSpy = vi.fn()
 vi.mock('react-router-dom', () => ({
@@ -101,6 +102,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     useAssemblyStore.getState().setSelectedPartHandle(null)
     useAssemblyStore.getState().setActiveMateField(null)
     useAssemblyStore.getState().setSelectedMateId(null)
+    useAssemblyStore.setState({ editingSubject: { kind: 'none' } })
   })
 
   async function renderLoaded() {
@@ -389,6 +391,33 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(exportAssembly).toHaveBeenCalledOnce()
   })
 
+  // Escape is shared with modals. While a dialog claims it, the assembly
+  // cancel_edit must stand down so dismissing the dialog does not also rewind an
+  // open edit session (the assembly analogue of cancel_draw's stand-down).
+  it('Escape while a modal is open does not cancel the open edit', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+
+    // Open the part picker: its Dialog claims Escape while it is up.
+    act(() => { executeCommand('insert_part_instance') })
+    await tick()
+
+    // dispatchKey only maps Escape to cancel_edit while DocumentPage says the
+    // assembly editor is active; set that here since this test mounts the page.
+    useEditorModeStore.getState().setActiveEditor('assembly')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await tick()
+
+    // The edit is still open and was not rewound to its pre-session position.
+    expect(useAssemblyStore.getState().editingSubject.kind).toBe('instance')
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+    useEditorModeStore.getState().setActiveEditor(null)
+  })
+
   it('clicking a part row selects it without opening the part document', async () => {
     await renderLoaded()
     await insertPart('Bracket')
@@ -462,6 +491,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().setActiveMateField(null)
     useAssemblyStore.getState().setSelectedMateId(null)
+    useAssemblyStore.setState({ editingSubject: { kind: 'none' } })
   })
 
   // Stand in for a solve that has published the bundle's entity → anchor join.

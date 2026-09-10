@@ -10,7 +10,7 @@ import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useAssemblyCommands } from '@/pages/AssemblyKeyboardShortcuts'
-import { insertMateCommand, type AssemblyCommandHandlers } from '@/pages/assemblyCommandEntries'
+import { buildAssemblyHandlers, insertMateCommand, type AssemblyCommandHandlers } from '@/pages/assemblyCommandEntries'
 import { editingInstanceHandle as editingInstanceHandleOf, editingMateId as editingMateIdOf } from '@/utils/assemblyEditingSubject'
 import {
   findInstance,
@@ -19,6 +19,7 @@ import {
 } from '@/utils/assemblyMutations'
 import { runAssemblyOperation, type AssemblyOperationId } from '@/utils/assemblyOperations'
 import { executeCommand } from '@/utils/core/commandRegistry'
+import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import { MateEditor } from '@/components/layout/MateEditor'
 import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
@@ -247,20 +248,15 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   }, [docRef, mutate, mutateOneShot, requestSolve])
 
   // Insert a mate with both references empty, open its editor and arm ref_a, so
-  // the very next click in the viewport aims the first reference. No solve yet:
-  // an unreferenced mate has nothing to constrain. The append is a structural
-  // one-shot, so cancelling the fresh editor can never lose the insert, and the
-  // previously open editor is closed first so the new mate never folds into its
-  // coalescing session.
-  const handleInsertMate = useCallback((kind: MateKind) => {
-    const id = mintFeatureId()
-    closeOpenEditor()
-    runOperation('add_mate', { kind, id })
+  // the very next click in the viewport aims the first reference. The append
+  // itself is wired in buildAssemblyHandlers (mint, close the previous session,
+  // run add_mate); this is only the editor side effect after it lands.
+  const handleMateInserted = useCallback((id: string, _kind: MateKind) => {
     const store = useAssemblyStore.getState()
     store.setSelectedMateId(id)
     store.openMateEditor(id)  // a fresh mate opens straight into its editor
     store.setActiveMateField({ featureId: id, field: 'ref_a' })
-  }, [runOperation, closeOpenEditor])
+  }, [])
 
   // The [Delete] key maps to `delete_selected`; the store decides whether that
   // is the selected mate or the selected part and closes its editor when it is
@@ -269,12 +265,8 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     useAssemblyStore.getState().deleteSelected()
   }, [])
 
-  // Ctrl+Z / Ctrl+Shift+Z land here via the assembly keymap. Undo always exits
-  // an open editor: the hook's restore resets the store-owned editing subject,
-  // and the coalesced session is dropped by the hook itself.
-  const handleUndoCommand = handleUndo
-  const handleRedoCommand = handleRedo
-
+  // The picker's commit runs the add_part operation through the registry, the
+  // same one path every other mutation takes.
   const handlePick = useCallback((docId: string, docRev: number) => {
     executeCommand('add_part', { docId, docRev })
   }, [])
@@ -284,12 +276,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     if (inst) window.open(`/documents/${inst.doc_id}`, '_blank')
   }, [instances])
 
-  const handleDelete = useCallback((handle: string) => {
-    runOperation('delete_part', handle)
+  // After a part delete (run by the command builder), clear the selection and
+  // close an editor on the removed instance.
+  const handleAfterDeletePart = useCallback((handle: string) => {
     const store = useAssemblyStore.getState()
     if (store.selectedPartHandle === handle) store.setSelectedPartHandle(null)
     if (store.editingSubject.kind === 'instance' && store.editingSubject.handle === handle) store.closeEditor()
-  }, [runOperation])
+  }, [])
 
   const handleSelect = useCallback((handle: string) => {
     useAssemblyStore.getState().setSelectedPartHandle(handle)
@@ -366,12 +359,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     requestSolve()  // restore the solved pose the reverted refs imply
   }, [requestSolve, cancelSession])
 
-  const handleDeleteMate = useCallback((featureId: string) => {
-    runOperation('delete_mate', featureId)
+  // After a mate delete (run by the command builder), clear the selection and
+  // close an editor on the removed mate.
+  const handleAfterDeleteMate = useCallback((featureId: string) => {
     const store = useAssemblyStore.getState()
     if (store.selectedMateId === featureId) store.setSelectedMateId(null)
     if (store.editingSubject.kind === 'mate' && store.editingSubject.id === featureId) store.closeEditor()
-  }, [runOperation])
+  }, [])
 
   const handleRenameMate = useCallback((featureId: string, label: string | undefined) => {
     runOperation('rename_mate', { id: featureId, label })
@@ -386,41 +380,37 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   }, [renameMateTarget, handleRenameMate])
 
   // Escape (assembly keymap's cancel_edit) closes whichever editor is open by
-  // routing to its Cancel, which rewinds the session.
+  // routing to its Cancel, which rewinds the session. A modal or the export
+  // dialog owns Escape while it is up: stand down so dismissing a message box
+  // does not also rewind the edit behind it (mirrors cancel_draw's stand-down).
   const handleCancelEdit = useCallback(() => {
+    if (modalOwnsEscape()) return
     const subject = useAssemblyStore.getState().editingSubject
     if (subject.kind === 'instance') handleCancelInstance()
     else if (subject.kind === 'mate') handleCancelMate()
   }, [handleCancelInstance, handleCancelMate])
 
-  // Every document operation routes through runOperation; the UI-only commands
-  // (picker, export, undo/redo/delete, cancel) keep their own handlers. The mate
-  // insert commands carry the kind in the name and open the fresh mate's editor.
-  const assemblyHandlers = useMemo<AssemblyCommandHandlers>(() => ({
-    undo: handleUndoCommand,
-    redo: handleRedoCommand,
-    delete_selected: handleDeleteSelected,
-    cancel_edit: handleCancelEdit,
-    export_assembly: openExport,
-    insert_part_instance: openPicker,
-    add_part: (payload) => runOperation('add_part', payload),
-    duplicate_part: (payload) => runOperation('duplicate_part', payload),
-    delete_part: (payload) => handleDelete(payload as string),
-    set_part_visible: (payload) => runOperation('set_part_visible', payload),
-    set_builtin_visible: (payload) => runOperation('set_builtin_visible', payload),
-    set_part_fixed: (payload) => runOperation('set_part_fixed', payload),
-    set_part_fixed_oneshot: (payload) => runOperation('set_part_fixed_oneshot', payload),
-    set_part_position: (payload) => runOperation('set_part_position', payload),
-    set_part_rotation: (payload) => runOperation('set_part_rotation', payload),
-    delete_mate: (payload) => handleDeleteMate(payload as string),
-    update_mate: (payload) => runOperation('update_mate', payload),
-    reorder_part: (payload) => runOperation('reorder_part', payload),
-    reorder_mate: (payload) => runOperation('reorder_mate', payload),
-    rename_mate: (payload) => runOperation('rename_mate', payload),
-    ...Object.fromEntries(MATE_KINDS.map(kind => [insertMateCommand(kind), () => handleInsertMate(kind)])),
+  // The command-to-operation wiring lives in buildAssemblyHandlers so the page
+  // only supplies the live host and the UI side effects; a test can build the
+  // same handlers with spies and observe exactly which operations fire.
+  // eslint-disable-next-line react-hooks/refs -- buildAssemblyHandlers only stores these callbacks; runOperation reads docRef when a command fires, never during render
+  const assemblyHandlers = useMemo<AssemblyCommandHandlers>(() => buildAssemblyHandlers({
+    runOperation,
+    undo: handleUndo,
+    redo: handleRedo,
+    deleteSelected: handleDeleteSelected,
+    cancelEdit: handleCancelEdit,
+    openInsertPart: openPicker,
+    openExport,
+    mintMateId: mintFeatureId,
+    closeOpenEditor,
+    onMateInserted: handleMateInserted,
+    afterDeletePart: handleAfterDeletePart,
+    afterDeleteMate: handleAfterDeleteMate,
   }), [
-    handleUndoCommand, handleRedoCommand, handleDeleteSelected, handleCancelEdit,
-    openExport, openPicker, runOperation, handleDelete, handleDeleteMate, handleInsertMate,
+    runOperation, handleUndo, handleRedo, handleDeleteSelected, handleCancelEdit,
+    openPicker, openExport, closeOpenEditor, handleMateInserted,
+    handleAfterDeletePart, handleAfterDeleteMate,
   ])
   useAssemblyCommands(assemblyHandlers)
 

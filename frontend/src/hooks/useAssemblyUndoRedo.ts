@@ -162,6 +162,10 @@ export function useAssemblyUndoRedo(
     // an empty-stack undo, or a later commit would pin the coalesced edits to a
     // pre-doc that no longer corresponds to the doc they were made on.
     pendingSession.current = null
+    // Undo/redo always exits the open editor, even on an empty stack (where the
+    // restore below never runs and would not otherwise reset the subject). The
+    // rest of the transient state is reset by resetTransientAssemblyState later.
+    useAssemblyStore.getState().closeEditor()
     if (from.length === 0) return
     // A non-empty stack with no current doc means the history describes a doc
     // that does not exist. Popping would orphan the counterpart entry and

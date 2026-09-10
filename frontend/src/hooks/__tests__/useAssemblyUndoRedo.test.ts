@@ -17,6 +17,7 @@ function resetStore() {
     undoStack: [], redoStack: [],
     selectedMateId: null, activeMateField: null, mateFieldDirty: false,
     pickCandidates: [], pickIndex: -1,
+    editingSubject: { kind: 'none' },
   })
   useUnsavedChangesStore.getState().setDirty(false)
   setAssemblyCallbacks(null)
@@ -403,6 +404,36 @@ describe('useAssemblyUndoRedo', () => {
     act(() => { result.current.commitSession() })
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(0)
+  })
+
+  // "Undo always exits an open editor" must hold even when the stack is empty:
+  // the restore path never runs, so the editing subject has to be reset before
+  // the early return or the editor would outlive the undo.
+  it('undo on an empty stack still exits the open editor', () => {
+    const docRef = { current: docWith(['a']) }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+    act(() => { useAssemblyStore.getState().openInstanceEditor('a') })
+    expect(useAssemblyStore.getState().editingSubject.kind).toBe('instance')
+
+    act(() => { result.current.handleUndo() })
+
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+    expect(result.current.undoStack).toHaveLength(0)
+  })
+
+  it('redo on an empty stack still exits the open editor', () => {
+    const docRef = { current: docWith(['a']) }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+    act(() => { useAssemblyStore.getState().openMateEditor('m1') })
+    expect(useAssemblyStore.getState().editingSubject.kind).toBe('mate')
+
+    act(() => { result.current.handleRedo() })
+
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
   })
 
   it('cancelSession drops the pinned session and pushes nothing', () => {

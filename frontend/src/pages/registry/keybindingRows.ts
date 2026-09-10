@@ -6,7 +6,9 @@ import {
 
 /**
  * When a binding is live, mirroring dispatchKey's branches:
- *   - 'both'     reachable in the part editor and the assembly editor
+ *   - 'both'     reachable in more than one place: a shared key that fires in
+ *                the part editor and the assembly editor, or one with no mode
+ *                override that fires in and out of sketch-edit mode
  *   - 'sketch'   only while editing a sketch
  *   - 'feature'  only outside a sketch
  *   - 'assembly' only in the assembly editor

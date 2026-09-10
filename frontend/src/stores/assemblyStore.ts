@@ -687,7 +687,10 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
       // armed field pointing at the just-deleted mate strands a dangling
       // reference and an owed solve that never lands.
       get().setSelectedMateId(null)
-      // An editor on the deleted subject has no doc to edit any more.
+      // An editor on the deleted subject has no doc to edit any more, so close
+      // it. An editor on a DIFFERENT subject is deliberately left open: the
+      // delete's one-shot already committed its session, and the user did not
+      // ask to stop editing it.
       if (editingSubject.kind === 'mate' && editingSubject.id === selectedMateId) get().closeEditor()
       callbacks.requestSolve()
       return

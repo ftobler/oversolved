@@ -199,6 +199,12 @@ export interface AssemblyOperationHost extends AssemblyOperationContext {
 // Execute an operation against a host. The plan is built first; a no-op returns
 // without touching the doc, and the undo and solve cells decide exactly which
 // effect fires. The page never decides a cell again.
+//
+// Intentional behavior change from the old hand-written handlers: a value no-op
+// (visibility set to what it already is, rename to the same label) now returns
+// before the solve cell, so it fires no re-solve. The old handlers pushed their
+// mutation and called requestSolve unconditionally, even when the doc did not
+// change; the funnel's no-op guard only skipped the undo step, not the solve.
 export function runAssemblyOperation<K extends AssemblyOperationId>(
   id: K,
   input: AssemblyOperationInputs[K],

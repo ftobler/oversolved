@@ -67,3 +67,66 @@ export function buildAssemblyCommandEntries(handlers: AssemblyCommandHandlers): 
 export function insertMateCommand(kind: MateKind): AssemblyCommandName {
   return `insert_mate_${kind}`
 }
+
+/**
+ * The page's inputs for the command table. Every document mutation is expressed
+ * here as `runOperation`, so the wiring from command name to operation is in one
+ * place and a test can execute the handlers and observe which operations fired.
+ * The remaining deps are the UI side effects (open the picker/export, clear the
+ * selection after a delete, open a fresh mate's editor) and the id minting.
+ */
+export interface AssemblyHandlerDeps {
+  runOperation: (id: AssemblyOperationId, payload: unknown) => void
+  undo: () => void
+  redo: () => void
+  deleteSelected: () => void
+  cancelEdit: () => void
+  openInsertPart: () => void
+  openExport: () => void
+  // A fresh mate's feature id and the editor side effects after its append.
+  mintMateId: () => string
+  closeOpenEditor: () => void
+  onMateInserted: (id: string, kind: MateKind) => void
+  afterDeletePart: (handle: string) => void
+  afterDeleteMate: (id: string) => void
+}
+
+// The single wiring from command name to mutation. `delete_*` and `insert_mate_*`
+// run their operation and then hand off to the UI-only side effect; every other
+// mutating command is a direct runOperation call.
+export function buildAssemblyHandlers(deps: AssemblyHandlerDeps): AssemblyCommandHandlers {
+  return {
+    undo: deps.undo,
+    redo: deps.redo,
+    delete_selected: deps.deleteSelected,
+    cancel_edit: deps.cancelEdit,
+    export_assembly: deps.openExport,
+    insert_part_instance: deps.openInsertPart,
+    add_part: (payload) => deps.runOperation('add_part', payload),
+    duplicate_part: (payload) => deps.runOperation('duplicate_part', payload),
+    set_part_visible: (payload) => deps.runOperation('set_part_visible', payload),
+    set_builtin_visible: (payload) => deps.runOperation('set_builtin_visible', payload),
+    set_part_fixed: (payload) => deps.runOperation('set_part_fixed', payload),
+    set_part_fixed_oneshot: (payload) => deps.runOperation('set_part_fixed_oneshot', payload),
+    set_part_position: (payload) => deps.runOperation('set_part_position', payload),
+    set_part_rotation: (payload) => deps.runOperation('set_part_rotation', payload),
+    update_mate: (payload) => deps.runOperation('update_mate', payload),
+    reorder_part: (payload) => deps.runOperation('reorder_part', payload),
+    reorder_mate: (payload) => deps.runOperation('reorder_mate', payload),
+    rename_mate: (payload) => deps.runOperation('rename_mate', payload),
+    delete_part: (payload) => {
+      deps.runOperation('delete_part', payload)
+      deps.afterDeletePart(payload as string)
+    },
+    delete_mate: (payload) => {
+      deps.runOperation('delete_mate', payload)
+      deps.afterDeleteMate(payload as string)
+    },
+    ...Object.fromEntries(MATE_KINDS.map(kind => [insertMateCommand(kind), () => {
+      const id = deps.mintMateId()
+      deps.closeOpenEditor()
+      deps.runOperation('add_mate', { kind, id })
+      deps.onMateInserted(id, kind)
+    }])),
+  }
+}
