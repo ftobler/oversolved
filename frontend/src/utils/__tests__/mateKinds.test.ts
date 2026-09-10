@@ -8,7 +8,9 @@ import {
   EMPTY_MATE_REF,
   MATE_KINDS,
   MATE_KIND_LABELS,
+  MATE_KIND_TO_U8,
   isMateRefEmpty,
+  mateKindCode,
   mateParams,
   mateOffsetVector,
   mateRefLabel,
@@ -19,14 +21,39 @@ import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import type { Vec3 } from '@/utils/transform3d'
 
 describe('MATE_KINDS', () => {
+  it('maps every kind to a frozen code', () => {
+    // The wire codes are MATE_KIND_TO_U8, typed `Record<MateKind, number>`, so
+    // deleting a key fails tsc. This test is the fast detector for the two
+    // mistakes tsc cannot see: a reorder and a changed number. Its diff is the
+    // review signal against Rust's MateKind::from_u8 (mate.rs).
+    const codes: Record<string, number | undefined> = {}
+    for (const kind of MATE_KINDS) codes[kind] = mateKindCode(kind)
+    expect(codes).toEqual({
+      fixed: 0,
+      spherical: 1,
+      parallel: 2,
+      sliding: 3,
+      rotating: 4,
+      sliding_rotating: 5,
+      tangential: 6,
+      copy_rotation: 7,
+      parallel_plane_distance: 8,
+    })
+  })
+
   it('covers every MateKind the solver maps to a Rust kind code', () => {
-    // Mirrors MATE_KIND_TO_U8 in kernel/solveAssembly.ts. A kind offered in the
-    // UI but absent there would silently author itself as `fixed` (its `?? 0`).
-    const solverKinds: MateKind[] = [
-      'fixed', 'spherical', 'parallel', 'sliding', 'rotating',
-      'sliding_rotating', 'tangential', 'copy_rotation', 'parallel_plane_distance',
-    ]
-    expect([...MATE_KINDS].sort()).toEqual([...solverKinds].sort())
+    // MATE_KIND_TO_U8 is a Record<MateKind, number>, so tsc already fails if a
+    // kind is missing; this restates the coverage at runtime so a future switch
+    // to a looser type cannot quietly drop the check.
+    for (const kind of MATE_KINDS) {
+      expect(MATE_KIND_TO_U8[kind]).toBeTypeOf('number')
+    }
+  })
+
+  it('returns undefined for a kind not in the union', () => {
+    // Keeps solveAssembly's fail-loud branch live for a hand-edited YAML string
+    // that is not a mate kind at all.
+    expect(mateKindCode('not_a_kind')).toBeUndefined()
   })
 
   it('leads with fixed, the workhorse mate', () => {

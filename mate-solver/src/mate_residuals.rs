@@ -68,10 +68,11 @@ pub struct MateProblem {
     /// instead of snapping them together.
     seed_twist: Vec<(f64, f64)>,
     /// Canonical in-plane reference direction per side, for `Fixed`'s and
-    /// `Sliding`'s absolute roll residual: `canonical_perp` of each anchor's
-    /// LOCAL axis, so the frame is rigid to the part and independent of any
-    /// pose. The editor's authoring capture derives its `angle` from the same
-    /// frames (utils/mateOrientation.ts must mirror `canonical_perp` exactly).
+    /// `Sliding`'s absolute roll residual. Carried on the wire as
+    /// `MateGeometry.perp` (the editor's canonicalPerp of each anchor's LOCAL
+    /// axis, utils/mateOrientation.ts), so the frame is rigid to the part and
+    /// the solver measures the exact direction the authored `angle` was captured
+    /// against.
     roll_frames: Vec<Option<([f64; 3], [f64; 3])>>,
     /// Characteristic drawing length: the AABB diagonal over the seed body
     /// translations and the mate anchors' local points, floored at 1.0. See
@@ -239,10 +240,7 @@ impl MateProblem {
                 seed_twist[i] = (twist_a0, twist_b0);
             }
             if matches!(m.kind, MateKind::Fixed | MateKind::Sliding) {
-                roll_frames[i] = Some((
-                    canonical_perp(&m.a.geometry.axis),
-                    canonical_perp(&m.b.geometry.axis),
-                ));
+                roll_frames[i] = Some((m.a.geometry.perp, m.b.geometry.perp));
             }
         }
 
@@ -271,12 +269,12 @@ impl MateProblem {
 
     /// Absolute roll: the signed angle from A's canonical reference direction to
     /// B's, measured about A's current world axis, minus the authored `angle`.
-    /// Shared by `Fixed` and `Sliding`. The reference directions are
-    /// `canonical_perp` of each anchor's LOCAL axis carried into world space, so
-    /// the residual is a pure function of the two poses and the authored target:
-    /// zero seed dependence, hence re-solving from a baked (already-solved) doc
-    /// changes nothing, and any rotational error a previous solve left behind is
-    /// pulled back out instead of adopted as the new truth.
+    /// Shared by `Fixed` and `Sliding`. The reference directions are the wire
+    /// perps (`MateGeometry.perp`) carried into world space, so the residual is
+    /// a pure function of the two poses and the authored target: zero seed
+    /// dependence, hence re-solving from a baked (already-solved) doc changes
+    /// nothing, and any rotational error a previous solve left behind is pulled
+    /// back out instead of adopted as the new truth.
     ///
     /// `atan2(dot(cross(xa, xb), w), dot(xa, xb))` reads the angle of `xb`
     /// projected into the plane perpendicular to `w`; `xa` lies in that plane
@@ -1229,25 +1227,6 @@ fn axis_sign(flip: bool) -> f64 {
     if flip { -1.0 } else { 1.0 }
 }
 
-/// Deterministic unit vector perpendicular to `a` (the anchor's LOCAL axis):
-/// cross `a` with the world basis vector it is least aligned with. Pose-free,
-/// so together with the axis it gives every anchor a full rigid frame to
-/// measure roll against. The editor's authoring capture must agree on the same
-/// direction -- utils/mateOrientation.ts `canonicalPerp` mirrors this branch
-/// for branch, and `mateOrientation.test.ts` locks the shared fixtures.
-fn canonical_perp(a: &[f64; 3]) -> [f64; 3] {
-    let u = normalise_axis(a);
-    let (ax, ay, az) = (u[0].abs(), u[1].abs(), u[2].abs());
-    let e: [f64; 3] = if ax <= ay && ax <= az {
-        [1.0, 0.0, 0.0]
-    } else if ay <= az {
-        [0.0, 1.0, 0.0]
-    } else {
-        [0.0, 0.0, 1.0]
-    };
-    normalise_axis(&cross3(&u, &e))
-}
-
 /// Wrap an angle difference into (-pi, pi].
 fn wrap_to_pi(v: f64) -> f64 {
     use std::f64::consts::PI;
@@ -1434,6 +1413,9 @@ mod tests {
             geometry: MateGeometry {
                 point: [px, py, pz],
                 axis: [ax, ay, az],
+                // Every helper here names the +Z axis; this is its canonical
+                // perp. A test that needs another frame overrides it directly.
+                perp: [0.0, 1.0, 0.0],
             },
             anchor_kind: ak,
         }
@@ -2986,25 +2968,42 @@ mod tests {
     }
 
     #[test]
-    fn canonical_perp_is_unit_and_perpendicular() {
-        // The frame the roll residual measures against. Fixture values are
-        // shared with utils/mateOrientation.test.ts (the TS twin): if either
-        // side changes its branch rule, both tests must be updated together or
-        // the editor's captured angle stops matching the solver's measurement.
-        let cases: [([f64; 3], [f64; 3]); 4] = [
-            ([0.0, 0.0, 1.0], [0.0, 1.0, 0.0]),   // z crossed with x
-            ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),   // x crossed with y
-            ([0.0, 1.0, 0.0], [0.0, 0.0, -1.0]),  // y crossed with x
-            ([0.6, 0.0, 0.8], [-0.8, 0.0, 0.6]),  // tilted, crossed with y
-        ];
-        for (axis, want) in cases {
-            let p = canonical_perp(&axis);
-            let dot = p[0] * axis[0] + p[1] * axis[1] + p[2] * axis[2];
-            assert!(dot.abs() < 1e-12, "perp not perpendicular for {:?}", axis);
-            for c in 0..3 {
-                assert!((p[c] - want[c]).abs() < 1e-12, "canonical_perp({:?}) = {:?}, want {:?}", axis, p, want);
-            }
-        }
+    fn supplied_perp_drives_the_roll() {
+        // The roll frame now comes off the wire (`MateGeometry.perp`), not from
+        // a solver-side re-derivation of the axis. Two inputs with identical
+        // axes and seeds but different perps must measure different rolls, which
+        // proves the wire value is the one in force.
+        let problem_with_perp = |perp_b: [f64; 3]| {
+            let mut b = mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane);
+            b.geometry.perp = perp_b;
+            let input = MateInput {
+                bodies: (0..2).map(|_| RigidBody {}).collect(),
+                params_initial: vec![
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: identity, grounded
+                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: identity
+                ],
+                fixed_mask: vec![0b0000_0001],
+                mates: vec![mate(
+                    MateKind::Fixed,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    b,
+                    false, 0.0, 1.0, 0.0,
+                )],
+            };
+            MateProblem::new(&input)
+        };
+
+        // Same axis (+Z) on both sides; only B's wire perp changes.
+        let aligned = problem_with_perp([0.0, 1.0, 0.0]);
+        let quarter = problem_with_perp([1.0, 0.0, 0.0]);
+        let x = aligned.x0.clone();
+
+        assert!(aligned.abs_roll_residual(&x, 0, 0, 7, 0.0).abs() < 1e-12);
+        let roll = quarter.abs_roll_residual(&x, 0, 0, 7, 0.0);
+        assert!(
+            (roll + std::f64::consts::FRAC_PI_2).abs() < 1e-12,
+            "the supplied perp must set the frame, got {roll}"
+        );
     }
 
     #[test]

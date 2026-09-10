@@ -49,6 +49,7 @@ mod tests {
                     geometry: MateGeometry {
                         point: [0.0, 0.0, 0.0],
                         axis: [0.0, 0.0, 1.0],
+                        perp: [0.0, 1.0, 0.0],
                     },
                     anchor_kind: AnchorKind::Point,
                 },
@@ -57,6 +58,7 @@ mod tests {
                     geometry: MateGeometry {
                         point: [0.0, 0.0, 0.0],
                         axis: [0.0, 0.0, 1.0],
+                        perp: [0.0, 1.0, 0.0],
                     },
                     anchor_kind: AnchorKind::Point,
                 },
@@ -93,6 +95,7 @@ mod tests {
                     geometry: MateGeometry {
                         point: [0.0, 0.0, 0.0],
                         axis: [0.0, 0.0, 1.0],
+                        perp: [0.0, 1.0, 0.0],
                     },
                     anchor_kind: AnchorKind::Point,
                 },
@@ -101,6 +104,7 @@ mod tests {
                     geometry: MateGeometry {
                         point: [0.0, 0.0, 0.0],
                         axis: [0.0, 0.0, 1.0],
+                        perp: [0.0, 1.0, 0.0],
                     },
                     anchor_kind: AnchorKind::Point,
                 },

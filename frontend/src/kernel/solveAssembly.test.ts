@@ -11,6 +11,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { solveAssembly, encodeMateInput, decodeMateOutput, assemblyAnchors } from './solveAssembly'
@@ -39,6 +41,28 @@ import type { RelayService } from './worker/anchorSolverWorker'
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()
   resetBundleDbConnection()
+}
+
+/**
+ * The shared mate-wire fixture (tests/fixtures/mate_wire.txt), also read by the
+ * Rust wire tests. Magic and stride drift between the two languages fails here
+ * instead of silently mis-solving.
+ */
+function readMateWireFixture(): Record<string, number> {
+  // jsdom's `import.meta.url` is not a file URL, so the fixture is located from
+  // the frontend project root the vitest command runs in (justfile: cd frontend).
+  const text = readFileSync(path.resolve(process.cwd(), '../tests/fixtures/mate_wire.txt'), 'utf8')
+  const out: Record<string, number> = {}
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const eq = line.indexOf('=')
+    if (eq < 0) continue
+    const key = line.slice(0, eq).trim()
+    const value = line.slice(eq + 1).trim()
+    out[key] = value.startsWith('0x') ? parseInt(value, 16) : Number(value)
+  }
+  return out
 }
 
 function identityTransform(): Transform3D {
@@ -272,6 +296,7 @@ function decodeInput(input: Uint8Array): DecodedInput {
     const offset = readVec()
     pos += 4 + 4  // ratio + radius
     const angle = v.getFloat32(pos, true); pos += 4
+    pos += 24  // perp_a (3 f32) + perp_b (3 f32)
     mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB, offset, angle })
   }
   return { nBodies, fixedMask, mates }
@@ -1511,13 +1536,17 @@ describe('mate wire format', () => {
   })
 
   it('byte sizes align with Rust format', () => {
+    const fixture = readMateWireFixture()
     // One empty body, no mates: header 20 + bodies 4 + params 28 + mask 1 = 53 bytes
     const params = new Float32Array(7)
     const fixedMask = new Uint8Array([0])
     const encoded = encodeMateInput(1, params, fixedMask, [])
     expect(encoded.length).toBe(53)
+    // The input magic is the version handshake; Rust rejects any other value.
+    const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
+    expect(view.getUint32(0, true)).toBe(fixture.magic)
 
-    // One mate record adds exactly 84 bytes
+    // One mate record adds exactly the fixture stride (108 bytes).
     const encodedWithMate = encodeMateInput(1, params, fixedMask, [{
       kindCode: 1,
       bodyA: 0, bodyB: 0,
@@ -1525,16 +1554,17 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [1, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
+      perpA: [0, 1, 0], perpB: [0, 1, 0],
     }])
-    expect(encodedWithMate.length).toBe(53 + 84)
+    expect(encodedWithMate.length - encoded.length).toBe(fixture.record_bytes)
   })
 
   it('places angle at the documented offset in the mate record', () => {
     // Record layout after the 53-byte header+body+params+mask prefix (1 body):
     // kind(1) + bodyA(4) + bodyB(4) + anchorKinds(2) + pointA(12) + axisA(12)
     // + pointB(12) + axisB(12) + flags(1) + offset(12) + ratio(4) + radius(4) = 80,
-    // then angle is the trailing f32 at byte 80 of the record. The offset is
-    // three f32s, so this is 8 bytes past where the scalar form put it.
+    // then angle is the f32 at byte 80, followed by the two perp triples. The
+    // offset is three f32s, so this is 8 bytes past where the scalar form put it.
     const params = new Float32Array(7)
     const fixedMask = new Uint8Array([0])
     const encoded = encodeMateInput(1, params, fixedMask, [{
@@ -1544,6 +1574,7 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: Math.PI / 4,
+      perpA: [0, 1, 0], perpB: [0, 1, 0],
     }])
     const recordStart = 53
     const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)

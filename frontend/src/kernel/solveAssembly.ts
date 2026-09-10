@@ -13,7 +13,7 @@ import type { Transform3D, MateKind, MateOffset } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
 import { canonicalPerp } from '../utils/mateOrientation'
-import { mateOffsetVector } from '../utils/mateKinds'
+import { mateKindCode, mateOffsetVector } from '../utils/mateKinds'
 import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 import { STATUS_NAME } from '@/wasm-kernel/codec'
 
@@ -129,20 +129,17 @@ const ANCHOR_KIND_TO_U8: Record<string, number> = {
 
 // ─── Mate kind mapping (TS → Rust u8) ───
 
-const MATE_KIND_TO_U8: Record<string, number> = {
-  fixed: 0,
-  spherical: 1,
-  parallel: 2,
-  sliding: 3,
-  rotating: 4,
-  sliding_rotating: 5,
-  tangential: 6,
-  copy_rotation: 7,
-  parallel_plane_distance: 8,
-}
+// The kind-to-code table lives in utils/mateKinds.ts (MATE_KIND_TO_U8), typed as
+// `Record<MateKind, number>` so a tenth kind cannot be added without a code.
+// `mateKindCode` is imported above and is the only reader.
 
-const MATE_MAGIC = 0x5331_544D  // "MTS1"
-const MATE_MAGIC_OUT = 0x5231_544D  // "MTR1"
+// Input wire magic. The header magic is the version handshake: any change to the
+// mate record's shape, field meaning or stride MUST bump this (or MATE_MAGIC_OUT
+// for the output layout) in the same commit as the mirror on the Rust side.
+// Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS2"); the
+// previous constant 0x5331_544D was labelled "MTS1" but its bytes read "MT1S".
+const MATE_MAGIC = 0x3253_544D  // "MTS2" in LE
+const MATE_MAGIC_OUT = 0x5231_544D  // tag "MTR1"; its LE bytes read "MT1R"
 const BPB = 7  // bytes per body (tx,ty,tz,qx,qy,qz,qw) = 7 f32s = 28 bytes
 
 // ─── Quaternion math for transform application ───
@@ -236,6 +233,12 @@ export interface MateWireRecord {
   /** Radians. Fixed/Sliding's absolute roll target between the anchors'
    *  canonical frames; see mate_residuals.rs abs_roll_residual. */
   angle: number
+  // The canonical in-plane reference direction of each anchor's LOCAL axis
+  // (utils/mateOrientation.ts canonicalPerp). Carried on the wire so the solver
+  // measures roll against the exact frame the editor captured the angle with,
+  // instead of re-deriving it and risking a branch mismatch.
+  perpA: Vec3
+  perpB: Vec3
 }
 
 function pinnedMaskBytes(nBodies: number): number {
@@ -253,15 +256,16 @@ export function encodeMateInput(
   // bodies: n_bodies * 4
   // params: bodyCount * 7 * 4
   // fixedMask: maskLen
-  // mates: n_mates * 84
+  // mates: n_mates * 108
   const headerSize = 20
   const bodiesSize = bodyCount * 4
   const paramsSize = params.length * 4
   const maskSize = maskLen
-  // 84, not 76: `offset` is three f32s, and ratio/radius/angle sit after it.
-  // This stride and mate.rs's decode move together or the solver reads ratio
-  // out of the offset's tail -- see `mate_record_is_84_bytes` over there.
-  const matesSize = mates.length * 84
+  // 108, not 84: `offset` is three f32s and the two canonical perp triples sit
+  // after ratio/radius/angle. This stride and mate.rs's decode move together or
+  // the solver reads ratio out of the offset's tail -- see the shared
+  // tests/fixtures/mate_wire.txt that both sides pin against.
+  const matesSize = mates.length * 108
   const total = headerSize + bodiesSize + paramsSize + maskSize + matesSize
 
   const buf = new ArrayBuffer(total)
@@ -312,6 +316,12 @@ export function encodeMateInput(
     w.setFloat32(pos, m.ratio, true); pos += 4
     w.setFloat32(pos, m.radius, true); pos += 4
     w.setFloat32(pos, m.angle, true); pos += 4
+    w.setFloat32(pos, m.perpA[0], true); pos += 4
+    w.setFloat32(pos, m.perpA[1], true); pos += 4
+    w.setFloat32(pos, m.perpA[2], true); pos += 4
+    w.setFloat32(pos, m.perpB[0], true); pos += 4
+    w.setFloat32(pos, m.perpB[1], true); pos += 4
+    w.setFloat32(pos, m.perpB[2], true); pos += 4
   }
 
   return new Uint8Array(buf)
@@ -550,7 +560,7 @@ export async function solveAssembly(
     // hand-edited YAML) must not silently coerce into `fixed`/`plane` -- that
     // turned a mismatch into a rigid weld or the wrong tangential formula with
     // no sign anything went wrong. Fail the mate loud and red instead.
-    const kindCode = MATE_KIND_TO_U8[mate.kind]
+    const kindCode = mateKindCode(mate.kind)
     if (kindCode === undefined) {
       mateResults[mate.id] = { stale: true, error: `unsupported mate kind '${mate.kind}'` }
       continue
@@ -595,6 +605,8 @@ export async function solveAssembly(
       ratio,
       radius,
       angle,
+      perpA: canonicalPerp(rA.anchor!.axis),
+      perpB: canonicalPerp(rB.anchor!.axis),
     })
     mateResults[mate.id] = { stale: false }
   }

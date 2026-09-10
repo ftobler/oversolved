@@ -1,9 +1,7 @@
-// Locks the TS half of the cross-language frame contract: canonicalPerp must
-// pick the same direction as the Rust canonical_perp (mate_residuals.rs), or a
-// captured `angle` measures against a different frame than the solver enforces
-// and every fixed mate solves away from the pose it was authored at. The
-// fixture table below is duplicated verbatim in Rust's
-// canonical_perp_is_unit_and_perpendicular -- change them together.
+// Locks the canonical frame rule. canonicalPerp is now its only owner: the Rust
+// canonical_perp was deleted and the perp travels on the mate wire
+// (MateGeometry.perp, mate_residuals.rs roll_frames), so a captured `angle`
+// measures against the exact frame the solver reads.
 
 import { describe, expect, it } from 'vitest'
 import { canonicalPerp, rollAboutAxisDeg } from '@/utils/mateOrientation'
@@ -11,12 +9,30 @@ import { rotateVector, quatFromAxisAngle } from '@/utils/transform3d'
 import type { Vec3 } from '@/utils/transform3d'
 
 describe('canonicalPerp', () => {
-  it('matches the Rust canonical_perp fixtures', () => {
+  it('matches the canonical frame fixtures', () => {
     const cases: [Vec3, Vec3][] = [
       [[0, 0, 1], [0, 1, 0]],    // z crossed with x
       [[1, 0, 0], [0, 0, 1]],    // x crossed with y
       [[0, 1, 0], [0, 0, -1]],   // y crossed with x
       [[0.6, 0, 0.8], [-0.8, 0, 0.6]],  // tilted, crossed with y
+    ]
+    for (const [axis, want] of cases) {
+      const p = canonicalPerp(axis)
+      for (let c = 0; c < 3; c++) expect(p[c]).toBeCloseTo(want[c], 12)
+    }
+  })
+
+  it('breaks ties between equally-aligned axes deterministically', () => {
+    // The branch rule `ax <= ay && ax <= az ... else if ay <= az` is pinned
+    // exactly where it is load-bearing: axes that tie two absolute components.
+    const cases: [Vec3, Vec3][] = [
+      [[1, 1, 2], [0, 0.8944271909999159, -0.4472135954999579]],        // x ties y, breaks to x
+      [[2, 1, 1], [-0.4472135954999579, 0, 0.8944271909999159]],        // y ties z, breaks to y
+      [[1, 1, 1], [0, 0.7071067811865476, -0.7071067811865476]],        // all tie, breaks to x
+      // A near-tie pins that the comparison is on the f64, not rounded: x is a
+      // hair over y, so this falls through to the y branch, unlike the exact
+      // [1,1,2] tie above.
+      [[1 + 1e-9, 1, 2], [-0.8944271908210305, 0, 0.44721359585772885]],
     ]
     for (const [axis, want] of cases) {
       const p = canonicalPerp(axis)
@@ -35,9 +51,9 @@ describe('canonicalPerp', () => {
   })
 
   it('degrades a zero axis to a defined frame instead of NaN', () => {
-    const p = canonicalPerp([0, 0, 0])
-    expect(p.every(Number.isFinite)).toBe(true)
-    expect(Math.hypot(...p)).toBeCloseTo(1, 12)
+    // normalize returns null for a zero axis, so the fallback axis is +Z and
+    // the resulting perp is exactly +Y.
+    expect(canonicalPerp([0, 0, 0])).toEqual([0, 1, 0])
   })
 })
 

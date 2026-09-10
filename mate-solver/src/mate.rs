@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MATE_MAGIC ("MTS1")
+//!   u32  magic = MATE_MAGIC ("MTS2")
 //!   u32  n_bodies
 //!   u32  n_params            // n_bodies * 7
 //!   u32  n_mates
@@ -20,7 +20,7 @@
 //! mates:          n_mates x mate-record (see below)
 //! ```
 //!
-//! ## Mate record (fixed length, 84 bytes)
+//! ## Mate record (fixed length, 108 bytes)
 //!
 //! ```text
 //!   u8   kind_code
@@ -37,12 +37,18 @@
 //!   f32  ratio               // for CopyRotation (gear-like ratio)
 //!   f32  radius              // for Tangential (mate-side radius fallback)
 //!   f32  angle               // radians, Fixed/Sliding's absolute roll target (TS encodes degrees -> radians)
+//!   f32  perp_a_x, perp_a_y, perp_a_z  // canonical in-plane frame of A's LOCAL axis
+//!   f32  perp_b_x, perp_b_y, perp_b_z  // canonical in-plane frame of B's LOCAL axis
 //! ```
 //!
-//! There is no version field on this record and nothing persists it: the buffer
-//! is built and consumed within a single solve, main thread to WASM, so widening
-//! it needs no migration and no dual-read. Contrast the part-bundle format next
-//! door, which *is* persisted and does need one.
+//! There is no per-record version field: the header magic is the version
+//! handshake. Any change to this record's shape, field meaning or stride MUST
+//! bump `MATE_MAGIC` in the same commit on both sides (this file and
+//! frontend/src/kernel/solveAssembly.ts). The buffer is built and consumed
+//! within one solve, but the WASM decoder is fetched from a fixed, unhashed URL
+//! and can be a stale cache, so the magic is what makes a width mismatch fail
+//! loud instead of being silently dropped. The strides below are additionally
+//! pinned against tests/fixtures/mate_wire.txt.
 //!
 //! ## Output buffer layout
 //!
@@ -57,8 +63,8 @@
 
 use crate::codec::{finite, CodecError, Reader, Writer};
 
-pub const MATE_MAGIC: u32 = 0x5331_544D; // "MTS1" in LE
-pub const MATE_MAGIC_OUT: u32 = 0x5231_544D; // "MTR1" in LE
+pub const MATE_MAGIC: u32 = 0x3253_544D; // "MTS2" in LE
+pub const MATE_MAGIC_OUT: u32 = 0x5231_544D; // tag "MTR1"; its LE bytes read "MT1R"
 
 /// All mate kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +81,21 @@ pub enum MateKind {
 }
 
 impl MateKind {
+    /// Every variant, in wire-code order. `all_mate_kinds_decode` iterates this
+    /// instead of a hand-typed `0..=8`, so a variant missing from `from_u8`
+    /// fails the round trip rather than falling outside a hardcoded range.
+    pub const ALL: [MateKind; 9] = [
+        MateKind::Fixed,
+        MateKind::Spherical,
+        MateKind::Parallel,
+        MateKind::Sliding,
+        MateKind::Rotating,
+        MateKind::SlidingRotating,
+        MateKind::Tangential,
+        MateKind::CopyRotation,
+        MateKind::ParallelPlaneDistance,
+    ];
+
     pub fn from_u8(v: u8) -> Option<Self> {
         Some(match v {
             0 => MateKind::Fixed,
@@ -146,11 +167,15 @@ impl AnchorKind {
 }
 
 /// Pre-resolved anchor geometry for a mate reference.
-/// point and axis are in the body's local coordinate frame.
+/// point and axis are in the body's local coordinate frame. `perp` is the
+/// canonical in-plane reference direction of `axis` (the editor's canonicalPerp,
+/// utils/mateOrientation.ts), carried on the wire so the roll residual measures
+/// against the frame the authored `angle` was captured with.
 #[derive(Debug, Clone)]
 pub struct MateGeometry {
     pub point: [f64; 3],
     pub axis: [f64; 3],
+    pub perp: [f64; 3],
 }
 
 /// A mate reference: which body + its anchor geometry in local frame
@@ -322,7 +347,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     }
 
     // Header counts are untrusted; see `Reader::capacity_for`. A mate record is
-    // a fixed 84 bytes, a param a single f32.
+    // a fixed 108 bytes, a param a single f32.
     let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 4));
     for _ in 0..n_params {
         params_initial.push(finite(r.f32()?)?);
@@ -331,7 +356,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     let mask_len = pinned_mask_bytes(n_bodies);
     let fixed_mask = r.take(mask_len)?.to_vec();
 
-    let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 84));
+    let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 108));
     for _ in 0..n_mates {
         let kind_byte = r.u8()?;
         let kind = MateKind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
@@ -371,6 +396,17 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
         let radius = finite(r.f32()?)? as f64;
         let angle = finite(r.f32()?)? as f64;
 
+        let perp_a = [
+            finite(r.f32()?)? as f64,
+            finite(r.f32()?)? as f64,
+            finite(r.f32()?)? as f64,
+        ];
+        let perp_b = [
+            finite(r.f32()?)? as f64,
+            finite(r.f32()?)? as f64,
+            finite(r.f32()?)? as f64,
+        ];
+
         mates.push(Mate {
             kind,
             a: MateRef {
@@ -378,6 +414,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
                 geometry: MateGeometry {
                     point: [px_a, py_a, pz_a],
                     axis: [ax_a, ay_a, az_a],
+                    perp: perp_a,
                 },
                 anchor_kind: anchor_kind_a,
             },
@@ -386,6 +423,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
                 geometry: MateGeometry {
                     point: [px_b, py_b, pz_b],
                     axis: [ax_b, ay_b, az_b],
+                    perp: perp_b,
                 },
                 anchor_kind: anchor_kind_b,
             },
@@ -466,6 +504,13 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
         w.f32(m.ratio as f32);
         w.f32(m.radius as f32);
         w.f32(m.angle as f32);
+
+        w.f32(m.a.geometry.perp[0] as f32);
+        w.f32(m.a.geometry.perp[1] as f32);
+        w.f32(m.a.geometry.perp[2] as f32);
+        w.f32(m.b.geometry.perp[0] as f32);
+        w.f32(m.b.geometry.perp[1] as f32);
+        w.f32(m.b.geometry.perp[2] as f32);
     }
     w.into_bytes()
 }
@@ -523,10 +568,38 @@ pub fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
 mod tests {
     use super::*;
 
+    /// The shared wire fixture (tests/fixtures/mate_wire.txt), read by both the
+    /// Rust and TS wire tests so a stride or magic change cannot pass without a
+    /// matching edit in one visible place. Values may be decimal or `0x` hex.
+    fn fixture_u64(key: &str) -> u64 {
+        let text = include_str!("../../tests/fixtures/mate_wire.txt");
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
+            if k.trim() != key {
+                continue;
+            }
+            let v = v.trim();
+            return if let Some(hex) = v.strip_prefix("0x") {
+                u64::from_str_radix(hex, 16).expect("hex fixture value")
+            } else {
+                v.parse().expect("decimal fixture value")
+            };
+        }
+        panic!("tests/fixtures/mate_wire.txt has no key `{key}`");
+    }
+
     fn mate_geom(ax: f64, ay: f64, az: f64) -> MateGeometry {
         MateGeometry {
             point: [0.0, 0.0, 0.0],
             axis: [ax as f64, ay as f64, az as f64],
+            // The canonical perp of +Z, the axis every helper here uses.
+            perp: [0.0, 1.0, 0.0],
         }
     }
 
@@ -631,7 +704,7 @@ mod tests {
     #[test]
     fn mate_input_bad_kind_rejected() {
         let mut bytes = encode_mate_input(&sample_input());
-        // In the 84-byte record, kind_code is at offset:
+        // In the 108-byte record, kind_code is at offset:
         // header(20) + bodies(8) + params_initial(56) + fixed_mask(1) = 85
         // + kind_code is first byte of mate record
         bytes[85] = 0xff; // kind_code in first mate record
@@ -799,18 +872,44 @@ mod tests {
         assert!((m.ratio - 2.0).abs() < 1e-4);
         assert!((m.radius - 3.0).abs() < 1e-4);
         assert!((m.angle - 0.7).abs() < 1e-4);
+        // The perps ride after angle and survive the round trip.
+        assert_eq!(m.a.geometry.perp, [0.0, 1.0, 0.0]);
+        assert_eq!(m.b.geometry.perp, [0.0, 1.0, 0.0]);
     }
 
     /// The record stride the TS encoder must match byte for byte. A silent
     /// disagreement here does not fail: it makes the solver read ratio out of
-    /// the offset's tail and mis-solve, which is why the stride is pinned.
+    /// the offset's tail and mis-solve, which is why the stride is pinned
+    /// against the shared fixture rather than a bare literal.
     #[test]
-    fn mate_record_is_84_bytes() {
+    fn mate_record_is_108_bytes() {
         let one = encode_mate_input(&sample_input()).len();
         let mut two_mates = sample_input();
         let extra = two_mates.mates[0].clone();
         two_mates.mates.push(extra);
-        assert_eq!(encode_mate_input(&two_mates).len() - one, 84);
+        let stride = encode_mate_input(&two_mates).len() - one;
+        assert_eq!(stride as u64, fixture_u64("record_bytes"));
+        assert_eq!(stride, 108);
+    }
+
+    /// The Rust half of the cross-language wire lock: the constants and stride
+    /// must equal tests/fixtures/mate_wire.txt, which the TS byte-size test
+    /// reads too. The fixture puts the magic-bump rule in front of the editor.
+    #[test]
+    fn mate_wire_fixture_matches_the_constants() {
+        assert_eq!(fixture_u64("rev"), 2);
+        assert_eq!(MATE_MAGIC as u64, fixture_u64("magic"));
+        assert_eq!(MATE_MAGIC_OUT as u64, fixture_u64("magic_out"));
+    }
+
+    // A stale decoder can meet a fresh encoder (the WASM is served from a fixed,
+    // unhashed URL). The old rev's magic must be rejected, not silently decoded
+    // with the new fields dropped.
+    #[test]
+    fn stale_magic_is_rejected() {
+        let mut bytes = encode_mate_input(&sample_input());
+        bytes[0..4].copy_from_slice(&0x5331_544Du32.to_le_bytes());
+        assert!(matches!(decode_mate_input(&bytes), Err(CodecError::BadMagic)));
     }
 
     /// The axial reduction Tangential and ParallelPlaneDistance read. A scalar
@@ -859,10 +958,14 @@ mod tests {
 
     #[test]
     fn all_mate_kinds_decode() {
-        for code in 0..=8u8 {
-            let kind = MateKind::from_u8(code).unwrap();
-            assert_eq!(kind.to_u8(), code);
+        // Iterating ALL, not a hardcoded range: a variant missing from from_u8
+        // fails here instead of falling outside the loop. Codes must be unique
+        // and contiguous from 0, which `code == enumerate` proves in one check.
+        for (code, &kind) in MateKind::ALL.iter().enumerate() {
+            assert_eq!(kind.to_u8() as usize, code, "kind codes are contiguous from 0");
+            assert_eq!(MateKind::from_u8(kind.to_u8()), Some(kind));
         }
+        assert_eq!(MateKind::from_u8(MateKind::ALL.len() as u8), None);
     }
 
     // Each float field class on the input wire is gated individually: one NaN

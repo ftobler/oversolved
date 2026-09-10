@@ -1,0 +1,10 @@
+# The mate input wire contract, shared by the Rust and TypeScript wire tests so
+# a record-shape change cannot pass without a matching edit here. Any change to
+# the mate record's stride or magic MUST be made in the same commit as the
+# mirror (mate-solver/src/mate.rs and frontend/src/kernel/solveAssembly.ts) and
+# MUST bump `magic` one rev. `magic` and `magic_out` are u32 values spelled in
+# little-endian bytes; `record_bytes` is the per-mate stride.
+rev=2
+magic=0x3253544D
+magic_out=0x5231544D
+record_bytes=108

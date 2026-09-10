@@ -13,12 +13,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { solveAssembly } from './solveAssembly'
+import { solveAssembly, encodeMateInput, type MateSpec } from './solveAssembly'
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
 import { loadPkgNodeExport, PKG_MATE } from '../wasm-kernel/loadPkgNode'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 import { assemblyVerdict } from '../utils/core/assemblyStatus'
-import type { Transform3D } from '../types/cad'
+import { rotateVector } from '../utils/transform3d'
+import type { MateKind, Transform3D } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 
 const solveMate = loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE)
@@ -63,6 +64,23 @@ function planeBundle(doc_id: string, doc_rev: number): PartBundle {
       },
     },
   }
+}
+
+/** `planeBundle` with its one anchor's surface kind swapped. The Tangential
+ *  row needs a cylinder on B: a plane/plane tangential can zero its residual by
+ *  rotating B's normal, while plane/cylinder reads A's axis only and cannot. */
+function bundleWithAnchor(kind: 'plane' | 'cylinder', doc_id: string, doc_rev: number): PartBundle {
+  const bundle = planeBundle(doc_id, doc_rev)
+  bundle.anchors = {
+    face: {
+      kind,
+      point: [0, 0, 0],
+      axis: [0, 0, 1],
+      geom_hash: `@gdf|${kind}|0.000|0.000|0.000|0.000|0.000|1.000`,
+      created_by: 'feat1',
+    },
+  }
+  return bundle
 }
 
 const relay: RelayService = {
@@ -573,5 +591,161 @@ describeReal('solveAssembly with the real mate solver', () => {
     const rollDeg = (2 * Math.atan2(b60.qz, b60.qw)) * 180 / Math.PI
     // Under the baking bug the roll landed at ~90° (30 baked + 60 applied).
     expect(Math.abs(rollDeg - 60)).toBeLessThan(5)
+  })
+})
+
+// ─── every kind through the real WASM ───
+//
+// The rest of this file runs only `fixed`. Codes 2, 5, 6, 7 and 8 never reached
+// the real solver in any test, so a reorder between MATE_KIND_TO_U8 and Rust's
+// MateKind::from_u8 could solve one kind as a neighbouring one in total silence.
+// Each row below asserts a kind-distinguishing property, and the rows are
+// ordered to mirror a neighbour swap so an off-by-one fails two rows and names
+// the kind in the assertion message.
+
+const S0: Transform3D = at(0, 0, 10)
+/** S0 rolled 30 degrees about Z, for the roll-reading rows. */
+const S0r: Transform3D = { tx: 0, ty: 0, tz: 10, qx: 0, qy: 0, qz: Math.sin(Math.PI / 12), qw: Math.cos(Math.PI / 12) }
+/** Far away and rotated 90 about Y, so B's local +Z points at world +X. */
+const S1: Transform3D = { tx: 3, ty: 4, tz: 5, qx: 0, qy: Math.sin(Math.PI / 4), qz: 0, qw: Math.cos(Math.PI / 4) }
+
+/** Signed roll (degrees) about Z. Valid on the S0r rows, whose axis is +Z. */
+function rollZDeg(t: Transform3D): number {
+  return (2 * Math.atan2(t.qz, t.qw) * 180) / Math.PI
+}
+
+/** B's local +Z carried into world space by its solved transform. */
+function worldZAround(t: Transform3D): [number, number, number] {
+  return rotateVector([t.qx, t.qy, t.qz, t.qw], [0, 0, 1])
+}
+
+interface KindRow {
+  kind: MateKind
+  seed: Transform3D
+  params?: Partial<Pick<MateSpec, 'offset' | 'ratio' | 'radius' | 'angle'>>
+  anchorKindB?: 'plane' | 'cylinder'
+  check: (t: Transform3D) => void
+}
+
+const kindRows: KindRow[] = [
+  {
+    kind: 'fixed', seed: S0r,
+    check: (t) => {
+      expect(dist(t)).toBeLessThan(0.01)
+      expect(Math.abs(rollZDeg(t))).toBeLessThan(1)
+    },
+  },
+  {
+    kind: 'spherical', seed: S0r,
+    check: (t) => {
+      expect(dist(t)).toBeLessThan(0.01)
+      expect(Math.abs(rollZDeg(t) - 30)).toBeLessThan(2)
+    },
+  },
+  {
+    kind: 'parallel', seed: S1,
+    check: (t) => {
+      expect(Math.abs(t.tx - 3)).toBeLessThan(0.01)
+      expect(Math.abs(t.ty - 4)).toBeLessThan(0.01)
+      expect(Math.abs(t.tz - 5)).toBeLessThan(0.01)
+      const [ax, ay, az] = worldZAround(t)
+      // The dot residual is only quadratic near parallel, so LM stops a hair
+      // short; far tighter than the ~1.4 an unswung +X axis would show.
+      expect(Math.hypot(ax, ay, az - 1)).toBeLessThan(0.05)
+    },
+  },
+  {
+    kind: 'sliding', seed: S0r,
+    check: (t) => {
+      expect(Math.abs(t.tx)).toBeLessThan(0.01)
+      expect(Math.abs(t.ty)).toBeLessThan(0.01)
+      expect(Math.abs(t.tz - 10)).toBeLessThan(0.05)
+      expect(Math.abs(rollZDeg(t))).toBeLessThan(1)
+    },
+  },
+  {
+    kind: 'rotating', seed: S0r,
+    check: (t) => {
+      expect(dist(t)).toBeLessThan(0.01)
+      const [ax, ay, az] = worldZAround(t)
+      expect(Math.hypot(ax, ay, az - 1)).toBeLessThan(0.01)
+      expect(Math.abs(rollZDeg(t) - 30)).toBeLessThan(2)
+    },
+  },
+  {
+    kind: 'sliding_rotating', seed: S0r,
+    check: (t) => {
+      expect(Math.abs(t.tx)).toBeLessThan(0.01)
+      expect(Math.abs(t.ty)).toBeLessThan(0.01)
+      expect(Math.abs(t.tz - 10)).toBeLessThan(0.05)
+      expect(Math.abs(rollZDeg(t) - 30)).toBeLessThan(2)
+    },
+  },
+  {
+    kind: 'tangential', seed: S0, anchorKindB: 'cylinder', params: { offset: 0 },
+    check: (t) => {
+      expect(Math.abs(t.tz)).toBeLessThan(0.02)
+    },
+  },
+  {
+    kind: 'copy_rotation', seed: S0, params: { ratio: 2 },
+    check: (t) => {
+      expect(Math.abs(t.tz - 10)).toBeLessThan(0.01)
+    },
+  },
+  {
+    kind: 'parallel_plane_distance', seed: S0, params: { offset: 5 },
+    check: (t) => {
+      expect(Math.abs(t.tz - 5)).toBeLessThan(0.05)
+      const [ax, ay, az] = worldZAround(t)
+      expect(Math.hypot(ax, ay, az - 1)).toBeLessThan(0.01)
+    },
+  },
+]
+
+describeReal('every mate kind solves as itself against the real mate solver', () => {
+  for (const row of kindRows) {
+    it(`solves ${row.kind} as ${row.kind}`, async () => {
+      if (row.anchorKindB === 'cylinder') {
+        await bundleCachePut(bundleWithAnchor('cylinder', 'doc-b', 1))
+      }
+      const parts = [
+        { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
+        { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: row.seed },
+      ]
+      const mates = [{
+        id: 'm1', kind: row.kind,
+        ref_a: { part: 'pa', anchor: 'face' },
+        ref_b: { part: 'pb', anchor: 'face' },
+        ...row.params,
+      }]
+
+      const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+      expect(result.status.mates['m1'].error, `${row.kind} did not solve`).toBeUndefined()
+      expect(result.status.mates['m1'].stale, `${row.kind} was marked stale`).toBe(false)
+      row.check(result.transforms['pb'])
+    })
+  }
+
+  // The wire-version handshake, not routed through solveAssembly: its zero-mate
+  // fast path skips the WASM call. A one-mate buffer built by the TS encoder
+  // must decode in Rust; a drifted MATE_MAGIC makes solve_mate_bytes throw.
+  it('the TS input magic agrees with the real Rust decoder', () => {
+    const params = new Float32Array(14)
+    params[6] = 1
+    params[13] = 1
+    const fixedMask = new Uint8Array([0])
+    const bytes = encodeMateInput(2, params, fixedMask, [{
+      kindCode: 0,
+      bodyA: 0, bodyB: 1,
+      anchorKindA: 0, anchorKindB: 0,
+      pointA: [0, 0, 0], axisA: [0, 0, 1],
+      pointB: [0, 0, 0], axisB: [0, 0, 1],
+      flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
+      perpA: [0, 1, 0], perpB: [0, 1, 0],
+    }])
+
+    const output = solveMate!(bytes)
+    expect(output.length).toBeGreaterThan(0)
   })
 })

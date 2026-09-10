@@ -28,6 +28,38 @@ export const MATE_KINDS: readonly MateKind[] = [
   'copy_rotation',
 ]
 
+/**
+ * The wire code each kind takes (MateKind::from_u8, mate.rs). A `Record<MateKind,
+ * number>`, not a loose map, so a tenth kind is a compile error here even before
+ * the kernel reads it. `mateKindCode` is the runtime-tolerant reader for a
+ * hand-edited document string that is not a kind at all.
+ */
+export const MATE_KIND_TO_U8: Record<MateKind, number> = {
+  fixed: 0,
+  spherical: 1,
+  parallel: 2,
+  sliding: 3,
+  rotating: 4,
+  sliding_rotating: 5,
+  tangential: 6,
+  copy_rotation: 7,
+  parallel_plane_distance: 8,
+}
+
+function isMateKind(kind: string): kind is MateKind {
+  return (MATE_KINDS as readonly string[]).includes(kind)
+}
+
+/**
+ * The Rust kind code for a document `kind`, or undefined when the string is not
+ * a member of `MATE_KINDS`. Callers fail the mate loud on undefined rather than
+ * coercing to a neighbouring kind, so a reorder between this map and
+ * `MateKind::from_u8` is the only way a wrong kind can still solve.
+ */
+export function mateKindCode(kind: string): number | undefined {
+  return isMateKind(kind) ? MATE_KIND_TO_U8[kind] : undefined
+}
+
 export const MATE_KIND_LABELS: Record<MateKind, string> = {
   fixed: 'Fixed',
   sliding: 'Sliding',

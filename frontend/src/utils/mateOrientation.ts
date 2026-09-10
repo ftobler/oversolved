@@ -1,12 +1,10 @@
 // The canonical anchor frame and roll measurement the mate solver's absolute
-// orientation residuals are defined against (mate_residuals.rs: canonical_perp,
-// abs_roll_residual). The solver measures roll between per-anchor reference
-// directions; the editor captures the on-screen roll into the mate's `angle`
-// when its references are picked. Both sides MUST measure with the same frame
-// and the same formula, or the captured angle stops meaning "hold what I see":
-// canonicalPerp here mirrors the Rust canonical_perp branch for branch, and the
-// shared fixtures in mateOrientation.test.ts / canonical_perp_is_unit_and_
-// perpendicular lock the two together.
+// orientation residuals are defined against. `canonicalPerp` is now the single
+// owner of the frame rule: its output is encoded as the mate's `perp_a`/`perp_b`
+// (kernel/solveAssembly.ts) and the solver reads it straight back
+// (`MateGeometry.perp`, mate_residuals.rs roll_frames). The editor's authoring
+// capture measures roll with the matching formula (rollAboutAxisDeg) so the
+// captured angle keeps meaning "hold what I see".
 
 import { cross, dot, normalize } from '@/utils/gizmoMath'
 import type { Vec3 } from '@/utils/transform3d'
