@@ -21,7 +21,7 @@ import { setRelayHandlers, clearRelayHandlers, solveAssemblyViaWorker, cancelAss
 import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
 import type { MateSpec, AssemblySolveStatus } from '@/kernel/solveAssembly'
-import { dragTargetMate } from '@/kernel/assemblyDrag'
+import { dragTargetMate, dragTargetPoseMate } from '@/kernel/assemblyDrag'
 import { extractErrorMessage } from '@/kernel/errors'
 import { findInstance } from '@/utils/assemblyMutations'
 import { livePartPose } from '@/utils/partManipulation'
@@ -230,7 +230,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       useSolverStore.getState().setIsSolving(false)
     }
     try {
-      let parts = partSpecs(current)
+      const parts = partSpecs(current)
       let mates = mateSpecs(current)
       if (live && dragObjective) {
         // A body grab: the grabbed part is NOT pinned. A soft drag mate pulls its
@@ -239,12 +239,13 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         // cursor the constraints cannot reach.
         mates = [...mates, dragTargetMate(dragObjective)]
       } else if (live) {
-        // A triad gizmo drag: pin the grabbed part at its drawn world pose -- the
-        // same livePartPose the render offset and the drag commit read -- and mark
-        // it fixed, so the solve moves only the others. Its own bodies/transform
-        // are left untouched below, so it keeps rendering from its drag offset.
-        const pinned = livePartPose(manip!, store.settledPose(manip!.handle))
-        parts = parts.map(p => (p.handle === manip!.handle ? { ...p, transform: pinned, fixed: true } : p))
+        // A triad gizmo drag: a soft target-pose objective pulls the grabbed
+        // part to its drawn world pose (the same livePartPose the render offset
+        // and the drag commit read). The part is NOT pinned, so its own mates
+        // stay in the solve while the drag is on screen; a hard pin bypassed
+        // them until pointer-up, which is the drop-jump this replaces.
+        const target = livePartPose(manip!, store.settledPose(manip!.handle))
+        mates = [...mates, dragTargetPoseMate(manip!.handle, target)]
       }
       // Revs are stable across a drag burst; a live tick reuses the last full
       // solve's map. A non-live solve reuses its cached map only while the
@@ -278,10 +279,11 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         // after the re-key misses, and the doubled pose is the bug it prevents.
         const grab = manip!.handle
         const transforms = res.payload.transforms
-        // A body grab solves the grabbed part too: fold its SOLVED pose into the
-        // session so the render offset draws it there and the commit writes it,
-        // BEFORE dropping it from the re-baked set (it renders via that offset).
-        if (dragObjective && transforms[grab]) {
+        // Both drag paths solve the grabbed part now (the triad rides a
+        // target-pose objective instead of the old hard pin), so fold its SOLVED
+        // pose into the session: the render offset draws it there and the commit
+        // writes it, BEFORE dropping it from the re-baked set.
+        if (transforms[grab]) {
           if (version !== solveVersion.current) return
           useAssemblyStore.getState().setDragSolvedPose(transforms[grab])
         }

@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MATE_MAGIC ("MTS2")
+//!   u32  magic = MATE_MAGIC ("MTS3")
 //!   u32  n_bodies
 //!   u32  n_params            // n_bodies * 7
 //!   u32  n_mates
@@ -20,7 +20,7 @@
 //! mates:          n_mates x mate-record (see below)
 //! ```
 //!
-//! ## Mate record (fixed length, 108 bytes)
+//! ## Mate record (fixed length, 112 bytes)
 //!
 //! ```text
 //!   u8   kind_code
@@ -39,6 +39,7 @@
 //!   f32  angle               // radians, Fixed/Sliding's absolute roll target (TS encodes degrees -> radians)
 //!   f32  perp_a_x, perp_a_y, perp_a_z  // canonical in-plane frame of A's LOCAL axis
 //!   f32  perp_b_x, perp_b_y, perp_b_z  // canonical in-plane frame of B's LOCAL axis
+//!   f32  weight              // row scale on this mate's residuals/Jacobian (1 for real mates, small for the drag objective)
 //! ```
 //!
 //! There is no per-record version field: the header magic is the version
@@ -54,17 +55,19 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MATE_MAGIC_OUT ("MTR1")
+//!   u32  magic = MATE_MAGIC_OUT ("MTR2")
 //!   u32  n_params
 //!   u8   overall_status
 //! params_solved: n_params x f32
+//! mate_residuals: u32 n_mates, then n_mates x f64 (L2 norm of each mate's
+//!                 weighted residual block, in input mate order)
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 
 use crate::codec::{finite, CodecError, Reader, Writer};
 
-pub const MATE_MAGIC: u32 = 0x3253_544D; // "MTS2" in LE
-pub const MATE_MAGIC_OUT: u32 = 0x5231_544D; // tag "MTR1"; its LE bytes read "MT1R"
+pub const MATE_MAGIC: u32 = 0x3353_544D; // "MTS3" in LE
+pub const MATE_MAGIC_OUT: u32 = 0x3252_544D; // "MTR2" in LE
 
 /// All mate kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -210,6 +213,11 @@ pub struct Mate {
     /// Fixed's seed-relative roll target, in radians. Read only by `Fixed`; see
     /// the seed-relative roll residual in `mate_residuals.rs`.
     pub angle: f64,
+    /// Row scale `s` on this mate's residual block and Jacobian rows, so its
+    /// least-squares contribution is `s^2 * r^2`. Real mates author 1; the live
+    /// drag objective authors a small value so it follows the cursor where the
+    /// constraints leave a direction free and yields where they do not.
+    pub weight: f64,
 }
 
 impl Mate {
@@ -310,6 +318,10 @@ pub struct MateDiagnostics {
 pub struct MateOutput {
     pub params_solved: Vec<f32>,
     pub overall_status: u8,
+    /// L2 norm of each solved mate's weighted residual block, in input mate
+    /// order. Carried on the wire so the host can mark a mate whose rigid
+    /// constraint did not hold without re-deriving the Rust residual formula.
+    pub mate_residuals: Vec<f64>,
     pub diagnostics: MateDiagnostics,
 }
 
@@ -347,7 +359,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     }
 
     // Header counts are untrusted; see `Reader::capacity_for`. A mate record is
-    // a fixed 108 bytes, a param a single f32.
+    // a fixed 112 bytes, a param a single f32.
     let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 4));
     for _ in 0..n_params {
         params_initial.push(finite(r.f32()?)?);
@@ -356,7 +368,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     let mask_len = pinned_mask_bytes(n_bodies);
     let fixed_mask = r.take(mask_len)?.to_vec();
 
-    let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 108));
+    let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 112));
     for _ in 0..n_mates {
         let kind_byte = r.u8()?;
         let kind = MateKind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
@@ -407,6 +419,8 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
             finite(r.f32()?)? as f64,
         ];
 
+        let weight = finite(r.f32()?)? as f64;
+
         mates.push(Mate {
             kind,
             a: MateRef {
@@ -432,6 +446,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
             ratio,
             radius,
             angle,
+            weight,
         });
     }
 
@@ -511,6 +526,8 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
         w.f32(m.b.geometry.perp[0] as f32);
         w.f32(m.b.geometry.perp[1] as f32);
         w.f32(m.b.geometry.perp[2] as f32);
+
+        w.f32(m.weight as f32);
     }
     w.into_bytes()
 }
@@ -523,6 +540,10 @@ pub fn encode_mate_output(out: &MateOutput) -> Vec<u8> {
     w.u8(out.overall_status);
     for &p in &out.params_solved {
         w.f32(p);
+    }
+    w.u32(out.mate_residuals.len() as u32);
+    for &r in &out.mate_residuals {
+        w.f64(r);
     }
     w.f64(out.diagnostics.residual_norm);
     w.u32(out.diagnostics.rank);
@@ -544,6 +565,11 @@ pub fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
     for _ in 0..n_params {
         params_solved.push(r.f32()?);
     }
+    let n_mates = r.u32()? as usize;
+    let mut mate_residuals = Vec::with_capacity(r.capacity_for(n_mates, 8));
+    for _ in 0..n_mates {
+        mate_residuals.push(r.f64()?);
+    }
     let residual_norm = r.f64()?;
     let rank = r.u32()?;
     let dof = r.u32()?;
@@ -552,6 +578,7 @@ pub fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
     Ok(MateOutput {
         params_solved,
         overall_status,
+        mate_residuals,
         diagnostics: MateDiagnostics {
             residual_norm,
             rank,
@@ -625,6 +652,7 @@ mod tests {
             ratio: 1.0,
             radius: 0.0,
             angle: 0.0,
+            weight: 1.0,
         };
         MateInput {
             bodies: (0..2).map(|_| RigidBody {}).collect(),
@@ -660,7 +688,7 @@ mod tests {
     #[test]
     fn body_index_past_the_body_table_decodes_verbatim() {
         // Referential validity is not a wire property: a mate naming body 9 in a
-        // two-body assembly is a well-formed 108-byte record, so decode keeps it
+        // two-body assembly is a well-formed 112-byte record, so decode keeps it
         // and `MateProblem::new` is what drops it.
         let mut input = sample_input();
         input.mates[0].b.body_index = 9;
@@ -674,6 +702,7 @@ mod tests {
         let out = MateOutput {
             params_solved: vec![0.0; 14],
             overall_status: MateStatus::FullyConstrained.to_u8(),
+            mate_residuals: vec![1.5e-7, 2.0e-6],
             diagnostics: MateDiagnostics {
                 residual_norm: 1e-9,
                 rank: 13,
@@ -685,6 +714,7 @@ mod tests {
         let decoded = decode_mate_output(&encode_mate_output(&out)).expect("decode");
         assert_eq!(decoded.diagnostics.rank, 13);
         assert_eq!(decoded.diagnostics.iters, 5);
+        assert_eq!(decoded.mate_residuals, vec![1.5e-7, 2.0e-6]);
     }
 
     #[test]
@@ -699,6 +729,7 @@ mod tests {
         let out = MateOutput {
             params_solved: vec![0.0; 7],
             overall_status: 0,
+            mate_residuals: vec![],
             diagnostics: MateDiagnostics::default(),
         };
         let mut bytes = encode_mate_output(&out);
@@ -709,7 +740,7 @@ mod tests {
     #[test]
     fn mate_input_bad_kind_rejected() {
         let mut bytes = encode_mate_input(&sample_input());
-        // In the 108-byte record, kind_code is at offset:
+        // In the 112-byte record, kind_code is at offset:
         // header(20) + bodies(8) + params_initial(56) + fixed_mask(1) = 85
         // + kind_code is first byte of mate record
         bytes[85] = 0xff; // kind_code in first mate record
@@ -819,6 +850,7 @@ mod tests {
                 ratio: 1.0,
                 radius: 0.0,
                 angle: 0.0,
+                weight: 1.0,
             }],
         };
         let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
@@ -865,6 +897,7 @@ mod tests {
                 ratio: 2.0,
                 radius: 3.0,
                 angle: 0.7,
+                weight: 1.0,
             }],
         };
         let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
@@ -887,14 +920,32 @@ mod tests {
     /// the offset's tail and mis-solve, which is why the stride is pinned
     /// against the shared fixture rather than a bare literal.
     #[test]
-    fn mate_record_is_108_bytes() {
+    fn mate_record_is_112_bytes() {
         let one = encode_mate_input(&sample_input()).len();
         let mut two_mates = sample_input();
         let extra = two_mates.mates[0].clone();
         two_mates.mates.push(extra);
         let stride = encode_mate_input(&two_mates).len() - one;
         assert_eq!(stride as u64, fixture_u64("record_bytes"));
-        assert_eq!(stride, 108);
+        assert_eq!(stride, 112);
+    }
+
+    // A record built to the pre-weight 108-byte stride must fail loudly instead
+    // of silently reading the missing weight back as surplus. With one mate the
+    // missing four bytes run the reader off the end of the buffer.
+    #[test]
+    fn mate_input_short_weight_record_rejected() {
+        let bytes = encode_mate_input(&sample_input());
+        let truncated = &bytes[..bytes.len() - 4];
+        assert!(matches!(decode_mate_input(truncated), Err(CodecError::UnexpectedEof)));
+    }
+
+    #[test]
+    fn mate_weight_round_trips() {
+        let mut input = sample_input();
+        input.mates[0].weight = 1e-4;
+        let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
+        assert_eq!(decoded.mates[0].weight, 1e-4_f32 as f64);
     }
 
     /// The Rust half of the cross-language wire lock: the constants and stride
@@ -902,7 +953,7 @@ mod tests {
     /// reads too. The fixture puts the magic-bump rule in front of the editor.
     #[test]
     fn mate_wire_fixture_matches_the_constants() {
-        assert_eq!(fixture_u64("rev"), 2);
+        assert_eq!(fixture_u64("rev"), 3);
         assert_eq!(MATE_MAGIC as u64, fixture_u64("magic"));
         assert_eq!(MATE_MAGIC_OUT as u64, fixture_u64("magic_out"));
     }

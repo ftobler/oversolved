@@ -32,6 +32,7 @@ import {
 } from '@/stores/assemblyStore'
 import { assemblyBodyId } from '@/utils/assemblyBodies'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
+import { DRAG_MATE_ID, DRAG_WEIGHT } from '@/kernel/assemblyDrag'
 
 function meshPayload() {
   return {
@@ -322,6 +323,34 @@ describe('useAssemblySolve', () => {
     const status = useAssemblyStore.getState().solveStatus
     expect(status?.verdict).toBe('overconstrained')
     expect(assemblyVerdict(status).failed).toBe(true)
+  })
+
+  it('a live triad drag encodes a weighted soft objective, not a fixed body', async () => {
+    // The triad used to pin the grabbed part with `fixed: true`, which took its
+    // own mates out of the solve and produced the pointer-up jump. It must now
+    // ride a weighted target-pose objective instead.
+    setAssemblyCallbacks(null)
+    useAssemblyStore.getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      doc: docWith(instance('p1'), instance('p2')),
+      transforms: { p1: { ...IDENTITY_TRANSFORM }, p2: { ...IDENTITY_TRANSFORM } },
+    })
+    useAssemblyStore.getState().beginPartManipulation('p1')
+    useAssemblyStore.getState().dragPartTranslate([10, 0, 0])
+
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'), instance('p2'))))
+    await act(async () => { result.current.requestSolve() })
+
+    const parts = h.solveAssemblyViaWorker.mock.calls[0][1]
+    const mates = h.solveAssemblyViaWorker.mock.calls[0][3]
+    const grabbed = parts.find((p: { handle: string }) => p.handle === 'p1')
+    expect(grabbed?.fixed).not.toBe(true)
+    const dragMate = mates.find((m: { id: string }) => m.id === DRAG_MATE_ID)
+    expect(dragMate).toBeDefined()
+    expect(dragMate.kind).toBe('fixed')
+    expect(dragMate.weight).toBe(DRAG_WEIGHT)
+
+    useAssemblyStore.getState().cancelPartManipulation()
   })
 
   it('a live drag drops the grabbed part from the re-keyed body/edge dicts', async () => {

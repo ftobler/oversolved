@@ -53,12 +53,20 @@ export interface MateSpec {
   ratio?: number
   radius?: number
   angle?: number
+  /** Row scale on this mate's solver rows. Authored mates leave it undefined
+   *  (the wire writes 1); the live drag objective writes the small drag weight
+   *  so it yields to the real mates. */
+  weight?: number
 }
 
 export interface MateResult {
   stale?: boolean
   staleRefs?: ('ref_a' | 'ref_b')[]
   error?: string
+  /** L2 norm of this mate's weighted residual block at the solved pose, read
+   *  straight off the output wire. Absent when no solve ran or the solver
+   *  trapped before producing residuals. */
+  residual?: number
 }
 
 /** The Rust solver's overall verdict, straight off the wire code. */
@@ -138,10 +146,10 @@ const ANCHOR_KIND_TO_U8: Record<string, number> = {
 // Input wire magic. The header magic is the version handshake: any change to the
 // mate record's shape, field meaning or stride MUST bump this (or MATE_MAGIC_OUT
 // for the output layout) in the same commit as the mirror on the Rust side.
-// Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS2"); the
-// previous constant 0x5331_544D was labelled "MTS1" but its bytes read "MT1S".
-const MATE_MAGIC = 0x3253_544D  // "MTS2" in LE
-const MATE_MAGIC_OUT = 0x5231_544D  // tag "MTR1"; its LE bytes read "MT1R"
+// Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS3"); the
+// record gained a trailing weight f32 and the magic bumped with it.
+const MATE_MAGIC = 0x3353_544D  // "MTS3" in LE
+const MATE_MAGIC_OUT = 0x3252_544D  // "MTR2" in LE
 const BPB = 7  // bytes per body (tx,ty,tz,qx,qy,qz,qw) = 7 f32s = 28 bytes
 
 // ─── Quaternion math for transform application ───
@@ -241,6 +249,8 @@ export interface MateWireRecord {
   // instead of re-deriving it and risking a branch mismatch.
   perpA: Vec3
   perpB: Vec3
+  // Row scale on this mate's residual/Jacobian rows; real mates write 1.
+  weight: number
 }
 
 function pinnedMaskBytes(nBodies: number): number {
@@ -258,16 +268,16 @@ export function encodeMateInput(
   // bodies: n_bodies * 4
   // params: bodyCount * 7 * 4
   // fixedMask: maskLen
-  // mates: n_mates * 108
+  // mates: n_mates * 112
   const headerSize = 20
   const bodiesSize = bodyCount * 4
   const paramsSize = params.length * 4
   const maskSize = maskLen
-  // 108, not 84: `offset` is three f32s and the two canonical perp triples sit
-  // after ratio/radius/angle. This stride and mate.rs's decode move together or
-  // the solver reads ratio out of the offset's tail -- see the shared
-  // tests/fixtures/mate_wire.txt that both sides pin against.
-  const matesSize = mates.length * 108
+  // 112, not 108: the weight f32 rides after the two canonical perp triples.
+  // This stride and mate.rs's decode move together or the solver reads the
+  // wrong field -- see the shared tests/fixtures/mate_wire.txt that both sides
+  // pin against.
+  const matesSize = mates.length * 112
   const total = headerSize + bodiesSize + paramsSize + maskSize + matesSize
 
   const buf = new ArrayBuffer(total)
@@ -324,6 +334,7 @@ export function encodeMateInput(
     w.setFloat32(pos, m.perpB[0], true); pos += 4
     w.setFloat32(pos, m.perpB[1], true); pos += 4
     w.setFloat32(pos, m.perpB[2], true); pos += 4
+    w.setFloat32(pos, m.weight, true); pos += 4
   }
 
   return new Uint8Array(buf)
@@ -332,6 +343,7 @@ export function encodeMateInput(
 interface DecodedMateOutput {
   paramsSolved: Float32Array
   overallStatus: number
+  mateResiduals: Float64Array
   residualNorm: number
   rank: number
   dof: number
@@ -359,12 +371,20 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
   for (let i = 0; i < nParams; i++) {
     paramsSolved[i] = r.getFloat32(pos, true); pos += 4
   }
+  // Per-mate residual block, in input mate order, between the params and the
+  // diagnostics. The count is solver-owned: a mate the solver dropped simply
+  // yields a shorter block than the caller's mate list.
+  const nMates = r.getUint32(pos, true); pos += 4
+  const mateResiduals = new Float64Array(nMates)
+  for (let i = 0; i < nMates; i++) {
+    mateResiduals[i] = r.getFloat64(pos, true); pos += 8
+  }
   const residualNorm = r.getFloat64(pos, true); pos += 8
   const rank = r.getUint32(pos, true); pos += 4
   const dof = r.getUint32(pos, true); pos += 4
   const iters = r.getUint32(pos, true); pos += 4
   const ms = r.getFloat64(pos, true); pos += 8
-  return { paramsSolved, overallStatus, residualNorm, rank, dof, iters, ms }
+  return { paramsSolved, overallStatus, mateResiduals, residualNorm, rank, dof, iters, ms }
 }
 
 // Codes are indices into STATUS_NAME. Throwing on an out-of-range code keeps a
@@ -493,6 +513,9 @@ export async function solveAssembly(
 
   const mateResults: Record<string, MateResult> = {}
   const mateRecords: MateWireRecord[] = []
+  // Mate ids in wire order, so the solver's per-mate residual block can be
+  // folded back onto the right `MateResult`.
+  const mateRecordIds: string[] = []
   const bodyCount = handleIndex  // parts + optional assembly frame
 
   // Resolve a mate ref to its anchor + solver body index. ASSEMBLY_HANDLE routes
@@ -609,7 +632,9 @@ export async function solveAssembly(
       angle,
       perpA: canonicalPerp(rA.anchor!.axis),
       perpB: canonicalPerp(rB.anchor!.axis),
+      weight: typeof mate.weight === 'number' ? mate.weight : 1,
     })
+    mateRecordIds.push(mate.id)
     mateResults[mate.id] = { stale: false }
   }
 
@@ -657,6 +682,15 @@ export async function solveAssembly(
     try {
       const outputBytes = solveMateFn(encoded)
       const decoded = decodeMateOutput(outputBytes, paramCount)
+
+      // Fold the solver's per-mate residual norms onto the mate marks. Indexed
+      // against `mateRecordIds` because the solver reports in the same order the
+      // records were encoded; a shorter block (a mate the solver dropped) just
+      // leaves the tail without a residual.
+      for (let i = 0; i < mateRecordIds.length && i < decoded.mateResiduals.length; i++) {
+        const id = mateRecordIds[i]
+        mateResults[id] = { ...mateResults[id], residual: decoded.mateResiduals[i] }
+      }
 
       // The boundary: the unit-norm constraint on qx..qw is a SOFT residual
       // (mate_residuals.rs), so the solved quaternion is unit only to within

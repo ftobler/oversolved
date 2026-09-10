@@ -67,6 +67,7 @@ mod tests {
                 ratio: 1.0,
                 radius: 0.0,
                 angle: 0.0,
+                weight: 1.0,
             }],
         };
         let bytes = encode_mate_input(&input);
@@ -113,6 +114,7 @@ mod tests {
                 ratio: 1.0,
                 radius: 0.0,
                 angle: 0.0,
+                weight: 1.0,
             }],
         };
         let out_bytes = solve_mate_bytes(&encode_mate_input(&input)).expect("solve mate");

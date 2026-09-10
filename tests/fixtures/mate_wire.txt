@@ -4,7 +4,7 @@
 # mirror (mate-solver/src/mate.rs and frontend/src/kernel/solveAssembly.ts) and
 # MUST bump `magic` one rev. `magic` and `magic_out` are u32 values spelled in
 # little-endian bytes; `record_bytes` is the per-mate stride.
-rev=2
-magic=0x3253544D
-magic_out=0x5231544D
-record_bytes=108
+rev=3
+magic=0x3353544D
+magic_out=0x3252544D
+record_bytes=112

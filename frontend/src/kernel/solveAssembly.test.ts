@@ -157,16 +157,17 @@ function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
     }
 
     // Build output: magic(4) + n_params(4) + status(1) + params(nParams*4) + diagnostics(28)
-    const outSize = 4 + 4 + 1 + nParams * 4 + 28
+    const outSize = 4 + 4 + 1 + nParams * 4 + 4 + 28  // +4 for the n_mates header
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x5231544D, true); pos += 4  // MATE_MAGIC_OUT
+    out.setUint32(pos, 0x3252544D, true); pos += 4  // MATE_MAGIC_OUT
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1  // fully constrained
     for (let i = 0; i < nParams; i++) {
       out.setFloat32(pos, params[i], true); pos += 4
     }
+    out.setUint32(pos, 0, true); pos += 4  // n_mates
     out.setFloat64(pos, 0.0, true); pos += 8  // residual_norm
     out.setUint32(pos, 13, true); pos += 4  // rank
     out.setUint32(pos, 1, true); pos += 4  // dof
@@ -192,16 +193,17 @@ function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Array {
       params[7] += dx
     }
 
-    const outSize = 4 + 4 + 1 + nParams * 4 + 28
+    const outSize = 4 + 4 + 1 + nParams * 4 + 4 + 28  // +4 for the n_mates header
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x5231544D, true); pos += 4
+    out.setUint32(pos, 0x3252544D, true); pos += 4
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1
     for (let i = 0; i < nParams; i++) {
       out.setFloat32(pos, params[i], true); pos += 4
     }
+    out.setUint32(pos, 0, true); pos += 4  // n_mates
     out.setFloat64(pos, 0.0, true); pos += 8
     out.setUint32(pos, 13, true); pos += 4
     out.setUint32(pos, 1, true); pos += 4
@@ -228,16 +230,17 @@ function makeScaledQwSolver(bodyIndex: number, scale: number): (input: Uint8Arra
     }
     for (let c = 3; c < 7; c++) params[bodyIndex * 7 + c] *= scale
 
-    const outSize = 4 + 4 + 1 + nParams * 4 + 28
+    const outSize = 4 + 4 + 1 + nParams * 4 + 4 + 28  // +4 for the n_mates header
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x5231544D, true); pos += 4
+    out.setUint32(pos, 0x3252544D, true); pos += 4
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1
     for (let i = 0; i < nParams; i++) {
       out.setFloat32(pos, params[i], true); pos += 4
     }
+    out.setUint32(pos, 0, true); pos += 4  // n_mates
     out.setFloat64(pos, 0.0, true); pos += 8
     out.setUint32(pos, 13, true); pos += 4
     out.setUint32(pos, 1, true); pos += 4
@@ -259,6 +262,7 @@ interface DecodedMateRecord {
   axisB: [number, number, number]
   offset: [number, number, number]
   angle: number
+  weight: number
 }
 
 interface DecodedInput {
@@ -301,7 +305,8 @@ function decodeInput(input: Uint8Array): DecodedInput {
     pos += 4 + 4  // ratio + radius
     const angle = v.getFloat32(pos, true); pos += 4
     pos += 24  // perp_a (3 f32) + perp_b (3 f32)
-    mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB, offset, angle })
+    const weight = v.getFloat32(pos, true); pos += 4
+    mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB, offset, angle, weight })
   }
   return { nBodies, fixedMask, mates }
 }
@@ -1311,7 +1316,7 @@ describe('solveAssembly', () => {
     // A solver that returns an output for only one body when two were sent.
     const shortSolver = (): Uint8Array => {
       const w = new DataView(new ArrayBuffer(20 + 7 * 4 + 24))
-      w.setUint32(0, 0x5231_544D, true)  // MATE_MAGIC_OUT
+      w.setUint32(0, 0x3252_544D, true)  // MATE_MAGIC_OUT
       w.setUint32(4, 7, true)  // nParams = 7, but the caller expects 14
       w.setUint8(8, 0)
       return new Uint8Array(w.buffer)
@@ -1417,13 +1422,14 @@ describe('solveAssembly', () => {
       const nBodies = view.getUint32(4, true)
       const nParams = nBodies * 7
       const paramsOffset = 20 + nBodies * 4
-      const outSize = 4 + 4 + 1 + nParams * 4 + 28
+      const outSize = 4 + 4 + 1 + nParams * 4 + 4 + 28  // +4 for the n_mates header
       const out = new DataView(new ArrayBuffer(outSize))
       let pos = 0
-      out.setUint32(pos, 0x5231544D, true); pos += 4
+      out.setUint32(pos, 0x3252544D, true); pos += 4
       out.setUint32(pos, nParams, true); pos += 4
       out.setUint8(pos, 2); pos += 1
       for (let i = 0; i < nParams; i++) { out.setFloat32(pos, view.getFloat32(paramsOffset + i * 4, true), true); pos += 4 }
+      out.setUint32(pos, 0, true); pos += 4  // n_mates
       out.setFloat64(pos, 0.5, true); pos += 8
       out.setUint32(pos, 13, true); pos += 4
       out.setUint32(pos, 0, true); pos += 4
@@ -1550,7 +1556,7 @@ describe('mate wire format', () => {
     const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
     expect(view.getUint32(0, true)).toBe(fixture.magic)
 
-    // One mate record adds exactly the fixture stride (108 bytes).
+    // One mate record adds exactly the fixture stride (112 bytes).
     const encodedWithMate = encodeMateInput(1, params, fixedMask, [{
       kindCode: 1,
       bodyA: 0, bodyB: 0,
@@ -1558,7 +1564,7 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [1, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
-      perpA: [0, 1, 0], perpB: [0, 1, 0],
+      perpA: [0, 1, 0], perpB: [0, 1, 0], weight: 1,
     }])
     expect(encodedWithMate.length - encoded.length).toBe(fixture.record_bytes)
   })
@@ -1578,7 +1584,7 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: Math.PI / 4,
-      perpA: [0, 1, 0], perpB: [0, 1, 0],
+      perpA: [0, 1, 0], perpB: [0, 1, 0], weight: 1,
     }])
     const recordStart = 53
     const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
@@ -1598,7 +1604,7 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
-      perpA: [1, 0, 0], perpB: [0, 0, 1],
+      perpA: [1, 0, 0], perpB: [0, 0, 1], weight: 1,
     }])
     // angle ends at record byte 84; perp_a is 84..96, perp_b is 96..108.
     const recordStart = 53

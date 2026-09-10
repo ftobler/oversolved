@@ -24,10 +24,29 @@ import type { MateSpec } from './solveAssembly'
 import { solveAssembly, type AssemblyBuildResponse } from './solveAssembly'
 import type { RelayService } from './worker/anchorSolverWorker'
 import { ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
+import { canonicalPerp, rollAboutAxisDeg } from '../utils/mateOrientation'
+import { normalizeMateAngleDeg } from '../utils/mateKinds'
 import { invertTransform, rotateVector, type Vec3 } from '../utils/transform3d'
 
 /** The synthetic drag mate's feature id, reserved so nothing authored collides. */
 export const DRAG_MATE_ID = '__drag_target__'
+
+/**
+ * Row scale the live drag objective is authored with. Small enough that a real
+ * mate wins wherever the two disagree (the cost contribution is `s^2 * r^2`, so
+ * 1e-3 against a weight-1 mate is a factor 1e6), while a direction the mates
+ * leave free still tracks the cursor.
+ *
+ * The plan's starting 1e-4 is below where solver-core's seed anchor (`mu`, a
+ * Tikhonov pull toward the seed) stops competing: with `s^2` of the same order
+ * as `mu` a free part settles halfway to the cursor (measured 52%), so the
+ * anchor, not the constraint, decides the free direction. At 1e-3 the constrained
+ * violation a six-unit unreachable demand leaves is ~6e-6 mm and free directions
+ * track within ~8e-3, both inside the 1e-4 backstop once the drag objective is
+ * dropped. If the live feel ever reads wrong the principled fix is the
+ * special-mate manifold projection, not a larger weight.
+ */
+export const DRAG_WEIGHT = 1e-3
 
 /** The grab point and where the pointer is dragging it, both in world space at
  *  capture, but `localGrab` is the SAME point expressed in the part's own frame
@@ -80,6 +99,51 @@ export function dragTargetMate(drag: DragObjective): MateSpec {
     kind: 'spherical',
     ref_a: { part: drag.handle, anchor: DRAG_MATE_ID, inlineAnchor: pointAnchor(drag.localGrab) },
     ref_b: { part: ASSEMBLY_HANDLE, anchor: DRAG_MATE_ID, inlineAnchor: pointAnchor(drag.target) },
+    weight: DRAG_WEIGHT,
+  }
+}
+
+/**
+ * The triad gizmo's target-pose objective: a weighted `fixed` mate from the
+ * assembly frame to the grabbed part that is exactly solved by `target`.
+ *
+ * The assembly frame is pinned at identity, so the world frame `(0,0,0), +Z`
+ * is its anchor. The part side carries that same frame INVERSE-transformed by
+ * the target pose: a point and axis that, once the part sits at `target`, land
+ * exactly on the assembly frame's. That makes translation and axis alignment
+ * exact at the target regardless of the target's rotation.
+ *
+ * The roll target still has to be authored, because the solver recomputes each
+ * side's roll reference as `canonicalPerp(LOCAL axis)` carried into world (see
+ * utils/mateOrientation.ts); the canonical perp is not the rotated perp, so the
+ * authored angle is measured the same way the editor captures one -- with
+ * `rollAboutAxisDeg` over the two posed canonical frames.
+ */
+export function dragTargetPoseMate(handle: string, target: Transform3D): MateSpec {
+  const inv = invertTransform(target)
+  const inverseQ: [number, number, number, number] = [inv.qx, inv.qy, inv.qz, inv.qw]
+  const aAxis: Vec3 = [0, 0, 1]
+  const bPoint = applyToPoint(inv, [0, 0, 0])
+  const bAxis = rotateVector(inverseQ, aAxis)
+  const targetQ: [number, number, number, number] = [target.qx, target.qy, target.qz, target.qw]
+  const aPerpWorld = canonicalPerp(aAxis)
+  const bPerpWorld = rotateVector(targetQ, canonicalPerp(bAxis))
+  const angle = normalizeMateAngleDeg(rollAboutAxisDeg(aPerpWorld, bPerpWorld, aAxis))
+  return {
+    id: DRAG_MATE_ID,
+    kind: 'fixed',
+    ref_a: {
+      part: ASSEMBLY_HANDLE,
+      anchor: DRAG_MATE_ID,
+      inlineAnchor: { kind: 'point', point: [0, 0, 0], axis: aAxis, geom_hash: '', created_by: DRAG_MATE_ID },
+    },
+    ref_b: {
+      part: handle,
+      anchor: DRAG_MATE_ID,
+      inlineAnchor: { kind: 'point', point: bPoint, axis: bAxis, geom_hash: '', created_by: DRAG_MATE_ID },
+    },
+    angle,
+    weight: DRAG_WEIGHT,
   }
 }
 

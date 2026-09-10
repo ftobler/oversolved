@@ -591,7 +591,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
 
   setDragSolvedPose: (solvedGrab) => {
     const { manipulation } = get()
-    if (!manipulation?.dragObjective) return
+    if (!manipulation) return
     const drawnBaked = get().settledPose(manipulation.handle) ?? manipulation.seed
     set({ manipulation: setDragSolvedPoseOnSession(manipulation, solvedGrab, drawnBaked) })
   },

@@ -441,6 +441,7 @@ impl MateProblem {
         for (mi, mate) in self.mates.iter().enumerate() {
             let off_a = mate.a.body_index as usize * 7;
             let off_b = mate.b.body_index as usize * 7;
+            let start = r.len();
 
             match mate.kind {
                 MateKind::Fixed => {
@@ -612,6 +613,16 @@ impl MateProblem {
                     r.push(dot - sign);
                 }
             }
+
+            // The mate's own rows carry its weight, so an under-weighted drag
+            // objective yields to a real mate in the same least-squares sum. The
+            // global rows (quaternion norm, grounded pin) that follow are never
+            // scaled: they hold the parameterization, not a mate.
+            if mate.weight != 1.0 {
+                for v in &mut r[start..] {
+                    *v *= mate.weight;
+                }
+            }
         }
 
         // Quaternion unit-norm soft residuals (one per body whose full block
@@ -717,6 +728,7 @@ impl MateProblem {
         for (mi, mate) in self.mates.iter().enumerate() {
             let off_a = mate.a.body_index as usize * 7;
             let off_b = mate.b.body_index as usize * 7;
+            let row_start = row;
 
             match mate.kind {
                 MateKind::Fixed => {
@@ -837,6 +849,12 @@ impl MateProblem {
                     row += 1;
                 }
             }
+
+            // Same weight the residual block carries, applied to the rows just
+            // written, so the Jacobian stays the exact derivative of the
+            // weighted residual. One helper for both paths keeps them from
+            // drifting apart.
+            scale_rows(&mut j, row_start, row, mate.weight);
         }
 
         // Quaternion norm residuals (1 per body whose full block is in the
@@ -1205,6 +1223,20 @@ impl MateProblem {
     }
 }
 
+/// Multiply Jacobian rows `start..end` by a mate's weight. The identity
+/// fast-path keeps unweighted mates (every real mate) at exactly the arithmetic
+/// they had before the weighting existed.
+fn scale_rows(j: &mut DMatrix<f64>, start: usize, end: usize, w: f64) {
+    if w == 1.0 {
+        return;
+    }
+    for r in start..end {
+        for c in 0..j.ncols() {
+            j[(r, c)] *= w;
+        }
+    }
+}
+
 /// Cross product of two 3-vectors.
 fn cross3(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
     [
@@ -1333,6 +1365,7 @@ fn solve_mate_with_budget(input: &MateInput, budget: usize) -> MateOutput {
         return MateOutput {
             params_solved: input.params_initial.clone(),
             overall_status: MateStatus::Overconstrained.to_u8(),
+            mate_residuals: Vec::new(),
             diagnostics: MateDiagnostics {
                 // Infinity reads as "no convergence measurement exists", which
                 // is exactly the truth for a solve that never ran.
@@ -1383,9 +1416,27 @@ fn solve_mate_with_budget(input: &MateInput, budget: usize) -> MateOutput {
 
     let params_solved: Vec<f32> = lm_result.x.iter().map(|&v| v as f32).collect();
 
+    // Per-mate residual norms at the solved pose, sliced by the same per-kind
+    // counts `residuals()` pushed them in, so the wire mark and the formula that
+    // produced it cannot diverge.
+    let solved_residuals = problem.residuals(&lm_result.x);
+    let mut block_start = 0usize;
+    let mut mate_residuals = Vec::with_capacity(problem.mates.len());
+    for m in &problem.mates {
+        let count = mate_residual_count(m.kind);
+        let norm = solved_residuals[block_start..block_start + count]
+            .iter()
+            .map(|v| v * v)
+            .sum::<f64>()
+            .sqrt();
+        mate_residuals.push(norm);
+        block_start += count;
+    }
+
     MateOutput {
         params_solved,
         overall_status: status.to_u8(),
+        mate_residuals,
         diagnostics: MateDiagnostics {
             residual_norm: lm_result.residual_norm,
             rank,
@@ -1435,14 +1486,24 @@ mod tests {
     ) -> Mate {
         let ax = a.geometry.axis;
         let offset = [offset * ax[0], offset * ax[1], offset * ax[2]];
-        Mate { kind, a, b, flip, offset, ratio, radius, angle }
+        Mate { kind, a, b, flip, offset, ratio, radius, angle, weight: 1.0 }
+    }
+
+    /// Same as `mate_with_angle` but with the row scale a drag objective uses.
+    fn mate_weighted(
+        kind: MateKind, a: MateRef, b: MateRef, flip: bool, offset: f64, ratio: f64, radius: f64,
+        angle: f64, weight: f64,
+    ) -> Mate {
+        let mut m = mate_with_angle(kind, a, b, flip, offset, ratio, radius, angle);
+        m.weight = weight;
+        m
     }
 
     /// Builds a mate from a full offset VECTOR in A's local frame.
     fn mate_with_offset_vec(
         kind: MateKind, a: MateRef, b: MateRef, flip: bool, offset: [f64; 3], ratio: f64, radius: f64,
     ) -> Mate {
-        Mate { kind, a, b, flip, offset, ratio, radius, angle: 0.0 }
+        Mate { kind, a, b, flip, offset, ratio, radius, angle: 0.0, weight: 1.0 }
     }
 
     /// (qz, qw) for a pure roll of `deg` degrees about world Z, qx = qy = 0.
@@ -1475,6 +1536,10 @@ mod tests {
     fn spherical_pulls_bodies_together() {
         let input = two_body_input();
         let out = solve_mate(&input);
+        // One solved mate, so the output wire carries exactly one residual and
+        // it is converged on this trivially satisfiable fixture.
+        assert_eq!(out.mate_residuals.len(), 1);
+        assert!(out.mate_residuals[0] < 1e-3, "residual={}", out.mate_residuals[0]);
         assert!(out.params_solved[7].abs() < 1e-3, "tx should be ~0, got {}", out.params_solved[7]);
         assert!(out.params_solved[8].abs() < 1e-3, "ty should be ~0, got {}", out.params_solved[8]);
         assert!(out.params_solved[9].abs() < 1e-3, "tz should be ~0, got {}", out.params_solved[9]);
@@ -2182,6 +2247,55 @@ mod tests {
     #[test]
     fn jacobian_vs_fd_spherical() {
         let input = two_body_input();
+        let p = MateProblem::new(&input);
+        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        let j_analytic = p.jacobian(&x);
+        let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
+        compare_jacobians(&j_analytic, &j_fd, 1e-3);
+    }
+
+    // A soft mate must yield to a stiff one. Both pull the same free body's
+    // anchor to different targets; with equal rows the body lands at the
+    // midpoint, and only a row scale makes it land on the stiff target. Fails
+    // before `residuals()`/`jacobian()` apply `Mate::weight`.
+    #[test]
+    fn softer_mate_yields_to_stiffer_mate() {
+        let input = MateInput {
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: grounded at the origin
+                5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: seeded between the targets
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![
+                // Stiff: body 1's origin must sit on body 0's origin.
+                mate(MateKind::Spherical,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
+                // Soft drag-like target far away: it must not pull the body off
+                // the stiff target.
+                mate_weighted(MateKind::Spherical,
+                    mate_ref(0, 10.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0, 0.0, 1e-4),
+            ],
+        };
+        let out = solve_mate(&input);
+        let tx = out.params_solved[7] as f64;
+        assert!(
+            tx.abs() < 1e-4,
+            "the stiff target must win; body 1 landed at tx={tx} (midpoint would be ~5)"
+        );
+    }
+
+    // The analytic weighted Jacobian must equal the finite difference of the
+    // weighted residual, so LM descends the same function the residual defines
+    // rather than an unscaled gradient.
+    #[test]
+    fn jacobian_vs_fd_spherical_weighted() {
+        let mut input = two_body_input();
+        input.mates[0].weight = 1e-4;
         let p = MateProblem::new(&input);
         let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
         let j_analytic = p.jacobian(&x);
