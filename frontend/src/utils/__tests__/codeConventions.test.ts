@@ -100,6 +100,54 @@ describe('code conventions', () => {
   })
 })
 
+// The assembly's pose is composed by the store accessor (settledPose /
+// settledPoses) and the pure helpers (poseOffsetFor / drawnPose). A file that
+// reaches into the raw `transforms` / `settlingOffsets` fields re-derives that
+// composition and can silently forget the settling offset, which is exactly how
+// a structural edit between a drag commit and its re-solve reverted the drag.
+// Only the files that own or subscribe to the pose plumbing may read the raw
+// fields; everyone else goes through the accessor.
+describe('assembly pose reads are confined to the pose plumbing', () => {
+  const ALLOWLIST = new Set([
+    'stores/assemblyStore.ts',
+    'hooks/useAssemblySolve.ts',
+    'utils/assemblyRender.ts',
+    'components/Viewport/AssemblyViewport.tsx',
+  ])
+
+  const FORBIDDEN = [
+    /getState\(\)\.transforms/,
+    /getState\(\)\.settlingOffsets/,
+    /\bs\s*=>\s*s\.transforms\b/,
+    /\bs\s*=>\s*s\.settlingOffsets\b/,
+    /\bstate\.transforms\b/,
+    /\bstate\.settlingOffsets\b/,
+  ]
+
+  // Comments are stripped so a doc comment naming a raw field (this file's own
+  // rationale included) cannot fail the scan.
+  const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
+
+  it('reports the file and line of any raw pose read outside the allowlist', () => {
+    const violations: string[] = []
+    let allowlistHits = 0
+    for (const file of srcOnlyFiles) {
+      const rel = file.replace(SRC, 'src/')
+      let text = readFileSync(file, 'utf8')
+      for (const pattern of COMMENTS) text = text.replace(pattern, '')
+      text.split('\n').forEach((line, i) => {
+        if (!FORBIDDEN.some(re => re.test(line))) return
+        if (ALLOWLIST.has(rel.slice('src/'.length))) allowlistHits++
+        else violations.push(`${rel}:${i + 1}`)
+      })
+    }
+    expect(violations).toEqual([])
+    // Guards the guard: a regex that stopped matching would pass on an empty set
+    // and report a clean tree forever.
+    expect(allowlistHits).toBeGreaterThan(0)
+  })
+})
+
 // A package that is only ever installed because something else happens to
 // depend on it works right up until that something else drops it or moves to a
 // different major, at which point the build breaks for a reason nothing in this

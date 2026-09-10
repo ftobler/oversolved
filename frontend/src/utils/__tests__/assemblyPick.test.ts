@@ -3,10 +3,13 @@
 // it names must be the entity `entityAnchors` indexed anchors under.
 
 import { describe, it, expect } from 'vitest'
+import type { BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { buildAnchorTable, type AnchorTable } from '@/utils/anchorGizmos'
-import { buildPickBodies } from '@/utils/assemblyPick'
+import { buildPickBodies, offsetPickBodies } from '@/utils/assemblyPick'
+import { getAssemblyPartGroups } from '@/utils/assemblyRender'
+import { IDENTITY_TRANSFORM, makeTransform, rotateVector } from '@/utils/transform3d'
 import type { EdgeCurve } from '@/kernel/partBundle'
 
 const PART = 'h1'
@@ -55,6 +58,8 @@ describe('buildPickBodies', () => {
   it('names one body per mesh, keyed the way the render list keys it', () => {
     const bodies = buildPickBodies({ [PART]: [makeMesh(), makeMesh()] }, ANCHORS)
     expect(bodies.map(b => b.bodyKey)).toEqual([`${PART}:body_0`, `${PART}:body_1`])
+    // The offsetter keys each body's pose by its instance handle, not the bodyKey.
+    expect(bodies.map(b => b.handle)).toEqual([PART, PART])
   })
 
   it('expands the index into a non-indexed triangle soup the face layer wants', () => {
@@ -157,5 +162,76 @@ describe('buildPickBodies', () => {
     expect(body.faces).toBeNull()
     expect(body.edges).toBeNull()
     expect(body.vertices).toBeNull()
+  })
+})
+
+// The ID buffer is registered from a solve-time snapshot; the parts are drawn at
+// the settling pose. The offset keeps those two descriptions of "where the
+// geometry is" in step through a commit, so a click in the window lands on the
+// entity under the cursor instead of its pre-drag twin.
+describe('offsetPickBodies', () => {
+  function renderBody(handle: string): BodyResult {
+    return {
+      id: `${handle}:body_0`,
+      created_by: handle,
+      modified_by: [],
+      mesh: {
+        vertices: new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0]),
+        faces: new Uint32Array([0, 1, 2]),
+      },
+    }
+  }
+
+  function part(handle: string): PartInstance {
+    return { handle, doc_id: `doc-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM } }
+  }
+
+  it('translates every layer of the pick body onto the drawn pose', () => {
+    const pick = build(makeMesh())
+    const drawn = { [PART]: { ...IDENTITY_TRANSFORM, tx: 3 } }
+    const [moved] = offsetPickBodies([pick], { [PART]: IDENTITY_TRANSFORM }, drawn)
+
+    // Faces: the first triangle's first vertex sits at the part origin.
+    expect([...moved.faces!.positions.slice(0, 3)]).toEqual([3, 0, 0])
+    // Edges: the line segment from x=0 to x=10.
+    expect([...moved.edges!.segmentPositions.slice(0, 6)]).toEqual([3, 0, 0, 13, 0, 0])
+    // Vertices: the two anchor points already carried into the solved pose.
+    expect(moved.vertices!.vertices).toEqual([[3, 0, 0], [13, 0, 0]])
+    // Face boundaries: triangle 0's perimeter.
+    expect([...moved.faceBoundaries!.get(0)!.slice(0, 3)]).toEqual([3, 0, 0])
+  })
+
+  it('places a pick vertex at the same world point the render group draws', () => {
+    const pick = build(makeMesh())
+    const offset: Transform3D = { ...IDENTITY_TRANSFORM, tx: 3, ty: -2 }
+    const [moved] = offsetPickBodies([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: offset })
+
+    const group = getAssemblyPartGroups(
+      { [`${PART}:body_0`]: renderBody(PART) },
+      [part(PART)],
+      null,
+      null,
+      { [PART]: offset },
+    )[0]
+    const groupOffset = makeTransform(group.position, group.quaternion)
+    const [rx, ry, rz] = rotateVector(
+      [groupOffset.qx, groupOffset.qy, groupOffset.qz, groupOffset.qw],
+      [0, 0, 0],
+    )
+    expect(moved.faces!.positions[0]).toBeCloseTo(rx + groupOffset.tx, 9)
+    expect(moved.faces!.positions[1]).toBeCloseTo(ry + groupOffset.ty, 9)
+    expect(moved.faces!.positions[2]).toBeCloseTo(rz + groupOffset.tz, 9)
+  })
+
+  it('returns an identity-offset body by reference (no churn)', () => {
+    const pick = build(makeMesh())
+    const same = offsetPickBodies([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: IDENTITY_TRANSFORM })
+    expect(same[0]).toBe(pick)
+  })
+
+  it('leaves a body with no baked pose alone', () => {
+    const pick = build(makeMesh())
+    const same = offsetPickBodies([pick], {}, { [PART]: { ...IDENTITY_TRANSFORM, tx: 3 } })
+    expect(same[0]).toBe(pick)
   })
 })

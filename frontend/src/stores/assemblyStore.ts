@@ -85,6 +85,9 @@ export interface AssemblyEditorData {
   anchors: AnchorTable
   // ID-layer registration payloads for the solved scene.
   pickGeometry: AssemblyPickBody[]
+  // The solved pose `pickGeometry` was baked at. The ID buffer offsets from this
+  // onto the drawn pose, so a committed drag's pick geometry follows the parts.
+  pickGeometryPose: Record<string, Transform3D>
   selectedPartHandle: string | null
   // The mate whose editor panel is open; null when no mate is being authored.
   selectedMateId: string | null
@@ -134,14 +137,6 @@ export interface AssemblyEditorData {
    * the old one. Retired by the solve that re-bakes them.
    */
   settlingOffsets: Record<string, Transform3D>
-  /**
-   * Set when a committed manipulation has handed the doc a new pose but
-   * `pickGeometry` is still baked at the pre-drag one (the re-solve is a worker
-   * round trip away). The selection highlight reads `pickGeometry`, so it must
-   * stay hidden through this window or it hangs detached from the drawn parts.
-   * Cleared by `setSolveResult`, which installs the re-baked `pickGeometry`.
-   */
-  pickGeometryStale: boolean
   isSolving: boolean
   solveError: string | null
   undoStack: AssemblyUndoEntry[]
@@ -159,6 +154,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   entityMateRefs: {},
   anchors: {},
   pickGeometry: [],
+  pickGeometryPose: {},
   selectedPartHandle: null,
   selectedMateId: null,
   activeMateField: null,
@@ -173,7 +169,6 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
   manipulation: null,
   gizmoDrag: null,
   settlingOffsets: {},
-  pickGeometryStale: false,
   isSolving: false,
   solveError: null,
   undoStack: [],
@@ -235,7 +230,7 @@ export function sameInstances(a: readonly PartInstance[], b: readonly PartInstan
 // here keeps setSnapshot's "React-mirrored state only" contract intact.
 const STORE_OWNED_FIELDS = [
   'selectedPartHandle', 'manipulation', 'gizmoDrag', 'settlingOffsets',
-  'pickGeometryStale',
+  'pickGeometryPose',
   'selectedMateId', 'activeMateField', 'mateFieldDirty',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'selection', 'hoveredEntity', 'showPickDebug',
@@ -314,6 +309,13 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setShowPickDebug: (enabled: boolean) => void
   // The reference a mate pick chip would commit right now; the set is retained.
   activePickCandidate: () => MateRef | null
+  /** The settled pose of one part: the last solve carried by any committed drag
+   *  that has not been re-meshed yet. This is the ONLY pose read allowed outside
+   *  the drag lifecycle. Undefined for an unknown handle. */
+  settledPose: (handle: string) => Transform3D | undefined
+  /** The settled poses of every instance, keyed by handle. Callers that bake a
+   *  whole document use this; callers that place one part use settledPose. */
+  settledPoses: () => Record<string, Transform3D>
   // Publish the triad gesture in progress, or null to retire it.
   setGizmoDrag: (drag: GizmoDragState | null) => void
   // Pointer-down on a part body or its triad. No-op for a `fixed` instance.
@@ -416,9 +418,9 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // Every body comes back baked at its solved pose, which is what the settling
     // offsets were standing in for until now.
     settlingOffsets: {},
-    // pickGeometry is now re-baked at the solved pose, so the selection highlight
-    // may draw again (same rationale as settlingOffsets).
-    pickGeometryStale: false,
+    // The pick snapshot landed with a solve: record the pose it was baked at so
+    // the ID buffer can be offset onto wherever the parts are drawn.
+    pickGeometryPose: result.transforms,
   }),
 
   setDragSolveResult: (result) => set((prev) => ({
@@ -528,6 +530,9 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     return pickIndex >= 0 ? pickCandidates[pickIndex] ?? null : null
   },
 
+  settledPose: (handle) => settledTransforms(get().transforms, get().settlingOffsets)[handle],
+  settledPoses: () => settledTransforms(get().transforms, get().settlingOffsets),
+
   setGizmoDrag: (drag) => set({ gizmoDrag: drag }),
 
   beginPartManipulation: (handle) => {
@@ -540,12 +545,11 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   },
 
   beginBodyDrag: (handle, worldGrab) => {
-    const { doc, transforms, settlingOffsets } = get()
+    const { doc } = get()
     if (!doc) return false
-    // The grab landed on where the part is DRAWN: its solved pose carried by any
-    // settling offset, falling back to the doc seed before the first solve.
-    const drawn = settledTransforms(transforms, settlingOffsets)[handle]
-      ?? findInstance(doc, handle)?.transform
+    // The grab landed on where the part is DRAWN: its settled pose, falling back
+    // to the doc seed before the first solve.
+    const drawn = get().settledPose(handle) ?? findInstance(doc, handle)?.transform
     if (!drawn) return false
     const session = beginBodyManipulation(doc, handle, worldGrab, drawn)
     if (!session) return false
@@ -563,10 +567,9 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   },
 
   setDragSolvedPose: (solvedGrab) => {
-    const { manipulation, transforms, settlingOffsets } = get()
+    const { manipulation } = get()
     if (!manipulation?.dragObjective) return
-    const drawnBaked = settledTransforms(transforms, settlingOffsets)[manipulation.handle]
-      ?? manipulation.seed
+    const drawnBaked = get().settledPose(manipulation.handle) ?? manipulation.seed
     set({ manipulation: setDragSolvedPoseOnSession(manipulation, solvedGrab, drawnBaked) })
   },
 
@@ -591,7 +594,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   },
 
   endPartManipulation: () => {
-    const { manipulation, doc, settlingOffsets } = get()
+    const { manipulation, doc } = get()
     // The drag state is retired here rather than by the caller so that a session
     // ending by any route leaves the triad whole again; a stale gizmoDrag would
     // keep it narrowed to a gesture that is no longer running.
@@ -600,7 +603,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // The grabbed part's own drawn pose is what the drag offset was drawn over,
     // so the commit must compose against it, not against the doc seed the mates
     // may long since have pulled the part away from.
-    const solved = settledTransforms(get().transforms, settlingOffsets)
+    const solved = get().settledPoses()
     const solvedGrab = solved[manipulation.handle]
     const { changed } = commitManipulation(doc, manipulation, solvedGrab)
     // A click that never moved the part must not dirty the doc or re-solve.
@@ -618,11 +621,6 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
           prev.settlingOffsets[manipulation.handle] ?? IDENTITY_TRANSFORM,
         ),
       },
-      // The doc is dirtied and a re-solve requested, but pickGeometry stays baked
-      // at the pre-drag pose until it lands. The selection highlight reads
-      // pickGeometry and sits outside the drawn part groups, so hide it through
-      // this window rather than letting it hang detached from the parts.
-      pickGeometryStale: true,
     }))
     // Bake every follower's live-solved pose into its seed before committing the
     // grabbed part's new seed. A drag otherwise writes back only the grabbed
@@ -642,10 +640,10 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // grabbed part restores itself, drawn from its own bodies once the offset is
     // gone. A session that never moved has nothing to restore.
     const moved = manipulation != null && !transformsEqual(manipulation.current, manipulation.seed)
-    // A cancelled-but-moved session also leaves followers at live-solved poses
-    // and pickGeometry at the pre-drag pose with a restoring re-solve pending, so
-    // the selection highlight must stay hidden until that solve lands.
-    set({ manipulation: null, gizmoDrag: null, pickGeometryStale: moved })
+    // A cancelled-but-moved session leaves followers at live-solved poses with a
+    // restoring re-solve pending. The offset the drawer carries covers the
+    // followers the abandoned drag moved until that solve lands.
+    set({ manipulation: null, gizmoDrag: null })
     if (moved) callbacks?.requestSolve()
   },
 
@@ -657,10 +655,10 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   // left in place on purpose (removeInstance's contract): they surface as stale
   // at the next solve rather than being silently cascaded away.
   deleteSelected: () => {
-    const { doc, selectedMateId, selectedPartHandle, transforms } = get()
+    const { doc, selectedMateId, selectedPartHandle } = get()
     if (!doc || !callbacks) return
     if (selectedMateId) {
-      callbacks.mutateDoc('Delete mate', d => removeMate(bakeSolvedTransforms(d, transforms), selectedMateId))
+      callbacks.mutateDoc('Delete mate', d => removeMate(bakeSolvedTransforms(d, get().settledPoses()), selectedMateId))
       // Route through the setter, not a bare `set`, so the mate field this
       // selection may have armed is disarmed too: a delete that leaves the
       // armed field pointing at the just-deleted mate strands a dangling
@@ -670,7 +668,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
       return
     }
     if (selectedPartHandle) {
-      callbacks.mutateDoc('Delete part', d => removeInstance(bakeSolvedTransforms(d, transforms), selectedPartHandle))
+      callbacks.mutateDoc('Delete part', d => removeInstance(bakeSolvedTransforms(d, get().settledPoses()), selectedPartHandle))
       set({ selectedPartHandle: null })
       callbacks.requestSolve()
     }

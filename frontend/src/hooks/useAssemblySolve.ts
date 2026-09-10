@@ -24,7 +24,7 @@ import type { MateSpec } from '@/kernel/solveAssembly'
 import { dragTargetMate } from '@/kernel/assemblyDrag'
 import { extractErrorMessage } from '@/kernel/errors'
 import { findInstance } from '@/utils/assemblyMutations'
-import { livePartPose, settledTransforms } from '@/utils/partManipulation'
+import { livePartPose } from '@/utils/partManipulation'
 import { useSolverStore } from '@/stores/solverStore'
 
 // A failure the user walked into is not an error to banner: a cancel kills the
@@ -236,8 +236,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         // same livePartPose the render offset and the drag commit read -- and mark
         // it fixed, so the solve moves only the others. Its own bodies/transform
         // are left untouched below, so it keeps rendering from its drag offset.
-        const settled = settledTransforms(store.transforms, store.settlingOffsets)
-        const pinned = livePartPose(manip!, settled[manip!.handle])
+        const pinned = livePartPose(manip!, store.settledPose(manip!.handle))
         parts = parts.map(p => (p.handle === manip!.handle ? { ...p, transform: pinned, fixed: true } : p))
       }
       // Revs are stable across a drag burst; a live tick reuses the last full

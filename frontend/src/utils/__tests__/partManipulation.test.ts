@@ -5,9 +5,11 @@ import {
   beginManipulation,
   commitManipulation,
   dragTranslate,
+  drawnPose,
   gizmoRotate,
   isManipulable,
   livePartPose,
+  poseOffsetFor,
   settledTransforms,
 } from '@/utils/partManipulation'
 import { findInstance } from '@/utils/assemblyMutations'
@@ -223,6 +225,43 @@ describe('settledTransforms', () => {
     settledTransforms(transforms, settling)
     expect(transforms).toEqual(transformsCopy)
     expect(settling).toEqual(settlingCopy)
+  })
+})
+
+describe('poseOffsetFor', () => {
+  it('is identity at rest and the settling offset for an untouched handle', () => {
+    const settling = { p2: { ...IDENTITY_TRANSFORM, tx: 3 } }
+    expect(poseOffsetFor('p1', null, {})).toEqual(IDENTITY_TRANSFORM)
+    expect(poseOffsetFor('p2', null, settling)).toEqual(settling.p2)
+  })
+
+  it('rides the live drag delta on top of the offset still owed to the grabbed part', () => {
+    const doc = docWith(instance('p1', { transform: { ...IDENTITY_TRANSFORM, tx: 10 } }))
+    const session = dragTranslate(beginManipulation(doc, 'p1')!, [3, 0, 0])
+    const owed = { p1: { ...IDENTITY_TRANSFORM, tx: 2 } }
+    // The drag delta is 3 over the seed; the owed 2 composes onto it.
+    expect(poseOffsetFor('p1', session, owed).tx).toBeCloseTo(5, 9)
+  })
+})
+
+describe('drawnPose', () => {
+  it('is the baked pose at rest', () => {
+    const transforms = { p1: { ...IDENTITY_TRANSFORM, tx: 10 } }
+    expect(drawnPose('p1', null, transforms, {}).tx).toBeCloseTo(10, 9)
+  })
+
+  it('carries a settling offset onto the baked pose', () => {
+    const transforms = { p1: { ...IDENTITY_TRANSFORM, tx: 10 } }
+    const settling = { p1: { ...IDENTITY_TRANSFORM, tx: 3 } }
+    expect(drawnPose('p1', null, transforms, settling).tx).toBeCloseTo(13, 9)
+  })
+
+  it('carries the live drag delta over the settling offset', () => {
+    const doc = docWith(instance('p1', { transform: { ...IDENTITY_TRANSFORM, tx: 10 } }))
+    const session = dragTranslate(beginManipulation(doc, 'p1')!, [3, 0, 0])
+    const transforms = { p1: { ...IDENTITY_TRANSFORM, tx: 10 } }
+    const settling = { p1: { ...IDENTITY_TRANSFORM, tx: 2 } }
+    expect(drawnPose('p1', session, transforms, settling).tx).toBeCloseTo(15, 9)
   })
 })
 

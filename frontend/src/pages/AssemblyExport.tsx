@@ -44,11 +44,11 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
         return
       }
       try {
-        const transforms = useAssemblyStore.getState().transforms
+        const poses = useAssemblyStore.getState().settledPoses()
         const bytes = format === 'stl'
           ? assemblyStlBytes(useAssemblyStore.getState().bodies, instances)
           : await exportAssemblyViaWorker(
-            buildExportParts(instances, transforms, await loadPartContents(instances)),
+            buildExportParts(instances, poses, await loadPartContents(instances)),
             { format, tessellation },
           )
         if (!bytes) {

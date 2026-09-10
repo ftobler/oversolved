@@ -7,6 +7,7 @@ import type { AssemblyPickBody } from '@/utils/assemblyPick'
 // under test.
 function body(): AssemblyPickBody {
   return {
+    handle: 'B',
     bodyKey: 'B',
     faces: {
       positions: new Float32Array([
@@ -171,7 +172,7 @@ function countingBody(key: string, triangles: number): { pick: AssemblyPickBody;
   Object.defineProperty(edges, 'segmentPositions', { get: () => { reads++; return new Float32Array(triangles * 6) } })
   Object.defineProperty(edges, 'segmentToEdge', { get: () => { reads++; return segmentToEdge } })
   return {
-    pick: { bodyKey: key, faces, edges, vertices: null, faceBoundaries: null },
+    pick: { handle: key, bodyKey: key, faces, edges, vertices: null, faceBoundaries: null },
     reads: () => reads,
   }
 }

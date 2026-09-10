@@ -54,9 +54,11 @@ import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearsSelection 
 import { createClickGestureTracker } from '@/utils/clickGesture'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
-import { isManipulable } from '@/utils/partManipulation'
+import { drawnPose, isManipulable } from '@/utils/partManipulation'
+import { offsetPickBodies } from '@/utils/assemblyPick'
 import type { Ray } from '@/utils/gizmoMath'
 import { rotateVector, transformQuat, type Vec3 } from '@/utils/transform3d'
+import type { Transform3D } from '@/types/cad'
 
 // Everything an assembly can mate to: a part's B-rep entities and the
 // assembly's own frame. The sketch layers never render here, but naming the
@@ -112,6 +114,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const selectedPartHandle = useAssemblyStore(s => s.selectedPartHandle)
   const gizmoDrag = useAssemblyStore(s => s.gizmoDrag)
   const pickGeometry = useAssemblyStore(s => s.pickGeometry)
+  const pickGeometryPose = useAssemblyStore(s => s.pickGeometryPose)
   const entityMateRefs = useAssemblyStore(s => s.entityMateRefs)
   const anchors = useAssemblyStore(s => s.anchors)
   const hoverHits = useAssemblyStore(s => s.hoverHits)
@@ -126,12 +129,6 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // With no chip armed the viewport is a plain B-rep selector instead (faces,
   // edges, planes for measurement), which is the part editor's normal mode.
   const aiming = useAssemblyStore(s => s.activeMateField !== null)
-  // A committed drag has handed the doc a new pose but pickGeometry is still
-  // baked at the pre-drag one until the re-solve lands: the selection highlight
-  // reads pickGeometry and hangs detached from the drawn parts through that
-  // window, so gate it on this rather than the live-session `manipulating` flag.
-  const pickGeometryStale = useAssemblyStore(s => s.pickGeometryStale)
-
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pipelineRef = useRef<IdPipeline | null>(null)
   const pvRef = useRef<Pv[]>([])
@@ -192,6 +189,20 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const groups = useMemo(
     () => getAssemblyPartGroups(bodies, instances, manipulation, selectedPartHandle, settlingOffsets),
     [bodies, instances, manipulation, selectedPartHandle, settlingOffsets],
+  )
+  // The drawn pose of every handle, the same offset the render groups carry.
+  const drawnPoses = useMemo(() => {
+    const out: Record<string, Transform3D> = {}
+    for (const handle of new Set([...Object.keys(transforms), ...Object.keys(settlingOffsets)])) {
+      out[handle] = drawnPose(handle, manipulation, transforms, settlingOffsets)
+    }
+    return out
+  }, [transforms, manipulation, settlingOffsets])
+  // The ID buffer follows the drawn pose, so a click in the settle window lands
+  // on the entity the user sees rather than the one the old solve baked.
+  const drawnPickGeometry = useMemo(
+    () => offsetPickBodies(pickGeometry, pickGeometryPose, drawnPoses),
+    [pickGeometry, pickGeometryPose, drawnPoses],
   )
   const builtins = useMemo(() => getAssemblyBuiltinsToRender(doc), [doc])
 
@@ -307,6 +318,12 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   }, [raycaster])
 
   // The ID buffer is read in drawing-buffer pixels; the pointer speaks CSS.
+  //
+  // Division of labour with the R3F raycast: a grab is geometric, so AssemblyBody's
+  // raycast against the drawn mesh is the grab authority. The ID buffer is the
+  // entity-reference authority for mate picks and B-rep selection. Both read the
+  // drawn pose now, so neither can answer "what is under this pixel" with a
+  // layout the other does not have.
   const resolveHitsAt = useCallback((
     e: { clientX: number; clientY: number },
     layers: ReadonlySet<string> = ASSEMBLY_PICK_LAYERS,
@@ -612,7 +629,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         />
 
         <IdPickingDriver onReady={onPipelineReady} />
-        <AssemblyPickLayers bodies={pickGeometry} />
+        <AssemblyPickLayers bodies={drawnPickGeometry} />
         {showPickDebug && <IdDebugOverlay />}
 
         <Suspense fallback={null}>
@@ -639,12 +656,12 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
         {/* B-rep selection highlight, only in the plain selector mode: the
             aiming mode shows anchor triads over the same geometry instead. It is
-            also hidden mid-drag, and while a committed drag's re-solve is in
-            flight (`pickGeometryStale`): `pickGeometry` still holds the pre-drag
-            pose and the overlay sits outside the drawn part groups. */}
-        {!aiming && !manipulating && !pickGeometryStale && (
+            hidden mid-drag, where the raycast owns the gesture. The pick bodies
+            are the drawn ones, so the highlight follows the parts through a
+            settle rather than hanging at the old solved pose. */}
+        {!aiming && !manipulating && (
           <AssemblySelectionHighlight
-            pickBodies={pickGeometry}
+            pickBodies={drawnPickGeometry}
             selection={selection}
             hovered={hoveredEntity}
             mateHighlighted={mateHighlighted}

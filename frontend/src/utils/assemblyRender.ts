@@ -11,10 +11,9 @@
 import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
 import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
-import { manipulationDelta, type ManipulationSession } from '@/utils/partManipulation'
+import { poseOffsetFor, type ManipulationSession } from '@/utils/partManipulation'
 import {
   composeTransforms,
-  IDENTITY_TRANSFORM,
   makeTransform,
   transformQuat,
   transformTranslation,
@@ -108,6 +107,10 @@ export interface AssemblyPartGroup {
  * re-meshed by a solve. Dropping a part's offset the instant the pointer came up
  * snapped it back to its pre-drag mesh for the length of the solve, so the
  * offset outlives the session and only the re-bake retires it.
+ *
+ * The ID pick buffer builds its group offset from the same `poseOffsetFor`
+ * (assemblyPick.ts's offsetPickBodies), so the drawn mesh and the pickable
+ * geometry cannot describe different layouts.
  */
 export function getAssemblyPartGroups(
   bodies: Record<string, BodyResult> | undefined,
@@ -130,12 +133,10 @@ export function getAssemblyPartGroups(
     if (!items || items.length === 0) continue
 
     const manipulating = manipulation?.handle === inst.handle
-    const settling = settlingOffsets[inst.handle] ?? IDENTITY_TRANSFORM
     // A live drag rides on top of any offset still owed to the last one: both
-    // are measured against the same baked mesh.
-    const offset: Transform3D = manipulating
-      ? composeTransforms(manipulationDelta(manipulation!), settling)
-      : settling
+    // are measured against the same baked mesh. The one helper keeps the render
+    // and the ID pick buffer describing the same drawn pose.
+    const offset: Transform3D = poseOffsetFor(inst.handle, manipulation, settlingOffsets)
 
     groups.push({
       handle: inst.handle,

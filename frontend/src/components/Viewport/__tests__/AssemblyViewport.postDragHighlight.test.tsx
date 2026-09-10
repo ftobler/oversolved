@@ -1,12 +1,15 @@
-// M3: the selection highlight reads `pickGeometry`, baked in pre-drag world
-// coordinates until the post-commit re-solve lands, and it sits OUTSIDE the
-// drawn part groups. The viewport used to gate it on the live `manipulating`
-// flag, which flips false the instant the pointer lifts -- a solve round trip
-// before `pickGeometry` is re-baked. It is now gated on `pickGeometryStale`,
-// which spans exactly that window.
+// The ID pick buffer must describe the drawn pose, not the pose the last solve
+// baked, or a click in the settle window lands on the wrong entity. The viewport
+// wires the offset helper to both the ID layers and the selection highlight, so
+// this pins that wiring with the R3F mocks the other viewport tests use.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useEffect } from 'react'
-import { render, act } from '@testing-library/react'
+import { render } from '@testing-library/react'
+
+const captured = vi.hoisted(() => ({
+  pickBodies: undefined as unknown,
+  highlightBodies: undefined as unknown,
+}))
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children, onCreated }: { children: unknown; onCreated?: (s: unknown) => void }) => {
@@ -23,9 +26,14 @@ vi.mock('@/components/misc/CubeGizmo', () => ({ CubeGizmoCanvas: () => null }))
 vi.mock('@/components/Viewport/assembly/AnchorGizmos', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyBody', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyBuiltin', () => ({ default: () => null }))
-vi.mock('@/components/Viewport/assembly/AssemblyPickLayers', () => ({ default: () => null }))
+vi.mock('@/components/Viewport/assembly/AssemblyPickLayers', () => ({
+  default: ({ bodies }: { bodies: unknown }) => { captured.pickBodies = bodies; return null },
+}))
 vi.mock('@/components/Viewport/assembly/AssemblySelectionHighlight', () => ({
-  default: () => <div data-testid="assembly-selection-highlight" />,
+  default: ({ pickBodies }: { pickBodies: unknown }) => {
+    captured.highlightBodies = pickBodies
+    return <div data-testid="assembly-selection-highlight" />
+  },
 }))
 vi.mock('@/components/Viewport/assembly/GizmoPickLayer', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/RollGuideGizmo', () => ({ default: () => null }))
@@ -33,38 +41,69 @@ vi.mock('@/components/Viewport/assembly/TriadGizmo', () => ({ default: () => nul
 
 import AssemblyViewport from '../AssemblyViewport'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
+import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+
+function pickBody(): AssemblyPickBody {
+  return {
+    handle: 'p1',
+    bodyKey: 'p1:body_0',
+    faces: {
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      triangleToFace: new Uint32Array([0]),
+      faceQueries: ['f0'],
+    },
+    edges: null,
+    vertices: null,
+    faceBoundaries: null,
+  }
+}
 
 beforeEach(() => {
+  captured.pickBodies = undefined
+  captured.highlightBodies = undefined
   useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
-  useAssemblyStore.setState({ pickGeometryStale: false, selection: new Set() } as never)
+  useAssemblyStore.setState({
+    pickGeometry: [], pickGeometryPose: {}, transforms: {}, settlingOffsets: {},
+    selection: new Set(),
+  } as never)
 })
 
-describe('AssemblyViewport post-drag selection highlight gate', () => {
+describe('AssemblyViewport drawn pick geometry', () => {
+  it('offsets the pick layers and the highlight onto the settling pose', () => {
+    const body = pickBody()
+    useAssemblyStore.setState({
+      pickGeometry: [body],
+      pickGeometryPose: { p1: IDENTITY_TRANSFORM },
+      transforms: { p1: IDENTITY_TRANSFORM },
+      settlingOffsets: { p1: { ...IDENTITY_TRANSFORM, tx: 3 } },
+    } as never)
+
+    render(<AssemblyViewport />)
+
+    const bodies = captured.pickBodies as AssemblyPickBody[]
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0].faces!.positions[0]).toBeCloseTo(3, 9)
+    expect(captured.highlightBodies).toBe(bodies)
+  })
+
+  it('hands the baked body straight through at rest (identity offset, no churn)', () => {
+    const body = pickBody()
+    useAssemblyStore.setState({
+      pickGeometry: [body],
+      pickGeometryPose: { p1: IDENTITY_TRANSFORM },
+      transforms: { p1: IDENTITY_TRANSFORM },
+    } as never)
+
+    render(<AssemblyViewport />)
+
+    const bodies = captured.pickBodies as AssemblyPickBody[]
+    expect(bodies[0]).toBe(body)
+    expect(captured.highlightBodies).toBe(bodies)
+  })
+
   it('mounts the selection highlight in the plain settled state', () => {
     const { queryByTestId } = render(<AssemblyViewport />)
-    expect(queryByTestId('assembly-selection-highlight')).not.toBeNull()
-  })
-
-  it('hides the selection highlight while a committed drag is settling, even after manipulating flips false', () => {
-    // The state right after handlePointerUp: no live manipulation session, but
-    // pickGeometry still baked at the pre-drag pose.
-    useAssemblyStore.setState({ manipulation: null, pickGeometryStale: true } as never)
-    const { queryByTestId } = render(<AssemblyViewport />)
-    expect(queryByTestId('assembly-selection-highlight')).toBeNull()
-  })
-
-  it('shows the selection highlight again once the settling solve lands', () => {
-    useAssemblyStore.setState({ pickGeometryStale: true } as never)
-    const { queryByTestId, rerender } = render(<AssemblyViewport />)
-    expect(queryByTestId('assembly-selection-highlight')).toBeNull()
-
-    act(() => {
-      useAssemblyStore.getState().setSolveResult({
-        transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: {},
-        anchors: {}, pickGeometry: [], mateResults: {},
-      })
-    })
-    rerender(<AssemblyViewport />)
     expect(queryByTestId('assembly-selection-highlight')).not.toBeNull()
   })
 })

@@ -355,8 +355,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // Bake the placed parts' solved poses into their seeds before adding one, so
     // the re-solve that pulls in the new part keeps the existing assembly where
     // it is on screen rather than restarting the whole solve from stale seeds.
-    const transforms = useAssemblyStore.getState().transforms
-    mutateOneShot('Add part', d => appendPartInstance(bakeSolvedTransforms(d, transforms), docId, docRev))
+    mutateOneShot('Add part', d => appendPartInstance(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), docId, docRev))
     requestSolve()  // the new instance has no bodies until the assembly re-solves
   }, [mutateOneShot, requestSolve])
 
@@ -364,8 +363,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // Same baking rule as inserting a part: the copy is a new unmated body, so
     // without freezing the solved poses first the re-solve would restart the
     // placed parts from stale seeds and visibly shuffle the assembly.
-    const transforms = useAssemblyStore.getState().transforms
-    mutateOneShot('Duplicate part', d => duplicateInstance(bakeSolvedTransforms(d, transforms), handle))
+    mutateOneShot('Duplicate part', d => duplicateInstance(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), handle))
     requestSolve()  // the copy has no bodies until the assembly re-solves
   }, [mutateOneShot, requestSolve])
 
@@ -382,8 +380,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // Deleting the instance whose editor is open closes it; the delete's
     // one-shot commits any open session itself.
     if (editingInstanceHandle === handle) setEditingInstanceHandle(null)
-    const transforms = useAssemblyStore.getState().transforms
-    mutateOneShot('Delete part', d => removeInstance(bakeSolvedTransforms(d, transforms), handle))
+    mutateOneShot('Delete part', d => removeInstance(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), handle))
     if (useAssemblyStore.getState().selectedPartHandle === handle) {
       useAssemblyStore.getState().setSelectedPartHandle(null)
     }
@@ -415,15 +412,13 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // The editor checkbox is part of the instance-edit session, so it folds into
   // the coalesced step that the accept commits.
   const fixOrUnfix = useCallback((handle: string, fixed: boolean) => {
-    const transforms = useAssemblyStore.getState().transforms
-    mutate('Fix/unfix part', d => setInstanceFixedFromSolved(d, handle, fixed, transforms))
+    mutate('Fix/unfix part', d => setInstanceFixedFromSolved(d, handle, fixed, useAssemblyStore.getState().settledPoses()))
   }, [mutate])
 
   // The options-menu toggle is a one-shot op, its own undo step even when an
   // editor session happens to be open.
   const handleToggleFixed = useCallback((handle: string, fixed: boolean) => {
-    const transforms = useAssemblyStore.getState().transforms
-    mutateOneShot('Fix/unfix part', d => setInstanceFixedFromSolved(d, handle, fixed, transforms))
+    mutateOneShot('Fix/unfix part', d => setInstanceFixedFromSolved(d, handle, fixed, useAssemblyStore.getState().settledPoses()))
   }, [mutateOneShot])
 
   const handleSelect = useCallback((handle: string) => {
@@ -465,8 +460,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // so the re-solve does not drag the rest of the assembly off screen from
     // stale seeds. Baking before setInstancePosition also lets the edited part
     // keep its solved orientation rather than the stale seed's.
-    const transforms = useAssemblyStore.getState().transforms
-    mutate('Set position', d => setInstancePosition(bakeSolvedTransforms(d, transforms), handle, pos))
+    mutate('Set position', d => setInstancePosition(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), handle, pos))
     requestSolve()
   }, [mutate, requestSolve])
 
@@ -475,8 +469,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // it must not be vetoed by the `fixed` flag -- setInstanceRotation is the
   // mutation that ignores it.
   const handleSetRotation = useCallback((handle: string, euler: EulerDeg) => {
-    const transforms = useAssemblyStore.getState().transforms
-    mutate('Set rotation', d => setInstanceRotation(bakeSolvedTransforms(d, transforms), handle, euler))
+    mutate('Set rotation', d => setInstanceRotation(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), handle, euler))
     requestSolve()
   }, [mutate, requestSolve])
 
@@ -534,8 +527,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     // commits any open session itself, so a different mate's editor stays open
     // and keeps its own coalesced step.
     if (editingMateId === featureId) setEditingMateId(null)
-    const transforms = useAssemblyStore.getState().transforms
-    mutateOneShot('Delete mate', d => removeMate(bakeSolvedTransforms(d, transforms), featureId))
+    mutateOneShot('Delete mate', d => removeMate(bakeSolvedTransforms(d, useAssemblyStore.getState().settledPoses()), featureId))
     if (useAssemblyStore.getState().selectedMateId === featureId) {
       useAssemblyStore.getState().setSelectedMateId(null)
     }

@@ -15,11 +15,20 @@ import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { assemblyBodyId } from '@/utils/assemblyBodies'
 import type { AnchorTable } from '@/utils/anchorGizmos'
-import type { Mesh3D } from '@/types/cad'
+import type { Mesh3D, Transform3D } from '@/types/cad'
 import { buildIndexedCurveSegments } from '@/utils/edgeSampling'
-import type { Vec3 } from '@/utils/transform3d'
+import {
+  IDENTITY_TRANSFORM,
+  relativeTransform,
+  rotateVector,
+  transformQuat,
+  transformsEqual,
+  type Vec3,
+} from '@/utils/transform3d'
 
 export interface AssemblyPickBody {
+  // The part instance this body belongs to; the offsetter keys its pose by it.
+  handle: string
   // Registration key for all three layers; `assemblyBodyId` already scopes it by part.
   bodyKey: string
   faces: { positions: Float32Array; triangleToFace: Uint32Array; faceQueries: string[] } | null
@@ -129,6 +138,7 @@ export function buildPickBodies(
   for (const [handle, meshes] of Object.entries(bodies)) {
     meshes.forEach((m, bodyIndex) => {
       out.push({
+        handle,
         bodyKey: assemblyBodyId(handle, bodyIndex),
         faces: buildFaces(handle, bodyIndex, m),
         edges: buildEdges(handle, bodyIndex, m),
@@ -138,4 +148,57 @@ export function buildPickBodies(
     })
   }
   return out
+}
+
+function offsetPositions(positions: Float32Array, t: Transform3D): Float32Array {
+  const q = transformQuat(t)
+  const out = new Float32Array(positions.length)
+  for (let i = 0; i < positions.length; i += 3) {
+    const r = rotateVector(q, [positions[i], positions[i + 1], positions[i + 2]])
+    out[i] = r[0] + t.tx
+    out[i + 1] = r[1] + t.ty
+    out[i + 2] = r[2] + t.tz
+  }
+  return out
+}
+
+function offsetPoints(points: readonly Vec3[], t: Transform3D): Vec3[] {
+  const q = transformQuat(t)
+  return points.map(p => {
+    const r = rotateVector(q, p)
+    return [r[0] + t.tx, r[1] + t.ty, r[2] + t.tz] as Vec3
+  })
+}
+
+function offsetBody(body: AssemblyPickBody, t: Transform3D): AssemblyPickBody {
+  return {
+    ...body,
+    faces: body.faces ? { ...body.faces, positions: offsetPositions(body.faces.positions, t) } : null,
+    edges: body.edges ? { ...body.edges, segmentPositions: offsetPositions(body.edges.segmentPositions, t) } : null,
+    vertices: body.vertices ? { ...body.vertices, vertices: offsetPoints(body.vertices.vertices, t) } : null,
+    faceBoundaries: body.faceBoundaries
+      ? new Map([...body.faceBoundaries].map(([index, segs]) => [index, offsetPositions(segs, t)]))
+      : null,
+  }
+}
+
+/**
+ * Translate a baked pick snapshot onto the drawn pose. Each body carries its
+ * instance handle; its offset is the drawn pose relative to the pose the
+ * snapshot was baked at. Bodies already at their drawn pose are returned by
+ * reference, so a settle re-registers only the parts that actually moved.
+ */
+export function offsetPickBodies(
+  pickBodies: readonly AssemblyPickBody[],
+  bakedPose: Readonly<Record<string, Transform3D>>,
+  drawnPose: Readonly<Record<string, Transform3D>>,
+): AssemblyPickBody[] {
+  return pickBodies.map(body => {
+    const baked = bakedPose[body.handle]
+    const drawn = drawnPose[body.handle]
+    if (!baked || !drawn) return body
+    const offset = relativeTransform(drawn, baked)
+    if (transformsEqual(offset, IDENTITY_TRANSFORM)) return body
+    return offsetBody(body, offset)
+  })
 }

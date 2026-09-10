@@ -164,6 +164,41 @@ export function settledTransforms(
   return out
 }
 
+/**
+ * The rigid delta from the baked pose to the drawn pose for one handle. For the
+ * part being manipulated that is the live drag delta composed over any offset
+ * still owed; for every other part it is the settling offset. Identity at rest.
+ *
+ * The render group and the ID pick buffer both read this, so they cannot
+ * describe the parts at different poses.
+ */
+export function poseOffsetFor(
+  handle: string,
+  manipulation: ManipulationSession | null,
+  settling: Record<string, Transform3D>,
+): Transform3D {
+  const owed = settling[handle] ?? IDENTITY_TRANSFORM
+  return manipulation?.handle === handle
+    ? composeTransforms(manipulationDelta(manipulation), owed)
+    : owed
+}
+
+/**
+ * The drawn pose of one handle: the pose its bodies are baked at (`transforms`)
+ * carried by the live drag delta if it is the one being dragged, or by any
+ * settling offset a committed drag still owes. The render list and the ID buffer
+ * both build from this, so they cannot describe different layouts.
+ */
+export function drawnPose(
+  handle: string,
+  manipulation: ManipulationSession | null,
+  transforms: Record<string, Transform3D>,
+  settling: Record<string, Transform3D>,
+): Transform3D {
+  const baked = transforms[handle] ?? IDENTITY_TRANSFORM
+  return composeTransforms(poseOffsetFor(handle, manipulation, settling), baked)
+}
+
 export interface CommitResult {
   doc: AssemblyDoc
   // False when the pointer never left the seed pose: no dirty flag, no re-solve.
