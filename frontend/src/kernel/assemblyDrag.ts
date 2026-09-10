@@ -37,14 +37,15 @@ export const DRAG_MATE_ID = '__drag_target__'
  * 1e-3 against a weight-1 mate is a factor 1e6), while a direction the mates
  * leave free still tracks the cursor.
  *
- * The plan's starting 1e-4 is below where solver-core's seed anchor (`mu`, a
- * Tikhonov pull toward the seed) stops competing: with `s^2` of the same order
- * as `mu` a free part settles halfway to the cursor (measured 52%), so the
- * anchor, not the constraint, decides the free direction. At 1e-3 the constrained
+ * The plan's starting 1e-4 was tuned up deliberately, not abandoned: solver-core
+ * adds a Tikhonov seed anchor (`mu`, a pull toward the seed) that is the same
+ * order as `s^2` at 1e-4, so a free part settles halfway to the cursor (measured
+ * 52%). At 1e-3 the seed anchor no longer competes, while the constrained
  * violation a six-unit unreachable demand leaves is ~6e-6 mm and free directions
- * track within ~8e-3, both inside the 1e-4 backstop once the drag objective is
- * dropped. If the live feel ever reads wrong the principled fix is the
- * special-mate manifold projection, not a larger weight.
+ * track within ~8e-3. Both stay inside the 1e-4 mm/rad real-mate backstop that
+ * `assemblyRigidity.test.ts` pins once the drag objective is dropped. If the
+ * live feel ever reads wrong the principled fix is the special-mate manifold
+ * projection, not a larger weight.
  */
 export const DRAG_WEIGHT = 1e-3
 

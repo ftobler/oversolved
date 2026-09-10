@@ -227,6 +227,34 @@ describe('assemblyStore part manipulation', () => {
     expect(requestSolve).toHaveBeenCalledTimes(2)  // plus the commit solve
   })
 
+  // The triad analogue of the body-grab drop-fidelity test: the grabbed part is
+  // solved through a target-pose objective, so the pose the hook folds back in
+  // (setDragSolvedPose) is the one the commit must write -- not the raw gizmo
+  // delta. Before the fold, a triad dropped at the constrained solve and the
+  // commit wrote the unbounded geometric pose instead.
+  it('a triad drag commits the last solved pose, not the raw gizmo delta', () => {
+    const { host } = mountHost(docWith(instance('p1')))
+    // A prior full solve baked p1 off its doc seed.
+    const baked = { ...IDENTITY_TRANSFORM, tx: 10 }
+    useAssemblyStore.getState().setSnapshot({
+      ...useAssemblyStore.getState(),
+      transforms: { p1: baked },
+    })
+    const s = useAssemblyStore.getState()
+    s.beginPartManipulation('p1')
+    s.dragPartTranslate([3, 0, 0])  // raw gizmo would commit tx 13
+    // The live triad solve returns the constrained pose (tx 12); the hook folds
+    // it into the session for both drag paths.
+    const dropped = { ...IDENTITY_TRANSFORM, tx: 12 }
+    useAssemblyStore.getState().setDragSolvedPose(dropped)
+    useAssemblyStore.getState().endPartManipulation()
+
+    const committed = findInstance(host.doc, 'p1')!.transform
+    expect(Math.abs(committed.tx - dropped.tx)).toBeLessThanOrEqual(1e-4)
+    expect(Math.abs(committed.ty - dropped.ty)).toBeLessThanOrEqual(1e-4)
+    expect(Math.abs(committed.tz - dropped.tz)).toBeLessThanOrEqual(1e-4)
+  })
+
   it('a fixed instance is not manipulable by drag or gizmo', () => {
     const { host, requestSolve } = mountHost(docWith(instance('p1', { fixed: true })))
     const s = useAssemblyStore.getState()

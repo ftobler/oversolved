@@ -47,8 +47,16 @@ pub struct MateProblem {
     n: usize,
     /// Copy of the seed params widened to f64.
     x0: Vec<f64>,
-    /// Mates with local geometry.
+    /// Mates with local geometry, after the stale/dropped filter.
     mates: Vec<Mate>,
+    /// Mate count as it arrived on the wire, before the filter above. The
+    /// per-mate residual wire reports one entry per INPUT mate so the host's
+    /// positional fold cannot shift when a mate is dropped.
+    input_mate_count: usize,
+    /// For each surviving mate in `mates`, its index in the input list. Dropped
+    /// mates hold their slot in the output (a sentinel) instead of closing the
+    /// gap and mis-attributing every later residual.
+    kept_input_indices: Vec<usize>,
     /// Per-body param offsets.
     bodies: Vec<RigidBody>,
     /// Which bodies are grounded (grounded = not movable).
@@ -196,12 +204,14 @@ impl MateProblem {
             let bi = bi as usize;
             bi < n_bodies && (bi + 1) * 7 <= x0.len()
         };
-        let mates: Vec<Mate> = input
-            .mates
-            .iter()
-            .filter(|m| addressable(m.a.body_index) && addressable(m.b.body_index))
-            .cloned()
-            .collect();
+        let mut mates: Vec<Mate> = Vec::new();
+        let mut kept_input_indices: Vec<usize> = Vec::new();
+        for (input_index, m) in input.mates.iter().enumerate() {
+            if addressable(m.a.body_index) && addressable(m.b.body_index) {
+                kept_input_indices.push(input_index);
+                mates.push(m.clone());
+            }
+        }
 
         let mate_residual_total: usize = mates.iter().map(|m| mate_residual_count(m.kind)).sum();
         // The per-body residual loops index body_index * 7 against x/x0, so a
@@ -250,6 +260,8 @@ impl MateProblem {
             n,
             x0,
             mates,
+            input_mate_count: input.mates.len(),
+            kept_input_indices,
             bodies: input.bodies.clone(),
             grounded,
             m,
@@ -1416,20 +1428,22 @@ fn solve_mate_with_budget(input: &MateInput, budget: usize) -> MateOutput {
 
     let params_solved: Vec<f32> = lm_result.x.iter().map(|&v| v as f32).collect();
 
-    // Per-mate residual norms at the solved pose, sliced by the same per-kind
-    // counts `residuals()` pushed them in, so the wire mark and the formula that
-    // produced it cannot diverge.
+    // Per-mate residual norms at the solved pose, one per INPUT mate. Kept
+    // mates are sliced by the per-kind counts `residuals()` pushed them in; a
+    // dropped mate keeps its slot as NaN so a later residual cannot shift under
+    // the host's positional fold. The host reads a non-finite value as "no
+    // residual".
     let solved_residuals = problem.residuals(&lm_result.x);
     let mut block_start = 0usize;
-    let mut mate_residuals = Vec::with_capacity(problem.mates.len());
-    for m in &problem.mates {
+    let mut mate_residuals = vec![f64::NAN; problem.input_mate_count];
+    for (kept_pos, &input_index) in problem.kept_input_indices.iter().enumerate() {
+        let m = &problem.mates[kept_pos];
         let count = mate_residual_count(m.kind);
-        let norm = solved_residuals[block_start..block_start + count]
+        mate_residuals[input_index] = solved_residuals[block_start..block_start + count]
             .iter()
             .map(|v| v * v)
             .sum::<f64>()
             .sqrt();
-        mate_residuals.push(norm);
         block_start += count;
     }
 
@@ -2783,6 +2797,33 @@ mod tests {
         // The whole solve survives and leaves the free body where it was.
         let out = solve_mate(&input);
         assert!((out.params_solved[7] - 5.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn dropped_mate_keeps_its_residual_slot() {
+        // Three mates with the middle one naming a body the assembly does not
+        // have. The wire must still report three residuals, the dropped one a
+        // sentinel, or the host's positional fold would attribute the third
+        // mate's residual to the second.
+        let mut input = two_body_input();
+        input.mates.push(mate(
+            MateKind::Spherical,
+            mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+            mate_ref(9, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+            false, 0.0, 1.0, 0.0,
+        ));
+        input.mates.push(mate(
+            MateKind::Spherical,
+            mate_ref(0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+            mate_ref(1, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+            false, 0.0, 1.0, 0.0,
+        ));
+
+        let out = solve_mate(&input);
+        assert_eq!(out.mate_residuals.len(), 3);
+        assert!(out.mate_residuals[0].is_finite());
+        assert!(out.mate_residuals[1].is_nan(), "a dropped mate keeps its slot");
+        assert!(out.mate_residuals[2].is_finite());
     }
 
     #[test]

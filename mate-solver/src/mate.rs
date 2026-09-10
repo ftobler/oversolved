@@ -959,12 +959,12 @@ mod tests {
     }
 
     // A stale decoder can meet a fresh encoder (the WASM is served from a fixed,
-    // unhashed URL). The old rev's magic must be rejected, not silently decoded
-    // with the new fields dropped.
+    // unhashed URL). The prior rev's magic (MTS2) must be rejected, not decoded
+    // with the new weight field running off the old record.
     #[test]
     fn stale_magic_is_rejected() {
         let mut bytes = encode_mate_input(&sample_input());
-        bytes[0..4].copy_from_slice(&0x5331_544Du32.to_le_bytes());
+        bytes[0..4].copy_from_slice(&0x3253_544Du32.to_le_bytes());
         assert!(matches!(decode_mate_input(&bytes), Err(CodecError::BadMagic)));
     }
 

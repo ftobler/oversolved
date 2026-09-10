@@ -1547,6 +1547,11 @@ describe('mate wire format', () => {
 
   it('byte sizes align with Rust format', () => {
     const fixture = readMateWireFixture()
+    // The rev and both magics are pinned here as literals as well as through the
+    // fixture, so a stale fixture cannot hide a constant that moved on one side.
+    expect(fixture.rev).toBe(3)
+    expect(fixture.magic).toBe(0x3353544D)
+    expect(fixture.magic_out).toBe(0x3252544D)
     // One empty body, no mates: header 20 + bodies 4 + params 28 + mask 1 = 53 bytes
     const params = new Float32Array(7)
     const fixedMask = new Uint8Array([0])
@@ -1573,8 +1578,9 @@ describe('mate wire format', () => {
     // Record layout after the 53-byte header+body+params+mask prefix (1 body):
     // kind(1) + bodyA(4) + bodyB(4) + anchorKinds(2) + pointA(12) + axisA(12)
     // + pointB(12) + axisB(12) + flags(1) + offset(12) + ratio(4) + radius(4) = 80,
-    // then angle is the f32 at byte 80, followed by the two perp triples. The
-    // offset is three f32s, so this is 8 bytes past where the scalar form put it.
+    // then angle is the f32 at byte 80, followed by the two perp triples and the
+    // weight. The offset is three f32s, so this is 8 bytes past where the scalar
+    // form put it.
     const params = new Float32Array(7)
     const fixedMask = new Uint8Array([0])
     const encoded = encodeMateInput(1, params, fixedMask, [{
@@ -1591,10 +1597,10 @@ describe('mate wire format', () => {
     expect(view.getFloat32(recordStart + 80, true)).toBeCloseTo(Math.PI / 4)
   })
 
-  it('writes perp_a then perp_b after angle, in that order', () => {
-    // Distinct perps, read back by their exact record offsets: a swapped or
-    // mis-sized perp write is invisible when both sides share the +Z default
-    // every real-WASM row uses.
+  it('writes perp_a, perp_b then weight after angle, in that order', () => {
+    // Distinct perps and a non-default weight, read back by their exact record
+    // offsets: a swapped or mis-sized tail write is invisible when both sides
+    // share the +Z default and weight 1 every real-WASM row uses.
     const params = new Float32Array(7)
     const fixedMask = new Uint8Array([0])
     const encoded = encodeMateInput(1, params, fixedMask, [{
@@ -1604,9 +1610,10 @@ describe('mate wire format', () => {
       pointA: [0, 0, 0], axisA: [0, 0, 1],
       pointB: [0, 0, 0], axisB: [0, 0, 1],
       flip: false, offset: [0, 0, 0], ratio: 1, radius: 0, angle: 0,
-      perpA: [1, 0, 0], perpB: [0, 0, 1], weight: 1,
+      perpA: [1, 0, 0], perpB: [0, 0, 1], weight: 0.25,
     }])
-    // angle ends at record byte 84; perp_a is 84..96, perp_b is 96..108.
+    // angle ends at record byte 84; perp_a is 84..96, perp_b is 96..108, and the
+    // weight f32 is the last field at 108..112.
     const recordStart = 53
     const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
     expect(view.getFloat32(recordStart + 84, true)).toBe(1)
@@ -1615,5 +1622,6 @@ describe('mate wire format', () => {
     expect(view.getFloat32(recordStart + 96, true)).toBe(0)
     expect(view.getFloat32(recordStart + 100, true)).toBe(0)
     expect(view.getFloat32(recordStart + 104, true)).toBe(1)
+    expect(view.getFloat32(recordStart + 108, true)).toBeCloseTo(0.25)
   })
 })

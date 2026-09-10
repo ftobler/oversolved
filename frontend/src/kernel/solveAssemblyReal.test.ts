@@ -734,6 +734,41 @@ describeReal('every mate kind solves as itself against the real mate solver', ()
     })
   }
 
+  it('a mate dropped for an absent body does not shift its neighbour residuals', async () => {
+    // The first mate carries an inline anchor on a handle that names no loaded
+    // part: the TS side encodes it (body index -1) rather than marking it stale,
+    // and Rust drops it. The residual wire must keep one entry per input mate,
+    // so the good mate's number cannot slide into the dropped slot.
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity() },
+      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
+    ]
+    const ghostInline = {
+      kind: 'point' as const, point: [0, 0, 0] as [number, number, number],
+      axis: [0, 0, 1] as [number, number, number], geom_hash: '', created_by: 'ghost',
+    }
+    const dropped = {
+      id: 'dropped', kind: 'spherical' as const,
+      ref_a: { part: 'ghost', anchor: 'ghost', inlineAnchor: ghostInline },
+      ref_b: { part: 'pa', anchor: 'face' },
+    }
+    const good = {
+      id: 'good', kind: 'spherical' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }
+
+    const withDropped = await solveAssembly(parts, revs, [dropped, good], relay, solveMate!)
+    expect(withDropped.status.mates['dropped'].stale).toBe(false)
+    expect(withDropped.status.mates['dropped'].residual).toBeUndefined()
+    const goodResidual = withDropped.status.mates['good'].residual
+    expect(goodResidual).toBeDefined()
+    expect(goodResidual!).toBeLessThan(1e-4)
+
+    const control = await solveAssembly(parts, revs, [good], relay, solveMate!)
+    expect(control.status.mates['good'].residual!).toBeCloseTo(goodResidual!, 10)
+  })
+
   // The wire-version handshake, not routed through solveAssembly: its zero-mate
   // fast path skips the WASM call. A one-mate buffer built by the TS encoder
   // must decode in Rust; a drifted MATE_MAGIC makes solve_mate_bytes throw.

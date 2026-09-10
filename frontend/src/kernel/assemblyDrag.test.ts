@@ -113,10 +113,11 @@ describe('dragTargetPoseMate', () => {
     expect(mate.ref_b.part).toBe('p1')
     expect(mate.weight).toBe(DRAG_WEIGHT)
 
-    // Author the same target at full weight: with no real mates and no seed
-    // anchor competition at weight 1, the part must land bit-close on the pose
-    // the geometry was derived for. This validates the encoding (point, axis and
-    // authored roll), independently of the soft drag weight.
+    // Author the same target at full weight: with no real mates, the objective's
+    // curvature dwarfs the solver's tiny seed anchor, so the part must land
+    // bit-close on the pose the geometry was derived for. This validates the
+    // encoding (point, axis and authored roll), independently of the soft drag
+    // weight.
     const parts = [{ handle: 'p1', doc_id: 'doc-free', doc_rev: 1, transform: identity() }]
     const res = await solveAssembly(parts, revs, [{ ...mate, weight: 1 }], relay, solveMate!)
     const t = res.transforms['p1']

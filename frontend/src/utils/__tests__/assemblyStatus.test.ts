@@ -84,10 +84,24 @@ describe('mateFailure', () => {
     })
   })
 
+  it('marks a mate whose solved residual exceeds the acceptance tolerance', () => {
+    const status = stub({ mates: { m1: { stale: false, residual: 1e-3 } } })
+    expect(mateFailure('m1', status)).toMatchObject({
+      failed: true, level: 'error', message: 'The mate is not holding to tolerance.',
+    })
+  })
+
   it('is no mark for a healthy or absent mate', () => {
     expect(mateFailure('m1', stub({ mates: { m1: { stale: false } } })).failed).toBe(false)
     expect(mateFailure('m1', stub()).failed).toBe(false)
     expect(mateFailure('m1', null).failed).toBe(false)
+  })
+
+  it('leaves a converged or dropped-sentinel residual unmarked', () => {
+    // Converged inside tolerance.
+    expect(mateFailure('m1', stub({ mates: { m1: { stale: false, residual: 1e-6 } } })).failed).toBe(false)
+    // The solver's NaN sentinel for a dropped mate is not a constraint failure.
+    expect(mateFailure('m1', stub({ mates: { m1: { stale: false, residual: NaN } } })).failed).toBe(false)
   })
 })
 

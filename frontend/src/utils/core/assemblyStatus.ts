@@ -11,6 +11,14 @@
  */
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 
+/**
+ * The rigid-mate acceptance tolerance (mm, or dimensionless for axes), matching
+ * the plan's user-set 1e-4. The Rust solver's overall `mate_status` threshold is
+ * relative to the drawing's characteristic length; this per-mate mark is the
+ * absolute acceptance a single mate's weighted residual norm is held to.
+ */
+export const MATE_RESIDUAL_TOL = 1e-4
+
 export interface StatusMark {
   failed: boolean
   level: 'error' | 'warning' | null
@@ -52,6 +60,23 @@ export function mateFailure(
 
   if (result.stale) {
     return { failed: true, level: 'error', message: 'A reference no longer resolves; re-pick it.', cause: 'stale' }
+  }
+
+  // The solver's per-mate residual norm rides the output wire; a real mate that
+  // did not converge inside the acceptance tolerance is marked here rather than
+  // only in the overall verdict. A non-finite value is the solver's "dropped
+  // mate" sentinel and is not a failure.
+  if (
+    typeof result.residual === 'number' &&
+    Number.isFinite(result.residual) &&
+    result.residual > MATE_RESIDUAL_TOL
+  ) {
+    return {
+      failed: true,
+      level: 'error',
+      message: 'The mate is not holding to tolerance.',
+      cause: 'error',
+    }
   }
   return OK
 }

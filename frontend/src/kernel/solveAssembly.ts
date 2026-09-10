@@ -683,13 +683,16 @@ export async function solveAssembly(
       const outputBytes = solveMateFn(encoded)
       const decoded = decodeMateOutput(outputBytes, paramCount)
 
-      // Fold the solver's per-mate residual norms onto the mate marks. Indexed
-      // against `mateRecordIds` because the solver reports in the same order the
-      // records were encoded; a shorter block (a mate the solver dropped) just
-      // leaves the tail without a residual.
+      // Fold the solver's per-mate residual norms onto the mate marks, one per
+      // encoded record. A non-finite value is the solver's sentinel for a mate
+      // it dropped (a body that left the assembly), so it leaves `residual`
+      // unset rather than marking the mate as failed.
       for (let i = 0; i < mateRecordIds.length && i < decoded.mateResiduals.length; i++) {
-        const id = mateRecordIds[i]
-        mateResults[id] = { ...mateResults[id], residual: decoded.mateResiduals[i] }
+        const residual = decoded.mateResiduals[i]
+        if (Number.isFinite(residual)) {
+          const id = mateRecordIds[i]
+          mateResults[id] = { ...mateResults[id], residual }
+        }
       }
 
       // The boundary: the unit-norm constraint on qx..qw is a SOFT residual
