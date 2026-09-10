@@ -7,8 +7,8 @@ import type {
   PartInstance, Transform3D,
 } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations/helpers'
-import { EMPTY_MATE_REF } from '@/utils/mateKinds'
-import { IDENTITY_TRANSFORM, quatFromEulerXyz, quatToEulerXyz } from '@/utils/transform3d'
+import { EMPTY_MATE_REF, MATE_KIND_LABELS } from '@/utils/mateKinds'
+import { IDENTITY_TRANSFORM, quatFromEulerXyz, quatToEulerXyz, transformApproxEqual } from '@/utils/transform3d'
 
 export { IDENTITY_TRANSFORM }
 
@@ -26,14 +26,65 @@ export function emptyAssemblyDoc(): AssemblyDoc {
   return { kind: 'assembly', features: [] }
 }
 
+// Deep structural equality that treats object key order as insignificant. The
+// point is the cleared-label no-op: `setMateLabel` deletes the key, and a later
+// re-add can insert it at a different position than the original literal, which
+// `JSON.stringify` reads as a change. Arrays stay order-significant (a reorder
+// IS a change). Recurses so a nested object the same way is compared the same.
+function deepEquals(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEquals(a[i], b[i])) return false
+    }
+    return true
+  }
+  const ak = Object.keys(a as object)
+  const bk = Object.keys(b as object)
+  if (ak.length !== bk.length) return false
+  for (const key of ak) {
+    if (!Object.prototype.hasOwnProperty.call(b, key)) return false
+    if (!deepEquals((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) return false
+  }
+  return true
+}
+
+// Everything but `features`. Both sides get an explicit `features: undefined`, so
+// the key sets match whether or not a side carried the key at all.
+function withoutFeatures(doc: AssemblyDoc): Record<string, unknown> {
+  return { ...(doc as unknown as Record<string, unknown>), features: undefined }
+}
+
 // Whole-doc equality for the undo funnel's no-op guard. Every assembly mutation
 // is pure but mints a fresh doc even for a value no-op (setInstanceVisible with
 // the already-current value), so the funnel's reference fast path alone misses
-// that class. A structural compare is cheap here: an AssemblyDoc holds only
-// authored features, no solve results or base64. The funnel keeps `next ===
-// current` in front of this so a real edit never pays the O(doc) stringify.
+// that class.
+//
+// The compare is a touched slice, not a whole-document stringify: a mutation
+// reuses every untouched feature object by reference, so only the positional
+// entries that differ by reference can describe a change. That turns the
+// keystroke path inside a coalescing mate or instance edit from O(doc) into
+// O(changed feature). The untouched-feature reference walk is what makes it
+// sound; the funnel keeps `next === current` in front of this so a real edit
+// never even reaches it.
 export function assemblyDocEquals(a: AssemblyDoc, b: AssemblyDoc): boolean {
-  return JSON.stringify(a) === JSON.stringify(b)
+  if (a === b) return true
+  const aList = a.features
+  const bList = b.features
+  if (aList === undefined || bList === undefined) return deepEquals(a, b)
+  // A length change is an add or a remove, which a positional walk cannot
+  // express, so fall back to the whole-doc compare. The same goes for the rest
+  // of the document (kind, part_style), which no assembly mutation touches but
+  // which must never be silently dropped if one ever does.
+  if (aList.length !== bList.length) return deepEquals(a, b)
+  if (!deepEquals(withoutFeatures(a), withoutFeatures(b))) return false
+  for (let i = 0; i < aList.length; i++) {
+    if (aList[i] === bList[i]) continue
+    if (!deepEquals(aList[i], bList[i])) return false
+  }
+  return true
 }
 
 function features(doc: AssemblyDoc): AssemblyFeature[] {
@@ -167,11 +218,16 @@ export function setInstanceFixedFromSolved(
       // the exception -- freezing its current pose is what this call is for.
       if (inst.fixed && inst.handle !== handle) return f
       const solved = transforms[inst.handle]
+      // Only write a pose that actually differs from the seed. The wire is f32,
+      // so a free DOF comes back a few ulps off its f64 seed; baking that
+      // rounding persists it and the next commit re-rounds, walking the part by
+      // roughly one f32 ulp per commit and putting every part in every diff.
+      const moved = solved !== undefined && !transformApproxEqual(solved, inst.transform)
       return {
         ...f,
         instance: {
           ...inst,
-          transform: solved ? { ...solved } : inst.transform,
+          transform: moved ? { ...solved } : inst.transform,
           fixed: inst.handle === handle ? fixed : inst.fixed,
         },
       }
@@ -207,6 +263,10 @@ export function bakeSolvedTransforms(
       if (f.instance.fixed) return f
       const solved = transforms[f.instance.handle]
       if (!solved) return f
+      // A solve whose pose agrees with the seed within a few f32 ulps moved
+      // nothing: the wire's f32 rounding must not be baked in, or the free DOF
+      // walks one ulp per commit and every part churns in every document diff.
+      if (transformApproxEqual(solved, f.instance.transform)) return f
       return { ...f, instance: { ...f.instance, transform: { ...solved } } }
     }),
   }
@@ -332,18 +392,48 @@ export function findMate(doc: AssemblyDoc, featureId: string): MateFeatureDef | 
 }
 
 /**
+ * The default display name for a newly created mate: the kind's label and its
+ * one-based ordinal among the mates of that kind already in the doc.
+ *
+ * Minting it at creation (appendMate) rather than deriving it at render is what
+ * keeps the name stable: a render ordinal renumbers every later mate when an
+ * earlier one of the same kind is deleted, so an unlabelled "Fixed 2" silently
+ * became "Fixed 1". A legacy doc whose mates predate this stored its label
+ * nowhere, so it keeps the kind label alone until first renamed; `setMateLabel`
+ * re-mints a stable default on the first clear.
+ *
+ * `exceptId` excludes the mate being renamed, so re-minting a cleared label
+ * lands on that mate's own ordinal instead of one past the last sibling.
+ */
+export function defaultMateName(doc: AssemblyDoc, kind: MateKind, exceptId?: string): string {
+  const label = MATE_KIND_LABELS[kind] ?? kind
+  let count = 0
+  for (const f of features(doc)) {
+    if (f.kind === 'mate' && f.mate?.kind === kind && f.id !== exceptId) count++
+  }
+  return `${label} ${count + 1}`
+}
+
+/**
  * Append a mate with both references empty. A mate is authored before it is
  * aimed: the user inserts the kind, then picks `ref_a` and `ref_b`. Until both
  * resolve, the solve reports it stale and it renders red, which is the same
  * signal a mate whose geometry was deleted gives.
  *
  * The caller mints `id` so it can select and arm the new mate in the same event.
+ * The default label is minted and STORED here, so the tree never has to derive a
+ * name from render position.
  */
 export function appendMate(doc: AssemblyDoc, kind: MateKind, id: string): AssemblyDoc {
   const feature: AssemblyFeature = {
     id,
     kind: 'mate',
-    mate: { kind, ref_a: { ...EMPTY_MATE_REF }, ref_b: { ...EMPTY_MATE_REF } },
+    mate: {
+      kind,
+      label: defaultMateName(doc, kind),
+      ref_a: { ...EMPTY_MATE_REF },
+      ref_b: { ...EMPTY_MATE_REF },
+    },
   }
   return { ...doc, features: [...features(doc), feature] }
 }
@@ -375,13 +465,14 @@ export function replaceMate(doc: AssemblyDoc, featureId: string, def: MateFeatur
   return updateMateFeature(doc, featureId, () => ({ ...def }))
 }
 
-// Rename a mate. An empty/undefined label deletes the key so the tree falls back
-// to the computed default ('Fixed 1'); a YAML round-trip must not leave `null`.
+// Rename a mate. An empty/undefined label re-mints and stores a fresh stable
+// default rather than deleting the key, so a cleared name cannot drift back to
+// a render ordinal either. A YAML round-trip must not leave `null`.
 export function setMateLabel(doc: AssemblyDoc, featureId: string, label: string | undefined): AssemblyDoc {
   return updateMateFeature(doc, featureId, m => {
     const next = { ...m }
     if (label && label.trim()) next.label = label
-    else delete next.label
+    else next.label = defaultMateName(doc, m.kind, featureId)
     return next
   })
 }

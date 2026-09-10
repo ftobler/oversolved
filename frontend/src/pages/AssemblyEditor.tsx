@@ -49,8 +49,6 @@ import mateCopyRotationIcon from '@/assets/icons/mate-copy-rotation.svg'
 import '@/pages/Part.css'
 import '@/pages/Assembly.css'
 
-export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/utils/builtins'
-
 // One toolbar button per mate kind, so the glyphs live next to the labels.
 const MATE_KIND_ICONS: Record<MateKind, string> = {
   fixed: mateFixedIcon,

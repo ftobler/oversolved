@@ -39,6 +39,20 @@ describe('IndexedDbDocumentStore', () => {
     now.mockRestore()
   })
 
+  describe('document kind', () => {
+    it('records the kind parsed from the content and lists it', async () => {
+      const store = new IndexedDbDocumentStore()
+      const asm = await store.create('Assembly')
+      await store.save(asm.uuid, { content: 'kind: assembly\nfeatures: []\n' })
+      const part = await store.create('Part')
+      await store.save(part.uuid, { content: 'kind: part\nfeatures: []\n' })
+
+      const byName = Object.fromEntries((await store.list()).map(s => [s.name, s]))
+      expect(byName.Assembly.kind).toBe('assembly')
+      expect(byName.Part.kind).toBe('part')
+    })
+  })
+
   describe('sync-readiness meta', () => {
     it('first save sets rev=1, dirty=true, updatedAt populated', async () => {
       const store = new IndexedDbDocumentStore()

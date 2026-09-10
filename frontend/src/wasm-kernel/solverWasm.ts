@@ -32,6 +32,10 @@ interface SketchModule {
 interface MateModule {
   default: (input?: unknown) => Promise<unknown>
   solve_mate_bytes: SolveBytes
+  // The live-drag entry point beside the full solve. A build that predates it
+  // returns undefined, which the loader surfaces as null and the worker falls
+  // back to the full solve for.
+  solve_mate_bytes_live?: SolveBytes
 }
 
 /** Base URL the `--target web` pkgs are served from. Override per deployment. */
@@ -80,6 +84,14 @@ export function loadTopologyWasm(base = DEFAULT_BASE): Promise<TopologyBytes | n
  *  package from the sketch one -- see the module header. */
 export function loadMateWasm(base = DEFAULT_BASE): Promise<SolveBytes | null> {
   return loadPackage<MateModule>('mate_solver', base).then((m) => m?.solve_mate_bytes ?? null)
+}
+
+/** Browser loader for the mate solver's live-drag entry point
+ *  (`solve_mate_bytes_live`), the same package as `loadMateWasm`. Returns null
+ *  when the build predates the entry point; the caller falls back to the full
+ *  solve. */
+export function loadMateWasmLive(base = DEFAULT_BASE): Promise<SolveBytes | null> {
+  return loadPackage<MateModule>('mate_solver', base).then((m) => m?.solve_mate_bytes_live ?? null)
 }
 
 /** Reset every memoized package loader (tests / hot-reload). */

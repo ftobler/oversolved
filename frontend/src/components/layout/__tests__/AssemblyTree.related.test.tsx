@@ -5,15 +5,16 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
-import type { PartInstance, MateFeature } from '@/types/cad'
+import type { AssemblyDoc, PartInstance, MateFeature } from '@/types/cad'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+import { appendMate, mateFeatures, removeMate } from '@/utils/assemblyMutations'
 
 function instance(handle: string): PartInstance {
   return { handle, doc_id: `doc-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true }
 }
 
 function mate(id: string, partA: string, partB: string): MateFeature {
-  return { id, mate: { kind: 'fixed', ref_a: { part: partA, anchor: 'a1' }, ref_b: { part: partB, anchor: 'b1' } } }
+  return { id, mate: { kind: 'fixed', label: `Fixed ${id.slice(1)}`, ref_a: { part: partA, anchor: 'a1' }, ref_b: { part: partB, anchor: 'b1' } } }
 }
 
 const instances = [instance('p1'), instance('p2'), instance('p3')]
@@ -91,5 +92,26 @@ describe('AssemblyTree cross-highlight', () => {
     const p1Row = rowByName(container, 'doc-p1')
     expect(p1Row.className).toContain('selected')
     expect(p1Row.className).not.toContain('related')
+  })
+})
+
+describe('AssemblyTree default mate names', () => {
+  function twoFixedMates(): AssemblyDoc {
+    let doc: AssemblyDoc = { kind: 'assembly', features: [] }
+    doc = appendMate(doc, 'fixed', 'm1')
+    return appendMate(doc, 'fixed', 'm2')
+  }
+
+  // The stored label is what the row shows and what seeds the rename dialog, so
+  // deleting an earlier mate of the same kind can no longer renumber it from
+  // "Fixed 2" back to "Fixed 1".
+  it('keeps the second mate named "Fixed 2" after the first is removed', () => {
+    const before = renderTree({ mates: mateFeatures(twoFixedMates()) })
+    expect(before.getByText('Fixed 2')).toBeInTheDocument()
+    before.unmount()
+
+    const after = renderTree({ mates: mateFeatures(removeMate(twoFixedMates(), 'm1')) })
+    expect(after.getByText('Fixed 2')).toBeInTheDocument()
+    expect(after.queryByText('Fixed 1')).not.toBeInTheDocument()
   })
 })

@@ -334,6 +334,7 @@ export function solveAssemblyViaWorker(
   parts: PartInputSpec[],
   revs: Record<string, number>,
   mates: MateSpec[],
+  live = false,
 ): Promise<AssemblySolveOkResponse | null> {
   if (workerCrashAt !== 0 && Date.now() - workerCrashAt < crashCooldownMs) {
     // The last trap is still inside the cooldown: spawning a fresh worker now
@@ -345,7 +346,7 @@ export function solveAssemblyViaWorker(
   if (!w) return Promise.resolve(null)
   const id = nextId++
   return new Promise<AssemblySolveOkResponse | null>((resolve, reject) => {
-    const msg: SolveAssemblyRequest = { id, kind: 'solveAssembly', assemblyId, parts, revs, mates }
+    const msg: SolveAssemblyRequest = { id, kind: 'solveAssembly', assemblyId, parts, revs, mates, live }
     // Post before registering the pending entry: a throw here (a non-cloneable
     // payload, or a worker that died between ensureWorker and the post) must
     // reject the promise rather than leak an entry that can never settle. The

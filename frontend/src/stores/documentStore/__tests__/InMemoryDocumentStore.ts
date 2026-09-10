@@ -1,6 +1,7 @@
 import type {
-  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta,
+  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta, DocumentKind,
 } from '../types'
+import { parseDocumentKind } from '../types'
 import { suggestedCloneName } from '../cloneName'
 import { randomUuid } from '@/utils/randomUuid'
 
@@ -23,6 +24,7 @@ interface MemDoc {
   uuid: string
   name: string
   content: string
+  kind?: DocumentKind
   preview_image?: string
   is_public: boolean
   created_at: string
@@ -69,6 +71,7 @@ export class InMemoryDocumentStore implements DocumentStore {
       is_owner: true,
       owner_username: OWNER,
       is_public: d.is_public,
+      kind: d.kind ?? parseDocumentKind(d.content),
       preview_image: d.preview_image,
       meta: { ...d.meta },
     }))
@@ -96,6 +99,7 @@ export class InMemoryDocumentStore implements DocumentStore {
         uuid: id,
         name: 'Untitled',
         content: input.content,
+        kind: parseDocumentKind(input.content),
         preview_image: input.preview_image,
         is_public: false,
         created_at: new Date(at).toISOString(),
@@ -105,6 +109,7 @@ export class InMemoryDocumentStore implements DocumentStore {
       return
     }
     rec.content = input.content
+    rec.kind = parseDocumentKind(input.content)
     if (input.preview_image !== undefined) rec.preview_image = input.preview_image
     rec.updated_at = new Date(at).toISOString()
     rec.meta = { ...rec.meta, rev: rec.meta.rev + 1, updatedAt: at, dirty: true }

@@ -425,8 +425,10 @@ export type MateOffset = NumberOrExpr | MateOffsetVec
 
 export interface MateFeatureDef {
   kind: MateKind
-  // User-facing name shown in the tree. Absent means "use the default", a
-  // kind + ordinal like 'Fixed 1' computed at render time. Renaming writes it.
+  // User-facing name shown in the tree. Minted and stored when the mate is
+  // appended (a kind + ordinal like 'Fixed 1'), so deleting another mate cannot
+  // renumber it. Absent only on legacy docs authored before labels were stored;
+  // those fall back to the bare kind label until first renamed.
   label?: string
   ref_a: MateRef
   ref_b: MateRef

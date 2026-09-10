@@ -16,3 +16,11 @@ use wasm_bindgen::prelude::*;
 pub fn solve_mate_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
     crate::api::solve_mate_bytes(input).map_err(|e| JsError::new(&format!("mate decode error: {e:?}")))
 }
+
+/// Live-drag variant of `solve_mate_bytes`: same solved pose, but skips the
+/// dense rank/dof SVD so a per-frame drag tick does not pay for diagnostics it
+/// discards. See `api::solve_mate_bytes_live`.
+#[wasm_bindgen]
+pub fn solve_mate_bytes_live(input: &[u8]) -> Result<Vec<u8>, JsError> {
+    crate::api::solve_mate_bytes_live(input).map_err(|e| JsError::new(&format!("mate decode error: {e:?}")))
+}

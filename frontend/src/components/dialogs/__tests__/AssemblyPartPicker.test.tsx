@@ -53,6 +53,29 @@ describe('AssemblyPartPicker', () => {
     expect(h.list).toHaveBeenCalledWith({ sort: 'name', search: '' })
   })
 
+  // An assembly is not an insert source: instancing one yields a tree row with
+  // no geometry and no message. The picker filters on the summary's kind, and a
+  // legacy summary with no kind stays insertable (the safe default).
+  it('shows only parts, never assemblies', async () => {
+    h.list.mockResolvedValue([
+      { ...doc('part-1', 'Bracket', 5), kind: 'part' },
+      { ...doc('asm-2', 'Other Assembly', 1), kind: 'assembly' },
+    ])
+    renderPicker()
+    await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())
+    expect(screen.queryByText('Other Assembly')).not.toBeInTheDocument()
+    // The only visible tile is the part, so the Insert button cannot target the
+    // assembly.
+    expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
+  })
+
+  it('shows the parts empty state when the filter leaves no tiles', async () => {
+    h.list.mockResolvedValue([{ ...doc('asm-2', 'Other Assembly', 1), kind: 'assembly' }])
+    renderPicker()
+    await waitFor(() => expect(screen.getByText('No parts available.')).toBeInTheDocument())
+    expect(screen.queryByText('Other Assembly')).not.toBeInTheDocument()
+  })
+
   it('titles itself with an icon, like every other dialog on the shell', () => {
     renderPicker()
     expect(document.querySelector('.dialog-component-icon')).toHaveTextContent('library_add')

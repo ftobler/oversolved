@@ -4,7 +4,7 @@ import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
-import { assemblyDocEquals, setInstancePosition, setInstanceVisible } from '@/utils/assemblyMutations'
+import { assemblyDocEquals, setInstancePosition, setInstanceVisible, setMateLabel } from '@/utils/assemblyMutations'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import type { AssemblyDoc } from '@/types/cad'
 
@@ -202,4 +202,80 @@ describe('assembly dead undo entries', () => {
       expect(result.current.redoStack.length).toBeLessThanOrEqual(3)
     }
   })
+
+  // The whole-doc stringify this compare replaced was key-order sensitive: a
+  // structurally identical doc whose keys were inserted in another order read as
+  // a change and charged a dead undo entry. Two docs that differ only in key
+  // order are the same document.
+  it('assemblyDocEquals ignores object key order but catches a real change', () => {
+    const a = mateDoc()
+    const reordered: AssemblyDoc = {
+      features: a.features!.map(f => ({ mate: f.mate, id: f.id, kind: f.kind })),
+      kind: 'assembly',
+    }
+    expect(assemblyDocEquals(a, reordered)).toBe(true)
+    expect(assemblyDocEquals(a, {
+      ...reordered,
+      features: [{ ...reordered.features![0], id: 'm2' }],
+    })).toBe(false)
+  })
+
+  // The cleared-label no-op is the concrete case the touch-slice compare exists
+  // for: setting a label then clearing it rebuilds the mate feature with its
+  // keys in a different order, which the old stringify read as a change.
+  it('a mate label set and cleared back through the funnel charges no dead entry', () => {
+    const docA = mateDoc()
+    const docRef = { current: docA }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    // Fill the redo branch so a dead push would visibly clear it.
+    act(() => { result.current.pushUndo(docA, 'Add mate') })
+    act(() => { result.current.handleUndo() })
+    expect(result.current.redoStack).toHaveLength(1)
+    useUnsavedChangesStore.getState().setDirty(false)
+
+    const funnelMutate = (label: string, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+      const current = docRef.current!
+      const next = fn(current)
+      if (next === current || assemblyDocEquals(current, next)) return
+      result.current.pushUndo(current, label)
+      docRef.current = next
+      setDoc(next)
+      useUnsavedChangesStore.getState().setDirty(true)
+    }
+
+    act(() => {
+      funnelMutate('Rename mate', d => {
+        const named = setMateLabel(d, 'm1', 'Fixed 1')
+        const cleared = setMateLabel(named, 'm1', '')
+        // Rebuild the feature with its keys in another order: structurally
+        // identical to docA, but not by the old stringify.
+        return { ...cleared, features: (cleared.features ?? []).map(f => ({ mate: f.mate, id: f.id, kind: f.kind })) }
+      })
+    })
+
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack).toHaveLength(1)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+    expect(docRef.current).toEqual(docA)
+  })
 })
+
+function mateDoc(): AssemblyDoc {
+  return {
+    kind: 'assembly',
+    features: [{
+      id: 'm1',
+      kind: 'mate',
+      mate: {
+        kind: 'fixed',
+        label: 'Fixed 1',
+        ref_a: { part: 'p1', anchor: 'a1' },
+        ref_b: { part: 'p2', anchor: 'b1' },
+      },
+    }],
+  }
+}

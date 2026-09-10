@@ -195,3 +195,24 @@ export function transformsEqual(a: Transform3D, b: Transform3D, eps = 1e-9): boo
     Math.abs(dot) >= 1 - eps * eps
   )
 }
+
+// How many f32 ulps a bake treats as "the same pose". The mate wire is f32 in
+// both directions, so a solve returns a pose that differs from an f64 seed only
+// by f32 rounding on a free DOF. Persisting that difference every commit makes
+// the free DOF walk by roughly one ulp per commit; a relative epsilon of a few
+// ulps is what lets the bake recognise the rounding it must not write.
+const APPROX_F32_EPS = 1e-6
+
+// Like transformsEqual but for the bake's "did the solver actually move this
+// part" question: each component is compared relative to its own magnitude, so
+// the tolerance tracks the f32 quantum at the value, and the quaternion compare
+// is rotation-aware (q and -q are the same pose). transformsEqual stays the
+// exact-identity test, where an absolute epsilon is what "unchanged" means.
+export function transformApproxEqual(a: Transform3D, b: Transform3D, eps = APPROX_F32_EPS): boolean {
+  const close = (x: number, y: number) => Math.abs(x - y) <= eps * Math.max(1, Math.abs(x), Math.abs(y))
+  if (!close(a.tx, b.tx) || !close(a.ty, b.ty) || !close(a.tz, b.tz)) return false
+  const qa = transformQuat(a)
+  const qb = transformQuat(b)
+  const dot = qa[0] * qb[0] + qa[1] * qb[1] + qa[2] * qb[2] + qa[3] * qb[3]
+  return Math.abs(dot) >= 1 - eps * eps
+}

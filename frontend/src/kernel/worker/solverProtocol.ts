@@ -152,6 +152,9 @@ export interface SolveAssemblyRequest {
   parts: PartInputSpec[]
   revs: Record<string, number>
   mates: MateSpec[]
+  /** True for a live drag tick. The worker routes it to the live WASM entry
+   *  point, which skips the dense rank/dof SVD the drag path discards. */
+  live?: boolean
 }
 
 /** Successful assembly solve response from the anchor solver worker. */

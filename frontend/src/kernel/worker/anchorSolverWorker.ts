@@ -13,7 +13,7 @@
 
 import { inWorker } from '../inWorker'
 import { extractErrorMessage } from '../errors'
-import { initAnchorSolver, getMateSolver } from '../../wasm-kernel/anchorSolver'
+import { initAnchorSolver, getMateSolver, getMateSolverLive } from '../../wasm-kernel/anchorSolver'
 import { solveAssembly } from '../solveAssembly'
 import type { AssemblyBuildResponse } from '../solveAssembly'
 import { bundleCachePutIfAbsent } from '../bundleCache'
@@ -188,7 +188,12 @@ export async function handleSolveAssembly(
   try {
     scopeRelayIdsToGeneration(req.id)
     await initAnchorSolver()
-    const solver = getMateSolver()
+    // A live drag tick routes to the live entry point, which skips the dense
+    // rank/dof SVD. A build without that entry point (or a full solve) uses the
+    // full solver, so the fallback is always correct.
+    const solver = req.live
+      ? (getMateSolverLive() ?? getMateSolver())
+      : getMateSolver()
 
     const result: AssemblyBuildResponse = await solveAssembly(
       req.parts,

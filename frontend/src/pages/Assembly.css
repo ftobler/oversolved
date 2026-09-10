@@ -94,12 +94,6 @@
   outline: 1px solid #1e3a4a;
 }
 
-.assembly-tree-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
 /* ── Inline editors (mate + instance) ──
    Rendered inside the pink .feature-item.editing row, below its title. Both
    bodies are built from Part.css's field grammar (.feature-field-row,

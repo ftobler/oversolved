@@ -1,4 +1,5 @@
-import type { DocMeta } from './types'
+import type { DocMeta, DocumentKind } from './types'
+import { parseDocumentKind } from './types'
 import { secureFilename, uniqueStem, UNTITLED_DOC_NAME } from './secureFilename'
 import { randomUuid } from '@/utils/randomUuid'
 import { base64ToBytes } from '@/kernel/occ/stepIo'
@@ -63,6 +64,10 @@ export interface IndexEntry {
   stem: string
   name: string
   is_public: boolean
+  // The document kind, persisted so list() need not read and parse every file
+  // body. Absent on entries written before the field; the picker treats an
+  // absent kind as insertable and the next save backfills it.
+  kind?: DocumentKind
   created_at: string
   updated_at: string
   meta: DocMeta
@@ -603,7 +608,7 @@ export function allocateStem(name: string, taken: Set<string>): string {
 // A file found in the folder that no index entry claims. Its name is its name:
 // the point of a directory library is that the filename IS the document name,
 // so an externally dropped Bracket.yaml opens as "Bracket".
-function adopt(stem: string, has_preview: boolean, file: DiskFile, deleted: boolean): IndexEntry {
+function adopt(stem: string, has_preview: boolean, file: DiskFile, deleted: boolean, kind: DocumentKind): IndexEntry {
   const now = Date.now()
   const uuid = randomUuid()
   return {
@@ -611,6 +616,7 @@ function adopt(stem: string, has_preview: boolean, file: DiskFile, deleted: bool
     stem,
     name: stem,
     is_public: false,
+    kind,
     created_at: new Date(now).toISOString(),
     updated_at: new Date(now).toISOString(),
     // rev 1, not 0: the file has content, so a bundle cache keyed on rev must
@@ -637,10 +643,25 @@ async function adoptOrphans(
   let adopted = false
   for (const [stem, handle] of contents.docs) {
     if (claimed.has(stem)) continue
-    kept.push(adopt(stem, contents.previews.has(stem), await fingerprint(handle), deleted))
+    // Adoption is the one path that does not already hold the bytes, so it reads
+    // them: the picker's kind filter must not admit an adopted assembly. Only
+    // orphans pay this read, and in a folder this app has been keeping there are
+    // none.
+    const kind = await adoptedKind(handle)
+    kept.push(adopt(stem, contents.previews.has(stem), await fingerprint(handle), deleted, kind))
     adopted = true
   }
   return adopted
+}
+
+async function adoptedKind(handle: FileSystemFileHandle): Promise<DocumentKind> {
+  try {
+    return parseDocumentKind(await (await handle.getFile()).text())
+  } catch {
+    // An unreadable orphan is still adopted; an unknown kind reads as a part,
+    // the same safe default the picker applies to a missing one.
+    return 'part'
+  }
 }
 
 // The local-change stamp for a change this app did not make: bump rev so every

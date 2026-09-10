@@ -30,6 +30,7 @@ import { BUNDLE_SCHEMA, type Anchor, type PartBundle } from '../partBundle'
 vi.mock('../../wasm-kernel/anchorSolver', () => ({
   initAnchorSolver: vi.fn().mockResolvedValue(undefined),
   getMateSolver: vi.fn().mockReturnValue(null),
+  getMateSolverLive: vi.fn().mockReturnValue(null),
 }))
 
 vi.mock('../solveAssembly', () => ({
@@ -131,6 +132,32 @@ describe('handleSolveAssembly', () => {
       req.mates,
       relay.service,
       mockSolver,
+    )
+  })
+
+  it('routes a live request to the live solver entry point', async () => {
+    const relay = fakeRelay()
+    const fullSolver = vi.fn()
+    const liveSolver = vi.fn()
+    const mod = await import('../../wasm-kernel/anchorSolver')
+    vi.mocked(mod.getMateSolver).mockReturnValue(fullSolver)
+    vi.mocked(mod.getMateSolverLive).mockReturnValue(liveSolver)
+
+    await handleSolveAssembly(makeReq({ live: true }), relay.service)
+    expect(solveAssembly).toHaveBeenLastCalledWith(
+      expect.anything(), expect.anything(), expect.anything(), relay.service, liveSolver,
+    )
+
+    await handleSolveAssembly(makeReq({ live: false }), relay.service)
+    expect(solveAssembly).toHaveBeenLastCalledWith(
+      expect.anything(), expect.anything(), expect.anything(), relay.service, fullSolver,
+    )
+
+    // A build without the live entry point falls back to the full solver.
+    vi.mocked(mod.getMateSolverLive).mockReturnValue(null)
+    await handleSolveAssembly(makeReq({ live: true }), relay.service)
+    expect(solveAssembly).toHaveBeenLastCalledWith(
+      expect.anything(), expect.anything(), expect.anything(), relay.service, fullSolver,
     )
   })
 

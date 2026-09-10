@@ -1,7 +1,8 @@
 import type {
-  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta,
+  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta, DocumentKind,
   TrashAdapter, TrashDoc,
 } from './types'
+import { parseDocumentKind } from './types'
 import { idbGet, idbGetAll, idbPut, idbDelete, idbReadModifyWrite } from './idb'
 import { suggestedCloneName } from './cloneName'
 import { randomUuid } from '@/utils/randomUuid'
@@ -18,6 +19,10 @@ interface StoredDoc {
   uuid: string
   name: string
   content: string
+  // Denormalized from content on save so list() does not parse every document
+  // body just to paint a tile. Absent on records written before the field, which
+  // toSummary parses from the content it already has in hand.
+  kind?: DocumentKind
   preview_image?: string
   is_public: boolean
   created_at: string
@@ -42,6 +47,9 @@ function toSummary(rec: StoredDoc): DocSummary {
     is_owner: true,
     owner_username: LOCAL_OWNER,
     is_public: rec.is_public,
+    // A record written before `kind` existed has no stored value; the content is
+    // already loaded by idbGetAll, so parse it rather than report undefined.
+    kind: rec.kind ?? parseDocumentKind(rec.content),
     preview_image: rec.preview_image,
     meta: rec.meta,
   }
@@ -119,6 +127,7 @@ export class IndexedDbDocumentStore implements DocumentStore {
         uuid: id,
         name: existing?.name ?? 'Untitled',
         content: input.content,
+        kind: parseDocumentKind(input.content),
         preview_image: input.preview_image ?? existing?.preview_image,
         is_public: existing?.is_public ?? false,
         created_at: existing?.created_at ?? new Date(now).toISOString(),

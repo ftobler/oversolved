@@ -12,7 +12,9 @@ import type { Mesh3D } from '@/types/cad'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
-  useThree: () => ({ camera: {} }),
+  // p2w requires a real orthographic camera now; the degenerate `{}` mock used
+  // to be read as a zoom-less fallback of 1.
+  useThree: () => ({ camera: { isOrthographicCamera: true, zoom: 1 } }),
 }))
 
 // A VertexInstancePainter whose sync is a spy shared across instances, so a test
@@ -62,7 +64,7 @@ async function renderBody(visible = true) {
 /** The frame callback Body3D registered, invoked with a stub frame state. */
 function runFrame() {
   const cb = vi.mocked(useFrame).mock.calls.at(-1)![0]
-  act(() => { cb({ camera: {} } as never, 0) })
+  act(() => { cb({ camera: { isOrthographicCamera: true, zoom: 1 } } as never, 0) })
 }
 
 describe('Body3D visible vertex pass (unchanged by the pick-cube refactor)', () => {

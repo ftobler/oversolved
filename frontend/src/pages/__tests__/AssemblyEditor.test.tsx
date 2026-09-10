@@ -1322,7 +1322,9 @@ describe('AssemblyEditor undo/redo', () => {
     act(() => { executeCommand('undo') })
     await tick()
     await tick()
-    expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBeUndefined()
+    // Undo reverts to the mate as inserted, which now carries its minted
+    // default label rather than falling back to a render ordinal.
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBe('Fixed 1')
   })
 
   // The funnel's content-level no-op guard: a rename that writes back the label

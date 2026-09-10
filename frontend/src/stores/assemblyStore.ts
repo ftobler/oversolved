@@ -154,36 +154,50 @@ export interface AssemblyEditorData {
   redoStack: AssemblyUndoEntry[]
 }
 
-export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData = {
-  doc: null,
-  instances: [],
-  mates: [],
-  solveStatus: null,
-  transforms: {},
-  bodies: {},
-  edgeCurves: {},
-  entityMateRefs: {},
-  anchors: {},
-  pickGeometry: [],
-  pickGeometryPose: {},
-  subject: null,
-  editingSubject: { kind: 'none' },
-  activeMateField: null,
-  mateFieldDirty: false,
-  pickCandidates: [],
-  pickIndex: -1,
-  pickScopeEntity: null,
-  hoverHits: [],
-  entitySelection: new Set(),
-  hoveredEntity: null,
-  showPickDebug: false,
-  manipulation: null,
-  gizmoDrag: null,
-  settlingOffsets: {},
-  isSolving: false,
-  undoStack: [],
-  redoStack: [],
+// Mint a fresh set of defaults. Every caller that needs a default for a LIVE
+// store slot (the create() seed, resetTransientAssemblyState) must go through
+// this rather than the exported constant: the constant's containers are shared,
+// and a default Set handed to the store by reference would be poisoned by the
+// first in-place `entitySelection.add(...)` for every later document in the tab.
+export function createDefaultAssemblyEditorData(): AssemblyEditorData {
+  return {
+    doc: null,
+    instances: [],
+    mates: [],
+    solveStatus: null,
+    transforms: {},
+    bodies: {},
+    edgeCurves: {},
+    entityMateRefs: {},
+    anchors: {},
+    pickGeometry: [],
+    pickGeometryPose: {},
+    subject: null,
+    editingSubject: { kind: 'none' },
+    activeMateField: null,
+    mateFieldDirty: false,
+    pickCandidates: [],
+    pickIndex: -1,
+    pickScopeEntity: null,
+    hoverHits: [],
+    entitySelection: new Set(),
+    hoveredEntity: null,
+    showPickDebug: false,
+    manipulation: null,
+    gizmoDrag: null,
+    settlingOffsets: {},
+    isSolving: false,
+    undoStack: [],
+    redoStack: [],
+  }
 }
+
+// READ-ONLY. Exported for the many call sites and tests that pass a default to
+// `setSnapshot`, which copies the top level before it writes. `setSnapshot` is
+// the only permitted consumer of a mutable field here; a caller that needs a
+// default for a live store slot uses `createDefaultAssemblyEditorData()`.
+export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData =
+  Object.freeze(createDefaultAssemblyEditorData())
 
 /** Everything one solve produces. Grouped so a new derived artifact (anchors,
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
@@ -370,7 +384,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
 }
 
 export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
-  ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+  ...createDefaultAssemblyEditorData(),
   setSnapshot: (data) => set((prev) => {
     const prevRec = prev as unknown as Record<string, unknown>
     const merged = { ...data } as unknown as Record<string, unknown>
@@ -408,7 +422,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
 
   resetTransientAssemblyState: () => set(() => {
     const next: Record<string, unknown> = {}
-    const defaults = DEFAULT_ASSEMBLY_EDITOR_DATA as unknown as Record<string, unknown>
+    const defaults = createDefaultAssemblyEditorData() as unknown as Record<string, unknown>
     for (const field of STORE_OWNED_FIELDS) {
       // The stacks survive here: a doc load clears them via clearAssemblyHistory,
       // and the reset is about interaction residue, not history.

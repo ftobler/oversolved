@@ -46,8 +46,8 @@ describe('p2w (world units per pixel)', () => {
     expect(p2w(cam)).toBeCloseTo(0.5)
   })
 
-  it('returns 1 for a camera without a zoom property', () => {
-    expect(p2w({} as unknown as THREE.Camera)).toBe(1)
+  it('throws for a camera without an orthographic flag instead of returning 1', () => {
+    expect(() => p2w({} as unknown as THREE.Camera)).toThrow(/orthographic/i)
   })
 })
 

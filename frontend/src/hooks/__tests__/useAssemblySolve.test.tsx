@@ -395,6 +395,44 @@ describe('useAssemblySolve', () => {
     useAssemblyStore.getState().cancelPartManipulation()
   })
 
+  it('flags live drag ticks (and full solves) on the worker request', async () => {
+    // The live entry point skips the dense rank/dof SVD; the full entry point is
+    // the one on pointer-up that owns the verdict. The wire flag is what selects
+    // them worker-side.
+    setAssemblyCallbacks(null)
+    useAssemblyStore.getState().setSnapshot({
+      ...DEFAULT_ASSEMBLY_EDITOR_DATA,
+      doc: docWith(instance('p1'), instance('p2')),
+      transforms: { p1: { ...IDENTITY_TRANSFORM }, p2: { ...IDENTITY_TRANSFORM } },
+    })
+    useAssemblyStore.getState().beginPartManipulation('p1')
+    useAssemblyStore.getState().dragPartTranslate([10, 0, 0])
+
+    h.solveAssemblyViaWorker.mockResolvedValue({
+      id: 1, kind: 'solveAssembly' as const, ok: true as const,
+      payload: {
+        transforms: { p2: { ...IDENTITY_TRANSFORM, tx: 4 } },
+        bodies: { p2: [meshPayload()] },
+        // The live entry point zeroes the diagnostics it skipped.
+        status: {
+          verdict: 'fully_constrained', residualNorm: 0, rank: 0, dof: 0, iters: 1,
+          mates: {}, parts: {},
+        },
+      },
+    })
+
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'), instance('p2'))))
+    await act(async () => { result.current.requestSolve() })
+    expect(h.solveAssemblyViaWorker.mock.calls[0][4]).toBe(true)
+    // A zeroed-diagnostics live reply still installs the follower's transform.
+    expect(useAssemblyStore.getState().transforms.p2).toMatchObject({ tx: 4 })
+
+    // Pointer-up clears the manipulation, so the next request is a full solve.
+    useAssemblyStore.getState().cancelPartManipulation()
+    await act(async () => { result.current.requestSolve() })
+    expect(h.solveAssemblyViaWorker.mock.calls[1][4]).toBe(false)
+  })
+
   it('a live drag tick strips the verdict so a per-frame overconstrained cannot flicker the banner', async () => {
     setAssemblyCallbacks(null)
     useAssemblyStore.getState().setSnapshot({

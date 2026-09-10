@@ -26,9 +26,10 @@ interface AssemblyPartPickerProps {
 // source) and minus the tile verbs (duplicate/export/delete) -- this dialog only
 // browses and picks, so there is no sidebar to put them behind.
 //
-// The summaries carry no `kind`, so all docs are shown (except the assembly
-// itself). Choosing a non-part doc is a user error, not a crash: the bundle
-// build just yields no anchors.
+// The list is filtered to parts: inserting an assembly yields a tree row with no
+// geometry and no message, so it is kept out of the pick source. A summary with
+// no kind (a legacy record) is treated as insertable, the safe default; the next
+// save backfills it.
 export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }: AssemblyPartPickerProps) {
   const [docs, setDocs] = useState<DocSummary[]>([])
   const [selected, setSelected] = useState<string | null>(null)
@@ -75,7 +76,7 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
     store.list({ sort: 'name', search: debouncedSearch })
       .then(list => {
         if (reqId !== listReqRef.current) return
-        const visible = list.filter(d => d.uuid !== selfUuid)
+        const visible = list.filter(d => d.uuid !== selfUuid && d.kind !== 'assembly')
         setDocs(visible)
         // Keep the selection only while its tile is still on screen, so the
         // Insert button can never confirm a doc the user no longer sees.

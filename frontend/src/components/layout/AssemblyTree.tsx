@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { PartInstance, MateFeature } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { mateFailure, partFailure, assemblyVerdict } from '@/utils/core/assemblyStatus'
@@ -155,8 +155,16 @@ export function AssemblyTree({
     setMenu({ position: [e.clientX, e.clientY], items })
   }
 
-  // Per-kind ordinal for the default mate name ('Fixed 1', 'Parallel 2', ...).
-  const kindOrdinal: Record<string, number> = {}
+  // Enter/Space on a focused row selects it, mirroring the row's click. Only the
+  // row itself reacts: a key event bubbling from a control inside the inline
+  // editor must not re-select the subject the editor is editing.
+  const rowKeyDown = (e: ReactKeyboardEvent<HTMLLIElement>, select: () => void) => {
+    if (e.target !== e.currentTarget) return
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    e.stopPropagation()
+    select()
+  }
 
   // Cross-highlight: a selected part row lights up the mates that reference it,
   // and a selected mate row lights up the two parts it mates. Symmetric and
@@ -192,6 +200,8 @@ export function AssemblyTree({
         )}
         <ul
           className="features-list"
+          role="listbox"
+          aria-label="Parts"
           onDragOver={(e) => {
             if (dragItemRef.current?.kind !== 'part') return
             e.preventDefault()  // a row dropped past the last one appends to the parts list
@@ -246,9 +256,12 @@ export function AssemblyTree({
               <li
                 key={inst.handle}
                 className={`feature-item${selected ? ' selected' : ''}${related ? ' related' : ''}${editing ? ' editing' : ''}${visible ? '' : ' invisible'}${dragOverKey === `part:${inst.handle}` ? ' drag-over' : ''}`}
+                role="option"
+                tabIndex={0}
                 aria-selected={selected}
                 title={failMark.failed ? failMark.message : undefined}
                 onClick={() => onSelectPart?.(inst.handle)}
+                onKeyDown={(e) => rowKeyDown(e, () => onSelectPart?.(inst.handle))}
                 // Not draggable while its inline editor is open: a draggable
                 // ancestor blocks the editor's inputs from taking focus.
                 draggable={!editing}
@@ -356,6 +369,8 @@ export function AssemblyTree({
         <div className="sidebar-header"><span>Mates</span></div>
         <ul
           className="features-list"
+          role="listbox"
+          aria-label="Mates"
           onDragOver={(e) => {
             if (dragItemRef.current?.kind !== 'mate') return
             e.preventDefault()
@@ -370,9 +385,11 @@ export function AssemblyTree({
           }}
         >
           {mates.map(({ id, mate }) => {
-            kindOrdinal[mate.kind] = (kindOrdinal[mate.kind] ?? 0) + 1
-            const defaultName = `${MATE_KIND_LABELS[mate.kind] ?? mate.kind} ${kindOrdinal[mate.kind]}`
-            const name = mate.label || defaultName
+            // The label is stored on the mate at append time, so this fallback
+            // only serves legacy docs that never had one; the tree deliberately
+            // keeps no render ordinal, which is what used to renumber a mate
+            // when an earlier sibling of the same kind was deleted.
+            const name = mate.label || MATE_KIND_LABELS[mate.kind] || mate.kind
             const mateMark = mateFailure(id, status ?? null, [mate.ref_a.part, mate.ref_b.part])
             // mateFailure owns the cause: 'stale' keeps the legacy unresolved-ref
             // look, a model cause reddens the name with its own message.
@@ -389,9 +406,12 @@ export function AssemblyTree({
               <li
                 key={id}
                 className={`feature-item mate-item${bareStale ? ' stale' : ''}${selected ? ' selected' : ''}${related ? ' related' : ''}${editing ? ' editing' : ''}${dragOverKey === `mate:${id}` ? ' drag-over' : ''}`}
+                role="option"
+                tabIndex={0}
                 aria-selected={selected}
                 title={mateMark.failed ? mateMark.message : undefined}
                 onClick={() => onSelectMate?.(id)}
+                onKeyDown={(e) => rowKeyDown(e, () => onSelectMate?.(id))}
                 draggable={!editing}
                 onDragStart={(e) => { dragItemRef.current = { kind: 'mate', id }; e.dataTransfer.effectAllowed = 'move' }}
                 onDragEnd={endDrag}

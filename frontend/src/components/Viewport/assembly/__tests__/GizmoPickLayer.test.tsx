@@ -11,7 +11,7 @@ import { buildGizmoPickGeometry } from '@/utils/gizmoPickGeometry'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: () => {},
-  useThree: () => ({ camera: { zoom: 1 } }),
+  useThree: () => ({ camera: { isOrthographicCamera: true, zoom: 1 } }),
 }))
 
 vi.mock('@/utils/gizmoPickGeometry', async (importOriginal) => {

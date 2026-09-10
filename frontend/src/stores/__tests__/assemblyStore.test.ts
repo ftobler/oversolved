@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { AssemblyDoc, PartInstance, Transform3D } from '@/types/cad'
-import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, sameInstances } from '@/stores/assemblyStore'
+import {
+  useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, createDefaultAssemblyEditorData, sameInstances,
+} from '@/stores/assemblyStore'
 import { partInstances, setBuiltinVisible } from '@/utils/assemblyMutations'
 import { ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
 
@@ -81,6 +83,34 @@ describe('assemblyStore', () => {
     // Reference identity: the reset did not rebuild the arrays either.
     expect(getState().undoStack).toBe(undoStack)
     expect(getState().redoStack).toBe(redoStack)
+  })
+
+  // The module-level defaults used to be handed out by reference: the store
+  // create() seed and resetTransientAssemblyState both returned the same
+  // `entitySelection` Set, so the first in-place add would have poisoned every
+  // later document in the tab (and every later test in this file). The factory
+  // mints fresh containers per call; this pins that no shared Set survives.
+  describe('fresh default containers', () => {
+    it('mints a distinct entitySelection on every call', () => {
+      const first = createDefaultAssemblyEditorData().entitySelection
+      const second = createDefaultAssemblyEditorData().entitySelection
+      expect(first).not.toBe(second)
+    })
+
+    it('resetTransientAssemblyState never hands out the shared default Set', () => {
+      const { getState } = useAssemblyStore
+      getState().resetTransientAssemblyState()
+      const first = getState().entitySelection
+      getState().resetTransientAssemblyState()
+      const second = getState().entitySelection
+      expect(first).not.toBe(second)
+      expect(first).not.toBe(DEFAULT_ASSEMBLY_EDITOR_DATA.entitySelection)
+      expect(second).not.toBe(DEFAULT_ASSEMBLY_EDITOR_DATA.entitySelection)
+      // Mutating one reset's Set cannot reach the other or the constant.
+      first.add('x')
+      expect(second.has('x')).toBe(false)
+      expect(DEFAULT_ASSEMBLY_EDITOR_DATA.entitySelection.has('x')).toBe(false)
+    })
   })
 
   it('selectPart survives a snapshot that names a different subject', () => {

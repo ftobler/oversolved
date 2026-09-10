@@ -4,6 +4,7 @@ import {
   appendMate,
   appendPartInstance,
   bakeSolvedTransforms,
+  defaultMateName,
   duplicateInstance,
   emptyAssemblyDoc,
   findMate,
@@ -25,6 +26,7 @@ import {
   setInstanceTransform,
   instanceRotation,
   setMateRef,
+  setMateLabel,
   updateMate,
   IDENTITY_TRANSFORM,
 } from '@/utils/assemblyMutations'
@@ -290,6 +292,21 @@ describe('setInstanceVisible / setInstanceFixed', () => {
     expect(inst.transform).toEqual(divergent)
   })
 
+  // Same f32-rounding rule as bakeSolvedTransforms: a solve that only re-rounds
+  // the seed must not be written while flipping the flag, or the fix toggle
+  // ratchets the pose like the drag bake used to.
+  it('setInstanceFixedFromSolved leaves a rounding-only solved pose untouched', () => {
+    const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const handle = instances(doc)[0].handle
+    const seed = instances(doc)[0].transform
+    const rounding = { tx: 1e-8, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
+
+    const next = setInstanceFixedFromSolved(doc, handle, true, { [handle]: rounding })
+    const inst = instances(next)[0]
+    expect(inst.fixed).toBe(true)
+    expect(inst.transform).toBe(seed)
+  })
+
   // The assembly frame's reserved MateRef handle must never be a value a real
   // instance can be minted with, or a part-anchor lookup would shadow the
   // assembly built-ins. randomId(8) is an 11-char base64url string; the
@@ -350,6 +367,25 @@ describe('bakeSolvedTransforms', () => {
     const next = bakeSolvedTransforms(doc, {})
     expect(instances(next)[0].transform).toEqual(seed)
   })
+
+  // The mate wire is f32, so a free DOF returns a pose a few f32 ulps off its
+  // f64 seed. Baking that rounding persists it, and each commit re-rounds, so
+  // the DOF walks and every part churns its document diff. A rounding-only
+  // delta must be skipped; a real move must still bake.
+  it('skips a solved pose that differs from the seed only by f32 rounding', () => {
+    let doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    doc = appendPartInstance(doc, 'doc-B', 1)
+    const [a, b] = instances(doc)
+    const moved = { tx: 0.001, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
+    const rounding = { tx: 1e-8, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
+
+    const next = bakeSolvedTransforms(doc, { [a.handle]: moved, [b.handle]: rounding })
+    const map = Object.fromEntries(instances(next).map(i => [i.handle, i]))
+    expect(map[a.handle].transform).toEqual(moved)
+    // Untouched by reference: the feature (and its instance) is the same object.
+    expect(map[b.handle].transform).toBe(b.transform)
+    expect(map[b.handle].transform).toEqual({ ...IDENTITY_TRANSFORM })
+  })
 })
 
 describe('setBuiltinVisible', () => {
@@ -407,6 +443,50 @@ describe('appendMate', () => {
   it('does not mutate the input doc', () => {
     appendMate(emptyDoc, 'fixed', 'm1')
     expect(emptyDoc.features).toEqual([])
+  })
+
+  // The default name is minted and stored at append time, not derived from the
+  // render position. That is what stops deleting an earlier mate of the same
+  // kind from renumbering every later one.
+  it('mints and stores a stable default label at creation', () => {
+    let doc = appendMate(emptyDoc, 'fixed', 'm1')
+    expect(findMate(doc, 'm1')!.label).toBe('Fixed 1')
+    doc = appendMate(doc, 'fixed', 'm2')
+    expect(findMate(doc, 'm2')!.label).toBe('Fixed 2')
+    doc = appendMate(doc, 'parallel', 'm3')
+    expect(findMate(doc, 'm3')!.label).toBe('Parallel 1')
+  })
+})
+
+describe('defaultMateName', () => {
+  it('counts the mates of that kind already in the doc', () => {
+    expect(defaultMateName(emptyDoc, 'fixed')).toBe('Fixed 1')
+    const doc = appendMate(appendMate(emptyDoc, 'fixed', 'm1'), 'parallel', 'm2')
+    expect(defaultMateName(doc, 'fixed')).toBe('Fixed 2')
+    expect(defaultMateName(doc, 'parallel')).toBe('Parallel 2')
+    expect(defaultMateName(doc, 'spherical')).toBe('Spherical 1')
+  })
+})
+
+describe('setMateLabel', () => {
+  it('stores a non-empty label verbatim', () => {
+    const doc = setMateLabel(appendMate(emptyDoc, 'fixed', 'm1'), 'm1', 'Base')
+    expect(findMate(doc, 'm1')!.label).toBe('Base')
+  })
+
+  // Clearing a name must not delete the key and fall back to a render ordinal:
+  // re-mint the same stable default the mate would have been given at append.
+  it('re-mints a stable default when cleared, not a render ordinal', () => {
+    let doc = appendMate(appendMate(emptyDoc, 'fixed', 'm1'), 'fixed', 'm2')
+    doc = setMateLabel(doc, 'm2', 'Renamed')
+    expect(findMate(doc, 'm2')!.label).toBe('Renamed')
+
+    doc = setMateLabel(doc, 'm2', '')
+    expect(findMate(doc, 'm2')!.label).toBe('Fixed 2')
+
+    // Removing the first mate does not renumber the stored second label.
+    doc = removeMate(doc, 'm1')
+    expect(findMate(doc, 'm2')!.label).toBe('Fixed 2')
   })
 })
 

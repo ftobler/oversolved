@@ -14,7 +14,7 @@ function instance(handle: string): PartInstance {
 
 const instances = [instance('hGood'), instance('hBad')]
 const mates: MateFeature[] = [
-  { id: 'm1', mate: { kind: 'fixed', ref_a: { part: 'hGood', anchor: 'a1' }, ref_b: { part: 'hBad', anchor: 'b1' } } },
+  { id: 'm1', mate: { kind: 'fixed', label: 'Fixed 1', ref_a: { part: 'hGood', anchor: 'a1' }, ref_b: { part: 'hBad', anchor: 'b1' } } },
 ]
 
 const noop = () => {}

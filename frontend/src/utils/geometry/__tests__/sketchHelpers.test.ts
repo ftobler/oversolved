@@ -1,6 +1,29 @@
 import { describe, it, expect } from 'vitest'
-import { sampleEllipse, sampleBezier, getEntityBounds, ellipseAxisPoints } from '@/utils/geometry/sketchHelpers'
+import * as THREE from 'three'
+import { sampleEllipse, sampleBezier, getEntityBounds, ellipseAxisPoints, p2w } from '@/utils/geometry/sketchHelpers'
 import type { Ellipse, Spline } from '@/types/cad'
+
+describe('p2w', () => {
+  it('returns the world units per pixel for an orthographic camera', () => {
+    const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100)
+    ortho.zoom = 4
+    expect(p2w(ortho)).toBeCloseTo(0.25)
+  })
+
+  // A perspective camera has no distance-free world-per-pixel. The old helper
+  // silently returned 1; the throw is what keeps a future perspective mode from
+  // shipping screen-space sizes that are wrong by the whole zoom factor.
+  it('throws for a perspective camera instead of silently returning 1', () => {
+    const persp = new THREE.PerspectiveCamera(50, 1, 0.1, 100)
+    expect(() => p2w(persp as never)).toThrow(/orthographic/i)
+  })
+
+  it('throws for a non-finite zoom rather than dividing by it', () => {
+    const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100)
+    ortho.zoom = Number.NaN
+    expect(() => p2w(ortho)).toThrow(/zoom/i)
+  })
+})
 
 describe('sampleEllipse', () => {
   it('returns a closed polyline of steps+1 points', () => {

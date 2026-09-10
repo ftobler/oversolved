@@ -1,7 +1,8 @@
 import type {
-  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta,
+  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta, DocumentKind,
   TrashAdapter, TrashDoc,
 } from './types'
+import { parseDocumentKind } from './types'
 import {
   DirectoryLibrary, allocateStem, type IndexEntry, type LibraryIo,
 } from './directoryLibrary'
@@ -37,6 +38,9 @@ function toSummary(entry: IndexEntry, preview?: string): DocSummary {
     is_owner: true,
     owner_username: DIRECTORY_OWNER,
     is_public: entry.is_public,
+    // Absent on an entry written before the field: the picker treats an absent
+    // kind as insertable, and the next save backfills it.
+    kind: entry.kind,
     preview_image: preview,
     meta: { ...entry.meta },
   }
@@ -160,6 +164,7 @@ export class FileSystemDirectoryStore implements DocumentStore {
         delete revived.deleted_at
         const updated = stamp(revived, {
           has_preview: revived.has_preview || input.preview_image !== undefined,
+          kind: parseDocumentKind(input.content),
         })
         const written = await io.writeDoc(updated, input.content, input.preview_image)
         this.previews.delete(id)
@@ -177,6 +182,7 @@ export class FileSystemDirectoryStore implements DocumentStore {
         if (onDisk === input.content && previewUnchanged) return { result: undefined }
         const updated = stamp(existing, {
           has_preview: existing.has_preview || input.preview_image !== undefined,
+          kind: parseDocumentKind(input.content),
         })
         const written = await io.writeDoc(updated, input.content, input.preview_image)
         this.previews.delete(id)
@@ -189,6 +195,7 @@ export class FileSystemDirectoryStore implements DocumentStore {
         is_public: false,
         rev: 1,
         has_preview: input.preview_image !== undefined,
+        kind: parseDocumentKind(input.content),
       })
       const written = await io.writeDoc(created, input.content, input.preview_image)
       this.previews.delete(id)
@@ -224,6 +231,8 @@ export class FileSystemDirectoryStore implements DocumentStore {
         // change nothing has synced anywhere, hence dirty).
         rev: 0,
         has_preview: false,
+        // A fresh document is an empty part until its first save writes a body.
+        kind: 'part',
       })
       const written = await io.writeDoc(entry, '')
       return { entries: [...entries, { ...entry, ...written }], result: { uuid: entry.uuid } }
@@ -275,6 +284,7 @@ export class FileSystemDirectoryStore implements DocumentStore {
         is_public: src.is_public,
         rev: 1,
         has_preview: src.has_preview,
+        kind: src.kind ?? 'part',
       })
       const written = await io.writeDoc(copy, await io.readContent(src), await io.readPreview(src))
       return { entries: [...entries, { ...copy, ...written }], result: { uuid: copy.uuid } }
@@ -341,7 +351,7 @@ export class FileSystemDirectoryTrashAdapter implements TrashAdapter {
 
 function newEntry(
   uuid: string, name: string, stem: string,
-  opts: { is_public: boolean; rev: number; has_preview: boolean },
+  opts: { is_public: boolean; rev: number; has_preview: boolean; kind: DocumentKind },
 ): IndexEntry {
   const now = Date.now()
   return {
@@ -349,6 +359,7 @@ function newEntry(
     stem,
     name,
     is_public: opts.is_public,
+    kind: opts.kind,
     created_at: new Date(now).toISOString(),
     updated_at: new Date(now).toISOString(),
     meta: { id: uuid, rev: opts.rev, updatedAt: now, dirty: true },

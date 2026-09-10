@@ -263,7 +263,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         revs = burstRevs.current.revs
         lastRevs.current = revs
       }
-      const res = await solveAssemblyViaWorker(uuid, parts, revs, mates)
+      const res = await solveAssemblyViaWorker(uuid, parts, revs, mates, live)
       if (!res) throw new Error('assembly solver unavailable')
       // Stale-guard: a request that landed while this solve was in flight (undo/
       // redo restoring a doc is the classic case) owns the record. Writing a

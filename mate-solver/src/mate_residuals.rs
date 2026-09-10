@@ -207,7 +207,14 @@ impl MateProblem {
         let mut mates: Vec<Mate> = Vec::new();
         let mut kept_input_indices: Vec<usize> = Vec::new();
         for (input_index, m) in input.mates.iter().enumerate() {
-            if addressable(m.a.body_index) && addressable(m.b.body_index) {
+            // A mate needs two different parts. The host refuses this at the pick
+            // (and solveAssembly.ts guards it), but the headless api.rs entry
+            // point accepts an arbitrary wire, and a same-body mate reaches the
+            // Jacobian fillers where off_a == off_b makes both sides write the
+            // same cells. Drop it here, matching the stale-mate posture: it
+            // contributes no row and the rest of the assembly solves honestly.
+            let same_body = m.a.body_index == m.b.body_index;
+            if addressable(m.a.body_index) && addressable(m.b.body_index) && !same_body {
                 kept_input_indices.push(input_index);
                 mates.push(m.clone());
             }
@@ -708,22 +715,20 @@ impl MateProblem {
                 axis_dist - 2.0 * radius - offset
             }
             _ => {
-                // General fallback: point-to-point distance minus radius(es).
-                //
-                // SILENT-CONSEQUENCE CAVEAT: this arm catches every anchor
-                // pair the formula arms above do not, i.e. every pair
-                // containing a Sphere, Line, Circle, Point or Torus on either
-                // side (those five against anything: each other, Point,
-                // Plane, Cylinder, Cone). For such pairs the point-to-point
-                // formula is geometrically WRONG unless both anchor points
-                // happen to be surface centres (a Sphere's centre, say): an
-                // anchor picked mid-line or on a circle's rim measures an
-                // unrelated distance, and nothing in the output status flags
-                // it -- the solve just quietly converges on whatever that
-                // number asks for. `mate.rs`'s AnchorKind doc documents the
-                // same gap from the type side.
-                let dist = (d0 * d0 + d1 * d1 + d2 * d2).sqrt();
-                dist - radius - offset
+                // Unsupported anchor pair: every pair containing a Sphere, Line,
+                // Circle, Point or Torus on either side (those five against
+                // anything: each other, Point, Plane, Cylinder, Cone). The
+                // point-to-point fallback this used to compute is geometrically
+                // WRONG unless both anchor points happen to be surface centres
+                // (a Sphere's centre, say): an anchor picked mid-line or on a
+                // circle's rim measures an unrelated distance, and the solve
+                // quietly converged on whatever that number asked for. Return a
+                // non-finite residual so a headless `api.rs` caller can never
+                // converge on it; `mate_status` classifies a non-finite residual
+                // norm as `Overconstrained`. A real per-side radius (and
+                // `Anchor.radius`) is what would make one of these pairs valid
+                // again, and that is deliberately out of scope here.
+                f64::NAN
             }
         }
     }
@@ -1141,7 +1146,14 @@ impl MateProblem {
                 // and their raw difference reads ~2*pi -- a ~1e6 phantom slope
                 // that swamps the normal equations and stalls LM on the spot.
                 // The wrapped difference is the true local slope across the cut.
-                j[(row, col)] = wrap_to_pi(fp - fm) / (2.0 * eps);
+                //
+                // `+=`: the loop covers both bodies' param blocks, and when
+                // off_a == off_b (a same-body mate, guarded out upstream but the
+                // filler must not assume distinct bodies) the two passes land in
+                // the same column. `=` would let the second silently discard the
+                // first; the cells start at zero, so summing is identical for
+                // distinct bodies.
+                j[(row, col)] += wrap_to_pi(fp - fm) / (2.0 * eps);
             }
         }
     }
@@ -1360,12 +1372,22 @@ fn mate_status(residual_norm: f64, m: usize, dof: usize, scale: f64) -> MateStat
 
 /// Run the mate solver: build a Problem, call solve_lm, compute status, build output.
 pub fn solve_mate(input: &MateInput) -> MateOutput {
-    solve_mate_with_budget(input, DENSE_CELL_BUDGET)
+    solve_mate_impl(input, DENSE_CELL_BUDGET, false)
+}
+
+/// Live-drag variant of `solve_mate`: identical solve and pose, but the dense
+/// rank/dof analysis (a full SVD of the Jacobian) is skipped and both are
+/// reported as 0. A live drag tick reads only the pose and discards the
+/// diagnostics, so the SVD is pure per-frame cost. Kept as a separate entry
+/// point rather than a wire/record flag so the mate record layout, and the
+/// `MATE_MAGIC` bump a width change needs, stay untouched.
+pub fn solve_mate_live(input: &MateInput) -> MateOutput {
+    solve_mate_impl(input, DENSE_CELL_BUDGET, true)
 }
 
 /// `solve_mate` with the dense-cell ceiling injected (test hook; production
-/// always passes `DENSE_CELL_BUDGET`).
-fn solve_mate_with_budget(input: &MateInput, budget: usize) -> MateOutput {
+/// always passes `DENSE_CELL_BUDGET`) and the live fast-path selected.
+fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     let problem = MateProblem::new(input);
     let n = problem.n;
     let m = problem.m;
@@ -1402,29 +1424,36 @@ fn solve_mate_with_budget(input: &MateInput, budget: usize) -> MateOutput {
     let damp_scale = problem.rotation_damp_scale();
     let lm_result = lm::solve_lm_damped(&x0_f64, &residuals_fn, &jacobian_fn, &damp_scale);
 
-    // Rank analysis via SVD. Skipped when the residuals are poisoned:
-    // nalgebra's SVD convergence test never fires on NaN, so this call would
-    // spin forever and wedge the serialized worker. `mate_status` then reports
-    // the failure instead of a rank that cannot be trusted.
+    // Rank analysis via SVD. Skipped on a live drag tick, which reads only the
+    // pose and discards the verdict: the SVD is pure per-frame cost there, and
+    // the full solve on pointer-up is what owns the rank/dof the editor shows.
+    // Also skipped when the residuals are poisoned: nalgebra's SVD convergence
+    // test never fires on NaN, so this call would spin forever and wedge the
+    // serialized worker. `mate_status` then reports the failure instead of a
+    // rank that cannot be trusted.
     let poisoned = !lm_result.residual_norm.is_finite();
-    let dof = if m == 0 || n == 0 || poisoned {
-        0
+    let (rank, dof) = if live {
+        (0u32, 0u32)
     } else {
-        let svd = lm_result.jacobian.svd(true, false);
-        // The rank cutoff must scale with the drawing unit: an assembly laid
-        // out at 1e-9 m has exactly the same DOF as the same assembly at 1 m,
-        // but its geometry-proportional singular values shrink linearly with
-        // the unit and a fixed absolute cutoff misreads them as rank loss
-        // (measured: three spherical mates at 1e-9 reported 3 phantom DOF).
-        // See `singular_value_cutoff` for why the factor is what it is.
-        let smax = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
-        let tol = singular_value_cutoff(smax);
-        let rank = svd.singular_values.iter().filter(|&&s| s > tol).count();
-        n.saturating_sub(rank)
+        let dof = if m == 0 || n == 0 || poisoned {
+            0usize
+        } else {
+            let svd = lm_result.jacobian.svd(true, false);
+            // The rank cutoff must scale with the drawing unit: an assembly laid
+            // out at 1e-9 m has exactly the same DOF as the same assembly at 1 m,
+            // but its geometry-proportional singular values shrink linearly with
+            // the unit and a fixed absolute cutoff misreads them as rank loss
+            // (measured: three spherical mates at 1e-9 reported 3 phantom DOF).
+            // See `singular_value_cutoff` for why the factor is what it is.
+            let smax = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
+            let tol = singular_value_cutoff(smax);
+            let rank = svd.singular_values.iter().filter(|&&s| s > tol).count();
+            n.saturating_sub(rank)
+        };
+        ((n - dof) as u32, dof as u32)
     };
-    let rank = (n - dof) as u32;
 
-    let status = mate_status(lm_result.residual_norm, m, dof, problem.geometry_scale());
+    let status = mate_status(lm_result.residual_norm, m, dof as usize, problem.geometry_scale());
 
     let params_solved: Vec<f32> = lm_result.x.iter().map(|&v| v as f32).collect();
 
@@ -1454,7 +1483,7 @@ fn solve_mate_with_budget(input: &MateInput, budget: usize) -> MateOutput {
         diagnostics: MateDiagnostics {
             residual_norm: lm_result.residual_norm,
             rank,
-            dof: dof as u32,
+            dof,
             iters: lm_result.iters,
             // Wall-clock is measured by the JS host (it has performance.now());
             // the crate has no portable clock on wasm32-unknown-unknown. An
@@ -2069,6 +2098,103 @@ mod tests {
         let tx = out.params_solved[7] as f64;
         assert!((tx - 6.0).abs() < 0.1, "tx should be ~6, got {}", tx);
         assert!(out.diagnostics.residual_norm < 1e-2);
+    }
+
+    // A Point/Point tangential has no dedicated formula. The old fallback
+    // computed a point-to-point distance and converged on it silently; the
+    // non-finite backstop makes the solve report Overconstrained instead.
+    #[test]
+    fn tangential_unsupported_pair_fails_loud() {
+        let input = MateInput {
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![mate(MateKind::Tangential,
+                mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                false, 0.0, 1.0, 1.0)],
+        };
+        let out = solve_mate(&input);
+        assert!(!out.diagnostics.residual_norm.is_finite(),
+            "a non-finite residual must survive to the diagnostics, got {}", out.diagnostics.residual_norm);
+        assert_eq!(out.overall_status, MateStatus::Overconstrained.to_u8());
+    }
+
+    // A same-body mate must contribute no residual row and must not corrupt the
+    // Jacobian; the valid mate beside it still solves on its own.
+    #[test]
+    fn same_body_mate_is_dropped_and_contributes_no_row() {
+        let input = MateInput {
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
+            params_initial: vec![
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+            fixed_mask: vec![0b0000_0001],
+            mates: vec![
+                mate(MateKind::Fixed,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane),
+                    false, 0.0, 1.0, 0.0),
+                mate(MateKind::Spherical,
+                    mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    mate_ref(1, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Point),
+                    false, 0.0, 1.0, 0.0),
+            ],
+        };
+        let problem = MateProblem::new(&input);
+        assert_eq!(problem.mates.len(), 1, "the same-body mate must be dropped");
+        assert_eq!(problem.kept_input_indices, vec![1]);
+
+        let out = solve_mate(&input);
+        assert!(out.mate_residuals[0].is_nan(), "a dropped mate keeps its NaN sentinel");
+        assert!(out.mate_residuals[1].is_finite() && out.mate_residuals[1] < 1e-3);
+        assert!(out.diagnostics.residual_norm < 1e-3, "the valid mate alone solves");
+        assert!((out.params_solved[7] as f64).abs() < 1e-2, "body 1 pulled to body 0");
+    }
+
+    // `MateProblem::new` drops same-body mates, so this can only arise for a raw
+    // caller; build one by hand with off_a == off_b and prove the roll row is the
+    // SUM of both finite-difference passes, not the second one overwriting.
+    #[test]
+    fn roll_jacobian_sums_both_passes_for_a_self_mate() {
+        let a = mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane);
+        let b = mate_ref(0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, AnchorKind::Plane);
+        let problem = MateProblem {
+            n: 7,
+            x0: vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            mates: vec![mate(MateKind::Fixed, a, b, false, 0.0, 1.0, 0.0)],
+            input_mate_count: 1,
+            kept_input_indices: vec![0],
+            bodies: vec![RigidBody {}],
+            grounded: vec![false],
+            m: 1,
+            seed_axes: vec![None],
+            seed_twist: vec![(0.0, 0.0)],
+            roll_frames: vec![Some(([1.0, 0.0, 0.0], [1.0, 0.0, 0.0]))],
+            scale: 1.0,
+        };
+        let x = problem.x0.clone();
+        let mut j = DMatrix::zeros(1, 7);
+        problem.fill_roll_fd(&mut j, 0, 0, 0, 0, &x);
+
+        let eps = 1e-6;
+        for col in 0..7 {
+            let orig = x[col];
+            let mut xp = x.clone();
+            xp[col] = orig + eps;
+            let fp = problem.roll_residual_at_mate(0, &xp);
+            xp[col] = orig - eps;
+            let fm = problem.roll_residual_at_mate(0, &xp);
+            let single = wrap_to_pi(fp - fm) / (2.0 * eps);
+            assert!(
+                (j[(0, col)] - 2.0 * single).abs() < 1e-9,
+                "col {col}: cell {} should be the sum 2*{}", j[(0, col)], single,
+            );
+        }
     }
 
     #[test]
@@ -3204,7 +3330,7 @@ mod tests {
         // untouched and the failing status comes back instead of the worker
         // dying inside a dense factorization it can never finish.
         let input = two_body_input();
-        let out = solve_mate_with_budget(&input, 100);
+        let out = solve_mate_impl(&input, 100, false);
         assert_eq!(out.overall_status, MateStatus::Overconstrained.to_u8());
         assert_eq!(out.params_solved, input.params_initial);
         assert_eq!(out.diagnostics.iters, 0);

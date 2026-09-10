@@ -13,6 +13,8 @@
 // the browser via WASM, so persistence is the only thing a backend would ever
 // have provided.
 
+import { parse as parseYaml } from 'yaml'
+
 // Per-document modification tracking. Carried from day one so a future sync
 // engine is purely additive: it reads `dirty` / compares `rev` vs `baseRev`,
 // pushes, and on ack sets `baseRev = rev`. `rev` doubles as the assembly bundle
@@ -24,6 +26,21 @@ export interface DocMeta {
   updatedAt: number    // epoch ms, set on every save
   dirty: boolean       // local change not yet pushed to a sync target
   baseRev?: number     // last rev known synced (conflict detection)
+}
+
+export type DocumentKind = 'part' | 'assembly'
+
+// The document kind the editor routes on: the top-level `kind` field, with
+// anything not explicitly an assembly read as a part. Empty content (a freshly
+// created document), a legacy record with no field, and malformed content all
+// default to part, exactly as DocumentPage does.
+export function parseDocumentKind(content: string): DocumentKind {
+  try {
+    const parsed = parseYaml(content) as { kind?: unknown } | null
+    return parsed?.kind === 'assembly' ? 'assembly' : 'part'
+  } catch {
+    return 'part'
+  }
 }
 
 // The lightweight document descriptor surfaced by `list()`: what the documents
@@ -44,6 +61,10 @@ export interface DocSummary {
   is_owner: boolean
   owner_username: string
   is_public: boolean
+  // The document's kind, so a picker can exclude assemblies from a part list.
+  // Absent on records written before the field existed; the picker treats an
+  // absent kind as insertable (safe default) and the next save backfills it.
+  kind?: DocumentKind
   preview_image?: string  // base64 PNG rendered from the last save
   meta?: DocMeta
 }
