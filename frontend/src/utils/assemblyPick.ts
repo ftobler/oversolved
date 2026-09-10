@@ -18,11 +18,9 @@ import type { AnchorTable } from '@/utils/anchorGizmos'
 import type { Mesh3D, Transform3D } from '@/types/cad'
 import { buildIndexedCurveSegments } from '@/utils/edgeSampling'
 import {
-  IDENTITY_TRANSFORM,
   relativeTransform,
   rotateVector,
   transformQuat,
-  transformsEqual,
   type Vec3,
 } from '@/utils/transform3d'
 
@@ -182,6 +180,24 @@ function offsetBody(body: AssemblyPickBody, t: Transform3D): AssemblyPickBody {
   }
 }
 
+// A pick snapshot is point/segment soup: a difference this small can never flip
+// which primitive a pixel resolves to, so it is the same drawn placement. Kept
+// separate from transformsEqual, whose 1 - eps^2 rounds to 1 in double precision
+// and therefore demands a bit-exact dot product for a composed identity -- the
+// at-rest case this short-circuit exists to catch.
+const IDENTITY_OFFSET_EPS = 1e-6
+
+function isIdentityOffset(t: Transform3D): boolean {
+  return (
+    Math.abs(t.tx) <= IDENTITY_OFFSET_EPS &&
+    Math.abs(t.ty) <= IDENTITY_OFFSET_EPS &&
+    Math.abs(t.tz) <= IDENTITY_OFFSET_EPS &&
+    // qw = +/-1 with the vector part small is a rotation by a negligible angle;
+    // the absolute value covers the quaternion double cover.
+    Math.abs(1 - Math.abs(t.qw)) <= IDENTITY_OFFSET_EPS
+  )
+}
+
 /**
  * Translate a baked pick snapshot onto the drawn pose. Each body carries its
  * instance handle; its offset is the drawn pose relative to the pose the
@@ -191,14 +207,14 @@ function offsetBody(body: AssemblyPickBody, t: Transform3D): AssemblyPickBody {
 export function offsetPickBodies(
   pickBodies: readonly AssemblyPickBody[],
   bakedPose: Readonly<Record<string, Transform3D>>,
-  drawnPose: Readonly<Record<string, Transform3D>>,
+  drawnPoses: Readonly<Record<string, Transform3D>>,
 ): AssemblyPickBody[] {
   return pickBodies.map(body => {
     const baked = bakedPose[body.handle]
-    const drawn = drawnPose[body.handle]
+    const drawn = drawnPoses[body.handle]
     if (!baked || !drawn) return body
     const offset = relativeTransform(drawn, baked)
-    if (transformsEqual(offset, IDENTITY_TRANSFORM)) return body
+    if (isIdentityOffset(offset)) return body
     return offsetBody(body, offset)
   })
 }

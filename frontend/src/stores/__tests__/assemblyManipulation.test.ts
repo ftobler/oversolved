@@ -78,10 +78,10 @@ describe('assemblyStore part manipulation', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().cancelPartManipulation()
-    // Store-owned, so setSnapshot preserves it: a committed drag would otherwise
-    // carry its offset (and the pose the pick buffer was baked at) into the next
+    // Store-owned, so setSnapshot preserves both: a committed drag would
+    // otherwise carry its offset, and its pick-buffer base pose, into the next
     // test.
-    useAssemblyStore.setState({ settlingOffsets: {} })
+    useAssemblyStore.setState({ settlingOffsets: {}, pickGeometryPose: {} })
     setAssemblyCallbacks(null)
   })
 

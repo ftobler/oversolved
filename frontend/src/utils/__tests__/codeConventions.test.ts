@@ -118,6 +118,12 @@ describe('assembly pose reads are confined to the pose plumbing', () => {
   const FORBIDDEN = [
     /getState\(\)\.transforms/,
     /getState\(\)\.settlingOffsets/,
+    /\bget\(\)\.transforms\b/,
+    /\bget\(\)\.settlingOffsets\b/,
+    /\bstore\.transforms\b/,
+    /\bstore\.settlingOffsets\b/,
+    /get\(\)\s*\[\s*['"]transforms['"]\s*\]/,
+    /get\(\)\s*\[\s*['"]settlingOffsets['"]\s*\]/,
     /\bs\s*=>\s*s\.transforms\b/,
     /\bs\s*=>\s*s\.settlingOffsets\b/,
     /\bstate\.transforms\b/,

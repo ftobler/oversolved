@@ -229,6 +229,29 @@ describe('offsetPickBodies', () => {
     expect(same[0]).toBe(pick)
   })
 
+  // A composed identity can come back a hair off exact (a quaternion product
+  // that should cancel). The pick buffer must recognize that as "at rest" and
+  // return the body by reference, not churn a fresh soup every settle tick.
+  it('treats a negligible quaternion perturbation as at rest', () => {
+    const pick = build(makeMesh())
+    const same = offsetPickBodies(
+      [pick],
+      { [PART]: IDENTITY_TRANSFORM },
+      { [PART]: { ...IDENTITY_TRANSFORM, qx: 1e-7 } },
+    )
+    expect(same[0]).toBe(pick)
+  })
+
+  it('still offsets a rotation above the tolerance', () => {
+    const pick = build(makeMesh())
+    const moved = offsetPickBodies(
+      [pick],
+      { [PART]: IDENTITY_TRANSFORM },
+      { [PART]: { ...IDENTITY_TRANSFORM, qx: 1e-2 } },
+    )
+    expect(moved[0]).not.toBe(pick)
+  })
+
   it('leaves a body with no baked pose alone', () => {
     const pick = build(makeMesh())
     const same = offsetPickBodies([pick], {}, { [PART]: { ...IDENTITY_TRANSFORM, tx: 3 } })
