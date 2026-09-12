@@ -27,6 +27,8 @@ import {
 import { pathFor } from './paths'
 import { serializeTree } from './serializer'
 import { remapTree } from './import'
+import { EntryReferencedError, type EntryReferrer } from './errors'
+import { hashRecord } from './contentHash'
 import { folderTarget, resolveCarrierTarget, zipTarget, type CarrierTarget } from './carrierTarget'
 import type { ReconcileReport } from './directoryCarrier'
 import {
@@ -49,7 +51,7 @@ export interface WorkspaceSummary {
   // R1's derived size: the summed payload bytes of the live entries. Read from
   // the payload-free mirror, so the tile never opens a workspace to report it.
   size: number
-  rev?: number  // the working copy's max revision, the bundle cache key
+  rev?: number  // the working copy's max revision, the tile's change ordinal
   // The entry whose preview stands for the workspace on the U1 tile. First live
   // document, or undefined for an all-file workspace; A9 means the tile shows a
   // placeholder until a save has written a preview for it.
@@ -145,7 +147,10 @@ export interface WorkspaceStore {
   readEntry(workspace: string, entry: string): Promise<WorkspaceEntry>
   writeEntry(workspace: string, entry: WorkspaceEntry): Promise<void>
   addEntry(workspace: string, entry: WorkspaceEntry): Promise<string>
-  removeEntry(workspace: string, entry: string): Promise<void>
+  // A soft delete. Refuses (throws EntryReferencedError) when a live entry still
+  // references this one, unless `force` is set. `force` is reserved for purge
+  // and tests; prune composes the guarded path and surfaces the refusal.
+  removeEntry(workspace: string, entry: string, opts?: { force?: boolean }): Promise<void>
   restoreEntry(workspace: string, entry: string): Promise<void>
   // Entry-level rename: a workspace holds many documents now, so the editor's
   // rename gesture names one entry, not the workspace. Path stays manifest-owned
@@ -230,6 +235,7 @@ export class IdbWorkspaceStore implements WorkspaceStore {
       name,
       text: '',
       rev: 1,
+      contentHash: hashRecord({ kind: 'document', text: '' }),
       updatedAt: now,
     }
     if (opts.docKind !== undefined) record.docKind = opts.docKind
@@ -508,7 +514,26 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     return entry.id
   }
 
-  async removeEntry(workspace: string, entry: string): Promise<void> {
+  async removeEntry(workspace: string, entry: string, opts: { force?: boolean } = {}): Promise<void> {
+    if (!opts.force) {
+      const carrier = this.carrier(workspace)
+      const references = await carrier.referencesMap()
+      // Only live entries block a delete. A referrer already in the trash keeps
+      // its edge, but it is not live, so the part can still leave; restoring the
+      // referrer later surfaces the missing part as a stale solve (fail loud).
+      const liveNames = new Map((await carrier.list()).map(meta => [meta.id, meta.name]))
+      const referrers: EntryReferrer[] = []
+      for (const [from, targets] of Object.entries(references)) {
+        if (!targets.includes(entry)) continue
+        const name = liveNames.get(from)
+        if (name === undefined) continue
+        referrers.push({ id: from, name })
+      }
+      if (referrers.length > 0) {
+        referrers.sort((a, b) => a.name.localeCompare(b.name))
+        throw new EntryReferencedError(entry, referrers)
+      }
+    }
     await this.carrier(workspace).remove(entry)
     bumpWorkspaceStoreRevision()
   }
@@ -625,10 +650,13 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     await writeWorkspaceMeta(next)
   }
 
-  // Membership write-through: any file id the document's import_step features
-  // name is copied from C1's flat registry into the workspace under the same id,
-  // and the document records an edge to it. The registry stays the fallback
-  // read until C3 makes the workspace copy the carrier of record.
+  // Membership write-through and content-driven edge reconciliation. Any file id
+  // the document's import_step features name is copied from C1's flat registry
+  // into the workspace under the same id; every part_instance.doc_id the document
+  // names is an assembly-to-part edge. The document's outgoing edges are then
+  // reconciled to exactly that set, so an edit or undo that removes a reference
+  // also removes the edge. Deriving the assembly edges from the text rather than
+  // recording them at the mutation site is what keeps undo consistent for free.
   private async adoptFiles(workspace: string, entry: WorkspaceEntry): Promise<void> {
     if (entry.kind !== 'document' || entry.text === undefined) return
     let parsed: unknown
@@ -638,14 +666,13 @@ export class IdbWorkspaceStore implements WorkspaceStore {
       return
     }
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return
-    const ids = fileIdsInSpec(parsed as Record<string, unknown>)
-    if (ids.length === 0) return
+    const spec = parsed as Record<string, unknown>
     const carrier = this.carrier(workspace)
-    const registry = getFileRegistry()
-    for (const id of ids) {
+    const desired = new Set<string>()
+    for (const id of fileIdsInSpec(spec)) {
       let present = await carrier.hasEntry(id)
       if (!present) {
-        const file = await registry.get(id)
+        const file = await getFileRegistry().get(id)
         if (!file) continue  // the kernel owns the loud missing-reference error
         await carrier.add({
           id: file.id,
@@ -657,7 +684,15 @@ export class IdbWorkspaceStore implements WorkspaceStore {
         })
         present = true
       }
-      if (present) await carrier.addReference(entry.id, id)
+      if (present) desired.add(id)
+    }
+    for (const id of partDocIdsInSpec(spec)) desired.add(id)
+    const current = await carrier.referencesOf(entry.id)
+    for (const to of current) {
+      if (!desired.has(to)) await carrier.removeReference(entry.id, to)
+    }
+    for (const to of desired) {
+      if (!current.includes(to)) await carrier.addReference(entry.id, to)
     }
   }
 
@@ -693,6 +728,7 @@ function treeRecords(workspace: string, tree: WorkspaceTree, now: number): Works
       kind: row.kind,
       name: row.name,
       rev: 1,
+      contentHash: '',
       updatedAt: now,
     }
     if (row.docKind !== undefined) record.docKind = row.docKind
@@ -705,9 +741,30 @@ function treeRecords(workspace: string, tree: WorkspaceTree, now: number): Works
       if (content?.bytes === undefined) throw new Error(`File entry ${id} has no bytes`)
       record.bytes = new Uint8Array(content.bytes)
     }
+    record.contentHash = hashRecord(record)
     records.push(record)
   }
   return records
+}
+
+// Every part_instance.doc_id a parsed document names, deduped. This is the
+// assembly-to-part half of the edge set; a part document yields none. A dangling
+// id is recorded anyway: an edge is a legal format state (C3's mint branch), and
+// the mutation site owns the outward-link refusal.
+function partDocIdsInSpec(spec: Record<string, unknown>): string[] {
+  const features = spec.features
+  if (!Array.isArray(features)) return []
+  const ids = new Set<string>()
+  for (const f of features) {
+    if (!f || typeof f !== 'object') continue
+    const feature = f as Record<string, unknown>
+    if (feature.kind !== 'part_instance') continue
+    const instance = feature.instance
+    if (!instance || typeof instance !== 'object') continue
+    const id = (instance as Record<string, unknown>).doc_id
+    if (typeof id === 'string' && id) ids.add(id)
+  }
+  return [...ids]
 }
 
 // Fill in the file payloads an open tree left unloaded, so serializeTree can

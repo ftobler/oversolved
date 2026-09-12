@@ -22,6 +22,8 @@ import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { fileIdsInSpec } from '@/stores/fileRegistry/resolve'
+import { partBundleKey } from '@/workspace/contentHash'
+import { workspaceStoreRevision } from '@/workspace/storeEvents'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
 import type { MateSpec, AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { dragTargetMate, dragTargetPoseMate } from '@/kernel/assemblyDrag'
@@ -58,7 +60,6 @@ export function partSpecs(doc: AssemblyDoc): PartInputSpec[] {
     .map(f => ({
       handle: f.instance!.handle,
       doc_id: f.instance!.doc_id,
-      doc_rev: f.instance!.doc_rev,
       transform: f.instance!.transform,
       fixed: f.instance!.fixed,
     }))
@@ -98,43 +99,55 @@ export function mateSpecs(doc: AssemblyDoc): MateSpec[] {
     }))
 }
 
-// The identity the rev cache is keyed to: the uuid plus each referenced part's
-// recorded doc_rev, order-insensitive. Any of those changing (a doc swap, or a
-// mid-burst edit that bumped a recorded rev) invalidates the cached map so the
-// next non-live solve re-fetches instead of committing against a pre-edit bundle.
-function revCacheKey(uuid: string, doc: AssemblyDoc): string {
-  const parts = partSpecs(doc)
-    .map(p => `${p.doc_id}:${p.doc_rev}`)
-    .sort()
-    .join(',')
-  return `${uuid}|${parts}`
+// The identity the burst cache is keyed to: the uuid plus the workspace store
+// revision, which bumps on every working-copy write. A mid-burst edit therefore
+// invalidates the cached hash map, so the next non-live solve re-fetches instead
+// of committing against a pre-edit bundle. The part list itself is stable across
+// a drag, so a live tick reuses the last full solve's map regardless.
+function hashCacheKey(uuid: string, revision: number): string {
+  return `${uuid}|${revision}`
 }
 
 /**
- * Current revs per referenced part, the bundle cache key. The instance's own
- * `doc_rev` is the rev recorded at placement; a part edited since then has a
- * higher current rev, which is exactly what forces its bundle rebuild. Refs are
- * read from the open workspace session, never the library, so an assembly can
- * only key against documents that live beside it.
+ * The content-hash key per referenced part, the bundle cache's invalidation
+ * signal. The instance's own recorded `doc_rev` is only placement provenance now;
+ * the current content comes from the open workspace session's entry hash, with
+ * the content hashes of its one-level file dependencies folded in so replacing a
+ * referenced STEP's bytes invalidates too. Refs are read from the session, never
+ * the library, so an assembly can only key against documents that live beside it.
+ *
+ * A part whose hash is unknown (a store read failure) is omitted, which bypasses
+ * the cache for that part rather than ever risking a stale hit.
  */
-export async function currentRevs(doc: AssemblyDoc): Promise<Record<string, number>> {
-  const parts = partSpecs(doc)
-  const revs: Record<string, number> = {}
-  for (const p of parts) revs[p.doc_id] = p.doc_rev
+export async function currentHashes(doc: AssemblyDoc): Promise<Record<string, string>> {
   const session = useWorkspaceSessionStore.getState().session
-  if (!session) return revs
+  if (!session) return {}
+  const hashes: Record<string, string> = {}
   try {
-    const entries = await session.listEntries()
+    const [entries, edges] = await Promise.all([session.listEntries(), session.referenceEdges()])
     const byId = new Map(entries.map(entry => [entry.id, entry]))
-    for (const id of Object.keys(revs)) {
-      const entry = byId.get(id)
-      if (entry && typeof entry.rev === 'number') revs[id] = entry.rev
+    for (const part of partSpecs(doc)) {
+      const entry = byId.get(part.doc_id)
+      if (!entry?.contentHash) continue
+      const fileHashes: string[] = []
+      let missing = false
+      for (const fileId of edges[part.doc_id] ?? []) {
+        const file = byId.get(fileId)
+        if (file?.contentHash) fileHashes.push(file.contentHash)
+        else if (file?.kind === 'file') missing = true
+      }
+      // A referenced file whose hash is unknown is a cache bypass, never a
+      // stale hit. A non-file edge (an assembly to part edge) is not a bundle
+      // dependency and does not affect the part key.
+      if (missing) continue
+      hashes[part.doc_id] = partBundleKey(entry.contentHash, fileHashes)
     }
   } catch {
-    // Store unreachable: fall back to the recorded revs. A stale bundle key can
-    // only re-use an older cached bundle, never return wrong geometry.
+    // Store unreachable: no hashes means every part bypasses the cache and
+    // cold-rebuilds uncached. Never fall back to a revision key.
+    return {}
   }
-  return revs
+  return hashes
 }
 
 export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
@@ -147,15 +160,16 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   // request bumped it meanwhile. The assembly worker protocol carries no token,
   // so the guard lives here on the main thread against a local counter.
   const solveVersion = useRef(0)
-  // Cached under the identity the revs were computed for (see revCacheKey), so a
-  // coalesced burst reuses the map and issues documents.list() once per burst.
-  // A doc swap or a mid-burst edit that bumped a recorded rev changes the key,
-  // so the next run re-fetches instead of committing against a pre-edit bundle.
-  const burstRevs = useRef<{ key: string; revs: Record<string, number> } | null>(null)
-  // The rev map from the last full solve. A live drag tick reuses it without a
-  // version check: no part is edited mid-drag (applyUndoRedo clears the drag),
-  // and re-listing documents per tick is the exact cost this cache avoids.
-  const lastRevs = useRef<Record<string, number> | null>(null)
+  // Cached under the identity the hashes were computed for (see hashCacheKey),
+  // so a coalesced burst reuses the map. A doc swap or a mid-burst edit that
+  // bumped the workspace revision changes the key, so the next run re-fetches
+  // instead of committing against a pre-edit bundle.
+  const burstHashes = useRef<{ key: string; hashes: Record<string, string> } | null>(null)
+  // The hash map from the last solve, with the key it was computed for. A live
+  // drag tick reuses it only while the key still matches: no part is edited
+  // mid-drag (applyUndoRedo clears the drag), and re-listing entries per tick is
+  // the exact cost this cache avoids.
+  const lastHashes = useRef<{ key: string; hashes: Record<string, string> } | null>(null)
   // The assembly id the current render is solving for. The solve drain aborts
   // when it changes, so an old IIFE cannot keep solving against an abandoned doc.
   // Kept current in the render body so the abort check never sees a lagging uuid
@@ -204,7 +218,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       // session resolves a workspace entry first and C1's flat registry second,
       // so a STEP just staged by an import still reaches the worker before the
       // workspace has adopted it.
-      buildBundle: async (doc_id, doc_rev, spec) => {
+      buildBundle: async (doc_id, content_hash, spec) => {
         const session = useWorkspaceSessionStore.getState().session
         const fileIds = fileIdsMissingFromWorker(fileIdsInSpec(spec))
         let files: Record<string, Uint8Array> | undefined
@@ -217,7 +231,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
             if (bytes) files[id] = bytes
           }
         }
-        return buildBundleViaWorker({ ...spec, id: doc_id }, doc_id, doc_rev, files)
+        return buildBundleViaWorker({ ...spec, id: doc_id }, doc_id, content_hash, files)
       },
     })
     // Surface the cancel through the single-slot solver overlay (the assembly
@@ -291,23 +305,22 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         const target = livePartPose(manip!, store.settledPose(manip!.handle))
         mates = [...mates, dragTargetPoseMate(manip!.handle, target)]
       }
-      // Revs are stable across a drag burst; a live tick reuses the last full
-      // solve's map. A non-live solve reuses its cached map only while the
-      // doc/uuid identity it was computed for is unchanged, so a doc swap or a
-      // mid-burst edit that bumped a recorded rev cannot feed stale doc_revs
-      // into the bundle cache key.
-      let revs: Record<string, number>
-      if (live && lastRevs.current) {
-        revs = lastRevs.current
+      // Hashes are stable across a drag burst; a live tick reuses the last
+      // solve's map only while the uuid and the workspace revision still match,
+      // so a doc swap or a mid-burst edit invalidates rather than feeding stale
+      // keys into the bundle cache.
+      const key = hashCacheKey(uuid, workspaceStoreRevision())
+      let hashes: Record<string, string>
+      if (live && lastHashes.current?.key === key) {
+        hashes = lastHashes.current.hashes
       } else {
-        const key = revCacheKey(uuid, current)
-        if (!burstRevs.current || burstRevs.current.key !== key) {
-          burstRevs.current = { key, revs: await currentRevs(current) }
+        if (!burstHashes.current || burstHashes.current.key !== key) {
+          burstHashes.current = { key, hashes: await currentHashes(current) }
         }
-        revs = burstRevs.current.revs
-        lastRevs.current = revs
+        hashes = burstHashes.current.hashes
+        lastHashes.current = { key, hashes }
       }
-      const res = await solveAssemblyViaWorker(uuid, parts, revs, mates, live)
+      const res = await solveAssemblyViaWorker(uuid, parts, hashes, mates, live)
       if (!res) throw new Error('assembly solver unavailable')
       // Stale-guard: a request that landed while this solve was in flight (undo/
       // redo restoring a doc is the classic case) owns the record. Writing a
@@ -354,6 +367,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         edgeCurves: toEdgeCurves(res.payload.bodies),
         entityMateRefs: buildEntityMateRefs(res.payload.bodies, res.payload.anchorDescriptors),
         anchors,
+        anchorDescriptors: res.payload.anchorDescriptors ?? {},
         pickGeometry: buildPickBodies(res.payload.bodies, anchors),
         // The whole verdict: the per-mate and per-part marks plus the overall
         // status. A mate whose reference no longer resolves comes back in
@@ -412,13 +426,13 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
     // A uuid change drives a different assembly now (the editor remounts keyed
     // by uuid, but a rerender can race the remount): bump the version so any
     // solve the previous uuid left in flight is dropped, and clear the queue and
-    // rev cache so the old assembly's data does not carry into the new one.
+    // hash cache so the old assembly's data does not carry into the new one.
     if (seenUuidRef.current !== uuid) {
       seenUuidRef.current = uuid
       solveVersion.current += 1
       queued.current = false
       inFlight.current = false
-      burstRevs.current = null
+      burstHashes.current = null
     }
     if (solveToken === 0) return  // no solve on mount; the caller asks for the first one
     // A request arriving mid-solve queues exactly one follow-up rather than
@@ -443,7 +457,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         // one again, so ownership is proven by the drain id, not the uuid.
         if (myDrain === drainSeq.current) {
           inFlight.current = false
-          burstRevs.current = null
+          burstHashes.current = null
         }
       }
     })()

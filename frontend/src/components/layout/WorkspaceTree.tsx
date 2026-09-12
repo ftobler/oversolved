@@ -2,11 +2,14 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Dialog from '@/components/dialogs/Dialog'
 import { getWorkspaceStore } from '@/workspace/store'
+import { EntryReferencedError, type EntryReferrer } from '@/workspace/errors'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { subscribeWorkspaceStore, workspaceStoreRevision } from '@/workspace/storeEvents'
 import type { EntryMeta } from '@/workspace/types'
 import { randomUuid } from '@/utils/randomUuid'
 import { dirtyEntryIds, groupEntries, isOpenEntry } from './workspaceTreeModel'
+import { useWhereUsed } from './filesSeams'
+import { referrersOf } from './filesModel'
 import { treeRowKeyDown } from './treeRowKeyDown'
 
 // U2: the workspace navigator. It reads the live session and re-reads on every
@@ -29,6 +32,9 @@ export function WorkspaceTree() {
   const [newKind, setNewKind] = useState<'part' | 'assembly'>('part')
   const [renameTarget, setRenameTarget] = useState<EntryMeta | null>(null)
   const [renameName, setRenameName] = useState('')
+  // The delete guard's presentation: the typed refusal, with the live referrers
+  // it named, held until the user acknowledges or jumps to one.
+  const [referenced, setReferenced] = useState<{ entry: EntryMeta; referrers: EntryReferrer[] } | null>(null)
 
   const workspace = session?.workspace ?? routeWorkspace
 
@@ -56,6 +62,19 @@ export function WorkspaceTree() {
   const savedRevs = session ? loadedRevs : EMPTY_REVS
   const grouped = useMemo(() => groupEntries(entries), [entries])
   const dirty = useMemo(() => dirtyEntryIds(entries, savedRevs), [entries, savedRevs])
+  // U4: the where-used index, inverted once from the session's reference edges.
+  const { inverse } = useWhereUsed(session, entries)
+  const referrerNames = useMemo(() => {
+    const names = new Map<string, string[]>()
+    const byId = new Map(entries.map(entry => [entry.id, entry.name]))
+    for (const entry of entries) {
+      const refs = referrersOf(inverse, entry.id)
+        .map(id => byId.get(id))
+        .filter((name): name is string => name !== undefined)
+      if (refs.length > 0) names.set(entry.id, refs)
+    }
+    return names
+  }, [entries, inverse])
 
   const openEntry = (entry: EntryMeta) => {
     if (!workspace) return
@@ -85,11 +104,16 @@ export function WorkspaceTree() {
 
   const handleDelete = async (entry: EntryMeta) => {
     if (!workspace) return
-    // A soft delete. If the deleted entry is the one on screen, the route must
-    // leave it before the store event re-lists, or the editor would read a
-    // trashed id.
-    if (entryId === entry.id) navigate(`/workspaces/${workspace}`)
-    await store.removeEntry(workspace, entry.id)
+    // A soft delete, but only after the store's guard allows it: a referenced
+    // entry is refused with its live referrers. Navigating away first would
+    // drop the editor on a refusal, so the route change waits for success.
+    try {
+      await store.removeEntry(workspace, entry.id)
+      if (entryId === entry.id) navigate(`/workspaces/${workspace}`)
+    } catch (e) {
+      if (e instanceof EntryReferencedError) setReferenced({ entry, referrers: e.referrers })
+      else throw e
+    }
   }
 
   return (
@@ -113,6 +137,7 @@ export function WorkspaceTree() {
           entries={grouped.parts}
           openId={entryId}
           dirty={dirty}
+          referrers={referrerNames}
           onOpen={openEntry}
           onRename={entry => { setRenameTarget(entry); setRenameName(entry.name) }}
           onDuplicate={entry => { void handleDuplicate(entry) }}
@@ -123,6 +148,7 @@ export function WorkspaceTree() {
           entries={grouped.assemblies}
           openId={entryId}
           dirty={dirty}
+          referrers={referrerNames}
           onOpen={openEntry}
           onRename={entry => { setRenameTarget(entry); setRenameName(entry.name) }}
           onDuplicate={entry => { void handleDuplicate(entry) }}
@@ -133,6 +159,7 @@ export function WorkspaceTree() {
           entries={grouped.otherDocs}
           openId={entryId}
           dirty={dirty}
+          referrers={referrerNames}
           onOpen={openEntry}
           onRename={entry => { setRenameTarget(entry); setRenameName(entry.name) }}
           onDuplicate={entry => { void handleDuplicate(entry) }}
@@ -143,6 +170,7 @@ export function WorkspaceTree() {
           entries={grouped.files}
           openId={entryId}
           dirty={dirty}
+          referrers={referrerNames}
           onOpen={openEntry}
           onRename={entry => { setRenameTarget(entry); setRenameName(entry.name) }}
           onDuplicate={entry => { void handleDuplicate(entry) }}
@@ -186,6 +214,34 @@ export function WorkspaceTree() {
           autoFocus
         />
       </Dialog>
+
+      <Dialog
+        isOpen={referenced !== null}
+        title="Cannot Delete"
+        onClose={() => setReferenced(null)}
+      >
+        <p>
+          {referenced?.entry.name} is still referenced. Remove the reference first, or open the
+          entry that uses it.
+        </p>
+        <ul className="where-used-list">
+          {referenced?.referrers.map(referrer => (
+            <li key={referrer.id}>
+              <button
+                type="button"
+                className="where-used-open"
+                onClick={() => {
+                  const entry = entries.find(candidate => candidate.id === referrer.id)
+                  setReferenced(null)
+                  if (entry) openEntry(entry)
+                }}
+              >
+                {referrer.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Dialog>
     </div>
   )
 }
@@ -195,6 +251,7 @@ interface TreeGroupProps {
   entries: EntryMeta[]
   openId: string | undefined
   dirty: Set<string>
+  referrers: Map<string, string[]>
   onOpen: (entry: EntryMeta) => void
   onRename: (entry: EntryMeta) => void
   onDuplicate: (entry: EntryMeta) => void
@@ -203,7 +260,7 @@ interface TreeGroupProps {
 
 // One listbox per document-kind group plus files. Rows are keyboard reachable
 // on the AssemblyTree precedent: role=option, tabIndex 0, Enter/Space to open.
-function TreeGroup({ label, entries, openId, dirty, onOpen, onRename, onDuplicate, onDelete }: TreeGroupProps) {
+function TreeGroup({ label, entries, openId, dirty, referrers, onOpen, onRename, onDuplicate, onDelete }: TreeGroupProps) {
   if (entries.length === 0) return null
   return (
     <div className="workspace-group">
@@ -211,6 +268,7 @@ function TreeGroup({ label, entries, openId, dirty, onOpen, onRename, onDuplicat
       <ul className="workspace-list" role="listbox" aria-label={label}>
         {entries.map(entry => {
           const open = isOpenEntry(entry, openId)
+          const usedBy = referrers.get(entry.id)
           return (
             <li
               key={entry.id}
@@ -222,6 +280,11 @@ function TreeGroup({ label, entries, openId, dirty, onOpen, onRename, onDuplicat
               onKeyDown={e => treeRowKeyDown(e, () => onOpen(entry))}
             >
               <span className="workspace-row-name" title={entry.name}>{entry.name}</span>
+              {usedBy && usedBy.length > 0 && (
+                <span className="workspace-where-used" title={`Used by ${usedBy.join(', ')}`}>
+                  used by {usedBy.join(', ')}
+                </span>
+              )}
               {dirty.has(entry.id) && <span className="workspace-dirty-dot" title="Changed since last save" />}
               <span className="workspace-row-actions">
                 <button

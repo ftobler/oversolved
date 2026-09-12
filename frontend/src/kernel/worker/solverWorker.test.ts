@@ -271,7 +271,7 @@ describe('typed-array mesh producer hardening', () => {
 })
 
 describe('handleBundleRequest', () => {
-  const BUNDLE_REQ: BundleRequest = { id: 4, kind: 'buildBundle', spec: { id: 'doc1' }, doc_id: 'abc', doc_rev: 3 }
+  const BUNDLE_REQ: BundleRequest = { id: 4, kind: 'buildBundle', spec: { id: 'doc1' }, doc_id: 'abc', content_hash: 'h3' }
 
   it('converts solve output to a PartBundle with typed arrays', async () => {
     const res = await handleBundleRequest(BUNDLE_REQ, async () => ({
@@ -289,7 +289,7 @@ describe('handleBundleRequest', () => {
     }))
     expect(res.ok).toBe(true)
     expect(res.ok && res.payload.doc_id).toBe('abc')
-    expect(res.ok && res.payload.doc_rev).toBe(3)
+    expect(res.ok && res.payload.content_hash).toBe('h3')
     expect(res.ok && res.payload.anchors).toEqual({})
     expect(res.ok && res.payload.bodies.length).toBe(1)
     const body = res.ok && res.payload.bodies[0]
@@ -336,9 +336,9 @@ describe('handleBundleRequest', () => {
     expect(bundleTransferables(res)).toEqual([])
   })
 
-  it('passes spec and options to the engine, returns PartBundle with correct doc_id/doc_rev', async () => {
+  it('passes spec and options to the engine, returns PartBundle with correct doc_id/content_hash', async () => {
     let seen: unknown[] = []
-    await handleBundleRequest({ id: 5, kind: 'buildBundle', spec: { id: 'z' }, doc_id: 'd99', doc_rev: 7 }, async (spec, options) => {
+    await handleBundleRequest({ id: 5, kind: 'buildBundle', spec: { id: 'z' }, doc_id: 'd99', content_hash: 'h7' }, async (spec, options) => {
       seen = [spec, options]
       return {
         solve_ms: 0, result: {},
@@ -441,7 +441,7 @@ describe('per-generation import file cache', () => {
     absorbFilesForTest(FILES)
     let seen: ReadonlyMap<string, Uint8Array> | undefined
     await handleBundleRequest(
-      { id: 4, kind: 'buildBundle', spec: {}, doc_id: 'd', doc_rev: 1 },
+      { id: 4, kind: 'buildBundle', spec: {}, doc_id: 'd', content_hash: 'h1' },
       async (_spec, options) => { seen = options?.files; return null },
       fileCacheForTest(),
     )

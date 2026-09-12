@@ -6,9 +6,8 @@
  * requests to the OCC bundle-builder worker and fetches PartDoc content from
  * the document store (main-thread-only).
  *
- * Hosts the real `solveAssembly` orchestration: bundle get/miss/build/migrate
- * chain, anchor resolve + stale flagging, solve_mate call, transform
- * application.
+ * Hosts the real `solveAssembly` orchestration: bundle get/miss/build chain,
+ * anchor resolve + stale flagging, solve_mate call, transform application.
  */
 
 import { inWorker } from '../inWorker'
@@ -34,7 +33,7 @@ import type {
 
 export interface RelayService {
   requestPartDoc(doc_id: string): Promise<Record<string, unknown>>
-  requestBuildBundle(doc_id: string, doc_rev: number, spec: Record<string, unknown>): Promise<unknown>
+  requestBuildBundle(doc_id: string, content_hash: string, spec: Record<string, unknown>): Promise<unknown>
 }
 
 let nextRelayId = 1
@@ -46,7 +45,7 @@ const relayPending = new Map<number, { resolve: (val: unknown) => void; reject: 
 // nothing else caches, so a timeout no longer throws it away (the next solve
 // would rebuild it). Entries self-evict via LATE_RELAY_GRACE_MS, which is also
 // what bounds the map; the original promise is already rejected.
-const lateRelay = new Map<number, { doc_id: string; doc_rev?: number }>()
+const lateRelay = new Map<number, { doc_id: string; content_hash?: string }>()
 
 // The relay id counter lives in this worker's own realm and restarts at 1 on
 // every spawn, so two worker generations could mint colliding ids. Solve ids
@@ -77,7 +76,7 @@ export const LATE_RELAY_GRACE_MS = 5_000
 /** Send a relay request and await the main-thread response, or time out. */
 function relayRequest(
   subKind: 'partDocContent' | 'buildBundle',
-  params: { doc_id: string; doc_rev?: number; spec?: Record<string, unknown> },
+  params: { doc_id: string; content_hash?: string; spec?: Record<string, unknown> },
   post: (msg: AnchorRelayRequest) => void,
   timeoutMs: number,
 ): Promise<unknown> {
@@ -90,7 +89,7 @@ function relayRequest(
       // reply to be cached. A dead main thread produces no reply at all, so
       // the grace timer just evicts the entry.
       if (subKind === 'buildBundle') {
-        lateRelay.set(requestId, { doc_id: params.doc_id, doc_rev: params.doc_rev })
+        lateRelay.set(requestId, { doc_id: params.doc_id, content_hash: params.content_hash })
         setTimeout(() => { lateRelay.delete(requestId) }, LATE_RELAY_GRACE_MS)
       }
       reject(new Error(`relay request '${subKind}' timed out after ${timeoutMs}ms`))
@@ -104,7 +103,7 @@ function relayRequest(
       requestId,
       subKind,
       doc_id: params.doc_id,
-      doc_rev: params.doc_rev,
+      content_hash: params.content_hash,
       spec: params.spec,
     })
   })
@@ -130,15 +129,19 @@ export function handleRelayResponse(msg: AnchorRelayResponse): Promise<void> | u
   const late = lateRelay.get(msg.requestId)
   if (!late) return undefined
   lateRelay.delete(msg.requestId)
+  // An unknown hash reaches the relay as '' (a store read failure has no key).
+  // Caching under `doc@` would never be looked up and would occupy one of the
+  // per-doc slots, so a build we cannot key is dropped instead of salvaged.
+  if (!late.content_hash) return undefined
   // An error reply has nothing to cache and is dropped; only then does the
   // ok arm narrow to a payload-bearing response.
   if (!msg.ok) return undefined
   const bundle = msg.payload as Partial<PartBundle> | null | undefined
   // Shape guard mirroring the main thread's relay reply check: only a bundle
-  // with a `bodies` array, for the requested doc/rev, is plausible enough to
+  // with a `bodies` array, for the requested doc/hash, is plausible enough to
   // cache. A malformed or mismatched late reply is dropped.
   if (!bundle || !Array.isArray(bundle.bodies)) return undefined
-  if (bundle.doc_id !== late.doc_id || bundle.doc_rev !== late.doc_rev) return undefined
+  if (bundle.doc_id !== late.doc_id || bundle.content_hash !== late.content_hash) return undefined
   return cacheLateBundle(bundle as PartBundle)
 }
 
@@ -146,10 +149,9 @@ async function cacheLateBundle(bundle: PartBundle): Promise<void> {
   try {
     // Atomic if-absent: the read and write share one transaction, so the late
     // salvage can never overwrite a bundle a concurrent or later solve just
-    // wrote (a migrated record, for instance). The old guard read
-    // `bundleCacheHas` then `bundleCachePut` as two transactions; a solve
-    // committing between them left the salvage free to clobber the migrated
-    // write. putIfAbsent collapses that window to zero.
+    // wrote. The old guard read `bundleCacheHas` then `bundleCachePut` as two
+    // transactions; a solve committing between them left the salvage free to
+    // clobber the newer write. putIfAbsent collapses that window to zero.
     await bundleCachePutIfAbsent(bundle)
   } catch (e) {
     // Best effort: the solve already failed, so a failed cache write must not
@@ -166,10 +168,10 @@ export function createRelayService(
     requestPartDoc(doc_id: string): Promise<Record<string, unknown>> {
       return relayRequest('partDocContent', { doc_id }, post, relayTimeoutMs) as Promise<Record<string, unknown>>
     },
-    requestBuildBundle(doc_id: string, doc_rev: number, spec: Record<string, unknown>): Promise<unknown> {
+    requestBuildBundle(doc_id: string, content_hash: string, spec: Record<string, unknown>): Promise<unknown> {
       return relayRequest(
         'buildBundle',
-        { doc_id, doc_rev, spec },
+        { doc_id, content_hash, spec },
         post,
         relayTimeoutMs * BUILD_BUNDLE_TIMEOUT_SCALE,
       )
@@ -178,8 +180,8 @@ export function createRelayService(
 }
 
 // ─── solveAssembly handler ───
-// Real orchestration: bundle get/miss/build/migrate, anchor resolve, mate
-// solve via WASM, transform application.
+// Real orchestration: bundle get/miss/build, anchor resolve, mate solve via
+// WASM, transform application.
 
 export async function handleSolveAssembly(
   req: SolveAssemblyRequest,
@@ -197,7 +199,7 @@ export async function handleSolveAssembly(
 
     const result: AssemblyBuildResponse = await solveAssembly(
       req.parts,
-      req.revs,
+      req.hashes,
       req.mates || [],
       relay,
       solver,

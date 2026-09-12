@@ -9,6 +9,7 @@ const storeMock = vi.hoisted(() => ({
 vi.mock('@/workspace/store', () => ({ getWorkspaceStore: () => storeMock }))
 
 import { FilesPanel } from '@/components/layout/FilesPanel'
+import { EntryReferencedError } from '@/workspace/errors'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 
 const entries: EntryMeta[] = [
@@ -27,6 +28,7 @@ function installSession() {
       originOf: vi.fn(async () => undefined),
       resolveFile: vi.fn(),
       referencesOf: vi.fn(async () => []),
+      referenceEdges: vi.fn(async () => ({})),
     } as unknown as WorkspaceSession,
   })
 }
@@ -68,6 +70,20 @@ describe('FilesPanel prune', () => {
     fireEvent.click(await screen.findByLabelText('Prune orphans'))
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(storeMock.removeEntry).not.toHaveBeenCalled()
+    expect(screen.queryByText('Prune Orphans')).not.toBeInTheDocument()
+  })
+
+  it('surfaces a store refusal as a Cannot Prune dialog naming the referrer', async () => {
+    storeMock.removeEntry.mockRejectedValueOnce(new EntryReferencedError('f2', [{ id: 'd1', name: 'Bracket' }]))
+    render(<FilesPanel />)
+    await screen.findByText('old.step')
+    fireEvent.click(await screen.findByLabelText('Prune orphans'))
+    fireEvent.click(screen.getByRole('button', { name: 'Prune' }))
+    // A race made the orphan referenced between scan and delete: the guard
+    // refuses and prune surfaces it instead of deleting.
+    expect(await screen.findByText('Cannot Prune')).toBeInTheDocument()
+    expect(screen.getByText(/still referenced and was not pruned/)).toBeInTheDocument()
+    expect(screen.getByText('Bracket')).toBeInTheDocument()
     expect(screen.queryByText('Prune Orphans')).not.toBeInTheDocument()
   })
 })

@@ -96,8 +96,9 @@ function importedPart(id: string, thickness: number): Record<string, unknown> {
   }
 }
 
-function bundleReq(spec: Record<string, unknown>, rev: number): BundleRequest {
-  return { id: rev, kind: 'buildBundle', spec, doc_id: spec.id as string, doc_rev: rev }
+let nextBundleId = 1
+function bundleReq(spec: Record<string, unknown>, content_hash: string): BundleRequest {
+  return { id: nextBundleId++, kind: 'buildBundle', spec, doc_id: spec.id as string, content_hash }
 }
 
 async function timed(label: string, fn: () => Promise<unknown>): Promise<number> {
@@ -149,15 +150,15 @@ describe.skipIf(!oc || !solveBytes || !enabled)('bundle rebuild cost (real OCC +
       solveLocally(make(`${name}-a`, 7)))
 
     // b: bundle build with a foreign document built in between.
-    await handleBundleRequest(bundleReq(make(`${name}-b`, 6), 1), solveLocally, STEP_FILES)
-    await handleBundleRequest(bundleReq(other, 1), solveLocally, STEP_FILES)
+    await handleBundleRequest(bundleReq(make(`${name}-b`, 6), 'h1'), solveLocally, STEP_FILES)
+    await handleBundleRequest(bundleReq(other, 'h1'), solveLocally, STEP_FILES)
     const b = await timed('b  bundle rebuild, doc switched in between', () =>
-      handleBundleRequest(bundleReq(make(`${name}-b`, 7), 2), solveLocally, STEP_FILES))
+      handleBundleRequest(bundleReq(make(`${name}-b`, 7), 'h2'), solveLocally, STEP_FILES))
 
     // c: bundle build with nothing in between.
-    await handleBundleRequest(bundleReq(make(`${name}-c`, 6), 1), solveLocally, STEP_FILES)
+    await handleBundleRequest(bundleReq(make(`${name}-c`, 6), 'h1'), solveLocally, STEP_FILES)
     const c = await timed('c  bundle rebuild, same doc back to back', () =>
-      handleBundleRequest(bundleReq(make(`${name}-c`, 7), 2), solveLocally, STEP_FILES))
+      handleBundleRequest(bundleReq(make(`${name}-c`, 7), 'h2'), solveLocally, STEP_FILES))
 
     console.log(`  ${'b - a (cost of the doc switch)'.padEnd(46)} ${(b - a).toFixed(0).padStart(7)} ms`)
     console.log(`  ${'c - a (cost of the bundle path itself)'.padEnd(46)} ${(c - a).toFixed(0).padStart(7)} ms`)

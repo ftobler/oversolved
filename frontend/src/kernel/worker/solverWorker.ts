@@ -150,7 +150,7 @@ export async function handleBundleRequest(
     }
     const bundle = toPartBundle(
       req.doc_id,
-      req.doc_rev,
+      req.content_hash,
       response.bodies as Record<string, BodyResult>,
     )
     return { id: req.id, ok: true, payload: bundle }

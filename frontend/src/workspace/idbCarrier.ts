@@ -35,6 +35,7 @@ import { randomUuid } from '@/utils/randomUuid'
 import { entrySizeOf } from '@/utils/entrySize'
 import { FORMAT_VERSION, pathFor } from './paths'
 import { canonicalizeReferences } from './refs'
+import { hashRecord } from './contentHash'
 
 // The workspace row. Structure edits (references, provenance, trash) land here,
 // not on the entry rows, which is what keeps a content edit to one record.
@@ -76,6 +77,11 @@ export interface WorkspaceMetaRecord {
 
 // One working-copy or checkpoint entry. `text` and `bytes` mirror EntryContent:
 // a document carries text, a file carries bytes.
+//
+// `rev` is a change ordinal owned by the working-copy write: IdbCarrier bumps it
+// whenever a content-changing write lands, and only then. It feeds the dirty dot
+// (working rev against the checkpoint) and `WorkspaceSummary.rev`; it is no
+// longer the bundle-cache key, which now follows `contentHash` (A11).
 export interface WorkspaceEntryRecord {
   workspace: string
   id: string
@@ -88,6 +94,10 @@ export interface WorkspaceEntryRecord {
   text?: string
   bytes?: Uint8Array
   rev: number
+  // sha256 of the payload, stamped at every write path. The bundle cache keys
+  // on it (folding referenced file hashes in on the main thread), so an undo
+  // that restores already-built content lands on the same cached bundle.
+  contentHash: string
   updatedAt: number
 }
 
@@ -108,6 +118,9 @@ export interface WorkspaceEntryMetaRecord {
   // R1's derived payload size. Optional because a v5 mirror row written before
   // the size field existed carries none; the v6 upgrade backfills it.
   size?: number
+  // The payload hash (C5). Optional only so a mirror row written before the
+  // field existed still reads; the reader recomputes it from the full record.
+  contentHash?: string
 }
 
 function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
@@ -120,6 +133,7 @@ function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
     rev: record.rev,
     updatedAt: record.updatedAt,
     size: entrySizeOf(record),
+    contentHash: record.contentHash,
   }
   if (record.docKind !== undefined) meta.docKind = record.docKind
   if (record.mime !== undefined) meta.mime = record.mime
@@ -216,7 +230,7 @@ function recordToManifestEntry(record: WorkspaceEntryRecord): ManifestEntry {
 }
 
 function recordToMeta(record: WorkspaceEntryRecord): EntryMeta {
-  const meta: EntryMeta = { id: record.id, path: record.path, kind: record.kind, name: record.name, rev: record.rev, updatedAt: record.updatedAt, size: entrySizeOf(record) }
+  const meta: EntryMeta = { id: record.id, path: record.path, kind: record.kind, name: record.name, rev: record.rev, updatedAt: record.updatedAt, size: entrySizeOf(record), contentHash: record.contentHash ?? hashRecord(record) }
   if (record.docKind !== undefined) meta.docKind = record.docKind
   if (record.mime !== undefined) meta.mime = record.mime
   if (record.fileKind !== undefined) meta.fileKind = record.fileKind
@@ -240,7 +254,7 @@ function entryToRecord(
   rev: number,
   updatedAt: number,
 ): WorkspaceEntryRecord {
-  const record: WorkspaceEntryRecord = { workspace, id: entry.id, path, kind: entry.kind, name: entry.name, rev, updatedAt }
+  const record: WorkspaceEntryRecord = { workspace, id: entry.id, path, kind: entry.kind, name: entry.name, rev, updatedAt, contentHash: '' }
   if (entry.docKind !== undefined) record.docKind = entry.docKind
   if (entry.mime !== undefined) record.mime = entry.mime
   if (entry.fileKind !== undefined) record.fileKind = entry.fileKind
@@ -251,6 +265,7 @@ function entryToRecord(
     if (entry.bytes === undefined) throw new Error(`File entry ${entry.id} has no bytes`)
     record.bytes = new Uint8Array(entry.bytes)
   }
+  record.contentHash = hashRecord(record)
   return record
 }
 
@@ -408,10 +423,10 @@ export class IdbCarrier implements WorkspaceCarrier {
     const previous = await this.getRecord(entry.id)
     if (!previous) throw new Error(`Entry not found: ${entry.id}`)
     const merged = mergeContentForWrite(entry, previous)
-    // A byte-identical save is a no-op. `rev` is the assembly bundle-cache key
-    // (A11), so churning it on a save that changed nothing needlessly evicts a
-    // cache entry that is still correct. The live save path is adapter save ->
-    // writeEntry -> here, which has no other content guard.
+    // A byte-identical save is a no-op. `rev` is a change ordinal now, not the
+    // bundle-cache key (A11), but churning it on a save that changed nothing
+    // would still light the dirty dot against the checkpoint. The live save path
+    // is adapter save -> writeEntry -> here, which has no other content guard.
     if (!entryChanged(previous, merged)) return
     const record = entryToRecord(this.workspace, merged, previous.path, previous.rev + 1, Date.now())
     await idbTransaction(
@@ -474,10 +489,26 @@ export class IdbCarrier implements WorkspaceCarrier {
     return [...(meta.references[id] ?? [])]
   }
 
+  // The whole edge map in one read. Where-used inverts this rather than issuing
+  // one metadata read per entry, which is the point of the index.
+  async referencesMap(): Promise<ReferenceEdges> {
+    const meta = await this.requireMeta()
+    return canonicalizeReferences(meta.references)
+  }
+
   async addReference(from: string, to: string): Promise<void> {
     const meta = await this.requireMeta()
     const targets = [...(meta.references[from] ?? []), to]
     await this.putMeta({ ...meta, references: canonicalizeReferences({ ...meta.references, [from]: targets }), updatedAt: Date.now() })
+  }
+
+  async removeReference(from: string, to: string): Promise<void> {
+    const meta = await this.requireMeta()
+    const targets = (meta.references[from] ?? []).filter(id => id !== to)
+    const references = { ...meta.references }
+    if (targets.length === 0) delete references[from]
+    else references[from] = targets
+    await this.putMeta({ ...meta, references: canonicalizeReferences(references), updatedAt: Date.now() })
   }
 
   async maxWorkingRev(): Promise<number> {

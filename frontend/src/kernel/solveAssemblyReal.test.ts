@@ -40,10 +40,10 @@ function rollZ(deg: number): Transform3D {
 }
 
 /** A part whose single anchor is a plane at the local origin facing +Z. */
-function planeBundle(doc_id: string, doc_rev: number): PartBundle {
+function planeBundle(doc_id: string, content_hash: string): PartBundle {
   return {
     doc_id,
-    doc_rev,
+    content_hash,
     schema: BUNDLE_SCHEMA,
     bodies: [{
       mesh: {
@@ -69,8 +69,8 @@ function planeBundle(doc_id: string, doc_rev: number): PartBundle {
 /** `planeBundle` with its one anchor's surface kind swapped. The Tangential
  *  row needs a cylinder on B: a plane/plane tangential can zero its residual by
  *  rotating B's normal, while plane/cylinder reads A's axis only and cannot. */
-function bundleWithAnchor(kind: 'plane' | 'cylinder', doc_id: string, doc_rev: number): PartBundle {
-  const bundle = planeBundle(doc_id, doc_rev)
+function bundleWithAnchor(kind: 'plane' | 'cylinder', doc_id: string, content_hash: string): PartBundle {
+  const bundle = planeBundle(doc_id, content_hash)
   bundle.anchors = {
     face: {
       kind,
@@ -88,11 +88,11 @@ const relay: RelayService = {
   requestBuildBundle: async () => { throw new Error('should not build: bundles are pre-cached') },
 }
 
-const revs = { 'doc-a': 1, 'doc-b': 1 }
+const revs = { 'doc-a': '1', 'doc-b': '1' }
 
 async function seedBundles(): Promise<void> {
-  await bundleCachePut(planeBundle('doc-a', 1))
-  await bundleCachePut(planeBundle('doc-b', 1))
+  await bundleCachePut(planeBundle('doc-a', '1'))
+  await bundleCachePut(planeBundle('doc-b', '1'))
 }
 
 function dist(t: Transform3D): number {
@@ -109,8 +109,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   // The user-visible bug: author a fixed mate, nothing springs into place.
   it('a fixed mate pulls a free part onto one marked fixed', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 40, 50) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(30, 40, 50) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -136,8 +136,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   // positive residual, and the pure predicate turns that into a banner.
   it('reports an overconstrained verdict for conflicting fixed mates', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(30, 0, 0) },
     ]
     const mates = [
       { id: 'm1', kind: 'fixed' as const, offset: 0, ref_a: { part: 'pa', anchor: 'face' }, ref_b: { part: 'pb', anchor: 'face' } },
@@ -157,8 +157,8 @@ describeReal('solveAssembly with the real mate solver', () => {
 
   it('leaves the fixed part exactly where it was placed', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: at(5, 5, 5), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
+      { handle: 'pa', doc_id: 'doc-a', transform: at(5, 5, 5), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(30, 0, 0) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -185,8 +185,8 @@ describeReal('solveAssembly with the real mate solver', () => {
     // 30 degrees about X, so a drift in any rotational DOF shows.
     const seed: Transform3D = { tx: 2, ty: -3, tz: 4, qx: 0.2588190451025207, qy: 0, qz: 0, qw: 0.9659258262890683 }
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: seed, fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 10, -5) },
+      { handle: 'pa', doc_id: 'doc-a', transform: seed, fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(30, 10, -5) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -211,8 +211,8 @@ describeReal('solveAssembly with the real mate solver', () => {
     const seedA: Transform3D = at(0, 0, 0)
     const seedB: Transform3D = at(4, 0, 0)
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: seedA, fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: seedB, fixed: true },
+      { handle: 'pa', doc_id: 'doc-a', transform: seedA, fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: seedB, fixed: true },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -231,8 +231,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   // parts and mates them without marking either fixed.
   it('with no fixed part the two still meet', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity() },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity() },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(30, 0, 0) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -253,8 +253,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   // number stays a legal authoring form forever.
   it('honours a legacy scalar offset along the mate axis', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(0, 0, 20) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(0, 0, 20) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const, offset: 7,
@@ -272,8 +272,8 @@ describeReal('solveAssembly with the real mate solver', () => {
 
   it('honours an off-axis offset vector', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(0, 0, 20) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(0, 0, 20) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const, offset: { x: 3, y: 4, z: 2 },
@@ -296,8 +296,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   // so this test is what fails if the frame is ever switched.
   it('rotates the offset vector with body A (local frame, not world)', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: rollZ(90), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(0, 0, 20) },
+      { handle: 'pa', doc_id: 'doc-a', transform: rollZ(90), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(0, 0, 20) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const, offset: { x: 3, y: 4, z: 0 },
@@ -317,8 +317,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   // solver must now name itself on the response and on every mate.
   it('reports a trapping solver rather than silently echoing the seed', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(30, 0, 0) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -345,8 +345,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   it('fixing at the current solved pose leaves world positions put', async () => {
     // No part fixed: solve to the floating meeting point.
     const free = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity() },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity() },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(30, 0, 0) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -360,8 +360,8 @@ describeReal('solveAssembly with the real mate solver', () => {
     // Fix pa the way the UI does: bake the solved poses into the seeds, then
     // mark pa fixed. Re-solve and expect nothing to move.
     const pinned = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: { ...a0 }, fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { ...b0 } },
+      { handle: 'pa', doc_id: 'doc-a', transform: { ...a0 }, fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: { ...b0 } },
     ]
     const second = await solveAssembly(pinned, revs, mates, relay, solveMate!)
     const a1 = second.transforms['pa']
@@ -379,8 +379,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   // asserts both halves of that so a regression on either is caught.
   it('a deleted mate snaps a part back to its stale seed unless the pose is baked', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(300, 0, 0) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(300, 0, 0) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -405,8 +405,8 @@ describeReal('solveAssembly with the real mate solver', () => {
 
   it('bakes the solved transform into the rendered vertices', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 40, 50) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(30, 40, 50) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -430,8 +430,8 @@ describeReal('solveAssembly with the real mate solver', () => {
     const h = Math.sin(Math.PI / 8)
     const c = Math.cos(Math.PI / 8)
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { tx: 5, ty: 10, tz: 15, qx: 0, qy: 0, qz: h, qw: c } },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: { tx: 5, ty: 10, tz: 15, qx: 0, qy: 0, qz: h, qw: c } },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const, angle: 45,
@@ -461,8 +461,8 @@ describeReal('solveAssembly with the real mate solver', () => {
     const h90 = Math.sin(Math.PI / 4)
     const c90 = Math.cos(Math.PI / 4)
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { tx: 3, ty: 7, tz: 11, qx: 0, qy: h90, qz: 0, qw: c90 } },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: { tx: 3, ty: 7, tz: 11, qx: 0, qy: h90, qz: 0, qw: c90 } },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const,
@@ -486,8 +486,8 @@ describeReal('solveAssembly with the real mate solver', () => {
 
     // Second solve: running from the solved seed must be a no-op (same transform)
     const parts2 = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: b1 },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: b1 },
     ]
     const r2 = await solveAssembly(parts2, revs, mates, relay, solveMate!)
     const b2 = r2.transforms['pb']
@@ -506,8 +506,8 @@ describeReal('solveAssembly with the real mate solver', () => {
     // Part A marked fixed at identity. Part B at identity, no pre-existing roll.
     // A 30° authored angle must produce a 30° roll about Z in B's solved pose.
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: identity() },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: identity() },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed' as const, angle: 30,  // degrees
@@ -536,8 +536,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   // scenario that the JS no-bake discipline guarantees.
   it('a second solve from the same seed applies the angle absolutely, not incrementally', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: identity() },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: identity() },
     ]
 
     const r30 = await solveAssembly(parts, revs, [{
@@ -567,8 +567,8 @@ describeReal('solveAssembly with the real mate solver', () => {
   // used to land at 90°). This test asserted the broken 90° until the rework.
   it('does not accumulate angle when the seed already holds the prior solve roll', async () => {
     const parts1 = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: identity() },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: identity() },
     ]
     const r30 = await solveAssembly(parts1, revs, [{
       id: 'm1', kind: 'fixed' as const, angle: 30,
@@ -579,8 +579,8 @@ describeReal('solveAssembly with the real mate solver', () => {
 
     // Seed is the 30° pose, exactly what the (now-removed) bake was doing.
     const parts2 = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: b30 },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: b30 },
     ]
     const r60 = await solveAssembly(parts2, revs, [{
       id: 'm1', kind: 'fixed' as const, angle: 60,
@@ -714,11 +714,11 @@ describeReal('every mate kind solves as itself against the real mate solver', ()
   for (const row of kindRows) {
     it(`solves ${row.kind} as ${row.kind}`, async () => {
       if (row.anchorKindB === 'cylinder') {
-        await bundleCachePut(bundleWithAnchor('cylinder', 'doc-b', 1))
+        await bundleCachePut(bundleWithAnchor('cylinder', 'doc-b', '1'))
       }
       const parts = [
-        { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity(), fixed: true },
-        { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: row.seed },
+        { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+        { handle: 'pb', doc_id: 'doc-b', transform: row.seed },
       ]
       const mates = [{
         id: 'm1', kind: row.kind,
@@ -740,8 +740,8 @@ describeReal('every mate kind solves as itself against the real mate solver', ()
     // and Rust drops it. The residual wire must keep one entry per input mate,
     // so the good mate's number cannot slide into the dropped slot.
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: identity() },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: at(30, 0, 0) },
+      { handle: 'pa', doc_id: 'doc-a', transform: identity() },
+      { handle: 'pb', doc_id: 'doc-b', transform: at(30, 0, 0) },
     ]
     const ghostInline = {
       kind: 'point' as const, point: [0, 0, 0] as [number, number, number],

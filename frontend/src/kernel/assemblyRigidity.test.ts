@@ -39,7 +39,7 @@ function tilted(): Transform3D {
 function planeBundle(doc_id: string): PartBundle {
   return {
     doc_id,
-    doc_rev: 1,
+    content_hash: '1',
     schema: BUNDLE_SCHEMA,
     bodies: [{
       mesh: {
@@ -67,7 +67,7 @@ const relay: RelayService = {
   requestBuildBundle: async () => { throw new Error('should not build: bundles are pre-cached') },
 }
 
-const revs = { 'doc-a': 1, 'doc-b': 1, 'doc-c': 1 }
+const revs = { 'doc-a': '1', 'doc-b': '1', 'doc-c': '1' }
 
 async function seedBundles(): Promise<void> {
   await bundleCachePut(planeBundle('doc-a'))
@@ -117,8 +117,8 @@ beforeEach(async () => {
 describeReal('rigid mate exactness with the real mate solver', () => {
   it('a fixed mate between a grounded and a free part holds to 1e-4', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: tilted(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { tx: 40, ty: 40, tz: 40, qx: 0, qy: 0, qz: 0, qw: 1 } },
+      { handle: 'pa', doc_id: 'doc-a', transform: tilted(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: { tx: 40, ty: 40, tz: 40, qx: 0, qy: 0, qz: 0, qw: 1 } },
     ]
     const angle = 45
     const mates: MateSpec[] = [{
@@ -154,9 +154,9 @@ describeReal('rigid mate exactness with the real mate solver', () => {
 
   it('a rigid chain accumulates no more than 1e-4', async () => {
     const parts = [
-      { handle: 'pa', doc_id: 'doc-a', doc_rev: 1, transform: tilted(), fixed: true },
-      { handle: 'pb', doc_id: 'doc-b', doc_rev: 1, transform: { tx: 30, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
-      { handle: 'pc', doc_id: 'doc-c', doc_rev: 1, transform: { tx: 0, ty: 30, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
+      { handle: 'pa', doc_id: 'doc-a', transform: tilted(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: { tx: 30, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
+      { handle: 'pc', doc_id: 'doc-c', transform: { tx: 0, ty: 30, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
     ]
     const mates: MateSpec[] = [
       { id: 'mAB', kind: 'fixed', ref_a: { part: 'pa', anchor: 'face' }, ref_b: { part: 'pb', anchor: 'face' } },

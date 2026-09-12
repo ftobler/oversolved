@@ -6,8 +6,8 @@
 // This module runs inside the anchor solver worker (Rust-only, no OCC).
 // It is a pure async function over typed-array inputs, no React, no DOM.
 
-import { bundleCacheGet, bundleCacheGetStale, bundleCacheLatestRev, bundleCachePut } from './bundleCache'
-import { anchorByDescriptor, anchorIdFor, anchorKindHasAxis, migrateBundle } from './partBundle'
+import { bundleCacheGet, bundleCachePut } from './bundleCache'
+import { anchorByDescriptor, anchorIdFor, anchorKindHasAxis } from './partBundle'
 import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
 import type { Transform3D, MateKind, MateOffset, NumberOrExpr, MateAnchorDescriptor } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
@@ -436,8 +436,8 @@ async function putBundleBestEffort(bundle: PartBundle): Promise<void> {
 }
 
 export async function solveAssembly(
-  parts: { handle: string; doc_id: string; doc_rev: number; transform: Transform3D; fixed?: boolean }[],
-  revs: Record<string, number>,
+  parts: { handle: string; doc_id: string; transform: Transform3D; fixed?: boolean }[],
+  hashes: Record<string, string>,
   mates: MateSpec[],
   relay: RelayService,
   solveMateFn: ((input: Uint8Array) => Uint8Array) | null,
@@ -453,10 +453,15 @@ export async function solveAssembly(
     // fetch or build is recorded against its handle and the loop moves on; the
     // part keeps its seed placement and only its row reddens.
     try {
-      const currentRev = revs[part.doc_id] ?? part.doc_rev
+      const currentHash = hashes[part.doc_id]
 
-      // Path 1: cache hit
-      let bundle = await cachedOrUndefined('get', () => bundleCacheGet(part.doc_id, currentRev))
+      // Path 1: cache hit. A missing hash (a store read failure) bypasses the
+      // cache entirely rather than falling back to anything: the cold rebuild
+      // below is the only safe path when the content identity is unknown, and
+      // the build is left uncached (a missing hash cannot key a put).
+      let bundle = currentHash
+        ? await cachedOrUndefined('get', () => bundleCacheGet(part.doc_id, currentHash))
+        : undefined
       // A bundle cached before entityAnchors was introduced carries
       // no per-body entity anchor index; its vertices, edges and face mate refs
       // are all invisible to the assembly pick pass. Treat it as a miss so the
@@ -464,34 +469,17 @@ export async function solveAssembly(
       // a cold rebuild costs one OCC evaluation per stale part.
       const hasEntityAnchors = bundle ? bundle.bodies.every(b => b.entityAnchors) : false
       if (!(bundle && hasEntityAnchors)) {
-        // Path 2: cache miss, request part doc, build bundle, migrate, cache
+        // Path 2: cache miss, request part doc, build bundle, cache. Anchor ids
+        // are deterministic from the element's geom_hash, so a rebuild mints the
+        // same ids a persisted mate ref already names; no remap seed is needed.
         const partDoc = await relay.requestPartDoc(part.doc_id)
-        const buildResult = await relay.requestBuildBundle(part.doc_id, currentRev, partDoc)
+        const buildResult = await relay.requestBuildBundle(part.doc_id, currentHash ?? '', partDoc)
         bundle = buildResult as PartBundle
         if (!bundle || !bundle.anchors) {
-          throw new Error(`bundle build failed for ${part.doc_id} rev ${currentRev}`)
+          throw new Error(`bundle build failed for ${part.doc_id} hash ${currentHash ?? '(none)'}`)
         }
 
-        // Migrate anchors against the newest cached bundle of the same doc.
-        // `bundleCacheLatestRev` is the latest-rev index lookup (one IndexedDB
-        // get); it replaces a downward scan that used to issue up to
-        // `currentRev - 1` separate `bundleCacheGet` transactions.
-        let prevBundle: { anchors: Record<string, Anchor> } | undefined
-        const latestCachedRev = await cachedOrUndefined('latest-rev lookup', () => bundleCacheLatestRev(part.doc_id))
-        if (latestCachedRev !== undefined && latestCachedRev <= currentRev) {
-          // Read the newest cached bundle even when it reads back as a
-          // schema/fingerprint miss (a cache wipe or schema bump turns the bundle
-          // at the CURRENT rev into one): tier 1 of the remap matches by geom_hash,
-          // which is schema- and code-independent, so the stale anchors are the one
-          // source of the old random-id lineage the migration chain must preserve.
-          // Deterministic anchor ids make this a no-op for new documents; it exists
-          // for documents whose mate refs predate them.
-          const cached = await cachedOrUndefined('stale read', () => bundleCacheGetStale(part.doc_id, latestCachedRev))
-          if (cached) prevBundle = { anchors: cached.anchors }
-        }
-        if (prevBundle) bundle = migrateBundle(prevBundle, bundle)
-
-        await putBundleBestEffort(bundle)
+        if (currentHash) await putBundleBestEffort(bundle)
       }
 
       partBundles.set(part.handle, { bundle, anchors: bundle.anchors })

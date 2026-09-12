@@ -32,9 +32,15 @@ export function useWhereUsed(session: WorkspaceSession | null, entries: EntryMet
     if (!session) return
     let cancelled = false
     const run = async () => {
-      const edges: Record<string, string[]> = {}
-      for (const entry of entries) edges[entry.id] = await session.referencesOf(entry.id)
-      if (!cancelled) setScan({ session, entries, inverse: invertReferences(edges) })
+      // One edge-map read, inverted. The old body issued one referencesOf read
+      // per entry; C5's index reads the manifest's reference map once.
+      try {
+        const edges = await session.referenceEdges()
+        if (!cancelled) setScan({ session, entries, inverse: invertReferences(edges) })
+      } catch {
+        // An unreadable manifest is an empty index, not an unhandled rejection.
+        if (!cancelled) setScan({ session, entries, inverse: EMPTY_INVERSE })
+      }
     }
     void run()
     return () => { cancelled = true }

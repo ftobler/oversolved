@@ -53,7 +53,7 @@ export interface AnchorSolverWorkerLike {
 /** Main-thread handlers for worker-side relay requests. */
 export interface RelayHandlers {
   partDocContent: (doc_id: string) => Promise<Record<string, unknown>>
-  buildBundle: (doc_id: string, doc_rev: number, spec: Record<string, unknown>) => Promise<unknown>
+  buildBundle: (doc_id: string, content_hash: string, spec: Record<string, unknown>) => Promise<unknown>
 }
 
 function defaultFactory(): AnchorSolverWorkerLike | null {
@@ -124,8 +124,8 @@ export const BUNDLE_FRESH = Symbol('anchor_bundle_fresh')
 export function setRelayHandlers(handlers: RelayHandlers): void {
   relayHandlers = {
     ...handlers,
-    buildBundle: async (doc_id, doc_rev, spec) => {
-      const payload = await handlers.buildBundle(doc_id, doc_rev, spec)
+    buildBundle: async (doc_id, content_hash, spec) => {
+      const payload = await handlers.buildBundle(doc_id, content_hash, spec)
       if (payload && typeof payload === 'object') {
         Object.defineProperty(payload, BUNDLE_FRESH, { value: true })
       }
@@ -146,13 +146,13 @@ async function handleRelay(msg: AnchorRelayRequest): Promise<AnchorRelayResponse
     if (msg.subKind === 'partDocContent') {
       payload = await relayHandlers.partDocContent(msg.doc_id)
     } else if (msg.subKind === 'buildBundle') {
-      // doc_rev/spec are optional on the wire type only because `partDocContent`
-      // requests omit them; a buildBundle request missing either is a malformed
-      // message, not a value to silently pass through as undefined.
-      if (msg.doc_rev === undefined || msg.spec === undefined) {
-        throw new Error('malformed buildBundle relay request: missing doc_rev/spec')
+      // content_hash/spec are optional on the wire type only because
+      // `partDocContent` requests omit them; a buildBundle request missing
+      // either is a malformed message, not a value to silently pass through.
+      if (msg.content_hash === undefined || msg.spec === undefined) {
+        throw new Error('malformed buildBundle relay request: missing content_hash/spec')
       }
-      payload = await relayHandlers.buildBundle(msg.doc_id, msg.doc_rev, msg.spec)
+      payload = await relayHandlers.buildBundle(msg.doc_id, msg.content_hash, msg.spec)
     } else {
       throw new Error(`unknown relay subKind: ${msg.subKind}`)
     }
@@ -332,7 +332,7 @@ function ensureWorker(): AnchorSolverWorkerLike | null {
 export function solveAssemblyViaWorker(
   assemblyId: string,
   parts: PartInputSpec[],
-  revs: Record<string, number>,
+  hashes: Record<string, string>,
   mates: MateSpec[],
   live = false,
 ): Promise<AssemblySolveOkResponse | null> {
@@ -346,7 +346,7 @@ export function solveAssemblyViaWorker(
   if (!w) return Promise.resolve(null)
   const id = nextId++
   return new Promise<AssemblySolveOkResponse | null>((resolve, reject) => {
-    const msg: SolveAssemblyRequest = { id, kind: 'solveAssembly', assemblyId, parts, revs, mates, live }
+    const msg: SolveAssemblyRequest = { id, kind: 'solveAssembly', assemblyId, parts, hashes, mates, live }
     // Post before registering the pending entry: a throw here (a non-cloneable
     // payload, or a worker that died between ensureWorker and the post) must
     // reject the promise rather than leak an entry that can never settle. The

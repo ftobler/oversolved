@@ -21,7 +21,8 @@ interface AssemblyPartPickerProps {
   // shows its empty state rather than reaching across workspaces).
   session: WorkspaceSession | null
   onClose: () => void
-  // Confirm with the picked part's id and its current rev (bundle cache key).
+  // Confirm with the picked part's id and its current rev, which becomes the
+  // placement's provenance (the bundle cache keys on content hashes now, C5).
   onPick: (docId: string, docRev: number) => void
 }
 
@@ -105,8 +106,8 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, session, onClose,
   }, [isOpen, session, debouncedSearch, selfUuid])
 
   const pick = (entry: EntryMeta) => {
-    // `rev` is the assembly bundle cache key, so the picked rev is what later
-    // forces a rebuild when the part is edited.
+    // `rev` is recorded on the instance as placement provenance. The bundle
+    // cache no longer keys on it (C5), so this is informational.
     onPick(entry.id, entry.rev ?? 0)
     onClose()
   }

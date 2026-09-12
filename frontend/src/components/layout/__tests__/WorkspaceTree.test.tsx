@@ -13,6 +13,7 @@ const storeMock = vi.hoisted(() => ({
 vi.mock('@/workspace/store', () => ({ getWorkspaceStore: () => storeMock }))
 
 import { WorkspaceTree } from '@/components/layout/WorkspaceTree'
+import { EntryReferencedError } from '@/workspace/errors'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 
 function meta(id: string, name: string, extra: Partial<EntryMeta>): EntryMeta {
@@ -26,7 +27,11 @@ const entries: EntryMeta[] = [
   meta('gone', 'Retired', { docKind: 'part' }),
 ]
 
-function installSession(all: EntryMeta[] = entries, trashed: string[] = ['gone']): WorkspaceSession {
+function installSession(
+  all: EntryMeta[] = entries,
+  trashed: string[] = ['gone'],
+  edges: Record<string, string[]> = {},
+): WorkspaceSession {
   const session = {
     workspace: 'ws',
     open: vi.fn(),
@@ -38,6 +43,7 @@ function installSession(all: EntryMeta[] = entries, trashed: string[] = ['gone']
     originOf: vi.fn(async () => undefined),
     resolveFile: vi.fn(),
     referencesOf: vi.fn(async () => []),
+    referenceEdges: vi.fn(async () => edges),
   }
   useWorkspaceSessionStore.setState({ session: session as unknown as WorkspaceSession })
   return session as unknown as WorkspaceSession
@@ -98,6 +104,13 @@ describe('WorkspaceTree listing', () => {
     expect(open?.getAttribute('aria-selected')).toBe('true')
     expect(other?.getAttribute('aria-selected')).toBe('false')
   })
+
+  it('labels an entry with the names that use it', async () => {
+    installSession(entries, ['gone'], { a1: ['p1'] })
+    renderTree()
+    await screen.findByText('Bracket')
+    expect(await screen.findByText('used by Gearbox')).toBeInTheDocument()
+  })
 })
 
 describe('WorkspaceTree mutations', () => {
@@ -127,5 +140,19 @@ describe('WorkspaceTree mutations', () => {
     fireEvent.click(screen.getByLabelText('Delete Bracket'))
     await waitFor(() => expect(storeMock.removeEntry).toHaveBeenCalledWith('ws', 'p1'))
     expect(await screen.findByText('ROOT')).toBeInTheDocument()
+  })
+
+  it('presents the refusal with its referrers and stays put when a delete is blocked', async () => {
+    installSession()
+    storeMock.removeEntry.mockRejectedValueOnce(new EntryReferencedError('p1', [{ id: 'a1', name: 'Gearbox' }]))
+    renderTree('p1')
+    await screen.findByText('Bracket')
+    fireEvent.click(screen.getByLabelText('Delete Bracket'))
+    expect(await screen.findByText('Cannot Delete')).toBeInTheDocument()
+    expect(screen.getByText(/Bracket is still referenced/)).toBeInTheDocument()
+    // The refusal names the live referrer and offers it as a jump target.
+    expect(screen.getByRole('button', { name: 'Gearbox' })).toBeInTheDocument()
+    // The refusal waits for the store verdict; it must not navigate away first.
+    expect(screen.queryByText('ROOT')).not.toBeInTheDocument()
   })
 })

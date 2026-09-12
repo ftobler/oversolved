@@ -56,9 +56,10 @@ const solveBytes = loadSolver()
  * separately, as the wire protocol carries it -- the two only ever match by
  * construction.
  */
-function bundleReq(doc_id: string, rev: number, spec: Record<string, unknown>): BundleRequest {
-  return { id: rev, kind: 'buildBundle', spec: { ...spec, id: doc_id }, doc_id, doc_rev: rev }
+function bundleReq(doc_id: string, content_hash: string, spec: Record<string, unknown>): BundleRequest {
+  return { id: nextBundleId++, kind: 'buildBundle', spec: { ...spec, id: doc_id }, doc_id, content_hash }
 }
+let nextBundleId = 1
 
 // ─── the assembly side: which parts get rebuilt at all ───
 
@@ -66,10 +67,10 @@ function identity(): Transform3D {
   return { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
 }
 
-function stubBundle(doc_id: string, doc_rev: number): PartBundle {
+function stubBundle(doc_id: string, content_hash: string): PartBundle {
   return {
     doc_id,
-    doc_rev,
+    content_hash,
     schema: BUNDLE_SCHEMA,
     bodies: [{
       mesh: {
@@ -88,7 +89,7 @@ function stubRelay(): RelayService {
   return {
     requestPartDoc: vi.fn().mockResolvedValue({ kind: 'part', features: [] }),
     requestBuildBundle: vi.fn().mockImplementation(
-      async (doc_id: string, doc_rev: number) => stubBundle(doc_id, doc_rev),
+      async (doc_id: string, content_hash: string) => stubBundle(doc_id, content_hash),
     ),
   }
 }
@@ -101,30 +102,30 @@ describe('assembly bundle invalidation scope', () => {
 
   it('builds nothing when every part is cached at its current rev', async () => {
     const relay = stubRelay()
-    for (const doc of ['doc-a', 'doc-b', 'doc-c']) await bundleCachePut(stubBundle(doc, 3))
+    for (const doc of ['doc-a', 'doc-b', 'doc-c']) await bundleCachePut(stubBundle(doc, 'h3'))
 
     const parts = ['a', 'b', 'c'].map((s, i) => ({
-      handle: `p${i}`, doc_id: `doc-${s}`, doc_rev: 3, transform: identity(),
+      handle: `p${i}`, doc_id: `doc-${s}`, transform: identity(),
     }))
-    await solveAssembly(parts, { 'doc-a': 3, 'doc-b': 3, 'doc-c': 3 }, [], relay, null)
+    await solveAssembly(parts, { 'doc-a': 'h3', 'doc-b': 'h3', 'doc-c': 'h3' }, [], relay, null)
 
     expect(relay.requestBuildBundle).not.toHaveBeenCalled()
   })
 
   it('rebuilds exactly the one part whose rev moved, not all N', async () => {
     const relay = stubRelay()
-    for (const doc of ['doc-a', 'doc-b', 'doc-c']) await bundleCachePut(stubBundle(doc, 3))
+    for (const doc of ['doc-a', 'doc-b', 'doc-c']) await bundleCachePut(stubBundle(doc, 'h3'))
 
     const parts = ['a', 'b', 'c'].map((s, i) => ({
-      handle: `p${i}`, doc_id: `doc-${s}`, doc_rev: 3, transform: identity(),
+      handle: `p${i}`, doc_id: `doc-${s}`, transform: identity(),
     }))
-    await solveAssembly(parts, { 'doc-a': 3, 'doc-b': 4, 'doc-c': 3 }, [], relay, null)
+    await solveAssembly(parts, { 'doc-a': 'h3', 'doc-b': 'h4', 'doc-c': 'h3' }, [], relay, null)
 
     // One rebuild, and it is doc-b's. This is what keeps the engine's one-slot
     // document cache warm across a user's edit loop: with a single miss per
     // solve, spec.id never changes and the incremental path survives.
     expect(relay.requestBuildBundle).toHaveBeenCalledTimes(1)
-    expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-b', 4, { kind: 'part', features: [] })
+    expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-b', 'h4', { kind: 'part', features: [] })
   })
 })
 
@@ -195,8 +196,8 @@ describe.skipIf(!oc || !solveBytes)('bundle builds through the real engine', () 
 
   it('reuses the clean prefix across two bundle builds of the same document', async () => {
     const { engine, checkpoints } = recordingEngine()
-    await handleBundleRequest(bundleReq('doc-warm', 1, part(5)), engine)
-    const res = await handleBundleRequest(bundleReq('doc-warm', 2, part(9)), engine)
+    await handleBundleRequest(bundleReq('doc-warm', 'h1', part(5)), engine)
+    const res = await handleBundleRequest(bundleReq('doc-warm', 'h2', part(9)), engine)
 
     expect(res.ok).toBe(true)
     const [first, second] = checkpoints
@@ -215,8 +216,8 @@ describe.skipIf(!oc || !solveBytes)('bundle builds through the real engine', () 
     // specs carried no id); the relay stamps it on, and the stamp is what the
     // request under test carries.
     const { engine, checkpoints } = recordingEngine()
-    await handleBundleRequest(bundleReq('doc-x', 1, part(5)), engine)
-    const res = await handleBundleRequest(bundleReq('doc-y', 1, part(5)), engine)
+    await handleBundleRequest(bundleReq('doc-x', 'h1', part(5)), engine)
+    const res = await handleBundleRequest(bundleReq('doc-y', 'h1', part(5)), engine)
 
     expect(res.ok).toBe(true)
     const [first, second] = checkpoints
@@ -227,9 +228,9 @@ describe.skipIf(!oc || !solveBytes)('bundle builds through the real engine', () 
 
   it('goes cold when another document is built in between', async () => {
     const { engine, checkpoints } = recordingEngine()
-    await handleBundleRequest(bundleReq('doc-x', 1, part(5)), engine)
-    await handleBundleRequest(bundleReq('doc-y', 1, part(5)), engine)
-    const res = await handleBundleRequest(bundleReq('doc-x', 2, part(9)), engine)
+    await handleBundleRequest(bundleReq('doc-x', 'h1', part(5)), engine)
+    await handleBundleRequest(bundleReq('doc-y', 'h1', part(5)), engine)
+    const res = await handleBundleRequest(bundleReq('doc-x', 'h2', part(9)), engine)
 
     expect(res.ok).toBe(true)
     const first = checkpoints[0]
@@ -251,7 +252,7 @@ describe.skipIf(!oc || !solveBytes)('bundle builds through the real engine', () 
     // missed in the same assembly solve", which is why it gets its own case.
     const { engine, checkpoints } = recordingEngine()
     await handleSolveRequest({ id: 1, spec: { ...part(5), id: 'doc-p' }, options: {} }, engine)
-    await handleBundleRequest(bundleReq('doc-q', 1, part(5)), engine)
+    await handleBundleRequest(bundleReq('doc-q', 'h1', part(5)), engine)
     await handleSolveRequest({ id: 2, spec: { ...part(9), id: 'doc-p' }, options: {} }, engine)
 
     const [first, , third] = checkpoints

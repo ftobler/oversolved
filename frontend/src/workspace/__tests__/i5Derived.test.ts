@@ -12,10 +12,10 @@ import { resetWorkspaceIdb } from './idbHarness'
 // outside the workspace tree. The solve path below runs the real orchestration
 // (bundle build via the relay -> cache put) with a fake relay, so I5 is proven
 // against the artifact the solve actually deposits, not a stand-in.
-function solvedBundle(docId: string, rev: number): PartBundle {
+function solvedBundle(docId: string, rev: string): PartBundle {
   return {
     doc_id: docId,
-    doc_rev: rev,
+    content_hash: rev,
     schema: BUNDLE_SCHEMA,
     bodies: [{
       mesh: {
@@ -53,13 +53,13 @@ describe('I5: derived artifacts stay out of the workspace tree', () => {
     // artifact outside the workspace database. No mates, so the solve echoes the
     // placement but still runs the bundle fetch/build/cache path.
     await solveAssembly(
-      [{ handle: 'p1', doc_id: 'part-1', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
-      { 'part-1': 1 },
+      [{ handle: 'p1', doc_id: 'part-1', transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+      { 'part-1': '1' },
       [],
       relay(),
       null,
     )
-    expect(await bundleCacheHas('part-1', 1)).toBe(true)
+    expect(await bundleCacheHas('part-1', '1')).toBe(true)
 
     const exported = await store.export(workspace)
     for (const file of exported) {

@@ -103,9 +103,9 @@ afterEach(() => {
 describe('solveAssemblyViaWorker', () => {
   it('round-trips a mateless assembly and returns echoed transforms', async () => {
     const parts = [
-      { handle: 'p1', doc_id: 'd1', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
+      { handle: 'p1', doc_id: 'd1', transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
     ]
-    const revs = { d1: 1 }
+    const revs = { d1: '1' }
 
     const resultPromise = solveAssemblyViaWorker('asm-1', parts, revs, [])
 
@@ -198,14 +198,14 @@ describe('solveAssemblyViaWorker', () => {
   it('handles concurrent requests via single shared worker', async () => {
     const p1 = solveAssemblyViaWorker(
       'asm-1',
-      [{ handle: 'a', doc_id: 'd1', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
-      { d1: 1 },
+      [{ handle: 'a', doc_id: 'd1', transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+      { d1: '1' },
       [],
     )
     const p2 = solveAssemblyViaWorker(
       'asm-2',
-      [{ handle: 'b', doc_id: 'd2', doc_rev: 2, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
-      { d2: 2 },
+      [{ handle: 'b', doc_id: 'd2', transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+      { d2: '2' },
       [],
     )
 
@@ -443,8 +443,8 @@ describe('relay plumbing', () => {
     // establish connection by starting a solve (we don't care about its outcome)
     void solveAssemblyViaWorker(
       '_asm',
-      [{ handle: '_', doc_id: '_', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
-      { _: 1 },
+      [{ handle: '_', doc_id: '_', transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+      { _: '1' },
       [],
     ).catch(() => {})  // never settles here; the afterEach reset rejects it
     // onmessage is now wired; simulate a relay request from the worker
@@ -456,7 +456,7 @@ describe('relay plumbing', () => {
   function makeBundle(): PartBundle {
     return {
       doc_id: 'bundle-doc',
-      doc_rev: 5,
+      content_hash: 'h5',
       schema: BUNDLE_SCHEMA,
       bodies: [
         {
@@ -516,7 +516,7 @@ describe('relay plumbing', () => {
       requestId: 202,
       subKind: 'buildBundle',
       doc_id: 'bundle-doc',
-      doc_rev: 5,
+      content_hash: 'h5',
       spec: { features: [] },
     })
 
@@ -525,10 +525,10 @@ describe('relay plumbing', () => {
     await waitForPosted(fakeWorker, 'asr_relayRes')
     const relayRes = fakeWorker.posted.find(m => m.kind === 'asr_relayRes')
     expect(relayRes).toBeDefined()
-    expect(handlers.buildBundle).toHaveBeenCalledWith('bundle-doc', 5, { features: [] })
+    expect(handlers.buildBundle).toHaveBeenCalledWith('bundle-doc', 'h5', { features: [] })
   })
 
-  it('relay response carries a protocol error when a buildBundle request is missing doc_rev/spec', async () => {
+  it('relay response carries a protocol error when a buildBundle request is missing content_hash/spec', async () => {
     const handlers = {
       partDocContent: vi.fn(),
       buildBundle: vi.fn(),
@@ -548,7 +548,7 @@ describe('relay plumbing', () => {
     expect(relayRes).toBeDefined()
     if (relayRes) {
       expect(relayRes.ok).toBe(false)
-      expect(relayRes.error).toContain('missing doc_rev/spec')
+      expect(relayRes.error).toContain('missing content_hash/spec')
     }
     expect(handlers.buildBundle).not.toHaveBeenCalled()
   })
@@ -641,11 +641,11 @@ describe('relay plumbing', () => {
       return Promise.resolve({ kind: 'part', features: [] })
     })
 
-    const part = { handle: 'p1', doc_id: 'd1', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }
+    const part = { handle: 'p1', doc_id: 'd1', transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }
     const w1 = fakeWorker
 
     // W1 is wired by the solve, then sends a relay request.
-    const solve1 = solveAssemblyViaWorker('asm-1', [part], { d1: 1 }, [])
+    const solve1 = solveAssemblyViaWorker('asm-1', [part], { d1: '1' }, [])
     w1.reply({ kind: 'asr_relay', requestId: 1, subKind: 'partDocContent', doc_id: 'doc-x' })
 
     // W1 crashes mid-relay; its pending solve is rejected.
@@ -657,7 +657,7 @@ describe('relay plumbing', () => {
     const w2 = new FakeWorker()
     setAnchorSolverWorkerForTest(() => w2)
     setRelayHandlers(handlers)
-    void solveAssemblyViaWorker('asm-2', [part], { d1: 1 }, []).catch(() => {})  // never settles here; the reset rejects it
+    void solveAssemblyViaWorker('asm-2', [part], { d1: '1' }, []).catch(() => {})  // never settles here; the reset rejects it
     expect(w2.posted).toHaveLength(1)
 
     // The stale relay finally resolves; its reply must go to the captured
@@ -685,8 +685,8 @@ describe('relay plumbing', () => {
 
     void solveAssemblyViaWorker(
       '_asm',
-      [{ handle: '_', doc_id: '_', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
-      { _: 1 },
+      [{ handle: '_', doc_id: '_', transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+      { _: '1' },
       [],
     ).catch(() => {})  // never settles here; the afterEach reset rejects it
     fakeWorker.reply({ kind: 'asr_relay', requestId: 7, subKind: 'partDocContent', doc_id: 'doc' })
@@ -712,7 +712,7 @@ describe('relay plumbing', () => {
       requestId: 501,
       subKind: 'buildBundle',
       doc_id: 'bundle-doc',
-      doc_rev: 5,
+      content_hash: 'h5',
       spec: { features: [] },
     })
 
@@ -743,7 +743,7 @@ describe('relay plumbing', () => {
       requestId: 778,
       subKind: 'buildBundle',
       doc_id: 'doc',
-      doc_rev: 1,
+      content_hash: 'h1',
       spec,
     })
     await waitForPosted(fakeWorker, 'asr_relayRes')
@@ -793,8 +793,8 @@ describe('relay plumbing', () => {
 
     void solveAssemblyViaWorker(
       '_asm',
-      [{ handle: '_', doc_id: '_', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
-      { _: 1 },
+      [{ handle: '_', doc_id: '_', transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }],
+      { _: '1' },
       [],
     ).catch(() => {})  // never settles here; the afterEach reset rejects it
     fakeWorker.reply({ kind: 'asr_relay', requestId: 911, subKind: 'partDocContent', doc_id: 'doc' })
@@ -825,7 +825,7 @@ describe('relay plumbing', () => {
       requestId: 703,
       subKind: 'buildBundle',
       doc_id: 'bundle-doc',
-      doc_rev: 5,
+      content_hash: 'h5',
       spec: { features: [] },
     })
 
@@ -901,7 +901,7 @@ describe('relay plumbing', () => {
         requestId: 901,
         subKind: 'buildBundle',
         doc_id: 'bundle-doc',
-        doc_rev: 5,
+        content_hash: 'h5',
         spec: { features: [] },
       })
       await waitForPosted(fakeWorker, 'asr_relayRes')

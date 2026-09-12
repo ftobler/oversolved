@@ -107,6 +107,7 @@ function installSessionFromList() {
       writeEntry: vi.fn(),
       resolveFile: vi.fn(),
       referencesOf: vi.fn(),
+      referenceEdges: vi.fn(async () => ({})),
       savedRevs: async () => new Map(),
       originOf: async () => undefined,
     },

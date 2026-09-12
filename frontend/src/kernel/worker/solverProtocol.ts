@@ -53,7 +53,7 @@ export interface BundleRequest {
   kind: 'buildBundle'
   spec: Record<string, unknown>
   doc_id: string
-  doc_rev: number
+  content_hash: string
   files?: FileBytes
 }
 
@@ -151,7 +151,6 @@ export type SolveResponse = SolveOkResponse | WorkerErrResponse
 export interface PartInputSpec {
   handle: string
   doc_id: string
-  doc_rev: number
   transform: Transform3D
   /** The instance-level fixed flag, not a fixed mate: the transform is pinned
    *  and excluded from the LM state. */
@@ -164,7 +163,9 @@ export interface SolveAssemblyRequest {
   kind: 'solveAssembly'
   assemblyId: string
   parts: PartInputSpec[]
-  revs: Record<string, number>
+  /** Per part doc_id, the content hash the bundle cache keys on. A missing
+   *  entry bypasses the cache for that part. */
+  hashes: Record<string, string>
   mates: MateSpec[]
   /** True for a live drag tick. The worker routes it to the live WASM entry
    *  point, which skips the dense rank/dof SVD the drag path discards. */
@@ -206,7 +207,7 @@ export interface AnchorRelayRequest {
   requestId: number
   subKind: 'partDocContent' | 'buildBundle'
   doc_id: string
-  doc_rev?: number
+  content_hash?: string
   spec?: Record<string, unknown>
 }
 

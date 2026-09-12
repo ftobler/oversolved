@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { solveAssembly, encodeMateInput, decodeMateOutput, assemblyAnchors, type MateSpec } from './solveAssembly'
-import { bundleCachePut, bundleCacheGet, bundleCacheGetStale, bundleCacheLatestRev, resetBundleDbConnection } from './bundleCache'
+import { bundleCachePut, bundleCacheGet, resetBundleDbConnection } from './bundleCache'
 
 // Wraps the real bundleCache functions in spies (delegating to the actual
 // implementations) so tests can assert call counts or force rejections without
@@ -27,8 +27,6 @@ vi.mock('./bundleCache', async (importOriginal) => {
   return {
     ...actual,
     bundleCacheGet: vi.fn(actual.bundleCacheGet),
-    bundleCacheGetStale: vi.fn(actual.bundleCacheGetStale),
-    bundleCacheLatestRev: vi.fn(actual.bundleCacheLatestRev),
     bundleCachePut: vi.fn(actual.bundleCachePut),
   }
 })
@@ -79,10 +77,10 @@ function translationTransform(tx: number, ty: number, tz: number): Transform3D {
   return { tx, ty, tz, qx: 0, qy: 0, qz: 0, qw: 1 }
 }
 
-function makeBundle(doc_id: string, doc_rev: number, overrides?: Partial<PartBundle>): PartBundle {
+function makeBundle(doc_id: string, content_hash: string, overrides?: Partial<PartBundle>): PartBundle {
   return {
     doc_id,
-    doc_rev,
+    content_hash,
     schema: BUNDLE_SCHEMA,
     bodies: [
       {
@@ -117,8 +115,8 @@ function makeBundle(doc_id: string, doc_rev: number, overrides?: Partial<PartBun
 
 // A bundle whose anchor ids are the deterministic shortHash(geom_hash + kind),
 // standing in for a bundle built by the post-deterministic-id production code.
-function makeDeterministicBundle(doc_id: string, doc_rev: number): PartBundle {
-  const bundle = makeBundle(doc_id, doc_rev)
+function makeDeterministicBundle(doc_id: string, content_hash: string): PartBundle {
+  const bundle = makeBundle(doc_id, content_hash)
   const anchors: Record<string, Anchor> = {}
   for (const a of Object.values(bundle.anchors)) {
     anchors[anchorIdFor(a.geom_hash, a.kind)] = a
@@ -129,8 +127,8 @@ function makeDeterministicBundle(doc_id: string, doc_rev: number): PartBundle {
 // A bundle whose a1 carries a real axis (a plane), for the wire tests that
 // exercise an axis-reading mate. `makeBundle`'s a1 is a vertex, whose axis is
 // the placeholder [0, 0, 1] the solve now refuses for an axis reader.
-function makeAxialBundle(doc_id: string, doc_rev: number): PartBundle {
-  return makeBundle(doc_id, doc_rev, {
+function makeAxialBundle(doc_id: string, content_hash: string): PartBundle {
+  return makeBundle(doc_id, content_hash, {
     anchors: {
       a1: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '@gdf|a1', created_by: 'feat1' },
       a2: { kind: 'point', point: [10, 0, 0], axis: [0, 0, 1], geom_hash: '@gdf|a2', created_by: 'feat1' },
@@ -147,8 +145,8 @@ function makeRelay(): { relay: RelayService; partDocs: Map<string, Record<string
         if (!doc) throw new Error(`part doc not found: ${doc_id}`)
         return doc
       }),
-      requestBuildBundle: vi.fn().mockImplementation(async (doc_id: string, doc_rev: number, _spec: Record<string, unknown>) => {
-        return makeBundle(doc_id, doc_rev)
+      requestBuildBundle: vi.fn().mockImplementation(async (doc_id: string, content_hash: string, _spec: Record<string, unknown>) => {
+        return makeBundle(doc_id, content_hash)
       }),
     },
     partDocs,
@@ -348,13 +346,13 @@ describe('solveAssembly', () => {
   it('echoes transforms for a mateless doc with cache hit', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    const bundle = makeBundle('doc-a', 3)
+    const bundle = makeBundle('doc-a', '3')
     await bundleCachePut(bundle)
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: translationTransform(1, 2, 3) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(1, 2, 3) },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '3' }, [], relay, makeEchoSolver())
 
     expect(result.transforms).toEqual({ p1: translationTransform(1, 2, 3) })
     expect(result.bodies).toHaveProperty('p1')
@@ -369,12 +367,12 @@ describe('solveAssembly', () => {
     partDocs.set('doc-a', { kind: 'part', features: [] })
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
     ]
-    await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+    await solveAssembly(parts, { 'doc-a': '3' }, [], relay, makeEchoSolver())
 
     expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-a')
-    expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', 3, { kind: 'part', features: [] })
+    expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', '3', { kind: 'part', features: [] })
   })
 
   it('uses bundle cache on second solve (no relay calls)', async () => {
@@ -382,17 +380,17 @@ describe('solveAssembly', () => {
     partDocs.set('doc-a', { kind: 'part', features: [] })
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
     ]
 
     // First solve: cache miss, relay called
-    await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+    await solveAssembly(parts, { 'doc-a': '3' }, [], relay, makeEchoSolver())
     expect(relay.requestPartDoc).toHaveBeenCalledTimes(1)
 
     const callCount = vi.mocked(relay.requestPartDoc).mock.calls.length
 
     // Second solve: cache hit, no relay
-    await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+    await solveAssembly(parts, { 'doc-a': '3' }, [], relay, makeEchoSolver())
     expect(vi.mocked(relay.requestPartDoc).mock.calls.length).toBe(callCount)
   })
 
@@ -402,13 +400,13 @@ describe('solveAssembly', () => {
     partDocs.set('doc-b', { kind: 'part', features: [] })
 
     // Pre-cache doc-a at rev 3
-    await bundleCachePut(makeBundle('doc-a', 3))
+    await bundleCachePut(makeBundle('doc-a', '3'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: identityTransform() },
     ]
-    const revs = { 'doc-a': 4, 'doc-b': 1 }  // doc-a has updated
+    const revs = { 'doc-a': '4', 'doc-b': '1' }  // doc-a has updated
 
     await solveAssembly(parts, revs, [], relay, makeEchoSolver())
 
@@ -418,30 +416,24 @@ describe('solveAssembly', () => {
     expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-b')
   })
 
-  it('a big rev jump with only an old rev cached issues exactly one get for the migration lookup', async () => {
+  it('a big hash jump issues exactly one get and no migration lookup', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
 
-    await bundleCachePut(makeBundle('doc-a', 3))
+    await bundleCachePut(makeBundle('doc-a', '3'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
     ]
 
     vi.mocked(bundleCacheGet).mockClear()
-    vi.mocked(bundleCacheGetStale).mockClear()
 
-    await solveAssembly(parts, { 'doc-a': 800 }, [], relay, makeEchoSolver())
+    await solveAssembly(parts, { 'doc-a': '800' }, [], relay, makeEchoSolver())
 
-    // One get for the top-of-loop cache-hit check at rev 800 (a miss), then
-    // exactly one more for the latest-rev migration lookup (rev 3), read raw
-    // so a schema/fingerprint-stale record can still serve the remap chain --
-    // not the old downward scan that would have issued 799 separate gets.
+    // One get for the top-of-loop cache-hit check at the current content hash (a
+    // miss). The retired latest-rev lookup is gone, so there is no second read.
     expect(vi.mocked(bundleCacheGet).mock.calls).toEqual([
-      ['doc-a', 800],
-    ])
-    expect(vi.mocked(bundleCacheGetStale).mock.calls).toEqual([
-      ['doc-a', 3],
+      ['doc-a', '800'],
     ])
   })
 
@@ -450,7 +442,7 @@ describe('solveAssembly', () => {
     partDocs.set('doc-a', { kind: 'part', features: [] })
 
     // Cache a bundle deliberately missing entityAnchors on every body.
-    const stale = makeBundle('doc-a', 3, {
+    const stale = makeBundle('doc-a', '3', {
       bodies: [{
         mesh: {
           vertices: new Float32Array([0, 0, 0]),
@@ -463,13 +455,13 @@ describe('solveAssembly', () => {
     await bundleCachePut(stale)
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
     ]
-    await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+    await solveAssembly(parts, { 'doc-a': '3' }, [], relay, makeEchoSolver())
 
     // The stale cache should force a rebuild: relay is called.
     expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-a')
-    expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', 3, expect.any(Object))
+    expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', '3', expect.any(Object))
   })
 
   // ─── mate solve branch ───
@@ -480,12 +472,12 @@ describe('solveAssembly', () => {
     partDocs.set('doc-b', { kind: 'part', features: [] })
 
     // Pre-cache bundles
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 0, 0) },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(0, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       {
@@ -495,7 +487,7 @@ describe('solveAssembly', () => {
         ref_b: { part: 'p2', anchor: 'a1' },
       },
     ]
-    const revs = { 'doc-a': 1, 'doc-b': 1 }
+    const revs = { 'doc-a': '1', 'doc-b': '1' }
 
     const result = await solveAssembly(parts, revs, mates, relay, makeEchoSolver())
 
@@ -513,12 +505,12 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeAxialBundle('doc-a', 1))
-    await bundleCachePut(makeAxialBundle('doc-b', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
+    await bundleCachePut(makeAxialBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 0, 0) },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(0, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       {
@@ -530,7 +522,7 @@ describe('solveAssembly', () => {
       },
     ]
     const { solver, captured } = makeCaptureSolver()
-    await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(captured.input!.mates[0].angle).toBeCloseTo(Math.PI / 2)
   })
@@ -541,11 +533,11 @@ describe('solveAssembly', () => {
   // assembly shifts. There is no document migration to lean on.
   it('expands a legacy scalar offset along the A anchor axis on the wire', async () => {
     const { relay } = makeRelay()
-    await bundleCachePut(makeAxialBundle('doc-a', 1))
-    await bundleCachePut(makeAxialBundle('doc-b', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
+    await bundleCachePut(makeAxialBundle('doc-b', '1'))
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 0, 0) },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(0, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     // a1's axis is (0, 0, 1), so a scalar 7 is the vector (0, 0, 7).
     const mates = [{
@@ -555,7 +547,7 @@ describe('solveAssembly', () => {
       offset: 7,
     }]
     const { solver, captured } = makeCaptureSolver()
-    await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(captured.input!.mates[0].offset[0]).toBeCloseTo(0)
     expect(captured.input!.mates[0].offset[1]).toBeCloseTo(0)
@@ -564,11 +556,11 @@ describe('solveAssembly', () => {
 
   it('encodes a vector offset componentwise', async () => {
     const { relay } = makeRelay()
-    await bundleCachePut(makeAxialBundle('doc-a', 1))
-    await bundleCachePut(makeAxialBundle('doc-b', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
+    await bundleCachePut(makeAxialBundle('doc-b', '1'))
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 0, 0) },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(0, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [{
       id: 'm1', kind: 'fixed',
@@ -577,7 +569,7 @@ describe('solveAssembly', () => {
       offset: { x: 3, z: -2 },  // y unnamed: it must land as 0, not drop the offset
     }]
     const { solver, captured } = makeCaptureSolver()
-    await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(captured.input!.mates[0].offset[0]).toBeCloseTo(3)
     expect(captured.input!.mates[0].offset[1]).toBeCloseTo(0)
@@ -588,12 +580,12 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
 
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeTranslateSolver(10))
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, makeTranslateSolver(10))
 
     // With no mates the solver never runs; the part's own transform (identity)
     // passes through unchanged, so vertices land at identity too.
@@ -606,8 +598,8 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1, {
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1', {
       bodies: [{
         mesh: {
           vertices: new Float32Array([3, 4, 0, 0, 0, 5]),  // distances 5 and 5 from origin
@@ -620,14 +612,14 @@ describe('solveAssembly', () => {
     }))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform(), fixed: true },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform(), fixed: true },
+      { handle: 'p2', doc_id: 'doc-b', transform: identityTransform() },
     ]
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
     // Body index 1 is p2 (p1 is index 0).
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeScaledQwSolver(1, 1.02))
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeScaledQwSolver(1, 1.02))
 
     const t = result.transforms['p2']
     expect(Math.hypot(t.qx, t.qy, t.qz, t.qw)).toBeCloseTo(1, 6)
@@ -646,7 +638,7 @@ describe('solveAssembly', () => {
     partDocs.set('doc-a', { kind: 'part', features: [] })
 
     // A line along +X and a circle in the z=0 plane, both at the part origin.
-    await bundleCachePut(makeBundle('doc-a', 1, {
+    await bundleCachePut(makeBundle('doc-a', '1', {
       bodies: [{
         mesh: {
           vertices: new Float32Array([0, 0, 0]),
@@ -672,9 +664,9 @@ describe('solveAssembly', () => {
     // echoed straight back and the edges must land under exactly it.
     const s = Math.SQRT1_2
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 3, qx: 0, qy: 0, qz: s, qw: s } },
+      { handle: 'p1', doc_id: 'doc-a', transform: { tx: 0, ty: 0, tz: 3, qx: 0, qy: 0, qz: s, qw: s } },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, makeEchoSolver())
 
     const [lineCurve, circleCurve] = result.bodies['p1'][0].edges
     // Points take the rotation and the translation.
@@ -700,7 +692,7 @@ describe('solveAssembly', () => {
   it('keeps a transformed curve samplable: the arc still lands on its moved endpoints', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1, {
+    await bundleCachePut(makeBundle('doc-a', '1', {
       bodies: [{
         mesh: {
           vertices: new Float32Array([0, 0, 0]),
@@ -725,9 +717,9 @@ describe('solveAssembly', () => {
 
     const s = Math.SQRT1_2  // 90° about +Z, lifted 3 in z
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 3, qx: 0, qy: 0, qz: s, qw: s } },
+      { handle: 'p1', doc_id: 'doc-a', transform: { tx: 0, ty: 0, tz: 3, qx: 0, qy: 0, qz: s, qw: s } },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, makeEchoSolver())
     const [arc, splineCurve] = result.bodies['p1'][0].edges
 
     // Sampling and transforming compose: the polyline drawn in world space still
@@ -754,7 +746,7 @@ describe('solveAssembly', () => {
   it('gives two instances of one part independently posed edges', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1, {
+    await bundleCachePut(makeBundle('doc-a', '1', {
       bodies: [{
         mesh: {
           vertices: new Float32Array([0, 0, 0]),
@@ -770,10 +762,10 @@ describe('solveAssembly', () => {
     }))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(100, 0, 0) },
-      { handle: 'p2', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(-100, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(100, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-a', transform: translationTransform(-100, 0, 0) },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, makeEchoSolver())
 
     // One bundle, two poses: the shared source must not leak one part's pose
     // into the other.
@@ -786,7 +778,7 @@ describe('solveAssembly', () => {
   it('carries the anchors into the solved pose, points moved and axes only rotated', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1, {
+    await bundleCachePut(makeBundle('doc-a', '1', {
       anchors: {
         a1: { kind: 'plane', point: [1, 0, 0], axis: [1, 0, 0], geom_hash: 'g1', created_by: 'feat1' },
       },
@@ -796,9 +788,9 @@ describe('solveAssembly', () => {
     // echoed straight back and the anchor must land under exactly it.
     const s = Math.SQRT1_2
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 3, qx: 0, qy: 0, qz: s, qw: s } },
+      { handle: 'p1', doc_id: 'doc-a', transform: { tx: 0, ty: 0, tz: 3, qx: 0, qy: 0, qz: s, qw: s } },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, makeEchoSolver())
 
     const posed = result.anchors['p1'].a1
     expect(posed.point[0]).toBeCloseTo(0)
@@ -818,10 +810,10 @@ describe('solveAssembly', () => {
   it('does not ship the match descriptors: they are migration inputs, not render data', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
 
-    const parts = [{ handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() }]
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
+    const parts = [{ handle: 'p1', doc_id: 'doc-a', transform: identityTransform() }]
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, makeEchoSolver())
 
     expect(Object.keys(result.anchors['p1'].a1).sort()).toEqual(['axis', 'kind', 'point', 'x_axis'])
   })
@@ -829,13 +821,13 @@ describe('solveAssembly', () => {
   it('gives two instances of one part independently posed anchors', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(100, 0, 0) },
-      { handle: 'p2', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(-100, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(100, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-a', transform: translationTransform(-100, 0, 0) },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, makeEchoSolver())
 
     expect(result.anchors['p1'].a1.point[0]).toBeCloseTo(100)
     expect(result.anchors['p2'].a1.point[0]).toBeCloseTo(-100)
@@ -848,15 +840,15 @@ describe('solveAssembly', () => {
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
 
-    const b2 = makeBundle('doc-b', 1)
+    const b2 = makeBundle('doc-b', '1')
     // Remove 'a1' from doc-b's anchors
     delete b2.anchors.a1
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
     await bundleCachePut(b2)
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       {
@@ -867,7 +859,7 @@ describe('solveAssembly', () => {
       },
     ]
 
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeEchoSolver())
 
     expect(result.status.mates['m1'].stale).toBe(true)
     expect(result.status.mates['m1'].staleRefs).toContain('ref_b')
@@ -877,10 +869,10 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
 
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
     ]
     const mates = [
       {
@@ -891,7 +883,7 @@ describe('solveAssembly', () => {
       },
     ]
 
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, mates, relay, makeEchoSolver())
 
     expect(result.status.mates['m1'].stale).toBe(true)
     expect(result.status.mates['m1'].staleRefs).toContain('ref_b')
@@ -905,20 +897,20 @@ describe('solveAssembly', () => {
     partDocs.set('doc-b', { kind: 'part', features: [] })
     // The relay cold-builds deterministic-id bundles, standing in for the
     // current production code.
-    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, doc_rev: number) =>
-      makeDeterministicBundle(doc_id, doc_rev),
+    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, content_hash: string) =>
+      makeDeterministicBundle(doc_id, content_hash),
     )
     const idA = anchorIdFor('@gdf|0.000|0.000|0.000|0.000|0.000|1.000', 'point')
     const idB = anchorIdFor('@gdf|10.000|0.000|0.000|0.000|0.000|1.000', 'point')
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: idA }, ref_b: { part: 'p2', anchor: idB } },
     ]
-    const revs = { 'doc-a': 1, 'doc-b': 1 }
+    const revs = { 'doc-a': '1', 'doc-b': '1' }
 
     const r1 = await solveAssembly(parts, revs, mates, relay, makeEchoSolver())
     expect(r1.status.mates['m1'].stale).toBe(false)
@@ -930,31 +922,33 @@ describe('solveAssembly', () => {
     expect(r2.status.mates['m1'].stale).toBe(false)
   })
 
-  it('persisted mate refs survive a schema bump: the stale bundle still serves the remap chain', async () => {
+  it('a schema-stale cache cold-rebuilds and the rebuilt bundle still resolves a deterministic ref', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, doc_rev: number) =>
-      makeDeterministicBundle(doc_id, doc_rev),
+    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, content_hash: string) =>
+      makeDeterministicBundle(doc_id, content_hash),
     )
-    // Both docs cached at the CURRENT rev but under the OLD schema: the
-    // top-of-loop get reads them as misses (cold rebuild), and the migration
-    // lookup must read them RAW so tier-1 geom_hash matching can re-key the
-    // old random-id lineage onto the fresh deterministic ids.
-    await bundleCachePut(makeBundle('doc-a', 1, { schema: BUNDLE_SCHEMA - 1 }))
-    await bundleCachePut(makeBundle('doc-b', 1, { schema: BUNDLE_SCHEMA - 1 }))
+    // Both docs cached at the CURRENT content hash but under the OLD schema: the
+    // top-of-loop get reads them as misses (cold rebuild). Anchor ids are
+    // deterministic from geom_hash, so the rebuild mints the ids a persisted ref
+    // already names; no remap seed exists or is needed.
+    await bundleCachePut(makeBundle('doc-a', '1', { schema: BUNDLE_SCHEMA - 1 }))
+    await bundleCachePut(makeBundle('doc-b', '1', { schema: BUNDLE_SCHEMA - 1 }))
 
+    const idA = anchorIdFor('@gdf|0.000|0.000|0.000|0.000|0.000|1.000', 'point')
+    const idB = anchorIdFor('@gdf|10.000|0.000|0.000|0.000|0.000|1.000', 'point')
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
-      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
+      { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: idA }, ref_b: { part: 'p2', anchor: idB } },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeEchoSolver())
 
-    // The stale bundles were cold-rebuilt (relay called) and the remap chain
-    // re-keyed the refs' random ids, so the mate is not stale-red.
+    // The stale bundles were cold-rebuilt (relay called) and the deterministic
+    // ids resolve, so the mate is not stale-red.
     expect(relay.requestPartDoc).toHaveBeenCalled()
     expect(result.status.mates['m1'].stale).toBe(false)
   })
@@ -969,16 +963,16 @@ describe('solveAssembly', () => {
     // from the deterministic ids); the refs still hold the deterministic ids a
     // fresh build mints, so the direct lookup misses and the geom_hash fallback
     // must re-parent them to the geometrically identical anchors.
-    await bundleCachePut(makeBundle('doc-a', 1, {
+    await bundleCachePut(makeBundle('doc-a', '1', {
       anchors: { legacy: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: g1, created_by: 'feat1' } },
     }))
-    await bundleCachePut(makeBundle('doc-b', 1, {
+    await bundleCachePut(makeBundle('doc-b', '1', {
       anchors: { legacy: { kind: 'point', point: [10, 0, 0], axis: [0, 0, 1], geom_hash: g2, created_by: 'feat1' } },
     }))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       {
@@ -987,7 +981,7 @@ describe('solveAssembly', () => {
         ref_b: { part: 'p2', anchor: anchorIdFor(g2, 'point') },
       },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeEchoSolver())
 
     expect(result.status.mates['m1'].stale).toBe(false)
   })
@@ -1001,19 +995,19 @@ describe('solveAssembly', () => {
     // Two anchors in one bundle share the same geom_hash + kind: both recompute
     // to the same deterministic id, so the fallback must refuse to re-parent
     // rather than pick one of two elements for a single stale id.
-    await bundleCachePut(makeBundle('doc-a', 1, {
+    await bundleCachePut(makeBundle('doc-a', '1', {
       anchors: {
         legacyA: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: g1, created_by: 'feat1' },
         legacyB: { kind: 'point', point: [5, 0, 0], axis: [0, 0, 1], geom_hash: g1, created_by: 'feat1' },
       },
     }))
-    await bundleCachePut(makeBundle('doc-b', 1, {
+    await bundleCachePut(makeBundle('doc-b', '1', {
       anchors: { legacy: { kind: 'point', point: [10, 0, 0], axis: [0, 0, 1], geom_hash: g2, created_by: 'feat1' } },
     }))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       {
@@ -1022,7 +1016,7 @@ describe('solveAssembly', () => {
         ref_b: { part: 'p2', anchor: anchorIdFor(g2, 'point') },
       },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeEchoSolver())
 
     expect(result.status.mates['m1'].stale).toBe(true)
     expect(result.status.mates['m1'].staleRefs).toContain('ref_a')
@@ -1032,12 +1026,12 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     // A pre-deterministic mate ref (random id) whose element is genuinely gone:
     // no bundle anchor recomputes to it, so it stays stale-red instead of
@@ -1045,7 +1039,7 @@ describe('solveAssembly', () => {
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'legacyRandomId' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeEchoSolver())
 
     expect(result.status.mates['m1'].stale).toBe(true)
     expect(result.status.mates['m1'].staleRefs).toContain('ref_a')
@@ -1061,15 +1055,15 @@ describe('solveAssembly', () => {
       vi.mocked(bundleCacheGet).mockRejectedValueOnce(new Error('quota exceeded'))
 
       const parts = [
-        { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+        { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
       ]
-      const result = await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+      const result = await solveAssembly(parts, { 'doc-a': '3' }, [], relay, makeEchoSolver())
 
       // The solve itself succeeds via the relayed rebuild; an IndexedDB
       // failure must never surface as ok:false after that build was paid for.
       expect(result.transforms['p1']).toEqual(identityTransform())
       expect(result.bodies['p1']).toHaveLength(1)
-      expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', 3, expect.any(Object))
+      expect(relay.requestBuildBundle).toHaveBeenCalledWith('doc-a', '3', expect.any(Object))
       expect(warn).toHaveBeenCalledTimes(1)
       expect(String(warn.mock.calls[0][0])).toContain('degrading to a miss')
     } finally {
@@ -1085,9 +1079,9 @@ describe('solveAssembly', () => {
       vi.mocked(bundleCachePut).mockRejectedValueOnce(new Error('quota exceeded'))
 
       const parts = [
-        { handle: 'p1', doc_id: 'doc-a', doc_rev: 3, transform: identityTransform() },
+        { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
       ]
-      const result = await solveAssembly(parts, { 'doc-a': 3 }, [], relay, makeEchoSolver())
+      const result = await solveAssembly(parts, { 'doc-a': '3' }, [], relay, makeEchoSolver())
 
       expect(result.transforms['p1']).toEqual(identityTransform())
       expect(result.bodies['p1']).toHaveLength(1)
@@ -1099,22 +1093,21 @@ describe('solveAssembly', () => {
     }
   })
 
-  it('skips anchor migration without failing when the migration lookup rejects', async () => {
+  it('degrades a rejected cache get to a cold rebuild without failing the solve', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const { relay, partDocs } = makeRelay()
       partDocs.set('doc-a', { kind: 'part', features: [] })
-      await bundleCachePut(makeDeterministicBundle('doc-a', 3))
-      vi.mocked(bundleCacheLatestRev).mockRejectedValueOnce(new Error('db closed'))
+      vi.mocked(bundleCacheGet).mockRejectedValueOnce(new Error('db closed'))
 
       const parts = [
-        { handle: 'p1', doc_id: 'doc-a', doc_rev: 800, transform: identityTransform() },
+        { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
       ]
-      const result = await solveAssembly(parts, { 'doc-a': 800 }, [], relay, makeEchoSolver())
+      const result = await solveAssembly(parts, { 'doc-a': '800' }, [], relay, makeEchoSolver())
 
-      // No migration lookup ran; deterministic ids make the fresh build's
-      // anchors correct anyway.
+      // The failed get is a miss, so the part cold-rebuilds; the solve succeeds.
       expect(result.transforms['p1']).toEqual(identityTransform())
+      expect(relay.requestPartDoc).toHaveBeenCalledWith('doc-a')
       expect(warn).toHaveBeenCalledTimes(1)
     } finally {
       warn.mockRestore()
@@ -1125,12 +1118,12 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
 
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(1, 2, 3) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(1, 2, 3) },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, [], relay, null)
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, null)
 
     expect(result.transforms['p1']).toEqual(translationTransform(1, 2, 3))
     expect(result.status.verdict).toBe('none')
@@ -1142,17 +1135,17 @@ describe('solveAssembly', () => {
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
 
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, null)
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, null)
 
     expect(result.status.verdict).toBe('unavailable')
     expect(result.status.error).toContain('Mate solver not available.')
@@ -1175,10 +1168,10 @@ describe('solveAssembly', () => {
   it('resolves a fixed mate from a part to the assembly Top plane through assemblyAnchors', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeAxialBundle('doc-a', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: translationTransform(0, 5, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(0, 5, 0) },
     ]
     const mates = [
       {
@@ -1189,7 +1182,7 @@ describe('solveAssembly', () => {
       },
     ]
     const { solver, captured } = makeCaptureSolver()
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, solver)
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, mates, relay, solver)
 
     // The mate resolved (not stale) and the part got a solved transform.
     expect(result.status.mates['m1'].stale).toBe(false)
@@ -1213,10 +1206,10 @@ describe('solveAssembly', () => {
   it('flags a mate stale when the assembly anchor id is unknown', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
     ]
     const mates = [
       {
@@ -1226,7 +1219,7 @@ describe('solveAssembly', () => {
         ref_b: { part: ASSEMBLY_HANDLE, anchor: 'NoSuchPlane' },
       },
     ]
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, mates, relay, makeEchoSolver())
 
     expect(result.status.mates['m1'].stale).toBe(true)
     expect(result.status.mates['m1'].staleRefs).toContain('ref_b')
@@ -1236,19 +1229,19 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'bad', kind: 'not_a_real_kind', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
       { id: 'ok', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a2' }, ref_b: { part: 'p2', anchor: 'a2' } },
     ]
     const { solver, captured } = makeCaptureSolver()
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(result.status.mates['bad'].stale).toBe(true)
     expect(result.status.mates['bad'].error).toContain('not_a_real_kind')
@@ -1262,7 +1255,7 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1, {
+    await bundleCachePut(makeBundle('doc-a', '1', {
       // `as AnchorKind`: simulates a bundle built by a newer app version that
       // added a kind this build's union doesn't know about yet.
       anchors: {
@@ -1270,18 +1263,18 @@ describe('solveAssembly', () => {
         a2: { kind: 'point', point: [1, 0, 0], axis: [0, 0, 1], geom_hash: 'g2', created_by: 'f' },
       },
     }))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'bad', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
       { id: 'ok', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a2' }, ref_b: { part: 'p2', anchor: 'a2' } },
     ]
     const { solver, captured } = makeCaptureSolver()
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(result.status.mates['bad'].stale).toBe(true)
     expect(result.status.mates['bad'].error).toContain('not_a_real_anchor_kind')
@@ -1293,12 +1286,12 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates: MateSpec[] = [
       {
@@ -1309,7 +1302,7 @@ describe('solveAssembly', () => {
       { id: 'ok', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a2' }, ref_b: { part: 'p2', anchor: 'a2' } },
     ]
     const { solver, captured } = makeCaptureSolver()
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(result.status.mates['bad'].stale).toBe(true)
     expect(result.status.mates['bad'].error).toContain('angle')
@@ -1325,19 +1318,19 @@ describe('solveAssembly', () => {
     partDocs.set('doc-b', { kind: 'part', features: [] })
     // makeBundle's a1/a2 are vertex anchors: their axis is the [0, 0, 1]
     // placeholder, not geometry.
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates: MateSpec[] = [
       { id: 'rotating', kind: 'rotating', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
       { id: 'spherical', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a2' }, ref_b: { part: 'p2', anchor: 'a2' } },
     ]
     const { solver, captured } = makeCaptureSolver()
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(result.status.mates['rotating'].stale).toBe(true)
     expect(result.status.mates['rotating'].error).toContain('axis')
@@ -1350,10 +1343,10 @@ describe('solveAssembly', () => {
   it('keeps an axis-reading mate with an inline anchor legal (the drag objective authors its own axis)', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
     ]
     // The triad drag objective: a fixed mate whose anchors are synthetic points
     // carrying an authored axis. A point kind here is not a B-rep placeholder.
@@ -1364,7 +1357,7 @@ describe('solveAssembly', () => {
       ref_b: { part: 'p1', anchor: 'drag', inlineAnchor: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '', created_by: 'drag' } },
     }]
     const { solver, captured } = makeCaptureSolver()
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, solver)
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, mates, relay, solver)
 
     expect(result.status.mates['drag'].stale).toBe(false)
     expect(captured.input!.mates).toHaveLength(1)
@@ -1373,10 +1366,10 @@ describe('solveAssembly', () => {
   it('trusts the assembly frame origin axis even though its kind is a point', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeAxialBundle('doc-a', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
     ]
     // The assembly origin is a point anchor with a deliberately canonical +Z,
     // so a revolute joint to it is legal even though a PART vertex point is not.
@@ -1386,7 +1379,7 @@ describe('solveAssembly', () => {
       ref_b: { part: ASSEMBLY_HANDLE, anchor: ASSEMBLY_ORIGIN_ID },
     }]
     const { solver, captured } = makeCaptureSolver()
-    const result = await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, solver)
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, mates, relay, solver)
 
     expect(result.status.mates['m1'].stale).toBe(false)
     expect(captured.input!.mates).toHaveLength(1)
@@ -1396,19 +1389,19 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'self', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p1', anchor: 'a2' } },
       { id: 'ok', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
     const { solver, captured } = makeCaptureSolver()
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(result.status.mates['self'].stale).toBe(true)
     expect(result.status.mates['self'].error).toBe('a mate needs two different parts')
@@ -1420,12 +1413,12 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
@@ -1438,7 +1431,7 @@ describe('solveAssembly', () => {
       w.setUint8(8, 0)
       return new Uint8Array(w.buffer)
     }
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, shortSolver)
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, shortSolver)
 
     expect(result.status.verdict).toBe('failed')
     expect(result.status.error).toContain('params')
@@ -1450,14 +1443,14 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-good', { kind: 'part', features: [] })
     // doc-bad is deliberately absent: requestPartDoc rejects with "not found".
-    await bundleCachePut(makeBundle('doc-good', 1))
+    await bundleCachePut(makeBundle('doc-good', '1'))
 
     const parts = [
-      { handle: 'hGood', doc_id: 'doc-good', doc_rev: 1, transform: identityTransform() },
-      { handle: 'hBad', doc_id: 'doc-bad', doc_rev: 1, transform: translationTransform(9, 0, 0) },
+      { handle: 'hGood', doc_id: 'doc-good', transform: identityTransform() },
+      { handle: 'hBad', doc_id: 'doc-bad', transform: translationTransform(9, 0, 0) },
     ]
 
-    const result = await solveAssembly(parts, { 'doc-good': 1, 'doc-bad': 1 }, [], relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-good': '1', 'doc-bad': '1' }, [], relay, makeEchoSolver())
 
     expect(result.status.parts['hBad']).toEqual({ failed: true, error: expect.stringContaining('not found') })
     expect(result.status.parts['hGood']?.failed).toBeFalsy()
@@ -1474,18 +1467,18 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'm1', kind: 'worm_gear', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
 
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeEchoSolver())
 
     expect(result.status.mates['m1']).toEqual({ stale: true, error: "unsupported mate kind 'worm_gear'" })
     expect(mateFailure('m1', result.status)).toMatchObject({
@@ -1497,19 +1490,19 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
     const trapping = () => { throw new Error('bad mate output magic') }
 
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, trapping)
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, trapping)
 
     expect(result.status.mates['m1'].error).toContain('bad mate output magic')
     expect(result.status.mates['m1'].stale).toBe(true)
@@ -1522,12 +1515,12 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
@@ -1555,7 +1548,7 @@ describe('solveAssembly', () => {
       return new Uint8Array(out.buffer)
     }
 
-    const result = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, overSolver)
+    const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, overSolver)
 
     expect(result.status.verdict).toBe('overconstrained')
     expect(result.status.residualNorm).toBeGreaterThan(0)
@@ -1567,18 +1560,18 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform(), fixed: true },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform(), fixed: true },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
     const { solver, captured } = makeCaptureSolver()
-    await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     expect(captured.input!.nBodies).toBe(2)
     expect(captured.input!.fixedMask[0] & 0b01).toBe(0b01)  // body 0 pinned
@@ -1588,10 +1581,10 @@ describe('solveAssembly', () => {
   it('pins the fixed part alongside the assembly frame when a mate uses both', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
-    await bundleCachePut(makeAxialBundle('doc-a', 1))
+    await bundleCachePut(makeAxialBundle('doc-a', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform(), fixed: true },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform(), fixed: true },
     ]
     const mates = [
       {
@@ -1602,7 +1595,7 @@ describe('solveAssembly', () => {
       },
     ]
     const { solver, captured } = makeCaptureSolver()
-    await solveAssembly(parts, { 'doc-a': 1 }, mates, relay, solver)
+    await solveAssembly(parts, { 'doc-a': '1' }, mates, relay, solver)
 
     expect(captured.input!.nBodies).toBe(2)
     expect(captured.input!.fixedMask[0] & 0b11).toBe(0b11)  // part + frame both pinned
@@ -1612,18 +1605,18 @@ describe('solveAssembly', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    await bundleCachePut(makeBundle('doc-a', 1))
-    await bundleCachePut(makeBundle('doc-b', 1))
+    await bundleCachePut(makeBundle('doc-a', '1'))
+    await bundleCachePut(makeBundle('doc-b', '1'))
 
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
     const { solver, captured } = makeCaptureSolver()
-    await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, solver)
+    await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     // Only the two part bodies; nothing pinned.
     expect(captured.input!.nBodies).toBe(2)
@@ -1636,16 +1629,16 @@ describe('anchor descriptor fallback (C7)', () => {
   // at [0,0,0], rev 2+ at [5,0,0]. Same created_by + kind, so after the move
   // only tier 2 can re-find it. Doc-b keeps makeBundle's default anchors.
   function relayWithMovingAnchor(relay: RelayService): void {
-    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, doc_rev: number) => {
+    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, content_hash: string) => {
       if (doc_id === 'doc-a') {
-        const x = doc_rev >= 2 ? 5 : 0
-        return makeBundle('doc-a', doc_rev, {
+        const x = Number(content_hash) >= 2 ? 5 : 0
+        return makeBundle('doc-a', content_hash, {
           anchors: {
             aMoved: { kind: 'point', point: [x, 0, 0], axis: [0, 0, 1], geom_hash: `@gdf|x${x}`, created_by: 'feat1' },
           },
         })
       }
-      return makeBundle('doc-b', doc_rev)
+      return makeBundle('doc-b', content_hash)
     })
   }
 
@@ -1664,15 +1657,15 @@ describe('anchor descriptor fallback (C7)', () => {
       ref_b: { part: 'p2', anchor: 'a2' },
     }]
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
 
     // Rev 1 warms the cache. The mock keys the anchor `aMoved`, so the ref's
     // deterministic id misses the dict and anchorByGeomHash re-parents it onto
     // the geohash-identical anchor, which is the path this warm solve proves.
     const warm = makeCaptureSolver()
-    const r1 = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, warm.solver)
+    const r1 = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, warm.solver)
     expect(r1.status.mates['m1'].stale).toBe(false)
     expect(warm.captured.input!.mates[0].pointA[0]).toBeCloseTo(0)
 
@@ -1680,23 +1673,24 @@ describe('anchor descriptor fallback (C7)', () => {
     // predecessor exists, so only the descriptor can re-find the element.
     freshDb()
     const cold = makeCaptureSolver()
-    const r2 = await solveAssembly(parts, { 'doc-a': 2, 'doc-b': 1 }, mates, relay, cold.solver)
+    const r2 = await solveAssembly(parts, { 'doc-a': '2', 'doc-b': '1' }, mates, relay, cold.solver)
     expect(r2.status.mates['m1'].stale).toBe(false)
     expect(cold.captured.input!.mates[0].pointA[0]).toBeCloseTo(5)
   })
 
-  it('produces a descriptor through the build-time remap and it survives a later cache wipe', async () => {
+  it('stamps the deterministic id with its descriptor and the ref survives a later cache wipe', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
 
-    // A doc-a build whose single positional face anchor moves with the rev and
-    // whose entity index names that anchor, so the pick path can be exercised.
-    const movingFaceBundle = (doc_id: string, doc_rev: number): PartBundle => {
-      const x = doc_rev >= 2 ? 5 : 0
+    // A doc-a build whose single positional face anchor moves with the content
+    // hash and whose entity index names that anchor, so the pick path can be
+    // exercised.
+    const movingFaceBundle = (doc_id: string, content_hash: string): PartBundle => {
+      const x = Number(content_hash) >= 2 ? 5 : 0
       const geom = `@gdf|x${x}`
       const id = anchorIdFor(geom, 'point')
-      return makeBundle(doc_id, doc_rev, {
+      return makeBundle(doc_id, content_hash, {
         bodies: [{
           mesh: {
             vertices: new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0, 10, 10, 0]),
@@ -1710,43 +1704,28 @@ describe('anchor descriptor fallback (C7)', () => {
       })
     }
     vi.mocked(relay.requestBuildBundle).mockImplementation(
-      async (doc_id: string, doc_rev: number) =>
-        doc_id === 'doc-a' ? movingFaceBundle('doc-a', doc_rev) : makeBundle('doc-b', doc_rev),
+      async (doc_id: string, content_hash: string) =>
+        doc_id === 'doc-a' ? movingFaceBundle('doc-a', content_hash) : makeBundle('doc-b', content_hash),
     )
 
-    // Warm a rev-1 bundle so the rev-2 solve finds a remap seed: the build-time
-    // tier-2 remap re-keys the fresh anchor id onto this prior id.
-    const priorId = anchorIdFor('@gdf|x0', 'point')
-    await bundleCachePut(makeBundle('doc-a', 1, {
-      bodies: [{
-        mesh: {
-          vertices: new Float32Array([0, 0, 0, 10, 0, 0, 0, 10, 0, 10, 10, 0]),
-          indices: new Uint32Array([0, 1, 2, 1, 3, 2]),
-          faceIdsPerTriangle: new Uint32Array([0, 0]),
-        },
-        edges: [],
-        entityAnchors: { faces: [[priorId]], edges: [], vertices: [] },
-      }],
-      anchors: { [priorId]: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '@gdf|x0', created_by: 'feat1' } },
-    }))
-
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
-    const solved = await solveAssembly(parts, { 'doc-a': 2, 'doc-b': 1 }, [], relay, makeEchoSolver())
+    const solved = await solveAssembly(parts, { 'doc-a': '2', 'doc-b': '1' }, [], relay, makeEchoSolver())
 
-    // The remap ran, so the pick path stamps the prior id with the descriptor
-    // of the current (moved) anchor the remap re-keyed onto it.
+    // Anchor ids are deterministic from geom_hash, so the pick path stamps the
+    // moved element's own id with its current descriptor; no remap seed exists
+    // or is needed.
     const refs = buildEntityMateRefs(solved.bodies, solved.anchorDescriptors)
     const ref = refs[assemblyEntityKey('p1', 0, 'face', 0)][0]
-    expect(ref.anchor).toBe(priorId)
+    expect(ref.anchor).toBe(anchorIdFor('@gdf|x5', 'point'))
     expect(ref.anchor_descriptor).toEqual({
       geom_hash: '@gdf|x5', kind: 'point', created_by: 'feat1', point: [5, 0, 0],
     })
 
-    // That stamped ref survives a cache wipe: the cold rebuild has no remap
-    // seed, so only the descriptor re-finds the moved element.
+    // The stamped ref survives a cache wipe: the cold rebuild has the same
+    // deterministic id, so the ref resolves with no cache at all.
     freshDb()
     const mates = [{
       id: 'm1', kind: 'spherical',
@@ -1754,7 +1733,7 @@ describe('anchor descriptor fallback (C7)', () => {
       ref_b: { part: 'p2', anchor: 'a2' },
     }]
     const cold = makeCaptureSolver()
-    const r2 = await solveAssembly(parts, { 'doc-a': 2, 'doc-b': 1 }, mates, relay, cold.solver)
+    const r2 = await solveAssembly(parts, { 'doc-a': '2', 'doc-b': '1' }, mates, relay, cold.solver)
     expect(r2.status.mates['m1'].stale).toBe(false)
     expect(cold.captured.input!.mates[0].pointA[0]).toBeCloseTo(5)
   })
@@ -1763,17 +1742,17 @@ describe('anchor descriptor fallback (C7)', () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })
     partDocs.set('doc-b', { kind: 'part', features: [] })
-    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, doc_rev: number) => {
+    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, content_hash: string) => {
       if (doc_id === 'doc-a') {
-        const aX = doc_rev >= 2 ? 5 : 0
-        return makeBundle('doc-a', doc_rev, {
+        const aX = Number(content_hash) >= 2 ? 5 : 0
+        return makeBundle('doc-a', content_hash, {
           anchors: {
             aNamed: { kind: 'point', point: [aX, 0, 0], axis: [0, 0, 1], geom_hash: `@gdf|a${aX}`, created_by: 'feat1' },
             aSibling: { kind: 'point', point: [10, 0, 0], axis: [0, 0, 1], geom_hash: '@gdf|a10', created_by: 'feat1' },
           },
         })
       }
-      return makeBundle('doc-b', doc_rev)
+      return makeBundle('doc-b', content_hash)
     })
 
     const descriptor: MateAnchorDescriptor = {
@@ -1785,18 +1764,18 @@ describe('anchor descriptor fallback (C7)', () => {
       ref_b: { part: 'p2', anchor: 'a2' },
     }]
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
 
     const warm = makeCaptureSolver()
-    const r1 = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, warm.solver)
+    const r1 = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, warm.solver)
     expect(r1.status.mates['m1'].stale).toBe(false)
     expect(warm.captured.input!.mates[0].pointA[0]).toBeCloseTo(0)
 
     freshDb()
     const cold = makeCaptureSolver()
-    const r2 = await solveAssembly(parts, { 'doc-a': 2, 'doc-b': 1 }, mates, relay, cold.solver)
+    const r2 = await solveAssembly(parts, { 'doc-a': '2', 'doc-b': '1' }, mates, relay, cold.solver)
     expect(r2.status.mates['m1'].stale).toBe(false)
     // The nearer moved aNamed, not the untouched aSibling at [10,0,0].
     expect(cold.captured.input!.mates[0].pointA[0]).toBeCloseTo(5)
@@ -1808,15 +1787,15 @@ describe('anchor descriptor fallback (C7)', () => {
     partDocs.set('doc-b', { kind: 'part', features: [] })
     // A same-kind, same-created_by positional candidate exists at [0,0,0]; a
     // fail-wrong resolver would bind the gone UUID to it. It must not.
-    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, doc_rev: number) => {
+    vi.mocked(relay.requestBuildBundle).mockImplementation(async (doc_id: string, content_hash: string) => {
       if (doc_id === 'doc-a') {
-        return makeBundle('doc-a', doc_rev, {
+        return makeBundle('doc-a', content_hash, {
           anchors: {
             aCandidate: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '@gdf|a0', created_by: 'feat1' },
           },
         })
       }
-      return makeBundle('doc-b', doc_rev)
+      return makeBundle('doc-b', content_hash)
     })
 
     const descriptor: MateAnchorDescriptor = {
@@ -1828,11 +1807,11 @@ describe('anchor descriptor fallback (C7)', () => {
       ref_b: { part: 'p2', anchor: 'a2' },
     }]
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 2, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
 
-    const result = await solveAssembly(parts, { 'doc-a': 2, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+    const result = await solveAssembly(parts, { 'doc-a': '2', 'doc-b': '1' }, mates, relay, makeEchoSolver())
 
     expect(result.status.mates['m1'].stale).toBe(true)
     expect(result.status.mates['m1'].staleRefs).toContain('ref_a')
@@ -1851,15 +1830,15 @@ describe('anchor descriptor fallback (C7)', () => {
       ref_b: { part: 'p2', anchor: 'a2' },
     }]
     const parts = [
-      { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: identityTransform() },
-      { handle: 'p2', doc_id: 'doc-b', doc_rev: 1, transform: translationTransform(5, 0, 0) },
+      { handle: 'p1', doc_id: 'doc-a', transform: identityTransform() },
+      { handle: 'p2', doc_id: 'doc-b', transform: translationTransform(5, 0, 0) },
     ]
 
-    const r1 = await solveAssembly(parts, { 'doc-a': 1, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+    const r1 = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeEchoSolver())
     expect(r1.status.mates['m1'].stale).toBe(false)
 
     freshDb()
-    const r2 = await solveAssembly(parts, { 'doc-a': 2, 'doc-b': 1 }, mates, relay, makeEchoSolver())
+    const r2 = await solveAssembly(parts, { 'doc-a': '2', 'doc-b': '1' }, mates, relay, makeEchoSolver())
     expect(r2.status.mates['m1'].stale).toBe(true)
     expect(r2.status.mates['m1'].staleRefs).toContain('ref_a')
   })

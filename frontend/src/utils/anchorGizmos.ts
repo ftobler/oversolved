@@ -12,7 +12,8 @@
 // hits to positioned triads through the anchor table the solve shipped.
 
 import type { AnchorPose } from '@/kernel/partBundle'
-import type { MateRef } from '@/types/cad'
+import { anchorIdByDescriptor } from '@/kernel/partBundle'
+import type { MateAnchorDescriptor, MateRef } from '@/types/cad'
 import { resolveCandidates, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
 import { cross, dot, normalize } from '@/utils/gizmoMath'
@@ -20,6 +21,9 @@ import type { Vec3 } from '@/utils/transform3d'
 
 /** Part handle -> anchor id -> pose, including the assembly's own frame. */
 export type AnchorTable = Record<string, Record<string, AnchorPose>>
+
+/** Part handle -> anchor id -> the descriptor that id was minted from. */
+export type AnchorDescriptorTable = Record<string, Record<string, MateAnchorDescriptor>>
 
 export interface AnchorGizmo {
   // Stable per-reference key; `${part}|${anchor}`.
@@ -41,8 +45,24 @@ export function buildAnchorTable(partAnchors: Record<string, Record<string, Anch
   return { ...partAnchors, [ASSEMBLY_HANDLE]: ASSEMBLY_BUILTIN_ANCHORS }
 }
 
-export function lookupAnchor(table: Readonly<AnchorTable>, ref: MateRef): AnchorPose | undefined {
-  return table[ref.part]?.[ref.anchor]
+/**
+ * The pose a reference names. A direct id hit is the normal path. When the id
+ * misses (a persisted ref whose anchor was re-minted after its geom_hash moved)
+ * and the ref carries a descriptor, re-find the current id by descriptor and
+ * index the table with that. `descriptors` is the solve's authoring-only table,
+ * keyed like the anchor table; without it a stale ref degrades to no gizmo
+ * rather than a gizmo at the origin.
+ */
+export function lookupAnchor(
+  table: Readonly<AnchorTable>,
+  ref: MateRef,
+  descriptors?: Readonly<AnchorDescriptorTable>,
+): AnchorPose | undefined {
+  const direct = table[ref.part]?.[ref.anchor]
+  if (direct) return direct
+  if (!ref.anchor_descriptor || !descriptors) return undefined
+  const id = anchorIdByDescriptor(descriptors[ref.part] ?? {}, ref.anchor_descriptor)
+  return id !== undefined ? table[ref.part]?.[id] : undefined
 }
 
 const WORLD_AXES: readonly Vec3[] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
@@ -104,10 +124,11 @@ export function resolveAnchorGizmos(
   scopeEntityKey?: string | null,
   aimedRef?: MateRef | null,
   basisByPart?: Readonly<Record<string, readonly Vec3[]>>,
+  descriptors?: Readonly<AnchorDescriptorTable>,
 ): AnchorGizmo[] {
   const out: AnchorGizmo[] = []
   for (const ref of resolveCandidates(hits, entityMateRefs, scopeEntityKey)) {
-    const anchor = lookupAnchor(table, ref)
+    const anchor = lookupAnchor(table, ref, descriptors)
     if (!anchor) continue
     out.push({
       key: `${ref.part}|${ref.anchor}`,

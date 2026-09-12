@@ -42,7 +42,7 @@ function anchoredBundle(doc_id: string, axis: Vec3): PartBundle {
   }
   return {
     doc_id,
-    doc_rev: 1,
+    content_hash: '1',
     schema: BUNDLE_SCHEMA,
     bodies: [{
       mesh: {
@@ -62,7 +62,7 @@ const relay: RelayService = {
   requestBuildBundle: async () => { throw new Error('should not build: bundles are pre-cached') },
 }
 
-const revs = { 'doc-free': 1, 'doc-slide': 1, 'doc-crank': 1 }
+const revs = { 'doc-free': '1', 'doc-slide': '1', 'doc-crank': '1' }
 
 beforeEach(async () => {
   globalThis.indexedDB = new IDBFactory()
@@ -118,7 +118,7 @@ describe('dragTargetPoseMate', () => {
     // bit-close on the pose the geometry was derived for. This validates the
     // encoding (point, axis and authored roll), independently of the soft drag
     // weight.
-    const parts = [{ handle: 'p1', doc_id: 'doc-free', doc_rev: 1, transform: identity() }]
+    const parts = [{ handle: 'p1', doc_id: 'doc-free', transform: identity() }]
     const res = await solveAssembly(parts, revs, [{ ...mate, weight: 1 }], relay, solveMate!)
     const t = res.transforms['p1']
     for (const k of ['tx', 'ty', 'tz', 'qx', 'qy', 'qz', 'qw'] as const) {
@@ -132,7 +132,7 @@ describeReal('solveDragPose through the real mate solver', () => {
   // the grabbed POINT lands under the cursor, and it must get there by sliding,
   // not by rotating (translation is the default priority).
   it('translates a free part so its grab point reaches the cursor', async () => {
-    const parts = [{ handle: 'p1', doc_id: 'doc-free', doc_rev: 1, transform: identity() }]
+    const parts = [{ handle: 'p1', doc_id: 'doc-free', transform: identity() }]
     const localGrab: Vec3 = [0, 3, 0]  // off the origin
     const target: Vec3 = [5, 8, 0]
 
@@ -150,7 +150,7 @@ describeReal('solveDragPose through the real mate solver', () => {
   // put the grab point at the cursor. The solved pose is the nearest the slider
   // allows, and crucially NOT the raw cursor -- the part never detaches.
   it('holds a slider part on its axis instead of stretching to the cursor', async () => {
-    const parts = [{ handle: 'p1', doc_id: 'doc-slide', doc_rev: 1, transform: identity() }]
+    const parts = [{ handle: 'p1', doc_id: 'doc-slide', transform: identity() }]
     // Slider along world X: the part's hub axis (+X) welded parallel to the
     // assembly Right plane's normal (+X), pinned through the origin.
     const mates: MateSpec[] = [{
@@ -185,7 +185,7 @@ describeReal('solveDragPose through the real mate solver', () => {
   // deg at pointer-up, because the soft objective and the real mates traded at
   // equal weight.
   it('the committed pose equals the dropped pose within 1e-4', async () => {
-    const parts = [{ handle: 'p1', doc_id: 'doc-slide', doc_rev: 1, transform: identity() }]
+    const parts = [{ handle: 'p1', doc_id: 'doc-slide', transform: identity() }]
     const mates: MateSpec[] = [{
       id: 'm1', kind: 'sliding',
       ref_a: { part: '__assembly', anchor: ASSEMBLY_RIGHT_ID },
@@ -212,7 +212,7 @@ describeReal('solveDragPose through the real mate solver', () => {
   // at its rim and dragged tangentially must TURN -- translation is spent, so the
   // drag injects a rotation, which is what turning a crank wheel needs.
   it('turns a revolute part when its rim is dragged tangentially', async () => {
-    const parts = [{ handle: 'p1', doc_id: 'doc-crank', doc_rev: 1, transform: identity() }]
+    const parts = [{ handle: 'p1', doc_id: 'doc-crank', transform: identity() }]
     // Revolute about Z through the origin: hub point pinned, hub axis (+Z) aligned.
     const mates: MateSpec[] = [{
       id: 'm1', kind: 'rotating',

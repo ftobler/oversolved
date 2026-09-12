@@ -127,9 +127,9 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
 
   it('produces one BodyMesh per body for a rect extrude', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const bundle = toPartBundle('doc1', 1, result.bodies as Record<string, BodyResult>)
+    const bundle = toPartBundle('doc1', 'h1', result.bodies as Record<string, BodyResult>)
     expect(bundle.doc_id).toBe('doc1')
-    expect(bundle.doc_rev).toBe(1)
+    expect(bundle.content_hash).toBe('h1')
     // Anchors are populated from the real build.
     expect(typeof bundle.anchors).toBe('object')
     expect(Object.keys(bundle.anchors).length).toBeGreaterThan(0)
@@ -143,7 +143,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
 
   it('faceIdsPerTriangle length equals triangle count', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const bundle = toPartBundle('doc2', 1, result.bodies as Record<string, BodyResult>)
+    const bundle = toPartBundle('doc2', 'h1', result.bodies as Record<string, BodyResult>)
     for (const bodyMesh of bundle.bodies) {
       const triCount = bodyMesh.mesh.indices.length / 3
       expect(bodyMesh.mesh.faceIdsPerTriangle.length).toBe(triCount)
@@ -152,7 +152,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
 
   it('box edges appear as line EdgeCurves with correct endpoints', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const bundle = toPartBundle('doc3', 1, result.bodies as Record<string, BodyResult>)
+    const bundle = toPartBundle('doc3', 'h1', result.bodies as Record<string, BodyResult>)
     const allEdges = bundle.bodies.flatMap((b) => b.edges)
     const lineEdges = allEdges.filter((e) => e.kind === 'line')
     // A box has 12 line edges (4 on front face, 4 on back face, 4 connecting).
@@ -176,7 +176,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
 
   it('every EdgeCurve has a unique id from its edge query', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const bundle = toPartBundle('doc4', 1, result.bodies as Record<string, BodyResult>)
+    const bundle = toPartBundle('doc4', 'h1', result.bodies as Record<string, BodyResult>)
     const allEdges = bundle.bodies.flatMap((b) => b.edges)
     const ids = allEdges.map((e) => e.id)
     expect(new Set(ids).size).toBe(ids.length)
@@ -185,8 +185,8 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
   it('same-rev rebuild produces bundles with matching edge counts and kinds', () => {
     const r1 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const r2 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const b1 = toPartBundle('doc5', 1, r1.bodies as Record<string, BodyResult>)
-    const b2 = toPartBundle('doc5', 1, r2.bodies as Record<string, BodyResult>)
+    const b1 = toPartBundle('doc5', 'h1', r1.bodies as Record<string, BodyResult>)
+    const b2 = toPartBundle('doc5', 'h1', r2.bodies as Record<string, BodyResult>)
     expect(b1.bodies.length).toBe(b2.bodies.length)
 
     const edges1 = b1.bodies.flatMap((b) => b.edges)
@@ -205,8 +205,8 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     // (which face each triangle belongs to) should be deterministic.
     const r1 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const r2 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const b1 = toPartBundle('doc6', 1, r1.bodies as Record<string, BodyResult>)
-    const b2 = toPartBundle('doc6', 1, r2.bodies as Record<string, BodyResult>)
+    const b1 = toPartBundle('doc6', 'h1', r1.bodies as Record<string, BodyResult>)
+    const b2 = toPartBundle('doc6', 'h1', r2.bodies as Record<string, BodyResult>)
 
     for (let i = 0; i < b1.bodies.length; i++) {
       const triCount1 = b1.bodies[i].mesh.indices.length / 3
@@ -221,7 +221,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
 
   it('rect extrude anchors: 6 plane faces, 12 line edges, 8 point vertices', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const bundle = toPartBundle('doc7', 1, result.bodies as Record<string, BodyResult>)
+    const bundle = toPartBundle('doc7', 'h1', result.bodies as Record<string, BodyResult>)
     const vals = Object.values(bundle.anchors)
     expect(vals.length).toBeGreaterThan(0)
 
@@ -261,7 +261,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
 
   it('every anchor has created_by set to the owning feature', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const bundle = toPartBundle('doc8', 1, result.bodies as Record<string, BodyResult>)
+    const bundle = toPartBundle('doc8', 'h1', result.bodies as Record<string, BodyResult>)
     for (const a of Object.values(bundle.anchors)) {
       expect(a.created_by).toBeTruthy()
     }
@@ -270,8 +270,8 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
   it('same-rev rebuild produces the SAME anchor ids, so a persisted mate ref survives a rebuild with no cache', () => {
     const r1 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const r2 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const b1 = toPartBundle('doc9', 1, r1.bodies as Record<string, BodyResult>)
-    const b2 = toPartBundle('doc9', 1, r2.bodies as Record<string, BodyResult>)
+    const b1 = toPartBundle('doc9', 'h1', r1.bodies as Record<string, BodyResult>)
+    const b2 = toPartBundle('doc9', 'h1', r2.bodies as Record<string, BodyResult>)
 
     const descs1 = Object.values(b1.anchors).map((a) => `${a.kind}:${a.geom_hash}:${a.created_by}`).sort()
     const descs2 = Object.values(b2.anchors).map((a) => `${a.kind}:${a.geom_hash}:${a.created_by}`).sort()
@@ -309,7 +309,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
       { id: 'ex_hole', kind: 'extrude' as const, label: 'Hole extrude',
         sketch: '$sk_hole', distance: 5, direction: 'normal', operation: 'remove' as const },
     ] })
-    const bundle = toPartBundle('doc10', 1, result.bodies as Record<string, BodyResult>)
+    const bundle = toPartBundle('doc10', 'h1', result.bodies as Record<string, BodyResult>)
     const vals = Object.values(bundle.anchors)
     const cylinderAnchors = vals.filter((a) => a.kind === 'cylinder')
     // The hole's cylindrical wall is one cylinder anchor
@@ -344,7 +344,7 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     const cornerEdge = edgeQueries[0]
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [cornerEdge], radius: 1 })
     const result = run(spec)
-    const bundle = toPartBundle('doc11', 1, result.bodies as Record<string, BodyResult>)
+    const bundle = toPartBundle('doc11', 'h1', result.bodies as Record<string, BodyResult>)
     const filletAnchors = Object.values(bundle.anchors).filter((a) => a.kind === 'cylinder')
     expect(filletAnchors.length).toBeGreaterThanOrEqual(1)
     const fillet = filletAnchors[0]

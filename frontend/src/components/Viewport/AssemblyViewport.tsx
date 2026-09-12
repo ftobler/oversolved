@@ -128,6 +128,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const pickGeometryPose = useAssemblyStore(s => s.pickGeometryPose)
   const entityMateRefs = useAssemblyStore(s => s.entityMateRefs)
   const anchors = useAssemblyStore(s => s.anchors)
+  const anchorDescriptors = useAssemblyStore(s => s.anchorDescriptors)
   const hoverHits = useAssemblyStore(s => s.hoverHits)
   const pickScopeEntity = useAssemblyStore(s => s.pickScopeEntity)
   const pickCandidates = useAssemblyStore(s => s.pickCandidates)
@@ -247,9 +248,9 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // under the cursor; moving away leaves the pick standing but undrawn.
   const gizmos = useMemo(
     () => resolveAnchorGizmos(
-      hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates[pickIndex] ?? null, partBases,
+      hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates[pickIndex] ?? null, partBases, anchorDescriptors,
     ),
-    [hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates, pickIndex, partBases],
+    [hoverHits, entityMateRefs, anchors, pickScopeEntity, pickCandidates, pickIndex, partBases, anchorDescriptors],
   )
 
   // The roll-guide arrow (Stage 3): only a selected `fixed` mate has one, drawn
@@ -267,7 +268,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // re-render or re-solve.
   const selectedMate = selectedMateId ? mates.find(m => m.id === selectedMateId)?.mate : undefined
   const rollGuideAnchor = selectedMate && selectedMate.kind === 'fixed'
-    ? lookupAnchor(anchors, selectedMate.ref_a)
+    ? lookupAnchor(anchors, selectedMate.ref_a, anchorDescriptors)
     : undefined
   const rollGuideAngleDeg = typeof selectedMate?.angle === 'number' ? selectedMate.angle : 0
   // Selecting a mate in the tree highlights the geometry its refs resolve to,

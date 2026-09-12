@@ -5,7 +5,8 @@
 
 import { describe, expect, it } from 'vitest'
 import type { AnchorPose } from '@/kernel/partBundle'
-import type { AnchorTable } from '@/utils/anchorGizmos'
+import type { MateRef } from '@/types/cad'
+import type { AnchorDescriptorTable, AnchorTable } from '@/utils/anchorGizmos'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
 
 const A = { part: 'pa', anchor: 'top' }
@@ -80,5 +81,23 @@ describe('captureMateOrientationPatch', () => {
     expect(captureMateOrientationPatch({ kind: 'fixed' }, A, { part: '', anchor: '' }, t)).toBeNull()
     expect(captureMateOrientationPatch({ kind: 'fixed' }, A, undefined, t)).toBeNull()
     expect(captureMateOrientationPatch({ kind: 'fixed' }, A, { part: 'gone', anchor: 'x' }, t)).toBeNull()
+  })
+
+  it('re-finds a stale ref by descriptor so re-aiming still measures the real pose', () => {
+    // Re-aiming one field of an existing mate leaves the other field untouched.
+    // If that other ref's persisted id went stale after a geom_hash move, the
+    // capture must still resolve it through the descriptor table; without one it
+    // silently keeps the old orientation.
+    const s = Math.sin(Math.PI / 6)
+    const c = Math.cos(Math.PI / 6)
+    const t = table({}, { x_axis: [-s, c, 0] })
+    const descriptors: AnchorDescriptorTable = {
+      pa: { top: { geom_hash: '@gdf|moved', kind: 'plane', created_by: 'f1', point: [0, 0, 0] } },
+    }
+    const staleA: MateRef = { part: 'pa', anchor: 'a_stale', anchor_descriptor: descriptors.pa.top }
+    expect(captureMateOrientationPatch({ kind: 'fixed' }, staleA, B, t)).toBeNull()
+    expect(captureMateOrientationPatch({ kind: 'fixed' }, staleA, B, t, descriptors)).toEqual({
+      flip: undefined, angle: 30,
+    })
   })
 })

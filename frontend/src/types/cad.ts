@@ -479,6 +479,9 @@ export interface MateFeature {
 export interface PartInstance {
   handle: string
   doc_id: string
+  // The part entry's rev at placement, kept as placement provenance only. The
+  // bundle cache keys on content hashes now (C5/A11), so this is no longer a
+  // wire or cache key.
   doc_rev: number
   transform: Transform3D
   visible?: boolean

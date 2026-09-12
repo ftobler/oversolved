@@ -310,9 +310,9 @@ describe('toPartBundle', () => {
         edge_queries: ['edge1'],
       },
     }
-    const bundle = toPartBundle('doc123', 5, bodies)
+    const bundle = toPartBundle('doc123', 'h5', bodies)
     expect(bundle.doc_id).toBe('doc123')
-    expect(bundle.doc_rev).toBe(5)
+    expect(bundle.content_hash).toBe('h5')
     expect(bundle.bodies).toHaveLength(2)
     expect(bundle.bodies[1].edges).toHaveLength(1)
     // Anchors populated (empty for these no-query mock bodies)
@@ -336,8 +336,8 @@ describe('toPartBundle', () => {
         },
       },
     }
-    const bundleA = toPartBundle('doc1', 1, bodies)
-    const bundleB = toPartBundle('doc1', 2, bodies)
+    const bundleA = toPartBundle('doc1', 'h1', bodies)
+    const bundleB = toPartBundle('doc1', 'h2', bodies)
     const idsA = Object.keys(bundleA.anchors)
     const idsB = Object.keys(bundleB.anchors)
     expect(idsA).toHaveLength(1)
@@ -373,7 +373,7 @@ describe('toPartBundle', () => {
         },
       },
     }
-    const bundle = toPartBundle('doc1', 1, bodies)
+    const bundle = toPartBundle('doc1', 'h1', bodies)
     const ids = Object.keys(bundle.anchors)
     expect(ids).toHaveLength(2)
     expect(new Set(ids).size).toBe(2)
@@ -736,7 +736,7 @@ describe('extractBodyAnchors entity index', () => {
   })
 
   it('toPartBundle carries the index onto each BodyMesh', () => {
-    const bundle = toPartBundle('doc1', 3, { b1: mixedBody() })
+    const bundle = toPartBundle('doc1', 'h3', { b1: mixedBody() })
     expect(bundle.bodies[0].entityAnchors!.faces[0][0]).toBeDefined()
     expect(bundle.anchors[bundle.bodies[0].entityAnchors!.faces[0][0]]).toBeDefined()
   })

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import Dialog from '@/components/dialogs/Dialog'
 import { getWorkspaceStore } from '@/workspace/store'
+import { EntryReferencedError, type EntryReferrer } from '@/workspace/errors'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { subscribeWorkspaceStore, workspaceStoreRevision } from '@/workspace/storeEvents'
 import type { WorkspaceSession } from '@/workspace/session'
@@ -20,6 +21,7 @@ export function FilesPanel() {
   const revision = useSyncExternalStore(subscribeWorkspaceStore, workspaceStoreRevision)
   const [loadedEntries, setLoadedEntries] = useState<EntryMeta[]>([])
   const [pruneOpen, setPruneOpen] = useState(false)
+  const [blocked, setBlocked] = useState<EntryReferrer[] | null>(null)
   const store = getWorkspaceStore()
 
   useEffect(() => {
@@ -45,7 +47,21 @@ export function FilesPanel() {
 
   const handlePrune = async () => {
     if (!session) return
-    for (const orphan of orphans) await store.removeEntry(session.workspace, orphan.id)
+    // The guard is a second, independent check. Orphans have zero referrers by
+    // construction, but if a race made one referenced between the scan and the
+    // delete, the store refuses and prune surfaces it rather than deleting.
+    for (const orphan of orphans) {
+      try {
+        await store.removeEntry(session.workspace, orphan.id)
+      } catch (e) {
+        if (e instanceof EntryReferencedError) {
+          setPruneOpen(false)
+          setBlocked(e.referrers)
+          return
+        }
+        throw e
+      }
+    }
     setPruneOpen(false)
   }
 
@@ -97,6 +113,17 @@ export function FilesPanel() {
           {orphans.map(orphan => (
             <li key={orphan.id}>{orphan.name} ({formatBytes(fileSizeOf(orphan))})</li>
           ))}
+        </ul>
+      </Dialog>
+
+      <Dialog
+        isOpen={blocked !== null}
+        title="Cannot Prune"
+        onClose={() => setBlocked(null)}
+      >
+        <p>An entry is still referenced and was not pruned. Remove the reference first.</p>
+        <ul className="where-used-list">
+          {blocked?.map(referrer => <li key={referrer.id}>{referrer.name}</li>)}
         </ul>
       </Dialog>
     </div>

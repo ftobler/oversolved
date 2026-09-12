@@ -32,6 +32,7 @@ function installSession() {
       originOf: vi.fn(async () => undefined),
       resolveFile: vi.fn(),
       referencesOf: vi.fn(async () => []),
+      referenceEdges: vi.fn(async () => ({})),
     } as unknown as WorkspaceSession,
   })
 }

@@ -157,11 +157,11 @@ export function dragTargetPoseMate(handle: string, target: Transform3D): MateSpe
  */
 export function solveDragPose(
   parts: Parameters<typeof solveAssembly>[0],
-  revs: Record<string, number>,
+  hashes: Record<string, string>,
   mates: MateSpec[],
   drag: DragObjective,
   relay: RelayService,
   solveMateFn: ((input: Uint8Array) => Uint8Array) | null,
 ): Promise<AssemblyBuildResponse> {
-  return solveAssembly(parts, revs, [...mates, dragTargetMate(drag)], relay, solveMateFn)
+  return solveAssembly(parts, hashes, [...mates, dragTargetMate(drag)], relay, solveMateFn)
 }

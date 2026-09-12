@@ -308,13 +308,13 @@ export function exportAssemblyViaWorker(
 export function buildBundleViaWorker(
   spec: Record<string, unknown>,
   doc_id: string,
-  doc_rev: number,
+  content_hash: string,
   files?: FileBytes,
 ): Promise<PartBundle | null> {
   // Rides the crash cooldown: the anchor worker relays this per solveAssembly,
   // so a drag tick over a trapping part doc fires it in a burst like solve.
   return sendRequest(
-    (id) => ({ id, kind: 'buildBundle', spec, doc_id, doc_rev, files: fileDelta(files) }),
+    (id) => ({ id, kind: 'buildBundle', spec, doc_id, content_hash, files: fileDelta(files) }),
     (res) => (res as BundleOkResponse).payload,
   )
 }

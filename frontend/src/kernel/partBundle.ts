@@ -1,8 +1,8 @@
-// A PartBundle is a rev-keyed, derivable artifact built from a PartDoc by a
-// transient OCC worker (the bundle builder). It carries everything an assembly
-// solver needs (meshes, edge curves, and an anchor dict) so the assembly
-// worker never touches OCC or runs solveLocally. The bundle is cached in
-// IndexedDb keyed by (doc_id, doc_rev); a miss triggers a cold rebuild.
+// A PartBundle is a content-hash-keyed, derivable artifact built from a PartDoc
+// by a transient OCC worker (the bundle builder). It carries everything an
+// assembly solver needs (meshes, edge curves, and an anchor dict) so the
+// assembly worker never touches OCC or runs solveLocally. The bundle is cached
+// in IndexedDb keyed by (doc_id, content_hash); a miss triggers a cold rebuild.
 
 import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor } from '../types/cad'
 import { sha256Hex } from './sha256'
@@ -83,7 +83,7 @@ export interface BodyMesh {
 
 export interface PartBundle {
   doc_id: string
-  doc_rev: number
+  content_hash: string
   schema: number
   bodies: BodyMesh[]
   anchors: Record<string, Anchor>
@@ -333,7 +333,7 @@ export function toBodyMesh(bodyResult: BodyResult): BodyMesh {
 /** Build a PartBundle from the raw solve output (tuples still in place from tessellation). */
 export function toPartBundle(
   doc_id: string,
-  doc_rev: number,
+  content_hash: string,
   bodyResults: Record<string, BodyResult>,
 ): PartBundle {
   const bodies: BodyMesh[] = []
@@ -342,7 +342,7 @@ export function toPartBundle(
   // minter drew a random prefix per build, which stranded every ref on a cache
   // wipe. Two elements that hash to one id (a tier-1 collision: same geom_hash,
   // same kind) never share it: the first keeps the bare id, later ones get a
-  // disambiguation suffix, mirroring the collision marker anchorIdRemap uses.
+  // disambiguation suffix.
   const mintedBaseIds = new Map<string, number>()
   const mintAnchorId = (geomHash: string, kind: AnchorKind): string => {
     const base = anchorIdFor(geomHash, kind)
@@ -356,7 +356,7 @@ export function toPartBundle(
     bodies.push({ ...toBodyMesh(body), entityAnchors })
     Object.assign(allAnchors, anchors)
   }
-  return { doc_id, doc_rev, schema: BUNDLE_SCHEMA, bodies, anchors: allAnchors }
+  return { doc_id, content_hash, schema: BUNDLE_SCHEMA, bodies, anchors: allAnchors }
 }
 
 // ─── Anchor extraction ───
@@ -543,191 +543,77 @@ function distSq(a: Vec3, b: Vec3): number {
 // and a tie refuses rather than guessing.
 export const ANCHOR_TIE_EPSILON_SQ = 1e-10
 
-/** The unique candidate nearest `p`, or undefined for an empty set or a tie. */
-function uniqueNearest(candidates: Anchor[], p: Vec3): Anchor | undefined {
+// The fields descriptor matching reads, a structural subset of both `Anchor`
+// and `MateAnchorDescriptor`. A descriptor table and an anchor dict are both
+// legal inputs, which is what lets resolve-time matching run on either.
+export interface AnchorMatchInput {
+  geom_hash: string
+  kind: string
+  created_by: string
+  point: Vec3
+}
+
+/** The unique candidate id nearest `p`, or undefined for an empty set or a tie. */
+function uniqueNearestId(candidates: [string, AnchorMatchInput][], p: Vec3): string | undefined {
   if (candidates.length === 0) return undefined
-  if (candidates.length === 1) return candidates[0]
-  let best: Anchor | undefined
+  if (candidates.length === 1) return candidates[0][0]
+  let bestId: string | undefined
   let bestDist = Infinity
   let secondDist = Infinity
-  for (const a of candidates) {
+  for (const [id, a] of candidates) {
     const d = distSq(p, a.point)
     if (d < bestDist - ANCHOR_TIE_EPSILON_SQ) {
       secondDist = bestDist
       bestDist = d
-      best = a
+      bestId = id
     } else if (d < secondDist - ANCHOR_TIE_EPSILON_SQ) {
       secondDist = d
     }
   }
-  return best && Math.abs(bestDist - secondDist) >= ANCHOR_TIE_EPSILON_SQ ? best : undefined
+  return bestId && Math.abs(bestDist - secondDist) >= ANCHOR_TIE_EPSILON_SQ ? bestId : undefined
 }
 
 /**
- * Re-find the element a persisted descriptor named, in a freshly built bundle
- * with no cache. The same two tiers `anchorIdRemap` runs, but the seed is the
- * descriptor on the MateRef instead of the previous cached bundle.
+ * Re-find the id of the element a persisted descriptor named, in a freshly
+ * built bundle with no cache. The same two tiers the retired anchor remap ran,
+ * but the seed is the descriptor on the MateRef instead of a previous cached
+ * bundle.
  *
  * Tier 1 is the descriptor's own geom_hash plus kind; a `@u|` token that no
  * longer exists is a gone identity, so it refuses rather than falling to tier
  * 2, which would bind the ref to a same-kind neighbour. Tier 2 is the same
  * `(created_by, kind)` bucket plus the nearest stored point.
  */
-export function anchorByDescriptor(
-  anchors: Record<string, Anchor>,
+export function anchorIdByDescriptor(
+  anchors: Record<string, AnchorMatchInput>,
   d: MateAnchorDescriptor,
-): Anchor | undefined {
-  const all = Object.values(anchors)
+): string | undefined {
+  const all = Object.entries(anchors)
 
-  const exact = all.filter(a => a.geom_hash === d.geom_hash && a.kind === d.kind)
+  const exact = all.filter(([, a]) => a.geom_hash === d.geom_hash && a.kind === d.kind)
   if (exact.length > 0) {
-    const best = uniqueNearest(exact, d.point)
-    // A tier-1 tie is not a dead end: fall through exactly as anchorIdRemap
-    // does, so the `@u|` refusal and the tier-2 match still get their chance.
-    if (best) return best
+    const best = uniqueNearestId(exact, d.point)
+    // A tier-1 tie is not a dead end: fall through so the `@u|` refusal and the
+    // tier-2 match still get their chance.
+    if (best !== undefined) return best
   }
 
   // A construction UUID that no longer exists means the element's identity is
   // gone. Do not guess positionally; fail-safe over fail-wrong.
   if (d.geom_hash.startsWith('@u|')) return undefined
 
-  const near = all.filter(a => a.created_by === d.created_by && a.kind === d.kind)
-  return uniqueNearest(near, d.point)
+  const near = all.filter(([, a]) => a.created_by === d.created_by && a.kind === d.kind)
+  return uniqueNearestId(near, d.point)
 }
 
 /**
- * Match the new bundle's freshly minted anchor ids back onto the old bundle's,
- * so mate refs survive rev-to-rev. Pure function over two anchor dicts: no OCC,
- * no worker. Returns `newId -> oldId` for every anchor that found its ancestor;
- * an unmatched new anchor is absent (it keeps its fresh id) and an unmatched old
- * id simply dies, taking any mate ref that held it to stale-red.
- *
- * Tier 1: exact `geom_hash` match transfers the old id.
- * Tier 2: same `created_by` + same `kind`, unique candidate or nearest by
- *         position. If the nearest is a tie, the old id dies.
+ * Re-find the element a persisted descriptor named. Wraps the id-returning
+ * `anchorIdByDescriptor` so the solve's anchor resolve keeps its Anchor result.
  */
-export function anchorIdRemap(
-  oldAnchors: Record<string, Anchor>,
-  newAnchors: Record<string, Anchor>,
-): Map<string, string> {
-  const remap = new Map<string, string>()
-  const oldIds = Object.keys(oldAnchors)
-  const newIds = Object.keys(newAnchors)
-
-  if (oldIds.length === 0) return remap
-
-  const newIdConsumed = new Set<string>()
-  const oldIdMigrated = new Set<string>()
-
-  // Build geom_hash → new-id lookup for tier-1 exact-match fast path.
-  const newByGeomHash = new Map<string, string>()
-  for (const id of newIds) {
-    const gh = newAnchors[id].geom_hash
-    if (!newByGeomHash.has(gh)) newByGeomHash.set(gh, id)
-    else newByGeomHash.set(gh, '')  // collision marker, skip tier 1
-  }
-
-  // ─── Tier 1: exact geom_hash match ───
-
-  for (const oldId of oldIds) {
-    const oldA = oldAnchors[oldId]
-    const newId = newByGeomHash.get(oldA.geom_hash)
-    if (newId && newId !== '' && !newIdConsumed.has(newId)) {
-      remap.set(newId, oldId)
-      newIdConsumed.add(newId)
-      oldIdMigrated.add(oldId)
-    }
-  }
-
-  // ─── Tier 2: created_by + kind ───
-
-  // Index remaining (unconsumed) new anchors by (created_by, kind).
-  const newByCreatedByKind = new Map<string, string[]>()
-  for (const id of newIds) {
-    if (!newIdConsumed.has(id)) {
-      const key = `${newAnchors[id].created_by}|${newAnchors[id].kind}`
-      let list = newByCreatedByKind.get(key)
-      if (!list) { list = []; newByCreatedByKind.set(key, list) }
-      list.push(id)
-    }
-  }
-
-  for (const oldId of oldIds) {
-    if (oldIdMigrated.has(oldId)) continue
-    const oldA = oldAnchors[oldId]
-    const key = `${oldA.created_by}|${oldA.kind}`
-    const candidates = newByCreatedByKind.get(key)
-    if (!candidates || candidates.length === 0) continue
-
-    if (candidates.length === 1) {
-      // Unique candidate, direct match.
-      const newId = candidates[0]
-      remap.set(newId, oldId)
-      newIdConsumed.add(newId)
-      oldIdMigrated.add(oldId)
-      newByCreatedByKind.set(key, [])
-    } else {
-      // Multiple candidates, pick nearest by position.
-      let bestId = ''
-      let bestDist = Infinity
-      let secondBestDist = Infinity
-      for (const cid of candidates) {
-        const d = distSq(oldA.point, newAnchors[cid].point)
-        if (d < bestDist - ANCHOR_TIE_EPSILON_SQ) {
-          secondBestDist = bestDist
-          bestDist = d
-          bestId = cid
-        } else if (d < secondBestDist - ANCHOR_TIE_EPSILON_SQ) {
-          secondBestDist = d
-        }
-      }
-      if (bestId && Math.abs(bestDist - secondBestDist) >= ANCHOR_TIE_EPSILON_SQ) {
-        remap.set(bestId, oldId)
-        newIdConsumed.add(bestId)
-        oldIdMigrated.add(oldId)
-        // Remove consumed candidate from pool.
-        const remaining = candidates.filter((cid) => cid !== bestId)
-        newByCreatedByKind.set(key, remaining)
-      }
-      // else: ambiguous tie → id dies (fail-safe over fail-wrong).
-    }
-  }
-
-  return remap
-}
-
-function remapEntityAnchors(index: EntityAnchorIndex, remap: Map<string, string>): EntityAnchorIndex {
-  const rewrite = (slots: string[][]): string[][] =>
-    slots.map(ids => ids.map(id => remap.get(id) ?? id))
-  return {
-    faces: rewrite(index.faces),
-    edges: rewrite(index.edges),
-    vertices: rewrite(index.vertices),
-  }
-}
-
-/**
- * Bundle finalization: rewrite a freshly built bundle's anchor ids to the
- * lineage the newest prior cached bundle established. The anchor dict and the
- * per-body `entityAnchors` join must be rewritten together, because a mate ref resolves
- * through the dict, a pick resolves through the join, and the two disagreeing
- * would let a pick offer an id the solver cannot find.
- */
-export function migrateBundle(
-  prev: Pick<PartBundle, 'anchors'>,
-  next: PartBundle,
-): PartBundle {
-  const remap = anchorIdRemap(prev.anchors, next.anchors)
-  if (remap.size === 0) return next
-
-  const anchors: Record<string, Anchor> = {}
-  for (const [newId, anchor] of Object.entries(next.anchors)) {
-    anchors[remap.get(newId) ?? newId] = { ...anchor }
-  }
-  const bodies = next.bodies.map(body => (
-    body.entityAnchors
-      ? { ...body, entityAnchors: remapEntityAnchors(body.entityAnchors, remap) }
-      : body
-  ))
-  return { ...next, anchors, bodies }
+export function anchorByDescriptor(
+  anchors: Record<string, Anchor>,
+  d: MateAnchorDescriptor,
+): Anchor | undefined {
+  const id = anchorIdByDescriptor(anchors, d)
+  return id !== undefined ? anchors[id] : undefined
 }

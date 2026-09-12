@@ -18,6 +18,7 @@ import {
   type EntityMateRefs,
 } from '@/utils/anchorCandidates'
 import { ASSEMBLY_HANDLE, ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
+import type { MateAnchorDescriptor } from '@/types/cad'
 import type { Vec3 } from '@/utils/transform3d'
 
 const PART = 'h1'
@@ -169,5 +170,28 @@ describe('resolveAnchorGizmos', () => {
     const gizmos = resolveAnchorGizmos([{ entityKey: FACE }, { entityKey: other }], refs, table)
     expect(gizmos.map(g => g.key)).toEqual([`${PART}|a_f`, 'h2|a_f'])
     expect(gizmos.map(g => g.point[0])).toEqual([1, 9])
+  })
+})
+
+describe('descriptor-aware lookup (C5)', () => {
+  const moved: MateAnchorDescriptor = {
+    geom_hash: '@gdf|moved', kind: 'plane', created_by: 'f1', point: [5, 0, 0],
+  }
+  const descriptors = { [PART]: { a_f: moved } }
+
+  it('re-finds a current anchor by descriptor when the ref id misses the table', () => {
+    const ref = { part: PART, anchor: 'a_stale', anchor_descriptor: moved }
+    expect(lookupAnchor(TABLE, ref, descriptors)?.point).toEqual([1, 0, 0])
+  })
+
+  it('stays dropped when the ref carries no descriptor', () => {
+    expect(lookupAnchor(TABLE, { part: PART, anchor: 'a_stale' }, descriptors)).toBeUndefined()
+  })
+
+  it('resolveAnchorGizmos resolves a stale ref through the descriptors table', () => {
+    const refs: EntityMateRefs = { [FACE]: [{ part: PART, anchor: 'a_stale', anchor_descriptor: moved }] }
+    const gizmos = resolveAnchorGizmos([{ entityKey: FACE }], refs, TABLE, null, null, undefined, descriptors)
+    expect(gizmos).toHaveLength(1)
+    expect(gizmos[0].point).toEqual([1, 0, 0])
   })
 })

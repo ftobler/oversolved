@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, Transform3D, BodyResult } from '@/types/cad'
+import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, BodyResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
@@ -88,6 +88,10 @@ export interface AssemblyEditorData {
   entityMateRefs: EntityMateRefs
   // Solved-pose anchor geometry, by part handle plus the assembly's own frame.
   anchors: AnchorTable
+  // Authoring-only descriptor table keyed like `anchors`: part handle -> anchor
+  // id -> the raw descriptor that id was minted from. Kept so a persisted ref
+  // whose id went stale can re-find its element by descriptor (lookupAnchor).
+  anchorDescriptors?: Record<string, Record<string, MateAnchorDescriptor>>
   // ID-layer registration payloads for the solved scene.
   pickGeometry: AssemblyPickBody[]
   // The solved pose `pickGeometry` was baked at. The ID buffer offsets from this
@@ -171,6 +175,7 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     edgeCurves: {},
     entityMateRefs: {},
     anchors: {},
+    anchorDescriptors: {},
     pickGeometry: [],
     pickGeometryPose: {},
     subject: null,
@@ -204,7 +209,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData =
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
 export type AssemblySolveResult = Pick<
   AssemblyEditorData,
-  'transforms' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'pickGeometry' | 'solveStatus'
+  'transforms' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
 >
 
 /**
@@ -464,8 +469,11 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   },
 
   setIsSolving: (solving) => set({ isSolving: solving }),
-  setSolveResult: (result) => set({
+  setSolveResult: (result) => set((prev) => ({
     ...result,
+    // A solve that omits the descriptor table (a legacy/test payload) keeps the
+    // one already on screen rather than blanking the descriptor fallback.
+    anchorDescriptors: result.anchorDescriptors ?? prev.anchorDescriptors,
     // A re-solve can retire the anchors the aimed candidate named (a rebuilt
     // bundle sheds an anchor its feature deleted), so the stale set is dropped
     // rather than left pointing into the previous rev. The hover goes with it:
@@ -479,7 +487,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // The pick snapshot landed with a solve: record the pose it was baked at so
     // the ID buffer can be offset onto wherever the parts are drawn.
     pickGeometryPose: result.transforms,
-  }),
+  })),
 
   setDragSolveResult: (result) => set((prev) => ({
     transforms: { ...prev.transforms, ...result.transforms },
@@ -535,7 +543,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // (see utils/mateCapture.ts).
     const refA = activeMateField.field === 'ref_a' ? ref : mate?.ref_a
     const refB = activeMateField.field === 'ref_b' ? ref : mate?.ref_b
-    const patch = mate ? captureMateOrientationPatch(mate, refA, refB, get().anchors) : null
+    const patch = mate ? captureMateOrientationPatch(mate, refA, refB, get().anchors, get().anchorDescriptors) : null
     callbacks.mutateDocSession(ASSEMBLY_UNDO_LABELS.pickMateReference, d => {
       const withRef = setMateRef(d, activeMateField.featureId, activeMateField.field, ref)
       return patch ? updateMate(withRef, activeMateField.featureId, patch) : withRef

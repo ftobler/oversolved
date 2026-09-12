@@ -17,9 +17,8 @@ function rotr(x: number, n: number): number {
   return (x >>> n) | (x << (32 - n))
 }
 
-/** Hex SHA-256 digest of the UTF-8 bytes of *text*. */
-export function sha256Hex(text: string): string {
-  const bytes = new TextEncoder().encode(text)
+/** Hex SHA-256 digest of *bytes*. The byte core both wrappers share. */
+export function sha256HexBytes(bytes: Uint8Array): string {
   const bitLen = bytes.length * 8
 
   // pad: 0x80, then zeros, then 64-bit big-endian length
@@ -75,4 +74,9 @@ export function sha256Hex(text: string): string {
   let out = ""
   for (let i = 0; i < 8; i++) out += h[i].toString(16).padStart(8, "0")
   return out
+}
+
+/** Hex SHA-256 digest of the UTF-8 bytes of *text*. */
+export function sha256Hex(text: string): string {
+  return sha256HexBytes(new TextEncoder().encode(text))
 }

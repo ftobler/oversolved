@@ -1,4 +1,4 @@
-import type { EntryMeta, ProvenanceRecord, WorkspaceEntry, WorkspaceTree } from './types'
+import type { EntryMeta, ProvenanceRecord, ReferenceEdges, WorkspaceEntry, WorkspaceTree } from './types'
 import { IdbCarrier, readWorkspaceMeta, savedEntryRecords } from './idbCarrier'
 import { getWorkspaceStore, type WorkspaceStore } from './store'
 import { getFileRegistry } from '@/stores/fileRegistry'
@@ -23,6 +23,10 @@ export interface WorkspaceSession {
   originOf(entry: string): Promise<ProvenanceRecord | undefined>
   resolveFile(fileId: string): Promise<Uint8Array | undefined>
   referencesOf(entry: string): Promise<string[]>
+  // The whole edge map, so where-used inverts one read instead of one read per
+  // entry (C5). Main-thread only and never persisted: it is derived from the
+  // manifest the session already reads.
+  referenceEdges(): Promise<ReferenceEdges>
 }
 
 export function createWorkspaceSession(
@@ -50,5 +54,6 @@ export function createWorkspaceSession(
       return getFileRegistry().getBytes(fileId)
     },
     referencesOf: entry => new IdbCarrier(workspace).referencesOf(entry),
+    referenceEdges: () => new IdbCarrier(workspace).referencesMap(),
   }
 }

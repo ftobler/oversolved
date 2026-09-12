@@ -22,7 +22,7 @@ const provenance: ProvenanceRecord[] = [{ entry: 'f1', origin: 'file:shaft.step'
 
 interface SessionOptions {
   listed?: EntryMeta[]
-  referencesOf?: (entry: string) => Promise<string[]>
+  referenceEdges?: () => Promise<Record<string, string[]>>
 }
 
 function installSession(options: SessionOptions = {}) {
@@ -36,7 +36,8 @@ function installSession(options: SessionOptions = {}) {
       writeEntry: vi.fn(),
       originOf: vi.fn(async (entry: string) => provenance.find(record => record.entry === entry)),
       resolveFile: vi.fn(),
-      referencesOf: vi.fn(options.referencesOf ?? (async (entry: string) => (entry === 'd1' ? ['f1'] : []))),
+      referencesOf: vi.fn(),
+      referenceEdges: vi.fn(options.referenceEdges ?? (async () => ({ d1: ['f1'] }))),
     } as unknown as WorkspaceSession,
   })
 }
@@ -78,12 +79,12 @@ describe('FilesPanel', () => {
   it('withholds the orphan verdict and prune control until the reference scan resolves', async () => {
     let releaseScan!: () => void
     const scanDone = new Promise<void>(resolve => { releaseScan = resolve })
-    const referencesOf = vi.fn(async (entry: string) => {
+    const referenceEdges = vi.fn(async () => {
       await scanDone
-      return entry === 'd1' ? ['f1'] : []
+      return { d1: ['f1'] }
     })
     // Only the referenced file is listed, so any orphan verdict is wrong.
-    installSession({ listed: entries.filter(entry => entry.id !== 'f2'), referencesOf })
+    installSession({ listed: entries.filter(entry => entry.id !== 'f2'), referenceEdges })
 
     render(<FilesPanel />)
     // The list has resolved and the referenced file is on screen, but its edges
@@ -95,7 +96,7 @@ describe('FilesPanel', () => {
     releaseScan()
     // Once scanned, the file is known to have a referrer, so it stays unprunable.
     expect(await screen.findByText('Bracket')).toBeInTheDocument()
-    await waitFor(() => expect(referencesOf).toHaveBeenCalled())
+    await waitFor(() => expect(referenceEdges).toHaveBeenCalled())
     expect(screen.queryByText(/^orphan/)).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Prune orphans')).not.toBeInTheDocument()
     expect(storeMock.removeEntry).not.toHaveBeenCalled()

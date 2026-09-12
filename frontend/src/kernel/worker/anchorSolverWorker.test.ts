@@ -66,17 +66,15 @@ function makeReq(overrides?: Partial<SolveAssemblyRequest>): SolveAssemblyReques
       {
         handle: 'p1',
         doc_id: 'doc-a',
-        doc_rev: 3,
         transform: { tx: 1, ty: 2, tz: 3, qx: 0, qy: 0, qz: 0, qw: 1 },
       },
       {
         handle: 'p2',
         doc_id: 'doc-b',
-        doc_rev: 5,
         transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 },
       },
     ],
-    revs: { 'doc-a': 3, 'doc-b': 5 },
+    hashes: { 'doc-a': '3', 'doc-b': '5' },
     mates: [],
     ...overrides,
   }
@@ -88,10 +86,10 @@ function fakeRelay(): { service: ReturnType<typeof createRelayService>; requests
   return { service: createRelayService(post), requests }
 }
 
-function makeBundle(doc_id: string, doc_rev: number): PartBundle {
+function makeBundle(doc_id: string, content_hash: string): PartBundle {
   return {
     doc_id,
-    doc_rev,
+    content_hash,
     schema: BUNDLE_SCHEMA,
     bodies: [
       {
@@ -129,7 +127,7 @@ describe('handleSolveAssembly', () => {
 
     expect(solveAssembly).toHaveBeenCalledWith(
       req.parts,
-      req.revs,
+      req.hashes,
       req.mates,
       relay.service,
       mockSolver,
@@ -232,7 +230,7 @@ describe('relay plumbing', () => {
     const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
     const relay = createRelayService(post)
 
-    const prom = relay.requestBuildBundle('doc', 1, {})
+    const prom = relay.requestBuildBundle('doc', '1', {})
 
     handleRelayResponse({
       kind: 'asr_relayRes',
@@ -249,11 +247,11 @@ describe('relay plumbing', () => {
     const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
     const relay = createRelayService(post)
 
-    relay.requestBuildBundle('doc-x', 7, { key: 'val' })
+    relay.requestBuildBundle('doc-x', '7', { key: 'val' })
     expect(requests).toHaveLength(1)
     expect(requests[0].subKind).toBe('buildBundle')
     expect(requests[0].doc_id).toBe('doc-x')
-    expect(requests[0].doc_rev).toBe(7)
+    expect(requests[0].content_hash).toBe('7')
     expect(requests[0].spec).toEqual({ key: 'val' })
   })
 
@@ -346,7 +344,7 @@ describe('relay plumbing', () => {
     try {
       const post = (): void => {}
       const relay = createRelayService(post, 1000)
-      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const prom = relay.requestBuildBundle('doc-a', '1', {})
       const assertion = expect(prom).rejects.toThrow(/timed out/)
 
       let settled = false
@@ -371,7 +369,7 @@ describe('relay plumbing', () => {
       const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
       const relay = createRelayService(post, 1000)
 
-      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const prom = relay.requestBuildBundle('doc-a', '1', {})
       const assertion = expect(prom).rejects.toThrow(/timed out/)
       await vi.advanceTimersByTimeAsync(2000)
       await assertion
@@ -379,10 +377,10 @@ describe('relay plumbing', () => {
       // The build finished just after its ceiling fired: the late reply must
       // be cached, not thrown away, so the next solve reuses the work. The
       // original promise already rejected and must not double-settle.
-      const bundle = makeBundle('doc-a', 1)
+      const bundle = makeBundle('doc-a', '1')
       await handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: bundle })
       expect(bundleCachePutIfAbsent).toHaveBeenCalledWith(bundle)
-      const loaded = await bundleCacheGet('doc-a', 1)
+      const loaded = await bundleCacheGet('doc-a', '1')
       expect(loaded).toBeDefined()
       expect(loaded && loaded.bodies[0].mesh.vertices.byteLength).toBeGreaterThan(0)
     } finally {
@@ -424,7 +422,7 @@ describe('relay plumbing', () => {
       const requests: AnchorRelayRequest[] = []
       const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
       const relay = createRelayService(post, 1000)
-      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const prom = relay.requestBuildBundle('doc-a', '1', {})
       const assertion = expect(prom).rejects.toThrow(/timed out/)
       await vi.advanceTimersByTimeAsync(2000)
       await assertion
@@ -432,9 +430,9 @@ describe('relay plumbing', () => {
       // No reply arrived within the grace window: the entry self-evicts, so a
       // delivery after that can no longer cache anything.
       await vi.advanceTimersByTimeAsync(LATE_RELAY_GRACE_MS)
-      handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: makeBundle('doc-a', 1) })
+      handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: makeBundle('doc-a', '1') })
       expect(bundleCachePut).not.toHaveBeenCalled()
-      const loaded = await bundleCacheGet('doc-a', 1)
+      const loaded = await bundleCacheGet('doc-a', '1')
       expect(loaded).toBeUndefined()
     } finally {
       vi.useRealTimers()
@@ -450,11 +448,10 @@ describe('relay plumbing', () => {
       const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
       const relay = createRelayService(post, 1000)
 
-      // A concurrent solve already cached the MIGRATED bundle under the key
-      // (its anchors survive the remap chain); the relay reply is the raw,
-      // pre-migration bundle.
+      // A concurrent solve already cached a bundle under the key, with anchors
+      // the late raw reply does not carry.
       const cached = {
-        ...makeBundle('doc-a', 1),
+        ...makeBundle('doc-a', '1'),
         anchors: {
           a1: { kind: 'point', point: [1, 2, 3], axis: [0, 0, 1], geom_hash: 'g1', created_by: 'f1' } as Anchor,
         },
@@ -465,17 +462,17 @@ describe('relay plumbing', () => {
       vi.mocked(bundleCachePut).mockClear()
       vi.mocked(bundleCachePutIfAbsent).mockClear()
 
-      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const prom = relay.requestBuildBundle('doc-a', '1', {})
       const assertion = expect(prom).rejects.toThrow(/timed out/)
       await vi.advanceTimersByTimeAsync(2000)
       await assertion
 
-      // The late raw reply must not clobber the migrated record: the key is
-      // already cached, so the if-absent salvage skips the write.
-      await handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: makeBundle('doc-a', 1) })
+      // The late raw reply must not clobber the already-cached record: the key
+      // is already cached, so the if-absent salvage skips the write.
+      await handleRelayResponse({ kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: makeBundle('doc-a', '1') })
       expect(bundleCachePutIfAbsent).toHaveBeenCalled()
       expect(bundleCachePut).not.toHaveBeenCalled()
-      const loaded = await bundleCacheGet('doc-a', 1)
+      const loaded = await bundleCacheGet('doc-a', '1')
       expect(loaded && loaded.anchors['a1'].point).toEqual([1, 2, 3])
     } finally {
       vi.useRealTimers()
@@ -490,7 +487,7 @@ describe('relay plumbing', () => {
       const requests: AnchorRelayRequest[] = []
       const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
       const relay = createRelayService(post, 1000)
-      const prom = relay.requestBuildBundle('doc-a', 1, {})
+      const prom = relay.requestBuildBundle('doc-a', '1', {})
       const assertion = expect(prom).rejects.toThrow(/timed out/)
       await vi.advanceTimersByTimeAsync(2000)
       await assertion
@@ -501,10 +498,41 @@ describe('relay plumbing', () => {
         kind: 'asr_relayRes',
         requestId: requests[0].requestId,
         ok: true,
-        payload: { doc_id: 'doc-a', doc_rev: 1 },
+        payload: { doc_id: 'doc-a', content_hash: 'h1' },
       })
       expect(bundleCachePut).not.toHaveBeenCalled()
-      const loaded = await bundleCacheGet('doc-a', 1)
+      const loaded = await bundleCacheGet('doc-a', '1')
+      expect(loaded).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('drops a late buildBundle reply whose content hash is unknown', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 1000)
+      // A store read failure has no hash to key the build with, so the solve
+      // sends '' and leaves the build uncached.
+      const prom = relay.requestBuildBundle('doc-a', '', {})
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(2000)
+      await assertion
+
+      await handleRelayResponse({
+        kind: 'asr_relayRes',
+        requestId: requests[0].requestId,
+        ok: true,
+        payload: makeBundle('doc-a', ''),
+      })
+      // A `doc@` key could never be looked up; salvaging it would just eat one
+      // of the per-doc eviction slots.
+      expect(bundleCachePutIfAbsent).not.toHaveBeenCalled()
+      const loaded = await bundleCacheGet('doc-a', '')
       expect(loaded).toBeUndefined()
     } finally {
       vi.useRealTimers()
@@ -520,11 +548,11 @@ describe('relay plumbing', () => {
     const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
     const relay = createRelayService(post)
 
-    const prom = relay.requestBuildBundle('doc-a', 1, {})
+    const prom = relay.requestBuildBundle('doc-a', '1', {})
 
     // The main thread transfers the bundle buffers to this worker: the transfer
     // detaches the source and the worker receives a fresh copy with full data.
-    const bundle = makeBundle('doc-a', 1)
+    const bundle = makeBundle('doc-a', '1')
     const mesh = bundle.bodies[0].mesh
     const transfer = [mesh.vertices.buffer, mesh.indices.buffer, mesh.faceIdsPerTriangle.buffer]
     const fresh = structuredClone(bundle, { transfer }) as PartBundle
@@ -549,7 +577,7 @@ describe('relay plumbing', () => {
     // The anchor worker caches what it received; the round-trip keeps the mesh
     // bytes intact, so a subsequent solve reads real geometry, not detritus.
     await bundleCachePut(received)
-    const loaded = await bundleCacheGet('doc-a', 1)
+    const loaded = await bundleCacheGet('doc-a', '1')
     expect(loaded).toBeDefined()
     expect(loaded && Array.from(loaded.bodies[0].mesh.vertices)).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0])
     expect(loaded && loaded.bodies[0].mesh.indices.byteLength).toBeGreaterThan(0)
@@ -583,9 +611,9 @@ describe('relay timeout + late bundle cache with solveAssembly', () => {
       const relay = createRelayService(post, 500)
 
       const parts = [
-        { handle: 'p1', doc_id: 'doc-a', doc_rev: 1, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
+        { handle: 'p1', doc_id: 'doc-a', transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
       ]
-      const revs = { 'doc-a': 1 }
+      const revs = { 'doc-a': '1' }
 
       // First solve: bundle cache miss, part doc answered in time, the build
       // outruns its budget. The timeout is isolated to the part (per-part
@@ -602,8 +630,8 @@ describe('relay timeout + late bundle cache with solveAssembly', () => {
       expect(firstRes.status.parts['p1']?.failed).toBe(true)
 
       // The finished build lands late and is cached instead of dropped.
-      await handleRelayResponse({ kind: 'asr_relayRes', requestId: buildReq.requestId, ok: true, payload: makeBundle('doc-a', 1) })
-      const loaded = await bundleCacheGet('doc-a', 1)
+      await handleRelayResponse({ kind: 'asr_relayRes', requestId: buildReq.requestId, ok: true, payload: makeBundle('doc-a', '1') })
+      const loaded = await bundleCacheGet('doc-a', '1')
       expect(loaded).toBeDefined()
 
       // Second solve: the cache now serves the bundle, so no relay is needed,

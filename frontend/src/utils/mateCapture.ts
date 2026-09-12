@@ -11,7 +11,7 @@
 
 import type { MateFeatureDef, MateRef } from '@/types/cad'
 import { dot } from '@/utils/gizmoMath'
-import { lookupAnchor, type AnchorTable } from '@/utils/anchorGizmos'
+import { lookupAnchor, type AnchorDescriptorTable, type AnchorTable } from '@/utils/anchorGizmos'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import { isMateRefEmpty, mateParams, normalizeMateAngleDeg } from '@/utils/mateKinds'
 import { rollAboutAxisDeg } from '@/utils/mateOrientation'
@@ -26,8 +26,10 @@ function round3(v: number): number {
 /**
  * The `flip`/`angle` patch the current pose implies for a mate, or null when
  * there is nothing to capture: a kind with no authored orientation, an
- * unfinished pick, or anchors the table cannot resolve (a stale ref renders
- * red instead of capturing a frame that no longer exists).
+ * unfinished pick, or anchors the table cannot resolve (a stale ref with no
+ * descriptor renders red instead of capturing a frame that no longer exists).
+ * `descriptors` re-finds a ref whose persisted id moved, so re-aiming one field
+ * still measures against the pose the other field names.
  *
  * A captured value equal to its default (`flip: false`, `angle: 0`) comes back
  * `undefined` so updateMate deletes the key: the YAML stays clean and an
@@ -38,12 +40,13 @@ export function captureMateOrientationPatch(
   refA: MateRef | undefined,
   refB: MateRef | undefined,
   anchors: Readonly<AnchorTable>,
+  descriptors?: Readonly<AnchorDescriptorTable>,
 ): MateParamPatch | null {
   const params = mateParams(mate.kind)
   if (!params.includes('flip')) return null
   if (isMateRefEmpty(refA) || isMateRefEmpty(refB)) return null
-  const poseA = lookupAnchor(anchors, refA!)
-  const poseB = lookupAnchor(anchors, refB!)
+  const poseA = lookupAnchor(anchors, refA!, descriptors)
+  const poseB = lookupAnchor(anchors, refB!, descriptors)
   if (!poseA || !poseB) return null
 
   const patch: MateParamPatch = {

@@ -83,4 +83,7 @@ export interface EntryMeta {
   // The serialized payload bytes (R1): derived at write time, never serialized.
   // Lets U1 and U3 report size without materializing a payload.
   size?: number
+  // sha256 of the payload (C5), the bundle cache's invalidation signal. Optional
+  // only for a carrier that does not track it (the in-memory tree).
+  contentHash?: string
 }

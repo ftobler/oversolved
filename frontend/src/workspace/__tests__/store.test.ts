@@ -154,6 +154,9 @@ describe('IdbWorkspaceStore (degenerate workspace)', () => {
     const file = await getFileRegistry().create({ name: 'b.step', kind: 'step', mime: 'application/step', bytes: bytesOf([9, 8, 7]) })
     const { workspace } = await store.create('Asm', { docKind: 'assembly' })
     await store.writeEntry(workspace, { id: workspace, kind: 'document', name: 'Asm', docKind: 'assembly', text: importText(file.id) })
+    // Drop the reference first so the delete travels the unguarded path; the
+    // guard under review is not what this test exercises.
+    await store.writeEntry(workspace, { id: workspace, kind: 'document', name: 'Asm', docKind: 'assembly', text: 'kind: assembly\nfeatures: []\n' })
     await store.removeEntry(workspace, file.id)
 
     const exported = await store.export(workspace)
