@@ -15,8 +15,8 @@ import '@/components/layout/AppHeader.css'
 // is a credit, not a control, and the editors need the vertical space.
 const COPYRIGHT = 'Copyright 2026 - Oversolved'
 
-// Where the burger has nowhere to go, because this IS the documents overview.
-const OVERVIEW_PATHS = new Set(['/', '/documents'])
+// Where the burger has nowhere to go, because this IS the workspace overview.
+const OVERVIEW_PATHS = new Set(['/', '/workspaces'])
 
 // The one app-wide titlebar: burger, logo, page title, and the always-available
 // controls on the right (Help, bug report). There is no account slot and never a
@@ -122,9 +122,9 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
     <header className="app-header">
       <div className="app-header-left">
         <Link
-          to="/documents"
+          to="/workspaces"
           className="toolbar-btn burger"
-          title={isOverview ? 'About Oversolved' : 'Documents'}
+          title={isOverview ? 'About Oversolved' : 'Workspaces'}
           onClick={handleBurger}
         >
           <span className="material-icons-outlined">menu</span>

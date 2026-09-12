@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
-  canPickDirectory, canPickFiles, pickLibraryDirectory, pickDocumentToOpen,
-  hasReadWritePermission,
+  canPickDirectory, canPickWorkspaceZip, pickLibraryDirectory, pickWorkspaceZip, hasReadWritePermission,
 } from '../fileSystemAccess'
 
 // jsdom is the Firefox/Safari shape by default: no pickers on window at all.
@@ -25,15 +24,13 @@ describe('file system access capability', () => {
   it('reports no directory picking on a browser without the API', () => {
     clearPickers()
     expect(canPickDirectory()).toBe(false)
-    expect(canPickFiles()).toBe(false)
   })
 
   // Absence must be structural: a caller on Firefox gets null without the
   // module ever touching an undefined picker.
-  it('returns null from every picker when the API is absent', async () => {
+  it('returns null from the directory picker when the API is absent', async () => {
     clearPickers()
     expect(await pickLibraryDirectory()).toBeNull()
-    expect(await pickDocumentToOpen()).toBeNull()
   })
 
   it('asks for readwrite on the directory picker', async () => {
@@ -47,21 +44,35 @@ describe('file system access capability', () => {
   // Cancelling a picker is a non-event, not a failure: it must not reach an
   // error banner.
   it('folds a user cancellation into null', async () => {
-    installPickers({ showDirectoryPicker: abort, showOpenFilePicker: abort })
+    installPickers({ showDirectoryPicker: abort })
     expect(await pickLibraryDirectory()).toBeNull()
-    expect(await pickDocumentToOpen()).toBeNull()
   })
 
   it('propagates a real picker failure', async () => {
     installPickers({ showDirectoryPicker: () => { throw new Error('boom') } })
     await expect(pickLibraryDirectory()).rejects.toThrow('boom')
   })
+})
 
-  it('opens exactly one file', async () => {
-    const showOpenFilePicker = vi.fn(async () => [{ name: 'Bracket.yaml' }])
-    installPickers({ showOpenFilePicker })
-    expect(await pickDocumentToOpen()).toEqual({ name: 'Bracket.yaml' })
-    expect(showOpenFilePicker).toHaveBeenCalledWith(expect.objectContaining({ multiple: false }))
+describe('workspace zip picking', () => {
+  afterEach(clearPickers)
+
+  it('reports no zip picking without the file picker', async () => {
+    clearPickers()
+    expect(canPickWorkspaceZip()).toBe(false)
+    expect(await pickWorkspaceZip()).toBeNull()
+  })
+
+  it('returns the picked file handle', async () => {
+    const handle = { name: 'ws.zip' }
+    installPickers({ showOpenFilePicker: vi.fn(async () => [handle]) })
+    expect(canPickWorkspaceZip()).toBe(true)
+    expect(await pickWorkspaceZip()).toBe(handle)
+  })
+
+  it('folds a user cancellation into null', async () => {
+    installPickers({ showOpenFilePicker: abort })
+    expect(await pickWorkspaceZip()).toBeNull()
   })
 })
 

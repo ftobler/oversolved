@@ -53,7 +53,7 @@ export function secureFilename(filename: string): string {
 
 // The stem a name lands on when another document already owns it. There are two
 // callers with the same problem in different containers -- a folder on disk
-// (directoryLibrary) and a zip entry path (bundle) -- and they have to agree,
+// (DirectoryCarrier) and a zip entry path (ZipCarrier) -- and they have to agree,
 // because a document exported from a folder and imported back has to keep its
 // name. They did not: one appended the suffix and the other inserted it before
 // the last dot, so a document called "Bracket.v2" was suffixed differently on

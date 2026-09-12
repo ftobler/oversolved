@@ -7,7 +7,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 vi.mock('react-router-dom', () => ({
   // AppHeader reads the path to decide whether its burger navigates or opens
   // the about notice; these assembly routes are never the documents overview.
-  useLocation: () => ({ pathname: '/documents/test-uuid' }),
+  useLocation: () => ({ pathname: '/workspaces/ws/entries/test-uuid' }),
   useNavigate: () => vi.fn(),
   Link: ({ to, children, ...props }: { to: string; children?: ReactNode }) =>
     <a href={to} {...props}>{children}</a>,
@@ -103,14 +103,14 @@ describe('AssemblyEditor unsaved-changes prompting', () => {
     await renderLoaded()
     fireEvent.click(screen.getByLabelText('Insert Fixed mate'))
     await tick()
-    act(() => { fireEvent.click(screen.getByTitle('Documents')) })
+    act(() => { fireEvent.click(screen.getByTitle('Workspaces')) })
     expect(screen.getByText('Unsaved Changes')).toBeTruthy()
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
   })
 
   it('does not prompt on in-app navigation while clean', async () => {
     await renderLoaded()
-    act(() => { fireEvent.click(screen.getByTitle('Documents')) })
+    act(() => { fireEvent.click(screen.getByTitle('Workspaces')) })
     expect(screen.queryByText('Unsaved Changes')).toBeNull()
   })
 

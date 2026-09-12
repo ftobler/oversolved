@@ -22,6 +22,7 @@ import type {
 } from './types'
 import {
   STORE_WORKSPACE_ENTRIES,
+  STORE_WORKSPACE_ENTRY_META,
   STORE_WORKSPACE_META,
   STORE_WORKSPACE_SAVED,
   idbGetAllFrom,
@@ -36,6 +37,25 @@ import { canonicalizeReferences } from './refs'
 
 // The workspace row. Structure edits (references, provenance, trash) land here,
 // not on the entry rows, which is what keeps a content edit to one record.
+export type CarrierKind = 'idb' | 'folder' | 'zip'
+
+// The external save target a workspace names. `carrier` absent means IDB-only,
+// which keeps every C2 row valid with no migration. The handle itself is never
+// on the row: it lives in the workspace handle registry, and cloning a
+// FileSystemHandle into every listing would only be waste.
+export interface CarrierBinding {
+  kind: CarrierKind
+  label?: string
+}
+
+// The carrier manifest the working copy was last known to agree with, not the
+// working copy's current manifest. P4's carrier-change compare reads it.
+export interface LoadedFromRecord {
+  carrier: 'folder' | 'zip'
+  fingerprint: string
+  at: number
+}
+
 export interface WorkspaceMetaRecord {
   workspace: string
   name: string
@@ -46,6 +66,11 @@ export interface WorkspaceMetaRecord {
   trash: string[]
   trashedAt?: string  // library-level tombstone, ISO like documents use today
   savedAt?: number  // epoch ms of the last explicit save
+  carrier?: CarrierBinding  // absent == IDB-only
+  loadedFrom?: LoadedFromRecord  // the carrier state the working copy agrees with
+  // A durable "keep the working copy" after the carrier moved underneath: the
+  // next explicit save overwrites, and `open` keeps reporting ahead until then.
+  carrierDiverged?: boolean
 }
 
 // One working-copy or checkpoint entry. `text` and `bytes` mirror EntryContent:
@@ -63,6 +88,38 @@ export interface WorkspaceEntryRecord {
   bytes?: Uint8Array
   rev: number
   updatedAt: number
+}
+
+// The payload-free projection of a working-copy record. The grid lists from
+// this store so a workspace with hundreds of large files is counted without
+// cloning a single payload out of IndexedDB.
+export interface WorkspaceEntryMetaRecord {
+  workspace: string
+  id: string
+  path: string
+  kind: EntryKind
+  name: string
+  docKind?: string
+  mime?: string
+  fileKind?: string
+  rev: number
+  updatedAt: number
+}
+
+function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
+  const meta: WorkspaceEntryMetaRecord = {
+    workspace: record.workspace,
+    id: record.id,
+    path: record.path,
+    kind: record.kind,
+    name: record.name,
+    rev: record.rev,
+    updatedAt: record.updatedAt,
+  }
+  if (record.docKind !== undefined) meta.docKind = record.docKind
+  if (record.mime !== undefined) meta.mime = record.mime
+  if (record.fileKind !== undefined) meta.fileKind = record.fileKind
+  return meta
 }
 
 export async function readWorkspaceMeta(workspace: string): Promise<WorkspaceMetaRecord | undefined> {
@@ -88,6 +145,13 @@ export async function allWorkspaceEntryRecords(): Promise<WorkspaceEntryRecord[]
   return idbGetAllFrom<WorkspaceEntryRecord>(STORE_WORKSPACE_ENTRIES)
 }
 
+// The payload-free listing read. The U1 grid needs counts, kinds, cover entries
+// and revs, none of which require the bytes, so it reads this mirror instead of
+// `allWorkspaceEntryRecords`.
+export async function allWorkspaceEntryMetas(): Promise<WorkspaceEntryMetaRecord[]> {
+  return idbGetAllFrom<WorkspaceEntryMetaRecord>(STORE_WORKSPACE_ENTRY_META)
+}
+
 export async function savedEntryRecords(workspace: string): Promise<WorkspaceEntryRecord[]> {
   const all = await idbGetAllFrom<WorkspaceEntryRecord>(STORE_WORKSPACE_SAVED)
   return all.filter(record => record.workspace === workspace)
@@ -102,11 +166,21 @@ export async function replaceWorkspaceRows(
   records: WorkspaceEntryRecord[],
 ): Promise<void> {
   const previous = await workspaceEntryRecords(workspace)
-  await idbTransaction([STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES], 'readwrite', stores => {
-    for (const record of previous) stores[STORE_WORKSPACE_ENTRIES].delete([workspace, record.id])
-    for (const record of records) stores[STORE_WORKSPACE_ENTRIES].put(record)
-    stores[STORE_WORKSPACE_META].put(meta)
-  })
+  await idbTransaction(
+    [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
+    'readwrite',
+    stores => {
+      for (const record of previous) {
+        stores[STORE_WORKSPACE_ENTRIES].delete([workspace, record.id])
+        stores[STORE_WORKSPACE_ENTRY_META].delete([workspace, record.id])
+      }
+      for (const record of records) {
+        stores[STORE_WORKSPACE_ENTRIES].put(record)
+        stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
+      }
+      stores[STORE_WORKSPACE_META].put(meta)
+    },
+  )
 }
 
 // Hard-delete every row a workspace owns: the tombstone's purge end. The meta,
@@ -115,11 +189,14 @@ export async function purgeWorkspaceRows(workspace: string): Promise<void> {
   const entries = await workspaceEntryRecords(workspace)
   const saved = await savedEntryRecords(workspace)
   await idbTransaction(
-    [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_SAVED],
+    [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META, STORE_WORKSPACE_SAVED],
     'readwrite',
     stores => {
       stores[STORE_WORKSPACE_META].delete(workspace)
-      for (const record of entries) stores[STORE_WORKSPACE_ENTRIES].delete([workspace, record.id])
+      for (const record of entries) {
+        stores[STORE_WORKSPACE_ENTRIES].delete([workspace, record.id])
+        stores[STORE_WORKSPACE_ENTRY_META].delete([workspace, record.id])
+      }
       for (const record of saved) stores[STORE_WORKSPACE_SAVED].delete([workspace, record.id])
     },
   )
@@ -186,8 +263,11 @@ function rowChanged(
   content: EntryContent | undefined,
 ): boolean {
   if (!previous) return true
+  // Path is part of the row identity's display: a move (C4) changes it without
+  // touching the payload, so a path-only change must register as a change.
   if (
-    previous.name !== row.name || previous.docKind !== row.docKind ||
+    previous.name !== row.name || previous.path !== row.path ||
+    previous.docKind !== row.docKind ||
     previous.mime !== row.mime || previous.fileKind !== row.fileKind
   ) return true
   if (previous.kind === 'document') {
@@ -259,7 +339,9 @@ export class IdbCarrier implements WorkspaceCarrier {
       if (!previous || rowChanged(previous, row, content)) {
         const merged = mergeContent(id, row, content, previous)
         const rev = (previous?.rev ?? 0) + 1
-        writes.push(entryToRecord(this.workspace, merged, previous?.path ?? row.path, rev, now))
+        // The manifest row owns the path: a move persists through save, and a
+        // rename-only write() below is the one path-stable exception.
+        writes.push(entryToRecord(this.workspace, merged, row.path, rev, now))
       }
       seen.add(id)
     }
@@ -272,11 +354,17 @@ export class IdbCarrier implements WorkspaceCarrier {
       updatedAt: now,
     }
     await idbTransaction(
-      [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES],
+      [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
       'readwrite',
       stores => {
-        for (const record of writes) stores[STORE_WORKSPACE_ENTRIES].put(record)
-        for (const id of deletes) stores[STORE_WORKSPACE_ENTRIES].delete([this.workspace, id])
+        for (const record of writes) {
+          stores[STORE_WORKSPACE_ENTRIES].put(record)
+          stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
+        }
+        for (const id of deletes) {
+          stores[STORE_WORKSPACE_ENTRIES].delete([this.workspace, id])
+          stores[STORE_WORKSPACE_ENTRY_META].delete([this.workspace, id])
+        }
         stores[STORE_WORKSPACE_META].put(nextMeta)
       },
     )
@@ -321,9 +409,14 @@ export class IdbCarrier implements WorkspaceCarrier {
     // writeEntry -> here, which has no other content guard.
     if (!entryChanged(previous, merged)) return
     const record = entryToRecord(this.workspace, merged, previous.path, previous.rev + 1, Date.now())
-    await idbTransaction([STORE_WORKSPACE_ENTRIES], 'readwrite', stores => {
-      stores[STORE_WORKSPACE_ENTRIES].put(record)
-    })
+    await idbTransaction(
+      [STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
+      'readwrite',
+      stores => {
+        stores[STORE_WORKSPACE_ENTRIES].put(record)
+        stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
+      },
+    )
   }
 
   async add(entry: WorkspaceEntry): Promise<void> {
@@ -331,9 +424,14 @@ export class IdbCarrier implements WorkspaceCarrier {
     const records = await workspaceEntryRecords(this.workspace)
     const path = pathFor(entry.kind, entry.name, candidate => records.some(record => record.path === candidate))
     const record = entryToRecord(this.workspace, entry, path, 1, Date.now())
-    await idbTransaction([STORE_WORKSPACE_ENTRIES], 'readwrite', stores => {
-      stores[STORE_WORKSPACE_ENTRIES].put(record)
-    })
+    await idbTransaction(
+      [STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
+      'readwrite',
+      stores => {
+        stores[STORE_WORKSPACE_ENTRIES].put(record)
+        stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
+      },
+    )
   }
 
   async remove(id: string): Promise<void> {
@@ -420,10 +518,20 @@ export class IdbCarrier implements WorkspaceCarrier {
   async discard(): Promise<WorkspaceTree> {
     const working = await workspaceEntryRecords(this.workspace)
     const saved = await savedEntryRecords(this.workspace)
-    await idbTransaction([STORE_WORKSPACE_ENTRIES], 'readwrite', stores => {
-      for (const record of working) stores[STORE_WORKSPACE_ENTRIES].delete([this.workspace, record.id])
-      for (const record of saved) stores[STORE_WORKSPACE_ENTRIES].put(record)
-    })
+    await idbTransaction(
+      [STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
+      'readwrite',
+      stores => {
+        for (const record of working) {
+          stores[STORE_WORKSPACE_ENTRIES].delete([this.workspace, record.id])
+          stores[STORE_WORKSPACE_ENTRY_META].delete([this.workspace, record.id])
+        }
+        for (const record of saved) {
+          stores[STORE_WORKSPACE_ENTRIES].put(record)
+          stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
+        }
+      },
+    )
     return this.open()
   }
 

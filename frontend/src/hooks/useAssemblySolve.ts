@@ -12,8 +12,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { parse as parseYaml } from 'yaml'
 import type { AssemblyDoc, AssemblyFeature, PartDoc } from '@/types/cad'
 import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
-import { backendBundle } from '@/adapters/backend'
 import { useAssemblyStore } from '@/stores/assemblyStore'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { buildEntityMateRefs, toBodyResults, toEdgeCurves } from '@/utils/assemblyBodies'
 import { buildAnchorTable } from '@/utils/anchorGizmos'
 import { buildPickBodies } from '@/utils/assemblyPick'
@@ -21,7 +21,7 @@ import { setRelayHandlers, clearRelayHandlers, solveAssemblyViaWorker, cancelAss
 import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { getFileRegistry } from '@/stores/fileRegistry'
-import { fileIdsInSpec, resolveFiles } from '@/stores/fileRegistry/resolve'
+import { fileIdsInSpec } from '@/stores/fileRegistry/resolve'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
 import type { MateSpec, AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { dragTargetMate, dragTargetPoseMate } from '@/kernel/assemblyDrag'
@@ -113,16 +113,22 @@ function revCacheKey(uuid: string, doc: AssemblyDoc): string {
 /**
  * Current revs per referenced part, the bundle cache key. The instance's own
  * `doc_rev` is the rev recorded at placement; a part edited since then has a
- * higher current rev, which is exactly what forces its bundle rebuild.
+ * higher current rev, which is exactly what forces its bundle rebuild. Refs are
+ * read from the open workspace session, never the library, so an assembly can
+ * only key against documents that live beside it.
  */
 export async function currentRevs(doc: AssemblyDoc): Promise<Record<string, number>> {
   const parts = partSpecs(doc)
   const revs: Record<string, number> = {}
   for (const p of parts) revs[p.doc_id] = p.doc_rev
+  const session = useWorkspaceSessionStore.getState().session
+  if (!session) return revs
   try {
-    const summaries = await backendBundle.documents.list()
-    for (const s of summaries) {
-      if (s.uuid in revs && typeof s.meta?.rev === 'number') revs[s.uuid] = s.meta.rev
+    const entries = await session.listEntries()
+    const byId = new Map(entries.map(entry => [entry.id, entry]))
+    for (const id of Object.keys(revs)) {
+      const entry = byId.get(id)
+      if (entry && typeof entry.rev === 'number') revs[id] = entry.rev
     }
   } catch {
     // Store unreachable: fall back to the recorded revs. A stale bundle key can
@@ -174,8 +180,14 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
   useEffect(() => {
     setRelayHandlers({
       partDocContent: async (doc_id) => {
-        const data = await backendBundle.documents.load(doc_id)
-        const doc = (parseYaml(data.content) ?? {}) as PartDoc
+        // The workspace session is the only resolver: a doc_id that is not a
+        // live document entry in this workspace refuses by name instead of
+        // falling through to a library-wide load (the C2 hole P3 closes).
+        const session = useWorkspaceSessionStore.getState().session
+        if (!session) throw new Error('No workspace is open')
+        const entry = await session.readEntry(doc_id)
+        if (entry.kind !== 'document') throw new Error(`Not a part document: ${doc_id}`)
+        const doc = (parseYaml(entry.text ?? '') ?? {}) as PartDoc
         // Same self-heal as the part load seam: a legacy singular transform
         // `body` must reach the OCC worker as the plural `bodies` it reads.
         migrateLegacyBodyPicks(doc)
@@ -188,10 +200,23 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       //
       // The spec the anchor worker holds is reference-only; the bytes are
       // resolved HERE, on the main thread, so no byte payload ever crosses the
-      // anchor worker. The OCC bundle worker receives them directly.
+      // anchor worker. The OCC bundle worker receives them directly. The
+      // session resolves a workspace entry first and C1's flat registry second,
+      // so a STEP just staged by an import still reaches the worker before the
+      // workspace has adopted it.
       buildBundle: async (doc_id, doc_rev, spec) => {
+        const session = useWorkspaceSessionStore.getState().session
         const fileIds = fileIdsMissingFromWorker(fileIdsInSpec(spec))
-        const files = fileIds.length ? await resolveFiles(getFileRegistry(), fileIds) : undefined
+        let files: Record<string, Uint8Array> | undefined
+        if (fileIds.length) {
+          files = {}
+          for (const id of fileIds) {
+            const bytes = session
+              ? await session.resolveFile(id)
+              : await getFileRegistry().getBytes(id)
+            if (bytes) files[id] = bytes
+          }
+        }
         return buildBundleViaWorker({ ...spec, id: doc_id }, doc_id, doc_rev, files)
       },
     })

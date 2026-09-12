@@ -9,8 +9,9 @@ const h = vi.hoisted(() => ({
   setRelayHandlers: vi.fn(),
   clearRelayHandlers: vi.fn(),
   buildBundleViaWorker: vi.fn(),
-  list: vi.fn(),
-  load: vi.fn(),
+  listEntries: vi.fn(),
+  readEntry: vi.fn(),
+  resolveFile: vi.fn(),
 }))
 
 vi.mock('@/kernel/worker/anchorSolverClient', () => ({
@@ -20,11 +21,10 @@ vi.mock('@/kernel/worker/anchorSolverClient', () => ({
   clearRelayHandlers: h.clearRelayHandlers,
 }))
 vi.mock('@/kernel/worker/solverClient', () => ({ buildBundleViaWorker: h.buildBundleViaWorker }))
-vi.mock('@/adapters/backend', () => ({
-  backendBundle: { documents: { list: h.list, load: h.load } },
-}))
 
 import { useAssemblySolve, partSpecs, mateSpecs, currentRevs } from '@/hooks/useAssemblySolve'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
+import type { WorkspaceSession } from '@/workspace/session'
 import {
   useAssemblyStore,
   setAssemblyCallbacks,
@@ -36,6 +36,22 @@ import { DRAG_MATE_ID, DRAG_WEIGHT } from '@/kernel/assemblyDrag'
 import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
 import { getFileRegistry } from '@/stores/fileRegistry'
+
+// The relay handlers and currentRevs read the one open workspace session, so a
+// test shapes the session instead of a library-wide store.
+function installSession(): WorkspaceSession {
+  const session = {
+    workspace: 'ws-test',
+    open: vi.fn(),
+    listEntries: (...args: unknown[]) => h.listEntries(...args),
+    readEntry: (...args: unknown[]) => h.readEntry(...args),
+    writeEntry: vi.fn(),
+    resolveFile: (...args: unknown[]) => h.resolveFile(...args),
+    referencesOf: vi.fn(),
+  } as unknown as WorkspaceSession
+  useWorkspaceSessionStore.setState({ session })
+  return session
+}
 
 function meshPayload() {
   return {
@@ -143,25 +159,35 @@ describe('partSpecs / mateSpecs', () => {
 })
 
 describe('currentRevs', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useWorkspaceSessionStore.setState({ session: null })
+  })
 
-  it('prefers the store rev over the rev recorded at placement', async () => {
-    h.list.mockResolvedValue([{ uuid: 'doc-p1', meta: { rev: 9 } }])
+  it('prefers the workspace entry rev over the rev recorded at placement', async () => {
+    installSession()
+    h.listEntries.mockResolvedValue([{ id: 'doc-p1', kind: 'document', name: 'P1', rev: 9 }])
     expect(await currentRevs(docWith(instance('p1')))).toEqual({ 'doc-p1': 9 })
   })
 
-  it('falls back to the recorded rev when the store is unreachable', async () => {
-    h.list.mockRejectedValue(new Error('offline'))
+  it('falls back to the recorded rev when the session is unreachable', async () => {
+    installSession()
+    h.listEntries.mockRejectedValue(new Error('offline'))
+    expect(await currentRevs(docWith(instance('p1')))).toEqual({ 'doc-p1': 1 })
+  })
+
+  it('falls back to the recorded rev when no workspace is open', async () => {
     expect(await currentRevs(docWith(instance('p1')))).toEqual({ 'doc-p1': 1 })
   })
 
   it('moves the solve key when the part is edited after being instanced', async () => {
     // PS-H1: the instance pins the doc_rev it was inserted at, so editing the
-    // part afterwards must re-key `${doc_id}@${rev}` from the store's CURRENT
-    // meta.rev. Reading the pinned rev instead would cache-hit the stale bundle
-    // and paint the assembly with pre-edit geometry.
+    // part afterwards must re-key `${doc_id}@${rev}` from the workspace's
+    // CURRENT entry rev. Reading the pinned rev instead would cache-hit the
+    // stale bundle and paint the assembly with pre-edit geometry.
+    installSession()
     const asm = docWith(instance('p1', { doc_rev: 1 }))
-    h.list.mockResolvedValue([{ uuid: 'doc-p1', meta: { rev: 7 } }])
+    h.listEntries.mockResolvedValue([{ id: 'doc-p1', kind: 'document', name: 'P1', rev: 7 }])
     expect(await currentRevs(asm)).toEqual({ 'doc-p1': 7 })
   })
 })
@@ -169,7 +195,8 @@ describe('currentRevs', () => {
 describe('useAssemblySolve', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    h.list.mockResolvedValue([])
+    installSession()
+    h.listEntries.mockResolvedValue([])
     h.solveAssemblyViaWorker.mockResolvedValue(okResponse)
   })
 
@@ -229,7 +256,7 @@ describe('useAssemblySolve', () => {
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
   })
 
-  it('two requestSolve calls in one burst call documents.list() once', async () => {
+  it('two requestSolve calls in one burst list the workspace entries once', async () => {
     let release!: () => void
     const gate = new Promise<void>(r => { release = r })
     h.solveAssemblyViaWorker.mockImplementationOnce(async () => { await gate; return okResponse })
@@ -237,25 +264,25 @@ describe('useAssemblySolve', () => {
     const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
 
     await act(async () => { result.current.requestSolve() })
-    expect(h.list).toHaveBeenCalledTimes(1)  // fetched for the in-flight solve
+    expect(h.listEntries).toHaveBeenCalledTimes(1)  // fetched for the in-flight solve
 
     // Queues a trailing solve while the first is blocked -- reuses the
     // burst's already-fetched rev map instead of listing again.
     await act(async () => { result.current.requestSolve() })
-    expect(h.list).toHaveBeenCalledTimes(1)
+    expect(h.listEntries).toHaveBeenCalledTimes(1)
 
     await act(async () => { release(); await gate })
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
-    expect(h.list).toHaveBeenCalledTimes(1)
+    expect(h.listEntries).toHaveBeenCalledTimes(1)
 
     // A fresh burst after this one drains re-fetches: revs are not cached forever.
     await act(async () => { result.current.requestSolve() })
-    expect(h.list).toHaveBeenCalledTimes(2)
+    expect(h.listEntries).toHaveBeenCalledTimes(2)
   })
 
   it('a live drag burst reuses the rev map instead of re-listing documents', async () => {
     // Revs are stable across a drag; live ticks reuse the first solve's map so
-    // the bundle stays a cache hit and a drag never re-issues documents.list().
+    // the bundle stays a cache hit and a drag never re-lists workspace entries.
     setAssemblyCallbacks(null)
     useAssemblyStore.getState().setSnapshot({
       ...DEFAULT_ASSEMBLY_EDITOR_DATA,
@@ -272,16 +299,16 @@ describe('useAssemblySolve', () => {
     const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'), instance('p2'))))
 
     await act(async () => { result.current.requestSolve() })  // first live tick fetches once
-    expect(h.list).toHaveBeenCalledTimes(1)
+    expect(h.listEntries).toHaveBeenCalledTimes(1)
 
     // Queues a trailing live tick while the first is blocked; it reuses the
     // burst's already-fetched rev map instead of listing again.
     await act(async () => { result.current.requestSolve() })
-    expect(h.list).toHaveBeenCalledTimes(1)
+    expect(h.listEntries).toHaveBeenCalledTimes(1)
 
     await act(async () => { release(); await gate })
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
-    expect(h.list).toHaveBeenCalledTimes(1)  // the trailing tick reused lastRevs
+    expect(h.listEntries).toHaveBeenCalledTimes(1)  // the trailing tick reused lastRevs
 
     useAssemblyStore.getState().cancelPartManipulation()
   })
@@ -297,9 +324,9 @@ describe('useAssemblySolve', () => {
     const gateA = new Promise<void>(r => { releaseA = r })
     h.solveAssemblyViaWorker.mockImplementationOnce(async () => { await gateA; return okResponse })
 
-    // The store agrees with each doc's recorded rev at its fetch.
-    h.list.mockResolvedValueOnce([{ uuid: 'doc-p1', meta: { rev: 1 } }])
-    h.list.mockResolvedValueOnce([{ uuid: 'doc-p1', meta: { rev: 9 } }])
+    // The workspace agrees with each doc's recorded rev at its fetch.
+    h.listEntries.mockResolvedValueOnce([{ id: 'doc-p1', kind: 'document', name: 'P1', rev: 1 }])
+    h.listEntries.mockResolvedValueOnce([{ id: 'doc-p1', kind: 'document', name: 'P1', rev: 9 }])
 
     const { result, rerender } = renderHook(
       ({ doc }: { doc: AssemblyDoc }) => useAssemblySolve('asm-1', doc),
@@ -307,7 +334,7 @@ describe('useAssemblySolve', () => {
     )
 
     await act(async () => { result.current.requestSolve() })  // solve #1 fetches revs for the pre-edit doc
-    expect(h.list).toHaveBeenCalledTimes(1)
+    expect(h.listEntries).toHaveBeenCalledTimes(1)
 
     // The part edit reaches the assembly doc mid-burst; the cached map predates
     // it, so the trailing solve must re-fetch rather than reuse the old key.
@@ -318,7 +345,7 @@ describe('useAssemblySolve', () => {
     await act(async () => {})  // the trailing solve runs
 
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
-    expect(h.list).toHaveBeenCalledTimes(2)  // the key change invalidated the cache
+    expect(h.listEntries).toHaveBeenCalledTimes(2)  // the key change invalidated the cache
     expect(h.solveAssemblyViaWorker.mock.calls[1][2]).toEqual({ 'doc-p1': 9 })
   })
 
@@ -495,13 +522,14 @@ describe('useAssemblySolve', () => {
     useAssemblyStore.getState().cancelPartManipulation()
   })
 
-  it('registers relay handlers that reach the document store and the OCC bundle builder', async () => {
-    h.load.mockResolvedValue({ content: 'kind: part\nfeatures: []' })
+  it('registers relay handlers that reach the workspace session and the OCC bundle builder', async () => {
+    installSession()
+    h.readEntry.mockResolvedValue({ kind: 'document', name: 'P', text: 'kind: part\nfeatures: []' })
     renderHook(() => useAssemblySolve('asm-1', null))
 
     const handlers = h.setRelayHandlers.mock.calls[0][0]
     expect(await handlers.partDocContent('doc-a')).toEqual({ kind: 'part', features: [] })
-    expect(h.load).toHaveBeenCalledWith('doc-a')
+    expect(h.readEntry).toHaveBeenCalledWith('doc-a')
 
     await handlers.buildBundle('doc-a', 4, { kind: 'part' })
     // The relay stamps the doc id onto the raw PartDoc YAML so the OCC worker's
@@ -510,10 +538,37 @@ describe('useAssemblySolve', () => {
     expect(h.buildBundleViaWorker).toHaveBeenCalledWith({ kind: 'part', id: 'doc-a' }, 'doc-a', 4, undefined)
   })
 
+  it('partDocContent refuses a doc_id that is not a live document entry', async () => {
+    installSession()
+    h.readEntry.mockRejectedValue(new Error('Entry not found: ghost'))
+    renderHook(() => useAssemblySolve('asm-1', null))
+
+    const handlers = h.setRelayHandlers.mock.calls[0][0]
+    await expect(handlers.partDocContent('ghost')).rejects.toThrow(/Entry not found/)
+  })
+
+  it('buildBundle resolves bytes through the workspace session before the flat registry', async () => {
+    // The workspace entry is authoritative once adopted; the flat registry is
+    // the fallback for a STEP the import just staged but did not adopt.
+    installSession()
+    h.resolveFile.mockResolvedValue(new Uint8Array([7, 7, 7]))
+    renderHook(() => useAssemblySolve('asm-1', null))
+
+    const handlers = h.setRelayHandlers.mock.calls[0][0]
+    const spec = { kind: 'part', features: [{ id: 'imp1', kind: 'import_step', file_id: 'f1' }] }
+    await handlers.buildBundle('doc-a', 1, spec)
+
+    expect(h.resolveFile).toHaveBeenCalledWith('f1')
+    const call = h.buildBundleViaWorker.mock.calls[0]
+    expect(Array.from(call[3].f1)).toEqual([7, 7, 7])
+  })
+
   it('C1: resolves import bytes on the main thread before the OCC bundle build', async () => {
     // The anchor worker's spec is reference-only. The registered handler resolves
     // the file id here and forwards bytes to buildBundleViaWorker (the OCC
-    // worker), so no byte payload is ever handed to the anchor solver.
+    // worker), so no byte payload is ever handed to the anchor solver. No
+    // workspace session: the flat registry is the documented fallback.
+    useWorkspaceSessionStore.setState({ session: null })
     resetFakeIndexedDb()
     resetDbConnection()
     const entry = await getFileRegistry().create({
@@ -538,8 +593,11 @@ describe('useAssemblySolve', () => {
   it('relay partDocContent migrates a legacy singular transform body to the plural list', async () => {
     // The anchor solver relays raw PartDoc YAML to the OCC worker, which reads
     // only `bodies`; a legacy singular `body` would silently fail the solve.
-    h.load.mockResolvedValue({
-      content: 'kind: part\nfeatures:\n  - id: t1\n    kind: transform\n    transform:\n      body: "@body_ex1"\n      operation: new\n',
+    installSession()
+    h.readEntry.mockResolvedValue({
+      kind: 'document',
+      name: 'P',
+      text: 'kind: part\nfeatures:\n  - id: t1\n    kind: transform\n    transform:\n      body: "@body_ex1"\n      operation: new\n',
     })
     renderHook(() => useAssemblySolve('asm-1', null))
 

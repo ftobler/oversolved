@@ -19,7 +19,6 @@ import { initializeTools } from '@/tools'
 import { preloadViewportLabelFont } from '@/components/Viewport/labelFont'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { useStoragePersistenceStore } from '@/stores/storagePersistenceStore'
-import { useLibraryStore } from '@/stores/libraryStore'
 
 const theme = createTheme({
   palette: { mode: 'dark', background: { default: '#111' } },
@@ -31,11 +30,6 @@ initializeTools()
 // disclaimer's storage paragraph reports; asking can prompt, so that waits for
 // the acknowledgement click.
 useStoragePersistenceStore.getState().ensureChecked()
-// Reconnect to the folder the user last opened as their library, if the browser
-// still holds the grant. Outside a user gesture this can only probe, never
-// prompt: a folder whose permission lapsed surfaces in the documents sidebar as
-// an entry to click.
-useLibraryStore.getState().restore()
 // Off the gesture on purpose: the first 3D label to mount would otherwise
 // suspend the whole Canvas on the font fetch. See preloadViewportLabelFont.
 preloadViewportLabelFont()

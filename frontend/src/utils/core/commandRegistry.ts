@@ -67,8 +67,8 @@ export const FEATURE_KEYMAP: Record<string, string> = {
 // An override here silently shadows KEYMAP, so only add one that really differs.
 export const SKETCH_KEYMAP: Record<string, string> = {}
 
-// Assembly keymap, resolved first while DocumentPage says the assembly editor is
-// active. It ships the shared keys only (undo/redo/delete, plus Escape to cancel
+// Assembly keymap, resolved first while WorkspacePage says the assembly editor
+// is active. It ships the shared keys only (undo/redo/delete, plus Escape to cancel
 // the open edit); no assembly-specific key is invented here.
 //
 // Policy: the app default IS the user's workflow default. Whenever a shortcut

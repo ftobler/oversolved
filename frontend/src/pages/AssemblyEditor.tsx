@@ -18,6 +18,8 @@ import {
   mintFeatureId,
 } from '@/utils/assemblyMutations'
 import { runAssemblyOperation, type AssemblyOperationId } from '@/utils/assemblyOperations'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
+import { interpretEntry } from '@/workspace/kinds'
 import type { AssemblySubject } from '@/utils/assemblySelection'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
@@ -27,7 +29,6 @@ import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
-import { backendBundle } from '@/adapters/backend'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
@@ -62,7 +63,7 @@ const MATE_KIND_ICONS: Record<MateKind, string> = {
   copy_rotation: mateCopyRotationIcon,
 }
 
-export default function AssemblyEditor({ uuid }: { uuid: string }) {
+export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; workspaceId?: string }) {
   const {
     doc,
     setDoc,
@@ -76,7 +77,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     saveDoc,
     renameDoc,
     cloneDoc,
-  } = useAssemblyDoc(uuid)
+  } = useAssemblyDoc(uuid, workspaceId)
   const navigate = useNavigate()
   const [pickerOpen, setPickerOpen] = useState(false)
   // The mate the tridot menu asked to rename, with the name the row was showing
@@ -112,22 +113,43 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
   // are allowed to differ while a solve is still settling.
   const [poseBasis, setPoseBasis] = useState<{ handle: string; pose?: Transform3D } | null>(null)
 
+  // The open workspace session, installed by WorkspacePage. The tree labels
+  // parts from it and the add_part guard checks its live part entries; it never
+  // reaches across the library.
+  const session = useWorkspaceSessionStore(s => s.session)
+
   // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
   // A failed list is swallowed on purpose: names are a nicety here and the tree
-  // falls back to the uuid, which is worse to read but never wrong.
+  // falls back to the uuid, which is worse to read but never wrong. The same
+  // fetch is where the add_part guard's live-part set comes from, so the two can
+  // never disagree about which parts this workspace holds.
   const [docNames, setDocNames] = useState<Record<string, string>>({})
+  // Null until the list lands: an empty set would be a real answer (no parts),
+  // but an unloaded one must not refuse a pick the user just made.
+  const knownPartIds = useRef<ReadonlySet<string> | null>(null)
   useEffect(() => {
+    if (!session) {
+      knownPartIds.current = null
+      return
+    }
+    knownPartIds.current = null
     let cancelled = false
-    backendBundle.documents.list()
+    session.listEntries()
       .then(list => {
         if (cancelled) return
-        const map: Record<string, string> = {}
-        for (const d of list) map[d.uuid] = d.name
-        setDocNames(map)
+        const names: Record<string, string> = {}
+        const parts = new Set<string>()
+        for (const entry of list) {
+          names[entry.id] = entry.name
+          const interpreted = interpretEntry({ kind: entry.kind, name: entry.name, docKind: entry.docKind })
+          if (interpreted.ok && interpreted.docKind === 'part') parts.add(entry.id)
+        }
+        setDocNames(names)
+        knownPartIds.current = parts
       })
       .catch(() => undefined)
     return () => { cancelled = true }
-  }, [])
+  }, [session])
 
   // The hook's memo is what goes into the store, not a second extraction of the
   // same features. This is a de-duplication and nothing more: the memo is keyed
@@ -228,11 +250,11 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     if (!uuid) return
     try {
       const data = await cloneDoc(uuid)
-      navigate(`/documents/${data.uuid}`)
+      navigate(`/workspaces/${workspaceId ?? uuid}/entries/${data.uuid}`)
     } catch (e) {
       setError(errorMessage(e, 'Failed to clone document'))
     }
-  }, [uuid, cloneDoc, navigate, setError])
+  }, [uuid, workspaceId, cloneDoc, navigate, setError])
 
   const handleRename = useCallback(
     (name: string) => renameDoc(uuid, name),
@@ -254,6 +276,9 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
     runAssemblyOperation(id, payload as never, {
       doc: docRef.current,
       transforms: useAssemblyStore.getState().settledPoses(),
+      // I8: the outward link a part instance authors is refused at the mutation
+      // unless the doc it names is a live part entry in this workspace.
+      knownPartIds: knownPartIds.current ?? undefined,
       mutateSession: mutate,
       mutateOneShot,
       requestSolve,
@@ -639,6 +664,7 @@ export default function AssemblyEditor({ uuid }: { uuid: string }) {
       <AssemblyPartPicker
         isOpen={pickerOpen}
         selfUuid={uuid}
+        session={session}
         onClose={() => setPickerOpen(false)}
         onPick={handlePick}
       />

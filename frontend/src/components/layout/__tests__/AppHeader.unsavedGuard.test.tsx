@@ -16,7 +16,7 @@ describe('AppHeader unsaved-changes navigation guard', () => {
   beforeEach(() => {
     useUnsavedChangesStore.getState().setDirty(false)
     useUnsavedChangesStore.getState().dismissConfirm()
-    window.history.pushState({}, '', '/documents/abc')
+    window.history.pushState({}, '', '/workspaces/ws/entries/abc')
   })
   afterEach(() => {
     act(() => {
@@ -29,7 +29,7 @@ describe('AppHeader unsaved-changes navigation guard', () => {
   it('does not set a pending callback when there are no unsaved changes', () => {
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Documents'))
+      fireEvent.click(screen.getByTitle('Workspaces'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).toBeNull()
   })
@@ -38,19 +38,19 @@ describe('AppHeader unsaved-changes navigation guard', () => {
     useUnsavedChangesStore.getState().setDirty(true)
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Documents'))
+      fireEvent.click(screen.getByTitle('Workspaces'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     // Pathname unchanged: navigation was blocked.
-    expect(window.location.pathname).toBe('/documents/abc')
+    expect(window.location.pathname).toBe('/workspaces/ws/entries/abc')
   })
 
   it('guard clears dirty after executing the stored callback', () => {
     useUnsavedChangesStore.getState().setDirty(true)
     wrap()
     act(() => {
-      fireEvent.click(screen.getByTitle('Documents'))
+      fireEvent.click(screen.getByTitle('Workspaces'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     // Simulate the user confirming via the dialog.
@@ -71,6 +71,6 @@ describe('AppHeader unsaved-changes navigation guard', () => {
       fireEvent.click(screen.getByLabelText('Help'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
-    expect(window.location.pathname).toBe('/documents/abc')
+    expect(window.location.pathname).toBe('/workspaces/ws/entries/abc')
   })
 })

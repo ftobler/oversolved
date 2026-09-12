@@ -18,7 +18,7 @@ export function mintFeatureId(): string {
 }
 
 // The seed content of a freshly created assembly document. `kind` is what
-// DocumentPage routes on, and an empty `features` is what makes useAssemblyDoc
+// WorkspacePage routes on, and an empty `features` is what makes useAssemblyDoc
 // prepend ASSEMBLY_BUILTIN_DEFAULTS on load. Deliberately does NOT bake the
 // built-ins in: two places minting the assembly origin could drift apart, and
 // the loader is already the one source of truth for them.

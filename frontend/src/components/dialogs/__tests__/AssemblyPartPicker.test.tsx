@@ -1,37 +1,44 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import type { ComponentProps } from 'react'
+import type { WorkspaceSession } from '@/workspace/session'
+import type { EntryMeta } from '@/workspace/types'
 
-// The picker browses the one document library through the bundle, so the store
-// is the only fixture a case has to shape.
-const h = vi.hoisted(() => ({
-  list: vi.fn(),
-  bundle: {
-    documents: { list: (...args: unknown[]) => h.list(...args), thumbnailUrl: () => null },
-  },
-}))
+// The picker browses the OPEN WORKSPACE session only, so the session is the
+// only fixture a case has to shape: a doc in another workspace is unreachable
+// by construction.
+const h = vi.hoisted(() => ({ listEntries: vi.fn() }))
 
-vi.mock('@/adapters/backend', () => ({ backendBundle: h.bundle }))
-// The tiles read the preview store; thumbnails are not what this suite pins.
 vi.mock('@/stores/previewStore', () => ({ usePreview: () => undefined }))
 
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 
-const doc = (uuid: string, name: string, rev?: number, kind: string | undefined = 'part') => ({
-  uuid,
+const entry = (id: string, name: string, rev?: number, docKind: string | undefined = 'part'): EntryMeta => ({
+  id,
+  path: `documents/${name}.yaml`,
+  kind: 'document',
   name,
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-02T00:00:00Z',
-  is_owner: true,
-  owner_username: 'me',
-  is_public: false,
-  kind,
-  ...(rev !== undefined ? { meta: { id: uuid, rev, updatedAt: 0, dirty: false } } : {}),
+  docKind,
+  ...(rev !== undefined ? { rev, updatedAt: 0 } : {}),
 })
 
-function renderPicker(overrides: Partial<Parameters<typeof AssemblyPartPicker>[0]> = {}) {
-  const props = {
+function session(): WorkspaceSession {
+  return {
+    workspace: 'ws-1',
+    open: vi.fn(),
+    listEntries: (...args: unknown[]) => h.listEntries(...args),
+    readEntry: vi.fn(),
+    writeEntry: vi.fn(),
+    resolveFile: vi.fn(),
+    referencesOf: vi.fn(),
+  } as unknown as WorkspaceSession
+}
+
+function renderPicker(overrides: Partial<ComponentProps<typeof AssemblyPartPicker>> = {}) {
+  const props: ComponentProps<typeof AssemblyPartPicker> = {
     isOpen: true,
     selfUuid: 'asm-1',
+    session: session(),
     onClose: vi.fn(),
     onPick: vi.fn(),
     ...overrides,
@@ -40,40 +47,34 @@ function renderPicker(overrides: Partial<Parameters<typeof AssemblyPartPicker>[0
   return props
 }
 
-describe('AssemblyPartPicker', () => {
+describe('AssemblyPartPicker (workspace scoped)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    h.list.mockResolvedValue([doc('part-1', 'Bracket', 5), doc('part-2', 'Bolt', 2)])
+    h.listEntries.mockResolvedValue([entry('part-1', 'Bracket', 5), entry('part-2', 'Bolt', 2)])
   })
 
-  it('lists the local library as preview tiles, excluding the assembly itself', async () => {
-    h.list.mockResolvedValue([doc('part-1', 'Bracket', 5), doc('asm-1', 'The Assembly')])
+  it('lists the open workspace as preview tiles, excluding the assembly itself', async () => {
+    h.listEntries.mockResolvedValue([entry('part-1', 'Bracket', 5), entry('asm-1', 'The Assembly')])
     renderPicker()
     await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())
     expect(screen.queryByText('The Assembly')).not.toBeInTheDocument()
-    // Tiles carry a preview slot (thumbnail or placeholder), like the documents grid.
     expect(document.querySelector('.doc-tile-preview')).toBeInTheDocument()
-    expect(h.list).toHaveBeenCalledWith({ sort: 'name', search: '' })
+    expect(h.listEntries).toHaveBeenCalled()
   })
 
-  // An assembly is not an insert source: instancing one yields a tree row with
-  // no geometry and no message. The picker filters on the summary's kind, and a
-  // legacy summary with no kind stays insertable (the safe default).
   it('shows only parts, never assemblies', async () => {
-    h.list.mockResolvedValue([
-      { ...doc('part-1', 'Bracket', 5), kind: 'part' },
-      { ...doc('asm-2', 'Other Assembly', 1), kind: 'assembly' },
+    h.listEntries.mockResolvedValue([
+      entry('part-1', 'Bracket', 5, 'part'),
+      entry('asm-2', 'Other Assembly', 1, 'assembly'),
     ])
     renderPicker()
     await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())
     expect(screen.queryByText('Other Assembly')).not.toBeInTheDocument()
-    // The only visible tile is the part, so the Insert button cannot target the
-    // assembly.
     expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
   })
 
   it('shows the parts empty state when the filter leaves no tiles', async () => {
-    h.list.mockResolvedValue([{ ...doc('asm-2', 'Other Assembly', 1), kind: 'assembly' }])
+    h.listEntries.mockResolvedValue([entry('asm-2', 'Other Assembly', 1, 'assembly')])
     renderPicker()
     await waitFor(() => expect(screen.getByText('No parts available.')).toBeInTheDocument())
     expect(screen.queryByText('Other Assembly')).not.toBeInTheDocument()
@@ -81,10 +82,16 @@ describe('AssemblyPartPicker', () => {
 
   // I6: an unknown kind is refused, never treated as an insertable part.
   it('excludes a document with an unknown kind', async () => {
-    h.list.mockResolvedValue([doc('weird', 'Draft', 1, 'drawing')])
+    h.listEntries.mockResolvedValue([entry('weird', 'Draft', 1, 'drawing')])
     renderPicker()
     await waitFor(() => expect(screen.getByText('No parts available.')).toBeInTheDocument())
     expect(screen.queryByText('Draft')).not.toBeInTheDocument()
+  })
+
+  it('shows no workspace at all when the session is absent', async () => {
+    renderPicker({ session: null })
+    await waitFor(() => expect(h.listEntries).not.toHaveBeenCalled())
+    expect(screen.getByText('No parts available.')).toBeInTheDocument()
   })
 
   it('titles itself with an icon, like every other dialog on the shell', () => {
@@ -99,11 +106,11 @@ describe('AssemblyPartPicker', () => {
     expect(document.querySelector('.btn-delete-tile')).toBeNull()
   })
 
-  it('confirms the selected doc with its uuid and rev', async () => {
+  it('confirms the selected doc with its id and rev', async () => {
     const props = renderPicker()
     await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())
     const insert = screen.getByRole('button', { name: 'Insert' })
-    expect(insert).toBeDisabled()  // nothing selected yet
+    expect(insert).toBeDisabled()
     fireEvent.click(screen.getByText('Bracket'))
     fireEvent.click(insert)
     expect(props.onPick).toHaveBeenCalledWith('part-1', 5)
@@ -118,30 +125,28 @@ describe('AssemblyPartPicker', () => {
     expect(props.onClose).toHaveBeenCalled()
   })
 
-  it('forwards the search text to the store after the debounce', async () => {
+  it('filters tiles by the search text', async () => {
     renderPicker()
     await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())
-    fireEvent.change(screen.getByPlaceholderText('Search documents...'), { target: { value: 'bra' } })
-    await waitFor(() =>
-      expect(h.list).toHaveBeenCalledWith({ sort: 'name', search: 'bra' }))
+    fireEvent.change(screen.getByPlaceholderText('Search documents...'), { target: { value: 'bol' } })
+    await waitFor(() => expect(screen.queryByText('Bracket')).not.toBeInTheDocument())
+    expect(screen.getByText('Bolt')).toBeInTheDocument()
   })
 
   // A selection must never outlive its tile: Insert confirms by id, so a doc the
   // user can no longer see would otherwise still be insertable.
   it('drops a selection that a search narrowed out of view', async () => {
+    h.listEntries.mockResolvedValue([entry('part-1', 'Bracket', 5), entry('part-2', 'Bolt', 2)])
     renderPicker()
     await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())
     fireEvent.click(screen.getByText('Bracket'))
     expect(screen.getByRole('button', { name: 'Insert' })).toBeEnabled()
 
-    h.list.mockResolvedValue([doc('part-2', 'Bolt', 2)])
     fireEvent.change(screen.getByPlaceholderText('Search documents...'), { target: { value: 'bolt' } })
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled())
   })
 
-  // There is one library, so the dialog is a search box over a grid: a sidebar
-  // with a single entry would be navigation to nowhere.
   it('has no category sidebar', async () => {
     renderPicker()
     await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())

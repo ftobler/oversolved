@@ -17,7 +17,7 @@ import App from '@/App'
 // It exists because every other suite mounts a page directly, so no test would
 // notice the app failing to come up -- an unresolvable import in the provider
 // stack, a route that no longer exists, or a page that needs a context nobody
-// provides any more. Landing on /documents and seeing a stored document proves
+// provides any more. Landing on /workspaces and seeing a stored workspace proves
 // the browser-only path end to end: boot -> route -> IndexedDB -> rendered tile,
 // with no network anywhere.
 describe('app boot', () => {
@@ -45,16 +45,16 @@ describe('app boot', () => {
     )
   }
 
-  it('lands on the document library and lists what IndexedDB holds', async () => {
+  it('lands on the workspace library and lists what IndexedDB holds', async () => {
     await getWorkspaceStore().create('Bracket', { docKind: 'part' })
 
-    boot('/documents')
+    boot('/workspaces')
 
     await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())
   })
 
-  it('redirects the root path to the library', async () => {
+  it('redirects the root path to the workspace library', async () => {
     boot('/')
-    await waitFor(() => expect(screen.getByText('No documents yet.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('No workspaces yet.')).toBeInTheDocument())
   })
 })

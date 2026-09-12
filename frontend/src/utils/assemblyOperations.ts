@@ -168,13 +168,24 @@ export interface AssemblyOperationPlan {
 // Build the next doc for an operation, or null when there is no doc to act on.
 // The no-op guard mirrors the old mutate funnel: a structural compare catches
 // the value no-ops a reference fast path misses.
+//
+// I8: `add_part` is the only site that authors an outward link, so it refuses
+// when the named doc is not a live part entry in the open workspace. The guard
+// rides the context because the pure mutation has no store access; an absent
+// `knownPartIds` (a caller that does not scope its picks) skips the check.
 export function planAssemblyOperation<K extends AssemblyOperationId>(
   id: K,
   input: AssemblyOperationInputs[K],
-  ctx: { doc: AssemblyDoc | null; transforms: Record<string, Transform3D> },
+  ctx: { doc: AssemblyDoc | null; transforms: Record<string, Transform3D>; knownPartIds?: ReadonlySet<string> },
 ): AssemblyOperationPlan | null {
   if (!ctx.doc) return null
   const def = ASSEMBLY_OPERATIONS[id] as AssemblyOperationDef<AssemblyOperationInputs[K]>
+  if (id === 'add_part' && ctx.knownPartIds) {
+    const { docId } = input as AssemblyOperationInputs['add_part']
+    if (!ctx.knownPartIds.has(docId)) {
+      throw new Error(`Part is not a live entry in this workspace: ${docId}`)
+    }
+  }
   const pre = ctx.doc
   const baked = def.bake ? bakeSolvedTransforms(pre, ctx.transforms) : pre
   const doc = def.apply(baked, input)
@@ -188,6 +199,9 @@ export function planAssemblyOperation<K extends AssemblyOperationId>(
 export interface AssemblyOperationContext {
   doc: AssemblyDoc | null
   transforms: Record<string, Transform3D>
+  // I8's live-part set: the ids `add_part` is allowed to reference. Optional so
+  // an unscoped caller (the store's delete path) needs no workspace.
+  knownPartIds?: ReadonlySet<string>
 }
 
 export interface AssemblyOperationHost extends AssemblyOperationContext {
@@ -211,7 +225,7 @@ export function runAssemblyOperation<K extends AssemblyOperationId>(
   input: AssemblyOperationInputs[K],
   host: AssemblyOperationHost,
 ): void {
-  const plan = planAssemblyOperation(id, input, { doc: host.doc, transforms: host.transforms })
+  const plan = planAssemblyOperation(id, input, { doc: host.doc, transforms: host.transforms, knownPartIds: host.knownPartIds })
   if (!plan || !plan.changed) return
   const apply = () => plan.doc
   if (plan.undo === 'one-shot') host.mutateOneShot(plan.label, apply)

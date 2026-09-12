@@ -3,10 +3,13 @@ import type { WorkspaceCarrier } from '../carrier'
 import type { WorkspaceTree } from '../types'
 import { MemoryCarrier } from '../memoryCarrier'
 import { IdbCarrier } from '../idbCarrier'
+import { DirectoryCarrier } from '../directoryCarrier'
+import { ZipCarrier } from '../zipCarrier'
 import { addReference } from '../refs'
 import { serializeTree } from '../serializer'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb, seedWorkspace } from './idbHarness'
+import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
 
 // One behavioral contract, run over every WorkspaceCarrier, the way
 // documentStore/__tests__/contract.test.ts runs the DocumentStore seam over its
@@ -42,6 +45,24 @@ const adapters: Adapter[] = [
     make: async tree => {
       await seedWorkspace(tree)
       const carrier = new IdbCarrier(tree.manifest.workspace)
+      await carrier.save(tree)
+      return carrier
+    },
+  },
+  {
+    name: 'DirectoryCarrier',
+    setup: () => {},
+    make: async tree => {
+      const carrier = new DirectoryCarrier(fakeDirectory(tree.manifest.workspace))
+      await carrier.save(tree)
+      return carrier
+    },
+  },
+  {
+    name: 'ZipCarrier',
+    setup: () => {},
+    make: async tree => {
+      const carrier = new ZipCarrier()
       await carrier.save(tree)
       return carrier
     },

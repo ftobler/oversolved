@@ -25,21 +25,40 @@ export function canPickDirectory(): boolean {
   return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function'
 }
 
-export function canPickFiles(): boolean {
+// A zip can only be bound as a save target when the browser can hand back a
+// file handle; an <input type=file> yields a File and nothing to remember. The
+// same Chromium gate as the directory picker.
+export function canPickWorkspaceZip(): boolean {
   return typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function'
 }
 
-// Documents written by this app. One extension, because one document is one
-// file: the on-disk unit is the same YAML the export button already produces.
-const DOCUMENT_TYPES: FilePickerAcceptType[] = [
-  { description: 'Oversolved document', accept: { 'text/yaml': ['.yaml', '.yml'] } },
-]
+const WORKSPACE_ZIP_PICKER_ID = 'oversolved-workspace-zip'
 
-// `id` pins the picker's remembered starting directory per purpose, so opening
-// a library and saving a single document do not drag each other's last folder
-// around.
+// Returns null when the browser cannot pick or the user cancelled. Must be
+// called from a user gesture. The zip the handle names becomes the workspace's
+// save target; its bytes are read by the caller.
+export async function pickWorkspaceZip(): Promise<FileSystemFileHandle | null> {
+  if (!canPickWorkspaceZip()) return null
+  try {
+    const handles = await window.showOpenFilePicker!({
+      id: WORKSPACE_ZIP_PICKER_ID,
+      multiple: false,
+      types: [{
+        description: 'Oversolved workspace archive',
+        accept: { 'application/zip': ['.zip', '.oversolved'] },
+      }],
+    })
+    return handles[0] ?? null
+  } catch (err) {
+    if (isAbort(err)) return null
+    throw err
+  }
+}
+
+// `id` pins the picker's remembered starting directory. Single-file picking was
+// the in-place single-file library's gesture and retired with it: a file is now
+// a source a workspace adopts, never a library the app saves back to.
 const LIBRARY_PICKER_ID = 'oversolved-library'
-const DOCUMENT_PICKER_ID = 'oversolved-document'
 
 // Returns null when the browser cannot pick or the user cancelled. Must be
 // called from a user gesture: the picker rejects with a SecurityError
@@ -49,19 +68,6 @@ export async function pickLibraryDirectory(): Promise<FileSystemDirectoryHandle 
   if (!canPickDirectory()) return null
   try {
     return await window.showDirectoryPicker!({ id: LIBRARY_PICKER_ID, mode: 'readwrite' })
-  } catch (err) {
-    if (isAbort(err)) return null
-    throw err
-  }
-}
-
-export async function pickDocumentToOpen(): Promise<FileSystemFileHandle | null> {
-  if (!canPickFiles()) return null
-  try {
-    const [handle] = await window.showOpenFilePicker!({
-      id: DOCUMENT_PICKER_ID, multiple: false, types: DOCUMENT_TYPES,
-    })
-    return handle ?? null
   } catch (err) {
     if (isAbort(err)) return null
     throw err

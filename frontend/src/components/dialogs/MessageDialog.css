@@ -35,3 +35,9 @@
 .message-dialog-message p:last-child {
   margin-bottom: 0;
 }
+
+/* A failed resolution sits inside the carrier-change prompt; the tint is the
+   same red the error variant uses, so a failed write reads as one. */
+.message-dialog-message .carrier-change-error {
+  color: #ef5350;
+}

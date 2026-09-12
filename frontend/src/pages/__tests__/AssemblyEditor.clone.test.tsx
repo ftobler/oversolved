@@ -78,7 +78,7 @@ describe('AssemblyEditor clone', () => {
     await renderLoaded()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Clone document' })) })
     expect(h.clone).toHaveBeenCalledWith('asm-1')
-    expect(navigateSpy).toHaveBeenCalledWith('/documents/clone-uuid')
+    expect(navigateSpy).toHaveBeenCalledWith('/workspaces/asm-1/entries/clone-uuid')
   })
 
   it('shows an error banner instead of an unhandled rejection when the clone fails', async () => {

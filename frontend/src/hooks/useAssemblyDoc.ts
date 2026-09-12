@@ -10,7 +10,7 @@ import { useAssemblyStore } from '@/stores/assemblyStore'
 import { mateFeatures, partInstances } from '@/utils/assemblyMutations'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 
-export function useAssemblyDoc(uuid: string | undefined) {
+export function useAssemblyDoc(uuid: string | undefined, workspace?: string) {
   const [doc, setDoc] = useState<AssemblyDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
   const docRef = useRef<AssemblyDoc | null>(null)
@@ -98,12 +98,11 @@ export function useAssemblyDoc(uuid: string | undefined) {
         // edits in place), so identity still holding after the awaits below
         // proves no edit landed while the save was in flight.
         const savedRef = docRef.current
-        // Previews are derived and live in their own store keyed by
-        // (workspace, entry); in C2 both are the document uuid. The record
-        // receives only the content.
+        // Previews are keyed by (workspace, entry) so a multi-document
+        // workspace's tile and picker read the same record a save wrote.
         if (screenshot) {
           const dataUrl = await screenshot()
-          if (dataUrl) await getPreviewStore().put(uuid, uuid, dataUrl.split(',')[1])
+          if (dataUrl) await getPreviewStore().put(workspace ?? uuid, uuid, dataUrl.split(',')[1])
         }
         await store.save(uuid, { content: stringifyYaml(document) })
         // Same guard as the part editor's saveDoc: an edit during the save
@@ -120,7 +119,7 @@ export function useAssemblyDoc(uuid: string | undefined) {
     } finally {
       release()
     }
-  }, [store])
+  }, [store, workspace])
 
   const renameDoc = useCallback(async (uuid: string, name: string) => {
     try {

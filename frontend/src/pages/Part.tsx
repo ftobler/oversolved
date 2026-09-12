@@ -85,7 +85,12 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
 }
 
 export default function Part() {
-  const { uuid } = useParams<{ uuid: string }>()
+  // The workspace route spells the entry `:entryId`; the older `/documents/:uuid`
+  // route the Part suites still mount keeps `uuid`. Both name the same thing, so
+  // one local id keeps every existing call site reading the resolved entry.
+  const params = useParams<{ entryId?: string; uuid?: string; workspaceId?: string }>()
+  const uuid = params.entryId ?? params.uuid
+  const workspaceId = params.workspaceId
   const navigate = useNavigate()
   const [mode, setMode] = useState<'sketch' | 'feature'>('sketch')
   // rollbackPosition is owned by partEditorStore (single source of truth).
@@ -163,7 +168,7 @@ export default function Part() {
     commitEditSession,
     cancelEditSession,
     registerUndoTeardown,
-  } = usePartDoc(uuid, { onFirstSolve: handleFirstSolve })
+  } = usePartDoc(uuid, { onFirstSolve: handleFirstSolve, workspace: workspaceId })
 
   const features = useMemo(() => extractFeatures(doc), [doc])
   // The sketch-on-face FSM only cares about a sketch's plane field being picked.
@@ -665,7 +670,7 @@ export default function Part() {
   }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, solveResults])
 
   // The sketch editor store is module-level and survives a Part unmount, so a
-  // remounted Part (DocumentPage keys it by document) would otherwise inherit the
+  // remounted Part (WorkspacePage keys it by entry) would otherwise inherit the
   // previous document's picks, drags and modes. A stale pick field alone can
   // re-enter edit mode off the next document (the planeSelectionFeatureId
   // effect), and a stale dimension gesture trips validateWithRepair on B's first
@@ -734,7 +739,7 @@ export default function Part() {
     setCloneName(null)
     try {
       const data = await cloneDoc(uuid, name)
-      navigate(`/documents/${data.uuid}`)
+      navigate(`/workspaces/${workspaceId ?? uuid}/entries/${data.uuid}`)
     } catch (e) {
       setError(errorMessage(e, 'Failed to clone document'))
     }

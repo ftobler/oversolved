@@ -82,9 +82,34 @@ vi.mock('@/stores/previewStore', () => ({
 import AssemblyEditor from '@/pages/AssemblyEditor'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { backendBundle } from '@/adapters/backend'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
+
+// The editor reads its part names and the picker's source from the open
+// workspace session. These suites shape `h.list`; the session reads it live so a
+// per-test reassignment is reflected without changing the harness.
+function installSessionFromList() {
+  useWorkspaceSessionStore.setState({
+    session: {
+      workspace: 'asm-1',
+      open: vi.fn(),
+      listEntries: async () => h.list.map(d => ({
+        id: d.uuid,
+        path: `documents/${d.name}.yaml`,
+        kind: 'document' as const,
+        name: d.name,
+        docKind: d.kind,
+        rev: d.meta?.rev,
+      })),
+      readEntry: vi.fn(),
+      writeEntry: vi.fn(),
+      resolveFile: vi.fn(),
+      referencesOf: vi.fn(),
+    },
+  })
+}
 
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)) })
 
@@ -113,6 +138,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     useAssemblyStore.getState().setActiveMateField(null)
     useAssemblyStore.getState().selectMate(null)
     useAssemblyStore.setState({ editingSubject: { kind: 'none' } })
+    installSessionFromList()
   })
 
   async function renderLoaded() {

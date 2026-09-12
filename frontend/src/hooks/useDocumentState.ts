@@ -14,7 +14,7 @@ export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 export function useDocumentState(
   uuid: string | undefined,
   reSolveRef: React.MutableRefObject<((d: PartDoc) => void) | null>,
-  { solveOnLoad = true }: { solveOnLoad?: boolean } = {},
+  { solveOnLoad = true, workspace }: { solveOnLoad?: boolean; workspace?: string } = {},
 ) {
   const [doc, setDoc] = useState<PartDoc | null>(null)
   const [docName, setDocName] = useState<string>('')
@@ -84,12 +84,13 @@ export function useDocumentState(
         // edits in place), so identity still holding after the awaits below
         // proves no edit landed while the save was in flight.
         const savedRef = docRef.current
-        // Previews are derived and live in their own store keyed by
-        // (workspace, entry); in C2 both are the document uuid. The record
-        // receives only the content.
+        // Previews live in their own store keyed by (workspace, entry). The
+        // workspace is the route's id and the entry is the document uuid; the
+        // reader (tiles, pickers) uses the same pair, so a multi-document
+        // workspace paints the right thumbnail and purge clears it by prefix.
         if (screenshot) {
           const dataUrl = await screenshot()
-          if (dataUrl) await getPreviewStore().put(uuid, uuid, dataUrl.split(',')[1])
+          if (dataUrl) await getPreviewStore().put(workspace ?? uuid, uuid, dataUrl.split(',')[1])
         }
         await store.save(uuid, { content: stringifyYaml(document) })
         // The store now holds the latest edits, so there is nothing to warn about.
@@ -106,7 +107,7 @@ export function useDocumentState(
     } finally {
       release()
     }
-  }, [store])
+  }, [store, workspace])
 
   const renameDoc = useCallback(async (uuid: string, name: string) => {
     try {

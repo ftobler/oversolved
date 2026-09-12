@@ -5,6 +5,11 @@ export const FORMAT_VERSION = 1
 export const MANIFEST_PATH = '.oversolved-manifest.yaml'
 export const DOCUMENTS_DIR = 'documents'
 export const FILES_DIR = 'files'
+// The folder carrier's physical home for trashed payloads. It is not part of the
+// logical tree: the manifest's trash list owns identity, and the zip carrier
+// writes trashed payloads at their logical path instead. Reconcile and open
+// therefore resolve a payload at the logical path first and here second.
+export const TRASH_DIR = '.oversolved-trash'
 // `.oversolved-index.json` is the old folder library's index and stays reserved
 // but unused so it can never be mistaken for a workspace manifest.
 export const RESERVED_PREFIX = '.oversolved-'

@@ -8,7 +8,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import {
-  DB_NAME, DB_VERSION, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_META, idbGet, idbGetFrom,
+  DB_NAME, DB_VERSION, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META, STORE_WORKSPACE_META,
+  idbGet, idbGetAllFrom, idbGetFrom,
   idbPut, idbTransaction, resetDbConnection,
 } from './idb'
 
@@ -58,6 +59,33 @@ describe('idb open robustness', () => {
     } catch (e) {
       expect((e as DOMException).name).toBe('VersionError')
     }
+  })
+})
+
+describe('payload-free entry meta backfill (v4 to v5)', () => {
+  it('projects existing working-copy rows into the meta mirror on upgrade', async () => {
+    // Build a v4 database by hand with one populated working-copy entry.
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 4)
+      req.onupgradeneeded = () => {
+        const db = req.result
+        db.createObjectStore(STORE_WORKSPACE_META, { keyPath: 'workspace' })
+        const entries = db.createObjectStore(STORE_WORKSPACE_ENTRIES, { keyPath: ['workspace', 'id'] })
+        entries.put({
+          workspace: 'ws', id: 'e1', path: 'documents/A.yaml', kind: 'document',
+          name: 'A', docKind: 'part', text: 'body', rev: 3, updatedAt: 9,
+        })
+      }
+      req.onsuccess = () => { req.result.close(); resolve() }
+      req.onerror = () => reject(req.error)
+    })
+    resetDbConnection()
+
+    // The next v5 open upgrades and backfills the mirror.
+    const metas = await idbGetAllFrom<Record<string, unknown>>(STORE_WORKSPACE_ENTRY_META)
+    expect(metas).toEqual([
+      { workspace: 'ws', id: 'e1', path: 'documents/A.yaml', kind: 'document', name: 'A', docKind: 'part', rev: 3, updatedAt: 9 },
+    ])
   })
 })
 

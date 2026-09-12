@@ -10,44 +10,35 @@
 // a sync engine) is an edit to `createBackend` and nothing else. That
 // pluggability is a stated project goal, and this file is where it is paid for.
 //
-// One bundle rather than four separate module singletons because the four are
+// One bundle rather than separate module singletons because the capabilities are
 // wired together, not independently: a test that hands `documents` a fake wants
-// `localTrash` to be the matching fake, and the assembly of that pair belongs in
-// one place. It also gives every consumer one import to reach for instead of a
-// per-capability import graph to keep straight.
-import type { DocumentStore, TrashAdapter } from '@/stores/documentStore'
+// the rest of the bundle to be the matching fakes. It also gives every consumer
+// one import to reach for instead of a per-capability import graph to keep
+// straight.
+import type { WorkspaceDocuments } from './openWorkspace'
+import { activeDocumentStore } from './openWorkspace'
 import { DownloadBugReportSink, type BugReportSink } from './telemetry'
 import { LocalPreferences, type PreferencesAdapter } from './preferences'
-import { activeDocumentStore, activeTrashAdapter } from './library'
 
 export interface BackendBundle {
-  documents: DocumentStore        // the document library
-  localTrash: TrashAdapter        // the recover/purge face of the library's soft delete
-  telemetry: BugReportSink        // where a bug report goes
-  preferences: PreferencesAdapter // where the UI's remembered choices live
+  documents: WorkspaceDocuments  // the open workspace's document face
+  telemetry: BugReportSink  // where a bug report goes
+  preferences: PreferencesAdapter  // where the UI's remembered choices live
 }
 
-// Pure factory (testable without touching the env). The storage ports are passed
-// in rather than resolved here so a test can hand them fakes while the boot path
-// keeps the lazy singletons; telemetry and preferences own no state worth
+// Pure factory (testable without touching the env). The storage port is passed
+// in rather than resolved here so a test can hand it a fake while the boot path
+// keeps the lazy singleton; telemetry and preferences own no state worth
 // injecting, so they are constructed inline.
-export function createBackend(
-  documents: DocumentStore,
-  localTrash: TrashAdapter,
-): BackendBundle {
+export function createBackend(documents: WorkspaceDocuments): BackendBundle {
   return {
     documents,
-    localTrash,
     telemetry: new DownloadBugReportSink(),
     preferences: new LocalPreferences(),
   }
 }
 
-// Boot-time singleton. Views import this.
-//
-// The storage ports are the FORWARDING pair from ./library, not a concrete
-// store: which library is live is a user choice now (browser storage, or a
-// folder they opened) and it can change after boot, while this bundle is held
-// by every consumer forever. ./library resolves browser storage as its own
-// starting point, so there is never a moment with no library.
-export const backendBundle: BackendBundle = createBackend(activeDocumentStore, activeTrashAdapter)
+// Boot-time singleton. Views import this. The document face is bound to
+// whichever workspace the WorkspacePage session installed; a call with no open
+// workspace refuses by name rather than listing the whole library.
+export const backendBundle: BackendBundle = createBackend(activeDocumentStore)

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { STORE_WORKSPACE_ENTRIES } from '@/stores/documentStore/idb'
+import { STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META } from '@/stores/documentStore/idb'
 import { IdbCarrier } from '../idbCarrier'
 import { interpretEntry } from '../kinds'
 import { deserializeTree, serializeTree } from '../serializer'
@@ -40,7 +40,7 @@ describe('IdbCarrier', () => {
     expect((await carrier.read('b')).bytes).toEqual(bytesOf([1, 2, 3]))
   })
 
-  it('a content edit writes exactly one entry record and never the manifest', async () => {
+  it('a content edit writes one entry record plus its meta mirror and never the manifest', async () => {
     const carrier = await makeCarrier([documentEntry('a', 'A', { text: 'kind: part\n' })])
     const puts: string[] = []
     const original = IDBObjectStore.prototype.put
@@ -54,7 +54,7 @@ describe('IdbCarrier', () => {
     } finally {
       IDBObjectStore.prototype.put = original
     }
-    expect(puts).toEqual([STORE_WORKSPACE_ENTRIES])
+    expect(puts).toEqual([STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META])
   })
 
   it('checkpoint adopts the working copy and discard restores it', async () => {
@@ -86,6 +86,14 @@ describe('IdbCarrier', () => {
     expect(reopened.manifest.entries.a.docKind).toBe('drawing')
     expect(reopened.contents.get('a')?.text).toBe(text)
     expect(serializeTree(reopened)).toEqual(first)
+  })
+
+  it('save persists a path-only move', async () => {
+    const carrier = await makeCarrier([documentEntry('a', 'A', { text: 'kind: part\n' })])
+    const tree = await carrier.open()
+    tree.manifest.entries.a.path = 'documents/Moved.yaml'
+    await carrier.save(tree)
+    expect((await carrier.open()).manifest.entries.a.path).toBe('documents/Moved.yaml')
   })
 
   it('a trashed entry is absent from list but byte-identical after export and re-import (I4, I9)', async () => {

@@ -191,7 +191,7 @@ function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
 
 type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _restoreSolveResults?: Record<string, SketchData> }) => Promise<void> | void
 
-export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFirstSolve }: { solveOnLoad?: boolean; onFirstSolve?: () => void } = {}) {
+export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFirstSolve, workspace }: { solveOnLoad?: boolean; onFirstSolve?: () => void; workspace?: string } = {}) {
   const reSolveRef = useRef<ReSolveFn | null>(null)
 
   // Retained pruned solve results, keyed by feature id, held across the undo
@@ -221,7 +221,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     doc, setDoc, docRef, docName,
     loading, error, setError,
     saveDoc, renameDoc, cloneDoc,
-  } = useDocumentState(uuid, reSolveRef, { solveOnLoad })
+  } = useDocumentState(uuid, reSolveRef, { solveOnLoad, workspace })
 
   const {
     solveResults, setSolveResults, bodies, pickBodies, pickStateReady,

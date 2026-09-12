@@ -20,16 +20,61 @@
 // `workspace_saved` is the explicit-save checkpoint under the same key. The v1
 // `documents` store stays in place but is never read by the workspace seam, so
 // the pre-upgrade library survives the version bump untouched (A2).
+//
+// v5 adds `workspace_entry_meta`, a payload-free mirror of `workspace_entries`
+// (same key, no text/bytes). The U1 grid lists entry counts, cover entries and
+// revs without deserializing every document's payload just to count it.
 export const DB_NAME = 'oversolved'
-export const DB_VERSION = 4
+export const DB_VERSION = 5
 export const STORE_DOCUMENTS = 'documents'
 export const STORE_HANDLES = 'handles'
 export const STORE_FILES = 'files'
 export const STORE_WORKSPACE_META = 'workspace_meta'
 export const STORE_WORKSPACE_ENTRIES = 'workspace_entries'
+export const STORE_WORKSPACE_ENTRY_META = 'workspace_entry_meta'
 export const STORE_WORKSPACE_SAVED = 'workspace_saved'
 
 let dbPromise: Promise<IDBDatabase> | null = null
+
+// The v4-to-v5 upgrade projects every existing working-copy row into the new
+// payload-free mirror, so an existing database lists with real counts. This is
+// the only place the pre-upgrade rows are visible; every later write keeps the
+// mirror in step.
+function backfillEntryMeta(transaction: IDBTransaction | null): void {
+  if (!transaction) return
+  const meta = transaction.objectStore(STORE_WORKSPACE_ENTRY_META)
+  const cursorReq = transaction.objectStore(STORE_WORKSPACE_ENTRIES).openCursor()
+  cursorReq.onsuccess = () => {
+    const cursor = cursorReq.result
+    if (!cursor) return
+    const record = cursor.value as {
+      workspace: string
+      id: string
+      path: string
+      kind: 'document' | 'file'
+      name: string
+      docKind?: string
+      mime?: string
+      fileKind?: string
+      rev?: number
+      updatedAt?: number
+    }
+    const row: Record<string, unknown> = {
+      workspace: record.workspace,
+      id: record.id,
+      path: record.path,
+      kind: record.kind,
+      name: record.name,
+      rev: record.rev ?? 0,
+      updatedAt: record.updatedAt ?? 0,
+    }
+    if (record.docKind !== undefined) row.docKind = record.docKind
+    if (record.mime !== undefined) row.mime = record.mime
+    if (record.fileKind !== undefined) row.fileKind = record.fileKind
+    meta.put(row)
+    cursor.continue()
+  }
+}
 
 function openDb(): Promise<IDBDatabase> {
   const cached = dbPromise
@@ -59,9 +104,18 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_WORKSPACE_ENTRIES)) {
         db.createObjectStore(STORE_WORKSPACE_ENTRIES, { keyPath: ['workspace', 'id'] })
       }
+      // The payload-free mirror of the working copy, kept in lock-step with it
+      // by every write path so the grid can list without reading payload.
+      if (!db.objectStoreNames.contains(STORE_WORKSPACE_ENTRY_META)) {
+        db.createObjectStore(STORE_WORKSPACE_ENTRY_META, { keyPath: ['workspace', 'id'] })
+      }
       if (!db.objectStoreNames.contains(STORE_WORKSPACE_SAVED)) {
         db.createObjectStore(STORE_WORKSPACE_SAVED, { keyPath: ['workspace', 'id'] })
       }
+      // One-time backfill for a database upgraded from before the payload-free
+      // mirror existed: project every working-copy record so the grid lists a
+      // pre-existing workspace instead of counting it as empty.
+      backfillEntryMeta(req.transaction)
     }
     req.onsuccess = () => {
       const db = req.result

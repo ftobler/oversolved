@@ -13,27 +13,27 @@ function wrap(path: string) {
   )
 }
 
-describe('AppHeader burger on the documents overview', () => {
+describe('AppHeader burger on the workspace overview', () => {
   beforeEach(() => {
     useAboutDialogStore.getState().closeAbout()
   })
   afterEach(() => { act(() => { useAboutDialogStore.getState().closeAbout() }) })
 
   it('opens the about notice instead of navigating nowhere', () => {
-    wrap('/documents')
+    wrap('/workspaces')
     act(() => { fireEvent.click(screen.getByTitle('About Oversolved')) })
     expect(useAboutDialogStore.getState().open).toBe(true)
   })
 
-  it('still navigates to the overview from a document page', () => {
-    wrap('/documents/abc')
-    expect(screen.getByTitle('Documents')).toBeTruthy()
-    act(() => { fireEvent.click(screen.getByTitle('Documents')) })
+  it('still navigates to the overview from a workspace page', () => {
+    wrap('/workspaces/ws/entries/abc')
+    expect(screen.getByTitle('Workspaces')).toBeTruthy()
+    act(() => { fireEvent.click(screen.getByTitle('Workspaces')) })
     expect(useAboutDialogStore.getState().open).toBe(false)
   })
 
   it('carries the copyright note on the logo', () => {
-    wrap('/documents')
+    wrap('/workspaces')
     expect(screen.getByTitle('Copyright 2026 - Oversolved')).toBeTruthy()
   })
 })

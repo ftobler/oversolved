@@ -56,10 +56,34 @@ vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: vi.fn() }))
 
 import AssemblyEditor from '@/pages/AssemblyEditor'
 import { ToastProvider } from '@/contexts/ToastContext'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { findInstance } from '@/utils/assemblyMutations'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)) })
+
+// The editor's tree labels and the picker's source come from the open workspace
+// session, so the suite installs one that reads its `h.list` live.
+function installSessionFromList() {
+  useWorkspaceSessionStore.setState({
+    session: {
+      workspace: 'asm-1',
+      open: vi.fn(),
+      listEntries: async () => h.list.map(d => ({
+        id: d.uuid,
+        path: `documents/${d.name}.yaml`,
+        kind: 'document' as const,
+        name: d.name,
+        docKind: d.kind,
+        rev: d.meta?.rev,
+      })),
+      readEntry: vi.fn(),
+      writeEntry: vi.fn(),
+      resolveFile: vi.fn(),
+      referencesOf: vi.fn(),
+    },
+  })
+}
 
 describe('AssemblyEditor pose ownership', () => {
   beforeEach(() => {
@@ -73,6 +97,7 @@ describe('AssemblyEditor pose ownership', () => {
     useAssemblyStore.getState().selectPart(null)
     useAssemblyStore.getState().setActiveMateField(null)
     useAssemblyStore.getState().selectMate(null)
+    installSessionFromList()
   })
 
   const pickerItem = (name: string) =>

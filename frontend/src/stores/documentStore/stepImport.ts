@@ -1,16 +1,14 @@
-// STEP import into a fresh document. NOT a second store -- this round-trips
-// through whatever `DocumentStore` is wired in, like the bundle helpers. A STEP
-// file's bytes go into the file registry (uuid-keyed, IndexedDB), and the
-// document carries only the registry id. The WASM kernel parses the bytes from
-// the solve file map (occ/stepIo) -- the same path Part.tsx uses to add an
-// `import_step` feature to an open document.
+// STEP document synthesis. A STEP file's bytes are adopted as a workspace file
+// entry and its synthesized part document carries only that file id; the WASM
+// kernel parses the bytes from the solve file map (occ/stepIo). The file-backed
+// library's `importStepFile` is gone with the library seam -- adoption
+// (`workspace/import.ts`) is the one way a bag becomes a document, and it calls
+// `buildStepContent` below.
 
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc } from '@/types/cad'
-import type { DocumentStore } from './types'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { applyAddImportStep, randomId } from '@/utils/yamlMutations'
-import { getFileRegistry } from '@/stores/fileRegistry'
 import { formatBytes } from '@/utils/formatBytes'
 
 // The cap bounds kernel memory: the ArrayBuffer read plus the OCC parse, the
@@ -38,40 +36,4 @@ export function buildStepContent(
   const doc: PartDoc = { features: BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f })) }
   applyAddImportStep(doc, featureId, fileId, label)
   return stringifyYaml(doc)
-}
-
-/**
- * Ingest a STEP file into the active store by creating a new document and
- * saving a reference to the registry record holding its bytes. Returns the new
- * document uuid.
- */
-export async function importStepFile(store: DocumentStore, file: File): Promise<string> {
-  // Size gate before any read: a rejected import must not allocate the
-  // ArrayBuffer the kernel would then parse.
-  const tooBig = stepImportLimitError(file.size)
-  if (tooBig) throw new Error(tooBig)
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  if (bytes.byteLength === 0) throw new Error('STEP file is empty')
-  const name = file.name.replace(/\.(step|stp)$/i, '')
-  if (!name) throw new Error('Invalid filename')
-  const entry = await getFileRegistry().create({
-    name: file.name,
-    kind: 'step',
-    mime: 'application/step',
-    bytes,
-  })
-  const content = buildStepContent(entry.id, randomId(18), file.name)
-  let uuid: string | undefined
-  try {
-    uuid = (await store.create(name)).uuid
-    await store.save(uuid, { content })
-  } catch (err) {
-    // Compensating delete for the non-atomic registry + create + save sequence:
-    // without it a failed create strands an empty orphan document, and any
-    // failure strands the registry record holding the bytes.
-    if (uuid !== undefined) await store.remove(uuid).catch(() => undefined)
-    await getFileRegistry().remove(entry.id).catch(() => undefined)
-    throw err
-  }
-  return uuid
 }
