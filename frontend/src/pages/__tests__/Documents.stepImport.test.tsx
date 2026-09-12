@@ -24,6 +24,18 @@ function wrap() {
   )
 }
 
+// jsdom's File has no arrayBuffer(), which the registry import path now reads.
+function stepFile(name: string, bytes: Uint8Array): File {
+  return {
+    name,
+    size: bytes.byteLength,
+    type: 'application/step',
+    async arrayBuffer() {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    },
+  } as unknown as File
+}
+
 describe('Documents STEP import (static build)', () => {
   it('uploads a .step file into a new document tile', async () => {
     wrap()
@@ -32,8 +44,8 @@ describe('Documents STEP import (static build)', () => {
     const input = document.querySelector<HTMLInputElement>('.doc-controls input.file-upload-input')!
     expect(input.accept).toContain('.step')
 
-    const bytes = 'ISO-10303-21;\nHEADER;\nENDSEC;\nEND-STEP;\n'
-    const file = new File([bytes], 'bracket.step', { type: 'application/step' })
+    const bytes = new TextEncoder().encode('ISO-10303-21;\nHEADER;\nENDSEC;\nEND-STEP;\n')
+    const file = stepFile('bracket.step', bytes)
 
     await act(async () => {
       fireEvent.change(input, { target: { files: [file] } })

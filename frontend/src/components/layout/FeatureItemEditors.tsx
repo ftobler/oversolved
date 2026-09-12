@@ -3,6 +3,8 @@ import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { PlaneEditor } from '@/components/editors/PlaneEditor'
 import { PlaneSelector } from '@/components/sketch/PlaneSelector'
+import { useFileMeta } from '@/stores/fileRegistry'
+import { formatBytes } from '@/utils/formatBytes'
 
 interface FeatureItemEditorsProps {
   feature: PartFeature
@@ -14,6 +16,23 @@ interface FeatureItemEditorsProps {
 }
 
 const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
+
+// The row is its own component because useFileMeta is a hook: FeatureItemEditors
+// returns early for a feature that is not being edited, so the hook cannot live
+// in the branch without breaking the rules of hooks.
+function ImportStepFileRow({ fileId }: { fileId: string | undefined }) {
+  const meta = useFileMeta(fileId)
+  const detail = meta === 'missing' ? 'Missing file'
+    : meta ? `${meta.name} (${formatBytes(meta.size)})` : 'Loading...'
+  return (
+    <div className="plane-editor">
+      <div className="feature-field-row">
+        <span className="feature-field-label">File</span>
+        <span className="feature-field-value">{detail}</span>
+      </div>
+    </div>
+  )
+}
 
 export function FeatureItemEditors({
   feature,
@@ -52,14 +71,7 @@ export function FeatureItemEditors({
   }
 
   if (kind === 'import_step') {
-    return (
-      <div className="plane-editor">
-        <div className="feature-field-row">
-          <span className="feature-field-label">File</span>
-          <span className="feature-field-value">{feature.file_id ?? '\u2014'}</span>
-        </div>
-      </div>
-    )
+    return <ImportStepFileRow fileId={feature.file_id} />
   }
 
   const schema = EDITOR_SCHEMAS[kind]

@@ -379,7 +379,7 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'delete-body remove_delete_body_ref', makeDoc: deleteBodyDoc, mutation: { type: 'remove_delete_body_ref', featureId: 'db1', index: 0 } as Mutation },
 
   // import
-  { name: 'import add_import_step', makeDoc: emptyDoc, mutation: { type: 'add_import_step', featureId: 'imp1', label: 'part' } as Mutation },
+  { name: 'import add_import_step', makeDoc: emptyDoc, mutation: { type: 'add_import_step', featureId: 'imp1', fileId: 'file-1', label: 'part' } as Mutation },
 
   // dangling content cleanup: removes the projected entity and its constraint
   { name: 'cleanup remove_dangling_content', makeDoc: danglingDoc, mutation: { type: 'remove_dangling_content', features: { sk1: { entities: ['proj1'], constraints: ['c_super'] } } } as Mutation },

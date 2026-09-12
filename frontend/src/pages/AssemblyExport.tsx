@@ -4,8 +4,11 @@ import type { ExportFormat } from '@/components/dialogs/ExportDialog'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useNotify } from '@/contexts/ToastContext'
 import { exportAssemblyViaWorker } from '@/kernel/worker/solverClient'
+import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
+import { getFileRegistry } from '@/stores/fileRegistry'
+import { resolveFiles } from '@/stores/fileRegistry/resolve'
 import { downloadBlob } from '@/utils/core/downloadBlob'
-import { assemblyStlBytes, buildExportParts, exportableInstances, loadPartContents } from '@/utils/assemblyExport'
+import { assemblyStlBytes, buildExportParts, collectExportFileIds, exportableInstances, loadPartContents } from '@/utils/assemblyExport'
 import type { AssemblyDoc } from '@/types/cad'
 
 export interface AssemblyExportHandle {
@@ -45,12 +48,15 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
       }
       try {
         const poses = useAssemblyStore.getState().settledPoses()
-        const bytes = format === 'stl'
-          ? assemblyStlBytes(useAssemblyStore.getState().bodies, instances)
-          : await exportAssemblyViaWorker(
-            buildExportParts(instances, poses, await loadPartContents(instances)),
-            { format, tessellation },
-          )
+        let bytes: Uint8Array | null
+        if (format === 'stl') {
+          bytes = assemblyStlBytes(useAssemblyStore.getState().bodies, instances)
+        } else {
+          const parts = buildExportParts(instances, poses, await loadPartContents(instances))
+          const fileIds = fileIdsMissingFromWorker(collectExportFileIds(parts))
+          const files = fileIds.length ? await resolveFiles(getFileRegistry(), fileIds) : undefined
+          bytes = await exportAssemblyViaWorker(parts, { format, tessellation }, files)
+        }
         if (!bytes) {
           notify('Export failed: no solid geometry to export', 'error')
           return

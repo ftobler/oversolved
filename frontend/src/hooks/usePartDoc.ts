@@ -432,8 +432,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
 
     // The handler runs on the clone first so the no-op guard below can compare
     // the result against the pre-mutation doc before anything is committed. The
-    // clone shares the immutable import payloads so per-keystroke edits do not
-    // pay O(payload) on a large STEP-imported document.
+    // clone is a plain deep copy; the document holds references, not bytes.
     const next: PartDoc = cloneDocForUndo(current)
     type AnyHandler = (doc: PartDoc, m: Mutation) => void
     const handler = (mutationHandlers as Record<string, AnyHandler | undefined>)[m.type]
@@ -466,8 +465,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     // the solve together. The rollback write above is part of the compare, so
     // a mirror-visible rollback change still counts as a real edit. The slice
     // limits the stringify to the touched feature/part_style entry instead of
-    // the whole doc (per-keystroke field edits must not cost O(doc) on a large
-    // STEP-imported document).
+    // the whole doc, a plain O(touched) optimization for large feature lists.
     if (IDEMPOTENT_MUTATION_TYPES.has(m.type)) {
       const slice = noOpSliceFor(m, current)
       // GUARD_BYPASS means the slice cannot represent the change (a body-style

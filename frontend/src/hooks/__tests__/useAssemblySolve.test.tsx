@@ -33,6 +33,9 @@ import {
 import { assemblyBodyId } from '@/utils/assemblyBodies'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { DRAG_MATE_ID, DRAG_WEIGHT } from '@/kernel/assemblyDrag'
+import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
+import { resetDbConnection } from '@/stores/documentStore/idb'
+import { getFileRegistry } from '@/stores/fileRegistry'
 
 function meshPayload() {
   return {
@@ -503,7 +506,33 @@ describe('useAssemblySolve', () => {
     await handlers.buildBundle('doc-a', 4, { kind: 'part' })
     // The relay stamps the doc id onto the raw PartDoc YAML so the OCC worker's
     // doc-keyed cache-reset guard fires between bundle builds of different docs.
-    expect(h.buildBundleViaWorker).toHaveBeenCalledWith({ kind: 'part', id: 'doc-a' }, 'doc-a', 4)
+    // No import files, so the byte side channel is undefined.
+    expect(h.buildBundleViaWorker).toHaveBeenCalledWith({ kind: 'part', id: 'doc-a' }, 'doc-a', 4, undefined)
+  })
+
+  it('C1: resolves import bytes on the main thread before the OCC bundle build', async () => {
+    // The anchor worker's spec is reference-only. The registered handler resolves
+    // the file id here and forwards bytes to buildBundleViaWorker (the OCC
+    // worker), so no byte payload is ever handed to the anchor solver.
+    resetFakeIndexedDb()
+    resetDbConnection()
+    const entry = await getFileRegistry().create({
+      name: 'bracket.step', kind: 'step', mime: 'application/step', bytes: new Uint8Array([4, 5, 6]),
+    })
+    renderHook(() => useAssemblySolve('asm-1', null))
+
+    const handlers = h.setRelayHandlers.mock.calls[0][0]
+    const spec = { kind: 'part', features: [{ id: 'imp1', kind: 'import_step', file_id: entry.id }] }
+    await handlers.buildBundle('doc-a', 4, spec)
+
+    expect(h.buildBundleViaWorker).toHaveBeenCalledTimes(1)
+    const call = h.buildBundleViaWorker.mock.calls[0]
+    expect(call[0]).toEqual({ ...spec, id: 'doc-a' })
+    expect(call[1]).toBe('doc-a')
+    expect(call[2]).toBe(4)
+    expect(Array.from(call[3][entry.id])).toEqual([4, 5, 6])
+    // The spec that reached the anchor worker carried no bytes.
+    expect(spec.features[0]).not.toHaveProperty('file_data')
   })
 
   it('relay partDocContent migrates a legacy singular transform body to the plural list', async () => {

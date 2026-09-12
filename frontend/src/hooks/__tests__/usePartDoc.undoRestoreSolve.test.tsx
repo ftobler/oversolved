@@ -18,6 +18,9 @@ import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
+import { resetDbConnection } from '@/stores/documentStore/idb'
+import { getFileRegistry } from '@/stores/fileRegistry'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 const { mockSolveViaWorker } = vi.hoisted(() => ({ mockSolveViaWorker: vi.fn() }))
@@ -63,7 +66,7 @@ function okImpl(payload: Record<string, unknown>) {
 const importDoc = (): PartDoc => ({
   oversolved: 1,
   kind: 'part',
-  features: [{ id: 'imp1', kind: 'import_step', label: 'part', file_data: 'STEP' }],
+  features: [{ id: 'imp1', kind: 'import_step', label: 'part', file_id: 'file-1' }],
 } as unknown as PartDoc)
 
 const extrudeDoc = (...ids: string[]): PartDoc => ({
@@ -82,9 +85,15 @@ const renameTo = (featureId: string, label: string): Mutation =>
   ({ type: 'rename_feature', featureId, label }) as Mutation
 
 describe('undo restore of pruned solve results', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     saveDocMock.mockReset()
+    // useSolver resolves import file ids through the registry before solving;
+    // fake-indexeddb is what lets that resolve (to nothing) in jsdom. Warm the
+    // connection so the first solve is not racing the schema upgrade.
+    resetFakeIndexedDb()
+    resetDbConnection()
+    await getFileRegistry().list()
     useUnsavedChangesStore.getState().setDirty(false)
     const store = usePartEditorStore.getState()
     store.setEditingFeatureId(DEFAULT_PART_EDITOR_DATA.editingFeatureId)
@@ -93,8 +102,10 @@ describe('undo restore of pruned solve results', () => {
   })
 
   // The reSolve fire-and-forgets; drain the microtask queue so the solve (mock
-  // worker) lands before the next assertion.
-  const flush = async () => { await act(async () => {}) }
+  // worker) lands before the next assertion. A macrotask tick is included
+  // because useSolver resolves import file ids through IndexedDB first, whose
+  // fake requests land as tasks.
+  const flush = async () => { await act(async () => { await new Promise(r => setTimeout(r, 0)) }) }
 
   it('a failing undo re-solve re-renders the deleted BREP feature from the retained snapshot', async () => {
     docRef.current = importDoc()

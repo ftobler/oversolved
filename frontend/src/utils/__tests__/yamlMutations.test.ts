@@ -912,31 +912,24 @@ describe('applyAddEntityWithConstraint', () => {
 })
 
 describe('applyAddImportStep', () => {
-  it('adds an import_step feature with file_id', () => {
+  it('adds an import_step feature carrying the registry file id', () => {
     const doc: PartDoc = { features: [] }
-    applyAddImportStep(doc, 'f1', 'abc123.step')
+    applyAddImportStep(doc, 'f1', 'file-uuid-1')
     expect(doc.features).toHaveLength(1)
-    expect(doc.features![0]).toMatchObject({ id: 'f1', kind: 'import_step', file_id: 'abc123.step' })
+    expect(doc.features![0]).toMatchObject({ id: 'f1', kind: 'import_step', file_id: 'file-uuid-1' })
+    // The inline payload is gone; the document holds a reference only.
+    expect('file_data' in doc.features![0]).toBe(false)
   })
 
   it('sets label when provided', () => {
     const doc: PartDoc = { features: [] }
-    applyAddImportStep(doc, 'f1', 'abc123.step', 'My Part')
+    applyAddImportStep(doc, 'f1', 'file-uuid-1', 'My Part')
     expect(doc.features![0].label).toBe('My Part')
-  })
-
-  it('stores inline file_data (browser-read, no upload handle)', () => {
-    const doc: PartDoc = { features: [] }
-    applyAddImportStep(doc, 'f1', undefined, 'My Part', 'SVNPLTEwMzAz')
-    expect(doc.features![0]).toMatchObject({
-      id: 'f1', kind: 'import_step', file_data: 'SVNPLTEwMzAz', label: 'My Part',
-    })
-    expect(doc.features![0].file_id).toBeUndefined()
   })
 
   it('initialises features array when absent', () => {
     const doc: PartDoc = {}
-    applyAddImportStep(doc, 'f1', 'abc123.step')
+    applyAddImportStep(doc, 'f1', 'file-uuid-1')
     expect(doc.features).toHaveLength(1)
   })
 })

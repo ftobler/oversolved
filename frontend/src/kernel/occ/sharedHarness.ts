@@ -35,7 +35,12 @@ export class SharedHarness {
 
   run(
     spec: Record<string, unknown>,
-    opts?: { prevState?: BuildState | null; pickBoundary?: number | null; rollbackPosition?: number | null },
+    opts?: {
+      prevState?: BuildState | null
+      pickBoundary?: number | null
+      rollbackPosition?: number | null
+      files?: ReadonlyMap<string, Uint8Array>
+    },
   ): BuildResponse {
     const scope = new DisposeScope()
     try {
@@ -43,7 +48,7 @@ export class SharedHarness {
         prevState: opts?.prevState ?? null,
         pickBoundary: opts?.pickBoundary ?? null,
         rollbackPosition: opts?.rollbackPosition ?? null,
-      }, this.makeDeps(scope, this.table))
+      }, this.makeDeps(scope, this.table, opts?.files))
     } finally {
       scope.dispose()
     }
@@ -55,9 +60,9 @@ export class SharedHarness {
    * throwaway resources instead of the harness's persistent table -- mirroring
    * the production ``buildDeps`` in solveLocally.
    */
-  private makeDeps(scope: DisposeScope, table: HandleTable): BuildDeps {
+  private makeDeps(scope: DisposeScope, table: HandleTable, files?: ReadonlyMap<string, Uint8Array>): BuildDeps {
     return {
-      trySolveFeature: createFeatureSolver(this.oc, scope, table),
+      trySolveFeature: createFeatureSolver(this.oc, scope, table, files),
       postRegister, initGlobalRepo,
       tessellateBodies: (bodyStore) => {
         // The one-Body-one-solid gate, at the point every real-OCC build test
@@ -127,7 +132,7 @@ export class SharedHarness {
         const isoScope = new DisposeScope()
         const isoTable = new HandleTable({ finalizerGuard: false })
         return {
-          deps: this.makeDeps(isoScope, isoTable),
+          deps: this.makeDeps(isoScope, isoTable, files),
           dispose: () => {
             isoScope.dispose()
             isoTable.disposeAll()

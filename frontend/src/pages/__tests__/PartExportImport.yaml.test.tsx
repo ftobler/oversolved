@@ -12,6 +12,9 @@ import PartExportImport from '@/pages/PartExportImport'
 import type { PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import { ToastProvider } from '@/contexts/ToastContext'
+import { getFileRegistry } from '@/stores/fileRegistry'
+import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
+import { resetDbConnection } from '@/stores/documentStore/idb'
 import type { PartDoc } from '@/types/cad'
 
 const DOC: PartDoc = {
@@ -89,5 +92,26 @@ describe('PartExportImport YAML export', () => {
 
     expect(exportViaWorker).toHaveBeenCalledTimes(1)
     expect((downloadBlob.mock.calls[0][1] as string).endsWith('.step')).toBe(true)
+  })
+
+  it('resolves an import reference into the files side channel for STEP export', async () => {
+    resetFakeIndexedDb()
+    resetDbConnection()
+    const entry = await getFileRegistry().create({
+      name: 'a.step', kind: 'step', mime: 'application/step', bytes: new Uint8Array([7, 8]),
+    })
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      doc: { features: [...(DOC.features ?? []), { id: 'imp1', kind: 'import_step', file_id: entry.id }] },
+    })
+    exportViaWorker.mockResolvedValue(new Uint8Array([9]))
+    openExportDialog()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+    })
+
+    const call = exportViaWorker.mock.calls[0] as [unknown, unknown, Record<string, Uint8Array>]
+    expect(Array.from(call[2][entry.id])).toEqual([7, 8])
   })
 })

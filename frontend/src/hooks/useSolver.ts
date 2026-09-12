@@ -11,7 +11,10 @@ import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
 import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
 import { solveViaWorker, cancelSolver } from '@/kernel/worker/solverClient'
+import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { SUPERSEDED_ERROR } from '@/kernel/worker/solverProtocol'
+import { getFileRegistry } from '@/stores/fileRegistry'
+import { fileIdsInSpec, resolveFiles } from '@/stores/fileRegistry/resolve'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
 // Solve failures that are not document errors and must not reach the error
@@ -373,12 +376,19 @@ export function useSolver(
       // HandleTable + last BuildState, keyed by doc id) so incremental rebuild
       // reuses the clean prefix; the work runs off the main thread so a long
       // solve never freezes the UI.
+      // Import bytes are resolved here, on the main thread, and ride the request
+      // as a side channel; the Kernel stays blind to storage. Ids the live
+      // worker already holds are skipped, so a drag burst reads each file from
+      // the registry once per generation rather than per tick.
+      const fileIds = fileIdsMissingFromWorker(fileIdsInSpec(solvePayload))
+      const files = fileIds.length ? await resolveFiles(getFileRegistry(), fileIds) : undefined
+      if (isStale() || cancelledRef.current) return
       const local = await solveViaWorker(solvePayload, {
         pickBoundary: pickBoundary ?? null,
         rollbackPosition: adjustedRollback,
         validate: opts?.validate,
         bypassCache: opts?.bypassCache,
-      })
+      }, files)
       // A stale solve must exit before any setState: a newer reSolve owns the
       // banner and the spinner, so a stale null must not paint "Local solver
       // unavailable" nor clear solving under the newer solve. An unmounted hook

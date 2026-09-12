@@ -138,10 +138,17 @@ describe('unportedKinds', () => {
 // ─── getSolver ───
 
 describe('getSolver', () => {
-  it('returns a function for every ported kind', () => {
+  it('returns a function for every ported kind except import_step', () => {
     for (const kind of PORTED_FEATURE_KINDS) {
+      // import_step is dispatched directly by createFeatureSolver so it can
+      // receive the solve file map; it has no KIND_SOLVER entry.
+      if (kind === 'import_step') continue
       expect(typeof getSolver(kind), `missing solver for: ${kind}`).toBe('function')
     }
+  })
+
+  it('has no KIND_SOLVER entry for import_step', () => {
+    expect(getSolver('import_step')).toBeNull()
   })
 
   it('returns a function for the plane kind (now ported)', () => {

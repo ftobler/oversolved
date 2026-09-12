@@ -15,6 +15,15 @@ import type { PartBundle } from '../partBundle'
 import type { Transform3D, MateAnchorDescriptor } from '../../types/cad'
 import type { MateSpec, AssemblySolveStatus, MeshPayload, AnchorPose } from '../solveAssembly'
 
+/**
+ * Import file bytes by registry id. The main thread resolves ids to bytes; the
+ * Worker copies them (they are not transferred) into a per-generation cache and
+ * hands them to the kernel. Never carried through the anchor solver worker:
+ * that worker holds references only, and the main thread resolves at the point
+ * it relays a bundle build to the OCC worker.
+ */
+export type FileBytes = Record<string, Uint8Array>
+
 /** Solve options that survive a structured clone (the OCC-free subset). */
 export interface SolveRequestOptions {
   pickBoundary?: number | null
@@ -28,6 +37,7 @@ export interface SolveRequest {
   kind?: 'solve'
   spec: Record<string, unknown>
   options: SolveRequestOptions
+  files?: FileBytes
 }
 
 /**
@@ -44,6 +54,7 @@ export interface BundleRequest {
   spec: Record<string, unknown>
   doc_id: string
   doc_rev: number
+  files?: FileBytes
 }
 
 /** Export options that survive a structured clone. */
@@ -59,6 +70,7 @@ export interface ExportRequest {
   kind: 'export'
   spec: Record<string, unknown>
   options: ExportRequestOptions
+  files?: FileBytes
 }
 
 /** One part instance of an assembly export: its PartDoc spec + solved placement. */
@@ -78,6 +90,8 @@ export interface ExportAssemblyRequest {
   kind: 'exportAssembly'
   parts: AssemblyExportPartSpec[]
   options: ExportRequestOptions
+  // Shared across every part: one file referenced by N instances crosses once.
+  files?: FileBytes
 }
 
 /** Either request the Worker can receive; discriminated by `kind`. */

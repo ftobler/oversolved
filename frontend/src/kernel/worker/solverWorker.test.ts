@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor } from './solverWorker'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest } from './solverWorker'
 import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
 import { SUPERSEDED_ERROR } from './solverProtocol'
 import type { BuildResponse } from '../builder'
@@ -396,5 +396,76 @@ describe('dispatcher', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+})
+
+describe('per-generation import file cache', () => {
+  const FILES = { f1: new Uint8Array([1, 2, 3]) }
+
+  beforeEach(() => clearFileCacheForTest())
+
+  it('hands the cached map to the solve handler', async () => {
+    absorbFilesForTest(FILES)
+    let seen: ReadonlyMap<string, Uint8Array> | undefined
+    await handleSolveRequest(
+      { id: 1, spec: {}, options: {} },
+      async (_spec, options) => { seen = options?.files; return fakeResponse() },
+      fileCacheForTest(),
+    )
+    expect(seen?.get('f1')).toEqual(FILES.f1)
+  })
+
+  it('hands the cached map to the export handler', async () => {
+    absorbFilesForTest(FILES)
+    let seen: ReadonlyMap<string, Uint8Array> | undefined
+    await handleExportRequest(
+      { id: 2, kind: 'export', spec: {}, options: { format: 'step' } },
+      async (_spec, _options, files) => { seen = files; return null },
+      fileCacheForTest(),
+    )
+    expect(seen?.get('f1')).toEqual(FILES.f1)
+  })
+
+  it('hands the cached map to the assembly export handler', async () => {
+    absorbFilesForTest(FILES)
+    let seen: ReadonlyMap<string, Uint8Array> | undefined
+    await handleExportAssemblyRequest(
+      { id: 3, kind: 'exportAssembly', parts: [], options: { format: 'step' } },
+      async (_parts, _options, files) => { seen = files; return null },
+      fileCacheForTest(),
+    )
+    expect(seen?.get('f1')).toEqual(FILES.f1)
+  })
+
+  it('hands the cached map to the bundle handler', async () => {
+    absorbFilesForTest(FILES)
+    let seen: ReadonlyMap<string, Uint8Array> | undefined
+    await handleBundleRequest(
+      { id: 4, kind: 'buildBundle', spec: {}, doc_id: 'd', doc_rev: 1 },
+      async (_spec, options) => { seen = options?.files; return null },
+      fileCacheForTest(),
+    )
+    expect(seen?.get('f1')).toEqual(FILES.f1)
+  })
+
+  it('a second request with no files still resolves the cached id', () => {
+    absorbFilesForTest(FILES)
+    absorbFilesForTest(undefined)
+    expect(fileCacheForTest().get('f1')).toEqual(FILES.f1)
+  })
+
+  it('absorbs a message files map before dispatching it', () => {
+    const actor = new WorkerActor()
+    // Stub the queue so the real solve engine never runs (no OCC here); the
+    // first thing handleWorkerMessage does is the absorb under test.
+    const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
+    handleWorkerMessage(
+      { id: 5, kind: 'solve', spec: { id: 'doc1' }, options: {}, files: FILES },
+      () => {},
+      actor,
+    )
+    expect(fileCacheForTest().get('f1')).toEqual(FILES.f1)
+    expect(submitSpy).toHaveBeenCalledTimes(1)
+    submitSpy.mockRestore()
   })
 })

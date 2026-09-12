@@ -23,6 +23,7 @@ import { encodeBinaryStl } from '@/kernel/stl'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { backendBundle } from '@/adapters/backend'
 import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
+import { fileIdsInParts } from '@/stores/fileRegistry/resolve'
 
 /** Visible part instances, in document order. */
 export function exportableInstances(doc: AssemblyDoc): PartInstance[] {
@@ -79,6 +80,12 @@ export function buildExportParts(
     })
   }
   return out
+}
+
+// Every import file the export parts reference, deduped. One shared map means a
+// part file referenced by N instances crosses the worker boundary once.
+export function collectExportFileIds(parts: AssemblyExportPartSpec[]): string[] {
+  return fileIdsInParts(parts)
 }
 
 /**

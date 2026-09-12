@@ -8,11 +8,16 @@
 // IndexedDB is the only place it CAN be kept across sessions -- which is the
 // role IndexedDB takes on once a document can live in a real file: the handle
 // registry rather than the library itself.
-
+//
+// v3 adds `files`, a flat uuid-keyed registry of imported file bytes (STEP
+// today). It is additive: `documents` and `handles` are untouched and there is
+// no migration, because a pre-v3 document carrying an inline `file_data`
+// payload is disposable (A2 in the workspace-format plan).
 export const DB_NAME = 'oversolved'
-export const DB_VERSION = 2
+export const DB_VERSION = 3
 export const STORE_DOCUMENTS = 'documents'
 export const STORE_HANDLES = 'handles'
+export const STORE_FILES = 'files'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -30,6 +35,10 @@ function openDb(): Promise<IDBDatabase> {
       // object with no field to key on, so the caller supplies the key.
       if (!db.objectStoreNames.contains(STORE_HANDLES)) {
         db.createObjectStore(STORE_HANDLES)
+      }
+      // Keyed by the registry record's own `id`, like `documents` is by uuid.
+      if (!db.objectStoreNames.contains(STORE_FILES)) {
+        db.createObjectStore(STORE_FILES, { keyPath: 'id' })
       }
     }
     req.onsuccess = () => {
@@ -110,6 +119,34 @@ export async function idbPutHandle<T>(key: string, value: T): Promise<void> {
 export async function idbDeleteHandle(key: string): Promise<void> {
   const store = await tx('readwrite', STORE_HANDLES)
   await promisify(store.delete(key))
+}
+
+// The `files` store, keyed by the record's own id. Separate entry points for
+// the same reason as the handle helpers: a keyed-by-uuid document call must
+// never be able to address the file registry by accident.
+export async function idbGetFile<T>(key: string): Promise<T | undefined> {
+  const store = await tx('readonly', STORE_FILES)
+  return promisify(store.get(key) as IDBRequest<T | undefined>)
+}
+
+export async function idbGetAllFiles<T>(): Promise<T[]> {
+  const store = await tx('readonly', STORE_FILES)
+  return promisify(store.getAll() as IDBRequest<T[]>)
+}
+
+export async function idbPutFile<T>(value: T): Promise<void> {
+  const store = await tx('readwrite', STORE_FILES)
+  await promisify(store.put(value as unknown as Record<string, unknown>))
+}
+
+export async function idbDeleteFile(key: string): Promise<void> {
+  const store = await tx('readwrite', STORE_FILES)
+  await promisify(store.delete(key))
+}
+
+export async function idbClearFiles(): Promise<void> {
+  const store = await tx('readwrite', STORE_FILES)
+  await promisify(store.clear())
 }
 
 // Read-modify-write in ONE readwrite transaction: the get and the put share a

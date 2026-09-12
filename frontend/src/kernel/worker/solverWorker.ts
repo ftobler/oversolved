@@ -24,10 +24,40 @@ import type {
   ExportRequest, ExportResponse, WorkerRequest,
   BundleRequest, BundleResponse,
   ExportAssemblyRequest,
+  FileBytes,
 } from './solverProtocol'
 import { SUPERSEDED_ERROR } from './solverProtocol'
 import { toPartBundle } from '../partBundle'
 import type { BodyResult } from '../../types/cad'
+
+// The worker's per-generation import byte cache. The client sends each id's
+// bytes once (fileDelta in solverClient); every request this generation then
+// sees them here. The cache dies with the worker, which is exactly the lifetime
+// the crash contract needs. Never populated from the anchor worker: the anchor
+// relay resolves bytes on the main thread and posts them straight to this
+// worker's BundleRequest.
+const fileCache = new Map<string, Uint8Array>()
+
+function absorbFiles(files: FileBytes | undefined): void {
+  if (!files) return
+  for (const [id, bytes] of Object.entries(files)) fileCache.set(id, bytes)
+}
+
+/** @internal test-only: run one message's files through the cache. */
+export function absorbFilesForTest(files: FileBytes | undefined): void {
+  absorbFiles(files)
+}
+
+/** @internal test-only: the live byte cache, so tests can assert what a
+ *  generation has absorbed. */
+export function fileCacheForTest(): ReadonlyMap<string, Uint8Array> {
+  return fileCache
+}
+
+/** @internal test-only: empty the byte cache so tests start from a fresh generation. */
+export function clearFileCacheForTest(): void {
+  fileCache.clear()
+}
 
 /** The engine signature [[handleSolveRequest]] depends on (production: solveLocally). */
 type SolveEngine = typeof solveLocally
@@ -37,9 +67,11 @@ type ExportEngine = typeof exportLocally
 export async function handleSolveRequest(
   req: SolveRequest,
   solve: SolveEngine,
+  files?: ReadonlyMap<string, Uint8Array>,
 ): Promise<SolveResponse> {
   try {
-    const response = await solve(req.spec, req.options)
+    const options = files ? { ...req.options, files } : req.options
+    const response = await solve(req.spec, options)
     if (!response) {
       // OCC.js unavailable; main thread surfaces "local solver unavailable".
       return { id: req.id, ok: true, payload: null }
@@ -66,9 +98,10 @@ export async function handleSolveRequest(
 export async function handleExportRequest(
   req: ExportRequest,
   exportFn: ExportEngine,
+  files?: ReadonlyMap<string, Uint8Array>,
 ): Promise<ExportResponse> {
   try {
-    const bytes = await exportFn(req.spec, req.options)
+    const bytes = await exportFn(req.spec, req.options, files)
     return { id: req.id, ok: true, bytes }
   } catch (e) {
     return { id: req.id, ok: false, error: extractErrorMessage(e) }
@@ -91,9 +124,10 @@ type ExportAssemblyEngine = typeof exportAssemblyLocally
 export async function handleExportAssemblyRequest(
   req: ExportAssemblyRequest,
   exportFn: ExportAssemblyEngine,
+  files?: ReadonlyMap<string, Uint8Array>,
 ): Promise<ExportResponse> {
   try {
-    const bytes = await exportFn(req.parts, req.options)
+    const bytes = await exportFn(req.parts, req.options, files)
     return { id: req.id, ok: true, bytes }
   } catch (e) {
     return { id: req.id, ok: false, error: extractErrorMessage(e) }
@@ -107,9 +141,10 @@ export async function handleExportAssemblyRequest(
 export async function handleBundleRequest(
   req: BundleRequest,
   solve: SolveEngine,
+  files?: ReadonlyMap<string, Uint8Array>,
 ): Promise<BundleResponse> {
   try {
-    const response = await solve(req.spec, {})
+    const response = await solve(req.spec, files ? { files } : {})
     if (!response) {
       return { id: req.id, ok: false, error: 'OCC.js unavailable' }
     }
@@ -361,26 +396,29 @@ export function handleWorkerMessage(
   post: (message: SolveResponse | ExportResponse | BundleResponse, transfer: Transferable[]) => void,
   actor: WorkerActor,
 ): void {
+  // Every request shape may carry file bytes; absorb them first so all four
+  // handlers below see the union of every file this generation has seen.
+  absorbFiles(msg.files)
   if (msg.kind === 'export') {
     actor.submit(oneShot(
-      () => handleExportRequest(msg, exportLocally),
+      () => handleExportRequest(msg, exportLocally, fileCache),
       (res) => { post(res, exportTransferables(res)) },
     ))
   } else if (msg.kind === 'exportAssembly') {
     actor.submit(oneShot(
-      () => handleExportAssemblyRequest(msg, exportAssemblyLocally),
+      () => handleExportAssemblyRequest(msg, exportAssemblyLocally, fileCache),
       (res) => { post(res, exportTransferables(res)) },
     ))
   } else if (msg.kind === 'buildBundle') {
     actor.submit(oneShot(
-      () => handleBundleRequest(msg, solveLocally),
+      () => handleBundleRequest(msg, solveLocally, fileCache),
       (res) => { post(res, bundleTransferables(res)) },
     ))
   } else if (msg.kind === 'solve') {
     actor.submit({
       supersedable: true,
       run: async () => {
-        const res = await handleSolveRequest(msg, solveLocally)
+        const res = await handleSolveRequest(msg, solveLocally, fileCache)
         post(res, collectTransferables(res))
       },
       onSuperseded: () => {

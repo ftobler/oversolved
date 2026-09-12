@@ -24,19 +24,20 @@ const oc = await loadOcc()
 const solveBytes = loadSolver()
 
 const STEP_PATH = new URL('../occ/__fixtures__/double_with_hole.step', import.meta.url)
-const b64 = Buffer.from(readFileSync(STEP_PATH)).toString('base64')
+const stepBytes = new Uint8Array(readFileSync(STEP_PATH))
 
 // The AST from the bug report: import_step then an extrude whose profile is the
 // z+ (top) flat face of the imported body, added back onto that body.
 const IMP = 'G8BSdTsDWV8CpMW-lwVUFqNi'
+const files = new Map<string, Uint8Array>([[IMP, stepBytes]])
 
 describe.skipIf(!oc || !solveBytes)('imported STEP extrude-a-face rebuild', () => {
   const h = new SharedHarness(oc!)
   beforeAll(() => { if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) } })
 
   it('completes without hanging and adds to the imported body', () => {
-    const stepFeat = { id: IMP, kind: 'import_step', file_data: b64, label: 'double_with_hole.step' }
-    const r1 = h.run({ features: [stepFeat] })
+    const stepFeat = { id: IMP, kind: 'import_step', file_id: IMP, label: 'double_with_hole.step' }
+    const r1 = h.run({ features: [stepFeat] }, { files })
     expect(h.res(r1, IMP).status).toBe('ok')
 
     const faceQueries = (h.body(r1, `body_${IMP}`).mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
@@ -53,7 +54,7 @@ describe.skipIf(!oc || !solveBytes)('imported STEP extrude-a-face rebuild', () =
     // construction UUID, so this rides the ancestral tier: the face's ancestral
     // entry (`@<import>@body@cls_zp:flatface`) is persisted in the checkpoint's
     // repo snapshot, so it resolves without any geometry token.
-    const r2 = h.run({ features: [stepFeat, extrudeFeat] }, { prevState: r1._build_state })
+    const r2 = h.run({ features: [stepFeat, extrudeFeat] }, { prevState: r1._build_state, files })
     const res = h.res(r2, 'vDZ56mKQ6XEfDjgym9aqUg3c')
     expect(res.status).toBe('ok')
     expect(res.operation).toBe('add')

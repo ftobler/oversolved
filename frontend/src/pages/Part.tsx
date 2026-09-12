@@ -39,6 +39,7 @@ import { buildContextMenu } from './buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from './buildContextMenu'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import { suggestedCloneName, stepImportLimitError } from '@/stores/documentStore'
+import { getFileRegistry } from '@/stores/fileRegistry'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
@@ -597,36 +598,33 @@ export default function Part() {
       const file = input.files?.[0]
       if (!file) return
       // Same up-front cap as the library-level STEP import: reject before the
-      // read pays the base64 encode and its memory fan-out.
+      // read allocates the ArrayBuffer the kernel then parses.
       const tooBig = stepImportLimitError(file.size)
       if (tooBig) {
         setError(tooBig)
         return
       }
-      // Read the STEP bytes in-browser and inline them as base64 file_data; the
-      // WASM kernel (occ/stepIo) parses them directly, so import needs no server
-      // round-trip and works identically offline.
-      let fileData: string
+      let bytes: Uint8Array
       try {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(reader.result as string)
-          reader.onerror = () => reject(reader.error ?? new Error('file read failed'))
-          reader.readAsDataURL(file)
-        })
-        fileData = dataUrl.split(',')[1] ?? ''
+        bytes = new Uint8Array(await file.arrayBuffer())
       } catch {
         setError('Failed to read STEP file')
         return
       }
-      if (!fileData) {
+      if (bytes.byteLength === 0) {
         setError('STEP file is empty')
         return
       }
       const featureId = randomId(18)
       const label = file.name.replace(/\.(step|stp)$/i, '')
+      const entry = await getFileRegistry().create({
+        name: file.name,
+        kind: 'step',
+        mime: 'application/step',
+        bytes,
+      })
       setRollbackForNewFeature(features)
-      handleMutation({ type: 'add_import_step', featureId, fileData, label })
+      handleMutation({ type: 'add_import_step', featureId, fileId: entry.id, label })
     }
     input.click()
   }, [handleMutation, features, setError])

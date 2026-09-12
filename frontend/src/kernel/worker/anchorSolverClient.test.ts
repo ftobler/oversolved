@@ -727,6 +727,40 @@ describe('relay plumbing', () => {
     expect(transfer).toContain(mesh.faceIdsPerTriangle.buffer)
   })
 
+  it('C1: a reference-only bundle spec never carries import bytes to the anchor worker', async () => {
+    // The anchor worker holds references, not bytes. The spec it relays names a
+    // file id, and every message the client posts to it must stay byte-free; the
+    // OCC bundle worker receives the resolved bytes on the main thread instead.
+    const bundle = makeBundle()
+    setRelayHandlers({
+      partDocContent: vi.fn(),
+      buildBundle: vi.fn().mockResolvedValue(bundle),
+    })
+    const spec = { kind: 'part', features: [{ id: 'imp1', kind: 'import_step', file_id: 'file-1' }] }
+
+    await sendRelay({
+      kind: 'asr_relay',
+      requestId: 778,
+      subKind: 'buildBundle',
+      doc_id: 'doc',
+      doc_rev: 1,
+      spec,
+    })
+    await waitForPosted(fakeWorker, 'asr_relayRes')
+
+    const hasBytes = (value: unknown): boolean => {
+      if (value instanceof Uint8Array) return true
+      if (Array.isArray(value)) return value.some(hasBytes)
+      if (value && typeof value === 'object') return Object.values(value as Record<string, unknown>).some(hasBytes)
+      return false
+    }
+    // The spec the worker sent stays reference-only, and nothing the client
+    // posted back to it (or received as a transferred clone) carries bytes.
+    expect(hasBytes(spec)).toBe(false)
+    for (const msg of fakeWorker.posted) expect(hasBytes(msg)).toBe(false)
+    for (const msg of fakeWorker.received) expect(hasBytes(msg)).toBe(false)
+  })
+
   it('a partDocContent relay reply posts with no transfer list', async () => {
     setRelayHandlers({
       partDocContent: vi.fn().mockResolvedValue({ kind: 'part', features: [] }),

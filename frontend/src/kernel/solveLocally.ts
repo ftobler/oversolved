@@ -236,9 +236,9 @@ export function extractBrepMetadata(
  * Shared by ``solveLocally`` (persistent cross-solve table) and ``exportLocally``
  * (ephemeral table) so both build a document through the identical pipeline.
  */
-function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable): BuildDeps {
+function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable, files?: ReadonlyMap<string, Uint8Array>): BuildDeps {
   return {
-    trySolveFeature: createFeatureSolver(oc, scope, table),
+    trySolveFeature: createFeatureSolver(oc, scope, table, files),
     // Registers solved sketch plane/topology (_pt_/_topo_) so downstream
     // features resolve the profile; the builder handles brep ancestry
     // separately after tessellation.
@@ -279,7 +279,7 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable): Buil
       const isoScope = new DisposeScope()
       const isoTable = new HandleTable({ finalizerGuard: false })
       return {
-        deps: buildDeps(oc, isoScope, isoTable),
+        deps: buildDeps(oc, isoScope, isoTable, files),
         dispose: () => {
           isoScope.dispose()
           isoTable.disposeAll()
@@ -295,6 +295,9 @@ interface SolveLocalOptions {
   rollbackPosition?: number | null
   validate?: boolean
   bypassCache?: boolean
+  // Import file bytes by registry id, resolved on the main thread. Kept off the
+  // wire options so runtime buffers never ride in a structured-cloneable option.
+  files?: ReadonlyMap<string, Uint8Array>
 }
 
 /**
@@ -364,7 +367,7 @@ async function solveLocallyGuarded(
     : (options.prevState !== undefined ? options.prevState : lastBuildState)
 
   try {
-    const deps = buildDeps(oc, scope, table)
+    const deps = buildDeps(oc, scope, table, options.files)
 
     // bypassCache discards the whole previous build, so the builder sees no
     // prevState and its eviction loop never runs: every checkpoint retain,
@@ -466,6 +469,7 @@ function compoundOf(oc: OccModule, scope: DisposeScope, shapes: OccShape[]): Occ
 export async function exportLocally(
   spec: Record<string, unknown>,
   opts: LocalExportOptions,
+  files?: ReadonlyMap<string, Uint8Array>,
 ): Promise<Uint8Array | null> {
   const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
   if (!oc) return null
@@ -473,7 +477,7 @@ export async function exportLocally(
   const scope = new DisposeScope()
   const table = new HandleTable({ finalizerGuard: false })
   try {
-    const response = build(spec, { prevState: null }, buildDeps(oc, scope, table))
+    const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, files))
     const shape = resolveExportShape(oc, scope, table, response._build_state, opts.bodyId ?? null)
     if (!shape) return null
     return serialiseShape(oc, scope, shape, opts)
@@ -522,6 +526,7 @@ function serialiseShape(
 export async function exportAssemblyLocally(
   parts: AssemblyExportPart[],
   opts: LocalExportOptions,
+  files?: ReadonlyMap<string, Uint8Array>,
 ): Promise<Uint8Array | null> {
   const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
   if (!oc) return null
@@ -531,7 +536,7 @@ export async function exportAssemblyLocally(
   try {
     const placed: OccShape[] = []
     for (const part of parts) {
-      const response = build(part.spec, { prevState: null }, buildDeps(oc, scope, table))
+      const response = build(part.spec, { prevState: null }, buildDeps(oc, scope, table, files))
       // A part with no solid (an empty doc, a sketch-only doc) contributes
       // nothing rather than failing the whole export.
       const shape = resolveExportShape(oc, scope, table, response._build_state, null)

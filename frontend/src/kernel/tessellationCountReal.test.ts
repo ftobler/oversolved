@@ -30,9 +30,12 @@ import type { OccShape } from './occ/occTypes'
 import { setSketchSolver, resetSketchSolver } from './features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import importFixture from './occ/__fixtures__/importStep.json'
+import { base64ToBytes } from './occ/stepIo'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
+const importFx = importFixture as unknown as { file_data: string }
+const importFiles = new Map<string, Uint8Array>([['imp1', base64ToBytes(importFx.file_data)]])
 
 function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_plane_front') {
   return {
@@ -83,7 +86,7 @@ class CountingHarness {
     const scope = new DisposeScope()
     try {
       const deps: BuildDeps = {
-        trySolveFeature: createFeatureSolver(oc!, scope, this.table),
+        trySolveFeature: createFeatureSolver(oc!, scope, this.table, importFiles),
         postRegister, initGlobalRepo,
         tessellateBodies: (bodyStore) => {
           const out: Record<string, Record<string, unknown>> = {}
@@ -221,14 +224,13 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
   // rather than re-triangulated. The shape HANDLE cannot key this: the
   // clean-prefix restore deep-copies each shape and mints a fresh handle every
   // solve, so identity has to come from the clean-prefix determination itself.
-  const importFx = importFixture as unknown as { file_data: string }
-
   // Import a STEP box (body_imp1) plus an independent native box (body_ex1) via
   // `operation: 'new'`, so the two bodies never fuse and the import stays clean
-  // when only the native box is edited.
+  // when only the native box is edited. The harness seeds imp1's bytes for every
+  // run, so the reference resolves on the first solve and the checkpoint cache.
   function importPlusNativeDoc(distance: number) {
     return { features: [
-      { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 },
+      { id: 'imp1', kind: 'import_step', file_id: 'imp1', scale: 1 },
       rectSketch('sk1', 20, 20),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance, direction: 'normal', operation: 'new' },
     ] }
@@ -281,7 +283,7 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
   // body version is enough.
   function importPlusTwoNativeDoc() {
     return { features: [
-      { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 },
+      { id: 'imp1', kind: 'import_step', file_id: 'imp1', scale: 1 },
       rectSketch('sk1', 20, 20),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
       rectSketch('sk2', 8, 8, '@builtin_plane_top'),
@@ -376,7 +378,7 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
     // test alone says "reuse" and would serve the post-modification geometry as
     // the "before" state.
     it('re-tessellates an imported body a later clean feature modified', () => {
-      const imp = { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 }
+      const imp = { id: 'imp1', kind: 'import_step', file_id: 'imp1', scale: 1 }
       const seedH = new CountingHarness()
       const seed = seedH.run({ features: [imp] })
       const eq = (seedH.body(seed, 'body_imp1').edge_queries as string[]) ?? []

@@ -33,10 +33,12 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { repoSemanticFingerprint } from './repoFingerprintTestUtil'
 import type { Body } from './types3d'
 import importFixture from './occ/__fixtures__/importStep.json'
+import { base64ToBytes } from './occ/stepIo'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 const importFx = importFixture as unknown as { file_data: string }
+const importFiles = new Map<string, Uint8Array>([['imp1', base64ToBytes(importFx.file_data)]])
 
 function rectSketch(sketchId: string, w: number, h: number) {
   return {
@@ -69,11 +71,11 @@ function rectSketch(sketchId: string, w: number, h: number) {
 class Harness {
   readonly table = new HandleTable({ finalizerGuard: false })
 
-  run(spec: Record<string, unknown>): BuildResponse {
+  run(spec: Record<string, unknown>, files?: ReadonlyMap<string, Uint8Array>): BuildResponse {
     const scope = new DisposeScope()
     try {
       const deps: BuildDeps = {
-        trySolveFeature: createFeatureSolver(oc!, scope, this.table),
+        trySolveFeature: createFeatureSolver(oc!, scope, this.table, files),
         postRegister, initGlobalRepo,
         tessellateBodies: (bodyStore) => tessellateBodies(oc!, this.table, bodyStore),
         extractBrepMetadata: (bodyStore) => extractBrepMetadata(oc!, this.table, bodyStore),
@@ -153,8 +155,8 @@ describe.skipIf(!oc || !solveBytes)('checkpoint registration: metadata vs render
   it('an imported STEP body registers identically off metadata and off the render mesh', () => {
     const h = new Harness()
     const r = h.run({ features: [
-      { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 },
-    ] })
+      { id: 'imp1', kind: 'import_step', file_id: 'imp1', scale: 1 },
+    ] }, importFiles)
     expect((r.result as Record<string, Record<string, unknown>>).imp1.status).toBe('ok')
     const fp = h.fingerprints(h.finalBody(r, 'body_imp1'))
     expect(fp.meta).toContain('face_index')  // not vacuous: real payloads on both sides

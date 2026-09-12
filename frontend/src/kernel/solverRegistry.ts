@@ -119,7 +119,6 @@ const KIND_SOLVER: Record<string, LeafSolver> = {
   transform: _s(solveTransform),
   mirror: _s(solveMirror),
   delete_body: _s(solveDeleteBody),
-  import_step: _s(solveImportStep),
   // Variables carry no OCC geometry. The builder path short-circuits them in
   // ``createFeatureSolver`` (passing the live variable context); this entry is
   // the ``getSolver`` fallback and resolves against an empty context.
@@ -207,6 +206,7 @@ export function createFeatureSolver(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
+  files?: ReadonlyMap<string, Uint8Array>,
   ): FeatureSolver {
   return (
     feature: Record<string, unknown>,
@@ -223,6 +223,16 @@ export function createFeatureSolver(
     // accumulated variable context and short-circuit the OCC path entirely.
     if (kind === 'variable') {
       return solveVariable(feature, variableContext)
+    }
+    // import_step is special-cased next to variable because it needs the solve
+    // file map, which is not on the shared FeatureSolver signature. Resolve its
+    // expression params (scale) first, exactly as the generic dispatch would.
+    if (kind === 'import_step') {
+      const resolvedImport = resolveFeatureExpressions(feature, variableContext)
+      if ('exception' in resolvedImport) {
+        return { status: 'exception', exception: resolvedImport.exception }
+      }
+      return solveImportStep(oc, scope, table, resolvedImport.feature, globalRepo, bodyStore, files)
     }
     const solver = KIND_SOLVER[kind]
     if (!solver) {

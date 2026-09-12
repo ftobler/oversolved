@@ -20,7 +20,7 @@ import { HandleTable } from '../occ/handleTable'
 import { volumeOf } from '../occ/booleans'
 import { makeBoxAt } from '../occ/primitives'
 import { makeTranslationTrsf } from '../occ/transforms'
-import { stepShapeToBytes } from '../occ/stepIo'
+import { stepShapeToBytes, base64ToBytes } from '../occ/stepIo'
 import { SharedHarness } from '../occ/sharedHarness'
 import { repoFromSnapshot } from '../builder'
 import { readFileSync } from 'node:fs'
@@ -34,6 +34,14 @@ const oc = await loadOcc()
 
 type Case = { name: string; scale: number; feature_id: string; result: Record<string, unknown>; volume: number }
 const fx = fixture as unknown as { file_data: string; cases: Case[] }
+// The fixture keeps a raw base64 STEP payload; decode it once into the map the
+// kernel now reads from.
+const fixtureBytes = base64ToBytes(fx.file_data)
+
+/** A solve file map keyed by the one feature id that references it. */
+function filesFor(id: string, bytes: Uint8Array): Map<string, Uint8Array> {
+  return new Map([[id, bytes]])
+}
 
 /** Bytes -> base64, the form `file_data` carries (no Buffer, this also runs in a Worker). */
 function bytesToBase64(bytes: Uint8Array): string {
@@ -105,9 +113,10 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
           occ,
           scope,
           table,
-          { id: c.feature_id, file_data: fx.file_data, scale: c.scale },
+          { id: c.feature_id, file_id: c.feature_id, scale: c.scale },
           new Repository(),
           bodyStore,
+          filesFor(c.feature_id, fixtureBytes),
         )
         // The fixture predates `body_ids`; a one-solid file yields the single body it named.
         expect(result).toEqual({ ...c.result, body_ids: [c.result.body_id] })
@@ -134,9 +143,10 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
         occ,
         scope,
         table,
-        { id: 'imp1', file_data: fileData },
+        { id: 'imp1', file_id: 'imp1' },
         new Repository(),
         bodyStore,
+        filesFor('imp1', base64ToBytes(fileData)),
       )
 
       expect(result.body_ids).toEqual(['body_imp1', 'body_imp1_1'])
@@ -166,9 +176,10 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
         occ,
         scope,
         table,
-        { id: 'imp2', file_data: fileData, scale: 2 },
+        { id: 'imp2', file_id: 'imp2', scale: 2 },
         new Repository(),
         bodyStore,
+        filesFor('imp2', base64ToBytes(fileData)),
       )
 
       const volumes = result.body_ids
@@ -181,13 +192,46 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
     }
   })
 
-  it("rejects missing file_data", () => {
+  it("rejects a pre-cut inline file_data by name", () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })
     try {
       expect(() =>
-        solveImportStep(occ, scope, table, { id: 'x', file_data: '' }, new Repository(), {}),
-      ).toThrow(/requires 'file_data'/)
+        solveImportStep(
+          occ, scope, table,
+          { id: 'x', file_id: 'f-missing', file_data: 'SVNPLTEwMzAz' },
+          new Repository(), {},
+        ),
+      ).toThrow(/inline 'file_data' is no longer supported/)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it("rejects a missing file_id", () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      expect(() =>
+        solveImportStep(occ, scope, table, { id: 'x' }, new Repository(), {}),
+      ).toThrow(/requires 'file_id'/)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it("rejects a file_id absent from the solve file map", () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      expect(() =>
+        solveImportStep(
+          occ, scope, table,
+          { id: 'x', file_id: 'not-in-map' },
+          new Repository(), {},
+          filesFor('other', fixtureBytes),
+        ),
+      ).toThrow(/file 'not-in-map' is not present in the solve file set/)
     } finally {
       scope.dispose()
     }
@@ -202,8 +246,8 @@ describe.skipIf(!oc)('multi-part STEP through a full build', () => {
     const h = new SharedHarness(occ)
     const IMP = 'stepimp1'
     const r = h.run({
-      features: [{ id: IMP, kind: 'import_step', file_data: twoBoxStepB64(occ), label: 'two_boxes.step' }],
-    })
+      features: [{ id: IMP, kind: 'import_step', file_id: IMP, label: 'two_boxes.step' }],
+    }, { files: filesFor(IMP, base64ToBytes(twoBoxStepB64(occ))) })
 
     expect(h.res(r, IMP).status).toBe('ok')
     const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
@@ -243,7 +287,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
   it('gives every face of an imported body its own query string', () => {
     const h = new SharedHarness(oc!)
     const IMP = 'stepimp2'
-    const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_data: holeStepB64() }] })
+    const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_id: IMP }] }, { files: filesFor(IMP, base64ToBytes(holeStepB64())) })
 
     expect(h.res(r, IMP).status).toBe('ok')
     const queries = (h.body(r, `body_${IMP}`).mesh as { face_queries?: string[] }).face_queries ?? []
@@ -258,7 +302,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
   it('resolves each face query to exactly that one face', () => {
     const h = new SharedHarness(oc!)
     const IMP = 'stepimp3'
-    const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_data: holeStepB64() }] })
+    const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_id: IMP }] }, { files: filesFor(IMP, base64ToBytes(holeStepB64())) })
     const bid = `body_${IMP}`
     const mesh = h.body(r, bid).mesh as { face_queries: string[]; face_data: { classifiers?: string[] }[] }
 
@@ -283,7 +327,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
     const h = new SharedHarness(oc!)
     const file = holeStepB64()
     const tokensFor = (id: string, scale?: number): string[] => {
-      const r = h.run({ features: [{ id, kind: 'import_step', file_data: file, ...(scale ? { scale } : {}) }] })
+      const r = h.run({ features: [{ id, kind: 'import_step', file_id: id, ...(scale ? { scale } : {}) }] }, { files: filesFor(id, base64ToBytes(file)) })
       const q = (h.body(r, `body_${id}`).mesh as { face_queries: string[] }).face_queries
       const tokens = q.map(uuidToken)
       // Without this the whole test passes vacuously on all-null token lists.
@@ -310,7 +354,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
 
     const h = new SharedHarness(occ)
     const IMP = 'stepimp5'
-    const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_data: file }] })
+    const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_id: IMP }] }, { files: filesFor(IMP, base64ToBytes(file)) })
     const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
     expect(bodyIds.length).toBe(2)
 
@@ -352,7 +396,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
     const file = twoPlacementStepB64(occ)
     const h = new SharedHarness(occ)
     const tokensByBody = (): Record<string, string[]> => {
-      const r = h.run({ features: [{ id: 'impA', kind: 'import_step', file_data: file }] })
+      const r = h.run({ features: [{ id: 'impA', kind: 'import_step', file_id: 'impA' }] }, { files: filesFor('impA', base64ToBytes(file)) })
       const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
       expect(bodyIds.length).toBe(2)
       const out: Record<string, string[]> = {}
@@ -374,7 +418,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
   it('keeps two parts of a multi-solid STEP in disjoint name sets', () => {
     const h = new SharedHarness(oc!)
     const IMP = 'stepimp4'
-    const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_data: twoBoxStepB64(oc!) }] })
+    const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_id: IMP }] }, { files: filesFor(IMP, base64ToBytes(twoBoxStepB64(oc!))) })
     const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
     expect(bodyIds.length).toBe(2)
 

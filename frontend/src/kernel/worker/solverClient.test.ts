@@ -6,6 +6,7 @@ import {
   EMPTY_BUILD_STATE,
   type SolverWorkerLike,
 } from './solverClient'
+import { fileIdsMissingFromWorker } from './workerFiles'
 import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
 import type { BuildState } from '../types3d'
 
@@ -19,9 +20,13 @@ class FakeWorker implements SolverWorkerLike {
   posted: WorkerRequest[] = []
   terminated = false
   failOnPost = false
+  // Total bytes carried in `files` across every posted request. A counter, not a
+  // tautology: a transfer-once regression makes this exceed the payload size.
+  byteCrossings = 0
 
   postMessage(msg: WorkerRequest): void {
     if (this.failOnPost) throw new Error('DataCloneError: the object could not be cloned')
+    for (const bytes of Object.values(msg.files ?? {})) this.byteCrossings += bytes.byteLength
     this.posted.push(msg)
   }
   terminate(): void {
@@ -457,6 +462,95 @@ describe('solveViaWorker', () => {
       expect(created).toHaveLength(2)
       created[1].reply({ id: created[1].posted[0].id, ok: true, payload: { solve_ms: 0, result: {}, bodies: {} } })
       await expect(p2).resolves.not.toBeNull()
+    })
+  })
+
+  describe('import file transfer-once', () => {
+    const F1 = new Uint8Array([1, 2, 3])
+
+    it('puts files on the wire for all four request shapes', () => {
+      solveViaWorker({ id: 's' }, {}, { f1: F1 })
+      exportViaWorker({ id: 'e' }, { format: 'step' }, { f2: F1 })
+      exportAssemblyViaWorker([{ spec: { id: 'a' }, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }], { format: 'step' }, { f3: F1 })
+      buildBundleViaWorker({ id: 'b' }, 'doc', 1, { f4: F1 })
+      const [solve, exp, asm, bundle] = fake.posted
+      expect(solve.files).toEqual({ f1: F1 })
+      expect(exp.files).toEqual({ f2: F1 })
+      expect(asm.files).toEqual({ f3: F1 })
+      expect(bundle.files).toEqual({ f4: F1 })
+      for (const req of fake.posted) fake.reply({ id: req.id, ok: true, bytes: null, payload: null } as unknown as AnyResponse)
+    })
+
+    it('counts the bytes crossing exactly once across N requests in one generation', async () => {
+      for (let i = 0; i < 5; i++) solveViaWorker({ id: 'd' }, {}, { f1: F1 })
+      expect(fake.byteCrossings).toBe(F1.byteLength)
+      // Only the first request carried the map; the rest sent files: undefined.
+      expect(fake.posted[0].files).toEqual({ f1: F1 })
+      for (const req of fake.posted.slice(1)) expect(req.files).toBeUndefined()
+      for (const req of fake.posted) {
+        fake.reply({ id: req.id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      }
+      await Promise.resolve()
+    })
+
+    it('does not resend an id an export already carried on the same generation', async () => {
+      exportViaWorker({ id: 'e' }, { format: 'step' }, { f1: F1 })
+      solveViaWorker({ id: 's' }, {}, { f1: F1 })
+      expect(fake.posted[0].files).toEqual({ f1: F1 })
+      expect(fake.posted[1].files).toBeUndefined()
+      for (const req of fake.posted) fake.reply({ id: req.id, ok: true, bytes: null, payload: null } as unknown as AnyResponse)
+      await Promise.resolve()
+    })
+
+    it('resends every id after a worker respawn', async () => {
+      setSolverCrashBackoffForTest(0)
+      const p = solveViaWorker({ id: 'd' }, {}, { f1: F1 })
+      expect(fake.posted[0].files).toEqual({ f1: F1 })
+      fake.crash()
+      await expect(p).rejects.toThrow('solver worker crashed')
+      solveViaWorker({ id: 'e' }, {}, { f1: F1 })
+      const resent = fake.posted[fake.posted.length - 1]
+      expect(resent.files).toEqual({ f1: F1 })
+      fake.reply({ id: resent.id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      await Promise.resolve()
+    })
+
+    it('does not mark ids sent when postMessage throws, so a retry still carries them', async () => {
+      // Warm the worker connection and mark the first request's bytes as sent.
+      const p1 = exportViaWorker({ id: 'e' }, { format: 'step' }, { f1: F1 })
+      expect(fake.posted[0].files).toEqual({ f1: F1 })
+      fake.reply({ id: fake.posted[0].id, ok: true, bytes: null })
+      await p1
+      expect(fileIdsMissingFromWorker(['f1'])).toEqual([])
+
+      // A request whose post throws must NOT commit its ids: the worker never
+      // received them, so a retry in the same generation has to send them again.
+      fake.failOnPost = true
+      const p2 = exportViaWorker({ id: 'e' }, { format: 'step' }, { f1: F1 })
+      await expect(p2).rejects.toThrow('DataCloneError')
+      expect(fileIdsMissingFromWorker(['f1'])).toEqual([])  // f1 was already sent by p1
+
+      // A NEW id on the throwing request stays unmarked.
+      const p3 = exportViaWorker({ id: 'e' }, { format: 'step' }, { f2: F1 })
+      await expect(p3).rejects.toThrow('DataCloneError')
+      expect(fileIdsMissingFromWorker(['f2'])).toEqual(['f2'])
+
+      // The retry carries it, and only then is it marked.
+      fake.failOnPost = false
+      const p4 = exportViaWorker({ id: 'e' }, { format: 'step' }, { f2: F1 })
+      const retry = fake.posted[fake.posted.length - 1]
+      expect(retry.files).toEqual({ f2: F1 })
+      expect(fileIdsMissingFromWorker(['f2'])).toEqual([])
+      fake.reply({ id: retry.id, ok: true, bytes: null })
+      await p4
+    })
+
+    it('reports ids the live generation already holds as no longer missing', async () => {
+      expect(fileIdsMissingFromWorker(['f1'])).toEqual(['f1'])
+      solveViaWorker({ id: 'd' }, {}, { f1: F1 })
+      expect(fileIdsMissingFromWorker(['f1'])).toEqual([])
+      fake.reply({ id: fake.posted[0].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      await Promise.resolve()
     })
   })
 

@@ -75,9 +75,10 @@ function nativePart(id: string, n: number, lastDistance = 4): Record<string, unk
   return { id, features }
 }
 
-const STEP_B64 = enabled
-  ? readFileSync(join(__dirname, 'occ/__fixtures__/double_with_hole.step')).toString('base64')
-  : ''
+const STEP_BYTES = enabled
+  ? new Uint8Array(readFileSync(join(__dirname, 'occ/__fixtures__/double_with_hole.step')))
+  : new Uint8Array()
+const STEP_FILES = new Map<string, Uint8Array>([['imp1', STEP_BYTES]])
 
 /**
  * An imported part: the STEP fixture plus a small native tail to edit. Imported
@@ -88,7 +89,7 @@ function importedPart(id: string, thickness: number): Record<string, unknown> {
   return {
     id,
     features: [
-      { id: 'imp1', kind: 'import_step', file_data: STEP_B64, filename: 'double_with_hole.step' },
+      { id: 'imp1', kind: 'import_step', file_id: 'imp1', filename: 'double_with_hole.step' },
       rectSketch('sk1', 5, 5, '@builtin_plane_top'),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: thickness, direction: 'normal', operation: 'new' },
     ],
@@ -148,15 +149,15 @@ describe.skipIf(!oc || !solveBytes || !enabled)('bundle rebuild cost (real OCC +
       solveLocally(make(`${name}-a`, 7)))
 
     // b: bundle build with a foreign document built in between.
-    await handleBundleRequest(bundleReq(make(`${name}-b`, 6), 1), solveLocally)
-    await handleBundleRequest(bundleReq(other, 1), solveLocally)
+    await handleBundleRequest(bundleReq(make(`${name}-b`, 6), 1), solveLocally, STEP_FILES)
+    await handleBundleRequest(bundleReq(other, 1), solveLocally, STEP_FILES)
     const b = await timed('b  bundle rebuild, doc switched in between', () =>
-      handleBundleRequest(bundleReq(make(`${name}-b`, 7), 2), solveLocally))
+      handleBundleRequest(bundleReq(make(`${name}-b`, 7), 2), solveLocally, STEP_FILES))
 
     // c: bundle build with nothing in between.
-    await handleBundleRequest(bundleReq(make(`${name}-c`, 6), 1), solveLocally)
+    await handleBundleRequest(bundleReq(make(`${name}-c`, 6), 1), solveLocally, STEP_FILES)
     const c = await timed('c  bundle rebuild, same doc back to back', () =>
-      handleBundleRequest(bundleReq(make(`${name}-c`, 7), 2), solveLocally))
+      handleBundleRequest(bundleReq(make(`${name}-c`, 7), 2), solveLocally, STEP_FILES))
 
     console.log(`  ${'b - a (cost of the doc switch)'.padEnd(46)} ${(b - a).toFixed(0).padStart(7)} ms`)
     console.log(`  ${'c - a (cost of the bundle path itself)'.padEnd(46)} ${(c - a).toFixed(0).padStart(7)} ms`)

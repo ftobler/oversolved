@@ -1,19 +1,13 @@
-// Measurement-gated test for undo-import-perf (feature/undo-import-perf.md).
+// The undo stack no longer carries import bytes at all: after C1 a document
+// holds a `file_id` reference and the registry owns the payload. cloneDocForUndo
+// is a plain structuredClone, so MAX_UNDO_DEPTH entries retain ~MAX_UNDO_DEPTH
+// small docs, never a copy of a 6 MB record.
 //
-// Every part-doc edit structuredClones the whole doc, and every retained undo
-// entry holds its own copy, so an imported STEP file's inline base64 file_data
-// is duplicated MAX_UNDO_DEPTH (50) times. cloneDocForUndo deep-clones
-// everything except the immutable payloads, which are kept as ONE shared string
-// per import. Measured locally on a 6 MB payload doc: a full structuredClone is
-// ~4.1 ms vs ~0.01 ms scoped, and a 50-entry stack retains ~306 MB vs ~1x the
-// payload (a 20 000x ratio).
-//
-// The gate asserts retained heap, not wall clock: a timing threshold flakes on
-// a contended CI box, but a full clone per entry retains ~50 payload copies,
-// which a heap delta between two reads in one process cannot miss. The budget
-// is a fraction of one copy, so measurement noise cannot hide a regression.
-// The correctness tests below pin that the skipped payload still round-trips
-// byte-identically and that only the payload is shared.
+// The gate asserts retained heap, not wall clock: a timing threshold flakes on a
+// contended CI box, but a regression that put bytes back into the document would
+// retain ~50 payload copies, which a heap delta between two reads cannot miss.
+// The correctness tests below pin that the reference still round-trips and that
+// cloneDocForUndo remains a real deep clone.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
@@ -21,20 +15,27 @@ import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
+import { MemoryFileRegistry } from '@/stores/fileRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PartDoc, Mutation, PartFeature } from '@/types/cad'
 
 const MB = 1024 * 1024
-const PAYLOAD = 'A'.repeat(6 * MB)
 
 describe('measurement gate: the undo stack does not duplicate the import payload', () => {
-  it('retains ~1x the payload, not one copy per entry', () => {
+  it('retains ~the doc, not a 6 MB registry record, across MAX_UNDO_DEPTH entries', async () => {
+    // A 6 MB record the doc references. The bytes live in the registry, never in
+    // the document, so the stack cannot copy them.
+    const registry = new MemoryFileRegistry()
+    const { id: fileId } = await registry.create({
+      name: 'big.step', kind: 'step', mime: 'application/step', bytes: new Uint8Array(6 * MB),
+    })
+
     const makeDoc = (i: number): PartDoc => ({
       version: 1,
       kind: 'part',
       features: [
-        { id: 'imp1', kind: 'import_step', label: 'part.step', file_data: PAYLOAD },
+        { id: 'imp1', kind: 'import_step', label: 'part.step', file_id: fileId },
         { id: `f${i}`, kind: 'sketch', label: `sketch ${i}` },
       ],
     })
@@ -43,12 +44,8 @@ describe('measurement gate: the undo stack does not duplicate the import payload
     // this run's baseline.
     const gc = (globalThis as { gc?: () => void }).gc
 
-    // A single heap read can be inflated by a GC spike on a contended CI box
-    // (vitest.config.ts notes the box). The gate takes the minimum over several
-    // independent runs: a full-clone regression (~50 payload copies) shows in
-    // EVERY run and outlives the budget, while a one-off spike inflates only
-    // one run and is discarded. The budget is a fraction of one copy, so min
-    // still holds the gate far under the ~50-copy regression.
+    // A single heap read can be inflated by a GC spike on a contended CI box.
+    // The gate takes the minimum over several independent runs.
     let minRetained = Infinity
     let depth = 0
     for (let run = 0; run < 5; run++) {
@@ -57,8 +54,6 @@ describe('measurement gate: the undo stack does not duplicate the import payload
         useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
 
       gc?.()
-      // Warm the jit path before the baseline read so compile-time allocation
-      // cannot leak into the delta.
       act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, makeDoc(0)))
       gc?.()
       const baseline = process.memoryUsage().heapUsed
@@ -68,30 +63,26 @@ describe('measurement gate: the undo stack does not duplicate the import payload
       minRetained = Math.min(minRetained, process.memoryUsage().heapUsed - baseline)
       depth = result.current.undoStack.length
       // Release this run's retained entries so the next run measures against a
-      // clean heap instead of stacking another 50 clones on top of the last:
-      // unmounting drops the hook (and its refs) so the entries are collectable.
+      // clean heap instead of stacking another 50 clones on top of the last.
       act(() => unmount())
     }
 
     expect(depth).toBe(MAX_UNDO_DEPTH)
-    // A full clone per entry retains ~MAX_UNDO_DEPTH copies of a 6 MB payload
-    // (~300 MB). Sharing the immutable payload retains roughly one payload
-    // worth of the immutable strings the entries all point at. The budget is a
-    // payload-relative fraction of one copy, generous for CI noise yet far
-    // under the ~50-copy regression. Observed fixed-code retention is ~1x the
-    // payload; 5x is ~9x over that and ~11x under the regression.
-    expect(minRetained).toBeLessThan(PAYLOAD.length * 5)
+    // The doc holds a uuid string, not bytes: the 50 retained entries stay under
+    // a single 6 MB payload. A regression that inlined the bytes would retain
+    // tens of payload copies and blow this budget by orders of magnitude.
+    expect(minRetained).toBeLessThan(6 * MB)
   })
 })
 
 describe('cloneDocForUndo', () => {
-  const makeImportDoc = (payload = PAYLOAD): PartDoc => ({
+  const makeImportDoc = (): PartDoc => ({
     version: 1,
     kind: 'part',
     rollback: 0,
     features: [
       { id: 'origin', kind: 'origin' },
-      { id: 'imp1', kind: 'import_step', label: 'a.step', file_data: payload },
+      { id: 'imp1', kind: 'import_step', label: 'a.step', file_id: 'file-1' },
       {
         id: 'sk1', kind: 'sketch', label: 'Sketch',
         entities: [{ id: 'l1', kind: 'line' }], initial: { l1: [0, 0, 10, 0] },
@@ -99,25 +90,27 @@ describe('cloneDocForUndo', () => {
     ],
   })
 
-  it('preserves the payload byte-identically', () => {
-    const clone = cloneDocForUndo(makeImportDoc())
-    expect(clone.features![1].file_data).toBe(PAYLOAD)
-  })
-
-  it('deep-clones everything else, so mutating the clone cannot touch the source', () => {
+  it('deep-clones everything, so mutating the clone cannot touch the source', () => {
     const doc = makeImportDoc()
     const clone = cloneDocForUndo(doc)
-    const srcImp = doc.features![1] as PartFeature
-    const cloneImp = clone.features![1] as PartFeature
+    const srcImp = doc.features![1]
+    const cloneImp = clone.features![1]
     expect(cloneImp).not.toBe(srcImp)
     expect(clone.features![0]).not.toBe(doc.features![0])
     const srcSk = doc.features![2] as { initial: Record<string, number[]> }
     expect((clone.features![2] as { initial: Record<string, number[]> }).initial).not.toBe(srcSk.initial)
 
     cloneImp.label = 'mutated'
-    cloneImp.file_data = 'DIFFERENT'
+    cloneImp.file_id = 'other'
     expect((doc.features![1] as PartFeature).label).toBe('a.step')
-    expect((doc.features![1] as PartFeature).file_data).toBe(PAYLOAD)
+    expect((doc.features![1] as PartFeature).file_id).toBe('file-1')
+  })
+
+  it('carries no bytes on the import feature', () => {
+    const clone = cloneDocForUndo(makeImportDoc())
+    const imp = clone.features![1]
+    expect(imp.file_id).toBe('file-1')
+    expect('file_data' in imp).toBe(false)
   })
 
   it('is value-equal to the source doc (nothing else was dropped)', () => {
@@ -132,55 +125,33 @@ describe('cloneDocForUndo', () => {
     expect('features' in clone).toBe(false)
   })
 
-  it('handles multiple import payloads independently, per-payload', () => {
-    const b = 'B'.repeat(1024)
-    const c = 'C'.repeat(1024)
+  it('handles multiple import references independently', () => {
     const doc = {
       version: 1,
       kind: 'part',
       features: [
-        { id: 'imp1', kind: 'import_step', file_data: b },
-        { id: 'imp2', kind: 'import_step', file_data: c },
+        { id: 'imp1', kind: 'import_step', file_id: 'file-1' },
+        { id: 'imp2', kind: 'import_step', file_id: 'file-2' },
       ],
     } as PartDoc
     const clone = cloneDocForUndo(doc)
-    expect(clone.features![0].file_data).toBe(b)
-    expect(clone.features![1].file_data).toBe(c)
-    // The two payloads stay distinct even though both are shared references.
-    expect(clone.features![0].file_data).not.toBe(clone.features![1].file_data)
-  })
-
-  // An import_step that has not been given its payload yet (typeof guard fails,
-  // so nothing is stripped): the feature must survive the detach/reattach cycle
-  // as an ordinary deep-cloned member, value-identical to the source.
-  it('handles an import_step feature lacking file_data', () => {
-    const doc: PartDoc = {
-      version: 1,
-      kind: 'part',
-      features: [
-        { id: 'origin', kind: 'origin' },
-        { id: 'imp1', kind: 'import_step', label: 'pending.step' },
-      ],
-    }
-    const clone = cloneDocForUndo(doc)
+    expect(clone.features![0].file_id).toBe('file-1')
+    expect(clone.features![1].file_id).toBe('file-2')
     expect(clone).toEqual(doc)
-    // Not payload-shared, so the clone owns a deep copy like any other feature.
-    expect(clone.features![1]).not.toBe(doc.features![1])
   })
 })
 
-describe('undo/redo round-trip with a skipped payload', () => {
-  const payload = 'C'.repeat(MB)
+describe('undo/redo round-trip keeps the import reference', () => {
   const docWith = (extraSketchIds: string[] = []): PartDoc => ({
     version: 1,
     kind: 'part',
     features: [
-      { id: 'imp1', kind: 'import_step', label: 'part.step', file_data: payload },
+      { id: 'imp1', kind: 'import_step', label: 'part.step', file_id: 'file-1' },
       ...extraSketchIds.map(id => ({ id, kind: 'sketch', label: `sketch ${id}` })),
     ],
   })
 
-  it('restores the payload byte-identically after undo and redo', () => {
+  it('restores the file_id after undo and redo', () => {
     const docA = docWith()
     const docB = docWith(['sk1'])
     const docRef = { current: docB }
@@ -192,16 +163,16 @@ describe('undo/redo round-trip with a skipped payload', () => {
     act(() => result.current.handleUndo())
 
     expect(docRef.current).toEqual(docA)
-    expect((docRef.current!.features![0] as PartFeature).file_data).toBe(payload)
+    expect(docRef.current!.features![0].file_id).toBe('file-1')
     expect(docRef.current!.features).toHaveLength(1)
 
     act(() => result.current.handleRedo())
     expect(docRef.current).toEqual(docB)
-    expect((docRef.current!.features![0] as PartFeature).file_data).toBe(payload)
+    expect(docRef.current!.features![0].file_id).toBe('file-1')
     expect(docRef.current!.features).toHaveLength(2)
   })
 
-  it('mutating the restored doc other fields cannot corrupt the shared payload', () => {
+  it('mutating the restored doc other fields cannot corrupt the reference', () => {
     const docA = docWith()
     const docB = docWith(['sk1'])
     const docRef = { current: docB }
@@ -212,17 +183,13 @@ describe('undo/redo round-trip with a skipped payload', () => {
     act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA))
     act(() => result.current.handleUndo())
 
-    // A later in-place edit of the restored doc (the cancelEditSession aliasing
-    // shape) must not reach the payload: it is the immutable shared string.
     const restored = docRef.current!
     restored.features![0].label = 'renamed'
-    restored.features![0].suppressed = true
-    expect((restored.features![0] as PartFeature).file_data).toBe(payload)
+    expect(restored.features![0].file_id).toBe('file-1')
 
-    // Redo still restores docB with the payload intact.
     act(() => result.current.handleRedo())
     expect(docRef.current).toEqual(docB)
-    expect((docRef.current!.features![0] as PartFeature).file_data).toBe(payload)
+    expect(docRef.current!.features![0].file_id).toBe('file-1')
   })
 })
 
@@ -260,27 +227,25 @@ describe('re-import through the real funnel', () => {
     usePartEditorStore.getState().setPickBoundary(null)
   })
 
-  it('a new import yields a NEW payload while the old entry still references the old one', () => {
-    const payloadA = 'AAAA'.repeat(1024)
-    const payloadB = 'BBBB'.repeat(1024)
+  it('a new import references a NEW file while the old entry still references the old one', () => {
     docRef.current = { oversolved: 1, kind: 'part', features: [] } as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    act(() => result.current.handleMutation({ type: 'add_import_step', featureId: 'imp1', fileData: payloadA, label: 'a.step' } as Mutation))
-    act(() => result.current.handleMutation({ type: 'add_import_step', featureId: 'imp2', fileData: payloadB, label: 'b.step' } as Mutation))
+    act(() => result.current.handleMutation({ type: 'add_import_step', featureId: 'imp1', fileId: 'file-a', label: 'a.step' }))
+    act(() => result.current.handleMutation({ type: 'add_import_step', featureId: 'imp2', fileId: 'file-b', label: 'b.step' }))
 
     expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['imp1', 'imp2'])
-    expect((docRef.current!.features![1] as PartFeature).file_data).toBe(payloadB)
+    expect((docRef.current!.features![1] as PartFeature).file_id).toBe('file-b')
 
-    // Undo to the single-import doc: the old entry restores payloadA.
+    // Undo to the single-import doc: the old entry restores file-a.
     act(() => result.current.handleUndo())
     expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['imp1'])
-    expect((docRef.current!.features![0] as PartFeature).file_data).toBe(payloadA)
+    expect((docRef.current!.features![0] as PartFeature).file_id).toBe('file-a')
 
-    // Redo restores the re-imported doc with the NEW payload on the new feature.
+    // Redo restores the re-imported doc with the NEW file on the new feature.
     act(() => result.current.handleRedo())
     expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['imp1', 'imp2'])
-    expect((docRef.current!.features![0] as PartFeature).file_data).toBe(payloadA)
-    expect((docRef.current!.features![1] as PartFeature).file_data).toBe(payloadB)
+    expect((docRef.current!.features![0] as PartFeature).file_id).toBe('file-a')
+    expect((docRef.current!.features![1] as PartFeature).file_id).toBe('file-b')
   })
 })

@@ -77,6 +77,9 @@ vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: h.downloadBlob }))
 import AssemblyEditor from '@/pages/AssemblyEditor'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { backendBundle } from '@/adapters/backend'
+import { getFileRegistry } from '@/stores/fileRegistry'
+import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
+import { resetDbConnection } from '@/stores/documentStore/idb'
 
 const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)) })
 
@@ -934,6 +937,20 @@ describe('AssemblyEditor export (Stage 9)', () => {
     await waitFor(() => expect(h.downloadBlob).toHaveBeenCalledTimes(1))
     expect(h.downloadBlob.mock.calls[0][1]).toBe('My_Assembly.step')
     expect(screen.queryByText('Export Model')).toBeNull()  // dialog closes
+  })
+
+  it('STEP: resolves an import reference into the files side channel', async () => {
+    resetFakeIndexedDb()
+    resetDbConnection()
+    const entry = await getFileRegistry().create({
+      name: 'p.step', kind: 'step', mime: 'application/step', bytes: new Uint8Array([4, 5, 6]),
+    })
+    h.partContent = `features:\n  - id: ex1\n    kind: extrude\n  - id: imp1\n    kind: import_step\n    file_id: ${entry.id}\n`
+    await openExportDialog()
+    download()
+    await waitFor(() => expect(h.exportAssemblyViaWorker).toHaveBeenCalledTimes(1))
+    const call = h.exportAssemblyViaWorker.mock.calls[0] as [unknown, unknown, Record<string, Uint8Array>]
+    expect(Array.from(call[2][entry.id])).toEqual([4, 5, 6])
   })
 
   it('STL: encodes the solved meshes without touching the OCC worker', async () => {

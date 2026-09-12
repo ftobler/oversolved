@@ -1,18 +1,20 @@
-// Decodes base64 STEP data, reads it into a shape (optionally scaled), and registers a
-// body per solid found in it. The STEP parse itself lives in occ/stepIo.ts.
+// Reads STEP bytes (optionally scaled) into a shape and registers a body per
+// solid found in it. The bytes arrive in the solve file map, keyed by the
+// feature's `file_id`; the STEP parse itself lives in occ/stepIo.ts.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { base64ToBytes, stepBytesToShapeWithIdentity } from '../occ/stepIo'
+import { stepBytesToShapeWithIdentity } from '../occ/stepIo'
 import { importedNameMaps } from '../occ/importLineage'
 import { registerSplitBodies, splitSolids } from './bodySplit'
 
 type Dict = Record<string, unknown>
 
 interface ImportStepResult {
+  [key: string]: unknown
   status: string
   // The first body, kept for callers that want a single handle on the import.
   body_id: string
@@ -27,9 +29,10 @@ export function solveImportStep(
   feature: Dict,
   _globalRepo: Repository,
   bodyStore: Record<string, Body>,
+  files?: ReadonlyMap<string, Uint8Array>,
 ): ImportStepResult {
   const featureId = (feature.id as string) ?? ''
-  const fileDataB64 = (feature.file_data as string) ?? ''
+  const fileId = (feature.file_id as string) ?? ''
   const scale = Number(feature.scale ?? 1.0)
   // A non-finite scale (hand-edited or expression-derived YAML) would flow
   // unchecked into the placement identity computation.
@@ -37,9 +40,19 @@ export function solveImportStep(
     throw new Error(`import_step: scale must be a finite number, got ${feature.scale}`)
   }
 
-  if (!fileDataB64) throw new Error("import_step: requires 'file_data'")
+  // A pre-cut document carries the bytes inline. Refuse it by name rather than
+  // solving an empty import; there is no migration (A2). This must precede the
+  // file_id check: such a document has file_data and no file_id, so the
+  // requires-file_id diagnostic would blame the wrong thing.
+  if (typeof feature.file_data === 'string' && feature.file_data.length > 0) {
+    throw new Error("import_step: inline 'file_data' is no longer supported; re-import the STEP file "
+      + `(file_id: ${fileId || 'none'})`)
+  }
+  if (!fileId) throw new Error("import_step: requires 'file_id'")
 
-  const bytes = base64ToBytes(fileDataB64)
+  const bytes = files?.get(fileId)
+  if (!bytes) throw new Error(`import_step: file '${fileId}' is not present in the solve file set`)
+
   const bodyId = 'body_' + featureId
   const { shape: read, faceStepIds } = stepBytesToShapeWithIdentity(oc, scope, bytes, scale)
   const shape = scope.track(read)

@@ -13,9 +13,11 @@ import { SharedHarness } from './occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from './features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import importFixture from './occ/__fixtures__/importStep.json'
+import { base64ToBytes } from './occ/stepIo'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 const importFx = importFixture as unknown as { file_data: string }
+const importFiles = new Map<string, Uint8Array>([['imp1', base64ToBytes(importFx.file_data)]])
 
 function rectSketch(sketchId: string, w: number, h: number, opts?: { plane?: string; label?: string }) {
   return {
@@ -396,20 +398,20 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     })
 
     it('appending a feature after an import', () => {
-      const imp = { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 }
-      const r1 = h.run({ features: [imp, sk1] })
-      const r2 = h.run({ features: [imp, sk1, ex1], _validate: true }, { prevState: r1._build_state })
+      const imp = { id: 'imp1', kind: 'import_step', file_id: 'imp1', scale: 1 }
+      const r1 = h.run({ features: [imp, sk1] }, { files: importFiles })
+      const r2 = h.run({ features: [imp, sk1, ex1], _validate: true }, { prevState: r1._build_state, files: importFiles })
       expect(r2._validation).toMatchObject({ level: 3, passed: true })
     })
 
     it('deleting an imported body', () => {
-      const imp = { id: 'imp1', kind: 'import_step', file_data: importFx.file_data, scale: 1 }
-      const r1 = h.run({ features: [imp, sk1, ex1] })
+      const imp = { id: 'imp1', kind: 'import_step', file_id: 'imp1', scale: 1 }
+      const r1 = h.run({ features: [imp, sk1, ex1] }, { files: importFiles })
       const importedId = Object.keys(r1.bodies).find((b) => b.startsWith('body_imp1'))
       expect(importedId).toBeDefined()
 
       const del = { id: 'del1', kind: 'delete_body', delete_body: { bodies: [importedId] } }
-      const r2 = h.run({ features: [imp, sk1, ex1, del], _validate: true }, { prevState: r1._build_state })
+      const r2 = h.run({ features: [imp, sk1, ex1, del], _validate: true }, { prevState: r1._build_state, files: importFiles })
       expect(h.res(r2, 'del1').status).toBe('ok')
       expect(Object.keys(r2.bodies)).not.toContain(importedId)
       expect(r2._validation).toMatchObject({ level: 3, passed: true })

@@ -45,6 +45,7 @@ import type {
   ExportRequestOptions, ExportResponse, ExportOkResponse, WorkerRequest,
   BundleResponse, BundleOkResponse,
   AssemblyExportPartSpec,
+  FileBytes,
 } from './solverProtocol'
 import type { PartBundle } from '../partBundle'
 
@@ -115,6 +116,11 @@ let nextId = 1
 // Solve and export share the id counter, so an id lives in exactly one entry.
 const pending = new Map<number, Pending>()
 
+// File ids whose bytes the live worker has already absorbed live in
+// workerFiles.ts, so callers that only need to know what still requires a
+// storage read do not have to import this module.
+import { clearWorkerFileIds, fileDelta, markFilesSent } from './workerFiles'
+
 function onMessage(e: { data: SolveResponse | ExportResponse | BundleResponse }): void {
   const res = e.data
   const p = pending.get(res.id)
@@ -139,6 +145,9 @@ function dropWorker(err: Error): void {
   pending.clear()
   worker?.terminate()
   worker = null
+  // A respawned worker has no cached bytes, so the next request must resend
+  // everything it needs.
+  clearWorkerFileIds()
 }
 
 function onError(): void {
@@ -218,6 +227,10 @@ function sendRequest<T>(
       reject(e)
       return
     }
+    // The bytes are only now known to be with the worker: commit the ids so the
+    // next request in this generation may omit them. A throw above leaves them
+    // unmarked, so a retry still carries them.
+    markFilesSent(msg.files)
     const timer = isFinite(solveTimeoutMs) ? setTimeout(onTimeout, solveTimeoutMs) : null
     pending.set(id, {
       resolve: (res) => {
@@ -241,9 +254,10 @@ function sendRequest<T>(
 export function solveViaWorker(
   spec: Record<string, unknown>,
   options: SolveRequestOptions = {},
+  files?: FileBytes,
 ): Promise<BuildResponse | null> {
   return sendRequest(
-    (id) => ({ id, kind: 'solve', spec, options }),
+    (id) => ({ id, kind: 'solve', spec, options, files: fileDelta(files) }),
     (res) => {
       const payload = (res as SolveOkResponse).payload
       return payload === null ? null : { ...payload, _build_state: EMPTY_BUILD_STATE }
@@ -259,9 +273,10 @@ export function solveViaWorker(
 export function exportViaWorker(
   spec: Record<string, unknown>,
   options: ExportRequestOptions,
+  files?: FileBytes,
 ): Promise<Uint8Array | null> {
   return sendRequest(
-    (id) => ({ id, kind: 'export', spec, options }),
+    (id) => ({ id, kind: 'export', spec, options, files: fileDelta(files) }),
     (res) => (res as ExportOkResponse).bytes,
     true,  // user-paced single click: bypass the crash cooldown (unlike solve/buildBundle)
   )
@@ -276,9 +291,10 @@ export function exportViaWorker(
 export function exportAssemblyViaWorker(
   parts: AssemblyExportPartSpec[],
   options: ExportRequestOptions,
+  files?: FileBytes,
 ): Promise<Uint8Array | null> {
   return sendRequest(
-    (id) => ({ id, kind: 'exportAssembly', parts, options }),
+    (id) => ({ id, kind: 'exportAssembly', parts, options, files: fileDelta(files) }),
     (res) => (res as ExportOkResponse).bytes,
     true,  // user-paced single click: bypass the crash cooldown (unlike solve/buildBundle)
   )
@@ -293,11 +309,12 @@ export function buildBundleViaWorker(
   spec: Record<string, unknown>,
   doc_id: string,
   doc_rev: number,
+  files?: FileBytes,
 ): Promise<PartBundle | null> {
   // Rides the crash cooldown: the anchor worker relays this per solveAssembly,
   // so a drag tick over a trapping part doc fires it in a burst like solve.
   return sendRequest(
-    (id) => ({ id, kind: 'buildBundle', spec, doc_id, doc_rev }),
+    (id) => ({ id, kind: 'buildBundle', spec, doc_id, doc_rev, files: fileDelta(files) }),
     (res) => (res as BundleOkResponse).payload,
   )
 }
@@ -328,6 +345,8 @@ export function setSolverWorkerForTest(
   workerCrashAt = 0
   crashCooldownMs = CRASH_COOLDOWN_MS
   workerFactory = factory ?? defaultFactory
+  // A fresh worker (or a fresh test) has no cached bytes.
+  clearWorkerFileIds()
 }
 
 /** @internal test-only: override the watchdog ceiling (ms). */

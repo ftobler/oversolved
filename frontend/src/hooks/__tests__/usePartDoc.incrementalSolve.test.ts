@@ -70,7 +70,7 @@ function makeDoc(): PartDoc {
     oversolved: 1,
     kind: 'part',
     features: [
-      { id: 'imp1', kind: 'import_step', file_data: 'AAAA', scale: 1 },
+      { id: 'imp1', kind: 'import_step', file_id: 'file-1', scale: 1 },
       { id: 'sk1', kind: 'sketch', entities: [{ id: 'l1', kind: 'line' }], initial: { l1: [0, 0, 1, 1] } },
     ],
   } as unknown as PartDoc
@@ -97,7 +97,7 @@ describe('handleMutation cache policy', () => {
   })
 
   it('keeps the checkpoint cache for an ordinary parameter edit', () => {
-    const opts = solveOptionsFor({ type: 'add_import_step', featureId: 'imp2', fileData: 'BBBB' } as unknown as Mutation)
+    const opts = solveOptionsFor({ type: 'add_import_step', featureId: 'imp2', fileId: 'file-2' })
     expect(opts?.bypassCache).toBeFalsy()
   })
 

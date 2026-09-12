@@ -19,6 +19,9 @@ import { buildAnchorTable } from '@/utils/anchorGizmos'
 import { buildPickBodies } from '@/utils/assemblyPick'
 import { setRelayHandlers, clearRelayHandlers, solveAssemblyViaWorker, cancelAssemblySolver } from '@/kernel/worker/anchorSolverClient'
 import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
+import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
+import { getFileRegistry } from '@/stores/fileRegistry'
+import { fileIdsInSpec, resolveFiles } from '@/stores/fileRegistry/resolve'
 import type { PartInputSpec } from '@/kernel/worker/solverProtocol'
 import type { MateSpec, AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { dragTargetMate, dragTargetPoseMate } from '@/kernel/assemblyDrag'
@@ -182,8 +185,15 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       // id, and solveLocally's cache-reset guard keys on spec.id. Without it,
       // bundle builds of different docs share one checkpoint slot and a bundle
       // build evicts the part editor's incremental cache.
-      buildBundle: async (doc_id, doc_rev, spec) =>
-        buildBundleViaWorker({ ...spec, id: doc_id }, doc_id, doc_rev),
+      //
+      // The spec the anchor worker holds is reference-only; the bytes are
+      // resolved HERE, on the main thread, so no byte payload ever crosses the
+      // anchor worker. The OCC bundle worker receives them directly.
+      buildBundle: async (doc_id, doc_rev, spec) => {
+        const fileIds = fileIdsMissingFromWorker(fileIdsInSpec(spec))
+        const files = fileIds.length ? await resolveFiles(getFileRegistry(), fileIds) : undefined
+        return buildBundleViaWorker({ ...spec, id: doc_id }, doc_id, doc_rev, files)
+      },
     })
     // Surface the cancel through the single-slot solver overlay (the assembly
     // editor mounts LoadingOverlay, which reads this slot). The part hook
