@@ -68,7 +68,6 @@ function installSessionFromList() {
   useWorkspaceSessionStore.setState({
     session: {
       workspace: 'asm-1',
-      open: vi.fn(),
       listEntries: async () => h.list.map(d => ({
         id: d.uuid,
         path: `documents/${d.name}.yaml`,

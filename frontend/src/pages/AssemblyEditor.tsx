@@ -320,8 +320,8 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
 
   const handleOpenPartNewTab = useCallback((handle: string) => {
     const inst = instances.find(i => i.handle === handle)
-    if (inst) window.open(`/documents/${inst.doc_id}`, '_blank')
-  }, [instances])
+    if (inst) window.open(`/workspaces/${workspaceId ?? uuid}/entries/${inst.doc_id}`, '_blank')
+  }, [instances, workspaceId, uuid])
 
   const handleSelect = useCallback((handle: string) => {
     useAssemblyStore.getState().selectPart(handle)
@@ -541,7 +541,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       <div className="document-viewer">
         <div className="assembly-load-failed" role="alert">
           <p>Error: {error}</p>
-          <button className="toolbar-btn" onClick={() => navigate('/documents')}>
+          <button className="toolbar-btn" onClick={() => navigate(workspaceId ? `/workspaces/${workspaceId}` : '/workspaces')}>
             Back to documents
           </button>
         </div>

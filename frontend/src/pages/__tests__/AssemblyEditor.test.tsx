@@ -94,7 +94,6 @@ function installSessionFromList() {
   useWorkspaceSessionStore.setState({
     session: {
       workspace: 'asm-1',
-      open: vi.fn(),
       listEntries: async () => h.list.map(d => ({
         id: d.uuid,
         path: `documents/${d.name}.yaml`,
@@ -467,6 +466,16 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(screen.queryByLabelText('Insert part')).toBeNull()
   })
 
+  it('the failed-load shell navigates back to the workspace, not the documents grid', async () => {
+    vi.mocked(backendBundle.documents.load).mockRejectedValueOnce(new Error('boom'))
+    renderEditor()
+    await tick()
+    await tick()
+    fireEvent.click(screen.getByRole('button', { name: 'Back to documents' }))
+    expect(navigateSpy).toHaveBeenCalledWith('/workspaces')
+    expect(navigateSpy).not.toHaveBeenCalledWith('/documents')
+  })
+
   // The editing subject is one tagged value, so an instance editor replaces an
   // open mate editor rather than stacking a second one. The store makes this
   // structural; the page test pins that the tree renders exactly one.
@@ -552,7 +561,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(screen.queryByText('Open')).toBeNull()
     fireEvent.click(screen.getByText('Open in new tab'))
     await tick()
-    expect(openSpy).toHaveBeenCalledWith('/documents/part-1', '_blank')
+    expect(openSpy).toHaveBeenCalledWith('/workspaces/asm-1/entries/part-1', '_blank')
     expect(navigateSpy).not.toHaveBeenCalledWith('/documents/part-1')
     // Assembly state is unchanged by opening the part.
     expect(useAssemblyStore.getState().instances).toHaveLength(1)
@@ -982,10 +991,15 @@ describe('AssemblyEditor export (Stage 9)', () => {
     const entry = await getFileRegistry().create({
       name: 'p.step', kind: 'step', mime: 'application/step', bytes: new Uint8Array([4, 5, 6]),
     })
+    // The workspace session is authoritative once the file is adopted; its
+    // resolver answers like the real session-first fallback would.
+    const session = useWorkspaceSessionStore.getState().session
+    vi.mocked(session!.resolveFile).mockResolvedValue(new Uint8Array([4, 5, 6]))
     h.partContent = `features:\n  - id: ex1\n    kind: extrude\n  - id: imp1\n    kind: import_step\n    file_id: ${entry.id}\n`
     await openExportDialog()
     download()
     await waitFor(() => expect(h.exportAssemblyViaWorker).toHaveBeenCalledTimes(1))
+    expect(session!.resolveFile).toHaveBeenCalledWith(entry.id)
     const call = h.exportAssemblyViaWorker.mock.calls[0] as [unknown, unknown, Record<string, Uint8Array>]
     expect(Array.from(call[2][entry.id])).toEqual([4, 5, 6])
   })
