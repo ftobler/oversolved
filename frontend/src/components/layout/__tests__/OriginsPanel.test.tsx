@@ -167,4 +167,25 @@ describe('OriginsPanel', () => {
     expect(update).toBeEnabled()
     expect(update).toHaveAttribute('title', 'Updating overwrites your local edits.')
   })
+
+  it('a throwing resolver settles that row unreachable and still checks the rest', async () => {
+    const injected: OriginResolver = {
+      register: vi.fn(),
+      resolve: async locator => {
+        if (locator === 'folder:changed') throw new Error('read failed')
+        if (locator === 'folder:current') return treeWith([documentEntry('src-current', 'Current', { text: CURRENT_TEXT })])
+        return null
+      },
+    }
+    installSession()
+    render(<OriginsPanel resolver={injected} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Check for updates' }))
+
+    // The row before the throw resolved, the throwing row and the missing source
+    // both read as unreachable, and the loop finished instead of aborting.
+    await screen.findByText('Up to date')
+    expect(screen.getAllByText('Origin unavailable')).toHaveLength(2)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Check for updates' })).toBeEnabled())
+  })
 })

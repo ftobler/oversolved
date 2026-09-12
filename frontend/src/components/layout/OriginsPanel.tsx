@@ -70,8 +70,14 @@ export function OriginsPanel({ resolver }: OriginsPanelProps = {}) {
       const next = new Map<string, PanelStatus>()
       for (const record of live) {
         const localHash = byId.get(record.entry)?.contentHash
-        const state = await originState(record, localHash, resolver)
-        next.set(record.entry, state.status)
+        try {
+          const state = await originState(record, localHash, resolver)
+          next.set(record.entry, state.status)
+        } catch {
+          // One resolver that throws must not strand the rest of the rows: that
+          // row reads as unreachable and the remaining checks still run.
+          next.set(record.entry, 'unreachable')
+        }
       }
       setStatuses(next)
     } finally {
