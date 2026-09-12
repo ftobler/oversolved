@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { waitFor } from '@testing-library/react'
 import { useCarrierChangeStore } from '../carrierChangeStore'
 import { useRecoveryStore } from '../recoveryStore'
@@ -77,6 +77,28 @@ describe('carrierChangeStore', () => {
     window.dispatchEvent(new Event('focus'))
 
     await waitFor(() => expect(useCarrierChangeStore.getState().status).toBe('changed'), { timeout: 2000 })
+  })
+
+  it('an explicit check surfaces a carrier change for the grid Reopen path', async () => {
+    const { dir, workspace } = await boundWorkspace()
+    foreignChange(dir, workspace)
+
+    await useCarrierChangeStore.getState().check(workspace)
+
+    expect(useCarrierChangeStore.getState().status).toBe('changed')
+    expect(useCarrierChangeStore.getState().workspace).toBe(workspace)
+  })
+
+  it('settles to unavailable when the carrier cannot be read, instead of rejecting', async () => {
+    const { workspace } = await boundWorkspace()
+    const store = getWorkspaceStore()
+    const spy = vi.spyOn(store, 'checkCarrier').mockRejectedValueOnce(new Error('revoked'))
+
+    await useCarrierChangeStore.getState().check(workspace)
+
+    expect(useCarrierChangeStore.getState().status).toBe('unavailable')
+    expect(useCarrierChangeStore.getState().workspace).toBe(workspace)
+    spy.mockRestore()
   })
 
   it('reload replaces the working copy, checkpoints it, and clears divergence', async () => {

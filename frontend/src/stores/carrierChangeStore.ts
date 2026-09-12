@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { getWorkspaceStore, type OpenWorkspace } from '@/workspace/store'
+import { getWorkspaceStore, type CarrierCheck, type OpenWorkspace } from '@/workspace/store'
 import { useRecoveryStore } from '@/stores/recoveryStore'
 import { errorMessage } from '@/utils/core/errorMessage'
 import type { ReconcileReport } from '@/workspace/directoryCarrier'
@@ -34,7 +34,7 @@ function scheduleCheck(): void {
   if (checkTimer) clearTimeout(checkTimer)
   checkTimer = setTimeout(() => {
     checkTimer = null
-    void useCarrierChangeStore.getState().check()
+    void useCarrierChangeStore.getState().check().catch(() => undefined)
   }, CARRIER_CHECK_DEBOUNCE_MS)
 }
 
@@ -77,8 +77,9 @@ interface CarrierChangeState {
   // until the carrier decision is made. `unavailable` is neutral: the working
   // copy still opens, so it returns false and U7 runs normally.
   begin: (workspace: string) => Promise<boolean>
-  // Re-run the compare now. The focus watch and the tests call it.
-  check: () => Promise<void>
+  // Re-run the compare now. An explicit workspace (the grid's Reopen) names the
+  // workspace to surface; the focus watch and the tests call it without one.
+  check: (workspace?: string) => Promise<void>
   reload: () => Promise<void>
   keep: () => Promise<void>
   saveOver: () => Promise<void>
@@ -140,25 +141,42 @@ export const useCarrierChangeStore = create<CarrierChangeState>((set, get) => {
       set({ status: 'idle', workspace, error: undefined })
       return false
     },
-    check: async () => {
-      const workspace = get().workspace
-      if (!workspace) return
-      const result = await getWorkspaceStore().checkCarrier(workspace)
-      if (get().workspace !== workspace) return
+    check: async (workspace?: string) => {
+      const target = workspace ?? get().workspace
+      if (!target) return
+      let result: CarrierCheck
+      try {
+        result = await getWorkspaceStore().checkCarrier(target)
+      } catch {
+        // A carrier that cannot be read (a missing manifest, a revoked handle)
+        // settles to unavailable rather than rejecting the focus watch on every
+        // refocus. The same staleness rule as the success path applies.
+        if (workspace === undefined && get().workspace !== target) return
+        set({ status: 'unavailable', workspace: target })
+        return
+      }
+      // The focus watch's implicit re-check can be overtaken by a route change:
+      // its result is dropped once the user has left that workspace. An explicit
+      // workspace (the grid's Reopen) is the caller's direct request and wins.
+      if (workspace === undefined && get().workspace !== target) return
       if (result.status === 'changed') {
         set({
           status: 'changed',
-          workspace,
+          workspace: target,
           carrier: result.carrier,
           label: result.label,
           reconcile: result.reconcile,
         })
       } else if (result.status === 'unavailable') {
-        set({ status: 'unavailable', workspace, carrier: result.carrier, label: result.label })
+        set({ status: 'unavailable', workspace: target, carrier: result.carrier, label: result.label })
       } else if (get().status !== 'idle') {
         // The carrier is back to the state the working copy agrees with, so a
         // stale prompt from an earlier read is dropped.
-        set({ status: 'idle', workspace })
+        set({ status: 'idle', workspace: target })
+      } else {
+        // A clean explicit check still records the workspace it spoke for, so a
+        // later focus event or page mount keys its own compare to the same one.
+        set({ workspace: target })
       }
     },
     reload: () => resolve(workspace => getWorkspaceStore().reloadFromCarrier(workspace)),

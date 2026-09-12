@@ -11,6 +11,7 @@ import { errorMessage } from '@/utils/core/errorMessage'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { getWorkspaceStore, type WorkspaceSummary } from '@/workspace/store'
 import { subscribeWorkspaceStore } from '@/workspace/storeEvents'
+import { useCarrierChangeStore } from '@/stores/carrierChangeStore'
 import { buildZipBytes } from '@/workspace/zipCarrier'
 import { deserializeTree } from '@/workspace/serializer'
 import { importBag, readDirectoryBag, readZipBag, type ImportBag } from '@/workspace/import'
@@ -169,9 +170,11 @@ export default function Workspaces() {
         return
       }
       // The grant is restored, so prime the resolved target at once: a later
-      // save writes through it instead of re-probing. The carrier-change dialog
-      // that consumes the check result is P4b.
-      await store.checkCarrier(workspace)
+      // save writes through it instead of re-probing. The carrier change the
+      // check finds is surfaced into carrierChangeStore, so entering the
+      // workspace shows the decision dialog instead of silently keeping the
+      // stale working copy (P4b).
+      await useCarrierChangeStore.getState().check(workspace)
       setError(null)
     } catch (e) {
       setError(errorMessage(e, 'Failed to reopen folder'))

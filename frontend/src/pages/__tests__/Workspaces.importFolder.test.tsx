@@ -70,6 +70,38 @@ describe('Workspaces folder import', () => {
     expect(await screen.findByTitle('Reopen cad')).toBeInTheDocument()
   })
 
+  it('reopen surfaces a carrier changed on disk into the decision store', async () => {
+    const { useCarrierChangeStore } = await import('@/stores/carrierChangeStore')
+    useCarrierChangeStore.getState().reset()
+    const store = getWorkspaceStore()
+    const dir = fakeDirectory('cad')
+    const { workspace } = await store.create('Folded', {
+      docKind: 'part', target: { kind: 'folder', label: dir.name, handle: dir as unknown as FileSystemDirectoryHandle },
+    })
+    await store.writeEntry(workspace, {
+      id: workspace, kind: 'document', name: 'Folded', docKind: 'part', text: 'kind: part\n# saved\n',
+    })
+    await store.save(workspace, (await store.open(workspace)).tree)
+    // Drop the entry from the folder's manifest: the carrier moved underneath.
+    const { parseManifest, serializeManifest } = await import('@/workspace/manifest')
+    const { MANIFEST_PATH } = await import('@/workspace/paths')
+    const held = parseManifest(dir.snapshot()[MANIFEST_PATH])
+    const changed = { ...held, entries: { ...held.entries } }
+    delete changed.entries[workspace]
+    dir.putText(MANIFEST_PATH, serializeManifest(changed))
+
+    wrap()
+    await waitFor(() => expect(screen.getByTitle('Reopen cad')).toBeInTheDocument())
+    await userEvent.click(screen.getByTitle('Reopen cad'))
+
+    // The grid's Reopen feeds the check into carrierChangeStore, so entering the
+    // workspace will show the decision dialog instead of silently keeping the
+    // stale working copy.
+    await waitFor(() => expect(useCarrierChangeStore.getState().status).toBe('changed'))
+    expect(useCarrierChangeStore.getState().workspace).toBe(workspace)
+    useCarrierChangeStore.getState().reset()
+  })
+
   it('keeps two same-named sources distinct so neither can pull the other', async () => {
     const dirA = fakeDirectory('cad')
     dirA.putText('A.yaml', 'kind: part\n# A\n')
