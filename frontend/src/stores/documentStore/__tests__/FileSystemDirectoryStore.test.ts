@@ -3,20 +3,28 @@ import {
   openDirectoryLibrary, FileSystemDirectoryStore, FileSystemDirectoryTrashAdapter,
 } from '../FileSystemDirectoryStore'
 import { INDEX_FILE, TRASH_DIR, PREVIEWS_DIR } from '../directoryLibrary'
+import { MemoryPreviewStore } from '@/stores/previewStore'
 import { fakeDirectory, type FakeDirectoryHandle } from './fakeFileSystemDirectory'
 import { InMemoryDocumentStore } from './InMemoryDocumentStore'
 
 // What the shared contract does NOT promise, and this store nonetheless has to
 // get right: the on-disk layout, per-file save atomicity, and what happens when
 // the folder changes underneath the app. contract.test.ts covers the interface.
+//
+// The store keeps its on-disk `.oversolved-previews/` handling until C3 and
+// mirrors it into the preview store the grid reads; the memory preview store
+// here keeps the test off IndexedDB, the same way the fake directory keeps it
+// off the filesystem.
 
 let dir: FakeDirectoryHandle & FileSystemDirectoryHandle
+let previews: MemoryPreviewStore
 let store: FileSystemDirectoryStore
 let trash: FileSystemDirectoryTrashAdapter
 
 beforeEach(() => {
   dir = fakeDirectory('cad')
-  const opened = openDirectoryLibrary(dir)
+  previews = new MemoryPreviewStore()
+  const opened = openDirectoryLibrary(dir, previews)
   store = opened.documents
   trash = opened.trash
 })
@@ -29,10 +37,12 @@ describe('on-disk layout', () => {
   it('never writes beside a document in the user folder', async () => {
     dir.putText('Bracket.png', 'MY OWN IMAGE')
     const { uuid } = await store.create('Bracket')
-    await store.save(uuid, { content: 'x', preview_image: btoa('\x89PNG') })
+    await previews.put(uuid, uuid, btoa('\x89PNG'))
+    await store.save(uuid, { content: 'x' })
     expect(dir.snapshot()['Bracket.png']).toBe('MY OWN IMAGE')
     expect(dir.fileNames()).toEqual(['.oversolved-index.json', 'Bracket.png', 'Bracket.yaml'])
-    expect((await store.load(uuid)).preview_image).toBe(btoa('\x89PNG'))
+    expect((await store.load(uuid)).content).toBe('x')
+    expect(dir.snapshot()[`${PREVIEWS_DIR}/Bracket.png`]).toBeDefined()
   })
 
   // The point of the feature: a folder of files the user already understands,
@@ -63,22 +73,16 @@ describe('on-disk layout', () => {
     expect(dir.fileNames()).toContain('Empty.yaml')
   })
 
-  // A real .png a file manager can open, in a directory this app owns.
+  // A real .png a file manager can open, in a directory this app owns, and the
+  // same bytes readable through the render store the grid uses.
   it('keeps the preview as a real .png under its own directory', async () => {
     const png = btoa('\x89PNG\r\n\x1a\n')
     const { uuid } = await store.create('Bracket')
-    await store.save(uuid, { content: 'x', preview_image: png })
+    await previews.put(uuid, uuid, png)
+    await store.save(uuid, { content: 'x' })
     expect(dir.fileNames()).toEqual([INDEX_FILE, 'Bracket.yaml'])
     expect(dir.snapshot()[`${PREVIEWS_DIR}/Bracket.png`]).toBeDefined()
-    expect((await store.load(uuid)).preview_image).toBe(png)
-  })
-
-  // The bundle format carries a vestigial <user>/ level, kept only so older
-  // bundles keep importing. A folder the user picked holds one library, and a
-  // `local/` level inside it would be an artifact of a server that is gone.
-  it('sheds the bundle format per-user directory level', async () => {
-    await store.create('Bracket')
-    expect(dir.fileNames().some(n => n.includes('/'))).toBe(false)
+    expect(await previews.get(uuid, uuid)).toBe(png)
   })
 
   // A trashed document keeps both files together in the trash, so a deleted
@@ -88,15 +92,24 @@ describe('on-disk layout', () => {
   it('carries the preview into the trash beside the document', async () => {
     const png = btoa('\x89PNG')
     const { uuid } = await store.create('Bracket')
-    await store.save(uuid, { content: 'shape', preview_image: png })
+    await previews.put(uuid, uuid, png)
+    await store.save(uuid, { content: 'shape' })
     await store.remove(uuid)
     expect(dir.snapshot()[`${PREVIEWS_DIR}/Bracket.png`]).toBeUndefined()
     expect(Object.keys(dir.snapshot())).toContain(`${TRASH_DIR}/Bracket.png`)
-    expect((await trash.list())[0].preview_image).toBe(png)
+    expect(await previews.get(uuid, uuid)).toBe(png)
 
     await trash.recover(uuid)
     expect(Object.keys(dir.snapshot())).toContain(`${PREVIEWS_DIR}/Bracket.png`)
-    expect((await store.load(uuid)).preview_image).toBe(png)
+    expect(await previews.get(uuid, uuid)).toBe(png)
+  })
+
+  // The bundle format carries a vestigial <user>/ level, kept only so older
+  // bundles keep importing. A folder the user picked holds one library, and a
+  // `local/` level inside it would be an artifact of a server that is gone.
+  it('sheds the bundle format per-user directory level', async () => {
+    await store.create('Bracket')
+    expect(dir.fileNames().some(n => n.includes('/'))).toBe(false)
   })
 
   // A name that is not a filename still has to become one, and two documents
@@ -127,14 +140,15 @@ describe('on-disk layout', () => {
   it('renames the file on disk, taking the preview with it', async () => {
     const png = btoa('\x89PNG')
     const { uuid } = await store.create('Old')
-    await store.save(uuid, { content: 'body', preview_image: png })
+    await previews.put(uuid, uuid, png)
+    await store.save(uuid, { content: 'body' })
     await store.rename(uuid, 'New')
     expect(dir.fileNames()).toEqual([INDEX_FILE, 'New.yaml'])
     expect(Object.keys(dir.snapshot())).toContain(`${PREVIEWS_DIR}/New.png`)
     expect(Object.keys(dir.snapshot())).not.toContain(`${PREVIEWS_DIR}/Old.png`)
     const loaded = await store.load(uuid)
     expect(loaded.content).toBe('body')
-    expect(loaded.preview_image).toBe(png)
+    expect(await previews.get(uuid, uuid)).toBe(png)
   })
 
   it('keeps the document uuid stable across a rename', async () => {
@@ -365,7 +379,8 @@ describe('trash', () => {
     await store.save(uuid, { content: 'no thumbnail' })
     await store.list()
     expect(dir.dirNames()).toEqual([])
-    await store.save(uuid, { content: 'thumbnail now', preview_image: btoa('\x89PNG') })
+    await previews.put(uuid, uuid, btoa('\x89PNG'))
+    await store.save(uuid, { content: 'thumbnail now' })
     expect(dir.dirNames()).toEqual([PREVIEWS_DIR])
   })
 

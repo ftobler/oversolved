@@ -111,19 +111,22 @@ describe('IndexedDbDocumentStore', () => {
     })
 
     it('a save with identical bytes leaves meta untouched (no rev bump, no re-dirty)', async () => {
+      // The app no longer wires this ancestor store; the live no-op-save guard
+      // is IdbCarrier.write, pinned at the adapter layer in
+      // adapters/__tests__/WorkspaceDocumentAdapter.test.ts. This stays as the
+      // ancestor's own regression.
       // meta.rev keys the assembly bundle cache (currentRevs): churning it on
-      // a no-op save (e.g. manual Save re-capturing the same screenshot)
-      // needlessly invalidates every cached part bundle.
+      // a no-op save needlessly invalidates every cached part bundle.
       const now = vi.spyOn(Date, 'now')
       const store = new IndexedDbDocumentStore()
       now.mockReturnValue(1000)
       const { uuid } = await store.create('Doc')
-      await store.save(uuid, { content: 'a', preview_image: 'img' })
+      await store.save(uuid, { content: 'a' })
       await store.markSynced(uuid)  // dirty=false, baseRev=1
       const [before] = await store.list()
       now.mockReturnValue(5000)
 
-      await store.save(uuid, { content: 'a', preview_image: 'img' })
+      await store.save(uuid, { content: 'a' })
 
       const [after] = await store.list()
       expect(after.meta?.rev).toBe(before.meta?.rev)
@@ -133,28 +136,7 @@ describe('IndexedDbDocumentStore', () => {
       now.mockRestore()
     })
 
-    it('a save omitting preview_image over identical bytes is also a no-op', async () => {
-      const store = new IndexedDbDocumentStore()
-      const { uuid } = await store.create('Doc')
-      await store.save(uuid, { content: 'a', preview_image: 'img' })  // rev 1
-
-      await store.save(uuid, { content: 'a' })  // preview omitted = keep existing
-
-      const [s] = await store.list()
-      expect(s.meta?.rev).toBe(1)
-      expect(s.preview_image).toBe('img')
-    })
-
-    it('changed preview bytes still bump rev (preview-only saves are real changes)', async () => {
-      const store = new IndexedDbDocumentStore()
-      const { uuid } = await store.create('Doc')
-      await store.save(uuid, { content: 'a', preview_image: 'img1' })
-      await store.save(uuid, { content: 'a', preview_image: 'img2' })
-      const [s] = await store.list()
-      expect(s.meta?.rev).toBe(2)
-    })
-
-    it('thumbnailUrl is null (the grid uses the inline preview_image)', () => {
+    it('thumbnailUrl is null (the view reads the preview store)', () => {
       expect(new IndexedDbDocumentStore().thumbnailUrl('any')).toBeNull()
     })
 
@@ -197,16 +179,6 @@ describe('IndexedDbDocumentStore', () => {
       expect(listed[0].owner_username).toBe('local')
       expect(listed[0].deleted_at).not.toBe('')
       now.mockRestore()
-    })
-
-    it('trash carries the preview_image so the grid can render a thumbnail', async () => {
-      const store = new IndexedDbDocumentStore()
-      const trash = new IndexedDbTrashAdapter()
-      const { uuid } = await store.create('Widget')
-      await store.save(uuid, { content: 'x', preview_image: 'img42' })
-      await store.remove(uuid)
-      const [d] = await trash.list()
-      expect(d.preview_image).toBe('img42')
     })
 
     it('recover lifts the tombstone: the doc returns to the library, leaves the trash', async () => {
@@ -374,33 +346,6 @@ describe('IndexedDbDocumentStore', () => {
       expect(summary.name).toBe('Renamed')
       expect(loaded.content).toBe('body')
       expect(summary.meta?.rev).toBe(2)  // both bumps landed, none clobbered the other
-    })
-  })
-
-  describe('preview_image in list summaries', () => {
-    it('summary carries preview_image after save with one', async () => {
-      const store = new IndexedDbDocumentStore()
-      const { uuid } = await store.create('Widget')
-      await store.save(uuid, { content: 'x', preview_image: 'abc123' })
-      const [s] = await store.list()
-      expect(s.preview_image).toBe('abc123')
-    })
-
-    it('summary has no preview_image when none saved', async () => {
-      const store = new IndexedDbDocumentStore()
-      const { uuid } = await store.create('Widget')
-      await store.save(uuid, { content: 'x' })
-      const [s] = await store.list()
-      expect(s.preview_image).toBeUndefined()
-    })
-
-    it('preview_image persists across saves that omit it', async () => {
-      const store = new IndexedDbDocumentStore()
-      const { uuid } = await store.create('Widget')
-      await store.save(uuid, { content: 'a', preview_image: 'img1' })
-      await store.save(uuid, { content: 'b' })  // no preview_image
-      const [s] = await store.list()
-      expect(s.preview_image).toBe('img1')
     })
   })
 

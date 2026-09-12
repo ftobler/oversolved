@@ -4,6 +4,7 @@ import { stringify as stringifyYaml } from 'yaml'
 import type { AssemblyDoc } from '@/types/cad'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
+import { getPreviewStore } from '@/stores/previewStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { mateFeatures, partInstances } from '@/utils/assemblyMutations'
@@ -97,12 +98,14 @@ export function useAssemblyDoc(uuid: string | undefined) {
         // edits in place), so identity still holding after the awaits below
         // proves no edit landed while the save was in flight.
         const savedRef = docRef.current
-        const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
+        // Previews are derived and live in their own store keyed by
+        // (workspace, entry); in C2 both are the document uuid. The record
+        // receives only the content.
         if (screenshot) {
           const dataUrl = await screenshot()
-          if (dataUrl) body.preview_image = dataUrl.split(',')[1]
+          if (dataUrl) await getPreviewStore().put(uuid, uuid, dataUrl.split(',')[1])
         }
-        await store.save(uuid, body)
+        await store.save(uuid, { content: stringifyYaml(document) })
         // Same guard as the part editor's saveDoc: an edit during the save
         // windows postdates the stored bytes, so its dirty flag must survive
         // or a reload would silently drop those edits.

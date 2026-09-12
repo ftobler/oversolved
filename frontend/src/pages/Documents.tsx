@@ -107,10 +107,10 @@ export default function Documents() {
 
     try {
       const { uuid } = await store.create(newDocName.trim())
-      // `create` always makes an empty document, and empty content parses to a
-      // part (DocumentPage routes on `kind`). An assembly is therefore a create
-      // + save of its seed content, the same two-step handleImportFile uses, so
-      // the store never learns what a `kind` is.
+      // `create` seeds the entry's docKind as a part, and DocumentPage routes on
+      // that kind (an absent kind refuses). An assembly is therefore a create +
+      // save of its seed content, the same two-step handleImportFile uses; the
+      // save re-derives the kind from the content.
       if (newDocKind === 'assembly') {
         await store.save(uuid, { content: stringifyYaml(emptyAssemblyDoc()) })
       }
@@ -479,7 +479,7 @@ export default function Documents() {
                       <div key={doc.uuid} className="doc-tile">
                         <div className="doc-tile-link">
                           <div className="doc-tile-preview">
-                            <DocTilePreview doc={doc} store={store} />
+                            <DocTilePreview workspace={doc.uuid} entry={doc.uuid} name={doc.name} />
                           </div>
                           <div className="doc-tile-info">
                             <span className="doc-tile-name" title={doc.name}>
@@ -534,7 +534,7 @@ export default function Documents() {
                     <div key={doc.uuid} className="doc-tile">
                       <Link to={`/documents/${doc.uuid}`} className="doc-tile-link">
                         <div className="doc-tile-preview">
-                          <DocTilePreview doc={doc} store={store} />
+                          <DocTilePreview workspace={doc.uuid} entry={doc.uuid} name={doc.name} />
                         </div>
                         <div className="doc-tile-info">
                           <span className="doc-tile-name" title={doc.name}>

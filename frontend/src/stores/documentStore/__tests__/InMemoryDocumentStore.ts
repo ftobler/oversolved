@@ -1,7 +1,7 @@
 import type {
-  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta, DocumentKind,
+  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta,
 } from '../types'
-import { parseDocumentKind } from '../types'
+import { parseDocKind } from '@/workspace/kinds'
 import { suggestedCloneName } from '../cloneName'
 import { randomUuid } from '@/utils/randomUuid'
 
@@ -24,8 +24,7 @@ interface MemDoc {
   uuid: string
   name: string
   content: string
-  kind?: DocumentKind
-  preview_image?: string
+  kind?: string
   is_public: boolean
   created_at: string
   updated_at: string
@@ -71,8 +70,7 @@ export class InMemoryDocumentStore implements DocumentStore {
       is_owner: true,
       owner_username: OWNER,
       is_public: d.is_public,
-      kind: d.kind ?? parseDocumentKind(d.content),
-      preview_image: d.preview_image,
+      kind: d.kind ?? parseDocKind(d.content),
       meta: { ...d.meta },
     }))
   }
@@ -84,7 +82,7 @@ export class InMemoryDocumentStore implements DocumentStore {
       name: rec.name,
       owner_username: OWNER,
       is_public: rec.is_public,
-      preview_image: rec.preview_image,
+      kind: rec.kind ?? parseDocKind(rec.content),
     }
   }
 
@@ -99,8 +97,7 @@ export class InMemoryDocumentStore implements DocumentStore {
         uuid: id,
         name: 'Untitled',
         content: input.content,
-        kind: parseDocumentKind(input.content),
-        preview_image: input.preview_image,
+        kind: parseDocKind(input.content),
         is_public: false,
         created_at: new Date(at).toISOString(),
         updated_at: new Date(at).toISOString(),
@@ -109,8 +106,7 @@ export class InMemoryDocumentStore implements DocumentStore {
       return
     }
     rec.content = input.content
-    rec.kind = parseDocumentKind(input.content)
-    if (input.preview_image !== undefined) rec.preview_image = input.preview_image
+    rec.kind = parseDocKind(input.content) ?? rec.kind
     rec.updated_at = new Date(at).toISOString()
     rec.meta = { ...rec.meta, rev: rec.meta.rev + 1, updatedAt: at, dirty: true }
   }
@@ -153,11 +149,11 @@ export class InMemoryDocumentStore implements DocumentStore {
   private async copyInto(id: string, nameFor: (srcName: string) => string): Promise<{ uuid: string }> {
     const src = this.require(id)
     const { uuid } = await this.create(nameFor(src.name), { is_public: src.is_public })
-    await this.save(uuid, { content: src.content, preview_image: src.preview_image })
+    await this.save(uuid, { content: src.content })
     return { uuid }
   }
 
   thumbnailUrl(_id: string): string | null {
-    return null  // previews ride inline on the summary
+    return null  // the view reads the preview store
   }
 }

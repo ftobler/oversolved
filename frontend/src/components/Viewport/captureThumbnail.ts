@@ -4,7 +4,7 @@ import * as THREE from 'three'
 // Shared by the part Viewport and the AssemblyViewport so both editors capture
 // their preview the same way on save. The renderer is briefly downsized to a
 // quarter, drawn once, then restored, and the result is capped at MAX_SIZE so
-// the stored preview_image stays small. Returns null when the GL context, scene
+// the stored preview stays small. Returns null when the GL context, scene
 // or camera is not ready (e.g. the editor mounted headless in a unit test).
 const MAX_SIZE = 1024
 

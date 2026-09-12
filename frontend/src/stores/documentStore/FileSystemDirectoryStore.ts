@@ -1,8 +1,9 @@
 import type {
-  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta, DocumentKind,
+  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta,
   TrashAdapter, TrashDoc,
 } from './types'
-import { parseDocumentKind } from './types'
+import { parseDocKind } from '@/workspace/kinds'
+import { getPreviewStore, type PreviewStore } from '@/stores/previewStore'
 import {
   DirectoryLibrary, allocateStem, type IndexEntry, type LibraryIo,
 } from './directoryLibrary'
@@ -29,7 +30,7 @@ import { randomUuid } from '@/utils/randomUuid'
 // directory-backed library the user can actually check.
 export const DIRECTORY_OWNER = 'folder'
 
-function toSummary(entry: IndexEntry, preview?: string): DocSummary {
+function toSummary(entry: IndexEntry): DocSummary {
   return {
     uuid: entry.uuid,
     name: entry.name,
@@ -38,12 +39,9 @@ function toSummary(entry: IndexEntry, preview?: string): DocSummary {
     is_owner: true,
     owner_username: DIRECTORY_OWNER,
     is_public: entry.is_public,
-    // Absent on an entry whose index row predates the field. The picker treats
-    // an absent kind as insertable; a later save that actually writes the
-    // document backfills it from the content (a byte-identical no-op save
-    // returns before the index is touched).
+    // The entry's open kind. Absent or unknown is kept absent so the reader
+    // refuses it by name instead of coercing it to a part.
     kind: entry.kind,
-    preview_image: preview,
     meta: { ...entry.meta },
   }
 }
@@ -92,20 +90,28 @@ export class FileSystemDirectoryStore implements DocumentStore {
   private previews = new Map<string, { rev: number; data?: string }>()
 
   private readonly library: DirectoryLibrary
+  // The render store. The folder keeps its on-disk previews until C3; this is
+  // the bridge that lets the preview store's readers (DocTilePreview) see them.
+  private readonly previewStore: PreviewStore
 
-  constructor(library: DirectoryLibrary) {
+  constructor(library: DirectoryLibrary, previewStore: PreviewStore = getPreviewStore()) {
     this.library = library
+    this.previewStore = previewStore
   }
 
   get label(): string {
     return this.library.label
   }
 
-  private async preview(entry: IndexEntry, io?: LibraryIo): Promise<string | undefined> {
+  // Read the preview off disk, cached per rev, and mirror it into the preview
+  // store the grid reads. A read that misses the cache is the one that writes,
+  // so a repeated list does not churn the store.
+  private async previewImage(entry: IndexEntry, io?: LibraryIo): Promise<string | undefined> {
     const cached = this.previews.get(entry.uuid)
     if (cached && cached.rev === entry.meta.rev) return cached.data
     const data = await (io ? io.readPreview(entry) : this.library.readPreview(entry))
     this.previews.set(entry.uuid, { rev: entry.meta.rev, data })
+    if (data !== undefined) await this.previewStore.put(entry.uuid, entry.uuid, data)
     return data
   }
 
@@ -125,7 +131,8 @@ export class FileSystemDirectoryStore implements DocumentStore {
     if (opts.sort === 'name') sorted.sort((a, b) => a.name.localeCompare(b.name))
     else if (opts.sort === 'modified_asc') sorted.sort((a, b) => a.meta.updatedAt - b.meta.updatedAt)
     else sorted.sort((a, b) => b.meta.updatedAt - a.meta.updatedAt)
-    return Promise.all(sorted.map(async e => toSummary(e, await this.preview(e))))
+    await Promise.all(sorted.map(e => this.previewImage(e)))
+    return sorted.map(toSummary)
   }
 
   // Reads the entry and its bytes inside ONE serialized slot. Split across two
@@ -145,13 +152,16 @@ export class FileSystemDirectoryStore implements DocumentStore {
           name: entry.name,
           owner_username: DIRECTORY_OWNER,
           is_public: entry.is_public,
-          preview_image: await this.preview(entry, io),
+          kind: entry.kind,
         },
       }
     })
   }
 
   async save(id: string, input: SaveInput): Promise<void> {
+    // The save hooks write the preview store before calling save, so this is
+    // where the folder picks the derived image up to persist it on disk.
+    const preview = await this.previewStore.get(id, id).catch(() => undefined)
     await this.library.update(async (entries, io) => {
       const tombstoned = entries.find(e => e.uuid === id && e.deleted_at)
       if (tombstoned) {
@@ -165,10 +175,10 @@ export class FileSystemDirectoryStore implements DocumentStore {
         const revived: IndexEntry = { ...tombstoned, stem, ...moved }
         delete revived.deleted_at
         const updated = stamp(revived, {
-          has_preview: revived.has_preview || input.preview_image !== undefined,
-          kind: parseDocumentKind(input.content),
+          has_preview: revived.has_preview || preview !== undefined,
+          kind: parseDocKind(input.content) ?? revived.kind,
         })
-        const written = await io.writeDoc(updated, input.content, input.preview_image)
+        const written = await io.writeDoc(updated, input.content, preview)
         this.previews.delete(id)
         return { entries: replace(entries, { ...updated, ...written }), result: undefined }
       }
@@ -178,15 +188,16 @@ export class FileSystemDirectoryStore implements DocumentStore {
         // bundle-cache key), restamp updated_at, or re-flag a synced doc dirty.
         // Reading the file to decide costs one read and saves a write plus a
         // spurious modification time on a file the user may be watching in git.
+        // A changed preview is a real change even when the text did not move.
         const onDisk = await io.readContent(existing)
-        const previewUnchanged = input.preview_image === undefined ||
-          input.preview_image === await io.readPreview(existing)
+        const diskPreview = await io.readPreview(existing)
+        const previewUnchanged = preview === undefined || preview === diskPreview
         if (onDisk === input.content && previewUnchanged) return { result: undefined }
         const updated = stamp(existing, {
-          has_preview: existing.has_preview || input.preview_image !== undefined,
-          kind: parseDocumentKind(input.content),
+          has_preview: existing.has_preview || preview !== undefined,
+          kind: parseDocKind(input.content) ?? existing.kind,
         })
-        const written = await io.writeDoc(updated, input.content, input.preview_image)
+        const written = await io.writeDoc(updated, input.content, preview)
         this.previews.delete(id)
         return { entries: replace(entries, { ...updated, ...written }), result: undefined }
       }
@@ -196,10 +207,10 @@ export class FileSystemDirectoryStore implements DocumentStore {
       const created = newEntry(id, 'Untitled', allocateStem('Untitled', takenStems(io, entries, 'library')), {
         is_public: false,
         rev: 1,
-        has_preview: input.preview_image !== undefined,
-        kind: parseDocumentKind(input.content),
+        has_preview: preview !== undefined,
+        kind: parseDocKind(input.content),
       })
-      const written = await io.writeDoc(created, input.content, input.preview_image)
+      const written = await io.writeDoc(created, input.content, preview)
       this.previews.delete(id)
       return { entries: [...entries, { ...created, ...written }], result: undefined }
     })
@@ -286,15 +297,16 @@ export class FileSystemDirectoryStore implements DocumentStore {
         is_public: src.is_public,
         rev: 1,
         has_preview: src.has_preview,
-        kind: src.kind ?? 'part',
+        kind: src.kind,
       })
-      const written = await io.writeDoc(copy, await io.readContent(src), await io.readPreview(src))
+      const preview = await io.readPreview(src)
+      const written = await io.writeDoc(copy, await io.readContent(src), preview)
+      if (preview !== undefined) await this.previewStore.put(copy.uuid, copy.uuid, preview)
       return { entries: [...entries, { ...copy, ...written }], result: { uuid: copy.uuid } }
     })
   }
 
-  // No separate thumbnail resource: the grid uses the inline preview_image
-  // carried on each summary instead.
+  // No separate thumbnail resource: the view reads the preview store itself.
   thumbnailUrl(_id: string): string | null {
     return null
   }
@@ -306,23 +318,30 @@ export class FileSystemDirectoryStore implements DocumentStore {
 // between the two halves and both must see the same index.
 export class FileSystemDirectoryTrashAdapter implements TrashAdapter {
   private readonly library: DirectoryLibrary
+  private readonly previewStore: PreviewStore
 
-  constructor(library: DirectoryLibrary) {
+  constructor(library: DirectoryLibrary, previewStore: PreviewStore = getPreviewStore()) {
     this.library = library
+    this.previewStore = previewStore
   }
 
   async list(): Promise<TrashDoc[]> {
     const entries = (await this.library.read()).filter(e => e.deleted_at)
     entries.sort((a, b) => (b.deleted_at ?? '').localeCompare(a.deleted_at ?? ''))  // newest deletion first
-    return Promise.all(entries.map(async e => ({
-      uuid: e.uuid,
-      name: e.name,
-      deleted_at: e.deleted_at ?? '',
-      created_at: e.created_at,
-      owner_id: 0,
-      owner_username: DIRECTORY_OWNER,
-      preview_image: await this.library.readPreview(e),
-    })))
+    return Promise.all(entries.map(async e => {
+      // Mirror the trashed preview into the render store so the trash grid can
+      // show it. The key is the stable uuid, so a recover needs no re-keying.
+      const preview = await this.library.readPreview(e)
+      if (preview !== undefined) await this.previewStore.put(e.uuid, e.uuid, preview)
+      return {
+        uuid: e.uuid,
+        name: e.name,
+        deleted_at: e.deleted_at ?? '',
+        created_at: e.created_at,
+        owner_id: 0,
+        owner_username: DIRECTORY_OWNER,
+      }
+    }))
   }
 
   // Lift the tombstone and move the files back up into the library folder. The
@@ -348,12 +367,13 @@ export class FileSystemDirectoryTrashAdapter implements TrashAdapter {
       await io.deleteDoc(entry)
       return { entries: entries.filter(e => e.uuid !== id), result: undefined }
     })
+    await this.previewStore.remove(id, id)
   }
 }
 
 function newEntry(
   uuid: string, name: string, stem: string,
-  opts: { is_public: boolean; rev: number; has_preview: boolean; kind: DocumentKind },
+  opts: { is_public: boolean; rev: number; has_preview: boolean; kind?: string },
 ): IndexEntry {
   const now = Date.now()
   return {
@@ -395,16 +415,20 @@ function replace(entries: IndexEntry[], updated: IndexEntry): IndexEntry[] {
   return entries.map(e => (e.uuid === updated.uuid ? updated : e))
 }
 
-// Convenience for the composition root: one library, its two faces.
-export function openDirectoryLibrary(dir: FileSystemDirectoryHandle): {
+// Convenience for the composition root: one library, its two faces. The
+// preview store is injectable so a caller with no IndexedDB (the single-file
+// library's in-memory bookkeeping) can pass its own.
+export function openDirectoryLibrary(
+  dir: FileSystemDirectoryHandle, previewStore: PreviewStore = getPreviewStore(),
+): {
   documents: FileSystemDirectoryStore
   trash: FileSystemDirectoryTrashAdapter
   library: DirectoryLibrary
 } {
   const library = new DirectoryLibrary(dir)
   return {
-    documents: new FileSystemDirectoryStore(library),
-    trash: new FileSystemDirectoryTrashAdapter(library),
+    documents: new FileSystemDirectoryStore(library, previewStore),
+    trash: new FileSystemDirectoryTrashAdapter(library, previewStore),
     library,
   }
 }

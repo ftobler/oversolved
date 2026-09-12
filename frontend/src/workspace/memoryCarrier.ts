@@ -1,6 +1,6 @@
 import type { ListOptions, WorkspaceCarrier } from './carrier'
 import type { EntryMeta, WorkspaceEntry, WorkspaceTree } from './types'
-import { addEntry, assertTree, cloneTree, entryById, isTrashed, putEntry, removeEntry } from './tree'
+import { addEntry, assertTree, cloneTree, entryById, isTrashed, putEntry, removeEntry, restoreEntry } from './tree'
 import { suggestedCloneName } from '@/stores/documentStore/cloneName'
 import { randomUuid } from '@/utils/randomUuid'
 
@@ -35,6 +35,7 @@ export class MemoryCarrier implements WorkspaceCarrier {
       const meta: EntryMeta = { id, path: row.path, kind: row.kind, name: row.name }
       if (row.docKind !== undefined) meta.docKind = row.docKind
       if (row.mime !== undefined) meta.mime = row.mime
+      if (row.fileKind !== undefined) meta.fileKind = row.fileKind
       out.push(meta)
     }
     return out
@@ -66,6 +67,12 @@ export class MemoryCarrier implements WorkspaceCarrier {
     assertTree(tree)
   }
 
+  async restore(id: string): Promise<void> {
+    const tree = this.requireTree()
+    restoreEntry(tree, id)
+    assertTree(tree)
+  }
+
   // A fresh uuid and a content copy; reference edges and provenance are link
   // semantics and stay with C2/C3.
   async clone(id: string, name?: string): Promise<string> {
@@ -80,6 +87,7 @@ export class MemoryCarrier implements WorkspaceCarrier {
     }
     if (source.docKind !== undefined) clone.docKind = source.docKind
     if (source.mime !== undefined) clone.mime = source.mime
+    if (source.fileKind !== undefined) clone.fileKind = source.fileKind
     addEntry(tree, clone)
     assertTree(tree)
     return clone.id

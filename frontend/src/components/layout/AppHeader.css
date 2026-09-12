@@ -52,6 +52,30 @@
   font-size: 20px;
 }
 
+/* Workspace dirty state: the dot and the durability sentence that keeps the
+   "unsaved" claim honest about whether the browser will actually keep it. */
+.workspace-dirty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+  color: #d8b45a;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.workspace-dirty-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d8b45a;
+}
+
+.workspace-dirty-copy {
+  color: #bbb;
+}
+
 .logo {
   font-size: 18px;
   font-weight: 700;

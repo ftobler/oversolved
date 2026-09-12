@@ -11,7 +11,7 @@ import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assembl
 const h = vi.hoisted(() => ({
   loadContent: 'kind: assembly\nfeatures: []',
   partContent: 'features: []',
-  list: [] as Array<{ uuid: string; name: string; meta?: { rev: number } }>,
+  list: [] as Array<{ uuid: string; name: string; kind?: string; meta?: { rev: number } }>,
   solveAssemblyViaWorker: vi.fn(),
 }))
 
@@ -65,7 +65,7 @@ describe('AssemblyEditor pose ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     h.loadContent = 'kind: assembly\nfeatures: []'
-    h.list = [{ uuid: 'part-1', name: 'Bracket', meta: { rev: 5 } }]
+    h.list = [{ uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } }]
     h.solveAssemblyViaWorker.mockResolvedValue({
       payload: { transforms: {}, bodies: {} },
     })

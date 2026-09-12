@@ -7,7 +7,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { DB_NAME, DB_VERSION, idbGet, idbPut, resetDbConnection } from './idb'
+import {
+  DB_NAME, DB_VERSION, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_META, idbGet, idbGetFrom,
+  idbPut, idbTransaction, resetDbConnection,
+} from './idb'
 
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()
@@ -55,5 +58,46 @@ describe('idb open robustness', () => {
     } catch (e) {
       expect((e as DOMException).name).toBe('VersionError')
     }
+  })
+})
+
+describe('idbTransaction (I7, multi-key atomicity)', () => {
+  it('commits every store and resolves once the transaction completes', async () => {
+    const result = await idbTransaction(
+      [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES],
+      'readwrite',
+      stores => {
+        stores[STORE_WORKSPACE_META].put({ workspace: 'ws-1', name: 'One' })
+        stores[STORE_WORKSPACE_ENTRIES].put({ workspace: 'ws-1', id: 'e1', text: 'body' })
+        return 'done'
+      },
+    )
+    expect(result).toBe('done')
+    expect(await idbGetFrom(STORE_WORKSPACE_META, 'ws-1')).toEqual({ workspace: 'ws-1', name: 'One' })
+    expect(await idbGetFrom(STORE_WORKSPACE_ENTRIES, ['ws-1', 'e1'])).toEqual({ workspace: 'ws-1', id: 'e1', text: 'body' })
+  })
+
+  it('aborts the whole unit when build throws, leaving every store untouched', async () => {
+    await idbTransaction(
+      [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES],
+      'readwrite',
+      stores => {
+        stores[STORE_WORKSPACE_META].put({ workspace: 'ws-2', name: 'Old' })
+        stores[STORE_WORKSPACE_ENTRIES].put({ workspace: 'ws-2', id: 'e1', text: 'old' })
+      },
+    )
+
+    await expect(idbTransaction(
+      [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES],
+      'readwrite',
+      stores => {
+        stores[STORE_WORKSPACE_META].put({ workspace: 'ws-2', name: 'New' })
+        stores[STORE_WORKSPACE_ENTRIES].put({ workspace: 'ws-2', id: 'e1', text: 'new' })
+        throw new Error('injected failure')
+      },
+    )).rejects.toThrow('injected failure')
+
+    expect(await idbGetFrom(STORE_WORKSPACE_META, 'ws-2')).toEqual({ workspace: 'ws-2', name: 'Old' })
+    expect(await idbGetFrom(STORE_WORKSPACE_ENTRIES, ['ws-2', 'e1'])).toEqual({ workspace: 'ws-2', id: 'e1', text: 'old' })
   })
 })

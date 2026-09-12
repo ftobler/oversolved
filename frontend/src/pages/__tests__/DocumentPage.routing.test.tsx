@@ -74,10 +74,10 @@ describe('DocumentPage kind routing', () => {
     await waitFor(() => expect(screen.getByText('ASSEMBLY EDITOR')).toBeInTheDocument())
   })
 
-  // The contract the "Add part" button relies on: `create` writes empty content,
-  // which must not land in the assembly editor.
-  it('routes empty content to the part editor', async () => {
-    load.mockResolvedValue({ content: '' })
+  // The "Add part" contract: create writes an empty body but carries the part
+  // kind on the entry, so the payload's kind (not the empty content) routes it.
+  it('routes an empty body with kind: part to the part editor', async () => {
+    load.mockResolvedValue({ content: '', name: 'Bracket', kind: 'part' })
     wrap()
     await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
   })
@@ -88,11 +88,21 @@ describe('DocumentPage kind routing', () => {
     await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
   })
 
-  // Fail-safe: an unrecognised kind is a part, not a crash and not an assembly.
-  it('routes an unknown kind to the part editor', async () => {
-    load.mockResolvedValue({ content: 'kind: sketch\n' })
+  // I6: an unrecognised kind refuses by name, never reading as a part.
+  it('refuses an unknown kind by name instead of routing to the part editor', async () => {
+    load.mockResolvedValue({ content: 'kind: sketch\n', name: 'Draft', kind: 'sketch' })
     wrap()
-    await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/unsupported kind 'sketch'/)).toBeInTheDocument())
+    expect(screen.queryByText('PART EDITOR')).not.toBeInTheDocument()
+    expect(screen.queryByText('ASSEMBLY EDITOR')).not.toBeInTheDocument()
+  })
+
+  // I6: a missing kind refuses too; there is no legacy part default.
+  it('refuses a document with no kind by name', async () => {
+    load.mockResolvedValue({ content: 'features: []\n', name: 'Legacy' })
+    wrap()
+    await waitFor(() => expect(screen.getByText(/has no kind/)).toBeInTheDocument())
+    expect(screen.queryByText('PART EDITOR')).not.toBeInTheDocument()
   })
 
   it('surfaces a load failure instead of routing anywhere', async () => {

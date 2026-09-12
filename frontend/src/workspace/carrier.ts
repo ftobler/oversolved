@@ -17,5 +17,6 @@ export interface WorkspaceCarrier {
   write(entry: WorkspaceEntry): Promise<void>
   add(entry: WorkspaceEntry): Promise<void>
   remove(id: string): Promise<void>
+  restore(id: string): Promise<void>
   clone(id: string, name?: string): Promise<string>
 }

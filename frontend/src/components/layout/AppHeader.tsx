@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import type { MouseEvent, ReactNode } from 'react'
 import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAboutDialogStore } from '@/stores/aboutDialogStore'
+import { useStoragePersistenceStore } from '@/stores/storagePersistenceStore'
+import { unsavedDurabilityNotice } from '@/adapters/storagePersistence'
+import { isEditableTarget } from '@/utils/core/commandRegistry'
+import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import BugReportDialog from '@/components/dialogs/BugReportDialog'
 import '@/components/layout/AppHeader.css'
@@ -30,6 +34,8 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
   const saveHandler = useUnsavedChangesStore(s => s.saveHandler)
+  const dirty = useUnsavedChangesStore(s => s.dirty)
+  const persistence = useStoragePersistenceStore(s => s.state)
   const [bugReportOpen, setBugReportOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -40,13 +46,12 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
     dismissConfirm()
   }
 
-  // The third way out of the unsaved-changes dialog: write the document, then
-  // do what the user was trying to do. A save that fails holds the dialog open
-  // -- proceeding anyway would drop the very edits the save was meant to keep;
-  // the editor's own error banner says why it failed.
-  const handleSaveAndExit = async () => {
-    const { pendingCallback: cb, saveHandler: save } = useUnsavedChangesStore.getState()
-    if (!cb || !save || saving) return
+  // One save path for the header's Save button, Ctrl/Cmd+S, and the dialog's
+  // "Save & Exit": the editor's registered handler writes the document and its
+  // workspace checkpoint, then this clears dirty once the bytes landed.
+  const handleSaveWorkspace = useCallback(async () => {
+    const save = useUnsavedChangesStore.getState().saveHandler
+    if (!save || saving) return false
     setSaving(true)
     let saved = false
     try {
@@ -54,6 +59,33 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
     } finally {
       setSaving(false)
     }
+    if (saved) useUnsavedChangesStore.getState().setDirty(false)
+    return saved
+  }, [saving])
+
+  // The header's own hotkey, so a global save works without the toolbar. It
+  // defers to the same guards the command dispatcher uses: a text field owns
+  // its key, and an open dialog (including the unsaved-changes one) owns it.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return
+      if (isEditableTarget(e) || modalOwnsEscape()) return
+      if (!useUnsavedChangesStore.getState().saveHandler) return
+      e.preventDefault()
+      void handleSaveWorkspace()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleSaveWorkspace])
+
+  // The third way out of the unsaved-changes dialog: write the document, then
+  // do what the user was trying to do. A save that fails holds the dialog open
+  // -- proceeding anyway would drop the very edits the save was meant to keep;
+  // the editor's own error banner says why it failed.
+  const handleSaveAndExit = async () => {
+    const cb = useUnsavedChangesStore.getState().pendingCallback
+    if (!cb || saving) return
+    const saved = await handleSaveWorkspace()
     if (!saved) return
     cb()
     dismissConfirm()
@@ -104,6 +136,21 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         {children}
       </div>
       <div className="app-header-right">
+        {dirty && (
+          <div className="workspace-dirty" role="status" aria-live="polite">
+            <span className="workspace-dirty-dot" aria-hidden="true" />
+            <span className="workspace-dirty-copy">{unsavedDurabilityNotice(persistence)}</span>
+            <button
+              className="toolbar-btn"
+              aria-label="Save workspace"
+              title="Save workspace (Ctrl+S)"
+              onClick={() => { void handleSaveWorkspace() }}
+              disabled={saving || saveHandler === null}
+            >
+              <span className="material-icons-outlined">{saving ? 'hourglass_empty' : 'save'}</span>
+            </button>
+          </div>
+        )}
         {rightContent}
         {/* Help is a navigation, not a dialog, so it is a Link -- but it leaves
             the editor the same way the burger does, hence the unsaved-changes

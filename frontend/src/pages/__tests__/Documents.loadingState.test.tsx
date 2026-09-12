@@ -3,8 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
-import { getLocalStore } from '@/stores/documentStore'
-import type { DocSummary } from '@/stores/documentStore'
+import { getWorkspaceStore, type WorkspaceSummary } from '@/workspace/store'
 import { render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import Documents from '@/pages/Documents'
@@ -30,9 +29,9 @@ describe('Documents loading state', () => {
   it('keeps the spinner visible while the list fetch is pending, and clears it only once it settles', async () => {
     // A controllable promise standing in for the store's list() call: it lets the
     // test observe the component mid-flight, before the fetch resolves.
-    let resolveList: (docs: DocSummary[]) => void = () => {}
-    const pending = new Promise<DocSummary[]>(resolve => { resolveList = resolve })
-    vi.spyOn(getLocalStore(), 'list').mockReturnValue(pending)
+    let resolveList: (docs: WorkspaceSummary[]) => void = () => {}
+    const pending = new Promise<WorkspaceSummary[]>(resolve => { resolveList = resolve })
+    vi.spyOn(getWorkspaceStore(), 'list').mockReturnValue(pending)
 
     wrap()
 

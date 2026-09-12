@@ -11,10 +11,12 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('@/adapters/backend', () => ({ backendBundle: h.bundle }))
+// The tiles read the preview store; thumbnails are not what this suite pins.
+vi.mock('@/stores/previewStore', () => ({ usePreview: () => undefined }))
 
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 
-const doc = (uuid: string, name: string, rev?: number) => ({
+const doc = (uuid: string, name: string, rev?: number, kind: string | undefined = 'part') => ({
   uuid,
   name,
   created_at: '2026-01-01T00:00:00Z',
@@ -22,6 +24,7 @@ const doc = (uuid: string, name: string, rev?: number) => ({
   is_owner: true,
   owner_username: 'me',
   is_public: false,
+  kind,
   ...(rev !== undefined ? { meta: { id: uuid, rev, updatedAt: 0, dirty: false } } : {}),
 })
 
@@ -74,6 +77,14 @@ describe('AssemblyPartPicker', () => {
     renderPicker()
     await waitFor(() => expect(screen.getByText('No parts available.')).toBeInTheDocument())
     expect(screen.queryByText('Other Assembly')).not.toBeInTheDocument()
+  })
+
+  // I6: an unknown kind is refused, never treated as an insertable part.
+  it('excludes a document with an unknown kind', async () => {
+    h.list.mockResolvedValue([doc('weird', 'Draft', 1, 'drawing')])
+    renderPicker()
+    await waitFor(() => expect(screen.getByText('No parts available.')).toBeInTheDocument())
+    expect(screen.queryByText('Draft')).not.toBeInTheDocument()
   })
 
   it('titles itself with an icon, like every other dialog on the shell', () => {

@@ -5,9 +5,11 @@ import { IndexedDbDocumentStore, LOCAL_OWNER } from '../IndexedDbDocumentStore'
 import { buildBundleBytes, importBundle, MAX_BUNDLE_ENTRIES, MAX_BUNDLE_INPUT_BYTES } from '../bundle'
 import { resetDbConnection } from '../idb'
 import { secureFilename } from '../secureFilename'
+import { getPreviewStore, resetPreviewDbConnection } from '@/stores/previewStore'
 beforeEach(() => {
   resetFakeIndexedDb()
   resetDbConnection()
+  resetPreviewDbConnection()
 })
 
 async function entryNames(bytes: Uint8Array): Promise<string[]> {
@@ -19,7 +21,8 @@ describe('bundle export/import', () => {
   it('round-trips a multi-doc set through a store (ids + payloads + previews)', async () => {
     const store = new IndexedDbDocumentStore()
     const a = await store.create('Bracket')
-    await store.save(a.uuid, { content: 'features: [a]', preview_image: 'aGVsbG8=' })
+    await store.save(a.uuid, { content: 'features: [a]' })
+    await getPreviewStore().put(a.uuid, a.uuid, 'aGVsbG8=')
     const b = await store.create('Gearbox')
     await store.save(b.uuid, { content: 'features: [b]' })
 
@@ -28,6 +31,7 @@ describe('bundle export/import', () => {
     // Import into a fresh store and assert payloads survived.
     resetFakeIndexedDb()
     resetDbConnection()
+    resetPreviewDbConnection()
     const target = new IndexedDbDocumentStore()
     const ids = await importBundle(target, bytes)
     expect(ids).toHaveLength(2)
@@ -37,13 +41,14 @@ describe('bundle export/import', () => {
     const bracket = summaries.find(s => s.name === 'Bracket')!
     const loaded = await target.load(bracket.uuid)
     expect(loaded.content).toBe('features: [a]')
-    expect(loaded.preview_image).toBe('aGVsbG8=')
+    expect(await getPreviewStore().get(bracket.uuid, bracket.uuid)).toBe('aGVsbG8=')
   })
 
   it('emits zip entry paths matching the admin backup layout (<user>/<name>.yaml + .png)', async () => {
     const store = new IndexedDbDocumentStore()
     const a = await store.create('My Part')
-    await store.save(a.uuid, { content: 'x', preview_image: 'aGk=' })
+    await store.save(a.uuid, { content: 'x' })
+    await getPreviewStore().put(a.uuid, a.uuid, 'aGk=')
     const bytes = await buildBundleBytes(store, [a.uuid])
     expect(await entryNames(bytes)).toEqual([
       `${LOCAL_OWNER}/My_Part.png`,
@@ -88,7 +93,7 @@ describe('bundle export/import', () => {
     const loaded = await store.load(ids[0])
     expect(loaded.name).toBe('Box')
     expect(loaded.content).toBe('features: [server]')
-    expect(loaded.preview_image).toBe(btoa('\x89PNG'))
+    expect(await getPreviewStore().get(ids[0], ids[0])).toBe(btoa('\x89PNG'))
   })
 
   it('rolls back every entry created so far when a mid-import save fails', async () => {

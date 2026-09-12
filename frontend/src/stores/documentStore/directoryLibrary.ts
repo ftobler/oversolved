@@ -1,5 +1,5 @@
-import type { DocMeta, DocumentKind } from './types'
-import { parseDocumentKind } from './types'
+import type { DocMeta } from './types'
+import { parseDocKind } from '@/workspace/kinds'
 import { secureFilename, uniqueStem, UNTITLED_DOC_NAME } from './secureFilename'
 import { randomUuid } from '@/utils/randomUuid'
 import { base64ToBytes } from '@/kernel/occ/stepIo'
@@ -64,10 +64,10 @@ export interface IndexEntry {
   stem: string
   name: string
   is_public: boolean
-  // The document kind, persisted so list() need not read and parse every file
-  // body. Absent on entries written before the field; the picker treats an
-  // absent kind as insertable and the next save backfills it.
-  kind?: DocumentKind
+  // The document's open kind, persisted so list() need not read and parse every
+  // file body. Absent on entries written before the field or whose body carries
+  // no recognized kind; a reader refuses those by name rather than coercing.
+  kind?: string
   created_at: string
   updated_at: string
   meta: DocMeta
@@ -608,7 +608,7 @@ export function allocateStem(name: string, taken: Set<string>): string {
 // A file found in the folder that no index entry claims. Its name is its name:
 // the point of a directory library is that the filename IS the document name,
 // so an externally dropped Bracket.yaml opens as "Bracket".
-function adopt(stem: string, has_preview: boolean, file: DiskFile, deleted: boolean, kind: DocumentKind): IndexEntry {
+function adopt(stem: string, has_preview: boolean, file: DiskFile, deleted: boolean, kind: string | undefined): IndexEntry {
   const now = Date.now()
   const uuid = randomUuid()
   return {
@@ -654,13 +654,15 @@ async function adoptOrphans(
   return adopted
 }
 
-async function adoptedKind(handle: FileSystemFileHandle): Promise<DocumentKind> {
+async function adoptedKind(handle: FileSystemFileHandle): Promise<string | undefined> {
   try {
-    return parseDocumentKind(await (await handle.getFile()).text())
+    // No coercion: an unknown or absent kind stays absent, and the interpreter
+    // refuses it by name rather than reading it as a part.
+    return parseDocKind(await (await handle.getFile()).text())
   } catch {
-    // An unreadable orphan is still adopted; an unknown kind reads as a part,
-    // the same safe default the picker applies to a missing one.
-    return 'part'
+    // An unreadable orphan is still adopted, with no kind for the reader to
+    // coerce.
+    return undefined
   }
 }
 

@@ -5,6 +5,7 @@ import { IndexedDbDocumentStore } from '../IndexedDbDocumentStore'
 import { InMemoryDocumentStore } from './InMemoryDocumentStore'
 import { openDirectoryLibrary } from '../FileSystemDirectoryStore'
 import { fakeDirectory } from './fakeFileSystemDirectory'
+import { MemoryPreviewStore } from '@/stores/previewStore'
 import { resetDbConnection } from '../idb'
 import { suggestedCloneName } from '../cloneName'
 
@@ -63,7 +64,7 @@ const adapters: Adapter[] = [
     // gets a fresh fake database. Impl-specific behaviour (the on-disk layout,
     // save atomicity, adopting files that appeared underneath the app) lives in
     // FileSystemDirectoryStore.test.ts, not here.
-    make: () => openDirectoryLibrary(fakeDirectory()).documents,
+    make: () => openDirectoryLibrary(fakeDirectory(), new MemoryPreviewStore()).documents,
     setup: () => {},
     teardown: () => {},
   },
@@ -91,19 +92,13 @@ describe.each(adapters)('DocumentStore contract: $name', (adapter) => {
     expect(list.find(s => s.uuid === uuid)?.is_owner).toBe(true)
   })
 
-  // The preview fixture is CANONICAL base64, not arbitrary text: the field
-  // holds base64-encoded PNG bytes, and a store that keeps them as an actual
-  // .png file decodes and re-encodes them. Re-encoding is only byte-stable for
-  // a valid encoding, so a fixture like 'PNGDATA' (which decodes to 5 bytes and
-  // re-encodes to 'PNGDATA=') would pin an encoding artifact rather than the
-  // promise. bundle.test.ts uses canonical fixtures for the same reason.
-  it('save then load round-trips content, name and preview', async () => {
-    const preview = btoa('\x89PNG\r\n')
+  // Previews left the seam in C2 (A9): they are derived and live in the preview
+  // store, so the record carries content and identity only.
+  it('save then load round-trips content and name', async () => {
     const { uuid } = await store.create('Box')
-    await store.save(uuid, { content: 'features: []', preview_image: preview })
+    await store.save(uuid, { content: 'features: []' })
     const loaded = await store.load(uuid)
     expect(loaded.content).toBe('features: []')
-    expect(loaded.preview_image).toBe(preview)
     expect(loaded.name).toBe('Box')
   })
 

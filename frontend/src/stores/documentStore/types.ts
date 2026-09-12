@@ -13,8 +13,6 @@
 // the browser via WASM, so persistence is the only thing a backend would ever
 // have provided.
 
-import { parse as parseYaml } from 'yaml'
-
 // Per-document modification tracking. Carried from day one so a future sync
 // engine is purely additive: it reads `dirty` / compares `rev` vs `baseRev`,
 // pushes, and on ack sets `baseRev = rev`. `rev` doubles as the assembly bundle
@@ -26,21 +24,6 @@ export interface DocMeta {
   updatedAt: number    // epoch ms, set on every save
   dirty: boolean       // local change not yet pushed to a sync target
   baseRev?: number     // last rev known synced (conflict detection)
-}
-
-export type DocumentKind = 'part' | 'assembly'
-
-// The document kind the editor routes on: the top-level `kind` field, with
-// anything not explicitly an assembly read as a part. Empty content (a freshly
-// created document), a legacy record with no field, and malformed content all
-// default to part, exactly as DocumentPage does.
-export function parseDocumentKind(content: string): DocumentKind {
-  try {
-    const parsed = parseYaml(content) as { kind?: unknown } | null
-    return parsed?.kind === 'assembly' ? 'assembly' : 'part'
-  } catch {
-    return 'part'
-  }
 }
 
 // The lightweight document descriptor surfaced by `list()`: what the documents
@@ -61,11 +44,10 @@ export interface DocSummary {
   is_owner: boolean
   owner_username: string
   is_public: boolean
-  // The document's kind, so a picker can exclude assemblies from a part list.
-  // Absent on records written before the field existed; the picker treats an
-  // absent kind as insertable (safe default) and the next save backfills it.
-  kind?: DocumentKind
-  preview_image?: string  // base64 PNG rendered from the last save
+  // The document's open kind, so the editor can route and a picker can exclude
+  // assemblies from a part list. It is the record's docKind, not a coerced
+  // value: absent or unknown stays absent here and the reader refuses by name.
+  kind?: string
   meta?: DocMeta
 }
 
@@ -76,13 +58,16 @@ export interface DocumentPayload {
   name: string
   owner_username?: string
   is_public?: boolean
-  preview_image?: string  // base64 PNG, no data: prefix (matches save body)
+  // The record's open kind, as on DocSummary. DocumentPage interprets it with
+  // the kinds gate, so an absent or unknown value refuses by name instead of
+  // quietly reading as a part.
+  kind?: string
 }
 
-// What a save carries: the document text and an optional fresh preview.
+// What a save carries: the document text. Previews are derived and now live in
+// the preview store keyed by (workspace, entry), never on the record.
 export interface SaveInput {
   content: string
-  preview_image?: string
 }
 
 // List filters, applied by the store over its own records.
@@ -106,10 +91,9 @@ export interface DocumentStore {
   // `duplicate` (which always auto-names) because the two are different user
   // gestures, not because the storage differs.
   clone(id: string, name?: string): Promise<{ uuid: string }>
-  // A URL the grid can point an <img> at for a thumbnail, or null when this
-  // store renders no separate thumbnail resource and inlines a base64
-  // `preview_image` on the summary instead. It exists so the view never
-  // constructs a store-specific URL of its own.
+  // A URL the grid can point an <img> at for a thumbnail, or null when the
+  // view reads the preview store itself. Kept on the seam so a store that does
+  // serve thumbnails as resources can drop straight in.
   thumbnailUrl(id: string): string | null
 }
 
@@ -125,7 +109,6 @@ export interface TrashDoc {
   created_at: string
   owner_id: number
   owner_username: string
-  preview_image?: string  // inline base64 PNG, as on DocSummary
 }
 
 export interface TrashAdapter {

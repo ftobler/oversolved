@@ -51,6 +51,7 @@ export function entryById(tree: WorkspaceTree, id: string): WorkspaceEntry {
   const entry: WorkspaceEntry = { id, kind: row.kind, name: row.name }
   if (row.docKind !== undefined) entry.docKind = row.docKind
   if (row.mime !== undefined) entry.mime = row.mime
+  if (row.fileKind !== undefined) entry.fileKind = row.fileKind
   if (content.text !== undefined) entry.text = content.text
   if (content.bytes !== undefined) entry.bytes = new Uint8Array(content.bytes)
   return entry
@@ -69,6 +70,7 @@ export function putEntry(tree: WorkspaceTree, entry: WorkspaceEntry): void {
   const row: ManifestEntry = { path, kind: entry.kind, name: entry.name }
   if (entry.docKind !== undefined) row.docKind = entry.docKind
   if (entry.mime !== undefined) row.mime = entry.mime
+  if (entry.fileKind !== undefined) row.fileKind = entry.fileKind
   tree.manifest.entries[entry.id] = row
   tree.contents.set(entry.id, content)
 }

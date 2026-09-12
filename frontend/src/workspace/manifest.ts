@@ -33,6 +33,7 @@ function canonicalEntry(entry: ManifestEntry): ManifestEntry {
   const out: ManifestEntry = { path: entry.path, kind: entry.kind, name: entry.name }
   if (entry.docKind !== undefined) out.docKind = entry.docKind
   if (entry.mime !== undefined) out.mime = entry.mime
+  if (entry.fileKind !== undefined) out.fileKind = entry.fileKind
   return out
 }
 
@@ -147,7 +148,7 @@ function assertEntryMap(entries: Record<string, ManifestEntry>): void {
 
 function assertEntryRow(id: string, row: ManifestEntry): void {
   if (typeof row !== 'object' || row === null) throw new Error(`Entry ${id} must be an object`)
-  const { path, kind, name, docKind, mime } = row
+  const { path, kind, name, docKind, mime, fileKind } = row
   if (typeof path !== 'string' || path.length === 0) throw new Error(`Entry ${id} has no path`)
   if (!path.startsWith(`${DOCUMENTS_DIR}/`) && !path.startsWith(`${FILES_DIR}/`)) {
     throw new Error(`Entry ${id} path is outside documents/ and files/: ${path}`)
@@ -167,8 +168,14 @@ function assertEntryRow(id: string, row: ManifestEntry): void {
   if (mime !== undefined && typeof mime !== 'string') {
     throw new Error(`Entry ${id} mime must be a string`)
   }
+  if (fileKind !== undefined && typeof fileKind !== 'string') {
+    throw new Error(`Entry ${id} fileKind must be a string`)
+  }
   if (kind === 'document' && mime !== undefined) {
     throw new Error(`Document entry ${id} must not carry a mime`)
+  }
+  if (kind === 'document' && fileKind !== undefined) {
+    throw new Error(`Document entry ${id} must not carry a fileKind`)
   }
   if (kind === 'file' && docKind !== undefined) {
     throw new Error(`File entry ${id} must not carry a docKind`)

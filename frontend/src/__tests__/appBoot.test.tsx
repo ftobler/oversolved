@@ -7,7 +7,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { resetDbConnection } from '@/stores/documentStore/idb'
-import { IndexedDbDocumentStore } from '@/stores/documentStore/IndexedDbDocumentStore'
+import { resetPreviewDbConnection } from '@/stores/previewStore'
+import { getWorkspaceStore } from '@/workspace/store'
 import App from '@/App'
 
 // Boot smoke test: the whole app, from the route table down, with nothing
@@ -23,6 +24,7 @@ describe('app boot', () => {
   beforeEach(() => {
     globalThis.indexedDB = new IDBFactory()
     resetDbConnection()
+    resetPreviewDbConnection()
     localStorage.clear()
   })
 
@@ -44,7 +46,7 @@ describe('app boot', () => {
   }
 
   it('lands on the document library and lists what IndexedDB holds', async () => {
-    await new IndexedDbDocumentStore().create('Bracket')
+    await getWorkspaceStore().create('Bracket', { docKind: 'part' })
 
     boot('/documents')
 

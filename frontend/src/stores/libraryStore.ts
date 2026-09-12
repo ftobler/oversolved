@@ -1,9 +1,8 @@
 import { create } from 'zustand'
 import {
-  setActiveLibrary, activeLibrary, BROWSER_LIBRARY_LABEL, type LibraryKind,
+  setActiveLibrary, activeLibrary, browserLibraryTarget, type LibraryKind,
 } from '@/adapters/library'
 import type { DocumentStore, TrashAdapter } from '@/stores/documentStore'
-import { getLocalStore, getLocalTrash } from '@/stores/documentStore'
 import { openDirectoryLibrary } from '@/stores/documentStore/FileSystemDirectoryStore'
 import { openSingleFileLibrary } from '@/stores/documentStore/singleFileLibrary'
 import {
@@ -61,9 +60,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => {
   }
 
   const toBrowser = (): void => {
-    activate('browser', BROWSER_LIBRARY_LABEL, {
-      documents: getLocalStore(), trash: getLocalTrash(),
-    })
+    const target = browserLibraryTarget()
+    activate(target.kind, target.label, { documents: target.documents, trash: target.trash })
   }
 
   const toDirectory = (dir: FileSystemDirectoryHandle): void => {

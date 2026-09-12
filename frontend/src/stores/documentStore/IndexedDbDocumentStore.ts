@@ -1,8 +1,8 @@
 import type {
-  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta, DocumentKind,
+  DocumentStore, DocSummary, DocumentPayload, SaveInput, ListOptions, DocMeta,
   TrashAdapter, TrashDoc,
 } from './types'
-import { parseDocumentKind } from './types'
+import { parseDocKind } from '@/workspace/kinds'
 import { idbGet, idbGetAll, idbPut, idbDelete, idbReadModifyWrite } from './idb'
 import { suggestedCloneName } from './cloneName'
 import { randomUuid } from '@/utils/randomUuid'
@@ -12,9 +12,9 @@ import { randomUuid } from '@/utils/randomUuid'
 // renders `${owner}/${name}`).
 export const LOCAL_OWNER = 'local'
 
-// The on-disk record. Holds the document text, an optional preview, and the
-// sync `meta` envelope alongside the list-grid metadata. Stored as one value
-// per uuid so a single get/put touches everything for a document.
+// The on-disk record. Holds the document text and the sync `meta` envelope
+// alongside the list-grid metadata. Stored as one value per uuid so a single
+// get/put touches everything for a document.
 interface StoredDoc {
   uuid: string
   name: string
@@ -22,8 +22,7 @@ interface StoredDoc {
   // Denormalized from content on save so list() does not parse every document
   // body just to paint a tile. Absent on records written before the field, which
   // toSummary parses from the content it already has in hand.
-  kind?: DocumentKind
-  preview_image?: string
+  kind?: string
   is_public: boolean
   created_at: string
   updated_at: string
@@ -48,9 +47,9 @@ function toSummary(rec: StoredDoc): DocSummary {
     owner_username: LOCAL_OWNER,
     is_public: rec.is_public,
     // A record written before `kind` existed has no stored value; the content is
-    // already loaded by idbGetAll, so parse it rather than report undefined.
-    kind: rec.kind ?? parseDocumentKind(rec.content),
-    preview_image: rec.preview_image,
+    // already loaded by idbGetAll, so read it without coercion rather than
+    // report undefined.
+    kind: rec.kind ?? parseDocKind(rec.content),
     meta: rec.meta,
   }
 }
@@ -93,7 +92,7 @@ export class IndexedDbDocumentStore implements DocumentStore {
       name: rec.name,
       owner_username: LOCAL_OWNER,
       is_public: rec.is_public,
-      preview_image: rec.preview_image,
+      kind: rec.kind ?? parseDocKind(rec.content),
     }
   }
 
@@ -107,11 +106,7 @@ export class IndexedDbDocumentStore implements DocumentStore {
       // bundle-cache key via currentRevs), restamp updatedAt, or re-flag a
       // synced doc dirty. Skipping the whole write keeps those stable; a
       // missing (or tombstoned) record still falls through to the write below.
-      if (
-        existing && !existing.deleted_at &&
-        existing.content === input.content &&
-        (input.preview_image ?? existing.preview_image) === existing.preview_image
-      ) return undefined
+      if (existing && !existing.deleted_at && existing.content === input.content) return undefined
       const now = Date.now()
       const prevRev = existing?.meta.rev ?? 0
       // Sync-readiness rules: bump rev, stamp updatedAt, flag dirty. baseRev is
@@ -127,8 +122,9 @@ export class IndexedDbDocumentStore implements DocumentStore {
         uuid: id,
         name: existing?.name ?? 'Untitled',
         content: input.content,
-        kind: parseDocumentKind(input.content),
-        preview_image: input.preview_image ?? existing?.preview_image,
+        // Content without a kind keeps the record's prior kind: a created part
+        // carries its kind as metadata and its body may still be empty.
+        kind: parseDocKind(input.content) ?? existing?.kind,
         is_public: existing?.is_public ?? false,
         created_at: existing?.created_at ?? new Date(now).toISOString(),
         updated_at: new Date(now).toISOString(),
@@ -207,7 +203,7 @@ export class IndexedDbDocumentStore implements DocumentStore {
     if (!src || src.deleted_at) throw new Error(`Document not found: ${id}`)
     const { uuid } = await this.create(nameFor(src.name), { is_public: src.is_public })
     try {
-      await this.save(uuid, { content: src.content, preview_image: src.preview_image })
+      await this.save(uuid, { content: src.content })
     } catch (err) {
       // Compensating delete for the non-atomic create+save pair: without it a
       // failed save strands an empty orphan copy in the library.
@@ -217,9 +213,9 @@ export class IndexedDbDocumentStore implements DocumentStore {
     return { uuid }
   }
 
-  // No separate thumbnail resource: the grid uses the inline preview_image
-  // carried on each summary instead. Keeps the interface's (id) signature so a
-  // store that does serve thumbnails can drop straight in.
+  // No separate thumbnail resource: the view reads the preview store itself.
+  // Keeps the interface's (id) signature so a store that does serve thumbnails
+  // can drop straight in.
   thumbnailUrl(_id: string): string | null {
     return null
   }
@@ -243,7 +239,6 @@ function toTrashDoc(rec: StoredDoc): TrashDoc {
     created_at: rec.created_at,
     owner_id: 0,
     owner_username: LOCAL_OWNER,
-    preview_image: rec.preview_image,
   }
 }
 

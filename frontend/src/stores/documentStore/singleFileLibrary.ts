@@ -1,6 +1,7 @@
 import { DOC_EXT } from './directoryLibrary'
 import { openDirectoryLibrary } from './FileSystemDirectoryStore'
 import { MemoryDirectory } from './memoryDirectory'
+import { MemoryPreviewStore } from '@/stores/previewStore'
 
 // "Open this one file, edit it, save it back" -- the degenerate case of the
 // directory library, not a second implementation of anything.
@@ -99,5 +100,7 @@ export function stemOf(fileName: string): string {
 export function openSingleFileLibrary(file: FileSystemFileHandle) {
   const stem = stemOf(file.name)
   const dir = new SingleFileDirectory(stem, file) as unknown as FileSystemDirectoryHandle
-  return { ...openDirectoryLibrary(dir), label: stem }
+  // The one-file library's previews are bookkeeping held in memory alongside
+  // its index; a save hook may still mirror one into the app preview store.
+  return { ...openDirectoryLibrary(dir, new MemoryPreviewStore()), label: stem }
 }

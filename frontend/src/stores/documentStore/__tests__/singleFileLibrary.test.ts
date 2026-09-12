@@ -85,14 +85,14 @@ describe('single file library', () => {
 
   // The bookkeeping a directory library keeps on disk is held in memory here:
   // writing sidecar files next to a document the user picked would litter a
-  // folder they never handed us.
-  it('keeps its preview in memory and never touches a second file', async () => {
-    const png = btoa('\x89PNG')
+  // folder they never handed us. Previews are part of that bookkeeping (an
+  // in-memory preview store plus the memory directory), so a save touches only
+  // the file the user picked.
+  it('saves only the picked file and no sidecar', async () => {
     const { handle, state } = fileHandle('Bracket.yaml', 'body')
     const { documents } = openSingleFileLibrary(handle)
     const [doc] = await documents.list()
-    await documents.save(doc.uuid, { content: 'body2', preview_image: png })
-    expect((await documents.load(doc.uuid)).preview_image).toBe(png)
+    await documents.save(doc.uuid, { content: 'body2' })
     expect(state.text).toBe('body2')
   })
 

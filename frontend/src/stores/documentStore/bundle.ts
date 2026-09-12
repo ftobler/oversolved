@@ -2,6 +2,7 @@ import JSZip from 'jszip'
 import type { DocumentStore } from './types'
 import { LOCAL_OWNER } from './IndexedDbDocumentStore'
 import { secureFilename, uniqueStem, UNTITLED_DOC_NAME } from './secureFilename'
+import { getPreviewStore } from '@/stores/previewStore'
 
 // Bundle import/export. NOT a second store -- these round-trip through whatever
 // `DocumentStore` is wired in. For the browser-storage library a bundle is the
@@ -46,6 +47,7 @@ function reserveStem(seen: Set<string>, ownerPath: string, stem: string): string
 export async function buildBundleBytes(store: DocumentStore, ids: string[]): Promise<Uint8Array> {
   const zip = new JSZip()
   const seen = new Set<string>()
+  const previews = getPreviewStore()
   for (const id of ids) {
     const payload = await store.load(id)
     const owner = payload.owner_username || LOCAL_OWNER
@@ -54,10 +56,11 @@ export async function buildBundleBytes(store: DocumentStore, ids: string[]): Pro
     const safe = secureFilename(payload.name) || UNTITLED_DOC_NAME
     const stem = reserveStem(seen, `${owner}/`, safe)
     zip.file(`${owner}/${stem}.yaml`, payload.content)
-    if (payload.preview_image) {
-      // preview_image is base64 (no data: prefix), matching the save body.
-      zip.file(`${owner}/${stem}.png`, payload.preview_image, { base64: true })
-    }
+    // Previews are derived and now live outside the record, keyed by
+    // (workspace, entry). In C2 every document is its own workspace, so the
+    // document id is both parts of the key.
+    const preview = await previews.get(id, id)
+    if (preview) zip.file(`${owner}/${stem}.png`, preview, { base64: true })
   }
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' })
 }
@@ -108,10 +111,9 @@ export async function importBundle(
 
       const { uuid } = await store.create(docName)
       ids.push(uuid)  // tracked before save so rollback covers a mid-entry failure
-      let preview_image: string | undefined
       const png = byPath.get(`${dir}${docName}.png`)
-      if (png) preview_image = await png.async('base64')
-      await store.save(uuid, { content, preview_image })
+      if (png) await getPreviewStore().put(uuid, uuid, await png.async('base64'))
+      await store.save(uuid, { content })
     }
   } catch (err) {
     // A multi-entry import is not atomic at the store level: a mid-loop failure
@@ -119,7 +121,10 @@ export async function importBundle(
     // import that a retry would duplicate. Best-effort rollback of everything
     // created so far, including the failing entry's own husk; the caller sees
     // the original error.
-    for (const id of ids) await store.remove(id).catch(() => undefined)
+    for (const id of ids) {
+      await store.remove(id).catch(() => undefined)
+      await getPreviewStore().remove(id, id).catch(() => undefined)
+    }
     throw err
   }
   return ids

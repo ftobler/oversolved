@@ -5,6 +5,7 @@ import { backendBundle } from '@/adapters/backend'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
 import type { DocSummary } from '@/stores/documentStore'
+import { interpretEntry } from '@/workspace/kinds'
 // The tile grid and search box reuse the documents page's classes so a part
 // looks the same here as in the library; import its sheet explicitly rather
 // than relying on the page chunk having loaded it.
@@ -20,6 +21,14 @@ interface AssemblyPartPickerProps {
   onPick: (docId: string, docRev: number) => void
 }
 
+// The pick source is parts only, through the same interpretation gate the
+// editor uses. An assembly is not insertable, and neither is a document whose
+// kind is missing or unknown: it is refused rather than coerced to a part.
+function isInsertablePart(doc: DocSummary): boolean {
+  const interpreted = interpretEntry({ kind: 'document', name: doc.name, docKind: doc.kind })
+  return interpreted.ok && interpreted.docKind === 'part'
+}
+
 // Picks a PartDoc to instance into the assembly, presented as a document browser
 // (search + preview tiles) in the standardized dialog shell. It shows the same
 // library as the documents page, minus the Trash (a deleted doc is no insert
@@ -27,9 +36,9 @@ interface AssemblyPartPickerProps {
 // browses and picks, so there is no sidebar to put them behind.
 //
 // The list is filtered to parts: inserting an assembly yields a tree row with no
-// geometry and no message, so it is kept out of the pick source. A summary with
-// no kind (a legacy record) is treated as insertable, the safe default; the next
-// save backfills it.
+// geometry and no message, so it is kept out of the pick source. Only a summary
+// the kinds gate interprets as a part is insertable; an absent or unknown kind
+// is refused, never treated as an insertable default.
 export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }: AssemblyPartPickerProps) {
   const [docs, setDocs] = useState<DocSummary[]>([])
   const [selected, setSelected] = useState<string | null>(null)
@@ -76,7 +85,7 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
     store.list({ sort: 'name', search: debouncedSearch })
       .then(list => {
         if (reqId !== listReqRef.current) return
-        const visible = list.filter(d => d.uuid !== selfUuid && d.kind !== 'assembly')
+        const visible = list.filter(d => d.uuid !== selfUuid && isInsertablePart(d))
         setDocs(visible)
         // Keep the selection only while its tile is still on screen, so the
         // Insert button can never confirm a doc the user no longer sees.
@@ -154,7 +163,7 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, onClose, onPick }
                   onDoubleClick={() => pick(doc)}
                 >
                   <div className="doc-tile-preview">
-                    <DocTilePreview doc={doc} store={store} />
+                    <DocTilePreview workspace={doc.uuid} entry={doc.uuid} name={doc.name} />
                   </div>
                   <div className="doc-tile-info">
                     <span className="doc-tile-name" title={doc.name}>

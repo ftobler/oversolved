@@ -15,7 +15,11 @@ export interface ManifestEntry {
   kind: EntryKind  // closed
   name: string  // display name; may differ from the path stem
   docKind?: string  // open, documents only
-  mime?: string  // open, files only
+  mime?: string  // open, files only, the wire type
+  // The open app classification C1 registers ('step' today, dwg/image later).
+  // Kept apart from `mime` so a files view can name the kind without guessing
+  // it back out of a media type, and round-tripped like every other open string.
+  fileKind?: string
 }
 
 // From uuid to referenced uuids. Sorted and deduplicated at every write.
@@ -48,6 +52,7 @@ export interface WorkspaceEntry {
   name: string
   docKind?: string
   mime?: string
+  fileKind?: string
   text?: string
   bytes?: Uint8Array
 }
@@ -70,4 +75,9 @@ export interface EntryMeta {
   name: string
   docKind?: string
   mime?: string
+  fileKind?: string
+  // Working-copy revision and last-edit time, surfaced by carriers that keep
+  // them (IdbCarrier). Optional so MemoryCarrier and the C0 tests stay valid.
+  rev?: number
+  updatedAt?: number
 }

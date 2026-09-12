@@ -24,8 +24,9 @@ vi.mock('react-router-dom', () => ({
 const h = vi.hoisted(() => ({
   loadContent: 'kind: assembly\nfeatures: []',
   partContent: 'features: []',
-  list: [] as Array<{ uuid: string; name: string; meta?: { rev: number } }>,
+  list: [] as Array<{ uuid: string; name: string; kind?: string; meta?: { rev: number } }>,
   save: vi.fn(),
+  previewPut: vi.fn(),
   captureScreenshotForSaving: vi.fn(),
   solveAssemblyViaWorker: vi.fn(),
   setRelayHandlers: vi.fn(),
@@ -73,6 +74,10 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   exportAssemblyViaWorker: h.exportAssemblyViaWorker,
 }))
 vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: h.downloadBlob }))
+vi.mock('@/stores/previewStore', () => ({
+  getPreviewStore: () => ({ put: h.previewPut, get: vi.fn(), remove: vi.fn() }),
+  usePreview: () => undefined,
+}))
 
 import AssemblyEditor from '@/pages/AssemblyEditor'
 import { ToastProvider } from '@/contexts/ToastContext'
@@ -94,13 +99,14 @@ describe('AssemblyEditor (Stage 6b)', () => {
     vi.clearAllMocks()
     h.loadContent = 'kind: assembly\nfeatures: []'
     h.list = [
-      { uuid: 'part-1', name: 'Bracket', meta: { rev: 5 } },
-      { uuid: 'part-2', name: 'Bolt', meta: { rev: 2 } },
+      { uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } },
+      { uuid: 'part-2', name: 'Bolt', kind: 'part', meta: { rev: 2 } },
     ]
     h.solveAssemblyViaWorker.mockResolvedValue({
       payload: { transforms: {}, bodies: {} },
     })
     h.save.mockResolvedValue(undefined)
+    h.previewPut.mockResolvedValue(undefined)
     h.captureScreenshotForSaving.mockResolvedValue('data:image/png;base64,QVNN')
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().selectPart(null)
@@ -136,15 +142,16 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(screen.getByLabelText('Insert part')).toBeTruthy()
   })
 
-  it('captures a viewport thumbnail and saves it as preview_image', async () => {
+  it('captures a viewport thumbnail into the preview store and saves the content', async () => {
     await renderLoaded()
     fireEvent.click(screen.getByLabelText('Save'))
     await waitFor(() => expect(h.save).toHaveBeenCalledTimes(1))
     expect(h.captureScreenshotForSaving).toHaveBeenCalled()
     const [savedUuid, body] = h.save.mock.calls[0]
     expect(savedUuid).toBe('asm-1')
-    // saveDoc strips the data: prefix, storing the raw base64 the backend expects.
-    expect(body.preview_image).toBe('QVNN')
+    expect(body).toEqual({ content: expect.any(String) })
+    // saveDoc strips the data: prefix; the preview lives off the record now.
+    expect(h.previewPut).toHaveBeenCalledWith('asm-1', 'asm-1', 'QVNN')
   }, 10000)
 
   it('mounts the assembly viewport and solves once on load', async () => {
@@ -886,7 +893,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
     vi.clearAllMocks()
     h.loadContent = ASSEMBLY_WITH_PART
     h.partContent = 'features:\n  - id: Origin\n    kind: origin\n  - id: ex1\n    kind: extrude'
-    h.list = [{ uuid: 'part-1', name: 'Bracket', meta: { rev: 1 } }]
+    h.list = [{ uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 1 } }]
     h.solveAssemblyViaWorker.mockResolvedValue({
       payload: { transforms: { hA: SOLVED_TRANSFORM }, bodies: SOLVED_BODIES },
     })
@@ -1000,7 +1007,7 @@ describe('AssemblyEditor undo/redo', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     h.loadContent = 'kind: assembly\nfeatures: []'
-    h.list = [{ uuid: 'part-1', name: 'Bracket', meta: { rev: 5 } }]
+    h.list = [{ uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } }]
     h.solveAssemblyViaWorker.mockResolvedValue({
       payload: { transforms: {}, bodies: {} },
     })

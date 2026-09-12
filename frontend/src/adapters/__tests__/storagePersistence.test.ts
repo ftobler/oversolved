@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
-  checkStoragePersistence, requestStoragePersistence, durabilityNotice,
+  checkStoragePersistence, requestStoragePersistence, durabilityNotice, unsavedDurabilityNotice,
 } from '../storagePersistence'
 import {
   useStoragePersistenceStore, resetStoragePersistenceRequest,
@@ -72,6 +72,24 @@ describe('durabilityNotice', () => {
 
   it('admits it does not know when the API is missing', () => {
     expect(durabilityNotice('unsupported')).toMatch(/does not report/)
+  })
+})
+
+describe('unsavedDurabilityNotice', () => {
+  it('says nothing until the browser has answered', () => {
+    expect(unsavedDurabilityNotice('unknown')).toBeNull()
+  })
+
+  it('says edits are kept only when the grant is in force', () => {
+    expect(unsavedDurabilityNotice('persisted')).toMatch(/kept in this browser/)
+  })
+
+  it('warns that edits can be evicted under best-effort', () => {
+    expect(unsavedDurabilityNotice('best-effort')).toMatch(/can be discarded/)
+  })
+
+  it('admits the grant is unknown when the API is missing', () => {
+    expect(unsavedDurabilityNotice('unsupported')).toMatch(/does not report/)
   })
 })
 

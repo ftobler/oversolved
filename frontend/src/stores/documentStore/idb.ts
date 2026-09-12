@@ -13,11 +13,21 @@
 // today). It is additive: `documents` and `handles` are untouched and there is
 // no migration, because a pre-v3 document carrying an inline `file_data`
 // payload is disposable (A2 in the workspace-format plan).
+//
+// v4 adds the workspace stores. `workspace_meta` holds one row per workspace
+// (name, references, provenance, trash and the tombstones); `workspace_entries`
+// is the working copy, one row per entry keyed (workspace, id); and
+// `workspace_saved` is the explicit-save checkpoint under the same key. The v1
+// `documents` store stays in place but is never read by the workspace seam, so
+// the pre-upgrade library survives the version bump untouched (A2).
 export const DB_NAME = 'oversolved'
-export const DB_VERSION = 3
+export const DB_VERSION = 4
 export const STORE_DOCUMENTS = 'documents'
 export const STORE_HANDLES = 'handles'
 export const STORE_FILES = 'files'
+export const STORE_WORKSPACE_META = 'workspace_meta'
+export const STORE_WORKSPACE_ENTRIES = 'workspace_entries'
+export const STORE_WORKSPACE_SAVED = 'workspace_saved'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -39,6 +49,18 @@ function openDb(): Promise<IDBDatabase> {
       // Keyed by the registry record's own `id`, like `documents` is by uuid.
       if (!db.objectStoreNames.contains(STORE_FILES)) {
         db.createObjectStore(STORE_FILES, { keyPath: 'id' })
+      }
+      // One row per workspace, keyed by its uuid.
+      if (!db.objectStoreNames.contains(STORE_WORKSPACE_META)) {
+        db.createObjectStore(STORE_WORKSPACE_META, { keyPath: 'workspace' })
+      }
+      // The working copy and its checkpoint: compound key (workspace, id) so a
+      // per-entry write is one record and one workspace never collides with another.
+      if (!db.objectStoreNames.contains(STORE_WORKSPACE_ENTRIES)) {
+        db.createObjectStore(STORE_WORKSPACE_ENTRIES, { keyPath: ['workspace', 'id'] })
+      }
+      if (!db.objectStoreNames.contains(STORE_WORKSPACE_SAVED)) {
+        db.createObjectStore(STORE_WORKSPACE_SAVED, { keyPath: ['workspace', 'id'] })
       }
     }
     req.onsuccess = () => {
@@ -147,6 +169,59 @@ export async function idbDeleteFile(key: string): Promise<void> {
 export async function idbClearFiles(): Promise<void> {
   const store = await tx('readwrite', STORE_FILES)
   await promisify(store.clear())
+}
+
+// Store-scoped primitives for callers that own a store other than `documents`
+// (the workspace stores today). They mirror the uuid-keyed helpers above but
+// take the store name, so a workspace call cannot land in `documents` by accident.
+export async function idbGetFrom<T>(storeName: string, key: IDBValidKey): Promise<T | undefined> {
+  const store = await tx('readonly', storeName)
+  return promisify(store.get(key) as IDBRequest<T | undefined>)
+}
+
+export async function idbGetAllFrom<T>(storeName: string): Promise<T[]> {
+  const store = await tx('readonly', storeName)
+  return promisify(store.getAll() as IDBRequest<T[]>)
+}
+
+export async function idbPutTo<T>(storeName: string, value: T): Promise<void> {
+  const store = await tx('readwrite', storeName)
+  await promisify(store.put(value as unknown as Record<string, unknown>))
+}
+
+export async function idbDeleteFrom(storeName: string, key: IDBValidKey): Promise<void> {
+  const store = await tx('readwrite', storeName)
+  await promisify(store.delete(key))
+}
+
+// One transaction across every named store, the shape I7's IndexedDB clause
+// needs: the working copy, its checkpoint and the workspace row move as a unit.
+// `build` runs once the stores are open and must issue its requests
+// synchronously, chaining a dependent read's callback rather than awaiting
+// between requests (the discipline idbReadModifyWrite documents below). Resolves
+// on the transaction's completion, rejects on error/abort, and a throw from
+// `build` aborts the whole unit so a partial write never lands.
+export function idbTransaction<T>(
+  storeNames: string[],
+  mode: IDBTransactionMode,
+  build: (stores: Record<string, IDBObjectStore>) => T,
+): Promise<T> {
+  return openDb().then(db => new Promise<T>((resolve, reject) => {
+    const transaction = db.transaction(storeNames, mode)
+    const stores: Record<string, IDBObjectStore> = {}
+    for (const name of storeNames) stores[name] = transaction.objectStore(name)
+    let value: T
+    try {
+      value = build(stores)
+    } catch (err) {
+      transaction.abort()
+      reject(err)
+      return
+    }
+    transaction.oncomplete = () => resolve(value)
+    transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed'))
+    transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted'))
+  }))
 }
 
 // Read-modify-write in ONE readwrite transaction: the get and the put share a

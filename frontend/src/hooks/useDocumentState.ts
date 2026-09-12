@@ -4,6 +4,7 @@ import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc } from '@/types/cad'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
+import { getPreviewStore } from '@/stores/previewStore'
 import { dropDeadAxisConstraints, migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
@@ -83,14 +84,14 @@ export function useDocumentState(
         // edits in place), so identity still holding after the awaits below
         // proves no edit landed while the save was in flight.
         const savedRef = docRef.current
-        const body: { content: string; preview_image?: string } = { content: stringifyYaml(document) }
+        // Previews are derived and live in their own store keyed by
+        // (workspace, entry); in C2 both are the document uuid. The record
+        // receives only the content.
         if (screenshot) {
           const dataUrl = await screenshot()
-          if (dataUrl) {
-            body.preview_image = dataUrl.split(',')[1]
-          }
+          if (dataUrl) await getPreviewStore().put(uuid, uuid, dataUrl.split(',')[1])
         }
-        await store.save(uuid, body)
+        await store.save(uuid, { content: stringifyYaml(document) })
         // The store now holds the latest edits, so there is nothing to warn about.
         // An edit during the save windows postdates the stored bytes though: its
         // dirty flag must survive, or a reload would silently drop those edits.

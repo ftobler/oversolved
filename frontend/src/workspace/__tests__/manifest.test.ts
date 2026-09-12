@@ -32,6 +32,38 @@ describe('canonical manifest (I4)', () => {
     expect(serializeManifest(parsed)).toBe(serializeManifest(manifest))
   })
 
+  it('a file entry carries its open app kind alongside the wire mime', () => {
+    const manifest = withEntries({
+      b: { path: 'files/B.step', kind: 'file', name: 'B', mime: 'application/step', fileKind: 'step' },
+    })
+    const parsed = parseManifest(serializeManifest(manifest))
+    expect(parsed.entries.b).toEqual({ path: 'files/B.step', kind: 'file', name: 'B', mime: 'application/step', fileKind: 'step' })
+    expect(serializeManifest(parsed)).toBe(serializeManifest(manifest))
+  })
+
+  // The pre-C2/C0 manifest has no fileKind. Adding the field must be additive:
+  // an old manifest parses, keeps the field absent, and re-emits the same bytes.
+  it('parses and reserializes a manifest entry that lacks fileKind', () => {
+    const text =
+      'format: 1\n' +
+      'workspace: ws-1\n' +
+      'entries:\n' +
+      '  b:\n' +
+      '    path: files/B.step\n' +
+      '    kind: file\n' +
+      '    name: B\n' +
+      '    mime: application/step\n' +
+      'references: {}\n' +
+      'provenance: []\n' +
+      'trash: []\n'
+    const parsed = parseManifest(text)
+    expect(parsed.entries.b).toEqual({ path: 'files/B.step', kind: 'file', name: 'B', mime: 'application/step' })
+    expect(parsed.entries.b.fileKind).toBeUndefined()
+    // Deterministic: re-emitting and re-parsing is a byte-stable fixed point.
+    const first = serializeManifest(parsed)
+    expect(serializeManifest(parseManifest(first))).toBe(first)
+  })
+
   it('canonical manifest sorts dynamic maps and dedupes references and trash', () => {
     const manifest: WorkspaceManifest = {
       ...emptyManifest('ws-1'),
