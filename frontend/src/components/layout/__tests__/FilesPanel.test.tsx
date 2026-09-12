@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import type { EntryMeta, ProvenanceRecord } from '@/workspace/types'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import type { EntryMeta, ProvenanceRecord, WorkspaceEntry } from '@/workspace/types'
 import type { WorkspaceSession } from '@/workspace/session'
 
 const storeMock = vi.hoisted(() => ({
@@ -11,6 +11,7 @@ vi.mock('@/workspace/store', () => ({ getWorkspaceStore: () => storeMock }))
 import { FilesPanel } from '@/components/layout/FilesPanel'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { formatBytes } from '@/utils/formatBytes'
+import { markFilesSent, fileIdsMissingFromWorker, clearWorkerFileIds } from '@/kernel/worker/workerFiles'
 
 const entries: EntryMeta[] = [
   { id: 'd1', path: 'documents/Bracket.yaml', kind: 'document', name: 'Bracket', docKind: 'part', rev: 1 },
@@ -45,6 +46,7 @@ function installSession(options: SessionOptions = {}) {
 beforeEach(() => {
   useWorkspaceSessionStore.setState({ session: null })
   storeMock.removeEntry.mockClear()
+  clearWorkerFileIds()
   installSession()
 })
 
@@ -100,5 +102,31 @@ describe('FilesPanel', () => {
     expect(screen.queryByText(/^orphan/)).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Prune orphans')).not.toBeInTheDocument()
     expect(storeMock.removeEntry).not.toHaveBeenCalled()
+  })
+
+  it('writes replaced bytes to the workspace and drops the worker byte cache id', async () => {
+    const session = useWorkspaceSessionStore.getState().session!
+    session.readEntry = vi.fn(async (): Promise<WorkspaceEntry> => ({
+      id: 'f1', kind: 'file', name: 'shaft.step', mime: 'application/step', fileKind: 'step', bytes: new Uint8Array([1]),
+    }))
+    const writeEntry = vi.fn(async (_entry: WorkspaceEntry) => {})
+    session.writeEntry = writeEntry
+    // The solver worker already holds the old payload for this id.
+    markFilesSent({ f1: new Uint8Array([1]) })
+    expect(fileIdsMissingFromWorker(['f1'])).toEqual([])
+
+    const { container } = render(<FilesPanel />)
+    await screen.findByText('shaft.step')
+    const input = container.querySelector('.file-replace-input') as HTMLInputElement
+    fireEvent.change(input, {
+      target: { files: [{ name: 'shaft.step', arrayBuffer: async () => new Uint8Array([9, 9, 9]).buffer }] },
+    })
+
+    await waitFor(() => expect(writeEntry).toHaveBeenCalledTimes(1))
+    const written = writeEntry.mock.calls[0][0]
+    expect(Array.from(written.bytes ?? [])).toEqual([9, 9, 9])
+    // The next solve must re-read the fresh bytes instead of trusting the
+    // worker's cached copy.
+    expect(fileIdsMissingFromWorker(['f1'])).toEqual(['f1'])
   })
 })

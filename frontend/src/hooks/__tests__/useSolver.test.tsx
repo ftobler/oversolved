@@ -18,6 +18,8 @@ vi.mock('@/stores/solverStore', () => ({
 import { pickPartColor, reconcilePartStyle, useSolver } from '@/hooks/useSolver'
 import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
+import type { WorkspaceSession } from '@/workspace/session'
 import type { PartDoc, BodyResult } from '@/types/cad'
 
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
@@ -425,6 +427,21 @@ describe('useSolver', () => {
       })
       await act(async () => { await result.current.reSolve(doc) })
       expect(result.current.featureTimings).toEqual({ feat1: 123 })
+    })
+
+    it('resolves import bytes through the open workspace session before the flat registry', async () => {
+      const resolveFile = vi.fn(async () => new Uint8Array([1, 2, 3]))
+      useWorkspaceSessionStore.setState({ session: { workspace: 'ws', resolveFile } as unknown as WorkspaceSession })
+      try {
+        const { result } = setupHook()
+        const doc = makeDoc({ features: [{ id: 'imp1', kind: 'import_step', file_id: 'f1' }] })
+        await act(async () => { await result.current.reSolve(doc) })
+        expect(resolveFile).toHaveBeenCalledWith('f1')
+        const files = mockSolveLocally.mock.calls[0][2] as Record<string, Uint8Array>
+        expect(Array.from(files.f1)).toEqual([1, 2, 3])
+      } finally {
+        useWorkspaceSessionStore.setState({ session: null })
+      }
     })
   })
 

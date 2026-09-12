@@ -14,7 +14,8 @@ import { solveViaWorker, cancelSolver } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { SUPERSEDED_ERROR } from '@/kernel/worker/solverProtocol'
 import { getFileRegistry } from '@/stores/fileRegistry'
-import { fileIdsInSpec, resolveFiles } from '@/stores/fileRegistry/resolve'
+import { fileIdsInSpec, resolveFilesSessionFirst } from '@/stores/fileRegistry/resolve'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
 // Solve failures that are not document errors and must not reach the error
@@ -377,11 +378,14 @@ export function useSolver(
       // reuses the clean prefix; the work runs off the main thread so a long
       // solve never freezes the UI.
       // Import bytes are resolved here, on the main thread, and ride the request
-      // as a side channel; the Kernel stays blind to storage. Ids the live
-      // worker already holds are skipped, so a drag burst reads each file from
-      // the registry once per generation rather than per tick.
+      // as a side channel; the Kernel stays blind to storage. The open workspace
+      // session is authoritative (a STEP adopted from a folder/zip/.oversolved
+      // lives there), with C1's flat registry as the staging fallback. Ids the
+      // live worker already holds are skipped, so a drag burst reads each file
+      // once per generation rather than per tick.
+      const session = useWorkspaceSessionStore.getState().session
       const fileIds = fileIdsMissingFromWorker(fileIdsInSpec(solvePayload))
-      const files = fileIds.length ? await resolveFiles(getFileRegistry(), fileIds) : undefined
+      const files = fileIds.length ? await resolveFilesSessionFirst(session, getFileRegistry(), fileIds) : undefined
       if (isStale() || cancelledRef.current) return
       const local = await solveViaWorker(solvePayload, {
         pickBoundary: pickBoundary ?? null,

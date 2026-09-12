@@ -13,9 +13,11 @@ import type { PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { getFileRegistry } from '@/stores/fileRegistry'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
 import type { PartDoc } from '@/types/cad'
+import type { WorkspaceSession } from '@/workspace/session'
 
 const DOC: PartDoc = {
   features: [
@@ -113,5 +115,35 @@ describe('PartExportImport YAML export', () => {
 
     const call = exportViaWorker.mock.calls[0] as [unknown, unknown, Record<string, Uint8Array>]
     expect(Array.from(call[2][entry.id])).toEqual([7, 8])
+  })
+
+  it('resolves an import reference through the open workspace session for STEP export', async () => {
+    resetFakeIndexedDb()
+    resetDbConnection()
+    const entry = await getFileRegistry().create({
+      name: 'a.step', kind: 'step', mime: 'application/step', bytes: new Uint8Array([7, 8]),
+    })
+    // The workspace entry is authoritative: the session resolver stands in for a
+    // STEP adopted from a folder/zip/.oversolved that the flat registry lacks.
+    const resolveFile = vi.fn(async () => new Uint8Array([9, 9]))
+    useWorkspaceSessionStore.setState({ session: { workspace: 'ws', resolveFile } as unknown as WorkspaceSession })
+    try {
+      usePartEditorStore.setState({
+        ...DEFAULT_PART_EDITOR_DATA,
+        doc: { features: [...(DOC.features ?? []), { id: 'imp1', kind: 'import_step', file_id: entry.id }] },
+      })
+      exportViaWorker.mockResolvedValue(new Uint8Array([9]))
+      openExportDialog()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+      })
+
+      expect(resolveFile).toHaveBeenCalledWith(entry.id)
+      const call = exportViaWorker.mock.calls[0] as [unknown, unknown, Record<string, Uint8Array>]
+      expect(Array.from(call[2][entry.id])).toEqual([9, 9])
+    } finally {
+      useWorkspaceSessionStore.setState({ session: null })
+    }
   })
 })

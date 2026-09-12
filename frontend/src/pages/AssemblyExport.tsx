@@ -6,7 +6,8 @@ import { useNotify } from '@/contexts/ToastContext'
 import { exportAssemblyViaWorker } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { getFileRegistry } from '@/stores/fileRegistry'
-import { resolveFiles } from '@/stores/fileRegistry/resolve'
+import { resolveFilesSessionFirst } from '@/stores/fileRegistry/resolve'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { assemblyStlBytes, buildExportParts, collectExportFileIds, exportableInstances, loadPartContents } from '@/utils/assemblyExport'
 import type { AssemblyDoc } from '@/types/cad'
@@ -53,8 +54,9 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
           bytes = assemblyStlBytes(useAssemblyStore.getState().bodies, instances)
         } else {
           const parts = buildExportParts(instances, poses, await loadPartContents(instances))
+          const session = useWorkspaceSessionStore.getState().session
           const fileIds = fileIdsMissingFromWorker(collectExportFileIds(parts))
-          const files = fileIds.length ? await resolveFiles(getFileRegistry(), fileIds) : undefined
+          const files = fileIds.length ? await resolveFilesSessionFirst(session, getFileRegistry(), fileIds) : undefined
           bytes = await exportAssemblyViaWorker(parts, { format, tessellation }, files)
         }
         if (!bytes) {

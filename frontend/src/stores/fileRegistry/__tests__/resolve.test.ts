@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { fileIdsInParts, fileIdsInSpec, resolveFiles } from '../resolve'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { fileIdsInParts, fileIdsInSpec, resolveFiles, resolveFilesSessionFirst } from '../resolve'
 import { MemoryFileRegistry } from '../memoryFileRegistry'
 
 describe('fileIdsInSpec', () => {
@@ -46,5 +46,38 @@ describe('resolveFiles', () => {
     const files = await resolveFiles(registry, [a.id, 'missing'])
     expect(Object.keys(files)).toEqual([a.id])
     expect(Array.from(files[a.id])).toEqual([1, 2])
+  })
+})
+
+describe('resolveFilesSessionFirst', () => {
+  const registry = new MemoryFileRegistry()
+  const resolver = {
+    resolveFile: vi.fn(async (): Promise<Uint8Array | undefined> => new Uint8Array([7, 8, 9])),
+  }
+
+  beforeEach(() => {
+    resolver.resolveFile.mockClear()
+  })
+
+  it('prefers the workspace resolver over the flat registry', async () => {
+    const files = await resolveFilesSessionFirst(resolver, registry, ['f1', 'f2'])
+    expect(resolver.resolveFile).toHaveBeenCalledWith('f1')
+    expect(resolver.resolveFile).toHaveBeenCalledWith('f2')
+    expect(Array.from(files.f1)).toEqual([7, 8, 9])
+    expect(Array.from(files.f2)).toEqual([7, 8, 9])
+  })
+
+  it('falls back to the registry when no workspace is open', async () => {
+    const a = await registry.create({ name: 'a.step', kind: 'step', bytes: new Uint8Array([1, 2]) })
+    const files = await resolveFilesSessionFirst(null, registry, [a.id, 'missing'])
+    expect(Object.keys(files)).toEqual([a.id])
+    expect(Array.from(files[a.id])).toEqual([1, 2])
+    expect(resolver.resolveFile).not.toHaveBeenCalled()
+  })
+
+  it('omits an id the resolver cannot satisfy', async () => {
+    resolver.resolveFile.mockResolvedValueOnce(undefined)
+    const files = await resolveFilesSessionFirst(resolver, registry, ['f1'])
+    expect(files).toEqual({})
   })
 })

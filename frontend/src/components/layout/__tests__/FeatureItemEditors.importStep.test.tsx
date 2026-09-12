@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { FeatureItemEditors } from '../FeatureItemEditors'
 import { getFileRegistry } from '@/stores/fileRegistry'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
 import type { PartFeature } from '@/types/cad'
+import type { WorkspaceSession } from '@/workspace/session'
 
 function importFeature(fileId?: string): PartFeature {
   return { id: 'IM1', kind: 'import_step', file_id: fileId }
@@ -49,5 +51,26 @@ describe('FeatureItemEditors import_step row', () => {
     renderRow(undefined)
     expect(await screen.findByText('Missing file')).toBeTruthy()
     expect(screen.queryByText('Loading...')).toBeNull()
+  })
+
+  it('renders a workspace file entry ahead of the flat registry', async () => {
+    useWorkspaceSessionStore.setState({
+      session: {
+        workspace: 'ws',
+        // A macrotask resolve, so the async meta lands inside the query's
+        // act-wrapped polling instead of a bare microtask between render and
+        // assertion (which triggers an act warning).
+        readEntry: () => new Promise(resolve => setTimeout(() => resolve({
+          id: 'f1', kind: 'file', name: 'adopted.step', mime: 'application/step', fileKind: 'step',
+          bytes: new Uint8Array(1024),
+        }), 0)),
+      } as unknown as WorkspaceSession,
+    })
+    try {
+      renderRow('f1')
+      expect(await screen.findByText('adopted.step (1.0 KB)')).toBeTruthy()
+    } finally {
+      useWorkspaceSessionStore.setState({ session: null })
+    }
   })
 })

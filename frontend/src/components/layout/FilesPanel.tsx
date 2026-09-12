@@ -9,6 +9,7 @@ import type { EntryMeta } from '@/workspace/types'
 import { formatBytes } from '@/utils/formatBytes'
 import { fileKindOf, fileSizeOf, orphanFileIds, referrersOf } from './filesModel'
 import { useOrigin, useWhereUsed } from './filesSeams'
+import { dropWorkerFileId } from '@/kernel/worker/workerFiles'
 
 const EMPTY_ENTRIES: EntryMeta[] = []
 
@@ -150,6 +151,9 @@ function FileRow({ session, file, referrers, orphan }: FileRowProps) {
       const bytes = new Uint8Array(await chosen.arrayBuffer())
       const current = await session.readEntry(file.id)
       await session.writeEntry({ ...current, bytes })
+      // The solver worker still holds the replaced id's old bytes; drop it so
+      // the next solve re-reads the fresh payload from the workspace entry.
+      dropWorkerFileId(file.id)
     } finally {
       setReplacing(false)
     }

@@ -7,7 +7,8 @@ import { useNotify } from '@/contexts/ToastContext'
 import { exportViaWorker } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { getFileRegistry } from '@/stores/fileRegistry'
-import { fileIdsInSpec, resolveFiles } from '@/stores/fileRegistry/resolve'
+import { fileIdsInSpec, resolveFilesSessionFirst } from '@/stores/fileRegistry/resolve'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
@@ -62,8 +63,9 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
       const features = doc.features.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
       const spec = { ...doc, ...(uuid ? { id: uuid } : {}), features }
       try {
+        const session = useWorkspaceSessionStore.getState().session
         const fileIds = fileIdsMissingFromWorker(fileIdsInSpec(spec))
-        const files = fileIds.length ? await resolveFiles(getFileRegistry(), fileIds) : undefined
+        const files = fileIds.length ? await resolveFilesSessionFirst(session, getFileRegistry(), fileIds) : undefined
         const bytes = await exportViaWorker(spec, {
           format,
           bodyId: exportTargetBodyId,

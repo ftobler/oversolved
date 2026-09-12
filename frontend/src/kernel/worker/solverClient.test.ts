@@ -6,7 +6,7 @@ import {
   EMPTY_BUILD_STATE,
   type SolverWorkerLike,
 } from './solverClient'
-import { fileIdsMissingFromWorker } from './workerFiles'
+import { fileIdsMissingFromWorker, dropWorkerFileId } from './workerFiles'
 import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
 import type { BuildState } from '../types3d'
 
@@ -549,6 +549,15 @@ describe('solveViaWorker', () => {
       expect(fileIdsMissingFromWorker(['f1'])).toEqual(['f1'])
       solveViaWorker({ id: 'd' }, {}, { f1: F1 })
       expect(fileIdsMissingFromWorker(['f1'])).toEqual([])
+      fake.reply({ id: fake.posted[0].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+      await Promise.resolve()
+    })
+
+    it('drops a single id so a replaced file is re-read by the next request', async () => {
+      solveViaWorker({ id: 'd' }, {}, { f1: F1 })
+      expect(fileIdsMissingFromWorker(['f1'])).toEqual([])
+      dropWorkerFileId('f1')
+      expect(fileIdsMissingFromWorker(['f1'])).toEqual(['f1'])
       fake.reply({ id: fake.posted[0].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
       await Promise.resolve()
     })
