@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { EntryMeta, WorkspaceEntry } from '@/workspace/types'
 import type { WorkspaceSession } from '@/workspace/session'
@@ -15,6 +15,7 @@ vi.mock('@/workspace/store', () => ({ getWorkspaceStore: () => storeMock }))
 import { WorkspaceTree } from '@/components/layout/WorkspaceTree'
 import { EntryReferencedError } from '@/workspace/errors'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 function meta(id: string, name: string, extra: Partial<EntryMeta>): EntryMeta {
   return { id, path: `documents/${name}.yaml`, kind: 'document', name, rev: 1, ...extra }
@@ -31,13 +32,14 @@ function installSession(
   all: EntryMeta[] = entries,
   trashed: string[] = ['gone'],
   edges: Record<string, string[]> = {},
+  savedRevs = new Map<string, number>(),
 ): WorkspaceSession {
   const session = {
     workspace: 'ws',
     open: vi.fn(),
     listEntries: vi.fn(async (opts?: { includeTrashed?: boolean }) =>
       all.filter(entry => opts?.includeTrashed || !trashed.includes(entry.id))),
-    savedRevs: vi.fn(async () => new Map<string, number>()),
+    savedRevs: vi.fn(async () => savedRevs),
     readEntry: vi.fn(),
     writeEntry: vi.fn(),
     originOf: vi.fn(async () => undefined),
@@ -62,6 +64,8 @@ function renderTree(entryId = 'z') {
 
 beforeEach(() => {
   useWorkspaceSessionStore.setState({ session: null })
+  useUnsavedChangesStore.getState().setDirty(false)
+  useUnsavedChangesStore.getState().dismissConfirm()
   storeMock.addEntry.mockClear()
   storeMock.renameEntry.mockClear()
   storeMock.cloneEntry.mockClear()
@@ -154,5 +158,71 @@ describe('WorkspaceTree mutations', () => {
     expect(screen.getByRole('button', { name: 'Gearbox' })).toBeInTheDocument()
     // The refusal waits for the store verdict; it must not navigate away first.
     expect(screen.queryByText('ROOT')).not.toBeInTheDocument()
+  })
+})
+
+describe('WorkspaceTree unsaved-changes guard', () => {
+  const openRow = (container: HTMLElement) =>
+    [...container.querySelectorAll('[role="option"]')]
+      .find(row => row.getAttribute('aria-selected') === 'true')
+
+  it('holds navigation to another entry while the open entry is dirty', async () => {
+    installSession()
+    useUnsavedChangesStore.setState({ dirty: true, workspace: 'ws' })
+    const { container } = renderTree('p1')
+    await screen.findByText('Bracket')
+
+    fireEvent.click(screen.getByText('Gearbox'))
+
+    // The discard prompt is armed and the navigation has not happened.
+    expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
+    expect(openRow(container)?.textContent).toContain('Bracket')
+
+    // Confirming the discard clears the flag and navigates to the target.
+    act(() => { useUnsavedChangesStore.getState().pendingCallback!() })
+    await waitFor(() => expect(openRow(container)?.textContent).toContain('Gearbox'))
+  })
+
+  it('holds the add navigation while the open entry is dirty', async () => {
+    installSession()
+    useUnsavedChangesStore.setState({ dirty: true, workspace: 'ws' })
+    const { container } = renderTree('p1')
+    await screen.findByText('Bracket')
+
+    fireEvent.click(screen.getByLabelText('Add entry'))
+    fireEvent.change(screen.getByPlaceholderText('Entry name'), { target: { value: 'New' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(() => expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull())
+    expect(openRow(container)?.textContent).toContain('Bracket')
+  })
+
+  it('navigates immediately when the open entry is clean', async () => {
+    installSession()
+    const { container } = renderTree('p1')
+    await screen.findByText('Bracket')
+
+    fireEvent.click(screen.getByText('Gearbox'))
+
+    expect(useUnsavedChangesStore.getState().pendingCallback).toBeNull()
+    await waitFor(() => expect(openRow(container)?.textContent).toContain('Gearbox'))
+  })
+})
+
+describe('WorkspaceTree dirty dot', () => {
+  it("lights the open entry's dot from the header flag while every entry is saved", async () => {
+    const savedRevs = new Map(entries.filter(e => e.id !== 'gone').map(e => [e.id, e.rev ?? 1]))
+    installSession(entries, ['gone'], {}, savedRevs)
+    useUnsavedChangesStore.setState({ dirty: true, workspace: 'ws' })
+    const { container } = renderTree('p1')
+    await screen.findByText('Bracket')
+
+    const open = [...container.querySelectorAll('[role="option"]')]
+      .find(row => row.getAttribute('aria-selected') === 'true')
+    expect(open?.querySelector('.workspace-dirty-dot')).toBeInTheDocument()
+    // The clean siblings stay dotless.
+    const gearbox = [...container.querySelectorAll('[role="option"]')]
+      .find(row => row.textContent?.includes('Gearbox'))
+    expect(gearbox?.querySelector('.workspace-dirty-dot')).toBeNull()
   })
 })

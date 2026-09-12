@@ -11,6 +11,7 @@ import { dirtyEntryIds, groupEntries, isOpenEntry } from './workspaceTreeModel'
 import { useWhereUsed } from './filesSeams'
 import { referrersOf } from './filesModel'
 import { treeRowKeyDown } from './treeRowKeyDown'
+import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
 // U2: the workspace navigator. It reads the live session and re-reads on every
 // store mutation, holds no optimistic list state, and routes every mutation
@@ -61,7 +62,15 @@ export function WorkspaceTree() {
   const entries = session ? loadedEntries : EMPTY_ENTRIES
   const savedRevs = session ? loadedRevs : EMPTY_REVS
   const grouped = useMemo(() => groupEntries(entries), [entries])
-  const dirty = useMemo(() => dirtyEntryIds(entries, savedRevs), [entries, savedRevs])
+  // R3's per-entry dirty plus the editor's in-memory dirty folded into the open
+  // entry's dot: the working copy only advances on save, so a document mid-edit
+  // would otherwise show clean beside a header that says it is dirty.
+  const headerDirty = useUnsavedChangesStore(s => s.dirty)
+  const dirty = useMemo(() => {
+    const set = dirtyEntryIds(entries, savedRevs)
+    if (headerDirty && entryId) set.add(entryId)
+    return set
+  }, [entries, savedRevs, headerDirty, entryId])
   // U4: the where-used index, inverted once from the session's reference edges.
   const { inverse } = useWhereUsed(session, entries)
   const referrerNames = useMemo(() => {
@@ -78,7 +87,11 @@ export function WorkspaceTree() {
 
   const openEntry = (entry: EntryMeta) => {
     if (!workspace) return
-    navigate(`/workspaces/${workspace}/entries/${entry.id}`)
+    // The editors keep their edits in memory until Save, so opening another
+    // entry while the current one is dirty would drop them silently. Route the
+    // navigation through the shared unsaved-changes guard like AppHeader does.
+    const target = `/workspaces/${workspace}/entries/${entry.id}`
+    if (confirmDiscardUnsavedChanges(() => navigate(target))) navigate(target)
   }
 
   const handleAdd = async () => {
@@ -87,7 +100,8 @@ export function WorkspaceTree() {
     await store.addEntry(workspace, { id, kind: 'document', name: newName.trim(), docKind: newKind, text: '' })
     setAddOpen(false)
     setNewName('')
-    navigate(`/workspaces/${workspace}/entries/${id}`)
+    const target = `/workspaces/${workspace}/entries/${id}`
+    if (confirmDiscardUnsavedChanges(() => navigate(target))) navigate(target)
   }
 
   const handleRename = async () => {
@@ -109,7 +123,10 @@ export function WorkspaceTree() {
     // drop the editor on a refusal, so the route change waits for success.
     try {
       await store.removeEntry(workspace, entry.id)
-      if (entryId === entry.id) navigate(`/workspaces/${workspace}`)
+      if (entryId === entry.id) {
+        const back = `/workspaces/${workspace}`
+        if (confirmDiscardUnsavedChanges(() => navigate(back))) navigate(back)
+      }
     } catch (e) {
       if (e instanceof EntryReferencedError) setReferenced({ entry, referrers: e.referrers })
       else throw e
