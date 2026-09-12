@@ -62,7 +62,7 @@ describe('idb open robustness', () => {
   })
 })
 
-describe('payload-free entry meta backfill (v4 to v5)', () => {
+describe('payload-free entry meta backfill (v4 to v5, sized at v6)', () => {
   it('projects existing working-copy rows into the meta mirror on upgrade', async () => {
     // Build a v4 database by hand with one populated working-copy entry.
     await new Promise<void>((resolve, reject) => {
@@ -81,10 +81,10 @@ describe('payload-free entry meta backfill (v4 to v5)', () => {
     })
     resetDbConnection()
 
-    // The next v5 open upgrades and backfills the mirror.
+    // The next open upgrades and backfills the mirror, including the derived size.
     const metas = await idbGetAllFrom<Record<string, unknown>>(STORE_WORKSPACE_ENTRY_META)
     expect(metas).toEqual([
-      { workspace: 'ws', id: 'e1', path: 'documents/A.yaml', kind: 'document', name: 'A', docKind: 'part', rev: 3, updatedAt: 9 },
+      { workspace: 'ws', id: 'e1', path: 'documents/A.yaml', kind: 'document', name: 'A', docKind: 'part', rev: 3, updatedAt: 9, size: 4 },
     ])
   })
 })

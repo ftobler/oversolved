@@ -81,6 +81,8 @@ function installSessionFromList() {
       writeEntry: vi.fn(),
       resolveFile: vi.fn(),
       referencesOf: vi.fn(),
+      savedRevs: async () => new Map(),
+      originOf: async () => undefined,
     },
   })
 }

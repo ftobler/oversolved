@@ -6,6 +6,7 @@ import MessageDialog from '@/components/dialogs/MessageDialog'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import DocTilePreview from '@/components/shared/DocTilePreview'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
+import { formatBytes } from '@/utils/formatBytes'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { getWorkspaceStore, type WorkspaceSummary } from '@/workspace/store'
@@ -411,6 +412,7 @@ export default function Workspaces() {
                       </div>
                       <div className="doc-tile-meta">
                         <span className="doc-tile-date">{formatRelativeDate(new Date(summary.updatedAt).toISOString())}</span>
+                        <span className="doc-tile-size">{formatBytes(summary.size)}</span>
                         <div className="doc-tile-actions">
                           {reopen.has(summary.workspace) && (
                             <button

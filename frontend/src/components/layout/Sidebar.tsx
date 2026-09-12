@@ -1,49 +1,44 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { FeatureTree } from '@/components/layout/FeatureTree'
-import { BodyPartsList } from '@/components/layout/BodyPartsList'
+import type { ReactNode } from 'react'
+import { ActivityBar } from '@/components/layout/ActivityBar'
+import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
+import { WorkspaceTree } from '@/components/layout/WorkspaceTree'
+import { FilesPanel } from '@/components/layout/FilesPanel'
+import { PANEL_DEFS } from '@/components/layout/panelRegistry'
+import { useLayoutStore } from '@/stores/layoutStore'
+import '@/pages/Part.css'
+import '@/components/layout/Sidebar.css'
 
-const MIN_SPLIT_PERCENT = 20
-const MAX_SPLIT_PERCENT = 80
-const DEFAULT_SPLIT_PERCENT = 70
+interface SidebarProps {
+  // undefined keeps today's part stack, so the part editor and its tests render
+  // <Sidebar /> unchanged; null means "no open document", the no-entry workspace
+  // route, and any other node is the open editor's own navigator (AssemblyTree).
+  documentPanel?: ReactNode
+}
 
-export function Sidebar() {
-  const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
-  const isDraggingRef = useRef(false)
-  const sidebarRef = useRef<HTMLDivElement>(null)
-
-  const handleMouseDown = useCallback(() => {
-    isDraggingRef.current = true
-  }, [])
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDraggingRef.current || !sidebarRef.current) return
-    const rect = sidebarRef.current.getBoundingClientRect()
-    const newPercent = ((e.clientY - rect.top) / rect.height) * 100
-    setSplitPercent(Math.max(MIN_SPLIT_PERCENT, Math.min(MAX_SPLIT_PERCENT, newPercent)))
-  }, [])
-
-  const handleMouseUp = useCallback(() => {
-    isDraggingRef.current = false
-  }, [])
-
-  useEffect(() => {
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [handleMouseMove, handleMouseUp])
+// The panel host. A narrow activity bar switches between the Workspace panel
+// (the tree plus the files view) and the open document's navigator, one visible
+// at a time. Both panels stay mounted once opened and toggle the `hidden`
+// attribute, so each navigator's DOM scrollTop and split percent survive a
+// switch with no lifted view state. The workspace panel is lazy-mounted on its
+// first activation (the store's `visited`), so opening an editor does not list a
+// workspace nobody asked to see.
+export function Sidebar({ documentPanel }: SidebarProps) {
+  const activePanel = useLayoutStore(s => s.activePanel)
+  const visited = useLayoutStore(s => s.visited)
+  const setPanel = useLayoutStore(s => s.setPanel)
 
   return (
-    <aside className="doc-sidebar" ref={sidebarRef}>
-      <FeatureTree splitPercent={splitPercent} />
-      <div
-        className="resize-handle"
-        onMouseDown={handleMouseDown}
-        title="Drag to resize"
-      />
-      <BodyPartsList splitPercent={splitPercent} />
+    <aside className="doc-sidebar">
+      <ActivityBar panels={PANEL_DEFS} active={activePanel} onSelect={setPanel} />
+      {visited.includes('workspace') && (
+        <div className="sidebar-panel" hidden={activePanel !== 'workspace'}>
+          <WorkspaceTree />
+          <FilesPanel />
+        </div>
+      )}
+      <div className="sidebar-panel" hidden={activePanel !== 'document'}>
+        {documentPanel === undefined ? <PartDocumentPanel /> : documentPanel}
+      </div>
     </aside>
   )
 }

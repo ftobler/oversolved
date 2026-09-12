@@ -32,6 +32,7 @@ import {
 } from '@/stores/documentStore/idb'
 import { suggestedCloneName } from '@/stores/documentStore/cloneName'
 import { randomUuid } from '@/utils/randomUuid'
+import { entrySizeOf } from '@/utils/entrySize'
 import { FORMAT_VERSION, pathFor } from './paths'
 import { canonicalizeReferences } from './refs'
 
@@ -104,6 +105,9 @@ export interface WorkspaceEntryMetaRecord {
   fileKind?: string
   rev: number
   updatedAt: number
+  // R1's derived payload size. Optional because a v5 mirror row written before
+  // the size field existed carries none; the v6 upgrade backfills it.
+  size?: number
 }
 
 function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
@@ -115,6 +119,7 @@ function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
     name: record.name,
     rev: record.rev,
     updatedAt: record.updatedAt,
+    size: entrySizeOf(record),
   }
   if (record.docKind !== undefined) meta.docKind = record.docKind
   if (record.mime !== undefined) meta.mime = record.mime
@@ -211,7 +216,7 @@ function recordToManifestEntry(record: WorkspaceEntryRecord): ManifestEntry {
 }
 
 function recordToMeta(record: WorkspaceEntryRecord): EntryMeta {
-  const meta: EntryMeta = { id: record.id, path: record.path, kind: record.kind, name: record.name, rev: record.rev, updatedAt: record.updatedAt }
+  const meta: EntryMeta = { id: record.id, path: record.path, kind: record.kind, name: record.name, rev: record.rev, updatedAt: record.updatedAt, size: entrySizeOf(record) }
   if (record.docKind !== undefined) meta.docKind = record.docKind
   if (record.mime !== undefined) meta.mime = record.mime
   if (record.fileKind !== undefined) meta.fileKind = record.fileKind

@@ -46,6 +46,9 @@ export interface WorkspaceSummary {
   name: string
   docKind?: string  // the sole live document's open kind, for the picker
   entryCount: number
+  // R1's derived size: the summed payload bytes of the live entries. Read from
+  // the payload-free mirror, so the tile never opens a workspace to report it.
+  size: number
   rev?: number  // the working copy's max revision, the bundle cache key
   // The entry whose preview stands for the workspace on the U1 tile. First live
   // document, or undefined for an all-file workspace; A9 means the tile shows a
@@ -179,6 +182,7 @@ export class IdbWorkspaceStore implements WorkspaceStore {
         workspace: meta.workspace,
         name: meta.name,
         entryCount: live.length,
+        size: live.reduce((sum, record) => sum + (record.size ?? 0), 0),
         rev: live.reduce((max, record) => Math.max(max, record.rev), 0),
         createdAt: meta.createdAt,
         updatedAt: meta.updatedAt,

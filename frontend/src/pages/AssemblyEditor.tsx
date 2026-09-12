@@ -24,6 +24,7 @@ import type { AssemblySubject } from '@/utils/assemblySelection'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
+import { Sidebar } from '@/components/layout/Sidebar'
 import { MateEditor } from '@/components/layout/MateEditor'
 import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
@@ -567,38 +568,40 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         }
       />
       <div className="doc-container">
-        <aside className="doc-sidebar">
-          <AssemblyTree
-            instances={instances}
-            builtins={builtins}
-            mates={mates}
-            status={solveStatus}
-            labelFor={labelFor}
-            subject={subject}
-            editingMateId={editingMateId}
-            editingInstanceHandle={editingInstanceHandle}
-            onSelectPart={handleSelect}
-            onReorderInstance={(movingHandle, beforeHandle) => executeCommand('reorder_part', { movingHandle, beforeHandle })}
-            onReorderMate={(movingId, beforeId) => executeCommand('reorder_mate', { movingId, beforeId })}
-            onOpenPartNewTab={handleOpenPartNewTab}
-            onDuplicateInstance={(handle) => executeCommand('duplicate_part', handle)}
-            onDeleteInstance={(handle) => executeCommand('delete_part', handle)}
-            onToggleVisible={(handle, visible) => executeCommand('set_part_visible', { handle, visible })}
-            onToggleFixed={(handle, fixed) => executeCommand('set_part_fixed_oneshot', { handle, fixed })}
-            onToggleBuiltinVisible={(id, visible) => executeCommand('set_builtin_visible', { id, visible })}
-            onEditInstance={handleEditInstance}
-            onCommitInstance={handleCommitInstance}
-            onCancelInstance={handleCancelInstance}
-            renderInstanceEditor={renderInstanceEditor}
-            onSelectMate={handleSelectMate}
-            onEditMate={handleEditMate}
-            onCommitMate={handleCommitMate}
-            onCancelMate={handleCancelMate}
-            onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
-            onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
-            renderMateEditor={(m) => renderMateEditor(m)}
-          />
-        </aside>
+        <Sidebar
+          documentPanel={
+            <AssemblyTree
+              instances={instances}
+              builtins={builtins}
+              mates={mates}
+              status={solveStatus}
+              labelFor={labelFor}
+              subject={subject}
+              editingMateId={editingMateId}
+              editingInstanceHandle={editingInstanceHandle}
+              onSelectPart={handleSelect}
+              onReorderInstance={(movingHandle, beforeHandle) => executeCommand('reorder_part', { movingHandle, beforeHandle })}
+              onReorderMate={(movingId, beforeId) => executeCommand('reorder_mate', { movingId, beforeId })}
+              onOpenPartNewTab={handleOpenPartNewTab}
+              onDuplicateInstance={(handle) => executeCommand('duplicate_part', handle)}
+              onDeleteInstance={(handle) => executeCommand('delete_part', handle)}
+              onToggleVisible={(handle, visible) => executeCommand('set_part_visible', { handle, visible })}
+              onToggleFixed={(handle, fixed) => executeCommand('set_part_fixed_oneshot', { handle, fixed })}
+              onToggleBuiltinVisible={(id, visible) => executeCommand('set_builtin_visible', { id, visible })}
+              onEditInstance={handleEditInstance}
+              onCommitInstance={handleCommitInstance}
+              onCancelInstance={handleCancelInstance}
+              renderInstanceEditor={renderInstanceEditor}
+              onSelectMate={handleSelectMate}
+              onEditMate={handleEditMate}
+              onCommitMate={handleCommitMate}
+              onCancelMate={handleCancelMate}
+              onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
+              onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
+              renderMateEditor={(m) => renderMateEditor(m)}
+            />
+          }
+        />
         <div className="doc-editor">
           <div className="editor-toolbar">
             <button

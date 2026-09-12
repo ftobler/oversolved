@@ -80,4 +80,7 @@ export interface EntryMeta {
   // them (IdbCarrier). Optional so MemoryCarrier and the C0 tests stay valid.
   rev?: number
   updatedAt?: number
+  // The serialized payload bytes (R1): derived at write time, never serialized.
+  // Lets U1 and U3 report size without materializing a payload.
+  size?: number
 }

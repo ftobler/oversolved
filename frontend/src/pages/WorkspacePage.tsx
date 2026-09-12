@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
+import { Sidebar } from '@/components/layout/Sidebar'
 import { backendBundle } from '@/adapters/backend'
 import { createWorkspaceSession } from '@/workspace/session'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
+import { useLayoutStore } from '@/stores/layoutStore'
 import { useRecoveryStore } from '@/stores/recoveryStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCarrierChangeStore } from '@/stores/carrierChangeStore'
@@ -106,6 +108,12 @@ export default function WorkspacePage() {
     return () => { useEditorModeStore.getState().setActiveEditor(null) }
   }, [kind])
 
+  // The activity bar opens on the document navigator for an entry and on the
+  // workspace tree when no entry is open, so the no-entry shell lands on U2.
+  useEffect(() => {
+    useLayoutStore.getState().setPanel(entryId ? 'document' : 'workspace')
+  }, [entryId])
+
   if (!workspaceId) return <div className="document-viewer"><p>Workspace not found.</p></div>
 
   // Both prompts hold the editor back, and only one may be up: the carrier check
@@ -140,28 +148,19 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="documents">
+    <div className="document-viewer">
       <AppHeader>
         <Link className="toolbar-btn" to="/workspaces" title="All workspaces">
           <span className="material-icons">arrow_back</span>
         </Link>
       </AppHeader>
-      <div className="documents-main">
-        {entries.length === 0 && <p className="status">This workspace is empty.</p>}
-        {entries.length > 0 && (
-          <div className="doc-tiles">
-            {entries.map(entry => (
-              <div key={entry.id} className="doc-tile">
-                <Link to={`/workspaces/${workspaceId}/entries/${entry.id}`} className="doc-tile-link">
-                  <div className="doc-tile-info">
-                    <span className="doc-tile-name" title={entry.name}>{entry.name}</span>
-                    <span className="doc-tile-date">{entry.kind}</span>
-                  </div>
-                </Link>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="doc-container">
+        <Sidebar documentPanel={null} />
+        <div className="doc-main-prompt">
+          {entries.length === 0
+            ? <p className="status">This workspace is empty.</p>
+            : <p className="status">Select an entry from the workspace tree.</p>}
+        </div>
       </div>
     </div>
   )

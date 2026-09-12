@@ -1,5 +1,5 @@
-import type { EntryMeta, WorkspaceEntry, WorkspaceTree } from './types'
-import { IdbCarrier } from './idbCarrier'
+import type { EntryMeta, ProvenanceRecord, WorkspaceEntry, WorkspaceTree } from './types'
+import { IdbCarrier, readWorkspaceMeta, savedEntryRecords } from './idbCarrier'
 import { getWorkspaceStore, type WorkspaceStore } from './store'
 import { getFileRegistry } from '@/stores/fileRegistry'
 
@@ -13,8 +13,14 @@ export interface WorkspaceSession {
   workspace: string
   open(): Promise<WorkspaceTree>
   listEntries(opts?: { includeTrashed?: boolean }): Promise<EntryMeta[]>
+  // The checkpoint rev per entry, so U2 can derive a per-entry dirty dot by
+  // comparing it with the working copy's rev (R3). A pure read.
+  savedRevs(): Promise<Map<string, number>>
   readEntry(entry: string): Promise<WorkspaceEntry>
   writeEntry(entry: WorkspaceEntry): Promise<void>
+  // The provenance record an entry was imported as, the C6 seam. C4 only reads
+  // the opaque origin string; C6 fills in rev, hash and status.
+  originOf(entry: string): Promise<ProvenanceRecord | undefined>
   resolveFile(fileId: string): Promise<Uint8Array | undefined>
   referencesOf(entry: string): Promise<string[]>
 }
@@ -27,8 +33,13 @@ export function createWorkspaceSession(
     workspace,
     open: async () => (await store.open(workspace)).tree,
     listEntries: opts => store.listEntries(workspace, opts),
+    savedRevs: async () => new Map((await savedEntryRecords(workspace)).map(record => [record.id, record.rev])),
     readEntry: entry => store.readEntry(workspace, entry),
     writeEntry: entry => store.writeEntry(workspace, entry),
+    originOf: async entry => {
+      const meta = await readWorkspaceMeta(workspace)
+      return meta?.provenance.find(record => record.entry === entry)
+    },
     async resolveFile(fileId: string): Promise<Uint8Array | undefined> {
       try {
         const entry = await store.readEntry(workspace, fileId)

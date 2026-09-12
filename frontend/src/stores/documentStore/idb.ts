@@ -24,8 +24,15 @@
 // v5 adds `workspace_entry_meta`, a payload-free mirror of `workspace_entries`
 // (same key, no text/bytes). The U1 grid lists entry counts, cover entries and
 // revs without deserializing every document's payload just to count it.
+//
+// v6 adds a derived `size` to that mirror, so U1 and U3 can report bytes without
+// materializing a payload. It is not a format change: the size is computed from
+// the working-copy record and never serialized. The upgrade backfills it for a
+// database that already carries a v5 mirror.
+import { entrySizeOf } from '@/utils/entrySize'
+
 export const DB_NAME = 'oversolved'
-export const DB_VERSION = 5
+export const DB_VERSION = 6
 export const STORE_DOCUMENTS = 'documents'
 export const STORE_HANDLES = 'handles'
 export const STORE_FILES = 'files'
@@ -39,7 +46,8 @@ let dbPromise: Promise<IDBDatabase> | null = null
 // The v4-to-v5 upgrade projects every existing working-copy row into the new
 // payload-free mirror, so an existing database lists with real counts. This is
 // the only place the pre-upgrade rows are visible; every later write keeps the
-// mirror in step.
+// mirror in step. It runs on the v5-to-v6 upgrade too, refreshing each row with
+// the v6 size.
 function backfillEntryMeta(transaction: IDBTransaction | null): void {
   if (!transaction) return
   const meta = transaction.objectStore(STORE_WORKSPACE_ENTRY_META)
@@ -56,6 +64,8 @@ function backfillEntryMeta(transaction: IDBTransaction | null): void {
       docKind?: string
       mime?: string
       fileKind?: string
+      text?: string
+      bytes?: Uint8Array
       rev?: number
       updatedAt?: number
     }
@@ -67,6 +77,7 @@ function backfillEntryMeta(transaction: IDBTransaction | null): void {
       name: record.name,
       rev: record.rev ?? 0,
       updatedAt: record.updatedAt ?? 0,
+      size: entrySizeOf(record),
     }
     if (record.docKind !== undefined) row.docKind = record.docKind
     if (record.mime !== undefined) row.mime = record.mime
