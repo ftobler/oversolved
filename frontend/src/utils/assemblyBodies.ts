@@ -3,7 +3,7 @@
 // viewport-free: the transforms are already baked into the vertices worker-side,
 // so this is a relabelling, not geometry work.
 
-import type { BodyResult } from '@/types/cad'
+import type { BodyResult, MateAnchorDescriptor } from '@/types/cad'
 import type { EdgeCurve, EntityAnchorIndex } from '@/kernel/partBundle'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import {
@@ -71,8 +71,16 @@ const ENTITY_SLOTS: [AssemblyEntityKind, keyof EntityAnchorIndex][] = [
  * not care which side of the `ASSEMBLY_HANDLE` split a reference came from.
  * A bundle built before Stage 7 carries no `entityAnchors`; its parts simply
  * offer no picks until the part is rebuilt at a new rev.
+ *
+ * `anchorDescriptors` is the authoring-only descriptor table keyed like the
+ * anchors payload. When present it stamps each part ref with the identity its
+ * id was minted from, so a committed mate can re-resolve after a geom_hash
+ * move; built-ins carry none (their ids are static).
  */
-export function buildEntityMateRefs(bodies: Record<string, MeshPayload[]>): EntityMateRefs {
+export function buildEntityMateRefs(
+  bodies: Record<string, MeshPayload[]>,
+  anchorDescriptors?: Record<string, Record<string, MateAnchorDescriptor>>,
+): EntityMateRefs {
   const out: EntityMateRefs = {}
   for (const id of ASSEMBLY_BUILTIN_IDS) {
     out[assemblyBuiltinEntityKey(id)] = [{ part: ASSEMBLY_HANDLE, anchor: id }]
@@ -84,7 +92,10 @@ export function buildEntityMateRefs(bodies: Record<string, MeshPayload[]>): Enti
         m.entityAnchors[slot].forEach((anchorIds, index) => {
           if (anchorIds.length === 0) return  // not matable; no pick id at all
           out[assemblyEntityKey(handle, bodyIndex, kind, index)] =
-            anchorIds.map(anchor => ({ part: handle, anchor }))
+            anchorIds.map(anchor => {
+              const descriptor = anchorDescriptors?.[handle]?.[anchor]
+              return descriptor ? { part: handle, anchor, anchor_descriptor: descriptor } : { part: handle, anchor }
+            })
         })
       }
     })

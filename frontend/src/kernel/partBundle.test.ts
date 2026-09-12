@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, anchorIdFor, anchorKindHasAxis, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint } from './partBundle'
-import type { AnchorKind } from './partBundle'
-import type { EdgeData, BodyResult, FaceData } from '../types/cad'
+import { toEdgeCurve, toBodyMesh, toPartBundle, extractBodyAnchors, anchorIdFor, anchorKindHasAxis, anchorByDescriptor, ANCHOR_TIE_EPSILON_SQ, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint } from './partBundle'
+import type { Anchor, AnchorKind } from './partBundle'
+import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor } from '../types/cad'
 
 describe('BUNDLE_BUILD_FINGERPRINT drift guard', () => {
   it('is derived from BUNDLE_SCHEMA and BUNDLE_BUILD_ID, so bumping either changes it', () => {
@@ -739,5 +739,87 @@ describe('extractBodyAnchors entity index', () => {
     const bundle = toPartBundle('doc1', 3, { b1: mixedBody() })
     expect(bundle.bodies[0].entityAnchors!.faces[0][0]).toBeDefined()
     expect(bundle.anchors[bundle.bodies[0].entityAnchors!.faces[0][0]]).toBeDefined()
+  })
+})
+
+describe('anchorByDescriptor', () => {
+  const anchor = (
+    kind: AnchorKind, geom_hash: string, created_by: string, point: [number, number, number],
+  ): Anchor => ({ kind, point, axis: [0, 0, 1], geom_hash, created_by })
+
+  const descriptor = (over: Partial<MateAnchorDescriptor>): MateAnchorDescriptor => ({
+    geom_hash: '@gdf|old', kind: 'plane', created_by: 'feat1', point: [0, 0, 0],
+    ...over,
+  })
+
+  // The exported constant is the shared tie guard; pin its value so a change
+  // that silently loosens the fail-safe tie rule fails here.
+  it('exposes the shared tie epsilon the build-time remap also uses', () => {
+    expect(ANCHOR_TIE_EPSILON_SQ).toBe(1e-10)
+  })
+
+  it('tier 1: returns the anchor matching geom_hash and kind', () => {
+    const anchors = { idA: anchor('plane', '@gdf|a', 'feat1', [0, 0, 0]) }
+    expect(anchorByDescriptor(anchors, descriptor({ geom_hash: '@gdf|a' }))).toBe(anchors.idA)
+  })
+
+  it('tier 2: a moved positional geom_hash re-finds the element by created_by + kind', () => {
+    const anchors = {
+      moved: anchor('plane', '@gdf|moved', 'feat1', [5, 0, 0]),
+      sibling: anchor('line', '@gde|sibling', 'feat1', [5, 0, 0]),
+    }
+    expect(anchorByDescriptor(anchors, descriptor({ point: [0, 0, 0] }))).toBe(anchors.moved)
+  })
+
+  it('tier 2 nearest: picks the closer of two same-kind candidates', () => {
+    const anchors = {
+      near: anchor('plane', '@gdf|near', 'feat1', [1, 0, 0]),
+      far: anchor('plane', '@gdf|far', 'feat1', [10, 0, 0]),
+    }
+    expect(anchorByDescriptor(anchors, descriptor({ point: [0, 0, 0] }))).toBe(anchors.near)
+  })
+
+  it('tie: two equidistant candidates refuse (fail-safe)', () => {
+    const anchors = {
+      plus: anchor('plane', '@gdf|plus', 'feat1', [1, 0, 0]),
+      minus: anchor('plane', '@gdf|minus', 'feat1', [-1, 0, 0]),
+    }
+    expect(anchorByDescriptor(anchors, descriptor({ point: [0, 0, 0] }))).toBeUndefined()
+  })
+
+  it('tie: a separation below the epsilon also refuses', () => {
+    const eps = Math.sqrt(ANCHOR_TIE_EPSILON_SQ) / 4
+    const anchors = {
+      plus: anchor('plane', '@gdf|plus', 'feat1', [eps, 0, 0]),
+      minus: anchor('plane', '@gdf|minus', 'feat1', [-eps, 0, 0]),
+    }
+    expect(anchorByDescriptor(anchors, descriptor({ point: [0, 0, 0] }))).toBeUndefined()
+  })
+
+  it('a gone @u| identity refuses rather than rebinding to a same-kind neighbour', () => {
+    const anchors = { pos: anchor('plane', '@gdf|0,0,0', 'feat1', [0, 0, 0]) }
+    expect(anchorByDescriptor(anchors, descriptor({ geom_hash: '@u|gone-uuid' }))).toBeUndefined()
+  })
+
+  it('a changed created_by finds no tier-2 candidate', () => {
+    const anchors = { other: anchor('plane', '@gdf|other', 'other-feature', [0, 0, 0]) }
+    expect(anchorByDescriptor(anchors, descriptor({}))).toBeUndefined()
+  })
+
+  it('kind isolation: a same-created_by candidate of another kind is not a match', () => {
+    const anchors = { line: anchor('line', '@gde|line', 'feat1', [0, 0, 0]) }
+    expect(anchorByDescriptor(anchors, descriptor({ geom_hash: '@gdf|plane' }))).toBeUndefined()
+  })
+
+  it('a tier-1 tie falls through to the tier-2 created_by + kind match', () => {
+    // Two anchors share the descriptor's geom_hash + kind but belong to another
+    // body, so the tier-1 exact set ties. That must not dead-end: tier 2 scopes
+    // back to the descriptor's own body and finds its unique candidate.
+    const anchors = {
+      otherA: anchor('plane', '@gdf|tie', 'other', [1, 0, 0]),
+      otherB: anchor('plane', '@gdf|tie', 'other', [-1, 0, 0]),
+      mine: anchor('plane', '@gdf|mine', 'feat1', [5, 0, 0]),
+    }
+    expect(anchorByDescriptor(anchors, descriptor({ geom_hash: '@gdf|tie' }))).toBe(anchors.mine)
   })
 })

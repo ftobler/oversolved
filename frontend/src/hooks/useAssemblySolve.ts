@@ -67,12 +67,21 @@ export function mateSpecs(doc: AssemblyDoc): MateSpec[] {
     .map(f => ({
       id: f.id,
       kind: f.mate!.kind,
-      // Rebuild each ref from its two authored fields only. A hand-edited YAML
+      // Rebuild each ref from its authored fields only. A hand-edited YAML
       // could carry a stray `inlineAnchor`; dropping it keeps the solve's
       // inline-anchor trust exemption (drag objective only) unreachable from a
-      // document.
-      ref_a: { part: f.mate!.ref_a.part, anchor: f.mate!.ref_a.anchor },
-      ref_b: { part: f.mate!.ref_b.part, anchor: f.mate!.ref_b.anchor },
+      // document. `anchor_descriptor` is the durable identity and must ride
+      // along, or a cold-cache resolve loses the only fallback it has.
+      ref_a: {
+        part: f.mate!.ref_a.part,
+        anchor: f.mate!.ref_a.anchor,
+        anchor_descriptor: f.mate!.ref_a.anchor_descriptor,
+      },
+      ref_b: {
+        part: f.mate!.ref_b.part,
+        anchor: f.mate!.ref_b.anchor,
+        anchor_descriptor: f.mate!.ref_b.anchor_descriptor,
+      },
       flip: f.mate!.flip,
       // Passed through in its authored form, scalar or vector: normalizing it
       // needs the anchor axis, which only resolves inside the solve (see
@@ -308,7 +317,7 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         transforms: res.payload.transforms,
         bodies: toBodyResults(res.payload.bodies),
         edgeCurves: toEdgeCurves(res.payload.bodies),
-        entityMateRefs: buildEntityMateRefs(res.payload.bodies),
+        entityMateRefs: buildEntityMateRefs(res.payload.bodies, res.payload.anchorDescriptors),
         anchors,
         pickGeometry: buildPickBodies(res.payload.bodies, anchors),
         // The whole verdict: the per-mate and per-part marks plus the overall

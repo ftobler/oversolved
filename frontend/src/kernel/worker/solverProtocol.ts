@@ -12,7 +12,7 @@
 
 import type { RebuildValidation } from '../builder'
 import type { PartBundle } from '../partBundle'
-import type { Transform3D } from '../../types/cad'
+import type { Transform3D, MateAnchorDescriptor } from '../../types/cad'
 import type { MateSpec, AssemblySolveStatus, MeshPayload, AnchorPose } from '../solveAssembly'
 
 /** Solve options that survive a structured clone (the OCC-free subset). */
@@ -166,6 +166,10 @@ export interface AssemblySolveOkResponse {
     transforms: Record<string, Transform3D>
     bodies: Record<string, MeshPayload[]>
     anchors: Record<string, Record<string, AnchorPose>>
+    /** Authoring-only: part handle -> anchor id -> the raw descriptor that id
+     *  was minted from, so a pick can stamp a durable MateRef.anchor_descriptor.
+     *  Optional only so test doubles and older reply shapes can omit it. */
+    anchorDescriptors?: Record<string, Record<string, MateAnchorDescriptor>>
     /** The whole solve verdict: overall status plus per-mate and per-part marks.
      *  Optional only so test doubles and older reply shapes can omit it; the
      *  current worker always sets it. */

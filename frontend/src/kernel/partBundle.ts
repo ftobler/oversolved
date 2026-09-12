@@ -4,7 +4,7 @@
 // worker never touches OCC or runs solveLocally. The bundle is cached in
 // IndexedDb keyed by (doc_id, doc_rev); a miss triggers a cold rebuild.
 
-import type { EdgeData, BodyResult, FaceData } from '../types/cad'
+import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor } from '../types/cad'
 import { sha256Hex } from './sha256'
 
 export type AnchorKind = 'plane' | 'cylinder' | 'cone' | 'sphere' | 'torus' | 'line' | 'circle' | 'point'
@@ -538,6 +538,63 @@ function distSq(a: Vec3, b: Vec3): number {
   return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
 }
 
+// The point-distance tie guard shared by the build-time remap and the
+// resolve-time descriptor fallback. Two candidates closer than this are a tie,
+// and a tie refuses rather than guessing.
+export const ANCHOR_TIE_EPSILON_SQ = 1e-10
+
+/** The unique candidate nearest `p`, or undefined for an empty set or a tie. */
+function uniqueNearest(candidates: Anchor[], p: Vec3): Anchor | undefined {
+  if (candidates.length === 0) return undefined
+  if (candidates.length === 1) return candidates[0]
+  let best: Anchor | undefined
+  let bestDist = Infinity
+  let secondDist = Infinity
+  for (const a of candidates) {
+    const d = distSq(p, a.point)
+    if (d < bestDist - ANCHOR_TIE_EPSILON_SQ) {
+      secondDist = bestDist
+      bestDist = d
+      best = a
+    } else if (d < secondDist - ANCHOR_TIE_EPSILON_SQ) {
+      secondDist = d
+    }
+  }
+  return best && Math.abs(bestDist - secondDist) >= ANCHOR_TIE_EPSILON_SQ ? best : undefined
+}
+
+/**
+ * Re-find the element a persisted descriptor named, in a freshly built bundle
+ * with no cache. The same two tiers `anchorIdRemap` runs, but the seed is the
+ * descriptor on the MateRef instead of the previous cached bundle.
+ *
+ * Tier 1 is the descriptor's own geom_hash plus kind; a `@u|` token that no
+ * longer exists is a gone identity, so it refuses rather than falling to tier
+ * 2, which would bind the ref to a same-kind neighbour. Tier 2 is the same
+ * `(created_by, kind)` bucket plus the nearest stored point.
+ */
+export function anchorByDescriptor(
+  anchors: Record<string, Anchor>,
+  d: MateAnchorDescriptor,
+): Anchor | undefined {
+  const all = Object.values(anchors)
+
+  const exact = all.filter(a => a.geom_hash === d.geom_hash && a.kind === d.kind)
+  if (exact.length > 0) {
+    const best = uniqueNearest(exact, d.point)
+    // A tier-1 tie is not a dead end: fall through exactly as anchorIdRemap
+    // does, so the `@u|` refusal and the tier-2 match still get their chance.
+    if (best) return best
+  }
+
+  // A construction UUID that no longer exists means the element's identity is
+  // gone. Do not guess positionally; fail-safe over fail-wrong.
+  if (d.geom_hash.startsWith('@u|')) return undefined
+
+  const near = all.filter(a => a.created_by === d.created_by && a.kind === d.kind)
+  return uniqueNearest(near, d.point)
+}
+
 /**
  * Match the new bundle's freshly minted anchor ids back onto the old bundle's,
  * so mate refs survive rev-to-rev. Pure function over two anchor dicts: no OCC,
@@ -595,8 +652,6 @@ export function anchorIdRemap(
     }
   }
 
-  const TIE_EPSILON_SQ = 1e-10
-
   for (const oldId of oldIds) {
     if (oldIdMigrated.has(oldId)) continue
     const oldA = oldAnchors[oldId]
@@ -618,15 +673,15 @@ export function anchorIdRemap(
       let secondBestDist = Infinity
       for (const cid of candidates) {
         const d = distSq(oldA.point, newAnchors[cid].point)
-        if (d < bestDist - TIE_EPSILON_SQ) {
+        if (d < bestDist - ANCHOR_TIE_EPSILON_SQ) {
           secondBestDist = bestDist
           bestDist = d
           bestId = cid
-        } else if (d < secondBestDist - TIE_EPSILON_SQ) {
+        } else if (d < secondBestDist - ANCHOR_TIE_EPSILON_SQ) {
           secondBestDist = d
         }
       }
-      if (bestId && Math.abs(bestDist - secondBestDist) >= TIE_EPSILON_SQ) {
+      if (bestId && Math.abs(bestDist - secondBestDist) >= ANCHOR_TIE_EPSILON_SQ) {
         remap.set(bestId, oldId)
         newIdConsumed.add(bestId)
         oldIdMigrated.add(oldId)

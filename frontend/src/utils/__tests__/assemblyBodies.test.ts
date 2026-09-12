@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { EdgeCurve, EntityAnchorIndex } from '@/kernel/partBundle'
+import type { MateAnchorDescriptor } from '@/types/cad'
 import { toBodyResults, toEdgeCurves, assemblyBodyId, buildEntityMateRefs } from '@/utils/assemblyBodies'
 import { assemblyBuiltinEntityKey, assemblyEntityKey } from '@/utils/anchorCandidates'
 import { ASSEMBLY_HANDLE, ASSEMBLY_ORIGIN_ID, ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
@@ -127,5 +128,29 @@ describe('buildEntityMateRefs', () => {
     })
     expect(refs[assemblyEntityKey('h1', 0, 'face', 0)]).toEqual([{ part: 'h1', anchor: 'f0' }])
     expect(refs[assemblyEntityKey('h1', 1, 'face', 0)]).toEqual([{ part: 'h1', anchor: 'f9' }])
+  })
+
+  it('stamps the authoring descriptor table onto each part ref, and none on a built-in', () => {
+    const descriptor: MateAnchorDescriptor = {
+      geom_hash: '@gdf|0,0,0', kind: 'plane', created_by: 'feat1', point: [0, 0, 0],
+    }
+    const refs = buildEntityMateRefs(
+      { h1: [withAnchors(0, { faces: [['f0']], edges: [], vertices: [] })] },
+      { h1: { f0: descriptor } },
+    )
+    expect(refs[assemblyEntityKey('h1', 0, 'face', 0)]).toEqual([
+      { part: 'h1', anchor: 'f0', anchor_descriptor: descriptor },
+    ])
+    expect(refs[assemblyBuiltinEntityKey(ASSEMBLY_TOP_ID)]).toEqual([
+      { part: ASSEMBLY_HANDLE, anchor: ASSEMBLY_TOP_ID },
+    ])
+  })
+
+  it('omits the descriptor when the table names nothing for that anchor', () => {
+    const refs = buildEntityMateRefs(
+      { h1: [withAnchors(0, { faces: [['f0']], edges: [], vertices: [] })] },
+      { h1: {} },
+    )
+    expect(refs[assemblyEntityKey('h1', 0, 'face', 0)]).toEqual([{ part: 'h1', anchor: 'f0' }])
   })
 })

@@ -392,9 +392,34 @@ export interface Transform3D {
   qw: number
 }
 
+/**
+ * The geometric identity of a mate's element, captured when the reference is
+ * first authored. `MateRef.anchor` is the id minted from this; this is the
+ * descriptor that id was minted from, kept so resolution can re-find the
+ * element after a geom_hash move without the disposable bundle cache.
+ *
+ * Optional: refs authored before C7, the drag objective's inline anchors and
+ * the assembly built-ins carry none and resolve exactly as they do today.
+ */
+export interface MateAnchorDescriptor {
+  // The element's construction token (@u|<uuid>) when it has one, else its
+  // positional descriptor (@gdf|/@gde|/@gdv|). The strongest cross-edit key.
+  geom_hash: string
+  // AnchorKind as a string so this base type stays free of a kernel import;
+  // the solve already refuses an unknown anchor kind by name.
+  kind: string
+  // The body's creating feature, the tier-2 scope. This is the body's, not the
+  // owning face's, so tier 2 is a positional match for multi-face bodies.
+  created_by: string
+  // The anchor point in the part's LOCAL frame at capture: the tier-2 nearest
+  // tiebreak, and the reason the descriptor cannot live only in world space.
+  point: [number, number, number]
+}
+
 export interface MateRef {
   part: string
   anchor: string
+  anchor_descriptor?: MateAnchorDescriptor
 }
 
 /** The two reference slots of a mate. Mirrors `MateResult.staleRefs`. */

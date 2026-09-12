@@ -7,9 +7,9 @@
 // It is a pure async function over typed-array inputs, no React, no DOM.
 
 import { bundleCacheGet, bundleCacheGetStale, bundleCacheLatestRev, bundleCachePut } from './bundleCache'
-import { anchorIdFor, anchorKindHasAxis, migrateBundle } from './partBundle'
+import { anchorByDescriptor, anchorIdFor, anchorKindHasAxis, migrateBundle } from './partBundle'
 import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
-import type { Transform3D, MateKind, MateOffset, NumberOrExpr } from '../types/cad'
+import type { Transform3D, MateKind, MateOffset, NumberOrExpr, MateAnchorDescriptor } from '../types/cad'
 import type { RelayService } from './worker/anchorSolverWorker'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
 import { canonicalPerp } from '../utils/mateOrientation'
@@ -35,6 +35,11 @@ export const assemblyAnchors: Record<string, Anchor> = Object.fromEntries(
 export interface MateRefSpec {
   part: string
   anchor: string
+  /** The durable geometric identity the anchor id was minted from. Authoring-
+   *  only: it never reaches the render path, and a ref without one (a legacy
+   *  document, the drag objective, an assembly built-in) resolves exactly as it
+   *  did before. See `anchorByDescriptor`. */
+  anchor_descriptor?: MateAnchorDescriptor
   /** Inline anchor geometry that bypasses the bundle/assembly-frame lookup.
    *  Set for synthetic mates whose anchor is not authored in any part document,
    *  the live drag objective being the one caller (see kernel/assemblyDrag.ts):
@@ -110,6 +115,11 @@ export interface AssemblyBuildResponse {
   /** Part handle -> anchor id -> its pose. Assembly built-ins are not here: they
    *  are static and the main thread folds them in (utils/anchorGizmos.ts). */
   anchors: Record<string, Record<string, AnchorPose>>
+  /** Part handle -> anchor id -> the raw descriptor that id was minted from.
+   *  Authoring-only: the pose payload deliberately drops geom_hash/created_by,
+   *  this one carries them so the main thread can stamp a durable descriptor on
+   *  a picked MateRef without touching the render path. */
+  anchorDescriptors: Record<string, Record<string, MateAnchorDescriptor>>
   // The solve verdict plus its per-mate and per-part marks.
   status: AssemblySolveStatus
 }
@@ -542,6 +552,12 @@ export async function solveAssembly(
     // collision-suffixed rebuild). Recompute the deterministic id over the
     // bundle's anchors and re-parent onto the geometrically identical element.
     if (!anchor && b) anchor = anchorByGeomHash(b.anchors, ref.anchor)
+    // The durable fallback: a persisted descriptor re-finds the element after
+    // its geom_hash moved, with no cache at all. Skipped for a legacy ref and
+    // for a `@u|` identity that no longer exists (fail-safe over fail-wrong).
+    if (!anchor && b && ref.anchor_descriptor) {
+      anchor = anchorByDescriptor(b.anchors, ref.anchor_descriptor)
+    }
     return { anchor, bodyIndex }
   }
 
@@ -817,6 +833,12 @@ export async function solveAssembly(
 
   const transformedBodies: Record<string, MeshPayload[]> = {}
   const posedAnchors: Record<string, Record<string, AnchorPose>> = {}
+  // The authoring-only mirror of `posedAnchors`: the same part/anchor keys, but
+  // carrying the raw descriptor (geom_hash, created_by, kind and the LOCAL
+  // point) a picked MateRef stamps so a later, cache-free resolve can re-find
+  // the element. Not on AnchorPose on purpose: the render path must stay blind
+  // to the match inputs.
+  const anchorDescriptors: Record<string, Record<string, MateAnchorDescriptor>> = {}
   for (const part of parts) {
     const t = transforms[part.handle]
     // The anchors travel with the mesh: the solve consumed them at the seed
@@ -824,6 +846,7 @@ export async function solveAssembly(
     // used to be.
     const bundleAnchors = partBundles.get(part.handle)?.anchors ?? {}
     const posed: Record<string, AnchorPose> = {}
+    const descriptors: Record<string, MateAnchorDescriptor> = {}
     for (const [id, a] of Object.entries(bundleAnchors)) {
       posed[id] = {
         kind: a.kind,
@@ -834,8 +857,17 @@ export async function solveAssembly(
         // against this, with the same frame rule the solver measures by.
         x_axis: rotateVec(canonicalPerp(a.axis), t),
       }
+      descriptors[id] = {
+        geom_hash: a.geom_hash,
+        kind: a.kind,
+        created_by: a.created_by,
+        // The LOCAL point, not the posed one: the next bundle's anchors are
+        // local too, and that is what tier 2 measures the nearest against.
+        point: a.point,
+      }
     }
     posedAnchors[part.handle] = posed
+    anchorDescriptors[part.handle] = descriptors
 
     const meshes = bodyMeshes.get(part.handle)
     if (!meshes) {
@@ -854,5 +886,5 @@ export async function solveAssembly(
     transformedBodies[part.handle] = transformed
   }
 
-  return { transforms, bodies: transformedBodies, anchors: posedAnchors, status }
+  return { transforms, bodies: transformedBodies, anchors: posedAnchors, anchorDescriptors, status }
 }

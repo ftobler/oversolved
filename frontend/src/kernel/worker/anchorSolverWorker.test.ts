@@ -38,6 +38,7 @@ vi.mock('../solveAssembly', () => ({
     transforms: {},
     bodies: {},
     anchors: {},
+    anchorDescriptors: {},
     status: { verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0, mates: {}, parts: {} },
   }),
 }))
@@ -167,6 +168,7 @@ describe('handleSolveAssembly', () => {
       transforms: { p1: { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
       bodies: { p1: [] },
       anchors: {},
+      anchorDescriptors: {},
       status: {
         verdict: 'fully_constrained' as const, residualNorm: 0, rank: 0, dof: 0, iters: 0,
         mates: { m1: { stale: false } }, parts: {},
@@ -180,6 +182,7 @@ describe('handleSolveAssembly', () => {
     expect(payload.transforms).toEqual(mockResult.transforms)
     expect(payload.bodies).toEqual(mockResult.bodies)
     expect(payload.status).toEqual(mockResult.status)
+    expect(payload.anchorDescriptors).toEqual(mockResult.anchorDescriptors)
   })
 
   it('preserves request id in response', async () => {
@@ -726,7 +729,7 @@ describe('dispatcher', () => {
     // Earlier tests leave solveAssembly rejecting; pin the happy path here so
     // the job under test resolves.
     vi.mocked(solveAssembly).mockResolvedValue({
-      transforms: {}, bodies: {}, anchors: {},
+      transforms: {}, bodies: {}, anchors: {}, anchorDescriptors: {},
       status: { verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0, mates: {}, parts: {} },
     })
     const actor = new WorkerActor()
