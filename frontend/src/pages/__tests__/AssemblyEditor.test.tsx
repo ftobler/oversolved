@@ -110,6 +110,7 @@ function installSessionFromList() {
       referenceEdges: vi.fn(async () => ({})),
       savedRevs: async () => new Map(),
       originOf: async () => undefined,
+      provenance: async () => [],
     },
   })
 }

@@ -277,3 +277,124 @@
   padding-left: 18px;
   color: #ccc;
 }
+
+.origins-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.origins-check-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.origins-check-btn:hover {
+  color: #ccc;
+}
+
+.origins-check-btn:disabled {
+  color: #444;
+  cursor: default;
+}
+
+.origins-check-btn .material-icons {
+  font-size: 18px;
+}
+
+.origins-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.origin-item {
+  padding: 6px;
+  border-bottom: 1px solid #222;
+}
+
+.origin-item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ccc;
+}
+
+.origin-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.origin-status {
+  font-size: 11px;
+  color: #777;
+}
+
+.origin-status-current {
+  color: #6bbf7a;
+}
+
+.origin-status-changed {
+  color: #e0a030;
+}
+
+.origin-status-unreachable {
+  color: #888;
+}
+
+.origin-locator {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.origin-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #777;
+}
+
+.origin-edited {
+  color: #e0a030;
+}
+
+.origin-update-btn {
+  margin-top: 4px;
+  padding: 2px 8px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: transparent;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.origin-update-btn:hover:not(:disabled) {
+  border-color: #4fc3f7;
+  color: #4fc3f7;
+}
+
+.origin-update-btn:disabled {
+  color: #555;
+  border-color: #222;
+  cursor: default;
+}

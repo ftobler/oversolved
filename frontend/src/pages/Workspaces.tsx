@@ -14,6 +14,13 @@ import { subscribeWorkspaceStore } from '@/workspace/storeEvents'
 import { buildZipBytes } from '@/workspace/zipCarrier'
 import { deserializeTree } from '@/workspace/serializer'
 import { importBag, readDirectoryBag, readZipBag, type ImportBag } from '@/workspace/import'
+import {
+  getOriginResolver,
+  mintOriginLocator,
+  rememberOriginDirectory,
+  rememberOriginZip,
+  type OriginDescriptor,
+} from '@/workspace/originResolver'
 import { reopenWorkspaceHandle, workspaceHandleName } from '@/workspace/workspaceHandleRegistry'
 import { canPickDirectory, canPickWorkspaceZip, pickLibraryDirectory, pickWorkspaceZip } from '@/adapters/fileSystemAccess'
 import '@/pages/Documents.css'
@@ -38,6 +45,9 @@ export default function Workspaces() {
   const [renameName, setRenameName] = useState('')
   const [purgeTarget, setPurgeTarget] = useState<WorkspaceSummary | null>(null)
   const [reopen, setReopen] = useState<Map<string, string>>(new Map())
+  // U5: the count of entries the last import copied, held until acknowledged.
+  // The copy semantics is stated at the moment it matters, not buried in docs.
+  const [importedCount, setImportedCount] = useState<number | null>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -189,11 +199,15 @@ export default function Workspaces() {
     e.target.value = ''
     try {
       const bytes = new Uint8Array(await file.arrayBuffer())
-      const origin = `file:${file.name}`
-      const bag = /\.(zip|oversolved)$/i.test(file.name)
-        ? await readZipBag(bytes, origin)
-        : { origin, items: [{ path: file.name, bytes }] } satisfies ImportBag
-      await importBag(bag, { origin })
+      const locator = mintOriginLocator('file')
+      const isArchive = /\.(zip|oversolved)$/i.test(file.name)
+      const read = async (): Promise<ImportBag> => isArchive
+        ? readZipBag(bytes, locator)
+        : { origin: locator, items: [{ path: file.name, bytes }] }
+      const descriptor: OriginDescriptor = { locator, name: file.name, read }
+      getOriginResolver().register(descriptor)
+      const result = await importBag(await read(), { origin: descriptor })
+      setImportedCount(result.documents + result.files)
       await refresh(false, debouncedSearch)
     } catch (err) {
       setError(errorMessage(err, 'Failed to import file'))
@@ -204,12 +218,22 @@ export default function Workspaces() {
     try {
       const dir = await pickLibraryDirectory()
       if (!dir) return  // cancelled: a non-event
-      const origin = `folder:${dir.name}`
-      const bag = await readDirectoryBag(dir, origin)
+      const locator = mintOriginLocator('folder')
+      const descriptor: OriginDescriptor = {
+        locator,
+        name: dir.name,
+        read: () => readDirectoryBag(dir, locator),
+      }
+      getOriginResolver().register(descriptor)
+      // Remember the handle so a save target or a later session's update can
+      // reopen it. The in-session read above still works if this is refused.
+      await rememberOriginDirectory(locator, dir)
       // Bind the picked folder as the workspace's save target: opening it is
       // the signal that an explicit save should land back there. The carrier is
       // not written now; `land` leaves the folder's files as they are.
-      await importBag(bag, { origin, target: { kind: 'folder', label: dir.name, handle: dir } })
+      const bag = await readDirectoryBag(dir, locator)
+      const result = await importBag(bag, { origin: descriptor, target: { kind: 'folder', label: dir.name, handle: dir } })
+      setImportedCount(result.documents + result.files)
       await refresh(false, debouncedSearch)
     } catch (err) {
       setError(errorMessage(err, 'Failed to import folder'))
@@ -223,11 +247,20 @@ export default function Workspaces() {
     try {
       const handle = await pickWorkspaceZip()
       if (!handle) return  // cancelled: a non-event
-      const file = await handle.getFile()
-      const bytes = new Uint8Array(await file.arrayBuffer())
-      const origin = `file:${file.name}`
-      const bag = await readZipBag(bytes, origin)
-      await importBag(bag, { origin, target: { kind: 'zip', label: handle.name, handle } })
+      const bytes = new Uint8Array(await (await handle.getFile()).arrayBuffer())
+      const locator = mintOriginLocator('zip')
+      const descriptor: OriginDescriptor = {
+        locator,
+        name: handle.name,
+        // Re-read from the handle rather than the captured bytes, so an archive
+        // edited on disk is the one an update sees.
+        read: async () => readZipBag(new Uint8Array(await (await handle.getFile()).arrayBuffer()), locator),
+      }
+      getOriginResolver().register(descriptor)
+      await rememberOriginZip(locator, handle)
+      const bag = await readZipBag(bytes, locator)
+      const result = await importBag(bag, { origin: descriptor, target: { kind: 'zip', label: handle.name, handle } })
+      setImportedCount(result.documents + result.files)
       await refresh(false, debouncedSearch)
     } catch (err) {
       setError(errorMessage(err, 'Failed to open archive'))
@@ -358,6 +391,13 @@ export default function Workspaces() {
             onConfirm={handlePurgeConfirm}
             confirmLabel="Delete"
             cancelLabel="Cancel"
+          />
+
+          <MessageDialog
+            isOpen={importedCount !== null}
+            title="Copied into Workspace"
+            message={`Copied ${importedCount ?? 0} entries into this workspace. Edits to the source will not propagate. Use the Origins panel to check for and pull updates.`}
+            onClose={() => setImportedCount(null)}
           />
 
           {loading && <p className="status">Loading workspaces...</p>}

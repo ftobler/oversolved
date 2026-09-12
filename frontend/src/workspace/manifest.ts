@@ -39,13 +39,29 @@ function canonicalEntry(entry: ManifestEntry): ManifestEntry {
 
 function canonicalProvenanceRecord(record: ProvenanceRecord): ProvenanceRecord {
   const out: ProvenanceRecord = { entry: record.entry, origin: record.origin }
+  if (record.originEntry !== undefined) out.originEntry = record.originEntry
+  if (record.originGroup !== undefined) out.originGroup = record.originGroup
+  if (record.originName !== undefined) out.originName = record.originName
+  if (record.originWorkspace !== undefined) out.originWorkspace = record.originWorkspace
   if (record.rev !== undefined) out.rev = record.rev
   if (record.hash !== undefined) out.hash = record.hash
+  if (record.copiedAt !== undefined) out.copiedAt = record.copiedAt
   return out
 }
 
 function compareProvenance(a: ProvenanceRecord, b: ProvenanceRecord): number {
   if (a.entry !== b.entry) return a.entry < b.entry ? -1 : 1
+  // The origin entry id is the tiebreak because it, not the local id, is what
+  // names the source; entry alone already orders the records in practice, so
+  // this only pins the order when two copies share a local id.
+  const ae = a.originEntry ?? ''
+  const be = b.originEntry ?? ''
+  if (ae !== be) return ae < be ? -1 : 1
+  // The group keeps two imports of one source in a stable order, so the
+  // canonical bytes do not depend on import order.
+  const ag = a.originGroup ?? ''
+  const bg = b.originGroup ?? ''
+  if (ag !== bg) return ag < bg ? -1 : 1
   if (a.origin !== b.origin) return a.origin < b.origin ? -1 : 1
   if (a.rev !== b.rev) {
     if (a.rev === undefined) return -1
@@ -203,11 +219,26 @@ function assertProvenance(records: ProvenanceRecord[]): void {
       throw new Error('Provenance record has no entry id')
     }
     if (typeof record.origin !== 'string') throw new Error('Provenance record origin must be a string')
+    if (record.originEntry !== undefined && (typeof record.originEntry !== 'string' || record.originEntry.length === 0)) {
+      throw new Error('Provenance originEntry must be a non-empty string')
+    }
+    if (record.originGroup !== undefined && (typeof record.originGroup !== 'string' || record.originGroup.length === 0)) {
+      throw new Error('Provenance originGroup must be a non-empty string')
+    }
+    if (record.originName !== undefined && typeof record.originName !== 'string') {
+      throw new Error('Provenance originName must be a string')
+    }
+    if (record.originWorkspace !== undefined && typeof record.originWorkspace !== 'string') {
+      throw new Error('Provenance originWorkspace must be a string')
+    }
     if (record.rev !== undefined && !Number.isInteger(record.rev)) {
       throw new Error('Provenance rev must be an integer')
     }
     if (record.hash !== undefined && typeof record.hash !== 'string') {
       throw new Error('Provenance hash must be a string')
+    }
+    if (record.copiedAt !== undefined && !Number.isInteger(record.copiedAt)) {
+      throw new Error('Provenance copiedAt must be an integer')
     }
   }
 }

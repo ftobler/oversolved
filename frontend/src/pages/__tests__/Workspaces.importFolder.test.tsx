@@ -3,6 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router-dom'
 import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
+import { getWorkspaceStore } from '@/workspace/store'
+import { readWorkspaceMeta } from '@/workspace/idbCarrier'
+import { resolveOrigin } from '@/workspace/originResolver'
 import { freshLocalDb } from './workspacesHarness'
 import Workspaces from '@/pages/Workspaces'
 
@@ -65,5 +68,39 @@ describe('Workspaces folder import', () => {
 
     wrap()
     expect(await screen.findByTitle('Reopen cad')).toBeInTheDocument()
+  })
+
+  it('keeps two same-named sources distinct so neither can pull the other', async () => {
+    const dirA = fakeDirectory('cad')
+    dirA.putText('A.yaml', 'kind: part\n# A\n')
+    picker.result = dirA as unknown as FileSystemDirectoryHandle
+    wrap()
+    await userEvent.click(await screen.findByTitle('Import a folder'))
+
+    const dirB = fakeDirectory('cad')
+    dirB.putText('B.yaml', 'kind: part\n# B\n')
+    picker.result = dirB as unknown as FileSystemDirectoryHandle
+    await userEvent.click(await screen.findByTitle('Import a folder'))
+
+    const store = getWorkspaceStore()
+    const cadRecords = async () => {
+      const summaries = await store.list()
+      const records = (await Promise.all(
+        summaries.map(async summary => (await readWorkspaceMeta(summary.workspace))?.provenance ?? []),
+      )).flat()
+      return records.filter(record => record.originName === 'cad')
+    }
+    // The tile can paint from the pre-import seed, so wait for both imports to
+    // have stamped their provenance before reading the locators.
+    await waitFor(async () => expect(await cadRecords()).toHaveLength(2))
+    const origins = (await cadRecords()).map(record => record.origin)
+    expect(new Set(origins).size).toBe(2)
+
+    // Each locator still resolves to its own folder, not the same-named other.
+    const names = await Promise.all(origins.map(async origin => {
+      const tree = await resolveOrigin(origin)
+      return Object.values(tree!.manifest.entries).map(row => row.name).join()
+    }))
+    expect(names).toEqual(expect.arrayContaining(['A', 'B']))
   })
 })

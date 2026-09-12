@@ -18,9 +18,12 @@ export interface WorkspaceSession {
   savedRevs(): Promise<Map<string, number>>
   readEntry(entry: string): Promise<WorkspaceEntry>
   writeEntry(entry: WorkspaceEntry): Promise<void>
-  // The provenance record an entry was imported as, the C6 seam. C4 only reads
-  // the opaque origin string; C6 fills in rev, hash and status.
+  // The provenance record an entry was imported as. C6 stores rev, hash and
+  // origin entry id on it; this reads the stored record only and never resolves
+  // the origin (I2).
   originOf(entry: string): Promise<ProvenanceRecord | undefined>
+  // Every provenance record the workspace holds, one meta read, for U6's panel.
+  provenance(): Promise<ProvenanceRecord[]>
   resolveFile(fileId: string): Promise<Uint8Array | undefined>
   referencesOf(entry: string): Promise<string[]>
   // The whole edge map, so where-used inverts one read instead of one read per
@@ -43,6 +46,10 @@ export function createWorkspaceSession(
     originOf: async entry => {
       const meta = await readWorkspaceMeta(workspace)
       return meta?.provenance.find(record => record.entry === entry)
+    },
+    provenance: async () => {
+      const meta = await readWorkspaceMeta(workspace)
+      return (meta?.provenance ?? []).map(record => ({ ...record }))
     },
     async resolveFile(fileId: string): Promise<Uint8Array | undefined> {
       try {

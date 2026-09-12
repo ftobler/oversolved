@@ -3,6 +3,7 @@ import { ActivityBar } from '@/components/layout/ActivityBar'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { WorkspaceTree } from '@/components/layout/WorkspaceTree'
 import { FilesPanel } from '@/components/layout/FilesPanel'
+import { OriginsPanel } from '@/components/layout/OriginsPanel'
 import { PANEL_DEFS } from '@/components/layout/panelRegistry'
 import { useLayoutStore } from '@/stores/layoutStore'
 import '@/pages/Part.css'
@@ -39,6 +40,11 @@ export function Sidebar({ documentPanel }: SidebarProps) {
       <div className="sidebar-panel" hidden={activePanel !== 'document'}>
         {documentPanel === undefined ? <PartDocumentPanel /> : documentPanel}
       </div>
+      {visited.includes('origins') && (
+        <div className="sidebar-panel" hidden={activePanel !== 'origins'}>
+          <OriginsPanel />
+        </div>
+      )}
     </aside>
   )
 }

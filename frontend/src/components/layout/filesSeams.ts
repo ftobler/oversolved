@@ -5,8 +5,10 @@ import { invertReferences } from './filesModel'
 
 // The two C5/C6 seams, kept out of FilesPanel so the component file only exports
 // a component (fast refresh) and the seam has one obvious home. C5 replaces
-// useWhereUsed's body with its where-used index; C6 fills useOrigin's record
-// with rev, hash and status. Neither call site moves.
+// useWhereUsed's body with its where-used index; C6 reads useOrigin's stored
+// record (originEntry/rev/hash/copiedAt). Status is deliberately not here: it
+// needs the resolver, and resolving on a file row's render would read an origin
+// outside the explicit gesture (I2). U6's Origins panel owns status.
 
 const EMPTY_INVERSE = new Map<string, string[]>()
 
