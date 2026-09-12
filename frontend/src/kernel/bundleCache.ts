@@ -194,8 +194,7 @@ export async function bundleCachePutIfAbsent(bundle: PartBundle): Promise<boolea
   const existing = await prom(bundles.getKey(bundleKey(bundle.doc_id, bundle.content_hash)) as IDBRequest<IDBValidKey | undefined>)
   if (existing !== undefined) {
     // Something already owns this key: the late salvage yields rather than
-    // revert it. The read has already resolved, so the aborted transaction will
-    // commit on its own (no write was issued).
+    // revert it. No write was issued, so the transaction simply commits empty.
     return false
   }
 

@@ -118,9 +118,6 @@ export interface WorkspaceEntryMetaRecord {
   // R1's derived payload size. Optional because a v5 mirror row written before
   // the size field existed carries none; the v6 upgrade backfills it.
   size?: number
-  // The payload hash (C5). Optional only so a mirror row written before the
-  // field existed still reads; the reader recomputes it from the full record.
-  contentHash?: string
 }
 
 function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
@@ -133,7 +130,6 @@ function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
     rev: record.rev,
     updatedAt: record.updatedAt,
     size: entrySizeOf(record),
-    contentHash: record.contentHash,
   }
   if (record.docKind !== undefined) meta.docKind = record.docKind
   if (record.mime !== undefined) meta.mime = record.mime

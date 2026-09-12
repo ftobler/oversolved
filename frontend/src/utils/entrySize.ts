@@ -14,10 +14,14 @@ function utf8ByteLength(text: string): number {
     const code = text.charCodeAt(i)
     if (code < 0x80) bytes += 1
     else if (code < 0x800) bytes += 2
-    else if (code >= 0xd800 && code <= 0xdbff) {
+    else if (code >= 0xd800 && code <= 0xdbff && isLowSurrogate(text.charCodeAt(i + 1))) {
       bytes += 4  // a surrogate pair is one code point, four bytes
       i++
-    } else bytes += 3
+    } else bytes += 3  // lone surrogate: TextEncoder emits the 3-byte replacement
   }
   return bytes
+}
+
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff
 }

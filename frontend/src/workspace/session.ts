@@ -1,4 +1,4 @@
-import type { EntryMeta, ProvenanceRecord, ReferenceEdges, WorkspaceEntry, WorkspaceTree } from './types'
+import type { EntryMeta, ProvenanceRecord, ReferenceEdges, WorkspaceEntry } from './types'
 import { IdbCarrier, readWorkspaceMeta, savedEntryRecords } from './idbCarrier'
 import { getWorkspaceStore, type WorkspaceStore } from './store'
 import { getFileRegistry } from '@/stores/fileRegistry'
@@ -11,7 +11,6 @@ import { getFileRegistry } from '@/stores/fileRegistry'
 // import just staged but the workspace has not adopted yet).
 export interface WorkspaceSession {
   workspace: string
-  open(): Promise<WorkspaceTree>
   listEntries(opts?: { includeTrashed?: boolean }): Promise<EntryMeta[]>
   // The checkpoint rev per entry, so U2 can derive a per-entry dirty dot by
   // comparing it with the working copy's rev (R3). A pure read.
@@ -38,7 +37,6 @@ export function createWorkspaceSession(
 ): WorkspaceSession {
   return {
     workspace,
-    open: async () => (await store.open(workspace)).tree,
     listEntries: opts => store.listEntries(workspace, opts),
     savedRevs: async () => new Map((await savedEntryRecords(workspace)).map(record => [record.id, record.rev])),
     readEntry: entry => store.readEntry(workspace, entry),

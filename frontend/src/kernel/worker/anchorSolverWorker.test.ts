@@ -45,7 +45,7 @@ vi.mock('../solveAssembly', () => ({
 
 // Wrap bundleCachePut in a delegating spy (real IndexedDB behaviour intact) so
 // the late-relay tests can assert the timed-out build was cached. Mirrors the
-// pattern solveAssembly.test.ts uses for bundleCacheGet/bundleCacheGetStale.
+// pattern solveAssembly.test.ts uses for bundleCacheGet/bundleCachePut.
 vi.mock('../bundleCache', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../bundleCache')>()
   return {
