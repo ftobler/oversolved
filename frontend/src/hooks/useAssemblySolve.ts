@@ -150,9 +150,21 @@ export async function currentHashes(doc: AssemblyDoc): Promise<Record<string, st
   return hashes
 }
 
-export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
+export function useAssemblySolve(
+  uuid: string,
+  doc: AssemblyDoc | null,
+  { onFirstSolve }: { onFirstSolve?: () => void } = {},
+) {
   const docRef = useRef<AssemblyDoc | null>(doc)
   docRef.current = doc
+  // The part editor's useSolver hook point, mirrored for the assembly: the
+  // editor thumbnails its scene the first time there is one. Held in a ref
+  // rather than folded into runSolve's deps, because runSolve's identity drives
+  // the solve effect -- a caller re-rendering with a fresh closure would
+  // otherwise start a second solve for every render.
+  const onFirstSolveRef = useRef(onFirstSolve)
+  onFirstSolveRef.current = onFirstSolve
+  const firstSolveDone = useRef(false)
   const inFlight = useRef(false)
   const queued = useRef(false)
   // Staleness token, the assembly counterpart of useSolver's requestIdRef: a
@@ -374,6 +386,13 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
         // `status.mates`, and that is what turns its row red.
         solveStatus: res.payload.status ?? null,
       })
+      // First successful full solve of this assembly. Deferred like useSolver's
+      // own, so the callback runs after this solve's state has committed rather
+      // than inside the run that produced it.
+      if (!firstSolveDone.current && onFirstSolveRef.current) {
+        firstSolveDone.current = true
+        setTimeout(onFirstSolveRef.current, 0)
+      }
     } catch (e) {
       // A failure from a solve a newer request superseded belongs to that older
       // request, not the one the user is waiting on: dropping it keeps a stale
@@ -433,6 +452,9 @@ export function useAssemblySolve(uuid: string, doc: AssemblyDoc | null) {
       queued.current = false
       inFlight.current = false
       burstHashes.current = null
+      // A different assembly gets its own first solve, exactly as usePartDoc
+      // re-arms firstSolveDone across a document swap.
+      firstSolveDone.current = false
     }
     if (solveToken === 0) return  // no solve on mount; the caller asks for the first one
     // A request arriving mid-solve queues exactly one follow-up rather than

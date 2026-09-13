@@ -22,6 +22,7 @@ import { randomUuid } from '@/utils/randomUuid'
 import { KNOWN_DOC_KINDS, parseDocKind } from './kinds'
 import { resolveOrigin, type OriginDescriptor, type OriginResolver } from './originResolver'
 import { getWorkspaceStore, type CarrierTargetBinding, type WorkspaceStore } from './store'
+import { bytesToBase64, writePreview } from '@/stores/previewStore/capture'
 
 // Adoption: bytes and text from anywhere (a dropped file, a folder, a zip, a
 // legacy `.oversolved` bundle) become a workspace. The classifier parses first
@@ -65,6 +66,11 @@ export interface ImportedTree {
   synthesizedParts: number
   unattached: string[]
   unknownFiles: string[]
+  // A legacy bundle's `<doc>.png` sidecars, keyed by the bag-local id of the
+  // document each one pictures. They are NOT tree entries -- a preview is
+  // derived data and cannot live in the workspace (I5) -- so they ride beside
+  // the tree and land in the preview store, which is its own database.
+  previews: Map<string, Uint8Array>
 }
 
 export interface RemapOptions {
@@ -194,10 +200,18 @@ function isPngPath(path: string): boolean {
   return /\.png$/i.test(path)
 }
 
-function siblingDocument(path: string, documents: Set<string>): boolean {
-  if (!isPngPath(path)) return false
+// The document a `<doc>.png` sits beside, or undefined when the png is not a
+// sidecar. The path is returned rather than a boolean because the sidecar is a
+// legacy library's thumbnail: the caller drops it from the tree (I5 -- no
+// derived artifact is an entry) and seeds the preview store with it under the
+// document it belongs to.
+function siblingDocument(path: string, documents: Set<string>): string | undefined {
+  if (!isPngPath(path)) return undefined
   const base = path.slice(0, -'.png'.length)
-  return documents.has(`${base}.yaml`) || documents.has(`${base}.yml`)
+  for (const candidate of [`${base}.yaml`, `${base}.yml`]) {
+    if (documents.has(candidate)) return candidate
+  }
+  return undefined
 }
 
 function inferMime(path: string): string {
@@ -247,7 +261,7 @@ export function readBagTree(bag: ImportBag): ImportedTree {
     )
     const byPath = new Map<string, BagItem>()
     for (const item of effective) {
-      if (siblingDocument(item.path, documentPaths)) {
+      if (siblingDocument(item.path, documentPaths) !== undefined) {
         skippedReserved++
         continue
       }
@@ -289,6 +303,9 @@ export function readBagTree(bag: ImportBag): ImportedTree {
       synthesizedParts: 0,
       unattached: [],
       unknownFiles: unknownFiles.sort(),
+      // A manifest-carrying bag is this format's own export, and I5 keeps every
+      // preview out of it, so there is never a sidecar here to seed from.
+      previews: new Map(),
     }
   }
 
@@ -302,14 +319,25 @@ export function readBagTree(bag: ImportBag): ImportedTree {
 
   const tree = createTree(emptyManifest(randomUuid()))
   let synthesizedParts = 0
+  // A sidecar can precede its document in the bag, and the document's id is
+  // minted as it is classified, so the two halves are collected here and paired
+  // after the pass rather than in it.
+  const sidecarBytes = new Map<string, Uint8Array>()  // document path -> png bytes
+  const documentIds = new Map<string, string>()  // document path -> entry id
   for (const item of effective) {
-    if (siblingDocument(item.path, documentPaths)) {
+    const pictured = siblingDocument(item.path, documentPaths)
+    if (pictured !== undefined) {
+      // Dropped from the tree and counted exactly as before; the bytes are kept
+      // only to seed the preview store, which is not part of the workspace.
+      sidecarBytes.set(pictured, item.bytes)
       skippedReserved++
       continue
     }
     const text = isStepPath(item.path) ? undefined : decode(item.bytes)
     if (text !== undefined && isDocument(text)) {
-      addEntry(tree, documentEntry(documentStem(item.path), text))
+      const entry = documentEntry(documentStem(item.path), text)
+      addEntry(tree, entry)
+      documentIds.set(item.path, entry.id)
       continue
     }
     if (isStepPath(item.path)) {
@@ -352,7 +380,21 @@ export function readBagTree(bag: ImportBag): ImportedTree {
     }
   }
 
-  return { tree, manifestPresent: false, skippedReserved, synthesizedParts, unattached: unattached.sort(), unknownFiles: [] }
+  const previews = new Map<string, Uint8Array>()
+  for (const [documentPath, bytes] of sidecarBytes) {
+    const id = documentIds.get(documentPath)
+    if (id !== undefined) previews.set(id, bytes)
+  }
+
+  return {
+    tree,
+    manifestPresent: false,
+    skippedReserved,
+    synthesizedParts,
+    unattached: unattached.sort(),
+    unknownFiles: [],
+    previews,
+  }
 }
 
 function documentEntry(name: string, text: string): WorkspaceEntry {
@@ -476,6 +518,7 @@ export async function importBag(
     const destination = await store.open(opts.into)
     mergeTrees(destination.tree, remapped.tree)
     await store.save(opts.into, destination.tree)
+    await seedPreviews(opts.into, imported, remapped.idMap)
     return {
       workspace: opts.into,
       mode: 'join',
@@ -499,6 +542,7 @@ export async function importBag(
   // disk (opening a 200-file folder must not rewrite 200 files); the first
   // explicit save normalizes the canonical layout.
   await store.land(workspace, remapped.tree)
+  await seedPreviews(workspace, imported, remapped.idMap)
   return {
     workspace,
     mode: 'new',
@@ -508,6 +552,22 @@ export async function importBag(
     skippedReserved: imported.skippedReserved,
     unattached: imported.unattached,
     unknownFiles: imported.unknownFiles,
+  }
+}
+
+// The adoption half of D6: a legacy bundle's `<doc>.png` sidecars become the
+// imported documents' previews instead of being discarded. They are written to
+// the preview store, keyed by the landing workspace and the LOCAL entry id, so
+// the workspace tree never gains a derived artifact (I5) and the row that will
+// show the thumbnail reads the same key a save writes. Best-effort throughout:
+// a preview is derived data, and losing one must never fail an import.
+async function seedPreviews(
+  workspace: string, imported: ImportedTree, idMap: Map<string, string>,
+): Promise<void> {
+  for (const [bagId, bytes] of imported.previews) {
+    const entry = idMap.get(bagId)
+    if (entry === undefined) continue
+    await writePreview(workspace, entry, bytesToBase64(bytes))
   }
 }
 

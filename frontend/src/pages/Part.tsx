@@ -9,6 +9,7 @@ import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { consumedSketchIds } from '@/utils/query/consumedSketches'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
+import { capturePreview } from '@/stores/previewStore/capture'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -103,7 +104,17 @@ export default function Part() {
     // Re-arm auto-fit for this freshly loaded document. Fires via setTimeout(0)
     // after first solve; the editing / no-geometry-yet guards live in Viewport.
     viewportRef.current?.autoZoomToFit()  // camera-only; intentional no-op when Viewport absent
-  }, [])
+    // Thumbnail the solved scene. Saving was the only writer of a preview, so a
+    // document opened and never saved had none and its row painted a
+    // placeholder; the first solve is the earliest moment there is geometry to
+    // photograph. Deferred a tick so the fit above has landed in the camera
+    // captureThumbnail renders through. Best-effort and fire-and-forget: the
+    // key is the save path's, and a failed capture never reaches the editor.
+    if (!uuid) return
+    setTimeout(() => {
+      void capturePreview(viewportRef.current?.captureScreenshotForSaving, workspaceId, uuid)
+    }, 0)
+  }, [uuid, workspaceId])
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
   // Non-null while the clone prompt is open; holds the name it was seeded with.

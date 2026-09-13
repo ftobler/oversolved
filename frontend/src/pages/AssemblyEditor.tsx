@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { useAssemblySolve } from '@/hooks/useAssemblySolve'
+import { capturePreview } from '@/stores/previewStore/capture'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, setAssemblyCallbacks, DEFAULT_ASSEMBLY_EDITOR_DATA, type MateFieldTarget } from '@/stores/assemblyStore'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
@@ -84,7 +85,18 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // The mate the tridot menu asked to rename, with the name the row was showing
   // so the dialog opens pre-filled even when the mate has no explicit label.
   const [renameMateTarget, setRenameMateTarget] = useState<{ id: string; currentName: string } | null>(null)
-  const { requestSolve } = useAssemblySolve(uuid, doc)
+  // Declared here rather than beside handleSave below: the first-solve preview
+  // capture reads it, and that callback has to exist before the solve hook.
+  const viewportRef = useRef<AssemblyViewportHandle>(null)
+  const handleFirstSolve = useCallback(() => {
+    // Thumbnail the solved scene, the part editor's first-solve capture for the
+    // assembly: saving was the only writer of a preview, so an assembly opened
+    // and never saved had none. Best-effort and fire-and-forget -- a viewport
+    // that is absent or has no GL context is a miss, never an error -- and the
+    // key is the save path's, so both writers address one record.
+    void capturePreview(viewportRef.current?.captureScreenshotForSaving, workspaceId, uuid)
+  }, [uuid, workspaceId])
+  const { requestSolve } = useAssemblySolve(uuid, doc, { onFirstSolve: handleFirstSolve })
   const {
     commitSession,
     cancelSession,
@@ -233,7 +245,6 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const exportRef = useRef<AssemblyExportHandle>(null)
   const openExport = useCallback(() => exportRef.current?.openExport(), [])
 
-  const viewportRef = useRef<AssemblyViewportHandle>(null)
   const handleSave = useCallback(async () => {
     // Capture a thumbnail of the solved scene on save, like the part editor. The
     // capturer is optional: the save still proceeds when the viewport is absent.
