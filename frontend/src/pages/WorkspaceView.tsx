@@ -46,10 +46,14 @@ export default function WorkspaceView() {
   const navigate = useNavigate()
   const store = getWorkspaceStore()
 
-  const [entries, setEntries] = useState<EntryMeta[]>(EMPTY_ENTRIES)
-  const [savedRevs, setSavedRevs] = useState<Map<string, number>>(EMPTY_REVS)
-  const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
+  // `null` is "not loaded yet", which is NOT the same as "empty": starting at []
+  // painted "This workspace is empty." over a nameless 0-byte card on every open,
+  // until two IDB round-trips resolved.
+  const [loaded, setLoaded] = useState<{ workspace: string; entries: EntryMeta[]; savedRevs: Map<string, number>; summary: WorkspaceSummary | null } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Errors from a verb that owns a dialog belong inside that dialog: the banner
+  // renders in the main column, which the open modal covers.
+  const [dialogError, setDialogError] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newKind, setNewKind] = useState<'part' | 'assembly'>('part')
@@ -62,20 +66,24 @@ export default function WorkspaceView() {
   // it named, held until the user acknowledges or jumps to one.
   const [referenced, setReferenced] = useState<{ entry: EntryMeta; referrers: EntryReferrer[] } | null>(null)
 
+  // The session is installed by the page above, whose effect runs AFTER this
+  // one; and a same-route navigation (duplicate) swaps workspaceId while the
+  // old session is still bound. Reading either without checking they agree put
+  // one workspace's rows under another's identity card -- and a row click then
+  // built a route from an id the new workspace does not have. Same identity
+  // guard as useWorkspaceName and filesSeams.
   useEffect(() => {
-    if (!session || !workspaceId) return
+    if (!session || !workspaceId || session.workspace !== workspaceId) return
     let cancelled = false
     const load = async () => {
       try {
-        const [list, revs, all] = await Promise.all([
+        const [entries, savedRevs, all] = await Promise.all([
           session.listEntries(),
           session.savedRevs(),
           store.list(),
         ])
         if (cancelled) return
-        setEntries(list)
-        setSavedRevs(revs)
-        setSummary(all.find(row => row.workspace === workspaceId) ?? null)
+        setLoaded({ workspace: workspaceId, entries, savedRevs, summary: all.find(row => row.workspace === workspaceId) ?? null })
       } catch (e) {
         if (!cancelled) setError(errorMessage(e, 'Failed to read this workspace'))
       }
@@ -83,6 +91,18 @@ export default function WorkspaceView() {
     void load()
     return () => { cancelled = true }
   }, [session, workspaceId, revision, store])
+
+  // A banner names a workspace; carrying it to the next one would blame the
+  // wrong workspace for a failure it had nothing to do with.
+  useEffect(() => {
+    setError(null)
+    setDialogError(null)
+  }, [workspaceId])
+
+  const ready = loaded !== null && loaded.workspace === workspaceId
+  const entries = ready ? loaded.entries : EMPTY_ENTRIES
+  const savedRevs = ready ? loaded.savedRevs : EMPTY_REVS
+  const summary = ready ? loaded.summary : null
 
   const grouped = useMemo(() => groupEntries(entries), [entries])
   const dirty = useMemo(() => dirtyEntryIds(entries, savedRevs), [entries, savedRevs])
@@ -112,12 +132,16 @@ export default function WorkspaceView() {
   // Every verb reports its own failure. The tree this replaces had six
   // uncaught handlers and no error surface at all, so a refused rename or a
   // failed duplicate was an invisible no-op.
-  const run = async (what: string, action: () => Promise<void>) => {
+  // `into` picks the surface: a verb that owns a dialog reports inside it, the
+  // rest report in the banner. Nothing rethrows -- every caller is a `void`, so
+  // an escaping rejection would be unhandled rather than shown.
+  const run = async (what: string, action: () => Promise<void>, into: 'banner' | 'dialog' = 'banner') => {
+    const report = into === 'dialog' ? setDialogError : setError
     try {
+      report(null)
       await action()
     } catch (e) {
-      if (e instanceof EntryReferencedError) throw e
-      setError(errorMessage(e, what))
+      report(errorMessage(e, what))
     }
   }
 
@@ -129,14 +153,14 @@ export default function WorkspaceView() {
     setNewName('')
     const target = `/workspaces/${workspaceId}/entries/${id}`
     if (confirmDiscardUnsavedChanges(() => navigate(target))) navigate(target)
-  })
+  }, 'dialog')
 
   const handleRenameEntry = () => run('Failed to rename the entry', async () => {
     if (!workspaceId || !renameTarget || !renameName.trim()) return
     await store.renameEntry(workspaceId, renameTarget.id, renameName.trim())
     setRenameTarget(null)
     setRenameName('')
-  })
+  }, 'dialog')
 
   const handleDuplicate = (entry: EntryMeta) => run('Failed to duplicate the entry', async () => {
     if (!workspaceId) return
@@ -159,7 +183,7 @@ export default function WorkspaceView() {
     if (!workspaceId || !wsRenameName.trim()) return
     await store.rename(workspaceId, wsRenameName.trim())
     setWsRenameOpen(false)
-  })
+  }, 'dialog')
 
   const handleDuplicateWorkspace = () => run('Failed to duplicate the workspace', async () => {
     if (!workspaceId) return
@@ -201,9 +225,9 @@ export default function WorkspaceView() {
           <div className="workspace-identity-body">
             <h2 className="workspace-identity-name" title={summary?.name}>{summary?.name ?? ''}</h2>
             <div className="workspace-identity-props">
-              <span>{entries.length} {entries.length === 1 ? 'entry' : 'entries'}</span>
-              <span>{formatBytes(summary?.size ?? 0)}</span>
-              {summary && <span>{formatRelativeDate(new Date(summary.updatedAt).toISOString())}</span>}
+              {ready && <span>{entries.length} {entries.length === 1 ? 'entry' : 'entries'}</span>}
+              {ready && <span>{formatBytes(summary?.size ?? 0)}</span>}
+              {ready && summary && <span>{formatRelativeDate(new Date(summary.updatedAt).toISOString())}</span>}
             </div>
             <div className="workspace-identity-actions">
               <button
@@ -258,7 +282,7 @@ export default function WorkspaceView() {
           </button>
         </div>
 
-        {entries.length === 0 && <p className="workspace-entries-empty">This workspace is empty.</p>}
+        {ready && entries.length === 0 && <p className="workspace-entries-empty">This workspace is empty.</p>}
 
         {groups.map(group => group.entries.length === 0 ? null : (
           <section className="workspace-entry-group" key={group.label}>
@@ -285,7 +309,7 @@ export default function WorkspaceView() {
       <Dialog
         isOpen={addOpen}
         title="Add Entry"
-        onClose={() => setAddOpen(false)}
+        onClose={() => { setAddOpen(false); setDialogError(null) }}
         onConfirm={() => { void handleAdd() }}
         confirmLabel="Add"
       >
@@ -301,12 +325,13 @@ export default function WorkspaceView() {
           <option value="part">Part</option>
           <option value="assembly">Assembly</option>
         </select>
+        {dialogError && <p className="error-text">{dialogError}</p>}
       </Dialog>
 
       <Dialog
         isOpen={renameTarget !== null}
         title="Rename Entry"
-        onClose={() => setRenameTarget(null)}
+        onClose={() => { setRenameTarget(null); setDialogError(null) }}
         onConfirm={() => { void handleRenameEntry() }}
         confirmLabel="Rename"
       >
@@ -318,12 +343,13 @@ export default function WorkspaceView() {
           aria-label="Entry name"
           autoFocus
         />
+        {dialogError && <p className="error-text">{dialogError}</p>}
       </Dialog>
 
       <Dialog
         isOpen={wsRenameOpen}
         title="Rename Workspace"
-        onClose={() => setWsRenameOpen(false)}
+        onClose={() => { setWsRenameOpen(false); setDialogError(null) }}
         onConfirm={() => { void handleRenameWorkspace() }}
         confirmLabel="Rename"
       >
@@ -335,6 +361,7 @@ export default function WorkspaceView() {
           aria-label="Workspace name"
           autoFocus
         />
+        {dialogError && <p className="error-text">{dialogError}</p>}
       </Dialog>
 
       <MessageDialog

@@ -211,4 +211,50 @@ describe('WorkspaceView', () => {
     renderView()
     await screen.findByText('This workspace is empty.')
   })
+
+  // "Empty" is a claim about the workspace, so it must wait for an answer.
+  // Asserting only the eventual message passes even if the load is deleted.
+  it('does not claim the workspace is empty while it is still loading', async () => {
+    const session = installSession()
+    session.listEntries.mockReturnValueOnce(new Promise(() => {}))
+    renderView()
+    expect(screen.queryByText('This workspace is empty.')).toBeNull()
+    // Nor a nameless zero-byte identity card standing in for the real one.
+    expect(screen.queryByText('0 entries')).toBeNull()
+  })
+
+  // The page above installs the session in an effect that runs AFTER this
+  // component's, and a duplicate navigates workspaces without unmounting. Both
+  // land a session and a route that disagree.
+  it('renders nothing until the session answers for the route it is on', async () => {
+    const session = {
+      workspace: 'other',
+      listEntries: vi.fn(async () => entries),
+      savedRevs: vi.fn(async () => new Map<string, number>()),
+      readEntry: vi.fn(), writeEntry: vi.fn(),
+      originOf: vi.fn(async () => undefined), provenance: vi.fn(async () => []),
+      resolveFile: vi.fn(), referencesOf: vi.fn(async () => []),
+      referenceEdges: vi.fn(async () => ({})),
+    }
+    useWorkspaceSessionStore.setState({ session: session as unknown as WorkspaceSession })
+    const { container } = renderView()
+    await waitFor(() => expect(storeMock.list).not.toHaveBeenCalled())
+    expect(session.listEntries).not.toHaveBeenCalled()
+    expect(container.querySelectorAll('.workspace-entry-row')).toHaveLength(0)
+    expect(screen.queryByText('This workspace is empty.')).toBeNull()
+  })
+
+  // The banner renders in the main column, which an open modal covers.
+  it('reports a failed dialog verb inside the dialog, not behind it', async () => {
+    installSession()
+    storeMock.renameEntry.mockRejectedValueOnce(new Error('name taken'))
+    renderView()
+    await screen.findByText('Bracket')
+    fireEvent.click(screen.getByLabelText('Rename Bracket'))
+    fireEvent.change(screen.getByLabelText('Entry name'), { target: { value: 'Plate' } })
+    fireEvent.click(screen.getByText('Rename'))
+    await screen.findByText(/name taken/)
+    // The dialog is still open, so the typed name is not lost.
+    expect(screen.getByLabelText('Entry name')).toBeTruthy()
+  })
 })
