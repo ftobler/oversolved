@@ -67,7 +67,7 @@ describe('Breadcrumb', () => {
   it('commits a rename from the last crumb on Enter', async () => {
     const onRename = vi.fn(async () => true)
     renderAt('/workspaces/ws/entries/e1', <Breadcrumb docName="bracket" onRename={onRename} />)
-    fireEvent.click(screen.getByLabelText('Edit document name'))
+    fireEvent.click(screen.getByRole('button', { name: 'bracket' }))
     const input = screen.getByLabelText('Document name') as HTMLInputElement
     fireEvent.change(input, { target: { value: '  plate  ' } })
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -77,7 +77,7 @@ describe('Breadcrumb', () => {
   it('abandons the edit on Escape without renaming', async () => {
     const onRename = vi.fn(async () => true)
     renderAt('/workspaces/ws/entries/e1', <Breadcrumb docName="bracket" onRename={onRename} />)
-    fireEvent.click(screen.getByLabelText('Edit document name'))
+    fireEvent.click(screen.getByRole('button', { name: 'bracket' }))
     const input = screen.getByLabelText('Document name')
     fireEvent.change(input, { target: { value: 'plate' } })
     fireEvent.keyDown(input, { key: 'Escape' })
@@ -88,7 +88,7 @@ describe('Breadcrumb', () => {
   it('restores the stored name when a rename is refused', async () => {
     const onRename = vi.fn(async () => false)
     renderAt('/workspaces/ws/entries/e1', <Breadcrumb docName="bracket" onRename={onRename} />)
-    fireEvent.click(screen.getByLabelText('Edit document name'))
+    fireEvent.click(screen.getByRole('button', { name: 'bracket' }))
     const input = screen.getByLabelText('Document name') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'plate' } })
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -97,6 +97,13 @@ describe('Breadcrumb', () => {
   })
 
   // A document with no name yet still occupies the last crumb.
+  // WCAG 2.5.3: the crumb's accessible name must BE the document name, or voice
+  // control cannot reach it and the trail stops saying what is open.
+  it('names the rename control after the document, not after the action', async () => {
+    renderAt('/workspaces/ws/entries/e1', <Breadcrumb docName="bracket" onRename={async () => true} />)
+    expect(screen.getByRole('button', { name: 'bracket' })).toBeTruthy()
+  })
+
   it('shows the fallback name for an unnamed document', async () => {
     renderAt('/workspaces/ws/entries/e1', <Breadcrumb docName={null} fallbackName="Untitled Assembly" onRename={async () => true} />)
     expect(screen.getByText('Untitled Assembly')).toBeTruthy()

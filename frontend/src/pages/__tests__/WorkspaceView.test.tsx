@@ -122,12 +122,26 @@ describe('WorkspaceView', () => {
     expect(rows[1].querySelector('.doc-tile-placeholder')).toBeTruthy()
   })
 
-  it('opens a document row on click and on Enter', async () => {
+  it('opens a document row on click', async () => {
     installSession()
     renderView()
-    const row = (await screen.findByText('Bracket')).closest('.workspace-entry-row') as HTMLElement
-    fireEvent.click(row)
+    const open = (await screen.findByText('Bracket')).closest('button') as HTMLElement
+    fireEvent.click(open)
     await screen.findByText('EDITOR')
+  })
+
+  // The row holds three controls as well, so the openable surface is a real
+  // button inside it rather than a role on the row: a role on the row would
+  // swallow the list item and announce the controls as part of its own name.
+  it('keeps the row a list item with the controls outside its open button', async () => {
+    installSession()
+    const { container } = renderView()
+    await screen.findByText('Bracket')
+    const row = screen.getByText('Bracket').closest('.workspace-entry-row') as HTMLElement
+    expect(row.tagName).toBe('LI')
+    expect(row.getAttribute('role')).toBeNull()
+    expect(row.querySelector('button.workspace-entry-open')?.querySelector('.btn')).toBeNull()
+    expect(container.querySelectorAll('li.workspace-entry-row')).toHaveLength(3)
   })
 
   // J9: a file is not a document. The tree this replaces routed file clicks to
@@ -136,9 +150,9 @@ describe('WorkspaceView', () => {
     installSession()
     const { container } = renderView()
     const row = (await screen.findByText('shaft.step')).closest('.workspace-entry-row') as HTMLElement
-    expect(row.getAttribute('role')).toBeNull()
-    expect(row.getAttribute('tabindex')).toBeNull()
-    fireEvent.click(row)
+    // No open button at all, so there is nothing to click or tab to.
+    expect(row.querySelector('button.workspace-entry-open')).toBeNull()
+    fireEvent.click(row.querySelector('.workspace-entry-open') as HTMLElement)
     expect(screen.queryByText('EDITOR')).toBeNull()
     // It is still listed, with its kind and size: the archive is what you ship.
     expect(container.textContent).toContain('step')
@@ -149,8 +163,8 @@ describe('WorkspaceView', () => {
     useUnsavedChangesStore.getState().setDirty(true)
     installSession()
     renderView()
-    const row = (await screen.findByText('Bracket')).closest('.workspace-entry-row') as HTMLElement
-    fireEvent.click(row)
+    const open = (await screen.findByText('Bracket')).closest('button') as HTMLElement
+    fireEvent.click(open)
     expect(screen.queryByText('EDITOR')).toBeNull()
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
   })

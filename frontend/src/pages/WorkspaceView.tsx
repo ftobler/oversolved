@@ -19,7 +19,6 @@ import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
 import { dirtyEntryIds, groupEntries } from '@/components/layout/workspaceTreeModel'
 import { referrersOf } from '@/components/layout/filesModel'
 import { useWhereUsed } from '@/components/layout/filesSeams'
-import { treeRowKeyDown } from '@/components/layout/treeRowKeyDown'
 import { fileKindOf, fileSizeOf } from '@/components/layout/filesModel'
 import type { EntryMeta } from '@/workspace/types'
 import '@/pages/Documents.css'
@@ -212,7 +211,7 @@ export default function WorkspaceView() {
   ]
 
   return (
-    <div className="documents-layout">
+    <div className="documents-layout workspace-layout">
       <aside className="workspace-identity">
         <div className="workspace-identity-card">
           <div className="doc-tile-preview workspace-identity-preview">
@@ -426,21 +425,20 @@ function EntryRow({ entry, workspace, dirty, usedBy, onOpen, onRename, onDuplica
     ? [fileKindOf(entry), formatBytes(fileSizeOf(entry))]
     : [entry.docKind ?? 'document', entry.updatedAt ? formatRelativeDate(new Date(entry.updatedAt).toISOString()) : '']
 
-  return (
-    <li
-      className={`workspace-entry-row${openable ? ' openable' : ''}`}
-      role={openable ? 'button' : undefined}
-      tabIndex={openable ? 0 : undefined}
-      onClick={openable ? () => onOpen(entry) : undefined}
-      onKeyDown={openable ? e => treeRowKeyDown(e, () => onOpen(entry)) : undefined}
-    >
+  // The openable surface is a real <button> INSIDE the row rather than a role on
+  // the row itself: the row also holds three controls, and a role="button"
+  // wrapping them is nested-interactive -- it swallows the list item and makes a
+  // screen reader announce the row's whole contents, controls included, as one
+  // button's name. A real button also brings Enter and Space with it.
+  const face = (
+    <>
       <div className="doc-tile-preview workspace-entry-preview">
         <DocTilePreview workspace={workspace} entry={entry.id} name={entry.name} />
       </div>
       <div className="workspace-entry-body">
         <div className="workspace-entry-title">
           <span className="workspace-entry-name" title={entry.name}>{entry.name}</span>
-          {dirty && <span className="workspace-entry-dot" title="Changed since last save" />}
+          {dirty && <span className="workspace-entry-dot" role="img" aria-label="Changed since last save" />}
         </div>
         <div className="workspace-entry-meta">
           {meta.filter(Boolean).map(text => <span key={text}>{text}</span>)}
@@ -451,12 +449,24 @@ function EntryRow({ entry, workspace, dirty, usedBy, onOpen, onRename, onDuplica
           </div>
         )}
       </div>
+    </>
+  )
+
+  return (
+    <li className={`workspace-entry-row${openable ? ' openable' : ''}`}>
+      {openable ? (
+        <button type="button" className="workspace-entry-open" onClick={() => onOpen(entry)}>
+          {face}
+        </button>
+      ) : (
+        <div className="workspace-entry-open">{face}</div>
+      )}
       <div className="workspace-entry-actions">
         <button
           className="btn btn-tile-action"
           aria-label={`Rename ${entry.name}`}
           title="Rename"
-          onClick={e => { e.stopPropagation(); onRename(entry) }}
+          onClick={() => onRename(entry)}
         >
           <span className="material-icons">edit</span>
         </button>
@@ -464,7 +474,7 @@ function EntryRow({ entry, workspace, dirty, usedBy, onOpen, onRename, onDuplica
           className="btn btn-tile-action"
           aria-label={`Duplicate ${entry.name}`}
           title="Duplicate"
-          onClick={e => { e.stopPropagation(); onDuplicate(entry) }}
+          onClick={() => onDuplicate(entry)}
         >
           <span className="material-icons">content_copy</span>
         </button>
@@ -472,7 +482,7 @@ function EntryRow({ entry, workspace, dirty, usedBy, onOpen, onRename, onDuplica
           className="btn btn-delete-tile"
           aria-label={`Delete ${entry.name}`}
           title="Delete"
-          onClick={e => { e.stopPropagation(); onDelete(entry) }}
+          onClick={() => onDelete(entry)}
         >
           <span className="material-icons">delete</span>
         </button>

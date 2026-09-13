@@ -67,7 +67,7 @@ export default function Breadcrumb({ docName, fallbackName, onRename }: Breadcru
       {workspaceId ? (
         <Link to="/workspaces" className="breadcrumb-crumb" onClick={guardLink}>Workspaces</Link>
       ) : (
-        <span className="breadcrumb-current">Workspaces</span>
+        <span className="breadcrumb-current" aria-current="page">Workspaces</span>
       )}
 
       {workspaceId && (
@@ -83,7 +83,7 @@ export default function Breadcrumb({ docName, fallbackName, onRename }: Breadcru
               {workspaceName ?? workspaceId}
             </Link>
           ) : (
-            <span className="breadcrumb-current" title={workspaceName ?? workspaceId}>
+            <span className="breadcrumb-current" aria-current="page" title={workspaceName ?? workspaceId}>
               {workspaceName ?? workspaceId}
             </span>
           )}
@@ -112,8 +112,8 @@ export default function Breadcrumb({ docName, fallbackName, onRename }: Breadcru
             <button
               type="button"
               className="breadcrumb-current breadcrumb-name"
-              aria-label="Edit document name"
-              title={docName ?? fallbackName}
+              aria-current="page"
+              title="Rename document"
               disabled={!onRename}
               onClick={() => { setEditName(docName ?? ''); setIsEditing(true) }}
             >
