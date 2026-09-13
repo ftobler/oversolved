@@ -49,10 +49,24 @@ export default function WorkspaceView() {
   // painted "This workspace is empty." over a nameless 0-byte card on every open,
   // until two IDB round-trips resolved.
   const [loaded, setLoaded] = useState<{ workspace: string; entries: EntryMeta[]; savedRevs: Map<string, number>; summary: WorkspaceSummary | null } | null>(null)
-  const [error, setError] = useState<string | null>(null)
   // Errors from a verb that owns a dialog belong inside that dialog: the banner
   // renders in the main column, which the open modal covers.
-  const [dialogError, setDialogError] = useState<string | null>(null)
+  //
+  // Both are tagged with the workspace they were raised under, and that tag is
+  // what clears them: a banner names a workspace, so carrying it to the next one
+  // would blame the wrong workspace for a failure it had nothing to do with. An
+  // effect that reset them on workspaceId could only do so after the new
+  // workspace had already painted the old message once.
+  const [errors, setErrors] = useState<{ workspace: string | undefined; banner: string | null; dialog: string | null }>(
+    { workspace: workspaceId, banner: null, dialog: null },
+  )
+  const raised = errors.workspace === workspaceId ? errors : null
+  const error = raised?.banner ?? null
+  const dialogError = raised?.dialog ?? null
+  const setError = (message: string | null) =>
+    setErrors(prev => ({ workspace: workspaceId, banner: message, dialog: prev.workspace === workspaceId ? prev.dialog : null }))
+  const setDialogError = (message: string | null) =>
+    setErrors(prev => ({ workspace: workspaceId, banner: prev.workspace === workspaceId ? prev.banner : null, dialog: message }))
   const [addOpen, setAddOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newKind, setNewKind] = useState<'part' | 'assembly'>('part')
@@ -84,19 +98,12 @@ export default function WorkspaceView() {
         if (cancelled) return
         setLoaded({ workspace: workspaceId, entries, savedRevs, summary: all.find(row => row.workspace === workspaceId) ?? null })
       } catch (e) {
-        if (!cancelled) setError(errorMessage(e, 'Failed to read this workspace'))
+        if (!cancelled) setErrors({ workspace: workspaceId, banner: errorMessage(e, 'Failed to read this workspace'), dialog: null })
       }
     }
     void load()
     return () => { cancelled = true }
   }, [session, workspaceId, revision, store])
-
-  // A banner names a workspace; carrying it to the next one would blame the
-  // wrong workspace for a failure it had nothing to do with.
-  useEffect(() => {
-    setError(null)
-    setDialogError(null)
-  }, [workspaceId])
 
   const ready = loaded !== null && loaded.workspace === workspaceId
   const entries = ready ? loaded.entries : EMPTY_ENTRIES
