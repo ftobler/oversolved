@@ -34,21 +34,21 @@
   flex: 0 0 380px;
   min-width: 0;
   padding: 16px;
-  border-right: 1px solid #26262c;
   overflow-y: auto;
 }
 
 /* The card keeps the TILE's vertical arrangement -- thumb on top, name and
-   properties below -- so this column reads as one of the things from the
-   library, enlarged. The rows opposite are the ones laid on their side. */
+   properties below -- but deliberately none of its chrome: no fill, no card
+   radius, no side padding. This column is the thing you are already inside,
+   not one more thing to pick from a library, so the name sits directly under
+   the preview and lines up with its left edge. The preview brings its own
+   background and 8px radius from `.doc-tile-preview`. */
 .workspace-identity-card {
-  border-radius: 16px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.03);
+  background: none;
 }
 
 .workspace-identity-body {
-  padding: 12px 14px 14px;
+  padding: 12px 0 0;
 }
 
 .workspace-identity-name {
@@ -150,19 +150,23 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 12px;
 }
 
 /* The row: thumb left, name and properties right of it, controls at the end.
    `min-width: 0` on the body is what lets the name ellipsise instead of pushing
-   the controls off the end. */
+   the controls off the end.
+
+   No padding on the thumb's two sides: the preview is meant to be the row's
+   left edge, full bleed into the rounded corner, which `overflow: hidden`
+   clips for it. Only the controls end keeps an inset. */
 .workspace-entry-row {
   display: flex;
   align-items: center;
   gap: 12px;
   height: var(--ws-row-height);
   overflow: hidden;
-  padding: 8px;
+  padding: 0 8px 0 0;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.02);
 }
@@ -172,7 +176,7 @@
 .workspace-entry-open {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 20px;
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -307,7 +311,6 @@ button.workspace-entry-open:focus-visible {
 
   .workspace-identity {
     flex: none;
-    border-right: none;
     border-bottom: 1px solid #26262c;
   }
 
@@ -320,13 +323,12 @@ button.workspace-entry-open:focus-visible {
   .workspace-identity-preview {
     flex: none;
     width: 160px;
-    border-radius: 8px;
   }
 
   .workspace-identity-body {
     flex: 1;
     min-width: 0;
-    padding: 0 12px 0 0;
+    padding: 0 12px;
   }
 }
 
