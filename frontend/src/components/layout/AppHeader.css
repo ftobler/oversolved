@@ -64,7 +64,7 @@
   line-height: 1.3;
 }
 
-.workspace-dirty-dot {
+.header-dirty-dot {
   flex: none;
   width: 8px;
   height: 8px;
@@ -150,11 +150,9 @@ button.breadcrumb-name:disabled {
   user-select: none;
 }
 
-/* The rename field, and `.doc-name-input` with it: the editors' inline rename
-   shipped with no rule of its own, so it inherited the page's input styling and
-   sat at a different height from the title it replaced. Both are pinned here. */
-.breadcrumb-input,
-.doc-name-input {
+/* The trail's rename field. (`.doc-name-input` is not styled with it: the
+   commit that moved the rename in here removed that class's last renderer.) */
+.breadcrumb-input {
   min-width: 0;
   max-width: 320px;
   padding: 6px 8px;
@@ -167,8 +165,7 @@ button.breadcrumb-name:disabled {
   font-family: inherit;
 }
 
-.breadcrumb-input:focus,
-.doc-name-input:focus {
+.breadcrumb-input:focus {
   outline: none;
   border-color: #4fc3f7;
 }
@@ -216,14 +213,21 @@ button.breadcrumb-name:disabled {
   text-align: left;
 }
 
-/* Hover/pointer only on the editable button variant (PartToolbar's rename
-   trigger). The plain <h2> title (Documents overview) shares the class but is
-   not interactive, so the hover affordance there was just confusing. */
-button.doc-name {
-  cursor: pointer;
-}
+/* The trail replaced the editors' `.doc-name`, which Part.css clamped to 150px
+   at this width. Without a rule of its own the three crumbs asked for ~600px
+   and squashed the toolbar buttons instead, since `.toolbar-btn` sets no
+   flex-shrink. The ancestors concede first; the last crumb is the one that has
+   to stay readable. */
+@media (max-width: 768px) {
+  .breadcrumb-crumb {
+    max-width: 90px;
+  }
 
-button.doc-name:hover {
-  background: #222;
-  color: #fff;
+  .breadcrumb-current {
+    max-width: 160px;
+  }
+
+  .breadcrumb-input {
+    max-width: 160px;
+  }
 }

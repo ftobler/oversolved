@@ -10,22 +10,6 @@
   background: #111;
 }
 
-.doc-name-input {
-  padding: 8px 12px;
-  background: #1a1a1a;
-  border: 2px solid #4fc3f7;
-  border-radius: 4px;
-  color: #ccc;
-  font-size: 16px;
-  min-width: 200px;
-  max-width: 300px;
-}
-
-.doc-name-input:focus {
-  outline: none;
-  color: #fff;
-}
-
 .doc-container {
   flex: 1;
   display: flex;
@@ -904,11 +888,6 @@
 
 @media (max-width: 768px) {
   .doc-name {
-    max-width: 150px;
-  }
-
-  .doc-name-input {
-    min-width: 150px;
     max-width: 150px;
   }
 

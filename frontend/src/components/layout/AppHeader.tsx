@@ -143,7 +143,7 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
       <div className="app-header-right">
         {dirty && (
           <div className="workspace-dirty" role="status" aria-live="polite">
-            <span className="workspace-dirty-dot" aria-hidden="true" />
+            <span className="header-dirty-dot" aria-hidden="true" />
             <span className="workspace-dirty-copy">{unsavedDurabilityNotice(persistence)}</span>
             <button
               className="toolbar-btn"

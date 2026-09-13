@@ -12,6 +12,24 @@
   --ws-row-height: calc(var(--ws-tile-height) * 0.6);
 }
 
+/* index.css centers globally (`#root { text-align: center }`), so every block
+   here has to say so; the library tile this card mirrors does the same at
+   Documents.css's `.doc-tile-name`. Without it the workspace name centred over
+   its own card and the ellipsised row names clipped at BOTH ends. */
+.workspace-layout,
+.workspace-layout h2,
+.workspace-layout h3,
+.workspace-layout p {
+  text-align: left;
+}
+
+/* The two levels are meant to read as siblings, and `.documents-layout` here
+   sits inside `.document-viewer` (#111) rather than the library's `.documents`
+   (#16171d), which is what the divider colour was picked against. */
+.workspace-layout {
+  background: #16171d;
+}
+
 .workspace-identity {
   flex: 0 0 380px;
   min-width: 0;
@@ -27,10 +45,6 @@
   border-radius: 16px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.03);
-}
-
-.workspace-identity-preview {
-  border-radius: 8px 8px 0 0;
 }
 
 .workspace-identity-body {
@@ -59,16 +73,37 @@
 .workspace-identity-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   margin-top: 8px;
-  margin-left: -8px;
 }
 
-/* Same overlap trick the library tiles use: buttons.css's base padding wins on
-   equal specificity, so the 40x40 ask renders wider and the icons drift apart.
-   See the note in Documents.css -- the negative margin is load-bearing. */
-.workspace-identity-actions > .btn + .btn,
-.workspace-entry-actions > .btn + .btn {
-  margin-left: -8px;
+/* No negative margin here, unlike the tile sheet: in this bundle order
+   `.btn-tile-action`'s `width: 40px; padding: 0` does win, so the buttons are a
+   true 40x40 and pulling them together would overlap their hit boxes -- the
+   later sibling hit-tests on top, so the right edge of Duplicate fired Delete. */
+.workspace-identity-actions,
+.workspace-entry-actions {
+  gap: 0;
+}
+
+/* The tile icons are #555 and only `.doc-tile:hover` brightens them. Nothing
+   here is a `.doc-tile`, so all eight controls sat at 2.4:1 permanently, under
+   the 3:1 floor for a control. These rows carry no hover-to-reveal contract, so
+   the base is lifted and hover goes further rather than rescuing it. */
+.workspace-identity-actions .btn-tile-action,
+.workspace-identity-actions .btn-delete-tile,
+.workspace-entries-header .btn-tile-action,
+.workspace-entry-actions .btn-tile-action,
+.workspace-entry-actions .btn-delete-tile {
+  color: #8b8b95;
+}
+
+.workspace-identity-card:hover .btn-tile-action,
+.workspace-identity-card:hover .btn-delete-tile,
+.workspace-entry-row:hover .btn-tile-action,
+.workspace-entry-row:hover .btn-delete-tile,
+.workspace-entries-header .btn-tile-action:hover {
+  color: #fff;
 }
 
 .workspace-entries {
@@ -126,12 +161,30 @@
   align-items: center;
   gap: 12px;
   height: var(--ws-row-height);
+  overflow: hidden;
   padding: 8px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.02);
 }
 
-.workspace-entry-row.openable {
+/* The face carries the row's layout; the row is now just the flex container it
+   shares with the controls. */
+.workspace-entry-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.workspace-entry-open {
   cursor: pointer;
 }
 
@@ -139,19 +192,23 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
-.workspace-entry-row.openable:focus-visible {
+button.workspace-entry-open:focus-visible {
   outline: 2px solid #4fc3f7;
   outline-offset: -2px;
+  border-radius: 8px;
 }
 
 /* The thumb fills the row's height and keeps the tile's 16/10, so the row is
    literally the tile rotated rather than a different picture. */
+/* The thumb is the tile's 16/10 laid on its side, so its width follows the row
+   height and nothing else. A percentage cap here silently won over the ratio at
+   narrower widths and object-fit cropped the result, which is exactly the thing
+   this row exists to keep identical to the library tile. The row height is what
+   shrinks instead, at the breakpoints below. */
 .workspace-entry-preview {
   flex: none;
   height: 100%;
-  width: auto;
-  aspect-ratio: 16 / 10;
-  max-width: 40%;
+  width: calc(var(--ws-row-height) * 1.6);
 }
 
 .workspace-entry-body {
@@ -239,12 +296,12 @@
 /* Narrow: the identity card stops being a column and becomes a banner, so the
    list keeps the full width it needs. The rows shorten with it -- a 150px row
    inside a phone-height viewport would show two entries. */
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   :root {
     --ws-row-height: 108px;
   }
 
-  .documents-layout:has(.workspace-identity) {
+  .workspace-layout {
     flex-direction: column;
   }
 
@@ -270,5 +327,16 @@
     flex: 1;
     min-width: 0;
     padding: 0 12px 0 0;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --ws-row-height: 84px;
+  }
+
+  /* The name has the least room here and is the thing you read the row by. */
+  .workspace-entry-usedby {
+    display: none;
   }
 }
