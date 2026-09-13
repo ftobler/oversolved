@@ -129,6 +129,11 @@ async function walk(
 // cap were the old bundle reader's, kept because the risk is the same archive
 // either way. The residual gap is unchanged: total decompressed size is not
 // capped, because JSZip does not expose uncompressed sizes before decompression.
+// A preview is derived decoration: the capture path writes a PNG capped at
+// captureThumbnail's MAX_SIZE of 1024px, which lands well under this. A sidecar
+// larger than that is not a thumbnail and is not worth persisting.
+export const MAX_PREVIEW_BYTES = 4 * 1024 * 1024
+
 export const MAX_BUNDLE_ENTRIES = 10000
 export const MAX_BUNDLE_INPUT_BYTES = 100 * 1024 * 1024
 
@@ -329,7 +334,12 @@ export function readBagTree(bag: ImportBag): ImportedTree {
     if (pictured !== undefined) {
       // Dropped from the tree and counted exactly as before; the bytes are kept
       // only to seed the preview store, which is not part of the workspace.
-      sidecarBytes.set(pictured, item.bytes)
+      // A thumbnail is a thumbnail. Without a cap a bag could carry a 90MB PNG
+      // under the archive limit, and adoption would base64 it (+33%), persist
+      // it, and later inline it into the DOM as a data: URI. Before D6 the
+      // bytes were dropped, so the cap is what keeps that unchanged: an
+      // oversized sidecar is skipped exactly as it used to be.
+      if (item.bytes.byteLength <= MAX_PREVIEW_BYTES) sidecarBytes.set(pictured, item.bytes)
       skippedReserved++
       continue
     }

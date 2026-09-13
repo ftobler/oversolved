@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import JSZip from 'jszip'
 import { IdbWorkspaceStore } from '../store'
-import { readZipBag, importBag } from '../import'
+import { readZipBag, importBag, MAX_PREVIEW_BYTES } from '../import'
 import { getPreviewStore } from '@/stores/previewStore'
 import { resetWorkspaceIdb } from './idbHarness'
 
@@ -75,6 +75,22 @@ describe('adoption seeds previews from a legacy bundle sidecar', () => {
     const entries = await store.listEntries(workspace)
     const box = entries.find(entry => entry.name === 'Box')!
     expect(await getPreviewStore().get(workspace, box.id)).toBe(PNG_BASE64)
+  })
+
+  it('skips a sidecar too large to be a thumbnail, as the pre-D6 drop did', async () => {
+    // Highly compressible, so the archive stays small while the decompressed
+    // sidecar does not -- the shape the input cap cannot see.
+    const oversized = new Uint8Array(MAX_PREVIEW_BYTES + 1)
+    const bytes = await zipOf({ 'library/Box.yaml': 'kind: part\n', 'library/Box.png': oversized })
+    const store = new IdbWorkspaceStore()
+    const result = await importBag(await readZipBag(bytes, 'legacy'), { origin: 'legacy' }, store)
+
+    const entries = await store.listEntries(result.workspace)
+    const box = entries.find(entry => entry.name === 'Box')!
+    expect(await getPreviewStore().get(result.workspace, box.id)).toBeUndefined()
+    // Still dropped from the tree and still counted, exactly as before.
+    expect(entries.some(entry => entry.name.endsWith('.png'))).toBe(false)
+    expect(result.skippedReserved).toBe(1)
   })
 
   it('a stray png with no sibling document stays a file entry and seeds nothing', async () => {

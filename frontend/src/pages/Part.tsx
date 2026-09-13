@@ -107,9 +107,15 @@ export default function Part() {
     // Thumbnail the solved scene. Saving was the only writer of a preview, so a
     // document opened and never saved had none and its row painted a
     // placeholder; the first solve is the earliest moment there is geometry to
-    // photograph. Deferred a tick so the fit above has landed in the camera
-    // captureThumbnail renders through. Best-effort and fire-and-forget: the
-    // key is the save path's, and a failed capture never reaches the editor.
+    // photograph. Best-effort and fire-and-forget: the key is the save path's,
+    // and a failed capture never reaches the editor.
+    //
+    // KNOWN LIMIT: the tick does NOT guarantee the fit above has landed.
+    // autoZoomToFit only arms fitPendingRef; tryFit bails while the binary
+    // geometry is still arriving and retries on its own [bodies, sceneTick]
+    // effect, so this often photographs the default camera and the row gets a
+    // correct but badly framed thumbnail. The fix is to capture off a
+    // fit-settled signal from the Viewport rather than a fixed delay.
     if (!uuid) return
     setTimeout(() => {
       void capturePreview(viewportRef.current?.captureScreenshotForSaving, workspaceId, uuid)
