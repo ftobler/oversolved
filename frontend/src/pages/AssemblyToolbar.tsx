@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
 import AppHeader from '@/components/layout/AppHeader'
+import Breadcrumb from '@/components/layout/Breadcrumb'
 
 interface AssemblyToolbarProps {
   docName: string | null
@@ -30,8 +31,6 @@ export default function AssemblyToolbar({
   const redoStack = useAssemblyStore(s => s.redoStack) as AssemblyUndoEntry[]
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
-  const [editName, setEditName] = useState(docName ?? '')
   const [saveState, setSaveState] = useState<'idle' | 'success'>('idle')
   // Tracks the pending "success" -> "idle" reset so it can be cleared on
   // unmount. Without this a stray timer fires setState after the component
@@ -67,22 +66,8 @@ export default function AssemblyToolbar({
     saveResetTimeout.current = setTimeout(() => setSaveState('idle'), 1500)
   }
 
-  const handleRename = async () => {
-    const trimmed = editName.trim()
-    if (!trimmed || trimmed === docName) {
-      setIsEditing(false)
-      return
-    }
-    const success = await onRename(trimmed)
-    if (success) {
-      setIsEditing(false)
-    } else {
-      setEditName(docName ?? '')
-    }
-  }
-
   return (
-    <AppHeader rightContent={rightContent}>
+    <AppHeader rightContent={rightContent} breadcrumb={<Breadcrumb docName={docName} fallbackName="Untitled Assembly" onRename={onRename} />}>
       <div className="undo-redo-btn-group">
         <button
           className="toolbar-btn"
@@ -127,25 +112,6 @@ export default function AssemblyToolbar({
       <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
         <span className="material-icons-outlined">file_copy</span>
       </button>
-      {isEditing ? (
-        <input
-          className="doc-name-input"
-          value={editName}
-          onChange={e => setEditName(e.target.value)}
-          onBlur={handleRename}
-          onKeyDown={e => {
-            if (e.key === 'Enter') handleRename()
-          }}
-          autoFocus
-        />
-      ) : (
-        <button className="doc-name" aria-label="Edit document name" onClick={() => {
-          setEditName(docName ?? '')
-          setIsEditing(true)
-        }}>
-          {docName || 'Untitled Assembly'}
-        </button>
-      )}
     </AppHeader>
   )
 }

@@ -23,12 +23,16 @@ const OVERVIEW_PATHS = new Set(['/', '/workspaces'])
 // place for one -- the app runs entirely in this browser tab, so there is no
 // session to show, sign out of, or report as unavailable.
 interface AppHeaderProps {
+  // A plain page title, for pages outside the workspace hierarchy (Help).
   title?: string
+  // The workspace trail, for pages inside it. The two are exclusive: a page is
+  // either somewhere in `Workspaces / <workspace> / <document>` or it is not.
+  breadcrumb?: ReactNode
   children?: ReactNode
   rightContent?: ReactNode
 }
 
-export default function AppHeader({ title, children, rightContent }: AppHeaderProps) {
+export default function AppHeader({ title, breadcrumb, children, rightContent }: AppHeaderProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
@@ -132,6 +136,7 @@ export default function AppHeader({ title, children, rightContent }: AppHeaderPr
         <Link to="/" className="logo" title={COPYRIGHT} onClick={guardLink}>
           Oversolved
         </Link>
+        {breadcrumb}
         {title && <h2 className="doc-name">{title}</h2>}
         {children}
       </div>

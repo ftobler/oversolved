@@ -76,6 +76,103 @@
   color: #bbb;
 }
 
+/* The workspace trail: `Workspaces / <workspace> / <document>`, one segment per
+   route level. Sized off `.doc-name` so swapping a plain title for a trail does
+   not change the header's height. Each crumb ellipsises on its own rather than
+   the row scrolling, so a long workspace name cannot push the document name off
+   the end -- the last crumb is the one that must stay readable, so it gets the
+   larger share and the ancestors shrink first. */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin: 0 4px;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.breadcrumb-crumb,
+.breadcrumb-current {
+  display: block;
+  max-width: 220px;
+  padding: 8px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.breadcrumb-crumb {
+  color: #9a9aa5;
+  text-decoration: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  transition: all 0.2s;
+}
+
+.breadcrumb-crumb:hover {
+  background: #222;
+  color: #fff;
+}
+
+.breadcrumb-current {
+  color: #f3f4f6;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 320px;
+}
+
+/* Only the last crumb is a rename affordance, and only where a rename handler
+   was given; disabled it must still read as the title, not as a dead control. */
+button.breadcrumb-name {
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+button.breadcrumb-name:hover:not(:disabled) {
+  background: #222;
+}
+
+button.breadcrumb-name:disabled {
+  cursor: default;
+  color: #f3f4f6;
+}
+
+.breadcrumb-sep {
+  flex: none;
+  color: #55555f;
+  font-weight: 400;
+  user-select: none;
+}
+
+/* The rename field, and `.doc-name-input` with it: the editors' inline rename
+   shipped with no rule of its own, so it inherited the page's input styling and
+   sat at a different height from the title it replaced. Both are pinned here. */
+.breadcrumb-input,
+.doc-name-input {
+  min-width: 0;
+  max-width: 320px;
+  padding: 6px 8px;
+  border: 1px solid #3a3a44;
+  border-radius: 4px;
+  background: #1a1a1f;
+  color: #f3f4f6;
+  font-size: 16px;
+  font-weight: bold;
+  font-family: inherit;
+}
+
+.breadcrumb-input:focus,
+.doc-name-input:focus {
+  outline: none;
+  border-color: #4fc3f7;
+}
+
 .logo {
   font-size: 18px;
   font-weight: 700;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Navigate, useParams } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
+import Breadcrumb from '@/components/layout/Breadcrumb'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { backendBundle } from '@/adapters/backend'
 import { createWorkspaceSession } from '@/workspace/session'
@@ -149,11 +150,7 @@ export default function WorkspacePage() {
 
   return (
     <div className="document-viewer">
-      <AppHeader>
-        <Link className="toolbar-btn" to="/workspaces" title="All workspaces">
-          <span className="material-icons">arrow_back</span>
-        </Link>
-      </AppHeader>
+      <AppHeader breadcrumb={<Breadcrumb />} />
       <div className="doc-container">
         <Sidebar documentPanel={null} />
         <div className="doc-main-prompt">

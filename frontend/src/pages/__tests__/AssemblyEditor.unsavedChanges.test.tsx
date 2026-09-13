@@ -8,6 +8,8 @@ vi.mock('react-router-dom', () => ({
   // AppHeader reads the path to decide whether its burger navigates or opens
   // the about notice; these assembly routes are never the documents overview.
   useLocation: () => ({ pathname: '/workspaces/ws/entries/test-uuid' }),
+  // The breadcrumb reads the route's workspace to build its trail.
+  useParams: () => ({ workspaceId: 'ws', entryId: 'test-uuid' }),
   useNavigate: () => vi.fn(),
   Link: ({ to, children, ...props }: { to: string; children?: ReactNode }) =>
     <a href={to} {...props}>{children}</a>,

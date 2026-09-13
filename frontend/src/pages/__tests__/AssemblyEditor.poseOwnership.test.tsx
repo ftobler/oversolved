@@ -31,7 +31,9 @@ vi.mock('@/adapters/backend', () => ({
 }))
 
 vi.mock('react-router-dom', () => ({
-  useLocation: () => ({ pathname: '/documents/test-uuid' }),
+  useLocation: () => ({ pathname: '/workspaces/ws/entries/test-uuid' }),
+  // The breadcrumb reads the route's workspace to build its trail.
+  useParams: () => ({ workspaceId: 'ws', entryId: 'test-uuid' }),
   useNavigate: () => vi.fn(),
   Link: ({ to, children, ...props }: { to: string; children?: ReactNode }) =>
     <a href={to} {...props}>{children}</a>,

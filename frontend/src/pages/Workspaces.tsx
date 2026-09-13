@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
+import Breadcrumb from '@/components/layout/Breadcrumb'
 import Dialog from '@/components/dialogs/Dialog'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
@@ -274,7 +275,7 @@ export default function Workspaces() {
 
   return (
     <div className="documents">
-      <AppHeader title="Workspaces">
+      <AppHeader breadcrumb={<Breadcrumb />}>
         <div className="doc-controls">
           <div className="search-input-container">
             <span className="material-icons search-icon">search</span>
