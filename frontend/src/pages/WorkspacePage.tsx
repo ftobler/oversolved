@@ -6,7 +6,6 @@ import { backendBundle } from '@/adapters/backend'
 import { createWorkspaceSession } from '@/workspace/session'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
-import { useLayoutStore } from '@/stores/layoutStore'
 import { useRecoveryStore } from '@/stores/recoveryStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCarrierChangeStore } from '@/stores/carrierChangeStore'
@@ -21,9 +20,9 @@ import '@/pages/Documents.css'
 
 // The workspace route. It binds the session on open so the editors and the solve
 // relay read their own workspace, arms U7's recovery prompt, then renders the
-// entry's editor. With no entryId it renders a minimal entry list (C4's tree
-// replaces it) and forwards a single-document workspace straight to its editor,
-// so C2's degenerate workspaces keep opening.
+// entry's editor. With no entryId it renders the workspace view, which is the
+// only place the workspace layer lives now that the editor's sidebar is the
+// document navigator alone.
 export default function WorkspacePage() {
   const { workspaceId, entryId } = useParams<{ workspaceId: string; entryId?: string }>()
   const [kind, setKind] = useState<'part' | 'assembly' | null>(null)
@@ -101,12 +100,6 @@ export default function WorkspacePage() {
     useEditorModeStore.getState().setActiveEditor(kind)
     return () => { useEditorModeStore.getState().setActiveEditor(null) }
   }, [kind])
-
-  // The activity bar opens on the document navigator for an entry and on the
-  // workspace tree when no entry is open, so the no-entry shell lands on U2.
-  useEffect(() => {
-    useLayoutStore.getState().setPanel(entryId ? 'document' : 'workspace')
-  }, [entryId])
 
   if (!workspaceId) return <div className="document-viewer"><p>Workspace not found.</p></div>
 

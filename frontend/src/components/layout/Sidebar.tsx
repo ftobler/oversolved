@@ -1,50 +1,25 @@
 import type { ReactNode } from 'react'
-import { ActivityBar } from '@/components/layout/ActivityBar'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
-import { WorkspaceTree } from '@/components/layout/WorkspaceTree'
-import { FilesPanel } from '@/components/layout/FilesPanel'
-import { OriginsPanel } from '@/components/layout/OriginsPanel'
-import { PANEL_DEFS } from '@/components/layout/panelRegistry'
-import { useLayoutStore } from '@/stores/layoutStore'
 import '@/pages/Part.css'
 import '@/components/layout/Sidebar.css'
 
 interface SidebarProps {
   // undefined keeps today's part stack, so the part editor and its tests render
-  // <Sidebar /> unchanged; null means "no open document", the no-entry workspace
-  // route, and any other node is the open editor's own navigator (AssemblyTree).
+  // <Sidebar /> unchanged; any other node is the open editor's own navigator
+  // (AssemblyTree).
   documentPanel?: ReactNode
 }
 
-// The panel host. A narrow activity bar switches between the Workspace panel
-// (the tree plus the files view) and the open document's navigator, one visible
-// at a time. Both panels stay mounted once opened and toggle the `hidden`
-// attribute, so each navigator's DOM scrollTop and split percent survive a
-// switch with no lifted view state. The workspace panel is lazy-mounted on its
-// first activation (the store's `visited`), so opening an editor does not list a
-// workspace nobody asked to see.
+// The editor's navigator, and nothing else. The workspace layer used to live
+// here behind an activity bar, one 288px rail switching Workspace / Document /
+// Origins; it now has a surface of its own at `/workspaces/:workspace`, which
+// has room for a thumbnail per entry. With one panel left there was nothing to
+// switch, so the rail went with it and this is a plain host again: the aside is
+// the flex column and the navigator is its only child, flexing to fill it.
 export function Sidebar({ documentPanel }: SidebarProps) {
-  const activePanel = useLayoutStore(s => s.activePanel)
-  const visited = useLayoutStore(s => s.visited)
-  const setPanel = useLayoutStore(s => s.setPanel)
-
   return (
     <aside className="doc-sidebar">
-      <ActivityBar panels={PANEL_DEFS} active={activePanel} onSelect={setPanel} />
-      {visited.includes('workspace') && (
-        <div className="sidebar-panel" hidden={activePanel !== 'workspace'}>
-          <WorkspaceTree />
-          <FilesPanel />
-        </div>
-      )}
-      <div className="sidebar-panel" hidden={activePanel !== 'document'}>
-        {documentPanel === undefined ? <PartDocumentPanel /> : documentPanel}
-      </div>
-      {visited.includes('origins') && (
-        <div className="sidebar-panel" hidden={activePanel !== 'origins'}>
-          <OriginsPanel />
-        </div>
-      )}
+      {documentPanel === undefined ? <PartDocumentPanel /> : documentPanel}
     </aside>
   )
 }

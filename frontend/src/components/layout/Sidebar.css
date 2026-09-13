@@ -1,57 +1,8 @@
-/* The panel host. `.doc-sidebar` (Part.css) is the flex column; the activity bar
-   is the top strip and the panels share the rest. `.sidebar-panel[hidden]` must
-   beat `.sidebar-panel`'s display, or `hidden` would not hide a flex container. */
-.activity-bar {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 6px;
-  border-bottom: 1px solid #333;
-  background: #0d0d0d;
-  flex-shrink: 0;
-}
-
-.activity-bar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: #888;
-  cursor: pointer;
-}
-
-.activity-bar-btn .material-icons {
-  font-size: 18px;
-}
-
-.activity-bar-btn:hover {
-  background: #1f1f1f;
-  color: #ccc;
-}
-
-.activity-bar-btn.active {
-  background: #1a1a1a;
-  color: #4fc3f7;
-}
-
-.sidebar-panel {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.sidebar-panel[hidden] {
-  display: none;
-}
-
+/* What is left of the panel host. `.doc-sidebar` (Part.css) is the flex column
+   and `.document-panel` is now its only child, so there is no rail, no switching
+   and no `[hidden]` panel to out-specify. The files and origins sheets below are
+   still here because their panels are: R5 folds both into the workspace view's
+   entry rows and takes this half of the file with them. */
 .document-panel {
   flex: 1;
   min-height: 0;
@@ -60,16 +11,6 @@
   overflow: hidden;
 }
 
-/* The no-entry workspace route's main pane, beside the host. */
-.doc-main-prompt {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #888;
-}
-
-.workspace-tree,
 .files-panel {
   flex: 1;
   min-height: 0;
@@ -78,24 +19,6 @@
   overflow: hidden;
 }
 
-/* The files view is the archive detail under the tree, so the tree keeps the
-   larger share and the two scroll independently. */
-.workspace-tree {
-  flex: 1 1 55%;
-  border-bottom: 1px solid #333;
-}
-
-.files-panel {
-  flex: 1 1 45%;
-}
-
-.workspace-tree-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.workspace-add-btn,
 .files-prune-btn {
   display: flex;
   align-items: center;
@@ -107,93 +30,12 @@
   padding: 0 4px;
 }
 
-.workspace-add-btn:hover,
 .files-prune-btn:hover {
   color: #ccc;
 }
 
-.workspace-add-btn .material-icons,
 .files-prune-btn .material-icons {
   font-size: 18px;
-}
-
-.workspace-group-label {
-  padding: 6px 10px 2px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #666;
-}
-
-.workspace-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 6px;
-}
-
-.workspace-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
-  border-radius: 4px;
-  color: #ccc;
-  cursor: pointer;
-}
-
-.workspace-row:hover {
-  background: #1a1a1a;
-}
-
-.workspace-row.open {
-  background: #17364a;
-  color: #fff;
-}
-
-.workspace-row-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-dirty-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #e0a030;
-  flex-shrink: 0;
-}
-
-.workspace-row-actions {
-  display: none;
-  align-items: center;
-}
-
-.workspace-row:hover .workspace-row-actions,
-.workspace-row:focus-within .workspace-row-actions {
-  display: flex;
-}
-
-.workspace-row-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: #888;
-  cursor: pointer;
-  padding: 0 2px;
-}
-
-.workspace-row-btn:hover {
-  color: #fff;
-}
-
-.workspace-row-btn .material-icons {
-  font-size: 15px;
 }
 
 .files-list {
