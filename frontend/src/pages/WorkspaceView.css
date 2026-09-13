@@ -1,0 +1,274 @@
+/* The middle level. It reuses the library's `.documents-layout` shell so the two
+   levels are visibly siblings; what changes is what fills the two columns -- an
+   identity card instead of the Library/Trash rail, and a list instead of a grid.
+
+   The one number worth tuning is the row height. A library tile is a 16/10
+   preview over its name and meta, about 250px tall at the grid's 300px minimum.
+   An entry row is that tile on its side at ~60% of that height: tall enough that
+   the thumbnail is what you recognise the entry by, which is the entire reason
+   the row exists rather than a tree line. */
+:root {
+  --ws-tile-height: 250px;
+  --ws-row-height: calc(var(--ws-tile-height) * 0.6);
+}
+
+.workspace-identity {
+  flex: 0 0 380px;
+  min-width: 0;
+  padding: 16px;
+  border-right: 1px solid #26262c;
+  overflow-y: auto;
+}
+
+/* The card keeps the TILE's vertical arrangement -- thumb on top, name and
+   properties below -- so this column reads as one of the things from the
+   library, enlarged. The rows opposite are the ones laid on their side. */
+.workspace-identity-card {
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.workspace-identity-preview {
+  border-radius: 8px 8px 0 0;
+}
+
+.workspace-identity-body {
+  padding: 12px 14px 14px;
+}
+
+.workspace-identity-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #f3f4f6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-identity-props {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #7a7a85;
+}
+
+.workspace-identity-actions {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+  margin-left: -8px;
+}
+
+/* Same overlap trick the library tiles use: buttons.css's base padding wins on
+   equal specificity, so the 40x40 ask renders wider and the icons drift apart.
+   See the note in Documents.css -- the negative margin is load-bearing. */
+.workspace-identity-actions > .btn + .btn,
+.workspace-entry-actions > .btn + .btn {
+  margin-left: -8px;
+}
+
+.workspace-entries {
+  min-width: 0;
+}
+
+.workspace-entries-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.workspace-entries-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7a7a85;
+}
+
+.workspace-entries-empty {
+  padding: 8px 2px;
+  font-size: 13px;
+  color: #7a7a85;
+}
+
+.workspace-entry-group + .workspace-entry-group {
+  margin-top: 18px;
+}
+
+.workspace-entry-group-label {
+  margin: 0 0 6px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #666;
+}
+
+.workspace-entry-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The row: thumb left, name and properties right of it, controls at the end.
+   `min-width: 0` on the body is what lets the name ellipsise instead of pushing
+   the controls off the end. */
+.workspace-entry-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--ws-row-height);
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.workspace-entry-row.openable {
+  cursor: pointer;
+}
+
+.workspace-entry-row.openable:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.workspace-entry-row.openable:focus-visible {
+  outline: 2px solid #4fc3f7;
+  outline-offset: -2px;
+}
+
+/* The thumb fills the row's height and keeps the tile's 16/10, so the row is
+   literally the tile rotated rather than a different picture. */
+.workspace-entry-preview {
+  flex: none;
+  height: 100%;
+  width: auto;
+  aspect-ratio: 16 / 10;
+  max-width: 40%;
+}
+
+.workspace-entry-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-entry-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workspace-entry-name {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #f3f4f6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-entry-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e0a030;
+}
+
+.workspace-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: #666;
+}
+
+.workspace-entry-usedby {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #7ab8d9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-entry-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+/* The referrer list shared by the delete guard's dialog. Both classes shipped
+   with the tree and neither ever had a rule, so the entries painted as native
+   grey browser buttons inside a dark dialog. */
+.where-used-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.where-used-open {
+  padding: 4px 10px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: transparent;
+  color: #7ab8d9;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.where-used-open:hover {
+  border-color: #4fc3f7;
+  color: #4fc3f7;
+}
+
+/* Narrow: the identity card stops being a column and becomes a banner, so the
+   list keeps the full width it needs. The rows shorten with it -- a 150px row
+   inside a phone-height viewport would show two entries. */
+@media (max-width: 900px) {
+  :root {
+    --ws-row-height: 108px;
+  }
+
+  .documents-layout:has(.workspace-identity) {
+    flex-direction: column;
+  }
+
+  .workspace-identity {
+    flex: none;
+    border-right: none;
+    border-bottom: 1px solid #26262c;
+  }
+
+  .workspace-identity-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .workspace-identity-preview {
+    flex: none;
+    width: 160px;
+    border-radius: 8px;
+  }
+
+  .workspace-identity-body {
+    flex: 1;
+    min-width: 0;
+    padding: 0 12px 0 0;
+  }
+}

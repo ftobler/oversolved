@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
 import Breadcrumb from '@/components/layout/Breadcrumb'
-import { Sidebar } from '@/components/layout/Sidebar'
 import { backendBundle } from '@/adapters/backend'
 import { createWorkspaceSession } from '@/workspace/session'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
@@ -13,11 +12,11 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCarrierChangeStore } from '@/stores/carrierChangeStore'
 import RecoveryDialog from '@/components/dialogs/RecoveryDialog'
 import CarrierChangedDialog from '@/components/dialogs/CarrierChangedDialog'
+import WorkspaceView from '@/pages/WorkspaceView'
 import Part from '@/pages/Part'
 import AssemblyEditor from '@/pages/AssemblyEditor'
 import { interpretEntry, parseDocKind, refusalMessage } from '@/workspace/kinds'
 import { errorMessage } from '@/utils/core/errorMessage'
-import type { EntryMeta } from '@/workspace/types'
 import '@/pages/Documents.css'
 
 // The workspace route. It binds the session on open so the editors and the solve
@@ -27,8 +26,6 @@ import '@/pages/Documents.css'
 // so C2's degenerate workspaces keep opening.
 export default function WorkspacePage() {
   const { workspaceId, entryId } = useParams<{ workspaceId: string; entryId?: string }>()
-  const [entries, setEntries] = useState<EntryMeta[] | null>(null)
-  const [listError, setListError] = useState<string | null>(null)
   const [kind, setKind] = useState<'part' | 'assembly' | null>(null)
   const [kindError, setKindError] = useState<string | null>(null)
   const recoveryStatus = useRecoveryStore(s => s.status)
@@ -86,10 +83,6 @@ export default function WorkspacePage() {
         }
       }
       void loadKind()
-    } else {
-      void session.listEntries()
-        .then(list => { if (!cancelled) setEntries(list) })
-        .catch(e => { if (!cancelled) setListError(errorMessage(e, 'Failed to open workspace')) })
     }
 
     return () => {
@@ -140,25 +133,10 @@ export default function WorkspacePage() {
     return <Part key={entryId} />
   }
 
-  if (listError) return <div className="document-viewer"><p>Error: {listError}</p></div>
-  if (entries === null) return <div className="document-viewer"><p>Loading...</p></div>
-
-  const documents = entries.filter(entry => entry.kind === 'document')
-  if (documents.length === 1) {
-    return <Navigate to={`/workspaces/${workspaceId}/entries/${documents[0].id}`} replace />
-  }
-
   return (
     <div className="document-viewer">
       <AppHeader breadcrumb={<Breadcrumb />} />
-      <div className="doc-container">
-        <Sidebar documentPanel={null} />
-        <div className="doc-main-prompt">
-          {entries.length === 0
-            ? <p className="status">This workspace is empty.</p>
-            : <p className="status">Select an entry from the workspace tree.</p>}
-        </div>
-      </div>
+      <WorkspaceView />
     </div>
   )
 }
