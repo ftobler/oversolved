@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
-import Breadcrumb from '@/components/layout/Breadcrumb'
 import Dialog from '@/components/dialogs/Dialog'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
@@ -275,7 +274,9 @@ export default function Workspaces() {
 
   return (
     <div className="documents">
-      <AppHeader breadcrumb={<Breadcrumb />}>
+      {/* No trail here: this page IS the library, and the crumb above a
+          workspace was the one word that never changed. */}
+      <AppHeader>
         <div className="doc-controls">
           <div className="search-input-container">
             <span className="material-icons search-icon">search</span>

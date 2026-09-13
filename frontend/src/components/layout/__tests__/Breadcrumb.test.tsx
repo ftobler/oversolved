@@ -29,27 +29,27 @@ describe('Breadcrumb', () => {
     useUnsavedChangesStore.getState().setDirty(false)
   })
 
-  // J2: one segment per route level, and the ancestors are the way back up.
-  it('renders one crumb on the library route, with no link out', () => {
-    renderAt('/workspaces', <Breadcrumb />)
-    expect(screen.getByText('Workspaces')).toBeTruthy()
-    expect(screen.queryByRole('link')).toBeNull()
+  // J2: one segment per route level, and the ancestor is the way back up. The
+  // library gets no crumb of its own -- a constant word on every route says
+  // nothing about where you are, and the burger already goes there.
+  it('renders no trail at all on the library route', () => {
+    const { container } = renderAt('/workspaces', <Breadcrumb />)
+    expect(container.querySelector('.breadcrumb')).toBeNull()
+    expect(screen.queryByText('Workspaces')).toBeNull()
   })
 
   it('renders the workspace crumb as plain text on the workspace route', async () => {
     renderAt('/workspaces/ws', <Breadcrumb />)
     await waitFor(() => expect(screen.getByText('test')).toBeTruthy())
-    // Workspaces links out; the workspace itself is where you already are.
-    const links = screen.getAllByRole('link')
-    expect(links).toHaveLength(1)
-    expect(links[0].getAttribute('href')).toBe('/workspaces')
+    // The workspace is where you already are, so nothing in the trail links.
+    expect(screen.queryByRole('link')).toBeNull()
   })
 
-  it('links both ancestors from an open document', async () => {
+  it('links the workspace from an open document', async () => {
     renderAt('/workspaces/ws/entries/e1', <Breadcrumb docName="bracket" onRename={async () => true} />)
     await waitFor(() => expect(screen.getByText('test')).toBeTruthy())
     const hrefs = screen.getAllByRole('link').map(link => link.getAttribute('href'))
-    expect(hrefs).toEqual(['/workspaces', '/workspaces/ws'])
+    expect(hrefs).toEqual(['/workspaces/ws'])
     expect(screen.getByText('bracket')).toBeTruthy()
   })
 

@@ -17,12 +17,16 @@ interface BreadcrumbProps {
   onRename?: (name: string) => Promise<boolean>
 }
 
-// The one title surface: `Workspaces / <workspace> / <document>`, one segment
-// per route level. It derives its own ancestors from the route rather than
-// taking them as props, so the editors hand it nothing but their document name
-// and the pages above hand it nothing at all.
+// The one title surface: `<workspace> / <document>`, one segment per route
+// level below the library. It derives its own ancestor from the route rather
+// than taking it as a prop, so the editors hand it nothing but their document
+// name and the pages above hand it nothing at all.
 //
-// Every ancestor link leaves through the unsaved-changes guard, exactly as the
+// There is no crumb for the library itself: it would be the same word on every
+// route, saying nothing about where you are, and the burger already goes there.
+// So the trail starts at the workspace and disappears entirely above it.
+//
+// The workspace link leaves through the unsaved-changes guard, exactly as the
 // burger and the Help link do -- the trail is the only way out of an editor now
 // that the workspace tree no longer rides in its sidebar.
 export default function Breadcrumb({ docName, fallbackName, onRename }: BreadcrumbProps) {
@@ -62,32 +66,25 @@ export default function Breadcrumb({ docName, fallbackName, onRename }: Breadcru
   // is what fallbackName is for. The pages above pass nothing and get no crumb.
   const hasDoc = docName !== undefined
 
+  // Above a workspace there is nothing left to name, so the header gets no
+  // trail at all rather than an empty nav landmark.
+  if (!workspaceId) return null
+
   return (
     <nav className="breadcrumb" aria-label="Breadcrumb">
-      {workspaceId ? (
-        <Link to="/workspaces" className="breadcrumb-crumb" onClick={guardLink}>Workspaces</Link>
+      {hasDoc ? (
+        <Link
+          to={`/workspaces/${workspaceId}`}
+          className="breadcrumb-crumb"
+          onClick={guardLink}
+          title={workspaceName ?? workspaceId}
+        >
+          {workspaceName ?? workspaceId}
+        </Link>
       ) : (
-        <span className="breadcrumb-current" aria-current="page">Workspaces</span>
-      )}
-
-      {workspaceId && (
-        <>
-          <span className="breadcrumb-sep" aria-hidden="true">/</span>
-          {hasDoc ? (
-            <Link
-              to={`/workspaces/${workspaceId}`}
-              className="breadcrumb-crumb"
-              onClick={guardLink}
-              title={workspaceName ?? workspaceId}
-            >
-              {workspaceName ?? workspaceId}
-            </Link>
-          ) : (
-            <span className="breadcrumb-current" aria-current="page" title={workspaceName ?? workspaceId}>
-              {workspaceName ?? workspaceId}
-            </span>
-          )}
-        </>
+        <span className="breadcrumb-current" aria-current="page" title={workspaceName ?? workspaceId}>
+          {workspaceName ?? workspaceId}
+        </span>
       )}
 
       {hasDoc && (
