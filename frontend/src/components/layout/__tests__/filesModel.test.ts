@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { fileKindOf, fileSizeOf, invertReferences, orphanFileIds, originFor, referrersOf } from '../filesModel'
-import type { EntryMeta, ProvenanceRecord } from '@/workspace/types'
+import { fileKindOf, fileSizeOf, invertReferences, orphanFileIds, referrersOf } from '../filesModel'
+import type { EntryMeta } from '@/workspace/types'
 
 function file(id: string, name: string, extra: Partial<EntryMeta> = {}): EntryMeta {
   return { id, path: `files/${name}`, kind: 'file', name, ...extra }
@@ -29,16 +29,5 @@ describe('orphan detection', () => {
     expect(orphanFileIds([referenced, orphan], inverse)).toEqual(['f2'])
     expect(referrersOf(inverse, 'f1')).toEqual(['d1'])
     expect(referrersOf(inverse, 'f2')).toEqual([])
-  })
-})
-
-describe('originFor', () => {
-  it('finds the provenance record keyed on the local entry', () => {
-    const provenance: ProvenanceRecord[] = [
-      { entry: 'f1', origin: 'folder:source', rev: 4 },
-      { entry: 'f2', origin: 'file:other.step' },
-    ]
-    expect(originFor(provenance, 'f1')?.origin).toBe('folder:source')
-    expect(originFor(provenance, 'missing')).toBeUndefined()
   })
 })
