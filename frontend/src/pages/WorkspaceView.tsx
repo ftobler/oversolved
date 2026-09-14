@@ -81,8 +81,11 @@ export default function WorkspaceView() {
   const [referenced, setReferenced] = useState<{ entry: EntryMeta; referrers: EntryReferrer[] } | null>(null)
   // The row whose delete is in flight. The store round-trip can be slow enough
   // that a second click lands, and a double delete is not idempotent at this
-  // layer, so the row's own button goes disabled until it settles.
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  // layer, so the row's own button goes disabled until it settles. A Set rather
+  // than one id, so a delete on one row cannot re-enable another's.
+  const [deleting, setDeleting] = useState<ReadonlySet<string>>(new Set())
+  // The workspace-level verbs that can run long: duplicate, export and trash.
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
 
   // The session is installed by the page above, whose effect runs AFTER this
   // one; and a same-route navigation (duplicate) swaps workspaceId while the
@@ -180,7 +183,7 @@ export default function WorkspaceView() {
 
   const handleDelete = async (entry: EntryMeta) => {
     if (!workspaceId) return
-    setDeletingId(entry.id)
+    setDeleting(prev => new Set(prev).add(entry.id))
     try {
       await store.removeEntry(workspaceId, entry.id)
     } catch (e) {
@@ -189,7 +192,18 @@ export default function WorkspaceView() {
       if (e instanceof EntryReferencedError) setReferenced({ entry, referrers: e.referrers })
       else setError(errorMessage(e, 'Failed to delete the entry'))
     } finally {
-      setDeletingId(null)
+      setDeleting(prev => { const next = new Set(prev); next.delete(entry.id); return next })
+    }
+  }
+
+  // A long workspace-level verb keeps its own key busy, so the card's control
+  // goes disabled and no second duplicate or export can start.
+  const runBusy = async (key: string, what: string, action: () => Promise<void>) => {
+    setBusy(prev => new Set(prev).add(key))
+    try {
+      await run(what, action)
+    } finally {
+      setBusy(prev => { const next = new Set(prev); next.delete(key); return next })
     }
   }
 
@@ -199,20 +213,20 @@ export default function WorkspaceView() {
     setWsRenameOpen(false)
   }, 'dialog')
 
-  const handleDuplicateWorkspace = () => run('Failed to duplicate the workspace', async () => {
+  const handleDuplicateWorkspace = () => runBusy('duplicate', 'Failed to duplicate the workspace', async () => {
     if (!workspaceId) return
     const { workspace } = await store.duplicate(workspaceId)
     navigate(`/workspaces/${workspace}`)
   })
 
-  const handleExport = () => run('Failed to export the workspace', async () => {
+  const handleExport = () => runBusy('export', 'Failed to export the workspace', async () => {
     if (!workspaceId) return
     const tree = deserializeTree(await store.export(workspaceId))
     const bytes = await buildZipBytes(tree)
     downloadBlob(new Blob([bytes as BlobPart], { type: 'application/zip' }), `${summary?.name ?? 'workspace'}.zip`)
   })
 
-  const handleTrash = () => run('Failed to move the workspace to trash', async () => {
+  const handleTrash = () => runBusy('trash', 'Failed to move the workspace to trash', async () => {
     if (!workspaceId) return
     await store.trash(workspaceId)
     navigate('/workspaces')
@@ -256,25 +270,28 @@ export default function WorkspaceView() {
                 className="btn btn-tile-action"
                 title="Duplicate workspace"
                 aria-label="Duplicate workspace"
+                disabled={busy.has('duplicate')}
                 onClick={() => { void handleDuplicateWorkspace() }}
               >
-                <span className="material-icons">content_copy</span>
+                <span className="material-icons">{busy.has('duplicate') ? 'hourglass_empty' : 'content_copy'}</span>
               </button>
               <button
                 className="btn btn-tile-action"
                 title="Export workspace"
                 aria-label="Export workspace"
+                disabled={busy.has('export')}
                 onClick={() => { void handleExport() }}
               >
-                <span className="material-icons">archive</span>
+                <span className="material-icons">{busy.has('export') ? 'hourglass_empty' : 'archive'}</span>
               </button>
               <button
                 className="btn btn-delete-tile"
                 title="Move workspace to trash"
                 aria-label="Move workspace to trash"
+                disabled={busy.has('trash')}
                 onClick={() => setTrashOpen(true)}
               >
-                <span className="material-icons">delete</span>
+                <span className="material-icons">{busy.has('trash') ? 'hourglass_empty' : 'delete'}</span>
               </button>
             </div>
           </div>
@@ -296,7 +313,9 @@ export default function WorkspaceView() {
           </button>
         </div>
 
-        {!ready && <LoadingState label="Loading workspace..." />}
+        {/* A failed load must not keep the spinner up: the banner below says
+            what went wrong, and an endless wait next to it would lie. */}
+        {!ready && !error && <LoadingState label="Loading workspace..." />}
 
         {ready && entries.length === 0 && <p className="workspace-entries-empty">This workspace is empty.</p>}
 
@@ -310,7 +329,7 @@ export default function WorkspaceView() {
                   entry={entry}
                   workspace={workspaceId ?? ''}
                   dirty={dirty.has(entry.id)}
-                  deleting={deletingId === entry.id}
+                  deleting={deleting.has(entry.id)}
                   usedBy={referrerNames.get(entry.id)}
                   onOpen={openEntry}
                   onRename={target => { setRenameTarget(target); setRenameName(target.name) }}

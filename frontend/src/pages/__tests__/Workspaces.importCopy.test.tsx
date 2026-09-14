@@ -118,4 +118,21 @@ describe('Workspaces import copy wording (U5)', () => {
 
     expect(await screen.findByText(/Copied 1 entries into this workspace/)).toBeInTheDocument()
   })
+
+  // The bare-file gesture is the one path that goes through the file picker, so
+  // the menu item must be wired to the hidden input, not just the folder and
+  // archive items.
+  it('points the menu Import file item at the hidden input', async () => {
+    wrap()
+    await waitFor(() => expect(screen.getByText('No workspaces yet.')).toBeInTheDocument())
+
+    const input = document.querySelector<HTMLInputElement>('.doc-controls input.file-upload-input')!
+    const click = vi.spyOn(input, 'click').mockImplementation(() => {})
+
+    await userEvent.click(await screen.findByTitle('Import'))
+    await userEvent.click(screen.getByText('Import file'))
+
+    expect(click).toHaveBeenCalledTimes(1)
+    click.mockRestore()
+  })
 })

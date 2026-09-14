@@ -147,8 +147,10 @@ export default function Workspaces() {
 
   const handleTrash = async (workspace: string) => {
     try {
-      await store.trash(workspace)
-      await refresh(trashView, debouncedSearch)
+      await withBusy(`trash:${workspace}`, async () => {
+        await store.trash(workspace)
+        await refresh(trashView, debouncedSearch)
+      })
     } catch (e) {
       setError(errorMessage(e, 'Failed to move to trash'))
     }
@@ -156,8 +158,10 @@ export default function Workspaces() {
 
   const handleRecover = async (workspace: string) => {
     try {
-      await store.recover(workspace)
-      await refresh(trashView, debouncedSearch)
+      await withBusy(`recover:${workspace}`, async () => {
+        await store.recover(workspace)
+        await refresh(trashView, debouncedSearch)
+      })
     } catch (e) {
       setError(errorMessage(e, 'Failed to recover workspace'))
     }
@@ -362,11 +366,12 @@ export default function Workspaces() {
           <button
             ref={importButtonRef}
             className="toolbar-btn btn-import"
-            onClick={openImportMenu}
+            onClick={() => { if (importMenu) setImportMenu(null); else openImportMenu() }}
             disabled={isBusy('import')}
             title="Import"
             aria-label="Import"
             aria-haspopup="menu"
+            aria-expanded={importMenu !== null}
           >
             <span className="material-icons">{isBusy('import') ? 'hourglass_empty' : 'upload'}</span>
           </button>
@@ -454,7 +459,7 @@ export default function Workspaces() {
 
           {loading && <LoadingState label="Loading workspaces..." />}
           {error && <ErrorBanner message={`Error: ${error}`} onDismiss={() => setError(null)} />}
-          {!loading && visible.length === 0 && (
+          {!loading && !error && visible.length === 0 && (
             <p className="status">
               {trashView ? 'Trash is empty.' : debouncedSearch ? `No workspaces match "${debouncedSearch}"` : 'No workspaces yet.'}
             </p>
@@ -481,8 +486,13 @@ export default function Workspaces() {
                           Deleted: {formatRelativeDate(summary.trashedAt ?? '')}
                         </span>
                         <div className="doc-tile-actions">
-                          <button className="btn btn-tile-action" onClick={() => handleRecover(summary.workspace)} title="Recover workspace">
-                            <span className="material-icons">restore</span>
+                          <button
+                            className="btn btn-tile-action"
+                            disabled={isBusy(`recover:${summary.workspace}`)}
+                            onClick={() => handleRecover(summary.workspace)}
+                            title="Recover workspace"
+                          >
+                            <span className="material-icons">{isBusy(`recover:${summary.workspace}`) ? 'hourglass_empty' : 'restore'}</span>
                           </button>
                           <button className="btn btn-delete-tile" onClick={() => setPurgeTarget(summary)} title="Permanently delete">
                             <span className="material-icons">delete_forever</span>
@@ -549,10 +559,11 @@ export default function Workspaces() {
                           </button>
                           <button
                             className="btn btn-delete-tile"
+                            disabled={isBusy(`trash:${summary.workspace}`)}
                             onClick={e => { e.preventDefault(); void handleTrash(summary.workspace) }}
                             title="Move to trash"
                           >
-                            <span className="material-icons">delete</span>
+                            <span className="material-icons">{isBusy(`trash:${summary.workspace}`) ? 'hourglass_empty' : 'delete'}</span>
                           </button>
                         </div>
                       </div>

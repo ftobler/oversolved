@@ -247,6 +247,16 @@ describe('WorkspaceView', () => {
     expect(screen.queryByText('This workspace is empty.')).toBeNull()
   })
 
+  // A failed load is not a wait: the error shows and the spinner must go, or the
+  // two would sit together and the wait would read as endless.
+  it('drops the loading state when the workspace load fails', async () => {
+    const session = installSession()
+    session.listEntries.mockRejectedValueOnce(new Error('index corrupt'))
+    renderView()
+    await screen.findByText(/index corrupt/)
+    expect(screen.queryByText('Loading workspace...')).toBeNull()
+  })
+
   // A delete is a slow round-trip, so a second click must not start a second
   // one: the row's own button goes disabled and shows the hourglass.
   it('disables a row delete while it is in flight and re-enables it after', async () => {
