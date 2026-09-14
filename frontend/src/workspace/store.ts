@@ -17,7 +17,7 @@ import {
   purgeWorkspaceRows,
   readWorkspaceMeta,
   replaceWorkspaceRows,
-  workspaceEntryRecords,
+  workspaceEntryMetas,
   writeWorkspaceMeta,
   type CarrierBinding,
   type WorkspaceEntryMetaRecord,
@@ -406,21 +406,19 @@ export class IdbWorkspaceStore implements WorkspaceStore {
 
   async rename(workspace: string, name: string): Promise<void> {
     const meta = await this.requireMeta(workspace)
-    const records = await workspaceEntryRecords(workspace)
-    const now = Date.now()
+    const carrier = this.carrier(workspace)
+    const metas = await workspaceEntryMetas(workspace)
     // Degenerate case: the sole document shares the workspace's display name, so
-    // rename it in step or the editor would keep the old name after open.
-    const renamed = records.map(record => {
-      if (records.length !== 1 || record.kind !== 'document') return record
-      return {
-        ...record,
-        name,
-        path: pathFor('document', name, () => false),
-        rev: record.rev + 1,
-        updatedAt: now,
-      }
-    })
-    await replaceWorkspaceRows(workspace, { ...meta, name, updatedAt: now }, renamed)
+    // rename it in step or the editor would keep the old name after open. Only
+    // that one record is touched. The old body ran the whole-tree writer, which
+    // cloned every entry payload of the workspace to rename one string. The path
+    // is left as it is: it is display, and I3 addresses by id, so a rename must
+    // not move an entry.
+    if (metas.length === 1 && metas[0].kind === 'document') {
+      const current = await carrier.read(metas[0].id)
+      await carrier.write({ ...current, name })
+    }
+    await writeWorkspaceMeta({ ...meta, name, updatedAt: Date.now() })
     bumpWorkspaceStoreRevision()
   }
 

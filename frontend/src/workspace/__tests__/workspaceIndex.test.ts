@@ -6,6 +6,7 @@ import {
   idbTransaction,
 } from '@/stores/documentStore/idb'
 import { IdbCarrier, readWorkspaceMeta, workspaceEntryRecords, writeWorkspaceMeta } from '../idbCarrier'
+import { IdbWorkspaceStore } from '../store'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb, seedWorkspace } from './idbHarness'
 
@@ -116,5 +117,29 @@ describe('per-workspace IndexedDB indexes', () => {
       stores[STORE_WORKSPACE_SAVED].clear()
     })
     expect(await carrier.maxSavedRev()).toBe(1)
+  })
+
+  // A workspace rename used to run the whole-tree writer, cloning every entry
+  // payload to rename one string. With more than one entry it must write the
+  // meta alone and leave the working copy untouched.
+  it('renames a multi-entry workspace without reading its entry payloads', async () => {
+    const tree = treeWith([
+      documentEntry('a', 'A', { text: 'kind: part\n' }),
+      fileEntry('b', 'b.step', bytesOf([9, 9, 9])),
+    ], 'ws-rename')
+    await seedWorkspace(tree)
+    await new IdbCarrier('ws-rename').save(tree)
+
+    const { reads, restore } = instrumentReads()
+    try {
+      await new IdbWorkspaceStore().rename('ws-rename', 'Renamed')
+    } finally {
+      restore()
+    }
+
+    expect(reads).not.toContain(STORE_WORKSPACE_ENTRIES)
+    expect((await readWorkspaceMeta('ws-rename'))?.name).toBe('Renamed')
+    const records = await workspaceEntryRecords('ws-rename')
+    expect(records.map(record => record.name).sort()).toEqual(['A', 'b.step'])
   })
 })

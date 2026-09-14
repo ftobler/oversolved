@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { WorkspaceSession } from '@/workspace/session'
-import type { EntryMeta, ProvenanceRecord } from '@/workspace/types'
+import type { EntryMeta } from '@/workspace/types'
 import { invertReferences } from './filesModel'
 
-// The two C5/C6 seams, kept out of FilesPanel so the component file only exports
-// a component (fast refresh) and the seam has one obvious home. C5 replaces
-// useWhereUsed's body with its where-used index; C6 reads useOrigin's stored
-// record (originEntry/rev/hash/copiedAt). Status is deliberately not here: it
-// needs the resolver, and resolving on a file row's render would read an origin
-// outside the explicit gesture (I2). U6's Origins panel owns status.
+// The where-used seam, kept out of its consumer so the component file only
+// exports a component (fast refresh) and the seam has one obvious home. C5
+// replaced the old per-entry scan with the manifest's one edge-map read. The
+// origin seam that used to live here was only reached by the origins panel,
+// which is no longer mounted; the update path returns to a row in R5.
 
 const EMPTY_INVERSE = new Map<string, string[]>()
 
@@ -52,17 +51,4 @@ export function useWhereUsed(session: WorkspaceSession | null, entries: EntryMet
   // matching it keeps a stale inverse from being read as the current one.
   const ready = session !== null && scan !== null && scan.session === session && scan.entries === entries
   return ready && scan ? { inverse: scan.inverse, ready } : NOT_READY
-}
-
-export function useOrigin(session: WorkspaceSession | null, entryId: string): ProvenanceRecord | undefined {
-  const [origin, setOrigin] = useState<ProvenanceRecord | undefined>(undefined)
-  useEffect(() => {
-    if (!session) return
-    let cancelled = false
-    session.originOf(entryId)
-      .then(record => { if (!cancelled) setOrigin(record) })
-      .catch(() => { if (!cancelled) setOrigin(undefined) })
-    return () => { cancelled = true }
-  }, [session, entryId])
-  return session ? origin : undefined
 }
