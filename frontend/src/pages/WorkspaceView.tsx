@@ -47,6 +47,7 @@ const EMPTY_ENTRIES: EntryMeta[] = []
 const EMPTY_REVS = new Map<string, number>()
 const EMPTY_PROVENANCE: ProvenanceRecord[] = []
 const EMPTY_STATUSES = new Map<string, OriginStatus>()
+const EMPTY_KEYS: ReadonlySet<string> = new Set()
 
 export default function WorkspaceView() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
@@ -107,9 +108,16 @@ export default function WorkspaceView() {
   // layer, so the row's own button goes disabled until it settles. A Set rather
   // than one id, so a delete on one row cannot re-enable another's.
   const [deleting, setDeleting] = useState<ReadonlySet<string>>(new Set())
-  // The workspace-level verbs that can run long: rename, duplicate, export and
-  // trash.
-  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
+  // The verbs in flight, tagged with the workspace they were started on like
+  // the errors and the check statuses are. The per-entry keys carry a uuid and
+  // could never collide, but the workspace-wide ones (check, prune, rename,
+  // duplicate, export, trash, add) are bare: a duplicate navigates to the new
+  // workspace without unmounting this view, so an untagged set left the NEW
+  // workspace's controls disabled until the OLD workspace's verb settled.
+  const [inFlight, setInFlight] = useState<{ workspace: string | undefined; keys: ReadonlySet<string> }>(
+    { workspace: workspaceId, keys: EMPTY_KEYS },
+  )
+  const busy = inFlight.workspace === workspaceId ? inFlight.keys : EMPTY_KEYS
   // The load A failed state, kept apart from the dismissible error banner: the
   // spinner must not come back when the banner is dismissed, and a retry has to
   // be reachable. `attempt` is what re-runs the effect.
@@ -224,11 +232,23 @@ export default function WorkspaceView() {
   // A long verb keeps its own key busy, so its control goes disabled and no
   // second duplicate, add or rename can start while one is in flight.
   const runBusy = async (key: string, what: string, action: () => Promise<void>, into: 'banner' | 'dialog' = 'banner') => {
-    setBusy(prev => new Set(prev).add(key))
+    // The workspace the verb was started on, not the one that is current when
+    // it settles: releasing the key under a workspace the verb never ran on
+    // would write the old set onto the new workspace's tag.
+    const startedOn = workspaceId
+    setInFlight(prev => ({
+      workspace: startedOn,
+      keys: new Set(prev.workspace === startedOn ? prev.keys : []).add(key),
+    }))
     try {
       await run(what, action, into)
     } finally {
-      setBusy(prev => { const next = new Set(prev); next.delete(key); return next })
+      setInFlight(prev => {
+        if (prev.workspace !== startedOn) return prev
+        const keys = new Set(prev.keys)
+        keys.delete(key)
+        return { workspace: startedOn, keys }
+      })
     }
   }
 

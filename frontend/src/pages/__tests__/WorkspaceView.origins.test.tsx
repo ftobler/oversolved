@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import type { EntryMeta, ProvenanceRecord, WorkspaceEntry } from '@/workspace/types'
 import type { WorkspaceSession } from '@/workspace/session'
 import type { OriginState, UpdateResult } from '@/workspace/import'
@@ -87,11 +87,21 @@ function installSession({ all = entries, records = [] }: SessionOpts = {}) {
   return session
 }
 
-function renderView() {
+// The workspace swap that happens WITHOUT a remount, the way duplicate does it:
+// same route pattern, new id, this view still mounted.
+function GoToOther() {
+  const navigate = useNavigate()
+  return <button onClick={() => navigate('/workspaces/ws2')}>GOTO</button>
+}
+
+function renderView({ swap = false }: { swap?: boolean } = {}) {
   return render(
     <MemoryRouter initialEntries={['/workspaces/ws']}>
       <Routes>
-        <Route path="/workspaces/:workspaceId" element={<WorkspaceView />} />
+        <Route
+          path="/workspaces/:workspaceId"
+          element={<>{swap && <GoToOther />}<WorkspaceView /></>}
+        />
         <Route path="/workspaces/:workspaceId/entries/:entryId" element={<div>EDITOR</div>} />
       </Routes>
     </MemoryRouter>,
@@ -292,6 +302,39 @@ describe('WorkspaceView origins', () => {
 
     fireEvent.click(screen.getByLabelText('Update Gearbox'))
     await screen.findByText(/The source entry is gone; Gearbox was not updated\./)
+  })
+
+  // A workspace-wide key is bare, and a duplicate swaps the workspace under a
+  // mounted view: the next workspace must not inherit this one's in-flight
+  // controls.
+  it('does not carry a running check over to the next workspace', async () => {
+    installSession({ records: provenance })
+    originMock.originState.mockReturnValue(new Promise(() => {}))
+    renderView({ swap: true })
+    await screen.findByText('Bracket')
+
+    fireEvent.click(screen.getByLabelText('Check for updates'))
+    expect(screen.getByLabelText('Check for updates')).toBeDisabled()
+
+    const other = {
+      workspace: 'ws2',
+      listEntries: vi.fn(async () => entries),
+      savedRevs: vi.fn(async () => new Map<string, number>()),
+      readEntry: vi.fn(), writeEntry: vi.fn(),
+      originOf: vi.fn(async () => undefined),
+      provenance: vi.fn(async () => provenance),
+      resolveFile: vi.fn(), referencesOf: vi.fn(async () => []),
+      referenceEdges: vi.fn(async () => ({})),
+    }
+    useWorkspaceSessionStore.setState({ session: other as unknown as WorkspaceSession })
+    storeMock.list.mockResolvedValue([{
+      workspace: 'ws2', name: 'other', entryCount: 3, size: 1024, rev: 1,
+      createdAt: 0, updatedAt: 0, coverEntry: 'p1',
+    }])
+    fireEvent.click(screen.getByText('GOTO'))
+
+    await screen.findByText('other')
+    expect(screen.getByLabelText('Check for updates')).toBeEnabled()
   })
 
   it('disables a pull while it is in flight', async () => {
