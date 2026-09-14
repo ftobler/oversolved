@@ -72,6 +72,11 @@ interface CarrierChangeState {
   // A resolution that failed, shown in the dialog so the user can retry or Save
   // As rather than lose the working copy to a carrier write that did not land.
   error?: string
+  // A resolution in flight. The three outcomes are mutually exclusive and none
+  // is recallable once the store has it, so a second click during the first
+  // write would resolve the same prompt twice against a carrier that has
+  // already moved. The dialog seals itself on this.
+  resolving: boolean
   // Open the workspace, inspect the carrier-change evidence, and arm the focus
   // watch. Returns true when the change prompt is up, so the page holds U7 back
   // until the carrier decision is made. `unavailable` is neutral: the working
@@ -93,8 +98,11 @@ export const useCarrierChangeStore = create<CarrierChangeState>((set, get) => {
   // the page relies on: carrier first, then U7.
   const resolve = async (run: (workspace: string) => Promise<void>): Promise<void> => {
     const workspace = get().workspace
-    if (!workspace) return
-    set({ error: undefined })
+    // The guard is here rather than on the three verbs because this is the one
+    // funnel they share, and a stale click can still land after the dialog has
+    // disabled its buttons.
+    if (!workspace || get().resolving) return
+    set({ error: undefined, resolving: true })
     try {
       await run(workspace)
     } catch (e) {
@@ -102,16 +110,18 @@ export const useCarrierChangeStore = create<CarrierChangeState>((set, get) => {
         status: 'changed',
         workspace,
         error: errorMessage(e, 'Failed to update the workspace carrier'),
+        resolving: false,
       })
       return
     }
-    set({ status: 'idle', workspace })
+    set({ status: 'idle', workspace, resolving: false })
     void useRecoveryStore.getState().begin(workspace)
   }
 
   return {
     status: 'idle',
     workspace: null,
+    resolving: false,
     begin: async (workspace) => {
       const token = ++beginToken
       let opened: OpenWorkspace
@@ -185,7 +195,7 @@ export const useCarrierChangeStore = create<CarrierChangeState>((set, get) => {
     reset: () => {
       beginToken++
       detachWatch()
-      set({ status: 'idle', workspace: null, carrier: undefined, label: undefined, reconcile: undefined, error: undefined })
+      set({ status: 'idle', workspace: null, carrier: undefined, label: undefined, reconcile: undefined, error: undefined, resolving: false })
     },
   }
 })

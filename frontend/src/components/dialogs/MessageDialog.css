@@ -36,8 +36,9 @@
   margin-bottom: 0;
 }
 
-/* A failed resolution sits inside the carrier-change prompt; the tint is the
-   same red the error variant uses, so a failed write reads as one. */
-.message-dialog-message .carrier-change-error {
+/* A failed resolution sits inside a prompt that is still asking its question,
+   so the box keeps its own variant; only the failure line takes the red the
+   error variant uses, so a failed write reads as one wherever it appears. */
+.message-dialog-message .message-dialog-failure {
   color: #ef5350;
 }

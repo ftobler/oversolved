@@ -150,6 +150,46 @@ describe('carrierChangeStore', () => {
     expect((await store.open(workspace)).ahead).toBe(false)
   })
 
+  // The three outcomes are mutually exclusive, so a double click used to start
+  // two of them against a carrier the first one had already moved.
+  it('refuses a second resolution while the first is in flight', async () => {
+    const { store, dir, workspace } = await boundWorkspace()
+    foreignChange(dir, workspace)
+    await useCarrierChangeStore.getState().begin(workspace)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const reload = vi.spyOn(store, 'reloadFromCarrier').mockImplementation(() => gate)
+    const saveOver = vi.spyOn(store, 'saveOverCarrier')
+
+    const first = useCarrierChangeStore.getState().reload()
+    expect(useCarrierChangeStore.getState().resolving).toBe(true)
+    // Stale clicks, landing after the dialog disabled its buttons.
+    const second = useCarrierChangeStore.getState().reload()
+    const third = useCarrierChangeStore.getState().saveOver()
+    release()
+    await Promise.all([first, second, third])
+
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(saveOver).not.toHaveBeenCalled()
+    expect(useCarrierChangeStore.getState().resolving).toBe(false)
+    reload.mockRestore()
+    saveOver.mockRestore()
+  })
+
+  it('unseals the prompt with a reason when a resolution fails', async () => {
+    const { store, dir, workspace } = await boundWorkspace()
+    foreignChange(dir, workspace)
+    await useCarrierChangeStore.getState().begin(workspace)
+    const spy = vi.spyOn(store, 'saveOverCarrier').mockRejectedValueOnce(new Error('handle revoked'))
+
+    await useCarrierChangeStore.getState().saveOver()
+
+    expect(useCarrierChangeStore.getState().status).toBe('changed')
+    expect(useCarrierChangeStore.getState().error).toContain('handle revoked')
+    expect(useCarrierChangeStore.getState().resolving).toBe(false)
+    spy.mockRestore()
+  })
+
   it('treats an ungranted carrier as neutral, never a crash', async () => {
     const store = getWorkspaceStore()
     const dir = fakeDirectory('cad')
