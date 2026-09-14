@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { resetWorkspaceIdb } from '@/workspace/__tests__/idbHarness'
-import { IdbWorkspaceStore } from '@/workspace/store'
+import { IdbWorkspaceStore, getWorkspaceStore } from '@/workspace/store'
 import { useRecoveryStore } from '@/stores/recoveryStore'
 
 // The real editors mount workers and a canvas; the recovery decision is the
@@ -105,5 +105,29 @@ describe('WorkspacePage recovery prompt', () => {
     await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
     expect((await store.readEntry(workspace, workspace)).text).toBe(text('saved'))
     expect((await store.open(workspace)).ahead).toBe(false)
+  })
+
+  // A failed Keep used to hang the prompt: no message, no exit, editor never
+  // reached. Close cannot mean Keep once Keep is what failed, so it defers.
+  it('shows a failed Keep, then lets the user leave without writing', async () => {
+    const store = new IdbWorkspaceStore()
+    const workspace = await dirtyWorkspace(store)
+    const spy = vi.spyOn(getWorkspaceStore(), 'checkpoint').mockRejectedValue(new Error('quota exceeded'))
+    wrap(workspace)
+    await waitFor(() => expect(screen.getByText('Recover unsaved edits?')).toBeInTheDocument())
+
+    await act(async () => { fireEvent.click(screen.getByText('Keep edits')) })
+
+    await waitFor(() => expect(screen.getByText(/quota exceeded/)).toBeInTheDocument())
+    expect(screen.queryByText('PART EDITOR')).not.toBeInTheDocument()
+    expect(screen.getByText('Keep edits')).toBeEnabled()
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /close/i })) })
+
+    await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
+    // The dismissal wrote nothing, so the edits survive and are still ahead.
+    expect((await store.readEntry(workspace, workspace)).text).toBe(text('dirty'))
+    expect((await store.open(workspace)).ahead).toBe(true)
+    spy.mockRestore()
   })
 })

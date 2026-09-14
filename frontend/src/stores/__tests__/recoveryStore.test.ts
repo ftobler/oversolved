@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useRecoveryStore } from '../recoveryStore'
 import { useUnsavedChangesStore } from '../unsavedChangesStore'
-import { IdbWorkspaceStore } from '@/workspace/store'
+import { IdbWorkspaceStore, getWorkspaceStore, type WorkspaceStore } from '@/workspace/store'
 import { resetWorkspaceIdb } from '@/workspace/__tests__/idbHarness'
 
 const text = (v: string) => `kind: part\n# ${v}\n`
 
-async function makeDirtyWorkspace(store: IdbWorkspaceStore, version: string) {
+async function makeDirtyWorkspace(store: WorkspaceStore, version: string) {
   const { workspace } = await store.create('Doc', { docKind: 'part' })
   await store.writeEntry(workspace, { id: workspace, kind: 'document', name: 'Doc', docKind: 'part', text: text(version) })
   return workspace
@@ -67,5 +67,66 @@ describe('recoveryStore', () => {
     expect((await store.open(workspace)).ahead).toBe(false)
     expect(useRecoveryStore.getState().status).toBe('resolved')
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  // A store write that rejects used to leave `status` on 'asking' with nothing
+  // rendered and no way out: the prompt hung forever.
+  it('keeps the prompt up with a reason when a resolution fails', async () => {
+    const store = getWorkspaceStore()
+    const workspace = await makeDirtyWorkspace(store, 'dirty')
+    await useRecoveryStore.getState().begin(workspace)
+    useUnsavedChangesStore.getState().setDirty(true)
+    const spy = vi.spyOn(store, 'checkpoint').mockRejectedValueOnce(new Error('quota exceeded'))
+
+    await useRecoveryStore.getState().keep()
+
+    expect(useRecoveryStore.getState().status).toBe('asking')
+    expect(useRecoveryStore.getState().error).toContain('quota exceeded')
+    expect(useRecoveryStore.getState().resolving).toBe(false)
+    // Nothing was written, so the edits are still unsaved and still ahead.
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+    expect((await store.open(workspace)).ahead).toBe(true)
+    spy.mockRestore()
+
+    // The same choice retried now lands.
+    await useRecoveryStore.getState().keep()
+    expect(useRecoveryStore.getState().status).toBe('resolved')
+    expect(useRecoveryStore.getState().error).toBeUndefined()
+  })
+
+  it('refuses a second resolution while the first is in flight', async () => {
+    const store = getWorkspaceStore()
+    const workspace = await makeDirtyWorkspace(store, 'dirty')
+    await useRecoveryStore.getState().begin(workspace)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const checkpoint = vi.spyOn(store, 'checkpoint').mockImplementation(() => gate)
+    const discard = vi.spyOn(store, 'discard')
+
+    const first = useRecoveryStore.getState().keep()
+    expect(useRecoveryStore.getState().resolving).toBe(true)
+    // A stale click on either choice, landing after the buttons went dead.
+    const second = useRecoveryStore.getState().keep()
+    const third = useRecoveryStore.getState().discard()
+    release()
+    await Promise.all([first, second, third])
+
+    expect(checkpoint).toHaveBeenCalledTimes(1)
+    expect(discard).not.toHaveBeenCalled()
+    expect(useRecoveryStore.getState().status).toBe('resolved')
+    checkpoint.mockRestore()
+    discard.mockRestore()
+  })
+
+  it('dismiss leaves the working copy ahead, so the next open asks again', async () => {
+    const store = getWorkspaceStore()
+    const workspace = await makeDirtyWorkspace(store, 'dirty')
+    await useRecoveryStore.getState().begin(workspace)
+
+    useRecoveryStore.getState().dismiss()
+
+    expect(useRecoveryStore.getState().status).toBe('resolved')
+    expect((await store.open(workspace)).ahead).toBe(true)
+    expect(await useRecoveryStore.getState().begin(workspace)).toBe(true)
   })
 })
