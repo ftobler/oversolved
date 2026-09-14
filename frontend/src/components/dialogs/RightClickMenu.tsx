@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import '@/components/dialogs/RightClickMenu.css'
 
 export interface ContextMenuItem {
@@ -12,9 +12,13 @@ interface RightClickMenuProps {
   items: ContextMenuItem[]
   position: [number, number]
   onClose: () => void
+  // The control that opened the menu, when there is one. A mousedown inside it
+  // is the anchor toggling itself, not an outside click, so the anchor's own
+  // click can close instead of being pre-empted by this close.
+  anchorRef?: RefObject<HTMLElement | null>
 }
 
-export default function RightClickMenu({ items, position, onClose }: RightClickMenuProps) {
+export default function RightClickMenu({ items, position, onClose, anchorRef }: RightClickMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   // The element focused when the menu opened, so Escape and a selection hand
   // focus back to it instead of dropping it to the body.
@@ -33,6 +37,7 @@ export default function RightClickMenu({ items, position, onClose }: RightClickM
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
+      if (anchorRef?.current?.contains(e.target as Node)) return
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose()
     }
     const onKeyDown = (e: KeyboardEvent) => {
@@ -56,7 +61,7 @@ export default function RightClickMenu({ items, position, onClose }: RightClickM
       window.removeEventListener('mousedown', close, { capture: true })
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [onClose])
+  }, [onClose, anchorRef])
 
   const [x, y] = position
 

@@ -84,8 +84,14 @@ export default function WorkspaceView() {
   // layer, so the row's own button goes disabled until it settles. A Set rather
   // than one id, so a delete on one row cannot re-enable another's.
   const [deleting, setDeleting] = useState<ReadonlySet<string>>(new Set())
-  // The workspace-level verbs that can run long: duplicate, export and trash.
+  // The workspace-level verbs that can run long: rename, duplicate, export and
+  // trash.
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
+  // The load A failed state, kept apart from the dismissible error banner: the
+  // spinner must not come back when the banner is dismissed, and a retry has to
+  // be reachable. `attempt` is what re-runs the effect.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   // The session is installed by the page above, whose effect runs AFTER this
   // one; and a same-route navigation (duplicate) swaps workspaceId while the
@@ -97,6 +103,7 @@ export default function WorkspaceView() {
     if (!session || !workspaceId || session.workspace !== workspaceId) return
     let cancelled = false
     const load = async () => {
+      setLoadFailed(false)
       try {
         const [entries, savedRevs, all] = await Promise.all([
           session.listEntries(),
@@ -106,12 +113,15 @@ export default function WorkspaceView() {
         if (cancelled) return
         setLoaded({ workspace: workspaceId, entries, savedRevs, summary: all.find(row => row.workspace === workspaceId) ?? null })
       } catch (e) {
-        if (!cancelled) setErrors({ workspace: workspaceId, banner: errorMessage(e, 'Failed to read this workspace'), dialog: null })
+        if (!cancelled) {
+          setErrors({ workspace: workspaceId, banner: errorMessage(e, 'Failed to read this workspace'), dialog: null })
+          setLoadFailed(true)
+        }
       }
     }
     void load()
     return () => { cancelled = true }
-  }, [session, workspaceId, revision, store])
+  }, [session, workspaceId, revision, store, attempt])
 
   const ready = loaded !== null && loaded.workspace === workspaceId
   const entries = ready ? loaded.entries : EMPTY_ENTRIES
@@ -198,16 +208,16 @@ export default function WorkspaceView() {
 
   // A long workspace-level verb keeps its own key busy, so the card's control
   // goes disabled and no second duplicate or export can start.
-  const runBusy = async (key: string, what: string, action: () => Promise<void>) => {
+  const runBusy = async (key: string, what: string, action: () => Promise<void>, into: 'banner' | 'dialog' = 'banner') => {
     setBusy(prev => new Set(prev).add(key))
     try {
-      await run(what, action)
+      await run(what, action, into)
     } finally {
       setBusy(prev => { const next = new Set(prev); next.delete(key); return next })
     }
   }
 
-  const handleRenameWorkspace = () => run('Failed to rename the workspace', async () => {
+  const handleRenameWorkspace = () => runBusy('rename', 'Failed to rename the workspace', async () => {
     if (!workspaceId || !wsRenameName.trim()) return
     await store.rename(workspaceId, wsRenameName.trim())
     setWsRenameOpen(false)
@@ -313,9 +323,21 @@ export default function WorkspaceView() {
           </button>
         </div>
 
-        {/* A failed load must not keep the spinner up: the banner below says
-            what went wrong, and an endless wait next to it would lie. */}
-        {!ready && !error && <LoadingState label="Loading workspace..." />}
+        {/* A failed load must not keep the spinner up, and the failure has to
+            survive the banner's dismissal: the flag, not the banner, decides. */}
+        {!ready && !loadFailed && <LoadingState label="Loading workspace..." />}
+        {!ready && loadFailed && (
+          <p className="workspace-entries-empty">
+            Failed to load this workspace.{' '}
+            <button
+              type="button"
+              className="btn btn-tile-action"
+              onClick={() => setAttempt(prev => prev + 1)}
+            >
+              Retry
+            </button>
+          </p>
+        )}
 
         {ready && entries.length === 0 && <p className="workspace-entries-empty">This workspace is empty.</p>}
 
@@ -388,6 +410,7 @@ export default function WorkspaceView() {
         onClose={() => { setWsRenameOpen(false); setDialogError(null) }}
         onConfirm={() => { void handleRenameWorkspace() }}
         confirmLabel="Rename"
+        busy={busy.has('rename')}
       >
         <input
           type="text"

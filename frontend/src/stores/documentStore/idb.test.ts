@@ -12,7 +12,7 @@ import {
   idbGet, idbGetAllFrom, idbGetFrom,
   idbPut, idbTransaction, resetDbConnection,
 } from './idb'
-import { sha256Hex } from '@/kernel/sha256'
+import { sha256Hex, sha256HexBytes } from '@/kernel/sha256'
 
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()
@@ -76,6 +76,10 @@ describe('payload-free entry meta backfill (v4 to v5, sized at v6)', () => {
           workspace: 'ws', id: 'e1', path: 'documents/A.yaml', kind: 'document',
           name: 'A', docKind: 'part', text: 'body', rev: 3, updatedAt: 9,
         })
+        entries.put({
+          workspace: 'ws', id: 'e2', path: 'files/b.step', kind: 'file',
+          name: 'b.step', mime: 'application/step', bytes: new Uint8Array([1, 2, 3]), rev: 1, updatedAt: 4,
+        })
       }
       req.onsuccess = () => { req.result.close(); resolve() }
       req.onerror = () => reject(req.error)
@@ -89,6 +93,10 @@ describe('payload-free entry meta backfill (v4 to v5, sized at v6)', () => {
       {
         workspace: 'ws', id: 'e1', path: 'documents/A.yaml', kind: 'document', name: 'A',
         docKind: 'part', rev: 3, updatedAt: 9, contentHash: sha256Hex('body'), size: 4,
+      },
+      {
+        workspace: 'ws', id: 'e2', path: 'files/b.step', kind: 'file', name: 'b.step',
+        mime: 'application/step', rev: 1, updatedAt: 4, contentHash: sha256HexBytes(new Uint8Array([1, 2, 3])), size: 3,
       },
     ])
   })

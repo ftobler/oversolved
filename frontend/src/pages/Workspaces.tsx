@@ -37,6 +37,9 @@ export default function Workspaces() {
   const [summaries, setSummaries] = useState<WorkspaceSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Whether the last list failed, kept apart from `error` because the banner is
+  // dismissible and the empty claim must stay suppressed after it is.
+  const [loadFailed, setLoadFailed] = useState(false)
   const [trashView, setTrashView] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -81,8 +84,12 @@ export default function Workspaces() {
       const list = await store.list({ includeTrashed, sort: 'modified', search })
       setSummaries(list)
       setError(null)
+      setLoadFailed(false)
     } catch (e) {
+      // A failed list is not an empty library. The flag survives the banner's
+      // dismissal so the page never claims "No workspaces yet." over a failure.
       setError(errorMessage(e, 'Failed to load workspaces'))
+      setLoadFailed(true)
     } finally {
       setLoading(false)
     }
@@ -459,7 +466,7 @@ export default function Workspaces() {
 
           {loading && <LoadingState label="Loading workspaces..." />}
           {error && <ErrorBanner message={`Error: ${error}`} onDismiss={() => setError(null)} />}
-          {!loading && !error && visible.length === 0 && (
+          {!loading && !loadFailed && visible.length === 0 && (
             <p className="status">
               {trashView ? 'Trash is empty.' : debouncedSearch ? `No workspaces match "${debouncedSearch}"` : 'No workspaces yet.'}
             </p>
@@ -581,6 +588,7 @@ export default function Workspaces() {
           items={importItems}
           position={importMenu}
           onClose={() => setImportMenu(null)}
+          anchorRef={importButtonRef}
         />
       )}
     </div>

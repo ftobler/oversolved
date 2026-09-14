@@ -135,4 +135,19 @@ describe('Workspaces import copy wording (U5)', () => {
     expect(click).toHaveBeenCalledTimes(1)
     click.mockRestore()
   })
+
+  // The trigger is the menu's anchor, so a second click on it must close the
+  // menu rather than being pre-empted by the outside-mousedown close and then
+  // reopening.
+  it('closes the import menu on a second trigger click', async () => {
+    wrap()
+    await waitFor(() => expect(screen.getByText('No workspaces yet.')).toBeInTheDocument())
+
+    const trigger = await screen.findByTitle('Import')
+    await userEvent.click(trigger)
+    expect(screen.getByText('Import folder')).toBeInTheDocument()
+
+    await userEvent.click(trigger)
+    expect(screen.queryByText('Import folder')).not.toBeInTheDocument()
+  })
 })

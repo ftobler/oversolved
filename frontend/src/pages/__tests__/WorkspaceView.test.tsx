@@ -247,14 +247,29 @@ describe('WorkspaceView', () => {
     expect(screen.queryByText('This workspace is empty.')).toBeNull()
   })
 
-  // A failed load is not a wait: the error shows and the spinner must go, or the
-  // two would sit together and the wait would read as endless.
+  // A failed load is not a wait: the error shows and the spinner must go, then
+  // stay gone even after the banner is dismissed, with a retry reachable.
   it('drops the loading state when the workspace load fails', async () => {
     const session = installSession()
     session.listEntries.mockRejectedValueOnce(new Error('index corrupt'))
     renderView()
     await screen.findByText(/index corrupt/)
     expect(screen.queryByText('Loading workspace...')).toBeNull()
+
+    fireEvent.click(screen.getByTitle('Dismiss'))
+    expect(screen.queryByText('Loading workspace...')).toBeNull()
+    expect(screen.getByText('Retry')).toBeInTheDocument()
+  })
+
+  it('retries a failed workspace load', async () => {
+    const session = installSession()
+    session.listEntries.mockRejectedValueOnce(new Error('index corrupt'))
+    renderView()
+    await screen.findByText(/index corrupt/)
+
+    fireEvent.click(screen.getByText('Retry'))
+
+    expect(await screen.findByText('Bracket')).toBeInTheDocument()
   })
 
   // A delete is a slow round-trip, so a second click must not start a second
