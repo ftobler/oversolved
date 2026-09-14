@@ -15,6 +15,7 @@ interface MessageDialogProps {
   confirmLabel?: string
   cancelLabel?: string
   showCancel?: boolean  // confirm-only mode: keep onConfirm semantics but drop the cancel button
+  busy?: boolean  // passthrough to the shell, which seals every exit; see below for Enter
   className?: string  // extra class on the content box so callers can restyle
   extraAction?: { label: string; onClick: () => void; disabled?: boolean }  // third choice, see Dialog
 }
@@ -29,11 +30,13 @@ const ICON: Record<MessageVariant, string> = {
 // the variant tint, Enter-to-acknowledge, and an OK-only mode for dialogs that
 // carry no decision. The tint rides in on the shell's className passthrough: the
 // shell's own icon is deliberately untinted, since a topic icon is not a signal.
-export default function MessageDialog({ isOpen, title, message, variant = 'info', onClose, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel', showCancel = true, className, extraAction }: MessageDialogProps) {
+export default function MessageDialog({ isOpen, title, message, variant = 'info', onClose, onConfirm, confirmLabel = 'Confirm', cancelLabel = 'Cancel', showCancel = true, busy = false, className, extraAction }: MessageDialogProps) {
   // Escape comes from the shell. Enter stays here: it is only safe because a
-  // message box holds no field a newline could belong to.
+  // message box holds no field a newline could belong to. It must honour `busy`
+  // itself, since the shell only ever sees the buttons it disables: a held
+  // Enter would otherwise keep firing the confirm the disabled button refuses.
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen || busy) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Enter') return
       e.preventDefault()
@@ -45,7 +48,7 @@ export default function MessageDialog({ isOpen, title, message, variant = 'info'
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isOpen, onClose, onConfirm])
+  }, [isOpen, busy, onClose, onConfirm])
 
   // Without a confirm handler the dialog is an acknowledgement: a lone OK that
   // closes, and no cancel to sit beside it.
@@ -62,6 +65,7 @@ export default function MessageDialog({ isOpen, title, message, variant = 'info'
       confirmLabel={isAcknowledgement ? 'OK' : confirmLabel}
       cancelLabel={cancelLabel}
       showCancel={!isAcknowledgement && showCancel}
+      busy={busy}
       extraAction={extraAction}
       autoFocusConfirm
     >

@@ -95,6 +95,41 @@ describe('MessageDialog', () => {
     expect(onConfirm).not.toHaveBeenCalled()
   })
 
+  // A resolution already handed to the store cannot be recalled, so a busy
+  // message box has to go as dead as the shell it is built on: every button,
+  // and the Enter it binds for itself.
+  it('disables every action while busy', () => {
+    render(
+      <MessageDialog
+        isOpen
+        title="T"
+        message="m"
+        onConfirm={vi.fn()}
+        confirmLabel="Reload"
+        extraAction={{ label: 'Save over', onClick: vi.fn() }}
+        onClose={vi.fn()}
+        busy
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save over' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+  })
+
+  it('ignores Enter and Escape while busy', () => {
+    const onConfirm = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <MessageDialog isOpen title="T" message="m" onConfirm={onConfirm} onClose={onClose} busy />
+    )
+
+    fireEvent.keyDown(window, { key: 'Enter' })
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('keeps a caller class alongside the variant class', () => {
     const { container } = render(
       <MessageDialog isOpen title="T" message="m" className="disclaimer-dialog" onClose={vi.fn()} />
