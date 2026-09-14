@@ -37,7 +37,7 @@ export function fileIdsMissingFromWorker(ids: string[]): string[] {
   return ids.filter(id => !workerFileIds.has(id))
 }
 
-// A file's bytes changed under the live worker (the FilesPanel replace gesture):
+// A file's bytes changed under the live worker (the entry row's replace gesture):
 // the worker still holds the old payload for that id, so the next solve must
 // re-read it from storage and resend it.
 export function dropWorkerFileId(id: string): void {

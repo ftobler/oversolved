@@ -269,6 +269,52 @@ button.workspace-entry-open:focus-visible {
   flex: none;
 }
 
+/* The replace control is a label wrapping its own file input. The input has to
+   stay focusable to be reachable by keyboard, so it is clipped rather than
+   hidden, and the label wears the focus ring on its behalf. */
+.workspace-entry-replace {
+  position: relative;
+  overflow: hidden;
+}
+
+.workspace-entry-replace-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+}
+
+.workspace-entry-replace:focus-within {
+  outline: 2px solid #4fc3f7;
+  outline-offset: -2px;
+}
+
+/* The prune dialog's manifest of what is about to move to the trash. */
+.prune-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 12px;
+  color: #a8a8b3;
+}
+
+.prune-list li {
+  padding: 2px 0;
+}
+
+/* The prune guard names referrers it cannot jump to (the sweep stopped at a
+   file, not at the document holding it), so they are chips without the verb. */
+.where-used-name {
+  padding: 4px 10px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #a8a8b3;
+}
+
 /* The referrer list shared by the delete guard's dialog. Both classes shipped
    with the tree and neither ever had a rule, so the entries painted as native
    grey browser buttons inside a dark dialog. */

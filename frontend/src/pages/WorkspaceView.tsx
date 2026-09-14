@@ -18,9 +18,9 @@ import { EntryReferencedError, type EntryReferrer } from '@/workspace/errors'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
 import { dirtyEntryIds, groupEntries } from '@/components/layout/workspaceTreeModel'
-import { referrersOf } from '@/components/layout/filesModel'
 import { useWhereUsed } from '@/components/layout/filesSeams'
-import { fileKindOf, fileSizeOf } from '@/components/layout/filesModel'
+import { fileKindOf, fileSizeOf, orphanFileIds, referrersOf } from '@/components/layout/filesModel'
+import { dropWorkerFileId } from '@/kernel/worker/workerFiles'
 import type { EntryMeta } from '@/workspace/types'
 import '@/pages/Documents.css'
 import '@/pages/WorkspaceView.css'
@@ -79,6 +79,10 @@ export default function WorkspaceView() {
   // The delete guard's presentation: the typed refusal with the live referrers
   // it named, held until the user acknowledges or jumps to one.
   const [referenced, setReferenced] = useState<{ entry: EntryMeta; referrers: EntryReferrer[] } | null>(null)
+  const [pruneOpen, setPruneOpen] = useState(false)
+  // The prune guard's refusal: the store found a referrer the scan had not, so
+  // the sweep stopped and names it rather than deleting the rest silently.
+  const [pruneBlocked, setPruneBlocked] = useState<EntryReferrer[] | null>(null)
   // The row whose delete is in flight. The store round-trip can be slow enough
   // that a second click lands, and a double delete is not idempotent at this
   // layer, so the row's own button goes disabled until it settles. A Set rather
@@ -133,18 +137,27 @@ export default function WorkspaceView() {
 
   const grouped = useMemo(() => groupEntries(entries), [entries])
   const dirty = useMemo(() => dirtyEntryIds(entries, savedRevs), [entries, savedRevs])
-  const { inverse } = useWhereUsed(session, entries)
+  const byId = useMemo(() => new Map(entries.map(entry => [entry.id, entry])), [entries])
+  const { inverse, ready: scanned } = useWhereUsed(session, entries)
   const referrerNames = useMemo(() => {
     const names = new Map<string, string[]>()
-    const byId = new Map(entries.map(entry => [entry.id, entry.name]))
     for (const entry of entries) {
       const refs = referrersOf(inverse, entry.id)
-        .map(id => byId.get(id))
+        .map(id => byId.get(id)?.name)
         .filter((name): name is string => name !== undefined)
       if (refs.length > 0) names.set(entry.id, refs)
     }
     return names
-  }, [entries, inverse])
+  }, [entries, byId, inverse])
+  // The orphan verdict is withheld until the reference scan resolves: before it
+  // does, every file has zero known referrers, so the card would offer to sweep
+  // away files that are in use.
+  const orphans = useMemo(
+    () => (scanned ? orphanFileIds(grouped.files, inverse) : [])
+      .map(id => byId.get(id))
+      .filter((entry): entry is EntryMeta => entry !== undefined),
+    [scanned, grouped.files, inverse, byId],
+  )
 
   const openEntry = (entry: EntryMeta) => {
     // A file is not a document: opening one would land on the entry route,
@@ -220,6 +233,21 @@ export default function WorkspaceView() {
     }
   }
 
+  // Replace a file entry's bytes in place. The entry keeps its id, so every
+  // document that references it keeps referencing it: that is the whole point
+  // of the gesture, and why it is a row control rather than a delete plus an
+  // import.
+  const handleReplace = (entry: EntryMeta, chosen: File) =>
+    runBusy(`replace:${entry.id}`, `Failed to replace ${entry.name}`, async () => {
+      if (!session) return
+      const bytes = new Uint8Array(await chosen.arrayBuffer())
+      const current = await session.readEntry(entry.id)
+      await session.writeEntry({ ...current, bytes })
+      // The solver worker still holds the replaced id's old bytes; drop it so
+      // the next solve re-reads the fresh payload from the workspace entry.
+      dropWorkerFileId(entry.id)
+    })
+
   // A long workspace-level verb keeps its own key busy, so the card's control
   // goes disabled and no second duplicate or export can start.
   const handleRenameWorkspace = () => runBusy('rename', 'Failed to rename the workspace', async () => {
@@ -240,6 +268,26 @@ export default function WorkspaceView() {
     const bytes = await buildZipBytes(tree)
     downloadBlob(new Blob([bytes as BlobPart], { type: 'application/zip' }), `${summary?.name ?? 'workspace'}.zip`)
   })
+
+  const handlePrune = () => runBusy('prune', 'Failed to prune the orphans', async () => {
+    if (!workspaceId) return
+    // The guard is a second, independent check. Orphans have zero referrers by
+    // construction, but if a race made one referenced between the scan and the
+    // delete, the store refuses and prune surfaces it rather than deleting.
+    for (const orphan of orphans) {
+      try {
+        await store.removeEntry(workspaceId, orphan.id)
+      } catch (e) {
+        if (e instanceof EntryReferencedError) {
+          setPruneOpen(false)
+          setPruneBlocked(e.referrers)
+          return
+        }
+        throw e
+      }
+    }
+    setPruneOpen(false)
+  }, 'dialog')
 
   const handleTrash = () => runBusy('trash', 'Failed to move the workspace to trash', async () => {
     if (!workspaceId) return
@@ -281,6 +329,19 @@ export default function WorkspaceView() {
               >
                 <span className="material-icons">edit</span>
               </button>
+              {/* The sweep is workspace-wide, so it sits on the card rather
+                  than on any one row, and appears only when there is something
+                  to sweep. */}
+              {orphans.length > 0 && (
+                <button
+                  className="btn btn-tile-action"
+                  title="Prune orphans"
+                  aria-label="Prune orphans"
+                  onClick={() => setPruneOpen(true)}
+                >
+                  <span className="material-icons">delete_sweep</span>
+                </button>
+              )}
               <button
                 className="btn btn-tile-action"
                 title="Duplicate workspace"
@@ -358,11 +419,13 @@ export default function WorkspaceView() {
                   dirty={dirty.has(entry.id)}
                   deleting={deleting.has(entry.id)}
                   duplicating={busy.has(`duplicate:${entry.id}`)}
+                  replacing={busy.has(`replace:${entry.id}`)}
                   usedBy={referrerNames.get(entry.id)}
                   onOpen={openEntry}
                   onRename={target => { setRenameTarget(target); setRenameName(target.name) }}
                   onDuplicate={target => { void handleDuplicate(target) }}
                   onDelete={target => { void handleDelete(target) }}
+                  onReplace={(target, chosen) => { void handleReplace(target, chosen) }}
                 />
               ))}
             </ul>
@@ -443,6 +506,41 @@ export default function WorkspaceView() {
       />
 
       <Dialog
+        isOpen={pruneOpen}
+        title="Prune Orphans"
+        onClose={() => { setPruneOpen(false); setDialogError(null) }}
+        onConfirm={() => { void handlePrune() }}
+        confirmLabel="Prune"
+        busy={busy.has('prune')}
+      >
+        <p>
+          Pruning moves these file entries and their bytes to the workspace trash, where they stay
+          recoverable until the workspace is purged. It does not preserve the in-memory history of
+          the documents that referenced them: their editor undo and redo steps can no longer restore
+          the payload.
+        </p>
+        <ul className="prune-list">
+          {orphans.map(orphan => (
+            <li key={orphan.id}>{orphan.name} ({formatBytes(fileSizeOf(orphan))})</li>
+          ))}
+        </ul>
+        {dialogError && <p className="error-text">{dialogError}</p>}
+      </Dialog>
+
+      <Dialog
+        isOpen={pruneBlocked !== null}
+        title="Cannot Prune"
+        onClose={() => setPruneBlocked(null)}
+      >
+        <p>An entry is still referenced and was not pruned. Remove the reference first.</p>
+        <ul className="where-used-list">
+          {pruneBlocked?.map(referrer => (
+            <li className="where-used-name" key={referrer.id}>{referrer.name}</li>
+          ))}
+        </ul>
+      </Dialog>
+
+      <Dialog
         isOpen={referenced !== null}
         title="Cannot Delete"
         onClose={() => setReferenced(null)}
@@ -479,17 +577,22 @@ interface EntryRowProps {
   dirty: boolean
   deleting: boolean
   duplicating: boolean
+  replacing: boolean
   usedBy: string[] | undefined
   onOpen: (entry: EntryMeta) => void
   onRename: (entry: EntryMeta) => void
   onDuplicate: (entry: EntryMeta) => void
   onDelete: (entry: EntryMeta) => void
+  onReplace: (entry: EntryMeta, chosen: File) => void
 }
 
 // The library tile on its side. A document row is activatable (click, Enter,
 // Space); a file row is not -- it carries the same thumb slot and verbs but
 // there is no editor behind it.
-function EntryRow({ entry, workspace, dirty, deleting, duplicating, usedBy, onOpen, onRename, onDuplicate, onDelete }: EntryRowProps) {
+function EntryRow({
+  entry, workspace, dirty, deleting, duplicating, replacing, usedBy,
+  onOpen, onRename, onDuplicate, onDelete, onReplace,
+}: EntryRowProps) {
   const openable = entry.kind === 'document'
   const meta = entry.kind === 'file'
     ? [fileKindOf(entry), formatBytes(fileSizeOf(entry))]
@@ -532,6 +635,37 @@ function EntryRow({ entry, workspace, dirty, deleting, duplicating, usedBy, onOp
         <div className="workspace-entry-open">{face}</div>
       )}
       <div className="workspace-entry-actions">
+        {entry.kind === 'file' && (
+          // A label around a visually-hidden input, not a hidden one: the panel
+          // this replaces used `display: none`, which takes the input out of the
+          // tab order and leaves the label unfocusable, so replacing bytes was
+          // reachable by mouse only. The input keeps its own focus ring through
+          // `:focus-within` on the label.
+          <label
+            className="btn btn-tile-action workspace-entry-replace"
+            title={replacing ? 'Replacing...' : 'Replace bytes'}
+          >
+            <input
+              type="file"
+              className="workspace-entry-replace-input"
+              aria-label={`Replace ${entry.name}`}
+              // aria-disabled, not disabled: a disabled input leaves the tab
+              // order, so a keyboard user who started the replace would lose
+              // focus to the body mid-gesture and land nowhere when it
+              // finished. The guard that actually refuses the second pick is
+              // the early return below.
+              aria-disabled={replacing}
+              onChange={e => {
+                const chosen = e.target.files?.[0]
+                // Clearing the value is what lets the same file be picked twice
+                // in a row: an unchanged value fires no second change event.
+                e.target.value = ''
+                if (chosen && !replacing) onReplace(entry, chosen)
+              }}
+            />
+            <span className="material-icons">{replacing ? 'hourglass_empty' : 'upload_file'}</span>
+          </label>
+        )}
         <button
           className="btn btn-tile-action"
           aria-label={`Rename ${entry.name}`}
