@@ -21,7 +21,8 @@ export interface WorkspaceSession {
   // origin entry id on it; this reads the stored record only and never resolves
   // the origin (I2).
   originOf(entry: string): Promise<ProvenanceRecord | undefined>
-  // Every provenance record the workspace holds, one meta read, for U6's panel.
+  // Every provenance record the workspace holds, one meta read, for the origin
+  // meta the workspace view puts on its rows.
   provenance(): Promise<ProvenanceRecord[]>
   resolveFile(fileId: string): Promise<Uint8Array | undefined>
   referencesOf(entry: string): Promise<string[]>

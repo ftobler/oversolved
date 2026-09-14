@@ -263,6 +263,53 @@ button.workspace-entry-open:focus-visible {
   text-overflow: ellipsis;
 }
 
+/* The origin line: what this copy came from, and what the last explicit check
+   said about it. It sits under the meta rather than beside it because the
+   source name is the long part of the row and is what gets ellipsised. */
+.workspace-entry-origin {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #666;
+}
+
+.workspace-entry-origin-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The status is a chip, and its colour is the whole point of the check: neutral
+   until one has run, and never red, since an unreachable origin is a fact about
+   the source rather than a failure of this workspace (I1). */
+.workspace-entry-origin-status {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #8b8b95;
+  white-space: nowrap;
+}
+
+.workspace-entry-origin-status.status-current {
+  color: #7fc08a;
+}
+
+.workspace-entry-origin-status.status-changed {
+  color: #e0a030;
+}
+
+.workspace-entry-origin-edited {
+  flex: none;
+  color: #e0a030;
+  white-space: nowrap;
+}
+
 .workspace-entry-actions {
   display: flex;
   align-items: center;
@@ -383,8 +430,10 @@ button.workspace-entry-open:focus-visible {
     --ws-row-height: 84px;
   }
 
-  /* The name has the least room here and is the thing you read the row by. */
-  .workspace-entry-usedby {
+  /* The name has the least room here and is the thing you read the row by. The
+     origin line goes with it: an 84px row cannot hold four lines of text. */
+  .workspace-entry-usedby,
+  .workspace-entry-origin {
     display: none;
   }
 }
