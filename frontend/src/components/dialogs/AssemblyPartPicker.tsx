@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Dialog from '@/components/dialogs/Dialog'
+import { LoadingState } from '@/components/shared/LoadingState'
 import DocTilePreview from '@/components/shared/DocTilePreview'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
@@ -150,7 +151,7 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, session, onClose,
               </button>
             )}
           </div>
-          {loading && <p className="doc-browser-status">Loading...</p>}
+          {loading && <LoadingState label="Loading..." />}
           {error && <p className="error-text">{error}</p>}
           {!loading && !error && docs.length === 0 && (
             <p className="doc-browser-status">

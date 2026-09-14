@@ -237,6 +237,38 @@ describe('WorkspaceView', () => {
     expect(screen.queryByText('0 entries')).toBeNull()
   })
 
+  // The wait is a claim too: while the load has not answered, the column says
+  // so rather than reading as a finished empty workspace.
+  it('shows a loading state while the workspace load is pending', async () => {
+    const session = installSession()
+    session.listEntries.mockReturnValueOnce(new Promise(() => {}))
+    renderView()
+    expect(screen.getByText('Loading workspace...')).toBeInTheDocument()
+    expect(screen.queryByText('This workspace is empty.')).toBeNull()
+  })
+
+  // A delete is a slow round-trip, so a second click must not start a second
+  // one: the row's own button goes disabled and shows the hourglass.
+  it('disables a row delete while it is in flight and re-enables it after', async () => {
+    installSession()
+    let resolveDelete: () => void = () => {}
+    storeMock.removeEntry.mockReturnValueOnce(new Promise<void>(resolve => { resolveDelete = resolve }))
+    renderView()
+    await screen.findByText('Bracket')
+
+    const remove = screen.getByLabelText('Delete Bracket') as HTMLButtonElement
+    fireEvent.click(remove)
+    expect(remove).toBeDisabled()
+    expect(remove.querySelector('.material-icons')?.textContent).toBe('hourglass_empty')
+
+    fireEvent.click(remove)
+    expect(storeMock.removeEntry).toHaveBeenCalledTimes(1)
+
+    resolveDelete()
+    await waitFor(() => expect(remove).toBeEnabled())
+    expect(remove.querySelector('.material-icons')?.textContent).toBe('delete')
+  })
+
   // The page above installs the session in an effect that runs AFTER this
   // component's, and a duplicate navigates workspaces without unmounting. Both
   // land a session and a route that disagree.

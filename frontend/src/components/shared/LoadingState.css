@@ -1,0 +1,48 @@
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  color: #888;
+  font-size: 14px;
+}
+
+.loading-state-spinner {
+  display: block;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  animation: loading-state-rotate 2s linear infinite;
+}
+
+.loading-state-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.loading-state-path {
+  stroke: #888;
+  animation: loading-state-dash 1.5s cubic-bezier(0.2, 0, 0, 1) infinite;
+}
+
+@keyframes loading-state-rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loading-state-dash {
+  0% {
+    stroke-dasharray: 1, 200;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 100, 200;
+    stroke-dashoffset: -15px;
+  }
+  100% {
+    stroke-dasharray: 100, 200;
+    stroke-dashoffset: -125px;
+  }
+}

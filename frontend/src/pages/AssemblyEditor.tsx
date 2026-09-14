@@ -7,6 +7,7 @@ import { capturePreview } from '@/stores/previewStore/capture'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, setAssemblyCallbacks, DEFAULT_ASSEMBLY_EDITOR_DATA, type MateFieldTarget } from '@/stores/assemblyStore'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
+import { LoadingState } from '@/components/shared/LoadingState'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
@@ -540,7 +541,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const verdict = assemblyVerdict(solveStatus, mateNameFor)
 
   if (loading) {
-    return <div className="document-viewer"><p>Loading...</p></div>
+    return <div className="document-viewer"><LoadingState label="Loading..." /></div>
   }
 
   // A failed load has no document to edit. Rendering the editor over a null doc

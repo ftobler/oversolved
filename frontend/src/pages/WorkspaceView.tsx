@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import Dialog from '@/components/dialogs/Dialog'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
+import { LoadingState } from '@/components/shared/LoadingState'
 import DocTilePreview from '@/components/shared/DocTilePreview'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
 import { formatBytes } from '@/utils/formatBytes'
@@ -78,6 +79,10 @@ export default function WorkspaceView() {
   // The delete guard's presentation: the typed refusal with the live referrers
   // it named, held until the user acknowledges or jumps to one.
   const [referenced, setReferenced] = useState<{ entry: EntryMeta; referrers: EntryReferrer[] } | null>(null)
+  // The row whose delete is in flight. The store round-trip can be slow enough
+  // that a second click lands, and a double delete is not idempotent at this
+  // layer, so the row's own button goes disabled until it settles.
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // The session is installed by the page above, whose effect runs AFTER this
   // one; and a same-route navigation (duplicate) swaps workspaceId while the
@@ -175,6 +180,7 @@ export default function WorkspaceView() {
 
   const handleDelete = async (entry: EntryMeta) => {
     if (!workspaceId) return
+    setDeletingId(entry.id)
     try {
       await store.removeEntry(workspaceId, entry.id)
     } catch (e) {
@@ -182,6 +188,8 @@ export default function WorkspaceView() {
       // guard rather than a failure and gets its own dialog.
       if (e instanceof EntryReferencedError) setReferenced({ entry, referrers: e.referrers })
       else setError(errorMessage(e, 'Failed to delete the entry'))
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -288,9 +296,11 @@ export default function WorkspaceView() {
           </button>
         </div>
 
+        {!ready && <LoadingState label="Loading workspace..." />}
+
         {ready && entries.length === 0 && <p className="workspace-entries-empty">This workspace is empty.</p>}
 
-        {groups.map(group => group.entries.length === 0 ? null : (
+        {ready && groups.map(group => group.entries.length === 0 ? null : (
           <section className="workspace-entry-group" key={group.label}>
             <h3 className="workspace-entry-group-label">{group.label}</h3>
             <ul className="workspace-entry-list" role="list">
@@ -300,6 +310,7 @@ export default function WorkspaceView() {
                   entry={entry}
                   workspace={workspaceId ?? ''}
                   dirty={dirty.has(entry.id)}
+                  deleting={deletingId === entry.id}
                   usedBy={referrerNames.get(entry.id)}
                   onOpen={openEntry}
                   onRename={target => { setRenameTarget(target); setRenameName(target.name) }}
@@ -416,6 +427,7 @@ interface EntryRowProps {
   entry: EntryMeta
   workspace: string
   dirty: boolean
+  deleting: boolean
   usedBy: string[] | undefined
   onOpen: (entry: EntryMeta) => void
   onRename: (entry: EntryMeta) => void
@@ -426,7 +438,7 @@ interface EntryRowProps {
 // The library tile on its side. A document row is activatable (click, Enter,
 // Space); a file row is not -- it carries the same thumb slot and verbs but
 // there is no editor behind it.
-function EntryRow({ entry, workspace, dirty, usedBy, onOpen, onRename, onDuplicate, onDelete }: EntryRowProps) {
+function EntryRow({ entry, workspace, dirty, deleting, usedBy, onOpen, onRename, onDuplicate, onDelete }: EntryRowProps) {
   const openable = entry.kind === 'document'
   const meta = entry.kind === 'file'
     ? [fileKindOf(entry), formatBytes(fileSizeOf(entry))]
@@ -489,9 +501,10 @@ function EntryRow({ entry, workspace, dirty, usedBy, onOpen, onRename, onDuplica
           className="btn btn-delete-tile"
           aria-label={`Delete ${entry.name}`}
           title="Delete"
+          disabled={deleting}
           onClick={() => onDelete(entry)}
         >
-          <span className="material-icons">delete</span>
+          <span className="material-icons">{deleting ? 'hourglass_empty' : 'delete'}</span>
         </button>
       </div>
     </li>

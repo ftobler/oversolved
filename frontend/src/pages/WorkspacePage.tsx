@@ -11,6 +11,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useCarrierChangeStore } from '@/stores/carrierChangeStore'
 import RecoveryDialog from '@/components/dialogs/RecoveryDialog'
 import CarrierChangedDialog from '@/components/dialogs/CarrierChangedDialog'
+import { LoadingState } from '@/components/shared/LoadingState'
 import WorkspaceView from '@/pages/WorkspaceView'
 import Part from '@/pages/Part'
 import AssemblyEditor from '@/pages/AssemblyEditor'
@@ -108,7 +109,7 @@ export default function WorkspacePage() {
   if (askingRecovery || askingCarrier) {
     return (
       <div className="document-viewer">
-        <p>Loading...</p>
+        <LoadingState />
         {askingCarrier ? <CarrierChangedDialog /> : <RecoveryDialog />}
       </div>
     )
@@ -116,7 +117,7 @@ export default function WorkspacePage() {
 
   if (entryId) {
     if (kindError) return <div className="document-viewer"><p>Error: {kindError}</p></div>
-    if (!kind) return <div className="document-viewer"><p>Loading...</p></div>
+    if (!kind) return <div className="document-viewer"><LoadingState /></div>
     if (kind === 'assembly') {
       // Keying by entry forces a full remount per document, the same contract
       // the part editor keeps below: a route change must not leak the previous

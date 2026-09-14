@@ -119,6 +119,9 @@ describe('Workspaces folder import', () => {
     picker.result = dirA as unknown as FileSystemDirectoryHandle
     wrap()
     await clickImportItem('Import folder')
+    // The trigger refuses a second import while the first is in flight, so wait
+    // for it to settle before opening the menu again.
+    await waitFor(() => expect(screen.getByTitle('Import')).toBeEnabled())
 
     const dirB = fakeDirectory('cad')
     dirB.putText('B.yaml', 'kind: part\n# B\n')

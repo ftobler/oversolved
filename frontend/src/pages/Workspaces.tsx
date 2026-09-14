@@ -5,6 +5,7 @@ import Dialog from '@/components/dialogs/Dialog'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import RightClickMenu, { type ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
+import { LoadingState } from '@/components/shared/LoadingState'
 import DocTilePreview from '@/components/shared/DocTilePreview'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
 import { formatBytes } from '@/utils/formatBytes'
@@ -55,6 +56,20 @@ export default function Workspaces() {
   const importButtonRef = useRef<HTMLButtonElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importMenu, setImportMenu] = useState<[number, number] | null>(null)
+  // Import, export and duplicate can take long enough that a second click
+  // lands before the first settles, and a duplicated slow verb would run twice.
+  // Each in-flight verb names its own key here: the control that owns it goes
+  // disabled and swaps to the hourglass until the key is dropped.
+  const [busy, setBusy] = useState<ReadonlySet<string>>(new Set())
+  const isBusy = (key: string) => busy.has(key)
+  const withBusy = async (key: string, action: () => Promise<void>) => {
+    setBusy(prev => new Set(prev).add(key))
+    try {
+      await action()
+    } finally {
+      setBusy(prev => { const next = new Set(prev); next.delete(key); return next })
+    }
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -121,8 +136,10 @@ export default function Workspaces() {
 
   const handleDuplicate = async (workspace: string) => {
     try {
-      await store.duplicate(workspace)
-      await refresh(trashView, debouncedSearch)
+      await withBusy(`duplicate:${workspace}`, async () => {
+        await store.duplicate(workspace)
+        await refresh(trashView, debouncedSearch)
+      })
     } catch (e) {
       setError(errorMessage(e, 'Failed to duplicate workspace'))
     }
@@ -160,9 +177,11 @@ export default function Workspaces() {
 
   const handleExport = async (summary: WorkspaceSummary) => {
     try {
-      const tree = deserializeTree(await store.export(summary.workspace))
-      const bytes = await buildZipBytes(tree)
-      downloadBlob(new Blob([bytes as BlobPart], { type: 'application/zip' }), `${summary.name}.zip`)
+      await withBusy(`export:${summary.workspace}`, async () => {
+        const tree = deserializeTree(await store.export(summary.workspace))
+        const bytes = await buildZipBytes(tree)
+        downloadBlob(new Blob([bytes as BlobPart], { type: 'application/zip' }), `${summary.name}.zip`)
+      })
     } catch (e) {
       setError(errorMessage(e, 'Failed to export workspace'))
     }
@@ -207,17 +226,19 @@ export default function Workspaces() {
     if (!file) return
     e.target.value = ''
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer())
-      const locator = mintOriginLocator('file')
-      const isArchive = /\.(zip|oversolved)$/i.test(file.name)
-      const read = async (): Promise<ImportBag> => isArchive
-        ? readZipBag(bytes, locator)
-        : { origin: locator, items: [{ path: file.name, bytes }] }
-      const descriptor: OriginDescriptor = { locator, name: file.name, read }
-      getOriginResolver().register(descriptor)
-      const result = await importBag(await read(), { origin: descriptor })
-      setImportedCount(result.documents + result.files)
-      await refresh(false, debouncedSearch)
+      await withBusy('import', async () => {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const locator = mintOriginLocator('file')
+        const isArchive = /\.(zip|oversolved)$/i.test(file.name)
+        const read = async (): Promise<ImportBag> => isArchive
+          ? readZipBag(bytes, locator)
+          : { origin: locator, items: [{ path: file.name, bytes }] }
+        const descriptor: OriginDescriptor = { locator, name: file.name, read }
+        getOriginResolver().register(descriptor)
+        const result = await importBag(await read(), { origin: descriptor })
+        setImportedCount(result.documents + result.files)
+        await refresh(false, debouncedSearch)
+      })
     } catch (err) {
       setError(errorMessage(err, 'Failed to import file'))
     }
@@ -225,25 +246,27 @@ export default function Workspaces() {
 
   const handleImportFolder = async () => {
     try {
-      const dir = await pickLibraryDirectory()
-      if (!dir) return  // cancelled: a non-event
-      const locator = mintOriginLocator('folder')
-      const descriptor: OriginDescriptor = {
-        locator,
-        name: dir.name,
-        read: () => readDirectoryBag(dir, locator),
-      }
-      getOriginResolver().register(descriptor)
-      // Remember the handle so a save target or a later session's update can
-      // reopen it. The in-session read above still works if this is refused.
-      await rememberOriginDirectory(locator, dir)
-      // Bind the picked folder as the workspace's save target: opening it is
-      // the signal that an explicit save should land back there. The carrier is
-      // not written now; `land` leaves the folder's files as they are.
-      const bag = await readDirectoryBag(dir, locator)
-      const result = await importBag(bag, { origin: descriptor, target: { kind: 'folder', label: dir.name, handle: dir } })
-      setImportedCount(result.documents + result.files)
-      await refresh(false, debouncedSearch)
+      await withBusy('import', async () => {
+        const dir = await pickLibraryDirectory()
+        if (!dir) return  // cancelled: a non-event
+        const locator = mintOriginLocator('folder')
+        const descriptor: OriginDescriptor = {
+          locator,
+          name: dir.name,
+          read: () => readDirectoryBag(dir, locator),
+        }
+        getOriginResolver().register(descriptor)
+        // Remember the handle so a save target or a later session's update can
+        // reopen it. The in-session read above still works if this is refused.
+        await rememberOriginDirectory(locator, dir)
+        // Bind the picked folder as the workspace's save target: opening it is
+        // the signal that an explicit save should land back there. The carrier is
+        // not written now; `land` leaves the folder's files as they are.
+        const bag = await readDirectoryBag(dir, locator)
+        const result = await importBag(bag, { origin: descriptor, target: { kind: 'folder', label: dir.name, handle: dir } })
+        setImportedCount(result.documents + result.files)
+        await refresh(false, debouncedSearch)
+      })
     } catch (err) {
       setError(errorMessage(err, 'Failed to import folder'))
     }
@@ -254,23 +277,25 @@ export default function Workspaces() {
   // input cannot be written back and stays IDB-only.
   const handleOpenZip = async () => {
     try {
-      const handle = await pickWorkspaceZip()
-      if (!handle) return  // cancelled: a non-event
-      const bytes = new Uint8Array(await (await handle.getFile()).arrayBuffer())
-      const locator = mintOriginLocator('zip')
-      const descriptor: OriginDescriptor = {
-        locator,
-        name: handle.name,
-        // Re-read from the handle rather than the captured bytes, so an archive
-        // edited on disk is the one an update sees.
-        read: async () => readZipBag(new Uint8Array(await (await handle.getFile()).arrayBuffer()), locator),
-      }
-      getOriginResolver().register(descriptor)
-      await rememberOriginZip(locator, handle)
-      const bag = await readZipBag(bytes, locator)
-      const result = await importBag(bag, { origin: descriptor, target: { kind: 'zip', label: handle.name, handle } })
-      setImportedCount(result.documents + result.files)
-      await refresh(false, debouncedSearch)
+      await withBusy('import', async () => {
+        const handle = await pickWorkspaceZip()
+        if (!handle) return  // cancelled: a non-event
+        const bytes = new Uint8Array(await (await handle.getFile()).arrayBuffer())
+        const locator = mintOriginLocator('zip')
+        const descriptor: OriginDescriptor = {
+          locator,
+          name: handle.name,
+          // Re-read from the handle rather than the captured bytes, so an archive
+          // edited on disk is the one an update sees.
+          read: async () => readZipBag(new Uint8Array(await (await handle.getFile()).arrayBuffer()), locator),
+        }
+        getOriginResolver().register(descriptor)
+        await rememberOriginZip(locator, handle)
+        const bag = await readZipBag(bytes, locator)
+        const result = await importBag(bag, { origin: descriptor, target: { kind: 'zip', label: handle.name, handle } })
+        setImportedCount(result.documents + result.files)
+        await refresh(false, debouncedSearch)
+      })
     } catch (err) {
       setError(errorMessage(err, 'Failed to open archive'))
     }
@@ -338,11 +363,12 @@ export default function Workspaces() {
             ref={importButtonRef}
             className="toolbar-btn btn-import"
             onClick={openImportMenu}
+            disabled={isBusy('import')}
             title="Import"
             aria-label="Import"
             aria-haspopup="menu"
           >
-            <span className="material-icons">upload</span>
+            <span className="material-icons">{isBusy('import') ? 'hourglass_empty' : 'upload'}</span>
           </button>
           <input
             ref={fileInputRef}
@@ -426,7 +452,7 @@ export default function Workspaces() {
             onClose={() => setImportedCount(null)}
           />
 
-          {loading && <p className="status">Loading workspaces...</p>}
+          {loading && <LoadingState label="Loading workspaces..." />}
           {error && <ErrorBanner message={`Error: ${error}`} onDismiss={() => setError(null)} />}
           {!loading && visible.length === 0 && (
             <p className="status">
@@ -507,17 +533,19 @@ export default function Workspaces() {
                           </button>
                           <button
                             className="btn btn-tile-action"
+                            disabled={isBusy(`duplicate:${summary.workspace}`)}
                             onClick={e => { e.preventDefault(); void handleDuplicate(summary.workspace) }}
                             title="Duplicate"
                           >
-                            <span className="material-icons">content_copy</span>
+                            <span className="material-icons">{isBusy(`duplicate:${summary.workspace}`) ? 'hourglass_empty' : 'content_copy'}</span>
                           </button>
                           <button
                             className="btn btn-tile-action"
+                            disabled={isBusy(`export:${summary.workspace}`)}
                             onClick={e => { e.preventDefault(); void handleExport(summary) }}
                             title="Export workspace"
                           >
-                            <span className="material-icons">archive</span>
+                            <span className="material-icons">{isBusy(`export:${summary.workspace}`) ? 'hourglass_empty' : 'archive'}</span>
                           </button>
                           <button
                             className="btn btn-delete-tile"
