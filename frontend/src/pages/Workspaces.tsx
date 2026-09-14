@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
 import Dialog from '@/components/dialogs/Dialog'
 import MessageDialog from '@/components/dialogs/MessageDialog'
+import RightClickMenu, { type ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import DocTilePreview from '@/components/shared/DocTilePreview'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
@@ -49,6 +50,11 @@ export default function Workspaces() {
   // U5: the count of entries the last import copied, held until acknowledged.
   // The copy semantics is stated at the moment it matters, not buried in docs.
   const [importedCount, setImportedCount] = useState<number | null>(null)
+  // The three import gestures share one toolbar button and one menu; the file
+  // input stays mounted so a plain-file import still needs no picker support.
+  const importButtonRef = useRef<HTMLButtonElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importMenu, setImportMenu] = useState<[number, number] | null>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300)
@@ -272,6 +278,23 @@ export default function Workspaces() {
 
   const visible = trashView ? summaries.filter(s => s.trashedAt) : summaries.filter(s => !s.trashedAt)
 
+  const openImportMenu = () => {
+    const rect = importButtonRef.current?.getBoundingClientRect()
+    setImportMenu(rect ? [rect.left, rect.bottom + 4] : [0, 0])
+  }
+
+  // The menu lists only the gestures this browser can actually perform; the
+  // folder and archive entries appear exactly when their pickers do.
+  const importItems: ContextMenuItem[] = [
+    { label: 'Import file', onClick: () => fileInputRef.current?.click() },
+  ]
+  if (canPickDirectory()) {
+    importItems.push({ label: 'Import folder', onClick: () => { void handleImportFolder() } })
+  }
+  if (canPickWorkspaceZip()) {
+    importItems.push({ label: 'Open archive', onClick: () => { void handleOpenZip() } })
+  }
+
   return (
     <div className="documents">
       {/* No trail here: this page IS the library, and the crumb above a
@@ -311,25 +334,23 @@ export default function Workspaces() {
           >
             <span className="material-icons">account_tree</span>
           </button>
-          <label className="toolbar-btn btn-import" title="Import a .zip, .yaml, .step, or .oversolved file">
-            <input
-              type="file"
-              accept=".zip,.oversolved,.yaml,.yml,.step,.stp"
-              onChange={handleImportFile}
-              className="file-upload-input"
-            />
+          <button
+            ref={importButtonRef}
+            className="toolbar-btn btn-import"
+            onClick={openImportMenu}
+            title="Import"
+            aria-label="Import"
+            aria-haspopup="menu"
+          >
             <span className="material-icons">upload</span>
-          </label>
-          {canPickDirectory() && (
-            <button className="toolbar-btn" onClick={handleImportFolder} title="Import a folder">
-              <span className="material-icons">drive_folder_upload</span>
-            </button>
-          )}
-          {canPickWorkspaceZip() && (
-            <button className="toolbar-btn" onClick={handleOpenZip} title="Open a workspace archive">
-              <span className="material-icons">folder_zip</span>
-            </button>
-          )}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip,.oversolved,.yaml,.yml,.step,.stp"
+            onChange={handleImportFile}
+            className="file-upload-input"
+          />
         </div>
       </AppHeader>
 
@@ -515,6 +536,14 @@ export default function Workspaces() {
           )}
         </div>
       </div>
+
+      {importMenu && (
+        <RightClickMenu
+          items={importItems}
+          position={importMenu}
+          onClose={() => setImportMenu(null)}
+        />
+      )}
     </div>
   )
 }

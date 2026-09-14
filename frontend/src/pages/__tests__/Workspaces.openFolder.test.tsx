@@ -71,6 +71,12 @@ function wrap() {
   )
 }
 
+// The three import gestures now share one toolbar button and a menu.
+async function clickImportItem(label: string) {
+  await userEvent.click(await screen.findByTitle('Import'))
+  await userEvent.click(screen.getByText(label))
+}
+
 describe('Workspaces open folder', () => {
   it('binds the picked folder as the save target and normalizes it on the first save', async () => {
     const dir = fakeDirectory('cad')
@@ -78,7 +84,7 @@ describe('Workspaces open folder', () => {
     picker.result = dir as unknown as FileSystemDirectoryHandle
 
     wrap()
-    await userEvent.click(await screen.findByTitle('Import a folder'))
+    await clickImportItem('Import folder')
     await screen.findByText('Gearbox')
 
     const store = getWorkspaceStore()
@@ -109,7 +115,7 @@ describe('Workspaces open folder', () => {
     zipPicker.result = handle
 
     wrap()
-    await userEvent.click(await screen.findByTitle('Open a workspace archive'))
+    await clickImportItem('Open archive')
     await screen.findByText('Bracket')
 
     const store = getWorkspaceStore()

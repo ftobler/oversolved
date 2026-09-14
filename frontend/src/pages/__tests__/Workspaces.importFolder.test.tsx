@@ -38,12 +38,24 @@ function wrap() {
   )
 }
 
+// The import menu lists only the gestures the browser can perform; opening it
+// is what makes the absence of an item observable.
+async function openImportMenu() {
+  await userEvent.click(await screen.findByTitle('Import'))
+}
+
+async function clickImportItem(label: string) {
+  await openImportMenu()
+  await userEvent.click(screen.getByText(label))
+}
+
 describe('Workspaces folder import', () => {
   it('offers no folder affordance where directories cannot be picked', async () => {
     capability.can = false
     wrap()
     await waitFor(() => expect(screen.getByText('No workspaces yet.')).toBeInTheDocument())
-    expect(screen.queryByTitle('Import a folder')).not.toBeInTheDocument()
+    await openImportMenu()
+    expect(screen.queryByText('Import folder')).not.toBeInTheDocument()
   })
 
   it('adopts the picked folder as one workspace', async () => {
@@ -52,8 +64,7 @@ describe('Workspaces folder import', () => {
     picker.result = dir as unknown as FileSystemDirectoryHandle
 
     wrap()
-    await waitFor(() => expect(screen.getByTitle('Import a folder')).toBeInTheDocument())
-    await userEvent.click(screen.getByTitle('Import a folder'))
+    await clickImportItem('Import folder')
 
     // The grid refetched against the adopted workspace: the file that was
     // sitting in the folder is now a live entry and its name labels the tile.
@@ -107,12 +118,12 @@ describe('Workspaces folder import', () => {
     dirA.putText('A.yaml', 'kind: part\n# A\n')
     picker.result = dirA as unknown as FileSystemDirectoryHandle
     wrap()
-    await userEvent.click(await screen.findByTitle('Import a folder'))
+    await clickImportItem('Import folder')
 
     const dirB = fakeDirectory('cad')
     dirB.putText('B.yaml', 'kind: part\n# B\n')
     picker.result = dirB as unknown as FileSystemDirectoryHandle
-    await userEvent.click(await screen.findByTitle('Import a folder'))
+    await clickImportItem('Import folder')
 
     const store = getWorkspaceStore()
     const cadRecords = async () => {

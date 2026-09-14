@@ -68,6 +68,13 @@ function wrap() {
   )
 }
 
+// The import gestures live behind one toolbar button now, so a test opens the
+// menu and then picks the named item.
+async function clickImportItem(label: string) {
+  await userEvent.click(await screen.findByTitle('Import'))
+  await userEvent.click(screen.getByText(label))
+}
+
 describe('Workspaces import copy wording (U5)', () => {
   it('states the copy and the count for a folder import', async () => {
     const dir = fakeDirectory('cad')
@@ -75,7 +82,8 @@ describe('Workspaces import copy wording (U5)', () => {
     picker.result = dir as unknown as FileSystemDirectoryHandle
 
     wrap()
-    await userEvent.click(await screen.findByTitle('Import a folder'))
+    expect(screen.getAllByTitle('Import')).toHaveLength(1)
+    await clickImportItem('Import folder')
 
     expect(await screen.findByText(/Copied 1 entries into this workspace/)).toBeInTheDocument()
     expect(screen.getByText(/Edits to the source will not propagate/)).toBeInTheDocument()
@@ -90,7 +98,7 @@ describe('Workspaces import copy wording (U5)', () => {
     zipPicker.result = zipHandle(archive)
 
     wrap()
-    await userEvent.click(await screen.findByTitle('Open a workspace archive'))
+    await clickImportItem('Open archive')
 
     expect(await screen.findByText(/Copied 2 entries into this workspace/)).toBeInTheDocument()
   })
