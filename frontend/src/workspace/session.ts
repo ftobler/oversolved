@@ -38,7 +38,14 @@ export function createWorkspaceSession(
   return {
     workspace,
     listEntries: opts => store.listEntries(workspace, opts),
-    savedRevs: async () => new Map((await savedEntryRecords(workspace)).map(record => [record.id, record.rev])),
+    savedRevs: async () => {
+      // The checkpoint rev map rides on the workspace meta, so the common path
+      // never reads the saved payloads. A meta from before the map existed falls
+      // back to the rows until the next checkpoint stamps it.
+      const meta = await readWorkspaceMeta(workspace)
+      if (meta?.savedRevs) return new Map(Object.entries(meta.savedRevs))
+      return new Map((await savedEntryRecords(workspace)).map(record => [record.id, record.rev]))
+    },
     readEntry: entry => store.readEntry(workspace, entry),
     writeEntry: entry => store.writeEntry(workspace, entry),
     originOf: async entry => {

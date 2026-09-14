@@ -69,6 +69,12 @@ export interface WorkspaceMetaRecord {
   trash: string[]
   trashedAt?: string  // library-level tombstone, ISO like documents use today
   savedAt?: number  // epoch ms of the last explicit save
+  // The checkpoint's rev per entry, stamped by checkpoint(). The dirty dot needs
+  // id -> rev for every entry, and reading it from the saved records would clone
+  // their payloads on every revision bump, so the map rides on the meta row. A
+  // meta written before the v7 shape carries none and readers fall back to the
+  // saved records until the next checkpoint stamps it.
+  savedRevs?: Record<string, number>
   carrier?: CarrierBinding  // absent == IDB-only
   loadedFrom?: LoadedFromRecord  // the carrier state the working copy agrees with
   // A durable "keep the working copy" after the carrier moved underneath: the
@@ -158,15 +164,9 @@ export async function workspaceEntryRecords(workspace: string): Promise<Workspac
   return idbGetAllFromIndex<WorkspaceEntryRecord>(STORE_WORKSPACE_ENTRIES, 'by_workspace', workspace)
 }
 
-// Every working-copy record in one read. The library listing groups these by
-// workspace so it does one full-store read instead of one per workspace.
-export async function allWorkspaceEntryRecords(): Promise<WorkspaceEntryRecord[]> {
-  return idbGetAllFrom<WorkspaceEntryRecord>(STORE_WORKSPACE_ENTRIES)
-}
-
 // The payload-free listing read. The U1 grid needs counts, kinds, cover entries
 // and revs, none of which require the bytes, so it reads this mirror instead of
-// `allWorkspaceEntryRecords`.
+// the working copy.
 export async function allWorkspaceEntryMetas(): Promise<WorkspaceEntryMetaRecord[]> {
   return idbGetAllFrom<WorkspaceEntryMetaRecord>(STORE_WORKSPACE_ENTRY_META)
 }
@@ -531,6 +531,12 @@ export class IdbCarrier implements WorkspaceCarrier {
   }
 
   async maxSavedRev(): Promise<number> {
+    const meta = await readWorkspaceMeta(this.workspace)
+    if (meta?.savedRevs) {
+      return Object.values(meta.savedRevs).reduce((max, rev) => Math.max(max, rev), 0)
+    }
+    // A meta written before the map existed still has to answer, so fall back to
+    // the checkpoint rows. The next checkpoint stamps the map and stops this.
     const records = await savedEntryRecords(this.workspace)
     return records.reduce((max, record) => Math.max(max, record.rev), 0)
   }
@@ -551,11 +557,18 @@ export class IdbCarrier implements WorkspaceCarrier {
     const meta = await this.requireMeta()
     const working = await workspaceEntryRecords(this.workspace)
     const saved = await savedEntryRecords(this.workspace)
-    const savedRevs = new Map(saved.map(record => [record.id, record.rev]))
-    const toPut = working.filter(record => savedRevs.get(record.id) !== record.rev)
+    const checkpointRevs = new Map(saved.map(record => [record.id, record.rev]))
+    const toPut = working.filter(record => checkpointRevs.get(record.id) !== record.rev)
     const workingIds = new Set(working.map(record => record.id))
     const toDelete = saved.filter(record => !workingIds.has(record.id))
-    const nextMeta: WorkspaceMetaRecord = { ...meta, savedAt: Date.now() }
+    // The checkpoint adopts the whole working copy, so its rev map is exactly the
+    // working revs. Stamping it here is what lets a later read answer the dirty
+    // dot without touching the checkpoint payloads.
+    const nextMeta: WorkspaceMetaRecord = {
+      ...meta,
+      savedAt: Date.now(),
+      savedRevs: Object.fromEntries(working.map(record => [record.id, record.rev])),
+    }
     await idbTransaction([STORE_WORKSPACE_SAVED, STORE_WORKSPACE_META], 'readwrite', stores => {
       for (const record of toPut) stores[STORE_WORKSPACE_SAVED].put(record)
       for (const record of toDelete) stores[STORE_WORKSPACE_SAVED].delete([this.workspace, record.id])

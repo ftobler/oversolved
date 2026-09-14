@@ -38,6 +38,7 @@
 // same upgrade also backfills each mirror row's contentHash, so a payload-free
 // listing still reports the bundle cache key.
 import { entrySizeOf } from '@/utils/entrySize'
+import { sha256Hex, sha256HexBytes } from '@/kernel/sha256'
 
 export const DB_NAME = 'oversolved'
 export const DB_VERSION = 7
@@ -86,12 +87,16 @@ function backfillEntryMeta(transaction: IDBTransaction | null): void {
       name: record.name,
       rev: record.rev ?? 0,
       updatedAt: record.updatedAt ?? 0,
+      // A row written before contentHash existed (it arrived without a version
+      // bump) gets it computed here. The mirror is payload-free, so this is the
+      // last point where the bytes are still in hand to hash.
+      contentHash: record.contentHash
+        ?? (record.kind === 'document' ? sha256Hex(record.text ?? '') : sha256HexBytes(record.bytes ?? new Uint8Array(0))),
       size: entrySizeOf(record),
     }
     if (record.docKind !== undefined) row.docKind = record.docKind
     if (record.mime !== undefined) row.mime = record.mime
     if (record.fileKind !== undefined) row.fileKind = record.fileKind
-    if (record.contentHash !== undefined) row.contentHash = record.contentHash
     meta.put(row)
     cursor.continue()
   }

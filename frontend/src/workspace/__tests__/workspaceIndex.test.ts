@@ -2,8 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   STORE_WORKSPACE_ENTRIES,
   STORE_WORKSPACE_ENTRY_META,
+  STORE_WORKSPACE_SAVED,
+  idbTransaction,
 } from '@/stores/documentStore/idb'
-import { IdbCarrier, workspaceEntryRecords } from '../idbCarrier'
+import { IdbCarrier, readWorkspaceMeta, workspaceEntryRecords, writeWorkspaceMeta } from '../idbCarrier'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb, seedWorkspace } from './idbHarness'
 
@@ -92,5 +94,27 @@ describe('per-workspace IndexedDB indexes', () => {
     const records = await workspaceEntryRecords('A')
     expect(records.map(record => record.workspace)).toEqual(['A'])
     expect(records.map(record => record.id)).toEqual(['a1'])
+  })
+
+  it('stamps the checkpoint rev map on the meta and falls back to the rows', async () => {
+    const carrier = await makeCarrier([documentEntry('a', 'A', { text: 'kind: part\n' })])
+    await carrier.checkpoint()
+    const saved = await readWorkspaceMeta('ws-index')
+    expect(saved?.savedRevs).toEqual({ a: 1 })
+
+    // A meta written before the map existed still answers from the checkpoint
+    // rows.
+    const withoutMap = { ...saved! }
+    delete withoutMap.savedRevs
+    await writeWorkspaceMeta(withoutMap)
+    expect(await carrier.maxSavedRev()).toBe(1)
+
+    // Once restamped, the map is the only source: emptying the checkpoint rows
+    // must not change the answer.
+    await carrier.checkpoint()
+    await idbTransaction([STORE_WORKSPACE_SAVED], 'readwrite', stores => {
+      stores[STORE_WORKSPACE_SAVED].clear()
+    })
+    expect(await carrier.maxSavedRev()).toBe(1)
   })
 })

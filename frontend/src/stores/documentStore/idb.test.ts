@@ -12,6 +12,7 @@ import {
   idbGet, idbGetAllFrom, idbGetFrom,
   idbPut, idbTransaction, resetDbConnection,
 } from './idb'
+import { sha256Hex } from '@/kernel/sha256'
 
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()
@@ -81,10 +82,14 @@ describe('payload-free entry meta backfill (v4 to v5, sized at v6)', () => {
     })
     resetDbConnection()
 
-    // The next open upgrades and backfills the mirror, including the derived size.
+    // The next open upgrades and backfills the mirror, including the derived
+    // size and the content hash the pre-v7 record never carried.
     const metas = await idbGetAllFrom<Record<string, unknown>>(STORE_WORKSPACE_ENTRY_META)
     expect(metas).toEqual([
-      { workspace: 'ws', id: 'e1', path: 'documents/A.yaml', kind: 'document', name: 'A', docKind: 'part', rev: 3, updatedAt: 9, size: 4 },
+      {
+        workspace: 'ws', id: 'e1', path: 'documents/A.yaml', kind: 'document', name: 'A',
+        docKind: 'part', rev: 3, updatedAt: 9, contentHash: sha256Hex('body'), size: 4,
+      },
     ])
   })
 })
