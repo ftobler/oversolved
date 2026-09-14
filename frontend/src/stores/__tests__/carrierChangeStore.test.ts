@@ -190,6 +190,29 @@ describe('carrierChangeStore', () => {
     spy.mockRestore()
   })
 
+  // The same staleness rule begin and check follow: the route left, so the
+  // resolution that lands afterwards speaks for a workspace nobody is on.
+  it('drops a resolution that the route reset out from under it', async () => {
+    const { store, dir, workspace } = await boundWorkspace()
+    foreignChange(dir, workspace)
+    await useCarrierChangeStore.getState().begin(workspace)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const spy = vi.spyOn(store, 'reloadFromCarrier').mockImplementation(() => gate)
+
+    const pending = useCarrierChangeStore.getState().reload()
+    useCarrierChangeStore.getState().reset()
+    release()
+    await pending
+
+    // The workspace the user left must not come back as the one being watched,
+    // and U7 must not be armed for it.
+    expect(useCarrierChangeStore.getState().workspace).toBeNull()
+    expect(useCarrierChangeStore.getState().status).toBe('idle')
+    expect(useRecoveryStore.getState().status).toBe('idle')
+    spy.mockRestore()
+  })
+
   it('treats an ungranted carrier as neutral, never a crash', async () => {
     const store = getWorkspaceStore()
     const dir = fakeDirectory('cad')

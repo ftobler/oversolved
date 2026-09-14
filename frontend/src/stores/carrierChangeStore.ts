@@ -102,10 +102,17 @@ export const useCarrierChangeStore = create<CarrierChangeState>((set, get) => {
     // funnel they share, and a stale click can still land after the dialog has
     // disabled its buttons.
     if (!workspace || get().resolving) return
+    // The same staleness rule `begin` and `check` follow: a route change resets
+    // the store mid-write, and the resolution that lands afterwards must not
+    // write the workspace the user left back over the one they are on, nor arm
+    // U7 for it. `reset` already cleared `resolving`, so a stale path sets
+    // nothing at all.
+    const token = beginToken
     set({ error: undefined, resolving: true })
     try {
       await run(workspace)
     } catch (e) {
+      if (token !== beginToken) return
       set({
         status: 'changed',
         workspace,
@@ -114,6 +121,7 @@ export const useCarrierChangeStore = create<CarrierChangeState>((set, get) => {
       })
       return
     }
+    if (token !== beginToken) return
     set({ status: 'idle', workspace, resolving: false })
     void useRecoveryStore.getState().begin(workspace)
   }
