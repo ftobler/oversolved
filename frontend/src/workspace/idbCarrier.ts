@@ -26,6 +26,7 @@ import {
   STORE_WORKSPACE_META,
   STORE_WORKSPACE_SAVED,
   idbGetAllFrom,
+  idbGetAllFromIndex,
   idbGetFrom,
   idbPutTo,
   idbTransaction,
@@ -115,6 +116,9 @@ export interface WorkspaceEntryMetaRecord {
   fileKind?: string
   rev: number
   updatedAt: number
+  // The working record's payload hash, so the payload-free listing still feeds
+  // the bundle cache's invalidation signal (C5) without a content read.
+  contentHash: string
   // R1's derived payload size. Optional because a v5 mirror row written before
   // the size field existed carries none; the v6 upgrade backfills it.
   size?: number
@@ -129,6 +133,7 @@ function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
     name: record.name,
     rev: record.rev,
     updatedAt: record.updatedAt,
+    contentHash: record.contentHash,
     size: entrySizeOf(record),
   }
   if (record.docKind !== undefined) meta.docKind = record.docKind
@@ -150,8 +155,7 @@ export async function writeWorkspaceMeta(meta: WorkspaceMetaRecord): Promise<voi
 }
 
 export async function workspaceEntryRecords(workspace: string): Promise<WorkspaceEntryRecord[]> {
-  const all = await idbGetAllFrom<WorkspaceEntryRecord>(STORE_WORKSPACE_ENTRIES)
-  return all.filter(record => record.workspace === workspace)
+  return idbGetAllFromIndex<WorkspaceEntryRecord>(STORE_WORKSPACE_ENTRIES, 'by_workspace', workspace)
 }
 
 // Every working-copy record in one read. The library listing groups these by
@@ -167,9 +171,13 @@ export async function allWorkspaceEntryMetas(): Promise<WorkspaceEntryMetaRecord
   return idbGetAllFrom<WorkspaceEntryMetaRecord>(STORE_WORKSPACE_ENTRY_META)
 }
 
+// One workspace's mirror rows, read through the payload-free store's index.
+export async function workspaceEntryMetas(workspace: string): Promise<WorkspaceEntryMetaRecord[]> {
+  return idbGetAllFromIndex<WorkspaceEntryMetaRecord>(STORE_WORKSPACE_ENTRY_META, 'by_workspace', workspace)
+}
+
 export async function savedEntryRecords(workspace: string): Promise<WorkspaceEntryRecord[]> {
-  const all = await idbGetAllFrom<WorkspaceEntryRecord>(STORE_WORKSPACE_SAVED)
-  return all.filter(record => record.workspace === workspace)
+  return idbGetAllFromIndex<WorkspaceEntryRecord>(STORE_WORKSPACE_SAVED, 'by_workspace', workspace)
 }
 
 // Atomically replace one workspace's working copy and its meta row, used by
@@ -217,20 +225,23 @@ export async function purgeWorkspaceRows(workspace: string): Promise<void> {
   )
 }
 
-function recordToManifestEntry(record: WorkspaceEntryRecord): ManifestEntry {
-  const row: ManifestEntry = { path: record.path, kind: record.kind, name: record.name }
-  if (record.docKind !== undefined) row.docKind = record.docKind
-  if (record.mime !== undefined) row.mime = record.mime
-  if (record.fileKind !== undefined) row.fileKind = record.fileKind
-  return row
+// The mirror row read back as list()'s EntryMeta. The payload fields the mirror
+// dropped are exactly the ones EntryMeta never carried, so no fallback read of
+// the working copy is needed; `size` falls back only for a pre-v6 row.
+function metaToEntryMeta(meta: WorkspaceEntryMetaRecord): EntryMeta {
+  const out: EntryMeta = { id: meta.id, path: meta.path, kind: meta.kind, name: meta.name, rev: meta.rev, updatedAt: meta.updatedAt, size: meta.size ?? 0, contentHash: meta.contentHash }
+  if (meta.docKind !== undefined) out.docKind = meta.docKind
+  if (meta.mime !== undefined) out.mime = meta.mime
+  if (meta.fileKind !== undefined) out.fileKind = meta.fileKind
+  return out
 }
 
-function recordToMeta(record: WorkspaceEntryRecord): EntryMeta {
-  const meta: EntryMeta = { id: record.id, path: record.path, kind: record.kind, name: record.name, rev: record.rev, updatedAt: record.updatedAt, size: entrySizeOf(record), contentHash: record.contentHash ?? hashRecord(record) }
-  if (record.docKind !== undefined) meta.docKind = record.docKind
-  if (record.mime !== undefined) meta.mime = record.mime
-  if (record.fileKind !== undefined) meta.fileKind = record.fileKind
-  return meta
+function metaToManifestEntry(meta: WorkspaceEntryMetaRecord): ManifestEntry {
+  const row: ManifestEntry = { path: meta.path, kind: meta.kind, name: meta.name }
+  if (meta.docKind !== undefined) row.docKind = meta.docKind
+  if (meta.mime !== undefined) row.mime = meta.mime
+  if (meta.fileKind !== undefined) row.fileKind = meta.fileKind
+  return row
 }
 
 function recordToEntry(record: WorkspaceEntryRecord): WorkspaceEntry {
@@ -314,7 +325,10 @@ export class IdbCarrier implements WorkspaceCarrier {
 
   async open(): Promise<WorkspaceTree> {
     const meta = await this.requireMeta()
-    const records = await workspaceEntryRecords(this.workspace)
+    // The manifest is built from the payload-free mirror; only the document
+    // payloads are then read, through the (workspace, kind) index, so a
+    // workspace full of large STEP files opens without touching their bytes.
+    const metas = await workspaceEntryMetas(this.workspace)
     const manifest: WorkspaceManifest = {
       format: FORMAT_VERSION,
       workspace: this.workspace,
@@ -323,12 +337,14 @@ export class IdbCarrier implements WorkspaceCarrier {
       provenance: meta.provenance.map(record => ({ ...record })),
       trash: [...meta.trash].sort(),
     }
+    for (const row of metas) manifest.entries[row.id] = metaToManifestEntry(row)
     const contents = new Map<string, EntryContent>()
-    for (const record of records) {
-      manifest.entries[record.id] = recordToManifestEntry(record)
-      // Documents are loaded eagerly; file payloads are left out until read.
-      if (record.kind === 'document') contents.set(record.id, { text: record.text ?? '' })
-    }
+    const documents = await idbGetAllFromIndex<WorkspaceEntryRecord>(
+      STORE_WORKSPACE_ENTRIES,
+      'by_workspace_kind',
+      IDBKeyRange.only([this.workspace, 'document']),
+    )
+    for (const record of documents) contents.set(record.id, { text: record.text ?? '' })
     return { manifest, contents }
   }
 
@@ -388,11 +404,11 @@ export class IdbCarrier implements WorkspaceCarrier {
 
   async list(options: ListOptions = {}): Promise<EntryMeta[]> {
     const meta = await this.requireMeta()
-    const records = await workspaceEntryRecords(this.workspace)
+    const metas = await workspaceEntryMetas(this.workspace)
     const out: EntryMeta[] = []
-    for (const record of records.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-      if (!options.includeTrashed && meta.trash.includes(record.id)) continue
-      out.push(recordToMeta(record))
+    for (const row of metas.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+      if (!options.includeTrashed && meta.trash.includes(row.id)) continue
+      out.push(metaToEntryMeta(row))
     }
     return out
   }
@@ -437,8 +453,10 @@ export class IdbCarrier implements WorkspaceCarrier {
 
   async add(entry: WorkspaceEntry): Promise<void> {
     if (await this.getRecord(entry.id)) throw new Error(`Entry already exists: ${entry.id}`)
-    const records = await workspaceEntryRecords(this.workspace)
-    const path = pathFor(entry.kind, entry.name, candidate => records.some(record => record.path === candidate))
+    // Path uniqueness reads the mirror: paths live there, so this check never
+    // materializes a payload.
+    const metas = await workspaceEntryMetas(this.workspace)
+    const path = pathFor(entry.kind, entry.name, candidate => metas.some(meta => meta.path === candidate))
     const record = entryToRecord(this.workspace, entry, path, 1, Date.now())
     await idbTransaction(
       [STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
@@ -508,8 +526,8 @@ export class IdbCarrier implements WorkspaceCarrier {
   }
 
   async maxWorkingRev(): Promise<number> {
-    const records = await workspaceEntryRecords(this.workspace)
-    return records.reduce((max, record) => Math.max(max, record.rev), 0)
+    const metas = await workspaceEntryMetas(this.workspace)
+    return metas.reduce((max, meta) => Math.max(max, meta.rev), 0)
   }
 
   async maxSavedRev(): Promise<number> {
@@ -518,8 +536,8 @@ export class IdbCarrier implements WorkspaceCarrier {
   }
 
   async lastEditedAt(): Promise<number> {
-    const records = await workspaceEntryRecords(this.workspace)
-    return records.reduce((max, record) => Math.max(max, record.updatedAt), 0)
+    const metas = await workspaceEntryMetas(this.workspace)
+    return metas.reduce((max, meta) => Math.max(max, meta.updatedAt), 0)
   }
 
   // Adopt the working copy as the checkpoint: copy every entry whose rev moved,

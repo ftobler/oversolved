@@ -29,10 +29,18 @@
 // materializing a payload. It is not a format change: the size is computed from
 // the working-copy record and never serialized. The upgrade backfills it for a
 // database that already carries a v5 mirror.
+//
+// v7 adds per-workspace indexes to the workspace stores: `by_workspace` on the
+// working copy, the meta mirror and the checkpoint, plus a compound
+// (workspace, kind) on the working copy. A scoped read now asks the index for
+// one workspace's rows instead of scanning the whole store and filtering in JS,
+// which stops a listing from materializing every workspace's payload bytes. The
+// same upgrade also backfills each mirror row's contentHash, so a payload-free
+// listing still reports the bundle cache key.
 import { entrySizeOf } from '@/utils/entrySize'
 
 export const DB_NAME = 'oversolved'
-export const DB_VERSION = 6
+export const DB_VERSION = 7
 export const STORE_DOCUMENTS = 'documents'
 export const STORE_HANDLES = 'handles'
 export const STORE_FILES = 'files'
@@ -46,8 +54,8 @@ let dbPromise: Promise<IDBDatabase> | null = null
 // The v4-to-v5 upgrade projects every existing working-copy row into the new
 // payload-free mirror, so an existing database lists with real counts. This is
 // the only place the pre-upgrade rows are visible; every later write keeps the
-// mirror in step. It runs on the v5-to-v6 upgrade too, refreshing each row with
-// the v6 size.
+// mirror in step. It runs on the v5-to-v6 and v6-to-v7 upgrades too, refreshing
+// each row with the v6 size and the v7 contentHash.
 function backfillEntryMeta(transaction: IDBTransaction | null): void {
   if (!transaction) return
   const meta = transaction.objectStore(STORE_WORKSPACE_ENTRY_META)
@@ -68,6 +76,7 @@ function backfillEntryMeta(transaction: IDBTransaction | null): void {
       bytes?: Uint8Array
       rev?: number
       updatedAt?: number
+      contentHash?: string
     }
     const row: Record<string, unknown> = {
       workspace: record.workspace,
@@ -82,6 +91,7 @@ function backfillEntryMeta(transaction: IDBTransaction | null): void {
     if (record.docKind !== undefined) row.docKind = record.docKind
     if (record.mime !== undefined) row.mime = record.mime
     if (record.fileKind !== undefined) row.fileKind = record.fileKind
+    if (record.contentHash !== undefined) row.contentHash = record.contentHash
     meta.put(row)
     cursor.continue()
   }
@@ -122,6 +132,20 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_WORKSPACE_SAVED)) {
         db.createObjectStore(STORE_WORKSPACE_SAVED, { keyPath: ['workspace', 'id'] })
+      }
+      // Per-workspace indexes so a scoped read never opens another workspace's
+      // rows. The compound (workspace, kind) one lets open() pull a workspace's
+      // document payloads without touching file bytes. Guarded so the v7
+      // upgrade is idempotent against a store that already carries them.
+      const transaction = req.transaction
+      if (transaction) {
+        const entries = transaction.objectStore(STORE_WORKSPACE_ENTRIES)
+        if (!entries.indexNames.contains('by_workspace')) entries.createIndex('by_workspace', 'workspace')
+        if (!entries.indexNames.contains('by_workspace_kind')) entries.createIndex('by_workspace_kind', ['workspace', 'kind'])
+        const entryMeta = transaction.objectStore(STORE_WORKSPACE_ENTRY_META)
+        if (!entryMeta.indexNames.contains('by_workspace')) entryMeta.createIndex('by_workspace', 'workspace')
+        const saved = transaction.objectStore(STORE_WORKSPACE_SAVED)
+        if (!saved.indexNames.contains('by_workspace')) saved.createIndex('by_workspace', 'workspace')
       }
       // One-time backfill for a database upgraded from before the payload-free
       // mirror existed: project every working-copy record so the grid lists a
@@ -247,6 +271,15 @@ export async function idbGetFrom<T>(storeName: string, key: IDBValidKey): Promis
 export async function idbGetAllFrom<T>(storeName: string): Promise<T[]> {
   const store = await tx('readonly', storeName)
   return promisify(store.getAll() as IDBRequest<T[]>)
+}
+
+// A read scoped by an index rather than the whole store. The per-workspace
+// reads route through here so one workspace's rows never materialize another's
+// payloads; a compound index takes IDBKeyRange.only([a, b]) as its key, which
+// is why the query is the index's full key-or-range union.
+export async function idbGetAllFromIndex<T>(storeName: string, indexName: string, key: IDBValidKey | IDBKeyRange): Promise<T[]> {
+  const store = await tx('readonly', storeName)
+  return promisify(store.index(indexName).getAll(key) as IDBRequest<T[]>)
 }
 
 export async function idbPutTo<T>(storeName: string, value: T): Promise<void> {
