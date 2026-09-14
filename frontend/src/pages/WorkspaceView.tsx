@@ -115,6 +115,9 @@ export default function WorkspaceView() {
       } catch (e) {
         if (!cancelled) {
           setErrors({ workspace: workspaceId, banner: errorMessage(e, 'Failed to read this workspace'), dialog: null })
+          // Drop any prior workspace's rows too: under the banner they would
+          // read as this workspace's current content.
+          setLoaded(null)
           setLoadFailed(true)
         }
       }
@@ -169,7 +172,18 @@ export default function WorkspaceView() {
     }
   }
 
-  const handleAdd = () => run('Failed to add the entry', async () => {
+  // A long verb keeps its own key busy, so its control goes disabled and no
+  // second duplicate, add or rename can start while one is in flight.
+  const runBusy = async (key: string, what: string, action: () => Promise<void>, into: 'banner' | 'dialog' = 'banner') => {
+    setBusy(prev => new Set(prev).add(key))
+    try {
+      await run(what, action, into)
+    } finally {
+      setBusy(prev => { const next = new Set(prev); next.delete(key); return next })
+    }
+  }
+
+  const handleAdd = () => runBusy('add', 'Failed to add the entry', async () => {
     if (!workspaceId || !newName.trim()) return
     const id = randomUuid()
     await store.addEntry(workspaceId, { id, kind: 'document', name: newName.trim(), docKind: newKind, text: '' })
@@ -179,14 +193,14 @@ export default function WorkspaceView() {
     if (confirmDiscardUnsavedChanges(() => navigate(target))) navigate(target)
   }, 'dialog')
 
-  const handleRenameEntry = () => run('Failed to rename the entry', async () => {
+  const handleRenameEntry = () => runBusy('renameEntry', 'Failed to rename the entry', async () => {
     if (!workspaceId || !renameTarget || !renameName.trim()) return
     await store.renameEntry(workspaceId, renameTarget.id, renameName.trim())
     setRenameTarget(null)
     setRenameName('')
   }, 'dialog')
 
-  const handleDuplicate = (entry: EntryMeta) => run('Failed to duplicate the entry', async () => {
+  const handleDuplicate = (entry: EntryMeta) => runBusy(`duplicate:${entry.id}`, 'Failed to duplicate the entry', async () => {
     if (!workspaceId) return
     await store.cloneEntry(workspaceId, entry.id)
   })
@@ -208,15 +222,6 @@ export default function WorkspaceView() {
 
   // A long workspace-level verb keeps its own key busy, so the card's control
   // goes disabled and no second duplicate or export can start.
-  const runBusy = async (key: string, what: string, action: () => Promise<void>, into: 'banner' | 'dialog' = 'banner') => {
-    setBusy(prev => new Set(prev).add(key))
-    try {
-      await run(what, action, into)
-    } finally {
-      setBusy(prev => { const next = new Set(prev); next.delete(key); return next })
-    }
-  }
-
   const handleRenameWorkspace = () => runBusy('rename', 'Failed to rename the workspace', async () => {
     if (!workspaceId || !wsRenameName.trim()) return
     await store.rename(workspaceId, wsRenameName.trim())
@@ -352,6 +357,7 @@ export default function WorkspaceView() {
                   workspace={workspaceId ?? ''}
                   dirty={dirty.has(entry.id)}
                   deleting={deleting.has(entry.id)}
+                  duplicating={busy.has(`duplicate:${entry.id}`)}
                   usedBy={referrerNames.get(entry.id)}
                   onOpen={openEntry}
                   onRename={target => { setRenameTarget(target); setRenameName(target.name) }}
@@ -370,6 +376,7 @@ export default function WorkspaceView() {
         onClose={() => { setAddOpen(false); setDialogError(null) }}
         onConfirm={() => { void handleAdd() }}
         confirmLabel="Add"
+        busy={busy.has('add')}
       >
         <input
           type="text"
@@ -392,6 +399,7 @@ export default function WorkspaceView() {
         onClose={() => { setRenameTarget(null); setDialogError(null) }}
         onConfirm={() => { void handleRenameEntry() }}
         confirmLabel="Rename"
+        busy={busy.has('renameEntry')}
       >
         <input
           type="text"
@@ -470,6 +478,7 @@ interface EntryRowProps {
   workspace: string
   dirty: boolean
   deleting: boolean
+  duplicating: boolean
   usedBy: string[] | undefined
   onOpen: (entry: EntryMeta) => void
   onRename: (entry: EntryMeta) => void
@@ -480,7 +489,7 @@ interface EntryRowProps {
 // The library tile on its side. A document row is activatable (click, Enter,
 // Space); a file row is not -- it carries the same thumb slot and verbs but
 // there is no editor behind it.
-function EntryRow({ entry, workspace, dirty, deleting, usedBy, onOpen, onRename, onDuplicate, onDelete }: EntryRowProps) {
+function EntryRow({ entry, workspace, dirty, deleting, duplicating, usedBy, onOpen, onRename, onDuplicate, onDelete }: EntryRowProps) {
   const openable = entry.kind === 'document'
   const meta = entry.kind === 'file'
     ? [fileKindOf(entry), formatBytes(fileSizeOf(entry))]
@@ -535,9 +544,10 @@ function EntryRow({ entry, workspace, dirty, deleting, usedBy, onOpen, onRename,
           className="btn btn-tile-action"
           aria-label={`Duplicate ${entry.name}`}
           title="Duplicate"
+          disabled={duplicating}
           onClick={() => onDuplicate(entry)}
         >
-          <span className="material-icons">content_copy</span>
+          <span className="material-icons">{duplicating ? 'hourglass_empty' : 'content_copy'}</span>
         </button>
         <button
           className="btn btn-delete-tile"

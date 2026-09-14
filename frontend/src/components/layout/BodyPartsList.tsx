@@ -11,6 +11,7 @@ interface BodyPartsListProps {
 }
 
 export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
+  const doc = usePartEditorStore(s => s.doc)
   const bodies = usePartEditorStore(s => s.bodies)
   const visibleBodies = usePartEditorStore(s => s.visibleBodies)
   const partLabels = usePartEditorStore(s => s.partLabels)
@@ -30,7 +31,7 @@ export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
     <div className="sidebar-bottom" style={{ height: `${100 - splitPercent}%` }}>
       <div className="sidebar-header">Parts</div>
       <ul className="parts-list">
-        {Object.keys(bodies || {}).length === 0 ? (
+        {doc && Object.keys(bodies || {}).length === 0 ? (
           <li className="empty">No parts</li>
         ) : (
           Object.entries(bodies || {}).map(([bodyId], index) => {

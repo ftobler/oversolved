@@ -32,6 +32,9 @@ export default function AssemblyToolbar({
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'success'>('idle')
+  // A save is a store write plus an anchor-solver bundle diff; without this, a
+  // double click starts two. The button refuses while one is in flight.
+  const [saving, setSaving] = useState(false)
   // Tracks the pending "success" -> "idle" reset so it can be cleared on
   // unmount. Without this a stray timer fires setState after the component
   // (and, in tests, the whole jsdom environment) is gone. Mirrors
@@ -51,19 +54,25 @@ export default function AssemblyToolbar({
   }, [])
 
   const handleSaveClick = async () => {
+    if (saving) return
     // A new attempt retires any previous success flash up front; only this
     // save's own outcome may bring the check back.
     setSaveState('idle')
-    // The green check means the bytes landed: only a resolved true may flash
-    // it. On a failure the plain save icon stays; the error banner beside the
-    // toolbar already reports why, so no second affordance is raised here.
-    const saved = await handleSave()
-    // A resolve after unmount must not schedule the reset timer: the cleanup
-    // already ran and nothing would ever clear it.
-    if (!saved || !mountedRef.current) return
-    setSaveState('success')
-    if (saveResetTimeout.current !== null) clearTimeout(saveResetTimeout.current)
-    saveResetTimeout.current = setTimeout(() => setSaveState('idle'), 1500)
+    setSaving(true)
+    try {
+      // The green check means the bytes landed: only a resolved true may flash
+      // it. On a failure the plain save icon stays; the error banner beside the
+      // toolbar already reports why, so no second affordance is raised here.
+      const saved = await handleSave()
+      // A resolve after unmount must not schedule the reset timer: the cleanup
+      // already ran and nothing would ever clear it.
+      if (!saved || !mountedRef.current) return
+      setSaveState('success')
+      if (saveResetTimeout.current !== null) clearTimeout(saveResetTimeout.current)
+      saveResetTimeout.current = setTimeout(() => setSaveState('idle'), 1500)
+    } finally {
+      if (mountedRef.current) setSaving(false)
+    }
   }
 
   return (
@@ -106,7 +115,7 @@ export default function AssemblyToolbar({
           </div>
         )}
       </div>
-      <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSaveClick}>
+      <button className="toolbar-btn" aria-label="Save" title="Save" onClick={handleSaveClick} disabled={saving}>
         <span className="material-icons-outlined">{saveState === 'success' ? 'check' : 'save'}</span>
       </button>
       <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>

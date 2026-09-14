@@ -110,7 +110,9 @@ export default function Workspaces() {
       }
       if (!cancelled) setReopen(names)
     }
-    void probe()
+    // The probe only adds the Reopen affordance; a failed list must settle
+    // quietly instead of rejecting unhandled.
+    probe().catch(() => {})
     return () => { cancelled = true }
   }, [store, summaries.length])
 
@@ -120,11 +122,13 @@ export default function Workspaces() {
       return
     }
     try {
-      await store.create(newName.trim(), { docKind: newKind })
-      setNewName('')
-      setAddError(null)
-      setShowCreate(false)
-      await refresh(false, debouncedSearch)
+      await withBusy('create', async () => {
+        await store.create(newName.trim(), { docKind: newKind })
+        setNewName('')
+        setAddError(null)
+        setShowCreate(false)
+        await refresh(false, debouncedSearch)
+      })
     } catch (e) {
       setAddError(errorMessage(e, 'Failed to create workspace'))
     }
@@ -133,9 +137,11 @@ export default function Workspaces() {
   const handleRename = async () => {
     if (!renameTarget || !renameName.trim()) return
     try {
-      await store.rename(renameTarget.workspace, renameName.trim())
-      setRenameTarget(null)
-      await refresh(trashView, debouncedSearch)
+      await withBusy('rename', async () => {
+        await store.rename(renameTarget.workspace, renameName.trim())
+        setRenameTarget(null)
+        await refresh(trashView, debouncedSearch)
+      })
     } catch (e) {
       setError(errorMessage(e, 'Failed to rename workspace'))
     }
@@ -200,18 +206,20 @@ export default function Workspaces() {
 
   const handleReopen = async (workspace: string) => {
     try {
-      const handle = await reopenWorkspaceHandle(workspace)
-      if (!handle) {
-        setError('That folder is no longer available')
-        return
-      }
-      // The grant is restored, so prime the resolved target at once: a later
-      // save writes through it instead of re-probing. The carrier change the
-      // check finds is surfaced into carrierChangeStore, so entering the
-      // workspace shows the decision dialog instead of silently keeping the
-      // stale working copy (P4b).
-      await useCarrierChangeStore.getState().check(workspace)
-      setError(null)
+      await withBusy(`reopen:${workspace}`, async () => {
+        const handle = await reopenWorkspaceHandle(workspace)
+        if (!handle) {
+          setError('That folder is no longer available')
+          return
+        }
+        // The grant is restored, so prime the resolved target at once: a later
+        // save writes through it instead of re-probing. The carrier change the
+        // check finds is surfaced into carrierChangeStore, so entering the
+        // workspace shows the decision dialog instead of silently keeping the
+        // stale working copy (P4b).
+        await useCarrierChangeStore.getState().check(workspace)
+        setError(null)
+      })
     } catch (e) {
       setError(errorMessage(e, 'Failed to reopen folder'))
     }
@@ -222,11 +230,13 @@ export default function Workspaces() {
   // first explicit save normalizes the layout into the picked folder.
   const handleAttachCarrier = async (workspace: string) => {
     try {
-      const dir = await pickLibraryDirectory()
-      if (!dir) return  // cancelled: a non-event
-      await store.attachCarrier(workspace, { kind: 'folder', label: dir.name, handle: dir })
-      setError(null)
-      await refresh(trashView, debouncedSearch)
+      await withBusy(`attach:${workspace}`, async () => {
+        const dir = await pickLibraryDirectory()
+        if (!dir) return  // cancelled: a non-event
+        await store.attachCarrier(workspace, { kind: 'folder', label: dir.name, handle: dir })
+        setError(null)
+        await refresh(trashView, debouncedSearch)
+      })
     } catch (e) {
       setError(errorMessage(e, 'Failed to bind folder'))
     }
@@ -418,6 +428,7 @@ export default function Workspaces() {
             onClose={() => { setShowCreate(false); setAddError(null) }}
             onConfirm={handleCreate}
             confirmLabel="Create"
+            busy={isBusy('create')}
           >
             <input
               type="text"
@@ -436,6 +447,7 @@ export default function Workspaces() {
             onClose={() => setRenameTarget(null)}
             onConfirm={handleRename}
             confirmLabel="Rename"
+            busy={isBusy('rename')}
           >
             <input
               type="text"
@@ -526,19 +538,21 @@ export default function Workspaces() {
                           {reopen.has(summary.workspace) && (
                             <button
                               className="btn btn-tile-action"
+                              disabled={isBusy(`reopen:${summary.workspace}`)}
                               onClick={e => { e.preventDefault(); void handleReopen(summary.workspace) }}
                               title={`Reopen ${reopen.get(summary.workspace)}`}
                             >
-                              <span className="material-icons">folder_open</span>
+                              <span className="material-icons">{isBusy(`reopen:${summary.workspace}`) ? 'hourglass_empty' : 'folder_open'}</span>
                             </button>
                           )}
                           {canPickDirectory() && (
                             <button
                               className="btn btn-tile-action"
+                              disabled={isBusy(`attach:${summary.workspace}`)}
                               onClick={e => { e.preventDefault(); void handleAttachCarrier(summary.workspace) }}
                               title="Save to folder"
                             >
-                              <span className="material-icons">save</span>
+                              <span className="material-icons">{isBusy(`attach:${summary.workspace}`) ? 'hourglass_empty' : 'save'}</span>
                             </button>
                           )}
                           <button

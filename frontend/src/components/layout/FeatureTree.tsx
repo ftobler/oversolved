@@ -140,7 +140,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
         )}
       </div>
       <ul className="features-list" ref={listRef}>
-      {features.length === 0 ? (
+      {doc && features.length === 0 ? (
         <li className="empty">No features</li>
       ) : (
         features.map((feature, index) => {

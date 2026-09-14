@@ -54,4 +54,20 @@ describe('AssemblyToolbar save state', () => {
 
     expect(saveIcon()).toBe('save')
   })
+
+  it('refuses a second save while the first is in flight', async () => {
+    useAssemblyStore.setState({ undoStack: [], redoStack: [] })
+    const gate = deferred()
+    const handleSave = vi.fn(() => gate.promise)
+    renderToolbar(handleSave)
+
+    const button = screen.getByRole('button', { name: 'Save' })
+    fireEvent.click(button)
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+    expect(handleSave).toHaveBeenCalledTimes(1)
+
+    await act(async () => { gate.resolve(true) })
+    await waitFor(() => expect(button).toBeEnabled())
+  })
 })

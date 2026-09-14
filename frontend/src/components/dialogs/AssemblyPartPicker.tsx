@@ -47,7 +47,9 @@ function isInsertablePart(entry: EntryMeta): boolean {
 export default function AssemblyPartPicker({ isOpen, selfUuid, session, onClose, onPick }: AssemblyPartPickerProps) {
   const [docs, setDocs] = useState<EntryMeta[]>([])
   const [selected, setSelected] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  // Starts true so opening the dialog can never paint "No parts available."
+  // before the first list answers; the close reset restores it for the reopen.
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -65,6 +67,8 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, session, onClose,
       setSearchQuery('')
       setDebouncedSearch('')
       setSelected(null)
+      setDocs([])
+      setLoading(true)
     })
     return () => { cancelled = true }
   }, [isOpen])
@@ -78,8 +82,19 @@ export default function AssemblyPartPicker({ isOpen, selfUuid, session, onClose,
   // nothing promises they resolve in order, so only the latest sets state.
   const listReqRef = useRef(0)
   useEffect(() => {
-    if (!isOpen || !session) return
+    if (!isOpen) return
     const reqId = ++listReqRef.current
+    // No session is terminal, not pending: the picker has nothing to list, so
+    // it settles into its empty state instead of holding the spinner up.
+    if (!session) {
+      queueMicrotask(() => {
+        if (reqId !== listReqRef.current) return
+        setDocs([])
+        setError(null)
+        setLoading(false)
+      })
+      return
+    }
     queueMicrotask(() => {
       if (reqId !== listReqRef.current) return
       setLoading(true)

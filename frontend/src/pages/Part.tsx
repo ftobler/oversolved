@@ -639,14 +639,21 @@ export default function Part() {
       }
       const featureId = randomId(18)
       const label = file.name.replace(/\.(step|stp)$/i, '')
-      const entry = await getFileRegistry().create({
-        name: file.name,
-        kind: 'step',
-        mime: 'application/step',
-        bytes,
-      })
-      setRollbackForNewFeature(features)
-      handleMutation({ type: 'add_import_step', featureId, fileId: entry.id, label })
+      // The registry create is a write that can fail (quota, a closed DB). It
+      // used to reject unhandled on the native input's onchange, so a failed
+      // import was silent and the feature never appeared.
+      try {
+        const entry = await getFileRegistry().create({
+          name: file.name,
+          kind: 'step',
+          mime: 'application/step',
+          bytes,
+        })
+        setRollbackForNewFeature(features)
+        handleMutation({ type: 'add_import_step', featureId, fileId: entry.id, label })
+      } catch (e) {
+        setError(errorMessage(e, 'Failed to import STEP'))
+      }
     }
     input.click()
   }, [handleMutation, features, setError])

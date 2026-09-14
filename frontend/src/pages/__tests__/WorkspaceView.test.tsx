@@ -187,6 +187,23 @@ describe('WorkspaceView', () => {
     await waitFor(() => expect(storeMock.cloneEntry).toHaveBeenCalledWith('ws', 'p1'))
   })
 
+  it('disables a row duplicate while it is in flight and re-enables it after', async () => {
+    installSession()
+    let resolveClone: (id: string) => void = () => {}
+    storeMock.cloneEntry.mockReturnValueOnce(new Promise<string>(resolve => { resolveClone = resolve }))
+    renderView()
+    await screen.findByText('Bracket')
+
+    const duplicate = screen.getByLabelText('Duplicate Bracket') as HTMLButtonElement
+    fireEvent.click(duplicate)
+    expect(duplicate).toBeDisabled()
+    fireEvent.click(duplicate)
+    expect(storeMock.cloneEntry).toHaveBeenCalledTimes(1)
+
+    resolveClone('clone-id')
+    await waitFor(() => expect(duplicate).toBeEnabled())
+  })
+
   // The tree this replaces had six uncaught handlers and no error surface, so a
   // refused verb was an invisible no-op.
   it('surfaces a failed verb instead of swallowing it', async () => {

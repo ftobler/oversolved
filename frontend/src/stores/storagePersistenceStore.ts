@@ -29,7 +29,11 @@ export const useStoragePersistenceStore = create<StoragePersistenceState>((set) 
   state: 'unknown',
   ensureChecked: () => {
     if (inFlight) return
-    inFlight = checkStoragePersistence().then(state => { set({ state }) })
+    inFlight = checkStoragePersistence()
+      .then(state => { set({ state }) })
+      // A failed probe must settle the once-per-session guard and stay an
+      // honest silence, not an unhandled rejection that leaves it pending.
+      .catch(() => { set({ state: 'unknown' }) })
   },
   request: async () => {
     set({ state: await requestStoragePersistence() })
