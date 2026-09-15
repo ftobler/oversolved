@@ -79,11 +79,15 @@ export interface OccPipeShellBuilder extends OccPrismBuilder {
  * BRepFilletAPI_Make{Fillet,Chamfer}: the edge-modifier makers. They share the
  * boolean-style history surface (IsDeleted / Modified / Generated) plus the
  * edge-add calls. `Add_2(value, edge)` is the (radius|distance, edge) overload;
- * `AddDA(distance, angle, edge)` is the chamfer angle-distance form.
+ * `AddDA(distance, angle, edge, face)` is the chamfer angle-distance form: the
+ * distance is measured on the reference FACE and the angle taken from it, so
+ * the face is not optional. This declaration said three arguments until
+ * 2026-09-15, which compiled fine and threw `BindingError: called with 3
+ * arguments, expected 4` on every call.
  */
 export interface OccEdgeModifierMaker extends OccDisposable {
   Add_2(value: number, edge: OccShape): void
-  AddDA(distance: number, angle: number, edge: OccShape): void
+  AddDA(distance: number, angle: number, edge: OccShape, face: OccShape): void
   Build(): void
   IsDone(): boolean
   Shape(): OccShape

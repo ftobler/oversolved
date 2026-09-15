@@ -417,9 +417,17 @@ function shapeVolume(oc: OccModule, scope: DisposeScope, shape: OccShape): numbe
   return mass
 }
 
+/** What `addEdge` needs beyond the edge itself. The angle-distance chamfer has
+ *  to name a reference face, and the input shape's faces are already walked by
+ *  the time the add loop runs, so they are handed over rather than re-explored. */
+interface AddEdgeContext {
+  scope: DisposeScope
+  faces: OccShape[]
+}
+
 interface ModifierSpec {
   makeMaker(shape: OccShape): OccEdgeModifierMaker
-  addEdge(maker: OccEdgeModifierMaker, edge: OccShape): void
+  addEdge(maker: OccEdgeModifierMaker, edge: OccShape, ctx: AddEdgeContext): void
 }
 
 function applyEdgeModifier(
@@ -464,7 +472,7 @@ function applyEdgeModifier(
       continue
     }
     try {
-      spec.addEdge(maker, edge)
+      spec.addEdge(maker, edge, { scope, faces: oldFaces })
       appliedEdges.push(edge)
     } catch {
       // failed edge -- mirror Python's failed_count (no throw)
@@ -575,11 +583,35 @@ function filletSpec(oc: OccModule, radius: number): ModifierSpec {
   }
 }
 
+/** First face of `ctx.faces` that the edge belongs to, or null. The face edges
+ *  are wrappers of their own, so the match is `IsSame`, not identity; the walk
+ *  is cached because every chamfered edge asks the same question of the same
+ *  face set. */
+function adjacentFaceLookup(oc: OccModule): (edge: OccShape, ctx: AddEdgeContext) => OccShape | null {
+  let walked: { face: OccShape; edges: OccShape[] }[] | null = null
+  return (edge, ctx) => {
+    walked ??= ctx.faces.map((face) => ({ face, edges: exploreEdges(oc, ctx.scope, face) }))
+    for (const { face, edges } of walked) {
+      if (edges.some((fe) => (fe as OccSubShape).IsSame(edge as OccSubShape))) return face
+    }
+    return null
+  }
+}
+
 function chamferSpec(oc: OccModule, distance: number, kind: string, angle: number): ModifierSpec {
+  const findFace = adjacentFaceLookup(oc)
   return {
     makeMaker: (shape) => new oc.BRepFilletAPI_MakeChamfer(shape),
-    addEdge: (maker, edge) =>
-      kind === 'angle_distance' ? maker.AddDA(distance, angle, edge) : maker.Add_2(distance, edge),
+    addEdge: (maker, edge, ctx) => {
+      if (kind !== 'angle_distance') return maker.Add_2(distance, edge)
+      // AddDA measures the distance on a reference face and takes the angle
+      // from it, so the face is part of the call. Either adjacent face gives a
+      // valid chamfer (they differ only in which leg is `distance`), so the
+      // first one found is a real answer rather than an arbitrary one.
+      const face = findFace(edge, ctx)
+      if (!face) throw new Error('chamfer: the target edge belongs to no face of the shape')
+      maker.AddDA(distance, angle, edge, face)
+    },
   }
 }
 
