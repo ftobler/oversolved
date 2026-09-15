@@ -52,16 +52,14 @@
   font-size: 20px;
 }
 
-/* Workspace dirty state: the dot and the durability sentence that keeps the
-   "unsaved" claim honest about whether the browser will actually keep it. */
+/* Workspace dirty state: the dot and the save button, and no sentence between
+   them. The dot carries the colour; the button is a toolbar button like any
+   other. */
 .workspace-dirty {
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: 420px;
   color: #d8b45a;
-  font-size: 12px;
-  line-height: 1.3;
 }
 
 .header-dirty-dot {

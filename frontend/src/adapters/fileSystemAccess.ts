@@ -25,9 +25,10 @@ export function canPickDirectory(): boolean {
   return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function'
 }
 
-// A zip can only be bound as a save target when the browser can hand back a
-// file handle; an <input type=file> yields a File and nothing to remember. The
-// same Chromium gate as the directory picker.
+// A zip is only worth remembering as an origin when the browser can hand back a
+// file handle; an <input type=file> yields a File and nothing to remember, so
+// that import can never be pulled from again. The same Chromium gate as the
+// directory picker.
 export function canPickWorkspaceZip(): boolean {
   return typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function'
 }
@@ -35,8 +36,8 @@ export function canPickWorkspaceZip(): boolean {
 const WORKSPACE_ZIP_PICKER_ID = 'oversolved-workspace-zip'
 
 // Returns null when the browser cannot pick or the user cancelled. Must be
-// called from a user gesture. The zip the handle names becomes the workspace's
-// save target; its bytes are read by the caller.
+// called from a user gesture. The zip the handle names is an import source and
+// a later pull's origin; its bytes are read by the caller and never written.
 export async function pickWorkspaceZip(): Promise<FileSystemFileHandle | null> {
   if (!canPickWorkspaceZip()) return null
   try {

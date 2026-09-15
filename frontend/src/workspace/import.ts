@@ -744,7 +744,7 @@ export async function updateFromOrigin(
   // The local hashes answer "did the local copy drift" for files too, whose
   // bytes the opened tree leaves lazy. `previous.hash` is the source hash at
   // last copy, so equal hashes plus an equal local hash mean this entry needs no
-  // write at all; restamping copiedAt would churn the carrier for nothing.
+  // write at all; restamping copiedAt would churn the rows for nothing.
   const localHashes = new Map((await store.listEntries(workspace)).map(meta => [meta.id, meta.contentHash]))
   const copiedAt = Date.now()
   const provenance = new Map(tree.manifest.provenance.map(entry => [entry.entry, entry]))
@@ -796,7 +796,7 @@ export async function updateFromOrigin(
     provenance.set(localId, next)
   }
 
-  // Nothing changed: leave the carrier, the checkpoint and copiedAt untouched.
+  // Nothing changed: leave the rows, the checkpoint and copiedAt untouched.
   if (updated === 0 && added === 0) return { updated: 0, added: 0, unreachable: false, sourceMissing: false }
 
   tree.manifest.provenance = [...provenance.values()]

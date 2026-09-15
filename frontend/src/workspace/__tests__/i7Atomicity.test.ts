@@ -47,7 +47,8 @@ describe('I7: an IndexedDB save is atomic across keys', () => {
 // A directory can only promise per-file atomicity: createWritable buffers and
 // close swings the swap file into place, so an interrupted write leaves the
 // previous contents. The manifest is written last, so a crash before it leaves
-// the old manifest and the new files as orphans that reconcile surfaces.
+// the old manifest standing over payloads it does not name -- orphan files in
+// the user's folder, which is the honest outcome for a torn export.
 class FlakyDirectory extends MemoryDirectory {
   failOn: { name: string | null }
 

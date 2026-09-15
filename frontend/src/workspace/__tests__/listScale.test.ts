@@ -45,5 +45,4 @@ describe('200-document listing stays metadata-only', () => {
     expect(reads).toContain(STORE_WORKSPACE_ENTRY_META)
     expect(reads).not.toContain(STORE_WORKSPACE_ENTRIES)
   })
-
 })

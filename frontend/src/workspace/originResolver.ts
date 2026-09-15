@@ -109,11 +109,15 @@ async function openWorkspaceTree(workspace: string): Promise<WorkspaceTree> {
 
 // ─── the origin-keyed handle store ───
 
-// The workspace handle registry is keyed by workspace; an origin needs the same
-// restore/reopen discipline under an origin: key. IndexedDB is the only place a
-// handle survives a session, and the grant does not, so a restored handle is
-// re-confirmed at the explicit update gesture (the only caller of resolveOrigin
-// for a handle-backed locator).
+// An origin's folder or archive, under an origin: key. IndexedDB is the only
+// place a handle survives a session, and the grant does not, so a restored
+// handle is re-confirmed at the explicit update gesture (the only caller of
+// resolveOrigin for a handle-backed locator).
+//
+// Origins are the store's only residents now. The `workspace:<id>` rows the
+// deleted workspace handle registry wrote are orphans: nothing reads a key of
+// that shape and nothing deletes one, so a library carried across the storage
+// collapse keeps them, inert, exactly like the residence fields on the meta row.
 
 function directoryKey(locator: string): string {
   return `origin:${locator}`

@@ -232,11 +232,6 @@ export async function idbPutHandle<T>(key: string, value: T): Promise<void> {
   await promisify(store.put(value as unknown as Record<string, unknown>, key))
 }
 
-export async function idbDeleteHandle(key: string): Promise<void> {
-  const store = await tx('readwrite', STORE_HANDLES)
-  await promisify(store.delete(key))
-}
-
 // The `files` store, keyed by the record's own id. Separate entry points for
 // the same reason as the handle helpers: a keyed-by-uuid document call must
 // never be able to address the file registry by accident.

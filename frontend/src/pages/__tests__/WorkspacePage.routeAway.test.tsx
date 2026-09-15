@@ -6,13 +6,12 @@ import { IdbWorkspaceStore } from '@/workspace/store'
 import { useRecoveryStore } from '@/stores/recoveryStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
-// The one boundary at which work can be lost is the editor's buffer not having
-// reached IndexedDB, so every way out of the entry route has to reach a
-// decision. The error branches were the ones that did not: the editor unmounted
-// into a bare viewer with no header, no way back and -- until the guard stopped
-// clearing it there -- no dirty flag either, so the edits and the warning about
-// them went together. The branch keeps the header the guarded links and the
-// save button live in, and the flag it needs to show them.
+// Every branch of the entry route that is not an editor keeps the app header,
+// so a refused entry is a wrong turn with a way back rather than a bare viewer
+// holding the user in a corner -- and so an editor that unmounts into one lands
+// somewhere its guarded links and its save button still exist. The flag's own
+// behaviour on unmount is the guard hook's, and is asserted in
+// hooks/__tests__/useUnsavedChangesGuard.test.tsx; these two cover the chrome.
 
 vi.mock('@/pages/AssemblyEditor', () => ({
   default: function AssemblyEditorMock() {

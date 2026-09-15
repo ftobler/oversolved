@@ -7,8 +7,11 @@ export interface ListOptions {
   includeTrashed?: boolean
 }
 
-// The seam C2's IdbCarrier and C3's DirectoryCarrier/ZipCarrier implement. It
-// is fixed at C0 so those implementations slot in without a signature change.
+// The permanent store's seam: entry-level reads and writes over one workspace.
+// IdbCarrier is the store; MemoryCarrier is the conformer written from this
+// interface rather than ported from IndexedDB, which is what keeps the seam
+// honest. A folder and an archive do not implement it -- they move a whole tree
+// at a time, in one gesture, and nothing writes an entry into one.
 export interface WorkspaceCarrier {
   open(): Promise<WorkspaceTree>
   save(tree: WorkspaceTree): Promise<void>

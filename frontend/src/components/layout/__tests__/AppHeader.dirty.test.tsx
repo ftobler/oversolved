@@ -54,14 +54,18 @@ describe('AppHeader workspace dirty and explicit save', () => {
   // The dot is a state, not an announcement. It was a live region carrying a
   // sentence about eviction under disk pressure -- a claim that was false
   // either way it was read, and one no screen reader should be interrupted for.
-  it('says nothing about durability and announces nothing', () => {
-    markDirty()
-    const { container } = wrap()
-    expect(screen.queryByRole('status')).toBeNull()
-    expect(container.querySelector('.workspace-dirty-copy')).toBeNull()
-    expect(container.querySelector('.workspace-dirty')?.textContent)
-      .not.toMatch(/browser|disk|persistent/)
-  })
+  // Every persistence answer is checked, because the sentence had one per state
+  // and re-adding any of them should fail here.
+  it.each(['unknown', 'persisted', 'best-effort', 'unsupported'] as const)(
+    'says nothing about durability under %s, and announces nothing',
+    (state) => {
+      act(() => { useStoragePersistenceStore.setState({ state }) })
+      markDirty()
+      wrap()
+      expect(screen.queryByRole('status')).toBeNull()
+      expect(screen.queryByText(/kept in this browser|can be discarded|does not report/)).toBeNull()
+    },
+  )
 
   it('the Save button invokes the handler and clears dirty', async () => {
     const save = vi.fn(async () => true)

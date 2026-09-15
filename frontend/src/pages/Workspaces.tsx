@@ -220,8 +220,9 @@ export default function Workspaces() {
           read: () => readDirectoryBag(dir, locator),
         }
         getOriginResolver().register(descriptor)
-        // Remember the handle so a save target or a later session's update can
-        // reopen it. The in-session read above still works if this is refused.
+        // Remember the handle so a later session's update can pull from this
+        // source again. The in-session read above still works if this is
+        // refused, and nothing is ever written back either way.
         await rememberOriginDirectory(locator, dir)
         // One-shot: the folder's bytes are copied into the permanent store and
         // the folder itself is left alone. The handle above is the origin's, for
