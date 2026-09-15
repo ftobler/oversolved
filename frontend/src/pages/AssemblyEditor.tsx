@@ -11,6 +11,7 @@ import { LoadingState } from '@/components/shared/LoadingState'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
+import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
 import { useAssemblyCommands } from '@/pages/AssemblyKeyboardShortcuts'
 import { buildAssemblyHandlers, insertMateCommand, type AssemblyCommandHandlers } from '@/pages/assemblyCommandEntries'
 import { editingInstanceHandle as editingInstanceHandleOf, editingMateId as editingMateIdOf } from '@/utils/assemblyEditingSubject'
@@ -263,7 +264,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     if (!uuid) return
     try {
       const data = await cloneDoc(uuid)
-      navigate(`/workspaces/${workspaceId ?? uuid}/entries/${data.uuid}`)
+      // The clone is taken from the stored document, so walking onto it would
+      // leave this editor's unsaved edits behind: another exit from the entry
+      // route, and it asks like every other one.
+      const target = `/workspaces/${workspaceId ?? uuid}/entries/${data.uuid}`
+      if (confirmDiscardUnsavedChanges(() => navigate(target))) navigate(target)
     } catch (e) {
       setError(errorMessage(e, 'Failed to clone document'))
     }

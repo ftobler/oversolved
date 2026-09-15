@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
 import AppHeader from '@/components/layout/AppHeader'
 import Breadcrumb from '@/components/layout/Breadcrumb'
@@ -92,22 +92,29 @@ export default function WorkspacePage() {
     return () => { useEditorModeStore.getState().setActiveEditor(null) }
   }, [kind])
 
-  if (!workspaceId) return <div className="document-viewer"><p>Workspace not found.</p></div>
+  // Every branch that is not an editor keeps the header. An editor unmounting
+  // into one still has its unsaved buffer and its dirty flag (the guard stopped
+  // clearing them on unmount), so the save button and the guarded links have to
+  // be reachable here -- and a refused entry is a wrong turn, not a dead end
+  // with no way back.
+  const chrome = (body: ReactNode) => (
+    <div className="document-viewer">
+      <AppHeader breadcrumb={<Breadcrumb />} />
+      {body}
+    </div>
+  )
+
+  if (!workspaceId) return chrome(<p className="status">Workspace not found.</p>)
 
   // U7's prompt holds the editor back: the working copy it is asking about is
   // the one the editor would otherwise mount and start editing.
   if (askingRecovery) {
-    return (
-      <div className="document-viewer">
-        <LoadingState />
-        <RecoveryDialog />
-      </div>
-    )
+    return chrome(<><LoadingState /><RecoveryDialog /></>)
   }
 
   if (entryId) {
-    if (kindError) return <div className="document-viewer"><p>Error: {kindError}</p></div>
-    if (!kind) return <div className="document-viewer"><LoadingState /></div>
+    if (kindError) return chrome(<p className="status">Error: {kindError}</p>)
+    if (!kind) return chrome(<LoadingState />)
     if (kind === 'assembly') {
       // Keying by entry forces a full remount per document, the same contract
       // the part editor keeps below: a route change must not leak the previous
@@ -117,10 +124,5 @@ export default function WorkspacePage() {
     return <Part key={entryId} />
   }
 
-  return (
-    <div className="document-viewer">
-      <AppHeader breadcrumb={<Breadcrumb />} />
-      <WorkspaceView />
-    </div>
-  )
+  return chrome(<WorkspaceView />)
 }

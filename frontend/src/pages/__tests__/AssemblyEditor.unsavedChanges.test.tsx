@@ -125,13 +125,17 @@ describe('AssemblyEditor unsaved-changes prompting', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 
-  it('clears the flag on unmount so it cannot leak onto another page', async () => {
+  // The unmount stops guarding, because the listener belongs to the mounted
+  // editor. It does not answer the unsaved question: an editor can unmount into
+  // an error branch of its own route with the buffer still unsaved, and
+  // clearing the flag there dropped the edits and the warning together.
+  it('stops guarding on unmount without calling the flag answered', async () => {
     const { unmount } = await renderLoaded()
     fireEvent.click(screen.getByLabelText('Insert Fixed mate'))
     await tick()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     act(() => { unmount() })
-    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     expect(unloadBlocked()).toBe(false)
   })
 })
