@@ -1,14 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { ZipCarrier, buildZipBytes } from '../zipCarrier'
+import { buildZipBytes, readZipTree } from '../zipCarrier'
 import { serializeTree } from '../serializer'
 import type { WorkspaceTree } from '../types'
 import { addReference } from '../refs'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 
-// Dedicated ZipCarrier coverage: the pinned central-directory metadata that
-// makes two saves byte-equal, the no-op save, and concurrent whole-file writes.
-// These carry forward what the retired FileSystemDirectoryStore suite asserted
-// about archive determinism.
+// The archive writer's pinned central-directory metadata, which is what makes
+// two writes of one tree byte-equal. These carry forward what the retired
+// FileSystemDirectoryStore suite asserted about archive determinism.
 
 function sample(): WorkspaceTree {
   const tree = treeWith([
@@ -71,7 +70,7 @@ function archiveComment(bytes: Uint8Array): string {
   return ''
 }
 
-describe('ZipCarrier pinned archive metadata', () => {
+describe('pinned archive metadata', () => {
   it('pins STORE, a fixed date, DOS attributes, empty comments and the tree order', async () => {
     const bytes = await buildZipBytes(sample())
     const central = centralDirectory(bytes)
@@ -88,24 +87,9 @@ describe('ZipCarrier pinned archive metadata', () => {
     expect(archiveComment(bytes)).toBe('')
   })
 
-  it('saving an opened tree unchanged is a no-op fixed point', async () => {
-    const carrier = new ZipCarrier()
-    await carrier.save(sample())
-    const first = carrier.blob
-    await carrier.save(await carrier.open())
-    expect(carrier.blob).toEqual(first)
-    expect(await carrier.readManifestFingerprint()).not.toBeNull()
-  })
-
-  it('concurrent saves each commit a whole archive, never a torn one', async () => {
-    const carrier = new ZipCarrier()
-    const a = treeWith([documentEntry('a', 'A', { text: 'kind: part\n' })])
-    const b = treeWith([documentEntry('b', 'B', { text: 'kind: part\n' })])
-    await Promise.all([carrier.save(a), carrier.save(b)])
-
-    const opened = await new ZipCarrier(carrier.blob).open()
-    const names = Object.values(opened.manifest.entries).map(row => row.name)
-    expect(names).toHaveLength(1)
-    expect(['A', 'B']).toContain(names[0])
+  it('writing back what it read is byte-equal', async () => {
+    const first = await buildZipBytes(sample())
+    const again = await buildZipBytes(await readZipTree(first))
+    expect(again).toEqual(first)
   })
 })

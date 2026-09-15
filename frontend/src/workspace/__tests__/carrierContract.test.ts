@@ -3,13 +3,10 @@ import type { WorkspaceCarrier } from '../carrier'
 import type { WorkspaceTree } from '../types'
 import { MemoryCarrier } from '../memoryCarrier'
 import { IdbCarrier } from '../idbCarrier'
-import { DirectoryCarrier } from '../directoryCarrier'
-import { ZipCarrier } from '../zipCarrier'
 import { addReference } from '../refs'
 import { serializeTree } from '../serializer'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb, seedWorkspace } from './idbHarness'
-import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
 
 // One behavioral contract, run over every WorkspaceCarrier, the way
 // documentStore/__tests__/contract.test.ts runs the DocumentStore seam over its
@@ -18,6 +15,11 @@ import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDi
 // carriers differ on where file bytes live (IdbCarrier defers them), so the
 // contract reads payload through read() rather than assuming an opened tree has
 // every content slot.
+//
+// Two conformers, and that is the whole population: the permanent store and the
+// in-memory twin that keeps its seam honest. A folder and an archive write and
+// read a whole tree at a time and implement none of this, which is what
+// folderZipRoundTrip.test.ts pins instead.
 interface Adapter {
   name: string
   setup: () => void
@@ -45,24 +47,6 @@ const adapters: Adapter[] = [
     make: async tree => {
       await seedWorkspace(tree)
       const carrier = new IdbCarrier(tree.manifest.workspace)
-      await carrier.save(tree)
-      return carrier
-    },
-  },
-  {
-    name: 'DirectoryCarrier',
-    setup: () => {},
-    make: async tree => {
-      const carrier = new DirectoryCarrier(fakeDirectory(tree.manifest.workspace))
-      await carrier.save(tree)
-      return carrier
-    },
-  },
-  {
-    name: 'ZipCarrier',
-    setup: () => {},
-    make: async tree => {
-      const carrier = new ZipCarrier()
       await carrier.save(tree)
       return carrier
     },

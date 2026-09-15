@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { STORE_WORKSPACE_META } from '@/stores/documentStore/idb'
 import { IdbCarrier } from '../idbCarrier'
-import { DirectoryCarrier } from '../directoryCarrier'
-import { ZipCarrier } from '../zipCarrier'
+import { readDirectoryTree, writeDirectoryTree } from '../directoryCarrier'
 import { MemoryDirectory } from '@/stores/documentStore/memoryDirectory'
 import { documentEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb, seedWorkspace } from './idbHarness'
@@ -72,66 +71,29 @@ class FlakyDirectory extends MemoryDirectory {
 describe('I7: a folder write is atomic per entry', () => {
   it('an interrupted entry write leaves the previous file wholly intact', async () => {
     const dir = new FlakyDirectory('ws')
-    const carrier = new DirectoryCarrier(dir as unknown as FileSystemDirectoryHandle)
+    const handle = dir as unknown as FileSystemDirectoryHandle
     const before = treeWith([
       documentEntry('a', 'A', { text: 'kind: part\n# old a\n' }),
       documentEntry('b', 'B', { text: 'kind: part\n# old b\n' }),
     ], 'ws')
-    await carrier.save(before)
+    await writeDirectoryTree(handle, before)
 
     const after = treeWith([
       documentEntry('a', 'A', { text: 'kind: part\n# new a\n' }),
       documentEntry('b', 'B', { text: 'kind: part\n# new b\n' }),
     ], 'ws')
     dir.failOn.name = 'A.yaml'
-    await expect(carrier.save(after)).rejects.toThrow('disk full')
+    await expect(writeDirectoryTree(handle, after)).rejects.toThrow('disk full')
 
-    // The manifest was never rewritten, so the old tree still opens whole.
-    const reopened = await carrier.open()
+    // The manifest was never rewritten, so the old tree still reads whole.
+    const reopened = await readDirectoryTree(handle)
     expect(reopened.contents.get('a')?.text).toBe('kind: part\n# old a\n')
     expect(reopened.contents.get('b')?.text).toBe('kind: part\n# old b\n')
   })
 })
 
-describe('I7: a zip write is one whole-file commit', () => {
-  it('a failed save leaves the archive handle at its previous bytes', async () => {
-    const state = {
-      bytes: new Uint8Array(0),
-      writes: 0,
-      fail: false,
-    }
-    const handle = {
-      kind: 'file' as const,
-      name: 'ws.zip',
-      async getFile() {
-        return { size: state.bytes.byteLength, lastModified: 0, async arrayBuffer() { return state.bytes.buffer } }
-      },
-      async createWritable() {
-        state.writes += 1
-        let buffer = new Uint8Array(0)
-        return {
-          async write(data: Uint8Array) { buffer = new Uint8Array(data) },
-          async close() {
-            if (state.fail) throw new Error('write failed')
-            state.bytes = buffer
-          },
-          async abort() {},
-        }
-      },
-    } as unknown as FileSystemFileHandle
-
-    const carrier = new ZipCarrier(undefined, handle)
-    const tree = treeWith([documentEntry('a', 'A', { text: 'kind: part\n' })], 'ws')
-    await carrier.save(tree)
-    expect(state.writes).toBe(1)
-    const committed = state.bytes
-
-    state.fail = true
-    await expect(carrier.save(tree)).rejects.toThrow('write failed')
-    expect(state.bytes).toEqual(committed)
-  })
-})
-
-// A store save has one destination now, so the folder and the archive above are
-// exporters: what they promise on a torn write is their own, and store.save's
-// atomicity is the IndexedDB transaction the first describe pins.
+// A store save has one destination now, so the folder above is an export
+// endpoint: what it promises on a torn write is its own, and store.save's
+// atomicity is the IndexedDB transaction the first describe pins. The archive
+// has nothing left to promise -- bytes are built whole in memory and handed to
+// the download, so there is no partial archive to leave behind.

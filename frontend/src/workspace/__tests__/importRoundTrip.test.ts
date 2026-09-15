@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IdbWorkspaceStore } from '../store'
 import { IdbCarrier } from '../idbCarrier'
-import { buildZipBytes, ZipCarrier } from '../zipCarrier'
+import { buildZipBytes, readZipTree } from '../zipCarrier'
 import { deserializeTree } from '../serializer'
 import { readDirectoryBag, readZipBag, importBag } from '../import'
 import { addReference } from '../refs'
@@ -37,10 +37,8 @@ describe('export/import round-trip keeps file bytes', () => {
     expect(await new IdbCarrier(result.workspace).referencesOf('a')).toEqual(['b'])
   })
 
-  it('a zip save then open through ZipCarrier preserves every payload byte', async () => {
-    const carrier = new ZipCarrier()
-    await carrier.save(source())
-    const opened = await carrier.open()
+  it('a zip written and read back preserves every payload byte', async () => {
+    const opened = await readZipTree(await buildZipBytes(source()))
     expect(opened.contents.get('b')?.bytes).toEqual(bytesOf([1, 2, 3, 4, 5]))
     expect(opened.contents.get('a')?.text).toBe('kind: part\n# body\n')
   })

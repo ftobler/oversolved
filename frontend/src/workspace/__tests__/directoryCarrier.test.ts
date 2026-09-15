@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { DirectoryCarrier } from '../directoryCarrier'
+import { readDirectoryTree, writeDirectoryTree } from '../directoryCarrier'
 import { addReference } from '../refs'
-import { serializeTree } from '../serializer'
+import { removeEntry } from '../tree'
 import { MANIFEST_PATH, TRASH_DIR } from '../paths'
 import type { WorkspaceTree } from '../types'
+import { MemoryDirectory } from '@/stores/documentStore/memoryDirectory'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
 
-// Dedicated DirectoryCarrier coverage: the on-disk layout, the no-op fixed
-// point, and the manifest read-modify-write serialization under concurrent
-// writers. The retired FileSystemDirectoryStore suite asserted the first two on
-// its own store; these pin them on the carrier.
+// The folder endpoint's on-disk layout: where each payload lands and in what
+// order they go down. The round-trip contract covers what comes back out;
+// this covers what a user finds in the folder they picked.
 
 function sample(): WorkspaceTree {
   const tree = treeWith([
@@ -21,22 +21,29 @@ function sample(): WorkspaceTree {
   return tree
 }
 
-// An opened tree leaves file bytes lazy; serializeTree needs them present.
-async function openMaterialized(carrier: DirectoryCarrier): Promise<WorkspaceTree> {
-  const tree = await carrier.open()
-  for (const [id, row] of Object.entries(tree.manifest.entries)) {
-    if (row.kind !== 'file' || tree.contents.has(id)) continue
-    const entry = await carrier.read(id)
-    if (entry.bytes) tree.contents.set(id, { bytes: entry.bytes })
+// Every committed file name, in the order the writes landed, shared down the
+// tree so a payload in documents/ and the manifest at the root are one sequence.
+class RecordingDirectory extends MemoryDirectory {
+  order: string[]
+
+  constructor(name: string, order: string[] = []) {
+    super(name)
+    this.order = order
   }
-  return tree
+
+  protected override beforeWrite(name: string): void {
+    this.order.push(name)
+  }
+
+  protected override makeChild(name: string): MemoryDirectory {
+    return new RecordingDirectory(name, this.order)
+  }
 }
 
-describe('DirectoryCarrier layout and determinism', () => {
+describe('the folder layout', () => {
   it('writes the manifest, documents and files at their logical paths', async () => {
     const dir = fakeDirectory('cad')
-    const carrier = new DirectoryCarrier(dir)
-    await carrier.save(sample())
+    await writeDirectoryTree(dir, sample())
 
     expect(dir.fileNames()).toEqual([MANIFEST_PATH])
     const snapshot = dir.snapshot()
@@ -44,39 +51,36 @@ describe('DirectoryCarrier layout and determinism', () => {
     expect(Object.keys(snapshot)).toContain('files/b.step')
   })
 
-  it('relocates a trashed payload under the trash directory', async () => {
+  it('puts a trashed payload under the trash directory, not at its logical path', async () => {
     const dir = fakeDirectory('cad')
-    const carrier = new DirectoryCarrier(dir)
-    await carrier.save(sample())
-    await carrier.remove('a')
+    const tree = sample()
+    removeEntry(tree, 'a')
+    await writeDirectoryTree(dir, tree)
 
-    expect(Object.keys(dir.snapshot())).toContain(`${TRASH_DIR}/documents/A.yaml`)
-    expect((await carrier.list()).map(entry => entry.id)).toEqual(['b'])
-    // readPayload stays trash-agnostic so export can still materialize it.
-    expect((await carrier.readPayload('a')).text).toBe('kind: part\n')
+    const paths = Object.keys(dir.snapshot())
+    expect(paths).toContain(`${TRASH_DIR}/documents/A.yaml`)
+    expect(paths).not.toContain('documents/A.yaml')
   })
 
-  it('saving an opened tree unchanged is a no-op fixed point', async () => {
-    const carrier = new DirectoryCarrier(fakeDirectory('cad'))
-    await carrier.save(sample())
-    const first = serializeTree(await openMaterialized(carrier))
-    await carrier.save(await openMaterialized(carrier))
-    expect(serializeTree(await openMaterialized(carrier))).toEqual(first)
+  // The manifest is the index, so it goes down last: a write torn before it
+  // leaves the old index and the new payloads as orphans, never a manifest
+  // naming a path that is not there.
+  it('writes every payload before the manifest', async () => {
+    const dir = new RecordingDirectory('cad')
+    await writeDirectoryTree(dir as unknown as FileSystemDirectoryHandle, sample())
+
+    expect(dir.order).toEqual(['A.yaml', 'b.step', MANIFEST_PATH])
   })
 
-  it('serializes concurrent writers so no manifest update is lost', async () => {
+  it('refuses a manifest-less folder rather than reading an empty tree', async () => {
+    await expect(readDirectoryTree(fakeDirectory('cad'))).rejects.toThrow(/manifest not found/)
+  })
+
+  it('refuses a folder whose manifest names a payload that is gone', async () => {
     const dir = fakeDirectory('cad')
-    const carrier = new DirectoryCarrier(dir)
-    await carrier.save(sample())
+    await writeDirectoryTree(dir, sample())
+    await dir.removeEntry('documents')
 
-    await Promise.all([
-      carrier.add(documentEntry('x', 'X', { text: 'kind: part\n' })),
-      carrier.add(documentEntry('y', 'Y', { text: 'kind: part\n' })),
-    ])
-
-    const ids = (await carrier.list()).map(entry => entry.id).sort()
-    expect(ids).toEqual(['a', 'b', 'x', 'y'])
-    expect(dir.snapshot()['documents/X.yaml']).toBe('kind: part\n')
-    expect(dir.snapshot()['documents/Y.yaml']).toBe('kind: part\n')
+    await expect(readDirectoryTree(dir)).rejects.toThrow(/payload is missing/)
   })
 })

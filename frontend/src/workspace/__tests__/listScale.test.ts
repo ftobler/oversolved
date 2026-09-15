@@ -5,14 +5,12 @@ import {
 } from '@/stores/documentStore/idb'
 import { IdbWorkspaceStore } from '../store'
 import { IdbCarrier } from '../idbCarrier'
-import { DirectoryCarrier } from '../directoryCarrier'
 import { documentEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb, seedWorkspace } from './idbHarness'
-import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
 
 // The U1 grid lists a workspace's counts, cover entry and rev, none of which
 // needs a payload. A 200-document workspace must list without reading one byte
-// of document text, on the IndexedDB working copy and on the folder carrier.
+// of document text out of the store it lives in.
 
 function manyDocuments(count: number) {
   return Array.from({ length: count }, (_, i) =>
@@ -48,14 +46,4 @@ describe('200-document listing stays metadata-only', () => {
     expect(reads).not.toContain(STORE_WORKSPACE_ENTRIES)
   })
 
-  it('DirectoryCarrier.list reads only the manifest, not each document file', async () => {
-    const dir = fakeDirectory('scale')
-    const carrier = new DirectoryCarrier(dir)
-    await carrier.save(treeWith(manyDocuments(200), 'scale'))
-
-    dir.reads = 0
-    const listed = await carrier.list()
-    expect(listed).toHaveLength(200)
-    expect(dir.reads).toBe(1)
-  })
 })

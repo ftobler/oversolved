@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { DirectoryCarrier } from '../directoryCarrier'
-import { ZipCarrier, buildZipBytes, readZipFiles } from '../zipCarrier'
+import { readDirectoryTree, writeDirectoryTree } from '../directoryCarrier'
+import { buildZipBytes, readZipFiles, readZipTree } from '../zipCarrier'
 import { serializeTree } from '../serializer'
 import type { SerializedFile, WorkspaceTree } from '../types'
 import { addReference } from '../refs'
@@ -73,13 +73,9 @@ async function seedDirectory(files: SerializedFile[]): Promise<FileSystemDirecto
 }
 
 describe('I4: folder and zip are one canonical tree', () => {
-  it('two zip saves of one tree are byte-equal', async () => {
-    const carrier = new ZipCarrier()
-    const tree = sample()
-    await carrier.save(tree)
-    const first = carrier.blob
-    await carrier.save(await carrier.open())
-    expect(carrier.blob).toEqual(first)
+  it('two zip writes of one tree are byte-equal', async () => {
+    const first = await buildZipBytes(sample())
+    expect(await buildZipBytes(await readZipTree(first))).toEqual(first)
   })
 
   it('pins STORE, a fixed date and the serializeTree order on every entry', async () => {
@@ -93,35 +89,25 @@ describe('I4: folder and zip are one canonical tree', () => {
     }
   })
 
-  it('unzipping a zip into a folder and opening it yields the same tree and bytes', async () => {
-    const carrier = new ZipCarrier()
+  it('unzipping a zip into a folder and reading it yields the same tree and bytes', async () => {
     const tree = sample()
-    await carrier.save(tree)
-
-    const dir = await seedDirectory(await readZipFiles(carrier.blob))
-    const folder = new DirectoryCarrier(dir)
-    const opened = await folder.open()
-    // The folder leaves file bytes lazy, so materialize before serializing.
-    for (const [id, row] of Object.entries(opened.manifest.entries)) {
-      if (row.kind !== 'file' || opened.contents.has(id)) continue
-      const entry = await folder.read(id)
-      if (entry.bytes) opened.contents.set(id, { bytes: entry.bytes })
-    }
+    const dir = await seedDirectory(await readZipFiles(await buildZipBytes(tree)))
+    const opened = await readDirectoryTree(dir)
 
     expect(serializeTree(opened)).toEqual(serializeTree(tree))
-    expect((await folder.read('b')).bytes).toEqual(bytesOf([1, 2, 3, 4]))
-    expect((await folder.read('a')).text).toBe('kind: part\n# odd   spacing\n')
+    expect(opened.contents.get('b')?.bytes).toEqual(bytesOf([1, 2, 3, 4]))
+    expect(opened.contents.get('a')?.text).toBe('kind: part\n# odd   spacing\n')
   })
 
-  it('a folder save twice is a fixed point', async () => {
-    const carrier = new DirectoryCarrier(fakeDirectory())
+  it('a folder written twice is a fixed point', async () => {
+    const dir = fakeDirectory()
     const tree = treeWith([
       documentEntry('a', 'A', { text: 'kind: part\n# odd   spacing\n' }),
       documentEntry('c', 'C', { text: 'kind: assembly\n' }),
     ])
-    await carrier.save(tree)
-    const first = serializeTree(await carrier.open())
-    await carrier.save(await carrier.open())
-    expect(serializeTree(await carrier.open())).toEqual(first)
+    await writeDirectoryTree(dir, tree)
+    const first = serializeTree(await readDirectoryTree(dir))
+    await writeDirectoryTree(dir, await readDirectoryTree(dir))
+    expect(serializeTree(await readDirectoryTree(dir))).toEqual(first)
   })
 })
