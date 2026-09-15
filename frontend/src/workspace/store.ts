@@ -32,10 +32,6 @@ import { serializeTree } from './serializer'
 import { remapTree } from './import'
 import { EntryReferencedError, type EntryReferrer } from './errors'
 import { hashRecord } from './contentHash'
-import {
-  forgetWorkspaceHandle,
-  forgetWorkspaceZipHandle,
-} from './workspaceHandleRegistry'
 import { randomUuid } from '@/utils/randomUuid'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { fileIdsInSpec } from '@/stores/fileRegistry/resolve'
@@ -315,10 +311,8 @@ export class IdbWorkspaceStore implements WorkspaceStore {
   async purge(workspace: string): Promise<void> {
     await purgeWorkspaceRows(workspace)
     this.carriers.delete(workspace)
-    // Forget the remembered handles but never touch the user's folder or zip:
-    // deleting their files would be data loss the trash contract never promised.
-    await forgetWorkspaceHandle(workspace)
-    await forgetWorkspaceZipHandle(workspace)
+    // Only this app's own rows. A workspace never held a handle to the user's
+    // folder or zip, so there is nothing of theirs a purge could reach.
     await getPreviewStore().clearWorkspace(workspace)
     bumpWorkspaceStoreRevision()
   }

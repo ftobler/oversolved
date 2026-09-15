@@ -40,25 +40,6 @@ import { hashRecord } from './contentHash'
 
 // The workspace row. Structure edits (references, provenance, trash) land here,
 // not on the entry rows, which is what keeps a content edit to one record.
-export type CarrierKind = 'idb' | 'folder' | 'zip'
-
-// The external save target a workspace names. `carrier` absent means IDB-only,
-// which keeps every C2 row valid with no migration. The handle itself is never
-// on the row: it lives in the workspace handle registry, and cloning a
-// FileSystemHandle into every listing would only be waste.
-export interface CarrierBinding {
-  kind: CarrierKind
-  label?: string
-}
-
-// The carrier manifest the working copy was last known to agree with, not the
-// working copy's current manifest. P4's carrier-change compare reads it.
-export interface LoadedFromRecord {
-  carrier: 'folder' | 'zip'
-  fingerprint: string
-  at: number
-}
-
 export interface WorkspaceMetaRecord {
   workspace: string
   name: string
@@ -75,11 +56,10 @@ export interface WorkspaceMetaRecord {
   // meta written before the v7 shape carries none and readers fall back to the
   // saved records until the next checkpoint stamps it.
   savedRevs?: Record<string, number>
-  carrier?: CarrierBinding  // absent == IDB-only
-  loadedFrom?: LoadedFromRecord  // the carrier state the working copy agrees with
-  // A durable "keep the working copy" after the carrier moved underneath: the
-  // next explicit save overwrites, and `open` keeps reporting ahead until then.
-  carrierDiverged?: boolean
+  // A row written before the storage collapse can still carry `carrier`,
+  // `loadedFrom` and `carrierDiverged`. They named a folder or a zip the
+  // workspace was supposed to live in, which is not a thing any more; nothing
+  // reads them, so they are left inert rather than migrated away.
 }
 
 // One working-copy or checkpoint entry. `text` and `bytes` mirror EntryContent:
