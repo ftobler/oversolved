@@ -3,8 +3,6 @@ import { useNavigate, useLocation, Link } from 'react-router-dom'
 import type { MouseEvent, ReactNode } from 'react'
 import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAboutDialogStore } from '@/stores/aboutDialogStore'
-import { useStoragePersistenceStore } from '@/stores/storagePersistenceStore'
-import { unsavedDurabilityNotice } from '@/adapters/storagePersistence'
 import { isEditableTarget } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import MessageDialog from '@/components/dialogs/MessageDialog'
@@ -39,7 +37,6 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
   const saveHandler = useUnsavedChangesStore(s => s.saveHandler)
   const dirty = useUnsavedChangesStore(s => s.dirty)
-  const persistence = useStoragePersistenceStore(s => s.state)
   const [bugReportOpen, setBugReportOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -141,14 +138,19 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
         {children}
       </div>
       <div className="app-header-right">
+        {/* The dot and the button, and no sentence about durability: there is
+            one unsaved boundary now and it is in memory, where no honest
+            durability claim can be made. The stored library's durability is
+            the disclaimer's subject, where it is true. Not a live region
+            either -- a dot appearing is not a status change worth interrupting
+            a screen reader for. */}
         {dirty && (
-          <div className="workspace-dirty" role="status" aria-live="polite">
+          <div className="workspace-dirty">
             <span className="header-dirty-dot" aria-hidden="true" />
-            <span className="workspace-dirty-copy">{unsavedDurabilityNotice(persistence)}</span>
             <button
               className="toolbar-btn"
               aria-label="Save workspace"
-              title="Save workspace (Ctrl+S)"
+              title="Save (Ctrl+S)"
               onClick={() => { void handleSaveWorkspace() }}
               disabled={saving || saveHandler === null}
             >

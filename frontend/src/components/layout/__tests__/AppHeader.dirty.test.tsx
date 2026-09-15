@@ -39,16 +39,28 @@ describe('AppHeader workspace dirty and explicit save', () => {
   })
 
   it('renders nothing dirty-shaped when clean', () => {
-    wrap()
+    const { container } = wrap()
     expect(screen.queryByLabelText('Save workspace')).toBeNull()
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(container.querySelector('.workspace-dirty')).toBeNull()
   })
 
   it('shows the dirty indicator and a Save button when dirty', () => {
     markDirty()
-    wrap()
+    const { container } = wrap()
     expect(screen.getByLabelText('Save workspace')).toBeTruthy()
-    expect(screen.getByRole('status')).toBeTruthy()
+    expect(container.querySelector('.header-dirty-dot')).toBeTruthy()
+  })
+
+  // The dot is a state, not an announcement. It was a live region carrying a
+  // sentence about eviction under disk pressure -- a claim that was false
+  // either way it was read, and one no screen reader should be interrupted for.
+  it('says nothing about durability and announces nothing', () => {
+    markDirty()
+    const { container } = wrap()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(container.querySelector('.workspace-dirty-copy')).toBeNull()
+    expect(container.querySelector('.workspace-dirty')?.textContent)
+      .not.toMatch(/browser|disk|persistent/)
   })
 
   it('the Save button invokes the handler and clears dirty', async () => {

@@ -78,21 +78,3 @@ export function durabilityNotice(state: PersistenceState | 'unknown'): string | 
       return null
   }
 }
-
-// The workspace dirty indicator's sentence per answer (A10). Same three states,
-// different subject: `durabilityNotice` describes the stored library in the
-// disclaimer, while this describes edits that still only sit in the working
-// copy. Kept here rather than in the header so the copy is testable without
-// mounting React, exactly like durabilityNotice.
-export function unsavedDurabilityNotice(state: PersistenceState | 'unknown'): string | null {
-  switch (state) {
-    case 'persisted':
-      return 'Unsaved edits are kept in this browser until you save.'
-    case 'best-effort':
-      return 'Unsaved edits can be discarded by the browser when disk space runs short. Save to keep them.'
-    case 'unsupported':
-      return 'This browser does not report whether its storage is persistent; treat unsaved edits as best-effort.'
-    default:
-      return null
-  }
-}

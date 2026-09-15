@@ -72,10 +72,6 @@
   background: #d8b45a;
 }
 
-.workspace-dirty-copy {
-  color: #bbb;
-}
-
 /* The workspace trail: `Workspaces / <workspace> / <document>`, one segment per
    route level. Sized off `.doc-name` so swapping a plain title for a trail does
    not change the header's height. Each crumb ellipsises on its own rather than
