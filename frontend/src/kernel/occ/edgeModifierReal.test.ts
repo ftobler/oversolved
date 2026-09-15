@@ -56,6 +56,13 @@ function findEdgeByHash(oc2: OccModule, scope: DisposeScope, shape: OccShape, ha
   throw new Error(`no edge with hash ${hash}`)
 }
 
+function firstEdge(oc2: OccModule, scope: DisposeScope, shape: OccShape): OccShape {
+  const E = oc2.TopAbs_ShapeEnum
+  const exp = scope.track(new oc2.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  if (!exp.More()) throw new Error('shape has no edges')
+  return scope.track(oc2.TopoDS.Edge_1(exp.Current()))
+}
+
 function diffCounts(diff: Record<string, unknown[]>): Counts {
   return {
     new_faces: diff.new_faces.length,
@@ -98,4 +105,24 @@ describe.skipIf(!oc)('applyFillet/ChamferWithLineage (real OCC)', () => {
       }
     })
   }
+
+  // The unit gate on the angle_distance arm. A chamfer at `angle` removes a
+  // triangular prism whose legs are `distance` and `distance * tan(angle)`, so
+  // the volume is the only thing that tells degrees from radians: at 45 degrees
+  // tan is 1 and a 10-cube loses 5, at 45 RADIANS tan is ~1.6198 and it loses
+  // ~8.1. The raw value used to reach AddDA, so this asserted number is the
+  // difference between a 45 and a 41.4 degree bevel.
+  it('angle_distance chamfer reads its angle as degrees, not radians', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(occ, scope, 10, 10, 10)
+      const edge = firstEdge(occ, scope, box)
+      const res = applyChamferWithLineage(occ, scope, box, 1, [edge], 'angle_distance', 45)
+      expect(res.reason).toBe(null)
+      expect(res.success).toBe(true)
+      expect(volumeOf(occ, scope, res.shape)).toBeCloseTo(1000 - 5, 3)
+    } finally {
+      scope.dispose()
+    }
+  })
 })

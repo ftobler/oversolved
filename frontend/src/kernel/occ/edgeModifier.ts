@@ -598,7 +598,12 @@ function adjacentFaceLookup(oc: OccModule): (edge: OccShape, ctx: AddEdgeContext
   }
 }
 
-function chamferSpec(oc: OccModule, distance: number, kind: string, angle: number): ModifierSpec {
+function chamferSpec(oc: OccModule, distance: number, kind: string, angleDeg: number): ModifierSpec {
+  // The unit boundary. The document authors the angle in degrees (the editor
+  // labels it so, and the schema defaults it to 45), but ChFi3d takes it
+  // through C `tan()`, which is radians. This is the only call site that
+  // reaches `AddDA`, so the conversion belongs here.
+  const angleRad = angleDeg * (Math.PI / 180)
   const findFace = adjacentFaceLookup(oc)
   return {
     makeMaker: (shape) => new oc.BRepFilletAPI_MakeChamfer(shape),
@@ -610,7 +615,7 @@ function chamferSpec(oc: OccModule, distance: number, kind: string, angle: numbe
       // first one found is a real answer rather than an arbitrary one.
       const face = findFace(edge, ctx)
       if (!face) throw new Error('chamfer: the target edge belongs to no face of the shape')
-      maker.AddDA(distance, angle, edge, face)
+      maker.AddDA(distance, angleRad, edge, face)
     },
   }
 }
@@ -646,10 +651,10 @@ export function applyChamferWithLineage(
   distance: number,
   edges: OccShape[],
   kind: string,
-  angle: number,
+  angleDeg: number,
   oldNames: OldNames | null = null,
 ): EdgeModifierResult {
-  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angle), true, oldNames)
+  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angleDeg), true, oldNames)
 }
 
 /** Apply a chamfer to `edges`, diff only (mirrors `apply_chamfer_with_diff`). */
@@ -660,7 +665,7 @@ export function applyChamferWithDiff(
   distance: number,
   edges: OccShape[],
   kind: string,
-  angle: number,
+  angleDeg: number,
 ): EdgeModifierResult {
-  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angle), false)
+  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angleDeg), false)
 }
