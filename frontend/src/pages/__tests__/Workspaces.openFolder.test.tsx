@@ -129,20 +129,4 @@ describe('Workspaces open folder', () => {
     })
   })
 
-  // An IDB-only workspace (adopted from a dropped bag, which has no writable
-  // handle) can bind a folder later through the tile's save-to-folder action.
-  it('binds a folder to an IDB-only workspace through the save-to-folder gesture', async () => {
-    const store = getWorkspaceStore()
-    const { workspace } = await store.create('Solo', { docKind: 'part' })
-    const dir = fakeDirectory('bound')
-    picker.result = dir as unknown as FileSystemDirectoryHandle
-
-    wrap()
-    await screen.findByText('Solo')
-    await userEvent.click(await screen.findByTitle('Save to folder'))
-
-    await waitFor(async () => {
-      expect((await readWorkspaceMeta(workspace))?.carrier).toEqual({ kind: 'folder', label: 'bound' })
-    })
-  })
 })

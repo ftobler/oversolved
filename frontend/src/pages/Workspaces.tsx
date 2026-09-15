@@ -13,7 +13,6 @@ import { errorMessage } from '@/utils/core/errorMessage'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { getWorkspaceStore, type WorkspaceSummary } from '@/workspace/store'
 import { subscribeWorkspaceStore } from '@/workspace/storeEvents'
-import { useCarrierChangeStore } from '@/stores/carrierChangeStore'
 import { buildZipBytes } from '@/workspace/zipCarrier'
 import { deserializeTree } from '@/workspace/serializer'
 import { importBag, readDirectoryBag, readZipBag, type ImportBag } from '@/workspace/import'
@@ -24,7 +23,6 @@ import {
   rememberOriginZip,
   type OriginDescriptor,
 } from '@/workspace/originResolver'
-import { reopenWorkspaceHandle, workspaceHandleName } from '@/workspace/workspaceHandleRegistry'
 import { canPickDirectory, canPickWorkspaceZip, pickLibraryDirectory, pickWorkspaceZip } from '@/adapters/fileSystemAccess'
 import '@/pages/Documents.css'
 
@@ -50,7 +48,6 @@ export default function Workspaces() {
   const [renameTarget, setRenameTarget] = useState<WorkspaceSummary | null>(null)
   const [renameName, setRenameName] = useState('')
   const [purgeTarget, setPurgeTarget] = useState<WorkspaceSummary | null>(null)
-  const [reopen, setReopen] = useState<Map<string, string>>(new Map())
   // U5: the count of entries the last import copied, held until acknowledged.
   // The copy semantics is stated at the moment it matters, not buried in docs.
   const [importedCount, setImportedCount] = useState<number | null>(null)
@@ -99,22 +96,6 @@ export default function Workspaces() {
     void refresh(trashView, debouncedSearch)
     return subscribeWorkspaceStore(() => { void refresh(trashView, debouncedSearch) })
   }, [refresh, trashView, debouncedSearch])
-
-  useEffect(() => {
-    let cancelled = false
-    const probe = async () => {
-      const names = new Map<string, string>()
-      for (const summary of await store.list()) {
-        const name = await workspaceHandleName(summary.workspace)
-        if (name) names.set(summary.workspace, name)
-      }
-      if (!cancelled) setReopen(names)
-    }
-    // The probe only adds the Reopen affordance; a failed list must settle
-    // quietly instead of rejecting unhandled.
-    probe().catch(() => {})
-    return () => { cancelled = true }
-  }, [store, summaries.length])
 
   const handleCreate = async () => {
     if (!newName.trim()) {
@@ -201,44 +182,6 @@ export default function Workspaces() {
       })
     } catch (e) {
       setError(errorMessage(e, 'Failed to export workspace'))
-    }
-  }
-
-  const handleReopen = async (workspace: string) => {
-    try {
-      await withBusy(`reopen:${workspace}`, async () => {
-        const handle = await reopenWorkspaceHandle(workspace)
-        if (!handle) {
-          setError('That folder is no longer available')
-          return
-        }
-        // The grant is restored, so prime the resolved target at once: a later
-        // save writes through it instead of re-probing. The carrier change the
-        // check finds is surfaced into carrierChangeStore, so entering the
-        // workspace shows the decision dialog instead of silently keeping the
-        // stale working copy (P4b).
-        await useCarrierChangeStore.getState().check(workspace)
-        setError(null)
-      })
-    } catch (e) {
-      setError(errorMessage(e, 'Failed to reopen folder'))
-    }
-  }
-
-  // Bind a save target to a workspace that does not have one yet (an IDB-only
-  // workspace adopted from a dropped bag). The carrier is not written now; the
-  // first explicit save normalizes the layout into the picked folder.
-  const handleAttachCarrier = async (workspace: string) => {
-    try {
-      await withBusy(`attach:${workspace}`, async () => {
-        const dir = await pickLibraryDirectory()
-        if (!dir) return  // cancelled: a non-event
-        await store.attachCarrier(workspace, { kind: 'folder', label: dir.name, handle: dir })
-        setError(null)
-        await refresh(trashView, debouncedSearch)
-      })
-    } catch (e) {
-      setError(errorMessage(e, 'Failed to bind folder'))
     }
   }
 
@@ -535,26 +478,6 @@ export default function Workspaces() {
                         <span className="doc-tile-date">{formatRelativeDate(new Date(summary.updatedAt).toISOString())}</span>
                         <span className="doc-tile-size">{formatBytes(summary.size)}</span>
                         <div className="doc-tile-actions">
-                          {reopen.has(summary.workspace) && (
-                            <button
-                              className="btn btn-tile-action"
-                              disabled={isBusy(`reopen:${summary.workspace}`)}
-                              onClick={e => { e.preventDefault(); void handleReopen(summary.workspace) }}
-                              title={`Reopen ${reopen.get(summary.workspace)}`}
-                            >
-                              <span className="material-icons">{isBusy(`reopen:${summary.workspace}`) ? 'hourglass_empty' : 'folder_open'}</span>
-                            </button>
-                          )}
-                          {canPickDirectory() && (
-                            <button
-                              className="btn btn-tile-action"
-                              disabled={isBusy(`attach:${summary.workspace}`)}
-                              onClick={e => { e.preventDefault(); void handleAttachCarrier(summary.workspace) }}
-                              title="Save to folder"
-                            >
-                              <span className="material-icons">{isBusy(`attach:${summary.workspace}`) ? 'hourglass_empty' : 'save'}</span>
-                            </button>
-                          )}
                           <button
                             className="btn btn-tile-action"
                             onClick={e => { e.preventDefault(); setRenameTarget(summary); setRenameName(summary.name) }}

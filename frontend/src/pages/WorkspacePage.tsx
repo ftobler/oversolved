@@ -8,9 +8,7 @@ import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { useRecoveryStore } from '@/stores/recoveryStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
-import { useCarrierChangeStore } from '@/stores/carrierChangeStore'
 import RecoveryDialog from '@/components/dialogs/RecoveryDialog'
-import CarrierChangedDialog from '@/components/dialogs/CarrierChangedDialog'
 import { LoadingState } from '@/components/shared/LoadingState'
 import WorkspaceView from '@/pages/WorkspaceView'
 import Part from '@/pages/Part'
@@ -31,9 +29,6 @@ export default function WorkspacePage() {
   const recoveryStatus = useRecoveryStore(s => s.status)
   const recoveryWorkspace = useRecoveryStore(s => s.workspace)
   const askingRecovery = recoveryStatus === 'asking' && recoveryWorkspace === workspaceId
-  const carrierStatus = useCarrierChangeStore(s => s.status)
-  const carrierWorkspace = useCarrierChangeStore(s => s.workspace)
-  const askingCarrier = carrierStatus === 'changed' && carrierWorkspace === workspaceId
 
   // Reset during render, not in the load effect: a child editor's effects run
   // before the host's effect in the same commit, so an effect-based reset would
@@ -56,11 +51,7 @@ export default function WorkspacePage() {
     // recovery prompt. A route change resets both so one workspace's prompt or
     // dirty flag cannot follow the user to another.
     useUnsavedChangesStore.getState().setWorkspace(workspaceId)
-    // Carrier first, then U7: a carrier change must be resolved before asking
-    // about a working copy that reload-from-carrier is about to replace.
-    void useCarrierChangeStore.getState().begin(workspaceId).then(asking => {
-      if (!asking && !cancelled) void useRecoveryStore.getState().begin(workspaceId)
-    })
+    void useRecoveryStore.getState().begin(workspaceId)
 
     if (entryId) {
       const loadKind = async () => {
@@ -89,7 +80,6 @@ export default function WorkspacePage() {
       cancelled = true
       useWorkspaceSessionStore.getState().clearSession(workspaceId)
       useUnsavedChangesStore.getState().setWorkspace(null)
-      useCarrierChangeStore.getState().reset()
       useRecoveryStore.getState().reset()
     }
   }, [workspaceId, entryId])
@@ -104,13 +94,13 @@ export default function WorkspacePage() {
 
   if (!workspaceId) return <div className="document-viewer"><p>Workspace not found.</p></div>
 
-  // Both prompts hold the editor back, and only one may be up: the carrier check
-  // owns the first decision, and U7 is armed only after a non-reload resolution.
-  if (askingRecovery || askingCarrier) {
+  // U7's prompt holds the editor back: the working copy it is asking about is
+  // the one the editor would otherwise mount and start editing.
+  if (askingRecovery) {
     return (
       <div className="document-viewer">
         <LoadingState />
-        {askingCarrier ? <CarrierChangedDialog /> : <RecoveryDialog />}
+        <RecoveryDialog />
       </div>
     )
   }
