@@ -74,7 +74,7 @@ describe('Workspaces folder import', () => {
   // An import is one-shot: the folder is read and forgotten, so the tile that
   // comes out of it offers no reopen, no rebind and nothing to reconcile.
   it('leaves the imported folder behind, with no residence affordance on the tile', async () => {
-    const dir = fakeDirectory('cad')
+    const dir = fakeDirectory('shelf')
     dir.putText('Gearbox.yaml', 'kind: part\n')
     picker.result = dir as unknown as FileSystemDirectoryHandle
 

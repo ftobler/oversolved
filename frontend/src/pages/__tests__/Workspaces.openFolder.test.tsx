@@ -6,14 +6,13 @@ import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDi
 import { buildZipBytes } from '@/workspace/zipCarrier'
 import { treeWith, documentEntry } from '@/workspace/__tests__/fixtures'
 import { freshLocalDb } from './workspacesHarness'
-import { readWorkspaceMeta } from '@/workspace/idbCarrier'
-import { MANIFEST_PATH } from '@/workspace/paths'
 import { getWorkspaceStore } from '@/workspace/store'
 import Workspaces from '@/pages/Workspaces'
 
-// U1's open-folder gesture: the picked folder is not just read for adoption, it
-// becomes the workspace's save target. The binding is pending (no fingerprint)
-// until the first explicit save normalizes the canonical layout into it.
+// U1's folder and archive gestures under the storage collapse: both read, and
+// only read. The entries land in IndexedDB, which is where they now live, and
+// the picked folder or archive is left exactly as it was found -- there is no
+// binding, so no later save can reach back into it.
 
 const capability = { can: true, zip: true }
 const picker = { result: null as FileSystemDirectoryHandle | null }
@@ -78,7 +77,7 @@ async function clickImportItem(label: string) {
 }
 
 describe('Workspaces open folder', () => {
-  it('binds the picked folder as the save target and normalizes it on the first save', async () => {
+  it('copies the picked folder in and leaves it untouched, saves included', async () => {
     const dir = fakeDirectory('cad')
     dir.putText('Gearbox.yaml', 'kind: part\n')
     picker.result = dir as unknown as FileSystemDirectoryHandle
@@ -94,20 +93,13 @@ describe('Workspaces open folder', () => {
     await waitFor(async () => {
       expect((await store.listEntries(summary.workspace)).some(e => e.name === 'Gearbox')).toBe(true)
     })
-    const meta = await readWorkspaceMeta(summary.workspace)
-    expect(meta?.carrier).toEqual({ kind: 'folder', label: 'cad' })
-    // A manifest-less folder is pending: land never wrote the canonical layout.
-    expect(meta?.loadedFrom).toBeUndefined()
-    expect(dir.fileNames()).toEqual(['Gearbox.yaml'])
 
     await store.save(summary.workspace, (await store.open(summary.workspace)).tree)
-    expect(dir.fileNames()).toContain(MANIFEST_PATH)
-    await waitFor(async () => {
-      expect((await readWorkspaceMeta(summary.workspace))?.loadedFrom?.carrier).toBe('folder')
-    })
+    // No manifest, no canonical layout, no rewrite: the folder was a source.
+    expect(dir.fileNames()).toEqual(['Gearbox.yaml'])
   })
 
-  it('opens a zip through the file picker and binds it, seeding loadedFrom', async () => {
+  it('copies a picked archive in and never writes back to it', async () => {
     const archive = await buildZipBytes(treeWith([
       documentEntry('a', 'Bracket', { text: 'kind: part\n# body\n' }),
     ], 'src'))
@@ -120,13 +112,9 @@ describe('Workspaces open folder', () => {
 
     const store = getWorkspaceStore()
     const [summary] = await store.list()
-    const meta = await readWorkspaceMeta(summary.workspace)
-    expect(meta?.carrier).toEqual({ kind: 'zip', label: 'ws.zip' })
-    // A manifest-present archive is not pending: its fingerprint is seeded once
-    // the landing finishes (the tile can paint from the create row first).
-    await waitFor(async () => {
-      expect((await readWorkspaceMeta(summary.workspace))?.loadedFrom?.carrier).toBe('zip')
-    })
-  })
+    await store.save(summary.workspace, (await store.open(summary.workspace)).tree)
 
+    const after = new Uint8Array(await (await handle.getFile()).arrayBuffer())
+    expect(after).toEqual(archive)
+  })
 })

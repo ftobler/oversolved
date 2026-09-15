@@ -21,7 +21,7 @@ import { randomId } from '@/utils/yamlMutations'
 import { randomUuid } from '@/utils/randomUuid'
 import { KNOWN_DOC_KINDS, parseDocKind } from './kinds'
 import { resolveOrigin, type OriginDescriptor, type OriginResolver } from './originResolver'
-import { getWorkspaceStore, type CarrierTargetBinding, type WorkspaceStore } from './store'
+import { getWorkspaceStore, type WorkspaceStore } from './store'
 import { bytesToBase64, writePreview } from '@/stores/previewStore/capture'
 
 // Adoption: bytes and text from anywhere (a dropped file, a folder, a zip, a
@@ -91,9 +91,6 @@ export interface ImportOptions {
   // the pre-C6 call shape and carries no same-session re-read.
   origin: OriginDescriptor | string
   name?: string
-  // The folder or zip the touched, new workspace should save back to. Only the
-  // new-workspace branch binds it; a join keeps the destination's target.
-  target?: CarrierTargetBinding
 }
 
 function normalizeOrigin(origin: OriginDescriptor | string): OriginDescriptor {
@@ -541,16 +538,15 @@ export async function importBag(
     }
   }
 
-  const { workspace } = await store.create(opts.name ?? defaultWorkspaceName(imported.tree), { target: opts.target })
+  const { workspace } = await store.create(opts.name ?? defaultWorkspaceName(imported.tree))
   const remapped = remapTree(imported.tree, {
     workspace,
     mintIds: false,
     origin: descriptor.locator,
   })
   stampProvenance(remapped.tree, descriptor, imported, remapped.idMap)
-  // Landing writes the working copy only. A bound folder is left as it was on
-  // disk (opening a 200-file folder must not rewrite 200 files); the first
-  // explicit save normalizes the canonical layout.
+  // The copy lands in the permanent store and the source is forgotten: the
+  // folder or archive it came out of is left exactly as it was found.
   await store.land(workspace, remapped.tree)
   await seedPreviews(workspace, imported, remapped.idMap)
   return {

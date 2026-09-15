@@ -223,11 +223,11 @@ export default function Workspaces() {
         // Remember the handle so a save target or a later session's update can
         // reopen it. The in-session read above still works if this is refused.
         await rememberOriginDirectory(locator, dir)
-        // Bind the picked folder as the workspace's save target: opening it is
-        // the signal that an explicit save should land back there. The carrier is
-        // not written now; `land` leaves the folder's files as they are.
+        // One-shot: the folder's bytes are copied into the permanent store and
+        // the folder itself is left alone. The handle above is the origin's, for
+        // an explicit later pull, not a place this workspace saves back to.
         const bag = await readDirectoryBag(dir, locator)
-        const result = await importBag(bag, { origin: descriptor, target: { kind: 'folder', label: dir.name, handle: dir } })
+        const result = await importBag(bag, { origin: descriptor })
         setImportedCount(result.documents + result.files)
         await refresh(false, debouncedSearch)
       })
@@ -236,9 +236,9 @@ export default function Workspaces() {
     }
   }
 
-  // A zip opened through the file picker carries a real handle, so the archive
-  // becomes the workspace's save target. A zip dropped through the plain file
-  // input cannot be written back and stays IDB-only.
+  // A zip opened through the file picker carries a real handle, which is worth
+  // remembering as an origin the user can pull from again. The archive is still
+  // only read: the entries it holds are copied in and live in IndexedDB.
   const handleOpenZip = async () => {
     try {
       await withBusy('import', async () => {
@@ -256,7 +256,7 @@ export default function Workspaces() {
         getOriginResolver().register(descriptor)
         await rememberOriginZip(locator, handle)
         const bag = await readZipBag(bytes, locator)
-        const result = await importBag(bag, { origin: descriptor, target: { kind: 'zip', label: handle.name, handle } })
+        const result = await importBag(bag, { origin: descriptor })
         setImportedCount(result.documents + result.files)
         await refresh(false, debouncedSearch)
       })
