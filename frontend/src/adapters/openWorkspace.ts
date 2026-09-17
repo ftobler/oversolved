@@ -1,6 +1,7 @@
 import { getWorkspaceStore, type WorkspaceStore } from '@/workspace/store'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { parseDocKind } from '@/workspace/kinds'
+import type { EntryKind } from '@/workspace/types'
 
 // The document-shaped face the editors and the solve relay read, bound to the
 // one open workspace. This replaces the C2 library adapter: there is no
@@ -21,10 +22,17 @@ export interface WorkspaceDocSummary {
   meta: { rev: number }
 }
 
+// Both kinds travel, spelled as the entry spells them, because collapsing them
+// into one `kind` is what blinded the interpretation gate: the payload carried
+// only the open document classification, so the one caller that has to decide
+// whether an entry is a document at all had nothing to decide with and asserted
+// `'document'`. `kind` is I5's closed structural union and is what refuses a
+// file by name; `docKind` is the open classification that picks the editor.
 export interface WorkspaceDocPayload {
   content: string
   name: string
-  kind?: string
+  kind: EntryKind
+  docKind?: string
 }
 
 export interface WorkspaceDocuments {
@@ -75,7 +83,10 @@ export class OpenWorkspaceDocumentStore implements WorkspaceDocuments {
   async load(id: string): Promise<WorkspaceDocPayload> {
     const workspace = openWorkspace()
     const entry = await this.store.readEntry(workspace, id)
-    return { content: entry.text ?? '', name: entry.name, kind: entry.docKind }
+    // No kind filter here: a file entry addressed by a typed URL must reach the
+    // gate and be refused there by name, not be turned away by this adapter with
+    // a "not found" that lies about why.
+    return { content: entry.text ?? '', name: entry.name, kind: entry.kind, docKind: entry.docKind }
   }
 
   async save(id: string, input: { content: string }): Promise<void> {

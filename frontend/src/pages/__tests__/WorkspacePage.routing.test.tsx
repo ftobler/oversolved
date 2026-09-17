@@ -51,6 +51,13 @@ beforeEach(() => {
   assemblyLifecycle.mockClear()
 })
 
+// A load payload carries both kinds: the structural one the gate refuses a file
+// by, and the open one that picks the editor. The helper spells the structural
+// kind so a test that means "a document" cannot accidentally leave it out.
+function doc(payload: { content: string; name?: string; docKind?: string }) {
+  return { kind: 'document' as const, name: '', ...payload }
+}
+
 function wrap(entry = 'A') {
   return render(
     <MemoryRouter initialEntries={[`/workspaces/ws/entries/${entry}`]}>
@@ -63,26 +70,26 @@ function wrap(entry = 'A') {
 
 describe('WorkspacePage kind routing', () => {
   it('routes kind: assembly to the assembly editor', async () => {
-    load.mockResolvedValue({ content: 'kind: assembly\nfeatures: []\n' })
+    load.mockResolvedValue(doc({ content: 'kind: assembly\nfeatures: []\n' }))
     wrap()
     await waitFor(() => expect(screen.getByText('ASSEMBLY EDITOR')).toBeInTheDocument())
   })
 
   it('routes an empty body with kind: part to the part editor', async () => {
-    load.mockResolvedValue({ content: '', name: 'Bracket', kind: 'part' })
+    load.mockResolvedValue(doc({ content: '', name: 'Bracket', docKind: 'part' }))
     wrap()
     await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
   })
 
   it('routes an explicit kind: part to the part editor', async () => {
-    load.mockResolvedValue({ content: 'kind: part\nfeatures: []\n' })
+    load.mockResolvedValue(doc({ content: 'kind: part\nfeatures: []\n' }))
     wrap()
     await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
   })
 
   // I6: an unrecognised kind refuses by name, never reading as a part.
   it('refuses an unknown kind by name instead of routing to the part editor', async () => {
-    load.mockResolvedValue({ content: 'kind: sketch\n', name: 'Draft', kind: 'sketch' })
+    load.mockResolvedValue(doc({ content: 'kind: sketch\n', name: 'Draft', docKind: 'sketch' }))
     wrap()
     await waitFor(() => expect(screen.getByText(/unsupported kind 'sketch'/)).toBeInTheDocument())
     expect(screen.queryByText('PART EDITOR')).not.toBeInTheDocument()
@@ -90,9 +97,32 @@ describe('WorkspacePage kind routing', () => {
   })
 
   it('refuses a document with no kind by name', async () => {
-    load.mockResolvedValue({ content: 'features: []\n', name: 'Legacy' })
+    load.mockResolvedValue(doc({ content: 'features: []\n', name: 'Legacy' }))
     wrap()
     await waitFor(() => expect(screen.getByText(/has no kind/)).toBeInTheDocument())
+    expect(screen.queryByText('PART EDITOR')).not.toBeInTheDocument()
+  })
+
+  // The entry route is reachable by typed URL, so a file id can arrive here. It
+  // must refuse as what it is: the structural kind travels on the payload, and
+  // asserting `'document'` at this call site made the gate's not-a-document
+  // branch dead and mislabelled every file as a document with no kind.
+  it('refuses a file entry as a file, not as a document with no kind', async () => {
+    load.mockResolvedValue({ kind: 'file', name: 'bracket.step', content: '' })
+    wrap()
+    await waitFor(() => expect(screen.getByText(/'bracket.step' is not a document/)).toBeInTheDocument())
+    expect(screen.queryByText(/has no kind/)).not.toBeInTheDocument()
+    expect(screen.queryByText('PART EDITOR')).not.toBeInTheDocument()
+    expect(screen.queryByText('ASSEMBLY EDITOR')).not.toBeInTheDocument()
+  })
+
+  // A file whose bytes happen to parse as YAML with a known kind is the sharp
+  // case: the content fallback would read it as a part if the structural kind
+  // were not consulted first.
+  it('refuses a file entry even when its content parses as a known kind', async () => {
+    load.mockResolvedValue({ kind: 'file', name: 'notes.yaml', content: 'kind: part\nfeatures: []\n' })
+    wrap()
+    await waitFor(() => expect(screen.getByText(/'notes.yaml' is not a document/)).toBeInTheDocument())
     expect(screen.queryByText('PART EDITOR')).not.toBeInTheDocument()
   })
 
@@ -108,7 +138,7 @@ describe('WorkspacePage kind routing', () => {
   // instance, because the old instance carries the previous document's undo
   // stacks and edit-session refs. The page keys Part by entry id.
   it('remounts the part editor when the entry changes', async () => {
-    load.mockImplementation(async () => ({ content: 'kind: part\nfeatures: []\n' }))
+    load.mockImplementation(async () => doc({ content: 'kind: part\nfeatures: []\n' }))
 
     function GoToB() {
       const navigate = useNavigate()
@@ -139,7 +169,7 @@ describe('WorkspacePage kind routing', () => {
   })
 
   it('remounts the assembly editor when the entry changes', async () => {
-    load.mockImplementation(async () => ({ content: 'kind: assembly\nfeatures: []\n' }))
+    load.mockImplementation(async () => doc({ content: 'kind: assembly\nfeatures: []\n' }))
 
     function GoToB() {
       const navigate = useNavigate()
@@ -172,7 +202,7 @@ describe('WorkspacePage kind routing', () => {
   // Cross-kind navigation is the sharp edge: while B's load is pending, neither
   // editor may be mounted.
   it('never mounts the wrong editor while a cross-kind navigation loads', async () => {
-    load.mockImplementation(async () => ({ content: 'kind: part\nfeatures: []\n' }))
+    load.mockImplementation(async () => doc({ content: 'kind: part\nfeatures: []\n' }))
 
     function GoToB() {
       const navigate = useNavigate()
@@ -192,11 +222,11 @@ describe('WorkspacePage kind routing', () => {
       expect(partLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(1)
     })
 
-    let resolveB!: (value: { content: string }) => void
-    const pendingB = new Promise<{ content: string }>(resolve => { resolveB = resolve })
+    let resolveB!: (value: ReturnType<typeof doc>) => void
+    const pendingB = new Promise<ReturnType<typeof doc>>(resolve => { resolveB = resolve })
     load.mockImplementation(async (entry: string) => {
       if (entry === 'B') return pendingB
-      return { content: 'kind: part\nfeatures: []\n' }
+      return doc({ content: 'kind: part\nfeatures: []\n' })
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'to B' }))
@@ -208,7 +238,7 @@ describe('WorkspacePage kind routing', () => {
       expect(assemblyLifecycle.mock.calls.filter(c => c[0] === 'mount')).toHaveLength(0)
     })
 
-    resolveB({ content: 'kind: assembly\nfeatures: []\n' })
+    resolveB(doc({ content: 'kind: assembly\nfeatures: []\n' }))
 
     await waitFor(() => {
       expect(screen.getByText('ASSEMBLY EDITOR')).toBeInTheDocument()
@@ -235,8 +265,8 @@ describe('WorkspacePage kind routing', () => {
     )
     await waitFor(() => expect(screen.getByText(/boom/)).toBeInTheDocument())
 
-    let resolveB!: (value: { content: string }) => void
-    const pendingB = new Promise<{ content: string }>(resolve => { resolveB = resolve })
+    let resolveB!: (value: ReturnType<typeof doc>) => void
+    const pendingB = new Promise<ReturnType<typeof doc>>(resolve => { resolveB = resolve })
     load.mockImplementation(async (entry: string) => {
       if (entry === 'B') return pendingB
       throw new Error('boom')
@@ -249,7 +279,7 @@ describe('WorkspacePage kind routing', () => {
       expect(screen.queryByText(/boom/)).not.toBeInTheDocument()
     })
 
-    resolveB({ content: 'kind: part\nfeatures: []\n' })
+    resolveB(doc({ content: 'kind: part\nfeatures: []\n' }))
     await waitFor(() => expect(screen.getByText('PART EDITOR')).toBeInTheDocument())
   })
 })

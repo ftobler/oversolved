@@ -7,6 +7,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { Wrapper } from '@/__tests__/test-utils'
 import { backendBundle } from '@/adapters/backend'
+import type { WorkspaceDocPayload } from '@/adapters/openWorkspace'
 
 // undo-document-reset at the Part-page level: the store-owned fields
 // (rollbackPosition, pickBoundary, editingFeatureId) and the sketch editor's
@@ -45,9 +46,9 @@ features:
 // A store holding both documents, so navigating A -> B is a real second load
 // rather than the same bytes served twice.
 function stubTwoDocStore() {
-  const docs: Record<string, { content: string; name: string }> = {
-    A: { content: DOC_A, name: 'Doc A' },
-    B: { content: DOC_B, name: 'Doc B' },
+  const docs: Record<string, WorkspaceDocPayload> = {
+    A: { kind: 'document', content: DOC_A, name: 'Doc A' },
+    B: { kind: 'document', content: DOC_B, name: 'Doc B' },
   }
   return vi.spyOn(backendBundle.documents, 'load').mockImplementation(async (id: string) => {
     const doc = docs[id]

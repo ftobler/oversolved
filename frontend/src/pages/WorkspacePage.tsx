@@ -58,10 +58,13 @@ export default function WorkspacePage() {
         try {
           const data = await backendBundle.documents.load(entryId)
           if (cancelled) return
-          // The one interpretation gate. The entry's open kind is authoritative;
-          // content is only a fallback for an entry that does not carry one. An
-          // absent or unknown kind refuses by name instead of reading as a part.
-          const view = { kind: 'document' as const, name: data.name, docKind: data.kind ?? parseDocKind(data.content) }
+          // The one interpretation gate. The entry's structural kind decides
+          // whether this is a document at all, so a file reached by a typed URL
+          // refuses as a file rather than as a document with no kind. Its open
+          // kind is then authoritative for which editor; content is only a
+          // fallback for an entry that does not carry one. An absent or unknown
+          // kind refuses by name instead of reading as a part.
+          const view = { kind: data.kind, name: data.name, docKind: data.docKind ?? parseDocKind(data.content) }
           const interpreted = interpretEntry(view)
           if (!interpreted.ok) {
             setKindError(refusalMessage(view, interpreted))

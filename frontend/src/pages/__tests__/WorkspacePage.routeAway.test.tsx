@@ -38,7 +38,7 @@ beforeEach(() => {
   act(() => { useRecoveryStore.getState().reset() })
   act(() => { useUnsavedChangesStore.getState().setDirty(false) })
   load.mockReset()
-  load.mockImplementation(async () => ({ content: 'kind: part\n', name: 'Doc', kind: 'part' }))
+  load.mockImplementation(async () => ({ content: 'kind: part\n', name: 'Doc', kind: 'document', docKind: 'part' }))
 })
 
 afterEach(() => {
@@ -59,7 +59,7 @@ describe('WorkspacePage exits from the entry route', () => {
   it('gives a refused entry the header rather than a bare viewer', async () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await store.create('Doc', { docKind: 'part' })
-    load.mockImplementation(async () => ({ content: '', name: 'Mystery', kind: 'spreadsheet' }))
+    load.mockImplementation(async () => ({ content: '', name: 'Mystery', kind: 'document', docKind: 'spreadsheet' }))
 
     wrap(workspace, 'mystery')
 

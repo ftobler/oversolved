@@ -31,12 +31,30 @@ describe('OpenWorkspaceDocumentStore', () => {
     const adapter = new OpenWorkspaceDocumentStore(store)
     const loaded = await adapter.load(workspace)
     expect(loaded.name).toBe('Bracket')
-    expect(loaded.kind).toBe('part')
+    expect(loaded.kind).toBe('document')
+    expect(loaded.docKind).toBe('part')
     expect(loaded.content).toBe('kind: part\n# body\n')
 
     // The same id addressed as a workspace no longer resolves; entry ids are the
     // only address inside a workspace.
     await expect(adapter.load('no-such-entry')).rejects.toThrow()
+  })
+
+  // The payload keeps the entry's structural kind so the interpretation gate can
+  // refuse a file as a file. Reporting `kind: 'document'` for everything is what
+  // made a file reached by a typed URL refuse as "has no kind" instead.
+  it('carries the structural kind of a file entry, not a document kind', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Bracket', { docKind: 'part' })
+    await store.addEntry(workspace, {
+      id: 'file-1', kind: 'file', name: 'bracket.step', fileKind: 'step', bytes: new Uint8Array([1, 2, 3]),
+    })
+    useWorkspaceSessionStore.getState().setSession(createWorkspaceSession(workspace, store))
+
+    const loaded = await new OpenWorkspaceDocumentStore(store).load('file-1')
+    expect(loaded.kind).toBe('file')
+    expect(loaded.docKind).toBeUndefined()
+    expect(loaded.name).toBe('bracket.step')
   })
 
   it('renames one entry without renaming the workspace', async () => {

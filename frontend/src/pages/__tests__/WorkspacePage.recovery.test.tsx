@@ -33,7 +33,7 @@ beforeEach(() => {
   resetWorkspaceIdb()
   act(() => { useRecoveryStore.getState().reset() })
   load.mockReset()
-  load.mockImplementation(async () => ({ content: text('dirty'), name: 'Doc', kind: 'part' }))
+  load.mockImplementation(async () => ({ content: text('dirty'), name: 'Doc', kind: 'document', docKind: 'part' }))
 })
 
 afterEach(() => {

@@ -71,7 +71,7 @@ export function partDocStoreMock({
   name = 'TestDoc',
 }: PartDocStoreOptions = {}) {
   return {
-    load: vi.spyOn(backendBundle.documents, 'load').mockResolvedValue({ content, name }),
+    load: vi.spyOn(backendBundle.documents, 'load').mockResolvedValue({ kind: 'document', content, name }),
     save: vi.spyOn(backendBundle.documents, 'save').mockResolvedValue(undefined),
     rename: vi.spyOn(backendBundle.documents, 'rename').mockResolvedValue(undefined),
   }
