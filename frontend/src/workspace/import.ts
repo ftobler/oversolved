@@ -10,7 +10,7 @@ import type {
   WorkspaceTree,
 } from './types'
 import { MANIFEST_PATH, RESERVED_PREFIX, TRASH_DIR } from './paths'
-import { emptyManifest, parseManifest } from './manifest'
+import { emptyManifest, parseManifest, serializeManifest } from './manifest'
 import { addEntry, createTree, putEntry } from './tree'
 import { addReference, canonicalizeReferences } from './refs'
 import { deserializeTree } from './serializer'
@@ -57,6 +57,9 @@ export interface ImportResult {
   // Non-reserved bag paths the manifest did not name. They are adopted as
   // orphan file entries and listed here, never silently dropped.
   unknownFiles: string[]
+  // Paths the manifest named and the bag did not carry. The entry is skipped
+  // and the rest of the bag still imports.
+  missingPayloads: string[]
 }
 
 export interface ImportedTree {
@@ -66,6 +69,7 @@ export interface ImportedTree {
   synthesizedParts: number
   unattached: string[]
   unknownFiles: string[]
+  missingPayloads: string[]
   // A legacy bundle's `<doc>.png` sidecars, keyed by the bag-local id of the
   // document each one pictures. They are NOT tree entries -- a preview is
   // derived data and cannot live in the workspace (I5) -- so they ride beside
@@ -172,6 +176,27 @@ function detectManifest(items: BagItem[]): DetectedManifest | null {
   // happened to yield, and the other manifest would be silently ignored.
   if (matches.length > 1) throw new Error(`Archive contains ${matches.length} manifests; expected at most one`)
   return matches[0] ?? null
+}
+
+// The manifest minus the rows whose payload the bag does not carry. Trash ids,
+// provenance records and reference edges naming a dropped row go with it: a
+// pruned manifest that still pointed at one would describe an entry the tree
+// cannot hold, and the edge would outlive its target.
+function withoutEntries(
+  manifest: WorkspaceManifest, present: Record<string, ManifestEntry>,
+): WorkspaceManifest {
+  const references: ReferenceEdges = {}
+  for (const [from, targets] of Object.entries(manifest.references)) {
+    if (!(from in present)) continue
+    references[from] = targets.filter(to => to in present)
+  }
+  return {
+    ...manifest,
+    entries: present,
+    references: canonicalizeReferences(references),
+    provenance: manifest.provenance.filter(record => record.entry in present),
+    trash: manifest.trash.filter(id => id in present),
+  }
 }
 
 function relative(path: string, wrapper: string): string {
@@ -291,10 +316,24 @@ export function readBagTree(bag: ImportBag): ImportedTree {
       // a zip unzipped into it); both locations are the manifest's.
       named.add(`${TRASH_DIR}/${row.path}`)
     }
+    // A named file the bag does not carry is skipped and reported, never fatal.
+    // Rejecting the bag made one deleted payload cost every other document in
+    // it, which is the opposite of how an unnamed file is treated three lines
+    // down. The manifest is pruned to match, because a row whose payload is
+    // absent is not an entry the tree can hold.
+    const missingPayloads: string[] = []
+    const present: Record<string, ManifestEntry> = {}
     for (const [id, row] of Object.entries(manifest.entries)) {
       const item = byPath.get(row.path) ?? byPath.get(`${TRASH_DIR}/${row.path}`)
-      if (!item) throw new Error(`Manifest entry is missing its file: ${row.path} (${id})`)
+      if (!item) {
+        missingPayloads.push(row.path)
+        continue
+      }
+      present[id] = row
       files.push({ path: row.path, data: item.bytes })
+    }
+    if (missingPayloads.length > 0) {
+      files[0] = { path: MANIFEST_PATH, data: serializeManifest(withoutEntries(manifest, present)) }
     }
     const tree = deserializeTree(files)
     // A bag path the manifest does not name is an orphan: adopt it as a file
@@ -319,6 +358,7 @@ export function readBagTree(bag: ImportBag): ImportedTree {
       synthesizedParts: 0,
       unattached: [],
       unknownFiles: unknownFiles.sort(),
+      missingPayloads: missingPayloads.sort(),
       // A manifest-carrying bag is this format's own export, and I5 keeps every
       // preview out of it, so there is never a sidecar here to seed from.
       previews: new Map(),
@@ -419,6 +459,8 @@ export function readBagTree(bag: ImportBag): ImportedTree {
     synthesizedParts,
     unattached: unattached.sort(),
     unknownFiles: [],
+    // A bag with no manifest names no file it does not carry.
+    missingPayloads: [],
     previews,
   }
 }
@@ -555,6 +597,7 @@ export async function importBag(
       skippedReserved: imported.skippedReserved,
       unattached: imported.unattached,
       unknownFiles: imported.unknownFiles,
+      missingPayloads: imported.missingPayloads,
     }
   }
 
@@ -578,6 +621,7 @@ export async function importBag(
     skippedReserved: imported.skippedReserved,
     unattached: imported.unattached,
     unknownFiles: imported.unknownFiles,
+    missingPayloads: imported.missingPayloads,
   }
 }
 

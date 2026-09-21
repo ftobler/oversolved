@@ -199,6 +199,41 @@ describe('adoption: manifest present', () => {
     expect(entries.find(entry => entry.name === 'extra.bin')).toMatchObject({ kind: 'file' })
   })
 
+  // The tolerance used to run one way only: a file the manifest does not name
+  // is adopted and reported, but a file it names and cannot find rejected the
+  // whole bag, so one deleted payload cost every other document in the archive.
+  it('skips a manifest entry whose file is gone and imports the rest', async () => {
+    const files: Record<string, string | Uint8Array> = {}
+    for (const file of serializeTree(sourceTree())) files[file.path] = file.data
+    delete files['files/b.step']
+    const bytes = await zipOf(files)
+
+    const store = new IdbWorkspaceStore()
+    const result = await importBag(await readZipBag(bytes, 'ws'), { origin: 'ws' }, store)
+
+    expect(result.missingPayloads).toEqual(['files/b.step'])
+    expect(result.documents).toBe(1)
+    const entries = await store.listEntries(result.workspace)
+    expect(entries.map(entry => entry.name)).toEqual(['A'])
+  })
+
+  it('drops the reference edge to a skipped entry rather than leaving it dangling', async () => {
+    const files: Record<string, string | Uint8Array> = {}
+    for (const file of serializeTree(sourceTree())) files[file.path] = file.data
+    delete files['files/b.step']
+    const parsed = readBagTree(await readZipBag(await zipOf(files), 'ws'))
+
+    expect(parsed.tree.manifest.entries.b).toBeUndefined()
+    expect(parsed.tree.manifest.references.a ?? []).not.toContain('b')
+  })
+
+  it('reports nothing missing when every named file is present', async () => {
+    const files: Record<string, string | Uint8Array> = {}
+    for (const file of serializeTree(sourceTree())) files[file.path] = file.data
+    const parsed = readBagTree(await readZipBag(await zipOf(files), 'ws'))
+    expect(parsed.missingPayloads).toEqual([])
+  })
+
   it('refuses a bag with more than one manifest instead of picking one', async () => {
     const bytes = await zipOf({
       '.oversolved-manifest.yaml': 'format: 1\nworkspace: root\n',
