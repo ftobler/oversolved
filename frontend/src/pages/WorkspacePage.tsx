@@ -14,6 +14,8 @@ import WorkspaceView from '@/pages/WorkspaceView'
 import Part from '@/pages/Part'
 import AssemblyEditor from '@/pages/AssemblyEditor'
 import { interpretEntry, parseDocKind, refusalMessage } from '@/workspace/kinds'
+import { migrateInlineStepPayloads } from '@/workspace/inlineStepMigration'
+import { useNotifySafe } from '@/contexts/ToastContext'
 import { errorMessage } from '@/utils/core/errorMessage'
 import '@/pages/Documents.css'
 
@@ -26,6 +28,7 @@ export default function WorkspacePage() {
   const { workspaceId, entryId } = useParams<{ workspaceId: string; entryId?: string }>()
   const [kind, setKind] = useState<'part' | 'assembly' | null>(null)
   const [kindError, setKindError] = useState<string | null>(null)
+  const notify = useNotifySafe()
   const recoveryStatus = useRecoveryStore(s => s.status)
   const recoveryWorkspace = useRecoveryStore(s => s.workspace)
   const askingRecovery = recoveryStatus === 'asking' && recoveryWorkspace === workspaceId
@@ -53,9 +56,29 @@ export default function WorkspacePage() {
     useUnsavedChangesStore.getState().setWorkspace(workspaceId)
     void useRecoveryStore.getState().begin(workspaceId)
 
+    // One-shot content migration, awaited before any editor sees a document:
+    // it rewrites documents in place, and an editor that had already loaded the
+    // old text would write it back over the migrated one on its next save. A
+    // workspace that has been through it is marked, so a reopen costs one meta
+    // read. A failure is reported and never blocks opening the workspace: the
+    // documents it could not heal are exactly the ones that already refuse to
+    // solve.
+    const migrate = async () => {
+      try {
+        const report = await migrateInlineStepPayloads(workspaceId)
+        if (cancelled || report.skipped || report.documents === 0) return
+        notify(`Moved ${report.files} embedded STEP file(s) out of ${report.documents} document(s)`, 'info')
+      } catch (e) {
+        console.error('Inline STEP migration failed:', e)
+        if (!cancelled) notify(errorMessage(e, 'Could not migrate embedded STEP files'), 'error')
+      }
+    }
+
     if (entryId) {
       const loadKind = async () => {
         try {
+          await migrate()
+          if (cancelled) return
           const data = await backendBundle.documents.load(entryId)
           if (cancelled) return
           // The one interpretation gate. The entry's structural kind decides
@@ -77,6 +100,9 @@ export default function WorkspacePage() {
         }
       }
       void loadKind()
+    } else {
+      // The workspace view opens no document, so nothing can race the rewrite.
+      void migrate()
     }
 
     return () => {
@@ -85,7 +111,7 @@ export default function WorkspacePage() {
       useUnsavedChangesStore.getState().setWorkspace(null)
       useRecoveryStore.getState().reset()
     }
-  }, [workspaceId, entryId])
+  }, [workspaceId, entryId, notify])
 
   // The key dispatcher must know which editor owns the document before it can
   // pick an assembly binding, and it must stay router-free, so the page writes

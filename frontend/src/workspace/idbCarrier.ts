@@ -56,6 +56,10 @@ export interface WorkspaceMetaRecord {
   // meta written before the v7 shape carries none and readers fall back to the
   // saved records until the next checkpoint stamps it.
   savedRevs?: Record<string, number>
+  // One-shot content migrations already applied to this workspace, by id. A
+  // migration that has to read every payload cannot afford to re-decide that on
+  // every open, so it marks itself here and a reopen costs this meta read.
+  migrations?: string[]
   // A row written before the storage collapse can still carry `carrier`,
   // `loadedFrom` and `carrierDiverged`. They named a folder or a zip the
   // workspace was supposed to live in, which is not a thing any more; nothing
