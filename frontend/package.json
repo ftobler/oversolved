@@ -20,6 +20,7 @@
     "licenses:generate:npm": "node scripts/generateThirdPartyNotices.mjs",
     "licenses:generate:rust": "node scripts/generateRustNotices.mjs",
     "licenses:check": "node scripts/generateThirdPartyNotices.mjs --check && node scripts/generateRustNotices.mjs --check",
+    "licenses:mirror": "node scripts/fetchOccSource.mjs",
     "occ:install": "npm i --no-save opencascade.js@1.1.1",
     "occ:provision": "mkdir -p public/occ && cp node_modules/opencascade.js/dist/opencascade.wasm.js node_modules/opencascade.js/dist/opencascade.wasm.wasm public/occ/"
   },

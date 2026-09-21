@@ -68,6 +68,36 @@ build definition that applies them.
 Oversolved modifies neither. It compiles nothing: it copies the two published
 artifacts and serves them.
 
+### Where to get it
+
+Both archives are mirrored as release assets in the same repository that
+publishes this application, so the source is obtainable from the same place as
+the binary rather than from a third party who may move or remove it.
+
+**Release `occ-source-v7_4_0p1`: MIRROR_RELEASE_URL_PENDING**
+
+That marker is not an oversight, and it is not decoration. The application has
+not been published yet, so the repository that will host both it and these
+archives does not exist, and no honest URL can be written here until it does.
+The marker stays until the release is real, and a test refuses to let a
+deployment be configured while it is still here. Until then this section
+describes the intended offer, and the upstream URLs above are the only working
+source of the two archives.
+
+| Asset | sha256 |
+| --- | --- |
+| `occt-V7_4_0p1.tar.gz` | `85b66265cd861147fdc6e428b01a917a37fc3902d2d06d73c7298b1ac9a2cb0d` |
+| `opencascade.js-1.1.1-src.tar.gz` | `7ce8617e77013c24ba4b32df7933094400a61fc96d143060634f1101f5ed6b93` |
+
+The digests are published so that the mirror can be checked against upstream by
+anyone who cares to. The upstream URLs above remain valid as a convenience and
+as a way of verifying that the mirror is faithful, but they are not the offer:
+the offer is the release.
+
+`frontend/scripts/fetchOccSource.mjs` rebuilds those assets. It downloads both
+archives, verifies them against the digests above, and refuses to write them if
+upstream no longer matches.
+
 A recipient may also substitute their own build. The two files are loaded at
 runtime from `/occ/` by name, so a replacement pair put in their place is the
 kernel the application then runs on, which is the relinking freedom the LGPL

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -171,6 +171,57 @@ describe('third-party notices', () => {
       'toolchain/LICENSE-libcxx-Apache-2.0-with-LLVM-exception.txt',
     ]) {
       expect(existsSync(path.join(noticesDir, file)), `${file} is missing`).toBe(true)
+    }
+  })
+
+  // The source mirror is the one obligation that cannot be discharged in the
+  // repository: it needs a release that exists, at a URL that resolves, in a
+  // public repository that has not been created yet. So the notices carry a
+  // marker instead of a fabricated link, and this test makes the marker
+  // impossible to ship: the moment a deployment workflow appears, publishing
+  // becomes real and the URL has to be real too.
+  it('do not let a deployment be configured while the source mirror is unpublished', () => {
+    const doc = readNotices('opencascade', 'README.md')
+    if (!doc.includes('MIRROR_RELEASE_URL_PENDING')) {
+      // The marker is gone, so a concrete release link must have replaced it.
+      expect(doc).toMatch(/https:\/\/\S+\/releases\/tag\/occ-source-v7_4_0p1/)
+      return
+    }
+
+    const workflowDir = path.join(frontendDir, '..', '.github', 'workflows')
+    const workflows = existsSync(workflowDir) ? readdirSync(workflowDir) : []
+    const deploying = workflows.filter(name => {
+      const text = readFileSync(path.join(workflowDir, name), 'utf8')
+      return /pages|deploy/i.test(text)
+    })
+
+    expect(
+      deploying,
+      'A deployment workflow exists while the OpenCascade source mirror is still '
+      + 'unpublished. Serving the app distributes the library, and the notices promise '
+      + 'a release that does not exist. Create the release, then replace '
+      + 'MIRROR_RELEASE_URL_PENDING in opencascade/README.md with its URL.',
+    ).toEqual([])
+  })
+
+  // The source offer is a mirror in the same repository that publishes the app,
+  // which is what section 6(d) asks for. It is only as good as the archives
+  // matching the binary, so the digests the notices publish and the digests the
+  // fetch script verifies against have to be the same numbers.
+  it('offer source archives whose digests match the ones the fetcher pins', () => {
+    const script = readFileSync(
+      path.join(frontendDir, 'scripts', 'fetchOccSource.mjs'), 'utf8')
+    const doc = readNotices('opencascade', 'README.md')
+
+    const pinned = [...script.matchAll(/sha256:\s*'([0-9a-f]{64})'/g)].map(match => match[1])
+    expect(pinned.length, 'the fetch script pins no digests').toBe(2)
+    for (const digest of pinned) {
+      expect(doc, `${digest} is verified on fetch but not published`).toContain(digest)
+    }
+
+    const name = /name:\s*'([^']+\.tar\.gz)'/g
+    for (const match of script.matchAll(name)) {
+      expect(doc, `${match[1]} is mirrored but not named in the notices`).toContain(match[1])
     }
   })
 
