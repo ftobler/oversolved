@@ -27,7 +27,7 @@ interface BreadcrumbProps {
 // So the trail starts at the workspace and disappears entirely above it.
 //
 // The workspace link leaves through the unsaved-changes guard, exactly as the
-// burger and the Help link do -- the trail is the only way out of an editor now
+// burger and the Docs link do -- the trail is the only way out of an editor now
 // that the workspace tree no longer rides in its sidebar.
 export default function Breadcrumb({ docName, fallbackName, onRename }: BreadcrumbProps) {
   const { workspaceId } = useParams<{ workspaceId?: string }>()

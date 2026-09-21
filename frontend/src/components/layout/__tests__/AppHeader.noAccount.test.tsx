@@ -33,11 +33,11 @@ describe('AppHeader account slot', () => {
 
   // What the header DOES carry, so the test above cannot pass by rendering
   // nothing at all.
-  it('still carries the burger, logo, title, help and bug report', () => {
+  it('still carries the burger, logo, title, docs and bug report', () => {
     wrap()
     expect(screen.getByTitle('Copyright 2026 - Oversolved')).toBeInTheDocument()
     expect(screen.getByText('Test')).toBeInTheDocument()
-    expect(screen.getByLabelText('Help')).toBeInTheDocument()
+    expect(screen.getByLabelText('Docs')).toBeInTheDocument()
     expect(screen.getByLabelText('Report a bug')).toBeInTheDocument()
   })
 })

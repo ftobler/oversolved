@@ -2,7 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import DisclaimerDialog from '@/components/dialogs/DisclaimerDialog'
 import Workspaces from '@/pages/Workspaces'
 import WorkspacePage from '@/pages/WorkspacePage'
-import Help from '@/pages/Help'
+import Docs from '@/pages/Docs'
 import Registry from '@/pages/Registry'
 import '@/components/shared/buttons.css'
 import '@/App.css'
@@ -26,13 +26,18 @@ function App() {
             more. */}
         <Route path="/documents" element={<Navigate to="/workspaces" replace />} />
         <Route path="/documents/:uuid" element={<Navigate to="/workspaces" replace />} />
-        {/* Help is a shell around reference pages. Bare /help has no content of
+        {/* Docs is a shell around reference pages. Bare /docs has no content of
             its own, so it redirects to the first page rather than rendering the
             sidebar beside an empty pane. */}
-        <Route path="/help" element={<Help />}>
-          <Route index element={<Navigate to="/help/registry" replace />} />
+        <Route path="/docs" element={<Docs />}>
+          <Route index element={<Navigate to="/docs/registry" replace />} />
           <Route path="registry" element={<Registry />} />
         </Route>
+        {/* The docs area answered to /help until it was renamed. Bookmarks and
+            the shipped disclaimer outlive a rename, so the old path redirects
+            rather than 404s. */}
+        <Route path="/help" element={<Navigate to="/docs" replace />} />
+        <Route path="/help/registry" element={<Navigate to="/docs/registry" replace />} />
       </Routes>
     </>
   )

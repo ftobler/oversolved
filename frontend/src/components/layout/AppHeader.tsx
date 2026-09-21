@@ -17,11 +17,11 @@ const COPYRIGHT = 'Copyright 2026 - Oversolved'
 const OVERVIEW_PATHS = new Set(['/', '/workspaces'])
 
 // The one app-wide titlebar: burger, logo, page title, and the always-available
-// controls on the right (Help, bug report). There is no account slot and never a
+// controls on the right (Docs, bug report). There is no account slot and never a
 // place for one -- the app runs entirely in this browser tab, so there is no
 // session to show, sign out of, or report as unavailable.
 interface AppHeaderProps {
-  // A plain page title, for pages outside the workspace hierarchy (Help).
+  // A plain page title, for pages outside the workspace hierarchy (Docs).
   title?: string
   // The workspace trail, for pages inside it. The two are exclusive: a page is
   // either somewhere in `Workspaces / <workspace> / <document>` or it is not.
@@ -159,14 +159,14 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
           </div>
         )}
         {rightContent}
-        {/* Help is a navigation, not a dialog, so it is a Link -- but it leaves
+        {/* Docs is a navigation, not a dialog, so it is a Link -- but it leaves
             the editor the same way the burger does, hence the unsaved-changes
             guard. */}
         <Link
-          to="/help"
+          to="/docs"
           className="toolbar-btn"
-          aria-label="Help"
-          title="Help"
+          aria-label="Docs"
+          title="Docs"
           onClick={guardLink}
         >
           <span className="material-icons-outlined">help_outline</span>

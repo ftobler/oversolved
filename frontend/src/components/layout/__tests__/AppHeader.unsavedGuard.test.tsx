@@ -61,14 +61,14 @@ describe('AppHeader unsaved-changes navigation guard', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 
-  // The header's Help link leaves the editor the same way the burger does, so it
+  // The header's Docs link leaves the editor the same way the burger does, so it
   // carries the same guard. Covered separately because it is the one remaining
   // header link that is not the burger, and losing its guard would be silent.
-  it('guards the Help link when dirty', () => {
+  it('guards the Docs link when dirty', () => {
     useUnsavedChangesStore.getState().setDirty(true)
     wrap()
     act(() => {
-      fireEvent.click(screen.getByLabelText('Help'))
+      fireEvent.click(screen.getByLabelText('Docs'))
     })
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     expect(window.location.pathname).toBe('/workspaces/ws/entries/abc')

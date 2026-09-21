@@ -57,4 +57,24 @@ describe('app boot', () => {
     boot('/')
     await waitFor(() => expect(screen.getByText('No workspaces yet.')).toBeInTheDocument())
   })
+
+  it('opens the docs shell on its first reference page', async () => {
+    boot('/docs')
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Registry', level: 1 })).toBeInTheDocument())
+  })
+
+  // The area answered to /help before the rename. A bookmark or a link in a
+  // shipped build must still arrive somewhere rather than at a blank route.
+  it('redirects the old help paths to docs', async () => {
+    boot('/help')
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Registry', level: 1 })).toBeInTheDocument())
+  })
+
+  it('redirects a deep help link to the same docs page', async () => {
+    boot('/help/registry')
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Registry', level: 1 })).toBeInTheDocument())
+  })
 })
