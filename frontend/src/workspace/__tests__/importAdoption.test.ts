@@ -209,3 +209,65 @@ describe('adoption: manifest present', () => {
       .rejects.toThrow(/2 manifests/)
   })
 })
+
+// A YAML export writes the document verbatim and the payload never carried its
+// kind (the manifest did), so every exported `.yaml` reaches the classifier
+// kind-less and used to land as an unopenable file entry. Until the export
+// stamps it, the manifest-less branch guesses from the shape.
+describe('adoption: a kind-less document payload', () => {
+  beforeEach(resetWorkspaceIdb)
+
+  const EXPORTED_PART = [
+    'features:',
+    '  - id: Origin',
+    '    kind: origin',
+    '  - id: n5fZFV21',
+    '    kind: extrude',
+    '    extrude:',
+    '      distance: 21',
+    'part_style:',
+    '  body_n5fZFV21:',
+    '    name: part 1',
+    '',
+  ].join('\n')
+
+  it('adopts an exported part yaml as a document, not a file', async () => {
+    const store = new IdbWorkspaceStore()
+    const result = await importBag(bag('ring.yaml', EXPORTED_PART), { origin: 'drop' }, store)
+
+    expect(result.documents).toBe(1)
+    expect(result.files).toBe(0)
+    const [entry] = await store.listEntries(result.workspace)
+    expect(entry).toMatchObject({ kind: 'document', name: 'ring', docKind: 'part' })
+  })
+
+  it('adopts a kind-less assembly payload as an assembly', () => {
+    const text = ASSEMBLY.replace('kind: assembly\n', '')
+    const parsed = readBagTree(bag('Gearbox.yml', text))
+    expect(Object.values(parsed.tree.manifest.entries)[0]).toMatchObject({
+      kind: 'document', docKind: 'assembly',
+    })
+  })
+
+  it('guesses only for a yaml extension, so other payloads stay files', () => {
+    const parsed = readBagTree(bag('notes.txt', EXPORTED_PART))
+    expect(Object.values(parsed.tree.manifest.entries)[0]).toMatchObject({ kind: 'file' })
+  })
+
+  it('leaves a stamped but unsupported kind a file rather than guessing past it', () => {
+    const parsed = readBagTree(bag('sheet.yaml', `kind: drawing\n${EXPORTED_PART}`))
+    expect(Object.values(parsed.tree.manifest.entries)[0]).toMatchObject({ kind: 'file' })
+  })
+
+  it('pairs a png sidecar with the document it pictures', () => {
+    const parsed = readBagTree({
+      origin: 'legacy',
+      items: [
+        { path: 'ring.yaml', bytes: new TextEncoder().encode(EXPORTED_PART) },
+        { path: 'ring.png', bytes: new Uint8Array([1, 2, 3]) },
+      ],
+    })
+    expect(parsed.skippedReserved).toBe(1)
+    expect(parsed.previews.size).toBe(1)
+  })
+})

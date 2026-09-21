@@ -19,7 +19,7 @@ import { readZipFiles } from './zipCarrier'
 import { buildStepContent } from '@/stores/documentStore/stepImport'
 import { randomId } from '@/utils/yamlMutations'
 import { randomUuid } from '@/utils/randomUuid'
-import { KNOWN_DOC_KINDS, parseDocKind } from './kinds'
+import { KNOWN_DOC_KINDS, inferDocKind, parseDocKind, type KnownDocKind } from './kinds'
 import { resolveOrigin, type OriginDescriptor, type OriginResolver } from './originResolver'
 import { getWorkspaceStore, type WorkspaceStore } from './store'
 import { bytesToBase64, writePreview } from '@/stores/previewStore/capture'
@@ -228,9 +228,23 @@ function decode(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes)
 }
 
-function isDocument(text: string): boolean {
-  const kind = parseDocKind(text)
-  return kind !== undefined && (KNOWN_DOC_KINDS as readonly string[]).includes(kind)
+function isYamlPath(path: string): boolean {
+  return /\.(yaml|yml)$/i.test(path)
+}
+
+// The kind a loose bag item claims, or undefined when it is not a document. A
+// stamped kind is the only answer when there is one, unknown kinds included: a
+// `kind: drawing` payload is a file, not a part the shape guess talked itself
+// into. Only a kind-less `.yaml` falls through to `inferDocKind`, the temporary
+// shim over the export that never stamped one. The extension is the shim's
+// second guard: a payload that neither names its kind nor is spelled like a
+// document stays a file.
+function documentKind(path: string, text: string): KnownDocKind | undefined {
+  const stamped = parseDocKind(text)
+  if (stamped !== undefined) {
+    return (KNOWN_DOC_KINDS as readonly string[]).includes(stamped) ? stamped as KnownDocKind : undefined
+  }
+  return isYamlPath(path) ? inferDocKind(text) : undefined
 }
 
 // Parse-first classification of a bag into a tree with the bag's own ids. The
@@ -313,11 +327,15 @@ export function readBagTree(bag: ImportBag): ImportedTree {
 
   // Manifest-absent: the bag is a pile of sources, not a graph. Documents are
   // classified first so a preview sidecar can be recognized and dropped.
-  const documentPaths = new Set<string>()
+  // Each payload is classified once here and the verdict carried forward, so
+  // the shape guess below does not re-parse every document a second time.
+  const documentKinds = new Map<string, KnownDocKind>()
   for (const item of effective) {
     if (isStepPath(item.path) || isPngPath(item.path)) continue
-    if (isDocument(decode(item.bytes))) documentPaths.add(item.path)
+    const kind = documentKind(item.path, decode(item.bytes))
+    if (kind !== undefined) documentKinds.set(item.path, kind)
   }
+  const documentPaths = new Set(documentKinds.keys())
 
   const tree = createTree(emptyManifest(randomUuid()))
   let synthesizedParts = 0
@@ -341,8 +359,9 @@ export function readBagTree(bag: ImportBag): ImportedTree {
       continue
     }
     const text = isStepPath(item.path) ? undefined : decode(item.bytes)
-    if (text !== undefined && isDocument(text)) {
-      const entry = documentEntry(documentStem(item.path), text)
+    const docKind = documentKinds.get(item.path)
+    if (text !== undefined && docKind !== undefined) {
+      const entry = documentEntry(documentStem(item.path), text, docKind)
       addEntry(tree, entry)
       documentIds.set(item.path, entry.id)
       continue
@@ -404,16 +423,17 @@ export function readBagTree(bag: ImportBag): ImportedTree {
   }
 }
 
-function documentEntry(name: string, text: string): WorkspaceEntry {
-  const entry: WorkspaceEntry = {
+// The kind is passed in rather than re-read from the text: the classifier may
+// have inferred it from the shape, and a re-read would drop that back to the
+// stamped kind the payload does not have.
+function documentEntry(name: string, text: string, docKind: KnownDocKind): WorkspaceEntry {
+  return {
     id: randomUuid(),
     kind: 'document',
     name,
     text,
+    docKind,
   }
-  const kind = parseDocKind(text)
-  if (kind !== undefined) entry.docKind = kind
-  return entry
 }
 
 // Every uuid a document's content points at, across both reference classes a

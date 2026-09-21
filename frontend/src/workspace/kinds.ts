@@ -27,6 +27,38 @@ export function parseDocKind(text: string): string | undefined {
   return kind
 }
 
+// TEMPORARY, and only for a loose payload the adoption classifier is handed.
+// A document's kind lives in the manifest, never in the payload, so nothing
+// ever writes a top-level `kind` into the text: the YAML export (PartExportImport)
+// stringifies the doc verbatim, and every exported `.yaml` therefore comes back
+// kind-less and reads as a plain file. Until the export stamps the kind, a
+// kind-less payload is recognized by its shape. Deliberately narrow: a mapping
+// whose `features` is a non-empty list of `{id, kind}` mappings, which no
+// non-document YAML the app handles looks like. An assembly is the one that
+// places or mates parts; a doc holding only built-ins is indistinguishable and
+// reads as a part, which is the empty-document case either way.
+export function inferDocKind(text: string): KnownDocKind | undefined {
+  let raw: unknown
+  try {
+    raw = parseYaml(text)
+  } catch {
+    return undefined
+  }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined
+  const record = raw as Record<string, unknown>
+  if (record.kind !== undefined) return undefined  // a stamped kind is parseDocKind's answer, not this one's
+  const features = record.features
+  if (!Array.isArray(features) || features.length === 0) return undefined
+  let assembly = false
+  for (const feature of features) {
+    if (typeof feature !== 'object' || feature === null || Array.isArray(feature)) return undefined
+    const row = feature as Record<string, unknown>
+    if (typeof row.id !== 'string' || typeof row.kind !== 'string') return undefined
+    if (row.kind === 'part_instance' || row.kind === 'mate') assembly = true
+  }
+  return assembly ? 'assembly' : 'part'
+}
+
 // The single gate that turns an entry into an interpreted document. Every
 // loader, picker and editor routes through this (I6). Missing is refused too:
 // the legacy part default is a pre-branch convenience A2 retires.
