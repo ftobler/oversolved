@@ -116,6 +116,20 @@ jobs:
           cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
 
+      # The notice bundles are generated artifacts, and serving the app
+      # distributes everything they cover. The vitest gate checks them too, but
+      # its rust half self-skips where cargo is absent, so the check is also run
+      # here where both toolchains are known to be present and a skip would be
+      # a lie rather than a convenience.
+      #
+      # Before occ:install on purpose: that is an `npm i --no-save` of a package
+      # deliberately outside the declared tree, and the npm half of this check
+      # reads the installed tree. Running first means the check can never be
+      # answering a question about a tree the app does not actually have.
+      - name: Third-party notices are current
+        run: npm run licenses:check
+        working-directory: frontend
+
       - name: Install OCC.js (opt-in, not a package.json dep)
         run: npm run occ:install
         working-directory: frontend
