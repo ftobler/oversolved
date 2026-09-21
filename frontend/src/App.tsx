@@ -4,6 +4,7 @@ import Workspaces from '@/pages/Workspaces'
 import WorkspacePage from '@/pages/WorkspacePage'
 import Docs from '@/pages/Docs'
 import Registry from '@/pages/Registry'
+import Licenses from '@/pages/Licenses'
 import '@/components/shared/buttons.css'
 import '@/App.css'
 
@@ -32,6 +33,7 @@ function App() {
         <Route path="/docs" element={<Docs />}>
           <Route index element={<Navigate to="/docs/registry" replace />} />
           <Route path="registry" element={<Registry />} />
+          <Route path="licenses" element={<Licenses />} />
         </Route>
         {/* The docs area answered to /help until it was renamed. Bookmarks and
             the shipped disclaimer outlive a rename, so the old path redirects

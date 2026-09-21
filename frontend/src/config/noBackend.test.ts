@@ -70,9 +70,16 @@ const RULES: Rule[] = [
     // origin, not a service. They fetch it rather than importing it because the
     // artifact has to be rewritten into a blob URL before it will run. Nothing
     // is listening at the other end of these; a plain file server answers them.
+    // The notices reader, which pulls the third-party license texts out of
+    // /third_party/ -- static files copied into the bundle from public/, on the
+    // app's own origin. They are read rather than imported so several hundred
+    // kilobytes of license text stays out of the JS every visitor downloads,
+    // and so the rendered page and the deployed files cannot diverge. A plain
+    // file server answers this one too.
     exempt: [
       'kernel/occ/loadOccWeb.ts',
       'kernel/occ/loadOccWorker.ts',
+      'pages/hooks/useNotices.ts',
     ],
   },
   {

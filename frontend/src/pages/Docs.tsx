@@ -9,6 +9,7 @@ import '@/pages/Docs.css'
 // material and every visitor is a guest.
 const DOCS_PAGES = [
   { to: '/docs/registry', label: 'Registry' },
+  { to: '/docs/licenses', label: 'Licenses' },
 ] as const
 
 export default function Docs() {

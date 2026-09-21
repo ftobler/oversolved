@@ -64,6 +64,15 @@ describe('app boot', () => {
       expect(screen.getByRole('heading', { name: 'Registry', level: 1 })).toBeInTheDocument())
   })
 
+  // Third-party notices have to be reachable from the running app, not only
+  // from the repository, because serving the app is what distributes the
+  // dependencies they cover.
+  it('offers the licenses page from the docs sidebar', async () => {
+    boot('/docs')
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: 'Licenses' })).toBeInTheDocument())
+  })
+
   // The area answered to /help before the rename. A bookmark or a link in a
   // shipped build must still arrive somewhere rather than at a blank route.
   it('redirects the old help paths to docs', async () => {
