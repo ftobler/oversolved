@@ -24,29 +24,17 @@ function isSelected(query: string): boolean {
 }
 
 describe('pick chip highlight === selection highlight', () => {
-  it('body query synced via chip is treated as selected', () => {
-    useSketchEditorStore.getState().syncChipSelection(['@body_ex1'])
-    expect(isSelected('@body_ex1')).toBe(true)
-  })
-
-  it('face query synced via chip is treated as selected', () => {
-    useSketchEditorStore.getState().syncChipSelection(['@ex1/face/3'])
-    expect(isSelected('@ex1/face/3')).toBe(true)
-  })
-
-  it('edge query synced via chip is treated as selected', () => {
-    useSketchEditorStore.getState().syncChipSelection(['@ex1/edge/2'])
-    expect(isSelected('@ex1/edge/2')).toBe(true)
-  })
-
-  it('sketch entity query synced via chip is treated as selected', () => {
-    useSketchEditorStore.getState().syncChipSelection(['entity:sk1:line1'])
-    expect(isSelected('entity:sk1:line1')).toBe(true)
-  })
-
-  it('sketch vertex query synced via chip is treated as selected', () => {
-    useSketchEditorStore.getState().syncChipSelection(['vertex:sk1:line1:start'])
-    expect(isSelected('vertex:sk1:line1:start')).toBe(true)
+  // One case per id family the chip can carry: body, face, edge, sketch entity
+  // and sketch vertex. Each is just a value for the same sync -> selected path.
+  it.each([
+    '@body_ex1',
+    '@ex1/face/3',
+    '@ex1/edge/2',
+    'entity:sk1:line1',
+    'vertex:sk1:line1:start',
+  ])('a query synced via chip is treated as selected: %s', (query) => {
+    useSketchEditorStore.getState().syncChipSelection([query])
+    expect(isSelected(query)).toBe(true)
   })
 
   it('chip values join existing normal selection -- both contribute to highlight', () => {

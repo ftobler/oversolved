@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 
-export const ALL_MUTATION_TYPES = [
+const ALL_MUTATION_TYPES = [
   'move_vertex',
   'move_vertex_with_constraint',
   'move_entity',
@@ -91,10 +91,6 @@ export const ALL_MUTATION_TYPES = [
 describe('mutationDispatch', () => {
   it('handler table covers every Mutation type variant', () => {
     expect(Object.keys(mutationHandlers).sort()).toEqual(ALL_MUTATION_TYPES.slice().sort())
-  })
-
-  it('handler table is not empty', () => {
-    expect(Object.keys(mutationHandlers).length).toBeGreaterThan(0)
   })
 
   it('returns undefined for unknown mutation type', () => {

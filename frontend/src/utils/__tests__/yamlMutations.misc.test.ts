@@ -207,111 +207,39 @@ describe('applySetPartColor', () => {
   })
 })
 
-describe('applySetPartTransparency', () => {
-  it('sets transparency clamped to [0, 1]', () => {
+// The four clamped [0, 1] part-style fields differ only by field name, so the
+// set / clamp-high / clamp-low / preserve shape is one table, not four blocks.
+describe('applySetPart* clamped fields', () => {
+  const fields = [
+    ['transparency', applySetPartTransparency],
+    ['roughness', applySetPartRoughness],
+    ['transmission', applySetPartTransmission],
+    ['metalness', applySetPartMetalness],
+  ] as const
+
+  it.each(fields)('%s sets a finite value', (field, setter) => {
     const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartTransparency(doc, 'body_ex1', 0.5)
-    expect(doc.part_style!.body_ex1.transparency).toBe(0.5)
+    setter(doc, 'body_ex1', 0.5)
+    expect(doc.part_style!.body_ex1[field]).toBe(0.5)
   })
 
-  it('clamps values above 1', () => {
+  it.each(fields)('%s clamps values above 1', (field, setter) => {
     const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartTransparency(doc, 'body_ex1', 5)
-    expect(doc.part_style!.body_ex1.transparency).toBe(1)
+    setter(doc, 'body_ex1', 5)
+    expect(doc.part_style!.body_ex1[field]).toBe(1)
   })
 
-  it('clamps values below 0', () => {
+  it.each(fields)('%s clamps values below 0', (field, setter) => {
     const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartTransparency(doc, 'body_ex1', -1)
-    expect(doc.part_style!.body_ex1.transparency).toBe(0)
+    setter(doc, 'body_ex1', -1)
+    expect(doc.part_style!.body_ex1[field]).toBe(0)
   })
 
-  it('preserves existing part_style fields', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', part_style: { body_ex1: { color: '#fff' } } }
-    applySetPartTransparency(doc, 'body_ex1', 0.3)
-    expect(doc.part_style!.body_ex1.color).toBe('#fff')
-    expect(doc.part_style!.body_ex1.transparency).toBe(0.3)
-  })
-})
-
-describe('applySetPartRoughness', () => {
-  it('sets roughness clamped to [0, 1]', () => {
-    const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartRoughness(doc, 'body_ex1', 0.8)
-    expect(doc.part_style!.body_ex1.roughness).toBe(0.8)
-  })
-
-  it('clamps values above 1', () => {
-    const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartRoughness(doc, 'body_ex1', 2)
-    expect(doc.part_style!.body_ex1.roughness).toBe(1)
-  })
-
-  it('clamps values below 0', () => {
-    const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartRoughness(doc, 'body_ex1', -0.5)
-    expect(doc.part_style!.body_ex1.roughness).toBe(0)
-  })
-
-  it('preserves existing part_style fields', () => {
+  it.each(fields)('%s preserves existing part_style fields', (field, setter) => {
     const doc: PartDoc = { version: 1, kind: 'part', part_style: { body_ex1: { name: 'Part' } } }
-    applySetPartRoughness(doc, 'body_ex1', 0.5)
+    setter(doc, 'body_ex1', 0.5)
     expect(doc.part_style!.body_ex1.name).toBe('Part')
-    expect(doc.part_style!.body_ex1.roughness).toBe(0.5)
-  })
-})
-
-describe('applySetPartTransmission', () => {
-  it('sets transmission clamped to [0, 1]', () => {
-    const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartTransmission(doc, 'body_ex1', 0.8)
-    expect(doc.part_style!.body_ex1.transmission).toBe(0.8)
-  })
-
-  it('clamps values above 1', () => {
-    const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartTransmission(doc, 'body_ex1', 2)
-    expect(doc.part_style!.body_ex1.transmission).toBe(1)
-  })
-
-  it('clamps values below 0', () => {
-    const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartTransmission(doc, 'body_ex1', -0.5)
-    expect(doc.part_style!.body_ex1.transmission).toBe(0)
-  })
-
-  it('preserves existing part_style fields', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', part_style: { body_ex1: { name: 'Part' } } }
-    applySetPartTransmission(doc, 'body_ex1', 0.5)
-    expect(doc.part_style!.body_ex1.name).toBe('Part')
-    expect(doc.part_style!.body_ex1.transmission).toBe(0.5)
-  })
-})
-
-describe('applySetPartMetalness', () => {
-  it('sets metalness clamped to [0, 1]', () => {
-    const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartMetalness(doc, 'body_ex1', 0.8)
-    expect(doc.part_style!.body_ex1.metalness).toBe(0.8)
-  })
-
-  it('clamps values above 1', () => {
-    const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartMetalness(doc, 'body_ex1', 2)
-    expect(doc.part_style!.body_ex1.metalness).toBe(1)
-  })
-
-  it('clamps values below 0', () => {
-    const doc: PartDoc = { version: 1, kind: 'part' }
-    applySetPartMetalness(doc, 'body_ex1', -0.5)
-    expect(doc.part_style!.body_ex1.metalness).toBe(0)
-  })
-
-  it('preserves existing part_style fields', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', part_style: { body_ex1: { name: 'Part' } } }
-    applySetPartMetalness(doc, 'body_ex1', 0.5)
-    expect(doc.part_style!.body_ex1.name).toBe('Part')
-    expect(doc.part_style!.body_ex1.metalness).toBe(0.5)
+    expect(doc.part_style!.body_ex1[field]).toBe(0.5)
   })
 })
 

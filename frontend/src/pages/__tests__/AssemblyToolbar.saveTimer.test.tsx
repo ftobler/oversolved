@@ -4,6 +4,10 @@
 // DocumentPage.tsx's uuid-keying) must not leave it pending to call setState
 // on a torn-down component. Mirrors the regression this class of bug already
 // got in PartToolbar.tsx (5209cd17).
+//
+// The old file asserted that a global clearTimeout was called on unmount, which
+// proves nothing about a save that resolves AFTER the unmount: that resolve
+// must not schedule a timer at all. This drives the actual guard.
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, screen, act } from '@testing-library/react'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
@@ -14,25 +18,62 @@ vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
+function deferred() {
+  let resolve!: (saved: boolean) => void
+  const promise = new Promise<boolean>(r => { resolve = r })
+  return { promise, resolve }
+}
+
+function renderToolbar(handleSave: () => Promise<boolean>) {
+  return render(
+    <AssemblyToolbar
+      docName="TestDoc"
+      onRename={vi.fn()}
+      handleSave={handleSave}
+      handleClone={vi.fn()}
+    />,
+  )
+}
+
+const saveIcon = () => screen.getByRole('button', { name: 'Save' }).textContent
+
 describe('AssemblyToolbar save-state reset timer', () => {
-  it('clears the pending save-state reset timer on unmount', async () => {
-    useAssemblyStore.setState({ undoStack: [], redoStack: [] })
-    const { unmount } = render(
-      <AssemblyToolbar
-        docName="TestDoc"
-        onRename={vi.fn()}
-        handleSave={() => Promise.resolve(true)}
-        handleClone={vi.fn()}
-      />,
-    )
+  it('a save resolving after unmount schedules no reset timer', async () => {
+    vi.useFakeTimers()
+    try {
+      useAssemblyStore.setState({ undoStack: [], redoStack: [] })
+      const gate = deferred()
+      const { unmount } = renderToolbar(() => gate.promise)
 
-    // The reset timer is scheduled only after the awaited save resolves.
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })) })
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      unmount()
+      // Whatever React already had queued, the post-unmount resolve must add
+      // nothing: a reset timer scheduled here would later setState on a gone
+      // component.
+      const pendingBefore = vi.getTimerCount()
+      await act(async () => { gate.resolve(true) })
 
-    const clearSpy = vi.spyOn(window, 'clearTimeout')
-    unmount()
+      expect(vi.getTimerCount()).toBe(pendingBefore)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 
-    expect(clearSpy).toHaveBeenCalled()
-    clearSpy.mockRestore()
+  it('while mounted, the success check resets to the save icon after the timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      useAssemblyStore.setState({ undoStack: [], redoStack: [] })
+      const gate = deferred()
+      renderToolbar(() => gate.promise)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await act(async () => { gate.resolve(true) })
+      expect(saveIcon()).toBe('check')
+
+      await act(async () => { vi.advanceTimersByTime(1500) })
+      expect(saveIcon()).toBe('save')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

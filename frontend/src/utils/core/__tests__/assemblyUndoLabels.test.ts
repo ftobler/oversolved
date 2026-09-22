@@ -4,7 +4,7 @@ import { ASSEMBLY_UNDO_LABELS } from '@/utils/core/assemblyUndoLabels'
 // The explicit pairing the compile-time map cannot make on its own: a new key
 // added to ASSEMBLY_UNDO_LABELS without joining this list fails the
 // sort-equality gate, the assembly analogue of the part side's
-// ALL_MUTATION_TYPES checklist.
+// mutation-description table.
 const ALL_ASSEMBLY_UNDO_LABELS = [
   'Add mate',
   'Add part',
