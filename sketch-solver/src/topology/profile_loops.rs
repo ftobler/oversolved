@@ -385,4 +385,96 @@ mod tests {
         assert_eq!(sub[0], (0, vec![1]));
         assert_eq!(sub[1], (1, vec![]));
     }
+
+    #[test]
+    fn subdivide_tracks_container_depth_through_three_nested_levels() {
+        // The two-loop test only reaches depth one. A third level pins that
+        // containment walks past the immediate parent and that each loop's hole
+        // is its IMMEDIATE child, not every loop it encloses.
+        let loops = vec![
+            rect(0.0, 0.0, 30.0, 30.0),
+            rect(5.0, 5.0, 25.0, 25.0),
+            rect(10.0, 10.0, 20.0, 20.0),
+        ];
+        let (depth, container) = loop_containment(&loops);
+        assert_eq!(depth, vec![0, 1, 2]);
+        assert_eq!(container, vec![None, Some(0), Some(1)]);
+
+        let sub = subdivide_loops(&loops);
+        assert_eq!(sub, vec![(0, vec![1]), (1, vec![2]), (2, vec![])]);
+    }
+
+    fn arc_edge(center: Vec2, radius: f64, a0: f64, a1: f64, ccw: bool) -> BoundaryEdge {
+        let at = |deg: f64| {
+            let a = radians(deg);
+            [center[0] + radius * a.cos(), center[1] + radius * a.sin()]
+        };
+        BoundaryEdge {
+            geom: EdgeGeom::Arc {
+                center,
+                radius,
+                angle_start_deg: a0,
+                angle_end_deg: a1,
+                ccw,
+                start: at(a0),
+                end: at(a1),
+            },
+            id: None,
+            start_vertex: None,
+            end_vertex: None,
+        }
+    }
+
+    #[test]
+    fn loop_pts_samples_an_arc_from_its_start_between_the_endpoints() {
+        // The edge's own start point is emitted first, then `arc_samples`
+        // interior points strictly inside the sweep; the end point is left for
+        // the next edge, so it is not among them.
+        let pts = loop_pts(&[arc_edge([0.0, 0.0], 2.0, 0.0, 90.0, true)], 4);
+        assert_eq!(pts.len(), 5);
+        assert!(
+            (pts[0][0] - 2.0).abs() < 1e-12 && pts[0][1].abs() < 1e-12,
+            "first point should be the arc start: {:?}",
+            pts[0]
+        );
+
+        let last = *pts.last().unwrap();
+        let want = [
+            2.0 * (72.0_f64.to_radians()).cos(),
+            2.0 * (72.0_f64.to_radians()).sin(),
+        ];
+        assert!(
+            (last[0] - want[0]).abs() < 1e-12 && (last[1] - want[1]).abs() < 1e-12,
+            "last interior sample should sit at 4/5 of the sweep: {last:?}"
+        );
+        for p in &pts[1..] {
+            assert!(p[0] > 0.0 && p[1] > 0.0, "sample off the first quadrant: {p:?}");
+        }
+    }
+
+    #[test]
+    fn loop_pts_samples_a_full_ellipse_on_the_curve() {
+        // A standalone full ellipse carries no start point and ignores the
+        // coarse arc count: it uses at least 16 samples so it reads as a
+        // polygon on its own.
+        let e = BoundaryEdge {
+            geom: EdgeGeom::Ellipse {
+                center: [1.0, 2.0],
+                a: 4.0,
+                b: 2.0,
+                theta: 0.0,
+            },
+            id: None,
+            start_vertex: None,
+            end_vertex: None,
+        };
+        let pts = loop_pts(&[e], 2);
+        assert!(pts.len() >= 16, "a full ellipse needs a readable sample count");
+        for p in &pts {
+            let u = p[0] - 1.0;
+            let v = p[1] - 2.0;
+            let on_curve = u * u / 16.0 + v * v / 4.0;
+            assert!((on_curve - 1.0).abs() < 1e-12, "point off the ellipse: {p:?}");
+        }
+    }
 }

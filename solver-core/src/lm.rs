@@ -448,4 +448,67 @@ mod tests {
         assert_eq!(r.x, vec![2.0]);
         assert_eq!(r.iters, 1);
     }
+
+    #[test]
+    fn fd_jacobian_matches_analytic_for_a_nonlinear_map() {
+        // The cross-check the linear drivers never exercise: central
+        // differencing a genuinely nonlinear map (trig and exp) against its
+        // hand-written Jacobian. A wrong stencil or step would show as a
+        // column-shifted or mis-scaled matrix here.
+        let f = |x: &[f64]| vec![x[0].sin() + x[0] * x[1], x[0].exp() - x[1] * x[1]];
+        let analytic = |x: &[f64]| {
+            DMatrix::from_row_slice(
+                2,
+                2,
+                &[x[0].cos() + x[1], x[0], x[0].exp(), -2.0 * x[1]],
+            )
+        };
+        let x = [0.37, -1.2];
+        let fd = fd_jacobian(&f, &x, 2);
+        let want = analytic(&x);
+        for r in 0..2 {
+            for c in 0..2 {
+                let diff = (fd[(r, c)] - want[(r, c)]).abs();
+                assert!(
+                    diff < 1e-6,
+                    "({r},{c}): fd={} analytic={} (diff {diff})",
+                    fd[(r, c)],
+                    want[(r, c)],
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fd_jacobian_handles_more_params_than_residuals() {
+        // n > m: an underdetermined map still has a well-defined Jacobian with
+        // one column per param, and every column must be differenced.
+        let f = |x: &[f64]| vec![x[0] * x[1] + x[2], x[0] * x[0] - x[2]];
+        let analytic =
+            |x: &[f64]| DMatrix::from_row_slice(2, 3, &[x[1], x[0], 1.0, 2.0 * x[0], 0.0, -1.0]);
+        let x = [1.3, -0.7, 2.1];
+        let fd = fd_jacobian(&f, &x, 2);
+        assert_eq!(fd.nrows(), 2);
+        assert_eq!(fd.ncols(), 3);
+        let want = analytic(&x);
+        for r in 0..2 {
+            for c in 0..3 {
+                let diff = (fd[(r, c)] - want[(r, c)]).abs();
+                assert!(
+                    diff < 1e-6,
+                    "({r},{c}): fd={} analytic={} (diff {diff})",
+                    fd[(r, c)],
+                    want[(r, c)],
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fd_jacobian_of_zero_residuals_is_empty() {
+        let f = |_: &[f64]| Vec::<f64>::new();
+        let j = fd_jacobian(&f, &[1.0, 2.0], 0);
+        assert_eq!(j.nrows(), 0);
+        assert_eq!(j.ncols(), 2);
+    }
 }

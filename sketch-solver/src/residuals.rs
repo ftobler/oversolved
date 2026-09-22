@@ -2940,4 +2940,76 @@ mod tests {
             }],
         );
     }
+
+    /// The sparse Jacobian is the drag fast path's only derivative source, and
+    /// unlike the dense one it had no cross-check against the residual at all.
+    /// It must be the dense matrix with exact zeros dropped: reconstructing the
+    /// sparse rows must reproduce the dense entry in every column, and at least
+    /// one row must actually be sparse (otherwise the filter is a no-op).
+    #[test]
+    fn jacobian_sparse_matches_dense_jacobian() {
+        use PointSelector::{Absent, Start, Xy};
+        use RefRole::{Arc as ArcR, Line as LineR, Target};
+
+        // Mixed analytic and finite-difference rows so both derivative paths
+        // feed the sparse conversion.
+        let entities = vec![
+            ent(Kind::Line, 0),   // L1 [0..4]
+            ent(Kind::Line, 4),   // L2 [4..8]
+            ent(Kind::Circle, 8), // C1 [8..11]
+            ent(Kind::Point, 11), // P1 [11..13]
+        ];
+        let params = vec![
+            0.0, 0.0, 3.0, 1.0, // L1
+            1.0, 2.0, 4.0, 5.0, // L2
+            2.0, 3.0, 2.5, // C1
+            5.0, 6.0, // P1
+        ];
+        let constraints = vec![
+            cons(ConstraintKind::Horizontal, vec![(Target, e_ref(0, Absent))]),
+            cons_v(ConstraintKind::Length, vec![(Target, e_ref(0, Absent))], 5.0),
+            cons(ConstraintKind::Parallel, ab(e_ref(0, Absent), e_ref(1, Absent))),
+            cons_v(ConstraintKind::Radius, vec![(Target, e_ref(2, Absent))], 4.0),
+            cons(ConstraintKind::Coincident, ab(e_ref(3, Xy), e_ref(1, Absent))),
+            cons_v(ConstraintKind::Angle, ab(e_ref(0, Absent), e_ref(1, Absent)), 30.0),
+            cons_v(ConstraintKind::PointDistance, ab(e_ref(3, Xy), e_ref(0, Start)), 1.0),
+            cons(
+                ConstraintKind::Tangent,
+                vec![(LineR, e_ref(0, Absent)), (ArcR, e_ref(2, Absent))],
+            ),
+        ];
+        let inp = input(entities, params, constraints);
+        let p = Problem::new(&inp);
+        let x: Vec<f64> = inp
+            .params_initial
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| v as f64 + 0.13 * ((i as f64) * 0.9).cos())
+            .collect();
+        let n = x.len();
+
+        let dense = p.jacobian(&x, n);
+        let sparse = p.jacobian_sparse(&x, n);
+
+        assert_eq!(sparse.len(), dense.nrows());
+        assert!(
+            sparse.iter().any(|row| row.len() < n),
+            "expected the zero-stripping to drop columns from at least one row"
+        );
+        for (r, row) in sparse.iter().enumerate() {
+            let mut reconstructed = vec![0.0; n];
+            for &(c, v) in row {
+                assert_ne!(v, 0.0, "row {r} col {c} stored an explicit zero");
+                reconstructed[c] = v;
+            }
+            for c in 0..n {
+                assert!(
+                    (reconstructed[c] - dense[(r, c)]).abs() < 1e-15,
+                    "row {r} col {c}: sparse={} dense={}",
+                    reconstructed[c],
+                    dense[(r, c)],
+                );
+            }
+        }
+    }
 }

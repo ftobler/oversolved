@@ -3562,4 +3562,64 @@ mod tests {
         let hinge_free_roll = [2.9, 2.2, 6.5e-18];
         assert_eq!(hinge_free_roll.iter().filter(|&&s| s > tol_hinge).count(), 2);
     }
+
+    #[test]
+    fn tangential_cone_branches_use_the_plane_and_axis_formulas() {
+        // Cone shares its arms with Cylinder, but those arms are selected by
+        // distinct match patterns; a drifting pattern list would silently drop
+        // the cone pairs into the non-finite fallback. Drive `tangential_residual`
+        // directly with concrete geometry so each cone branch has a pinned value.
+        let input = MateInput {
+            bodies: (0..2).map(|_| RigidBody {}).collect(),
+            params_initial: vec![0.0; 14],
+            fixed_mask: vec![0],
+            mates: vec![],
+        };
+        let problem = MateProblem::new(&input);
+        let z = [0.0, 0.0, 1.0];
+        let x = [1.0, 0.0, 0.0];
+        let y = [0.0, 1.0, 0.0];
+
+        // (Plane, Cone): |d . a_w| - radius - offset, with d = pa - pb.
+        let r = problem.tangential_residual(
+            AnchorKind::Plane, AnchorKind::Cone,
+            &[0.0, 0.0, 0.0], &[0.0, 0.0, 5.0],
+            &z, &z, 0.0, 2.0,
+        );
+        assert!((r - 3.0).abs() < 1e-12, "plane/cone: {r}");
+
+        // (Cone, Plane): the mirrored arm measures against B's normal.
+        let r = problem.tangential_residual(
+            AnchorKind::Cone, AnchorKind::Plane,
+            &[0.0, 0.0, 6.0], &[0.0, 0.0, 0.0],
+            &z, &z, 0.5, 1.0,
+        );
+        assert!((r - 4.5).abs() < 1e-12, "cone/plane: {r}");
+
+        // (Cylinder, Cone): shortest skew-axis distance minus both radii. The
+        // perpendicular axes put the common normal along z at distance 5.
+        let r = problem.tangential_residual(
+            AnchorKind::Cylinder, AnchorKind::Cone,
+            &[0.0, 0.0, 0.0], &[3.0, 0.0, 5.0],
+            &x, &y, 0.0, 0.5,
+        );
+        assert!((r - 4.0).abs() < 1e-12, "cylinder/cone: {r}");
+
+        // (Cone, Cylinder): the swapped axis pair shares the same formula.
+        let r = problem.tangential_residual(
+            AnchorKind::Cone, AnchorKind::Cylinder,
+            &[0.0, 0.0, 0.0], &[3.0, 0.0, 5.0],
+            &x, &y, 0.0, 0.5,
+        );
+        assert!((r - 4.0).abs() < 1e-12, "cone/cylinder: {r}");
+
+        // (Cone, Cone) with parallel axes: the parallel fallback takes the
+        // perpendicular distance (here 5), minus twice the radius and the offset.
+        let r = problem.tangential_residual(
+            AnchorKind::Cone, AnchorKind::Cone,
+            &[0.0, 0.0, 0.0], &[3.0, 4.0, 0.0],
+            &z, &z, 1.0, 2.0,
+        );
+        assert!(r.abs() < 1e-12, "cone/cone parallel: {r}");
+    }
 }
