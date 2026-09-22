@@ -44,7 +44,7 @@ import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
 
 // Utilities
 import { planeRotation, planeRotationFromTransform } from '@/components/Geometry3D/utils'
-import { builtinPlaneTransform } from '@/components/Geometry3D/bodySnapProjection'
+import { resolvePlaneTransform } from '@/components/Geometry3D/bodySnapProjection'
 
 // Colors
 import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
@@ -77,11 +77,10 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   const drag = useSketchEditorStore(s => s.drag)
   const isDraggingThis = !!drag && drag.featureId === featureId
 
-  const resolvedPlaneTransform: PlaneTransform | undefined = useMemo(() => {
-    if (planeTransform) return planeTransform
-    if (plane) return builtinPlaneTransform(plane) ?? undefined
-    return undefined
-  }, [planeTransform, plane])
+  const resolvedPlaneTransform: PlaneTransform | undefined = useMemo(
+    () => resolvePlaneTransform(planeTransform, plane),
+    [planeTransform, plane],
+  )
 
   // Document origin (0,0,0) expressed in this sketch's local 2D frame: the hard
   // solve computes this from the resolved plane; the solve result carries it so

@@ -49,6 +49,17 @@ export function builtinPlaneTransform(plane: string): PlaneTransform | null {
   return null
 }
 
+/** The sketch plane transform a Geometry3D render should use: the solver's when
+ *  it supplied one, else the builtin fallback for the named plane. */
+export function resolvePlaneTransform(
+  planeTransform: PlaneTransform | undefined,
+  plane: string | undefined,
+): PlaneTransform | undefined {
+  if (planeTransform) return planeTransform
+  if (plane) return builtinPlaneTransform(plane) ?? undefined
+  return undefined
+}
+
 /** Build a synthetic 2D Sketch from body vertices and edges projected onto a sketch plane.
  *  Vertices become PointEntity entries. Line edges become LineSegment entries.
  *  Circle/arc edges contribute only their center as a PointEntity.

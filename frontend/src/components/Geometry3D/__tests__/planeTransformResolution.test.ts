@@ -1,51 +1,29 @@
 import { describe, it, expect } from 'vitest'
-import { builtinPlaneTransform } from '@/components/Geometry3D/bodySnapProjection'
+import { builtinPlaneTransform, resolvePlaneTransform } from '@/components/Geometry3D/bodySnapProjection'
 import { planeRotationFromTransform, planeRotation } from '@/components/Geometry3D/utils'
 import type { PlaneTransform } from '@/types/cad'
 
-/**
- * Pure reimplementation of the resolvedPlaneTransform logic from
- * Geometry3D/index.tsx for testability.
- */
-function resolvePlaneTransform(
-  planeTransform: PlaneTransform | undefined,
-  plane: string | undefined,
-): PlaneTransform | undefined {
-  if (planeTransform) return planeTransform
-  if (plane) return builtinPlaneTransform(plane) ?? undefined
-  return undefined
-}
-
-describe('resolvedPlaneTransform', () => {
-  it('uses solver result when planeTransform is provided', () => {
+// Exercises the real resolver Geometry3D/index.tsx calls, so its branches cannot
+// drift behind a local copy.
+describe('resolvePlaneTransform', () => {
+  it('prefers the solver transform when one is supplied', () => {
     const solverTransform: PlaneTransform = {
       rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
       origin: [10, 20, 30],
     }
-    const result = resolvePlaneTransform(solverTransform, '@builtin_plane_front')
-    expect(result).toBe(solverTransform)
+    expect(resolvePlaneTransform(solverTransform, '@builtin_plane_front')).toBe(solverTransform)
   })
 
-  it('falls back to builtin plane transform for top plane', () => {
-    const expected = builtinPlaneTransform('@builtin_plane_top')
-    const result = resolvePlaneTransform(undefined, '@builtin_plane_top')
-    expect(result).toEqual(expected)
+  it('falls back to the builtin transform for a named plane', () => {
+    expect(resolvePlaneTransform(undefined, '@builtin_plane_top'))
+      .toEqual(builtinPlaneTransform('@builtin_plane_top'))
+    expect(resolvePlaneTransform(undefined, '@builtin_plane_right'))
+      .toEqual(builtinPlaneTransform('@builtin_plane_right'))
   })
 
-  it('falls back to builtin plane transform for right plane', () => {
-    const expected = builtinPlaneTransform('@builtin_plane_right')
-    const result = resolvePlaneTransform(undefined, '@builtin_plane_right')
-    expect(result).toEqual(expected)
-  })
-
-  it('returns undefined when planeTransform absent and plane unresolvable', () => {
-    const result = resolvePlaneTransform(undefined, undefined)
-    expect(result).toBeUndefined()
-  })
-
-  it('returns undefined when plane is unknown', () => {
-    const result = resolvePlaneTransform(undefined, 'some_random_plane')
-    expect(result).toBeUndefined()
+  it('is undefined when neither a transform nor a resolvable plane is given', () => {
+    expect(resolvePlaneTransform(undefined, undefined)).toBeUndefined()
+    expect(resolvePlaneTransform(undefined, 'some_random_plane')).toBeUndefined()
   })
 })
 
