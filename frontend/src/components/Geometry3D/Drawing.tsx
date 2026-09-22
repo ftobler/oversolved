@@ -106,6 +106,11 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   handleDrawMoveRef.current = (e: PointerEvent) => {
     const group = resolvedGroupRef.current
     if (!group) return
+    // Every visible sketch mounts a DrawPlane, but only the active sketch's
+    // plane owns the draw cursor: an inactive plane would project the cursor
+    // onto its own plane and overwrite the active hover. Mirrors the render
+    // guard below and DrawPreview's active-feature guard.
+    if (featureId !== activeFeatureId) return
     if (e.buttons & 6) { setDrawHover(null); return }
 
     // Live canvas bounds: not cached so sidebar resizes are reflected immediately.
