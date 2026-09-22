@@ -152,6 +152,23 @@ describe('solveAssemblyViaWorker', () => {
     await expect(prom).rejects.toThrow('worker returned an error response')
   })
 
+  it('ignores a solveAssembly reply with no matching pending request', async () => {
+    const prom = solveAssemblyViaWorker('asm-1', [], {}, [])
+    const req = fakeWorker.posted[0] as SolveAssemblyRequest
+    // A reply for an id that was never issued (a stale generation) must be
+    // dropped, not settle or crash the live request.
+    fakeWorker.reply({
+      id: req.id + 999, kind: 'solveAssembly', ok: true,
+      payload: { transforms: {}, bodies: {}, anchors: {} },
+    })
+    expect(getPendingCount()).toBe(1)
+    fakeWorker.reply({
+      id: req.id, kind: 'solveAssembly', ok: true,
+      payload: { transforms: {}, bodies: {}, anchors: {} },
+    })
+    await expect(prom).resolves.not.toBeNull()
+  })
+
   it('does not settle a pending solve on a future response kind with a colliding id', async () => {
     const prom = solveAssemblyViaWorker('asm-1', [], {}, [])
     const req = fakeWorker.posted[0] as SolveAssemblyRequest
@@ -550,6 +567,26 @@ describe('relay plumbing', () => {
       expect(relayRes.ok).toBe(false)
       expect(relayRes.error).toContain('missing content_hash/spec')
     }
+    expect(handlers.buildBundle).not.toHaveBeenCalled()
+  })
+
+  it('relay response names an unknown relay subKind instead of passing it through', async () => {
+    const handlers = { partDocContent: vi.fn(), buildBundle: vi.fn() }
+    setRelayHandlers(handlers)
+
+    await sendRelay({
+      kind: 'asr_relay',
+      requestId: 205,
+      subKind: 'futureSubKind',
+      doc_id: 'doc',
+    } as unknown as AnchorRelayRequest)
+
+    await vi.waitFor(() => fakeWorker.posted.length > 1, { timeout: 1000 })
+    const relayRes = fakeWorker.posted.find(m => m.kind === 'asr_relayRes') as AnchorRelayErrResponse | undefined
+    expect(relayRes?.ok).toBe(false)
+    expect(relayRes?.error).toContain('unknown relay subKind: futureSubKind')
+    // A malformed request must reach neither handler.
+    expect(handlers.partDocContent).not.toHaveBeenCalled()
     expect(handlers.buildBundle).not.toHaveBeenCalled()
   })
 

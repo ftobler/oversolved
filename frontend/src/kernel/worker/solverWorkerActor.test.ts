@@ -5,7 +5,7 @@
  * build is one synchronous WASM call and cannot be interrupted from the
  * outside; only the cancel button's Worker terminate can end it early.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { WorkerActor, type ActorJob } from './solverWorker'
 
 /** A promise the test resolves by hand, to hold a job open. */
@@ -165,5 +165,24 @@ describe('WorkerActor', () => {
       'run:running', 'superseded:poison', 'done:running',
       'run:fresh', 'done:fresh', 'run:after', 'done:after',
     ])
+  })
+
+  it('falls back to a timer yield when MessageChannel is unavailable', async () => {
+    // MessageChannel is preferred so a background tab's timer throttling cannot
+    // stall a queued solve; the timer is the documented fallback. The queue must
+    // still drain when it is missing.
+    vi.stubGlobal('MessageChannel', undefined)
+    try {
+      // Guard the guard: if the stub did not take, the test would silently
+      // exercise the preferred path instead of the fallback.
+      expect(typeof MessageChannel).toBe('undefined')
+      const log: string[] = []
+      const actor = new WorkerActor()
+      actor.submit(exportJob('a', log))
+      await settle()
+      expect(log).toEqual(['run:a', 'done:a'])
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

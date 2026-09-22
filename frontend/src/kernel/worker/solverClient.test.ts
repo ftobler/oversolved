@@ -106,6 +106,19 @@ describe('solveViaWorker', () => {
     await expect(p).rejects.toThrow('worker returned an error response')
   })
 
+  it('converts a throwing response extractor into a rejection, not an unsettled promise', async () => {
+    // The per-request extractor runs after the pending entry is deleted, so a
+    // throw there would otherwise leave the caller hanging with no entry to
+    // ever settle it. The documented contract is a rejection.
+    const p = solveViaWorker({ id: 'd' })
+    const payload = new Proxy({}, {
+      ownKeys() { throw new Error('payload could not be read') },
+    })
+    fake.reply({ id: fake.posted[0].id, ok: true, payload } as unknown as AnyResponse)
+    await expect(p).rejects.toThrow('payload could not be read')
+    expect(getPendingCount()).toBe(0)
+  })
+
   it('test reset rejects an in-flight request and drops late replies from the old worker', async () => {
     // Left in flight across the reset, like a promise a beforeEach reset must
     // not leave dangling.

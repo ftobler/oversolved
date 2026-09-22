@@ -95,6 +95,25 @@ describe('occThrowTypeName', () => {
     const glue = fakeGlue(2048, 0, '5Thing')
     expect(occThrowTypeName(glue, 2048)).toBeNull()
   })
+
+  it('returns null when the type-name lookup yields no pointer', () => {
+    const glue = fakeGlue(2048, 7, '5Thing')
+    glue.___getTypeName = () => 0
+    expect(occThrowTypeName(glue, 2048)).toBeNull()
+  })
+
+  it('keeps a name that carries no Itanium length prefix', () => {
+    // A demangler must not mangle a name that is already human-readable.
+    expect(occThrowTypeName(fakeGlue(2048, 7, 'StdFail_NotDone'), 2048)).toBe('StdFail_NotDone')
+  })
+
+  it('returns null instead of letting a decode failure mask the original error', () => {
+    // The decode is a diagnostic: a heap read that throws must degrade to null,
+    // never replace the failure it was trying to describe.
+    const glue = fakeGlue(2048, 850708, '15StdFail_NotDone')
+    glue.UTF8ToString = () => { throw new Error('heap read failed') }
+    expect(occThrowTypeName(glue, 2048)).toBeNull()
+  })
 })
 
 describe('extractOccErrorMessage', () => {

@@ -539,6 +539,91 @@ describe('relay plumbing', () => {
     }
   })
 
+  it('drops a late buildBundle error reply without caching', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 1000)
+      const prom = relay.requestBuildBundle('doc-a', '1', {})
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(2000)
+      await assertion
+
+      // An error reply carries no bundle to salvage; the late entry is dropped.
+      await handleRelayResponse({
+        kind: 'asr_relayRes',
+        requestId: requests[0].requestId,
+        ok: false,
+        error: 'build failed',
+      })
+      expect(bundleCachePutIfAbsent).not.toHaveBeenCalled()
+      expect(await bundleCacheGet('doc-a', '1')).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('drops a late buildBundle reply whose doc/hash does not match the request', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 1000)
+      const prom = relay.requestBuildBundle('doc-a', '1', {})
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(2000)
+      await assertion
+
+      // A bundle for a different doc is not the work that was asked for;
+      // caching it under doc-a@1 would serve wrong geometry to the next solve.
+      await handleRelayResponse({
+        kind: 'asr_relayRes',
+        requestId: requests[0].requestId,
+        ok: true,
+        payload: makeBundle('doc-other', '1'),
+      })
+      expect(bundleCachePutIfAbsent).not.toHaveBeenCalled()
+      expect(await bundleCacheGet('doc-a', '1')).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('swallows a failed cache write when salvaging a late bundle', async () => {
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const requests: AnchorRelayRequest[] = []
+      const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
+      const relay = createRelayService(post, 1000)
+      const prom = relay.requestBuildBundle('doc-a', '1', {})
+      const assertion = expect(prom).rejects.toThrow(/timed out/)
+      await vi.advanceTimersByTimeAsync(2000)
+      await assertion
+
+      vi.mocked(bundleCachePutIfAbsent).mockRejectedValueOnce(new Error('idb quota exceeded'))
+      // The solve already failed; a cache-write failure must not surface as an
+      // unhandled rejection in the worker.
+      await expect(handleRelayResponse({
+        kind: 'asr_relayRes',
+        requestId: requests[0].requestId,
+        ok: true,
+        payload: makeBundle('doc-a', '1'),
+      })).resolves.toBeUndefined()
+      expect(warn).toHaveBeenCalledWith('failed to cache a late relayed bundle', expect.any(Error))
+    } finally {
+      warn.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('a buildBundle relay reply that arrived via transfer still resolves to a usable, cacheable bundle', async () => {
     // Fresh IndexedDB for the cache round-trip below.
     globalThis.indexedDB = new IDBFactory()
@@ -775,6 +860,23 @@ describe('dispatcher', () => {
     await new Promise(r => setTimeout(r, 0))
     expect(posted).toHaveLength(1)
     expect(posted[0]).toMatchObject({ id: 5, kind: 'solveAssembly', ok: true })
+  })
+
+  it('routes an asr_relayRes message to the pending relay request', async () => {
+    const actor = new WorkerActor()
+    const requests: AnchorRelayRequest[] = []
+    const service = createRelayService((m) => requests.push(m))
+    const prom = service.requestPartDoc('doc-a')
+    const posted: AssemblyWorkerResponse[] = []
+    handleWorkerMessage(
+      { kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: { kind: 'part' } },
+      (msg) => { posted.push(msg) },
+      actor,
+    )
+    // A relay response completes its pending promise directly; it is not a
+    // solve, so it must not be queued on the actor or posted back.
+    await expect(prom).resolves.toEqual({ kind: 'part' })
+    expect(posted).toHaveLength(0)
   })
 
   it('warns on an unknown message kind instead of silently dropping it', () => {
