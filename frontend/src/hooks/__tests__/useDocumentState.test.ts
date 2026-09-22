@@ -15,8 +15,10 @@ const h = vi.hoisted(() => {
   return {
     loadMock,
     makeGate,
+    renameMock: vi.fn(),
     saveGates: [] as ReturnType<typeof makeGate>[],
     bodies: [] as string[],
+    failSave: false,
   }
 })
 
@@ -25,11 +27,13 @@ vi.mock('@/adapters/backend', () => ({
     documents: {
       load: (uuid: string) => h.loadMock(uuid),
       save: (_uuid: string, input: { content: string }) => {
+        if (h.failSave) return Promise.reject(new Error('disk full'))
         const gate = h.makeGate()
         h.bodies.push(input.content)
         h.saveGates.push(gate)
         return gate.promise
       },
+      rename: (uuid: string, name: string) => h.renameMock(uuid, name),
     },
   },
 }))
@@ -243,5 +247,82 @@ describe('useDocumentState saveDoc vs concurrent edits', () => {
     expect(h.bodies).toHaveLength(2)
     expect(h.bodies[1]).toContain('V2')
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+})
+
+describe('useDocumentState load and operation failures', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    h.failSave = false
+    useUnsavedChangesStore.getState().setDirty(false)
+  })
+
+  it('surfaces a load failure and stops loading', async () => {
+    h.loadMock.mockRejectedValue(new Error('corrupt document'))
+    const reSolveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('E', reSolveRef, { solveOnLoad: true }))
+    await tick()
+
+    expect(result.current.error).toBe('corrupt document')
+    expect(result.current.loading).toBe(false)
+    expect(result.current.doc).toBeNull()
+    // The failed load must not be handed to the solver.
+    expect(reSolveRef.current).not.toHaveBeenCalled()
+  })
+
+  it('ignores a superseded load that resolves after a newer one', async () => {
+    const resolveLoad: Record<string, (v: unknown) => void> = {}
+    h.loadMock.mockImplementation((uuid: string) =>
+      new Promise(resolve => { resolveLoad[uuid] = resolve }),
+    )
+    const reSolveRef = { current: null }
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useDocumentState(id, reSolveRef, { solveOnLoad: false }),
+      { initialProps: { id: 'A' } },
+    )
+    await tick()
+
+    rerender({ id: 'B' })
+    await tick()
+
+    // B lands first; the stale A resolution arrives afterwards and must not
+    // overwrite the newer document.
+    await act(async () => { resolveLoad.B({ content: 'name: B', name: 'B' }) })
+    await tick()
+    await act(async () => { resolveLoad.A({ content: 'name: A', name: 'A' }) })
+    await tick()
+
+    expect(result.current.docName).toBe('B')
+  })
+
+  it('reports a save failure and returns false', async () => {
+    h.loadMock.mockResolvedValue({ content: 'name: S', name: 'S' })
+    const reSolveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('S', reSolveRef, { solveOnLoad: false }))
+    await tick()
+
+    h.failSave = true
+    let ok!: boolean
+    await act(async () => { ok = await result.current.saveDoc('S', result.current.doc!) })
+
+    expect(ok).toBe(false)
+    expect(result.current.error).toBe('disk full')
+  })
+
+  it('renameDoc updates the name on success and reports failure', async () => {
+    h.loadMock.mockResolvedValue({ content: 'name: S', name: 'S' })
+    const reSolveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('S', reSolveRef, { solveOnLoad: false }))
+    await tick()
+
+    h.renameMock.mockResolvedValue(undefined)
+    await act(async () => { await result.current.renameDoc('S', 'Renamed') })
+    expect(result.current.docName).toBe('Renamed')
+
+    h.renameMock.mockRejectedValue(new Error('locked'))
+    let ok!: boolean
+    await act(async () => { ok = await result.current.renameDoc('S', 'Other') })
+    expect(ok).toBe(false)
+    expect(result.current.error).toBe('locked')
   })
 })
