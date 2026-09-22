@@ -13,8 +13,15 @@ const h = vi.hoisted(() => {
     loads: {} as Record<string, ReturnType<typeof make>>,
     saveGates: [] as ReturnType<typeof make>[],
     saves: [] as Array<{ uuid: string; content: string; preview_image?: string }>,
+    renameGates: [] as ReturnType<typeof make>[],
+    renames: [] as Array<{ uuid: string; name: string }>,
+    previewPut: vi.fn(async () => {}),
   }
 })
+
+vi.mock('@/stores/previewStore', () => ({
+  getPreviewStore: () => ({ put: h.previewPut }),
+}))
 
 vi.mock('@/adapters/backend', () => ({
   backendBundle: {
@@ -26,6 +33,12 @@ vi.mock('@/adapters/backend', () => ({
         const gate = h.make()
         h.saveGates.push(gate)
         h.saves.push({ uuid, ...body })
+        return gate.promise
+      },
+      rename: (uuid: string, name: string) => {
+        const gate = h.make()
+        h.renameGates.push(gate)
+        h.renames.push({ uuid, name })
         return gate.promise
       },
     },
@@ -44,6 +57,9 @@ describe('useAssemblyDoc', () => {
     h.loads = {}
     h.saveGates = []
     h.saves = []
+    h.renameGates = []
+    h.renames = []
+    h.previewPut.mockClear()
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
     useUnsavedChangesStore.getState().setDirty(false)
@@ -263,5 +279,92 @@ describe('useAssemblyDoc', () => {
     expect(h.saves).toHaveLength(2)
     expect(h.saves[1].content).toContain('EDITED')
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  // A failed store write is reported, not swallowed: the caller keys its exit
+  // guard off the boolean, and the page shows the error banner.
+  it('returns false and surfaces the error when the store save rejects', async () => {
+    const { result } = renderHook(() => useAssemblyDoc('SF'))
+    await tick()
+    await act(async () => { h.loads.SF.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
+    await tick()
+
+    // A failed write must leave the dirty flag set: clearing it would let the
+    // exit guard walk away from edits the store never accepted.
+    useUnsavedChangesStore.getState().setDirty(true)
+    let savePromise!: Promise<boolean>
+    await act(async () => {
+      savePromise = result.current.saveDoc('SF', result.current.doc!)
+    })
+    await act(async () => { h.saveGates[0].reject(new Error('disk full')) })
+
+    expect(await savePromise).toBe(false)
+    expect(result.current.error).toBe('disk full')
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('renames the document and reflects the new name without a reload', async () => {
+    const { result } = renderHook(() => useAssemblyDoc(undefined))
+
+    let renamePromise!: Promise<boolean>
+    await act(async () => {
+      renamePromise = result.current.renameDoc('R', 'Renamed bracket')
+    })
+    await act(async () => { h.renameGates[0].resolve(undefined) })
+
+    expect(await renamePromise).toBe(true)
+    expect(h.renames[0]).toEqual({ uuid: 'R', name: 'Renamed bracket' })
+    expect(result.current.docName).toBe('Renamed bracket')
+    expect(result.current.error).toBeNull()
+  })
+
+  it('returns false and surfaces the error when the store rename rejects', async () => {
+    const { result } = renderHook(() => useAssemblyDoc(undefined))
+
+    let renamePromise!: Promise<boolean>
+    await act(async () => {
+      renamePromise = result.current.renameDoc('R', 'Taken')
+    })
+    await act(async () => { h.renameGates[0].reject(new Error('name already exists')) })
+
+    expect(await renamePromise).toBe(false)
+    expect(result.current.error).toBe('name already exists')
+    // The visible name must not advance to a name the store rejected.
+    expect(result.current.docName).toBe('')
+  })
+
+  // Previews are keyed by (workspace, entry) so a multi-document workspace's
+  // tile and picker read the same record the save wrote; only the base64 half
+  // of the data URL is stored.
+  it('stores the screenshot preview under the workspace and uuid on save', async () => {
+    const { result } = renderHook(() => useAssemblyDoc('SP', 'ws1'))
+    await tick()
+    await act(async () => { h.loads.SP.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
+    await tick()
+
+    let savePromise!: Promise<boolean>
+    await act(async () => {
+      savePromise = result.current.saveDoc('SP', result.current.doc!, async () => 'data:image/png;base64,SHOT')
+    })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+
+    expect(await savePromise).toBe(true)
+    expect(h.previewPut).toHaveBeenCalledWith('ws1', 'SP', 'SHOT')
+  })
+
+  it('falls back to the uuid as the preview workspace when none is given', async () => {
+    const { result } = renderHook(() => useAssemblyDoc('SP2'))
+    await tick()
+    await act(async () => { h.loads.SP2.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
+    await tick()
+
+    let savePromise!: Promise<boolean>
+    await act(async () => {
+      savePromise = result.current.saveDoc('SP2', result.current.doc!, async () => 'data:image/png;base64,X')
+    })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+
+    expect(await savePromise).toBe(true)
+    expect(h.previewPut).toHaveBeenCalledWith('SP2', 'SP2', 'X')
   })
 })

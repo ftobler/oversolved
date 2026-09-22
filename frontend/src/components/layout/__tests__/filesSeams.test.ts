@@ -29,6 +29,32 @@ describe('useWhereUsed', () => {
     expect(session.referencesOf).not.toHaveBeenCalled()
   })
 
+  it('treats an unreadable manifest as an empty index, not a stuck loading state', async () => {
+    const session = sessionWith(async () => { throw new Error('manifest unreadable') })
+    const { result } = renderHook(() => useWhereUsed(session, entries))
+
+    await waitFor(() => expect(result.current.ready).toBe(true))
+    // Ready with an empty inverse: callers must be able to distinguish "scanned,
+    // found nothing" from "not scanned yet" or the orphan UI would hang.
+    expect(result.current.inverse.size).toBe(0)
+  })
+
+  it('does not hand out the previous entry list inverse while the new one scans', async () => {
+    const session = sessionWith(async () => ({ 'asm-1': ['part-1'] }))
+    const { result, rerender } = renderHook(({ e }) => useWhereUsed(session, e), {
+      initialProps: { e: entries },
+    })
+    await waitFor(() => expect(result.current.ready).toBe(true))
+
+    rerender({ e: [...entries, { id: 'part-2', path: 'documents/Plate.yaml', kind: 'document', name: 'Plate', docKind: 'part' }] })
+    // The stale scan still sits in state for the render where entries changed;
+    // matching it by identity is what keeps its inverse from being read as current.
+    expect(result.current.ready).toBe(false)
+    expect(result.current.inverse.size).toBe(0)
+
+    await waitFor(() => expect(result.current.ready).toBe(true))
+  })
+
   it('is not ready until the edge map resolves', async () => {
     let release!: () => void
     const gate = new Promise<void>(resolve => { release = resolve })

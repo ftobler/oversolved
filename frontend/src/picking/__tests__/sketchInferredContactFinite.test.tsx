@@ -55,4 +55,47 @@ describe('useSketchIdRegistration inferred-contact finite guard (g4-H2)', () => 
       p.dispose()
     }
   })
+
+  it('skips a finite 2D contact whose transformed world position is non-finite', async () => {
+    const { useSketchIdRegistration } = await import('../useSketchIdRegistration')
+    candidates.push({ id: 'dock:S1:good', position: [1, 1] })
+    const p = new IdPipeline({ width: 64, height: 64 })
+    setLivePipeline(p)
+    try {
+      // A corrupt plane matrix (NaN in the z row) leaves the 2D contact finite
+      // but its world position non-finite: registering it would bucket it at the
+      // origin exactly as the raw-NaN case does.
+      renderHook(() => useSketchIdRegistration({
+        featureId: 'S1',
+        sketch: cornerSketch(),
+        planeTransform: {
+          rotation: [1, 0, 0, 0, 1, 0, NaN, 0, 0],
+          origin: [0, 0, 0],
+        },
+      }))
+
+      expect(p.registry.lookupKey(SKETCH_VERTEX_LAYER_NAME, 'dock:S1:good')).toBeUndefined()
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+
+  it('treats an empty sketch object as a no-op and leaves the buffer clean', async () => {
+    const { useSketchIdRegistration } = await import('../useSketchIdRegistration')
+    const p = new IdPipeline({ width: 64, height: 64 })
+    setLivePipeline(p)
+    p.target.markClean()
+    try {
+      renderHook(() => useSketchIdRegistration({ featureId: 'S1', sketch: {} }))
+
+      expect(p.sketchEntityLayer.bodyCount()).toBe(0)
+      expect(p.sketchVertexLayer.bodyCount()).toBe(0)
+      // A delete-all sketch must not re-dirty the ID buffer on every render.
+      expect(p.isDirty()).toBe(false)
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
 })

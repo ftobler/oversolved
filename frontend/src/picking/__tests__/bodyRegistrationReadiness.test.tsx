@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { StrictMode } from 'react'
 import { renderHook, act, render } from '@testing-library/react'
 import * as THREE from 'three'
@@ -74,6 +74,7 @@ interface HookCase {
   useRun: (args: unknown) => void  // the registration hook call, must start with "use"
   bodyCount: (p: IdPipeline) => number
   registrySize: (p: IdPipeline) => number
+  layer: (p: IdPipeline) => { registerBody: (...a: never[]) => unknown }
 }
 
 const cases: HookCase[] = [
@@ -84,6 +85,7 @@ const cases: HookCase[] = [
     useRun: (a) => useFaceIdRegistration({ featureId: 'f', bodyId: 'b', mesh: a as Mesh3D }),
     bodyCount: (p) => p.faceLayer.bodyCount(),
     registrySize: (p) => p.registry.size(),
+    layer: (p) => p.faceLayer,
   },
   {
     name: 'edge',
@@ -95,6 +97,7 @@ const cases: HookCase[] = [
     },
     bodyCount: (p) => p.edgeLayer.bodyCount(),
     registrySize: (p) => p.registry.size(),
+    layer: (p) => p.edgeLayer,
   },
   {
     name: 'vertex',
@@ -106,6 +109,7 @@ const cases: HookCase[] = [
     },
     bodyCount: (p) => p.vertexLayer.bodyCount(),
     registrySize: (p) => p.registry.size(),
+    layer: (p) => p.vertexLayer,
   },
 ]
 
@@ -161,6 +165,28 @@ describe('body registration readiness', () => {
     })
   }
 
+  // resolveFaceQueries accepts a query set that outnumbers the triangles (it
+  // bounds the index space), so a mesh with queries but zero triangles slips
+  // past it. The hook's own triangle-count guard is what keeps it from
+  // registering an empty face body.
+  it('does not register a face mesh with queries but no triangles', () => {
+    const pipeline = new IdPipeline({ width: 32, height: 32 })
+    setLivePipeline(pipeline)
+    renderHook(() => useFaceIdRegistration({
+      featureId: 'f',
+      bodyId: 'b',
+      mesh: {
+        vertices: new Float32Array(0),
+        faces: new Uint32Array(0),
+        triangle_to_face: [],
+        face_queries: ['face@q'],
+      } as Mesh3D,
+    }))
+
+    expect(pipeline.faceLayer.bodyCount()).toBe(0)
+    expect(pipeline.registry.size()).toBe(0)
+  })
+
   // The replacement-pipeline case registers into a fresh pipeline minted by the
   // lifecycle hook (the real cold-load reveal). A Suspense hide/reveal is, to the
   // subtree, exactly a cleanup-then-setup cycle: React unmounts the hidden
@@ -198,6 +224,29 @@ describe('body registration readiness', () => {
         // The old pipeline is fully torn down and leaks no ids.
         expect(c.bodyCount(A)).toBe(0)
         expect(c.registrySize(A)).toBe(0)
+      })
+    }
+  })
+
+  // `IdRegistry.allocate` throws on 24-bit ID exhaustion, and a passive-effect
+  // throw unmounts the viewport root (no error boundary above it). Each body
+  // hook must warn and continue with that body unregistered, not propagate.
+  describe('a throwing registerBody is swallowed', () => {
+    afterEach(() => { setLivePipeline(null); vi.restoreAllMocks() })
+
+    for (const c of cases) {
+      it(`${c.name}: warns and leaves the body unregistered without throwing`, () => {
+        const pipeline = new IdPipeline({ width: 32, height: 32 })
+        setLivePipeline(pipeline)
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        vi.spyOn(c.layer(pipeline), 'registerBody').mockImplementation(() => {
+          throw new Error('IdRegistry: exhausted 24-bit ID space')
+        })
+
+        expect(() => renderHook(() => c.useRun(c.makeValid()))).not.toThrow()
+        expect(c.bodyCount(pipeline)).toBe(0)
+        expect(warn).toHaveBeenCalled()
+        pipeline.dispose()
       })
     }
   })

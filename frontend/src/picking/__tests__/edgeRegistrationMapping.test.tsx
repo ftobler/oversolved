@@ -49,4 +49,25 @@ describe('useEdgeIdRegistration segment -> edge mapping', () => {
     expect(pipeline.registry.lookup(id)!.entityKey).toBe('edge@B')
     expect(pipeline.registry.size()).toBe(1)
   })
+
+  it('registers nothing when every edge is skipped by the segment builder', () => {
+    pipeline = new IdPipeline({ width: 32, height: 32 })
+    setLivePipeline(pipeline)
+
+    // Non-finite endpoints mean buildEdgeSegmentGeometry emits no segments; the
+    // hook must refuse rather than register an empty body and claim the picks.
+    const edges: EdgeData[] = [
+      { kind: 'line', start: [NaN, 0, 0], end: [1, 0, 0] },
+      { kind: 'line', start: [2, 0, 0], end: [Infinity, 0, 0] },
+    ]
+    renderHook(() => useEdgeIdRegistration({
+      featureId: 'f1',
+      bodyId: 'b1',
+      edges,
+      edgeQueries: ['edge@A', 'edge@B'],
+    }))
+
+    expect(pipeline.edgeLayer.bodyCount()).toBe(0)
+    expect(pipeline.registry.size()).toBe(0)
+  })
 })

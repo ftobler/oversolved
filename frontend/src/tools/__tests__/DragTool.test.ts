@@ -158,6 +158,49 @@ describe('DragTool', () => {
       }))
     })
 
+    it('updates currentWorld and re-publishes the drag on every move after activation', () => {
+      const setDrag = vi.fn()
+      const tool = createDragTool()
+      const context = createMockContext({
+        setDrag,
+        startClient: [100, 100],
+        dragPending: {
+          type: 'vertex',
+          vertexId: 'vertex:S1:L1:start',
+          featureId: 'S1',
+          entityId: 'L1',
+          vertexKey: 'start',
+          startWorld: [0, 0],
+        },
+        drag: {
+          type: 'vertex',
+          vertexId: 'vertex:S1:L1:start',
+          featureId: 'S1',
+          entityId: 'L1',
+          vertexKey: 'start',
+          startWorld: [0, 0],
+          currentWorld: [1, 1],
+          startClient: [100, 100],
+        },
+      })
+
+      tool.handlers.onPointerMove!({ clientX: 220, clientY: 240 } as PointerEvent, [4.2, 2.4], null, context)
+
+      // Already-dragging moves must not re-resolve the activation threshold;
+      // they carry the cursor position into the live drag.
+      expect(setDrag).toHaveBeenCalledWith(expect.objectContaining({ currentWorld: [4.2, 2.4] }))
+    })
+
+    it('ignores a move when no drag is pending', () => {
+      const setDrag = vi.fn()
+      const tool = createDragTool()
+      const context = createMockContext({ setDrag, dragPending: null, drag: null })
+
+      tool.handlers.onPointerMove!({ clientX: 200, clientY: 200 } as PointerEvent, [1, 1], null, context)
+
+      expect(setDrag).not.toHaveBeenCalled()
+    })
+
     it('does not initiate drag when below threshold', () => {
       const setDrag = vi.fn()
       const tool = createDragTool()
