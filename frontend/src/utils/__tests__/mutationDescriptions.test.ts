@@ -197,3 +197,35 @@ describe('describeMutation', () => {
     expect(describeMutation({ type: 'not_a_mutation' } as unknown as Mutation)).toBe('unknown mutation')
   })
 })
+
+describe('describeMutation optional-field fallbacks', () => {
+  // Every feature kind with an optional label identifies itself by featureId
+  // when no label was authored; the boolean toggles render both directions. A
+  // refactor that dropped one of these fallbacks would surface a blank or
+  // "undefined" history label.
+  const CASES: { m: Mutation; want: string }[] = [
+    { m: { type: 'add_sketch', featureId: 'sk9' }, want: 'add sk9' },
+    { m: { type: 'add_plane', featureId: 'p9' }, want: 'add p9' },
+    { m: { type: 'add_extrude', featureId: 'ex9', sketchQuery: 'q', distance: 5 }, want: 'add extrude ex9' },
+    { m: { type: 'add_revolve', featureId: 'rv9', sketchQuery: 'q', angle: 90 }, want: 'add revolve rv9' },
+    { m: { type: 'add_sweep', featureId: 'sw9', sketchQuery: 'q', pathQuery: 'pq' }, want: 'add sweep sw9' },
+    { m: { type: 'add_import_step', featureId: 'im9', fileId: 'f1' }, want: 'import STEP im9' },
+    { m: { type: 'add_fillet', featureId: 'fi9' }, want: 'add fillet fi9' },
+    { m: { type: 'add_chamfer', featureId: 'ch9' }, want: 'add chamfer ch9' },
+    { m: { type: 'add_boolean', featureId: 'bo9' }, want: 'add boolean bo9' },
+    { m: { type: 'add_array', featureId: 'ar9' }, want: 'add array ar9' },
+    { m: { type: 'add_circular_array', featureId: 'ca9' }, want: 'add circular array ca9' },
+    { m: { type: 'add_delete_body', featureId: 'db9' }, want: 'add delete body db9' },
+    { m: { type: 'add_hole', featureId: 'ho9' }, want: 'add hole ho9' },
+    { m: { type: 'add_transform', featureId: 'tr9' }, want: 'add transform tr9' },
+    { m: { type: 'add_mirror', featureId: 'mi9' }, want: 'add mirror mi9' },
+    { m: { type: 'add_variable', featureId: 'va9' }, want: 'add variable va9' },
+    { m: { type: 'set_feature_visibility', featureId: 'sk1', visible: true }, want: 'show sk1' },
+    { m: { type: 'set_body_visibility', bodyId: 'b1', visible: true }, want: 'show body b1' },
+    { m: { type: 'set_feature_suppression', featureId: 'sk1', suppressed: false }, want: 'unsuppress sk1' },
+  ]
+
+  it.each(CASES)('renders case %#', ({ m, want }) => {
+    expect(describeMutation(m)).toBe(want)
+  })
+})

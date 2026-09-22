@@ -51,6 +51,48 @@ describe('assemblyVerdict', () => {
     expect(mark.level).toBe('warning')
     expect(mark.message).toContain('3')
   })
+
+  it('names only the mates that are not stale in the overconstrained conflict', () => {
+    // A stale mate is not part of the conflict the user resolves; naming it
+    // would send them to re-pick geometry that is not the problem.
+    const mark = assemblyVerdict(stub({
+      verdict: 'overconstrained',
+      mates: { m1: { stale: true }, m2: { stale: false }, m3: { stale: false } },
+    }))
+    expect(mark.message).toContain('m2')
+    expect(mark.message).toContain('m3')
+    expect(mark.message).not.toContain('m1')
+  })
+
+  it('omits the name list when every mate is stale', () => {
+    const mark = assemblyVerdict(stub({ verdict: 'overconstrained', mates: { m1: { stale: true } } }))
+    expect(mark.message).toBe('The mates cannot all be satisfied.')
+  })
+
+  it('renders the bare overconstrained message when no mates map is present', () => {
+    const mark = assemblyVerdict(stub({ verdict: 'overconstrained', mates: undefined }))
+    expect(mark.message).toBe('The mates cannot all be satisfied.')
+  })
+
+  it('uses the display name when a nameFor is given', () => {
+    const mark = assemblyVerdict(stub({ verdict: 'overconstrained', mates: { m1: { stale: false } } }), id => `Mate ${id}`)
+    expect(mark.message).toContain('Mate m1')
+  })
+
+  it('pluralizes the remaining degrees of freedom', () => {
+    expect(assemblyVerdict(stub({ verdict: 'underconstrained', dof: 1 })).message)
+      .toBe('Underconstrained: 1 degree of freedom.')
+    expect(assemblyVerdict(stub({ verdict: 'underconstrained', dof: 2 })).message)
+      .toBe('Underconstrained: 2 degrees of freedom.')
+    // An absent count is zero, which is plural.
+    expect(assemblyVerdict(stub({ verdict: 'underconstrained', dof: undefined })).message)
+      .toBe('Underconstrained: 0 degrees of freedom.')
+  })
+
+  it('falls back to generic copy when the transport carries no error message', () => {
+    expect(assemblyVerdict(stub({ verdict: 'failed' })).message).toBe('The mate solver failed.')
+    expect(assemblyVerdict(stub({ verdict: 'unavailable' })).message).toBe('The mate solver is not available.')
+  })
 })
 
 describe('mateFailure', () => {
@@ -113,5 +155,10 @@ describe('partFailure', () => {
     })
     expect(partFailure('hGood', status).failed).toBe(false)
     expect(partFailure('hBad', null).failed).toBe(false)
+  })
+
+  it('supplies generic copy when a failed part records no error', () => {
+    const status = stub({ parts: { hBad: { failed: true } } })
+    expect(partFailure('hBad', status).message).toBe('The part failed to load.')
   })
 })

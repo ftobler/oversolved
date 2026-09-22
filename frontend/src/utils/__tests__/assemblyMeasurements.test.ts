@@ -100,6 +100,15 @@ describe('computeAssemblyMeasurements', () => {
     expect(computeAssemblyMeasurements(new Set(['f0', 'ghost']), entityMateRefs, anchors)).toEqual([])
   })
 
+  it('ignores an entity whose anchor reference is no longer in the table', () => {
+    const { entityMateRefs, anchors } = fixture({
+      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
+    })
+    // A stale ref names an anchor id the solved table no longer carries.
+    entityMateRefs.ghost = [{ part: 'P', anchor: 'a_ghost' }]
+    expect(computeAssemblyMeasurements(new Set(['ghost', 'f0']), entityMateRefs, anchors)).toEqual([])
+  })
+
   it('measures the perpendicular distance from a point to an edge', () => {
     const { entityMateRefs, anchors } = fixture({
       p0: { kind: 'point', point: [0, 0, 5], axis: [0, 0, 0] },
@@ -155,5 +164,86 @@ describe('computeAssemblyMeasurements', () => {
     })
     expect(computeAssemblyMeasurements(new Set(['f0', 'f1', 'p0']), entityMateRefs, anchors))
       .toEqual(['plane distance: 5.00 mm'])
+  })
+
+  it('measures a plane to a point regardless of selection order', () => {
+    const { entityMateRefs, anchors } = fixture({
+      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
+      p0: { kind: 'point', point: [1, 2, 7], axis: [0, 0, 0] },
+    })
+    expect(computeAssemblyMeasurements(new Set(['f0', 'p0']), entityMateRefs, anchors))
+      .toEqual(['plane distance: 7.00 mm'])
+    expect(computeAssemblyMeasurements(new Set(['p0', 'f0']), entityMateRefs, anchors))
+      .toEqual(['plane distance: 7.00 mm'])
+  })
+
+  it('measures a plane to an edge regardless of selection order', () => {
+    const { entityMateRefs, anchors } = fixture({
+      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
+      e0: { kind: 'line', point: [0, 0, 3], axis: [1, 0, 0] },
+    })
+    expect(computeAssemblyMeasurements(new Set(['f0', 'e0']), entityMateRefs, anchors))
+      .toEqual(['plane distance: 3.00 mm'])
+    expect(computeAssemblyMeasurements(new Set(['e0', 'f0']), entityMateRefs, anchors))
+      .toEqual(['plane distance: 3.00 mm'])
+  })
+
+  it('measures a point to an edge regardless of selection order', () => {
+    const { entityMateRefs, anchors } = fixture({
+      p0: { kind: 'point', point: [0, 0, 5], axis: [0, 0, 0] },
+      e0: { kind: 'line', point: [0, 0, 0], axis: [1, 0, 0] },
+    })
+    expect(computeAssemblyMeasurements(new Set(['e0', 'p0']), entityMateRefs, anchors))
+      .toEqual(['point-edge distance: 5.00 mm'])
+  })
+
+  it('measures a circle to a point by center distance, either way round', () => {
+    const { entityMateRefs, anchors } = fixture({
+      c0: { kind: 'circle', point: [0, 0, 0], axis: [0, 0, 1] },
+      p0: { kind: 'point', point: [3, 4, 0], axis: [0, 0, 0] },
+    })
+    expect(computeAssemblyMeasurements(new Set(['c0', 'p0']), entityMateRefs, anchors))
+      .toEqual(['center dist: 5.00 mm'])
+    expect(computeAssemblyMeasurements(new Set(['p0', 'c0']), entityMateRefs, anchors))
+      .toEqual(['center dist: 5.00 mm'])
+  })
+
+  it('measures a circle to an edge by the axis pair, not by center distance', () => {
+    const { entityMateRefs, anchors } = fixture({
+      c0: { kind: 'circle', point: [0, 0, 0], axis: [0, 0, 1] },
+      e0: { kind: 'line', point: [0, 0, 0], axis: [1, 0, 0] },
+    })
+    expect(computeAssemblyMeasurements(new Set(['c0', 'e0']), entityMateRefs, anchors))
+      .toEqual(['edge angle: 90.00°'])
+  })
+
+  it('measures a circle to a plane by the line-plane rule', () => {
+    const { entityMateRefs, anchors } = fixture({
+      c0: { kind: 'circle', point: [3, 0, 0], axis: [0, 0, 1] },
+      f0: { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0] },
+    })
+    expect(computeAssemblyMeasurements(new Set(['c0', 'f0']), entityMateRefs, anchors))
+      .toEqual(['plane distance: 3.00 mm'])
+  })
+
+  it('treats an anchor whose direction cannot be normalized as unmeasurable', () => {
+    // A zero-length axis is not a plane normal, edge direction or circle axis,
+    // so the primitive drops out instead of producing a NaN measurement.
+    const { entityMateRefs, anchors } = fixture({
+      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 0] },
+      e0: { kind: 'line', point: [0, 0, 0], axis: [0, 0, 0] },
+      c0: { kind: 'circle', point: [0, 0, 0], axis: [0, 0, 0] },
+      p0: { kind: 'point', point: [1, 0, 0], axis: [0, 0, 0] },
+    })
+    expect(computeAssemblyMeasurements(new Set(['f0', 'e0']), entityMateRefs, anchors)).toEqual([])
+    expect(computeAssemblyMeasurements(new Set(['c0', 'p0']), entityMateRefs, anchors)).toEqual([])
+  })
+
+  it('treats an unrecognized anchor kind as unmeasurable', () => {
+    const { entityMateRefs, anchors } = fixture({
+      x0: { kind: 'blob' as unknown as AnchorPose['kind'], point: [0, 0, 0], axis: [0, 0, 1] },
+      p0: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 0] },
+    })
+    expect(computeAssemblyMeasurements(new Set(['x0', 'p0']), entityMateRefs, anchors)).toEqual([])
   })
 })

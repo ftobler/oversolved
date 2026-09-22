@@ -73,6 +73,11 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     const doc = makeDoc()
     expect(() => applyGeometryToFeature(doc, 'missing', {})).not.toThrow()
   })
+
+  it('no-ops when the doc has no features array', () => {
+    const doc = { version: 1, kind: 'part' } as PartDoc
+    expect(() => applyGeometryToFeature(doc, 'sk1', { x: [1] })).not.toThrow()
+  })
 })
 
 describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
@@ -156,6 +161,23 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
     ).not.toThrow()
     expect(doc.features).toHaveLength(2)
   })
+
+  it('tolerates a feature that carries no entities or constraints arrays', () => {
+    // A non-sketch feature (an extrude) has neither list; the cleanup must
+    // treat it as having nothing removable rather than throwing.
+    const doc = makeDoc()
+    expect(() =>
+      applyRemoveDanglingContent(doc, { ex1: { entities: ['x'], constraints: ['y'] } })
+    ).not.toThrow()
+    expect(doc.features!.find(f => f.id === 'ex1')!.initial).toBeUndefined()
+  })
+
+  it('no-ops when the doc has no features array', () => {
+    const doc = { version: 1, kind: 'part' } as PartDoc
+    expect(() =>
+      applyRemoveDanglingContent(doc, { sk1: { entities: ['x'], constraints: ['y'] } })
+    ).not.toThrow()
+  })
 })
 
 describe('cleanup ref matching (exact-or-vertex-suffix, not textual prefix)', () => {
@@ -229,6 +251,16 @@ describe('hasDanglingContentInDoc (cleanup plan still targets the doc)', () => {
   it('is false when no targeted feature exists', () => {
     const doc = makeDoc()
     expect(hasDanglingContentInDoc(doc, { missing: { entities: ['x'], constraints: ['y'] } })).toBe(false)
+  })
+
+  it('is false for a feature that carries no entities or constraints arrays', () => {
+    const doc = makeDoc()
+    expect(hasDanglingContentInDoc(doc, { ex1: { entities: ['x'], constraints: ['y'] } })).toBe(false)
+  })
+
+  it('is false when the doc has no features array', () => {
+    const doc = { version: 1, kind: 'part' } as PartDoc
+    expect(hasDanglingContentInDoc(doc, { sk1: { entities: ['x'], constraints: ['y'] } })).toBe(false)
   })
 })
 

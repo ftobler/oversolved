@@ -696,6 +696,79 @@ describe('assembly pointer adapter (triad plane handles)', () => {
   })
 })
 
+describe('assembly pointer adapter (guard branches)', () => {
+  beforeEach(() => {
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.getState().cancelPartManipulation()
+    useAssemblyStore.getState().selectPart(null)
+    setAssemblyCallbacks(null)
+  })
+
+  it('a second pointer cannot open a body grab while one is already down', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.pointerDown({ id: 1, button: 0 }, 0, 0)
+    expect(adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL, { id: 2, button: 0 })).toBe(false)
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+  })
+
+  it('a second pointer cannot open a gizmo handle while one is already down', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    adapter.pointerDown({ id: 1, button: 0 }, 0, 0)
+    expect(adapter.onGizmoPointerDown(
+      'p1', 'translate', 'x', [1, 0, 0], [0, 1, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]), { id: 2, button: 0 },
+    )).toBe(false)
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+    expect(useAssemblyStore.getState().gizmoDrag).toBeNull()
+  })
+
+  it('a zero-length gizmo axis opens no session', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    expect(adapter.onGizmoPointerDown('p1', 'translate', 'x', [0, 0, 0], [0, 1, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))).toBe(false)
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+  })
+
+  it('a body move whose ray misses the grab plane is inert', () => {
+    const { requestSolve, adapter } = mountHost(docWith(instance('p1')))
+    adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
+    // The ray runs in the grab plane (z = 0), so it never crosses it.
+    adapter.onPointerMove(ray([0, 0, 5], [1, 0, 0]))
+    expect(requestSolve).not.toHaveBeenCalled()
+    expect(adapter.onPointerUp().moved).toBe(false)
+  })
+
+  it('a plane move whose ray misses the handle plane is inert', () => {
+    const { host, adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'plane', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], ray([1, 1, 10], [0, 0, -1]))
+    adapter.onPointerMove(ray([0, 0, 0], [1, 0, 0]))  // in the z = 0 plane
+    adapter.onPointerUp()
+    expect(findInstance(host.doc, 'p1')!.transform).toEqual(IDENTITY_TRANSFORM)
+  })
+
+  it('an axis move whose ray is parallel to the arrow is inert', () => {
+    const { host, adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'translate', 'x', [1, 0, 0], [0, 1, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))
+    adapter.onPointerMove(ray([0, 0, 0], [1, 0, 0]))  // parallel to the X arrow
+    adapter.onPointerUp()
+    expect(findInstance(host.doc, 'p1')!.transform.tx).toBeCloseTo(0, 6)
+  })
+
+  it('a ring move whose ray never meets the ring plane is inert', () => {
+    const { host, adapter } = mountHost(docWith(instance('p1')))
+    adapter.onGizmoPointerDown('p1', 'rotate', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], ray([1, 0, 10], [0, 0, -1]))
+    adapter.onPointerMove(ray([0, 0, 0], [1, 0, 0]))  // travels within the ring plane
+    adapter.onPointerUp()
+    expect(findInstance(host.doc, 'p1')!.transform).toEqual(IDENTITY_TRANSFORM)
+  })
+
+  it('a plane handle that never left its grab point stays a click', () => {
+    const { adapter } = mountHost(docWith(instance('p1')))
+    const down = ray([1, 1, 10], [0, 0, -1])
+    adapter.onGizmoPointerDown('p1', 'plane', 'z', [0, 0, 1], [1, 0, 0], [0, 0, 0], down)
+    adapter.onPointerMove(down)  // same ray, zero translation
+    expect(adapter.onPointerUp().moved).toBe(false)
+  })
+})
+
 describe('click versus manipulation at pointer-up', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
