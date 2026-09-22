@@ -172,4 +172,20 @@ describe('useIdPipelineLifecycle (F1)', () => {
       warn.mockRestore()
     }
   })
+
+  it('tryRender after the pipeline is torn down is a no-op', () => {
+    const captured: { current: IdPipelineLifecycle | null } = { current: null }
+    const view = render(<Capture capturedRef={captured} />)
+    const lc = captured.current!
+    expect(lc.pipeline).not.toBeNull()
+
+    act(() => { view.unmount() })
+
+    // pipelineRef is cleared by the cleanup, so tryRender must return before
+    // touching the renderer at all.
+    const renderer = new Proxy({}, {
+      get() { throw new Error('renderer must not be read after teardown') },
+    }) as unknown as THREE.WebGLRenderer
+    expect(() => lc.tryRender(renderer, new THREE.Camera())).not.toThrow()
+  })
 })
