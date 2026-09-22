@@ -83,3 +83,60 @@ describe('solvePlane arbitrary-axis fallbacks', () => {
       + res.plane.x_axis[2] * res.plane.y_axis[2]).toBeCloseTo(0, 9)
   })
 })
+
+describe('solvePlane guard paths', () => {
+  it('on_face refuses a slash face ref when no OCC context is available', () => {
+    // The topo-fallback form `@<body>/face/<idx>` needs the body's shape; with
+    // no oc/table the resolver must name the ref instead of dereferencing null.
+    const repo = new Repository()
+    expect(() =>
+      run(repo, { id: 'pl', kind: 'plane', definition: { mode: 'on_face', face: '@body_a/face/0' } }),
+    ).toThrow(/face not found: "@body_a\/face\/0"/)
+  })
+
+  it('three_point refuses coincident points instead of normalizing a zero vector', () => {
+    const repo = new Repository()
+    repo.register('p1', { origin: [1, 1, 1] })
+    repo.register('p2', { origin: [1, 1, 1] })
+    repo.register('p3', { origin: [0, 3, 0] })
+    expect(() => run(repo, {
+      id: 'pl', kind: 'plane',
+      definition: { mode: 'three_point', p1: '@p1', p2: '@p2', p3: '@p3' },
+    })).toThrow(/zero-length vector/)
+  })
+
+  it('three_point names a point that does not resolve', () => {
+    const repo = new Repository()
+    repo.register('p1', { origin: [0, 0, 0] })
+    repo.register('p3', { origin: [0, 3, 0] })
+    expect(() => run(repo, {
+      id: 'pl', kind: 'plane',
+      definition: { mode: 'three_point', p1: '@p1', p2: '@missing', p3: '@p3' },
+    })).toThrow(/point not found: "@missing"/)
+  })
+
+  it('plane_point names a missing reference plane', () => {
+    const repo = new Repository()
+    repo.register('pt', { origin: [1, 2, 3] })
+    expect(() => run(repo, {
+      id: 'pl', kind: 'plane',
+      definition: { mode: 'plane_point', plane: '@missing', point: '@pt' },
+    })).toThrow(/plane not found: "@missing"/)
+  })
+
+  it('line_angle names a missing line', () => {
+    const repo = new Repository()
+    expect(() => run(repo, {
+      id: 'pl', kind: 'plane',
+      definition: { mode: 'line_angle', line: '@missing', angle: 0 },
+    })).toThrow(/line not found: "@missing"/)
+  })
+
+  it('on_face names a face ref the repo cannot resolve', () => {
+    const repo = new Repository()
+    expect(() => run(repo, {
+      id: 'pl', kind: 'plane',
+      definition: { mode: 'on_face', face: '@missing' },
+    })).toThrow(/face not found: "@missing"/)
+  })
+})

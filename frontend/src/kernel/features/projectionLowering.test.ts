@@ -62,6 +62,35 @@ describe('resolve3dGeometry', () => {
   it('rejects an ellipse edge missing semi-axes', () => {
     expect(resolve3dGeometry({ type: 'edge', kind: 'ellipse', center: [0, 0, 0] }, '?e')).toBeNull()
   })
+
+  it('reads a face payload as its centroid point', () => {
+    // A picked face projects to a point at its centroid; `origin` is the
+    // fallback when no centroid was stamped.
+    expect(resolve3dGeometry({ type: 'flatface', centroid: [1, 2, 3], origin: [9, 9, 9] }, '?f'))
+      .toEqual({ kindH: 'point', data: { point: [1, 2, 3] } })
+    expect(resolve3dGeometry({ type: 'cylinderface', origin: [4, 5, 6] }, '?f'))
+      .toEqual({ kindH: 'point', data: { point: [4, 5, 6] } })
+    expect(resolve3dGeometry({ type: 'face' }, '?f'))
+      .toEqual({ kindH: 'point', data: { point: [0, 0, 0] } })
+  })
+
+  it('reads a slash-registry point (flat x/y/z, no type) as a point', () => {
+    // Hole/point payloads from the slash registry carry bare x/y/z and no
+    // `type`; the B-rep vertex arm does not match them, so the fallback must.
+    expect(resolve3dGeometry({ x: 1, y: 2, z: 3 }, '?p'))
+      .toEqual({ kindH: 'point', data: { point: [1, 2, 3] } })
+    expect(resolve3dGeometry({ y: 2 }, '?p'))
+      .toEqual({ kindH: 'point', data: { point: [0, 2, 0] } })
+  })
+
+  it('falls back to a bare origin payload as a point', () => {
+    expect(resolve3dGeometry({ origin: [4, 5, 6] }, '?p'))
+      .toEqual({ kindH: 'point', data: { point: [4, 5, 6] } })
+  })
+
+  it('returns null for a payload with no geometry it understands', () => {
+    expect(resolve3dGeometry({ type: 'unknown' }, '?x')).toBeNull()
+  })
 })
 
 describe('projectTo2d basic kinds', () => {
@@ -111,6 +140,19 @@ describe('orientation-aware circle projection', () => {
     const [, , a, b] = circleToEllipseParams([0, 0, 0], 3, axis, [1, 0, 0], XY)
     expect(a).toBeCloseTo(3)
     expect(b).toBeCloseTo(3 * Math.cos(phi))
+  })
+
+  it('reports the major axis first even when the second conjugate radius projects longer', () => {
+    // The circle's x_axis is chosen along the steepest direction, so the
+    // projection of its second radius is the longer one; the result must still
+    // be [a >= b] with theta on the major axis, not a swapped pair.
+    const phi = Math.PI / 3
+    const axis = [0, -Math.sin(phi), Math.cos(phi)]
+    const xAxis = [0, Math.cos(phi), Math.sin(phi)]
+    const [, , a, b] = circleToEllipseParams([0, 0, 0], 5, axis, xAxis, XY)
+    expect(a).toBeCloseTo(5)
+    expect(b).toBeCloseTo(5 * Math.cos(phi))
+    expect(a).toBeGreaterThanOrEqual(b)
   })
 })
 
@@ -204,6 +246,17 @@ describe('arc projection (3D body arc)', () => {
     expect(r).toBeCloseTo(5)
     expect(sa).toBeCloseTo(0)
     expect(ea).toBeCloseTo(-90)
+  })
+
+  it('projects a sketch-local arc (2D angles, no 3D axis) straight through', () => {
+    // A sketch-to-sketch projection carries the source arc's 2D angles already;
+    // rebuilding them from a 3D axis would be both unnecessary and wrong.
+    const g = resolve3dGeometry(
+      { type: 'edge', kind: 'arc', center: [1, 2, 0], radius: 5, angle_start: 30, angle_end: 120 },
+      '?e',
+    )!
+    const out = projectTo2d(g, XY)!
+    expect(out).toEqual({ kind: 'arc', params: [1, 2, 5, 30, 120] })
   })
 
   it('lowers a tilted source arc to a sampled spline, not a fake circular arc', () => {

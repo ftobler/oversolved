@@ -171,4 +171,53 @@ describe('solveBoolean guard paths', () => {
     expect(ops).toEqual(['cut'])
     expect(mocks.shapesIntersect).toHaveBeenCalledTimes(1)
   })
+
+  it('flags an intersect that leaves an empty compound (no overlapping geometry)', () => {
+    // shapesIntersect is a solid-count probe, so an intersect of touching or
+    // zero-volume bodies can still fold to an empty result; the volume probe
+    // names it instead of reporting a green no-op.
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    const target = body('body_t')
+    target.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    const tool = body('body_u0')
+    tool.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    mocks.booleanWithDiff.mockReturnValue({
+      shape: { delete: () => {}, isDeleted: () => false },
+      diff: { ...emptyBrepDiff(), new_faces: [{} as never] },
+      faceOrigin: [],
+    })
+    mocks.shapesIntersect.mockReturnValue(true)
+    mocks.volumeOf.mockReturnValue(0)
+
+    const result = solveBoolean(
+      oc, scope, table,
+      { id: 'b', boolean: { operation: 'intersect', target: 'body_t', tools: ['body_u0'] } },
+      repo, { body_t: target, body_u0: tool },
+    )
+    expect(result.solver_warning).toMatch(/produced no overlapping geometry/)
+  })
+
+  it('leaves no empty-result warning when the volume probe itself fails', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    const target = body('body_t')
+    target.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    const tool = body('body_u0')
+    tool.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    mocks.booleanWithDiff.mockReturnValue({
+      shape: { delete: () => {}, isDeleted: () => false },
+      diff: emptyBrepDiff(),
+      faceOrigin: [],
+    })
+    mocks.shapesIntersect.mockReturnValue(true)
+    mocks.volumeOf.mockImplementation(() => { throw new Error('probe blew up') })
+
+    const result = solveBoolean(
+      oc, scope, table,
+      { id: 'b', boolean: { operation: 'intersect', target: 'body_t', tools: ['body_u0'] } },
+      repo, { body_t: target, body_u0: tool },
+    )
+    expect(result.solver_warning).not.toMatch(/empty result/)
+  })
 })

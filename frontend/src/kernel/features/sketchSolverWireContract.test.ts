@@ -21,6 +21,7 @@ import {
   assertSolverOutputMatchesLayout,
   setSketchSolver,
   resetSketchSolver,
+  isSketchSolverReady,
 } from './sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { initGlobalRepo } from '../query'
@@ -127,5 +128,17 @@ describe.skipIf(!solveBytes)('solveSketch refuses a skewed solver output', () =>
     })
     expect(() => solveSketch(rect('skew') as unknown as Record<string, unknown>, initGlobalRepo(), {}))
       .toThrow(/entity statuses, expected/)
+  })
+})
+
+describe('sketch solver readiness', () => {
+  it('reports not ready after a reset and throws a named error from solveSketch', () => {
+    // The drag path checks readiness on the main thread's own module instance;
+    // an uninitialised hard solve must fail loud rather than decode garbage.
+    resetSketchSolver()
+    expect(isSketchSolverReady()).toBe(false)
+    expect(() =>
+      solveSketch({ id: 'sk', kind: 'sketch', entities: [] }, initGlobalRepo(), {}),
+    ).toThrow(/not initialised/)
   })
 })

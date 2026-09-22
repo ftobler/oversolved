@@ -258,4 +258,45 @@ describe('resolveRevolveAxis fail-loud guards', () => {
     expect(origin).toEqual([1, 2, 3])
     expect(direction).toEqual([0, 0, 1])
   })
+
+  it('flips the queried line edge to agree with the stored direction', () => {
+    // The stored direction is the sign reference: a picked edge pointing the
+    // other way is anchored at its far end and negated, so re-solving a flipped
+    // edge does not reverse the revolve.
+    const repo = new Repository()
+    repo.register('edge', {
+      type: 'straightedge',
+      start: [1, 2, 3],
+      end: [1, 2, 8],
+    })
+    const [origin, direction] = resolveRevolveAxis({ axis: '@edge', axis_direction: [0, 0, -1] }, repo, {})
+    expect(origin).toEqual([1, 2, 8])
+    expect(direction[0]).toBeCloseTo(0)
+    expect(direction[1]).toBeCloseTo(0)
+    expect(direction[2]).toBe(-1)
+  })
+
+  it('takes a circular edge axis from its center and plane normal, flipped to the stored direction', () => {
+    const repo = new Repository()
+    repo.register('arc', { type: 'edge', center: [5, 5, 5], axis: [0, 0, 2] })
+    const [origin, direction] = resolveRevolveAxis({ axis: '@arc', axis_direction: [0, 0, -1] }, repo, {})
+    expect(origin).toEqual([5, 5, 5])
+    expect(direction[0]).toBeCloseTo(0)
+    expect(direction[1]).toBeCloseTo(0)
+    expect(direction[2]).toBe(-1)
+  })
+
+  it('lifts a sketch-line axis through its registered sketch plane', () => {
+    const repo = new Repository()
+    repo.register('sk_line', {
+      type: 'straightedge',
+      kind: 'line',
+      external_params: [0, 0, 2, 0],
+      sketch_id: 'sk',
+    })
+    repo.register('_pt_sk', { origin: [10, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+    const [origin, direction] = resolveRevolveAxis({ axis: '@sk_line' }, repo, {})
+    expect(origin).toEqual([10, 0, 0])
+    expect(direction).toEqual([1, 0, 0])
+  })
 })

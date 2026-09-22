@@ -75,6 +75,21 @@ describe('solveFillet guard paths', () => {
       }, repo, oneBody()),
     ).toThrow(/source body 'body:body_nope' not found/)
   })
+
+  it('refuses a feature-form source_body that names more than one body', () => {
+    // '@ex1' resolves to both siblings of a split feature. Grouping every edge
+    // onto one of them silently would fillet the wrong body; the pick must name
+    // exactly one.
+    const store: Record<string, Body> = {
+      body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: null, sketch_id: 'sk', brep_diff: null, profile_queries: [] },
+      body_ex1_1: { id: 'body_ex1_1', created_by: 'ex1', modified_by: [], shape: null, sketch_id: 'sk', brep_diff: null, profile_queries: [] },
+    }
+    expect(() =>
+      solveFillet(oc, scope, table, {
+        id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: '@ex1' },
+      }, repo, store),
+    ).toThrow(/names 2 bodies/)
+  })
 })
 
 describe('solveChamfer guard paths', () => {
@@ -242,5 +257,14 @@ describe('resolveEdgesByQuery provenance', () => {
     expect(byQuery.get(qA)).toEqual([edge])
     expect(byQuery.get(qB)).toEqual([edge])
     expect(flat).toEqual([edge])
+  })
+
+  it('a face query on a body with no shape resolves to no edges instead of crashing', () => {
+    // A face query falls through to the face->edges resolver, which needs the
+    // body's OCC shape; a shape-less body must come back empty.
+    const index = emptyIndex()
+    const faceQuery = makeAncestryQuery(['@body_b'], 'flatface')
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [faceQuery])
+    expect(byQuery.get(faceQuery)).toEqual([])
   })
 })

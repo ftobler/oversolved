@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Repository } from '../query'
-import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, orderedPathWorldEdges, type ChainEdge } from './sweep'
+import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, orderedPathWorldEdges, collectPathEdges, type ChainEdge } from './sweep'
 import { collectExtrudeLoops } from './faceProfile'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule, OccShape } from '../occ/occTypes'
@@ -352,5 +352,65 @@ describe('solveSweep guard paths', () => {
     }
     expect(msg).toContain(`sketch not found: ${sketchId}`)
     expect(msg).not.toContain('entity:')
+  })
+
+  it('reports a picked entity whose edges do not close a loop', () => {
+    // Edge-precise profiles chain the picked entities' topo edges into loops;
+    // a lone line bounds nothing and must fail the feature rather than sweep an
+    // open chain.
+    const repo = new Repository()
+    repo.register('_pt_sk', planeXY)
+    repo.register('_topo_sk', {
+      edges: [{ entity_id: 'l1', edge_index: 0, kind: 'line', start: [0, 0], end: [10, 0] }],
+    })
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['entity:sk:l1'], path: '$p' } },
+        repo, {},
+      ),
+    ).toThrow(/do not form a closed loop \(sketch sk\)/)
+  })
+
+  it('refuses a face profile, which sweep does not support', () => {
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    vi.mocked(collectExtrudeLoops).mockImplementation(() => (
+      { loops: [], plane, sketchId: 'skF', face: {} as OccShape }
+    ))
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['@b1/face/0'], path: '$p' } },
+        new Repository(), {},
+      ),
+    ).toThrow(/face profiles are not yet supported/)
+  })
+
+  it('refuses two region profiles on different sketch planes', () => {
+    const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+    const top = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }
+    vi.mocked(collectExtrudeLoops).mockImplementation((_oc, _scope, _table, sketchRef) => {
+      if (sketchRef === '$skB') return { loops: [[{ entity_id: 'e1' }]], plane: top, sketchId: 'skB', face: null }
+      return { loops: [[{ entity_id: 'e0' }]], plane, sketchId: 'skA', face: null }
+    })
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['$skA', '$skB'], path: '$p' } },
+        new Repository(), {},
+      ),
+    ).toThrow(/spans two different sketch planes/)
+  })
+})
+
+describe('collectPathEdges unsupported path edge', () => {
+  it('refuses a path edge kind it cannot build', () => {
+    const repo = new Repository()
+    repo.register('_pt_sk', planeXY)
+    repo.register('_topo_sk', {
+      edges: [{ entity_id: 'c1', edge_index: 0, kind: 'circle', start: [0, 0], end: [1, 0] }],
+    })
+    expect(() => collectPathEdges(oc, scope, ['$sk'], repo))
+      .toThrow(/path edge kind 'circle' is not supported/)
   })
 })

@@ -178,4 +178,68 @@ describe('transform / mirror guard paths', () => {
       solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'nope' } }, repo, { body_s: nullBody('body_s') }),
     ).toThrow(/body not found/)
   })
+
+  it('transform: a translation_from pick that resolves to nothing fails before the kernel', () => {
+    // Both point refs are resolved up front; a dangling one must not be
+    // silently dropped (which would translate by the other point alone).
+    const repo = new Repository()
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't',
+        transform: { bodies: ['body_s'], translation_from: '@missing', translation_to: '@p1' },
+      }, repo, { body_s: { ...nullBody('body_s'), shape: 1 as never } }),
+    ).toThrow(/translation_from not found/)
+  })
+
+  it('transform: a translation_to pick that resolves to nothing fails before the kernel', () => {
+    const repo = new Repository()
+    repo.register('from', { origin: [1, 1, 1] })
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't',
+        transform: { bodies: ['body_s'], translation_from: '@from', translation_to: '@missing' },
+      }, repo, { body_s: { ...nullBody('body_s'), shape: 1 as never } }),
+    ).toThrow(/translation_to not found/)
+  })
+
+  it('transform: a rotation_axis pick that resolves to nothing fails before the kernel', () => {
+    const repo = new Repository()
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't',
+        transform: { bodies: ['body_s'], rotation_axis: '@missing' },
+      }, repo, { body_s: { ...nullBody('body_s'), shape: 1 as never } }),
+    ).toThrow(/rotation_axis not found/)
+  })
+
+  it('transform: a scale_center_from pick that resolves to nothing fails before the kernel', () => {
+    const repo = new Repository()
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't',
+        transform: { bodies: ['body_s'], scale: 2, scale_center_from: '@missing' },
+      }, repo, { body_s: { ...nullBody('body_s'), shape: 1 as never } }),
+    ).toThrow(/scale_center_from not found/)
+  })
+
+  it('mirror: a plane query that resolves to nothing names the ref', () => {
+    const repo = new Repository()
+    expect(() =>
+      solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'body_s', plane: '@missing' } }, repo, {
+        body_s: { ...nullBody('body_s'), shape: 1 as never },
+      }),
+    ).toThrow(/plane not found: "@missing"/)
+  })
+
+  it('mirror: a plane query that resolves to a non-plane payload is refused, not guessed', () => {
+    // A stale pick can resolve to some other registry entry; treating its
+    // origin/normal as a plane would mirror across a made-up frame.
+    const repo = new Repository()
+    repo.register('notaplane', { type: 'weird' })
+    expect(() =>
+      solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'body_s', plane: '@notaplane' } }, repo, {
+        body_s: { ...nullBody('body_s'), shape: 1 as never },
+      }),
+    ).toThrow(/did not resolve to a plane/)
+  })
 })

@@ -8,6 +8,7 @@ import { Repository } from '../query'
 import { solveExtrude } from './extrude'
 import { collectExtrudeLoops } from './faceProfile'
 import { faceNormal, faceCentroid } from '../occ/primitives'
+import { DisposeScope } from '../occ/disposeScope'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { Body } from '../types3d'
@@ -198,5 +199,41 @@ describe('solveExtrude guard paths', () => {
         {},
       ),
     ).toThrow(/spans two different sketch planes/)
+  })
+
+  it('surfaces an edge-profile ref no body can resolve', () => {
+    // A B-rep edge pick that names no body in the store resolves to nothing;
+    // with no other profile the collected error must fail the feature instead of
+    // building a part from an empty profile.
+    const repo = new Repository()
+    expect(() =>
+      solveExtrude(
+        oc,
+        new DisposeScope() as never,
+        table,
+        { id: 'f1', extrude: { sketch: ['?4;@body_x:edge:0'], distance: 3 } },
+        repo,
+        {},
+      ),
+    ).toThrow(/could not resolve profile edge/)
+  })
+
+  it('refuses up_to with a symmetric direction', () => {
+    // A symmetric sweep has two directions; an up_to target has one. Refuse the
+    // combination by name rather than picking a side silently.
+    const repo = new Repository()
+    vi.mocked(collectExtrudeLoops).mockImplementation(() => (
+      { loops: [[{ entity_id: 'e0' }]], plane, sketchId: 'skA', face: null }
+    ))
+    expect(() =>
+      solveExtrude(
+        oc,
+        scope,
+        table,
+        { id: 'f1', extrude: { sketch: '$sk', distance: 3, termination: 'up_to', up_to: '@target', direction: 'symmetric' } },
+        repo,
+        {},
+      ),
+    ).toThrow(/symmetric direction is not supported/)
   })
 })

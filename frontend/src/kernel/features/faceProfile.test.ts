@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../query'
-import { collectExtrudeLoops } from './faceProfile'
+import { collectExtrudeLoops, resolveFaceProfile } from './faceProfile'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
@@ -87,5 +87,17 @@ describe('collectExtrudeLoops $sketch path parity', () => {
 
     // top-face registration is now done by the caller (extrude.ts) after
     // resolveDirection, so collectExtrudeLoops no longer has this side effect.
+  })
+})
+
+describe('resolveFaceProfile repo face entry guards', () => {
+  it('refuses a face entry whose body is gone or has no shape', () => {
+    // A repo face entry carries body_id + face_index; a stale entry naming a
+    // deleted body must fail by name rather than dereference a missing body.
+    const repo = new Repository()
+    repo.register('faceRef', { body_id: 'missing_body', face_index: 0 })
+    expect(() =>
+      resolveFaceProfile(oc, null as never, table, '@faceRef', repo, {}),
+    ).toThrow(/Body 'missing_body' not found or has no shape/)
   })
 })

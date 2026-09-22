@@ -255,6 +255,24 @@ describe('buildArrayTransforms (rectangular)', () => {
       xyRepo,
     )).toThrow(/pitch_y must be a finite number/)
   })
+
+  it('validates count_x in rectangular mode too, not only count_y', () => {
+    // The rectangular arm has its own count_x check; a fractional X count must
+    // not slip through just because count_y is valid.
+    expect(() => buildArrayTransforms(
+      makeFake(),
+      scope,
+      { mode: 'rectangular', count_x: 2.7, count_y: 2, pitch_x: 10, pitch_y: 20, direction_x_query: 'qx', direction_y_query: 'qy' },
+      xyRepo,
+    )).toThrow(/count_x must be a positive integer/)
+  })
+})
+
+describe('buildArrayTransforms unknown mode', () => {
+  it('refuses a mode it does not implement instead of returning no instances', () => {
+    expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'polar' }, xyRepo))
+      .toThrow(/unknown mode 'polar'/)
+  })
 })
 
 describe('buildCircularTransforms', () => {
