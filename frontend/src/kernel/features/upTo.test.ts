@@ -63,6 +63,47 @@ describe('resolveUpToPlane', () => {
     const cut = resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})
     expect(cut!.normal).toEqual([0, 0, 1])
   })
+
+  it('reads the centroid when a registered plane carries no origin', () => {
+    const repo = repoReturning({ type: 'flatface', centroid: [1, 2, 3], normal: [0, 0, 1] })
+    const cut = resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})
+    expect(cut).toEqual({ origin: [1, 2, 3], normal: [0, 0, 1] })
+  })
+
+  it('reads a point from its position fallback', () => {
+    const repo = repoReturning({ position: [4, 5, 6] })
+    const cut = resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})
+    expect(cut).toEqual({ origin: [4, 5, 6], normal: [0, 0, 1] })
+  })
+
+  it('throws on a degenerate normal of a registered plane', () => {
+    const repo = repoReturning({ type: 'flatface', origin: [0, 0, 0], normal: [0, 0, 0] })
+    expect(() => resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})).toThrow(
+      /degenerate normal on registered plane/,
+    )
+  })
+
+  it('throws on a degenerate direction when resolving a point', () => {
+    const repo = repoReturning({ point: [1, 2, 3] })
+    expect(() => resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 0], repo, {})).toThrow(
+      /degenerate direction vector/,
+    )
+  })
+
+  it('returns null for a body-face ref whose body is missing or has no shape', () => {
+    // A dangling face pick falls back to the blind distance rather than
+    // crashing on the missing body's shape.
+    const missing = repoReturning({ body_id: 'gone', face_index: 0 })
+    expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], missing, {})).toBeNull()
+    const shapeLess = repoReturning({ body_id: 'b1', face_index: 0 })
+    const noShapeBody = { b1: { shape: null } } as unknown as Record<string, never>
+    expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], shapeLess, noShapeBody)).toBeNull()
+  })
+
+  it('returns null for a payload that names no plane, face or point', () => {
+    // An unrecognised registry payload falls back to the blind distance.
+    expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repoReturning({ type: 'weird' }), {})).toBeNull()
+  })
 })
 
 describe('upToDistance', () => {
@@ -100,5 +141,9 @@ describe('orientToTarget', () => {
 
   it('throws when the target passes through the profile', () => {
     expect(() => orientToTarget(zPlane(0), [0, 0, 0], [0, 0, 1])).toThrow(/no distance to extrude/)
+  })
+
+  it('throws when the target is beyond the modelled reach', () => {
+    expect(() => orientToTarget(zPlane(1e6), [0, 0, 0], [0, 0, 1])).toThrow(/beyond reach/)
   })
 })

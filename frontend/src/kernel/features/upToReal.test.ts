@@ -75,6 +75,25 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   })
 
+  it('throws when the trimming half-space misses the solid entirely', () => {
+    // A plane behind the profile puts the keep side nowhere near the prism, so
+    // the Common yields no solid. The guard must fail loud rather than return
+    // an empty shape the caller registers as a body.
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, bottomLoop(table, bodyStore.body_b), bodyStore))
+      const dir: Vec3 = [0, 0, 1]
+      const prism = makePrism(occ, scope, face, dir, 1e4)
+      // Keep side is -dir (z <= -5000); the prism spans z >= 0.
+      expect(() => trimAtPlane(occ, scope, prism, { origin: [0, 0, -5000], normal: dir }, dir))
+        .toThrow(/boolean Common produced no solid/)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('terminates on a plane NOT parallel to the profile (slanted cut)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable({ finalizerGuard: false })

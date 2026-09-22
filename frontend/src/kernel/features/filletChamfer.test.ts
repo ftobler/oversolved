@@ -90,6 +90,42 @@ describe('solveFillet guard paths', () => {
       }, repo, store),
     ).toThrow(/names 2 bodies/)
   })
+
+  it('reports a source body that has no shape as no edges resolved', () => {
+    // The picked body resolved but holds no shape; the group must resolve to
+    // nothing and surface the named failure, not dereference null.
+    expect(() =>
+      solveFillet(oc, scope, table, {
+        id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: 'body_b' },
+      }, repo, oneBody()),
+    ).toThrow(/fillet: no edges resolved/)
+  })
+
+  it('treats a null OCC shape as no edges resolved', () => {
+    const nullShape = { get: () => ({ IsNull: () => true }) } as unknown as HandleTable
+    const store: Record<string, Body> = { body_b: { ...oneBody().body_b, shape: 1 as never } }
+    expect(() =>
+      solveFillet(oc, scope, nullShape, {
+        id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: 'body_b' },
+      }, repo, store),
+    ).toThrow(/fillet: no edges resolved/)
+  })
+
+  it('treats a shape whose IsNull probe throws as no edges resolved', () => {
+    const throwing = {
+      get: () => ({
+        IsNull: () => {
+          throw new Error('shape probe unavailable')
+        },
+      }),
+    } as unknown as HandleTable
+    const store: Record<string, Body> = { body_b: { ...oneBody().body_b, shape: 1 as never } }
+    expect(() =>
+      solveChamfer(oc, scope, throwing, {
+        id: 'c', chamfer: { edges: ['?b:edge:0'], distance: 2, source_body: 'body_b' },
+      }, repo, store),
+    ).toThrow(/chamfer: no edges resolved/)
+  })
 })
 
 describe('solveChamfer guard paths', () => {

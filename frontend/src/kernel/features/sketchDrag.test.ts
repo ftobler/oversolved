@@ -409,6 +409,24 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     expect(Math.abs(a1.radius - 6)).toBeLessThan(CURSOR_TOL)
   })
 
+  it('point entity drags and previews as {x,y}', () => {
+    // A point is the only kind whose preview shape carries bare x/y rather than
+    // a start/end/center pair; the drag commit reads that shape.
+    const feature = {
+      id: 'pointSketch', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'P1', kind: 'point' }],
+      initial: { P1: [3, 4] },
+      constraints: [],
+    } as unknown as PartFeature
+    const ctx = prepareDragContext(feature, 'P1', 'xy')!
+    expect(ctx).not.toBeNull()
+
+    const result = solveSketchDrag(ctx, [...ctx.params0], [7, 9])
+    expect(result).not.toBeNull()
+    expect(result!.sketch.P1).toEqual({ x: 7, y: 9 })
+    expect(result!.geometry.P1).toEqual([7, 9])
+  })
+
   it('arc end endpoint builds a context and follows the cursor', () => {
     const feature = {
       id: 'arcEndSketch', kind: 'sketch', plane: '@builtin_plane_front',

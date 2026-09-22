@@ -401,6 +401,58 @@ describe('solveSweep guard paths', () => {
       ),
     ).toThrow(/spans two different sketch planes/)
   })
+
+  // A closed square of topo edges per entity prefix, enough for the edge-precise
+  // profile chaining to form one loop.
+  function squareEdges(prefix: string): Edge[] {
+    return [
+      { entity_id: prefix + '1', edge_index: 0, kind: 'line', start: [0, 0], end: [10, 0] },
+      { entity_id: prefix + '2', edge_index: 1, kind: 'line', start: [10, 0], end: [10, 10] },
+      { entity_id: prefix + '3', edge_index: 2, kind: 'line', start: [10, 10], end: [0, 10] },
+      { entity_id: prefix + '4', edge_index: 3, kind: 'line', start: [0, 10], end: [0, 0] },
+    ]
+  }
+
+  it('chains a closed edge-precise profile before resolving the path', () => {
+    // The picked entities' edges assemble into one loop; the solve then has to
+    // resolve the path, so a missing path sketch surfaces by name here rather
+    // than as "no closed profile".
+    const repo = new Repository()
+    repo.register('_pt_sk', planeXY)
+    repo.register('_topo_sk', { edges: squareEdges('l') })
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        { id: 'sw', sweep: { sketch: ['entity:sk:l1', 'entity:sk:l2', 'entity:sk:l3', 'entity:sk:l4'], path: '$missing' } },
+        repo, {},
+      ),
+    ).toThrow(/path sketch not found: "missing"/)
+  })
+
+  it('refuses edge-precise profiles spanning two sketch planes', () => {
+    const top = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }
+    const repo = new Repository()
+    repo.register('_pt_sk1', planeXY)
+    repo.register('_pt_sk2', top)
+    repo.register('_topo_sk1', { edges: squareEdges('l') })
+    repo.register('_topo_sk2', { edges: squareEdges('m') })
+    expect(() =>
+      solveSweep(
+        oc, scope, table,
+        {
+          id: 'sw',
+          sweep: {
+            sketch: [
+              'entity:sk1:l1', 'entity:sk1:l2', 'entity:sk1:l3', 'entity:sk1:l4',
+              'entity:sk2:m1', 'entity:sk2:m2', 'entity:sk2:m3', 'entity:sk2:m4',
+            ],
+            path: '$p',
+          },
+        },
+        repo, {},
+      ),
+    ).toThrow(/spans two different sketch planes/)
+  })
 })
 
 describe('collectPathEdges unsupported path edge', () => {
