@@ -74,4 +74,38 @@ describe('applySolveResult -- fields the feature tree reads', () => {
     expect(result.current.solveResults['ex1'].body_ids).toBeUndefined()
     expect(result.current.solveResults['ex1'].value).toBeUndefined()
   })
+
+  it('keeps per-entity constraint status, defaulting a missing one', async () => {
+    const result = setupHook()
+    await solveWith(result, {
+      sk1: { status: 'ok', geometry: {}, features: { e1: { status: 'fully_constrained' }, e2: {} } },
+    })
+    expect(result.current.solveResults.sk1.features).toEqual({
+      e1: 'fully_constrained',
+      e2: 'underconstrained',
+    })
+  })
+
+  it('carries the unresolved projections the cleanup command reads', async () => {
+    const result = setupHook()
+    await solveWith(result, {
+      sk1: { status: 'ok', geometry: {}, projection_errors: ['entity:sk1:p1'] },
+    })
+    expect(result.current.solveResults.sk1.projection_errors).toEqual(['entity:sk1:p1'])
+  })
+
+  it('builds a plane result with the world transform its orientations derive from', async () => {
+    const result = setupHook()
+    await solveWith(result, {
+      pl1: {
+        status: 'ok',
+        plane: { origin: [1, 2, 3], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] },
+      },
+    })
+    expect(result.current.solveResults.pl1.plane_transform).toEqual({
+      rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      origin: [1, 2, 3],
+    })
+    expect(result.current.solveResults.pl1.plane?.origin).toEqual([1, 2, 3])
+  })
 })

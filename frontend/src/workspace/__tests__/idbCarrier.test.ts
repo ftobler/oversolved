@@ -119,4 +119,48 @@ describe('IdbCarrier', () => {
     expect(reopened.contents.get('b')?.bytes).toEqual(bytesOf([1, 2, 3]))
     expect(serializeTree(reopened)).toEqual(exported)
   })
+
+  it('writing byte-identical content is a no-op that leaves the rev alone', async () => {
+    const carrier = await makeCarrier([
+      fileEntry('b', 'b.step', bytesOf([1, 2, 3])),
+      documentEntry('a', 'A', { text: 'kind: part\n' }),
+    ])
+    expect(await carrier.maxWorkingRev()).toBe(1)
+
+    // Same bytes, same text: neither write may churn the change ordinal, which
+    // is what would light the dirty dot against the checkpoint.
+    await carrier.write(fileEntry('b', 'b.step', bytesOf([1, 2, 3])))
+    await carrier.write(documentEntry('a', 'A', { text: 'kind: part\n' }))
+    expect(await carrier.maxWorkingRev()).toBe(1)
+  })
+
+  it('writing changed file bytes bumps the rev', async () => {
+    const carrier = await makeCarrier([fileEntry('b', 'b.step', bytesOf([1, 2, 3]))])
+    await carrier.write(fileEntry('b', 'b.step', bytesOf([1, 2, 4])))
+    expect(await carrier.maxWorkingRev()).toBe(2)
+  })
+
+  it('trashing twice and restoring a live entry are no-ops', async () => {
+    const carrier = await makeCarrier([documentEntry('a', 'A', { text: 'kind: part\n' })])
+
+    await carrier.remove('a')
+    await carrier.remove('a')
+    expect((await carrier.open()).manifest.trash).toEqual(['a'])
+
+    await carrier.restore('a')
+    await carrier.restore('a')
+    expect((await carrier.open()).manifest.trash).toEqual([])
+  })
+
+  it('a trashed entry refuses read and write until it is restored', async () => {
+    const carrier = await makeCarrier([documentEntry('a', 'A', { text: 'kind: part\n' })])
+    await carrier.remove('a')
+
+    await expect(carrier.read('a')).rejects.toThrow(/trashed/)
+    await expect(carrier.write(documentEntry('a', 'A', { text: 'kind: part\n# x\n' })))
+      .rejects.toThrow(/trashed/)
+
+    await carrier.restore('a')
+    await expect(carrier.read('a')).resolves.toMatchObject({ id: 'a' })
+  })
 })

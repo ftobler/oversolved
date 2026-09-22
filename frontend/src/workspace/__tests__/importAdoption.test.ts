@@ -3,10 +3,11 @@ import JSZip from 'jszip'
 import { IdbWorkspaceStore } from '../store'
 import { buildZipBytes } from '../zipCarrier'
 import { serializeTree } from '../serializer'
-import { readZipBag, readBagTree, importBag, type ImportBag } from '../import'
+import { readZipBag, readBagTree, readDirectoryBag, importBag, type ImportBag } from '../import'
 import { addReference } from '../refs'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
+import { MemoryDirectory } from '@/stores/documentStore/memoryDirectory'
 
 // Adoption: the classifier's parse-first rules and the two landing modes. These
 // run against the real IndexedDB workspace seam, so an import is asserted by
@@ -127,6 +128,26 @@ describe('adoption: manifest absent', () => {
   })
 })
 
+describe('adoption: a picked directory', () => {
+  it('walks nested subdirectories and reads every file, bookkeeping included', async () => {
+    const root = new MemoryDirectory('library')
+    const top = await root.getFileHandle('Top.yaml', { create: true })
+    const topWriter = await top.createWritable()
+    await topWriter.write('kind: part\n')
+    await topWriter.close()
+
+    const sub = await root.getDirectoryHandle('nested', { create: true })
+    const inner = await sub.getFileHandle('inner.step', { create: true })
+    const writable = await inner.createWritable()
+    await writable.write(new Uint8Array([1, 2, 3]))
+    await writable.close()
+
+    const bag = await readDirectoryBag(root as unknown as FileSystemDirectoryHandle, 'folder')
+    expect(bag.items.map(item => item.path).sort()).toEqual(['Top.yaml', 'nested/inner.step'])
+    expect(bag.origin).toBe('folder')
+  })
+})
+
 describe('adoption: manifest present', () => {
   beforeEach(resetWorkspaceIdb)
 
@@ -242,6 +263,27 @@ describe('adoption: manifest present', () => {
     const store = new IdbWorkspaceStore()
     await expect(importBag(await readZipBag(bytes, 'multi'), { origin: 'multi' }, store))
       .rejects.toThrow(/2 manifests/)
+  })
+
+  it('drops a sidecar png that sits beside a manifest-named document', async () => {
+    const tree = sourceTree()
+    const files: Record<string, string | Uint8Array> = {}
+    for (const file of serializeTree(tree)) files[file.path] = file.data
+    const docPath = Object.values(tree.manifest.entries).find(row => row.kind === 'document')!.path
+    files[docPath.replace(/\.[^./]*$/, '.png')] = new Uint8Array([0x89, 0x50])
+
+    const parsed = readBagTree(await readZipBag(await zipOf(files), 'ws'))
+    expect(parsed.skippedReserved).toBe(1)
+    expect(Object.values(parsed.tree.manifest.entries).some(row => row.name.endsWith('.png'))).toBe(false)
+  })
+
+  it('reports no references for a manifest-named document whose text does not parse', async () => {
+    const parsed = readBagTree(await readZipBag(
+      await buildZipBytes(treeWith([documentEntry('a', 'A', { text: ': : not a mapping\n' })], 'source-ws')),
+      'ws',
+    ))
+    expect(parsed.tree.manifest.entries.a).toBeDefined()
+    expect(parsed.unattached).toEqual([])
   })
 })
 
