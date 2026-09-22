@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { OpenWorkspaceDocumentStore, activeDocumentStore } from '../openWorkspace'
 import { IdbWorkspaceStore } from '@/workspace/store'
 import { createWorkspaceSession } from '@/workspace/session'
@@ -16,10 +16,13 @@ afterEach(() => {
 })
 
 describe('OpenWorkspaceDocumentStore', () => {
-  it('refuses every read when no workspace is open', async () => {
+  it('refuses every verb when no workspace is open', async () => {
     const adapter = new OpenWorkspaceDocumentStore(new IdbWorkspaceStore())
     await expect(adapter.list()).rejects.toThrow(/No workspace is open/)
     await expect(adapter.load('x')).rejects.toThrow(/No workspace is open/)
+    await expect(adapter.save('x', { content: '' })).rejects.toThrow(/No workspace is open/)
+    await expect(adapter.rename('x', 'y')).rejects.toThrow(/No workspace is open/)
+    await expect(adapter.clone('x')).rejects.toThrow(/No workspace is open/)
   })
 
   it('resolves an entry id inside the open workspace, not a workspace id', async () => {
@@ -83,5 +86,118 @@ describe('OpenWorkspaceDocumentStore', () => {
 
   it('the shared singleton is the active scoped face', () => {
     expect(activeDocumentStore).toBeInstanceOf(OpenWorkspaceDocumentStore)
+  })
+})
+
+// The listing half of the scoped document face: entries are filtered to
+// documents before they are searched or sorted, so a file entry never reaches
+// the grid even when its name matches the query.
+async function seedDocuments(store: IdbWorkspaceStore): Promise<{ workspace: string; base: number }> {
+  const { workspace } = await store.create('Bracket', { docKind: 'part' })
+  await store.renameEntry(workspace, workspace, 'Delta')
+  const base = Date.now()
+  const now = vi.spyOn(Date, 'now')
+  try {
+    now.mockReturnValue(base + 1000)
+    await store.addEntry(workspace, { id: 'alpha', kind: 'document', name: 'Alpha', docKind: 'part', text: 'kind: part\n' })
+    now.mockReturnValue(base + 2000)
+    await store.addEntry(workspace, { id: 'bravo', kind: 'document', name: 'Bravo', docKind: 'assembly', text: 'kind: assembly\n' })
+    now.mockReturnValue(base + 3000)
+    await store.addEntry(workspace, { id: 'charlie', kind: 'document', name: 'Charlie', docKind: 'part', text: 'kind: part\n' })
+    now.mockReturnValue(base + 4000)
+    await store.addEntry(workspace, { id: 'zulu', kind: 'file', name: 'Zulu.step', mime: 'application/step', fileKind: 'step', bytes: new Uint8Array([1]) })
+  } finally {
+    now.mockRestore()
+  }
+  return { workspace, base }
+}
+
+describe('OpenWorkspaceDocumentStore.list', () => {
+  it('lists only documents, newest first by default', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await seedDocuments(store)
+    useWorkspaceSessionStore.getState().setSession(createWorkspaceSession(workspace, store))
+
+    expect((await new OpenWorkspaceDocumentStore(store).list()).map(s => s.name))
+      .toEqual(['Charlie', 'Bravo', 'Alpha', 'Delta'])
+  })
+
+  it('maps a document row to its exact summary', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace, base } = await seedDocuments(store)
+    useWorkspaceSessionStore.getState().setSession(createWorkspaceSession(workspace, store))
+
+    expect(await new OpenWorkspaceDocumentStore(store).list({ search: 'charl' })).toEqual([{
+      uuid: 'charlie',
+      name: 'Charlie',
+      kind: 'part',
+      updated_at: new Date(base + 3000).toISOString(),
+      meta: { rev: 1 },
+    }])
+  })
+
+  it('searches names case-insensitively only among documents', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await seedDocuments(store)
+    useWorkspaceSessionStore.getState().setSession(createWorkspaceSession(workspace, store))
+    const adapter = new OpenWorkspaceDocumentStore(store)
+
+    expect((await adapter.list({ search: 'BRa' })).map(s => s.name)).toEqual(['Bravo'])
+    // The file matches the needle but is not a document, so it never lists.
+    expect(await adapter.list({ search: 'zulu' })).toEqual([])
+  })
+
+  it('sorts by name and by ascending modification', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await seedDocuments(store)
+    useWorkspaceSessionStore.getState().setSession(createWorkspaceSession(workspace, store))
+    const adapter = new OpenWorkspaceDocumentStore(store)
+
+    expect((await adapter.list({ sort: 'name' })).map(s => s.name))
+      .toEqual(['Alpha', 'Bravo', 'Charlie', 'Delta'])
+    expect((await adapter.list({ sort: 'modified_asc' })).map(s => s.name))
+      .toEqual(['Delta', 'Alpha', 'Bravo', 'Charlie'])
+  })
+})
+
+describe('OpenWorkspaceDocumentStore.save', () => {
+  async function seedOneDocument(store: IdbWorkspaceStore): Promise<string> {
+    const { workspace } = await store.create('Bracket', { docKind: 'part' })
+    await store.addEntry(workspace, {
+      id: 'doc', kind: 'document', name: 'Widget', docKind: 'part', text: 'kind: part\n# old\n',
+    })
+    useWorkspaceSessionStore.getState().setSession(createWorkspaceSession(workspace, store))
+    return workspace
+  }
+
+  it('rewrites the content and keeps the entry name', async () => {
+    const store = new IdbWorkspaceStore()
+    const workspace = await seedOneDocument(store)
+
+    await new OpenWorkspaceDocumentStore(store).save('doc', { content: 'kind: assembly\n# new\n' })
+
+    expect(await store.readEntry(workspace, 'doc')).toEqual({
+      id: 'doc', kind: 'document', name: 'Widget', docKind: 'assembly', text: 'kind: assembly\n# new\n',
+    })
+  })
+
+  it('keeps the stored docKind when the new content names none', async () => {
+    const store = new IdbWorkspaceStore()
+    const workspace = await seedOneDocument(store)
+
+    await new OpenWorkspaceDocumentStore(store).save('doc', { content: '# no kind at all\n' })
+
+    const entry = await store.readEntry(workspace, 'doc')
+    expect(entry.docKind).toBe('part')
+    expect(entry.text).toBe('# no kind at all\n')
+  })
+
+  it('adopts a stamped kind even when it is not a known editor kind', async () => {
+    const store = new IdbWorkspaceStore()
+    const workspace = await seedOneDocument(store)
+
+    await new OpenWorkspaceDocumentStore(store).save('doc', { content: 'kind: drawing\n' })
+
+    expect((await store.readEntry(workspace, 'doc')).docKind).toBe('drawing')
   })
 })
