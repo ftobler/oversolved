@@ -82,7 +82,8 @@ export interface ViewportProps {
   hud?: ReactNode
 }
 
-function isActive(
+// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
+export function isActive(
   id: string,
   features: Feature[] | undefined,
   rollbackPos: number | undefined,
@@ -94,7 +95,8 @@ function isActive(
   return (rollbackPos === undefined || idx < rollbackPos) && (!visible || visible.has(id))
 }
 
-function calculateMeshExtentFromFlat(vertices: Float32Array): number {
+// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
+export function calculateMeshExtentFromFlat(vertices: Float32Array): number {
   if (vertices.length === 0) return 0
 
   let minX = Infinity, maxX = -Infinity
@@ -113,7 +115,8 @@ function calculateMeshExtentFromFlat(vertices: Float32Array): number {
   return Math.max(maxX - minX, maxY - minY, maxZ - minZ)
 }
 
-function calculateMeshExtent(vertices: Float32Array | [number, number, number][]): number {
+// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
+export function calculateMeshExtent(vertices: Float32Array | [number, number, number][]): number {
   if (vertices instanceof Float32Array) return calculateMeshExtentFromFlat(vertices)
   if (vertices.length === 0) return 0
 
@@ -137,7 +140,8 @@ function calculateMeshExtent(vertices: Float32Array | [number, number, number][]
   return Math.max(width, height, depth)
 }
 
-function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | undefined): number {
+// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
+export function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | undefined): number {
   if (!bodies) return 0
 
   let maxExtent = 0
@@ -151,7 +155,8 @@ function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | undefine
   return maxExtent
 }
 
-function getFaceExtent(faceQuery: string, bodies: Record<string, BodyResult>): number {
+// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
+export function getFaceExtent(faceQuery: string, bodies: Record<string, BodyResult>): number {
   const match = faceQuery.match(/@([^/]+)/)
   if (!match) return 0
 
@@ -162,7 +167,8 @@ function getFaceExtent(faceQuery: string, bodies: Record<string, BodyResult>): n
   return calculateMeshExtent(body.mesh.vertices)
 }
 
-function calculatePlaneSize(
+// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
+export function calculatePlaneSize(
   planeDefinition: PlaneDef | undefined,
   bodies: Record<string, BodyResult> | undefined,
 ): number {
