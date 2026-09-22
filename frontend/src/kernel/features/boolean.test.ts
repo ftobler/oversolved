@@ -84,6 +84,18 @@ describe('solveBoolean guard paths', () => {
   })
 
   it('throws when tool body does not exist', () => {
+    // The target must carry a real shape so the pre-loop "has no shape" guard
+    // passes and the tool resolution is what fails.
+    const table = new HandleTable({ finalizerGuard: false })
+    const target = body('body_t')
+    target.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    expect(() =>
+      solveBoolean(oc, scope, table, {
+        id: 'b', boolean: { operation: 'union', target: 'body_t', tools: ['@body_missing'] },
+      }, repo, {
+        body_t: target,
+      }),
+    ).toThrow(/body not found/)
   })
 
   it('throws when target body does not exist', () => {
