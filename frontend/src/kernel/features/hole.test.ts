@@ -60,9 +60,6 @@ describe('solveHole guard paths', () => {
     ).toThrow(/has no point entities/)
   })
 
-  it('throws when all points have no XY data (ported to holeReal.test.ts)', () => {
-  })
-
   it('a zero-placed hole fails before touching modified_by', () => {
     // The zero-placed branch leaves brep_diff stale on purpose; pushing
     // modified_by before the throw made ancestry re-read that stale diff and

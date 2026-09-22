@@ -2491,24 +2491,6 @@ describe("typed query object dispatch", () => {
   })
 })
 
-describe("B-rep vertex and face integration", () => {
-  it.skip("vertex registered in repo after build", () => {
-    // Requires build() with OCC.js, covered by builder.test.ts
-  })
-
-  it.skip("three point plane from brep vertices", () => {
-    // Requires build() with OCC.js + three_point plane mode
-  })
-
-  it.skip("plane point mode with brep vertex", () => {
-    // Requires build() with OCC.js + plane_point mode
-  })
-
-  it.skip("plane on face mode from brep face", () => {
-    // Requires build() with OCC.js + on_face plane mode
-  })
-})
-
 // ─── queryAll ───
 
 /** Tests for the ancestry hierarchy: solid, extrusion-feature, sketch-feature queries.

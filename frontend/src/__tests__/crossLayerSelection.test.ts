@@ -220,25 +220,3 @@ describe('selection IDs round-trip through parseSelectionId', () => {
     expect(() => parseSelectionId('12345')).toThrow('Unrecognized selection ID')
   })
 })
-
-// ─── invariant 3+4 smoke: store-level contracts exist ───
-
-describe('render priority and area inertness (store-level contract)', () => {
-  it('sketch areas are unpickable via ID buffer (267.6 inert contract)', () => {
-    // Sketch areas are not registered in any ID layer, so the dispatcher
-    // never returns them. Verified by SurfaceMesh.inert.test.tsx.
-    expect(true).toBe(true)
-  })
-
-  it('selected entity render order constant exists', () => {
-    // RENDER_ORDER_EDITING is defined in constants.ts
-    // Verified by renderOrder.test.tsx and EntityLines.renderOrder.test.tsx
-    expect(true).toBe(true)
-  })
-
-  it('interactive=false on B-rep while sketch is active (contract at Body3D props)', () => {
-    // Body3D receives interactive={!activeFeatureId}
-    // Verified by Viewport contract tests
-    expect(true).toBe(true)
-  })
-})
