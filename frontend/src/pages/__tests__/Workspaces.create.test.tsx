@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { freshLocalDb, seedStore } from './workspacesHarness'
@@ -91,6 +91,24 @@ describe('Workspaces create dialog', () => {
     const opened = await store.open(summary.workspace)
     const entry = opened.tree.manifest.entries[summary.coverEntry!]
     expect(entry.docKind).toBe('assembly')
+  })
+
+  it('reports a failed create inside the dialog instead of closing it', async () => {
+    await openAddDialog()
+    const store = seedStore()
+    vi.spyOn(store, 'create').mockRejectedValueOnce(new Error('quota exceeded'))
+
+    await act(async () => {
+      fireEvent.change(screen.getByPlaceholderText('Part name'), { target: { value: 'bracket' } })
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByText('Create'))
+    })
+
+    // A create that the store refused is a failure inside the dialog that owns
+    // it, not a banner behind it: the typed name has to survive the failure.
+    await waitFor(() => expect(screen.getByText('quota exceeded')).toBeInTheDocument())
+    expect(screen.getByPlaceholderText('Part name')).toBeInTheDocument()
   })
 
   it('creates a part entry with an empty body when the part button is used', async () => {

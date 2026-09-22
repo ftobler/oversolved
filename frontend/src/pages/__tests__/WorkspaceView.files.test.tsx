@@ -216,6 +216,21 @@ describe('WorkspaceView files', () => {
     expect(screen.queryByLabelText('Prune orphans')).toBeNull()
   })
 
+  // A non-reference failure must surface in the dialog that owns the verb
+  // rather than be swallowed or leave the sweep half-finished and silent.
+  it('reports a generic prune failure inside the dialog', async () => {
+    installSession()
+    storeMock.removeEntry.mockRejectedValueOnce(new Error('disk gone'))
+    renderView()
+    await screen.findByText('shaft.step')
+
+    fireEvent.click(await screen.findByLabelText('Prune orphans'))
+    fireEvent.click(screen.getByText('Prune'))
+
+    await screen.findByText('disk gone')
+    expect(screen.getByText('Prune Orphans')).toBeTruthy()
+  })
+
   it('names the referrer when the store refuses a prune', async () => {
     installSession()
     storeMock.removeEntry.mockRejectedValueOnce(
