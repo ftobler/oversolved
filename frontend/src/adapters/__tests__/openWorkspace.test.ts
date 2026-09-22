@@ -147,6 +147,24 @@ describe('OpenWorkspaceDocumentStore.list', () => {
     expect(await adapter.list({ search: 'zulu' })).toEqual([])
   })
 
+  // A carrier that keeps no revision or timestamp (MemoryCarrier does not) must
+  // still map to a sortable summary, never a NaN date or an undefined rev.
+  it('maps a row with no rev or updatedAt to epoch and revision zero', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Bracket', { docKind: 'part' })
+    useWorkspaceSessionStore.getState().setSession(createWorkspaceSession(workspace, store))
+    const bare = { listEntries: async () => [{ id: 'doc', path: 'documents/D.yaml', kind: 'document', name: 'D' }] }
+
+    const summaries = await new OpenWorkspaceDocumentStore(bare as unknown as IdbWorkspaceStore).list()
+    expect(summaries).toEqual([{
+      uuid: 'doc',
+      name: 'D',
+      kind: undefined,
+      updated_at: new Date(0).toISOString(),
+      meta: { rev: 0 },
+    }])
+  })
+
   it('sorts by name and by ascending modification', async () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await seedDocuments(store)

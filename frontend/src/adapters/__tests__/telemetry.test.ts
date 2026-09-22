@@ -106,6 +106,28 @@ describe('telemetry adapter', () => {
       expect(md).toContain('2. Delete face')
     })
 
+    // A history entry the panel could not shape (no label, or not an object at
+    // all) still has to land, numbered, rather than vanish from the report.
+    it('numbers an unlabeled history entry and fences the raw entry as its mutation', () => {
+      const md = formatBugReportMarkdown({ title: 'boom', history: [{ op: 'add' }, 'oops'] })
+      expect(md).toContain('1. Entry 1\n\n```json\n{\n  "op": "add"\n}\n```')
+      expect(md).toContain('2. Entry 2\n\n```json\n"oops"\n```')
+    })
+
+    // A selection that is not an array is still shown, just without a count.
+    it('renders a shapeless selection without a count', () => {
+      const md = formatBugReportMarkdown({ title: 'boom', selection: { face: 'f1' } })
+      expect(md).toContain('## Selection\n\n```json\n{\n  "face": "f1"\n}\n```')
+      expect(md).not.toContain('## Selection (')
+    })
+
+    // Likewise a history that is not an array goes down whole, untitled by count.
+    it('renders a shapeless history as one fenced block', () => {
+      const md = formatBugReportMarkdown({ title: 'boom', history: 'raw log' })
+      expect(md).toContain('## Edit history\n\n```json\n"raw log"\n```')
+      expect(md).not.toContain('## Edit history (')
+    })
+
     it('keeps unknown attachments instead of dropping them', () => {
       const md = formatBugReportMarkdown({ title: 'boom', viewport: { zoom: 2 } })
       expect(md).toContain('## viewport')

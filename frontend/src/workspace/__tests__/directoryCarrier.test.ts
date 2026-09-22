@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readDirectoryTree, writeDirectoryTree } from '../directoryCarrier'
 import { addReference } from '../refs'
 import { removeEntry } from '../tree'
 import { MANIFEST_PATH, TRASH_DIR } from '../paths'
-import type { WorkspaceTree } from '../types'
+import type { EntryContent, WorkspaceTree } from '../types'
 import { MemoryDirectory } from '@/stores/documentStore/memoryDirectory'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
@@ -82,5 +82,52 @@ describe('the folder layout', () => {
     await dir.removeEntry('documents')
 
     await expect(readDirectoryTree(dir)).rejects.toThrow(/payload is missing/)
+  })
+
+  // The manifest is the index, so a row it names with no content is a gap to
+  // surface, not a blank file smuggled onto the disk.
+  it('refuses a tree row with no content', async () => {
+    const tree = sample()
+    tree.contents.delete('b')
+    await expect(writeDirectoryTree(fakeDirectory('cad'), tree))
+      .rejects.toThrow('Entry b has no content')
+  })
+
+  it('refuses content that carries neither text nor bytes', async () => {
+    const tree = sample()
+    tree.contents.set('a', {} as EntryContent)
+    await expect(writeDirectoryTree(fakeDirectory('cad'), tree))
+      .rejects.toThrow('Entry content is empty')
+  })
+
+  // An interrupted write must discard the swap file, not commit a partial one.
+  it('aborts the in-flight writable and rethrows when a write fails', async () => {
+    const abort = vi.fn(async () => {})
+    const fileHandle = {
+      kind: 'file',
+      name: 'A.yaml',
+      createWritable: async () => ({ write: async () => { throw new Error('disk full') }, abort, close: async () => {} }),
+    }
+    const root: { getDirectoryHandle: () => Promise<unknown>; getFileHandle: () => Promise<unknown> } = {
+      getDirectoryHandle: async () => root,
+      getFileHandle: async () => fileHandle,
+    }
+
+    await expect(writeDirectoryTree(root as unknown as FileSystemDirectoryHandle, sample()))
+      .rejects.toThrow('disk full')
+    expect(abort).toHaveBeenCalledTimes(1)
+  })
+
+  // A denied or vanished folder is a different failure from an absent manifest;
+  // it must propagate rather than read as "not found".
+  it('propagates a non-NotFound filesystem error', async () => {
+    const denied = new DOMException('denied', 'NotAllowedError')
+    const root: { getDirectoryHandle: () => Promise<unknown>; getFileHandle: () => Promise<unknown> } = {
+      getDirectoryHandle: async () => root,
+      getFileHandle: async () => { throw denied },
+    }
+
+    await expect(readDirectoryTree(root as unknown as FileSystemDirectoryHandle))
+      .rejects.toMatchObject({ name: 'NotAllowedError' })
   })
 })

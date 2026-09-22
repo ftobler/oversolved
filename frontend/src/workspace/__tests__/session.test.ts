@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IdbWorkspaceStore } from '../store'
 import { createWorkspaceSession } from '../session'
+import { IdbCarrier, readWorkspaceMeta, writeWorkspaceMeta } from '../idbCarrier'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { bytesOf } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
@@ -50,5 +51,49 @@ describe('workspace session', () => {
 
     expect(await session.resolveFile(file.id)).toEqual(bytesOf([4, 5, 6]))
     expect(await session.resolveFile('missing')).toBeUndefined()
+  })
+
+  // The dirty dot compares the working rev against the checkpoint rev, so
+  // savedRevs has to answer the checkpoint, never the working copy.
+  it('savedRevs reads the checkpoint map off the workspace meta', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Ws', { docKind: 'part' })
+    const meta = (await readWorkspaceMeta(workspace))!
+    await writeWorkspaceMeta({ ...meta, savedRevs: { doc: 42 } })
+
+    const revs = await createWorkspaceSession(workspace, store).savedRevs()
+    expect(revs.get('doc')).toBe(42)
+  })
+
+  // A meta written before the savedRevs map existed has to fall back to the
+  // checkpoint rows, or the dirty dot would compare against the working rev.
+  it('savedRevs falls back to the checkpoint rows when the meta carries no map', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Ws', { docKind: 'part' })
+    await store.writeEntry(workspace, { id: workspace, kind: 'document', name: 'Ws', docKind: 'part', text: '# edit\n' })
+    const meta = (await readWorkspaceMeta(workspace))!
+    await writeWorkspaceMeta({ ...meta, savedRevs: undefined })
+
+    const revs = await createWorkspaceSession(workspace, store).savedRevs()
+    expect(revs.get(workspace)).toBe(1)
+  })
+
+  it('provenance reads every stored record', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Ws', { docKind: 'part' })
+    const meta = (await readWorkspaceMeta(workspace))!
+    await writeWorkspaceMeta({ ...meta, provenance: [{ entry: workspace, origin: 'folder:gone' }] })
+
+    expect(await createWorkspaceSession(workspace, store).provenance())
+      .toEqual([{ entry: workspace, origin: 'folder:gone' }])
+  })
+
+  it('referenceEdges returns the whole edge map in one read', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Ws', { docKind: 'part' })
+    await new IdbCarrier(workspace).addReference(workspace, 'other')
+
+    expect(await createWorkspaceSession(workspace, store).referenceEdges())
+      .toEqual({ [workspace]: ['other'] })
   })
 })

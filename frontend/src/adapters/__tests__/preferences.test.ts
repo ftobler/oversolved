@@ -25,6 +25,13 @@ describe('preferences adapter', () => {
       expect(new LocalPreferences().read().document_sort).toBe('date_newest_first')
     })
 
+    // A stored record from an older shape may miss the sort key; the read still
+    // has to answer a real sort rather than undefined.
+    it('falls back to the default sort when the stored record omits the key', () => {
+      localStorage.setItem('oversolved.preferences', JSON.stringify({}))
+      expect(new LocalPreferences().read().document_sort).toBe('date_newest_first')
+    })
+
     it('round-trips through localStorage', async () => {
       // Typed as the port, so the call sites here are the ones the hook makes.
       const adapter: PreferencesAdapter = new LocalPreferences()

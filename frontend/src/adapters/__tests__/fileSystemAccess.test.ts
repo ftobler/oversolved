@@ -74,6 +74,13 @@ describe('workspace zip picking', () => {
     installPickers({ showOpenFilePicker: abort })
     expect(await pickWorkspaceZip()).toBeNull()
   })
+
+  // Symmetric with the directory picker: only a cancellation is a non-event. A
+  // real failure has to reach the caller rather than read as "no file picked".
+  it('propagates a real zip picker failure', async () => {
+    installPickers({ showOpenFilePicker: () => { throw new Error('boom') } })
+    await expect(pickWorkspaceZip()).rejects.toThrow('boom')
+  })
 })
 
 describe('hasReadWritePermission', () => {
