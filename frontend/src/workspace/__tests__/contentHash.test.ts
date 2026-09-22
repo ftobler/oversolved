@@ -7,6 +7,12 @@ describe('hashRecord', () => {
     expect(hashRecord({ kind: 'document', text: 'abc' })).toBe(sha256Hex('abc'))
     expect(hashRecord({ kind: 'file', bytes: new Uint8Array([1, 2, 3]) })).toBe(sha256HexBytes(new Uint8Array([1, 2, 3])))
   })
+
+  it('the kind picks the authoritative slot, so a stray other-kind payload cannot change the hash', () => {
+    const bytes = new Uint8Array([1, 2, 3])
+    expect(hashRecord({ kind: 'document', text: 'abc', bytes })).toBe(sha256Hex('abc'))
+    expect(hashRecord({ kind: 'file', text: 'abc', bytes })).toBe(sha256HexBytes(bytes))
+  })
 })
 
 describe('partBundleKey', () => {

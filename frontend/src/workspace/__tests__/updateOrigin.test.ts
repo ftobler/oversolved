@@ -85,6 +85,18 @@ describe('origin state', () => {
     expect(state.editedLocally).toBe(true)
   })
 
+  it('reports changed when the resolved source no longer holds the entry', async () => {
+    const store = new IdbWorkspaceStore()
+    const v1 = treeWith([documentEntry('a', 'A', { text: 'kind: part\n# v1\n' })], 'src')
+    const { workspace, entry } = await importSource(store, v1)
+    const record = (await readWorkspaceMeta(workspace))!.provenance[0]
+
+    // The source opened but no longer carries the recorded entry: that is a
+    // status, not an unreachable origin and not a delete.
+    const state = await originState(record, await localHash(store, workspace, entry), resolverReturning(treeWith([], 'src')))
+    expect(state.status).toBe('changed')
+  })
+
   it('reports not-updatable without reading the origin when the record has no source entry id', async () => {
     const resolve = vi.fn(async () => null)
     const resolver: OriginResolver = { register: vi.fn(), resolve }
@@ -96,6 +108,18 @@ describe('origin state', () => {
 
 describe('updateFromOrigin', () => {
   beforeEach(resetWorkspaceIdb)
+
+  it('reports sourceMissing without reading the origin when the local entry has no provenance', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Local', { docKind: 'part' })
+    const resolve = vi.fn(async () => null)
+    const resolver: OriginResolver = { register: vi.fn(), resolve }
+
+    const result = await updateFromOrigin(workspace, workspace, resolver, store)
+    expect(result).toMatchObject({ updated: 0, added: 0, sourceMissing: true, unreachable: false })
+    // Nothing to correlate on, so the origin read is skipped rather than wasted.
+    expect(resolve).not.toHaveBeenCalled()
+  })
 
   it('overwrites the copy and re-stamps the source hash and copiedAt', async () => {
     const store = new IdbWorkspaceStore()
@@ -168,6 +192,48 @@ describe('updateFromOrigin', () => {
     expect(afterMeta.copiedAt).toBe(beforeMeta.copiedAt)
     expect((await store.listEntries(workspace)).find(meta => meta.id === entry)!.rev).toBe(beforeRev)
     save.mockRestore()
+  })
+
+  it('adds an entry the source closure now references that the copy never had', async () => {
+    const store = new IdbWorkspaceStore()
+    const v1 = treeWith([
+      documentEntry('asm', 'Asm', { text: 'kind: assembly\n# v1\n' }),
+      documentEntry('part', 'Part', { text: 'kind: part\n# v1\n' }),
+    ], 'src')
+    addReference(v1, 'asm', 'part')
+    const { workspace } = await importSource(store, v1)
+
+    const v2 = treeWith([
+      documentEntry('asm', 'Asm', { text: 'kind: assembly\n# v2\n' }),
+      documentEntry('part', 'Part', { text: 'kind: part\n# v1\n' }),
+      documentEntry('part2', 'Part2', { text: 'kind: part\n# new\n' }),
+    ], 'src')
+    addReference(v2, 'asm', 'part')
+    addReference(v2, 'asm', 'part2')
+
+    const result = await updateFromOrigin(workspace, 'asm', resolverReturning(v2), store)
+    expect(result).toMatchObject({ updated: 1, added: 1 })
+    // The never-seen entry is minted a fresh local id, so it is found by what it
+    // holds, not by an id the source happened to use.
+    const entries = await store.listEntries(workspace)
+    expect(entries).toHaveLength(3)
+    const added = await Promise.all(entries.map(meta => store.readEntry(workspace, meta.id)))
+    expect(added.map(entry => entry.text)).toContain('kind: part\n# new\n')
+  })
+
+  it('reports sourceMissing and leaves the copy alone when the source no longer holds the entry', async () => {
+    const store = new IdbWorkspaceStore()
+    const v1 = treeWith([documentEntry('a', 'A', { text: 'kind: part\n# v1\n' })], 'src')
+    const { workspace, entry } = await importSource(store, v1)
+    const before = (await store.listEntries(workspace)).find(meta => meta.id === entry)!
+
+    const emptied = treeWith([], 'src')
+    const result = await updateFromOrigin(workspace, entry, resolverReturning(emptied), store)
+
+    // A missing source entry is a status, never a delete: the local copy stays.
+    expect(result).toMatchObject({ updated: 0, added: 0, sourceMissing: true, unreachable: false })
+    expect((await store.readEntry(workspace, entry)).text).toBe('kind: part\n# v1\n')
+    expect((await store.listEntries(workspace)).find(meta => meta.id === entry)!.rev).toBe(before.rev)
   })
 
   it('picks up a local edit made while the source was resolving', async () => {

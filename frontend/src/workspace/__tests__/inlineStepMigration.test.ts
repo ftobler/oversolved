@@ -183,6 +183,38 @@ describe('migrating a workspace that holds inline STEP payloads', () => {
     expect((await readWorkspaceMeta(workspace))?.migrations).toContain('inline-step-payloads')
   })
 
+  it('skips a workspace that has no meta row without creating one', async () => {
+    const store = new IdbWorkspaceStore()
+    const report = await migrateInlineStepPayloads('ghost-workspace', store)
+
+    expect(report).toMatchObject({ skipped: true, documents: 0, files: 0 })
+    // Marking a workspace into existence would write a row the store never
+    // created, so an absent meta is a no-op, not a tombstone.
+    expect(await readWorkspaceMeta('ghost-workspace')).toBeUndefined()
+  })
+
+  it('converges on a half-migrated document whose file entry already exists', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Ws', { docKind: 'part' })
+    await store.addEntry(workspace, {
+      id: 'existing-file', kind: 'file', name: 'bracket.step',
+      mime: 'application/step', fileKind: 'step', bytes: new Uint8Array([1, 2, 3]),
+    })
+    await store.writeEntry(workspace, {
+      id: workspace, kind: 'document', name: 'Bracket', docKind: 'part',
+      text: docWithInlineStep(base64Of(STEP), { file_id: 'existing-file' }),
+    })
+
+    const report = await migrateInlineStepPayloads(workspace, store)
+    expect(report).toMatchObject({ documents: 1, files: 1 })
+
+    // The existing entry is left alone instead of being re-added or overwritten.
+    expect((await store.readEntry(workspace, 'existing-file')).bytes).toEqual(new Uint8Array([1, 2, 3]))
+    const doc = await store.readEntry(workspace, workspace)
+    expect(doc.text).not.toContain('file_data')
+    expect(doc.text).toContain('existing-file')
+  })
+
   it('heals the other documents when one payload cannot be decoded', async () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await store.create('Ws', { docKind: 'part' })

@@ -51,4 +51,27 @@ describe('uuid to uuid references (A7, C5 preview)', () => {
     expect(referentsOf(tree, 'part')).toEqual(['x', 'y'])
     expect(referentsOf(tree, 'nobody')).toEqual([])
   })
+
+  it('removing edges never leaves an empty source key behind', () => {
+    const tree = treeWith([documentEntry('a', 'A'), documentEntry('b', 'B')])
+
+    // An edge that was never there is a no-op, not a new empty row.
+    removeReference(tree, 'a', 'ghost')
+    expect(tree.manifest.references).toEqual({})
+    expect(referencesOf(tree, 'a')).toEqual([])
+
+    addReference(tree, 'a', 'b')
+    removeReference(tree, 'a', 'b')
+    // The map omits the source entirely once its last target is gone, so no
+    // reader has to know that an empty list means "no edges".
+    expect('a' in tree.manifest.references).toBe(false)
+    expect(referencesOf(tree, 'a')).toEqual([])
+  })
+
+  it('referencesOf returns a copy, not the live manifest array', () => {
+    const tree = treeWith([documentEntry('a', 'A')])
+    addReference(tree, 'a', 'z')
+    referencesOf(tree, 'a').push('mutated')
+    expect(tree.manifest.references.a).toEqual(['z'])
+  })
 })

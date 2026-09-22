@@ -117,6 +117,27 @@ describe('IdbWorkspaceStore (degenerate workspace)', () => {
     expect(await carrier.referencesOf(cloneId)).toEqual([file.id])
   })
 
+  it('writes a document whose body does not parse without adopting edges', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Broken', { docKind: 'part' })
+    const text = '[unparseable\n'
+
+    // Adoption reads the edges out of the text, so a body mid-edit must still
+    // persist and simply contribute no edges.
+    await expect(store.writeEntry(workspace, {
+      id: workspace, kind: 'document', name: 'Broken', docKind: 'part', text,
+    })).resolves.toBeUndefined()
+
+    expect((await store.readEntry(workspace, workspace)).text).toBe(text)
+
+    // A body that parses to a list is still not a feature mapping, so it too
+    // contributes no edges rather than throwing.
+    await store.writeEntry(workspace, {
+      id: workspace, kind: 'document', name: 'Broken', docKind: 'part', text: '- a\n- b\n',
+    })
+    expect(await new IdbCarrier(workspace).referencesMap()).toEqual({})
+  })
+
   it('duplicate copies the workspace under fresh ids and remaps edges', async () => {
     const store = new IdbWorkspaceStore()
     const file = await getFileRegistry().create({ name: 'b.step', kind: 'step', mime: 'application/step', bytes: bytesOf([1, 2, 3]) })

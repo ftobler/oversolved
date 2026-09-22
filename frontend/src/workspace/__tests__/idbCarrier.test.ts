@@ -152,6 +152,42 @@ describe('IdbCarrier', () => {
     expect((await carrier.open()).manifest.trash).toEqual([])
   })
 
+  it('removeReference drops a source key with its last target and keeps it while siblings remain', async () => {
+    const carrier = await makeCarrier([
+      documentEntry('a', 'A', { text: 'kind: part\n' }),
+      documentEntry('b', 'B', { text: 'kind: part\n' }),
+      documentEntry('c', 'C', { text: 'kind: part\n' }),
+    ])
+    await carrier.addReference('a', 'b')
+    await carrier.addReference('a', 'c')
+
+    await carrier.removeReference('a', 'b')
+    expect(await carrier.referencesOf('a')).toEqual(['c'])
+    expect(await carrier.referencesMap()).toEqual({ a: ['c'] })
+
+    // An edge that was never there is a no-op, not a new empty row.
+    await carrier.removeReference('nobody', 'x')
+    expect(await carrier.referencesMap()).toEqual({ a: ['c'] })
+
+    await carrier.removeReference('a', 'c')
+    expect((await carrier.referencesMap()).a).toBeUndefined()
+  })
+
+  it('remove and restore refuse an unknown entry instead of tombstoning it', async () => {
+    const carrier = await makeCarrier([documentEntry('a', 'A', { text: 'kind: part\n' })])
+    await expect(carrier.remove('ghost')).rejects.toThrow(/not found/)
+    await expect(carrier.restore('ghost')).rejects.toThrow(/not found/)
+  })
+
+  it('clone of a file copies its mime, fileKind and bytes', async () => {
+    const carrier = await makeCarrier([
+      { ...fileEntry('b', 'b.step', bytesOf([7, 8]), 'application/step'), fileKind: 'step' },
+    ])
+    const clone = await carrier.read(await carrier.clone('b'))
+    expect(clone).toMatchObject({ kind: 'file', mime: 'application/step', fileKind: 'step' })
+    expect(clone.bytes).toEqual(bytesOf([7, 8]))
+  })
+
   it('a trashed entry refuses read and write until it is restored', async () => {
     const carrier = await makeCarrier([documentEntry('a', 'A', { text: 'kind: part\n' })])
     await carrier.remove('a')

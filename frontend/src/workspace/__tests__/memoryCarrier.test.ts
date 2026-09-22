@@ -104,6 +104,25 @@ describe('MemoryCarrier seam (I4 memory half, carrier contract)', () => {
     await expect(carrier.write(documentEntry('ghost', 'Ghost'))).rejects.toThrow()
   })
 
+  it('a file keeps its mime and fileKind through list and clone', async () => {
+    const carrier = new MemoryCarrier(treeWith([
+      { ...fileEntry('b', 'b.step', bytesOf([1, 2]), 'application/step'), fileKind: 'step' },
+    ]))
+
+    const [meta] = await carrier.list()
+    expect(meta).toMatchObject({ id: 'b', kind: 'file', mime: 'application/step', fileKind: 'step' })
+
+    const clone = await carrier.read(await carrier.clone('b'))
+    expect(clone).toMatchObject({ kind: 'file', mime: 'application/step', fileKind: 'step' })
+    expect(clone.bytes).toEqual(bytesOf([1, 2]))
+  })
+
+  it('an uninitialized carrier refuses to open rather than reporting an empty workspace', async () => {
+    const carrier = new MemoryCarrier()
+    await expect(carrier.open()).rejects.toThrow(/empty/)
+    await expect(carrier.list()).rejects.toThrow(/empty/)
+  })
+
   it('clone mints a fresh id and copies content and name', async () => {
     const tree = sample()
     addReference(tree, 'a', 'b')

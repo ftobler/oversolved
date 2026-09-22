@@ -3,7 +3,7 @@ import JSZip from 'jszip'
 import { IdbWorkspaceStore } from '../store'
 import { buildZipBytes } from '../zipCarrier'
 import { serializeTree } from '../serializer'
-import { readZipBag, readBagTree, readDirectoryBag, importBag, type ImportBag } from '../import'
+import { readZipBag, readBagTree, readDirectoryBag, importBag, extractReferenceIds, type ImportBag } from '../import'
 import { addReference } from '../refs'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
@@ -125,6 +125,23 @@ describe('adoption: manifest absent', () => {
     const result = await importBag(await readZipBag(bytes, 'zip'), { origin: 'zip' }, store)
     const [entry] = await store.listEntries(result.workspace)
     expect(entry).toMatchObject({ kind: 'file', mime: 'image/png' })
+  })
+
+  it('skips a reserved bookkeeping file and counts it, never adopting it as an entry', () => {
+    const parsed = readBagTree({
+      origin: 'folder',
+      items: [
+        { path: '.oversolved-index.json', bytes: new TextEncoder().encode('{}') },
+        { path: 'Box.yaml', bytes: new TextEncoder().encode('kind: part\n') },
+      ],
+    })
+    expect(parsed.skippedReserved).toBe(1)
+    const names = Object.values(parsed.tree.manifest.entries).map(row => row.name)
+    expect(names).toEqual(['Box'])
+  })
+
+  it('reads no references out of unparseable text instead of throwing', () => {
+    expect(extractReferenceIds('[unparseable\n')).toEqual([])
   })
 })
 

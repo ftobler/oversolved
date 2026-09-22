@@ -77,4 +77,30 @@ describe('canonical tree serialization (I4 memory half, I5 shape, I9)', () => {
     const files = serializeTree(tree).filter(file => file.path !== tree.manifest.entries.b.path)
     expect(() => deserializeTree(files)).toThrow(/missing/)
   })
+
+  it('deserializeTree refuses a duplicate file path rather than letting the last one win', () => {
+    const tree = treeWith([documentEntry('a', 'A')])
+    const files = serializeTree(tree)
+    expect(() => deserializeTree([...files, { path: MANIFEST_PATH, data: 'workspace: other\n' }]))
+      .toThrow(/Duplicate file path/)
+  })
+
+  it('deserializeTree refuses a file list with no manifest', () => {
+    expect(() => deserializeTree([])).toThrow(/Manifest file is missing/)
+  })
+
+  it('a document payload carried as bytes is decoded to text, not stored as bytes', () => {
+    const tree = treeWith([
+      documentEntry('a', 'A', { text: 'kind: part\n' }),
+      fileEntry('b', 'b.step', bytesOf([104, 105])),
+    ])
+    const byPath = new Map(serializeTree(tree).map(file => [file.path, file]))
+    // A zip reader may hand a text document back as bytes; the entry kind
+    // decides which representation the tree stores.
+    byPath.get('documents/A.yaml')!.data = new TextEncoder().encode('kind: part\n')
+
+    const reopened = deserializeTree([...byPath.values()])
+    expect(reopened.contents.get('a')?.text).toBe('kind: part\n')
+    expect(reopened.contents.get('a')?.bytes).toBeUndefined()
+  })
 })
