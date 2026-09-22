@@ -30,11 +30,12 @@ function mountPickField(
   opts?: { multi?: boolean; onUnpick?: (id: string) => void; features?: readonly { id: string }[] },
 ) {
   function Spy() {
-    const { isPicking, toggle } = usePickField(featureId, field, onPick, opts)
+    const { isPicking, toggle, activate } = usePickField(featureId, field, onPick, opts)
     return (
       <div>
         <span data-testid="spy-picking">{String(isPicking)}</span>
         <button data-testid="spy-toggle" onClick={toggle}>toggle</button>
+        <button data-testid="spy-activate" onClick={activate}>activate</button>
       </div>
     )
   }
@@ -43,6 +44,7 @@ function mountPickField(
   return {
     get isPicking(): boolean { return getEl('spy-picking')?.textContent === 'true' },
     toggle: () => { act(() => { fireEvent.click(getEl('spy-toggle')!) }) },
+    activate: () => { act(() => { fireEvent.click(getEl('spy-activate')!) }) },
     unmount: result.unmount,
   }
 }
@@ -254,6 +256,29 @@ describe('usePickField  -  auto-close (multi vs single)', () => {
     expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
   })
 
+  it('single field drops a build-order-rejected pick but stays open', () => {
+    // A refused pick must not consume the field: the user has to be able to go
+    // straight for valid geometry, so unlike an accepted single pick the field
+    // stays armed.
+    const onPick = vi.fn()
+    const features = [
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'ex1', kind: 'extrude' },
+    ]
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'edges' })
+    })
+    mountPickField('ex1', 'edges', onPick, { features })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set(['@body_ex1']))
+    })
+
+    expect(onPick).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+  })
+
   it('single field still takes only the first boxed id', () => {
     // Single fields keep the first-id behavior: the rest of a box is dropped.
     const onPick = vi.fn()
@@ -292,5 +317,20 @@ describe('usePickField  -  toggle', () => {
     spy.toggle()
     expect(spy.isPicking).toBe(false)
     expect(useSketchEditorStore.getState().activePickField).toBeNull()
+  })
+
+  it('activate arms the field unconditionally and stays armed when called again', () => {
+    // Unlike toggle, activate is the re-arm path a chip uses after a value is
+    // removed, so it must arm even from an idle state and be idempotent.
+    const spy = mountPickField('sk1', 'plane', vi.fn())
+    expect(spy.isPicking).toBe(false)
+
+    spy.activate()
+    expect(spy.isPicking).toBe(true)
+    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'sk1', field: 'plane', multi: false })
+
+    spy.activate()
+    expect(spy.isPicking).toBe(true)
+    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'sk1', field: 'plane', multi: false })
   })
 })

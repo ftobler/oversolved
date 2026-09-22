@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { Mutation } from '@/types/cad'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { Mutation, Sketch } from '@/types/cad'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 import { projectionMutationsForId, projectionMutationsForSelection, type ProjectionResolvers } from '@/tools/projectionMutations'
-import { projectSelection } from '@/tools/projectSelectionCommand'
+import { projectSelection, liveProjectionResolvers } from '@/tools/projectSelectionCommand'
 
 const FEATURE = 'S1'
 const EDGE_Q = '?4,4;@bxx@fyy:edge'
@@ -183,5 +184,48 @@ describe('projectSelection', () => {
     expect(projectSelection(resolvers({ edgeKind }))).toBe(true)
     expect(edgeKind).toHaveBeenCalledWith(EDGE_Q)
     expect(batches[0][0]).toMatchObject({ type: 'add_projected_entity', kind: 'circle', source: EDGE_Q })
+  })
+})
+
+// The default resolver set the Project command runs with: it reads kinds from
+// the live registries rather than the test doubles above, so a wrong callback
+// key or a dropped `?? null` would silently degrade every projection to a line.
+describe('liveProjectionResolvers', () => {
+  afterEach(() => {
+    setSketchCallback('getSketch', null)
+    resetBodyCallbacksForTest()
+  })
+
+  it('resolves a foreign sketch entity kind through the live sketch callback', () => {
+    const sketch = { C1: { center: [0, 0], radius: 5 } } as unknown as Sketch
+    setSketchCallback('getSketch', id => (id === 'S2' ? sketch : null))
+    expect(liveProjectionResolvers.entityKind('S2', 'C1')).toBe('circle')
+  })
+
+  it('answers null for an entity the live sketch does not carry', () => {
+    setSketchCallback('getSketch', () => ({}))
+    expect(liveProjectionResolvers.entityKind('S2', 'ghost')).toBeNull()
+  })
+
+  it('resolves body edge kinds and face boundaries through the body registry', () => {
+    registerBodyCallbacks('b1', {
+      featureId: 'ex1',
+      bodyId: 'body_1',
+      mesh: {
+        vertices: new Float32Array([0, 0, 0]),
+        faces: new Uint32Array([0, 0, 0]),
+        face_queries: ['faceQ0'],
+        face_edge_queries: [['edgeQ1']],
+      },
+      edgeQueries: ['edgeQ1'],
+      edgeKinds: ['arc'],
+      vertexQueries: undefined,
+      updateFaceGeometryForIndex: () => undefined,
+      clearFaceGeometry: () => undefined,
+    })
+    expect(liveProjectionResolvers.edgeKind('edgeQ1')).toBe('arc')
+    expect(liveProjectionResolvers.edgeKind('ghost')).toBeNull()
+    expect(liveProjectionResolvers.faceEdges('faceQ0')).toEqual([{ source: 'edgeQ1', kind: 'arc' }])
+    expect(liveProjectionResolvers.faceEdges('ghost')).toBeNull()
   })
 })
