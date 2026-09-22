@@ -124,6 +124,25 @@ describe('licenses page', () => {
 
       expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
     })
+
+    // A heading whose text is split across inline markup arrives as a node
+    // tree, so the anchor id must be derived from the gathered text. If the
+    // gather drops the code span, the nav id no longer matches the rendered
+    // heading and the entry scrolls nowhere.
+    it('anchors a heading that carries inline markup', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('## The `foo` license\n\nbody', { status: 200 })))
+      const scrollIntoView = vi.fn()
+      Element.prototype.scrollIntoView = scrollIntoView
+
+      render(<Licenses />)
+
+      const entry = await screen.findByRole('button', { name: 'The `foo` license' })
+      const heading = screen.getByRole('heading', { name: 'The foo license' })
+      expect(heading).toHaveAttribute('id', 'the-foo-license')
+
+      fireEvent.click(entry)
+      expect(scrollIntoView).toHaveBeenCalled()
+    })
   })
 
   // These notices are a condition of shipping the dependencies at all, so a

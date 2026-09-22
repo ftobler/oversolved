@@ -15,6 +15,7 @@ const h = vi.hoisted(() => {
     saves: [] as Array<{ uuid: string; content: string; preview_image?: string }>,
     renameGates: [] as ReturnType<typeof make>[],
     renames: [] as Array<{ uuid: string; name: string }>,
+    clones: [] as Array<{ uuid: string; name?: string }>,
     previewPut: vi.fn(async () => {}),
   }
 })
@@ -41,6 +42,12 @@ vi.mock('@/adapters/backend', () => ({
         h.renames.push({ uuid, name })
         return gate.promise
       },
+      // The clone is the one store call the hook forwards without touching the
+      // loaded document, so the store result has to travel back untouched.
+      clone: (uuid: string) => {
+        h.clones.push({ uuid })
+        return Promise.resolve({ uuid: `${uuid}-copy` })
+      },
     },
   },
 }))
@@ -59,6 +66,7 @@ describe('useAssemblyDoc', () => {
     h.saves = []
     h.renameGates = []
     h.renames = []
+    h.clones = []
     h.previewPut.mockClear()
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
@@ -331,6 +339,15 @@ describe('useAssemblyDoc', () => {
     expect(result.current.error).toBe('name already exists')
     // The visible name must not advance to a name the store rejected.
     expect(result.current.docName).toBe('')
+  })
+
+  it('forwards a clone to the store and hands back its new id', async () => {
+    const { result } = renderHook(() => useAssemblyDoc(undefined))
+
+    const cloned = await result.current.cloneDoc('SRC')
+
+    expect(h.clones).toEqual([{ uuid: 'SRC' }])
+    expect(cloned).toEqual({ uuid: 'SRC-copy' })
   })
 
   // Previews are keyed by (workspace, entry) so a multi-document workspace's

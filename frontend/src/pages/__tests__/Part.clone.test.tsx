@@ -9,9 +9,10 @@ import { Wrapper } from '@/__tests__/test-utils'
 // `vi.hoisted`, because the usePartDoc factory below is hoisted above this line
 // and reads the spy while building the module.
 const mockCloneDoc = vi.hoisted(() => vi.fn(async () => ({ uuid: 'clone-uuid' })))
+const mockSetError = vi.hoisted(() => vi.fn())
 
 vi.mock('../../hooks/usePartDoc', async () =>
-  (await import('@/__tests__/test-utils')).partDocMockModule({ cloneDoc: mockCloneDoc, docName: 'Bracket' }))
+  (await import('@/__tests__/test-utils')).partDocMockModule({ cloneDoc: mockCloneDoc, docName: 'Bracket', setError: mockSetError }))
 
 vi.mock('../../components/Viewport', async () =>
   (await import('@/__tests__/test-utils')).viewportMockModule())
@@ -83,5 +84,16 @@ describe('Part clone dialog', () => {
     fireEvent.click(dialogButton('Cancel'))
     expect(mockCloneDoc).not.toHaveBeenCalled()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  // A rejected clone is a write the store never accepted: the error has to
+  // surface rather than vanish into the void promise the confirm used to fire.
+  it('surfaces the store error when the clone is rejected', async () => {
+    mockCloneDoc.mockRejectedValueOnce(new Error('disk full'))
+    openClone()
+
+    await act(async () => { fireEvent.click(dialogButton('Clone')) })
+
+    expect(mockSetError).toHaveBeenCalledWith('disk full')
   })
 })
