@@ -109,6 +109,7 @@ export function unflattenGeometry(
       result[id] = {
         x: params[0] || 0,
         y: params[1] || 0,
+        ...(construction && { construction: true }),
         ...(projTag ?? {}),
       } as PointEntity | ProjectedPointEntity
     }
