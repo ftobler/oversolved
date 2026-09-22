@@ -82,6 +82,34 @@ describe('solvePlane arbitrary-axis fallbacks', () => {
       + res.plane.x_axis[1] * res.plane.y_axis[1]
       + res.plane.x_axis[2] * res.plane.y_axis[2]).toBeCloseTo(0, 9)
   })
+
+  it('line_angle stays orthonormal for a line along the z axis', () => {
+    // The reference direction flips to +x once the line is near the z axis;
+    // otherwise the projection onto [0,0,1] would be degenerate.
+    const repo = new Repository()
+    repo.register('ln', { start: [0, 0, 0], end: [0, 0, 5] })
+
+    const res = run(repo, { id: 'pl', kind: 'plane', definition: { mode: 'line_angle', line: '@ln', angle: 0 } })
+
+    close(res.plane.x_axis, [0, 0, 1])
+    close(res.plane.y_axis, [1, 0, 0])
+    close(res.plane.normal, [0, 1, 0])
+  })
+
+  it('edge_point stays orthonormal for a z-axis edge with the point on it', () => {
+    // Both degeneracies at once: the point projects onto itself, and the line
+    // is near the z axis so the reference flips to +x.
+    const repo = new Repository()
+    repo.register('e1', { start: [0, 0, 0], end: [0, 0, 2] })
+    repo.register('pt', { origin: [0, 0, 1] })  // on the edge -> projection == point
+
+    const res = run(repo, { id: 'pl', kind: 'plane', definition: { mode: 'edge_point', edge: '@e1', point: '@pt' } })
+
+    close(res.plane.origin, [0, 0, 1])
+    close(res.plane.x_axis, [0, 0, 1])
+    close(res.plane.y_axis, [0, 1, 0])
+    close(res.plane.normal, [-1, 0, 0])
+  })
 })
 
 describe('solvePlane guard paths', () => {

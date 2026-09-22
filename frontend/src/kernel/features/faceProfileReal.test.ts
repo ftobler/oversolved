@@ -221,6 +221,95 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     }
   })
 
+  // The pre-sorted `faces` list is an optimization (M45): it must index the SAME
+  // shape with the SAME sort as the internal traversal, or the remap answers
+  // with a different face. Resolving the same pick both ways must agree.
+  it('resolves the same remap with and without a pre-sorted face list', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
+      const faces = sortedFacesOf(occ, scope, box)
+      const geomHashOf = (i: number) =>
+        faceGeometryHash(faceCentroid(occ, scope, faces[i]), faceNormal(occ, scope, faces[i]))
+      const uuids = faces.map((_, i) => `u_face${i}`)
+      const faceNames: Record<string, string> = {}
+      faces.forEach((_, i) => { faceNames[geomHashOf(i)] = uuids[i] })
+
+      const repo = new Repository()
+      faces.forEach((_, i) => {
+        repo.registerAncestor(
+          ['@feat'],
+          { type: 'face', body_id: 'body_feat', created_by: 'feat', face_index: i === 1 ? 5 : i },
+          uuids[i],
+        )
+      })
+      const bodyStore: Record<string, Body> = {
+        body_feat: {
+          id: 'body_feat',
+          created_by: 'feat',
+          modified_by: [],
+          shape: table.register(box, 'feat'),
+          sketch_id: 'sk',
+          brep_diff: null,
+          profile_queries: [],
+          face_names: faceNames,
+        },
+      }
+
+      const withFaces = resolveFaceIndexViaHash(occ, scope, box, 1, repo, bodyStore, faceNames, faces)
+      const withoutFaces = resolveFaceIndexViaHash(occ, scope, box, 1, repo, bodyStore, faceNames)
+      expect(withFaces).toBe(5)
+      expect(withoutFaces).toBe(withFaces)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  // A pre-sorted list is indexed in the same space as the shape, so an index at
+  // its end must be refused (null), never read off the end as undefined.
+  it('returns null for an index past the end of a pre-sorted face list', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
+      const faces = sortedFacesOf(occ, scope, box)
+      const repo = new Repository()
+      expect(resolveFaceIndexViaHash(occ, scope, box, faces.length, repo, {}, undefined, faces)).toBeNull()
+      // The internal traversal (no pre-sorted list) refuses the same index.
+      expect(resolveFaceIndexViaHash(occ, scope, box, faces.length, repo, {})).toBeNull()
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  // A legacy ref `@<feature>/face/N` can name a FEATURE, not a body id. When no
+  // `body_<id>` exists, the created_by scan answers with that feature's first
+  // body; without it the ref resolves to nothing and the pick is lost.
+  it('resolves a legacy feature-name ref to a body the feature created', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const SEP = 100
+      const box = makeBoxAt(occ, scope, [SEP, 0, 0], flx.box[0], flx.box[1], flx.box[2])
+      const bodyStore: Record<string, Body> = {
+        body_other: {
+          id: 'body_other',
+          created_by: 'feat',
+          modified_by: [],
+          shape: table.register(box, 'feat'),
+          sketch_id: 'sk',
+          brep_diff: null,
+          profile_queries: [],
+        },
+      }
+      const repo = new Repository()
+      const { plane } = resolveFaceProfile(occ, scope, table, '@feat/face/0', repo, bodyStore)
+      expect(plane.origin[0]).toBeCloseTo(SEP, 6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   // The documented no-UUID path: a body with no face_names has nothing to remap
   // against, so the raw index is the only answer and is kept as-is. This is
   // what every plain sketch-extrude pick rides on, and what the extrude/plane

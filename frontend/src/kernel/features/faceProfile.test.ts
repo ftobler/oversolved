@@ -6,7 +6,7 @@
 // this path.
 
 import { describe, it, expect } from 'vitest'
-import { Repository } from '../query'
+import { Repository, makeAncestryQuery } from '../query'
 import { collectExtrudeLoops, resolveFaceProfile } from './faceProfile'
 import type { HandleTable } from '../occ/handleTable'
 import type { OccModule } from '../occ/occTypes'
@@ -99,5 +99,79 @@ describe('resolveFaceProfile repo face entry guards', () => {
     expect(() =>
       resolveFaceProfile(oc, null as never, table, '@faceRef', repo, {}),
     ).toThrow(/Body 'missing_body' not found or has no shape/)
+  })
+})
+
+// The `?...` topo-surface branch resolves a pick to the ONE stored area whose
+// full ancestry id list equals the query's, so sibling areas under the same
+// sketch stay out. This is the pure topo path: no body shape, no OCC.
+describe('resolveFaceProfile ? surface-query branch', () => {
+  const PLANE = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
+
+  function square(size: number, x0 = 0, y0 = 0): Record<string, unknown>[] {
+    return [
+      { kind: 'line', start: [x0, y0], end: [x0 + size, y0] },
+      { kind: 'line', start: [x0 + size, y0], end: [x0 + size, y0 + size] },
+      { kind: 'line', start: [x0 + size, y0 + size], end: [x0, y0 + size] },
+      { kind: 'line', start: [x0, y0 + size], end: [x0, y0] },
+    ]
+  }
+
+  // The `?` branch is only reached once repo.query resolves the ref to a face
+  // entry carrying no body_id, which is what a registered surface-ancestry
+  // element looks like. Register that entry beside the stored topology.
+  function repoForQuery(
+    queryIds: string[],
+    surfaces: Record<string, unknown>[],
+  ): Repository {
+    const repo = new Repository()
+    repo.register('_pt_skA', { ...PLANE })
+    repo.register('_topo_skA', { surfaces })
+    repo.registerAncestor(queryIds, { type: 'flatface', origin: PLANE.origin, normal: PLANE.normal })
+    return repo
+  }
+
+  it('selects the surface whose full ancestry matches the query, not a sibling area', () => {
+    const matchIds = ['@skA/ci', '@skA']
+    const matchQ = makeAncestryQuery(matchIds, 'flatface')
+    const siblingQ = makeAncestryQuery(['@skA/cj', '@skA'], 'flatface')
+    const repo = repoForQuery(matchIds, [
+      { query: siblingQ, boundary: square(2, 50, 50) },
+      { query: matchQ, boundary: square(10) },
+    ])
+
+    const { loops, plane, face } = resolveFaceProfile(oc, null as never, table, matchQ, repo, {})
+
+    expect(face).toBeNull()
+    expect(plane).toEqual(PLANE)
+    expect(loops).toHaveLength(1)
+    expect(loops[0]).toHaveLength(4)
+    // The sibling square sits at x=50; a resolver that fell back to every
+    // surface would bring its edges along.
+    for (const edge of loops[0]) expect((edge.start as number[])[0]).toBeLessThan(50)
+  })
+
+  it('skips a surface whose stored query is unparsable instead of failing the solve', () => {
+    // A malformed stored ancestry query must read as "no match", not crash the
+    // resolver; the valid sibling area still answers.
+    const matchIds = ['@skA/ci', '@skA']
+    const matchQ = makeAncestryQuery(matchIds, 'flatface')
+    const repo = repoForQuery(matchIds, [
+      { query: '?ZZ;@skA/ci', boundary: square(2, 50, 50) },
+      { query: matchQ, boundary: square(10) },
+    ])
+
+    const { loops } = resolveFaceProfile(oc, null as never, table, matchQ, repo, {})
+
+    expect(loops).toHaveLength(1)
+    for (const edge of loops[0]) expect((edge.start as number[])[0]).toBeLessThan(50)
+  })
+
+  it('refuses a surface query that names no registered sketch plane', () => {
+    const queryIds = ['@skA/ci', '@nobody']
+    const repo = repoForQuery(queryIds, [])
+    const q = makeAncestryQuery(queryIds, 'flatface')
+    expect(() => resolveFaceProfile(oc, null as never, table, q, repo, {}))
+      .toThrow(/Cannot find parent sketch for surface query/)
   })
 })
