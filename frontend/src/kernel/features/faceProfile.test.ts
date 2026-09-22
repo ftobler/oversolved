@@ -100,6 +100,16 @@ describe('resolveFaceProfile repo face entry guards', () => {
       resolveFaceProfile(oc, null as never, table, '@faceRef', repo, {}),
     ).toThrow(/Body 'missing_body' not found or has no shape/)
   })
+
+  it('refuses a slash face ref that names no body', () => {
+    // The render fallback can leave a `@<body>/face/N` ref behind after its body
+    // is deleted; the resolver must name the dangling pick, not throw a
+    // TypeError on an undefined body.
+    const repo = new Repository()
+    expect(() =>
+      resolveFaceProfile(oc, null as never, table, '@nobody/face/0', repo, {}),
+    ).toThrow(/No body found for 'nobody'/)
+  })
 })
 
 // The `?...` topo-surface branch resolves a pick to the ONE stored area whose

@@ -55,4 +55,61 @@ describe('applyBodyOperation OCC-free branches', () => {
       }),
     ).toThrow(/body not found for merge_target/)
   })
+
+  it('cut skips a target body with no shape instead of dereferencing it', () => {
+    // A target still in the store but not yet given a shape cannot be cut; the
+    // loop must skip it and report the no-intersection failure rather than read
+    // a null shape through the handle table.
+    const store = {
+      body_t: {
+        id: 'body_t',
+        created_by: 'featT',
+        modified_by: [],
+        shape: null,
+        sketch_id: '',
+        brep_diff: null,
+        profile_queries: [],
+      },
+    }
+    expect(() =>
+      applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+        toolShape,
+        bodyStore: store,
+        operation: 'cut',
+        mergeTarget: 'body_t',
+        bodyId: 'body_f',
+        featureId: 'featF',
+        sketchId: 'skF',
+        opName: 'extrude',
+      }),
+    ).toThrow(/cut does not intersect any target body/)
+  })
+
+  it('add with a shape-less merge target fails loud instead of dropping the tool', () => {
+    // The explicit merge target resolved but has no shape, so nothing can fuse.
+    // The tool must not silently become its own body against an explicit target.
+    const store = {
+      body_t: {
+        id: 'body_t',
+        created_by: 'featT',
+        modified_by: [],
+        shape: null,
+        sketch_id: '',
+        brep_diff: null,
+        profile_queries: [],
+      },
+    }
+    expect(() =>
+      applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+        toolShape,
+        bodyStore: store,
+        operation: 'add',
+        mergeTarget: 'body_t',
+        bodyId: 'body_f',
+        featureId: 'featF',
+        sketchId: 'skF',
+        opName: 'extrude',
+      }),
+    ).toThrow(/add could not fuse with any target body/)
+  })
 })

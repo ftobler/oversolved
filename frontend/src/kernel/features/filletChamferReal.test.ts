@@ -308,4 +308,35 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       scope.dispose()
     }
   })
+
+  it('fillets a body that carries no construction names', () => {
+    // A body with no face/edge identity (e.g. an imported or bare box) has
+    // nothing to carry forward, so the modifier runs with oldNames null and the
+    // body's name maps stay absent rather than being invented from nothing.
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const box = makeBox(occ, scope, 10, 10, 10)
+      const bodyStore: Record<string, Body> = {
+        body_b: {
+          id: 'body_b', created_by: 'ex1', modified_by: [],
+          shape: table.register(box, 'ex1'), sketch_id: 'sk',
+          brep_diff: null, profile_queries: [],
+        },
+      }
+      const result = solveFillet(
+        occ, scope, table,
+        { id: 'fil1', fillet: { edges: ['?body_b:edge:0'], radius: 2 } },
+        new Repository(), bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      expect(bodyStore.body_b.face_names).toBeUndefined()
+      expect(bodyStore.body_b.edge_names).toBeUndefined()
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      expect(vol).toBeLessThan(1000)
+      expect(vol).toBeGreaterThan(985)
+    } finally {
+      scope.dispose()
+    }
+  })
 })

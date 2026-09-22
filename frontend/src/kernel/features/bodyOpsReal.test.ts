@@ -151,6 +151,41 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
       }
     })
 
+    it('cut that consumes the whole body deletes it and names it in body_ids', () => {
+      /**
+       * A tool that swallows the target leaves no solid: the cut must remove the
+       * body from the store rather than register an empty compound, and report
+       * the consumed id. The auto-delete convention here deliberately keeps the
+       * consumed id in `body_ids` (features/bodySplit.ts:246-253).
+       */
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      const bodyStore: Record<string, Body> = {}
+      try {
+        const target = makeBox(occ, scope, 10, 10, 10)
+        bodyStore.body_t = {
+          id: 'body_t', created_by: 'featT', modified_by: [], shape: table.register(target, 'featT'),
+          sketch_id: 'skT', brep_diff: null, profile_queries: [],
+        }
+        // Tool encloses the target entirely.
+        const tool = makeBoxAt(occ, scope, [-1, -1, -1], 12, 12, 12)
+        const result = applyBodyOperation(occ, scope, table, {
+          toolShape: scope.track(tool),
+          bodyStore,
+          operation: 'cut',
+          mergeTarget: 'body_t',
+          bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+          profileQueries: [],
+        })
+        expect(result.status).toBe('ok')
+        expect(result.operation).toBe('cut')
+        expect(result.body_ids).toEqual(['body_t'])
+        expect(bodyStore).toEqual({})
+      } finally {
+        scope.dispose()
+      }
+    })
+
     it('add with disjoint body creates a separate body (not a compound)', () => {
       /**
        * Two disjoint boxes: adding a new tool when a target exists should create a SEPARATE
@@ -215,15 +250,15 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
           profileQueries: [],
         })
         expect(result.status).toBe('ok')
-        // Result should carry body_ids listing all bodies in the store after the cut.
-        expect(Array.isArray(result.body_ids)).toBe(true)
-        expect((result.body_ids as string[]).length).toBeGreaterThanOrEqual(1)
-        // At minimum, the target body is modified.
-        const storeKeys = Object.keys(bodyStore).sort()
-        expect(storeKeys.length).toBeGreaterThanOrEqual(1)
-        // Target body volume should be less than original 1000 (material was removed).
-        const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
-        expect(targetVol).toBeLessThan(1000)
+        // The cut severs the target into two 10x4x10 halves (the slab y 4..6 is
+        // gone): two body entries, one per solid, at 400 each. Asserting only
+        // "volume < 1000" passed even when the split was not made at all.
+        expect(result.body_ids).toHaveLength(2)
+        expect(Object.keys(bodyStore).sort()).toEqual(['body_t', 'body_t_1'])
+        const v0 = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const v1 = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t_1.shape!))
+        expect(v0).toBeCloseTo(400, 2)
+        expect(v1).toBeCloseTo(400, 2)
       } finally {
         scope.dispose()
       }

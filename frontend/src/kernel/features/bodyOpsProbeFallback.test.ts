@@ -123,4 +123,56 @@ describe('cut intersection probe failures', () => {
     const cutCalls = mocks.booleanWithDiff.mock.calls.filter((c) => c[4] === 'cut')
     expect(cutCalls).toHaveLength(1)
   })
+
+  it('wraps an add fuse failure with the operation name', () => {
+    // The add path's fuse throw used to propagate the raw kernel error; the
+    // caller needs the feature and operation in the message to name what
+    // failed.
+    mocks.shapesIntersect.mockReturnValue(true)
+    mocks.booleanWithDiff.mockImplementation(
+      (_oc: unknown, _s: unknown, _a: unknown, _b: unknown, op: string) => {
+        if (op !== 'fuse') throw new Error(`unexpected op ${op}`)
+        throw new Error('fuse boom')
+      },
+    )
+    const table = new HandleTable({ finalizerGuard: false })
+    expect(() =>
+      applyBodyOperation(oc, new DisposeScope(), table, {
+        toolShape: { delete: () => {} } as unknown as OccShape,
+        bodyStore: store(table),
+        operation: 'add',
+        mergeTarget: 'body_t',
+        bodyId: 'body_f',
+        featureId: 'featF',
+        sketchId: 'skF',
+        opName: 'extrude',
+      }),
+    ).toThrow(/extrude: add operation failed: Error: fuse boom/)
+  })
+
+  it('warns when an add fuse produces no geometry change', () => {
+    // A fuse that reports success but leaves the diff empty changed nothing
+    // visible; the user must see the warning rather than a silent green ok.
+    mocks.shapesIntersect.mockReturnValue(true)
+    mocks.booleanWithDiff.mockReturnValue({
+      shape: { delete: () => {} },
+      diff: emptyBrepDiff(),
+      faceOrigin: [],
+    })
+    const table = new HandleTable({ finalizerGuard: false })
+    const bodies = store(table)
+    const result = applyBodyOperation(oc, new DisposeScope(), table, {
+      toolShape: { delete: () => {} } as unknown as OccShape,
+      bodyStore: bodies,
+      operation: 'add',
+      mergeTarget: 'body_t',
+      bodyId: 'body_f',
+      featureId: 'featF',
+      sketchId: 'skF',
+      opName: 'extrude',
+    })
+    expect(result.status).toBe('ok')
+    expect(result.operation).toBe('add')
+    expect(result.solver_warning).toMatch(/operation produced no geometry change/)
+  })
 })

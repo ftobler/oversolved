@@ -131,7 +131,7 @@ function makeMaker(merged: OccShape): OccEdgeModifierMaker {
 
 // Name `uuids[i]` on old face i, then run the name transfer into a new shape
 // that holds only `newFace`.
-function run(oldFaces: OccShape[], newFace: OccShape, uuids: string[]): NewNames {
+function run(oldFaces: OccShape[], newFace: OccShape, uuids: string[], maker = makeMaker(newFace)): NewNames {
   const oc = makeOcc()
   const scope = new DisposeScope()
   const old: OldNames = {
@@ -145,7 +145,6 @@ function run(oldFaces: OccShape[], newFace: OccShape, uuids: string[]): NewNames
     old.faceNames[faceGh(oc, scope, f)] = uuids[i]
     old.faceAncestry[uuids[i]] = ['extrude1']
   })
-  const maker = makeMaker(newFace)
   // Mirror applyEdgeModifier's shared Modified() drain: one drain per old face,
   // keyed through a SubShapeIndexMap.
   const oldFaceIdx = new SubShapeIndexMap()
@@ -204,6 +203,21 @@ describe('extractNames face-merge collision', () => {
     expect(res.faceAncestry['uuid_C']).toBeUndefined()
     expect(Object.keys(res.faceNames)).toHaveLength(0)
   })
+
+  it('keeps a named face when the IsDeleted probe throws', () => {
+    // A throwing history probe is not evidence of deletion: treating the throw
+    // as "deleted" would silently drop the face's construction UUID and evict
+    // every pick stored against it.
+    const merged = makeFace([0, 0, 0], [0, 0, 1])
+    const maker = makeMaker(merged)
+    ;(maker as unknown as { IsDeleted: () => boolean }).IsDeleted = () => {
+      throw new Error('history unavailable')
+    }
+    const res = run([makeFace([-1, -1, 0], [0, 0, 1])], merged, ['uuid_A'], maker)
+    const key = faceGh(makeOcc(), new DisposeScope(), merged)
+    expect(res.faceNames[key]).toBe('uuid_A')
+    expect(res.faceAncestry['uuid_A']).toEqual(['extrude1'])
+  })
 })
 
 // The guard/error-classification paths of applyEdgeModifier, driven through the
@@ -226,6 +240,8 @@ interface EdgeOccOptions {
   buildThrows?: boolean
   isDone?: boolean
   valid?: boolean
+  analyzerThrows?: boolean
+  isDeletedThrows?: boolean
 }
 
 function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShape } {
@@ -246,7 +262,10 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
     },
     IsDone: (): boolean => opts.isDone ?? true,
     Shape: (): OccShape => built,
-    IsDeleted: (): boolean => false,
+    IsDeleted: (): boolean => {
+      if (opts.isDeletedThrows) throw new Error('history probe failed')
+      return false
+    },
     Modified: () => ({ Size: () => 0, delete: () => {} }),
     Generated: () => ({ Size: () => 0, delete: () => {} }),
     delete: () => {},
@@ -282,6 +301,7 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
       return maker
     },
     BRepCheck_Analyzer: function () {
+      if (opts.analyzerThrows) throw new Error('analyzer unavailable')
       return { IsValid_2: () => opts.valid ?? true, delete: () => {} }
     },
   } as unknown as OccModule
@@ -367,5 +387,26 @@ describe('applyEdgeModifier guard / error classification', () => {
     const res = runChamfer(oc, shape, [edge], 'angle_distance')
     expect(res.success).toBe(false)
     expect(res.reason).toBe('no_edges_applied')
+  })
+
+  it('reads a throwing validity analyzer as invalid and refuses the result', () => {
+    // A validator that cannot run is not a vote of confidence: the result must
+    // be refused rather than registered as a body on the strength of the throw.
+    const edge = makeEdgeFake()
+    const { oc, shape } = makeEdgeOcc({ shapeEdges: [edge], analyzerThrows: true })
+    const res = runChamfer(oc, shape, [edge])
+    expect(res.success).toBe(false)
+    expect(res.reason).toContain('invalid geometry')
+  })
+
+  it('classifies the diff through a throwing IsDeleted probe instead of failing', () => {
+    // edgeModifierDiff's classify treats a throwing IsDeleted as "not deleted";
+    // the chamfer still succeeds with a (possibly empty) diff rather than
+    // aborting the whole feature on a flaky history query.
+    const edge = makeEdgeFake()
+    const { oc, shape } = makeEdgeOcc({ shapeEdges: [edge], isDeletedThrows: true })
+    const res = runChamfer(oc, shape, [edge])
+    expect(res.success).toBe(true)
+    expect(res.reason).toBeNull()
   })
 })

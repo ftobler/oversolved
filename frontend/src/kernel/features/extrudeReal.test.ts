@@ -679,6 +679,21 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     expect(res(result, 'ex1').status).toBe('exception')
   })
 
+  it('a profile list with one dangling ref extrudes the rest and reports partial', () => {
+    // A stale pick in the profile list must not throw the whole feature away:
+    // the resolvable sketch still builds, and the result is `partial` with the
+    // dangling ref named, so the user can see which pick to re-make.
+    const result = run({
+      features: [
+        rectSketchSk('sk1', 10, 10),
+        { id: 'ex1', kind: 'extrude', sketch: ['$sk1', '$missing'], distance: 5, direction: 'normal', operation: 'new' },
+      ],
+    })
+    expect(res(result, 'ex1').status).toBe('partial')
+    expect(String(res(result, 'ex1').exception)).toMatch(/sketch not found: missing/)
+    expect(result.bodies).toHaveProperty('body_ex1')
+  })
+
   // ─── Cut extrude tests ───
 
   it('cut extrude removes volume from base body', () => {
@@ -922,6 +937,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     })
     expect(res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex2')
+    // A blind face-profile extrude anchors its distance handle on the swept face
+    // (usingFaces handle path), not only the sketch-loop path.
+    expect(res(result, 'ex2').handle).toBeDefined()
     const mesh2 = body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
     expect(mesh2).toBeDefined()
     if (mesh2) {
