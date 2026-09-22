@@ -94,6 +94,10 @@ function edgeQueriesOf(h: SharedHarness, spec: Record<string, unknown>): string[
   return (body.edge_queries as string[]) ?? []
 }
 
+// Each case runs real OCC builds (and the corner blend heals through ShapeFix),
+// which overruns the 5s local default under instrumentation; 60s matches the
+// explicit budget `importStepReal.test.ts` sets for its heavy builds, and CI
+// already allows 180s.
 describe.skipIf(!oc || !solveBytes)('fillet corner-patch naming (real OCC + Rust solver)', () => {
   const h = new SharedHarness(oc!)
 
@@ -129,7 +133,7 @@ describe.skipIf(!oc || !solveBytes)('fillet corner-patch naming (real OCC + Rust
 
     // ... and therefore every pick is unique.
     expect(new Set(queries).size).toBe(queries.length)
-  })
+  }, 60_000)
 
   it('keeps inherited faces inherited when the result had to be healed', () => {
     // This corpus heals: the corner blend comes out of BRepFilletAPI invalid
@@ -160,7 +164,7 @@ describe.skipIf(!oc || !solveBytes)('fillet corner-patch naming (real OCC + Rust
     expect(diff!.new_faces.length).toBeLessThan(
       diff!.new_faces.length + diff!.inherited_faces.length,
     )
-  })
+  }, 60_000)
 
   it('names the corner patch the same way on a rebuild', () => {
     const rims = edgeQueriesOf(h, { features: [sketch, extrude, array] })
@@ -174,5 +178,5 @@ describe.skipIf(!oc || !solveBytes)('fillet corner-patch naming (real OCC + Rust
     // the corner patch has no producer slot of its own, so its UUID (and the
     // UUIDs of the edges around it) must come back byte-identical.
     expect(edgeQueriesOf(h, spec)).toEqual(edgeQueriesOf(h, spec))
-  })
+  }, 60_000)
 })
