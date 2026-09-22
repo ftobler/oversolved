@@ -7,7 +7,8 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBox, makePrism, faceCentroid, faceNormal, type Vec3 } from '../occ/primitives'
+import { makeBox, makePrism, makeCylinder, faceCentroid, faceNormal, faceSurfaceType, type Vec3 } from '../occ/primitives'
+import { sortedFacesOf } from '../occ/faceLoops'
 import { volumeOf } from '../occ/booleans'
 import { solidToEdges } from '../occ/tessellation'
 import { resolveProfileEdges, edgesToProfileFace } from './edgeProfile'
@@ -181,6 +182,64 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
           repoReturning(planeEntry), bodyStore,
         ),
       ).toThrow(/no distance to extrude/)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('resolves a planar body-face up_to target through its OCC plane', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const loop = bottomLoop(table, bodyStore.body_b)
+      const faces = sortedFacesOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      const topIdx = faces.findIndex((f) => faceNormal(occ, scope, f)[2] > 0.9)
+      expect(topIdx).toBeGreaterThanOrEqual(0)
+
+      const result = solveExtrude(
+        occ, scope, table,
+        { id: 'ex2', extrude: { sketch: loop, distance: 999, termination: 'up_to', up_to: 'face_q', operation: 'new' } },
+        // A repo face entry carrying body_id + face_index; the resolver reads the
+        // face's own OCC plane and terminates the 10-tall box prism on it.
+        repoReturning({ type: 'face', body_id: 'body_b', face_index: topIdx }),
+        bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      expect(vol).toBeCloseTo(1000, 2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('throws when the up_to target body face is not planar', () => {
+    // v1 supports planar terminators only; a cylindrical target face must fail
+    // loud by name rather than be treated as an unresolved pick and quietly
+    // extrude the blind distance.
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const loop = bottomLoop(table, bodyStore.body_b)
+      const cyl = makeCylinder(occ, scope, [40, 0, 0], [0, 0, 1], 5, 10)
+      bodyStore.body_cyl = {
+        id: 'body_cyl', created_by: 'cy1', modified_by: [],
+        shape: table.register(cyl, 'cy1'), sketch_id: 'skc',
+        brep_diff: null, profile_queries: [],
+      }
+      const cfaces = sortedFacesOf(occ, scope, cyl)
+      const sideIdx = cfaces.findIndex((f) => faceSurfaceType(occ, scope, f) === 'cylinderface')
+      expect(sideIdx).toBeGreaterThanOrEqual(0)
+
+      expect(() =>
+        solveExtrude(
+          occ, scope, table,
+          { id: 'ex2', extrude: { sketch: loop, distance: 5, termination: 'up_to', up_to: 'face_q', operation: 'new' } },
+          repoReturning({ type: 'face', body_id: 'body_cyl', face_index: sideIdx }),
+          bodyStore,
+        ),
+      ).toThrow(/target face is not planar/)
     } finally {
       scope.dispose()
     }

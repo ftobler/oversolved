@@ -25,6 +25,15 @@ describe('resolveUpToPlane', () => {
     expect(cut).toEqual({ origin: [0, 0, 7], normal: [0, 0, 1] })
   })
 
+  it('resolves a datum plane registered under the `plane` tag', () => {
+    // A datum plane registers as `type: 'plane'` (plane.ts), an extrude
+    // top_face under `flatface`. Admitting only the latter made a datum-plane
+    // up_to pick resolve to nothing and silently extrude the blind distance.
+    const repo = repoReturning({ type: 'plane', origin: [0, 0, 4], normal: [0, 0, 1] })
+    const cut = resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})
+    expect(cut).toEqual({ origin: [0, 0, 4], normal: [0, 0, 1] })
+  })
+
   it('resolves a point to a plane perpendicular to the extrude direction', () => {
     const repo = repoReturning({ point: [1, 2, 4] })
     const cut = resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repo, {})

@@ -76,10 +76,13 @@ export function resolveUpToPlane(
   if (entry === null) return null
 
   // Registered plane / flatface (datum plane, an extrude top_face, ...).
-  // Gate on `type === 'flatface'` so body-face entries (which also carry
-  // origin+normal) fall through to the planarity check below.
+  // Both tags are accepted because a datum plane registers as `plane`
+  // (plane.ts) while an extrude top_face and a planar body face register as
+  // `flatface`; admitting only `flatface` made a datum-plane pick fall through
+  // every branch and silently become the blind distance. Curved body faces are
+  // neither tag, so they still reach the planarity check below.
   const planeOrigin = (entry.origin ?? entry.centroid) as number[] | undefined
-  if (entry.type === 'flatface' && Array.isArray(entry.normal) && Array.isArray(planeOrigin)) {
+  if ((entry.type === 'flatface' || entry.type === 'plane') && Array.isArray(entry.normal) && Array.isArray(planeOrigin)) {
     const n = normalize(entry.normal as number[])
     if (n === null) throw new Error('extrude up_to: degenerate normal on registered plane')
     return { origin: [...(planeOrigin as number[])] as Vec3, normal: n }

@@ -1135,6 +1135,14 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     const result = run(spec)
     expect(res(result, 'ex1').status).toBe('ok')
     expect(res(result, 'ex1').handle).toBeUndefined()
+    // The datum plane is a real terminator: the prism stops at z=7, not at the
+    // blind distance of 5. Before the resolver accepted the `plane` tag the
+    // pick fell through to blind distance with a "did not resolve" warning, and
+    // this test only checked the absent handle, so it passed on the bug.
+    expect(res(result, 'ex1').solver_warning).toBeUndefined()
+    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(mesh).toBeDefined()
+    if (mesh) assertMeshBbox(mesh, [0, 10], [0, 10], [0, 7])
   })
 
   // ─── Extrude a body face that has a hole, added back onto itself ───
