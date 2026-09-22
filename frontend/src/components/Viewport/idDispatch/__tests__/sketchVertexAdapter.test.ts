@@ -67,5 +67,13 @@ describe('sketchVertexAdapter', () => {
     expect(s.dragPending).toBeNull()
   })
 
+  it('onPointerDown is a no-op for a vertex key missing its vertex key', () => {
+    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    sketchVertexAdapter.onPointerDown('vertex:feat1:line1', 100, 200)
+    const s = useSketchEditorStore.getState()
+    expect(s.isPointerDown).toBe(false)
+    expect(s.dragPending).toBeNull()
+  })
+
 
 })

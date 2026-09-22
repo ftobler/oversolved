@@ -65,6 +65,14 @@ describe('sketchEntityAdapter', () => {
     expect(s.dragPending).toBeNull()
   })
 
+  it('onPointerDown is a no-op for an entity key missing its entity id', () => {
+    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    sketchEntityAdapter.onPointerDown('entity:feat1', 100, 200)
+    const s = useSketchEditorStore.getState()
+    expect(s.isPointerDown).toBe(false)
+    expect(s.dragPending).toBeNull()
+  })
+
   it('onClick passes entityKind from entityKindMap', () => {
     useSketchEditorStore.setState({ entityKindMap: { 'entity:feat1:circle1': 'circle' } })
     // The DimensionTool test verifies that 'circle' entityKind opens dialog

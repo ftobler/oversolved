@@ -3,6 +3,7 @@ import {
   registerBodyCallbacks,
   findEdgeKindForQuery,
   findBodyForFaceQuery,
+  findBodyFaceByPickKey,
   findFaceBoundaryEdges,
   clearAllBodyHover,
   resetBodyCallbacksForTest,
@@ -191,6 +192,24 @@ describe('findBodyForFaceQuery', () => {
   it('returns null when no body owns the query', () => {
     registerBodyCallbacks('b1', makeCallbacks())
     expect(findBodyForFaceQuery('ghost')).toBeNull()
+  })
+
+  it('findBodyFaceByPickKey resolves a per-primitive pickKey to its owner and index', () => {
+    registerBodyCallbacks('b1', makeCallbacks())
+    const found = findBodyFaceByPickKey('b1#face#1')
+    expect(found?.bodyKey).toBe('b1')
+    expect(found?.index).toBe(1)
+  })
+
+  it('findBodyFaceByPickKey returns null when no body matches the key', () => {
+    registerBodyCallbacks('b1', makeCallbacks())
+    expect(findBodyFaceByPickKey('nope#face#0')).toBeNull()
+    expect(findBodyFaceByPickKey('b1#face#99')).toBeNull()
+  })
+
+  it('findBodyFaceByPickKey returns null when a body mesh has no face_queries', () => {
+    registerBodyCallbacks('b1', makeCallbacks({ mesh: makeMesh({ face_queries: undefined }) }))
+    expect(findBodyFaceByPickKey('b1#face#0')).toBeNull()
   })
 
   it('returns null when a body mesh has no face_queries', () => {

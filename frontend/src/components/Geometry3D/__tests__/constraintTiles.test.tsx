@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, fireEvent } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Sketch, Constraints } from '@/types/cad'
 
@@ -44,7 +44,7 @@ vi.mock('@/components/Geometry3D/drawGeometry', () => ({
 import { ConstraintOverlays } from '@/components/Geometry3D/Constraints'
 
 beforeEach(() => {
-  useSketchEditorStore.setState({ showConstraintTiles: true, drag: null })
+  useSketchEditorStore.setState({ showConstraintTiles: true, drag: null, hoveredConstraintEntityIds: new Set() })
 })
 
 const mockSketch: Sketch = {
@@ -104,5 +104,54 @@ describe('ConstraintTile user-select', () => {
       const style = parent!.getAttribute('style') ?? ''
       expect(style.toLowerCase()).toContain('user-select: none')
     }
+  })
+})
+
+// Hovering a symbol tile highlights the geometry the constraint actually
+// targets, which differs by constraint shape. These are the three branches the
+// overlay derives before informing the store.
+describe('ConstraintTile hover highlight targets', () => {
+  function hoverFirstTile(container: HTMLElement) {
+    const img = container.querySelector('img')!
+    fireEvent.mouseEnter(img.parentElement!)
+  }
+
+  it('a vertex-targeted constraint highlights only that vertex', () => {
+    const constraints: Constraints = {
+      c1: { render: { kind: 'symbol_fixed', entity: 'line1', point: 'start' }, residual: 0 } as Constraints[string],
+    }
+    const { container } = renderOverlays(constraints)
+    hoverFirstTile(container)
+    expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set(['line1:start']))
+  })
+
+  it('a multi-entity constraint highlights every involved entity', () => {
+    const constraints: Constraints = {
+      c1: { render: { kind: 'symbol_parallel', entities: ['line1', 'line2'], at: [5, 0] }, residual: 0 } as Constraints[string],
+    }
+    const { container } = renderOverlays(constraints)
+    hoverFirstTile(container)
+    expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set(['line1', 'line2']))
+  })
+
+  it('a positional-only constraint falls back to entities at the anchor point', () => {
+    const constraints: Constraints = {
+      c1: { render: { kind: 'symbol_coincident', at: [5, 0] }, residual: 0 } as Constraints[string],
+    }
+    const { container } = renderOverlays(constraints)
+    hoverFirstTile(container)
+    // findEntitiesAtPoint is mocked to return ['entity1'].
+    expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set(['entity1']))
+  })
+
+  it('leaving the tile clears the constraint highlight', () => {
+    const constraints: Constraints = {
+      c1: { render: { kind: 'symbol_parallel', entities: ['line1', 'line2'], at: [5, 0] }, residual: 0 } as Constraints[string],
+    }
+    const { container } = renderOverlays(constraints)
+    const tile = container.querySelector('img')!.parentElement!
+    fireEvent.mouseEnter(tile)
+    fireEvent.mouseLeave(tile)
+    expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set())
   })
 })

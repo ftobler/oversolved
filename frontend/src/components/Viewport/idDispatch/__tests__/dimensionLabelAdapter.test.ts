@@ -73,4 +73,30 @@ describe('dimensionLabelAdapter', () => {
   it('onDoubleClick returns false when no callback is registered', () => {
     expect(dimensionLabelAdapter.onDoubleClick('dim:unknown', 0, 0)).toBe(false)
   })
+
+  // Every route guards the same two ways: a malformed key and a cid with no
+  // live handler. A false lets the dispatcher fall through to the next layer
+  // instead of consuming the click on a dead label.
+  it('every route returns false for a malformed key', () => {
+    expect(dimensionLabelAdapter.onOver('face@x')).toBe(false)
+    expect(dimensionLabelAdapter.onOut('face@x')).toBe(false)
+    expect(dimensionLabelAdapter.onClick('face@x', 0, 0)).toBe(false)
+    expect(dimensionLabelAdapter.onDoubleClick('face@x', 0, 0)).toBe(false)
+    expect(dimensionLabelAdapter.onPointerDown('face@x', 0, 0)).toBe(false)
+  })
+
+  it('every route returns false when the cid has no registered callbacks', () => {
+    expect(dimensionLabelAdapter.onOver('dim:missing')).toBe(false)
+    expect(dimensionLabelAdapter.onOut('dim:missing')).toBe(false)
+    expect(dimensionLabelAdapter.onClick('dim:missing', 0, 0)).toBe(false)
+    expect(dimensionLabelAdapter.onDoubleClick('dim:missing', 0, 0)).toBe(false)
+    expect(dimensionLabelAdapter.onPointerDown('dim:missing', 0, 0)).toBe(false)
+  })
+
+  it('onPointerDown routes to the registered callback and returns true', () => {
+    const onPointerDown = vi.fn()
+    registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick: () => {}, onDoubleClick: () => {}, onPointerDown })
+    expect(dimensionLabelAdapter.onPointerDown('dim:c1', 3, 4)).toBe(true)
+    expect(onPointerDown).toHaveBeenCalledWith(3, 4)
+  })
 })
