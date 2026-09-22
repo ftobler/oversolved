@@ -423,8 +423,10 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kerne
         const soft = import.meta.env.PARITY_SOFT === '1' || entry.soft === true
         if (soft) {
           const tag = entry.soft ? 'REAL-SOFT' : 'SOFT'
+          // Warn-only inventory: the console.warn below IS the artifact and the
+          // issues are already in `msg`. No assertion here on purpose, so a soft
+          // anchor never blocks the gate.
           console.warn(`[parity] ${entry.label}: ${tag} ${msg}`)
-          expect(allIssues.length, `SOFT: ${msg}`).toBeGreaterThan(-1)
         } else {
           expect(allIssues.length, msg).toBe(0)
         }

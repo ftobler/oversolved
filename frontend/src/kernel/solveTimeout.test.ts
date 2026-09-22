@@ -75,6 +75,25 @@ describe('solveWithTimeout', () => {
     await expect(p).rejects.toThrow('OCC unavailable')
   })
 
+  it('rejects with a generic message when the error response carries none', async () => {
+    const f = installFake()
+    const p = solveWithTimeout({ id: 'd' })
+    f.emitMessage({ id: f.posted[0].id, ok: false })
+    await expect(p).rejects.toThrow('solve failed')
+  })
+
+  it('ignores a late reply for an id that already settled', async () => {
+    // A killed child can still flush its final message. An id no longer in the
+    // pending map must be dropped, not routed to a new request.
+    vi.useFakeTimers()
+    const f = installFake()
+    const p = solveWithTimeout({ id: 'd' }, undefined, 1000)
+    const staleId = f.posted[0].id
+    vi.advanceTimersByTime(1000)
+    await expect(p).rejects.toThrow('solve timed out after 1000ms')
+    expect(() => f.emitMessage({ id: staleId, ok: true, result: null })).not.toThrow()
+  })
+
   it('passes options through to the runner', async () => {
     const f = installFake()
     const p = solveWithTimeout({ id: 'd' }, { rollbackPosition: 3 })

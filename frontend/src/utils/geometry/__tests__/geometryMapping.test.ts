@@ -9,6 +9,7 @@ import { getDefaultParams } from '@/registry'
 import type {
   Sketch,
   PartFeature,
+  PartConstraint,
   SymbolRender,
   DimLinearRender,
   DimRadiusRender,
@@ -94,6 +95,54 @@ describe('unflattenGeometry params and input edge cases', () => {
   it('returns an empty sketch when entities or flat are undefined', () => {
     expect(unflattenGeometry({ L: [1, 2, 3, 4] }, undefined)).toEqual({})
     expect(unflattenGeometry(undefined, [{ id: 'L', kind: 'line' }])).toEqual({ L: { start: [0, 0], end: [0, 0] } })
+  })
+
+  it('defaults arc / ellipse / spline / point to zero params when missing', () => {
+    // Every entity must be present in the result even with no solved params,
+    // or the sketch editor drops it from the canvas.
+    const s = unflattenGeometry(undefined, [
+      { id: 'A', kind: 'arc' },
+      { id: 'E', kind: 'ellipse' },
+      { id: 'S', kind: 'spline' },
+      { id: 'P', kind: 'point' },
+    ])
+    expect(s['A']).toEqual({ center: [0, 0], radius: 0, angle_start: 0, angle_end: 0, start: [0, 0], end: [0, 0] })
+    expect(s['E']).toEqual({ center: [0, 0], a: 0, b: 0, theta: 0 })
+    expect(s['S']).toEqual({ p1: [0, 0], p2: [0, 0], p3: [0, 0], p4: [0, 0] })
+    expect(s['P']).toEqual({ x: 0, y: 0 })
+  })
+})
+
+describe('computeConstraintRender when every operand is gone', () => {
+  // A deleted entity must not make the renderer throw; each kind degrades to
+  // `unknown`, which the public wrapper then turns into the generic glyph only
+  // if some other operand still anchors a point. With nothing left there is no
+  // anchor, so the result is the bare unknown and deriveConstraints drops it.
+  const empty: Sketch = {}
+  const gone = (kind: string, extra: Record<string, unknown> = {}): PartConstraint =>
+    ({ id: 'c', kind, ...extra } as PartConstraint)
+
+  it('degrades every dimension and symbol kind to unknown', () => {
+    expect(computeConstraintRender(gone('length', { target: '$GONE' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('radius', { target: '$GONE' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('diameter', { target: '$GONE' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('horizontal', { a: '$G1', b: '$G2' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('vertical', { target: '$GONE' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('normal', { a: '$GONE' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('parallel', { a: '$GONE' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('angle', { a: '$G1', b: '$G2' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('equal_length', { a: '$G1', b: '$G2' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('point_distance', { a: '$G1', b: '$G2' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('point_distance_x', { a: '$G1', b: '$G2' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('line_distance', { a: '$G1', b: '$G2' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('radius_difference', { a: '$G1', b: '$G2' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('midpoint', { line: '$GONE' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('concentric', { a: '$GONE' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('fixed', { target: '$GONE' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('tangent', { a: '$G1', b: '$G2' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('colinear', { a: '$G1' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('coincident', { a: '$G1', b: '$G2' }), empty)).toEqual({ kind: 'unknown' })
+    expect(computeConstraintRender(gone('ngon', { refs: ['$G1', '$G2'] }), empty)).toEqual({ kind: 'unknown' })
   })
 })
 

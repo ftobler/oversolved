@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import scenarios from "./occ/__fixtures__/queryScenarios.json"
 import {
   Repository,
@@ -176,6 +176,35 @@ describe("parse/emit round-trips", () => {
     expect(bodyIdOf(splitSibling, { body_ex1_1: {} })).toBe("body_ex1_1")
     expect(bodyIdOf(splitSibling)).toBeNull()
     expect(bodyIdOf(splitSibling, { body_ex1: {} })).toBeNull()
+  })
+})
+
+describe("emitWire wire-ambiguity warning (dev/test only)", () => {
+  // The `$eid[sub]` grammar cannot distinguish a bare minted id ending in a
+  // vertex-key word from an id+sub pair. emitWire picks the deterministic
+  // reading but must surface the divergence in dev/test so it is never
+  // silently hidden; production stays quiet because a minted id can land on
+  // either side.
+  it("warns when the emitted local re-parses to a different eid/sub", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      // A bare id ending in "center": the wire re-parses as eid + sub.
+      emitWire(local("pwfYD59xKWiSyQhmcenter"))
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0][0])).toContain("ambiguous on the wire")
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it("stays silent when the emitted local re-parses identically", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      expect(emitWire(local("e3", "start"))).toBe("$e3start")
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 
@@ -1019,15 +1048,12 @@ describe("classifier tier resolution", () => {
     tallRepo.registerAncestor(["@ex1", "@body1", "surface:0"], tZp, "gface_tall_zp")
     tallRepo.registerAncestor(["@ex1", "@body1", "surface:1"], tZn, "gface_tall_zn")
 
-    // The stale hash alone is ambiguous (two faces share ancestry, hash
-    // doesn't match either). The resolver should raise AmbiguousQueryError.
+    // The stale hash alone is ambiguous: both faces share the ancestry and
+    // the hash matches neither, so the resolver raises rather than silently
+    // picking one. Asserted directly, matching the tied-ancestor case above.
     const staleOnly = makeAncestryQuery(["@gface_short_zp", "@ex1", "@body1"])
-    try {
-      tallRepo.query(staleOnly)
-      expect.fail("stale hash should not match any face")
-    } catch {
-      // Expected: stale hash + ancestry is either null or ambiguous.
-    }
+    expect(() => tallRepo.query(staleOnly)).toThrow(AmbiguousQueryError)
+    expect(() => tallRepo.query(staleOnly)).toThrow(/matched 2/)
 
     // The captured query (stale hash + @cls_zp classifier) resolves
     // to the +Z cap in the tall build via the classifier tier.
@@ -2383,6 +2409,34 @@ describe("getPoint3d", () => {
     const repo = new Repository()
     const planeLike = { origin: [0.0, 0.0, 0.0], normal: [0.0, 0.0, 1.0] }
     expect(() => getPoint3d(planeLike, repo)).toThrow("reference is a plane, not a point")
+  })
+
+  it("lifts an external_xy point through its registered sketch plane", () => {
+    // A sketch point is stored in 2D; when the sketch's plane transform is
+    // registered under `_pt_<sketchId>` the result must be the 3D point, not
+    // the bare [x, y, 0] fallback.
+    const repo = new Repository()
+    repo.register("_pt_sk1", {
+      origin: [10, 20, 30],
+      x_axis: [1, 0, 0],
+      y_axis: [0, 1, 0],
+      normal: [0, 0, 1],
+    })
+    const pt = { external_xy: [2, 3], sketch_id: "sk1" }
+    expect(getPoint3d(pt, repo)).toEqual([12, 23, 30])
+  })
+
+  it("falls back to [x, y, 0] for external_xy with no plane registered", () => {
+    const repo = new Repository()
+    const pt = { external_xy: [2, 3], sketch_id: "sk_missing" }
+    expect(getPoint3d(pt, repo)).toEqual([2, 3, 0])
+  })
+
+  it("throws when the reference carries no coordinates", () => {
+    const repo = new Repository()
+    expect(() => getPoint3d({ type: "face", id: "f1" }, repo)).toThrow(
+      "point reference has no coordinates",
+    )
   })
 })
 

@@ -399,6 +399,33 @@ describe('validateIncremental', () => {
     expect(v.diffs).toEqual({})
   })
 
+  it('classifies a missing checkpoint as an L1 failure before comparing results', () => {
+    const deps = makeDeps()
+    const r = build({ features: [{ id: 'sk1', kind: 'sketch' }] }, {}, deps)
+    // Drop the checkpoint: the spec-hash pass cannot even compare it, so the
+    // failure is L1 rather than a downstream result diff.
+    const state = { ...r._build_state, checkpoints: {} }
+    const v = validateIncremental(state, r.result, { features: [{ id: 'sk1', kind: 'sketch' }] }, deps)
+    expect(v.passed).toBe(false)
+    expect(v.level).toBe(1)
+    expect(v.diffs).toEqual({ missing_checkpoint: 'sk1' })
+  })
+
+  it('classifies a changed checkpoint spec as an L1 failure', () => {
+    const deps = makeDeps()
+    const r = build({ features: [{ id: 'sk1', kind: 'sketch' }] }, {}, deps)
+    const state = { ...r._build_state }
+    state.checkpoints = { ...state.checkpoints }
+    state.checkpoints.sk1 = {
+      ...state.checkpoints.sk1,
+      spec: { ...state.checkpoints.sk1.spec, extra: 1 },
+    }
+    const v = validateIncremental(state, r.result, { features: [{ id: 'sk1', kind: 'sketch' }] }, deps)
+    expect(v.passed).toBe(false)
+    expect(v.level).toBe(1)
+    expect(v.diffs).toEqual({ feature_id: 'sk1' })
+  })
+
   it('catches a corrupted checkpoint result at L2', () => {
     const deps = makeDeps()
     const r = build(
@@ -842,6 +869,20 @@ describe('repo serialization', () => {
     expect(entry?.eids).toHaveLength(2)
     expect(repo.elements.has('id2')).toBe(false)
     expect(repo.elements.has('id3')).toBe(true)
+  })
+
+  it('drops an ancestral entry whose every element is missing from the snapshot', () => {
+    // A dangling entry (eids that do not appear in `elements`) must not survive
+    // the restore, or the reverse index would claim keys nothing backs.
+    const key = canonical(['@ex1'])
+    const snapshot = {
+      elements: {},
+      ancestral: { [key]: { set: ['@ex1'], eids: ['ghost1', 'ghost2'] } },
+      byUuid: {},
+    }
+    const repo = repoFromSnapshot(snapshot)
+    expect(repo.ancestral.has(key)).toBe(false)
+    expect(repo.byAncestorId.get('@ex1')).toBeUndefined()
   })
 })
 
