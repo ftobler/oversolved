@@ -76,7 +76,9 @@ describe('applyGeometryToFeature (pure solve path)', () => {
 
   it('no-ops when the doc has no features array', () => {
     const doc = { version: 1, kind: 'part' } as PartDoc
-    expect(() => applyGeometryToFeature(doc, 'sk1', { x: [1] })).not.toThrow()
+    applyGeometryToFeature(doc, 'sk1', { x: [1] })
+    // A read-modify-write must not lazily materialize an empty feature list.
+    expect(doc.features).toBeUndefined()
   })
 })
 
@@ -174,9 +176,8 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
 
   it('no-ops when the doc has no features array', () => {
     const doc = { version: 1, kind: 'part' } as PartDoc
-    expect(() =>
-      applyRemoveDanglingContent(doc, { sk1: { entities: ['x'], constraints: ['y'] } })
-    ).not.toThrow()
+    applyRemoveDanglingContent(doc, { sk1: { entities: ['x'], constraints: ['y'] } })
+    expect(doc.features).toBeUndefined()
   })
 })
 

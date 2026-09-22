@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import {
   applySetPartTransparency, applySetPartMetalness, applySetPartRoughness, applySetPartTransmission,
-  applySetRollback,
+  applySetRollback, applySetPlaneDefinitionField,
 } from '@/utils/yamlMutations/partStyle'
 import { applyAddExtrude, applyAddRevolve } from '@/utils/yamlMutations/featureDefs'
 import {
@@ -282,6 +282,27 @@ describe('non-finite guards', () => {
       const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude' }] }
       applySetRollback(doc, 0)
       expect(doc.rollback).toBe(0)
+    })
+
+    // A plane offset is written verbatim into the definition and persisted to
+    // YAML, so a non-finite edit must not overwrite the last good offset.
+    it('applySetPlaneDefinitionField ignores a non-finite value and leaves the definition untouched', () => {
+      const doc: PartDoc = {
+        version: 1, kind: 'part',
+        features: [{ id: 'p1', kind: 'plane', definition: { mode: 'offset', offset: 5 } }],
+      }
+      applySetPlaneDefinitionField(doc, 'p1', 'offset', NaN)
+      expect(feat(doc).definition!.offset).toBe(5)
+      expect(warnSpy).toHaveBeenCalled()
+    })
+
+    it('applySetPlaneDefinitionField still writes a finite value', () => {
+      const doc: PartDoc = {
+        version: 1, kind: 'part',
+        features: [{ id: 'p1', kind: 'plane', definition: { mode: 'offset' } }],
+      }
+      applySetPlaneDefinitionField(doc, 'p1', 'offset', 12)
+      expect(feat(doc).definition!.offset).toBe(12)
     })
 
     it('applyAddPointAtIntersection ignores a non-finite location and adds no entity', () => {

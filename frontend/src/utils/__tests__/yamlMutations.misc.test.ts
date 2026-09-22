@@ -438,6 +438,18 @@ describe('applyReorderPickField', () => {
     expect(doc.features![0].boolean!.tools).toEqual(['@body_c', '@body_a', '@body_b'])
   })
 
+  it('reorders delete_body bodies', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'db1', kind: 'delete_body', delete_body: { bodies: ['@body_a', '@body_b', '@body_c'] } }] }
+    applyReorderPickField(doc, 'db1', 'bodies', 2, 0)
+    expect(doc.features![0].delete_body!.bodies).toEqual(['@body_c', '@body_a', '@body_b'])
+  })
+
+  it('reorders transform bodies', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'tr1', kind: 'transform', transform: { bodies: ['@body_a', '@body_b'], operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 } }] }
+    applyReorderPickField(doc, 'tr1', 'bodies', 1, 0)
+    expect(doc.features![0].transform!.bodies).toEqual(['@body_b', '@body_a'])
+  })
+
   it('reorders extrude sketch', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ext1', kind: 'extrude', extrude: { sketch: ['s1', 's2', 's3'], distance: 10, direction: 'normal' } }] }
     applyReorderPickField(doc, 'ext1', 'sketch', 0, 2)

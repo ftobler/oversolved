@@ -54,5 +54,18 @@ describe('Array mutations', () => {
       expect(doc.features![0].array!.mode).toBe('linear')
       expect(doc.features![0].array!.count_y).toBeUndefined()
     })
+
+    // A legacy array can carry a mode without the X spacing fields; switching it
+    // to rectangular must fill both axes rather than leave a hole the solver
+    // would read as a zero-count array.
+    it('fills the missing X defaults when a legacy array becomes rectangular', () => {
+      const doc: PartDoc = {
+        features: [{ id: 'arr1', kind: 'array', array: { mode: 'linear', operation: 'add', include_source: true } }],
+      }
+      applySetArrayField(doc, 'arr1', 'mode', 'rectangular')
+      expect(doc.features![0].array).toMatchObject({
+        mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20,
+      })
+    })
   })
 })
