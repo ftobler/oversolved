@@ -339,3 +339,99 @@ describe("narrowByDescriptor (graceful resolver tier)", () => {
   })
 })
 
+describe("malformed token shape guards", () => {
+  it("face token with the wrong number of pipe parts is null", () => {
+    // A malformed persisted @gdf token must never narrow anything: one part
+    // (@gdf|1,2,3) and three parts both fail the exact-2 shape check.
+    expect(parseGeomDescriptorId("@gdf|1,2,3")).toBeNull()
+    expect(parseGeomDescriptorId("@gdf|1,2,3|0,0,1|extra")).toBeNull()
+  })
+
+  it("edge token with an empty edgeKind is null", () => {
+    expect(parseGeomDescriptorId("@gde||0,0,0|1,0,0|2")).toBeNull()
+  })
+
+  it("edge token with a non-3 point is null", () => {
+    expect(parseGeomDescriptorId("@gde|line|1,2|1,0,0|2")).toBeNull()
+  })
+})
+
+describe("edgeDescriptorOf derivation fallbacks", () => {
+  it("a coincident-endpoint line normalizes to a zero axis with zero length", () => {
+    // normalize() must not divide by a zero norm; the zero axis is the honest
+    // reading, and the zero scalar keeps it from matching a real segment.
+    const d = edgeDescriptorOf({ kind: "line", start: [1, 1, 1], end: [1, 1, 1] })
+    expect(d).toEqual({ kind: "edge", edgeKind: "line", point: [1, 1, 1], axis: [0, 0, 0], scalar: 0 })
+  })
+
+  it("a line endpoint with a non-finite coordinate yields null", () => {
+    expect(edgeDescriptorOf({ kind: "line", start: [0, 0, 0], end: [1, 0, Number.NaN] })).toBeNull()
+  })
+
+  it("an arc with no angle fields anchors at the zero parameter", () => {
+    // edgeAngle's fallback (0) keeps the descriptor derivable for a payload a
+    // producer forgot to stamp; the anchor is center + radius * x_axis.
+    const d = edgeDescriptorOf({ kind: "arc", center: [0, 0, 0], radius: 2, axis: [0, 0, 1], x_axis: [1, 0, 0] })
+    expect(d).not.toBeNull()
+    expect(d!.point[0]).toBeCloseTo(2, 9)
+    expect(d!.point[1]).toBeCloseTo(0, 9)
+  })
+
+  it("a kindless payload with points derives the point-set descriptor", () => {
+    // No string `kind` and no start/end: the sampled-points arm is the only
+    // geometry left, and edgeKind falls back to "spline".
+    const d = edgeDescriptorOf({ points: [[0, 0, 0], [2, 0, 0]] })
+    expect(d).toEqual({ kind: "edge", edgeKind: "spline", point: [1, 0, 0], axis: [1, 0, 0], scalar: 2 })
+  })
+
+  it("a kindless payload with start/end falls back to the segment descriptor", () => {
+    const d = edgeDescriptorOf({ kind: "bezier", start: [0, 0, 0], end: [2, 0, 0] })
+    expect(d).toEqual({ kind: "edge", edgeKind: "bezier", point: [1, 0, 0], axis: [1, 0, 0], scalar: 2 })
+    const noKind = edgeDescriptorOf({ start: [0, 0, 0], end: [2, 0, 0] })
+    expect(noKind).toEqual({ kind: "edge", edgeKind: "spline", point: [1, 0, 0], axis: [1, 0, 0], scalar: 2 })
+  })
+
+  it("sampled points carrying a malformed entry yield null", () => {
+    expect(edgeDescriptorOf({ kind: "spline", points: [[0, 0, 0], [1, 0]] })).toBeNull()
+  })
+
+  it("circle and ellipse without a center yield null", () => {
+    expect(edgeDescriptorOf({ kind: "circle", radius: 4, axis: [0, 0, 1] })).toBeNull()
+    expect(edgeDescriptorOf({ kind: "ellipse", a: 4, b: 2, axis: [0, 0, 1] })).toBeNull()
+  })
+
+  it("a partial ellipse without x_axis yields null (no colliding center anchor)", () => {
+    expect(
+      edgeDescriptorOf({
+        kind: "ellipse",
+        center: [0, 0, 0],
+        a: 4,
+        b: 2,
+        axis: [0, 0, 1],
+        angle_start: 0,
+        angle_end: Math.PI,
+      }),
+    ).toBeNull()
+  })
+})
+
+describe("descriptorOfElement guards", () => {
+  it("a vertex payload without an origin yields null", () => {
+    expect(descriptorOfElement({ type: "vertex" })).toBeNull()
+  })
+})
+
+describe("descriptorDistance edge and vertex arms", () => {
+  it("perpendicular edge axes are rejected by the sign-insensitive gate", () => {
+    const q: EdgeDescriptor = { kind: "edge", edgeKind: "line", point: [0, 0, 0], axis: [1, 0, 0], scalar: 4 }
+    const perp: EdgeDescriptor = { ...q, axis: [0, 1, 0] }
+    expect(descriptorDistance(q, perp)).toBeNull()
+  })
+
+  it("vertex descriptors measure the plain point distance", () => {
+    expect(
+      descriptorDistance({ kind: "vertex", point: [0, 0, 0] }, { kind: "vertex", point: [3, 4, 0] }),
+    ).toBeCloseTo(5, 9)
+  })
+})
+

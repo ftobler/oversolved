@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { HandleTable, type OccHandle } from './handleTable'
 import type { Disposable } from './disposeScope'
 
@@ -61,6 +61,18 @@ describe('HandleTable', () => {
     t.releaseOwner('A')
     expect(t.liveCount()).toBe(0)
     expect(s.deleted).toBe(1)
+  })
+
+  it('releaseFor is a no-op for an owner that never held the handle', () => {
+    // Decrementing only when the owner was actually recorded is what keeps a
+    // superseded owner from double-decrementing a shared handle.
+    const t = table()
+    const s = new FakeShape('unowned-by-b')
+    const h = t.register(s, 'A')
+    t.releaseFor(h, 'B')
+    expect(s.deleted).toBe(0)
+    expect(t.liveCount()).toBe(1)
+    expect(t.has(h)).toBe(true)
   })
 
   it('releaseFor drops one owner so the other owner finalizes exactly once', () => {
@@ -191,5 +203,73 @@ describe('HandleTable', () => {
     const h = t.register(new FakeShape('g'))
     t.release(h)
     t.assertNoLeaks()
+  })
+})
+
+// The guard's callback runs at GC time, which is nondeterministic, so these
+// tests install a fake FinalizationRegistry and drive the held callback
+// directly: that is the only way to assert the leak report's contents.
+describe('HandleTable finalizer leak guard', () => {
+  class FakeFinalizationRegistry {
+    static last: FakeFinalizationRegistry | null = null
+    readonly cb: (held: number) => void
+    readonly registered: Array<{ target: object; held: number }> = []
+    readonly unregistered: unknown[] = []
+    constructor(cb: (held: number) => void) {
+      this.cb = cb
+      FakeFinalizationRegistry.last = this
+    }
+    register(target: object, held: number): void {
+      this.registered.push({ target, held })
+    }
+    unregister(token: unknown): void {
+      this.unregistered.push(token)
+    }
+  }
+
+  beforeEach(() => {
+    FakeFinalizationRegistry.last = null
+    vi.stubGlobal('FinalizationRegistry', FakeFinalizationRegistry)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reports a live handle through onLeak when its proxy is collected', () => {
+    const onLeak = vi.fn()
+    const t = new HandleTable({ finalizerGuard: true, onLeak })
+    const h = t.register(new FakeShape('leaked'), 'featA')
+
+    FakeFinalizationRegistry.last!.cb(h)
+
+    expect(onLeak).toHaveBeenCalledTimes(1)
+    expect(onLeak.mock.calls[0][0]).toEqual({ handle: h, refcount: 1, owners: ['featA'] })
+  })
+
+  it('default onLeak warns with the handle, refcount and owners', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const t = new HandleTable({ finalizerGuard: true })
+      const h = t.register(new FakeShape('leaked'), 'featA')
+
+      FakeFinalizationRegistry.last!.cb(h)
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      const msg = String(warn.mock.calls[0][0])
+      expect(msg).toContain(`handle ${h}`)
+      expect(msg).toContain('refcount 1')
+      expect(msg).toContain('owners [featA]')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('stays silent for a handle released before the finalizer ran', () => {
+    const onLeak = vi.fn()
+    const t = new HandleTable({ finalizerGuard: true, onLeak })
+    const h = t.register(new FakeShape('gone'))
+    t.release(h)
+
+    FakeFinalizationRegistry.last!.cb(h)
+
+    expect(onLeak).not.toHaveBeenCalled()
   })
 })

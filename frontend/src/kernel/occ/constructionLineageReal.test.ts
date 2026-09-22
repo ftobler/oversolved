@@ -34,9 +34,10 @@ import {
   normalizedWorldKey,
   edgeMidpoint,
   deriveEdgeNames,
+  FaceEdgeTable,
 } from './constructionLineage'
 import { orderSplitChildren } from '../constructionName'
-import type { OccShape } from './occTypes'
+import type { OccShape, OccSubShape } from './occTypes'
 import { SPLIT_EPS } from '../constructionName'
 
 const loadedOcc = await loadOcc()
@@ -380,6 +381,60 @@ describe.skipIf(!hasOcc)('edge multiplicity: a face pair sharing 2 edges', () =>
       ])
       expect(ordered, 'distinct half keys order instead of permanently refusing').not.toBeNull()
       expect(new Set(ordered!).size).toBe(2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('shapeNormalFrame clamps a vertex-less shape to span 1', () => {
+    // An empty compound (an import with no solids) has no TopAbs_VERTEX, so the
+    // frame cannot be derived: the honest default is centre 0 and span 1, never
+    // a divide-by-zero span.
+    const scope = new DisposeScope()
+    try {
+      const compound = scope.track(new oc.TopoDS_Compound())
+      scope.track(new oc.BRep_Builder()).MakeCompound(compound)
+      expect(shapeNormalFrame(oc, scope, compound)).toEqual({ centre: [0, 0, 0], span: 1 })
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('FaceEdgeTable.rowOf maps each read face to its row and a foreign face to null', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBoxAt(oc, scope, [0, 0, 0], 10, 10, 10)
+      const t = FaceEdgeTable.read(oc, scope, box)
+      const E = oc.TopAbs_ShapeEnum
+      const exp = scope.track(new oc.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      let matched = 0
+      for (; exp.More(); exp.Next()) {
+        const face = scope.track(oc.TopoDS.Face_1(exp.Current())) as OccSubShape
+        const row = t.rowOf(face)
+        expect(row).not.toBeNull()
+        // The row is keyed by topological identity, so re-looking it up by the
+        // row's own face returns the same row.
+        expect(t.rowOf(row!.face)).toBe(row)
+        matched++
+      }
+      expect(matched).toBe(t.rows.length)
+      const other = makeBoxAt(oc, scope, [100, 0, 0], 10, 10, 10)
+      const otherExp = scope.track(new oc.TopExp_Explorer_2(other, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      const foreign = scope.track(oc.TopoDS.Face_1(otherExp.Current())) as OccSubShape
+      expect(t.rowOf(foreign)).toBeNull()
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('FaceEdgeTable.area and surfaceType report a box face area and kind', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBoxAt(oc, scope, [0, 0, 0], 10, 10, 10)
+      const t = FaceEdgeTable.read(oc, scope, box)
+      const row = t.rows[0]
+      expect(t.area(row)).toBeCloseTo(100, 6)
+      expect(t.surfaceType(row)).toBe('flatface')
     } finally {
       scope.dispose()
     }

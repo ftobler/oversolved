@@ -49,14 +49,14 @@ interface WorkerMsg {
   error?: string
 }
 
-function runnerPath(): string {
+export function runnerPath(): string {
   return path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     'solveTimeout.runner.mjs',
   )
 }
 
-function loaderPath(): string {
+export function loaderPath(): string {
   return path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     '../../resolve-alias.loader.mjs',

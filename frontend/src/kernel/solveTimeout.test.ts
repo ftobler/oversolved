@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { existsSync } from 'node:fs'
 import {
   solveWithTimeout, disposeWorker, setSolveChildForTest, resetSolveChildForTest,
+  runnerPath, loaderPath,
 } from './solveTimeout'
 
 class FakeChild {
@@ -188,5 +190,28 @@ describe('disposeWorker', () => {
     disposeWorker()
     await expect(p).rejects.toThrow('disposed')
     expect(f.killed).toBe(true)
+  })
+})
+
+describe('forked child wiring', () => {
+  it('runner and loader paths point at the real files the fork needs', () => {
+    // A rename of either file silently breaks every direct solve; the paths
+    // are computed from import.meta.url, so assert they land on real files.
+    expect(existsSync(runnerPath())).toBe(true)
+    expect(existsSync(loaderPath())).toBe(true)
+  })
+
+  it('re-injecting a factory while a child is live tears the old child down', async () => {
+    const f1 = installFake()
+    const abandoned = solveWithTimeout({ id: 'd' }, undefined, 999999)
+    const f2 = new FakeChild()
+    setSolveChildForTest(() => f2 as unknown as import('./solveTimeout').SolveChildLike)
+    expect(f1.killed).toBe(true)
+    // The new factory drives the next request; the abandoned one never settles.
+    const p2 = solveWithTimeout({ id: 'e' })
+    expect(f2.posted).toHaveLength(1)
+    f2.emitMessage({ id: f2.posted[0].id, ok: true, result: null })
+    await expect(p2).resolves.toBeNull()
+    void abandoned
   })
 })
