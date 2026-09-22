@@ -5,6 +5,7 @@ default E/F/W rule set. If ruff's config drifts, the local gate weakens without
 any CI signal, so this test pins the two to the same line length and rule set.
 """
 
+import configparser
 import pathlib
 import tomllib
 
@@ -16,10 +17,17 @@ def load_pyproject() -> dict:
         return tomllib.load(f)
 
 
+def flake8_line_length() -> int:
+    config = configparser.ConfigParser()
+    config.read(ROOT / "setup.cfg")
+    return config.getint("flake8", "max-line-length")
+
+
 def test_ruff_line_length_matches_flake8():
-    flake8_section = (ROOT / "setup.cfg").read_text()
-    assert "max-line-length = 250" in flake8_section
-    assert load_pyproject()["tool"]["ruff"]["line-length"] == 250
+    # Relational, not a hardcoded pair: the value may live in one place only,
+    # but if it moves it must move in both or the local ruff gate diverges from
+    # the flake8 safety net on line length.
+    assert load_pyproject()["tool"]["ruff"]["line-length"] == flake8_line_length()
 
 
 def test_ruff_select_covers_flake8_default_rule_families():
