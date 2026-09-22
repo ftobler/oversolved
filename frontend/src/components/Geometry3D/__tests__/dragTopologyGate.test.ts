@@ -48,38 +48,6 @@ describe('topologyStale', () => {
   })
 })
 
-describe('topologyStale -- dim_label drags are excluded at the call site', () => {
-  // `dim_label` drags do NOT move geometry (Geometry3D uses `solved` as the
-  // preview for them), so the area fill and inferred-contact markers must
-  // stay visible while the user repositions a dimension label. The gate
-  // itself only knows "isDraggingThis" -- the dim_label narrowing happens at
-  // the call site (`Geometry3D/index.tsx`:
-  //   `isGeometryDragging = isDraggingThis && drag?.type !== 'dim_label'`).
-  // This test pins the narrowing predicate the caller must apply.
-  it('a dim_label drag narrows isDraggingThis to false (geometry not moving)', () => {
-    // Simulate the call-site predicate: `isDraggingThis && drag?.type !== 'dim_label'`.
-    const isDraggingThis = true
-    const dragType: 'vertex' | 'edge' | 'dim_label' = 'dim_label'
-    const isGeometryDragging = isDraggingThis && dragType !== 'dim_label'
-    // And topologyStale(no geometry drag, no held preview) is false:
-    expect(topologyStale(isGeometryDragging, null, solved)).toBe(false)
-  })
-
-  it('a vertex drag narrows isDraggingThis to true (geometry moving)', () => {
-    const isDraggingThis = true
-    const dragType = 'vertex' as 'vertex' | 'edge' | 'dim_label'
-    const isGeometryDragging = isDraggingThis && dragType !== 'dim_label'
-    expect(topologyStale(isGeometryDragging, null, solved)).toBe(true)
-  })
-
-  it('an edge drag narrows isDraggingThis to true (geometry moving)', () => {
-    const isDraggingThis = true
-    const dragType = 'edge' as 'vertex' | 'edge' | 'dim_label'
-    const isGeometryDragging = isDraggingThis && dragType !== 'dim_label'
-    expect(topologyStale(isGeometryDragging, null, solved)).toBe(true)
-  })
-})
-
 describe('topologyStale -- complement-monotonicity with the held/preview tracker', () => {
   // Mirrors Geometry3D/index.tsx's tracker state machine:
   //   drag start            -> preview != null, held = null       -> stale

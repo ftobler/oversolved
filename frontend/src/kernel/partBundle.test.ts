@@ -315,9 +315,9 @@ describe('toPartBundle', () => {
     expect(bundle.content_hash).toBe('h5')
     expect(bundle.bodies).toHaveLength(2)
     expect(bundle.bodies[1].edges).toHaveLength(1)
-    // Anchors populated (empty for these no-query mock bodies)
-    expect(typeof bundle.anchors).toBe('object')
-    expect(Object.keys(bundle.anchors).length).toBeGreaterThanOrEqual(0)
+    // These mock bodies carry no ancestry-format queries, so nothing mints an
+    // anchor. Pin the empty set rather than asserting the always-true >= 0.
+    expect(Object.keys(bundle.anchors)).toHaveLength(0)
   })
 
   it('mints the same deterministic anchor id for two builds of the same geometry (no cache needed)', () => {

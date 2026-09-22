@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import {
   applyAddCircularArray,
@@ -85,9 +85,13 @@ describe('Circular Array mutations', () => {
     })
 
     it('warns when feature has no circular_array', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
       const doc = makeDoc()
       doc.features!.push({ id: 'other', kind: 'extrude', extrude: { sketch: [], distance: 10 } })
       applySetCircularArrayField(doc, 'other', 'count', 5)
+      expect(warnSpy).toHaveBeenCalledWith('applySetCircularArrayField: feature other has no circular_array')
+      expect(doc.features![0].circular_array).toBeUndefined()
+      warnSpy.mockRestore()
     })
   })
 })

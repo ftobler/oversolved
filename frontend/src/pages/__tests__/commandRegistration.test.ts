@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import {
   registerCommand,
   executeCommand,
@@ -6,8 +6,10 @@ import {
 } from '@/utils/core/commandRegistry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { buildCommandEntries } from '@/pages/commandEntries'
+import { initializeTools } from '@/tools'
 
-// Ensure clean state before each test
+beforeAll(() => { initializeTools() })
+
 beforeEach(() => { clearAllHandlers() })
 
 // ─── Config array structure ───
@@ -34,53 +36,17 @@ describe('command config array structure', () => {
   })
 })
 
-// ─── Registration lifecycle ───
+// ─── Handler execution effect ───
 
-describe('command registration lifecycle', () => {
-  it('register → execute → unregister: spies are called only while registered', () => {
-    const fnA = vi.fn()
-    const fnB = vi.fn()
-    const commands = [
-      { name: '__lifecycle_a__', fn: fnA },
-      { name: '__lifecycle_b__', fn: fnB },
-    ]
+describe('handler execution effect', () => {
+  it('set_tool_rect arms the rectangle tool through the real command entry', () => {
+    const config = buildCommandEntries(vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
+    const entry = config.find(e => e.name === 'set_tool_rect')!
+    useSketchEditorStore.getState().setActiveTool(null)
 
-    // Register all
-    for (const { name, fn } of commands) registerCommand(name, fn)
+    registerCommand(entry.name, entry.fn)
+    executeCommand(entry.name)
 
-    // Execute, both spies must be called
-    executeCommand('__lifecycle_a__')
-    executeCommand('__lifecycle_b__')
-    expect(fnA).toHaveBeenCalledOnce()
-    expect(fnB).toHaveBeenCalledOnce()
-
-    // beforeEach will clear all handlers before the next test
-    // Execute again in a fresh test, spies must NOT be called
-  })
-
-  it('multiple commands can be registered independently', () => {
-    const fnA = vi.fn()
-    const fnB = vi.fn()
-    registerCommand('__lifecycle_a__', fnA)
-    registerCommand('__lifecycle_b__', fnB)
-
-    // Execute both
-    executeCommand('__lifecycle_a__')
-    executeCommand('__lifecycle_b__')
-
-    // Both should have been called
-    expect(fnA).toHaveBeenCalledOnce()
-    expect(fnB).toHaveBeenCalledOnce()
-  })
-})
-
-// ─── Handler execution with store methods ───
-
-describe('handler execution with store methods', () => {
-  it('delete_selected handler calls store.deleteSelected without throwing', () => {
-    // Register handler that calls store method, as Part.tsx does
-    registerCommand('__store_test__', () => useSketchEditorStore.getState().deleteSelected())
-    // Confirm executeCommand reaches the store without throwing
-    expect(() => executeCommand('__store_test__')).not.toThrow()
+    expect(useSketchEditorStore.getState().activeTool).toBe('rect')
   })
 })

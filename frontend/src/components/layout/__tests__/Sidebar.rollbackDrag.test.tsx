@@ -365,19 +365,3 @@ describe('rollback bar drag convergence', () => {
   })
 })
 
-describe('partEditorStore', () => {
-  it('holds state correctly', () => {
-    usePartEditorStore.setState({ features: [{ id: 'f1', kind: 'sketch' }] })
-    expect(usePartEditorStore.getState().features).toHaveLength(1)
-    expect(usePartEditorStore.getState().features[0].id).toBe('f1')
-  })
-
-  it('Sidebar is defined and takes no required props', () => {
-    expect(Sidebar).toBeDefined()
-    // TypeScript guarantees no required props -- verified at compile time.
-    // We render it inside the provider to confirm it mounts without error.
-    const { container } = renderSidebar()
-    expect(container).toBeTruthy()
-  })
-})
-

@@ -6,7 +6,7 @@ import { initializeTools } from '@/tools'
 import { createDragTool } from '@/tools/DragTool'
 import { createDrawingTool } from '@/tools/DrawingTool'
 
-import type { Tool, ToolCategory, ToolId, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
+import type { Tool, ToolCategory, ToolId, ToolHandlers } from '@/registry/toolRegistry'
 
 const mockHandlers: ToolHandlers = {
   onPointerDown: () => null,
@@ -71,39 +71,6 @@ describe('ToolRegistry', () => {
       expect(toolRegistry.get('dimension')).not.toBeNull()
       expect(toolRegistry.get('drag')).not.toBeNull()
       expect(() => toolRegistry.validate()).not.toThrow()
-    })
-  })
-
-  describe('Tool interface', () => {
-    it('activate and deactivate are called', () => {
-      const activate = vi.fn()
-      const deactivate = vi.fn()
-      const context: ToolContext = {
-        normalSelection: new Set(),
-        hoveredSelectionId: null,
-        isPointerDown: false,
-        activeFeatureId: null,
-        hoveredVertexId: null,
-        hoveredVertexPosition: null,
-        hoveredSnapKind: null,
-        onMutation: null,
-        pushMode: vi.fn(),
-        popMode: vi.fn(),
-      }
-      const tool: Tool = {
-        id: 'line',
-        label: 'Line',
-        category: 'drawing',
-        activate,
-        deactivate,
-        handlers: mockHandlers,
-      }
-
-      tool.activate(context)
-      expect(activate).toHaveBeenCalledWith(context)
-
-      tool.deactivate(context)
-      expect(deactivate).toHaveBeenCalledWith(context)
     })
   })
 
