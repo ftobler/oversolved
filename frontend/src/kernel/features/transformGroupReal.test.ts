@@ -730,4 +730,37 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
   })
+
+  describe('mirror in place (keep_original: false)', () => {
+    it('reflects the source body under the same id and preserves its face UUIDs', () => {
+      // The replace mode is what keeps existing picks alive across a mirror: the
+      // body is rebuilt in place under its old id and its construction UUIDs are
+      // re-keyed onto the mirrored faces rather than re-minted.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const bodyStore: Record<string, Body> = {
+          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+        }
+        nameFacesInOrder(scope, table, bodyStore.body_a)
+        const uuidsBefore = new Set(Object.values(bodyStore.body_a.face_names ?? {}))
+        expect(uuidsBefore.size).toBeGreaterThan(0)
+
+        const repo = new Repository()
+        repo.register('builtin_plane_front', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
+        const result = solveMirror(occ, scope, table, {
+          id: 'mi1', mirror: { body: 'body_a', plane: '@builtin_plane_front', keep_original: false, merge: false },
+        }, repo, bodyStore)
+
+        expect(result).toMatchObject({ status: 'ok', operation: 'replace', body_id: 'body_a', body_ids: ['body_a'] })
+        expect(Object.keys(bodyStore)).toEqual(['body_a'])
+        // The 4-cube sits at [0,4]^3, so its centre reflects from (2,2,2) to (2,2,-2).
+        expectCentreClose(centreOf(scope, table, bodyStore.body_a), [2, 2, -2])
+        expect(bodyStore.body_a.modified_by).toContain('mi1')
+        expect(new Set(Object.values(bodyStore.body_a.face_names ?? {}))).toEqual(uuidsBefore)
+      } finally {
+        scope.dispose()
+      }
+    })
+  })
 })

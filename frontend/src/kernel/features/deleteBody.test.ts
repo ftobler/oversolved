@@ -2,7 +2,7 @@
 // is pure store logic + handle release, so it needs no OCC: a stub Disposable
 // stands in for a body shape to verify the HandleTable handle is released.
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { Repository, makeAncestryQuery } from '../query'
 import { HandleTable } from '../occ/handleTable'
 import { solveDeleteBody } from './deleteBody'
@@ -52,6 +52,49 @@ describe('solveDeleteBody', () => {
     expect(result).toEqual({ status: 'ok', deleted_body_ids: ['body_a', 'body_c'] })
     expect(Object.keys(bodyStore)).toEqual(['body_b'])
     expect(deleted).toEqual(['a', 'c'])
+  })
+
+  it('deletes a body with no shape without asking the table to release anything', () => {
+    const releaseFor = vi.fn()
+    const table = { releaseFor } as unknown as HandleTable
+    const bodyStore: Record<string, Body> = { body_a: body('body_a'), body_b: body('body_b') }
+
+    const result = solveDeleteBody(oc, scope, table, { id: 'd', delete_body: { bodies: ['body_a'] } }, new Repository(), bodyStore)
+
+    expect(result).toEqual({ status: 'ok', deleted_body_ids: ['body_a'] })
+    expect(Object.keys(bodyStore)).toEqual(['body_b'])
+    expect(releaseFor).not.toHaveBeenCalled()
+  })
+
+  it('releases the handle for the last modifying feature, falling back to the creator', () => {
+    const releaseFor = vi.fn()
+    const table = { releaseFor } as unknown as HandleTable
+    const shapeA = { id: 'shape_a' }
+    const shapeB = { id: 'shape_b' }
+    const bodyStore: Record<string, Body> = {
+      body_a: { ...body('body_a'), created_by: 'ex_a', modified_by: ['m1', 'm2'], shape: shapeA as never },
+      body_b: { ...body('body_b'), created_by: 'ex_b', modified_by: [], shape: shapeB as never },
+    }
+
+    solveDeleteBody(oc, scope, table, { id: 'd', delete_body: { bodies: ['body_a', 'body_b'] } }, new Repository(), bodyStore)
+
+    expect(releaseFor).toHaveBeenNthCalledWith(1, shapeA, 'm2')
+    expect(releaseFor).toHaveBeenNthCalledWith(2, shapeB, 'ex_b')
+  })
+
+  it("clears the deleted body's ancestry from the repo and leaves other bodies alone", () => {
+    const repo = new Repository()
+    repo.registerAncestor(['@body_a'], { type: 'face', body_id: 'body_a' })
+    repo.registerAncestor(['@ex_a'], { type: 'solid', body_id: 'body_a' })
+    repo.registerAncestor(['@body_b'], { type: 'face', body_id: 'body_b' })
+    const bodyStore: Record<string, Body> = { body_a: body('body_a'), body_b: body('body_b') }
+    bodyStore.body_a.created_by = 'ex_a'
+
+    solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: ['body_a'] } }, repo, bodyStore)
+
+    expect(repo.byAncestorId.has('@body_a')).toBe(false)
+    expect(repo.byAncestorId.has('@ex_a')).toBe(false)
+    expect(repo.byAncestorId.has('@body_b')).toBe(true)
   })
 
   it('collapses two refs that name the same body', () => {
