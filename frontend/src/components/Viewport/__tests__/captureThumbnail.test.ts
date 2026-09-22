@@ -119,6 +119,22 @@ describe('captureThumbnail', () => {
     expect(canvas.height).toBe(200)
   })
 
+  it('returns null when the downscale canvas has no 2D context', async () => {
+    // Some environments (a headless/no-accelerated canvas, an exhausted context
+    // budget) refuse a 2D context; a save must skip the preview, not throw.
+    stubImage(640, 480)
+    const canvas = { width: 0, height: 0, getContext: vi.fn(() => null), toDataURL: vi.fn() }
+    const original = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation((tag: string) =>
+      tag === 'canvas' ? (canvas as unknown as HTMLElement) : original(tag))
+    const { gl } = makeFakeGl()
+
+    const result = await captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera)
+
+    expect(result).toBeNull()
+    expect(canvas.toDataURL).not.toHaveBeenCalled()
+  })
+
   it('returns null when the renderer, scene or camera is not ready', async () => {
     // The headless editor mount: no GL context, so a save must skip the preview
     // rather than throw through the save path.

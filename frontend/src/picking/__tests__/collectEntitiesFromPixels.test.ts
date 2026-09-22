@@ -99,4 +99,15 @@ describe('collectEntitiesFromPixels', () => {
     const result = collectEntitiesFromPixels(buf, 2, 2, registry)
     expect(result).toHaveLength(0)
   })
+
+  it('ignores an opaque pixel whose id is not in the registry', () => {
+    // A stale ID buffer (a freed id still drawn) must not surface as a bogus
+    // selection entry.
+    const pixels: [number, number, number, number][] = [
+      [0xFF, 0xFF, 0xFF, 255], [0, 0, 0, 0],
+      [0, 0, 0, 0], [0, 0, 0, 0],
+    ]
+    const buf = fillBuffer(pixels, 2, 2)
+    expect(collectEntitiesFromPixels(buf, 2, 2, registry)).toEqual([])
+  })
 })

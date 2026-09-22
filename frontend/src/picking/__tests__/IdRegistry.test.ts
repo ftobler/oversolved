@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IdRegistry } from '../IdRegistry'
+import { MAX_ID } from '../idEncoding'
 
 describe('IdRegistry', () => {
   let reg: IdRegistry
@@ -104,5 +105,22 @@ describe('IdRegistry', () => {
     reg.clear()
     expect(reg.size()).toBe(0)
     expect(reg.lookupKey('face', 'face@e1#1')).toBeUndefined()
+  })
+
+  it('throws rather than wrap when the 24-bit id space is exhausted', () => {
+    // The viewport has no error boundary above the registration effects, so this
+    // throw is the only thing that stops a silently reused ID. Every ID-layer
+    // register path is written to let it escape and be contained per hook.
+    ;(reg as unknown as { nextId: number }).nextId = MAX_ID + 1
+    expect(() => reg.allocate('face', 'face@e1#1')).toThrow(/exhausted 24-bit ID space/)
+  })
+
+  it('freeing an id that was never allocated is a no-op', () => {
+    // Body teardown can outlive its allocation (a failed mid-pass register frees
+    // what it took); a double free must not touch the live entries.
+    const live = reg.allocate('face', 'face@e1#1')
+    expect(() => reg.free(424242)).not.toThrow()
+    expect(reg.lookup(live)).toBeDefined()
+    expect(reg.size()).toBe(1)
   })
 })

@@ -94,6 +94,15 @@ describe('EdgeIdLayer', () => {
     expect((seg.material as import('three').ShaderMaterial).depthTest).toBe(true)
   })
 
+  it('registerBody while xray is on uses the xray material from the start', () => {
+    // A body registered after the x-ray toggle (a solve commit) must not come in
+    // on the depth-tested material and lose its behind-face pickability.
+    layer.setXrayEdges(true)
+    layer.registerBody(makeReg())
+    const seg = layer.scene.children[0] as import('three').LineSegments
+    expect((seg.material as import('three').ShaderMaterial).depthTest).toBe(false)
+  })
+
   it('unregister removes the LineSegments and frees its ids next cycle', () => {
     layer.registerBody(makeReg())
     layer.unregisterBody('b')

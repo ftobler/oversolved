@@ -34,4 +34,15 @@ describe('useSketchIdRegistration coincident dedup', () => {
     expect(vtx.vertexQueries).toContain('vertex:S1:lineA:end')
     expect(vtx.vertexQueries).toContain('vertex:S1:lineB:start')
   })
+
+  it('skips a vertex whose 2D coordinate is non-finite', () => {
+    // A NaN corner would bucket at the origin in the mark index and answer every
+    // click near it, so it must never become a pickable vertex.
+    const vtx = buildSketchVertices('S1', {
+      lineA: { start: [NaN, 0], end: [2, 0] } as LineSegment,
+    }, identity)
+
+    expect(vtx.vertexQueries).toEqual(['vertex:S1:lineA:end'])
+    expect(vtx.vertices).toHaveLength(1)
+  })
 })

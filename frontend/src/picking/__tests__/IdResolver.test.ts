@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IdRegistry } from '../IdRegistry'
-import { resolvePixelWindow } from '../IdResolver'
+import { resolvePixelWindow, resolvePixelWindowAll } from '../IdResolver'
 import { idToRGB } from '../idEncoding'
 
 function makeWindow(size: number, fills: Array<{ x: number; y: number; id: number }>): Uint8Array {
@@ -82,5 +82,24 @@ describe('resolvePixelWindow', () => {
   it('throws when the buffer is too small for the requested window', () => {
     const buf = new Uint8Array(4 * 4 * 4)
     expect(() => resolvePixelWindow(buf, 17, reg)).toThrow()
+  })
+
+  it('returns null for a non-positive window size instead of reading the buffer', () => {
+    expect(resolvePixelWindow(new Uint8Array(0), 0, reg)).toBeNull()
+    expect(resolvePixelWindow(new Uint8Array(0), -3, reg)).toBeNull()
+  })
+
+  // Two co-located marks can each win a pixel; the cluster they share must be
+  // emitted once, not once per winning member.
+  it('emits a co-located cluster once when two of its members are lit', () => {
+    const a = reg.allocate('face', 'face@a')
+    const b = reg.allocate('edge', 'edge@b')
+    reg.setMarkPosition(a, 0, 0, 0)
+    reg.setMarkPosition(b, 0, 0, 0)
+    const buf = makeWindow(17, [{ x: 8, y: 8, id: a }, { x: 9, y: 8, id: b }])
+
+    const hits = resolvePixelWindowAll(buf, 17, reg)
+
+    expect(hits.map(h => h.id).sort((p, q) => p - q)).toEqual([a, b].sort((p, q) => p - q))
   })
 })

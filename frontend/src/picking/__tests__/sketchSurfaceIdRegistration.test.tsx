@@ -200,4 +200,20 @@ describe('useSketchSurfaceIdRegistration', () => {
     expect(spy.mock.calls[0][0].faceQueries).toEqual(['?nope'])
     p.dispose()
   })
+
+  it('ignores a hole loop too short to tessellate instead of failing the surface', () => {
+    // A one-edge "hole" yields two points, not a polygon. It is dropped like a
+    // degenerate boundary, and the outer area still registers.
+    const p = livePipeline()
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+
+    renderHook(() => useSketchSurfaceIdRegistration({
+      featureId: 'S1',
+      topology: topology([{ boundary: square, holes: [singleEdge], query: '?5;@hole' }]),
+    }))
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy.mock.calls[0][0].faceQueries).toEqual(['?5;@hole'])
+    p.dispose()
+  })
 })

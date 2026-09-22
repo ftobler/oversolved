@@ -49,6 +49,26 @@ describe('IdPipeline.resolveAsync ordering', () => {
     p.dispose()
   })
 
+  // A query that arrives after the head read has already started (between the
+  // two microtasks the deferral is built from) is not dropped and not folded
+  // into the head: it becomes the NEXT read, so its own cursor is answered
+  // rather than the head's. done() drains that queue.
+  it('runs a query that arrives while the head read is executing as the next read', async () => {
+    const p = new IdPipeline({ width: 32, height: 32 })
+    p.resolveSync = ((_r: unknown, cursor: { x: number; y: number }) => ({
+      id: 1, layer: 'face', entityKey: `cursor:${cursor.x},${cursor.y}`, distancePx: 0,
+    })) as unknown as typeof p.resolveSync
+    const renderer = {} as unknown as THREE.WebGLRenderer
+
+    const a = p.resolveAsync(renderer, { x: 1, y: 1 })
+    await Promise.resolve()  // the head read is now in flight; inFlightAsync is set
+    const b = p.resolveAsync(renderer, { x: 2, y: 2 })  // lands on nextAsync
+
+    expect((await a)?.entityKey).toBe('cursor:1,1')
+    expect((await b)?.entityKey).toBe('cursor:2,2')
+    p.dispose()
+  })
+
   it('does not trigger renders by itself', async () => {
     const p = new IdPipeline({ width: 32, height: 32 })
     p.resolveSync = (() => null) as unknown as typeof p.resolveSync

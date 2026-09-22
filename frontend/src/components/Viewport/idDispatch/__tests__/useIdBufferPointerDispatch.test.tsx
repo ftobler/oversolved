@@ -5,10 +5,12 @@ import {
   HOVER_ROUTED_LAYERS, PART_EDITOR_CONSUMED_LAYERS,
 } from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
+import { registerFeatureHandleCallbacks, resetFeatureHandleCallbacksForTest } from '../featureHandleCallbacks'
 import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, EDGE_LAYER_NAME, FACE_LAYER_NAME, ORIGIN_LAYER_NAME, PLANE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
+import { sketchEntityAdapter } from '../sketchEntityAdapter'
 import { markDrawToolClickConsumed, takeDrawToolClickConsumed } from '../drawToolClickGuard'
 import type { ActiveTool } from '@/types/cad'
 
@@ -1004,6 +1006,243 @@ describe('useIdBufferPointerDispatch', () => {
     })
 
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+  })
+
+  it('a non-primary click never resolves or toggles selection', async () => {
+    // Middle/right clicks belong to orbit/context-menu; a primary-button pick
+    // must not run for them (the browser also fires `click` for button 1).
+    pipeline.resolveSync = vi.fn()
+    useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 2, clientX: 5, clientY: 5 }))
+    })
+
+    expect(pipeline.resolveSync).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+  })
+
+  it('a pointer-down on a feature handle starts its drag', async () => {
+    resetFeatureHandleCallbacksForTest()
+    const onPointerDown = vi.fn()
+    registerFeatureHandleCallbacks('fhandle:extrude1', { onPointerDown, onDoubleClick: () => {} })
+    pipeline.resolveSync = vi.fn().mockReturnValue({
+      id: 1, layer: FEATURE_HANDLE_LAYER_NAME, entityKey: 'fhandle:extrude1', distancePx: 0,
+    })
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([FEATURE_HANDLE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 30, clientY: 40 }))
+    })
+
+    expect(onPointerDown).toHaveBeenCalledWith(30, 40)
+    resetFeatureHandleCallbacksForTest()
+  })
+
+  it('a pointer-down on a sketch entity starts a drag in select/drag mode but not while drawing', async () => {
+    const KEY = 'entity:feat1:line1'
+    pipeline.resolveSync = vi.fn().mockReturnValue({
+      id: 1, layer: SKETCH_ENTITY_LAYER_NAME, entityKey: KEY, distancePx: 0,
+    })
+    const spy = vi.spyOn(sketchEntityAdapter, 'onPointerDown')
+
+    useSketchEditorStore.setState({ activeTool: null })
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([SKETCH_ENTITY_LAYER_NAME]),
+    }))
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 10, clientY: 10 }))
+    })
+    expect(spy).toHaveBeenCalledWith(KEY, 10, 10)
+
+    spy.mockClear()
+    useSketchEditorStore.setState({ activeTool: 'line' })
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 10, clientY: 10 }))
+    })
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  describe('double-click routing', () => {
+    afterEach(() => { resetFeatureHandleCallbacksForTest(); vi.restoreAllMocks() })
+
+    it('a double-click on a dimension label opens its editor', async () => {
+      const onDoubleClick = vi.fn()
+      registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick: () => {}, onDoubleClick, onPointerDown: () => {} })
+      pipeline.resolveSync = vi.fn().mockReturnValue({
+        id: 1, layer: DIMENSION_LABEL_LAYER_NAME, entityKey: 'dim:c1', distancePx: 0,
+      })
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('dblclick', { button: 0, clientX: 120, clientY: 80 }))
+      })
+
+      expect(onDoubleClick).toHaveBeenCalledWith(120, 80)
+    })
+
+    it('a double-click on a feature handle opens its editor', async () => {
+      const onDoubleClick = vi.fn()
+      registerFeatureHandleCallbacks('fhandle:extrude1', { onPointerDown: () => {}, onDoubleClick })
+      pipeline.resolveSync = vi.fn().mockReturnValue({
+        id: 1, layer: FEATURE_HANDLE_LAYER_NAME, entityKey: 'fhandle:extrude1', distancePx: 0,
+      })
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([FEATURE_HANDLE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('dblclick', { button: 0, clientX: 40, clientY: 60 }))
+      })
+
+      expect(onDoubleClick).toHaveBeenCalledWith(40, 60)
+    })
+
+    it('ignores a non-primary double-click and a double-click over empty space', async () => {
+      const onDoubleClick = vi.fn()
+      registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick: () => {}, onDoubleClick, onPointerDown: () => {} })
+      pipeline.resolveSync = vi.fn().mockReturnValue(null)
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('dblclick', { button: 2, clientX: 1, clientY: 1 }))
+      })
+      expect(pipeline.resolveSync).not.toHaveBeenCalled()
+
+      await act(async () => {
+        canvas.dispatchEvent(new MouseEvent('dblclick', { button: 0, clientX: 1, clientY: 1 }))
+      })
+      expect(onDoubleClick).not.toHaveBeenCalled()
+    })
+  })
+
+  it('a body-edge click while dimensioning inside a sketch projects it as a dim pick', async () => {
+    // Faces are excluded: a face lowers to a whole wire, naming no single dim
+    // target, so only edge/vertex hits take the project-as-dim path.
+    pipeline.resolveSync = vi.fn().mockReturnValue({
+      id: 7, layer: EDGE_LAYER_NAME, entityKey: '?03;abc:edge', pickKey: 'b#edge#0', distancePx: 0,
+    })
+    useSketchEditorStore.setState({ activeTool: 'dimension', activeFeatureId: 'feat1' })
+    const spy = vi.spyOn(useSketchEditorStore.getState(), 'addBrepDimensionPick')
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    expect(spy).toHaveBeenCalledWith('?03;abc:edge', { isVertexPick: false, sourceKind: null })
+    spy.mockRestore()
+  })
+
+  it('attaches once the canvas appears, not only at mount', async () => {
+    // The Viewport can mount the hook before the renderer hands it a canvas, so
+    // the effect retries on an animation frame instead of going deaf.
+    glRef.current = null
+    pipeline.resolveSync = vi.fn().mockReturnValue({
+      id: 1, layer: EDGE_LAYER_NAME, entityKey: 'e', pickKey: 'k', distancePx: 0,
+    })
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME]),
+    }))
+
+    glRef.current = new StubRenderer(canvas)
+    await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())) })
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 10, clientY: 10 }))
+    })
+    expect(pipeline.resolveSync).toHaveBeenCalled()
+  })
+
+  it('keeps polling frame by frame until the canvas appears', async () => {
+    // One retry is not enough: the renderer can take several frames to attach
+    // its canvas, and a one-shot retry would leave the dispatcher deaf.
+    glRef.current = null
+    pipeline.resolveSync = vi.fn().mockReturnValue(null)
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME]),
+    }))
+
+    // First frame: still no canvas, so another frame must be booked.
+    await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())) })
+    glRef.current = new StubRenderer(canvas)
+    await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())) })
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 10, clientY: 10 }))
+    })
+    expect(pipeline.resolveSync).toHaveBeenCalled()
+  })
+
+  it('attaches through the canvas ref and refuses to resolve without a renderer', async () => {
+    // The ref is the first choice for the listen target; a canvas without a
+    // renderer still must not throw or resolve through a missing GL context.
+    const spy = vi.fn().mockReturnValue(null)
+    pipeline.resolveSync = spy as unknown as typeof pipeline.resolveSync
+    glRef.current = null
+
+    renderHook(() => useIdBufferPointerDispatch({
+      canvasRef: { current: canvas },
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 10, clientY: 10 }))
+    })
+
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('leaves the cursor unscaled when the canvas has no backing size', async () => {
+    // A canvas that has not sized its drawing buffer (width/height 0) would
+    // divide the cursor to 0 without the guard, sending every pick to the
+    // top-left corner.
+    canvas.width = 0
+    canvas.height = 0
+    const spy = vi.fn().mockReturnValue(null)
+    pipeline.resolveSync = spy as unknown as typeof pipeline.resolveSync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([EDGE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 50 }))
+    })
+
+    expect(spy).toHaveBeenCalled()
+    expect(spy.mock.calls[0][1]).toEqual({ x: 100, y: 50 })
   })
 })
 

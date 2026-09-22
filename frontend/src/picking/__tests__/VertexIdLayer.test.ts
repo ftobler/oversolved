@@ -124,6 +124,26 @@ describe('VertexIdLayer', () => {
     expect(reg.size()).toBe(0)
   })
 
+  it('registers no body for an empty vertex list', () => {
+    layer.registerBody({ bodyKey: 'empty', vertices: [], vertexQueries: [] })
+    expect(layer.bodyCount()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+    expect(reg.size()).toBe(0)
+  })
+
+  it('registers no body when every vertex is filtered as non-finite', () => {
+    // An all-NaN body would otherwise add an empty Points and hand the pipeline
+    // a pickable layer with no pixels.
+    layer.registerBody({
+      bodyKey: 'all-nan',
+      vertices: [[NaN, 0, 0], [0, NaN, 0]],
+      vertexQueries: ['vtx@A', 'vtx@B'],
+    })
+    expect(layer.bodyCount()).toBe(0)
+    expect(layer.scene.children.length).toBe(0)
+    expect(reg.size()).toBe(0)
+  })
+
   it('dispose clears every body and the material', () => {
     layer.registerBody(makeReg())
     layer.dispose()

@@ -126,4 +126,33 @@ describe('HoverScheduler', () => {
     expect(resolve).not.toHaveBeenCalled()
     expect(onHits).toHaveBeenLastCalledWith([])
   })
+
+  // A resolver that throws (a GL readback on a lost context) must not escape
+  // into the pointer handler that scheduled it, and must not wedge the
+  // scheduler: the failure is reported and the next frame still resolves.
+  it('reports a throwing resolver and stays usable for the next frame', () => {
+    const frames = frameController()
+    const onHits = vi.fn()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let fail = true
+    const scheduler = new HoverScheduler({
+      resolve: () => {
+        if (fail) throw new Error('gl read failed')
+        return [hit('h')]
+      },
+      onHits,
+      requestFrame: frames.requestFrame,
+      cancelFrame: frames.cancelFrame,
+    })
+
+    expect(() => scheduler.schedule(query(1, 1))).not.toThrow()
+    expect(warn).toHaveBeenCalledWith('hover resolve failed', expect.any(Error))
+    expect(onHits).not.toHaveBeenCalled()
+
+    frames.flush()
+    fail = false
+    scheduler.schedule(query(2, 2))
+    expect(onHits).toHaveBeenCalledWith([hit('h')])
+    warn.mockRestore()
+  })
 })
