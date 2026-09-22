@@ -42,20 +42,28 @@ describe('RebuildButton', () => {
     expect(container.querySelector('img')).toBeInTheDocument()
   })
 
-  // A hover-then-navigate-away can unmount while the 500ms hide delay is
-  // still pending; without a cleanup effect the timer survives the unmount
-  // and later calls setState on a gone component.
-  it('clears the pending hide timer on unmount', () => {
-    const { unmount } = render(<RebuildButton {...defaultProps} />)
-    const button = screen.getByRole('button', { name: /Rebuild geometry/i })
-    fireEvent.mouseEnter(button)
-    fireEvent.mouseLeave(button)  // schedules the hide timer
+  // A hover-then-navigate-away can unmount while the 500ms hide delay is still
+  // pending. Asserting a global clearTimeout was called proves nothing about
+  // that timer; the cleanup must actually cancel the one hide work that was
+  // scheduled, or it survives the unmount and later sets state on a gone
+  // component. The fake-timer count is the observable.
+  it('cancels the pending hide timer on unmount', () => {
+    vi.useFakeTimers()
+    try {
+      const { unmount } = render(<RebuildButton {...defaultProps} />)
+      const button = screen.getByRole('button', { name: /Rebuild geometry/i })
+      fireEvent.mouseEnter(button)
+      fireEvent.mouseLeave(button)  // schedules the 500ms hide
 
-    const clearSpy = vi.spyOn(window, 'clearTimeout')
-    unmount()
+      const pending = vi.getTimerCount()
+      expect(pending).toBeGreaterThan(0)
 
-    expect(clearSpy).toHaveBeenCalled()
-    clearSpy.mockRestore()
+      unmount()
+
+      expect(vi.getTimerCount()).toBe(pending - 1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   describe('validation badge', () => {

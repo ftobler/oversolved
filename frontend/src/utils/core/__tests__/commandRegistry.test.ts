@@ -211,10 +211,6 @@ describe('registerCommand / executeCommand / unregisterCommand', () => {
     expect(fn).toHaveBeenCalledOnce()
   })
 
-  it('executeCommand for unknown name does not throw', () => {
-    expect(() => executeCommand('__nonexistent__')).not.toThrow()
-  })
-
   it('after unregisterCommand the handler is not called', () => {
     const fn = vi.fn()
     registerCommand('__test__', fn)
@@ -323,12 +319,6 @@ describe('dispatchKey', () => {
     const e = fakeKey('z', { ctrlKey: true })
     dispatchKey(e)
     expect(e.preventDefault).toHaveBeenCalledOnce()
-  })
-
-  it('does not throw when mapped command has no registered handler', () => {
-    // 'undo' is in KEYMAP but we deliberately do not register a handler
-    const e = fakeKey('z', { ctrlKey: true })
-    expect(() => dispatchKey(e)).not.toThrow()
   })
 
   // A keymap entry with no handler is a registration gap (a bug): the keystroke

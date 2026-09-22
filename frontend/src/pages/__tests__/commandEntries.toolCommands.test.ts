@@ -56,10 +56,13 @@ describe('apply commands for toolbar constraints', () => {
     for (const def of implemented) {
       const e = entries.find(x => x.name === `apply_${def.kind}`)
       expect(e, `missing command apply_${def.kind} for toolbar constraint '${def.kind}'`).toBeDefined()
+      // Each entry must forward its OWN kind, not just call the action: a
+      // total-call-count check passes even if two commands are swapped.
+      applyConstraint.mockClear()
       e!.fn()
+      expect(applyConstraint).toHaveBeenCalledWith(def.kind)
     }
 
-    expect(applyConstraint).toHaveBeenCalledTimes(implemented.length)
     expect(showMessage).not.toHaveBeenCalled()
   })
 })

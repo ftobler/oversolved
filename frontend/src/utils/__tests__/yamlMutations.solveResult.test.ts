@@ -145,7 +145,8 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
     const doc = makeDoc()
     applyRemoveDanglingContent(doc, { sk1: { entities: ['proj1'], constraints: ['c1'] } })
     const extrude = doc.features!.find(f => f.id === 'ex1')!
-    expect(extrude).toBeDefined()
+    // Still present, and its geometry was not touched by the sketch cleanup.
+    expect(extrude.initial).toBeUndefined()
   })
 
   it('no-ops gracefully when the feature is not found', () => {

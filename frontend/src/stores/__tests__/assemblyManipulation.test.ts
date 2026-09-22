@@ -405,11 +405,13 @@ describe('assemblyStore part manipulation', () => {
 
     it('setSnapshot preserves the settling offset (store-owned)', () => {
       mountHost(docWith(instance('p1')))
-      useAssemblyStore.setState({ settlingOffsets: { p1: { ...IDENTITY_TRANSFORM, tx: 4 } } })
+      const offset = { ...IDENTITY_TRANSFORM, tx: 4 }
+      useAssemblyStore.setState({ settlingOffsets: { p1: offset } })
       useAssemblyStore.getState().setSnapshot({
         ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: docWith(instance('p1')),
       })
-      expect(useAssemblyStore.getState().settlingOffsets.p1).toBeTruthy()
+      // The offset survives the snapshot verbatim, not merely as some value.
+      expect(useAssemblyStore.getState().settlingOffsets.p1).toEqual(offset)
     })
   })
 })

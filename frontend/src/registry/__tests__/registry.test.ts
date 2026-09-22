@@ -19,6 +19,7 @@ import {
   ALL_COORD_INDICES,
   getDefaultParams,
 } from '@/registry/entityRegistry'
+import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
 
 // ─── Constraint registry consistency ───
 
@@ -54,7 +55,9 @@ describe('constraintRegistry', () => {
 
   it('every toolbar constraint has a toolbarIcon', () => {
     for (const c of TOOLBAR_CONSTRAINTS) {
-      expect(c.toolbarIcon).toBeTruthy()
+      // The name has to resolve to a real asset: a typo passes a truthiness
+      // check but leaves the toolbar button with a blank image.
+      expect(iconUrl(c.toolbarIcon!), c.kind).not.toBe('')
     }
   })
 
@@ -300,7 +303,8 @@ describe('entityRegistry', () => {
 
   it('every toolbar entity has toolbarIcon and activeTool', () => {
     for (const e of ENTITIES.filter(e => e.showInToolbar)) {
-      expect(e.toolbarIcon).toBeTruthy()
+      // The icon name must resolve to a real asset, or EntityTools renders it blank.
+      expect(iconUrl(e.toolbarIcon!), e.kind).not.toBe('')
       expect(e.activeTool).toBeTruthy()
     }
   })

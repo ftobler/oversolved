@@ -31,7 +31,10 @@ describe('AssemblyExport loadPartContents', () => {
     loadMock.mockResolvedValue({ content: 'kind: part\nfeatures: []', name: 'P' })
     const out = await loadPartContents([instance('h1', 'doc-a'), instance('h2', 'doc-a'), instance('h3', 'doc-b')])
     expect(loadMock).toHaveBeenCalledTimes(2)
-    expect(out['doc-a']).toBeDefined()
-    expect(out['doc-b']).toBeDefined()
+    // Two instances share doc-a, so the result is keyed by the two distinct
+    // docs and each holds its parsed content, not a placeholder entry.
+    expect(Object.keys(out).sort()).toEqual(['doc-a', 'doc-b'])
+    expect(out['doc-a']).toEqual({ kind: 'part', features: [] })
+    expect(out['doc-b']).toEqual({ kind: 'part', features: [] })
   })
 })

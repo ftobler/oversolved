@@ -176,7 +176,8 @@ describe('applyRenamePart', () => {
   it('initialises part_style if absent', () => {
     const doc: PartDoc = { version: 1, kind: 'part' }
     applyRenamePart(doc, 'body_ex1', 'Name')
-    expect(doc.part_style).toBeDefined()
+    // The absent map is created holding exactly the renamed body.
+    expect(doc.part_style).toEqual({ body_ex1: { name: 'Name' } })
   })
 })
 

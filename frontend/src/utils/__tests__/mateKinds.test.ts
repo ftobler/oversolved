@@ -62,8 +62,20 @@ describe('MATE_KINDS', () => {
     expect(MATE_KINDS[0]).toBe('fixed')
   })
 
-  it('labels every kind', () => {
-    for (const kind of MATE_KINDS) expect(MATE_KIND_LABELS[kind]).toBeTruthy()
+  // The exact strings the editor and tree render. Truthiness alone let a typo
+  // or a placeholder label ship, since every kind would still have some text.
+  it('labels every kind with the exact display string', () => {
+    expect(MATE_KIND_LABELS).toEqual({
+      fixed: 'Fixed',
+      sliding: 'Sliding',
+      rotating: 'Rotating',
+      sliding_rotating: 'Sliding + Rotating',
+      spherical: 'Spherical',
+      parallel: 'Parallel',
+      parallel_plane_distance: 'Parallel at distance',
+      tangential: 'Tangential',
+      copy_rotation: 'Copy rotation',
+    })
   })
 })
 
