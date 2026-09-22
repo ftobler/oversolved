@@ -76,10 +76,12 @@ function Harness({ pipelineRef, onReady }: {
   return <IdPickingDriver onReady={handleReady} />
 }
 
-// Faithful copy of AssemblyViewport.resolveHitsAt (reads pipelineRef.current and
-// resolves through the live pipeline); the spy on resolveAllSync records which
-// pipeline instance actually answered the hover.
-function resolveHitsAt(
+// Stands in for AssemblyViewport.resolveHitsAt: it reads pipelineRef.current and
+// resolves through that pipeline. The resolver itself is not under test (it is a
+// useCallback inside AssemblyViewport); this harness exists to prove the ref stays
+// fresh across a reveal, so a stale disposed pipeline can never answer the hover.
+// The spy on resolveAllSync records which pipeline instance actually answered.
+function hoverThroughRef(
   glRef: { current: THREE.WebGLRenderer | null },
   pipelineRef: { current: IdPipeline | null },
   clientX: number,
@@ -133,7 +135,7 @@ describe('assembly hover after a cold-load / Suspense reveal', () => {
     const hitA = { id: 1, layer: FACE_LAYER_NAME, entityKey: 'f/face/0', distancePx: 0 }
     vi.spyOn(A, 'resolveAllSync').mockImplementation(() => [hitA])
 
-    const beforeReveal = resolveHitsAt(glRef, pipelineRef, 32, 32, layers)
+    const beforeReveal = hoverThroughRef(glRef, pipelineRef, 32, 32, layers)
     expect(beforeReveal).toEqual([hitA])
 
     // The reveal: the Suspense boundary hides then re-shows the subtree, which
@@ -160,7 +162,7 @@ describe('assembly hover after a cold-load / Suspense reveal', () => {
     vi.spyOn(B, 'resolveAllSync').mockImplementation(() => [hitB])
 
     // A real hover after the reveal resolves through pipelineRef.current.
-    const afterReveal = resolveHitsAt(glRef, pipelineRef, 32, 32, layers)
+    const afterReveal = hoverThroughRef(glRef, pipelineRef, 32, 32, layers)
     expect(afterReveal).toEqual([hitB])
     // Hover answered by the live pipeline, never the disposed pre-reveal one.
     expect(B.resolveAllSync).toHaveBeenCalled()

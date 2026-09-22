@@ -18,7 +18,6 @@ describe('vertex cylinder hack is removed', () => {
 
   it('VertexDots.tsx has no cylinderGeometry', () => {
     expect(src).not.toContain('cylinderGeometry')
-    expect(src).not.toContain('cylinderGeometry')
   })
 
   it('VertexDots.tsx has no HitPolyline component', () => {

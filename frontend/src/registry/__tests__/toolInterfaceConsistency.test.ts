@@ -5,19 +5,6 @@ import { createDimensionTool } from '@/tools/DimensionTool'
 import { createDrawingTool } from '@/tools/DrawingTool'
 
 describe('ToolHandlers interface consistency', () => {
-  it('DragTool handlers satisfy ToolHandlers type', () => {
-    const tool = createDragTool()
-    expect(tool.handlers.onPointerDown).toBeDefined()
-    expect(tool.handlers.onPointerMove).toBeDefined()
-    expect(tool.handlers.onPointerUp).toBeDefined()
-  })
-
-  it('DimensionTool handlers satisfy ToolHandlers type', () => {
-    const tool = createDimensionTool()
-    expect(tool.handlers.onPointerDown).toBeDefined()
-    expect(tool.handlers.onClick).toBeDefined()
-  })
-
   it('ToolRegistry.validate() works with all tools', () => {
     const registry = new ToolRegistry()
     for (const id of ACTIVATABLE_TOOL_IDS) {

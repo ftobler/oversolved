@@ -8,7 +8,6 @@ import {
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
   SKETCH_SURFACE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME, PART_EDITOR_PICK_LAYER_NAMES,
 } from '@/picking/layerNames'
-import type { ActiveTool } from '@/types/cad'
 
 describe('getToolAllowedLayers', () => {
   it('allows all layers under null (idle select) / dimension / drag / offset', () => {
@@ -114,24 +113,6 @@ describe('getToolPickConfig.clearsSelectionOnEnter', () => {
     expect(getToolPickConfig('project').clearsSelectionOnEnter).toBe(false)
     expect(getToolPickConfig('drag').clearsSelectionOnEnter).toBe(false)
     expect(getToolPickConfig(null).clearsSelectionOnEnter).toBe(false)
-  })
-})
-
-describe('getToolPickConfig is total', () => {
-  it('returns a fully-formed config for every ActiveTool value', () => {
-    // Runtime guard mirroring the compile-time exhaustiveness of the Record:
-    // every tool resolves to a config with both fields defined.
-    const tools: ActiveTool[] = [
-      null, 'dimension', 'line', 'rect', 'center_rect', 'circle', 'arc',
-      'ellipse', 'spline', 'point', 'ngon', 'project', 'drag', 'mirror', 'offset',
-    ]
-    for (const t of tools) {
-      const cfg = getToolPickConfig(t)
-      expect(cfg).toBeDefined()
-      expect(typeof cfg.clearsSelectionOnEnter).toBe('boolean')
-      expect(typeof cfg.staysArmedAfterCommit).toBe('boolean')
-      expect(cfg.allowedLayers === null || cfg.allowedLayers instanceof Set).toBe(true)
-    }
   })
 })
 

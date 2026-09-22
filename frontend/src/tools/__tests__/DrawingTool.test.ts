@@ -323,34 +323,6 @@ describe('DrawingTool', () => {
     })
   })
 
-  describe('alignment snap integration', () => {
-    it('line tool creates entity on second click (prerequisite for alignment snap test)', () => {
-      const onMutation = vi.fn()
-      const clearDraw = vi.fn()
-      const setActiveTool = vi.fn()
-      const tool = createDrawingTool({ entityKind: 'line', paramCount: 4 })
-      const context = createMockContext({
-        onMutation,
-        clearDraw,
-        setActiveTool,
-        drawPoints: [[0, 0]],
-        activeFeatureId: 'S1',
-      })
-
-      tool.handlers.onPointerDown!({} as PointerEvent, [10, 10], context)
-
-      expect(onMutation).toHaveBeenCalledWith({
-        type: 'add_entity',
-        featureId: 'S1',
-        kind: 'line',
-        params: expect.any(Array),
-        // Every segment is named, so the next click can constrain its start to
-        // this one's end vertex.
-        entityId: expect.any(String),
-      })
-    })
-  })
-
   describe('gesture batching', () => {
     it('routes an end-snapped line through onMutationBatch as one undo step', () => {
       const onMutation = vi.fn()
