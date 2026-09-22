@@ -225,6 +225,44 @@ describe('dimension rules', () => {
     const pick = { isVertex: false, target: 'L1', entityKind: null }
     expect(resolveDimension([pick, pick])).toEqual({ constraintKind: 'line_distance' })
   })
+
+  it('resolveDimension returns null outside the 1 or 2 pick contract', () => {
+    const line = { isVertex: false, target: 'L1', entityKind: 'line' }
+    expect(resolveDimension([])).toBeNull()
+    expect(resolveDimension([line, line, line])).toBeNull()
+  })
+
+  it('resolveDimension two picks: same entity of a kind with no single-entity dim resolves to nothing', () => {
+    // A repeated pick of a point entity is not a pair dimension and has no
+    // single-entity dimension either, so the resolver yields no constraint
+    // rather than falling through to a bogus distance.
+    const point = { isVertex: false, target: 'P1', entityKind: 'point' }
+    expect(resolveDimension([point, point])).toBeNull()
+  })
+
+  it('resolveDimension treats a malformed or non-entity target as not parallel', () => {
+    // The parallel check is best-effort: a target that is a vertex selection or
+    // cannot be parsed at all must not throw, it just falls back to angle.
+    const sketch = { L2: { start: [0, 0], end: [10, 0] } }
+    expect(resolveDimension([
+      { isVertex: false, target: 'vertex:S1:V1', entityKind: 'line' },
+      { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+    ], sketch)).toEqual({ constraintKind: 'angle' })
+    expect(resolveDimension([
+      { isVertex: false, target: 'not a selection id', entityKind: 'line' },
+      { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+    ], sketch)).toEqual({ constraintKind: 'angle' })
+  })
+
+  it('resolveDimension falls back to angle when a sketch entity has no line geometry', () => {
+    // The sketch lookup can yield null or a non-object; neither may crash the
+    // parallel check, both must degrade to the pair default.
+    const malformed = { L1: null, L2: 'not an entity' }
+    expect(resolveDimension([
+      { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+      { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+    ], malformed)).toEqual({ constraintKind: 'angle' })
+  })
 })
 
 // ─── Entity registry consistency ───

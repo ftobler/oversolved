@@ -156,6 +156,18 @@ describe('bundleCache', () => {
       expect(loaded && loaded.anchors).toEqual(migrated.anchors)
     })
 
+    it('also bounds the per-doc history to the newest three states', async () => {
+      // The late-salvage path must obey the same history bound as a normal put,
+      // or a doc under active edit could grow the cache without limit.
+      await bundleCachePut(fixtureBundle('d', 'h1'))
+      await bundleCachePut(fixtureBundle('d', 'h2'))
+      await bundleCachePut(fixtureBundle('d', 'h3'))
+      expect(await bundleCachePutIfAbsent(fixtureBundle('d', 'h4'))).toBe(true)
+      expect(await readIndexKeys('d')).toEqual(['h2', 'h3', 'h4'])
+      expect(await bundleCacheGet('d', 'h1')).toBeUndefined()
+      expect(await bundleCacheGet('d', 'h4')).toBeDefined()
+    })
+
     it('two concurrent if-absent writes race cleanly: the loser never clobbers the winner', async () => {
       // Fire both without awaiting between them so the transactions overlap.
       // IndexedDB serializes same-scope readwrite transactions, so the second

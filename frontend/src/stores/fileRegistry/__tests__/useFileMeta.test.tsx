@@ -59,4 +59,37 @@ describe('useFileMeta', () => {
     const { result } = renderHook(() => useFileMeta(undefined))
     expect(result.current).toBe('missing')
   })
+
+  it('reports missing when the flat registry read rejects, rather than hanging', async () => {
+    resetFakeIndexedDb()
+    resetDbConnection()
+    installSession(async () => { throw new Error('Entry not found: x') })
+    const spy = vi.spyOn(getFileRegistry(), 'get').mockRejectedValue(new Error('indexeddb failed'))
+    const { result } = renderHook(() => useFileMeta('f1'))
+    await waitFor(() => expect(result.current).toBe('missing'))
+    spy.mockRestore()
+  })
+
+  it('reads as loading when the file id changes until the new record resolves', async () => {
+    resetFakeIndexedDb()
+    resetDbConnection()
+    const entry = await getFileRegistry().create({
+      name: 'first.step', kind: 'step', mime: 'application/step', bytes: new Uint8Array([1, 2]),
+    })
+    installSession(async () => { throw new Error('Entry not found: x') })
+    const { result, rerender } = renderHook(({ id }: { id: string }) => useFileMeta(id), {
+      initialProps: { id: entry.id },
+    })
+    await waitFor(() => expect(result.current).not.toBeNull())
+    // The stored value still belongs to the old id, so the new one is "loading".
+    rerender({ id: 'other' })
+    expect(result.current).toBeNull()
+  })
+
+  it('defaults a workspace file entry that carries no metadata', async () => {
+    installSession(async id => ({ id, kind: 'file', name: 'bare.step' }))
+    const { result } = renderHook(() => useFileMeta('f1'))
+    await waitFor(() => expect(result.current).not.toBeNull())
+    expect(result.current).toMatchObject({ name: 'bare.step', kind: 'step', mime: '', size: 0 })
+  })
 })
