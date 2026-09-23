@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import JSZip from 'jszip'
 import { IdbWorkspaceStore } from '../store'
+import { IdbCarrier } from '../idbCarrier'
 import { buildZipBytes } from '../zipCarrier'
 import { serializeTree } from '../serializer'
 import { readZipBag, readBagTree, readDirectoryBag, importBag, extractReferenceIds, type ImportBag } from '../import'
 import { addReference } from '../refs'
+import { TRASH_DIR } from '../paths'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
 import { MemoryDirectory } from '@/stores/documentStore/memoryDirectory'
@@ -270,6 +272,43 @@ describe('adoption: manifest present', () => {
     for (const file of serializeTree(sourceTree())) files[file.path] = file.data
     const parsed = readBagTree(await readZipBag(await zipOf(files), 'ws'))
     expect(parsed.missingPayloads).toEqual([])
+  })
+
+  // A folder or zip that wraps the archive in a directory (a zip unzipped into
+  // its own folder) is the same archive one level down: the wrapper prefix is
+  // rebased off every path, not treated as part of the tree.
+  it('lands a wrapped archive by rebasing the manifest and every payload path', async () => {
+    const files: Record<string, string | Uint8Array> = {}
+    for (const file of serializeTree(sourceTree())) files[`ws/${file.path}`] = file.data
+    const store = new IdbWorkspaceStore()
+    const result = await importBag(await readZipBag(await zipOf(files), 'ws'), { origin: 'ws' }, store)
+
+    const entries = await store.listEntries(result.workspace)
+    expect(entries.map(entry => entry.id).sort()).toEqual(['a', 'b'])
+    expect(await new IdbCarrier(result.workspace).referencesOf('a')).toEqual(['b'])
+    expect(result.missingPayloads).toEqual([])
+  })
+
+  // A folder that had an archive unzipped into it keeps a trashed payload under
+  // the trash directory; the manifest still names it, and the reader resolves
+  // that location instead of reporting it missing.
+  it('resolves a trashed payload from the .oversolved-trash directory', async () => {
+    const tree = treeWith([
+      documentEntry('a', 'A', { text: 'kind: part\n# live\n' }),
+      documentEntry('t', 'T', { text: 'kind: part\n# trashed\n' }),
+    ], 'source-ws')
+    tree.manifest.trash = ['t']
+    const files: Record<string, string | Uint8Array> = {}
+    for (const file of serializeTree(tree)) files[file.path] = file.data
+    const trashedPath = tree.manifest.entries.t.path
+    const payload = files[trashedPath]
+    delete files[trashedPath]
+    files[`${TRASH_DIR}/${trashedPath}`] = payload
+
+    const parsed = readBagTree(await readZipBag(await zipOf(files), 'ws'))
+
+    expect(parsed.tree.manifest.trash).toContain('t')
+    expect(parsed.tree.contents.get('t')?.text).toBe('kind: part\n# trashed\n')
   })
 
   it('refuses a bag with more than one manifest instead of picking one', async () => {

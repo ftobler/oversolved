@@ -2,8 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { IdbWorkspaceStore } from '../store'
 import { IdbCarrier } from '../idbCarrier'
 import { deserializeTree, serializeTree } from '../serializer'
+import { readZipBag, importBag } from '../import'
+import { buildZipBytes } from '../zipCarrier'
+import { addReference } from '../refs'
 import { getFileRegistry } from '@/stores/fileRegistry'
-import { bytesOf } from './fixtures'
+import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
 
 const importText = (fileId: string) =>
@@ -117,6 +120,20 @@ describe('IdbWorkspaceStore (degenerate workspace)', () => {
     expect(await carrier.referencesOf(cloneId)).toEqual([file.id])
   })
 
+  // The file id resolves in neither the workspace nor the registry, so there is
+  // nothing to adopt. The write must still land, and it must not leave an edge
+  // pointing at an entry that does not exist.
+  it('writes a document whose import_step file id resolves nowhere with no phantom edge', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Asm', { docKind: 'assembly' })
+
+    await expect(store.writeEntry(workspace, {
+      id: workspace, kind: 'document', name: 'Asm', docKind: 'assembly', text: importText('ghost-file-id'),
+    })).resolves.toBeUndefined()
+
+    expect(await new IdbCarrier(workspace).referencesMap()).toEqual({})
+  })
+
   it('writes a document whose body does not parse without adopting edges', async () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await store.create('Broken', { docKind: 'part' })
@@ -154,6 +171,38 @@ describe('IdbWorkspaceStore (degenerate workspace)', () => {
     expect(copyDoc.id).not.toBe(workspace)
     expect(copyFile.id).not.toBe(file.id)
     expect(await new IdbCarrier(copy).referencesOf(copyDoc.id)).toEqual([copyFile.id])
+  })
+
+  // duplicate's id remap has to carry provenance and trash through the same map
+  // as the entries and edges; a stale local id in either would describe an entry
+  // the copy does not hold.
+  it('duplicate remaps provenance and carries the trash through the id remap', async () => {
+    const store = new IdbWorkspaceStore()
+    const source = treeWith([
+      documentEntry('a', 'A', { text: 'kind: part\n' }),
+      fileEntry('b', 'b.step', bytesOf([1, 2, 3])),
+    ], 'source-ws')
+    addReference(source, 'a', 'b')
+    const { workspace } = await importBag(
+      await readZipBag(await buildZipBytes(source), 'ws'), { origin: 'ws' }, store,
+    )
+
+    await store.removeEntry(workspace, 'a')
+    const { workspace: copy } = await store.duplicate(workspace, 'Asm copy')
+
+    const opened = await store.open(copy)
+    const copyEntryIds = new Set(Object.keys(opened.tree.manifest.entries))
+    expect(opened.tree.manifest.provenance).toHaveLength(2)
+    for (const record of opened.tree.manifest.provenance) {
+      expect(copyEntryIds.has(record.entry)).toBe(true)
+    }
+    expect(opened.tree.manifest.provenance.map(record => record.originEntry).sort()).toEqual(['a', 'b'])
+
+    expect(opened.tree.manifest.trash).toHaveLength(1)
+    const trashedId = opened.tree.manifest.trash[0]
+    expect(await store.listEntries(copy)).not.toContainEqual(expect.objectContaining({ id: trashedId }))
+    const all = await store.listEntries(copy, { includeTrashed: true })
+    expect(all.find(entry => entry.id === trashedId)).toMatchObject({ name: 'A' })
   })
 
   it('export then re-import is byte-identical, including an adopted file', async () => {

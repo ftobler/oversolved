@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useUnsavedChangesStore, confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
-import { IdbWorkspaceStore } from '@/workspace/store'
+import { IdbWorkspaceStore, getWorkspaceStore, type OpenWorkspace } from '@/workspace/store'
+import { createTree, emptyManifest } from '@/workspace'
 import { resetWorkspaceIdb } from '@/workspace/__tests__/idbHarness'
 
 describe('confirmDiscardUnsavedChanges', () => {
@@ -81,5 +82,37 @@ describe('workspace-scoped dirty', () => {
     await vi.waitFor(() => expect(useUnsavedChangesStore.getState().dirty).toBe(false))
 
     useUnsavedChangesStore.getState().setWorkspace(null)
+  })
+
+  // A save fires two refreshes and the one that started first can resolve last.
+  // The token guard is what stops the stale one from writing its `ahead` back
+  // over the newer answer.
+  it('a stale refresh cannot overwrite a newer one with its ahead', async () => {
+    const store = getWorkspaceStore()
+    const pending: Array<(value: OpenWorkspace) => void> = []
+    const spy = vi.spyOn(store, 'open').mockImplementation(
+      () => new Promise<OpenWorkspace>(resolve => { pending.push(resolve) }),
+    )
+    const result = (ahead: boolean): OpenWorkspace => ({
+      tree: createTree(emptyManifest('race-ws')), workingRev: 0, savedRev: 0, ahead, lastEditedAt: 0,
+    })
+    try {
+      useUnsavedChangesStore.getState().setWorkspace('race-ws')
+      void useUnsavedChangesStore.getState().refreshWorkspaceDirty()
+      expect(pending).toHaveLength(2)
+
+      // The later refresh lands first and says clean.
+      pending[1](result(false))
+      await Promise.resolve()
+      expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+
+      // The earlier refresh lands after it and says dirty; it must be ignored.
+      pending[0](result(true))
+      await Promise.resolve()
+      expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+    } finally {
+      spy.mockRestore()
+      useUnsavedChangesStore.getState().setWorkspace(null)
+    }
   })
 })

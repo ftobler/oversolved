@@ -73,6 +73,21 @@ describe('IdbCarrier', () => {
     expect(restored.contents.get('a')?.text).toBe('kind: part\n# v1\n')
   })
 
+  // Discard resets to the checkpoint, so an entry the checkpoint never adopted
+  // (added after the last checkpoint) must be dropped, not left in the working
+  // copy as an orphan the checkpoint cannot account for.
+  it('discard drops a working entry the checkpoint never held', async () => {
+    const carrier = await makeCarrier([documentEntry('a', 'A', { text: 'kind: part\n# v1\n' })])
+    await carrier.checkpoint()
+    await carrier.add(documentEntry('b', 'B', { text: 'kind: part\n' }))
+    expect((await carrier.list()).map(entry => entry.id)).toEqual(['a', 'b'])
+
+    await carrier.discard()
+
+    expect((await carrier.list()).map(entry => entry.id)).toEqual(['a'])
+    await expect(carrier.read('b')).rejects.toThrow(/not found/)
+  })
+
   it('an unknown docKind refuses interpretation but survives byte-identically (I6, I9)', async () => {
     const text = 'kind: drawing\n# keep me\n'
     const carrier = await makeCarrier([documentEntry('a', 'Draft', { text, docKind: 'drawing' })])
