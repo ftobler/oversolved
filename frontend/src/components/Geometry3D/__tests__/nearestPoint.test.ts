@@ -79,6 +79,14 @@ describe('nearestPointOnArc', () => {
     expect(result.position[1]).toBeCloseTo(10, 1)
   })
 
+  it('returns the start endpoint when the point is just outside the start', () => {
+    // Point angle is below the 0..90 span, so the nearest endpoint is the start
+    // at (10,0), not the end at (0,10). A swapped start/end would return (0,10).
+    const result = nearestPointOnArc(11, -1, 0, 0, 10, 0, 90)
+    expect(result.position[0]).toBeCloseTo(10, 1)
+    expect(result.position[1]).toBeCloseTo(0, 1)
+  })
+
   it('returns nearest endpoint when arc spans 0 degrees', () => {
     const result = nearestPointOnArc(-20, 0, 0, 0, 10, -30, 30)
     expect(result.position[0]).toBeCloseTo(8.66, 1)

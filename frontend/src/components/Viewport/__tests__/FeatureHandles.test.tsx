@@ -235,6 +235,22 @@ describe('FeatureHandles drag-to-commit gesture', () => {
     expect(useSketchEditorStore.getState().dragPending).toBeNull()
   })
 
+  it('a stationary release drops the pending gesture without committing', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    expect(useSketchEditorStore.getState().dragPending).not.toBeNull()
+
+    // No pointermove ever crossed the click threshold, so the drag never
+    // activated: the release must clear the pending state without a mutation.
+    act(() => { window.dispatchEvent(new MouseEvent('pointerup')) })
+
+    expect(useSketchEditorStore.getState().dragPending).toBeNull()
+    expect(useSketchEditorStore.getState().drag).toBeNull()
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+
   it('drops a live handle gesture on unmount so orbit cannot stay locked', () => {
     const { unmount } = render(<FeatureHandles />)
     act(() => seams.callbacks!.onPointerDown(100, 200))

@@ -442,6 +442,49 @@ describe('useRubberBandSelect off-pane release guards', () => {
   })
 })
 
+describe('useRubberBandSelect Escape cancel', () => {
+  it('abandons an open band on Escape and leaves the selection untouched', () => {
+    const p = new IdPipeline({ width: PIPELINE_W, height: PIPELINE_H })
+    setLivePipeline(p)
+    try {
+      const entityId = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'sk1/eB')
+      useSketchEditorStore.getState().toggleNormalSelection('sk1/keep')
+      const { gl } = glForEntityId(entityId)
+      const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+      const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+      getLivePipeline()?.target.markClean()
+      act(() => {
+        expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(true)
+        result.current.onPointerMove(pointerEvent(40, 40))
+        expect(result.current.state.isDraggingRef.current).toBe(true)
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      })
+      expect(result.current.state.isDraggingRef.current).toBe(false)
+      expect(result.current.state.dragging).toBe(false)
+      // A late release after the cancel must stay inert: the band is gone.
+      act(() => { result.current.onPointerUp() })
+      expect(selectedKeys()).toEqual(['sk1/keep'])
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+
+  it('Escape with no band is a no-op and does not raise the band click guard', () => {
+    takeBandClickConsumed()
+    const { gl } = glForEntityId(0)
+    const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
+    const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
+    useSketchEditorStore.getState().toggleNormalSelection('sk1/keep')
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+    expect(result.current.state.isDraggingRef.current).toBe(false)
+    expect(selectedKeys()).toEqual(['sk1/keep'])
+    expect(takeBandClickConsumed()).toBe(false)
+  })
+})
+
 describe('useRubberBandSelect commit readback equivalence', () => {
   // A gl backed by a synthetic framebuffer in TARGET pixel coordinates
   // (bottom-origin rows, matching readRenderTargetPixels), so a test can

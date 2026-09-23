@@ -16,6 +16,7 @@ const makeSketch = (): Sketch => ({
   PT1: { x: 2, y: 3 } as Sketch[string],
   A1: { center: [0, 5], radius: 4, start: [-4, 5], end: [0, 9], angle_start: 180, angle_end: 90 } as Sketch[string],
   projL: { start: [20, 20], end: [30, 30], projected: true, source: '@S2/L1' } as Sketch[string],
+  SP1: { p1: [500, 500], p2: [510, 500], p3: [520, 510], p4: [530, 500] } as Sketch[string],
 })
 
 // Local fixtures: the retired snapDetection wrappers, kept here because these
@@ -56,6 +57,15 @@ describe('sketchToVertexCandidates and collectVertexTargetsFlat', () => {
     const candidates = sketchToVertexCandidates(makeSketch(), FEATURE, 'active_sketch')
     expect(candidates.some(t => t.id === 'vertex:S1:L1:start')).toBe(true)
     expect(candidates.some(t => t.id === 'vertex:S1:C1:center')).toBe(true)
+  })
+
+  it('emits the spline endpoints and control points at their solved positions', () => {
+    const candidates = sketchToVertexCandidates(makeSketch(), FEATURE, 'active_sketch')
+    const at = (id: string) => candidates.find(t => t.id === id)?.position
+    expect(at('vertex:S1:SP1:start')).toEqual([500, 500])
+    expect(at('vertex:S1:SP1:c1')).toEqual([510, 500])
+    expect(at('vertex:S1:SP1:c2')).toEqual([520, 510])
+    expect(at('vertex:S1:SP1:end')).toEqual([530, 500])
   })
 
   it('collectVertexTargetsFlat skips entities in skipIds', () => {
@@ -133,6 +143,15 @@ describe('findSnapTarget  -  vertex snap', () => {
     const result = findSnapTarget(vertexCands, entityCands, DRAG_TYPE, 10, 0.1, V_THRESH, E_THRESH)
     expect(result?.kind).toBe('vertex')
     expect(['vertex:S1:L1:end', 'vertex:S1:L2:start']).toContain(result?.vertexId)
+  })
+
+  it('snaps onto a spline end vertex', () => {
+    const sketch = makeSketch()
+    const vertexCands = vertexFixture(sketch, FEATURE, '__none__')
+    const entityCands = entityFixture(sketch, FEATURE, '__none__')
+    const result = findSnapTarget(vertexCands, entityCands, DRAG_TYPE, 530, 500, V_THRESH, E_THRESH)
+    expect(result?.kind).toBe('vertex')
+    expect(result?.vertexId).toBe('vertex:S1:SP1:end')
   })
 })
 

@@ -47,9 +47,15 @@ describe('getBodiesToRender', () => {
     expect(items).toHaveLength(0)
   })
 
-  it('returns one item per visible body', () => {
-    const items = getBodiesToRender(bodies, features, undefined, undefined)
-    expect(items).toHaveLength(1)
+  it('skips a body that carries no mesh', () => {
+    const noMesh: Record<string, BodyResult> = {
+      body_empty: { id: 'body_empty', created_by: 'ex1', modified_by: [] } as unknown as BodyResult,
+    }
+    expect(getBodiesToRender(noMesh, features, undefined, undefined)).toEqual([])
+  })
+
+  it('returns [] when the bodies record is undefined', () => {
+    expect(getBodiesToRender(undefined, features, undefined, undefined)).toEqual([])
   })
 
   it('keeps rendering when created_by does not match any feature', () => {

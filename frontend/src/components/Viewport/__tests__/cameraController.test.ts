@@ -65,6 +65,16 @@ describe('cameraController', () => {
     expect(Number.isFinite(cam.zoom)).toBe(true)
   })
 
+  it('fits tuple (array) vertex data, not only Float32Array', () => {
+    const cam = makeOrtho()
+    const bodies: Record<string, BodyResult> = {
+      a: { mesh: { vertices: [[-10, -10, -10], [10, 10, 10]] } } as unknown as BodyResult,
+    }
+    expect(fitToContent(cam, makeControls() as never, bodies, null)).toBe(true)
+    expect(Number.isFinite(cam.zoom)).toBe(true)
+    expect(cam.zoom).toBeGreaterThan(0)
+  })
+
   it('scene fallback measures only fitBounds-tagged meshes and is stable on repeat (no oscillation)', () => {
     const cam = makeOrtho()
     const scene = new THREE.Scene()

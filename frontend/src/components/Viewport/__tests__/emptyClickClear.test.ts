@@ -47,15 +47,6 @@ describe('missClearsNormalSelection', () => {
     })).toBe(false)
   })
 
-  it('does not clear for a right-button gesture', () => {
-    expect(missClearsNormalSelection({
-      clickConsumedByIdDispatch: false,
-      clickWasStaleResolve: false,
-      bandDragging: false,
-      stationaryPrimaryClick: false,
-    })).toBe(false)
-  })
-
   it('each guard alone is sufficient to decline', () => {
     const base = {
       clickConsumedByIdDispatch: false,

@@ -164,16 +164,17 @@ describe('computeDragMutation', () => {
     }
   })
 
-  it('returns move_vertex for alignment snap (no constraint)', () => {
+  it('ignores the alignmentSnap argument: the snapped position is already in currentWorld', () => {
     const drag = makeDrag({ startClient: [100, 100], currentWorld: [5, 0.1] })
+    // computeDragMove bakes the alignment-snapped position into currentWorld, so
+    // computeDragMutation reads currentWorld and never this argument. A point
+    // deliberately different from currentWorld pins that it stays ignored.
     const alignmentSnap = {
-      point: [0, 0] as [number, number],
+      point: [99, 99] as [number, number],
       kind: 'kinda_horizontal',
       vertexId: 'vertex:S1:L1:end',
     }
     const result = computeDragMutation([200, 200], drag, null, alignmentSnap)
-    // Alignment snap moves vertex to currentWorld position without creating a constraint.
-    // The alignment-snapped position is already baked into currentWorld by computeDragMove.
     expect(result?.type).toBe('move_vertex')
     if (result?.type === 'move_vertex') {
       expect(result.to).toEqual([5, 0.1])
@@ -275,6 +276,19 @@ describe('computeDragMutation', () => {
       expect(result.radius).toBeCloseTo(7.5)
       expect(result.solvedGeometry).toEqual(geometry)
     }
+  })
+
+  it('edge drag in radius mode with no solved geometry commits no mutation', () => {
+    const drag = makeDrag({
+      type: 'edge',
+      startClient: [100, 100],
+      startWorld: [0, 0],
+      currentWorld: [3, 4],
+    })
+    // Radius mode reads the solved radius off the drag frame; with no geometry
+    // published for this feature there is nothing to resize to, so emit nothing.
+    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, mode: 'radius' })
+    expect(result).toBeNull()
   })
 
   it('edge drag in locked mode commits no mutation', () => {
