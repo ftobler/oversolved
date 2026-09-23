@@ -1,14 +1,32 @@
 // Pure tests for up-to terminator resolution + distance (feature: extrude-up-to).
 // The plane / point branches of resolveUpToPlane do not touch OCC, so oc/scope/
-// table are unused here and passed as null.
+// table are unused here and passed as null. The body-face branch's two OCC reads
+// (extractOccFace, computeFacePlane) are stood in so its success and non-planar
+// outcomes are pinned without the opencascade.js artifact; trimAtPlane's cap-face
+// guard is driven through a fake oc that reports a not-done builder.
 
-import { describe, it, expect } from 'vitest'
-import { resolveUpToPlane, upToDistance, orientToTarget, type CutPlane } from './upTo'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { resolveUpToPlane, upToDistance, orientToTarget, trimAtPlane, type CutPlane } from './upTo'
 import { AmbiguousQueryError } from '../query'
 import type { Repository } from '../query'
-import type { OccModule } from '../occ/occTypes'
+import type { Body } from '../types3d'
+import type { OccModule, OccShape } from '../occ/occTypes'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { HandleTable } from '../occ/handleTable'
+
+// The body-face branch reads a real OCC face through these two functions; the
+// OCC-free harness stands them in so the success and non-planar outcomes are
+// pinned even when opencascade.js is absent (where upToReal.test.ts skips).
+vi.mock('../occ/faceLoops', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../occ/faceLoops')>()
+  return { ...actual, extractOccFace: vi.fn(), computeFacePlane: vi.fn() }
+})
+import { extractOccFace, computeFacePlane } from '../occ/faceLoops'
+
+afterEach(() => {
+  vi.mocked(extractOccFace).mockReset()
+  vi.mocked(computeFacePlane).mockReset()
+})
 
 function repoReturning(entry: unknown): Repository {
   return { query: () => entry } as unknown as Repository
@@ -112,6 +130,60 @@ describe('resolveUpToPlane', () => {
   it('returns null for a payload that names no plane, face or point', () => {
     // An unrecognised registry payload falls back to the blind distance.
     expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repoReturning({ type: 'weird' }), {})).toBeNull()
+  })
+
+  it('resolves a planar body face through its OCC plane and normalizes the normal', () => {
+    // Entry with body_id + face_index: the branch extracts the picked face from
+    // the body shape and reads its surface plane. A non-unit surface normal must
+    // come back normalized, not as raw OCC units.
+    const table = { get: () => ({}) } as unknown as HandleTable
+    const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, Body>
+    vi.mocked(computeFacePlane).mockReturnValue({
+      origin: [1, 2, 10], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 4],
+    })
+    const cut = resolveUpToPlane(noOcc, noScope, table, 'q', [0, 0, 1], repoReturning({ body_id: 'body_b', face_index: 2 }), bodyStore)
+    expect(cut).toEqual({ origin: [1, 2, 10], normal: [0, 0, 1] })
+    // The body shape must be resolved through the handle table and the picked
+    // face index handed to extractOccFace, or the plane would come from the
+    // wrong face regardless of the normal normalization.
+    expect(vi.mocked(extractOccFace)).toHaveBeenCalledWith(noOcc, noScope, {}, 2)
+  })
+
+  it('throws for a non-planar body face instead of falling back to the blind distance', () => {
+    // A curved face cannot define a cutting plane; reporting it as an unresolved
+    // pick would quietly extrude the blind distance. The failure must be named.
+    const table = { get: () => ({}) } as unknown as HandleTable
+    const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, Body>
+    vi.mocked(computeFacePlane).mockImplementation(() => {
+      throw new Error('Only flat faces can be used as extrude profiles')
+    })
+    expect(() =>
+      resolveUpToPlane(noOcc, noScope, table, 'q', [0, 0, 1], repoReturning({ body_id: 'body_b', face_index: 3 }), bodyStore),
+    ).toThrow(/target face is not planar/)
+  })
+})
+
+describe('trimAtPlane cap-face guard', () => {
+  it('throws when the cap-face builder is not done rather than sweeping a null half-space', () => {
+    // Face() on a not-done builder does not throw in this build, it returns a
+    // NULL shape; sweeping that would make the Common below silently delete the
+    // whole body, so the guard has to fail loud.
+    class Poly {
+      Add_1(): void {}
+      Close(): void {}
+      Wire(): object { return {} }
+    }
+    const oc = {
+      BRepBuilderAPI_MakePolygon_1: Poly,
+      gp_Pnt_3: class {},
+      BRepBuilderAPI_MakeFace_15: class {
+        IsDone(): boolean { return false }
+      },
+    } as unknown as OccModule
+    const scope = { track: <T>(x: T): T => x } as unknown as DisposeScope
+    expect(() =>
+      trimAtPlane(oc, scope, {} as OccShape, { origin: [0, 0, 0], normal: [0, 0, 1] }, [0, 0, 1]),
+    ).toThrow(/could not build a planar cap face/)
   })
 })
 

@@ -203,6 +203,59 @@ describe('array add fuse releases (H21)', () => {
     }
   })
 
+  it('reports the deleted body and an empty body_ids when the add leaves no solid', () => {
+    // resplitBody returns [] only when the fused shape holds no solid at all (a
+    // failed boolean), at which point it has already deleted the body. The
+    // fallback must not hand back the live source id for a body that is gone:
+    // body_ids is explicitly empty and the warning names the deletion.
+    mocks.booleanWithDiff.mockImplementation(() => ({
+      shape: makeDouble('fused'), faceOrigin: [], diff: emptyBrepDiff(),
+    }))
+    mocks.transformCopyWithMapping.mockImplementation(() => ({ shape: makeDouble('inst'), builder: {} }))
+    mocks.rebuildNamesForTransformedCopy.mockReturnValue({ faceNames: {}, faceAncestry: {}, edgeNames: {}, edgeAncestry: {} })
+    mocks.readSourceFaceRows.mockReturnValue([])
+    mocks.transferBooleanNames.mockReturnValue({ face_names: {}, edge_names: {}, face_ancestry: {}, edge_ancestry: {} })
+    mocks.resplitBody.mockReturnValue([])
+
+    const table = new HandleTable({ finalizerGuard: false })
+    const source = makeDouble('source')
+    const body: Body = { ...bareBody('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
+    const scope = new DisposeScope()
+    const bodyStore: Record<string, Body> = { body_ex1: body }
+    const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository
+    try {
+      const result = solveArray(
+        null as unknown as OccModule,
+        scope,
+        table,
+        {
+          id: 'ar1',
+          array: {
+            source_body: 'body_ex1',
+            mode: 'linear',
+            count_x: 2,
+            pitch_x: 10,
+            include_source: true,
+            operation: 'add',
+            direction_x_query: 'qx',
+          },
+        },
+        repo,
+        bodyStore,
+      )
+      expect(result).toEqual({
+        status: 'ok',
+        body_id: 'body_ex1',
+        body_ids: [],
+        operation: 'add',
+        solver_warning: "array: the add removed all of body 'body_ex1'; the body was deleted",
+      })
+    } finally {
+      scope.dispose()
+      table.disposeAll()
+    }
+  })
+
   it('keeps the live fused-intermediate peak at 1 for 4 and 12 instances', () => {
     const { table: t4, scope: s4 } = run(4, true)
     try {
