@@ -7,11 +7,11 @@
 //
 // Skips when opencascade.js is not installed.
 
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { loadOcc } from './occ/loadOcc'
 import { HandleTable } from './occ/handleTable'
 import { DisposeScope } from './occ/disposeScope'
-import { extractBrepMetadata } from './solveLocally'
+import { extractBrepMetadata, tessellateBodies } from './solveLocally'
 import type { OccModule } from './occ/occTypes'
 import type { OccHandle } from './occ/handleTable'
 import type { Body } from './types3d'
@@ -79,6 +79,49 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
     expect(result).toHaveProperty('body_valid')
     const entryV = result.body_valid as Record<string, unknown>
     expect((entryV.mesh as Record<string, unknown>).face_data as unknown[]).toHaveLength(6)
+
+    table.release(validHandle)
+    scope.dispose()
+    table.assertNoLeaks()
+  })
+
+  it('skips a body that fails to tessellate, continues, and logs it', () => {
+    const table = new HandleTable({ finalizerGuard: false })
+    const scope = new DisposeScope()
+
+    // Stale handle: released before the call, so the mesh path throws. The
+    // B-rep twin tolerates this too, but tessellation must ALSO not be silent:
+    // dropping the only body of an import leaves a doc that solved "ok" and
+    // renders nothing.
+    const staleHandle = boxShape(scope, table, 10, 10, 10, 'stale')
+    table.release(staleHandle)
+
+    const validHandle = boxShape(scope, table, 10, 10, 10, 'f2')
+
+    const bodyStore: Record<string, Body> = {
+      body_stale: makeBody('body_stale', 'f1', staleHandle),
+      body_valid: makeBody('body_valid', 'f2', validHandle),
+    }
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let result: Record<string, Record<string, unknown>> = {}
+    let errorCount = 0
+    let errorMessage = ''
+    try {
+      result = tessellateBodies(occ, table, bodyStore)
+      // mockRestore clears the recorded calls, so read them before restoring.
+      errorCount = error.mock.calls.length
+      errorMessage = String(error.mock.calls[0]?.[0])
+    } finally {
+      error.mockRestore()
+    }
+
+    expect(result).not.toHaveProperty('body_stale')
+    expect(result).toHaveProperty('body_valid')
+    const entryV = result.body_valid as Record<string, unknown>
+    expect(Array.isArray((entryV.mesh as Record<string, unknown>).vertices)).toBe(true)
+
+    expect(errorCount).toBe(1)
+    expect(errorMessage).toContain('body_stale')
 
     table.release(validHandle)
     scope.dispose()

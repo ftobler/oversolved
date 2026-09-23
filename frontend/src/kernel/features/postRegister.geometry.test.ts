@@ -82,6 +82,22 @@ describe('registerSolvedGeometrySlash rich dicts', () => {
     expect(repo.elements.get('f1/p1/xy')).toEqual({ external_xy: [4, 5], sketch_id: 'f1' })
   })
 
+  it('skips geometry keyed to an entity the feature does not list', () => {
+    // A stale solver output can carry an entity id the current feature no
+    // longer declares; registering it would leave a ghost slash path that
+    // downstream picks resolve against.
+    const repo = initGlobalRepo()
+    postRegister(repo, 'f1', { id: 'f1', entities: [{ id: 'c0', kind: 'circle' }] }, {
+      status: 'ok',
+      geometry: {
+        c0: { center: [1, 2], radius: 3 },
+        ghost: { center: [4, 5], radius: 6 },
+      },
+    })
+    expect(repo.elements.has('f1/c0')).toBe(true)
+    expect(repo.elements.has('f1/ghost')).toBe(false)
+  })
+
   it('skips a rich geometry kind it has no slash form for', () => {
     // A spline has no entity-level slash params form here; it must not be
     // registered as an empty/garbage element.

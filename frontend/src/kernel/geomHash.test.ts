@@ -45,6 +45,11 @@ describe("pyRound4Str matches CPython str(round(v, 4))", () => {
     [-0.0001, "-0.0001"],
     [99999.99995, "99999.9999"],
     [1.0000000001, "1.0"],
+    // CPython str(round(...)) of the non-finite values is the bare word; these
+    // branches exist only for that parity and would otherwise be unasserted.
+    [NaN, "nan"],
+    [Infinity, "inf"],
+    [-Infinity, "-inf"],
   ]
   for (const [v, want] of cases) {
     it(`${v} -> ${want}`, () => expect(pyRound4Str(v)).toBe(want))

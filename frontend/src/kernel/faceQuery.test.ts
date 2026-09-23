@@ -98,5 +98,9 @@ describe("buildFaceQuery collision guard (no uuid, body-wide ancestry)", () => {
     // so they can separate siblings even when the uuid is absent.
     const q = buildFaceQuery("f1", "body_0", 0, "flatface", null, ["@f1/e0"], null, null)
     expect(q).not.toBeNull()
+    // Non-null alone would still pass if the tokens were only counted by the
+    // collision guard and then dropped from the emitted ids; the face-specific
+    // token has to actually reach the wire to separate the siblings.
+    expect(parseAncestry(q as string)[0]).toContain("@f1/e0")
   })
 })

@@ -6,11 +6,12 @@ import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
 import { Repository } from './query'
 
-// The createFeatureSolver adapter has two pre-dispatch short-circuits that the
+// The createFeatureSolver adapter has pre-dispatch short-circuits that the
 // existing suite does not drive THROUGH the adapter: the `variable` kind (no
-// geometry, evaluated against the variable context) and the expression-
-// resolution failure (a bad math expression is rejected before the leaf solver
-// runs). solveVariable and resolveFeatureExpressions are unit-tested directly
+// geometry, evaluated against the variable context), the expression-resolution
+// failure for a generic leaf, and the same failure for `import_step`, which
+// resolves its expression params on its own branch before reaching the file-map
+// solver. solveVariable and resolveFeatureExpressions are unit-tested directly
 // elsewhere; these pin their routing inside the adapter.
 
 describe('createFeatureSolver pre-dispatch short-circuits', () => {
@@ -62,6 +63,21 @@ describe('createFeatureSolver pre-dispatch short-circuits', () => {
     ) as FeatureResult
     // The bad expression is rejected before the (OCC-backed) extrude solver runs,
     // so this never throws -- it surfaces as a clean exception result.
+    expect(result.status).toBe('exception')
+    expect(String(result.exception)).toContain('2+/')
+  })
+
+  it('returns an exception when an import_step carries an invalid scale expression', () => {
+    // import_step resolves its expression params on its own branch before
+    // dispatching to the file-map solver, so a bad scale must be rejected there
+    // too, never fall through to solveImportStep.
+    const solver = createFeatureSolver(fakeOc, scope, table)
+    const result = solver(
+      { id: 's1', kind: 'import_step', scale: '2+/' },
+      new Repository(),
+      {},
+      {},
+    ) as FeatureResult
     expect(result.status).toBe('exception')
     expect(String(result.exception)).toContain('2+/')
   })

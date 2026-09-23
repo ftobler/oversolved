@@ -170,6 +170,21 @@ describe('describeProfile', () => {
     expect(r.reasons.some((x) => x.includes('degenerate'))).toBe(false)
   })
 
+  it('does not call a full-turn arc degenerate for a sub-tolerance seam', () => {
+    // A 360 degree arc closes on itself by construction, so its seam endpoints
+    // can disagree by a floating-point amount that still sits under
+    // OCC_CONFUSION. That chord is not the C10 degenerate-edge signal; without
+    // the angle check this would flag a perfectly good circle unbuildable.
+    const arc: LoopEdge[] = [{
+      kind: 'arc', center: [0, 0], radius: 5,
+      angle_start_deg: 0, angle_end_deg: 360, ccw: true,
+      start: [5, 0], end: [5, 1e-8],
+    }]
+    const r = describeProfile([arc])
+    expect(r.loops[0].minChord).toBe(Infinity)
+    expect(r.reasons.some((x) => x.includes('degenerate'))).toBe(false)
+  })
+
   it('notes when hole nesting only holds at one arc sampling', () => {
     // A small circle tucked against the big circle's chord: the 1-sample
     // polygon (a diamond) excludes its centroid, the 64-sample one contains it.
