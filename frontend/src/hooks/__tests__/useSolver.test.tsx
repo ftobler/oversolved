@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { act } from '@testing-library/react'
+import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 
 const { mockSolveLocally } = vi.hoisted(() => ({
   mockSolveLocally: vi.fn(),
@@ -171,7 +172,7 @@ describe('useSolver', () => {
   function setupHook(opts?: { onFirstSolve?: () => void }) {
     const docRef = { current: makeDoc() }
     const setDoc = vi.fn()
-    const { result, unmount } = renderHook(() =>
+    const { result, unmount } = renderHookStrict(() =>
       useSolver('test-uuid', { onFirstSolve: opts?.onFirstSolve }, docRef, setDoc),
     )
     return { result, unmount, docRef, setDoc }

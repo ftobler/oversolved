@@ -4,7 +4,8 @@
 // mutation from computeDragMutation to the store) so the test exercises the real
 // usePartDoc commit + undo accounting.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { act } from '@testing-library/react'
+import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { computeDragMutation } from '@/components/Geometry3D/dragLogic'
 import type { PartDoc, Mutation } from '@/types/cad'
@@ -95,7 +96,7 @@ function edgeDrag(currentWorld: [number, number]): VertexOrEdgeDrag {
  *  forwarded to the store. Returns the mutation that was (or was not) committed. */
 function commitDrag(drag: VertexOrEdgeDrag, lastDragSolve: Parameters<typeof computeDragMutation>[4]) {
   docRef.current = makeDoc()
-  const { result } = renderHook(() => usePartDoc('doc1', { solveOnLoad: false }))
+  const { result } = renderHookStrict(() => usePartDoc('doc1', { solveOnLoad: false }))
   const m = computeDragMutation([200, 200], drag, null, null, lastDragSolve)
   if (m) act(() => { result.current.handleMutation(m as Mutation) })
   return { m, result }
@@ -146,7 +147,7 @@ describe('circle-rim drag commit accounting', () => {
 
   it('resize_circle bypasses the checkpoint cache like the other drag commits', () => {
     docRef.current = makeDoc()
-    const { result } = renderHook(() => usePartDoc('doc1', { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('doc1', { solveOnLoad: false }))
     act(() => {
       result.current.handleMutation({
         type: 'resize_circle',

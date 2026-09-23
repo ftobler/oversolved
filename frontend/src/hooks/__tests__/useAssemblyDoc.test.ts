@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { act } from '@testing-library/react'
+import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 
 const h = vi.hoisted(() => {
   const make = () => {
@@ -74,7 +75,7 @@ describe('useAssemblyDoc', () => {
   })
 
   it('loads an assembly document with kind preserved', async () => {
-    const { result } = renderHook(() => useAssemblyDoc('A'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('A'))
     await tick()
     await act(async () => { h.loads.A.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
     await tick()
@@ -84,7 +85,7 @@ describe('useAssemblyDoc', () => {
   })
 
   it('prepends assembly built-ins (not part built-ins) to an empty-feature assembly', async () => {
-    const { result } = renderHook(() => useAssemblyDoc('B'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('B'))
     await tick()
     await act(async () => { h.loads.B.resolve({ content: 'kind: assembly\nfeatures: []', name: 'EmptyAsm' }) })
     await tick()
@@ -99,7 +100,7 @@ describe('useAssemblyDoc', () => {
 
   it('returns features when present on assembly doc', async () => {
     const content = 'kind: assembly\nfeatures:\n  - id: O1\n    kind: origin\n  - id: P1\n    kind: plane'
-    const { result } = renderHook(() => useAssemblyDoc('C'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('C'))
     await tick()
     await act(async () => { h.loads.C.resolve({ content, name: 'Planes' }) })
     await tick()
@@ -110,7 +111,7 @@ describe('useAssemblyDoc', () => {
   })
 
   it('returns null doc and sets loading when uuid is undefined', async () => {
-    const { result } = renderHook(() => useAssemblyDoc(undefined))
+    const { result } = renderHookStrict(() => useAssemblyDoc(undefined))
     await tick()
     await tick()
     expect(result.current.doc).toBeNull()
@@ -126,7 +127,7 @@ describe('useAssemblyDoc', () => {
       redoStack: [{ doc: { kind: 'assembly', features: [] }, label: 'Add mate' as const }],
     })
 
-    const { result } = renderHook(() => useAssemblyDoc('D'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('D'))
     await tick()
     await act(async () => { h.loads.D.reject(new Error('boom')) })
     await tick()
@@ -143,7 +144,7 @@ describe('useAssemblyDoc', () => {
   // previous document was on screen, and leaving it there under the error made
   // the toolbar and tree look live over a doc that failed to load.
   it('nulls the document when a reload fails, so no stale editor survives', async () => {
-    const { result, rerender } = renderHook(({ id }: { id: string }) => useAssemblyDoc(id), {
+    const { result, rerender } = renderHookStrict(({ id }: { id: string }) => useAssemblyDoc(id), {
       initialProps: { id: 'E1' },
     })
     await tick()
@@ -166,7 +167,7 @@ describe('useAssemblyDoc', () => {
   // surviving into B could write A's content under B's uuid. The failed-load
   // branch is tested above; this pins the same guard on a successful load.
   it('a successful load clears any previous document history from the store', async () => {
-    renderHook(() => useAssemblyDoc('first'))
+    renderHookStrict(() => useAssemblyDoc('first'))
     await tick()
     await act(async () => { h.loads.first.resolve({ content: 'kind: assembly\nfeatures: []', name: 'AsmA' }) })
     await tick()
@@ -178,7 +179,7 @@ describe('useAssemblyDoc', () => {
     })
     expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
 
-    renderHook(() => useAssemblyDoc('second'))
+    renderHookStrict(() => useAssemblyDoc('second'))
     await tick()
     await act(async () => { h.loads.second.resolve({ content: 'kind: assembly\nfeatures: []', name: 'AsmB' }) })
     await tick()
@@ -192,7 +193,7 @@ describe('useAssemblyDoc', () => {
   // serialized is still the current one: an edit landing inside the save's
   // async windows postdates the stored bytes and must keep the warning alive.
   it('keeps the dirty flag when an edit lands between the screenshot and the save resolving', async () => {
-    const { result } = renderHook(() => useAssemblyDoc('SA'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('SA'))
     await tick()
     await act(async () => { h.loads.SA.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
     await tick()
@@ -227,7 +228,7 @@ describe('useAssemblyDoc', () => {
   })
 
   it('clears the dirty flag when nothing was edited during the save', async () => {
-    const { result } = renderHook(() => useAssemblyDoc('SB'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('SB'))
     await tick()
     await act(async () => { h.loads.SB.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
     await tick()
@@ -244,7 +245,7 @@ describe('useAssemblyDoc', () => {
   })
 
   it('chains an overlapping save so the newer bytes land after the stale ones', async () => {
-    const { result } = renderHook(() => useAssemblyDoc('CH'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('CH'))
     await tick()
     await act(async () => { h.loads.CH.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
     await tick()
@@ -292,7 +293,7 @@ describe('useAssemblyDoc', () => {
   // A failed store write is reported, not swallowed: the caller keys its exit
   // guard off the boolean, and the page shows the error banner.
   it('returns false and surfaces the error when the store save rejects', async () => {
-    const { result } = renderHook(() => useAssemblyDoc('SF'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('SF'))
     await tick()
     await act(async () => { h.loads.SF.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
     await tick()
@@ -312,7 +313,7 @@ describe('useAssemblyDoc', () => {
   })
 
   it('renames the document and reflects the new name without a reload', async () => {
-    const { result } = renderHook(() => useAssemblyDoc(undefined))
+    const { result } = renderHookStrict(() => useAssemblyDoc(undefined))
 
     let renamePromise!: Promise<boolean>
     await act(async () => {
@@ -327,7 +328,7 @@ describe('useAssemblyDoc', () => {
   })
 
   it('returns false and surfaces the error when the store rename rejects', async () => {
-    const { result } = renderHook(() => useAssemblyDoc(undefined))
+    const { result } = renderHookStrict(() => useAssemblyDoc(undefined))
 
     let renamePromise!: Promise<boolean>
     await act(async () => {
@@ -342,7 +343,7 @@ describe('useAssemblyDoc', () => {
   })
 
   it('forwards a clone to the store and hands back its new id', async () => {
-    const { result } = renderHook(() => useAssemblyDoc(undefined))
+    const { result } = renderHookStrict(() => useAssemblyDoc(undefined))
 
     const cloned = await result.current.cloneDoc('SRC')
 
@@ -354,7 +355,7 @@ describe('useAssemblyDoc', () => {
   // tile and picker read the same record the save wrote; only the base64 half
   // of the data URL is stored.
   it('stores the screenshot preview under the workspace and uuid on save', async () => {
-    const { result } = renderHook(() => useAssemblyDoc('SP', 'ws1'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('SP', 'ws1'))
     await tick()
     await act(async () => { h.loads.SP.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
     await tick()
@@ -370,7 +371,7 @@ describe('useAssemblyDoc', () => {
   })
 
   it('falls back to the uuid as the preview workspace when none is given', async () => {
-    const { result } = renderHook(() => useAssemblyDoc('SP2'))
+    const { result } = renderHookStrict(() => useAssemblyDoc('SP2'))
     await tick()
     await act(async () => { h.loads.SP2.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
     await tick()

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PartDoc } from '@/types/cad'
@@ -45,14 +45,14 @@ describe('commitEditSession undo entry', () => {
   })
 
   it('pushes no undo entry when the session changed nothing', () => {
-    const { result } = renderHook(() => usePartDoc('u', { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     result.current.startEditSession(true)
     result.current.commitEditSession()
     expect(pushUndo).not.toHaveBeenCalled()
   })
 
   it('pushes one undo entry naming the edited feature when the doc changed', () => {
-    const { result } = renderHook(() => usePartDoc('u', { solveOnLoad: false }))
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     result.current.startEditSession(true)
     docRef.current = { features: [{ id: 'extrude-1' }] } as unknown as PartDoc
