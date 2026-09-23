@@ -52,7 +52,10 @@ describe('applyAddDeleteBodyRef', () => {
 
   it('ignores unknown featureId', () => {
     const doc = emptyDoc()
-    expect(() => applyAddDeleteBodyRef(doc, 'nope', '@body_ex1')).not.toThrow()
+    const before = structuredClone(doc)
+    applyAddDeleteBodyRef(doc, 'nope', '@body_ex1')
+    expect(doc).toEqual(before)
+    expect(doc.features).toEqual([])
   })
 })
 
@@ -66,6 +69,9 @@ describe('applyRemoveDeleteBodyRef', () => {
 
   it('ignores unknown featureId', () => {
     const doc = emptyDoc()
-    expect(() => applyRemoveDeleteBodyRef(doc, 'nope', 0)).not.toThrow()
+    const before = structuredClone(doc)
+    applyRemoveDeleteBodyRef(doc, 'nope', 0)
+    expect(doc).toEqual(before)
+    expect(doc.features).toEqual([])
   })
 })

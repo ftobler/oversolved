@@ -74,8 +74,11 @@ describe('hole setters', () => {
 
   it('ignores unknown featureId', () => {
     const doc = emptyDoc()
-    expect(() => applySetHoleField(doc, 'nope', 'sketch', '@sk1')).not.toThrow()
-    expect(() => applySetHoleField(doc, 'nope', 'diameter', 5)).not.toThrow()
+    const before = structuredClone(doc)
+    applySetHoleField(doc, 'nope', 'sketch', '@sk1')
+    applySetHoleField(doc, 'nope', 'diameter', 5)
+    expect(doc).toEqual(before)
+    expect(doc.features).toEqual([])
   })
 
   // setFeatureField guards numeric writes: a NaN diameter persisted into YAML

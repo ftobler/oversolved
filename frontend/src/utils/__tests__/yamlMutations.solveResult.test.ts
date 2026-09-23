@@ -71,13 +71,18 @@ describe('applyGeometryToFeature (pure solve path)', () => {
 
   it('no-ops gracefully when featureId is not found', () => {
     const doc = makeDoc()
-    expect(() => applyGeometryToFeature(doc, 'missing', {})).not.toThrow()
+    const before = structuredClone(doc)
+    applyGeometryToFeature(doc, 'missing', {})
+    expect(doc).toEqual(before)
+    expect(doc.features!.find(f => f.id === 'missing')).toBeUndefined()
   })
 
   it('no-ops when the doc has no features array', () => {
     const doc = { version: 1, kind: 'part' } as PartDoc
+    const before = structuredClone(doc)
     applyGeometryToFeature(doc, 'sk1', { x: [1] })
     // A read-modify-write must not lazily materialize an empty feature list.
+    expect(doc).toEqual(before)
     expect(doc.features).toBeUndefined()
   })
 })
@@ -158,9 +163,9 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
 
   it('no-ops gracefully when the feature is not found', () => {
     const doc = makeDoc()
-    expect(() =>
-      applyRemoveDanglingContent(doc, { missing: { entities: ['x'], constraints: ['y'] } })
-    ).not.toThrow()
+    const before = structuredClone(doc)
+    applyRemoveDanglingContent(doc, { missing: { entities: ['x'], constraints: ['y'] } })
+    expect(doc).toEqual(before)
     expect(doc.features).toHaveLength(2)
   })
 
@@ -168,15 +173,17 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
     // A non-sketch feature (an extrude) has neither list; the cleanup must
     // treat it as having nothing removable rather than throwing.
     const doc = makeDoc()
-    expect(() =>
-      applyRemoveDanglingContent(doc, { ex1: { entities: ['x'], constraints: ['y'] } })
-    ).not.toThrow()
+    const before = structuredClone(doc)
+    applyRemoveDanglingContent(doc, { ex1: { entities: ['x'], constraints: ['y'] } })
+    expect(doc).toEqual(before)
     expect(doc.features!.find(f => f.id === 'ex1')!.initial).toBeUndefined()
   })
 
   it('no-ops when the doc has no features array', () => {
     const doc = { version: 1, kind: 'part' } as PartDoc
+    const before = structuredClone(doc)
     applyRemoveDanglingContent(doc, { sk1: { entities: ['x'], constraints: ['y'] } })
+    expect(doc).toEqual(before)
     expect(doc.features).toBeUndefined()
   })
 })

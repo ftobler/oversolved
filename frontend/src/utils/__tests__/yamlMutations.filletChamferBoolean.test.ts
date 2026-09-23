@@ -42,7 +42,10 @@ describe('applyAddFilletEdge toggle', () => {
     const doc: PartDoc = {
       features: [{ id: 'fillet1', kind: 'sketch' }],
     }
-    expect(() => applyAddFilletEdge(doc, 'fillet1', '?body_ex1:edge:0')).not.toThrow()
+    const before = structuredClone(doc)
+    applyAddFilletEdge(doc, 'fillet1', '?body_ex1:edge:0')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('fillet')
   })
 })
 
@@ -95,7 +98,10 @@ describe('applyAddChamferEdge toggle', () => {
     const doc: PartDoc = {
       features: [{ id: 'chamfer1', kind: 'sketch' }],
     }
-    expect(() => applyAddChamferEdge(doc, 'chamfer1', '?body_ex1:edge:0')).not.toThrow()
+    const before = structuredClone(doc)
+    applyAddChamferEdge(doc, 'chamfer1', '?body_ex1:edge:0')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('chamfer')
   })
 })
 
@@ -148,7 +154,10 @@ describe('applyAddBooleanTool toggle', () => {
     const doc: PartDoc = {
       features: [{ id: 'bool1', kind: 'sketch' }],
     }
-    expect(() => applyAddBooleanTool(doc, 'bool1', '@body2')).not.toThrow()
+    const before = structuredClone(doc)
+    applyAddBooleanTool(doc, 'bool1', '@body2')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('boolean')
   })
 })
 

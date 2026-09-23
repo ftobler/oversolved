@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { applyMoveEntity, applySetConstraintValue, applyAddEntity, applyAddProjectedEntity } from '@/utils/yamlMutations/sketch'
 import { applyRenamePart, applySetPartColor, applySetPartTransparency, applySetPartMetalness, applySetPartRoughness, applySetPartTransmission, applyReorderPickField } from '@/utils/yamlMutations/partStyle'
 import { applyAddFillet, applyAddChamfer, applySetFilletField, applySetChamferField } from '@/utils/yamlMutations/featureDefs'
 import { applyAddBoolean, applySetBooleanField } from '@/utils/yamlMutations/featureDefs'
 import { applySetArrayField } from '@/utils/yamlMutations/featureDefs'
-import { randomId } from '@/utils/yamlMutations/helpers'
+import { randomId, warn } from '@/utils/yamlMutations/helpers'
 
 function makeSketchDoc(): PartDoc {
   return {
@@ -508,7 +508,10 @@ describe('applyReorderPickField', () => {
 
   it('no-ops for unknown feature id', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [] }
-    expect(() => applyReorderPickField(doc, 'nonexistent', 'edges', 0, 1)).not.toThrow()
+    const before = structuredClone(doc)
+    applyReorderPickField(doc, 'nonexistent', 'edges', 0, 1)
+    expect(doc).toEqual(before)
+    expect(doc.features).toEqual([])
   })
 
   it('no-ops for unknown field', () => {
@@ -540,5 +543,31 @@ describe('randomId', () => {
     const id12 = randomId(12)
     const id18 = randomId(18)
     expect(id12.length).toBeLessThan(id18.length)
+  })
+})
+
+describe('warn', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+
+  it('forwards every argument to console.warn in dev', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    warn('applySetArray: feature F1 has no array', { id: 'F1' })
+    expect(warnSpy).toHaveBeenCalledWith('applySetArray: feature F1 has no array', { id: 'F1' })
+  })
+
+  // The production build strips the diagnostic entirely, so a re-import under
+  // DEV=false has to yield a no-op rather than a console write.
+  it('is a no-op when DEV is false', async () => {
+    vi.stubEnv('DEV', false)
+    vi.resetModules()
+    const { warn: prodWarn } = await import('@/utils/yamlMutations/helpers')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    prodWarn('must stay quiet')
+
+    expect(warnSpy).not.toHaveBeenCalled()
   })
 })

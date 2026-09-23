@@ -102,7 +102,10 @@ describe('applyTogglePlaneVisibility', () => {
 
   it('is a no-op on a doc with no features', () => {
     const doc = { version: 1, kind: 'part' } as PartDoc
-    expect(() => applyTogglePlaneVisibility(doc)).not.toThrow()
+    const before = structuredClone(doc)
+    applyTogglePlaneVisibility(doc)
+    expect(doc).toEqual(before)
+    expect(doc.features).toBeUndefined()
   })
 })
 

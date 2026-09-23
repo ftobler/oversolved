@@ -79,7 +79,10 @@ describe('add_sweep_profile', () => {
 
   it('does nothing if sweep is undefined', () => {
     const doc: PartDoc = { features: [{ id: 'sw1', kind: 'sketch' }] }
-    expect(() => applyAddSweepProfile(doc, 'sw1', '$sk2')).not.toThrow()
+    const before = structuredClone(doc)
+    applyAddSweepProfile(doc, 'sw1', '$sk2')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('sweep')
   })
 })
 
@@ -94,7 +97,10 @@ describe('remove_sweep_profile', () => {
 
   it('does nothing if sweep is undefined', () => {
     const doc: PartDoc = { features: [{ id: 'sw1', kind: 'sketch' }] }
-    expect(() => applyRemoveSweepProfile(doc, 'sw1', 0)).not.toThrow()
+    const before = structuredClone(doc)
+    applyRemoveSweepProfile(doc, 'sw1', 0)
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('sweep')
   })
 })
 
@@ -119,7 +125,10 @@ describe('add_sweep_path', () => {
 
   it('does nothing if sweep is undefined', () => {
     const doc: PartDoc = { features: [{ id: 'sw1', kind: 'sketch' }] }
-    expect(() => applyAddSweepPath(doc, 'sw1', '$p2')).not.toThrow()
+    const before = structuredClone(doc)
+    applyAddSweepPath(doc, 'sw1', '$p2')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('sweep')
   })
 })
 
@@ -134,7 +143,10 @@ describe('remove_sweep_path', () => {
 
   it('does nothing if sweep is undefined', () => {
     const doc: PartDoc = { features: [{ id: 'sw1', kind: 'sketch' }] }
-    expect(() => applyRemoveSweepPath(doc, 'sw1', 0)).not.toThrow()
+    const before = structuredClone(doc)
+    applyRemoveSweepPath(doc, 'sw1', 0)
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('sweep')
   })
 })
 
@@ -165,7 +177,9 @@ describe('set_sweep_field', () => {
 
   it('does nothing if sweep is undefined', () => {
     const doc: PartDoc = { features: [{ id: 'sw1', kind: 'sketch' }] }
-    expect(() => applySetSweepField(doc, 'sw1', 'path', '$p')).not.toThrow()
+    const before = structuredClone(doc)
+    applySetSweepField(doc, 'sw1', 'path', '$p')
+    expect(doc).toEqual(before)
     expect(doc.features![0]).not.toHaveProperty('sweep')
   })
 })

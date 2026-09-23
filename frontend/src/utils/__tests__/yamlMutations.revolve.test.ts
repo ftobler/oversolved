@@ -116,7 +116,10 @@ describe('add_revolve_profile', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applyAddRevolveProfile(doc, 'rev1', '$sk2')).not.toThrow()
+    const before = structuredClone(doc)
+    applyAddRevolveProfile(doc, 'rev1', '$sk2')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })
 
@@ -167,7 +170,10 @@ describe('remove_revolve_profile', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applyRemoveRevolveProfile(doc, 'rev1', 0)).not.toThrow()
+    const before = structuredClone(doc)
+    applyRemoveRevolveProfile(doc, 'rev1', 0)
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })
 
@@ -190,7 +196,9 @@ describe('set_revolve_angle', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() =>     applySetRevolveField(doc, 'rev1', 'angle', 180)).not.toThrow()
+    const before = structuredClone(doc)
+    applySetRevolveField(doc, 'rev1', 'angle', 180)
+    expect(doc).toEqual(before)
     expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })
@@ -228,7 +236,9 @@ describe('set_revolve_direction', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveField(doc, 'rev1', 'direction', 'reverse')).not.toThrow()
+    const before = structuredClone(doc)
+    applySetRevolveField(doc, 'rev1', 'direction', 'reverse')
+    expect(doc).toEqual(before)
     expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })
@@ -252,7 +262,10 @@ describe('set_revolve_axis', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveField(doc, 'rev1', 'axis', '?some:edge')).not.toThrow()
+    const before = structuredClone(doc)
+    applySetRevolveField(doc, 'rev1', 'axis', '?some:edge')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })
 
@@ -289,7 +302,10 @@ describe('set_revolve_operation', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveField(doc, 'rev1', 'operation', 'cut')).not.toThrow()
+    const before = structuredClone(doc)
+    applySetRevolveField(doc, 'rev1', 'operation', 'cut')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })
 
@@ -340,7 +356,10 @@ describe('set_revolve_merge_target', () => {
     const doc: PartDoc = {
       features: [{ id: 'rev1', kind: 'sketch' }],
     }
-    expect(() => applySetRevolveField(doc, 'rev1', 'merge_target', '@body_ex0')).not.toThrow()
+    const before = structuredClone(doc)
+    applySetRevolveField(doc, 'rev1', 'merge_target', '@body_ex0')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('revolve')
   })
 })
 

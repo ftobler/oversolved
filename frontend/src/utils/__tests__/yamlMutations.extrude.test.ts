@@ -113,7 +113,10 @@ describe('add_extrude_profile', () => {
     const doc: PartDoc = {
       features: [{ id: 'ex1', kind: 'sketch' }],
     }
-    expect(() => applyAddExtrudeProfile(doc, 'ex1', '$sk2')).not.toThrow()
+    const before = structuredClone(doc)
+    applyAddExtrudeProfile(doc, 'ex1', '$sk2')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('extrude')
   })
 })
 
@@ -164,7 +167,10 @@ describe('remove_extrude_profile', () => {
     const doc: PartDoc = {
       features: [{ id: 'ex1', kind: 'sketch' }],
     }
-    expect(() => applyRemoveExtrudeProfile(doc, 'ex1', 0)).not.toThrow()
+    const before = structuredClone(doc)
+    applyRemoveExtrudeProfile(doc, 'ex1', 0)
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('extrude')
   })
 })
 
@@ -187,13 +193,18 @@ describe('set_extrude_distance', () => {
     const doc: PartDoc = {
       features: [{ id: 'ex1', kind: 'sketch' }],
     }
-    expect(() => applySetExtrudeField(doc, 'ex1', 'distance', 20)).not.toThrow()
+    const before = structuredClone(doc)
+    applySetExtrudeField(doc, 'ex1', 'distance', 20)
+    expect(doc).toEqual(before)
     expect(doc.features![0]).not.toHaveProperty('extrude')
   })
 
   it('does nothing for unknown feature', () => {
     const doc: PartDoc = structuredClone(baseDoc)
-    expect(() => applySetExtrudeField(doc, 'nonexistent', 'distance', 20)).not.toThrow()
+    const before = structuredClone(doc)
+    applySetExtrudeField(doc, 'nonexistent', 'distance', 20)
+    expect(doc).toEqual(before)
+    expect(doc.features).toEqual([])
   })
 })
 
@@ -230,7 +241,10 @@ describe('set_extrude_direction', () => {
     const doc: PartDoc = {
       features: [{ id: 'ex1', kind: 'sketch' }],
     }
-    expect(() => applySetExtrudeField(doc, 'ex1', 'direction', 'symmetric')).not.toThrow()
+    const before = structuredClone(doc)
+    applySetExtrudeField(doc, 'ex1', 'direction', 'symmetric')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('extrude')
   })
 })
 
@@ -281,7 +295,10 @@ describe('set_extrude_operation', () => {
     const doc: PartDoc = {
       features: [{ id: 'ex1', kind: 'sketch' }],
     }
-    expect(() => applySetExtrudeField(doc, 'ex1', 'operation', 'cut')).not.toThrow()
+    const before = structuredClone(doc)
+    applySetExtrudeField(doc, 'ex1', 'operation', 'cut')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('extrude')
   })
 
   it('sets extrude operation to new', () => {
@@ -354,12 +371,18 @@ describe('set_extrude_merge_target', () => {
     const doc: PartDoc = {
       features: [{ id: 'ex1', kind: 'sketch' }],
     }
-    expect(() => applySetExtrudeField(doc, 'ex1', 'merge_target', '@body_ex0')).not.toThrow()
+    const before = structuredClone(doc)
+    applySetExtrudeField(doc, 'ex1', 'merge_target', '@body_ex0')
+    expect(doc).toEqual(before)
+    expect(doc.features![0]).not.toHaveProperty('extrude')
   })
 
   it('does nothing for unknown feature', () => {
     const doc: PartDoc = { features: [] }
-    expect(() => applySetExtrudeField(doc, 'nonexistent', 'merge_target', '@body_ex0')).not.toThrow()
+    const before = structuredClone(doc)
+    applySetExtrudeField(doc, 'nonexistent', 'merge_target', '@body_ex0')
+    expect(doc).toEqual(before)
+    expect(doc.features).toEqual([])
   })
 })
 
