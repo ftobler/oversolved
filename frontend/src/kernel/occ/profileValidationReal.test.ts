@@ -151,6 +151,34 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
     }
   })
 
+  it('makeWire refuses a self-touching closed wire as pinched', () => {
+    // A bowtie: two triangles sharing one vertex. Every joint connects, so the
+    // edge-count guard is satisfied, but the wire has fewer distinct vertices
+    // than edges -- it touches itself and bounds no single region. The refusal
+    // must name the pinch, not the open-chain message.
+    const scope = new DisposeScope()
+    try {
+      const v1: Vec3 = [0, 0, 0]
+      const v2: Vec3 = [1, 0, 0]
+      const v3: Vec3 = [0, 1, 0]
+      const v4: Vec3 = [-1, 0, 0]
+      const v5: Vec3 = [0, -1, 0]
+      const edges = [
+        makeLineEdge(occ, scope, v1, v2),
+        makeLineEdge(occ, scope, v2, v3),
+        makeLineEdge(occ, scope, v3, v1),
+        makeLineEdge(occ, scope, v1, v4),
+        makeLineEdge(occ, scope, v4, v5),
+        makeLineEdge(occ, scope, v5, v1),
+      ]
+      expect(wireVertexCount(occ, scope, scope.track(makeWire(occ, scope, edges)))).toBe(edges.length - 1)
+      expect(() => makeWire(occ, scope, edges, { requireClosed: true }))
+        .toThrow(/wire is pinched \(6 edges sharing only 5 distinct vertices\)/)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('never silently builds an invalid face from a joint inside the sketch epsilon', () => {
     // The required tolerance boundary case: 5e-7 sits above OCC's confusion
     // (1e-7) and below TOL_LOOP_CLOSURE (1e-6). Exactly one of two outcomes is

@@ -7,8 +7,9 @@
 // are pinned without a WASM build.
 
 import { describe, it, expect } from 'vitest'
-import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex, makeEllipseEdge } from './primitives'
-import type { OccSubShape } from './occTypes'
+import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex, makeEllipseEdge, faceNormal } from './primitives'
+import { DisposeScope } from './disposeScope'
+import type { OccModule, OccShape, OccSubShape } from './occTypes'
 
 // A stub sub-shape: `_id` is its identity, `hash` lets a test force collisions.
 // `SubShapeDedup` calls `u.IsSame(shape)` with the full stub, so identity must
@@ -156,5 +157,32 @@ describe('makeEllipseEdge radius validation', () => {
     expect(() =>
       makeEllipseEdge(stub, stub, [0, 0, 0], [0, 0, 1], [1, 0, 0], 4, 2),
     ).not.toThrow(/make_ellipse_edge: needs/)
+  })
+})
+
+describe('faceNormal undefined-normal refusal', () => {
+  it('throws naming the surface type when the UV-midpoint normal is undefined', () => {
+    // Callers (faceGh, the naming passes) treat the throw as a failed geometry
+    // read, so the failure must name the surface class rather than return a
+    // fabricated normal. No OCC needed: the guard fires before any sign read.
+    const oc = {
+      BRepAdaptor_Surface_2: function () {
+        return {
+          FirstUParameter: () => 0,
+          LastUParameter: () => 1,
+          FirstVParameter: () => 0,
+          LastVParameter: () => 1,
+          GetType: () => ({ value: 7 }),
+          delete: () => {},
+        }
+      },
+      BRepLProp_SLProps_1: function () {
+        return { IsNormalDefined: () => false, delete: () => {} }
+      },
+    } as unknown as OccModule
+    const face = { delete: () => {} } as unknown as OccShape
+    expect(() => faceNormal(oc, new DisposeScope(), face)).toThrow(
+      /faceNormal: normal is not defined at the UV midpoint \(surface type 7\)/,
+    )
   })
 })

@@ -149,4 +149,51 @@ describe.skipIf(!oc)('canonicalizeCylinderFaces', () => {
       scope.dispose()
     }
   })
+
+  it('refuses a healed result that fails BRepCheck, returning the input unchanged', () => {
+    // ShapeFix can hand back a shape that validates as broken. Recognition must
+    // not adopt it: the guard returns the ORIGINAL solid (identity), because the
+    // un-canonicalized boolean result is sound, it just keeps the seam.
+    const scope = new DisposeScope()
+    const mod = oc! as unknown as { BRepCheck_Analyzer: unknown }
+    const realAnalyzer = mod.BRepCheck_Analyzer
+    try {
+      const filleted = filletedLensUnion(oc!, scope, 1)
+      // Precondition: without the forced failure the pass does rebuild the faces.
+      expect(canonicalizeCylinderFaces(oc!, scope, filleted).changed).toBe(true)
+      mod.BRepCheck_Analyzer = function () {
+        return { IsValid_2: () => false, delete: () => {} }
+      }
+      const result = canonicalizeCylinderFaces(oc!, scope, filleted)
+      expect(result.changed).toBe(false)
+      expect(result.swaps).toHaveLength(0)
+      expect(result.shape).toBe(filleted)
+    } finally {
+      mod.BRepCheck_Analyzer = realAnalyzer
+      scope.dispose()
+    }
+  })
+})
+
+describe('canonicalizeCylinderFaces best-effort refusal', () => {
+  it('returns the input untouched when recognition itself throws', () => {
+    // The whole pass is wrapped: any OCC failure (an enum read, an adaptor)
+    // leaves the caller with the original shape rather than an exception. A
+    // throwing enum read is enough to enter that path before any geometry runs.
+    const scope = new DisposeScope()
+    try {
+      const shape = { delete: () => {} } as unknown as OccShape
+      const ocFake = {
+        get TopAbs_ShapeEnum(): never {
+          throw new Error('kernel unavailable')
+        },
+      } as unknown as OccModule
+      const result = canonicalizeCylinderFaces(ocFake, scope, shape)
+      expect(result.changed).toBe(false)
+      expect(result.swaps).toEqual([])
+      expect(result.shape).toBe(shape)
+    } finally {
+      scope.dispose()
+    }
+  })
 })

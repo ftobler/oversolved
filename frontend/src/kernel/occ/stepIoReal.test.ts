@@ -8,7 +8,7 @@
 // Skips when opencascade.js is absent. Install:
 //   cd frontend && npm run occ:install
 
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
@@ -145,6 +145,39 @@ describe.skipIf(!oc)('stepIo error branches (real OCC)', () => {
         anyFs.rmdir('/s.step')
       }
     } finally {
+      scope.dispose()
+    }
+  })
+
+  it('still returns the STEP bytes when scratch cleanup fails', () => {
+    // The unlink is best-effort: a cleanup failure must not turn a successful
+    // export into a throw and lose the bytes it just serialised.
+    const scope = new DisposeScope()
+    const spy = vi.spyOn(occ.FS, 'unlink').mockImplementation(() => {
+      throw new Error('unlink failed')
+    })
+    try {
+      const box = scope.track(makeBox(occ, scope, 5, 5, 5))
+      const bytes = stepShapeToBytes(occ, scope, box)
+      expect(new TextDecoder().decode(bytes)).toContain('END-ISO-10303-21')
+    } finally {
+      spy.mockRestore()
+      scope.dispose()
+    }
+  })
+
+  it('still returns the imported shape when scratch cleanup fails', () => {
+    // Same contract on the read side: the shape is already transferred, so a
+    // failing unlink in the finally block must not discard it.
+    const scope = new DisposeScope()
+    const spy = vi.spyOn(occ.FS, 'unlink').mockImplementation(() => {
+      throw new Error('unlink failed')
+    })
+    try {
+      const shape = scope.track(stepBytesToShape(occ, scope, fixtureBytes()))
+      expect(volumeOf(occ, scope, shape)).toBeGreaterThan(0)
+    } finally {
+      spy.mockRestore()
       scope.dispose()
     }
   })
