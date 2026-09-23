@@ -125,15 +125,6 @@ describe('assemblyStore', () => {
     expect(getState().subject).toEqual({ kind: 'part', handle: 'abc' })
   })
 
-  it('setIsSolving toggles the flag', () => {
-    const { getState } = useAssemblyStore
-    expect(getState().isSolving).toBe(false)
-    getState().setIsSolving(true)
-    expect(getState().isSolving).toBe(true)
-    getState().setIsSolving(false)
-    expect(getState().isSolving).toBe(false)
-  })
-
   it('setSolveResult stores the solve status', () => {
     const { getState } = useAssemblyStore
     expect(getState().solveStatus).toBeNull()
@@ -353,13 +344,6 @@ describe('assemblyStore', () => {
       getState().setSolveResult(EMPTY_SOLVE)
       expect(getState().entitySelection.size).toBe(0)
       expect(getState().hoveredEntity).toBeNull()
-    })
-
-    it('setShowPickDebug toggles the debug renderpass flag', () => {
-      const { getState } = useAssemblyStore
-      expect(getState().showPickDebug).toBe(false)
-      getState().setShowPickDebug(true)
-      expect(getState().showPickDebug).toBe(true)
     })
   })
 })

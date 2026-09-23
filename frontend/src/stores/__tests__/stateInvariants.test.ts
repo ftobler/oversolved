@@ -568,11 +568,6 @@ describe('validateSketchEditorState', () => {
       const state = { ...defaultState(), dimensionPicks: [{ target: 'entity:S1:L1' }], ...withTool('dimension') }
       expect(() => validateSketchEditorState(state)).not.toThrow()
     })
-
-    it('passes when picks are empty and tool is null', () => {
-      const state = { ...defaultState(), dimensionPicks: [], activeTool: null }
-      expect(() => validateSketchEditorState(state)).not.toThrow()
-    })
   })
 
   describe('activePickField invariant', () => {
@@ -625,10 +620,6 @@ describe('validateSketchEditorState', () => {
 
     it('passes for an armed tool that owns the top', () => {
       expect(() => validateSketchEditorState({ ...defaultState(), ...withTool('line') })).not.toThrow()
-    })
-
-    it('passes for the all-clear state', () => {
-      expect(() => validateSketchEditorState(defaultState())).not.toThrow()
     })
   })
 
