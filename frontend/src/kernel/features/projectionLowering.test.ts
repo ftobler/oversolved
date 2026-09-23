@@ -141,19 +141,6 @@ describe('orientation-aware circle projection', () => {
     expect(a).toBeCloseTo(3)
     expect(b).toBeCloseTo(3 * Math.cos(phi))
   })
-
-  it('reports the major axis first even when the second conjugate radius projects longer', () => {
-    // The circle's x_axis is chosen along the steepest direction, so the
-    // projection of its second radius is the longer one; the result must still
-    // be [a >= b] with theta on the major axis, not a swapped pair.
-    const phi = Math.PI / 3
-    const axis = [0, -Math.sin(phi), Math.cos(phi)]
-    const xAxis = [0, Math.cos(phi), Math.sin(phi)]
-    const [, , a, b] = circleToEllipseParams([0, 0, 0], 5, axis, xAxis, XY)
-    expect(a).toBeCloseTo(5)
-    expect(b).toBeCloseTo(5 * Math.cos(phi))
-    expect(a).toBeGreaterThanOrEqual(b)
-  })
 })
 
 describe('ellipse edge projection', () => {

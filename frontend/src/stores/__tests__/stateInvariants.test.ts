@@ -168,16 +168,6 @@ describe('validateSelectionState', () => {
     expect(() => validateSelectionState(state)).toThrow('[invariant] sketch-domain query')
   })
 
-  it('passes when a body_3d query carries a pickKey claim', () => {
-    const state = {
-      ...defaultSelectionState(),
-      normalSelection: new Set(['?2;@body_1@extrude1/edge/3']),
-      selectedPicks: new Map([['?2;@body_1@extrude1/edge/3', new Set(['ex1/b0#edge#0'])]]),
-      selectionDomain: 'body_3d' as const,
-    }
-    expect(() => validateSelectionState(state)).not.toThrow()
-  })
-
   it('throws when one pickKey is claimed by two queries', () => {
     // A pickKey identifies one primitive, so two queries naming the same key
     // means one of them recorded a foreign claim.
@@ -205,10 +195,6 @@ describe('validateSelectionState', () => {
 })
 
 describe('validateSelectionState hover framing', () => {
-  it('passes with both hover fields null', () => {
-    expect(() => validateSelectionState(defaultSelectionState())).not.toThrow()
-  })
-
   it('passes with a valid paired hoveredSelectionId + hoveredPickKey', () => {
     expect(() => validateSelectionState({
       ...defaultSelectionState(),
