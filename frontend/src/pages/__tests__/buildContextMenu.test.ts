@@ -121,6 +121,39 @@ describe('buildContextMenu', () => {
     expect(result.items).toHaveLength(3)
   })
 
+  it('exports a body, falling back to the body id when it has no label', () => {
+    const seen: [string, string][] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onExportBody = (bodyId, name) => { seen.push([bodyId, name]) }
+    const result = buildContextMenu(defaultInput({ targetId: 'body:b1' }), callbacks)
+    findLabel(result.items, 'Export')!.onClick()
+    expect(seen).toEqual([['b1', 'b1']])
+  })
+
+  it('offers Unsuppress for a suppressed feature and toggles it off', () => {
+    const seen: [string, boolean][] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onToggleSuppression = (id, suppressed) => { seen.push([id, suppressed]) }
+    const features = [makeFeature({ id: 'f1', kind: 'extrude', suppressed: true })]
+    const result = buildContextMenu(defaultInput({ targetId: 'f1', features }), callbacks)
+    const item = findLabel(result.items, 'Unsuppress')
+    expect(item).toBeTruthy()
+    item!.onClick()
+    expect(seen).toEqual([['f1', false]])
+  })
+
+  it('offers Suppress for an active feature and toggles it on', () => {
+    const seen: [string, boolean][] = []
+    const callbacks = defaultCallbacks()
+    callbacks.onToggleSuppression = (id, suppressed) => { seen.push([id, suppressed]) }
+    const features = [makeFeature({ id: 'f1', kind: 'extrude' })]
+    const result = buildContextMenu(defaultInput({ targetId: 'f1', features }), callbacks)
+    const item = findLabel(result.items, 'Suppress')
+    expect(item).toBeTruthy()
+    item!.onClick()
+    expect(seen).toEqual([['f1', true]])
+  })
+
   it('contains Edit, Hide/Show for a non-built-in plane', () => {
     const features = [makeFeature({ id: 'plane1', kind: 'plane' })]
     const result = buildContextMenu(

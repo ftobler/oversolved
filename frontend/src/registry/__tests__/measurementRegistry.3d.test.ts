@@ -71,7 +71,7 @@ describe('measure3dSelection two edges', () => {
 const faceData = [
   { centroid: [0, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number], surface_type: 'flatface' },      // 0
   { centroid: [0, 0, 4] as [number, number, number], normal: [0, 0, 1] as [number, number, number], surface_type: 'flatface' },      // 1
-  { centroid: [0, 0, 0] as [number, number, number], normal: [1, 0, 0] as [number, number, number], surface_type: 'cylinderface' },  // 2
+  { centroid: [0, 0, 0] as [number, number, number], normal: [1, 0, 0] as [number, number, number], surface_type: 'cylinderface', surface_frame: { axis: [0, 0, 1] as [number, number, number], origin: [0, 0, 0] as [number, number, number], radius: 2 } },  // 2
   { centroid: [4, 0, 0] as [number, number, number], normal: [1, 0, 0] as [number, number, number], surface_type: 'cylinderface' },  // 3
   { centroid: [0, 0, 4] as [number, number, number], normal: [0, 0, 1] as [number, number, number], surface_type: 'cylinderface' },  // 4
   { centroid: [0, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] },                                // 5: pre-surface_type body
@@ -84,6 +84,13 @@ function faceBodies(): Record<string, BodyResult> {
       id: 'B',
       created_by: 'ex',
       modified_by: [],
+      // A vertex 4 above the z=0 face plane, and a slanted line edge whose
+      // midpoint is likewise 4 above it. The endpoints sit at 2 and 6, so
+      // reading an endpoint instead of the midpoint changes the distance.
+      vertices: [[0, 0, 4]],
+      vertex_queries: ['vq0'],
+      edges: [{ kind: 'line', start: [0, 0, 2], end: [4, 0, 6] }],
+      edge_queries: ['q_edge'],
       mesh: {
         vertices: [],
         faces: [],
@@ -93,6 +100,26 @@ function faceBodies(): Record<string, BodyResult> {
     },
   }
 }
+
+describe('measure3dSelection face + vertex and face + edge', () => {
+  it('a face plus a vertex reports the perpendicular plane distance', () => {
+    expect(measure3dSelection(new Set(['f0', 'vq0']), faceBodies())).toEqual(['plane distance: 4.000 mm'])
+  })
+
+  it('a face plus a line edge reports the distance from the edge midpoint', () => {
+    expect(measure3dSelection(new Set(['f0', 'q_edge']), faceBodies())).toEqual(['plane distance: 4.000 mm'])
+  })
+})
+
+describe('measure3dSelection single element readouts', () => {
+  it('a cylindrical face reports its diameter from the analytic surface radius', () => {
+    expect(measure3dSelection(new Set(['f2']), faceBodies())).toEqual(['[FACE] d=4.000 mm'])
+  })
+
+  it('an arc edge reports its radius and sweep', () => {
+    expect(measure3dSelection(new Set(['q1']), bodies())).toEqual(['[EDGE] r=2.000 mm, \u03b8=180.0\u00b0'])
+  })
+})
 
 describe('measure3dSelection two faces', () => {
   it('two planar faces report a plane distance', () => {
