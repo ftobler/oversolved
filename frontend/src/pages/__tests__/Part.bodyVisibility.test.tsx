@@ -3,23 +3,17 @@ import { applySetBodyVisibility } from '@/utils/yamlMutations'
 import type { PartDoc } from '@/types/cad'
 
 describe('applySetBodyVisibility', () => {
-  it('sets body visible to false', () => {
+  it('creates part_style holding only the target body when part_style is undefined', () => {
     const doc = { kind: 'part', version: 1, features: [] } as PartDoc
     applySetBodyVisibility(doc, 'body_1', false)
-    expect(doc.part_style?.body_1?.visible).toBe(false)
+    expect(doc.part_style).toEqual({ body_1: { visible: false } })
   })
 
-  it('toggles body visibility back to true', () => {
+  it('toggles body visibility back to true without leaving extra fields', () => {
     const doc = { kind: 'part', version: 1, features: [] } as PartDoc
     applySetBodyVisibility(doc, 'body_1', false)
     applySetBodyVisibility(doc, 'body_1', true)
-    expect(doc.part_style?.body_1?.visible).toBe(true)
-  })
-
-  it('does not crash when part_style is undefined', () => {
-    const doc = { kind: 'part', version: 1, features: [] } as PartDoc
-    applySetBodyVisibility(doc, 'body_1', false)
-    expect(doc.part_style?.body_1?.visible).toBe(false)
+    expect(doc.part_style).toEqual({ body_1: { visible: true } })
   })
 
   it('does not leak visibility through shared part_style entries', () => {

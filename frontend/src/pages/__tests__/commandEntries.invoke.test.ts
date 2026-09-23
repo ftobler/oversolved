@@ -31,23 +31,6 @@ describe('command callbacks that drive the sketch editor store', () => {
 
   afterEach(() => { vi.restoreAllMocks() })
 
-  it('cancel_draw clears the draw, the active tool, and the pick field', () => {
-    const store = useSketchEditorStore.getState()
-    const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
-    const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
-    const setActivePickField = vi.spyOn(store, 'setActivePickField').mockImplementation(noop)
-
-    entry('cancel_draw').fn()
-
-    expect(clearDraw).toHaveBeenCalledOnce()
-    expect(setActiveTool).toHaveBeenCalledWith(null)
-    expect(setActivePickField).toHaveBeenCalledWith(null)
-    // Order is load-bearing: the tool's deactivate hook pops the mode stack, so
-    // on a desynced stack with 'pick' on top it would eat the pick's entry.
-    expect(setActivePickField.mock.invocationCallOrder[0])
-      .toBeLessThan(setActiveTool.mock.invocationCallOrder[0])
-  })
-
   it('cancel_pick is gone: Escape reaches the pick field through cancel_draw', () => {
     const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, noop)
     expect(entries.find(e => e.name === 'cancel_pick')).toBeUndefined()
@@ -202,8 +185,9 @@ describe('cancel_draw staged disarm', () => {
     expect(clearDraw).toHaveBeenCalledOnce()
     expect(setActiveTool).toHaveBeenCalledWith(null)
     expect(setActivePickField).toHaveBeenCalledWith(null)
-    // Order is load-bearing: the tool's deactivate hook pops the mode stack, so
-    // on a desynced stack with 'pick' on top it would eat the pick's entry.
+    // Pick before tool: on a desynced stack with 'pick' on top, the tool's
+    // deactivate hook would otherwise pop the pick's mode entry (the production
+    // comment on the disarm branch names this order as load-bearing).
     expect(setActivePickField.mock.invocationCallOrder[0])
       .toBeLessThan(setActiveTool.mock.invocationCallOrder[0])
   })
@@ -258,7 +242,7 @@ describe('cancel_draw staged disarm', () => {
     expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
   })
 
-  it('with an open pick field clears the field before the tool', () => {
+  it('with an open pick field clears the field and disarms the tool', () => {
     useSketchEditorStore.getState().setActivePickField({ featureId: 'sketch1', field: 'plane' })
 
     const store = useSketchEditorStore.getState()
@@ -267,6 +251,8 @@ describe('cancel_draw staged disarm', () => {
 
     entry('cancel_draw').fn()
 
+    // Pick before tool, so clearing the field never eats the pick's mode entry:
+    // the production comment on the pick branch makes this order the contract.
     expect(setActivePickField).toHaveBeenCalledWith(null)
     expect(setActiveTool).toHaveBeenCalledWith(null)
     expect(setActivePickField.mock.invocationCallOrder[0])

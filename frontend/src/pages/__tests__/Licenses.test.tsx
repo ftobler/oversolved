@@ -100,36 +100,22 @@ describe('licenses page', () => {
       expect(screen.queryByRole('button', { name: /not a heading/ })).not.toBeInTheDocument()
     })
 
-    it('scrolls the heading a nav entry names into view', async () => {
-      const scrollIntoView = vi.fn()
-      Element.prototype.scrollIntoView = scrollIntoView
-
+    // The anchor id is what the nav entry targets, so a slug drift between the
+    // two is the failure worth pinning here. The click itself is asserted once
+    // below, on the inline-markup case where the drift can actually happen.
+    it('anchors a heading on its slugged text', async () => {
       render(<Licenses />)
-      const entry = await screen.findByRole('button', { name: 'npm dependencies' })
 
-      // The anchor has to exist before the click can reach it, which is the
-      // half of this that silently breaks if the slug ever differs between the
-      // nav entry and the heading it points at.
-      const heading = screen.getByRole('heading', { name: 'npm dependencies' })
+      const heading = await screen.findByRole('heading', { name: 'npm dependencies' })
       expect(heading).toHaveAttribute('id', 'npm-dependencies')
-
-      fireEvent.click(entry)
-      expect(scrollIntoView).toHaveBeenCalled()
     })
 
-    it('shows no rail while there is no document to navigate', () => {
-      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
-
-      render(<Licenses />)
-
-      expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
-    })
-
-    // A heading whose text is split across inline markup arrives as a node
-    // tree, so the anchor id must be derived from the gathered text. If the
-    // gather drops the code span, the nav id no longer matches the rendered
-    // heading and the entry scrolls nowhere.
-    it('anchors a heading that carries inline markup', async () => {
+    // The one click-to-scroll test. A heading whose text is split across inline
+    // markup arrives as a node tree, so the anchor id must be derived from the
+    // gathered text. If the gather drops the code span, the nav id no longer
+    // matches the rendered heading and the entry scrolls nowhere, which the
+    // click is what catches.
+    it('anchors and scrolls to a heading that carries inline markup', async () => {
       vi.stubGlobal('fetch', vi.fn(async () => new Response('## The `foo` license\n\nbody', { status: 200 })))
       const scrollIntoView = vi.fn()
       Element.prototype.scrollIntoView = scrollIntoView
@@ -142,6 +128,14 @@ describe('licenses page', () => {
 
       fireEvent.click(entry)
       expect(scrollIntoView).toHaveBeenCalled()
+    })
+
+    it('shows no rail while there is no document to navigate', () => {
+      vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+
+      render(<Licenses />)
+
+      expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
     })
   })
 

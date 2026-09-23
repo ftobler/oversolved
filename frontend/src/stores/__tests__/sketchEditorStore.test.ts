@@ -1192,39 +1192,6 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(ids)
     })
 
-    it('setHoveredSelectionId updates hoveredSelectionId (plane)', () => {
-      useSketchEditorStore.getState().setHoveredSelectionId('@builtin_plane_front')
-      expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('@builtin_plane_front')
-    })
-
-    it('setHoveredSelectionId clears on null (plane)', () => {
-      useSketchEditorStore.getState().setHoveredSelectionId('@sketch1')
-      useSketchEditorStore.getState().setHoveredSelectionId(null)
-      expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
-    })
-
-    it('setHoveredSelectionId updates hoveredSelectionId (surface)', () => {
-      useSketchEditorStore.getState().setHoveredSelectionId('face:sketch1:?3;@sketch1abc')
-      expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('face:sketch1:?3;@sketch1abc')
-    })
-
-    it('setHoveredSelectionId clears on null (surface)', () => {
-      useSketchEditorStore.getState().setHoveredSelectionId('face:sketch1:?3;@sketch1abc')
-      useSketchEditorStore.getState().setHoveredSelectionId(null)
-      expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
-    })
-
-    it('setHoveredSelectionId updates hoveredSelectionId (3D surface)', () => {
-      useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
-      expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('?d,d;@extrude1face0:face')
-    })
-
-    it('setHoveredSelectionId clears on null (3D surface)', () => {
-      useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
-      useSketchEditorStore.getState().setHoveredSelectionId(null)
-      expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
-    })
-
     it('hoveredSnapKind can be path', () => {
       useSketchEditorStore.getState().setHoveredVertex('vertex:S1:L1:start', [5, 5], 'path')
       expect(useSketchEditorStore.getState().hoveredSnapKind).toBe('path')

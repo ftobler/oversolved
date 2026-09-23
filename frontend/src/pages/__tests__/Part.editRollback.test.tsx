@@ -77,53 +77,35 @@ const extrudeFeature: PartFeature = {
 
 const planeFeature: PartFeature = { id: 'pl1', kind: 'plane' }
 
-describe('extrude edit button', () => {
-  it('calls onEnterEditFeature with the feature id', () => {
+const featureCases = [
+  { kind: 'extrude', feature: extrudeFeature },
+  { kind: 'plane', feature: planeFeature },
+]
+
+describe('feature edit and exit buttons', () => {
+  it.each(featureCases)('$kind: edit button enters feature edit with its id', ({ kind, feature }) => {
     const onEnterEditFeature = vi.fn()
-    renderSidebar([extrudeFeature], null, { onEnterEditFeature })
-    fireEvent.click(screen.getByTitle('Edit extrude'))
-    expect(onEnterEditFeature).toHaveBeenCalledWith('ex1')
+    renderSidebar([feature], null, { onEnterEditFeature })
+    fireEvent.click(screen.getByTitle(`Edit ${kind}`))
+    expect(onEnterEditFeature).toHaveBeenCalledWith(feature.id)
   })
 
-  it('does not call onSetRollbackPosition directly', () => {
+  it.each(featureCases)('$kind: edit button does not move the rollback bar itself', ({ kind, feature }) => {
     const onSetRollbackPosition = vi.fn()
-    renderSidebar([extrudeFeature], null, { onSetRollbackPosition })
-    fireEvent.click(screen.getByTitle('Edit extrude'))
+    renderSidebar([feature], null, { onSetRollbackPosition })
+    fireEvent.click(screen.getByTitle(`Edit ${kind}`))
     expect(onSetRollbackPosition).not.toHaveBeenCalled()
   })
-})
 
-describe('extrude exit button', () => {
-  it('calls onEditCommit when closing extrude editor', () => {
+  it.each(featureCases)('$kind: OK commits the open edit without cancelling it', ({ feature }) => {
+    // The component only forwards the click; closing the editor is the parent's
+    // job, so the contract here is the call and its exclusivity, not a state the
+    // callback itself would have to set.
     const onEditCommit = vi.fn()
-    renderSidebar([extrudeFeature], 'ex1', { onEditCommit })
+    const onEditCancel = vi.fn()
+    renderSidebar([feature], feature.id, { onEditCommit, onEditCancel })
     fireEvent.click(screen.getByTitle('OK'))
-    expect(onEditCommit).toHaveBeenCalled()
-  })
-
-})
-
-describe('plane edit button', () => {
-  it('calls onEnterEditFeature with the feature id', () => {
-    const onEnterEditFeature = vi.fn()
-    renderSidebar([planeFeature], null, { onEnterEditFeature })
-    fireEvent.click(screen.getByTitle('Edit plane'))
-    expect(onEnterEditFeature).toHaveBeenCalledWith('pl1')
-  })
-
-  it('does not call onSetRollbackPosition directly', () => {
-    const onSetRollbackPosition = vi.fn()
-    renderSidebar([planeFeature], null, { onSetRollbackPosition })
-    fireEvent.click(screen.getByTitle('Edit plane'))
-    expect(onSetRollbackPosition).not.toHaveBeenCalled()
-  })
-})
-
-describe('plane exit button', () => {
-  it('calls onEditCommit when closing plane editor', () => {
-    const onEditCommit = vi.fn()
-    renderSidebar([planeFeature], 'pl1', { onEditCommit })
-    fireEvent.click(screen.getByTitle('OK'))
-    expect(onEditCommit).toHaveBeenCalled()
+    expect(onEditCommit).toHaveBeenCalledOnce()
+    expect(onEditCancel).not.toHaveBeenCalled()
   })
 })

@@ -30,14 +30,14 @@ const PROGRAMMATIC_ONLY = new Set([
 describe('buildCommandEntries', () => {
   const entries = buildCommandEntries(vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
 
-  it('every entry has a non-empty name', () => {
-    for (const e of entries) {
-      expect(e.name.length).toBeGreaterThan(0)
-    }
-  })
-
-  it('no duplicate names', () => {
+  // A command name is the registry key: an empty one names nothing and a
+  // duplicate silently shadows the earlier handler in registerCommand's Map.
+  // Neither is caught by the CommandEntry type, so this is the one place the
+  // structural contract is pinned. The `fn` shape is enforced by the type and
+  // is not asserted.
+  it('names are non-empty and unique', () => {
     const names = entries.map(e => e.name)
+    for (const name of names) expect(name.length).toBeGreaterThan(0)
     expect(new Set(names).size).toBe(names.length)
   })
 
@@ -46,12 +46,6 @@ describe('buildCommandEntries', () => {
     for (const { name } of entries) {
       const ok = keymapValues.has(name) || PROGRAMMATIC_ONLY.has(name)
       expect(ok, `"${name}" not in KEYMAP/FEATURE_KEYMAP and not in PROGRAMMATIC_ONLY`).toBe(true)
-    }
-  })
-
-  it('every entry has a function handler', () => {
-    for (const e of entries) {
-      expect(typeof e.fn).toBe('function')
     }
   })
 

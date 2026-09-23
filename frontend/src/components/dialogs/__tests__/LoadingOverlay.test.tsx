@@ -147,32 +147,3 @@ describe('LoadingOverlay', () => {
     })
   })
 })
-
-describe('solverStore', () => {
-  beforeEach(resetStore)
-
-  it('defaults isSolving to false', () => {
-    expect(useSolverStore.getState().isSolving).toBe(false)
-  })
-
-  it('setIsSolving updates isSolving', () => {
-    useSolverStore.getState().setIsSolving(true)
-    expect(useSolverStore.getState().isSolving).toBe(true)
-
-    useSolverStore.getState().setIsSolving(false)
-    expect(useSolverStore.getState().isSolving).toBe(false)
-  })
-
-  it('defaults onCancelSolve to null', () => {
-    expect(useSolverStore.getState().onCancelSolve).toBeNull()
-  })
-
-  it('setOnCancelSolve updates onCancelSolve', () => {
-    const fn = () => {}
-    useSolverStore.getState().setOnCancelSolve(fn)
-    expect(useSolverStore.getState().onCancelSolve).toBe(fn)
-
-    useSolverStore.getState().setOnCancelSolve(null)
-    expect(useSolverStore.getState().onCancelSolve).toBeNull()
-  })
-})

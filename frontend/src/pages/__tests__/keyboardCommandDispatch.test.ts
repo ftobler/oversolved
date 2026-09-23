@@ -33,32 +33,48 @@ describe('keyboard command dispatch', () => {
     expect(KEYMAP['y']).toBe('toggle_sketch_plane_visibility')
   })
 
-  it('executeCommand dispatches undo', () => {
-    const handler = vi.fn()
-    registerCommand('undo', handler)
+  it('executeCommand resolves undo to the undo handler and not redo', () => {
+    const undo = vi.fn()
+    const redo = vi.fn()
+    registerCommand('undo', undo)
+    registerCommand('redo', redo)
     executeCommand('undo')
-    expect(handler).toHaveBeenCalledOnce()
+    expect(undo).toHaveBeenCalledOnce()
+    expect(redo).not.toHaveBeenCalled()
   })
 
-  it('executeCommand dispatches redo', () => {
-    const handler = vi.fn()
-    registerCommand('redo', handler)
+  it('executeCommand resolves redo to the redo handler and not undo', () => {
+    const undo = vi.fn()
+    const redo = vi.fn()
+    registerCommand('undo', undo)
+    registerCommand('redo', redo)
     executeCommand('redo')
-    expect(handler).toHaveBeenCalledOnce()
+    expect(redo).toHaveBeenCalledOnce()
+    expect(undo).not.toHaveBeenCalled()
   })
 
-  it('ctrl+z dispatches undo', () => {
-    const handler = vi.fn()
-    registerCommand('undo', handler)
-    dispatchKey(fakeKey('z', { ctrlKey: true }))
-    expect(handler).toHaveBeenCalledOnce()
+  it('ctrl+z resolves to undo and marks the event handled', () => {
+    const undo = vi.fn()
+    const redo = vi.fn()
+    registerCommand('undo', undo)
+    registerCommand('redo', redo)
+    const event = fakeKey('z', { ctrlKey: true })
+    expect(dispatchKey(event)).toBe(true)
+    expect(undo).toHaveBeenCalledOnce()
+    expect(redo).not.toHaveBeenCalled()
+    expect(event.preventDefault).toHaveBeenCalledOnce()
   })
 
-  it('ctrl+shift+z dispatches redo', () => {
-    const handler = vi.fn()
-    registerCommand('redo', handler)
-    dispatchKey(fakeKey('z', { ctrlKey: true, shiftKey: true }))
-    expect(handler).toHaveBeenCalledOnce()
+  it('ctrl+shift+z resolves to redo and marks the event handled', () => {
+    const undo = vi.fn()
+    const redo = vi.fn()
+    registerCommand('undo', undo)
+    registerCommand('redo', redo)
+    const event = fakeKey('z', { ctrlKey: true, shiftKey: true })
+    expect(dispatchKey(event)).toBe(true)
+    expect(redo).toHaveBeenCalledOnce()
+    expect(undo).not.toHaveBeenCalled()
+    expect(event.preventDefault).toHaveBeenCalledOnce()
   })
 
   it('p key dispatches toggle_plane_visibility outside sketch mode', () => {
