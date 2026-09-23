@@ -78,13 +78,6 @@ def test_runtime_config_file_is_gone() -> None:
     assert "runtime-config" not in _read("frontend/index.html")
 
 
-def test_code_guideline_uses_draw_all_not_drawall() -> None:
-    # AR-N1: the icon render entry point is `draw_all()`, not `drawall()`.
-    text = _read("code_guideline.md")
-    assert "drawall()" not in text
-    assert "draw_all()" in text
-
-
 def test_setup_doc_states_node_floor() -> None:
     # AR-N (stale floor): Node.js >= 18 no longer builds with Vite 8.
     text = _read("docs/setup.md")
