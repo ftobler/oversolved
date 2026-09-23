@@ -177,6 +177,19 @@ describe('assemblyStore deleteSelected', () => {
     expect(requestSolve).not.toHaveBeenCalled()
   })
 
+  // No open document means no operation to run. The early return must leave the
+  // selection alone rather than build a host over a null doc.
+  it('returns early when no document is open, leaving the selection untouched', () => {
+    const mutate = vi.fn()
+    setAssemblyCallbacks({ mutateDoc: mutate, mutateDocSession: mutate, requestSolve: vi.fn() })
+    useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    useAssemblyStore.setState({ subject: { kind: 'part', handle: 'h1' } })
+
+    expect(() => useAssemblyStore.getState().deleteSubject({ kind: 'part', handle: 'h1' })).not.toThrow()
+    expect(useAssemblyStore.getState().subject).toEqual({ kind: 'part', handle: 'h1' })
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
   it('routes a mate delete through selectMate, clearing a dangling armed field', () => {
     const { host, requestSolve } = mountHost(sampleDoc())
     useAssemblyStore.getState().selectMate('fm1')
@@ -252,6 +265,17 @@ describe('assemblyStore editingSubject', () => {
 
     useAssemblyStore.getState().deleteSelected()
 
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+  })
+
+  it('deleteSelected closes an open instance editor on the deleted part', () => {
+    mountHost(sampleDoc())
+    useAssemblyStore.getState().openInstanceEditor('h1')
+    useAssemblyStore.getState().selectPart('h1')
+
+    useAssemblyStore.getState().deleteSelected()
+
+    // The edited instance is gone, so an editor left open would point at nothing.
     expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
   })
 

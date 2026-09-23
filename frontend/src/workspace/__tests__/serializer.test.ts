@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { deserializeTree, serializeTree } from '../serializer'
 import { MANIFEST_PATH } from '../paths'
 import { interpretEntry } from '../kinds'
@@ -102,5 +102,43 @@ describe('canonical tree serialization (I4 memory half, I5 shape, I9)', () => {
     const reopened = deserializeTree([...byPath.values()])
     expect(reopened.contents.get('a')?.text).toBe('kind: part\n')
     expect(reopened.contents.get('a')?.bytes).toBeUndefined()
+  })
+
+  it('a file payload carried as text is encoded to bytes, not stored as text', async () => {
+    // jsdom's TextEncoder hands back a Uint8Array from another realm, which the
+    // tree's own instanceof check rejects; pin the encoder to the test realm so
+    // the branch the single-realm browser reaches is exercised here too.
+    vi.stubGlobal('TextEncoder', class {
+      encode(text: string): Uint8Array {
+        return Uint8Array.from(text, ch => ch.charCodeAt(0))
+      }
+    })
+    vi.resetModules()
+    try {
+      const serializer = await import('../serializer')
+      const tree = treeWith([fileEntry('a', 'a.step', bytesOf([1, 2, 3]))])
+      const files = serializer.serializeTree(tree)
+      // The zip reader may hand a binary entry back as a string; the file kind
+      // decides, mirroring the document case the other way.
+      files.find(file => file.path === tree.manifest.entries.a.path)!.data = 'raw-bytes'
+
+      const reopened = serializer.deserializeTree(files)
+      expect(Array.from(reopened.contents.get('a')?.bytes ?? []))
+        .toEqual(Array.from(new TextEncoder().encode('raw-bytes')))
+      expect(reopened.contents.get('a')?.text).toBeUndefined()
+    } finally {
+      vi.unstubAllGlobals()
+      vi.resetModules()
+    }
+  })
+
+  it('a manifest payload carried as bytes is decoded to text', () => {
+    const tree = treeWith([documentEntry('a', 'A')])
+    const files = serializeTree(tree)
+    files.find(file => file.path === MANIFEST_PATH)!.data =
+      new TextEncoder().encode(files.find(file => file.path === MANIFEST_PATH)!.data as string)
+
+    const reopened = deserializeTree(files)
+    expect(reopened.manifest.entries.a.name).toBe('A')
   })
 })

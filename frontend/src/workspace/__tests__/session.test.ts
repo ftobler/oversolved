@@ -88,6 +88,28 @@ describe('workspace session', () => {
       .toEqual([{ entry: workspace, origin: 'folder:gone' }])
   })
 
+  // A caller decorates or sorts the records it is handed, and the meta row outlives
+  // the call. provenance therefore hands back copies: a mutation must not leak back
+  // into the next read.
+  it('provenance hands back copies, so mutating the result cannot touch the stored meta', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Ws', { docKind: 'part' })
+    const meta = (await readWorkspaceMeta(workspace))!
+    await writeWorkspaceMeta({ ...meta, provenance: [{ entry: workspace, origin: 'folder:src' }] })
+
+    const records = await createWorkspaceSession(workspace, store).provenance()
+    records[0].origin = 'mutated'
+
+    expect((await readWorkspaceMeta(workspace))!.provenance[0].origin).toBe('folder:src')
+  })
+
+  // A workspace whose meta row was never written (or predates the field) still has
+  // to answer: the workspace view reads provenance unconditionally.
+  it('provenance is empty when the workspace holds no meta', async () => {
+    const store = new IdbWorkspaceStore()
+    expect(await createWorkspaceSession('never-created', store).provenance()).toEqual([])
+  })
+
   it('referenceEdges returns the whole edge map in one read', async () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await store.create('Ws', { docKind: 'part' })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { AssemblyDoc, PartInstance } from '@/types/cad'
+import type { AssemblyDoc, AssemblyFeature, PartInstance } from '@/types/cad'
 import {
   appendMate,
   appendPartInstance,
@@ -18,6 +18,8 @@ import {
   reorderFeature,
   removeInstance,
   removeMate,
+  replaceInstance,
+  replaceMate,
   setBuiltinVisible,
   setInstanceVisible,
   setInstanceFixed,
@@ -335,6 +337,26 @@ describe('setInstanceVisible / setInstanceFixed', () => {
         : f),
     }
     expect(assemblyDocEquals(doc, withUndefined)).toBe(true)
+  })
+
+  // An array is order-significant: a reorder IS a change. Unlike an undefined
+  // key, it must not be waved through by the touched-slice compare.
+  it('assemblyDocEquals treats a reordered array as a change', () => {
+    const doc: AssemblyDoc = {
+      kind: 'assembly',
+      features: [{ id: 'f1', kind: 'origin', tags: ['a', 'b'] } as unknown as AssemblyFeature],
+    }
+    const same: AssemblyDoc = {
+      kind: 'assembly',
+      features: [{ id: 'f1', kind: 'origin', tags: ['a', 'b'] } as unknown as AssemblyFeature],
+    }
+    const reordered: AssemblyDoc = {
+      kind: 'assembly',
+      features: [{ id: 'f1', kind: 'origin', tags: ['b', 'a'] } as unknown as AssemblyFeature],
+    }
+
+    expect(assemblyDocEquals(doc, same)).toBe(true)
+    expect(assemblyDocEquals(doc, reordered)).toBe(false)
   })
 
   // The assembly frame's reserved MateRef handle must never be a value a real
@@ -879,5 +901,41 @@ describe('reorderFeature / moveInstance / moveMate', () => {
     const before = order(doc)
     reorderFeature(doc, 'fp1', 'fp3')
     expect(order(doc)).toEqual(before)
+  })
+})
+
+// The inline editor's Cancel path reverts the live edits it applied in one write,
+// so each replace has to restore the whole prior snapshot rather than patch the
+// fields it happens to remember.
+describe('replaceInstance / replaceMate (inline editor cancel)', () => {
+  it('replaceInstance restores a whole prior instance snapshot over live edits', () => {
+    const doc = appendPartInstance(emptyDoc, 'doc-A', 1)
+    const handle = instances(doc)[0].handle
+    const snapshot = instances(doc)[0]
+
+    let edited = setInstancePosition(doc, handle, { tx: 9, ty: 8, tz: 7 })
+    edited = setInstanceVisible(edited, handle, false)
+    edited = setInstanceFixed(edited, handle, true)
+    // The live edits really did move the addressed instance away from the snapshot.
+    expect(instances(edited)[0]).not.toEqual(snapshot)
+
+    const restored = instances(replaceInstance(edited, handle, snapshot))[0]
+    expect(restored).toEqual(snapshot)
+    // Stored as a copy, so a later edit to the restored instance cannot alias the
+    // snapshot the caller still holds.
+    expect(restored).not.toBe(snapshot)
+  })
+
+  it('replaceMate restores a whole mate def, overwriting live ref and param edits', () => {
+    const doc = appendMate(emptyDoc, 'fixed', 'm1')
+    const snapshot = findMate(doc, 'm1')!
+
+    let edited = setMateRef(doc, 'm1', 'ref_a', { part: 'h1', anchor: 'a_f' })
+    edited = updateMate(edited, 'm1', { offset: 5 })
+    expect(findMate(edited, 'm1')).not.toEqual(snapshot)
+
+    const restored = findMate(replaceMate(edited, 'm1', snapshot), 'm1')!
+    expect(restored).toEqual(snapshot)
+    expect(restored).not.toBe(snapshot)
   })
 })

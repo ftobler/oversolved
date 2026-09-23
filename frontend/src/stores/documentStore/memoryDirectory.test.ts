@@ -101,4 +101,15 @@ describe('MemoryDirectory', () => {
     expect(await toBytes(new Uint8Array([1, 2]))).toEqual(new Uint8Array([1, 2]))
     expect(await toBytes(new Uint8Array([3, 4]).buffer)).toEqual(new Uint8Array([3, 4]))
   })
+
+  it('toBytes drains a Blob-shaped payload through arrayBuffer', async () => {
+    // jsdom's Blob implements neither text() nor arrayBuffer(), and this module is
+    // written to the real browser shape, so the branch is driven by the smallest
+    // object that offers the one method it reads.
+    const source = new TextEncoder().encode('blobbed')
+    const blobLike = { arrayBuffer: async () => source.slice().buffer }
+    // Compare element-wise: jsdom's TextEncoder hands back a Uint8Array from
+    // another realm, which toEqual treats as a different type.
+    expect(Array.from(await toBytes(blobLike as unknown as Blob))).toEqual(Array.from(source))
+  })
 })
