@@ -1,4 +1,8 @@
 .app-header {
+  /* The spacing between neighbouring header buttons. A variable so that a
+     group nested inside a side (the editors' undo/redo pair) spaces its own
+     buttons the same as the side spaces its children. */
+  --toolbar-gap: 4px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -11,14 +15,14 @@
 .app-header-left {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--toolbar-gap);
   min-width: 200px;
 }
 
 .app-header-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--toolbar-gap);
   min-width: 100px;
   justify-content: flex-end;
 }
