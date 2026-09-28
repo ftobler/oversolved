@@ -130,18 +130,18 @@ export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visib
   if (!feature) return
   if (visible) {
     delete feature.visible
-    spendOwedHideOnShow(doc, [feature])
+    spendAutoHideOnShow(doc, [feature])
   } else {
     feature.visible = false
   }
 }
 
-// A consumed sketch no pick ever hid is hidden by the derived rule
-// (utils/featureVisibility) whatever its flag says, so clearing the flag alone
-// would leave the user's "show" doing nothing. Showing it spends the one-shot
-// the pick would have spent: from here on `visible` is the user's setting.
+// A consumed sketch is hidden by the derived rule (utils/featureVisibility)
+// whatever its flag says, so clearing the flag alone would leave the user's
+// "show" doing nothing. Showing it spends the one-shot auto-hide: from here on
+// `visible` is the user's setting, however many features consume the sketch.
 // Unconsumed sketches are left unstamped, so their first consume still hides.
-function spendOwedHideOnShow(doc: PartDoc, shown: PartFeature[]): void {
+function spendAutoHideOnShow(doc: PartDoc, shown: PartFeature[]): void {
   const consumed = allConsumedSketchIds(doc.features ?? [])
   for (const f of shown) {
     if (consumed.has(f.id)) f.auto_hidden = true
@@ -175,10 +175,9 @@ export function applyRenameFeature(doc: PartDoc, featureId: string, label: strin
 // visible, hide all (visible=false); otherwise show all (drop the override).
 function toggleVisibility(doc: PartDoc, predicate: (f: PartFeature) => boolean): void {
   const targets = (doc.features ?? []).filter(predicate)
-  // "Visible" as the user sees it: a consumed sketch the derived rule hides
-  // counts as hidden even with no flag. Reading the flag alone, a toggle over
-  // sketches that are all derived-hidden would "hide" them again and change
-  // nothing on screen.
+  // "Visible" as the user sees it: a consumed sketch counts as hidden even with
+  // no flag. Reading the flag alone, a toggle over sketches that are all
+  // auto-hidden would "hide" them again and change nothing on screen.
   const shown = docVisibleFeatureIds(doc.features ?? [])
   const anyVisible = targets.some(f => shown.has(f.id))
   for (const f of targets) {
@@ -188,7 +187,7 @@ function toggleVisibility(doc: PartDoc, predicate: (f: PartFeature) => boolean):
       delete f.visible
     }
   }
-  if (!anyVisible) spendOwedHideOnShow(doc, targets)
+  if (!anyVisible) spendAutoHideOnShow(doc, targets)
 }
 
 export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {

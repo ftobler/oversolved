@@ -1,17 +1,16 @@
 // Which sketches and planes the part editor draws.
 //
 // A sketch a solid feature consumes is hidden: once the body exists its profile
-// wires are clutter inside it. The pick that consumes a sketch spends a one-shot
-// hide in the document (hideConsumedSketches in yamlMutations/featureDefs,
-// stamped by `auto_hidden`), but a pick is not the only way a document comes to
-// hold a consumer. A document saved while auto-hide was switched off
-// (2026-06-13 to 2026-08-29), an imported or hand-edited YAML, or any future
-// mutation that writes a profile without going through the pick all carry a
-// consumed sketch that no pick ever hid, and every one of those used to stay on
-// screen next to its extrude. So the hide is also DERIVED here: a consumed
-// sketch whose one-shot was never spent is hidden whatever its `visible` flag
-// says. Once stamped, `visible` is the user's own setting and is honoured
-// as-is, so a consumed sketch the user showed again stays shown.
+// wires are clutter inside it. The hide is DERIVED from consumption here, never
+// written into the document. It used to be a flag the profile pick wrote, and a
+// document whose consumer arrived any other way (saved while auto-hide was off,
+// 2026-06-13 to 2026-08-29, imported, hand-edited) kept drawing its sketch next
+// to the body. Deriving it also means a sketch no feature consumes any more
+// (profile un-picked, consumer deleted) comes back on its own.
+//
+// The auto-hide is a one-shot per sketch: when the user shows a consumed sketch
+// the show stamps `auto_hidden` (yamlMutations/partStyle), and from then on the
+// `visible` flag alone decides, however many features consume the sketch.
 //
 // Pure on purpose: the viewport only reads the resulting id set, so the rule is
 // tested without mounting it.
@@ -22,8 +21,7 @@ import { allConsumedSketchIds, consumedSketchIds } from '@/utils/query/consumedS
 /** Whether the document itself shows `feature`, before any editor override. */
 function shownInDoc(feature: PartFeature, consumed: ReadonlySet<string>): boolean {
   if (feature.visible === false) return false
-  // An unspent one-shot: consumed, but no pick and no user toggle has ever
-  // decided this sketch's visibility since.
+  // Consumed, and the user has not shown it since: the auto-hide applies.
   return !(consumed.has(feature.id) && !feature.auto_hidden)
 }
 

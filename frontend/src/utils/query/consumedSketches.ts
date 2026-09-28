@@ -2,11 +2,10 @@
 //
 // A solid feature (extrude, revolve, sweep, hole) consumes the sketch it is
 // built from: once the body exists, the profile wires floating inside it are
-// clutter, so picking a profile hides the sketch that owns it. The same answer
-// is needed twice and must not be computed two different ways -- the mutation
-// that hides the sketch (yamlMutations/featureDefs), the visibility rule that
-// hides a consumed sketch no pick ever hid (utils/featureVisibility) and the
-// editor that forces it back on screen while its consumer is open all ask here.
+// clutter, so a consumed sketch is not drawn. The answer is needed twice and
+// must not be computed two different ways -- the document rule that hides every
+// consumed sketch and the editor that keeps its own profiles on screen while it
+// is open (utils/featureVisibility) both ask here.
 
 import type { PartFeature } from '@/types/cad'
 import { selectionSourceFeatureIds } from '@/utils/query/pickOrder'
@@ -16,17 +15,10 @@ function refList(ref: string | string[] | undefined): string[] {
   return ref ? [ref] : []
 }
 
-/** The sketch features one stored pick query derives from. */
-export function sketchIdsInQuery(query: string, features: PartFeature[]): string[] {
-  if (!query) return []
-  const byId = new Map(features.map(f => [f.id, f] as const))
-  return sketchIdsInQueryWith(query, byId, new Set(byId.keys()))
-}
-
-// The per-query variant: `known` and `byId` are built once by the caller so a
-// multi-ref feature (consumedSketchIds) does not rebuild the feature set per
-// stored ref (g2-L5).
-function sketchIdsInQueryWith(
+// The sketches one stored pick query picks from. `byId` and `known` are built
+// once by the caller so a multi-ref feature, or a whole feature list, does not
+// rebuild the feature set per stored ref (g2-L5).
+function sketchIdsInQuery(
   query: string,
   byId: ReadonlyMap<string, PartFeature>,
   known: ReadonlySet<string>,
@@ -55,8 +47,8 @@ export function consumedSketchIds(feature: PartFeature, features: PartFeature[])
 
 /**
  * Every sketch that ANY feature in the list consumes. The rollback bar is
- * deliberately not consulted: a feature added while the bar is parked lands
- * past it, and a consumer the bar hides for the moment still owns the sketch.
+ * deliberately not consulted: a consumer the bar hides for the moment still
+ * owns the sketch.
  */
 export function allConsumedSketchIds(features: PartFeature[]): Set<string> {
   const byId = new Map(features.map(f => [f.id, f] as const))
@@ -80,6 +72,6 @@ function collectConsumed(
     ...refList(feature.hole?.sketch),
   ]
   for (const q of queries) {
-    for (const id of sketchIdsInQueryWith(q, byId, known)) out.add(id)
+    for (const id of sketchIdsInQuery(q, byId, known)) out.add(id)
   }
 }

@@ -46,9 +46,8 @@ describe('Part - consumed sketch visibility', () => {
   })
 
   it('does not draw a sketch a loaded extrude consumes, even with no visible flag', async () => {
-    // The regression: a document whose extrude never went through the
-    // pick-time hide (saved while auto-hide was off) drew its profile sketch
-    // on top of the body forever.
+    // A document saved while auto-hide was off carries no flag on the sketch,
+    // and used to draw its profile sketch on top of the body forever.
     renderPart(`version: 1
 kind: part
 features:

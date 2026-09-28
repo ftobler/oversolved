@@ -335,7 +335,7 @@ export interface PartFeature {
   kind: string
   label?: string
   visible?: boolean  // absent means visible; false means hidden
-  auto_hidden?: boolean  // sketch only: the one-shot consume auto-hide has already fired; never hide automatically again
+  auto_hidden?: boolean  // sketch only: the user showed it while consumed, so the one-shot consume auto-hide is spent; `visible` alone decides
   suppressed?: boolean  // absent or false = active; true = backend skips this feature
   plane?: string  // query string, e.g. "@builtin_plane_front"
   entities?: PartEntityDef[]

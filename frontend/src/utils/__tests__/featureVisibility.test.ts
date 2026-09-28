@@ -1,14 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc, PartFeature } from '@/types/cad'
+import type { PartFeature } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
-import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
-import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
-import { applyAddExtrude, applyAddExtrudeProfile } from '@/utils/yamlMutations/featureDefs'
-import {
-  applyReorderFeatures,
-  applySetFeatureVisibility,
-  applyToggleSketchPlaneVisibility,
-} from '@/utils/yamlMutations/partStyle'
+import { visibleFeatureIds } from '@/utils/featureVisibility'
 
 // The query a click on a sketch region commits (topologyDecorate's surface
 // query), so the rule is exercised on the shape real picks store.
@@ -18,11 +11,12 @@ const sketch = (id: string, extra: Partial<PartFeature> = {}): PartFeature => ({
 const extrude = (id: string, profiles: string[]): PartFeature =>
   ({ id, kind: 'extrude', extrude: { sketch: profiles, distance: 10 } })
 
+// The mutation-driven side of the same rule (picks, un-picks, the eye icon and
+// the bulk toggle) lives in yamlMutations.autoHide.test.ts.
 describe('visibleFeatureIds', () => {
-  it('hides a sketch an extrude after it consumes', () => {
-    // No visible flag and no stamp: the consumer reached the doc without the
-    // pick-time hide, exactly what a document saved while auto-hide was off
-    // (2026-06-13 to 2026-08-29) looks like on load. It used to stay drawn.
+  it('hides a sketch an extrude consumes, with no flag in the document', () => {
+    // Exactly what a document saved while auto-hide was off (2026-06-13 to
+    // 2026-08-29) looks like on load. It used to stay drawn.
     const features = [sketch('sk1'), extrude('ex1', [area('sk1')])]
     expect(visibleFeatureIds(features).has('sk1')).toBe(false)
   })
@@ -30,13 +24,6 @@ describe('visibleFeatureIds', () => {
   it('shows a sketch nothing consumes', () => {
     const features = [sketch('sk1'), sketch('sk2'), extrude('ex1', [area('sk1')])]
     expect(visibleFeatureIds(features).has('sk2')).toBe(true)
-  })
-
-  it('hides the sketch of an extrude inserted before the end of the tree', () => {
-    const features = [sketch('sk1'), extrude('ex1', [area('sk1')]), sketch('sk2')]
-    const shown = visibleFeatureIds(features)
-    expect(shown.has('sk1')).toBe(false)
-    expect(shown.has('sk2')).toBe(true)
   })
 
   it('hides every sketch a multi-profile extrude consumes', () => {
@@ -79,48 +66,5 @@ describe('visibleFeatureIds', () => {
   it('draws the sketch being edited even though a feature consumes it', () => {
     const features = [sketch('sk1'), extrude('ex1', [area('sk1')])]
     expect(visibleFeatureIds(features, { editingFeatureId: 'sk1', forcedVisible: ['sk1'] }).has('sk1')).toBe(true)
-  })
-})
-
-describe('consumed sketch visibility through the mutations', () => {
-  const doc = (features: PartFeature[]): PartDoc => ({ features })
-
-  it('an extrude appended then moved before the end still hides its sketch', () => {
-    // Reorder clamps user features behind the built-ins, so they are present.
-    const builtins: PartFeature[] = [...BUILTIN_FEATURE_IDS].map(id => ({ id, kind: 'plane' }))
-    const d = doc([...builtins, sketch('sk1'), sketch('sk2')])
-    applyAddExtrude(d, 'ex1', undefined, '', 10)
-    applyReorderFeatures(d, 'ex1', builtins.length + 1)
-    applyAddExtrudeProfile(d, 'ex1', area('sk1'))
-    expect(d.features!.slice(builtins.length).map(f => f.id)).toEqual(['sk1', 'ex1', 'sk2'])
-    const shown = docVisibleFeatureIds(d.features!)
-    expect(shown.has('sk1')).toBe(false)
-    expect(shown.has('sk2')).toBe(true)
-  })
-
-  it('the eye icon can show a consumed sketch no pick ever hid', () => {
-    // Clearing the flag alone would change nothing on screen: the derived
-    // rule would still hide it. The show spends the one-shot instead.
-    const d = doc([sketch('sk1'), extrude('ex1', [area('sk1')])])
-    applySetFeatureVisibility(d, 'sk1', true)
-    expect(d.features![0].auto_hidden).toBe(true)
-    expect(docVisibleFeatureIds(d.features!).has('sk1')).toBe(true)
-  })
-
-  it('showing an unconsumed sketch leaves its one-shot for the first consume', () => {
-    const d = doc([sketch('sk1'), extrude('ex1', [])])
-    applySetFeatureVisibility(d, 'sk1', true)
-    expect(d.features![0].auto_hidden).toBeUndefined()
-    applyAddExtrudeProfile(d, 'ex1', area('sk1'))
-    expect(docVisibleFeatureIds(d.features!).has('sk1')).toBe(false)
-  })
-
-  it('the bulk toggle treats a derived-hidden sketch as hidden and can show it', () => {
-    const d = doc([sketch('sk1'), extrude('ex1', [area('sk1')])])
-    // Nothing is on screen, so the toggle's direction is "show".
-    applyToggleSketchPlaneVisibility(d)
-    expect(docVisibleFeatureIds(d.features!).has('sk1')).toBe(true)
-    applyToggleSketchPlaneVisibility(d)
-    expect(docVisibleFeatureIds(d.features!).has('sk1')).toBe(false)
   })
 })
