@@ -91,4 +91,36 @@ features:
     await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBeNull())
     expect(shown('sk1')).toBe(false)
   })
+
+  it('an extrude inserted off a body face does not bring back the sketch behind that body', async () => {
+    // The user-visible bug: every face of an extruded body carries its sketch's
+    // edges in its query ancestry, so a second extrude picking such a face
+    // counted the first body's (long hidden) sketch as its own profile and the
+    // open editor drew it again.
+    renderPart(`version: 1
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    visible: false
+    auto_hidden: true
+  - id: ex1
+    kind: extrude
+    extrude: { sketch: ['${area('sk1')}'], distance: 10 }
+`)
+    await screen.findByTitle('Feature mode')
+    fireEvent.click(screen.getByTitle('Feature mode'))
+    await waitFor(() => expect(shown('ex1')).toBe(true))
+    expect(shown('sk1')).toBe(false)
+
+    await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
+    await waitFor(() => expect(screen.getByTitle('OK')).toBeInTheDocument())
+    const face = makeAncestryQuery(['@u|u_0a3cb58fde38f980', '@ex1', '@body_ex1', '@sk1/left', '@cls_xn'], 'flatface')
+    act(() => { useSketchEditorStore.getState().toggleNormalSelection(face, 'pick') })
+    await waitFor(() => {
+      const ex = usePartEditorStore.getState().features.find(f => f.kind === 'extrude' && f.id !== 'ex1')
+      expect(ex?.extrude?.sketch).toEqual([face])
+    })
+    expect(shown('sk1')).toBe(false)
+  })
 })

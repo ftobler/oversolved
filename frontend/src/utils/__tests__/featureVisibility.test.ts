@@ -46,9 +46,12 @@ describe('visibleFeatureIds', () => {
     expect(shown.has('sk2')).toBe(false)
   })
 
-  it('leaves a sketch alone when the extrude profile is a body face', () => {
-    const features = [sketch('sk1'), extrude('ex1', [area('sk1')]), sketch('sk2'), extrude('ex2', ['face:ex1:@ex1/face0'])]
-    expect(visibleFeatureIds(features).has('sk2')).toBe(true)
+  it('does not draw the sketch behind a body face the open extrude profiles from', () => {
+    // A real body face names its sketch's edges in the ancestry; the editor of
+    // an extrude off that face must not count the sketch as its own profile.
+    const face = makeAncestryQuery(['@u|u_0a3cb58fde38f980', '@ex1', '@body_ex1', '@sk1/left', '@cls_xn'], 'flatface')
+    const features = [sketch('sk1'), extrude('ex1', [area('sk1')]), extrude('ex2', [face])]
+    expect(visibleFeatureIds(features, { editingFeatureId: 'ex2' }).has('sk1')).toBe(false)
   })
 
   it('honours a consumed sketch the user showed again (stamp spent, flag cleared)', () => {

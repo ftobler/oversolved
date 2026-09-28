@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import type { PartFeature } from '@/types/cad'
+import { makeAncestryQuery } from '@/kernel/query'
 import { consumedSketchIds, sketchIdsInQuery } from '@/utils/query/consumedSketches'
 
 const sk = (id: string): PartFeature => ({ id, kind: 'sketch' })
+
+// The side face of an extruded rectangle, as the real kernel names it: the
+// sketch edge that swept it sits in the ancestry next to the extrude.
+const bodyFace = makeAncestryQuery(['@u|u_0a3cb58fde38f980', '@ex1', '@body_ex1', '@sk1/left', '@cls_xn'], 'flatface')
 
 describe('sketchIdsInQuery', () => {
   it('names the sketch behind an entity pick', () => {
@@ -17,6 +22,12 @@ describe('sketchIdsInQuery', () => {
     const features: PartFeature[] = [sk('sk1'), { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } }]
     expect(sketchIdsInQuery('@ex1/face0', features)).toEqual([])
     expect(sketchIdsInQuery('', features)).toEqual([])
+  })
+
+  it('does not count a body face as its sketch, although its ancestry names the sketch', () => {
+    // Extruding off that face consumes the body, not the sketch behind it.
+    const features: PartFeature[] = [sk('sk1'), { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } }]
+    expect(sketchIdsInQuery(bodyFace, features)).toEqual([])
   })
 })
 

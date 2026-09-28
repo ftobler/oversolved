@@ -32,8 +32,13 @@ function sketchIdsInQueryWith(
   known: ReadonlySet<string>,
 ): string[] {
   if (!query) return []
-  return selectionSourceFeatureIds(query, known)
-    .filter(id => byId.get(id)?.kind === 'sketch')
+  const sources = selectionSourceFeatureIds(query, known)
+  // A body face or edge names the sketch edges that swept it in its ancestry
+  // (`@ex1@body_ex1@sk1/left`), so it mentions the sketch without being sketch
+  // geometry. Picking it consumes the body, not the sketch: only a query whose
+  // every source is a sketch picks from a sketch.
+  if (!sources.every(id => byId.get(id)?.kind === 'sketch')) return []
+  return sources
 }
 
 /**
