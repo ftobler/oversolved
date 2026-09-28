@@ -889,7 +889,8 @@ export type Mutation =
   | { type: 'add_projected_entity'; featureId: string; kind: string; source: string; entityId?: string }
   // The optional refs name what a click snapped onto (a `vertex:` ref, or an
   // `entity:` ref for a point on that curve); the writer pins the matching corner
-  // to it with a coincident. The n-gon has no center vertex, so no center ref.
+  // to it with a coincident. The n-gon's center ref pins the construction
+  // circumcircle's center.
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point; p0Ref?: string | null; p1Ref?: string | null }
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point; centerRef?: string | null; cornerRef?: string | null }
   | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; centerRef?: string | null; cornerRef?: string | null }
