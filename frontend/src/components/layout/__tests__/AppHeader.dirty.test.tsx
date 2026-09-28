@@ -90,24 +90,27 @@ describe('AppHeader workspace dirty and explicit save', () => {
     },
   )
 
-  it('the Save button invokes the handler and clears dirty', async () => {
+  it('the Save button invokes the handler', async () => {
     const save = vi.fn(async () => true)
     markDirty(save)
     wrap()
 
     await act(async () => { fireEvent.click(saveButtons()[0]) })
     expect(save).toHaveBeenCalledTimes(1)
-    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 
-  it('Ctrl+S invokes the handler and clears dirty', async () => {
+  // The handler alone knows whether an edit landed while its bytes were in
+  // flight, so a `true` is not "clean": the header leaves dirty to it. This
+  // handler reports success without clearing, as saveDoc does after a mid-save
+  // edit.
+  it('Ctrl+S invokes the handler and leaves dirty to it', async () => {
     const save = vi.fn(async () => true)
     markDirty(save)
     wrap()
 
     await act(async () => { fireEvent.keyDown(window, { key: 's', ctrlKey: true }) })
     expect(save).toHaveBeenCalledTimes(1)
-    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
   it('Cmd+S invokes the handler too', async () => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import type { MouseEvent, ReactNode } from 'react'
-import { confirmDiscardUnsavedChanges, saveOpenDocument, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAboutDialogStore } from '@/stores/aboutDialogStore'
 import { isEditableTarget } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
@@ -54,13 +54,15 @@ export default function AppHeader({ title, breadcrumb, children, rightContent, o
   }
 
   // Ctrl/Cmd+S and the dialog's "Save & Exit" run the editor's registered
-  // handler through saveOpenDocument, the same path the Save button takes, so
-  // all three clear dirty the same way once the bytes landed.
+  // handler, the same save the toolbar button runs. Dirty is the handler's to
+  // clear: it alone knows whether an edit landed while the bytes were in
+  // flight, so clearing it here on success would mark that edit saved.
   const handleSaveWorkspace = useCallback(async () => {
-    if (!useUnsavedChangesStore.getState().saveHandler || saving) return false
+    const save = useUnsavedChangesStore.getState().saveHandler
+    if (!save || saving) return false
     setSaving(true)
     try {
-      return await saveOpenDocument()
+      return await save()
     } finally {
       setSaving(false)
     }

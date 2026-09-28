@@ -1,6 +1,6 @@
 // The editors show exactly one Save: the toolbar's, left of the header. It
 // carries the unsaved state as a tint (no dot, no second header button), and
-// clicking it clears dirty through the same path Ctrl+S and "Save & Exit" take.
+// clicking it runs the same editor save Ctrl+S and "Save & Exit" run.
 // Rendered with the real AppHeader, since the duplicate lived in the header.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
@@ -65,8 +65,13 @@ describe.each([
     expect(container.querySelector('.workspace-dirty')).toBeNull()
   })
 
-  it('clicking it saves, clears dirty and drops the tint', async () => {
-    const save = vi.fn(async () => true)
+  // The fake save clears dirty the way the editors' saveDoc does: the button
+  // itself never clears it (toolbarSave.midSaveEdit covers why).
+  it('clicking it saves, and the tint drops once the save clears dirty', async () => {
+    const save = vi.fn(async () => {
+      useUnsavedChangesStore.getState().setDirty(false)
+      return true
+    })
     act(() => { useUnsavedChangesStore.getState().setDirty(true) })
     renderToolbar(Toolbar, save)
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { saveOpenDocument, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import '@/components/layout/AppHeader.css'
 
 interface SaveButtonProps {
@@ -50,7 +50,9 @@ export default function SaveButton({ save }: SaveButtonProps) {
       // The green check means the bytes landed: only a resolved true may flash
       // it. On a failure the plain save icon stays; the error banner beside the
       // toolbar already reports why, so no second affordance is raised here.
-      const saved = await saveOpenDocument(handler)
+      // Dirty is left to the save itself, which keeps it set when an edit
+      // landed while the bytes were in flight.
+      const saved = await handler()
       // A resolve after unmount must not schedule the reset timer: the cleanup
       // already ran and nothing would ever clear it.
       if (!saved || !mountedRef.current) return

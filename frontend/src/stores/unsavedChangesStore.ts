@@ -22,7 +22,9 @@ interface UnsavedChangesState {
   // How to write the open document, registered by whichever editor owns it, so
   // the shared header can offer "Save & Exit" instead of only "Discard". Null
   // on pages that have nothing to save; resolves to whether the bytes landed,
-  // so a failed save can hold the user in the dialog.
+  // so a failed save can hold the user in the dialog. The handler clears dirty
+  // itself, and only when no edit landed while it was in flight; a caller that
+  // cleared it on `true` would mark that edit saved.
   saveHandler: (() => boolean | Promise<boolean>) | null
   setDirty: (dirty: boolean) => void
   setWorkspace: (workspace: string | null) => void
@@ -70,19 +72,6 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => 
 // The seam emits on open, close and every mutating verb, so a save or a
 // recovery reset re-derives dirty from the record rather than from React.
 subscribeWorkspaceStore(() => { void useUnsavedChangesStore.getState().refreshWorkspaceDirty() })
-
-// The one save path: the toolbar's Save button, Ctrl/Cmd+S and the dialog's
-// "Save & Exit" all run the editor's save through here, so each clears dirty
-// the same way once the bytes landed. `save` defaults to the handler the open
-// editor registered; the toolbar passes its own, which is the same function.
-export async function saveOpenDocument(
-  save: (() => boolean | Promise<boolean>) | null = useUnsavedChangesStore.getState().saveHandler,
-): Promise<boolean> {
-  if (!save) return false
-  const saved = await save()
-  if (saved) useUnsavedChangesStore.getState().setDirty(false)
-  return saved
-}
 
 // Imperative guard for navigation outside React render (event handlers). When the document is dirty, schedules a confirm dialog via the
 // store so the shared header can render it. `onProceed` is baked into the stored
