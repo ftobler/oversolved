@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { buildContextMenu } from '@/pages/buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from '@/pages/buildContextMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
@@ -52,31 +52,48 @@ function findLabel(items: ContextMenuItem[], label: string) {
   return items.find(i => i.label === label)
 }
 
+function enabledLabels(items: ContextMenuItem[]) {
+  return items.filter(i => !i.disabled).map(i => i.label)
+}
+
+const DANGLING = 'Remove dangling projections / superfluous constraints'
+
 describe('buildContextMenu', () => {
-  it('contains Rebuild when no target', () => {
+  it('keeps the full fixed order for an empty viewport, with only Rebuild live', () => {
     const result = buildContextMenu(defaultInput(), defaultCallbacks())
-    expect(findLabel(result.items, 'Rebuild')).toBeTruthy()
-    expect(result.items).toHaveLength(1)
+    expect(result.items.map(i => i.label)).toEqual([
+      'New Sketch',
+      'Normal to',
+      'Rebuild',
+      DANGLING,
+      'Edit',
+      'Exit Sketch',
+      'Normal to sketch',
+      'Show',
+      'Hide Constraints',
+      'Suppress',
+      'Rename',
+      'Delete',
+    ])
+    expect(enabledLabels(result.items)).toEqual(['Rebuild'])
   })
 
   it('offers the dangling-content cleanup only when the last solve flagged it', () => {
-    const label = 'Remove dangling projections / superfluous constraints'
     const clean = buildContextMenu(defaultInput({ hasDanglingContent: true }), defaultCallbacks())
-    expect(findLabel(clean.items, label)).toBeTruthy()
+    expect(findLabel(clean.items, DANGLING)!.disabled).toBeFalsy()
     const dirty = buildContextMenu(defaultInput({ hasDanglingContent: false }), defaultCallbacks())
-    expect(findLabel(dirty.items, label)).toBeFalsy()
+    expect(findLabel(dirty.items, DANGLING)!.disabled).toBe(true)
   })
 
-  it('withholds the cleanup command during an active sketch edit', () => {
-    const label = 'Remove dangling projections / superfluous constraints'
+  it('greys the cleanup command during an active sketch edit', () => {
     const result = buildContextMenu(
       defaultInput({ hasDanglingContent: true, activeSketchFeatureId: 'sketch1' }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, label)).toBeFalsy()
+    expect(findLabel(result.items, DANGLING)!.disabled).toBe(true)
   })
 
-  it('contains Rebuild, Edit, Hide, Rename, Delete for a non-built-in sketch', () => {
+  it('enables Rebuild, Edit, Hide, Rename, Delete for a non-built-in sketch', () => {
     const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
     const result = buildContextMenu(
       defaultInput({
@@ -86,14 +103,14 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Rebuild')).toBeTruthy()
-    expect(findLabel(result.items, 'Edit')).toBeTruthy()
-    expect(findLabel(result.items, 'Hide')).toBeTruthy()
-    expect(findLabel(result.items, 'Rename')).toBeTruthy()
-    expect(findLabel(result.items, 'Delete')).toBeTruthy()
+    expect(findLabel(result.items, 'Rebuild')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Edit')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Hide')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Rename')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Delete')!.disabled).toBeFalsy()
   })
 
-  it('excludes Delete for a built-in feature', () => {
+  it('disables Delete and Edit for a built-in feature', () => {
     const features = [makeFeature({ id: 'builtin_plane_front', kind: 'plane' })]
     const result = buildContextMenu(
       defaultInput({
@@ -103,9 +120,9 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Rebuild')).toBeTruthy()
-    expect(findLabel(result.items, 'Delete')).toBeUndefined()
-    expect(findLabel(result.items, 'Edit')).toBeUndefined()
+    expect(findLabel(result.items, 'Rebuild')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Delete')!.disabled).toBe(true)
+    expect(findLabel(result.items, 'Edit')!.disabled).toBe(true)
   })
 
   it('contains Rename, Color, Export for a body target', () => {
@@ -155,7 +172,7 @@ describe('buildContextMenu', () => {
     expect(seen).toEqual([['f1', true]])
   })
 
-  it('contains Edit, Hide/Show for a non-built-in plane', () => {
+  it('enables Edit and Hide/Show for a non-built-in plane', () => {
     const features = [makeFeature({ id: 'plane1', kind: 'plane' })]
     const result = buildContextMenu(
       defaultInput({
@@ -165,11 +182,11 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Rebuild')).toBeTruthy()
-    expect(findLabel(result.items, 'Edit')).toBeTruthy()
-    expect(findLabel(result.items, 'Hide')).toBeTruthy()
-    expect(findLabel(result.items, 'Rename')).toBeTruthy()
-    expect(findLabel(result.items, 'Delete')).toBeTruthy()
+    expect(findLabel(result.items, 'Rebuild')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Edit')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Hide')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Rename')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Delete')!.disabled).toBeFalsy()
   })
 
   it('shows Show instead of Hide when plane is not visible', () => {
@@ -183,6 +200,7 @@ describe('buildContextMenu', () => {
       defaultCallbacks(),
     )
     expect(findLabel(result.items, 'Show')).toBeTruthy()
+    expect(findLabel(result.items, 'Show')!.disabled).toBeFalsy()
     expect(findLabel(result.items, 'Hide')).toBeUndefined()
   })
 
@@ -222,21 +240,21 @@ describe('buildContextMenu', () => {
       }),
       callbacks,
     )
-    expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to'])
+    expect(enabledLabels(result.items)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
     findLabel(result.items, 'New Sketch')!.onClick()
     expect(plane).toBe('@builtin_plane_top')
   })
 
-  it('does not offer New Sketch for a hovered id that is no plane', () => {
+  it('greys New Sketch for a hovered id that is no plane', () => {
     const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
     const result = buildContextMenu(
       defaultInput({ hoveredSelectionId: '@sketch1', features }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
+    expect(findLabel(result.items, 'New Sketch')!.disabled).toBe(true)
   })
 
-  it('does not offer New Sketch while a sketch edit session is open', () => {
+  it('greys New Sketch while a sketch edit session is open', () => {
     const features = [
       makeFeature({ id: 'plane1', kind: 'plane' }),
       makeFeature({ id: 'sketch1', kind: 'sketch' }),
@@ -245,25 +263,25 @@ describe('buildContextMenu', () => {
       defaultInput({ targetId: 'plane1', features, activeSketchFeatureId: 'sketch1' }),
       defaultCallbacks(),
     )
-    expect(findLabel(treeMenu.items, 'New Sketch')).toBeUndefined()
+    expect(findLabel(treeMenu.items, 'New Sketch')!.disabled).toBe(true)
 
     const viewportMenu = buildContextMenu(
       defaultInput({ hoveredSelectionId: '@plane1', features, activeSketchFeatureId: 'sketch1' }),
       defaultCallbacks(),
     )
-    expect(findLabel(viewportMenu.items, 'New Sketch')).toBeUndefined()
+    expect(findLabel(viewportMenu.items, 'New Sketch')!.disabled).toBe(true)
   })
 
-  it('does not offer New Sketch on a sketch target', () => {
+  it('greys New Sketch on a sketch target', () => {
     const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
     const result = buildContextMenu(
       defaultInput({ targetId: 'sketch1', features }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
+    expect(findLabel(result.items, 'New Sketch')!.disabled).toBe(true)
   })
 
-  it('contains Normal to when hovered surface is present', () => {
+  it('enables New Sketch and Normal to when a hovered surface is present', () => {
     const result = buildContextMenu(
       defaultInput({
         hoveredSelectionId: 'face:xyz',
@@ -272,7 +290,7 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to'])
+    expect(enabledLabels(result.items)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
   })
 
   it('passes the hovered face normal and center to onAlignToFace', () => {
@@ -318,7 +336,7 @@ describe('buildContextMenu', () => {
     expect(plane).toBe('plane1')
   })
 
-  it('offers Normal to on a plane even while a sketch edit session blocks New Sketch', () => {
+  it('keeps Normal to live on a plane while a sketch edit blocks New Sketch', () => {
     const features = [
       makeFeature({ id: 'plane1', kind: 'plane' }),
       makeFeature({ id: 'sketch1', kind: 'sketch' }),
@@ -327,8 +345,8 @@ describe('buildContextMenu', () => {
       defaultInput({ hoveredSelectionId: '@plane1', features, activeSketchFeatureId: 'sketch1' }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
-    expect(findLabel(result.items, 'Normal to')).toBeTruthy()
+    expect(findLabel(result.items, 'New Sketch')!.disabled).toBe(true)
+    expect(findLabel(result.items, 'Normal to')!.disabled).toBeFalsy()
   })
 
   it('lets a feature-tree target win over a stale viewport hover', () => {
@@ -347,18 +365,18 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Delete')).toBeTruthy()
-    expect(findLabel(result.items, 'Normal to')).toBeUndefined()
-    expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
+    expect(findLabel(result.items, 'Delete')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Normal to')!.disabled).toBe(true)
+    expect(findLabel(result.items, 'New Sketch')!.disabled).toBe(true)
   })
 
-  it('does not offer Normal to on a sketch target', () => {
+  it('greys Normal to on a sketch target', () => {
     const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
     const result = buildContextMenu(
       defaultInput({ targetId: 'sketch1', features }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+    expect(findLabel(result.items, 'Normal to')!.disabled).toBe(true)
   })
 
   it('contains Exit Sketch and Normal to sketch when activeSketchFeatureId matches target', () => {
@@ -372,14 +390,14 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Exit Sketch')).toBeTruthy()
-    expect(findLabel(result.items, 'Normal to sketch')).toBeTruthy()
+    expect(findLabel(result.items, 'Exit Sketch')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Normal to sketch')!.disabled).toBeFalsy()
     expect(findLabel(result.items, 'Align camera')).toBeUndefined()
-    expect(findLabel(result.items, 'Hide')).toBeTruthy()
-    expect(findLabel(result.items, 'Edit')).toBeTruthy()
+    expect(findLabel(result.items, 'Hide')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Edit')!.disabled).toBeFalsy()
   })
 
-  it('contains Exit Sketch but not Normal to sketch when activeSketchFeatureId differs from target', () => {
+  it('contains Exit Sketch but greys Normal to sketch when activeSketchFeatureId differs from target', () => {
     const features = [
       makeFeature({ id: 'sketch1', kind: 'sketch' }),
       makeFeature({ id: 'sketch2', kind: 'sketch' }),
@@ -393,12 +411,12 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Exit Sketch')).toBeTruthy()
-    expect(findLabel(result.items, 'Normal to sketch')).toBeUndefined()
-    expect(findLabel(result.items, 'Edit')).toBeTruthy()
+    expect(findLabel(result.items, 'Exit Sketch')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Normal to sketch')!.disabled).toBe(true)
+    expect(findLabel(result.items, 'Edit')!.disabled).toBeFalsy()
   })
 
-  it('does not include Hide when visibleFeatures does not contain the sketch', () => {
+  it('shows Show and keeps it live when the edited sketch is not visible', () => {
     const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
     const result = buildContextMenu(
       defaultInput({
@@ -410,7 +428,8 @@ describe('buildContextMenu', () => {
       defaultCallbacks(),
     )
     expect(findLabel(result.items, 'Hide')).toBeUndefined()
-    expect(findLabel(result.items, 'Exit Sketch')).toBeTruthy()
+    expect(findLabel(result.items, 'Show')!.disabled).toBeFalsy()
+    expect(findLabel(result.items, 'Exit Sketch')!.disabled).toBeFalsy()
   })
 
   it('includes Hide for sketch in active section when visible', () => {
@@ -424,7 +443,7 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Hide')).toBeTruthy()
+    expect(findLabel(result.items, 'Hide')!.disabled).toBeFalsy()
   })
 
   it('requests a body rename carrying the current label', () => {
@@ -476,7 +495,7 @@ describe('buildContextMenu', () => {
     expect(called).toBe(true)
   })
 
-  it('contains Hide Constraints toggle during sketch edit', () => {
+  it('contains the Hide Constraints toggle during sketch edit', () => {
     const result = buildContextMenu(
       defaultInput({
         activeSketchFeatureId: 'sketch1',
@@ -484,7 +503,7 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Hide Constraints')).toBeTruthy()
+    expect(findLabel(result.items, 'Hide Constraints')!.disabled).toBeFalsy()
     expect(findLabel(result.items, 'Show Constraints')).toBeUndefined()
   })
 
@@ -496,11 +515,11 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Show Constraints')).toBeTruthy()
+    expect(findLabel(result.items, 'Show Constraints')!.disabled).toBeFalsy()
     expect(findLabel(result.items, 'Hide Constraints')).toBeUndefined()
   })
 
-  it('does not include constraint toggle outside sketch edit', () => {
+  it('greys the constraint toggle outside sketch edit', () => {
     const result = buildContextMenu(
       defaultInput({
         activeSketchFeatureId: undefined,
@@ -508,7 +527,7 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Hide Constraints')).toBeUndefined()
+    expect(findLabel(result.items, 'Hide Constraints')!.disabled).toBe(true)
     expect(findLabel(result.items, 'Show Constraints')).toBeUndefined()
   })
 
@@ -554,11 +573,11 @@ describe('buildContextMenu', () => {
         }),
         defaultCallbacks(),
       )
-      expect(findLabel(result.items, 'Normal to sketch')).toBeTruthy()
-      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+      expect(findLabel(result.items, 'Normal to sketch')!.disabled).toBeFalsy()
+      expect(findLabel(result.items, 'Normal to')!.disabled).toBe(true)
     })
 
-    it('offers Normal to for one selected plane, keyed by its feature id', () => {
+    it('offers New Sketch and Normal to for one selected plane, keyed by its feature id', () => {
       let plane: string | undefined
       const callbacks = defaultCallbacks()
       callbacks.onNormalToPlane = (id) => { plane = id }
@@ -566,8 +585,7 @@ describe('buildContextMenu', () => {
         defaultInput({ features: planeAndSketch, selectedNormalTarget: { kind: 'plane', featureId: 'plane1' } }),
         callbacks,
       )
-      // First, ahead of Rebuild, which stays available.
-      expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
+      expect(enabledLabels(result.items)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
       findLabel(result.items, 'Normal to')!.onClick()
       expect(plane).toBe('plane1')
     })
@@ -599,7 +617,7 @@ describe('buildContextMenu', () => {
         }),
         callbacks,
       )
-      expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to'])
+      expect(enabledLabels(result.items)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
       findLabel(result.items, 'Normal to')!.onClick()
       expect(seen).toEqual(['face'])
     })
@@ -614,7 +632,7 @@ describe('buildContextMenu', () => {
         defaultInput({ hoveredSelectionId: '?faceQ', hoveredFaceNormal: [0, 0, 1], hoveredFaceCenter: [0, 0, 5] }),
         callbacks,
       )
-      expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to'])
+      expect(enabledLabels(result.items)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
       findLabel(result.items, 'New Sketch')!.onClick()
       // The unchanged selection query: what the sketch plane pick field stores.
       expect(plane).toBe('?faceQ')
@@ -628,12 +646,12 @@ describe('buildContextMenu', () => {
         defaultInput({ selectedNormalTarget: { kind: 'face', query: '?faceQ', normal: [0, 0, 1], center: [0, 0, 5] } }),
         callbacks,
       )
-      expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
+      expect(enabledLabels(result.items)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
       findLabel(result.items, 'New Sketch')!.onClick()
       expect(plane).toBe('?faceQ')
     })
 
-    it('offers no New Sketch on a hovered flat face while a sketch is edited', () => {
+    it('greys New Sketch on a hovered flat face while a sketch is edited', () => {
       const result = buildContextMenu(
         defaultInput({
           features: planeAndSketch,
@@ -644,17 +662,18 @@ describe('buildContextMenu', () => {
         }),
         defaultCallbacks(),
       )
-      expect(result.items.map(i => i.label)).toEqual(['Normal to'])
+      expect(findLabel(result.items, 'New Sketch')!.disabled).toBe(true)
+      expect(findLabel(result.items, 'Normal to')!.disabled).toBeFalsy()
     })
 
-    it('offers neither item on a hovered curved face, which carries no face frame', () => {
+    it('greys both surface items on a hovered curved face, which carries no face frame', () => {
       // Hover leaves the frame null for a non-flat face (planarFaceFrame).
       const result = buildContextMenu(
         defaultInput({ hoveredSelectionId: '?cylinderQ', hoveredFaceNormal: null, hoveredFaceCenter: null }),
         defaultCallbacks(),
       )
-      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
-      expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
+      expect(findLabel(result.items, 'Normal to')!.disabled).toBe(true)
+      expect(findLabel(result.items, 'New Sketch')!.disabled).toBe(true)
     })
 
     it('does not fall back to a selected plane under a hovered curved face', () => {
@@ -670,15 +689,15 @@ describe('buildContextMenu', () => {
         }),
         defaultCallbacks(),
       )
-      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
-      expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
-      expect(findLabel(result.items, 'Rebuild')).toBeTruthy()
+      expect(findLabel(result.items, 'Normal to')!.disabled).toBe(true)
+      expect(findLabel(result.items, 'New Sketch')!.disabled).toBe(true)
+      expect(findLabel(result.items, 'Rebuild')!.disabled).toBeFalsy()
     })
 
-    it('offers no Normal to when the selection resolves to nothing', () => {
+    it('greys Normal to when the selection resolves to nothing', () => {
       // Two faces, an edge or a curved face all reach here as a null target.
       const result = buildContextMenu(defaultInput({ selectedNormalTarget: null }), defaultCallbacks())
-      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+      expect(findLabel(result.items, 'Normal to')!.disabled).toBe(true)
     })
 
     it('ignores the selection on a feature-tree right-click', () => {
@@ -690,7 +709,98 @@ describe('buildContextMenu', () => {
         }),
         defaultCallbacks(),
       )
-      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+      expect(findLabel(result.items, 'Normal to')!.disabled).toBe(true)
+    })
+  })
+
+  describe('fixed slots', () => {
+    it('keeps the edited sketch commands live and everything else greyed', () => {
+      const features = [
+        makeFeature({ id: 'sketch1', kind: 'sketch' }),
+        makeFeature({ id: 'plane1', kind: 'plane' }),
+      ]
+      const result = buildContextMenu(
+        defaultInput({
+          features,
+          visibleFeatures: new Set(['sketch1']),
+          activeSketchFeatureId: 'sketch1',
+        }),
+        defaultCallbacks(),
+      )
+      expect(enabledLabels(result.items)).toEqual([
+        'Rebuild',
+        'Exit Sketch',
+        'Normal to sketch',
+        'Hide',
+        'Hide Constraints',
+      ])
+    })
+
+    it('greys Suppress, Rename and Delete for the sketch being edited', () => {
+      const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
+      const result = buildContextMenu(
+        defaultInput({
+          targetId: 'sketch1',
+          features,
+          visibleFeatures: new Set(['sketch1']),
+          activeSketchFeatureId: 'sketch1',
+        }),
+        defaultCallbacks(),
+      )
+      expect(findLabel(result.items, 'Suppress')!.disabled).toBe(true)
+      expect(findLabel(result.items, 'Rename')!.disabled).toBe(true)
+      expect(findLabel(result.items, 'Delete')!.disabled).toBe(true)
+    })
+
+    it('greys Hide/Show for a feature that is neither a plane nor a sketch', () => {
+      const features = [makeFeature({ id: 'f1', kind: 'extrude' })]
+      const result = buildContextMenu(
+        defaultInput({ targetId: 'f1', features, visibleFeatures: new Set(['f1']) }),
+        defaultCallbacks(),
+      )
+      expect(findLabel(result.items, 'Show')!.disabled).toBe(true)
+    })
+
+    it('still offers the edited sketch Hide when the targeted feature is not hideable', () => {
+      const features = [
+        makeFeature({ id: 'sketch1', kind: 'sketch' }),
+        makeFeature({ id: 'f1', kind: 'extrude' }),
+      ]
+      const result = buildContextMenu(
+        defaultInput({
+          targetId: 'f1',
+          features,
+          visibleFeatures: new Set(['sketch1']),
+          activeSketchFeatureId: 'sketch1',
+        }),
+        defaultCallbacks(),
+      )
+      expect(findLabel(result.items, 'Hide')!.disabled).toBeFalsy()
+    })
+
+    it('greys New Sketch and Normal to on a hovered curved face without leaking a stale selection', () => {
+      const newSketch = vi.fn()
+      const align = vi.fn()
+      const callbacks = defaultCallbacks()
+      callbacks.onNewSketchOnPlane = newSketch
+      callbacks.onAlignToFace = align
+      const result = buildContextMenu(
+        defaultInput({
+          features: [makeFeature({ id: 'plane1', kind: 'plane' })],
+          hoveredSelectionId: '?cylinderQ',
+          hoveredFaceNormal: null,
+          hoveredFaceCenter: null,
+          selectedNormalTarget: { kind: 'plane', featureId: 'plane1' },
+        }),
+        callbacks,
+      )
+      expect(findLabel(result.items, 'New Sketch')!.disabled).toBe(true)
+      expect(findLabel(result.items, 'Normal to')!.disabled).toBe(true)
+      // A disabled slot must not fire through the stale selected plane.
+      findLabel(result.items, 'New Sketch')!.onClick()
+      findLabel(result.items, 'Normal to')!.onClick()
+      expect(newSketch).not.toHaveBeenCalled()
+      expect(align).not.toHaveBeenCalled()
     })
   })
 })

@@ -6,6 +6,9 @@ export interface ContextMenuItem {
   onClick: () => void
   icon?: string
   className?: string
+  // An unusable command keeps its slot and greys out instead of disappearing,
+  // so the menu's shape never changes under the pointer.
+  disabled?: boolean
 }
 
 interface RightClickMenuProps {
@@ -26,9 +29,10 @@ export default function RightClickMenu({ items, position, onClose, anchorRef }: 
 
   useEffect(() => {
     returnFocusRef.current = document.activeElement as HTMLElement | null
-    // A menu has to work without a mouse: focus the first item on open so the
-    // arrow keys and Enter can reach the rest.
-    menuRef.current?.querySelector<HTMLElement>('.right-click-menu-item')?.focus()
+    // A menu has to work without a mouse: focus the first usable item on open so
+    // the arrow keys and Enter can reach the rest. A disabled item cannot take
+    // focus, so landing there would strand keyboard navigation.
+    menuRef.current?.querySelector<HTMLElement>('.right-click-menu-item:not(:disabled)')?.focus()
     const restore = returnFocusRef.current
     return () => {
       if (restore?.isConnected) restore.focus()
@@ -47,7 +51,9 @@ export default function RightClickMenu({ items, position, onClose, anchorRef }: 
         return
       }
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
-      const nodes = [...(menuRef.current?.querySelectorAll<HTMLElement>('.right-click-menu-item') ?? [])]
+      // Walk the enabled items only, so a disabled slot is skipped rather than
+      // swallowing a keypress the user aimed at the next live command.
+      const nodes = [...(menuRef.current?.querySelectorAll<HTMLElement>('.right-click-menu-item:not(:disabled)') ?? [])]
       if (nodes.length === 0) return
       e.preventDefault()
       const index = nodes.indexOf(document.activeElement as HTMLElement)
@@ -83,7 +89,9 @@ export default function RightClickMenu({ items, position, onClose, anchorRef }: 
           role="menuitem"
           key={`${item.label}-${i}`}
           className={`right-click-menu-item ${item.className || ''}`}
+          disabled={item.disabled}
           onClick={() => {
+            if (item.disabled) return
             item.onClick()
             onClose()
           }}

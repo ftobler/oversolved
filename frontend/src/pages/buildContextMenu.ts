@@ -28,49 +28,6 @@ export function findPlaneByQuery(
   return features.find(f => f.kind === 'plane' && planeQuery(f.id, builtInIds) === query)
 }
 
-// Point the camera down the plane's normal. Planes are named by feature id here
-// (not by query) because the caller resolves the transform from the solve result,
-// which is keyed by feature id.
-function normalToPlaneItem(featureId: string, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
-  return {
-    label: 'Normal to',
-    icon: contextCameraIcon,
-    onClick: () => callbacks.onNormalToPlane(featureId),
-  }
-}
-
-function normalToFaceItem(frame: FaceFrame, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
-  return {
-    label: 'Normal to',
-    icon: contextCameraIcon,
-    onClick: () => callbacks.onAlignToFace(frame.normal, frame.center),
-  }
-}
-
-// A plane and a flat face are both something a sketch can sit on and the camera
-// can look straight at, so they get the same pair in the same order. `query` is
-// what the sketch stores as its plane, the same string the plane pick field
-// stores when that surface is picked there; the kernel resolves a face query to
-// its frame. New Sketch is withheld while a sketch is being edited, since a new
-// sketch would open an edit session inside that one.
-function sketchSurfaceItems(
-  query: string,
-  normalTo: ContextMenuItem,
-  canStartSketch: boolean,
-  callbacks: BuildContextMenuCallbacks,
-): ContextMenuItem[] {
-  const items: ContextMenuItem[] = []
-  if (canStartSketch) {
-    items.push({
-      label: 'New Sketch',
-      icon: featureSketchIcon,
-      onClick: () => callbacks.onNewSketchOnPlane(query),
-    })
-  }
-  items.push(normalTo)
-  return items
-}
-
 // A rename gesture only names its subject here. Collecting the new label is the
 // owner's job, so this module stays free of both DOM and dialog state.
 export interface RenameTarget {
@@ -90,6 +47,15 @@ export interface FaceFrame {
 // normalToPlaneItem is. A face carries its selection query for New Sketch.
 export type NormalTarget =
   | { kind: 'plane'; featureId: string }
+  | ({ kind: 'face'; query: string } & FaceFrame)
+
+// The surface the New Sketch and Normal to items act on, resolved once from the
+// tree target, the viewport hover, then the selection. `query` is what a sketch
+// stores as its plane, the same string the plane pick field stores when that
+// surface is picked there; a plane derives it from its feature id while a face
+// carries the hovered/picked id unchanged.
+type SurfaceTarget =
+  | { kind: 'plane'; featureId: string; query: string }
   | ({ kind: 'face'; query: string } & FaceFrame)
 
 export interface BuildContextMenuInput {
@@ -134,6 +100,9 @@ export interface BuildContextMenuOutput {
   items: ContextMenuItem[]
 }
 
+// The viewport/feature menu is a fixed board: every command keeps its slot and
+// an unusable one is disabled rather than dropped, so the menu never shifts or
+// changes length under the pointer. A body keeps its own three-item menu.
 export function buildContextMenu(
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
@@ -153,44 +122,6 @@ export function buildContextMenu(
     builtInIds,
     hasDanglingContent,
   } = input
-
-  // Creating a sketch enters its edit session, which cannot nest inside the
-  // one an active sketch already holds. Exit first.
-  const canStartSketch = !activeSketchFeatureId
-
-  // Only a viewport right-click has no targetId. The feature tree always names
-  // its target, and must not be hijacked by whatever the pointer last hovered
-  // in the viewport (hover is not cleared when the pointer leaves the canvas).
-  const hoveredInViewport = targetId ? null : hoveredSelectionId
-
-  // A plane hovered in the viewport carries no face geometry, so it never
-  // reaches the face branch below.
-  const hoveredPlane = hoveredInViewport
-    ? findPlaneByQuery(hoveredInViewport, features, builtInIds)
-    : undefined
-  if (hoveredPlane) {
-    return {
-      items: sketchSurfaceItems(
-        planeQuery(hoveredPlane.id, builtInIds),
-        normalToPlaneItem(hoveredPlane.id, callbacks),
-        canStartSketch,
-        callbacks,
-      ),
-    }
-  }
-
-  // Hover fills the face frame only for a flat face (planarFaceFrame), so a
-  // curved face under the pointer falls through with neither item.
-  if (hoveredInViewport && hoveredFaceNormal && hoveredFaceCenter) {
-    return {
-      items: sketchSurfaceItems(
-        hoveredInViewport,
-        normalToFaceItem({ normal: hoveredFaceNormal, center: hoveredFaceCenter }, callbacks),
-        canStartSketch,
-        callbacks,
-      ),
-    }
-  }
 
   if (targetId?.startsWith('body:')) {
     const bodyId = targetId.slice('body:'.length)
@@ -219,145 +150,200 @@ export function buildContextMenu(
     }
   }
 
+  // Creating a sketch enters its edit session, which cannot nest inside the
+  // one an active sketch already holds. Exit first.
+  const canStartSketch = !activeSketchFeatureId
+
   const featureId = targetId
-  const items: ContextMenuItem[] = []
-  // With nothing under the pointer, the selection is what the user means. It
-  // leads the generic menu instead of replacing it, so Rebuild stays reachable.
-  // Inside a sketch edit the sketch plane is the view to return to, which
-  // "Normal to sketch" below already offers.
-  const offerSelection = !targetId && !hoveredInViewport && !activeSketchFeatureId
-  if (offerSelection && selectedNormalTarget?.kind === 'plane') {
-    const { featureId: planeId } = selectedNormalTarget
-    items.push(...sketchSurfaceItems(
-      planeQuery(planeId, builtInIds),
-      normalToPlaneItem(planeId, callbacks),
-      canStartSketch,
-      callbacks,
-    ))
-  } else if (offerSelection && selectedNormalTarget?.kind === 'face') {
-    items.push(...sketchSurfaceItems(
-      selectedNormalTarget.query,
-      normalToFaceItem(selectedNormalTarget, callbacks),
-      canStartSketch,
-      callbacks,
-    ))
+  const target = featureId ? features.find(f => f.id === featureId) : undefined
+
+  // Only a viewport right-click has no targetId. The feature tree always names
+  // its target, and must not be hijacked by whatever the pointer last hovered
+  // in the viewport (hover is not cleared when the pointer leaves the canvas).
+  const hoveredInViewport = targetId ? null : hoveredSelectionId
+
+  // A tree plane wins, then a plane hovered in the viewport, then a flat face
+  // hovered there (a plane carries no face frame, a curved face carries none
+  // either, so each drops out of the other's branch). Only a bare viewport
+  // right-click falls back to the selection, and only outside a sketch edit,
+  // where the edited sketch's own plane is the view already offered.
+  let surfaceTarget: SurfaceTarget | null = null
+  if (target?.kind === 'plane') {
+    surfaceTarget = {
+      kind: 'plane',
+      featureId: target.id,
+      query: planeQuery(target.id, builtInIds),
+    }
+  } else if (hoveredInViewport) {
+    const hoveredPlane = findPlaneByQuery(hoveredInViewport, features, builtInIds)
+    if (hoveredPlane) {
+      surfaceTarget = {
+        kind: 'plane',
+        featureId: hoveredPlane.id,
+        query: planeQuery(hoveredPlane.id, builtInIds),
+      }
+    } else if (hoveredFaceNormal && hoveredFaceCenter) {
+      surfaceTarget = {
+        kind: 'face',
+        query: hoveredInViewport,
+        normal: hoveredFaceNormal,
+        center: hoveredFaceCenter,
+      }
+    }
+  } else if (!targetId && !activeSketchFeatureId && selectedNormalTarget) {
+    surfaceTarget = selectedNormalTarget.kind === 'plane'
+      ? {
+          kind: 'plane',
+          featureId: selectedNormalTarget.featureId,
+          query: planeQuery(selectedNormalTarget.featureId, builtInIds),
+        }
+      : {
+          kind: 'face',
+          query: selectedNormalTarget.query,
+          normal: selectedNormalTarget.normal,
+          center: selectedNormalTarget.center,
+        }
   }
-  items.push({
-    label: 'Rebuild',
-    icon: contextRebuildIcon,
-    onClick: callbacks.onRebuild,
-  })
+
+  const canNewSketch = canStartSketch && surfaceTarget !== null
+  const canNormalTo = surfaceTarget !== null
   // Cleanup is explicit and undoable: the solve path no longer writes the
   // flagged content out of the doc, so this command is the only way to remove
   // it, and undo restores it without a re-solve re-deleting. Only offered
   // outside a sketch edit, where the solve cannot remove what is being edited.
-  if (hasDanglingContent && !activeSketchFeatureId) {
-    items.push({
+  const canRemoveDangling = hasDanglingContent && !activeSketchFeatureId
+  // A rename/Edit gesture names a tree feature. A built-in has no author to edit
+  // and no place in the doc to rename or delete, so it is left out.
+  const canEdit = !!featureId && !!target && !builtInIds.has(featureId)
+    && (target.kind === 'plane' || target.kind === 'sketch')
+  const canExitSketch = !!activeSketchFeatureId
+  // The tree row of the edited sketch and a bare viewport right-click both
+  // mean "this sketch"; a tree click on any other feature does not.
+  const canNormalToSketch = !!activeSketchFeatureId
+    && (!featureId || featureId === activeSketchFeatureId)
+  // Hide/Show only ever touches a plane or a sketch, the two overlays the tree
+  // draws. A tree target wins when it is one of those and is not the sketch
+  // already under edit; otherwise the edited sketch is the thing on screen to
+  // hide or show. With neither, the slot is greyed.
+  const targetIsHideable = !!featureId && featureId !== activeSketchFeatureId
+    && !!target && !builtInIds.has(featureId)
+    && (target.kind === 'plane' || target.kind === 'sketch')
+  const visibilityFeature = targetIsHideable
+    ? target
+    : activeSketchFeatureId
+      ? features.find(f => f.id === activeSketchFeatureId)
+      : undefined
+  const canToggleVisibility = !!visibilityFeature
+  const visibilityIsOn = !!visibilityFeature && visibleFeatures.has(visibilityFeature.id)
+  const canToggleConstraints = !!activeSketchFeatureId
+  // The sketch under edit keeps its commands: renaming it would fight the open
+  // session and deleting it would pull the sketch out from under the edit.
+  const canManageFeature = !!featureId && !builtInIds.has(featureId)
+    && featureId !== activeSketchFeatureId
+
+  const items: ContextMenuItem[] = [
+    {
+      label: 'New Sketch',
+      icon: featureSketchIcon,
+      disabled: !canNewSketch,
+      onClick: () => {
+        if (canNewSketch && surfaceTarget) callbacks.onNewSketchOnPlane(surfaceTarget.query)
+      },
+    },
+    {
+      label: 'Normal to',
+      icon: contextCameraIcon,
+      disabled: !canNormalTo,
+      onClick: () => {
+        if (!canNormalTo || !surfaceTarget) return
+        if (surfaceTarget.kind === 'plane') callbacks.onNormalToPlane(surfaceTarget.featureId)
+        else callbacks.onAlignToFace(surfaceTarget.normal, surfaceTarget.center)
+      },
+    },
+    {
+      label: 'Rebuild',
+      icon: contextRebuildIcon,
+      onClick: callbacks.onRebuild,
+    },
+    {
       label: 'Remove dangling projections / superfluous constraints',
       icon: contextRebuildIcon,
-      onClick: callbacks.onRemoveDanglingContent,
-    })
-  }
-
-  if (activeSketchFeatureId) {
-    const target = features.find(f => f.id === activeSketchFeatureId)
-    const isVisible = target && visibleFeatures.has(target.id)
-    if (isVisible) {
-      items.push({
-        label: 'Hide',
-        icon: contextHideIcon,
-        onClick: () => callbacks.onToggleVisibility(activeSketchFeatureId),
-      })
-    }
-    items.push({
+      disabled: !canRemoveDangling,
+      onClick: () => {
+        if (canRemoveDangling) callbacks.onRemoveDanglingContent()
+      },
+    },
+    {
       label: 'Edit',
       icon: contextEditIcon,
-      onClick: () => callbacks.onEnterEditSketch(activeSketchFeatureId),
-    })
-    items.push({
+      disabled: !canEdit,
+      onClick: () => {
+        if (canEdit && featureId) callbacks.onEnterEditSketch(featureId)
+      },
+    },
+    {
       label: 'Exit Sketch',
       icon: contextExitIcon,
-      onClick: callbacks.onExitSketch,
-    })
-    // The tree row of the edited sketch and a bare viewport right-click both
-    // mean "this sketch"; a tree click on any other feature does not.
-    if (!featureId || featureId === activeSketchFeatureId) {
-      items.push({
-        label: 'Normal to sketch',
-        icon: contextCameraIcon,
-        onClick: callbacks.onAlignCameraToSketchPlane,
-      })
-    }
-    items.push({
+      disabled: !canExitSketch,
+      onClick: () => {
+        if (canExitSketch) callbacks.onExitSketch()
+      },
+    },
+    {
+      label: 'Normal to sketch',
+      icon: contextCameraIcon,
+      disabled: !canNormalToSketch,
+      onClick: () => {
+        if (canNormalToSketch) callbacks.onAlignCameraToSketchPlane()
+      },
+    },
+    {
+      label: visibilityIsOn ? 'Hide' : 'Show',
+      icon: contextHideIcon,
+      disabled: !canToggleVisibility,
+      onClick: () => {
+        if (canToggleVisibility && visibilityFeature) callbacks.onToggleVisibility(visibilityFeature.id)
+      },
+    },
+    {
       label: showConstraintTiles ? 'Hide Constraints' : 'Show Constraints',
       icon: constraintTileIcon,
-      onClick: callbacks.onToggleConstraintTiles,
-    })
-  }
-
-  if (featureId && featureId !== activeSketchFeatureId) {
-    const target = features.find(f => f.id === featureId)
-    if (target?.kind === 'plane') {
-      if (canStartSketch) {
-        items.push({
-          label: 'New Sketch',
-          icon: featureSketchIcon,
-          onClick: () => callbacks.onNewSketchOnPlane(planeQuery(target.id, builtInIds)),
-        })
-      }
-      items.push(normalToPlaneItem(target.id, callbacks))
-      if (!builtInIds.has(target.id)) {
-        items.push({
-          label: 'Edit',
-          icon: contextEditIcon,
-          onClick: () => callbacks.onEnterEditSketch(target.id),
-        })
-        items.push({
-          label: visibleFeatures.has(target.id) ? 'Hide' : 'Show',
-          icon: contextHideIcon,
-          onClick: () => callbacks.onToggleVisibility(target.id),
-        })
-      }
-    } else if (target?.kind === 'sketch') {
-      if (!builtInIds.has(target.id)) {
-        items.push({
-          label: 'Edit',
-          icon: contextEditIcon,
-          onClick: () => callbacks.onEnterEditSketch(target.id),
-        })
-      }
-      if (visibleFeatures.has(target.id)) {
-        items.push({
-          label: 'Hide',
-          icon: contextHideIcon,
-          onClick: () => callbacks.onToggleVisibility(target.id),
-        })
-      }
-    }
-    if (!builtInIds.has(featureId)) {
-      const target = features.find(f => f.id === featureId)
-      items.push({
-        label: target?.suppressed ? 'Unsuppress' : 'Suppress',
-        icon: contextHideIcon,
-        onClick: () => callbacks.onToggleSuppression(featureId, !target?.suppressed),
-      })
-      items.push({
-        label: 'Rename',
-        icon: iconRenameIcon,
-        onClick: () => callbacks.onRequestRename({
+      disabled: !canToggleConstraints,
+      onClick: () => {
+        if (canToggleConstraints) callbacks.onToggleConstraintTiles()
+      },
+    },
+    {
+      label: target?.suppressed ? 'Unsuppress' : 'Suppress',
+      icon: contextHideIcon,
+      disabled: !canManageFeature,
+      onClick: () => {
+        if (canManageFeature && featureId) callbacks.onToggleSuppression(featureId, !target?.suppressed)
+      },
+    },
+    {
+      label: 'Rename',
+      icon: iconRenameIcon,
+      disabled: !canManageFeature,
+      onClick: () => {
+        if (!canManageFeature || !featureId) return
+        callbacks.onRequestRename({
           kind: 'feature',
           id: featureId,
           currentName: target?.label || featureId,
-        }),
-      })
-      items.push({
-        label: 'Delete',
-        icon: contextDeleteIcon,
-        onClick: () => callbacks.onDeleteFeature(featureId),
-        className: 'right-click-menu-item--delete',
-      })
-    }
-  }
+        })
+      },
+    },
+    {
+      label: 'Delete',
+      icon: contextDeleteIcon,
+      className: 'right-click-menu-item--delete',
+      disabled: !canManageFeature,
+      onClick: () => {
+        if (canManageFeature && featureId) callbacks.onDeleteFeature(featureId)
+      },
+    },
+  ]
 
   return { items }
 }

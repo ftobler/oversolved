@@ -32,11 +32,16 @@
   border-radius: 6px;
 }
 
-.right-click-menu-item:hover,
-.right-click-menu-item:focus-visible {
+.right-click-menu-item:not(:disabled):hover,
+.right-click-menu-item:not(:disabled):focus-visible {
   background: #2a2a2a;
   color: #fff;
   outline: none;
+}
+
+.right-click-menu-item:disabled {
+  color: #666;
+  cursor: default;
 }
 
 .right-click-menu-icon {
@@ -45,16 +50,20 @@
   filter: invert(0.8);
 }
 
-.right-click-menu-item:hover .right-click-menu-icon,
-.right-click-menu-item:focus-visible .right-click-menu-icon {
+.right-click-menu-item:not(:disabled):hover .right-click-menu-icon,
+.right-click-menu-item:not(:disabled):focus-visible .right-click-menu-icon {
   filter: invert(1.0);
+}
+
+.right-click-menu-item:disabled .right-click-menu-icon {
+  filter: invert(0.8) opacity(0.45);
 }
 
 .right-click-menu-item--exit {
   color: #e060b0;
 }
 
-.right-click-menu-item--exit:hover {
+.right-click-menu-item--exit:not(:disabled):hover {
   background: #2a1a2a;
   color: #f080c8;
 }

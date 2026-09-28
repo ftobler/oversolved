@@ -40,7 +40,9 @@ const callbacks: BuildContextMenuCallbacks = {
   onShowContextMenu: noop,
 }
 
-function viewportMenuLabels(): string[] {
+// The menu keeps a fixed board now, so the surface commands are always present
+// and only the enabled ones say whether the hover resolved to a sketch surface.
+function viewportMenuEnabledLabels(): string[] {
   const s = useSketchEditorStore.getState()
   return buildContextMenu({
     pos: [0, 0],
@@ -56,7 +58,7 @@ function viewportMenuLabels(): string[] {
     partLabels: {},
     builtInIds: new Set(),
     hasDanglingContent: false,
-  }, callbacks).items.map(i => i.label)
+  }, callbacks).items.filter(i => !i.disabled).map(i => i.label)
 }
 
 const bodyKey = bodyKeyFor('ex1', 'body_ex1')
@@ -78,13 +80,13 @@ describe('Body3D hover feeds Normal to only for flat faces', () => {
   it('a hovered flat face gets New Sketch and Normal to', () => {
     brepFaceAdapter.onHover('?flatQ', `${bodyKey}#face#0`)
     expect(useSketchEditorStore.getState().hoveredFaceNormal).not.toBeNull()
-    expect(viewportMenuLabels()).toEqual(['New Sketch', 'Normal to'])
+    expect(viewportMenuEnabledLabels()).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
   })
 
   it('a hovered curved face gets neither, despite a local normal', () => {
     brepFaceAdapter.onHover('?cylQ', `${bodyKey}#face#1`)
     expect(useSketchEditorStore.getState().hoveredFaceNormal).toBeNull()
-    const labels = viewportMenuLabels()
+    const labels = viewportMenuEnabledLabels()
     expect(labels).not.toContain('Normal to')
     expect(labels).not.toContain('New Sketch')
   })
@@ -93,7 +95,7 @@ describe('Body3D hover feeds Normal to only for flat faces', () => {
     brepFaceAdapter.onHover('?flatQ', `${bodyKey}#face#0`)
     brepFaceAdapter.onHover('?cylQ', `${bodyKey}#face#1`)
     expect(useSketchEditorStore.getState().hoveredFaceNormal).toBeNull()
-    expect(viewportMenuLabels()).not.toContain('Normal to')
+    expect(viewportMenuEnabledLabels()).not.toContain('Normal to')
   })
 
   it('the selection path agrees with hover on the same mounted body', () => {

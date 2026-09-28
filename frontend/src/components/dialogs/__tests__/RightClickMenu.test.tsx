@@ -59,3 +59,89 @@ describe('RightClickMenu keyboard', () => {
     opener.remove()
   })
 })
+
+describe('RightClickMenu disabled items', () => {
+  it('renders a disabled slot and refuses its click', () => {
+    const onPick = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <RightClickMenu
+        items={[{ label: 'Dead', onClick: onPick, disabled: true }]}
+        position={[0, 0]}
+        onClose={onClose}
+      />,
+    )
+    const dead = screen.getByRole('menuitem', { name: 'Dead' })
+    expect(dead).toBeDisabled()
+    fireEvent.click(dead)
+    expect(onPick).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('focuses the first enabled slot when the first slot is disabled', () => {
+    render(
+      <RightClickMenu
+        items={[
+          { label: 'Dead', onClick: () => {}, disabled: true },
+          { label: 'Live', onClick: () => {} },
+        ]}
+        position={[0, 0]}
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.getByRole('menuitem', { name: 'Live' })).toHaveFocus()
+  })
+
+  it('renders an all-disabled menu with nothing focused and the arrows inert', () => {
+    const onPick = vi.fn()
+    render(
+      <RightClickMenu
+        items={[
+          { label: 'Dead one', onClick: onPick, disabled: true },
+          { label: 'Dead two', onClick: onPick, disabled: true },
+        ]}
+        position={[0, 0]}
+        onClose={() => {}}
+      />,
+    )
+    const one = screen.getByRole('menuitem', { name: 'Dead one' })
+    const two = screen.getByRole('menuitem', { name: 'Dead two' })
+
+    // No enabled item to land on, so opening leaves focus where it was.
+    expect(one).not.toHaveFocus()
+    expect(two).not.toHaveFocus()
+    expect(document.body).toHaveFocus()
+
+    fireEvent.keyDown(window, { key: 'ArrowDown' })
+    fireEvent.keyDown(window, { key: 'ArrowUp' })
+    expect(one).not.toHaveFocus()
+    expect(two).not.toHaveFocus()
+
+    fireEvent.click(one)
+    expect(onPick).not.toHaveBeenCalled()
+  })
+
+  it('skips disabled slots with the arrow keys and wraps over the enabled ones', () => {
+    render(
+      <RightClickMenu
+        items={[
+          { label: 'One', onClick: () => {} },
+          { label: 'Two', onClick: () => {}, disabled: true },
+          { label: 'Three', onClick: () => {} },
+        ]}
+        position={[0, 0]}
+        onClose={() => {}}
+      />,
+    )
+    const one = screen.getByRole('menuitem', { name: 'One' })
+    const three = screen.getByRole('menuitem', { name: 'Three' })
+
+    expect(one).toHaveFocus()
+    fireEvent.keyDown(window, { key: 'ArrowDown' })
+    expect(three).toHaveFocus()
+    fireEvent.keyDown(window, { key: 'ArrowDown' })
+    expect(one).toHaveFocus()
+    fireEvent.keyDown(window, { key: 'ArrowUp' })
+    expect(three).toHaveFocus()
+  })
+})
