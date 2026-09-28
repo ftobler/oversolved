@@ -15,6 +15,7 @@ import type { Mesh3D } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { FACE_LAYER_NAME } from '@/picking/layerNames'
 import { parsePickKeyIndex } from '@/picking/pickKey'
+import { planarFaceFrame } from '@/components/Geometry3D/bodyGeometry'
 
 export interface BodyDispatchCallbacks {
   featureId: string
@@ -209,6 +210,23 @@ export function findFaceBoundaryEdges(q: string): { source: string; kind: string
 export function applyHoveredFaceGeometry(found: ResolvedFace): void {
   faceGeometryOwnerKey = found.bodyKey
   found.body.updateFaceGeometryForIndex(found.index)
+}
+
+/**
+ * The "Normal to" frame of a SELECTED face, which, unlike a hovered one, has no
+ * geometry in the store. Resolved on demand from the owning body's mesh through
+ * the same planarFaceFrame the hover path uses. The click's pickKey names the
+ * exact primitive when two faces share a query; without it the query decides.
+ * Null for anything that is not a registered planar face (edges, vertices,
+ * sketch entities, curved faces).
+ */
+export function findFaceFrame(
+  query: string,
+  pickKey: string | undefined,
+): { normal: [number, number, number]; center: [number, number, number] } | null {
+  const found = (pickKey ? findBodyFaceByPickKey(pickKey) : null) ?? findBodyForFaceQuery(query)
+  if (!found) return null
+  return planarFaceFrame(found.body.mesh, found.index)
 }
 
 /** Clear the face geometry of the one body that last computed it. */

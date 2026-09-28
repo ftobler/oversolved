@@ -328,6 +328,24 @@ export function calculateFaceProperties(faceMesh: { vertices: [number, number, n
   return { normal, center }
 }
 
+/**
+ * The frame "Normal to" aims the camera along for one B-rep face, or null when
+ * the face has none. Hover and selection both read it here so they agree on which
+ * faces qualify. Only a face the kernel classified as an OCC plane (`flatface`)
+ * has one clean normal; a curved face's local normal at some point does not
+ * count, and triangles are never sampled to guess planarity, so a face with no
+ * surface metadata is refused too.
+ */
+export function planarFaceFrame(
+  mesh: Mesh3D,
+  brepFaceIndex: number,
+  triangles?: readonly number[],
+): { normal: [number, number, number]; center: [number, number, number] } | null {
+  if (mesh.face_data?.[brepFaceIndex]?.surface_type !== 'flatface') return null
+  const faceGeo = extractFaceGeometry(mesh, brepFaceIndex, triangles)
+  return faceGeo ? calculateFaceProperties(faceGeo) : null
+}
+
 function _isValidSegment(p: [number, number, number]): boolean {
   return Number.isFinite(p[0]) && Number.isFinite(p[1]) && Number.isFinite(p[2])
 }

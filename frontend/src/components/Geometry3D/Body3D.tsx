@@ -19,8 +19,7 @@ import {
 import {
   buildBodyGeometry,
   buildFaceBoundarySegments,
-  extractFaceGeometry,
-  calculateFaceProperties,
+  planarFaceFrame,
   buildEdgeSegments,
   buildEdgeSegmentGeometry,
   faceCount,
@@ -101,12 +100,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // already resolved the query to an index to find this body at all, so taking the
   // query here meant a second `face_queries.indexOf` -- a linear scan of string
   // compares over every face of the body, on every pointer move.
+  // A face with no frame (curved, or untessellated) clears the fields rather than
+  // leaving the previous face's frame behind for "Normal to" to aim at.
   const updateFaceGeometryForIndex = useCallback((brepFaceIndex: number) => {
-    const faceGeo = extractFaceGeometry(mesh, brepFaceIndex, faceTriangles.get(brepFaceIndex))
-    if (!faceGeo) return
-    const props = calculateFaceProperties(faceGeo)
-    if (!props) return
-    setHoveredFaceGeometry(props.normal, props.center)
+    const frame = planarFaceFrame(mesh, brepFaceIndex, faceTriangles.get(brepFaceIndex))
+    setHoveredFaceGeometry(frame?.normal ?? null, frame?.center ?? null)
   }, [mesh, faceTriangles, setHoveredFaceGeometry])
 
   const clearFaceGeometry = useCallback(() => {

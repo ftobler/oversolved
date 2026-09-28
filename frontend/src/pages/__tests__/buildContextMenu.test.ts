@@ -15,6 +15,7 @@ function defaultInput(overrides?: Partial<BuildContextMenuInput>): BuildContextM
     hoveredSelectionId: null,
     hoveredFaceNormal: null,
     hoveredFaceCenter: null,
+    selectedNormalTarget: null,
     features: [],
     visibleFeatures: new Set(),
     activeSketchFeatureId: undefined,
@@ -271,8 +272,7 @@ describe('buildContextMenu', () => {
       }),
       defaultCallbacks(),
     )
-    expect(findLabel(result.items, 'Normal to')).toBeTruthy()
-    expect(result.items).toHaveLength(1)
+    expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to'])
   })
 
   it('passes the hovered face normal and center to onAlignToFace', () => {
@@ -361,7 +361,7 @@ describe('buildContextMenu', () => {
     expect(findLabel(result.items, 'Normal to')).toBeUndefined()
   })
 
-  it('contains Exit Sketch and Align camera when activeSketchFeatureId matches target', () => {
+  it('contains Exit Sketch and Normal to sketch when activeSketchFeatureId matches target', () => {
     const features = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
     const result = buildContextMenu(
       defaultInput({
@@ -373,12 +373,13 @@ describe('buildContextMenu', () => {
       defaultCallbacks(),
     )
     expect(findLabel(result.items, 'Exit Sketch')).toBeTruthy()
-    expect(findLabel(result.items, 'Align camera')).toBeTruthy()
+    expect(findLabel(result.items, 'Normal to sketch')).toBeTruthy()
+    expect(findLabel(result.items, 'Align camera')).toBeUndefined()
     expect(findLabel(result.items, 'Hide')).toBeTruthy()
     expect(findLabel(result.items, 'Edit')).toBeTruthy()
   })
 
-  it('contains Exit Sketch but not Align camera when activeSketchFeatureId differs from target', () => {
+  it('contains Exit Sketch but not Normal to sketch when activeSketchFeatureId differs from target', () => {
     const features = [
       makeFeature({ id: 'sketch1', kind: 'sketch' }),
       makeFeature({ id: 'sketch2', kind: 'sketch' }),
@@ -393,7 +394,7 @@ describe('buildContextMenu', () => {
       defaultCallbacks(),
     )
     expect(findLabel(result.items, 'Exit Sketch')).toBeTruthy()
-    expect(findLabel(result.items, 'Align camera')).toBeUndefined()
+    expect(findLabel(result.items, 'Normal to sketch')).toBeUndefined()
     expect(findLabel(result.items, 'Edit')).toBeTruthy()
   })
 
@@ -524,5 +525,172 @@ describe('buildContextMenu', () => {
     )
     findLabel(result.items, 'Hide Constraints')!.onClick()
     expect(called).toBe(true)
+  })
+
+  describe('Normal to sketch and the selection', () => {
+    const planeAndSketch = [
+      makeFeature({ id: 'plane1', kind: 'plane' }),
+      makeFeature({ id: 'sketch1', kind: 'sketch' }),
+    ]
+
+    it('offers Normal to sketch on a viewport right-click in sketch edit', () => {
+      let called = false
+      const callbacks = defaultCallbacks()
+      callbacks.onAlignCameraToSketchPlane = () => { called = true }
+      const result = buildContextMenu(
+        defaultInput({ features: planeAndSketch, activeSketchFeatureId: 'sketch1' }),
+        callbacks,
+      )
+      findLabel(result.items, 'Normal to sketch')!.onClick()
+      expect(called).toBe(true)
+    })
+
+    it('lets the edited sketch win over a selection while editing it', () => {
+      const result = buildContextMenu(
+        defaultInput({
+          features: planeAndSketch,
+          activeSketchFeatureId: 'sketch1',
+          selectedNormalTarget: { kind: 'plane', featureId: 'plane1' },
+        }),
+        defaultCallbacks(),
+      )
+      expect(findLabel(result.items, 'Normal to sketch')).toBeTruthy()
+      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+    })
+
+    it('offers Normal to for one selected plane, keyed by its feature id', () => {
+      let plane: string | undefined
+      const callbacks = defaultCallbacks()
+      callbacks.onNormalToPlane = (id) => { plane = id }
+      const result = buildContextMenu(
+        defaultInput({ features: planeAndSketch, selectedNormalTarget: { kind: 'plane', featureId: 'plane1' } }),
+        callbacks,
+      )
+      // First, ahead of Rebuild, which stays available.
+      expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
+      findLabel(result.items, 'Normal to')!.onClick()
+      expect(plane).toBe('plane1')
+    })
+
+    it('offers Normal to for one selected planar face with its resolved frame', () => {
+      let args: [number[], number[]] | undefined
+      const callbacks = defaultCallbacks()
+      callbacks.onAlignToFace = (normal, center) => { args = [normal, center] }
+      const result = buildContextMenu(
+        defaultInput({ selectedNormalTarget: { kind: 'face', query: '?faceQ', normal: [1, 0, 0], center: [4, 5, 6] } }),
+        callbacks,
+      )
+      findLabel(result.items, 'Normal to')!.onClick()
+      expect(args).toEqual([[1, 0, 0], [4, 5, 6]])
+    })
+
+    it('lets a hovered face win over a different selected plane', () => {
+      const seen: string[] = []
+      const callbacks = defaultCallbacks()
+      callbacks.onAlignToFace = () => { seen.push('face') }
+      callbacks.onNormalToPlane = () => { seen.push('plane') }
+      const result = buildContextMenu(
+        defaultInput({
+          features: planeAndSketch,
+          hoveredSelectionId: '?face',
+          hoveredFaceNormal: [0, 0, 1],
+          hoveredFaceCenter: [0, 0, 0],
+          selectedNormalTarget: { kind: 'plane', featureId: 'plane1' },
+        }),
+        callbacks,
+      )
+      expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to'])
+      findLabel(result.items, 'Normal to')!.onClick()
+      expect(seen).toEqual(['face'])
+    })
+
+    // ─── A flat face is a sketch surface, like a plane ───
+
+    it('offers New Sketch then Normal to on a hovered flat face, keyed by its query', () => {
+      let plane: string | undefined
+      const callbacks = defaultCallbacks()
+      callbacks.onNewSketchOnPlane = (p) => { plane = p }
+      const result = buildContextMenu(
+        defaultInput({ hoveredSelectionId: '?faceQ', hoveredFaceNormal: [0, 0, 1], hoveredFaceCenter: [0, 0, 5] }),
+        callbacks,
+      )
+      expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to'])
+      findLabel(result.items, 'New Sketch')!.onClick()
+      // The unchanged selection query: what the sketch plane pick field stores.
+      expect(plane).toBe('?faceQ')
+    })
+
+    it('offers New Sketch then Normal to on a selected flat face, keyed by its query', () => {
+      let plane: string | undefined
+      const callbacks = defaultCallbacks()
+      callbacks.onNewSketchOnPlane = (p) => { plane = p }
+      const result = buildContextMenu(
+        defaultInput({ selectedNormalTarget: { kind: 'face', query: '?faceQ', normal: [0, 0, 1], center: [0, 0, 5] } }),
+        callbacks,
+      )
+      expect(result.items.map(i => i.label)).toEqual(['New Sketch', 'Normal to', 'Rebuild'])
+      findLabel(result.items, 'New Sketch')!.onClick()
+      expect(plane).toBe('?faceQ')
+    })
+
+    it('offers no New Sketch on a hovered flat face while a sketch is edited', () => {
+      const result = buildContextMenu(
+        defaultInput({
+          features: planeAndSketch,
+          activeSketchFeatureId: 'sketch1',
+          hoveredSelectionId: '?faceQ',
+          hoveredFaceNormal: [0, 0, 1],
+          hoveredFaceCenter: [0, 0, 5],
+        }),
+        defaultCallbacks(),
+      )
+      expect(result.items.map(i => i.label)).toEqual(['Normal to'])
+    })
+
+    it('offers neither item on a hovered curved face, which carries no face frame', () => {
+      // Hover leaves the frame null for a non-flat face (planarFaceFrame).
+      const result = buildContextMenu(
+        defaultInput({ hoveredSelectionId: '?cylinderQ', hoveredFaceNormal: null, hoveredFaceCenter: null }),
+        defaultCallbacks(),
+      )
+      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+      expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
+    })
+
+    it('does not fall back to a selected plane under a hovered curved face', () => {
+      // The hover wins even though it offers neither item, so the selection
+      // must not leak a Normal to for the plane.
+      const result = buildContextMenu(
+        defaultInput({
+          features: planeAndSketch,
+          hoveredSelectionId: '?cylinderQ',
+          hoveredFaceNormal: null,
+          hoveredFaceCenter: null,
+          selectedNormalTarget: { kind: 'plane', featureId: 'plane1' },
+        }),
+        defaultCallbacks(),
+      )
+      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+      expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
+      expect(findLabel(result.items, 'Rebuild')).toBeTruthy()
+    })
+
+    it('offers no Normal to when the selection resolves to nothing', () => {
+      // Two faces, an edge or a curved face all reach here as a null target.
+      const result = buildContextMenu(defaultInput({ selectedNormalTarget: null }), defaultCallbacks())
+      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+    })
+
+    it('ignores the selection on a feature-tree right-click', () => {
+      const result = buildContextMenu(
+        defaultInput({
+          targetId: 'sketch1',
+          features: planeAndSketch,
+          selectedNormalTarget: { kind: 'plane', featureId: 'plane1' },
+        }),
+        defaultCallbacks(),
+      )
+      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+    })
   })
 })
