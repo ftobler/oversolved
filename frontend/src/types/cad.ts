@@ -275,6 +275,10 @@ export interface PartConstraint {
   // arbitrary number of member entities). Lowered to primitive constraints
   // before the solver runs; the solver never sees a `refs` array directly.
   refs?: PartTarget[]
+  // The `ngon`'s construction circumcircle (an entity ref). Kept out of `refs`
+  // so the side count stays `refs.length`; the lowering pins polygon vertices
+  // onto it. Absent on n-gons drawn before the circle existed.
+  circle?: PartTarget
   // Semantic refs (used by tangent, normal, midpoint, etc.)
   line?: PartTarget
   arc?: PartTarget
@@ -888,7 +892,7 @@ export type Mutation =
   // to it with a coincident. The n-gon has no center vertex, so no center ref.
   | { type: 'add_rect'; featureId: string; p0: Point; p1: Point; p0Ref?: string | null; p1Ref?: string | null }
   | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point; centerRef?: string | null; cornerRef?: string | null }
-  | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; cornerRef?: string | null }
+  | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; centerRef?: string | null; cornerRef?: string | null }
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string }

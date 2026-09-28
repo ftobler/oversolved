@@ -450,6 +450,9 @@ export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
       if (feature.constraints) {
         for (const c of feature.constraints) {
           if (_refsDeletedEntity(c, entsToDelete)) consToDelete.add(c.id)
+          // An n-gon survives losing its circumcircle: it stays regular and just
+          // has no center any more, so only the circle field goes.
+          else if (c.circle !== undefined && _refMatchesDeleted(c.circle, entsToDelete)) delete c.circle
         }
       }
     }
@@ -853,11 +856,13 @@ export function applyAddCenterRect(
   ])
 }
 
-/** N-gon sugar: N line entities forming a closed coincident chain plus a single
- *  `ngon` regularity constraint. The lines store the circumscribed polygon
- *  (vertices on the circumcircle through `corner`); the `ngon` constraint is
- *  expanded to primitive equal-length + angle constraints at solve time. The
- *  solver never sees a real `ngon` kind. */
+/** N-gon sugar: N line entities forming a closed coincident chain, a
+ *  construction circumcircle, and a single `ngon` regularity constraint. The
+ *  lines store the circumscribed polygon (vertices on the circumcircle through
+ *  `corner`); the circle's center is the polygon's center vertex and its radius
+ *  the circumradius, both dimensionable. The `ngon` constraint is expanded at
+ *  solve time to equal-length + angle primitives plus the vertex-on-circle
+ *  coupling, so the solver never sees a real `ngon` kind. */
 export function applyAddNgon(
   doc: PartDoc,
   featureId: string,
@@ -865,6 +870,7 @@ export function applyAddNgon(
   corner: [number, number],
   sides: number,
   cornerRef?: string | null,
+  centerRef?: string | null,
 ): void {
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
@@ -904,18 +910,29 @@ export function applyAddNgon(
     ])
   }
 
-  // The single regularity constraint. Deleting it "breaks" the n-gon, leaving
-  // the closed line chain as an editable irregular polygon.
+  // The circumcircle carries the n-gon's center. Construction, so it never
+  // becomes profile geometry.
+  const circleId = mintEntityId(feature.entities)
+  feature.entities.push({ id: circleId, kind: 'circle', construction: true })
+  feature.initial[circleId] = [cx, cy, radius].map(round)
+
+  // The single regularity constraint, which also owns the circle coupling.
+  // Deleting it "breaks" the n-gon: the closed line chain becomes an editable
+  // irregular polygon and the circle a free construction circle.
   const cid = uniqueConstraintId(feature.constraints, 'ngon')
   feature.constraints.push({
     id: cid,
     kind: 'ngon',
     refs: lineIds.map(eid => parseTarget(`entity:${featureId}:${eid}`, featureId)),
+    circle: parseTarget(`entity:${featureId}:${circleId}`, featureId),
   })
 
-  // The first line starts at angle0, i.e. on the corner click. The center has
-  // no vertex of its own, so a center snap only placed the polygon.
-  _pinSnappedVertices(doc, featureId, [[`vertex:${featureId}:${lineIds[0]}:start`, cornerRef]])
+  // Click order: the center click first, then the corner, where the first line
+  // starts (angle0).
+  _pinSnappedVertices(doc, featureId, [
+    [`vertex:${featureId}:${circleId}:center`, centerRef],
+    [`vertex:${featureId}:${lineIds[0]}:start`, cornerRef],
+  ])
 }
 
 /** Compute the offset seed params for a cloned entity: the source geometry moved

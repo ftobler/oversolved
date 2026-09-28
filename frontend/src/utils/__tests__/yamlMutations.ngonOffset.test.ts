@@ -35,7 +35,7 @@ describe('applyAddNgon', () => {
     applyAddNgon(doc, 'sk', [0, 0], [10, 0], 4)
     const feat = doc.features![0]
     // First vertex sits at the corner; all vertices are radius 10 from center.
-    for (const id of feat.entities!.map((e) => e.id)) {
+    for (const id of feat.entities!.filter((e) => e.kind === 'line').map((e) => e.id)) {
       const p = feat.initial![id]
       expect(Math.hypot(p[0], p[1])).toBeCloseTo(10, 4)
     }

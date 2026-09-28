@@ -314,13 +314,13 @@ describe('multi-entity sugar mints distinct ids under a repeating generator', ()
     expect(new Set(ids).size).toBe(4)
   })
 
-  it('applyAddNgon: one line id per side', () => {
+  it('applyAddNgon: one line id per side plus the circumcircle', () => {
     const doc = bareDoc()
     stubRepeatingBytes()
     applyAddNgon(doc, 'Sketch1', [0, 0], [5, 0], 6)
     const ids = entityIds(doc)
-    expect(ids).toHaveLength(6)
-    expect(new Set(ids).size).toBe(6)
+    expect(ids).toHaveLength(7)
+    expect(new Set(ids).size).toBe(7)
   })
 
   it('applyAddCenterRect: the center point is minted after the four lines are pushed', () => {

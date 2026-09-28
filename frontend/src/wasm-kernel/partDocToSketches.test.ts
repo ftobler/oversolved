@@ -183,6 +183,67 @@ describe('partDocToSketches', () => {
     expect(cs[0]).toMatchObject({ kind: 'equal_length', a: { entity: 'l0' }, b: { entity: 'l1' } })
   })
 
+  // A hexagon with its construction circumcircle, in the stored wire form.
+  function centeredHexagon(withCircle: boolean): PartFeature[] {
+    const ids = ['l0', 'l1', 'l2', 'l3', 'l4', 'l5']
+    const initial: Record<string, number[]> = { circ: [0, 0, 10] }
+    ids.forEach((id, i) => {
+      const a1 = (i / 6) * 2 * Math.PI, a2 = ((i + 1) / 6) * 2 * Math.PI
+      initial[id] = [10 * Math.cos(a1), 10 * Math.sin(a1), 10 * Math.cos(a2), 10 * Math.sin(a2)]
+    })
+    const ngon: PartConstraint = { id: 'ng', kind: 'ngon', refs: ids.map(id => `$${id}`) }
+    if (withCircle) ngon.circle = '$circ'
+    return [{
+      id: 'sk1',
+      kind: 'sketch',
+      entities: [...ids.map(id => ({ id, kind: 'line' })), { id: 'circ', kind: 'circle', construction: true }],
+      initial,
+      constraints: [ngon],
+    }]
+  }
+
+  it('an ngon with a circle lowers to the old primitives plus three vertex-on-circle pins', () => {
+    const cs = partDocToSketches(centeredHexagon(true)).sketches[0].sketch.constraints
+    expect(cs.filter((c) => c.kind === 'equal_length')).toHaveLength(5)
+    expect(cs.filter((c) => c.kind === 'angle')).toHaveLength(3)
+    const pins = cs.filter((c) => c.kind === 'coincident')
+    // Three concyclic points fix a circle: spread over the polygon (0, N/3, 2N/3)
+    // so the pins stay well conditioned.
+    expect(pins).toEqual([
+      { id: 'ng_on0', kind: 'coincident', a: { entity: 'l0', point: 'start' }, b: { entity: 'circ' } },
+      { id: 'ng_on1', kind: 'coincident', a: { entity: 'l2', point: 'start' }, b: { entity: 'circ' } },
+      { id: 'ng_on2', kind: 'coincident', a: { entity: 'l4', point: 'start' }, b: { entity: 'circ' } },
+    ])
+  })
+
+  it('a triangle pins all three of its vertices', () => {
+    const features: PartFeature[] = [{
+      id: 'sk1',
+      kind: 'sketch',
+      entities: [{ id: 'a', kind: 'line' }, { id: 'b', kind: 'line' }, { id: 'c', kind: 'line' }, { id: 'o', kind: 'circle' }],
+      initial: { a: [1, 0, 0, 1], b: [0, 1, -1, 0], c: [-1, 0, 1, 0], o: [0, 0, 1] },
+      constraints: [{ id: 'ng', kind: 'ngon', refs: ['$a', '$b', '$c'], circle: '$o' }],
+    }]
+    const pins = partDocToSketches(features).sketches[0].sketch.constraints.filter((c) => c.kind === 'coincident')
+    expect(pins.map((c) => (c.a as { entity: string }).entity)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('an ngon without a circle (an old document) lowers exactly as before', () => {
+    const withOut = partDocToSketches(centeredHexagon(false)).sketches[0].sketch.constraints
+    expect(withOut.map((c) => c.kind)).toEqual([
+      ...Array(5).fill('equal_length'), ...Array(3).fill('angle'),
+    ])
+  })
+
+  it('a circle ref that no longer resolves drops only the pins', () => {
+    const features = centeredHexagon(true)
+    features[0].entities = features[0].entities!.filter((e) => e.id !== 'circ')
+    const cs = partDocToSketches(features).sketches[0].sketch.constraints
+    expect(cs.map((c) => c.kind)).toEqual([
+      ...Array(5).fill('equal_length'), ...Array(3).fill('angle'),
+    ])
+  })
+
   it('expands a dock constraint to two coincident-to-locus pins against its host', () => {
     const features: PartFeature[] = [
       {

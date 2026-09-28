@@ -122,7 +122,7 @@ export const mutationHandlers: MutationHandlers = {
   add_center_rect: (next, m) =>
     applyAddCenterRect(next, m.featureId, m.center, m.corner, m.centerRef, m.cornerRef),
   add_ngon: (next, m) =>
-    applyAddNgon(next, m.featureId, m.center, m.corner, m.sides, m.cornerRef),
+    applyAddNgon(next, m.featureId, m.center, m.corner, m.sides, m.cornerRef, m.centerRef),
   apply_offset: (next, m) =>
     applyAddOffset(next, m.featureId, m.sourceIds, m.distance),
   toggle_construction: (next, m) =>

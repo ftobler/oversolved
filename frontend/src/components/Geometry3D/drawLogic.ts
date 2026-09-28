@@ -378,8 +378,7 @@ export function computeDrawClick(
 
   if (t === 'ngon') {
     if (pts.length === 0) {
-      // The ref is recorded like every first click, but the n-gon has no center
-      // vertex to pin it to, so the snap only places the polygon.
+      // The center click's snap is pinned to the construction circle's center.
       const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
@@ -389,7 +388,8 @@ export function computeDrawClick(
     // is refused too.
     if (!(Math.hypot(end.at[0] - pts[0][0], end.at[1] - pts[0][1]) > 0)) return nothing
     const sides = Math.max(3, Math.floor(snap.ngonSides ?? 6))
-    return done({ type: 'add_ngon', featureId, center: pts[0], corner: end.at, sides, cornerRef: end.ref })
+    return done({ type: 'add_ngon', featureId, center: pts[0], corner: end.at, sides,
+      centerRef: snap.drawSnapRefs[0] ?? null, cornerRef: end.ref })
   }
 
   if (t === 'project') {

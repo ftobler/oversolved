@@ -241,6 +241,7 @@ describe('DrawingTool', () => {
         center: [0, 0],
         corner: [10, 0],
         sides: 5,
+        centerRef: null,
         cornerRef: null,
       })
       expect(clearDraw).toHaveBeenCalled()

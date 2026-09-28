@@ -58,7 +58,8 @@ describe.skipIf(!bytes)('n-gon sugar solves to a regular polygon', () => {
       // Draw centered at origin with the first vertex at (10, 0).
       applyAddNgon(doc, 'sk', [0, 0], [10, 0], sides)
 
-      const lineIds = doc.features![0].entities!.map((e) => e.id)
+      // The construction circumcircle rides along; the polygon is the lines.
+      const lineIds = doc.features![0].entities!.filter((e) => e.kind === 'line').map((e) => e.id)
       expect(lineIds).toHaveLength(sides)
 
       const solved = solveFeature(doc)

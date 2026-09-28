@@ -855,16 +855,24 @@ describe('computeDrawClick - ngon tool', () => {
     }
   })
 
-  // The n-gon has no center vertex to pin, so a center snap only places it.
-  it('a snapped center positions the polygon but authors no center ref', () => {
+  // The construction circumcircle's center is the n-gon's center vertex, so a
+  // snapped first click is carried to the doc writer like center_rect's.
+  it('a snapped center lands on the vertex and is carried as centerRef', () => {
     const first = computeDrawClick('ngon', [], [0.1, 0.1], onVertex('vertex:S1:P1:xy', [0, 0]), FEATURE, newId)
     expect(first.nextDrawPoints).toEqual([[0, 0]])
     const snap = emptySnap()
     snap.drawSnapRefs = first.nextDrawSnap!.refs
     const result = computeDrawClick('ngon', first.nextDrawPoints!, [10, 0], snap, FEATURE, newId)
     expect(result.mutations).toEqual([
-      { type: 'add_ngon', featureId: FEATURE, center: [0, 0], corner: [10, 0], sides: 6, cornerRef: null },
+      { type: 'add_ngon', featureId: FEATURE, center: [0, 0], corner: [10, 0], sides: 6,
+        centerRef: 'vertex:S1:P1:xy', cornerRef: null },
     ])
+  })
+
+  it('an unsnapped center carries a null centerRef', () => {
+    const result = computeDrawClick('ngon', [[0, 0]], [10, 0], emptySnap(), FEATURE, newId)
+    const m = result.mutations[0]
+    expect(m.type === 'add_ngon' && m.centerRef).toBeNull()
   })
 
   it('second click on the center keeps it (zero radius)', () => {

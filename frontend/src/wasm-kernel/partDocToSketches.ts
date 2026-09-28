@@ -128,7 +128,16 @@ function lowerConstraint(
  * coincident chain (added at mutation time), which together with N-1 equal
  * lengths and N-3 fixed exterior angles (360/N degrees, the angle the solver
  * measures between consecutive edge directions) pins the polygon to the
- * similarity family of regular N-gons. The solver never sees `ngon`.
+ * similarity family of regular N-gons (4 DOF). The solver never sees `ngon`.
+ *
+ * With a `circle` (the construction circumcircle) three vertices are also put
+ * on it. A regular polygon's vertices are already concyclic, so three
+ * point-on-circle rows are exactly what fixes the circle's 3 params; pinning
+ * more vertices would only add redundant rows. Measured on the real solver
+ * (ngonCenterSolve.test.ts): 4 DOF and rank === rows for N = 3, 4, 6, 8. The
+ * pins go on vertices 0, N/3 and 2N/3, spread round the polygon so the three
+ * points are never nearly collinear. An `ngon` without `circle` lowers as it
+ * always did.
  */
 function lowerNgonConstraint(c: PartConstraint): PartConstraint[] {
   const refs = c.refs ?? []
@@ -144,7 +153,26 @@ function lowerNgonConstraint(c: PartConstraint): PartConstraint[] {
   for (let i = 0; i < n - 3; i++) {
     out.push({ id: `${c.id}_ang${i}`, kind: 'angle', a: refs[i], b: refs[i + 1], value: turn })
   }
+  if (c.circle != null) {
+    for (let k = 0; k < 3; k++) {
+      const start = lineStart(refs[Math.floor((k * n) / 3)])
+      // A member ref that is not a plain line ref cannot name its start; the
+      // pin is skipped rather than lowered onto the whole line.
+      if (start) out.push({ id: `${c.id}_on${k}`, kind: 'coincident', a: start, b: toLocus(c.circle) as PartConstraint['b'] })
+    }
+  }
   return out
+}
+
+/** The start vertex of an `ngon` member line, in dict-ref form. Members are
+ *  stored as bare entity refs (`$<eid>` or `{entity}`), never with a vertex key,
+ *  so the entity id is the whole ref. */
+function lineStart(ref: unknown): PartConstraint['a'] | null {
+  let entity: unknown = null
+  if (typeof ref === 'string' && ref.startsWith('$')) entity = ref.slice(1)
+  else if (ref && typeof ref === 'object') entity = (ref as { entity?: unknown }).entity
+  if (typeof entity !== 'string' || entity === '') return null
+  return { entity, point: 'start' } as unknown as PartConstraint['a']
 }
 
 /** Coerce a constraint ref into LOCUS form (the whole curve, no vertex key) so a
