@@ -74,6 +74,20 @@ describe('adoption: manifest absent', () => {
     expect(entries.find(e => e.name === 'Part')).toMatchObject({ kind: 'document', docKind: 'part' })
   })
 
+  it('a loose STEP joining a live workspace keeps its part pointed at its file', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Destination', { docKind: 'part' })
+    await importBag(bag('bracket.step', new Uint8Array([0x49, 0x53, 0x4f])), { origin: 'drop', into: workspace }, store)
+
+    const entries = await store.listEntries(workspace)
+    const file = entries.find(entry => entry.name === 'bracket.step')!
+    const part = entries.find(entry => entry.name === 'bracket')!
+    // The id the synthesized part's text names must be the file entry that
+    // landed, not a bag id the join re-minted away underneath it.
+    expect(extractReferenceIds((await store.readEntry(workspace, part.id)).text ?? '')).toEqual([file.id])
+    expect(await new IdbCarrier(workspace).referencesOf(part.id)).toEqual([file.id])
+  })
+
   it('an unrecognized kind adopts as a file under its mime, not a coerced part', async () => {
     const store = new IdbWorkspaceStore()
     const result = await importBag(bag('widget.yaml', 'kind: gizmo\n'), { origin: 'drop' }, store)

@@ -580,7 +580,11 @@ export async function importBag(
   if (opts.into !== undefined) {
     const remapped = remapTree(imported.tree, {
       workspace: opts.into,
-      mintIds: true,
+      // A manifest-less pile had every id minted fresh by this very read, so it
+      // cannot collide with the destination, and re-minting would only strand
+      // the references its synthesized documents carry in their TEXT (a STEP's
+      // part names its file by id there), which the remap does not rewrite.
+      mintIds: imported.manifestPresent,
       origin: descriptor.locator,
     })
     stampProvenance(remapped.tree, descriptor, imported, remapped.idMap)

@@ -72,6 +72,30 @@ describe('ExportDialog', () => {
     expect(onDownload).toHaveBeenCalledWith('yaml', 0, 'part.yaml')
   })
 
+  it('offers only the given formats and starts on the first of them', async () => {
+    const onDownload = vi.fn()
+    render(<ExportDialog isOpen defaultName="gearbox" formats={['yaml']} onDownload={onDownload} onCancel={vi.fn()} />)
+
+    expect(screen.queryByLabelText('STEP')).toBeNull()
+    expect(screen.queryByLabelText('STL')).toBeNull()
+    expect(screen.getByDisplayValue('gearbox.yaml')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+    })
+    expect(onDownload).toHaveBeenCalledWith('yaml', 0, 'gearbox.yaml')
+  })
+
+  it('falls back to an offered format when reopened with a narrower set', async () => {
+    const props = { onDownload: vi.fn(), onCancel: vi.fn() }
+    const { rerender } = render(<ExportDialog isOpen defaultName="bracket" {...props} />)
+    rerender(<ExportDialog isOpen={false} defaultName="bracket" {...props} />)
+
+    // One mounted dialog serves every row of the workspace list, so the format
+    // picked for a part must not survive into an assembly that cannot offer it.
+    rerender(<ExportDialog isOpen defaultName="gearbox" formats={['yaml']} {...props} />)
+    expect(screen.getByDisplayValue('gearbox.yaml')).toBeInTheDocument()
+  })
+
   it('seeds the file name from the document name when it opens', async () => {
     const props = { onDownload: vi.fn(), onCancel: vi.fn() }
     const { rerender } = render(<ExportDialog isOpen={false} defaultName="export" {...props} />)

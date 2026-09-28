@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Dialog from '@/components/dialogs/Dialog'
 import MessageDialog from '@/components/dialogs/MessageDialog'
+import ExportDialog, { type ExportFormat } from '@/components/dialogs/ExportDialog'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { LoadingState } from '@/components/shared/LoadingState'
 import DocTilePreview from '@/components/shared/DocTilePreview'
@@ -10,25 +11,24 @@ import { formatBytes } from '@/utils/formatBytes'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { randomUuid } from '@/utils/randomUuid'
+import { EmptyExportError } from '@/utils/partExport'
 import { getWorkspaceStore, type WorkspaceSummary } from '@/workspace/store'
 import { subscribeWorkspaceStore, workspaceStoreRevision } from '@/workspace/storeEvents'
 import { buildZipBytes } from '@/workspace/zipCarrier'
 import { deserializeTree } from '@/workspace/serializer'
 import { EntryReferencedError, type EntryReferrer } from '@/workspace/errors'
+import { createWorkspaceSession } from '@/workspace/session'
+import { importPickedFile } from '@/workspace/importFile'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
 import { dirtyEntryIds, groupEntries } from '@/components/layout/workspaceTreeModel'
 import { useWhereUsed } from '@/components/layout/filesSeams'
-import { fileKindOf, fileSizeOf, orphanFileIds, referrersOf } from '@/components/layout/filesModel'
-import {
-  ORIGIN_STATUS_LABEL,
-  originLabel,
-  originUpdatePolicy,
-  type RowOriginStatus,
-} from '@/components/layout/originsModel'
+import { fileSizeOf, orphanFileIds, referrersOf } from '@/components/layout/filesModel'
 import { originState, updateFromOrigin, type OriginStatus } from '@/workspace/import'
 import { dropWorkerFileId } from '@/kernel/worker/workerFiles'
 import type { EntryMeta, ProvenanceRecord } from '@/workspace/types'
+import EntryRow from '@/pages/WorkspaceEntryRow'
+import { downloadDocumentEntry, downloadFileEntry, entryExportFormats } from '@/pages/workspaceEntryExport'
 import '@/pages/Documents.css'
 import '@/pages/WorkspaceView.css'
 
@@ -78,9 +78,13 @@ export default function WorkspaceView() {
     setErrors(prev => ({ workspace: workspaceId, banner: message, dialog: prev.workspace === workspaceId ? prev.dialog : null }))
   const setDialogError = (message: string | null) =>
     setErrors(prev => ({ workspace: workspaceId, banner: prev.workspace === workspaceId ? prev.banner : null, dialog: message }))
-  const [addOpen, setAddOpen] = useState(false)
+  // The kind of the document being added, fixed by the header button that
+  // opened the dialog; null while the dialog is closed.
+  const [addKind, setAddKind] = useState<'part' | 'assembly' | null>(null)
   const [newName, setNewName] = useState('')
-  const [newKind, setNewKind] = useState<'part' | 'assembly'>('part')
+  // The document row whose export dialog is open. A file row never lands here:
+  // its bytes are the export, so it downloads on the click.
+  const [exportTarget, setExportTarget] = useState<EntryMeta | null>(null)
   const [renameTarget, setRenameTarget] = useState<EntryMeta | null>(null)
   const [renameName, setRenameName] = useState('')
   const [wsRenameOpen, setWsRenameOpen] = useState(false)
@@ -253,14 +257,61 @@ export default function WorkspaceView() {
   }
 
   const handleAdd = () => runBusy('add', 'Failed to add the entry', async () => {
-    if (!workspaceId || !newName.trim()) return
+    if (!workspaceId || !addKind || !newName.trim()) return
     const id = randomUuid()
-    await store.addEntry(workspaceId, { id, kind: 'document', name: newName.trim(), docKind: newKind, text: '' })
-    setAddOpen(false)
+    await store.addEntry(workspaceId, { id, kind: 'document', name: newName.trim(), docKind: addKind, text: '' })
+    setAddKind(null)
     setNewName('')
     const target = `/workspaces/${workspaceId}/entries/${id}`
     if (confirmDiscardUnsavedChanges(() => navigate(target))) navigate(target)
   }, 'dialog')
+
+  // Any file joins this workspace the way a library import would classify it: a
+  // STEP lands with a part that imports it, a document as a document, anything
+  // else as a file entry. No navigation afterwards, since several uploads in a
+  // row are the common case; the new rows appear through the store event.
+  const handleUpload = (chosen: File) => runBusy('upload', `Failed to upload ${chosen.name}`, async () => {
+    if (!workspaceId) return
+    await importPickedFile(chosen, { into: workspaceId })
+  })
+
+  // Where a document's referenced STEP bytes come from. The bound session is
+  // the authority when it is this workspace's; otherwise a session is built on
+  // the spot, which reads the same store rows the bound one would.
+  const fileResolver = () => (session && session.workspace === workspaceId
+    ? session
+    : createWorkspaceSession(workspaceId ?? '', store))
+
+  const handleExportEntry = (entry: EntryMeta) => {
+    if (busy.has(`export:${entry.id}`)) return
+    if (entryExportFormats(entry) !== null) {
+      setExportTarget(entry)
+      return
+    }
+    void runBusy(`export:${entry.id}`, `Failed to export ${entry.name}`, async () => {
+      downloadFileEntry(await fileResolver().readEntry(entry.id))
+    })
+  }
+
+  // Runs inside the dialog's own busy state and closes it either way, so the
+  // failure lands in the banner the closed dialog uncovers.
+  const handleExportDownload = (format: ExportFormat, tessellation: number, fileName: string) => {
+    const entry = exportTarget
+    if (!entry) return Promise.resolve()
+    return runBusy(`export:${entry.id}`, `Failed to export ${entry.name}`, async () => {
+      try {
+        const resolver = fileResolver()
+        const stored = await resolver.readEntry(entry.id)
+        await downloadDocumentEntry(entry, stored.text ?? '', format, tessellation, fileName, resolver)
+      } catch (e) {
+        // The bare kernel wording does not say which row it is about.
+        if (e instanceof EmptyExportError) throw new Error(`${entry.name} has ${e.message}`)
+        throw e
+      } finally {
+        setExportTarget(null)
+      }
+    })
+  }
 
   const handleRenameEntry = () => runBusy('renameEntry', 'Failed to rename the entry', async () => {
     if (!workspaceId || !renameTarget || !renameName.trim()) return
@@ -479,14 +530,45 @@ export default function WorkspaceView() {
 
         <div className="workspace-entries-header">
           <span className="workspace-entries-title">Entries</span>
+          {/* One button per thing that can be added, so the kind is the gesture
+              rather than a choice inside the dialog. */}
           <button
             className="btn btn-tile-action"
-            title="Add entry"
-            aria-label="Add entry"
-            onClick={() => { setNewKind('part'); setNewName(''); setAddOpen(true) }}
+            title="New part"
+            aria-label="New part"
+            onClick={() => { setNewName(''); setAddKind('part') }}
           >
-            <span className="material-icons">add</span>
+            <span className="material-icons">add_box</span>
           </button>
+          <button
+            className="btn btn-tile-action"
+            title="New assembly"
+            aria-label="New assembly"
+            onClick={() => { setNewName(''); setAddKind('assembly') }}
+          >
+            <span className="material-icons">library_add</span>
+          </button>
+          {/* The row's replace control's pattern: a label around a visually
+              hidden input keeps the picker in the tab order, which
+              `display: none` would not. */}
+          <label
+            className="btn btn-tile-action workspace-upload"
+            title={busy.has('upload') ? 'Uploading...' : 'Upload'}
+          >
+            <input
+              type="file"
+              className="workspace-upload-input"
+              aria-label="Upload file"
+              aria-disabled={busy.has('upload')}
+              onChange={e => {
+                const chosen = e.target.files?.[0]
+                // Cleared so the same file can be picked again right after.
+                e.target.value = ''
+                if (chosen && !busy.has('upload')) void handleUpload(chosen)
+              }}
+            />
+            <span className="material-icons">{busy.has('upload') ? 'hourglass_empty' : 'upload'}</span>
+          </label>
         </div>
 
         {/* A failed load must not keep the spinner up, and the failure has to
@@ -521,12 +603,14 @@ export default function WorkspaceView() {
                   duplicating={busy.has(`duplicate:${entry.id}`)}
                   replacing={busy.has(`replace:${entry.id}`)}
                   updating={busy.has(`update:${entry.id}`)}
+                  exporting={busy.has(`export:${entry.id}`)}
                   usedBy={referrerNames.get(entry.id)}
                   origin={origins.get(entry.id)}
                   status={statuses.get(entry.id) ?? 'unknown'}
                   onOpen={openEntry}
                   onRename={target => { setRenameTarget(target); setRenameName(target.name) }}
                   onDuplicate={target => { void handleDuplicate(target) }}
+                  onExport={handleExportEntry}
                   onDelete={target => { void handleDelete(target) }}
                   onReplace={(target, chosen) => { void handleReplace(target, chosen) }}
                   onUpdate={(target, record) => { void handleUpdate(target, record) }}
@@ -538,27 +622,31 @@ export default function WorkspaceView() {
       </div>
 
       <Dialog
-        isOpen={addOpen}
-        title="Add Entry"
-        onClose={() => { setAddOpen(false); setDialogError(null) }}
+        isOpen={addKind !== null}
+        title={addKind === 'assembly' ? 'New Assembly' : 'New Part'}
+        onClose={() => { setAddKind(null); setDialogError(null) }}
         onConfirm={() => { void handleAdd() }}
         confirmLabel="Add"
         busy={busy.has('add')}
       >
         <input
           type="text"
-          placeholder="Entry name"
+          placeholder={addKind === 'assembly' ? 'Assembly name' : 'Part name'}
           value={newName}
           onChange={e => setNewName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') void handleAdd() }}
           autoFocus
         />
-        <select value={newKind} onChange={e => setNewKind(e.target.value as 'part' | 'assembly')} aria-label="Entry kind">
-          <option value="part">Part</option>
-          <option value="assembly">Assembly</option>
-        </select>
         {dialogError && <p className="error-text">{dialogError}</p>}
       </Dialog>
+
+      <ExportDialog
+        isOpen={exportTarget !== null}
+        defaultName={exportTarget?.name ?? 'export'}
+        formats={(exportTarget && entryExportFormats(exportTarget)) ?? undefined}
+        onDownload={handleExportDownload}
+        onCancel={() => setExportTarget(null)}
+      />
 
       <Dialog
         isOpen={renameTarget !== null}
@@ -675,168 +763,3 @@ export default function WorkspaceView() {
   )
 }
 
-interface EntryRowProps {
-  entry: EntryMeta
-  workspace: string
-  dirty: boolean
-  deleting: boolean
-  duplicating: boolean
-  replacing: boolean
-  updating: boolean
-  usedBy: string[] | undefined
-  // The stored provenance record, on the rows that have one. Its presence is
-  // what puts the origin meta and the pull control on a row: an entry made here
-  // has no source to name and nothing to pull from.
-  origin: ProvenanceRecord | undefined
-  status: RowOriginStatus
-  onOpen: (entry: EntryMeta) => void
-  onRename: (entry: EntryMeta) => void
-  onDuplicate: (entry: EntryMeta) => void
-  onDelete: (entry: EntryMeta) => void
-  onReplace: (entry: EntryMeta, chosen: File) => void
-  onUpdate: (entry: EntryMeta, origin: ProvenanceRecord) => void
-}
-
-// The library tile on its side. A document row is activatable (click, Enter,
-// Space); a file row is not -- it carries the same thumb slot and verbs but
-// there is no editor behind it.
-function EntryRow({
-  entry, workspace, dirty, deleting, duplicating, replacing, updating, usedBy, origin, status,
-  onOpen, onRename, onDuplicate, onDelete, onReplace, onUpdate,
-}: EntryRowProps) {
-  const openable = entry.kind === 'document'
-  const policy = origin
-    ? originUpdatePolicy(origin, entry, status)
-    : { canUpdate: false, title: '', edited: false }
-  const meta = entry.kind === 'file'
-    ? [fileKindOf(entry), formatBytes(fileSizeOf(entry))]
-    : [entry.docKind ?? 'document', entry.updatedAt ? formatRelativeDate(new Date(entry.updatedAt).toISOString()) : '']
-
-  // The openable surface is a real <button> INSIDE the row rather than a role on
-  // the row itself: the row also holds three controls, and a role="button"
-  // wrapping them is nested-interactive -- it swallows the list item and makes a
-  // screen reader announce the row's whole contents, controls included, as one
-  // button's name. A real button also brings Enter and Space with it.
-  const face = (
-    <>
-      <div className="doc-tile-preview workspace-entry-preview">
-        <DocTilePreview workspace={workspace} entry={entry.id} name={entry.name} />
-      </div>
-      <div className="workspace-entry-body">
-        <div className="workspace-entry-title">
-          <span className="workspace-entry-name" title={entry.name}>{entry.name}</span>
-          {dirty && <span className="workspace-entry-dot" role="img" aria-label="Changed since last save" />}
-        </div>
-        <div className="workspace-entry-meta">
-          {meta.filter(Boolean).map(text => <span key={text}>{text}</span>)}
-        </div>
-        {usedBy && usedBy.length > 0 && (
-          <div className="workspace-entry-usedby" title={`Used by ${usedBy.join(', ')}`}>
-            used by {usedBy.join(', ')}
-          </div>
-        )}
-        {origin && (
-          <div className="workspace-entry-origin">
-            <span className="workspace-entry-origin-name" title={originLabel(origin)}>
-              {originLabel(origin)}
-            </span>
-            <span className={`workspace-entry-origin-status status-${status}`}>
-              {ORIGIN_STATUS_LABEL[status]}
-            </span>
-            {origin.rev !== undefined && <span>rev {origin.rev}</span>}
-            {policy.edited && <span className="workspace-entry-origin-edited">edited locally</span>}
-          </div>
-        )}
-      </div>
-    </>
-  )
-
-  return (
-    <li className={`workspace-entry-row${openable ? ' openable' : ''}`}>
-      {openable ? (
-        // The label is the entry's name and nothing else. Without it the
-        // button's accessible name is every scrap of text inside it, and the
-        // row has grown four of them: a screen reader announced "Bracket
-        // changed since last save part 2 days ago used by Gearbox cad not
-        // checked rev 3 edited locally" as the name of one button. The text
-        // itself stays where it is and stays readable; it just is not the name
-        // of the verb.
-        <button type="button" className="workspace-entry-open" aria-label={entry.name} onClick={() => onOpen(entry)}>
-          {face}
-        </button>
-      ) : (
-        <div className="workspace-entry-open">{face}</div>
-      )}
-      <div className="workspace-entry-actions">
-        {origin && (
-          <button
-            className="btn btn-tile-action"
-            aria-label={`Update ${entry.name}`}
-            title={policy.title}
-            disabled={!policy.canUpdate || updating}
-            onClick={() => onUpdate(entry, origin)}
-          >
-            <span className="material-icons">{updating ? 'hourglass_empty' : 'sync'}</span>
-          </button>
-        )}
-        {entry.kind === 'file' && (
-          // A label around a visually-hidden input, not a hidden one: the panel
-          // this replaces used `display: none`, which takes the input out of the
-          // tab order and leaves the label unfocusable, so replacing bytes was
-          // reachable by mouse only. The input keeps its own focus ring through
-          // `:focus-within` on the label.
-          <label
-            className="btn btn-tile-action workspace-entry-replace"
-            title={replacing ? 'Replacing...' : 'Replace bytes'}
-          >
-            <input
-              type="file"
-              className="workspace-entry-replace-input"
-              aria-label={`Replace ${entry.name}`}
-              // aria-disabled, not disabled: a disabled input leaves the tab
-              // order, so a keyboard user who started the replace would lose
-              // focus to the body mid-gesture and land nowhere when it
-              // finished. The guard that actually refuses the second pick is
-              // the early return below.
-              aria-disabled={replacing}
-              onChange={e => {
-                const chosen = e.target.files?.[0]
-                // Clearing the value is what lets the same file be picked twice
-                // in a row: an unchanged value fires no second change event.
-                e.target.value = ''
-                if (chosen && !replacing) onReplace(entry, chosen)
-              }}
-            />
-            <span className="material-icons">{replacing ? 'hourglass_empty' : 'upload_file'}</span>
-          </label>
-        )}
-        <button
-          className="btn btn-tile-action"
-          aria-label={`Rename ${entry.name}`}
-          title="Rename"
-          onClick={() => onRename(entry)}
-        >
-          <span className="material-icons">edit</span>
-        </button>
-        <button
-          className="btn btn-tile-action"
-          aria-label={`Duplicate ${entry.name}`}
-          title="Duplicate"
-          disabled={duplicating}
-          onClick={() => onDuplicate(entry)}
-        >
-          <span className="material-icons">{duplicating ? 'hourglass_empty' : 'content_copy'}</span>
-        </button>
-        <button
-          className="btn btn-delete-tile"
-          aria-label={`Delete ${entry.name}`}
-          title="Delete"
-          disabled={deleting}
-          onClick={() => onDelete(entry)}
-        >
-          <span className="material-icons">{deleting ? 'hourglass_empty' : 'delete'}</span>
-        </button>
-      </div>
-    </li>
-  )
-}

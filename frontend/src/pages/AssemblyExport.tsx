@@ -12,6 +12,10 @@ import { downloadBlob } from '@/utils/core/downloadBlob'
 import { assemblyStlBytes, buildExportParts, collectExportFileIds, exportableInstances, loadPartContents } from '@/utils/assemblyExport'
 import type { AssemblyDoc } from '@/types/cad'
 
+// The editor holds the solved poses and meshes, so it offers geometry only; the
+// source is what the workspace list's export hands out.
+const GEOMETRY_FORMATS: readonly ExportFormat[] = ['step', 'stl']
+
 export interface AssemblyExportHandle {
   openExport: () => void
 }
@@ -79,7 +83,7 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
         isOpen={isOpen}
         defaultName={docName || 'assembly'}
         showTessellation={false}
-        showYaml={false}
+        formats={GEOMETRY_FORMATS}
         onDownload={handleDownload}
         onCancel={() => setIsOpen(false)}
       />

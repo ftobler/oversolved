@@ -107,14 +107,13 @@ beforeEach(() => {
 })
 
 describe('WorkspaceView identity-card verbs', () => {
-  it('adds an entry with the typed name and kind, then opens it', async () => {
+  it('adds an entry with the typed name and the button kind, then opens it', async () => {
     installSession()
     renderView()
     await screen.findByText('Bracket')
 
-    fireEvent.click(screen.getByLabelText('Add entry'))
-    fireEvent.change(within(dialog()).getByPlaceholderText('Entry name'), { target: { value: '  Plate  ' } })
-    fireEvent.change(within(dialog()).getByLabelText('Entry kind'), { target: { value: 'assembly' } })
+    fireEvent.click(screen.getByLabelText('New assembly'))
+    fireEvent.change(within(dialog()).getByPlaceholderText('Assembly name'), { target: { value: '  Plate  ' } })
     fireEvent.click(within(dialog()).getByText('Add'))
 
     await waitFor(() => expect(storeMock.addEntry).toHaveBeenCalledTimes(1))
@@ -131,11 +130,11 @@ describe('WorkspaceView identity-card verbs', () => {
     renderView()
     await screen.findByText('Bracket')
 
-    fireEvent.click(screen.getByLabelText('Add entry'))
+    fireEvent.click(screen.getByLabelText('New part'))
     await act(async () => { fireEvent.click(within(dialog()).getByText('Add')) })
 
     expect(storeMock.addEntry).not.toHaveBeenCalled()
-    expect(screen.getByText('Add Entry')).toBeTruthy()
+    expect(screen.getByText('New Part')).toBeTruthy()
   })
 
   it('renames the workspace from the identity card', async () => {
@@ -207,13 +206,13 @@ describe('WorkspaceView identity-card verbs', () => {
     renderView()
     await screen.findByText('Bracket')
 
-    fireEvent.click(screen.getByLabelText('Add entry'))
-    fireEvent.change(within(dialog()).getByPlaceholderText('Entry name'), { target: { value: 'Plate' } })
+    fireEvent.click(screen.getByLabelText('New part'))
+    fireEvent.change(within(dialog()).getByPlaceholderText('Part name'), { target: { value: 'Plate' } })
     fireEvent.click(within(dialog()).getByText('Add'))
 
     await screen.findByText('quota exceeded')
     // The dialog stays up so the typed name survives the failure.
-    expect(screen.getByText('Add Entry')).toBeTruthy()
+    expect(screen.getByText('New Part')).toBeTruthy()
   })
 })
 

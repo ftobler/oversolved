@@ -318,13 +318,16 @@ button.workspace-entry-open:focus-visible {
 
 /* The replace control is a label wrapping its own file input. The input has to
    stay focusable to be reachable by keyboard, so it is clipped rather than
-   hidden, and the label wears the focus ring on its behalf. */
-.workspace-entry-replace {
+   hidden, and the label wears the focus ring on its behalf. The header's upload
+   control is the same shape. */
+.workspace-entry-replace,
+.workspace-upload {
   position: relative;
   overflow: hidden;
 }
 
-.workspace-entry-replace-input {
+.workspace-entry-replace-input,
+.workspace-upload-input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -334,7 +337,8 @@ button.workspace-entry-open:focus-visible {
   opacity: 0;
 }
 
-.workspace-entry-replace:focus-within {
+.workspace-entry-replace:focus-within,
+.workspace-upload:focus-within {
   outline: 2px solid #4fc3f7;
   outline-offset: -2px;
 }
