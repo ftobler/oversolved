@@ -71,6 +71,19 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => 
 // recovery reset re-derives dirty from the record rather than from React.
 subscribeWorkspaceStore(() => { void useUnsavedChangesStore.getState().refreshWorkspaceDirty() })
 
+// The one save path: the toolbar's Save button, Ctrl/Cmd+S and the dialog's
+// "Save & Exit" all run the editor's save through here, so each clears dirty
+// the same way once the bytes landed. `save` defaults to the handler the open
+// editor registered; the toolbar passes its own, which is the same function.
+export async function saveOpenDocument(
+  save: (() => boolean | Promise<boolean>) | null = useUnsavedChangesStore.getState().saveHandler,
+): Promise<boolean> {
+  if (!save) return false
+  const saved = await save()
+  if (saved) useUnsavedChangesStore.getState().setDirty(false)
+  return saved
+}
+
 // Imperative guard for navigation outside React render (event handlers). When the document is dirty, schedules a confirm dialog via the
 // store so the shared header can render it. `onProceed` is baked into the stored
 // callback and fired when the user clicks Discard. Returns false to cancel the

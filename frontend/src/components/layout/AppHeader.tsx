@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import type { MouseEvent, ReactNode } from 'react'
-import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { confirmDiscardUnsavedChanges, saveOpenDocument, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAboutDialogStore } from '@/stores/aboutDialogStore'
 import { isEditableTarget } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import BugReportDialog from '@/components/dialogs/BugReportDialog'
+import SaveButton from '@/components/layout/SaveButton'
 import '@/components/layout/AppHeader.css'
 
 // The copyright note rides on the logo's tooltip rather than a footer bar: it
@@ -28,9 +29,14 @@ interface AppHeaderProps {
   breadcrumb?: ReactNode
   children?: ReactNode
   rightContent?: ReactNode
+  // The page's own toolbar (in `children`) carries the Save button, so the
+  // header adds none. Without it the header shows one while edits are
+  // pending, so an editor that unmounted into a non-editor page still leaves
+  // its unsaved state visible.
+  ownsSave?: boolean
 }
 
-export default function AppHeader({ title, breadcrumb, children, rightContent }: AppHeaderProps) {
+export default function AppHeader({ title, breadcrumb, children, rightContent, ownsSave = false }: AppHeaderProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
@@ -47,21 +53,17 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
     dismissConfirm()
   }
 
-  // One save path for the header's Save button, Ctrl/Cmd+S, and the dialog's
-  // "Save & Exit": the editor's registered handler writes the document and its
-  // workspace checkpoint, then this clears dirty once the bytes landed.
+  // Ctrl/Cmd+S and the dialog's "Save & Exit" run the editor's registered
+  // handler through saveOpenDocument, the same path the Save button takes, so
+  // all three clear dirty the same way once the bytes landed.
   const handleSaveWorkspace = useCallback(async () => {
-    const save = useUnsavedChangesStore.getState().saveHandler
-    if (!save || saving) return false
+    if (!useUnsavedChangesStore.getState().saveHandler || saving) return false
     setSaving(true)
-    let saved = false
     try {
-      saved = await save()
+      return await saveOpenDocument()
     } finally {
       setSaving(false)
     }
-    if (saved) useUnsavedChangesStore.getState().setDirty(false)
-    return saved
   }, [saving])
 
   // The header's own hotkey, so a global save works without the toolbar. It
@@ -138,26 +140,12 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
         {children}
       </div>
       <div className="app-header-right">
-        {/* The dot and the button, and no sentence about durability: there is
-            one unsaved boundary now and it is in memory, where no honest
-            durability claim can be made. The stored library's durability is
-            the disclaimer's subject, where it is true. Not a live region
-            either -- a dot appearing is not a status change worth interrupting
-            a screen reader for. */}
-        {dirty && (
-          <div className="workspace-dirty">
-            <span className="header-dirty-dot" aria-hidden="true" />
-            <button
-              className="toolbar-btn"
-              aria-label="Save workspace"
-              title="Save (Ctrl+S)"
-              onClick={() => { void handleSaveWorkspace() }}
-              disabled={saving || saveHandler === null}
-            >
-              <span className="material-icons-outlined">{saving ? 'hourglass_empty' : 'save'}</span>
-            </button>
-          </div>
-        )}
+        {/* Only where no toolbar Save exists, and only while dirty: the tinted
+            button is the whole indicator, with no dot and no sentence about
+            durability. There is one unsaved boundary and it is in memory,
+            where no honest durability claim can be made; the stored library's
+            durability is the disclaimer's subject, where it is true. */}
+        {dirty && !ownsSave && <SaveButton />}
         {rightContent}
         {/* Docs is a navigation, not a dialog, so it is a Link -- but it leaves
             the editor the same way the burger does, hence the unsaved-changes
