@@ -368,7 +368,7 @@ export default function Workspaces() {
         <div className="documents-main">
           <Dialog
             isOpen={showCreate}
-            title={newKind === 'assembly' ? 'Create New Assembly' : 'Create New Part'}
+            title={newKind === 'assembly' ? 'Create New Assembly Workspace' : 'Create New Part Workspace'}
             onClose={() => { setShowCreate(false); setAddError(null) }}
             onConfirm={handleCreate}
             confirmLabel="Create"
@@ -376,7 +376,7 @@ export default function Workspaces() {
           >
             <input
               type="text"
-              placeholder={newKind === 'assembly' ? 'Assembly name' : 'Part name'}
+              placeholder="Workspace name"
               value={newName}
               onChange={e => { setNewName(e.target.value); if (e.target.value.trim()) setAddError(null) }}
               onKeyDown={e => { if (e.key === 'Enter') handleCreate() }}
