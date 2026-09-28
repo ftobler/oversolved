@@ -39,6 +39,8 @@ import measurementIcon from '@/assets/icons/measurement.svg'
 
 import { buildContextMenu } from './buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from './buildContextMenu'
+import { resolveSelectionNormalTarget } from './selectionNormalTarget'
+import { findFaceFrame } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import { suggestedCloneName, stepImportLimitError } from '@/stores/documentStore'
 import { getFileRegistry } from '@/stores/fileRegistry'
@@ -965,6 +967,11 @@ export default function Part() {
       hoveredSelectionId: store.hoveredSelectionId,
       hoveredFaceNormal: store.hoveredFaceNormal,
       hoveredFaceCenter: store.hoveredFaceCenter,
+      // The tree names its own target, so only a viewport right-click pays for
+      // resolving the selection.
+      selectedNormalTarget: targetId
+        ? null
+        : resolveSelectionNormalTarget(store.normalSelection, store.selectedPicks, features, BUILT_IN_IDS, findFaceFrame),
       features,
       visibleFeatures: visibleFeaturesWithEdit,
       activeSketchFeatureId: activeSketchFeatureId ?? undefined,

@@ -304,13 +304,33 @@ describe('Part page actions', () => {
     renderPart()
 
     fireEvent.click(screen.getByTestId('feature-ctx-sketch1'))
-    fireEvent.click(menuItem('Align camera'))
+    fireEvent.click(menuItem('Normal to sketch'))
     // The stored plane query is stripped of its @ before it reaches the camera.
     expect(h.alignPlane).toHaveBeenCalledWith('builtin_plane_front')
 
     expect(useSketchEditorStore.getState().showConstraintTiles).toBe(false)
     fireEvent.click(menuItem('Show Constraints'))
     expect(useSketchEditorStore.getState().showConstraintTiles).toBe(true)
+  })
+
+  it('a viewport right-click in sketch edit offers Normal to sketch', () => {
+    usePartEditorStore.setState({ editingFeatureId: 'sketch1', rollbackPosition: F.doc.features.length })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('viewport-ctx'))
+    fireEvent.click(menuItem('Normal to sketch'))
+
+    expect(h.alignPlane).toHaveBeenCalledWith('builtin_plane_front')
+  })
+
+  it('a viewport right-click aims Normal to at the one selected plane', () => {
+    useSketchEditorStore.setState({ normalSelection: new Set(['@plane1']) })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('viewport-ctx'))
+    fireEvent.click(menuItem('Normal to'))
+
+    expect(h.alignFace).toHaveBeenCalledWith([0, 0, 1], [1, 2, 3])
   })
 
   it('the active sketch menu Exit Sketch closes the menu', () => {

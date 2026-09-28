@@ -20,7 +20,7 @@ function planeQuery(featureId: string, builtInIds: Set<string>): string {
   return builtInIds.has(featureId) ? builtinSelectionId(featureId) : `@${featureId}`
 }
 
-function findPlaneByQuery(
+export function findPlaneByQuery(
   query: string,
   features: PartFeature[],
   builtInIds: Set<string>,
@@ -39,6 +39,38 @@ function normalToPlaneItem(featureId: string, callbacks: BuildContextMenuCallbac
   }
 }
 
+function normalToFaceItem(frame: FaceFrame, callbacks: BuildContextMenuCallbacks): ContextMenuItem {
+  return {
+    label: 'Normal to',
+    icon: contextCameraIcon,
+    onClick: () => callbacks.onAlignToFace(frame.normal, frame.center),
+  }
+}
+
+// A plane and a flat face are both something a sketch can sit on and the camera
+// can look straight at, so they get the same pair in the same order. `query` is
+// what the sketch stores as its plane, the same string the plane pick field
+// stores when that surface is picked there; the kernel resolves a face query to
+// its frame. New Sketch is withheld while a sketch is being edited, since a new
+// sketch would open an edit session inside that one.
+function sketchSurfaceItems(
+  query: string,
+  normalTo: ContextMenuItem,
+  canStartSketch: boolean,
+  callbacks: BuildContextMenuCallbacks,
+): ContextMenuItem[] {
+  const items: ContextMenuItem[] = []
+  if (canStartSketch) {
+    items.push({
+      label: 'New Sketch',
+      icon: featureSketchIcon,
+      onClick: () => callbacks.onNewSketchOnPlane(query),
+    })
+  }
+  items.push(normalTo)
+  return items
+}
+
 // A rename gesture only names its subject here. Collecting the new label is the
 // owner's job, so this module stays free of both DOM and dialog state.
 export interface RenameTarget {
@@ -47,12 +79,27 @@ export interface RenameTarget {
   currentName: string
 }
 
+export interface FaceFrame {
+  normal: [number, number, number]
+  center: [number, number, number]
+}
+
+// What the normal selection lets "Normal to" aim at, resolved by the caller
+// (resolveSelectionNormalTarget) so this module never reads the store or the
+// body registry. A plane is named by feature id for the same reason
+// normalToPlaneItem is. A face carries its selection query for New Sketch.
+export type NormalTarget =
+  | { kind: 'plane'; featureId: string }
+  | ({ kind: 'face'; query: string } & FaceFrame)
+
 export interface BuildContextMenuInput {
   pos: [number, number]
   targetId: string | undefined
   hoveredSelectionId: string | null
   hoveredFaceNormal: [number, number, number] | null
   hoveredFaceCenter: [number, number, number] | null
+  // Null unless the selection is exactly one plane or one planar face.
+  selectedNormalTarget: NormalTarget | null
   features: PartFeature[]
   visibleFeatures: Set<string>
   activeSketchFeatureId: string | undefined
@@ -97,6 +144,7 @@ export function buildContextMenu(
     hoveredSelectionId,
     hoveredFaceNormal,
     hoveredFaceCenter,
+    selectedNormalTarget,
     features,
     visibleFeatures,
     activeSketchFeatureId,
@@ -121,27 +169,26 @@ export function buildContextMenu(
     ? findPlaneByQuery(hoveredInViewport, features, builtInIds)
     : undefined
   if (hoveredPlane) {
-    const items: ContextMenuItem[] = []
-    if (canStartSketch) {
-      items.push({
-        label: 'New Sketch',
-        icon: featureSketchIcon,
-        onClick: () => callbacks.onNewSketchOnPlane(planeQuery(hoveredPlane.id, builtInIds)),
-      })
+    return {
+      items: sketchSurfaceItems(
+        planeQuery(hoveredPlane.id, builtInIds),
+        normalToPlaneItem(hoveredPlane.id, callbacks),
+        canStartSketch,
+        callbacks,
+      ),
     }
-    items.push(normalToPlaneItem(hoveredPlane.id, callbacks))
-    return { items }
   }
 
+  // Hover fills the face frame only for a flat face (planarFaceFrame), so a
+  // curved face under the pointer falls through with neither item.
   if (hoveredInViewport && hoveredFaceNormal && hoveredFaceCenter) {
     return {
-      items: [
-        {
-          label: 'Normal to',
-          icon: contextCameraIcon,
-          onClick: () => callbacks.onAlignToFace(hoveredFaceNormal, hoveredFaceCenter),
-        },
-      ],
+      items: sketchSurfaceItems(
+        hoveredInViewport,
+        normalToFaceItem({ normal: hoveredFaceNormal, center: hoveredFaceCenter }, callbacks),
+        canStartSketch,
+        callbacks,
+      ),
     }
   }
 
@@ -173,13 +220,33 @@ export function buildContextMenu(
   }
 
   const featureId = targetId
-  const items: ContextMenuItem[] = [
-    {
-      label: 'Rebuild',
-      icon: contextRebuildIcon,
-      onClick: callbacks.onRebuild,
-    },
-  ]
+  const items: ContextMenuItem[] = []
+  // With nothing under the pointer, the selection is what the user means. It
+  // leads the generic menu instead of replacing it, so Rebuild stays reachable.
+  // Inside a sketch edit the sketch plane is the view to return to, which
+  // "Normal to sketch" below already offers.
+  const offerSelection = !targetId && !hoveredInViewport && !activeSketchFeatureId
+  if (offerSelection && selectedNormalTarget?.kind === 'plane') {
+    const { featureId: planeId } = selectedNormalTarget
+    items.push(...sketchSurfaceItems(
+      planeQuery(planeId, builtInIds),
+      normalToPlaneItem(planeId, callbacks),
+      canStartSketch,
+      callbacks,
+    ))
+  } else if (offerSelection && selectedNormalTarget?.kind === 'face') {
+    items.push(...sketchSurfaceItems(
+      selectedNormalTarget.query,
+      normalToFaceItem(selectedNormalTarget, callbacks),
+      canStartSketch,
+      callbacks,
+    ))
+  }
+  items.push({
+    label: 'Rebuild',
+    icon: contextRebuildIcon,
+    onClick: callbacks.onRebuild,
+  })
   // Cleanup is explicit and undoable: the solve path no longer writes the
   // flagged content out of the doc, so this command is the only way to remove
   // it, and undo restores it without a re-solve re-deleting. Only offered
@@ -212,9 +279,11 @@ export function buildContextMenu(
       icon: contextExitIcon,
       onClick: callbacks.onExitSketch,
     })
-    if (featureId === activeSketchFeatureId) {
+    // The tree row of the edited sketch and a bare viewport right-click both
+    // mean "this sketch"; a tree click on any other feature does not.
+    if (!featureId || featureId === activeSketchFeatureId) {
       items.push({
-        label: 'Align camera',
+        label: 'Normal to sketch',
         icon: contextCameraIcon,
         onClick: callbacks.onAlignCameraToSketchPlane,
       })

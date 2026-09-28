@@ -251,6 +251,49 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
     }
   })
 
+  /**
+   * The context menu's "New Sketch" on a flat face hands add_sketch the face's
+   * render query unchanged, exactly as the sketch plane pick field stores it.
+   * That sketch must build and lie IN the face's plane: origin on the plane,
+   * sketch normal parallel to the face normal. The face picked is the one
+   * farthest from the origin, so a silent fallback to the front plane fails.
+   */
+  it('a sketch on a flat face query lies in that face plane', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable({ finalizerGuard: false })
+    try {
+      const deps = makeDeps(occ, scope, table)
+      const r = build(extrudeDoc(), {}, deps)
+      const mesh = Object.values(r.bodies as Record<string, BodyOutput>)[0]?.mesh
+      expect(mesh?.face_data?.length).toBeGreaterThan(0)
+
+      const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+      let best = -1
+      for (let i = 0; i < mesh!.face_data!.length; i++) {
+        const fd = mesh!.face_data![i]
+        if (fd.surface_type !== 'flatface') continue
+        const reach = Math.abs(dot(fd.centroid, fd.normal))
+        if (best < 0 || reach > Math.abs(dot(mesh!.face_data![best].centroid, mesh!.face_data![best].normal))) best = i
+      }
+      expect(best).toBeGreaterThanOrEqual(0)
+      const face = mesh!.face_data![best]
+      const faceQuery = mesh!.face_queries![best]
+
+      const sk2: Dict = { id: 'sk2', kind: 'sketch', plane: faceQuery, entities: [], constraints: [] }
+      const r2 = build({ features: [...(extrudeDoc().features as Dict[]), sk2] }, {}, deps)
+      const res = (r2.result as Record<string, Dict>).sk2 ?? {}
+      expect(res.status).not.toBe('exception')
+
+      const pt = res.plane_transform as { rotation: number[]; origin: number[] }
+      const sketchNormal = pt.rotation.slice(6, 9)
+      const offset = [0, 1, 2].map(k => pt.origin[k] - face.centroid[k])
+      expect(Math.abs(dot(offset, face.normal))).toBeLessThan(1e-4)
+      expect(Math.abs(dot(sketchNormal, face.normal))).toBeGreaterThan(1 - 1e-6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   // Sketch on face -> extrude builds without exception (round-trip).
   it('sketch on face round-trip second extrude', () => {
     const scope = new DisposeScope()

@@ -5,6 +5,7 @@ import {
   findBodyForFaceQuery,
   findBodyFaceByPickKey,
   findFaceBoundaryEdges,
+  findFaceFrame,
   clearAllBodyHover,
   resetBodyCallbacksForTest,
   type BodyDispatchCallbacks,
@@ -350,5 +351,48 @@ describe('clearAllBodyHover', () => {
 
   it('is a no-op with no registered bodies', () => {
     expect(() => clearAllBodyHover()).not.toThrow()
+  })
+})
+
+// A selected face has no hover-computed geometry, so "Normal to" resolves its
+// frame from the owning body's mesh on demand. Face 0 lies in z=0, face 1 in z=2;
+// both carry the query 'dup' so only the pickKey can tell them apart.
+describe('findFaceFrame', () => {
+  function twoFlatFaces(queries: string[], surface = 'flatface'): Mesh3D {
+    return {
+      vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 2], [1, 0, 2], [0, 1, 2]],
+      faces: [[0, 1, 2], [3, 4, 5]],
+      triangle_to_face: [0, 1],
+      face_queries: queries,
+      face_data: [
+        { centroid: [0, 0, 0], normal: [0, 0, 1], surface_type: surface },
+        { centroid: [0, 0, 2], normal: [0, 0, 1], surface_type: surface },
+      ],
+    }
+  }
+
+  it('resolves a selected face query to its planar frame', () => {
+    registerBodyCallbacks('b1', makeCallbacks({ mesh: twoFlatFaces(['f0', 'f1']) }))
+    const frame = findFaceFrame('f1', undefined)
+    expect(frame?.center[2]).toBeCloseTo(2)
+    expect(frame?.normal[0]).toBeCloseTo(0)
+    expect(frame?.normal[1]).toBeCloseTo(0)
+  })
+
+  it('prefers the pickKey so a shared query names the clicked face', () => {
+    registerBodyCallbacks('b1', makeCallbacks({ mesh: twoFlatFaces(['dup', 'dup']) }))
+    expect(findFaceFrame('dup', 'b1#face#1')?.center[2]).toBeCloseTo(2)
+    expect(findFaceFrame('dup', undefined)?.center[2]).toBeCloseTo(0)
+  })
+
+  it('has no frame for an unregistered query such as an edge or sketch entity', () => {
+    registerBodyCallbacks('b1', makeCallbacks({ mesh: twoFlatFaces(['f0', 'f1']) }))
+    expect(findFaceFrame('edgeQ0', undefined)).toBeNull()
+    expect(findFaceFrame('entity:e1', undefined)).toBeNull()
+  })
+
+  it('has no frame for a curved face', () => {
+    registerBodyCallbacks('b1', makeCallbacks({ mesh: twoFlatFaces(['f0', 'f1'], 'cylinderface') }))
+    expect(findFaceFrame('f0', undefined)).toBeNull()
   })
 })
