@@ -657,6 +657,24 @@ describe('buildContextMenu', () => {
       expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
     })
 
+    it('does not fall back to a selected plane under a hovered curved face', () => {
+      // The hover wins even though it offers neither item, so the selection
+      // must not leak a Normal to for the plane.
+      const result = buildContextMenu(
+        defaultInput({
+          features: planeAndSketch,
+          hoveredSelectionId: '?cylinderQ',
+          hoveredFaceNormal: null,
+          hoveredFaceCenter: null,
+          selectedNormalTarget: { kind: 'plane', featureId: 'plane1' },
+        }),
+        defaultCallbacks(),
+      )
+      expect(findLabel(result.items, 'Normal to')).toBeUndefined()
+      expect(findLabel(result.items, 'New Sketch')).toBeUndefined()
+      expect(findLabel(result.items, 'Rebuild')).toBeTruthy()
+    })
+
     it('offers no Normal to when the selection resolves to nothing', () => {
       // Two faces, an edge or a curved face all reach here as a null target.
       const result = buildContextMenu(defaultInput({ selectedNormalTarget: null }), defaultCallbacks())
