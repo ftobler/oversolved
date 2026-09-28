@@ -22,7 +22,9 @@ interface UnsavedChangesState {
   // How to write the open document, registered by whichever editor owns it, so
   // the shared header can offer "Save & Exit" instead of only "Discard". Null
   // on pages that have nothing to save; resolves to whether the bytes landed,
-  // so a failed save can hold the user in the dialog.
+  // so a failed save can hold the user in the dialog. The handler clears dirty
+  // itself, and only when no edit landed while it was in flight; a caller that
+  // cleared it on `true` would mark that edit saved.
   saveHandler: (() => boolean | Promise<boolean>) | null
   setDirty: (dirty: boolean) => void
   setWorkspace: (workspace: string | null) => void

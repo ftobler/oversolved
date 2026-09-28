@@ -1,4 +1,4 @@
-// handleSaveClick schedules a setTimeout to reset the save icon back to
+// The toolbar's SaveButton schedules a setTimeout to reset the save icon back to
 // "idle" once the awaited save resolves; an unmount before it fires (e.g.
 // switching documents, which fully unmounts AssemblyToolbar per
 // DocumentPage.tsx's uuid-keying) must not leave it pending to call setState

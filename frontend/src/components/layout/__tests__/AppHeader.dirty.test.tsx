@@ -14,6 +14,8 @@ function wrap() {
   )
 }
 
+const saveButtons = () => screen.queryAllByRole('button', { name: /save/i })
+
 function markDirty(save: (() => boolean | Promise<boolean>) | null = null) {
   act(() => {
     useUnsavedChangesStore.getState().setDirty(true)
@@ -38,24 +40,31 @@ describe('AppHeader workspace dirty and explicit save', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders nothing dirty-shaped when clean', () => {
+  // The editors' toolbar Save is the only Save and carries the dirty tint. The
+  // header adds neither: off an editor no save handler exists, so a header
+  // button could only ever be a dead, disabled one, and the dot beside it is
+  // gone. Checked with and without a registered handler.
+  it.each([
+    ['clean, no handler', false, null],
+    ['dirty, no handler', true, null],
+    ['dirty, handler registered', true, async () => true],
+  ] as const)('renders no Save and no dirty mark when %s', (_label, dirty, save) => {
+    act(() => {
+      useUnsavedChangesStore.getState().setDirty(dirty)
+      useUnsavedChangesStore.getState().setSaveHandler(save)
+    })
     const { container } = wrap()
-    expect(screen.queryByLabelText('Save workspace')).toBeNull()
+    expect(saveButtons()).toHaveLength(0)
+    expect(container.querySelector('[data-dirty]')).toBeNull()
+    expect(container.querySelector('.header-dirty-dot')).toBeNull()
     expect(container.querySelector('.workspace-dirty')).toBeNull()
   })
 
-  it('shows the dirty indicator and a Save button when dirty', () => {
-    markDirty()
-    const { container } = wrap()
-    expect(screen.getByLabelText('Save workspace')).toBeTruthy()
-    expect(container.querySelector('.header-dirty-dot')).toBeTruthy()
-  })
-
-  // The dot is a state, not an announcement. It was a live region carrying a
-  // sentence about eviction under disk pressure -- a claim that was false
-  // either way it was read, and one no screen reader should be interrupted for.
-  // Every persistence answer is checked, because the sentence had one per state
-  // and re-adding any of them should fail here.
+  // The indicator is a state, not an announcement. It was a live region
+  // carrying a sentence about eviction under disk pressure -- a claim that was
+  // false either way it was read, and one no screen reader should be
+  // interrupted for. Every persistence answer is checked, because the sentence
+  // had one per state and re-adding any of them should fail here.
   it.each(['unknown', 'persisted', 'best-effort', 'unsupported'] as const)(
     'says nothing about durability under %s, and announces nothing',
     (state) => {
@@ -67,24 +76,18 @@ describe('AppHeader workspace dirty and explicit save', () => {
     },
   )
 
-  it('the Save button invokes the handler and clears dirty', async () => {
-    const save = vi.fn(async () => true)
-    markDirty(save)
-    wrap()
-
-    await act(async () => { fireEvent.click(screen.getByLabelText('Save workspace')) })
-    expect(save).toHaveBeenCalledTimes(1)
-    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
-  })
-
-  it('Ctrl+S invokes the handler and clears dirty', async () => {
+  // The handler alone knows whether an edit landed while its bytes were in
+  // flight, so a `true` is not "clean": the header leaves dirty to it. This
+  // handler reports success without clearing, as saveDoc does after a mid-save
+  // edit.
+  it('Ctrl+S invokes the handler and leaves dirty to it', async () => {
     const save = vi.fn(async () => true)
     markDirty(save)
     wrap()
 
     await act(async () => { fireEvent.keyDown(window, { key: 's', ctrlKey: true }) })
     expect(save).toHaveBeenCalledTimes(1)
-    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
   it('Cmd+S invokes the handler too', async () => {

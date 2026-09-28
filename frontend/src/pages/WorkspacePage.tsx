@@ -123,8 +123,8 @@ export default function WorkspacePage() {
 
   // Every branch that is not an editor keeps the header. An editor unmounting
   // into one still has its unsaved buffer and its dirty flag (the guard stopped
-  // clearing them on unmount), so the save button and the guarded links have to
-  // be reachable here -- and a refused entry is a wrong turn, not a dead end
+  // clearing them on unmount), so the guarded links have to be reachable here
+  // to ask about them -- and a refused entry is a wrong turn, not a dead end
   // with no way back.
   const chrome = (body: ReactNode) => (
     <div className="document-viewer">

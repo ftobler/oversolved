@@ -36,7 +36,6 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
   const saveHandler = useUnsavedChangesStore(s => s.saveHandler)
-  const dirty = useUnsavedChangesStore(s => s.dirty)
   const [bugReportOpen, setBugReportOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -47,21 +46,19 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
     dismissConfirm()
   }
 
-  // One save path for the header's Save button, Ctrl/Cmd+S, and the dialog's
-  // "Save & Exit": the editor's registered handler writes the document and its
-  // workspace checkpoint, then this clears dirty once the bytes landed.
+  // Ctrl/Cmd+S and the dialog's "Save & Exit" run the editor's registered
+  // handler, the same save the toolbar button runs. Dirty is the handler's to
+  // clear: it alone knows whether an edit landed while the bytes were in
+  // flight, so clearing it here on success would mark that edit saved.
   const handleSaveWorkspace = useCallback(async () => {
     const save = useUnsavedChangesStore.getState().saveHandler
     if (!save || saving) return false
     setSaving(true)
-    let saved = false
     try {
-      saved = await save()
+      return await save()
     } finally {
       setSaving(false)
     }
-    if (saved) useUnsavedChangesStore.getState().setDirty(false)
-    return saved
   }, [saving])
 
   // The header's own hotkey, so a global save works without the toolbar. It
@@ -138,26 +135,13 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
         {children}
       </div>
       <div className="app-header-right">
-        {/* The dot and the button, and no sentence about durability: there is
-            one unsaved boundary now and it is in memory, where no honest
-            durability claim can be made. The stored library's durability is
-            the disclaimer's subject, where it is true. Not a live region
-            either -- a dot appearing is not a status change worth interrupting
-            a screen reader for. */}
-        {dirty && (
-          <div className="workspace-dirty">
-            <span className="header-dirty-dot" aria-hidden="true" />
-            <button
-              className="toolbar-btn"
-              aria-label="Save workspace"
-              title="Save (Ctrl+S)"
-              onClick={() => { void handleSaveWorkspace() }}
-              disabled={saving || saveHandler === null}
-            >
-              <span className="material-icons-outlined">{saving ? 'hourglass_empty' : 'save'}</span>
-            </button>
-          </div>
-        )}
+        {/* No Save and no dirty state here: the editors' toolbar Save carries
+            both. Off an editor the save handler is gone with the editor, so a
+            button here could never be pressed; leaving is still guarded by the
+            unsaved-changes dialog. Nor a sentence about durability: the one
+            unsaved boundary is in memory, where no honest durability claim can
+            be made; the stored library's durability is the disclaimer's
+            subject, where it is true. */}
         {rightContent}
         {/* Docs is a navigation, not a dialog, so it is a Link -- but it leaves
             the editor the same way the burger does, hence the unsaved-changes

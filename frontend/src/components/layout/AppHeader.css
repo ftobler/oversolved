@@ -1,4 +1,10 @@
 .app-header {
+  /* The spacing between neighbouring header buttons. A variable so that a
+     group nested inside a side (the editors' undo/redo pair) spaces its own
+     buttons the same as the side spaces its children. */
+  --toolbar-gap: 4px;
+  /* The unsaved-edits colour, carried by the Save button's icon. */
+  --unsaved-accent: #d8b45a;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -11,14 +17,14 @@
 .app-header-left {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--toolbar-gap);
   min-width: 200px;
 }
 
 .app-header-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--toolbar-gap);
   min-width: 100px;
   justify-content: flex-end;
 }
@@ -52,22 +58,11 @@
   font-size: 20px;
 }
 
-/* Workspace dirty state: the dot and the save button, and no sentence between
-   them. The dot carries the colour; the button is a toolbar button like any
-   other. */
-.workspace-dirty {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #d8b45a;
-}
-
-.header-dirty-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #d8b45a;
+/* Unsaved edits tint the Save button's icon; that tint is the whole indicator.
+   It holds on hover so the state does not vanish under the pointer. */
+.toolbar-btn.save-btn.dirty,
+.toolbar-btn.save-btn.dirty:hover {
+  color: var(--unsaved-accent);
 }
 
 /* The workspace trail: `Workspaces / <workspace> / <document>`, one segment per
