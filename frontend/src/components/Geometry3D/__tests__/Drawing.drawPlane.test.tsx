@@ -52,7 +52,13 @@ vi.mock('@react-three/fiber', () => ({
 vi.mock('@react-three/drei', () => ({ Line: () => null }))
 vi.mock('@/components/Geometry3D/VertexDots', () => ({ Dot: () => null }))
 vi.mock('@/components/Geometry3D/dimensions', () => ({ DashedLine: () => null }))
-vi.mock('@/components/interaction/useAlignmentSnapEffect', () => ({ useAlignmentSnapEffect: () => {} }))
+// The effect itself needs a live camera; record the cursor it is handed instead,
+// which is where the tool decides whether the alignment guide exists at all.
+const align = vi.hoisted(() => ({ cursors: [] as unknown[] }))
+vi.mock('@/components/interaction/useAlignmentSnapEffect', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/interaction/useAlignmentSnapEffect')>()
+  return { ...actual, useAlignmentSnapEffect: (cursor: unknown) => { align.cursors.push(cursor) } }
+})
 
 import { DrawPlane } from '@/components/Geometry3D/Drawing'
 
@@ -93,6 +99,7 @@ beforeEach(() => {
   pick.hit = null
   pick.calls = 0
   loud.messages.length = 0
+  align.cursors.length = 0
   r3f.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, -100, 100)
   r3f.canvas = makeCanvas()
   useSketchEditorStore.setState({
@@ -100,6 +107,27 @@ beforeEach(() => {
     dimensionPicks: [], dimensionCursorWorld: null, hoveredSelectionId: null,
     hoveredVertexId: null, hoveredVertexPosition: null, hoveredSnapKind: null,
     normalSelection: new Set(), isPointerDown: false,
+  })
+})
+
+describe('DrawPlane alignment guide', () => {
+  // The n-gon commit ignores alignment like the rectangles do, so its guide
+  // would be a false promise: the effect gets no cursor and shows nothing.
+  it.each(['rect', 'center_rect', 'ngon'])('%s hands the alignment effect no cursor', (tool) => {
+    toolRegistry.register(stubTool(tool))
+    useSketchEditorStore.setState({ activeTool: tool as Tool['id'], drawPoints: [[0, 0]], drawHover: [4, 1] })
+    render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
+
+    expect(align.cursors.length).toBeGreaterThan(0)
+    expect(align.cursors.every(c => c === null)).toBe(true)
+  })
+
+  it('line hands the alignment effect the draw hover', () => {
+    toolRegistry.register(stubTool('line'))
+    useSketchEditorStore.setState({ activeTool: 'line', drawPoints: [[0, 0]], drawHover: [4, 1] })
+    render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
+
+    expect(align.cursors.at(-1)).toEqual([4, 1])
   })
 })
 

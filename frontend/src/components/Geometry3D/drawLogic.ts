@@ -8,6 +8,7 @@ import { getEntityKind } from '@/types/cad'
 import { projectionMutationsForId } from '@/tools/projectionMutations'
 import { circumcircle, arcEndpointOrder, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
 import { isFiniteSketchPoint } from '@/components/Geometry3D/pointerAbstraction'
+import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { failLoud } from '@/stores/stateInvariants'
 
 export type { DrawSnapState }
@@ -114,19 +115,27 @@ export function computeDrawClick(
       Math.abs(px - startPoint[0]) < SNAP_EPS &&
       Math.abs(py - startPoint[1]) < SNAP_EPS
 
-    const lineId = newEntityIdFn()
-    const mutations: Mutation[] = []
-    const startRef = snap.drawSnapRefs[pts.length - 1] ?? null
-    const endRef = clickedRef()
-    // Both ends on the SAME element make a zero-length line (or two coincidents
-    // that say the same thing): drop the constraints and fall back to a free
-    // line so the kernel does not silently discard it.
-    const sameVertex = !!startRef && startRef === endRef
-
     const segStart = pts[pts.length - 1]
     // Take the closing endpoint from the chain's own first point rather than the
     // resolved click, so a loop closes on the exact coordinate it opened at.
     const segEnd = closesChain ? startPoint : [px, py]
+    // A click that resolves back onto the segment's own start (a double click on
+    // the chain's end vertex, typically) would author a zero-length line nothing
+    // can use. Drop the click and keep the chain where it was.
+    if (Math.abs(segEnd[0] - segStart[0]) < SNAP_EPS && Math.abs(segEnd[1] - segStart[1]) < SNAP_EPS) {
+      return nothing
+    }
+
+    const lineId = newEntityIdFn()
+    const mutations: Mutation[] = []
+    const startRef = snap.drawSnapRefs[pts.length - 1] ?? null
+    const endRef = clickedRef()
+    // Both ends on the SAME element would make the solver pull the line to zero
+    // length (or give two coincidents that say the same thing): drop the
+    // constraints and fall back to a free line so the kernel does not silently
+    // discard it.
+    const sameVertex = !!startRef && startRef === endRef
+
     const params = [segStart[0], segStart[1], segEnd[0], segEnd[1]]
 
     if (startRef && !sameVertex) {
@@ -306,18 +315,32 @@ export function computeDrawClick(
     return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
+  // The second click of the two-click shape tools (rect, center rect, n-gon).
+  // An alignment snap is measured against the first click, so honouring it
+  // would put both clicks on one row or column and collapse the rectangle (or
+  // tilt the n-gon onto an axis the user did not ask for): that click keeps the
+  // raw cursor and names nothing. A vertex or curve snap moves the point onto
+  // the element and hands its ref to the doc writer, like every other tool.
+  const shapeEnd = (): { at: [number, number]; ref: string | null } =>
+    inserter.foundHorizontal() || inserter.foundVertical()
+      ? { at: [rawPoint[0], rawPoint[1]], ref: null }
+      : { at: [px, py], ref: clickedRef() }
+  const done = (mutation: Mutation): DrawClickResult =>
+    ({ mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true })
+
+  // A degenerate second click (no extent on an axis, zero radius) returns
+  // `nothing`: the first click stays in the buffer so the user can click again,
+  // as the circle and ellipse do. The doc writers keep the same guard as a
+  // backstop for other callers.
   if (t === 'rect') {
     if (pts.length === 0) {
       const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
-    // Second corner uses raw point, alignment snap would collapse the rectangle
-    return {
-      mutations: [{ type: 'add_rect', featureId, p0: pts[0], p1: [rawPoint[0], rawPoint[1]] }],
-      nextDrawPoints: null,
-      nextDrawSnap: null,
-      gestureComplete: true,
-    }
+    const end = shapeEnd()
+    if (!isProperRect(pts[0][0], pts[0][1], end.at[0], end.at[1])) return nothing
+    return done({ type: 'add_rect', featureId, p0: pts[0], p1: end.at,
+      p0Ref: snap.drawSnapRefs[0] ?? null, p1Ref: end.ref })
   }
 
   if (t === 'center_rect') {
@@ -325,29 +348,26 @@ export function computeDrawClick(
       const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
-    // Second corner uses raw point, alignment snap would collapse the rectangle
-    return {
-      mutations: [{ type: 'add_center_rect', featureId, center: pts[0], corner: [rawPoint[0], rawPoint[1]] }],
-      nextDrawPoints: null,
-      nextDrawSnap: null,
-      gestureComplete: true,
-    }
+    const end = shapeEnd()
+    if (!isProperRect(...centerRectCorners(pts[0], end.at))) return nothing
+    return done({ type: 'add_center_rect', featureId, center: pts[0], corner: end.at,
+      centerRef: snap.drawSnapRefs[0] ?? null, cornerRef: end.ref })
   }
 
   if (t === 'ngon') {
     if (pts.length === 0) {
+      // The ref is recorded like every first click, but the n-gon has no center
+      // vertex to pin it to, so the snap only places the polygon.
       const drawSnap = startSnap()
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: drawSnap, gestureComplete: false }
     }
-    // Second click sets a vertex (circumradius + start angle). Raw point: an
-    // alignment snap would distort the polygon's orientation.
+    // Second click sets a vertex (circumradius + start angle).
+    const end = shapeEnd()
+    // Negated so a NaN radius (a raw cursor the finite gate above never saw)
+    // is refused too.
+    if (!(Math.hypot(end.at[0] - pts[0][0], end.at[1] - pts[0][1]) > 0)) return nothing
     const sides = Math.max(3, Math.floor(snap.ngonSides ?? 6))
-    return {
-      mutations: [{ type: 'add_ngon', featureId, center: pts[0], corner: [rawPoint[0], rawPoint[1]], sides }],
-      nextDrawPoints: null,
-      nextDrawSnap: null,
-      gestureComplete: true,
-    }
+    return done({ type: 'add_ngon', featureId, center: pts[0], corner: end.at, sides, cornerRef: end.ref })
   }
 
   if (t === 'project') {

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { resolveSnapPoint, computeDrawClick } from '@/components/Geometry3D/drawLogic'
 import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
 import { computePreviewPts, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
+import type { Entity } from '@/types/cad'
 
 const FEATURE = 'S1'
 let idCounter = 0
@@ -16,6 +17,18 @@ const emptySnap = (): DrawSnapState => ({
   alignmentSnapPoint: null,
   alignmentSnapKind: null,
 })
+
+const onVertex = (id: string, at: [number, number]): DrawSnapState => ({
+  ...emptySnap(),
+  hoveredVertexId: id,
+  hoveredVertexPosition: at,
+  hoveredSnapKind: 'vertex',
+})
+
+// A horizontal line the path-snap tests hover; its foot for any cursor is (x, 0).
+const LINE_SKETCH: Record<string, Entity> = {
+  L9: { start: [-100, 0], end: [100, 0] } as Entity,
+}
 
 describe('resolveSnapPoint', () => {
   it('returns raw point when no snap active', () => {
@@ -245,6 +258,25 @@ describe('computeDrawClick - line tool', () => {
     const result = computeDrawClick('line', [[0, 0]], [5, 5], snap, FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
     expect(result.mutations[0].type).toBe('add_entity_with_constraint')
+  })
+
+  // A double click on the chain's own end vertex resolves both ends of the next
+  // segment onto one point: a zero-length line, which nothing can use.
+  it('a click on the previous segment end vertex adds nothing and keeps the chain', () => {
+    const snap = onVertex('vertex:S1:E1:end', [5, 5])
+    snap.drawSnapRefs = [null, 'vertex:S1:E1:end']
+    const result = computeDrawClick('line', [[0, 0], [5, 5]], [5.0001, 4.9999], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(0)
+    expect(result.gestureComplete).toBe(false)
+    expect(result.nextDrawPoints).toBeNull()
+    expect(result.nextDrawSnap).toBeNull()
+  })
+
+  it('a first segment clicked back onto its own start adds nothing', () => {
+    const result = computeDrawClick('line', [[2, 3]], [2, 3], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(0)
+    expect(result.gestureComplete).toBe(false)
+    expect(result.nextDrawPoints).toBeNull()
   })
 
 
@@ -505,6 +537,48 @@ describe('computeDrawClick - rect tool', () => {
     expect(result.nextDrawPoints).toEqual([[10, 20]])
     expect(result.nextDrawSnap).toEqual({ refs: ['v1'] })
   })
+
+  it('second click carries the first corner snap as p0Ref', () => {
+    const snap = emptySnap()
+    snap.drawSnapRefs = ['vertex:S1:L1:end']
+    const result = computeDrawClick('rect', [[0, 0]], [5, 3], snap, FEATURE, newId)
+    expect(result.mutations).toEqual([
+      { type: 'add_rect', featureId: FEATURE, p0: [0, 0], p1: [5, 3], p0Ref: 'vertex:S1:L1:end', p1Ref: null },
+    ])
+  })
+
+  it('second click on a vertex lands on it and carries it as p1Ref', () => {
+    const snap = onVertex('vertex:S1:L2:start', [7, 4])
+    const result = computeDrawClick('rect', [[0, 0]], [6.9, 4.1], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_rect')
+    if (m.type === 'add_rect') {
+      expect(m.p1).toEqual([7, 4])
+      expect(m.p1Ref).toBe('vertex:S1:L2:start')
+      expect(m.p0Ref).toBeNull()
+    }
+  })
+
+  it('second click on a curve lands on its foot and carries the curve as p1Ref', () => {
+    const snap = emptySnap()
+    snap.hoveredSelectionId = 'entity:S1:L9'
+    const result = computeDrawClick('rect', [[0, 5]], [6, 0.2], snap, FEATURE, newId, LINE_SKETCH)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_rect')
+    if (m.type === 'add_rect') {
+      expect(m.p1[0]).toBeCloseTo(6)
+      expect(m.p1[1]).toBeCloseTo(0)
+      expect(m.p1Ref).toBe('entity:S1:L9')
+    }
+  })
+
+  it('second click making a zero-width rect keeps the first corner', () => {
+    const result = computeDrawClick('rect', [[0, 0]], [0, 5], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(0)
+    expect(result.gestureComplete).toBe(false)
+    expect(result.nextDrawPoints).toBeNull()
+  })
 })
 
 describe('computeDrawClick - center_rect tool', () => {
@@ -535,6 +609,35 @@ describe('computeDrawClick - center_rect tool', () => {
       expect(result.mutations[0].corner).toEqual([8, 4])
     }
   })
+
+  it('second click carries the center snap as centerRef', () => {
+    const snap = emptySnap()
+    snap.drawSnapRefs = ['vertex:S1:P1:xy']
+    const result = computeDrawClick('center_rect', [[0, 0]], [3, 2], snap, FEATURE, newId)
+    expect(result.mutations).toEqual([
+      { type: 'add_center_rect', featureId: FEATURE, center: [0, 0], corner: [3, 2],
+        centerRef: 'vertex:S1:P1:xy', cornerRef: null },
+    ])
+  })
+
+  it('second click on a vertex lands on it and carries it as cornerRef', () => {
+    const snap = onVertex('vertex:S1:L2:end', [4, -3])
+    const result = computeDrawClick('center_rect', [[0, 0]], [4.1, -2.9], snap, FEATURE, newId)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_center_rect')
+    if (m.type === 'add_center_rect') {
+      expect(m.corner).toEqual([4, -3])
+      expect(m.cornerRef).toBe('vertex:S1:L2:end')
+      expect(m.centerRef).toBeNull()
+    }
+  })
+
+  it('second click on the center row keeps the center', () => {
+    const result = computeDrawClick('center_rect', [[0, 0]], [3, 0], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(0)
+    expect(result.gestureComplete).toBe(false)
+    expect(result.nextDrawPoints).toBeNull()
+  })
 })
 
 describe('computeDrawClick - ngon tool', () => {
@@ -563,6 +666,48 @@ describe('computeDrawClick - ngon tool', () => {
     if (result.mutations[0].type === 'add_ngon') {
       expect(result.mutations[0].sides).toBe(5)
     }
+  })
+
+  it('second click on a vertex lands on it and carries it as cornerRef', () => {
+    const snap = onVertex('vertex:S1:L2:end', [0, 8])
+    const result = computeDrawClick('ngon', [[0, 0]], [0.1, 7.9], snap, FEATURE, newId)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_ngon')
+    if (m.type === 'add_ngon') {
+      expect(m.corner).toEqual([0, 8])
+      expect(m.cornerRef).toBe('vertex:S1:L2:end')
+    }
+  })
+
+  it('second click with alignment snap keeps the raw corner and no ref', () => {
+    const snap = emptySnap()
+    snap.alignmentSnapPoint = [0, 0]
+    snap.alignmentSnapKind = 'kinda_horizontal'
+    const result = computeDrawClick('ngon', [[0, 0]], [8, 1], snap, FEATURE, newId)
+    const m = result.mutations[0]
+    if (m.type === 'add_ngon') {
+      expect(m.corner).toEqual([8, 1])
+      expect(m.cornerRef).toBeNull()
+    }
+  })
+
+  // The n-gon has no center vertex to pin, so a center snap only places it.
+  it('a snapped center positions the polygon but authors no center ref', () => {
+    const first = computeDrawClick('ngon', [], [0.1, 0.1], onVertex('vertex:S1:P1:xy', [0, 0]), FEATURE, newId)
+    expect(first.nextDrawPoints).toEqual([[0, 0]])
+    const snap = emptySnap()
+    snap.drawSnapRefs = first.nextDrawSnap!.refs
+    const result = computeDrawClick('ngon', first.nextDrawPoints!, [10, 0], snap, FEATURE, newId)
+    expect(result.mutations).toEqual([
+      { type: 'add_ngon', featureId: FEATURE, center: [0, 0], corner: [10, 0], sides: 6, cornerRef: null },
+    ])
+  })
+
+  it('second click on the center keeps it (zero radius)', () => {
+    const result = computeDrawClick('ngon', [[2, 2]], [2, 2], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(0)
+    expect(result.gestureComplete).toBe(false)
+    expect(result.nextDrawPoints).toBeNull()
   })
 })
 

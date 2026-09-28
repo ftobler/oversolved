@@ -169,6 +169,8 @@ describe('DrawingTool', () => {
         featureId: 'S1',
         p0: [1, 2],
         p1: [5, 6],
+        p0Ref: null,
+        p1Ref: null,
       })
       expect(clearDraw).toHaveBeenCalled()
       expect(setActiveTool).not.toHaveBeenCalled()
@@ -201,6 +203,8 @@ describe('DrawingTool', () => {
         featureId: 'S1',
         center: [0, 0],
         corner: [3, 4],
+        centerRef: null,
+        cornerRef: null,
       })
       expect(clearDraw).toHaveBeenCalled()
       expect(setActiveTool).not.toHaveBeenCalled()
@@ -237,6 +241,7 @@ describe('DrawingTool', () => {
         center: [0, 0],
         corner: [10, 0],
         sides: 5,
+        cornerRef: null,
       })
       expect(clearDraw).toHaveBeenCalled()
       expect(setActiveTool).not.toHaveBeenCalled()

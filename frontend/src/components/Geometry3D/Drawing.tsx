@@ -9,7 +9,7 @@ import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlan
 import { Dot } from '@/components/Geometry3D/VertexDots'
 import { DashedLine } from '@/components/Geometry3D/dimensions'
 import { COLOR_PREVIEW } from '@/components/Geometry3D/constants'
-import { useAlignmentSnapEffect } from '@/components/interaction/useAlignmentSnapEffect'
+import { useAlignmentSnapEffect, toolTakesAlignmentSnap } from '@/components/interaction/useAlignmentSnapEffect'
 import { failLoud } from '@/stores/stateInvariants'
 import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
@@ -90,8 +90,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const { camera, gl } = useThree()
 
   const drawLastPoint = drawPoints.length > 0 ? drawPoints[drawPoints.length - 1] : null
-  const isRectTool = effectiveTool === 'rect' || effectiveTool === 'center_rect'
-  useAlignmentSnapEffect(isRectTool ? null : drawHover, drawLastPoint)
+  useAlignmentSnapEffect(toolTakesAlignmentSnap(effectiveTool) ? drawHover : null, drawLastPoint)
 
   // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
   const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {

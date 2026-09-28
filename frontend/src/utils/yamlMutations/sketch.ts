@@ -8,6 +8,7 @@ import {
 import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometry/offsetProfile'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
+import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 
 // ─── Mutation preamble ───
 
@@ -753,14 +754,22 @@ function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: strin
   })
 }
 
-/** A rectangle needs a real extent on BOTH axes. Collapsing one axis is already
- *  degenerate: an axis-aligned "rectangle" is two zero-length lines plus a
- *  coincident pair on top of each other, which pollutes the document with
- *  geometry that can never solve. Non-finite corners are broken pointer math
- *  upstream and round() would carry the NaN straight into the seed. Shared by
- *  the corner and center rect entries so both bail on the same condition. */
-function isProperRect(x0: number, y0: number, x1: number, y1: number): boolean {
-  return allFinite([x0, y0, x1, y1]) && x0 !== x1 && y0 !== y1
+/** Pin the sugar entity's own vertices to what the draw clicks snapped onto,
+ *  in click order. Each ref is a `vertex:` ref (a point pair) or an `entity:`
+ *  ref (the locus form, a point on that curve); both are one `coincident`. Two
+ *  clicks on the same element say one thing, so only the first is authored,
+ *  the same rule the line/arc/spline tools apply to their ends. */
+function _pinSnappedVertices(
+  doc: PartDoc,
+  featureId: string,
+  pins: [vertexRef: string, snapRef: string | null | undefined][],
+): void {
+  const seen = new Set<string>()
+  for (const [vertexRef, snapRef] of pins) {
+    if (!snapRef || seen.has(snapRef)) continue
+    seen.add(snapRef)
+    applyAddConstraint(doc, featureId, 'coincident', [vertexRef, snapRef])
+  }
 }
 
 export function applyAddRect(
@@ -768,12 +777,14 @@ export function applyAddRect(
   featureId: string,
   p0: [number, number],
   p1: [number, number],
+  p0Ref?: string | null,
+  p1Ref?: string | null,
 ): void {
   const [x0, y0] = p0
   const [x1, y1] = p1
-  // The draw tool dispatches on the second click unconditionally, so a click on
-  // the starting corner -- or anywhere on its row or column -- arrives here.
-  // Bail before anything, even container materialization, touches the document.
+  // The draw tool refuses a degenerate second click itself; this is the
+  // backstop for any other caller. Bail before anything, even container
+  // materialization, touches the document.
   if (!isProperRect(x0, y0, x1, y1)) {
     warn('applyAddRect: degenerate rectangle skipped', { p0, p1 })
     return
@@ -781,7 +792,12 @@ export function applyAddRect(
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
 
-  _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
+  // _applyRectLines starts lA at (x0, y0) and lC at the diagonal (x1, y1).
+  const [lA, , lC] = _applyRectLines(feature, featureId, doc, x0, y0, x1, y1)
+  _pinSnappedVertices(doc, featureId, [
+    [`vertex:${featureId}:${lA}:start`, p0Ref],
+    [`vertex:${featureId}:${lC}:start`, p1Ref],
+  ])
 }
 
 export function applyAddCenterRect(
@@ -789,14 +805,12 @@ export function applyAddCenterRect(
   featureId: string,
   center: [number, number],
   corner: [number, number],
+  centerRef?: string | null,
+  cornerRef?: string | null,
 ): void {
   const [cx, cy] = center
-  const [x, y] = corner
-  const dx = x - cx
-  const dy = y - cy
-  // 4 corners of the rectangle (symmetric around center)
-  const x0 = cx - dx, x1 = cx + dx
-  const y0 = cy - dy, y1 = cy + dy
+  // 4 corners of the rectangle (symmetric around center); (x1, y1) is the click.
+  const [x0, y0, x1, y1] = centerRectCorners(center, corner)
   // Same guard as applyAddRect, on the derived corners so one collapsed axis is
   // caught too; here it must also keep the center point and its two diagonal
   // midpoint constraints from being authored.
@@ -827,6 +841,12 @@ export function applyAddCenterRect(
     `vertex:${featureId}:${lD}:start`,
     `vertex:${featureId}:${pointId}:xy`,
   ])
+
+  // The clicked corner is (x1, y1), where lC starts.
+  _pinSnappedVertices(doc, featureId, [
+    [`vertex:${featureId}:${pointId}:xy`, centerRef],
+    [`vertex:${featureId}:${lC}:start`, cornerRef],
+  ])
 }
 
 /** N-gon sugar: N line entities forming a closed coincident chain plus a single
@@ -840,6 +860,7 @@ export function applyAddNgon(
   center: [number, number],
   corner: [number, number],
   sides: number,
+  cornerRef?: string | null,
 ): void {
   const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
   if (!feature) return
@@ -887,6 +908,10 @@ export function applyAddNgon(
     kind: 'ngon',
     refs: lineIds.map(eid => parseTarget(`entity:${featureId}:${eid}`, featureId)),
   })
+
+  // The first line starts at angle0, i.e. on the corner click. The center has
+  // no vertex of its own, so a center snap only placed the polygon.
+  _pinSnappedVertices(doc, featureId, [[`vertex:${featureId}:${lineIds[0]}:start`, cornerRef]])
 }
 
 /** Compute the offset seed params for a cloned entity: the source geometry moved

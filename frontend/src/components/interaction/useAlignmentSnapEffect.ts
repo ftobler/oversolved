@@ -4,6 +4,15 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { ALIGNMENT_TOLERANCE_DEG, ALIGNMENT_TOLERANCE_DIST } from '@/registry'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 
+// Tools whose commit ignores the alignment snap (computeDrawClick's shape-end
+// rule: it would collapse a rectangle or tilt an n-gon). Showing them the guide
+// would promise a snap the click never makes.
+const TOOLS_WITHOUT_ALIGNMENT = new Set(['rect', 'center_rect', 'ngon'])
+
+export function toolTakesAlignmentSnap(tool: string): boolean {
+  return !TOOLS_WITHOUT_ALIGNMENT.has(tool)
+}
+
 interface DrawAlignmentResult {
   kind: 'kinda_horizontal' | 'kinda_vertical'
   point: [number, number]

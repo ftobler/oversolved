@@ -261,6 +261,8 @@ describe('ToolRegistry', () => {
         featureId: 'S1',
         p0: [1, 2],
         p1: [5, 6],
+        p0Ref: null,
+        p1Ref: null,
       })
     })
 
@@ -297,6 +299,8 @@ describe('ToolRegistry', () => {
         featureId: 'S1',
         center: [0, 0],
         corner: [3, 4],
+        centerRef: null,
+        cornerRef: null,
       })
     })
   })

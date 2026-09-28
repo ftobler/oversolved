@@ -883,9 +883,12 @@ export type Mutation =
   | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string }
   | { type: 'add_entity_with_constraint'; featureId: string; kind: string; params: number[]; vertexKey: string; snapVertexId?: string; snapEntityRef?: string; constraintKind: string; entityId?: string }
   | { type: 'add_projected_entity'; featureId: string; kind: string; source: string; entityId?: string }
-  | { type: 'add_rect'; featureId: string; p0: Point; p1: Point }
-  | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point }
-  | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number }
+  // The optional refs name what a click snapped onto (a `vertex:` ref, or an
+  // `entity:` ref for a point on that curve); the writer pins the matching corner
+  // to it with a coincident. The n-gon has no center vertex, so no center ref.
+  | { type: 'add_rect'; featureId: string; p0: Point; p1: Point; p0Ref?: string | null; p1Ref?: string | null }
+  | { type: 'add_center_rect'; featureId: string; center: Point; corner: Point; centerRef?: string | null; cornerRef?: string | null }
+  | { type: 'add_ngon'; featureId: string; center: Point; corner: Point; sides: number; cornerRef?: string | null }
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { suggestConstraint, ALIGNMENT_TOLERANCE_DEG, ALIGNMENT_TOLERANCE_DIST } from '@/registry'
-import { detectDrawAlignment, isAlignmentSnap } from '@/components/interaction/useAlignmentSnapEffect'
+import { detectDrawAlignment, isAlignmentSnap, toolTakesAlignmentSnap } from '@/components/interaction/useAlignmentSnapEffect'
 
 describe('alignment snap for draw tool', () => {
   beforeEach(() => {
@@ -126,6 +126,18 @@ describe('alignment snap for draw tool', () => {
       const state = useSketchEditorStore.getState()
       expect(state.alignmentSnapPoint).toBeNull()
       expect(state.alignmentSnapKind).toBeNull()
+    })
+  })
+
+  // A guide is a promise that the click will honour it. The rect, center rect
+  // and n-gon commits drop alignment, so they must not show the guide either.
+  describe('toolTakesAlignmentSnap', () => {
+    it.each(['rect', 'center_rect', 'ngon'])('%s gets no alignment snap', (tool) => {
+      expect(toolTakesAlignmentSnap(tool)).toBe(false)
+    })
+
+    it.each(['line', 'circle', 'arc', 'spline'])('%s keeps the alignment snap', (tool) => {
+      expect(toolTakesAlignmentSnap(tool)).toBe(true)
     })
   })
 })

@@ -118,11 +118,11 @@ export const mutationHandlers: MutationHandlers = {
   add_projected_entity: (next, m) =>
     applyAddProjectedEntity(next, m.featureId, m.kind, m.source, m.entityId),
   add_rect: (next, m) =>
-    applyAddRect(next, m.featureId, m.p0, m.p1),
+    applyAddRect(next, m.featureId, m.p0, m.p1, m.p0Ref, m.p1Ref),
   add_center_rect: (next, m) =>
-    applyAddCenterRect(next, m.featureId, m.center, m.corner),
+    applyAddCenterRect(next, m.featureId, m.center, m.corner, m.centerRef, m.cornerRef),
   add_ngon: (next, m) =>
-    applyAddNgon(next, m.featureId, m.center, m.corner, m.sides),
+    applyAddNgon(next, m.featureId, m.center, m.corner, m.sides, m.cornerRef),
   apply_offset: (next, m) =>
     applyAddOffset(next, m.featureId, m.sourceIds, m.distance),
   toggle_construction: (next, m) =>
