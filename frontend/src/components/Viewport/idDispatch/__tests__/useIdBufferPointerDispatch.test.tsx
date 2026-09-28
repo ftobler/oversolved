@@ -795,6 +795,33 @@ describe('useIdBufferPointerDispatch', () => {
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
   })
 
+  it('clears the hover when the pointer leaves the canvas for an overlay', async () => {
+    // A constraint tile / dimension label is a DOM sibling of the canvas inside
+    // the R3F container, so a move onto one fires pointerleave on the canvas
+    // and never reaches the move listener. Without the leave teardown the last
+    // canvas hover would freeze under the overlay.
+    pipeline.resolveAsync = vi.fn().mockResolvedValue({
+      id: 1, layer: SKETCH_SURFACE_LAYER_NAME, entityKey: 'sk1/surf:face0', distancePx: 0,
+    })
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([SKETCH_SURFACE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+      await Promise.resolve()
+    })
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('sk1/surf:face0')
+
+    act(() => {
+      canvas.dispatchEvent(new Event('pointerleave'))
+    })
+
+    expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+  })
+
   // L28: the click router must honor the dimensionLabelAdapter's verdict.
   // In the mount window between ID registration and registerDimCallbacks
   // nothing is registered for a label, so the adapter returns false and the

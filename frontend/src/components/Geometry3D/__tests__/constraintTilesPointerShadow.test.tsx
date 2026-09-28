@@ -74,7 +74,7 @@ describe('constraint tile pointer shadow over the anchored vertex', () => {
     expect(parseFloat(group.style.marginLeft)).toBeGreaterThan(0)
   })
 
-  it.fails('does not let the invisible anchor wrapper capture pointer events over the vertex', () => {
+  it('does not let the invisible anchor wrapper capture pointer events over the vertex', () => {
     const { getByTestId } = renderCorner()
     const anchor = getByTestId('html-anchor')
     expect(anchor.style.pointerEvents).toBe('none')
