@@ -6,7 +6,7 @@ import { randomId } from '@/utils/yamlMutations'
 import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
-import { consumedSketchIds } from '@/utils/query/consumedSketches'
+import { visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { capturePreview } from '@/stores/previewStore/capture'
@@ -370,20 +370,11 @@ export default function Part() {
     return () => registerUndoTeardown(null)
   }, [registerUndoTeardown, tearDownEditorState])
 
+  // The whole rule (consumed sketches hidden, the open editor's own geometry
+  // forced back on screen) lives in visibleFeatureIds so it is tested without
+  // the page or the viewport.
   const visibleFeaturesWithEdit = useMemo(
-    () => {
-      // A sketch a feature consumes is hidden in the document (the auto-cleanup
-      // in hideConsumedSketches), but its consumer's own editor has to keep it
-      // on screen: the pick that hid it would otherwise make the next profile
-      // pick from the same sketch impossible, and the profile being edited
-      // would vanish from under the user.
-      const edited = features.find(f => f.id === editingFeatureId)
-      return new Set([
-        ...features.filter(f => f.visible !== false).map(f => f.id),
-        ...editForcedVisible,
-        ...(edited ? consumedSketchIds(edited, features) : []),
-      ])
-    },
+    () => visibleFeatureIds(features, { editingFeatureId, forcedVisible: editForcedVisible }),
     [features, editForcedVisible, editingFeatureId]
   )
 
