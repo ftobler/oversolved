@@ -31,7 +31,7 @@ async function openAddDialog() {
   await act(async () => {
     fireEvent.click(screen.getByTitle('New part workspace'))
   })
-  await waitFor(() => expect(screen.getByPlaceholderText('Part name')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByPlaceholderText('Workspace name')).toBeInTheDocument())
 }
 
 describe('Workspaces create dialog', () => {
@@ -53,7 +53,7 @@ describe('Workspaces create dialog', () => {
     expect(screen.getByText('Workspace name cannot be empty')).toBeInTheDocument()
 
     await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText('Part name'), { target: { value: 'bracket' } })
+      fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'bracket' } })
     })
 
     expect(screen.queryByText('Workspace name cannot be empty')).not.toBeInTheDocument()
@@ -63,14 +63,14 @@ describe('Workspaces create dialog', () => {
     await openAddDialog()
 
     await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText('Part name'), { target: { value: 'bracket' } })
+      fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'bracket' } })
     })
     await act(async () => {
       fireEvent.click(screen.getByText('Create'))
     })
 
     await waitFor(() => expect(screen.getByTitle('bracket')).toBeInTheDocument())
-    expect(screen.queryByText('Create New Part')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create New Part Workspace')).not.toBeInTheDocument()
   })
 
   it('seeds the assembly kind on the cover entry when the assembly button is used', async () => {
@@ -78,9 +78,9 @@ describe('Workspaces create dialog', () => {
     await waitFor(() => expect(screen.getByText('Workspaces', { selector: '.sidebar-item-label' })).toBeInTheDocument())
 
     await act(async () => { fireEvent.click(screen.getByTitle('New assembly workspace')) })
-    expect(screen.getByText('Create New Assembly')).toBeInTheDocument()
+    expect(screen.getByText('Create New Assembly Workspace')).toBeInTheDocument()
     await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText('Assembly name'), { target: { value: 'gearbox' } })
+      fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'gearbox' } })
     })
     await act(async () => { fireEvent.click(screen.getByText('Create')) })
     await waitFor(() => expect(screen.getByTitle('gearbox')).toBeInTheDocument())
@@ -99,7 +99,7 @@ describe('Workspaces create dialog', () => {
     vi.spyOn(store, 'create').mockRejectedValueOnce(new Error('quota exceeded'))
 
     await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText('Part name'), { target: { value: 'bracket' } })
+      fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'bracket' } })
     })
     await act(async () => {
       fireEvent.click(screen.getByText('Create'))
@@ -108,13 +108,13 @@ describe('Workspaces create dialog', () => {
     // A create that the store refused is a failure inside the dialog that owns
     // it, not a banner behind it: the typed name has to survive the failure.
     await waitFor(() => expect(screen.getByText('quota exceeded')).toBeInTheDocument())
-    expect(screen.getByPlaceholderText('Part name')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Workspace name')).toBeInTheDocument()
   })
 
   it('creates a part entry with an empty body when the part button is used', async () => {
     await openAddDialog()
     await act(async () => {
-      fireEvent.change(screen.getByPlaceholderText('Part name'), { target: { value: 'bracket' } })
+      fireEvent.change(screen.getByPlaceholderText('Workspace name'), { target: { value: 'bracket' } })
     })
     await act(async () => { fireEvent.click(screen.getByText('Create')) })
     await waitFor(() => expect(screen.getByTitle('bracket')).toBeInTheDocument())
