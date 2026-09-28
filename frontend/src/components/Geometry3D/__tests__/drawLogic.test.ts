@@ -256,6 +256,33 @@ describe('computeDrawClick - line tool', () => {
     expect(result.gestureComplete).toBe(false)
   })
 
+  it('both endpoints on the same curve pin each end onto it (a chord)', () => {
+    // Two different points of one curve are two independent statements.
+    const snap = onPath('L9')
+    snap.drawSnapRefs = ['entity:S1:L9']
+    const result = computeDrawClick('line', [[-3, 0]], [4, 3], snap, FEATURE, () => 'N1', LINE_SKETCH)
+    expect(result.mutations).toEqual([
+      { type: 'add_entity_with_constraint', featureId: FEATURE, kind: 'line', params: [-3, 0, 4, 0],
+        vertexKey: 'start', snapEntityRef: 'entity:S1:L9', constraintKind: 'coincident', entityId: 'N1' },
+      { type: 'add_constraint', featureId: FEATURE, kind: 'coincident',
+        targets: ['vertex:S1:N1:end', 'entity:S1:L9'] },
+    ])
+  })
+
+  it('a chain closed on its snapped first vertex commits the closing segment and completes', () => {
+    const snap = onVertex('vertex:S1:V1:end', [0, 0])
+    snap.drawSnapRefs = ['vertex:S1:V1:end', 'vertex:S1:N1:end', 'vertex:S1:N2:end']
+    const result = computeDrawClick('line', [[0, 0], [5, 0], [5, 5]], [0.1, 0.1], snap, FEATURE, () => 'N3')
+    expect(result.mutations).toEqual([
+      { type: 'add_entity_with_constraint', featureId: FEATURE, kind: 'line', params: [5, 5, 0, 0],
+        vertexKey: 'start', snapVertexId: 'vertex:S1:N2:end', constraintKind: 'coincident', entityId: 'N3' },
+      { type: 'add_constraint', featureId: FEATURE, kind: 'coincident',
+        targets: ['vertex:S1:N3:end', 'vertex:S1:V1:end'] },
+    ])
+    expect(result.gestureComplete).toBe(true)
+    expect(result.nextDrawPoints).toBeNull()
+  })
+
   it('a single-snapped (start only) line still works as before', () => {
     const snap = emptySnap()
     snap.drawSnapRefs = ['vertex:S1:L1:end']
@@ -469,6 +496,17 @@ describe('computeDrawClick - spline tool', () => {
       snapVertexId: `vertex:${FEATURE}:V1:end` })
   })
 
+  it('start and end on the same curve pin both ends onto it', () => {
+    const snap = onPath('L9')
+    snap.drawSnapRefs = ['entity:S1:L9', null, null]
+    const result = computeDrawClick('spline', [[-3, 0], [-1, 2], [1, 2]], [3, 1], snap, FEATURE, () => 'SP1', LINE_SKETCH)
+    expect(result.mutations).toHaveLength(2)
+    expect(result.mutations[0]).toMatchObject({ type: 'add_entity_with_constraint', vertexKey: 'start',
+      snapEntityRef: 'entity:S1:L9', entityId: 'SP1' })
+    expect(result.mutations[1]).toEqual({ type: 'add_constraint', featureId: FEATURE, kind: 'coincident',
+      targets: ['vertex:S1:SP1:end', 'entity:S1:L9'] })
+  })
+
   it('fourth click emits add_entity spline with 8 control-point params', () => {
     const result = computeDrawClick('spline', [[0, 0], [1, 3], [3, 3]], [4, 0], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
@@ -596,6 +634,26 @@ describe('computeDrawClick - arc tool', () => {
     expect(result.mutations).toHaveLength(0)
     expect(result.gestureComplete).toBe(false)
   })
+
+  it('both ends on the same curve pin each end onto it', () => {
+    const snap = emptySnap()
+    snap.drawSnapRefs = ['entity:S1:L9', 'entity:S1:L9']
+    const result = computeDrawClick('arc', [[-3, 0], [3, 0]], [0, 3], snap, FEATURE, () => 'A1', LINE_SKETCH)
+    expect(result.mutations).toHaveLength(2)
+    const add = result.mutations[0]
+    expect(add).toMatchObject({ type: 'add_entity_with_constraint', snapEntityRef: 'entity:S1:L9', entityId: 'A1' })
+    const firstKey = add.type === 'add_entity_with_constraint' ? add.vertexKey : ''
+    const secondKey = firstKey === 'start' ? 'end' : 'start'
+    expect(result.mutations[1]).toEqual({ type: 'add_constraint', featureId: FEATURE, kind: 'coincident',
+      targets: [`vertex:S1:A1:${secondKey}`, 'entity:S1:L9'] })
+  })
+
+  it('both ends on the same vertex author that coincident once', () => {
+    const snap = emptySnap()
+    snap.drawSnapRefs = ['vertex:S1:V1:end', 'vertex:S1:V1:end']
+    const result = computeDrawClick('arc', [[-3, 0], [3, 0]], [0, 3], snap, FEATURE, () => 'A1')
+    expect(result.mutations).toHaveLength(1)
+  })
 })
 
 describe('computeDrawClick - rect tool', () => {
@@ -622,8 +680,11 @@ describe('computeDrawClick - rect tool', () => {
     snap.alignmentSnapKind = 'kinda_horizontal'
     const result = computeDrawClick('rect', [[0, 0]], [8, 4], snap, FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
-    if (result.mutations[0].type === 'add_rect') {
-      expect(result.mutations[0].p1).toEqual([8, 4])
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_rect')
+    if (m.type === 'add_rect') {
+      expect(m.p1).toEqual([8, 4])
+      expect(m.p1Ref).toBeNull()
     }
   })
 
@@ -703,8 +764,11 @@ describe('computeDrawClick - center_rect tool', () => {
     snap.alignmentSnapKind = 'kinda_vertical'
     const result = computeDrawClick('center_rect', [[0, 0]], [8, 4], snap, FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
-    if (result.mutations[0].type === 'add_center_rect') {
-      expect(result.mutations[0].corner).toEqual([8, 4])
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_center_rect')
+    if (m.type === 'add_center_rect') {
+      expect(m.corner).toEqual([8, 4])
+      expect(m.cornerRef).toBeNull()
     }
   })
 
@@ -782,7 +846,9 @@ describe('computeDrawClick - ngon tool', () => {
     snap.alignmentSnapPoint = [0, 0]
     snap.alignmentSnapKind = 'kinda_horizontal'
     const result = computeDrawClick('ngon', [[0, 0]], [8, 1], snap, FEATURE, newId)
+    expect(result.mutations).toHaveLength(1)
     const m = result.mutations[0]
+    expect(m.type).toBe('add_ngon')
     if (m.type === 'add_ngon') {
       expect(m.corner).toEqual([8, 1])
       expect(m.cornerRef).toBeNull()

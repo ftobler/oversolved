@@ -53,12 +53,22 @@ describe('applyAddRect snap refs', () => {
     expect(lineVertexRefsAt(doc, [6, 5])).toContain(p1[0].a)
   })
 
-  it('authors only the first when both refs are the same element', () => {
+  it('authors only the first when both refs are the same vertex', () => {
+    const doc = sketchDoc()
+    applyAddRect(doc, FID, [1, 2], [6, 5], V_OTHER, V_OTHER)
+    const pins = pinnedTo(doc, V_OTHER)
+    expect(pins).toHaveLength(1)
+    expect(lineVertexRefsAt(doc, [1, 2])).toContain(pins[0].a)
+  })
+
+  it('pins both corners when both refs are the same curve', () => {
+    // Two different points on one curve are two independent statements.
     const doc = sketchDoc()
     applyAddRect(doc, FID, [1, 2], [6, 5], PATH, PATH)
     const pins = pinnedTo(doc, PATH)
-    expect(pins).toHaveLength(1)
+    expect(pins).toHaveLength(2)
     expect(lineVertexRefsAt(doc, [1, 2])).toContain(pins[0].a)
+    expect(lineVertexRefsAt(doc, [6, 5])).toContain(pins[1].a)
   })
 
   it('without refs authors exactly the plain rectangle constraints', () => {
@@ -84,10 +94,16 @@ describe('applyAddCenterRect snap refs', () => {
     expect(lineVertexRefsAt(doc, [3, 2])).toContain(corner[0].a)
   })
 
-  it('authors only the center pin when both refs are the same element', () => {
+  it('authors only the center pin when both refs are the same vertex', () => {
+    const doc = sketchDoc()
+    applyAddCenterRect(doc, FID, [0, 0], [3, 2], V_OTHER, V_OTHER)
+    expect(pinnedTo(doc, V_OTHER)).toHaveLength(1)
+  })
+
+  it('pins the center and the corner when both refs are the same curve', () => {
     const doc = sketchDoc()
     applyAddCenterRect(doc, FID, [0, 0], [3, 2], PATH, PATH)
-    expect(pinnedTo(doc, PATH)).toHaveLength(1)
+    expect(pinnedTo(doc, PATH)).toHaveLength(2)
   })
 
   it('without refs authors exactly the plain center rectangle constraints', () => {

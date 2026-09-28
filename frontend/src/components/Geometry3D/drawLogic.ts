@@ -9,6 +9,7 @@ import { projectionMutationsForId } from '@/tools/projectionMutations'
 import { circumcircle, arcEndpointOrder, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
 import { isFiniteSketchPoint } from '@/components/Geometry3D/pointerAbstraction'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
+import { sameSnapVertex } from '@/utils/snapRefs'
 import { failLoud } from '@/stores/stateInvariants'
 
 export type { DrawSnapState }
@@ -78,7 +79,7 @@ export function computeDrawClick(
   const onCurveThroughSnappedVertex = (curveId: string, centreRef: string | null): Mutation[] => {
     if (!inserter.foundSnappablePoint()) return []
     const vertexRef = inserter.getSnappedElement()
-    if (!vertexRef || vertexRef === centreRef) return []
+    if (!vertexRef || sameSnapVertex(vertexRef, centreRef)) return []
     return [{ type: 'add_constraint', featureId, kind: 'coincident',
       targets: [vertexRef, `entity:${featureId}:${curveId}`] }]
   }
@@ -144,11 +145,11 @@ export function computeDrawClick(
     const mutations: Mutation[] = []
     const startRef = snap.drawSnapRefs[pts.length - 1] ?? null
     const endRef = clickedRef()
-    // Both ends on the SAME element would make the solver pull the line to zero
-    // length (or give two coincidents that say the same thing): drop the
-    // constraints and fall back to a free line so the kernel does not silently
-    // discard it.
-    const sameVertex = !!startRef && startRef === endRef
+    // Both ends pinned to the SAME vertex would make the solver pull the line to
+    // zero length: drop the constraints and fall back to a free line so the
+    // kernel does not silently discard it. Both ends on the same CURVE is a
+    // chord, two independent point-on-curve statements, so both are authored.
+    const sameVertex = sameSnapVertex(startRef, endRef)
 
     const params = [segStart[0], segStart[1], segEnd[0], segEnd[1]]
 
@@ -281,8 +282,9 @@ export function computeDrawClick(
     ]
     // The spline carries no axis constraint (its shape is the control polygon's,
     // not a direction), so only the two point questions are asked. An end on the
-    // element the start is already pinned to would restate that coincident.
-    if (endRef && endRef !== startRef) {
+    // vertex the start is already pinned to would restate that coincident; an
+    // end elsewhere on the start's curve is a second point on it and is pinned.
+    if (endRef && !sameSnapVertex(endRef, startRef)) {
       mutations.push(...insertCoincidentPoint(endRef, {
         featureId, vertexRef: `vertex:${featureId}:${splineId}:end`,
       }))
@@ -318,7 +320,8 @@ export function computeDrawClick(
     const secondRef = snap.drawSnapRefs[1] ?? null
 
     // The seed constraint rides along with the entity so the pair commits
-    // atomically; a second snapped end is a plain constraint on the same batch.
+    // atomically; a second snapped end is a plain constraint on the same batch
+    // (skipped only when it names the first end's vertex again).
     const mutations: Mutation[] = [
       firstRef
         ? { type: 'add_entity_with_constraint', featureId, kind: 'arc', params,
@@ -326,7 +329,7 @@ export function computeDrawClick(
             constraintKind: 'coincident', entityId: arcId }
         : { type: 'add_entity', featureId, kind: 'arc', params, entityId: arcId },
     ]
-    if (secondRef && secondRef !== firstRef) {
+    if (secondRef && !sameSnapVertex(secondRef, firstRef)) {
       mutations.push(...insertCoincidentPoint(secondRef, {
         featureId, vertexRef: `vertex:${featureId}:${arcId}:${secondKey}`,
       }))
@@ -410,10 +413,12 @@ export function computeDrawClick(
   return nothing
 }
 
-// Tools whose second click refuses an alignment snap: the snap is measured
-// against the first click, so it would collapse a rectangle to a line or
-// twist the n-gon's orientation. Vertex and curve snaps still move the point.
-const ALIGNMENT_BLIND_SECOND_CLICK = new Set(['rect', 'center_rect', 'ngon'])
+/** Tools whose second click refuses an alignment snap (the `shapeEnd` rule
+ *  above): the snap is measured against the first click, so it would collapse
+ *  a rectangle to a line or twist the n-gon's orientation. Vertex and curve
+ *  snaps still move the point. The single source for the preview here and for
+ *  the alignment guide, which must not promise these tools a snap. */
+export const ALIGNMENT_BLIND_TOOLS: ReadonlySet<string> = new Set(['rect', 'center_rect', 'ngon'])
 
 /** The point the next click at `rawPoint` would commit, for the preview.
  *
@@ -431,7 +436,7 @@ export function resolveDrawCursor(
 ): [number, number] {
   const inserter = createInsertionHelper({ sketch, otherSketches })
   inserter.update(snap, rawPoint)
-  if (drawPoints.length > 0 && ALIGNMENT_BLIND_SECOND_CLICK.has(tool) &&
+  if (drawPoints.length > 0 && ALIGNMENT_BLIND_TOOLS.has(tool) &&
       (inserter.foundHorizontal() || inserter.foundVertical())) {
     return [rawPoint[0], rawPoint[1]]
   }

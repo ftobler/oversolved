@@ -9,6 +9,7 @@ import { offsetCorners, lineIntersect, lineVertexIndices } from '@/utils/geometr
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
+import { sameSnapVertex } from '@/utils/snapRefs'
 
 // ─── Mutation preamble ───
 
@@ -757,17 +758,18 @@ function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: strin
 /** Pin the sugar entity's own vertices to what the draw clicks snapped onto,
  *  in click order. Each ref is a `vertex:` ref (a point pair) or an `entity:`
  *  ref (the locus form, a point on that curve); both are one `coincident`. Two
- *  clicks on the same element say one thing, so only the first is authored,
- *  the same rule the line/arc/spline tools apply to their ends. */
+ *  clicks on the same vertex say one thing, so only the first is authored; two
+ *  clicks on the same curve are two points on it and both are pinned. Same
+ *  rule (`sameSnapVertex`) as the line/arc/spline tools apply to their ends. */
 function _pinSnappedVertices(
   doc: PartDoc,
   featureId: string,
   pins: [vertexRef: string, snapRef: string | null | undefined][],
 ): void {
-  const seen = new Set<string>()
+  const pinned: string[] = []
   for (const [vertexRef, snapRef] of pins) {
-    if (!snapRef || seen.has(snapRef)) continue
-    seen.add(snapRef)
+    if (!snapRef || pinned.some(p => sameSnapVertex(p, snapRef))) continue
+    pinned.push(snapRef)
     applyAddConstraint(doc, featureId, 'coincident', [vertexRef, snapRef])
   }
 }
@@ -828,14 +830,16 @@ export function applyAddCenterRect(
   feature.entities.push({ id: pointId, kind: 'point' })
   feature.initial[pointId] = [cx, cy].map(round)
 
-  // Add midpoint constraints: center point is midpoint of each diagonal
-  // Diagonal 1: lA:start (top-right) to lC:start (bottom-left)
+  // The center point is the midpoint of each diagonal. Which corner is "top" or
+  // "left" depends on where the user clicked, so the corners are named by the
+  // click: (x1, y1) is the clicked corner, (x0, y0) its mirror through center.
+  // Diagonal 1: lA:start (x0, y0, the mirror) to lC:start (x1, y1, the click)
   applyAddConstraint(doc, featureId, 'midpoint', [
     `vertex:${featureId}:${lA}:start`,
     `vertex:${featureId}:${lC}:start`,
     `vertex:${featureId}:${pointId}:xy`,
   ])
-  // Diagonal 2: lB:start (top-left) to lD:start (bottom-right)
+  // Diagonal 2: lB:start (x1, y0) to lD:start (x0, y1)
   applyAddConstraint(doc, featureId, 'midpoint', [
     `vertex:${featureId}:${lB}:start`,
     `vertex:${featureId}:${lD}:start`,

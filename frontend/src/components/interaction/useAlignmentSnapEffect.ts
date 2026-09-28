@@ -3,14 +3,13 @@ import { useThree } from '@react-three/fiber'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { ALIGNMENT_TOLERANCE_DEG, ALIGNMENT_TOLERANCE_DIST } from '@/registry'
 import { p2w } from '@/utils/geometry/sketchHelpers'
+import { ALIGNMENT_BLIND_TOOLS } from '@/components/Geometry3D/drawLogic'
 
-// Tools whose commit ignores the alignment snap (computeDrawClick's shape-end
-// rule: it would collapse a rectangle or tilt an n-gon). Showing them the guide
-// would promise a snap the click never makes.
-const TOOLS_WITHOUT_ALIGNMENT = new Set(['rect', 'center_rect', 'ngon'])
-
+// A tool whose commit ignores the alignment snap gets no guide: showing it
+// would promise a snap the click never makes. The set lives with the commit
+// rule in drawLogic so the two cannot drift.
 export function toolTakesAlignmentSnap(tool: string): boolean {
-  return !TOOLS_WITHOUT_ALIGNMENT.has(tool)
+  return !ALIGNMENT_BLIND_TOOLS.has(tool)
 }
 
 interface DrawAlignmentResult {
