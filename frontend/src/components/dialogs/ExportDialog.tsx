@@ -18,11 +18,17 @@ export interface ExportDialogProps {
    */
   showTessellation?: boolean
   /**
-   * Offer the YAML format. The assembly export worker path only emits STEP/STL,
-   * so the assembly dialog hides YAML rather than presenting a broken option.
+   * The formats offered, in display order; the first is the one selected when
+   * the current pick is not offered. The editor's assembly export emits only
+   * STEP/STL, and an assembly exported from the workspace list only its source,
+   * so each caller names what it can actually produce rather than presenting a
+   * broken option.
    */
-  showYaml?: boolean
+  formats?: readonly ExportFormat[]
 }
+
+const ALL_FORMATS: readonly ExportFormat[] = ['step', 'stl', 'yaml']
+const FORMAT_LABEL: Record<ExportFormat, string> = { step: 'STEP', stl: 'STL', yaml: 'YAML' }
 
 export default function ExportDialog({
   isOpen,
@@ -30,11 +36,15 @@ export default function ExportDialog({
   onDownload,
   onCancel,
   showTessellation = true,
-  showYaml = true,
+  formats = ALL_FORMATS,
 }: ExportDialogProps) {
-  const [format, setFormat] = useState<ExportFormat>('step')
+  const [picked, setFormat] = useState<ExportFormat>(formats[0])
+  // Derived rather than reset in an effect: one mounted dialog serves callers
+  // with different format sets, and a pick the current caller cannot produce
+  // falls back to its first format on the very render it would have shown.
+  const format = formats.includes(picked) ? picked : formats[0]
   const [tessellation, setTessellation] = useState(0.5)
-  const [fileName, setFileName] = useState(() => defaultExportFileName(defaultName, 'step'))
+  const [fileName, setFileName] = useState(() => defaultExportFileName(defaultName, format))
   const [isExporting, setIsExporting] = useState(false)
   const wasOpen = useRef(isOpen)
 
@@ -91,41 +101,19 @@ export default function ExportDialog({
       <div className="export-dialog-section">
         <label className="export-dialog-label">Format</label>
         <div className="export-dialog-radio-group">
-          <label className="export-dialog-radio">
-            <input
-              type="radio"
-              name="format"
-              value="step"
-              checked={format === 'step'}
-              disabled={isExporting}
-              onChange={() => handleFormatChange('step')}
-            />
-            <span>STEP</span>
-          </label>
-          <label className="export-dialog-radio">
-            <input
-              type="radio"
-              name="format"
-              value="stl"
-              checked={format === 'stl'}
-              disabled={isExporting}
-              onChange={() => handleFormatChange('stl')}
-            />
-            <span>STL</span>
-          </label>
-          {showYaml && (
-            <label className="export-dialog-radio">
+          {formats.map(option => (
+            <label className="export-dialog-radio" key={option}>
               <input
                 type="radio"
                 name="format"
-                value="yaml"
-                checked={format === 'yaml'}
+                value={option}
+                checked={format === option}
                 disabled={isExporting}
-                onChange={() => handleFormatChange('yaml')}
+                onChange={() => handleFormatChange(option)}
               />
-              <span>YAML</span>
+              <span>{FORMAT_LABEL[option]}</span>
             </label>
-          )}
+          ))}
         </div>
       </div>
 

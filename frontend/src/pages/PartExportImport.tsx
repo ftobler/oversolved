@@ -4,13 +4,9 @@ import ExportDialog from '@/components/dialogs/ExportDialog'
 import type { ExportFormat } from '@/components/dialogs/ExportDialog'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useNotify } from '@/contexts/ToastContext'
-import { exportViaWorker } from '@/kernel/worker/solverClient'
-import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
-import { getFileRegistry } from '@/stores/fileRegistry'
-import { fileIdsInSpec, resolveFilesSessionFirst } from '@/stores/fileRegistry/resolve'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { downloadBlob } from '@/utils/core/downloadBlob'
-import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
+import { EmptyExportError, exportMime, exportPartBytes, partExportSpec } from '@/utils/partExport'
 
 interface PartExportImportProps {
   uuid: string
@@ -60,26 +56,21 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
       // doc). The Worker rebuilds the document, resolves the export shape (single
       // body or a compound of the whole assembly), and serialises it to STEP/STL
       // bytes.
-      const features = doc.features.filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
-      const spec = { ...doc, ...(uuid ? { id: uuid } : {}), features }
+      const spec = partExportSpec(doc as Record<string, unknown>, uuid)
       try {
         const session = useWorkspaceSessionStore.getState().session
-        const fileIds = fileIdsMissingFromWorker(fileIdsInSpec(spec))
-        const files = fileIds.length ? await resolveFilesSessionFirst(session, getFileRegistry(), fileIds) : undefined
-        const bytes = await exportViaWorker(spec, {
+        const bytes = await exportPartBytes(spec, {
           format,
           bodyId: exportTargetBodyId,
           tessellation,
-        }, files)
-        if (!bytes) {
-          notify('Export failed: no solid geometry to export', 'error')
+        }, session)
+        const filename = fileName || `${exportDefaultName}.${format}`
+        downloadBlob(new Blob([bytes as BlobPart], { type: exportMime(format) }), filename)
+      } catch (e) {
+        if (e instanceof EmptyExportError) {
+          notify(`Export failed: ${e.message}`, 'error')
           return
         }
-        const mime = format === 'step' ? 'application/step' : 'model/stl'
-        const filename = fileName || `${exportDefaultName}.${format}`
-        const blob = new Blob([bytes as BlobPart], { type: mime })
-        downloadBlob(blob, filename)
-      } catch (e) {
         console.error('Export error:', e)
         notify(`Export error: ${e instanceof Error ? e.message : e}`, 'error')
       } finally {
