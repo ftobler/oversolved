@@ -4,8 +4,9 @@
 // built from: once the body exists, the profile wires floating inside it are
 // clutter, so picking a profile hides the sketch that owns it. The same answer
 // is needed twice and must not be computed two different ways -- the mutation
-// that hides the sketch (yamlMutations/featureDefs) and the editor that forces
-// it back on screen while its consumer is open (pages/Part) both ask here.
+// that hides the sketch (yamlMutations/featureDefs), the visibility rule that
+// hides a consumed sketch no pick ever hid (utils/featureVisibility) and the
+// editor that forces it back on screen while its consumer is open all ask here.
 
 import type { PartFeature } from '@/types/cad'
 import { selectionSourceFeatureIds } from '@/utils/query/pickOrder'
@@ -41,6 +42,31 @@ function sketchIdsInQueryWith(
  * sketch and yields nothing.
  */
 export function consumedSketchIds(feature: PartFeature, features: PartFeature[]): string[] {
+  const byId = new Map(features.map(f => [f.id, f] as const))
+  const out = new Set<string>()
+  collectConsumed(feature, byId, new Set(byId.keys()), out)
+  return [...out]
+}
+
+/**
+ * Every sketch that ANY feature in the list consumes. The rollback bar is
+ * deliberately not consulted: a feature added while the bar is parked lands
+ * past it, and a consumer the bar hides for the moment still owns the sketch.
+ */
+export function allConsumedSketchIds(features: PartFeature[]): Set<string> {
+  const byId = new Map(features.map(f => [f.id, f] as const))
+  const known = new Set(byId.keys())
+  const out = new Set<string>()
+  for (const f of features) collectConsumed(f, byId, known, out)
+  return out
+}
+
+function collectConsumed(
+  feature: PartFeature,
+  byId: ReadonlyMap<string, PartFeature>,
+  known: ReadonlySet<string>,
+  out: Set<string>,
+): void {
   const queries = [
     ...refList(feature.extrude?.sketch),
     ...refList(feature.revolve?.sketch),
@@ -48,11 +74,7 @@ export function consumedSketchIds(feature: PartFeature, features: PartFeature[])
     ...refList(feature.sweep?.path),
     ...refList(feature.hole?.sketch),
   ]
-  const byId = new Map(features.map(f => [f.id, f] as const))
-  const known = new Set(byId.keys())
-  const out = new Set<string>()
   for (const q of queries) {
     for (const id of sketchIdsInQueryWith(q, byId, known)) out.add(id)
   }
-  return [...out]
 }

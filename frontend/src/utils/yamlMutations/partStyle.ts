@@ -2,6 +2,8 @@ import type { PartDoc, PartFeature } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { findFeature, warn } from './helpers'
 import { isValidVariableName } from '@/kernel/features/variable'
+import { allConsumedSketchIds } from '@/utils/query/consumedSketches'
+import { docVisibleFeatureIds } from '@/utils/featureVisibility'
 
 // ─── Part Style ───
 
@@ -128,8 +130,21 @@ export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visib
   if (!feature) return
   if (visible) {
     delete feature.visible
+    spendOwedHideOnShow(doc, [feature])
   } else {
     feature.visible = false
+  }
+}
+
+// A consumed sketch no pick ever hid is hidden by the derived rule
+// (utils/featureVisibility) whatever its flag says, so clearing the flag alone
+// would leave the user's "show" doing nothing. Showing it spends the one-shot
+// the pick would have spent: from here on `visible` is the user's setting.
+// Unconsumed sketches are left unstamped, so their first consume still hides.
+function spendOwedHideOnShow(doc: PartDoc, shown: PartFeature[]): void {
+  const consumed = allConsumedSketchIds(doc.features ?? [])
+  for (const f of shown) {
+    if (consumed.has(f.id)) f.auto_hidden = true
   }
 }
 
@@ -160,7 +175,12 @@ export function applyRenameFeature(doc: PartDoc, featureId: string, label: strin
 // visible, hide all (visible=false); otherwise show all (drop the override).
 function toggleVisibility(doc: PartDoc, predicate: (f: PartFeature) => boolean): void {
   const targets = (doc.features ?? []).filter(predicate)
-  const anyVisible = targets.some(f => f.visible !== false)
+  // "Visible" as the user sees it: a consumed sketch the derived rule hides
+  // counts as hidden even with no flag. Reading the flag alone, a toggle over
+  // sketches that are all derived-hidden would "hide" them again and change
+  // nothing on screen.
+  const shown = docVisibleFeatureIds(doc.features ?? [])
+  const anyVisible = targets.some(f => shown.has(f.id))
   for (const f of targets) {
     if (anyVisible) {
       f.visible = false
@@ -168,6 +188,7 @@ function toggleVisibility(doc: PartDoc, predicate: (f: PartFeature) => boolean):
       delete f.visible
     }
   }
+  if (!anyVisible) spendOwedHideOnShow(doc, targets)
 }
 
 export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {

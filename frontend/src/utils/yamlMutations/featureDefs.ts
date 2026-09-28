@@ -18,8 +18,12 @@ import { sketchIdsInQuery } from '@/utils/query/consumedSketches'
  * Hides on the add half of a pick only. Un-picking a profile leaves visibility
  * where it is: a pick that silently un-hides would fight whoever turned it off
  * just as hard. The consumer's own editor forces its profiles back on screen
- * while it is open (Part.tsx), so this never hides geometry the user is still
- * picking from.
+ * while it is open (utils/featureVisibility), so this never hides geometry the
+ * user is still picking from.
+ *
+ * This write is not the only line of defence: a consumer that reaches the doc
+ * without a pick leaves the stamp unspent, and utils/featureVisibility hides
+ * such a sketch by derivation.
  */
 function hideConsumedSketches(doc: PartDoc, query: string): void {
   const features = doc.features ?? []
