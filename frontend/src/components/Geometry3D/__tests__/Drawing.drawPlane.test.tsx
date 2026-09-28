@@ -235,6 +235,38 @@ describe('DrawPlane commit click', () => {
     expect(onPointerDown.mock.calls[0][2].hoveredSelectionId).toBe('entity:S1:L1')
   })
 
+  it('reads the store at click time, not the last render, for two clicks in one frame', () => {
+    // Both clicks land inside one act scope, so React flushes no re-render
+    // between them and the second handler still carries the first render's
+    // closures. It must see the point the first click wrote, and the hover the
+    // store holds now, or a line restarts instead of continuing.
+    const seen: { drawPoints: unknown; hoveredVertexId: unknown }[] = []
+    toolRegistry.register(stubTool('line', (_e, pt, ctx) => {
+      const c = ctx as import('@/tools/DrawingTool').DrawingToolContext
+      seen.push({ drawPoints: c.drawPoints, hoveredVertexId: c.hoveredVertexId })
+      c.setDrawPoints([...c.drawPoints, [pt[0], pt[1]]])
+      return null
+    }))
+    useSketchEditorStore.setState({ activeTool: 'line' })
+    const { container } = render(
+      <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
+    )
+    const mesh = container.querySelector('mesh')!
+
+    act(() => {
+      proj.point = { x: 1, y: 0, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
+      useSketchEditorStore.setState({ hoveredVertexId: 'vertex:S1:V1:end' })
+      proj.point = { x: 6, y: 0, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
+    })
+
+    expect(seen).toEqual([
+      { drawPoints: [], hoveredVertexId: null },
+      { drawPoints: [[1, 0]], hoveredVertexId: 'vertex:S1:V1:end' },
+    ])
+  })
+
   it('fails loud and drops the click when the ray misses the plane', () => {
     const onPointerDown = vi.fn()
     toolRegistry.register(stubTool('line', onPointerDown))

@@ -69,6 +69,20 @@ export function computeDrawClick(
 
   const nothing: DrawClickResult = { mutations: [], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: false }
 
+  // A closed curve sized by its second click (circle radius, ellipse major
+  // axis) passes through the point that click landed on. Only a vertex snap
+  // can say so in one constraint: the vertex lies on the new curve. A curve
+  // under the cursor would need "passes through some point of that curve",
+  // and an axis snap names no element, so both author nothing. A vertex the
+  // centre is already pinned to cannot also lie on the curve.
+  const onCurveThroughSnappedVertex = (curveId: string, centreRef: string | null): Mutation[] => {
+    if (!inserter.foundSnappablePoint()) return []
+    const vertexRef = inserter.getSnappedElement()
+    if (!vertexRef || vertexRef === centreRef) return []
+    return [{ type: 'add_constraint', featureId, kind: 'coincident',
+      targets: [vertexRef, `entity:${featureId}:${curveId}`] }]
+  }
+
   // Last gate before a number becomes a mutation. A snap source that published
   // a broken position (or a caller that skipped the abstraction layer) must not
   // be able to write NaN/Infinity into the document: fail loud and commit
@@ -198,17 +212,18 @@ export function computeDrawClick(
 
     const r = Math.hypot(px - pts[0][0], py - pts[0][1])
     if (r <= 0) return nothing
-    let mutation: Mutation
+    const circleId = newEntityIdFn()
+    const params = [pts[0][0], pts[0][1], r]
     const centreRef = snap.drawSnapRefs[0] ?? null
-    if (centreRef) {
-      mutation = { type: 'add_entity_with_constraint', featureId, kind: 'circle',
-        params: [pts[0][0], pts[0][1], r], vertexKey: 'center',
-        ...carriedSnapFields(centreRef), constraintKind: 'coincident' }
-    } else {
-      mutation = { type: 'add_entity', featureId, kind: 'circle',
-        params: [pts[0][0], pts[0][1], r] }
-    }
-    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
+    const mutations: Mutation[] = [
+      centreRef
+        ? { type: 'add_entity_with_constraint', featureId, kind: 'circle', params,
+            vertexKey: 'center', ...carriedSnapFields(centreRef), constraintKind: 'coincident',
+            entityId: circleId }
+        : { type: 'add_entity', featureId, kind: 'circle', params, entityId: circleId },
+    ]
+    mutations.push(...onCurveThroughSnappedVertex(circleId, centreRef))
+    return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
   if (t === 'ellipse') {
@@ -226,16 +241,17 @@ export function computeDrawClick(
     const theta = Math.atan2(dy, dx) * (180 / Math.PI)
     const b = a * ELLIPSE_MINOR_RATIO
     const params = [pts[0][0], pts[0][1], a, b, theta]
-    let mutation: Mutation
+    const ellipseId = newEntityIdFn()
     const centreRef = snap.drawSnapRefs[0] ?? null
-    if (centreRef) {
-      mutation = { type: 'add_entity_with_constraint', featureId, kind: 'ellipse',
-        params, vertexKey: 'center',
-        ...carriedSnapFields(centreRef), constraintKind: 'coincident' }
-    } else {
-      mutation = { type: 'add_entity', featureId, kind: 'ellipse', params }
-    }
-    return { mutations: [mutation], nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
+    const mutations: Mutation[] = [
+      centreRef
+        ? { type: 'add_entity_with_constraint', featureId, kind: 'ellipse', params,
+            vertexKey: 'center', ...carriedSnapFields(centreRef), constraintKind: 'coincident',
+            entityId: ellipseId }
+        : { type: 'add_entity', featureId, kind: 'ellipse', params, entityId: ellipseId },
+    ]
+    mutations.push(...onCurveThroughSnappedVertex(ellipseId, centreRef))
+    return { mutations, nextDrawPoints: null, nextDrawSnap: null, gestureComplete: true }
   }
 
   if (t === 'spline') {
@@ -246,7 +262,10 @@ export function computeDrawClick(
     }
     if (pts.length < 3) {
       const next: [number, number][] = [...pts.map(p => [p[0], p[1]] as [number, number]), [px, py]]
-      return { mutations: [], nextDrawPoints: next, nextDrawSnap: null, gestureComplete: false }
+      // Refs stay one per placed point. A control handle's ref authors nothing
+      // (handles are off the curve); only [0] is read back, on the last click.
+      const refs = [...pts.map((_, i) => snap.drawSnapRefs[i] ?? null), clickedRef()]
+      return { mutations: [], nextDrawPoints: next, nextDrawSnap: { refs }, gestureComplete: false }
     }
     // Fourth click closes the curve.
     const params = [pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1], px, py]
@@ -389,5 +408,33 @@ export function computeDrawClick(
   }
 
   return nothing
+}
+
+// Tools whose second click refuses an alignment snap: the snap is measured
+// against the first click, so it would collapse a rectangle to a line or
+// twist the n-gon's orientation. Vertex and curve snaps still move the point.
+const ALIGNMENT_BLIND_SECOND_CLICK = new Set(['rect', 'center_rect', 'ngon'])
+
+/** The point the next click at `rawPoint` would commit, for the preview.
+ *
+ *  Reads the snap through the same insertion helper `computeDrawClick` uses,
+ *  so the rubber band ends where the entity will: the preview must not draw to
+ *  the raw cursor and then jump on click. Keep the per-tool exceptions here in
+ *  step with the branches above. */
+export function resolveDrawCursor(
+  tool: string,
+  drawPoints: readonly [number, number][],
+  rawPoint: readonly [number, number],
+  snap: DrawSnapState,
+  sketch?: Record<string, Entity>,
+  otherSketches?: Record<string, Record<string, Entity>>,
+): [number, number] {
+  const inserter = createInsertionHelper({ sketch, otherSketches })
+  inserter.update(snap, rawPoint)
+  if (drawPoints.length > 0 && ALIGNMENT_BLIND_SECOND_CLICK.has(tool) &&
+      (inserter.foundHorizontal() || inserter.foundVertical())) {
+    return [rawPoint[0], rawPoint[1]]
+  }
+  return inserter.getPoint()
 }
 

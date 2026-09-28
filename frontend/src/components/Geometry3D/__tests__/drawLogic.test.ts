@@ -29,6 +29,10 @@ const onVertex = (id: string, at: [number, number]): DrawSnapState => ({
 const LINE_SKETCH: Record<string, Entity> = {
   L9: { start: [-100, 0], end: [100, 0] } as Entity,
 }
+const onPath = (entityId: string): DrawSnapState => ({
+  ...emptySnap(),
+  hoveredSelectionId: `entity:${FEATURE}:${entityId}`,
+})
 
 describe('resolveSnapPoint', () => {
   it('returns raw point when no snap active', () => {
@@ -306,6 +310,52 @@ describe('computeDrawClick - circle tool', () => {
     expect(result.mutations).toHaveLength(0)
     expect(result.gestureComplete).toBe(false)
   })
+
+  it('second click on a vertex puts that vertex on the circle', () => {
+    // The radius reaches the hovered vertex; without the point-on-curve
+    // coincident the circle would only agree with it until the next solve.
+    const snap = onVertex(`vertex:${FEATURE}:V9:end`, [3, 4])
+    const result = computeDrawClick('circle', [[0, 0]], [3.1, 4.1], snap, FEATURE, () => 'C1')
+    expect(result.mutations).toEqual([
+      { type: 'add_entity', featureId: FEATURE, kind: 'circle', params: [0, 0, 5], entityId: 'C1' },
+      { type: 'add_constraint', featureId: FEATURE, kind: 'coincident',
+        targets: [`vertex:${FEATURE}:V9:end`, `entity:${FEATURE}:C1`] },
+    ])
+    expect(result.gestureComplete).toBe(true)
+  })
+
+  it('second click on the vertex the centre is already pinned to adds no second coincident', () => {
+    const snap = onVertex(`vertex:${FEATURE}:V1:xy`, [3, 4])
+    snap.drawSnapRefs = [`vertex:${FEATURE}:V1:xy`]
+    const result = computeDrawClick('circle', [[0, 0]], [3, 4], snap, FEATURE, () => 'C1')
+    expect(result.mutations).toHaveLength(1)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_entity_with_constraint')
+    if (m.type === 'add_entity_with_constraint') {
+      expect(m.vertexKey).toBe('center')
+      expect(m.snapVertexId).toBe(`vertex:${FEATURE}:V1:xy`)
+    }
+  })
+
+  it('snapped centre and a distinct end vertex author both constraints', () => {
+    const snap = onVertex(`vertex:${FEATURE}:V9:end`, [3, 4])
+    snap.drawSnapRefs = [`vertex:${FEATURE}:V1:xy`]
+    const result = computeDrawClick('circle', [[0, 0]], [3, 4], snap, FEATURE, () => 'C1')
+    expect(result.mutations).toHaveLength(2)
+    expect(result.mutations[0]).toMatchObject({ type: 'add_entity_with_constraint', entityId: 'C1' })
+    expect(result.mutations[1]).toMatchObject({ type: 'add_constraint', kind: 'coincident',
+      targets: [`vertex:${FEATURE}:V9:end`, `entity:${FEATURE}:C1`] })
+  })
+
+  it('second click on a curve moves the radius point but authors nothing', () => {
+    // "A circle through some point of another curve" has no one-constraint form.
+    const snap = onPath('L9')
+    const result = computeDrawClick('circle', [[0, 5]], [4, 3], snap, FEATURE, () => 'C1', LINE_SKETCH)
+    expect(result.mutations).toHaveLength(1)
+    const m = result.mutations[0]
+    expect(m.type).toBe('add_entity')
+    if (m.type === 'add_entity') expect(m.params[2]).toBeCloseTo(Math.hypot(4, 5))
+  })
 })
 
 describe('computeDrawClick - ellipse tool', () => {
@@ -352,6 +402,31 @@ describe('computeDrawClick - ellipse tool', () => {
       expect(m.constraintKind).toBe('coincident')
     }
   })
+
+  it('second click on a vertex puts that vertex on the ellipse', () => {
+    // The major-axis end lands on the vertex, so the vertex is on the curve;
+    // the solver's coincident handles point-on-ellipse (residuals.rs).
+    const snap = onVertex(`vertex:${FEATURE}:V9:end`, [4, 0])
+    const result = computeDrawClick('ellipse', [[0, 0]], [4.1, 0.2], snap, FEATURE, () => 'EL1')
+    expect(result.mutations).toHaveLength(2)
+    expect(result.mutations[0]).toMatchObject({ type: 'add_entity', kind: 'ellipse', entityId: 'EL1' })
+    expect(result.mutations[1]).toEqual({ type: 'add_constraint', featureId: FEATURE, kind: 'coincident',
+      targets: [`vertex:${FEATURE}:V9:end`, `entity:${FEATURE}:EL1`] })
+  })
+
+  it('second click on the centre\'s own vertex adds no second coincident', () => {
+    const snap = onVertex(`vertex:${FEATURE}:V1:xy`, [4, 0])
+    snap.drawSnapRefs = [`vertex:${FEATURE}:V1:xy`]
+    const result = computeDrawClick('ellipse', [[0, 0]], [4, 0], snap, FEATURE, () => 'EL1')
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_entity_with_constraint')
+  })
+
+  it('second click on a curve authors nothing extra', () => {
+    const result = computeDrawClick('ellipse', [[0, 5]], [4, 3], onPath('L9'), FEATURE, () => 'EL1', LINE_SKETCH)
+    expect(result.mutations).toHaveLength(1)
+    expect(result.mutations[0].type).toBe('add_entity')
+  })
 })
 
 describe('computeDrawClick - spline tool', () => {
@@ -369,6 +444,29 @@ describe('computeDrawClick - spline tool', () => {
     expect(c3.mutations).toHaveLength(0)
     expect(c3.nextDrawPoints).toEqual([[0, 0], [1, 3], [3, 3]])
     expect(c3.gestureComplete).toBe(false)
+  })
+
+  it('keeps one carried ref per placed point across the control clicks', () => {
+    const snap = emptySnap()
+    snap.drawSnapRefs = [`vertex:${FEATURE}:V1:end`]
+    const c2 = computeDrawClick('spline', [[0, 0]], [1, 3], snap, FEATURE, newId)
+    expect(c2.nextDrawSnap?.refs).toEqual([`vertex:${FEATURE}:V1:end`, null])
+    expect(c2.nextDrawSnap?.refs.length).toBe(c2.nextDrawPoints?.length)
+
+    const snap3 = onVertex(`vertex:${FEATURE}:V2:start`, [3, 3])
+    snap3.drawSnapRefs = c2.nextDrawSnap?.refs ?? []
+    const c3 = computeDrawClick('spline', [[0, 0], [1, 3]], [3, 3], snap3, FEATURE, newId)
+    expect(c3.nextDrawSnap?.refs).toEqual([`vertex:${FEATURE}:V1:end`, null, `vertex:${FEATURE}:V2:start`])
+    expect(c3.nextDrawSnap?.refs.length).toBe(c3.nextDrawPoints?.length)
+
+    // A control handle is not on the curve, so its ref authors nothing: the
+    // final click still constrains only the start.
+    const snap4 = emptySnap()
+    snap4.drawSnapRefs = c3.nextDrawSnap?.refs ?? []
+    const c4 = computeDrawClick('spline', [[0, 0], [1, 3], [3, 3]], [4, 0], snap4, FEATURE, newId)
+    expect(c4.mutations).toHaveLength(1)
+    expect(c4.mutations[0]).toMatchObject({ type: 'add_entity_with_constraint', vertexKey: 'start',
+      snapVertexId: `vertex:${FEATURE}:V1:end` })
   })
 
   it('fourth click emits add_entity spline with 8 control-point params', () => {

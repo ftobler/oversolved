@@ -14,6 +14,7 @@ import { failLoud } from '@/stores/stateInvariants'
 import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
+import { resolveDrawCursor } from '@/components/Geometry3D/drawLogic'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
 import {
   shouldClearSelectionOnBackplaneClick, resolvePickAtEvent, PART_EDITOR_CONSUMED_LAYERS,
@@ -21,7 +22,14 @@ import {
 import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 
-export function DrawPreview({ featureId, activeFeatureId }: { featureId?: string; activeFeatureId?: string }) {
+export function DrawPreview({ featureId, activeFeatureId, sketch, otherSketches }: {
+  featureId?: string
+  activeFeatureId?: string
+  // The same geometry DrawPlane hands the commit, so a curve snap finds the
+  // same foot in the preview as on click.
+  sketch?: Sketch
+  otherSketches?: Record<string, Sketch>
+}) {
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const effectiveTool = activeTool ?? 'drag'
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
@@ -29,6 +37,11 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId?: string
   const alignmentSnapPoint = useSketchEditorStore(s => s.alignmentSnapPoint)
   const alignmentSnapKind = useSketchEditorStore(s => s.alignmentSnapKind)
   const ngonSides = useSketchEditorStore(s => s.ngonSides)
+  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
+  const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
+  const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
+  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
+  const drawSnapRefs = useSketchEditorStore(s => s.drawSnapRefs)
 
   if (activeFeatureId === null) return null
   // The preview lives inside each sketch's transformed group; only the active
@@ -39,7 +52,14 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId?: string
   // to 'drag') and dimension/drag render nothing here.
   if (!isDrawingTool(effectiveTool)) return null
 
-  const previewPts = computePreviewPts(effectiveTool, drawPoints, drawHover, ngonSides)
+  // Draw to where the click would commit, not to the raw cursor, so the
+  // preview does not jump when a snap moves the committed point.
+  const cursor = drawHover && resolveDrawCursor(effectiveTool, drawPoints, drawHover, {
+    hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, hoveredSelectionId,
+    drawSnapRefs, alignmentSnapPoint, alignmentSnapKind, ngonSides,
+  }, sketch, otherSketches)
+  const previewPts = computePreviewPts(effectiveTool, drawPoints, cursor, ngonSides)
+  // The alignment guide runs from its anchor to the cursor it measured.
   const endpoint = drawHover
 
   return (
@@ -47,8 +67,8 @@ export function DrawPreview({ featureId, activeFeatureId }: { featureId?: string
       {drawPoints.map((pt, i) => (
         <Dot key={i} x={pt[0]} y={pt[1]} px={4} color={COLOR_PREVIEW} billboard />
       ))}
-      {drawHover && effectiveTool === 'point' && (
-        <Dot x={drawHover[0]} y={drawHover[1]} px={4} color={COLOR_PREVIEW} billboard />
+      {cursor && effectiveTool === 'point' && (
+        <Dot x={cursor[0]} y={cursor[1]} px={4} color={COLOR_PREVIEW} billboard />
       )}
       {previewPts && <Line points={previewPts} color={COLOR_PREVIEW} lineWidth={1} />}
       {alignmentSnapPoint && endpoint && alignmentSnapKind && (
@@ -83,9 +103,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const onMutation = getSketchCallback('onMutation')
   const onMutationBatch = getSketchCallback('onMutationBatch')
   const clearNormalSelection = useSketchEditorStore(s => s.clearNormalSelection)
-  const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
-  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
-  const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
   const drawHover = useSketchEditorStore(s => s.drawHover)
   const { camera, gl } = useThree()
 
@@ -198,6 +215,10 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         // the sketch entity / vertex the gesture just acted on.
         markDrawToolClickConsumed()
 
+        // Every store field the click resolves against comes from this one
+        // snapshot. Render-time selectors lag the store until React re-renders,
+        // so two clicks in one frame would pair a fresh ref list with a stale
+        // point list and restart the gesture instead of continuing it.
         const state = useSketchEditorStore.getState()
         // The project tool picks B-rep / sketch identity to project. Resolve the
         // ID buffer at THIS click pixel instead of reading the async hover the
@@ -221,12 +242,12 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           hoveredFaceEdges: findFaceBoundaryEdges(pickedSelectionId ?? ''),
           isPointerDown: state.isPointerDown,
           activeFeatureId: state.activeFeatureId,
-          hoveredVertexId,
-          hoveredVertexPosition,
-          hoveredSnapKind,
+          hoveredVertexId: state.hoveredVertexId,
+          hoveredVertexPosition: state.hoveredVertexPosition,
+          hoveredSnapKind: state.hoveredSnapKind,
           onMutation,
           onMutationBatch,
-          drawPoints,
+          drawPoints: state.drawPoints,
           setDrawPoints: (pts: import('@/types/cad').Point[]) => {
             useSketchEditorStore.getState().setDrawPoints(pts)
           },
@@ -235,7 +256,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           clearDraw,
           alignmentSnapPoint: state.alignmentSnapPoint,
           alignmentSnapKind: state.alignmentSnapKind,
-          setDrawSnap: useSketchEditorStore.getState().setDrawSnap,
+          setDrawSnap: state.setDrawSnap,
           setActiveTool: (tool) => { useSketchEditorStore.getState().setActiveTool(tool) },
           sketch: sketch as Record<string, import('@/types/cad').Entity> | undefined,
           otherSketches: otherSketches as Record<string, Record<string, import('@/types/cad').Entity>> | undefined,
