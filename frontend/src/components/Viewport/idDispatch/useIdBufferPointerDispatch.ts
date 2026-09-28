@@ -500,6 +500,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       c.addEventListener('pointerdown', onPointerDown)
       c.addEventListener('click', onClick)
       c.addEventListener('dblclick', onDoubleClick)
+      // A DOM overlay inside the R3F container (constraint tile, dimension
+      // label) is a sibling of the canvas, not a descendant, so moving onto one
+      // fires pointerleave here. The move/click listeners never see those
+      // events, and without this the last canvas hover would freeze under the
+      // overlay until the pointer returns to the canvas.
+      c.addEventListener('pointerleave', clearHover)
     }
 
     const initial = canvasRef?.current ?? glRef.current?.domElement ?? null
@@ -526,6 +532,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         attached.removeEventListener('pointerdown', onPointerDown)
         attached.removeEventListener('click', onClick)
         attached.removeEventListener('dblclick', onDoubleClick)
+        attached.removeEventListener('pointerleave', clearHover)
         attached = null
       }
     }

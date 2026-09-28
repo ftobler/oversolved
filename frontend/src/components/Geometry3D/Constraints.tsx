@@ -41,6 +41,9 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
         justifyContent: 'center',
         flexShrink: 0,
         cursor: 'pointer',
+        // The Html anchor is pointer-events: none so its transparent box cannot
+        // shadow the vertex it is anchored on; only the visible tiles opt back in.
+        pointerEvents: 'auto',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         ...(superfluous && { outline: '1px solid #b37400' }),
@@ -121,7 +124,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
       const colWidth = ICON_SIZE + 2
       const groupWidth = Math.min(ICON_COLS, icons.length) * colWidth
       symbolElements.push(
-        <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'auto' }}>
+        <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
             {icons.map(({ url, key, highlightIds, superfluous }) => (
               <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} />
