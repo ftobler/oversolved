@@ -3,22 +3,17 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import '@/components/layout/AppHeader.css'
 
 interface SaveButtonProps {
-  // The editor's save, resolving to whether the bytes actually landed. Omitted
-  // outside an editor, where the button falls back to whatever save an editor
-  // registered, and is disabled when none did.
-  save?: () => boolean | Promise<boolean>
+  // The editor's save, resolving to whether the bytes actually landed.
+  save: () => boolean | Promise<boolean>
 }
 
-// The one Save control. It carries the unsaved-changes state itself by tinting
-// its icon, so there is no separate dot beside it and no second save button in
-// the header: the editors render it in their toolbar, and the header renders it
-// only on pages whose toolbar has none. Its accessible name stays "Save" in
-// both states; the title (read as its description) says when edits are
-// pending.
+// The one Save control, rendered by the part and assembly toolbars. It carries
+// the unsaved-changes state itself by tinting its icon, so there is no separate
+// dot beside it and no second save button in the header. Its accessible name
+// stays "Save" in both states; the title (read as its description) says when
+// edits are pending.
 export default function SaveButton({ save }: SaveButtonProps) {
   const dirty = useUnsavedChangesStore(s => s.dirty)
-  const registered = useUnsavedChangesStore(s => s.saveHandler)
-  const handler = save ?? registered
   const [saveState, setSaveState] = useState<'idle' | 'success'>('idle')
   // A save is a store write plus a solve-side diff; without this, a double
   // click starts two. The button refuses while one is in flight.
@@ -41,7 +36,7 @@ export default function SaveButton({ save }: SaveButtonProps) {
   }, [])
 
   const handleClick = async () => {
-    if (saving || !handler) return
+    if (saving) return
     // A new attempt retires any previous success flash up front; only this
     // save's own outcome may bring the check back.
     setSaveState('idle')
@@ -52,7 +47,7 @@ export default function SaveButton({ save }: SaveButtonProps) {
       // toolbar already reports why, so no second affordance is raised here.
       // Dirty is left to the save itself, which keeps it set when an edit
       // landed while the bytes were in flight.
-      const saved = await handler()
+      const saved = await save()
       // A resolve after unmount must not schedule the reset timer: the cleanup
       // already ran and nothing would ever clear it.
       if (!saved || !mountedRef.current) return
@@ -71,7 +66,7 @@ export default function SaveButton({ save }: SaveButtonProps) {
       aria-label="Save"
       title={dirty ? 'Save (unsaved changes)' : 'Save'}
       onClick={() => { void handleClick() }}
-      disabled={saving || !handler}
+      disabled={saving}
     >
       <span className="material-icons-outlined">{saveState === 'success' ? 'check' : 'save'}</span>
     </button>

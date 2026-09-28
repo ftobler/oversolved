@@ -59,8 +59,7 @@
 }
 
 /* Unsaved edits tint the Save button's icon; that tint is the whole indicator.
-   It holds on hover so the state does not vanish under the pointer, and the
-   disabled header copy (no editor to save through) keeps it too. */
+   It holds on hover so the state does not vanish under the pointer. */
 .toolbar-btn.save-btn.dirty,
 .toolbar-btn.save-btn.dirty:hover {
   color: var(--unsaved-accent);

@@ -6,15 +6,15 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useStoragePersistenceStore } from '@/stores/storagePersistenceStore'
 import { acquireModalEscape } from '@/utils/core/modalEscape'
 
-function wrap(ownsSave = false) {
+function wrap() {
   return render(
     <MemoryRouter initialEntries={['/documents/abc']}>
-      <AppHeader title="Test" ownsSave={ownsSave} />
+      <AppHeader title="Test" />
     </MemoryRouter>,
   )
 }
 
-const saveButtons = () => screen.queryAllByRole('button', { name: 'Save' })
+const saveButtons = () => screen.queryAllByRole('button', { name: /save/i })
 
 function markDirty(save: (() => boolean | Promise<boolean>) | null = null) {
   act(() => {
@@ -40,38 +40,24 @@ describe('AppHeader workspace dirty and explicit save', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders nothing dirty-shaped when clean', () => {
+  // The editors' toolbar Save is the only Save and carries the dirty tint. The
+  // header adds neither: off an editor no save handler exists, so a header
+  // button could only ever be a dead, disabled one, and the dot beside it is
+  // gone. Checked with and without a registered handler.
+  it.each([
+    ['clean, no handler', false, null],
+    ['dirty, no handler', true, null],
+    ['dirty, handler registered', true, async () => true],
+  ] as const)('renders no Save and no dirty mark when %s', (_label, dirty, save) => {
+    act(() => {
+      useUnsavedChangesStore.getState().setDirty(dirty)
+      useUnsavedChangesStore.getState().setSaveHandler(save)
+    })
     const { container } = wrap()
     expect(saveButtons()).toHaveLength(0)
     expect(container.querySelector('[data-dirty]')).toBeNull()
-  })
-
-  // Outside an editor (the workspace view an editor unmounted into) the header
-  // is the only place the unsaved state can show. The tinted button is the
-  // whole indicator: the dot that used to sit beside it is gone.
-  it('shows one tinted Save button and no dot when dirty', () => {
-    markDirty()
-    const { container } = wrap()
-    expect(saveButtons()).toHaveLength(1)
-    const button = saveButtons()[0]
-    expect(button.classList.contains('dirty')).toBe(true)
-    expect(button.getAttribute('data-dirty')).toBe('true')
-    expect(button.getAttribute('title')).toBe('Save (unsaved changes)')
     expect(container.querySelector('.header-dirty-dot')).toBeNull()
     expect(container.querySelector('.workspace-dirty')).toBeNull()
-  })
-
-  it('adds no Save button of its own where the toolbar has one', () => {
-    markDirty(vi.fn(async () => true))
-    const { container } = wrap(true)
-    expect(saveButtons()).toHaveLength(0)
-    expect(container.querySelector('[data-dirty]')).toBeNull()
-  })
-
-  it('the header Save is disabled when no editor registered a save', () => {
-    markDirty()
-    wrap()
-    expect(saveButtons()[0]).toBeDisabled()
   })
 
   // The indicator is a state, not an announcement. It was a live region
@@ -89,15 +75,6 @@ describe('AppHeader workspace dirty and explicit save', () => {
       expect(screen.queryByText(/kept in this browser|can be discarded|does not report/)).toBeNull()
     },
   )
-
-  it('the Save button invokes the handler', async () => {
-    const save = vi.fn(async () => true)
-    markDirty(save)
-    wrap()
-
-    await act(async () => { fireEvent.click(saveButtons()[0]) })
-    expect(save).toHaveBeenCalledTimes(1)
-  })
 
   // The handler alone knows whether an edit landed while its bytes were in
   // flight, so a `true` is not "clean": the header leaves dirty to it. This

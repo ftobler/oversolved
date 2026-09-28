@@ -7,7 +7,6 @@ import { isEditableTarget } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import BugReportDialog from '@/components/dialogs/BugReportDialog'
-import SaveButton from '@/components/layout/SaveButton'
 import '@/components/layout/AppHeader.css'
 
 // The copyright note rides on the logo's tooltip rather than a footer bar: it
@@ -29,20 +28,14 @@ interface AppHeaderProps {
   breadcrumb?: ReactNode
   children?: ReactNode
   rightContent?: ReactNode
-  // The page's own toolbar (in `children`) carries the Save button, so the
-  // header adds none. Without it the header shows one while edits are
-  // pending, so an editor that unmounted into a non-editor page still leaves
-  // its unsaved state visible.
-  ownsSave?: boolean
 }
 
-export default function AppHeader({ title, breadcrumb, children, rightContent, ownsSave = false }: AppHeaderProps) {
+export default function AppHeader({ title, breadcrumb, children, rightContent }: AppHeaderProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
   const saveHandler = useUnsavedChangesStore(s => s.saveHandler)
-  const dirty = useUnsavedChangesStore(s => s.dirty)
   const [bugReportOpen, setBugReportOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -142,12 +135,13 @@ export default function AppHeader({ title, breadcrumb, children, rightContent, o
         {children}
       </div>
       <div className="app-header-right">
-        {/* Only where no toolbar Save exists, and only while dirty: the tinted
-            button is the whole indicator, with no dot and no sentence about
-            durability. There is one unsaved boundary and it is in memory,
-            where no honest durability claim can be made; the stored library's
-            durability is the disclaimer's subject, where it is true. */}
-        {dirty && !ownsSave && <SaveButton />}
+        {/* No Save and no dirty state here: the editors' toolbar Save carries
+            both. Off an editor the save handler is gone with the editor, so a
+            button here could never be pressed; leaving is still guarded by the
+            unsaved-changes dialog. Nor a sentence about durability: the one
+            unsaved boundary is in memory, where no honest durability claim can
+            be made; the stored library's durability is the disclaimer's
+            subject, where it is true. */}
         {rightContent}
         {/* Docs is a navigation, not a dialog, so it is a Link -- but it leaves
             the editor the same way the burger does, hence the unsaved-changes

@@ -35,7 +35,7 @@ export default function PartToolbar({
   const [redoHover, setRedoHover] = useState(false)
 
   return (
-    <AppHeader ownsSave rightContent={rightContent} breadcrumb={<Breadcrumb docName={docName} onRename={onRename} />}>
+    <AppHeader rightContent={rightContent} breadcrumb={<Breadcrumb docName={docName} onRename={onRename} />}>
       <div className="undo-redo-btn-group">
         <button
           className="toolbar-btn"
