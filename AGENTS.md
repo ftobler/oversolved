@@ -105,6 +105,8 @@ In the agent file the whole idea-knowledge-code flow comes together. Keep it det
 `feature/knowledgebase.agent.md` is living reference only: current architecture facts, models, decisions, hard rules.
 Shipped-feature post-mortems (root causes, traps, measurements) go to `feature/knowledgebase.history.md`, appended at the bottom, never edited afterwards.
 Deferred work and accepted limitations go to `feature/backlog.md` (sections: needs a decision / accepted limitations / resolved); items needing a review-pass decision stay in `feature/review-direction.md`.
+- A change that makes a knowledge-base statement untrue updates that statement in the same batch; reviewers check this.
+- `tests/test_knowledgebase_refs.py` guards the file references in `feature/knowledgebase.agent.md` and bans `file.ts:NNN` line refs; mark an intentional mention of deleted code with `(deleted)` right after the ref.
 
 ## Tmporary Directory
 
