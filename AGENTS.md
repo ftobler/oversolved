@@ -2,7 +2,7 @@
 
 A mechanical CAD system running entirely in the browser. React frontend,
 OpenCascade + the Rust solvers compiled to WASM in Web Workers, documents
-persisted to IndexedDB or, on Chromium, to a folder of files the user picked.
+persisted to IndexedDB; a folder or zip is only imported or exported.
 There is no server and no database process.
 
 ## Structure
@@ -49,7 +49,7 @@ npm run build 2>&1 | tee ../tmp/npm_build.log
 - Test driven development. Frontend changes must pass `just frontend`. Python tooling changes must pass `just python`.
 - Gates tee a full copy of their output to `tmp/<gate>.log` (e.g. `tmp/npx_test.log`) while also printing to stdout. You can grep stdout live and re-grep the log afterwards; never re-run a slow gate just to get its output in a different shape.
 - For each feature try to make a test.
-- All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. Documents are stored in IndexedDB, or in a folder (or single file) the user opened through the File System Access API. Nothing is sent to a server; there is no server.
+- All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. Documents are stored in IndexedDB, the only permanent store; a folder or zip is only an import source or export destination. Nothing is sent to a server; there is no server.
 - mypy and flake8 runs on both `oversolved/` and `tests/`
 - code style: do not use em or en-dashes.
 - Agents must not commit to git unless prompted directly by the user.
@@ -104,7 +104,7 @@ The user file is to be kept original accurate. There are MY statements as the us
 In the agent file the whole idea-knowledge-code flow comes together. Keep it detailed, put actual code references, codes and memory to remember in here.
 `feature/knowledgebase.agent.md` is living reference only: current architecture facts, models, decisions, hard rules.
 Shipped-feature post-mortems (root causes, traps, measurements) go to `feature/knowledgebase.history.md`, appended at the bottom, never edited afterwards.
-Deferred work and accepted limitations go to `feature/backlog.md` (sections: needs a decision / accepted limitations / resolved); items needing a review-pass decision stay in `feature/review-direction.md`.
+Deferred work and accepted limitations go to `feature/backlog.md` (sections: needs a decision / accepted limitations / resolved); items needing a review-pass decision go under its "Needs a decision" (the separate `review-direction.md` was folded in on 2026-09-15).
 - A change that makes a knowledge-base statement untrue updates that statement in the same batch; reviewers check this.
 - `tests/test_knowledgebase_refs.py` guards the file references in `feature/knowledgebase.agent.md` and bans `file.ts:NNN` line refs; mark an intentional mention of deleted code with `(deleted)` right after the ref.
 
