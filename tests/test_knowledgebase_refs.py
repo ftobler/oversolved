@@ -17,7 +17,7 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 KB_AGENT = ROOT / "feature" / "knowledgebase.agent.md"
 
-SOURCE_EXTS = (".ts", ".tsx", ".py", ".rs")
+SOURCE_EXTS = (".ts", ".tsx", ".mjs", ".py", ".rs")
 
 # Where source can live. The frontend root is scanned flat (config files only)
 # so its node_modules and build output never enter the index.
@@ -36,12 +36,14 @@ FLAT_SOURCE_DIRS = ("", "frontend")
 # generated artifact, not source, so it must not count as present.
 EXCLUDED_DIRS = {"node_modules", "target", "dist", ".git", "__pycache__"}
 
-# A backticked source ref, an optional `:NNN` or `:NNN-MMM` suffix inside the
-# backticks, and an optional ` (deleted)` marker right after the closing tick.
-REF_RE = re.compile(r"`([\w./-]+\.(?:tsx?|py|rs))(?::[\d-]+)?`(\s*\(deleted\))?")
+# A backticked source ref at the start of its span: the path (optionally under
+# the `@/` alias), then an optional `:NNN` line suffix, `::symbol`, or a space
+# and a symbol name, and an optional ` (deleted)` marker after the closing tick.
+REF_RE = re.compile(r"`(@?[\w./-]+\.(?:tsx?|mjs|py|rs))(?::[\d-]+|::\w+|\s[^`\n]*)?`(\s*\(deleted\))?")
 
-# Any `name.ext:NNN` line ref, backticked or not.
-LINE_REF_RE = re.compile(r"[\w.-]+\.(?:tsx?|py|rs):\d+")
+# Any `name.ext:NNN` line ref, backticked or not, including the `:~NNN` and
+# `#LNNN` spellings.
+LINE_REF_RE = re.compile(r"[\w.-]+\.(?:tsx?|mjs|py|rs)(?::~?\d+|#L\d+)")
 
 
 def _excluded(part: str) -> bool:
@@ -70,9 +72,38 @@ def _resolves(ref: str, files: list[str]) -> bool:
     """A bare name must exist somewhere; a ref with a directory part must be a
     path suffix of a real file, so `utils/foo.ts` cannot match `bar/foo.ts`."""
     ref = ref.removeprefix("./")
+    if ref.startswith("@/"):
+        ref = "frontend/src/" + ref.removeprefix("@/")
     if "/" not in ref:
         return any(f.rsplit("/", 1)[-1] == ref for f in files)
     return any(f == ref or f.endswith("/" + ref) for f in files)
+
+
+def _line_of(text: str, pos: int) -> int:
+    return text.count("\n", 0, pos) + 1
+
+
+def _dangling_refs(text: str, files: list[str]) -> list[str]:
+    """Unmarked refs that resolve to nothing, as `line N: ref`."""
+    return [
+        f"line {_line_of(text, m.start())}: {m.group(1)}"
+        for m in REF_RE.finditer(text)
+        if not m.group(2) and not _resolves(m.group(1), files)
+    ]
+
+
+def _stale_deleted_markers(text: str, files: list[str]) -> list[str]:
+    """Refs marked ` (deleted)` that resolve after all, as `line N: ref`: the
+    marker would otherwise hide a live file from the check for good."""
+    return [
+        f"line {_line_of(text, m.start())}: {m.group(1)}"
+        for m in REF_RE.finditer(text)
+        if m.group(2) and _resolves(m.group(1), files)
+    ]
+
+
+def _line_refs(text: str) -> list[str]:
+    return [f"line {_line_of(text, m.start())}: {m.group(0)}" for m in LINE_REF_RE.finditer(text)]
 
 
 def _kb_text() -> str:
@@ -81,10 +112,23 @@ def _kb_text() -> str:
     return KB_AGENT.read_text()
 
 
+def test_ref_matchers_on_synthetic_text() -> None:
+    """Pins the matcher shapes without the gitignored knowledge base, so this
+    one runs everywhere the others skip."""
+    files = ["frontend/src/kernel/query.ts", "frontend/src/utils/foo.tsx", "frontend/scripts/copyWasm.mjs"]
+    text = (
+        "`kernel/query.ts` `@/utils/foo.tsx` `query.ts::resolve` `foo.tsx Bar` `scripts/copyWasm.mjs`\n"
+        "`utils/query.ts` `gone.py` (deleted) `kernel/query.ts` (deleted)\n"
+        "```\nquery.ts:12\n```\n`foo.tsx:~40` foo.ts#L3\n"
+    )
+    assert _dangling_refs(text, files) == ["line 2: utils/query.ts"]
+    assert _stale_deleted_markers(text, files) == ["line 2: kernel/query.ts"]
+    assert _line_refs(text) == ["line 4: query.ts:12", "line 6: foo.tsx:~40", "line 6: foo.ts#L3"]
+
+
 def test_knowledgebase_source_refs_exist() -> None:
     text = _kb_text()
-    files = _source_files()
-    missing = sorted({m.group(1) for m in REF_RE.finditer(text) if not m.group(2) and not _resolves(m.group(1), files)})
+    missing = _dangling_refs(text, _source_files())
     assert not missing, (
         f"{len(missing)} source ref(s) in feature/knowledgebase.agent.md name no existing file. "
         "Point them at the current file, delete the stale text, or mark a deliberate mention of deleted code with ` (deleted)`:\n  "
@@ -92,9 +136,19 @@ def test_knowledgebase_source_refs_exist() -> None:
     )
 
 
+def test_knowledgebase_deleted_markers_are_true() -> None:
+    text = _kb_text()
+    stale = _stale_deleted_markers(text, _source_files())
+    assert not stale, (
+        f"{len(stale)} ref(s) in feature/knowledgebase.agent.md are marked ` (deleted)` but the file exists. "
+        "Drop the marker, or qualify the path if it names a different, deleted file:\n  "
+        + "\n  ".join(stale)
+    )
+
+
 def test_knowledgebase_has_no_line_number_refs() -> None:
     text = _kb_text()
-    hits = sorted({m.group(0) for m in LINE_REF_RE.finditer(text)})
+    hits = _line_refs(text)
     assert not hits, (
         f"{len(hits)} line-number ref(s) in feature/knowledgebase.agent.md; name the function or symbol instead:\n  "
         + "\n  ".join(hits)
