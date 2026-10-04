@@ -108,7 +108,10 @@ function _isPointOperand(ref: unknown, kindById: Map<string, string>): boolean {
   if (ref.startsWith('@')) return true
   if (!ref.startsWith('$')) return false
   const bare = ref.slice(1)
-  if (kindById.get(bare) === 'point') return true
+  // A whole-entity id wins over the suffix reading: when the bare ref names an
+  // entry in the sketch it is that entity, never `<other-entity><vertex-key>`,
+  // even if it happens to end with a vertex key. Only a point entity counts.
+  if (kindById.has(bare)) return kindById.get(bare) === 'point'
   for (const key of VERTEX_POINT_KEYS) {
     if (bare.length > key.length && bare.endsWith(key)) {
       const eid = bare.slice(0, -key.length)

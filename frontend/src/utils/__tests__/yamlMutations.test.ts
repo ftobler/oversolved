@@ -1102,6 +1102,21 @@ describe('dropDeadAxisConstraints', () => {
     expect(doc.features![0].constraints).toHaveLength(0)
   })
 
+  // A whole-entity ref whose id ends with a vertex key must not be read as that
+  // other entity's sub-point. Here `$line1end` names the line entity `line1end`;
+  // the suffix reading would mistake it for `line1`'s end vertex and keep the
+  // degenerate constraint.
+  it('removes a vertical over a whole entity whose id ends with a vertex key', () => {
+    const doc = docWithDeadVertical()
+    doc.features![0].entities!.push({ id: 'line1end', kind: 'line' })
+    doc.features![0].initial!['line1end'] = [1, 1, 2, 2]
+    doc.features![0].constraints = [
+      { id: 'c_dead', kind: 'vertical', a: '$line1end', b: '$pt1' },
+    ]
+    expect(dropDeadAxisConstraints(doc)).toBe(1)
+    expect(doc.features![0].constraints).toHaveLength(0)
+  })
+
   it('keeps a valid two-point vertical (point entity + line endpoint)', () => {
     const doc = docWithDeadVertical()
     doc.features![0].constraints = [
