@@ -232,6 +232,34 @@ describe('group preview scope and suppression', () => {
     expect(result.current.undoStack).toHaveLength(1)
     expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
   })
+
+  it('an all-preview group swallowed by a suppressed session with an open preview still earns its entry', () => {
+    docRef.current = {
+      oversolved: 1, kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'sk1', kind: 'sketch' }],
+    } as unknown as PartDoc
+    const { result } = renderPartDoc()
+
+    act(() => { result.current.startEditSession(true) })
+    // A color preview opened inside the session: the session's 'all' scope
+    // swallows the group, but the preview still owns the undo entry for it.
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current!)) })
+    act(() => {
+      result.current.commitMutationGroup([
+        { type: 'set_part_color', bodyId: 'b1', color: '#00ff00' },
+        { type: 'set_part_transparency', bodyId: 'b1', transparency: 0.5 },
+      ] as Mutation[])
+    })
+
+    // Swallowed as a preview frame: no per-frame entry while the session is open.
+    expect(result.current.undoStack).toHaveLength(0)
+    act(() => { result.current.commitEditSession() })
+    // The preview_commit pushes the entry that can revert the color; without it
+    // the change lands in the doc with no way back.
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+  })
 })
 
 describe('session and featureless-doc edges', () => {
