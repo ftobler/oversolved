@@ -34,10 +34,12 @@ export function solveImportStep(
   const featureId = (feature.id as string) ?? ''
   const fileId = (feature.file_id as string) ?? ''
   const scale = Number(feature.scale ?? 1.0)
-  // A non-finite scale (hand-edited or expression-derived YAML) would flow
-  // unchecked into the placement identity computation.
-  if (!Number.isFinite(scale)) {
-    throw new Error(`import_step: scale must be a finite number, got ${feature.scale}`)
+  // A non-finite or non-positive scale would flow unchecked into the placement
+  // identity computation: 0 reaches gp_Trsf.SetScale, whose inverse divides by
+  // the factor, and a negative factor is a central inversion the import UI
+  // never offers. Both are refused by name here.
+  if (!Number.isFinite(scale) || scale <= 0) {
+    throw new Error(`import_step: scale must be a positive finite number, got ${feature.scale}`)
   }
 
   // A pre-cut document carries the bytes inline. Refuse it by name rather than
