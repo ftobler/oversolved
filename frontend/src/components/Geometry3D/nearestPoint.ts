@@ -62,13 +62,18 @@ export function nearestPointOnArc(
     return nearestPointOnCircle(px, py, cx, cy, r)
   }
 
+  const sx = cx + r * Math.cos(angleStart * Math.PI / 180)
+  const sy = cy + r * Math.sin(angleStart * Math.PI / 180)
+  const ex = cx + r * Math.cos(angleEnd * Math.PI / 180)
+  const ey = cy + r * Math.sin(angleEnd * Math.PI / 180)
+
   const startPoint: NearestPointResult = {
-    position: [cx + r * Math.cos(angleStart * Math.PI / 180), cy + r * Math.sin(angleStart * Math.PI / 180)],
-    distance: Math.hypot(px - (cx + r * Math.cos(angleStart * Math.PI / 180)), py - (cy + r * Math.sin(angleStart * Math.PI / 180)))
+    position: [sx, sy],
+    distance: Math.hypot(px - sx, py - sy)
   }
   const endPoint: NearestPointResult = {
-    position: [cx + r * Math.cos(angleEnd * Math.PI / 180), cy + r * Math.sin(angleEnd * Math.PI / 180)],
-    distance: Math.hypot(px - (cx + r * Math.cos(angleEnd * Math.PI / 180)), py - (cy + r * Math.sin(angleEnd * Math.PI / 180)))
+    position: [ex, ey],
+    distance: Math.hypot(px - ex, py - ey)
   }
 
   return startPoint.distance < endPoint.distance ? startPoint : endPoint
