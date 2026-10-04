@@ -147,6 +147,13 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
   const params: number[] = []
   entities.forEach((e, index) => {
     idToIndex.set(e.id, index)
+    // Fail loud: an unknown kind leaves the param count undefined, so the
+    // layout arithmetic goes NaN and the kind byte encodes as 0, which the Rust
+    // decoder reads back as a Line. A persisted or hand-edited document must
+    // not silently solve with that entity's geometry missing.
+    if (!Object.hasOwn(ENTITY_SIZES, e.kind)) {
+      throw new Error(`lowerSketch: unknown entity kind '${e.kind}'`)
+    }
     const size = ENTITY_SIZES[e.kind]
     layout.push({ id: e.id, kind: e.kind, offset: params.length, size, construction: e.construction })
     const init = e.id === ORIGIN_ID ? [0, 0] : sk.initial[e.id] ?? new Array(size).fill(0)

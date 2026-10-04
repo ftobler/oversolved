@@ -121,6 +121,28 @@ describe('lowerSketch fails loud on malformed refs', () => {
     const b = coincident.refs.find(r => r.role === Role.b)!
     expect(b.ref).toEqual({ kind: 'external', x: 3, y: -2 })
   })
+
+  it('throws naming an unknown entity kind instead of laying it out as a zero-param Line', () => {
+    // An unknown kind left size undefined: the layout arithmetic went NaN and
+    // the kind byte encoded as 0, which the Rust decoder reads as a Line.
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'x1', kind: 'hexagon' }],
+      initial: {},
+      constraints: [],
+    })).toThrow("lowerSketch: unknown entity kind 'hexagon'")
+  })
+
+  it('rejects an inherited Object key as an entity kind', () => {
+    // ENTITY_SIZES is a plain table, so 'toString' would resolve through the
+    // prototype to a function and pass a bare undefined check.
+    expect(() => lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'x1', kind: 'toString' }],
+      initial: {},
+      constraints: [],
+    })).toThrow("lowerSketch: unknown entity kind 'toString'")
+  })
 })
 
 describe('pinnedMaskFor (projected-entity pinning)', () => {
