@@ -189,10 +189,19 @@ export function AssemblyTree({
   const highlightedMateIds = useMemo(() => relatedMateIds(mates, selectedPartHandle), [mates, selectedPartHandle])
   const highlightedPartHandles = useMemo(() => relatedPartHandles(mates, view.mate), [mates, view.mate])
 
+  // The same display name each mate row shows (stored label, or the bare kind
+  // label for a legacy mate), so the verdict banner names the mates the user
+  // sees instead of their raw solve ids.
+  const mateNames = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const { id, mate } of mates) names.set(id, mate.label || MATE_KIND_LABELS[mate.kind])
+    return names
+  }, [mates])
+
   // The whole-assembly verdict, shown on a root row: overconstrained is a hard
   // error, underconstrained a warning that the assembly is valid but still has
   // freedom. Fully constrained and trivial solves carry no mark.
-  const verdictMark = assemblyVerdict(status ?? null)
+  const verdictMark = assemblyVerdict(status ?? null, id => mateNames.get(id))
 
   return (
     <div className="assembly-tree" ref={rootRef}>

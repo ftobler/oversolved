@@ -124,7 +124,9 @@ describe('AssemblyTree solve-status marks', () => {
     expect(overRow).not.toBeNull()
     expect(overRow!.className).toContain('assembly-verdict-error')
     expect(overRow!.getAttribute('data-verdict')).toBe('overconstrained')
-    expect(overRow!.textContent).toContain('m1')
+    // The banner names the mate the user sees, not its raw solve id.
+    expect(overRow!.textContent).toContain('Fixed 1')
+    expect(overRow!.textContent).not.toContain('m1')
     over.unmount()
 
     const under = renderTree(status({ verdict: 'underconstrained', dof: 3 }))
