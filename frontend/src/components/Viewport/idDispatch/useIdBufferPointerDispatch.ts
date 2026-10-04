@@ -14,6 +14,7 @@ import { originAdapter } from './originAdapter'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 import type { ActiveTool } from '@/types/cad'
 import { findEdgeKindForQuery } from './bodyDispatchCallbacks'
+import { dispatchSketchClick } from './dispatchSketchClick'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
@@ -121,10 +122,14 @@ export function hitToSelectionKey(hit: ResolvedHit): string {
  * dimensioned rather than toggled into the normal selection. Only meaningful
  * while the dimension tool is active inside a sketch.
  */
-function isBrepDimensionPick(layer: string): boolean {
-  if (layer !== EDGE_LAYER_NAME && layer !== VERTEX_LAYER_NAME) return false
+function isDimensionToolArmed(): boolean {
   const state = useSketchEditorStore.getState()
   return state.activeTool === 'dimension' && state.activeFeatureId !== null
+}
+
+function isBrepDimensionPick(layer: string): boolean {
+  if (layer !== EDGE_LAYER_NAME && layer !== VERTEX_LAYER_NAME) return false
+  return isDimensionToolArmed()
 }
 
 /**
@@ -447,6 +452,14 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // the B-rep branch would mint a phantom selectedPicks claim
         // {query -> {query}} for a layer that never distinguishes primitives.
         useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit))
+      } else if (hit.layer === ORIGIN_LAYER_NAME && isDimensionToolArmed()) {
+        // The origin is a legitimate dimension target (DimensionTool accepts
+        // `@builtin_` point picks and resolveDimension has a two_vertices
+        // path), but it resolves on the origin layer, which otherwise only
+        // toggles normal selection. Route it through the sketch-click path so
+        // the dimension tool records the pick. Planes stay out: a plane names
+        // no point and resolveDimension has no pick for one.
+        dispatchSketchClick(hit.entityKey, undefined, e.clientX, e.clientY)
       } else if (isBrepDimensionPick(hit.layer)) {
         // Dimensioning a body edge / vertex from inside a sketch: project it
         // into the sketch and dimension the projection. Faces are excluded --
