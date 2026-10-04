@@ -316,18 +316,18 @@ export function canonicalizeCylinderFaces(
     const substituted = scope.track(reshape.Apply(shape, E.TopAbs_FACE))
     const fixer = scope.track(new oc.ShapeFix_Shape_2(substituted))
     fixer.Perform(scope.track(new oc.Handle_Message_ProgressIndicator_1()))
-    const healed = fixer.Shape()
-    const reject = (): CanonicalizedShape => {
-      scope.track(healed)  // rejected result would otherwise strand on the WASM heap
-      return identity
-    }
+    // Track healed immediately: the guards below can throw (the analyzer
+    // constructor, the volume reads), and a rejected or thrown guard must not
+    // strand the multi-sub-shape result on the WASM heap. The success path
+    // detaches so the caller owns the returned shape as before.
+    const healed = scope.track(fixer.Shape())
 
     // 5. Guards: an orientation slip would corrupt the solid, so require both
     //    BRepCheck validity and an unchanged volume before adopting the result.
-    if (!scope.track(new oc.BRepCheck_Analyzer(healed, true)).IsValid_2()) return reject()
+    if (!scope.track(new oc.BRepCheck_Analyzer(healed, true)).IsValid_2()) return identity
     const v0 = shapeVolume(oc, scope, shape)
     const v1 = shapeVolume(oc, scope, healed)
-    if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return reject()
+    if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return identity
 
     // 6. Re-base the swap targets through the fixer's substitution context:
     //    ShapeFix may re-make a face rather than update it in place, and the
@@ -343,7 +343,7 @@ export function canonicalizeCylinderFaces(
       // Best-effort: an unmapped swap degrades lineage on that face, not geometry.
     }
 
-    return { shape: healed, changed: true, swaps }
+    return { shape: scope.detach(healed), changed: true, swaps }
   } catch {
     // Recognition is best-effort: the un-canonicalized boolean result is a
     // sound solid, it just keeps the seam UnifySameDomain cannot fold.

@@ -173,6 +173,50 @@ describe.skipIf(!oc)('canonicalizeCylinderFaces', () => {
       scope.dispose()
     }
   })
+
+  it('releases the healed shape when a guard throws', () => {
+    // The guards can THROW rather than return false: the analyzer constructor
+    // runs before any validity read. The pass falls back to the original shape,
+    // and the healed result must be freed by the scope, not stranded on the
+    // WASM heap because the adopt path never ran.
+    const scope = new DisposeScope()
+    const mod = oc! as unknown as {
+      BRepCheck_Analyzer: unknown
+      ShapeFix_Shape_2: unknown
+    }
+    const realAnalyzer = mod.BRepCheck_Analyzer
+    const realFixer = mod.ShapeFix_Shape_2
+    let healedDeletes = 0
+    const fakeHealed = { delete: () => { healedDeletes++ } }
+    try {
+      const filleted = filletedLensUnion(oc!, scope, 1)
+      // Make the fixer hand back a shape we can watch, and make the analyzer
+      // constructor throw so the catch-all runs with the healed shape live.
+      mod.ShapeFix_Shape_2 = function (substituted: unknown) {
+        const real = new (realFixer as new (s: unknown) => {
+          Perform: (m: unknown) => void
+          delete: () => void
+        })(substituted)
+        return {
+          Perform: (m: unknown) => real.Perform(m),
+          Shape: () => fakeHealed,
+          delete: () => real.delete(),
+        }
+      }
+      mod.BRepCheck_Analyzer = function () {
+        throw new Error('analyzer boom')
+      }
+      const result = canonicalizeCylinderFaces(oc!, scope, filleted)
+      expect(result.changed).toBe(false)
+      expect(result.shape).toBe(filleted)
+      scope.dispose()
+      expect(healedDeletes).toBe(1)
+    } finally {
+      mod.BRepCheck_Analyzer = realAnalyzer
+      mod.ShapeFix_Shape_2 = realFixer
+      scope.dispose()
+    }
+  })
 })
 
 describe('canonicalizeCylinderFaces best-effort refusal', () => {
