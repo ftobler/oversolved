@@ -90,7 +90,11 @@ export function suppressedCoincidentVertexIds(
   const ensure = (x: string) => { if (!parent.has(x)) parent.set(x, x) }
   const find = (x: string): string => {
     let r = x
-    while (parent.get(r) !== r) r = parent.get(r) as string
+    let next = parent.get(r)
+    while (next !== r) {
+      r = next as string
+      next = parent.get(r)
+    }
     return r
   }
   const union = (a: string, b: string) => {
