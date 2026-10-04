@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { featureFailure } from '@/utils/core/featureFailure'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -126,7 +126,18 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
       window.removeEventListener('pointercancel', stop)
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [draggedRollback, rollbackTargetAt, onSetRollbackPosition, effectiveRollback])
+    }, [draggedRollback, rollbackTargetAt, onSetRollbackPosition, effectiveRollback])
+
+  // Enter/Space on a focused row selects it, mirroring the row's click. Only the
+  // row itself reacts: a key event bubbling from a control inside the row (an
+  // action button or an inline editor input) must not re-select the feature.
+  const rowKeyDown = (e: ReactKeyboardEvent<HTMLLIElement>, select: () => void) => {
+    if (e.target !== e.currentTarget) return
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    e.stopPropagation()
+    select()
+  }
 
   return (
     <div
@@ -145,6 +156,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
       ) : (
         features.map((feature, index) => {
           const isBuiltIn = BUILT_IN_IDS.has(feature.id)
+          const selectionId = isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`
 
           return (
           <div key={`feature-${feature.id}`}>
@@ -157,7 +169,10 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
             )}
             <li
               key={feature.id}
-              className={`feature-item ${index >= effectiveRollback ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
+              className={`feature-item ${index >= effectiveRollback ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
+              role="option"
+              tabIndex={0}
+              aria-selected={selection.has(selectionId)}
               draggable={!isBuiltIn && feature.id !== editingFeatureId}
               onDragStart={(e) => {
                 if (isBuiltIn) return
@@ -190,8 +205,9 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 setDropTargetIndex(null)
               }}
               onClick={() => {
-                onToggleSelect(isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`)
+                onToggleSelect(selectionId)
               }}
+              onKeyDown={(e) => rowKeyDown(e, () => onToggleSelect(selectionId))}
               onDoubleClick={() => {
                 if (isBuiltIn) return  // Origin/planes are not editable here
                 // A double-click on the row already being edited would stack a
