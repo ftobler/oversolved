@@ -74,13 +74,17 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
  *  As of 267.5 the ID buffer dispatcher handles all picking; this component
  *  is visual-only, no R3F event props. */
 export function ProjectedOriginPoint({ x, y, featureId, entityId, isEditing = false }: { x: number; y: number; featureId: string; entityId: string; isEditing?: boolean }) {
-  const entId = `entity:${featureId}:${entityId}`
-  const selected = useSketchEditorStore(s => s.normalSelection.has(entId))
-  const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(entityId))
-  const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
+  // A point entity has no segment, so it never resolves through the sketchEntity
+  // layer: buildSketchVertices registers it as `vertex:<fid>:<eid>:xy` and the
+  // dispatcher writes hoveredVertexId / normalSelection with that key. Tracking
+  // the entity id here left the dot permanently in its base colour.
+  const vertId = `vertex:${featureId}:${entityId}:xy`
+  const selected = useSketchEditorStore(s => s.normalSelection.has(vertId))
+  const constraintHovered = useSketchEditorStore(s => s.hoveredConstraintEntityIds.has(`${entityId}:xy`))
+  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
 
   // Hover state is driven by the ID-buffer dispatcher.
-  const hovered = hoveredSelectionId === entId
+  const hovered = hoveredVertexId === vertId
 
   const color = hovered ? COLOR_HOVER : selected ? COLOR_SELECTED : constraintHovered ? COLOR_CONSTRAINT_HOVER : (isEditing ? COLOR_PROJECTED : COLOR_INACTIVE)
   const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })

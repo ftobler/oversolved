@@ -226,6 +226,21 @@ describe('id layers share one allocator', () => {
     expect(reg.allocate('doubleFree', 'alpha')).not.toBe(reg.allocate('doubleFree', 'beta'))
   })
 
+  it('frees a collapsed id when its single holding body unregisters', () => {
+    // Two primitives of ONE body sharing a query collapse onto one id, so the
+    // body holds it once and its teardown must release the record. Counting the
+    // collapse as two holders left the id resolvable after its only holder left.
+    const layer = new FaceIdLayer(reg, { name: 'collapseFree' })
+    registerTwoFaces(layer, ['dup', 'dup'])
+    const shared = reg.lookupKey('collapseFree', 'dup')!
+    expect(reg.lookup(shared)).toBeDefined()
+
+    layer.unregisterBody(BODY)
+    reg.bumpCycle()
+
+    expect(reg.lookup(shared)).toBeUndefined()
+  })
+
   it('two BODIES sharing a query free their one shared ID once between them', () => {
     // The same collapse across bodies, which no per-body account can catch: each
     // body legitimately holds the id once, so `unregisterBody` frees it once per

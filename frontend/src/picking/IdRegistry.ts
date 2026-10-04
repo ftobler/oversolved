@@ -68,6 +68,13 @@ export class IdRegistry {
   // is preserved, so recycling order is unchanged apart from the dropped repeats.
   private pendingFree = new Set<number>()
   private freeList: number[] = []  // eligible for reuse now
+  // How many registered bodies hold each id. Allocation by query collapses every
+  // body sharing that query onto one id, and each body then frees it, so without
+  // the count a single body leaving would tear down an id the others still draw:
+  // the key would be re-minted, the old byId record promoted away, and the live
+  // body's pixels would decode to nothing (or a recycled stranger). The count is
+  // dropped only when the last holder frees.
+  private refCount = new Map<number, number>()
 
   // Where each id's mark sits, and who else is there. A point-marking layer
   // publishes its positions here at registration (see `VertexIdLayer`), which is
@@ -98,7 +105,12 @@ export class IdRegistry {
   allocate(layer: string, entityKey: string, pickKey: string = entityKey): number {
     const k = this.composeKey(layer, pickKey)
     const existing = this.byKey.get(k)
-    if (existing !== undefined) return existing
+    if (existing !== undefined) {
+      // A second body taking the same key co-holds the existing id; keep the key
+      // pointing at it so a later free by one holder cannot orphan it for the rest.
+      this.refCount.set(existing, (this.refCount.get(existing) ?? 1) + 1)
+      return existing
+    }
 
     const id = this.freeList.length > 0 ? this.freeList.pop()! : this.nextId++
     if (id > MAX_ID) {
@@ -107,20 +119,27 @@ export class IdRegistry {
     const record: IdRecord = { id, layer, entityKey, pickKey }
     this.byId.set(id, record)
     this.byKey.set(k, id)
+    this.refCount.set(id, 1)
     return id
   }
 
   free(id: number): void {
     const record = this.byId.get(id)
     if (!record) return
-    // Drop the key index immediately so a re-allocation of the same pickKey
-    // gets a fresh ID, but keep the byId record until bumpCycle() so async
-    // readbacks pending against the current ID buffer still decode correctly.
-    // Only drop the key if it still points at THIS id: one query-keyed id can be
-    // co-held by two bodies, and if one body re-registered first the key now
-    // names its fresh id, so the other body's free must not orphan it.
+    // One body can hold an id shared with others (allocation by query collapses
+    // them). Drop the key index on every free so a re-registration of the same
+    // key gets a fresh id, but keep the byId record and mark position alive while
+    // any co-holder still draws the id: tearing them down early would strand the
+    // other bodies' pixels, and promotePendingFree would hand the id to a
+    // stranger. Only the last holder leaving defers the record for promotion.
+    const remaining = (this.refCount.get(id) ?? 1) - 1
     const k = this.composeKey(record.layer, record.pickKey)
     if (this.byKey.get(k) === id) this.byKey.delete(k)
+    if (remaining > 0) {
+      this.refCount.set(id, remaining)
+      return
+    }
+    this.refCount.delete(id)
     // Dropped now rather than at bumpCycle, unlike the byId record: a freed id
     // is about to be handed to a re-registered primitive at a possibly different
     // position, and a stale entry would co-locate it with whatever used to be
@@ -238,6 +257,7 @@ export class IdRegistry {
     this.markSeq = 0
     this.pendingFree.clear()
     this.freeList.length = 0
+    this.refCount.clear()
     this.nextId = 1
   }
 }

@@ -92,6 +92,38 @@ describe('IdRegistry', () => {
     expect(reg.lookup(id)).toBeUndefined()
   })
 
+  it('keeps a co-held id live through a render while another holder remains', () => {
+    // Two bodies can co-hold one query-keyed id: allocation by query collapses
+    // them, and each body later hands the id back. If one holder frees and
+    // re-registers before the other frees, the freed branch must not hand the
+    // still-drawn id to the promote that follows the next render.
+    const a = reg.allocate('face', 'face@shared')
+    const b = reg.allocate('face', 'face@shared')
+    expect(b).toBe(a)
+
+    reg.free(a)  // one holder leaves; b still draws `a`
+    const a2 = reg.allocate('face', 'face@shared')
+    expect(a2).not.toBe(a)  // re-registration still gets a fresh id
+    reg.bumpCycle()
+
+    // b's record must survive the promote that follows the render.
+    expect(reg.lookup(a)).toBeDefined()
+  })
+
+  it('promotes a co-held id only once its last holder frees it', () => {
+    const a = reg.allocate('face', 'face@shared')
+    reg.allocate('face', 'face@shared')
+
+    reg.free(a)
+    reg.bumpCycle()
+    // One holder remains: the id is not yet reusable.
+    expect(reg.lookup(a)).toBeDefined()
+
+    reg.free(a)
+    reg.bumpCycle()
+    expect(reg.lookup(a)).toBeUndefined()
+  })
+
   it('size tracks live entries only', () => {
     const a = reg.allocate('face', 'face@e1#1')
     reg.allocate('face', 'face@e1#2')

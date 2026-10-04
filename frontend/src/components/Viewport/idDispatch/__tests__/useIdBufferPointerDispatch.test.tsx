@@ -8,6 +8,7 @@ import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabe
 import { registerFeatureHandleCallbacks, resetFeatureHandleCallbacksForTest } from '../featureHandleCallbacks'
 import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, EDGE_LAYER_NAME, FACE_LAYER_NAME, ORIGIN_LAYER_NAME, PLANE_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
+import { initializeTools } from '@/tools'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
 import { sketchEntityAdapter } from '../sketchEntityAdapter'
@@ -925,6 +926,43 @@ describe('useIdBufferPointerDispatch', () => {
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('edgeQ')
   })
 
+  it('re-applies a sketch-vertex hover after an external writer clears it', async () => {
+    // The vertex adapter writes hoveredVertexId only, so the M1 branch above,
+    // which watches hoveredSelectionId, never sees a vertex hover come and go.
+    // After a feature switch clears the store, the cache must still be dropped
+    // or the next same-pixel move returns at the dedup guard and the highlight
+    // stays gone until the pointer leaves the vertex's reach.
+    const VERTEX_KEY = 'vertex:feat1:line1:start'
+    pipeline.target.markClean()
+    pipeline.resolveAsync = vi.fn().mockImplementation(async () => ({
+      id: 2, layer: SKETCH_VERTEX_LAYER_NAME, entityKey: VERTEX_KEY, distancePx: 0,
+    })) as unknown as typeof pipeline.resolveAsync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+      await Promise.resolve()
+    })
+    await flushHoverFrame()
+    expect(useSketchEditorStore.getState().hoveredVertexId).toBe(VERTEX_KEY)
+
+    act(() => {
+      useSketchEditorStore.getState().clearSelectionAndHover()
+    })
+    expect(useSketchEditorStore.getState().hoveredVertexId).toBeNull()
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+      await Promise.resolve()
+    })
+    await flushHoverFrame()
+    expect(useSketchEditorStore.getState().hoveredVertexId).toBe(VERTEX_KEY)
+  })
+
   // L5a: the effective allowed set is cached keyed on activeTool; a tool switch
   // must invalidate that cache so the next event re-derives the filter.
   it('re-derives the allowed layer set on the next event after a tool change', async () => {
@@ -1184,6 +1222,54 @@ describe('useIdBufferPointerDispatch', () => {
 
     expect(spy).toHaveBeenCalledWith('?03;abc:edge', { isVertexPick: false, sourceKind: null })
     spy.mockRestore()
+  })
+
+  it('an origin click while dimensioning inside a sketch records a builtin vertex pick', async () => {
+    // The origin is a legitimate dimension target (resolveDimension's
+    // two_vertices path and DimensionTool's @builtin_ branch both accept it).
+    // It resolves on the origin layer, which the dispatcher must route through
+    // the sketch-click path while the dimension tool is armed instead of
+    // toggling it into the normal selection.
+    initializeTools()
+    pipeline.resolveSync = vi.fn().mockReturnValue({
+      id: 13, layer: ORIGIN_LAYER_NAME, entityKey: '@builtin_origin', pickKey: '@builtin_origin', distancePx: 0,
+    })
+    useSketchEditorStore.setState({
+      activeTool: 'dimension', activeFeatureId: 'feat1',
+      normalSelection: new Set(), dimensionPicks: [],
+    })
+    const spy = vi.spyOn(useSketchEditorStore.getState(), 'addDimensionPick')
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([ORIGIN_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    expect(spy).toHaveBeenCalledWith({ isVertex: true, target: '@builtin_origin', entityKind: null })
+    expect(useSketchEditorStore.getState().normalSelection.has('@builtin_origin')).toBe(false)
+    spy.mockRestore()
+  })
+
+  it('an origin click outside the dimension tool still toggles the normal selection', async () => {
+    pipeline.resolveSync = vi.fn().mockReturnValue({
+      id: 13, layer: ORIGIN_LAYER_NAME, entityKey: '@builtin_origin', pickKey: '@builtin_origin', distancePx: 0,
+    })
+    useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([ORIGIN_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    expect(useSketchEditorStore.getState().normalSelection.has('@builtin_origin')).toBe(true)
   })
 
   it('attaches once the canvas appears, not only at mount', async () => {

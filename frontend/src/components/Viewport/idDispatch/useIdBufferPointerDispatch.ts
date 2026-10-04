@@ -14,6 +14,7 @@ import { originAdapter } from './originAdapter'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 import type { ActiveTool } from '@/types/cad'
 import { findEdgeKindForQuery } from './bodyDispatchCallbacks'
+import { dispatchSketchClick } from './dispatchSketchClick'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
@@ -121,10 +122,14 @@ export function hitToSelectionKey(hit: ResolvedHit): string {
  * dimensioned rather than toggled into the normal selection. Only meaningful
  * while the dimension tool is active inside a sketch.
  */
-function isBrepDimensionPick(layer: string): boolean {
-  if (layer !== EDGE_LAYER_NAME && layer !== VERTEX_LAYER_NAME) return false
+function isDimensionToolArmed(): boolean {
   const state = useSketchEditorStore.getState()
   return state.activeTool === 'dimension' && state.activeFeatureId !== null
+}
+
+function isBrepDimensionPick(layer: string): boolean {
+  if (layer !== EDGE_LAYER_NAME && layer !== VERTEX_LAYER_NAME) return false
+  return isDimensionToolArmed()
 }
 
 /**
@@ -327,15 +332,21 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // move returns at applyHoverHit's guard and the highlight never comes
         // back. Drop the cache (no adapter call: the store is already clear) so
         // that move re-resolves and re-applies.
+        // A sketch vertex rides hoveredVertexId only (sketchVertexAdapter), so
+        // its external clear leaves hoveredSelectionId null throughout and is
+        // invisible to the check above; watch hoveredVertexId too or the vertex
+        // highlight stays cleared until the pointer leaves its reach.
         // This branch also fires during the dispatcher's own applyHoverHit
         // teardown (clearAllHover nulls the store mid-apply, and the latch is
         // not held then because that call comes from the scheduler's resolve,
         // not this listener). It is net-zero only because applyHoverHit
         // unconditionally re-assigns all three lastHover* locals after the
         // apply step; do not weaken that.
+        const selectionHoverCleared = prev.hoveredSelectionId !== null && state.hoveredSelectionId === null
+        const vertexHoverCleared = lastHoverLayer === SKETCH_VERTEX_LAYER_NAME
+          && prev.hoveredVertexId !== null && state.hoveredVertexId === null
         if (
-          prev.hoveredSelectionId !== null
-          && state.hoveredSelectionId === null
+          (selectionHoverCleared || vertexHoverCleared)
           && lastHoverLayer !== null
           && lastHoverLayer !== DIMENSION_LABEL_LAYER_NAME
         ) {
@@ -441,6 +452,14 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // the B-rep branch would mint a phantom selectedPicks claim
         // {query -> {query}} for a layer that never distinguishes primitives.
         useSketchEditorStore.getState().toggleNormalSelection(hitToSelectionKey(hit))
+      } else if (hit.layer === ORIGIN_LAYER_NAME && isDimensionToolArmed()) {
+        // The origin is a legitimate dimension target (DimensionTool accepts
+        // `@builtin_` point picks and resolveDimension has a two_vertices
+        // path), but it resolves on the origin layer, which otherwise only
+        // toggles normal selection. Route it through the sketch-click path so
+        // the dimension tool records the pick. Planes stay out: a plane names
+        // no point and resolveDimension has no pick for one.
+        dispatchSketchClick(hit.entityKey, undefined, e.clientX, e.clientY)
       } else if (isBrepDimensionPick(hit.layer)) {
         // Dimensioning a body edge / vertex from inside a sketch: project it
         // into the sketch and dimension the projection. Faces are excluded --

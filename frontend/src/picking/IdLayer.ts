@@ -156,6 +156,14 @@ export class PrimitiveIdAllocator {
     const pickKey = this.perPrimitive
       ? primitivePickKey(this.bodyKey, idx, this.layerName)
       : query
+    // A query-keyed pass can mint the same key twice: two primitives of ONE body
+    // sharing a query collapse onto one id. The registry counts that id once per
+    // holder BODY, not per primitive, so a repeat within this body must reuse the
+    // id it already holds without touching the count. Counting it twice would
+    // leave the count at one after the body frees, so the id would outlive its
+    // only holder and a later render would promote a still-resolvable stranger.
+    const existing = this.registry.lookupKey(this.layerName, pickKey)
+    if (existing !== undefined && this.ids.has(existing)) return existing
     const id = this.registry.allocate(this.layerName, query, pickKey)
     this.ids.add(id)
     return id
