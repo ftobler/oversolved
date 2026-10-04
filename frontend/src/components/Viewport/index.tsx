@@ -514,6 +514,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // was lost): no pointer-up will follow, so drop the band and the click
   // gesture here or a stale origin would pair with the NEXT release.
   const handlePointerCancel = useCallback((e: React.PointerEvent) => {
+    if (!e.isPrimary) return  // a secondary pointer going away owns no part of the primary gesture
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     clickGesture.current.reset()
     rubberBand.onPointerCancel()

@@ -199,4 +199,20 @@ describe('part editor empty-space click clears the selection', () => {
     act(() => { fireEvent.pointerDown(el, { button: 0, isPrimary: true, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
     expect(set).not.toHaveBeenCalled()
   })
+
+  it('a non-primary pointercancel does not wipe the primary gesture in flight', () => {
+    // A stray secondary-pointer cancel used to reset the shared tracker, so the
+    // primary's later release read hadDown === false and the right-click (and
+    // the deselect flags) were silently dropped.
+    const onRightClick = vi.fn()
+    const { container } = render(<Viewport onRightClick={onRightClick} />)
+    const el = container.firstChild as Element
+    captureStubs(el)
+
+    act(() => { fireEvent.pointerDown(el, { button: 2, isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
+    act(() => { fireEvent.pointerCancel(el, { isPrimary: false, pointerId: 2 }) })
+    act(() => { fireEvent.pointerUp(el, { button: 2, isPrimary: true, pointerId: 1, pointerType: 'mouse', clientX: 100, clientY: 100 }) })
+
+    expect(onRightClick).toHaveBeenCalledWith([100, 100])
+  })
 })
