@@ -232,5 +232,3 @@ describe("negative-zero normalization parity (Python _r4str(-0.0) == '0.0')", ()
     ).toBe("gedge_abf4d63065263756")
   })
 })
-
-

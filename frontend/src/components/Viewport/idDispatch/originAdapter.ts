@@ -11,5 +11,3 @@ export const originAdapter = {
     s.setHoveredVertex(entityKey, s.activeOriginLocal, 'vertex')
   },
 }
-
-
