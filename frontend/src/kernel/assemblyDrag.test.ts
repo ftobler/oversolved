@@ -105,13 +105,20 @@ describe('dragTargetMate', () => {
 })
 
 describe('dragTargetPoseMate', () => {
-  it('is a weighted fixed mate whose target is the given pose', async () => {
+  it('is a weighted fixed mate whose target is the given pose', () => {
     const target = makeTransform([3, -2, 1], quatFromAxisAngle([0, 0, 1], Math.PI / 3))
     const mate = dragTargetPoseMate('p1', target)
     expect(mate.kind).toBe('fixed')
     expect(mate.ref_a.part).toBe('__assembly')
     expect(mate.ref_b.part).toBe('p1')
     expect(mate.weight).toBe(DRAG_WEIGHT)
+  })
+})
+
+describeReal('dragTargetPoseMate through the real mate solver', () => {
+  it('lands the part bit-close on the pose the geometry was derived for', async () => {
+    const target = makeTransform([3, -2, 1], quatFromAxisAngle([0, 0, 1], Math.PI / 3))
+    const mate = dragTargetPoseMate('p1', target)
 
     // Author the same target at full weight: with no real mates, the objective's
     // curvature dwarfs the solver's tiny seed anchor, so the part must land
