@@ -108,8 +108,15 @@ function ensureChild(): SolveChildLike {
   if (child) return child
   const c = childFactory()
   c.on('message', onMessage)
-  c.on('error', () => dropChild(new Error('solve child process crashed')))
+  // A killed child can deliver a late error or exit after its replacement is
+  // already pooled. Acting on it would reject the new child's request and kill
+  // the pooled, OCC-loaded replacement, forcing a cold reload.
+  c.on('error', () => {
+    if (child !== c) return
+    dropChild(new Error('solve child process crashed'))
+  })
   c.on('exit', (code: number) => {
+    if (child !== c) return
     if (code !== 0) dropChild(new Error(`solve child exited with code ${code}`))
   })
   child = c

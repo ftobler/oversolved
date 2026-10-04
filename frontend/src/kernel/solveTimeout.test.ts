@@ -133,6 +133,25 @@ describe('solveWithTimeout crash handling', () => {
     f.emitExit(1)
     await expect(p).rejects.toThrow('solve child exited with code 1')
   })
+
+  it('ignores a late exit or error from a killed child once a replacement is pooled', async () => {
+    vi.useFakeTimers()
+    const f1 = installFake()
+    const p1 = solveWithTimeout({ id: 'd' }, undefined, 1000)
+    vi.advanceTimersByTime(1000)
+    await expect(p1).rejects.toThrow('solve timed out after 1000ms')
+    expect(f1.killed).toBe(true)
+
+    const f2 = installFake()
+    const p2 = solveWithTimeout({ id: 'e' })
+    // The SIGKILL exit of the timed-out child arrives after f2 is pooled.
+    f1.emitExit(null as unknown as number)
+    f1.emitError(new Error('late crash'))
+    expect(f2.killed).toBe(false)
+
+    f2.emitMessage({ id: f2.posted[0].id, ok: true, result: null })
+    await expect(p2).resolves.toBeNull()
+  })
 })
 
 describe('solveWithTimeout hang watchdog', () => {
