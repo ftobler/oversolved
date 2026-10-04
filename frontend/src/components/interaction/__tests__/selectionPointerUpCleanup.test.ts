@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { runPointerUpCleanup, runPointerUpDragSafetyNet } from '@/components/interaction/useSelectionPointerUpCleanup'
+import { runPointerUpCleanup, runPointerUpDragSafetyNet, useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import type { DragPendingState, DragState } from '@/stores/sketchEditorStore'
 
 const pending: DragPendingState = {
@@ -148,5 +149,21 @@ describe('runPointerUpDragSafetyNet', () => {
     const state = useSketchEditorStore.getState()
     expect(state.drag).toBeNull()
     expect(state.dragPending).toBeNull()
+  })
+})
+
+describe('useSelectionPointerUpCleanup', () => {
+  it('recovers a stuck drag when the window loses focus', () => {
+    // Releasing the button outside the browser window delivers no pointerup or
+    // pointercancel. The blur fallback must route through the same cleanup or
+    // isPointerDown and the drag stay pinned.
+    useSketchEditorStore.setState({
+      isPointerDown: true, drag, dragPending: pending, dragStartClient: [10, 10], dragSnap: null,
+    })
+    renderHook(() => useSelectionPointerUpCleanup())
+
+    act(() => { window.dispatchEvent(new Event('blur')) })
+
+    expect(useSketchEditorStore.getState().isPointerDown).toBe(false)
   })
 })
