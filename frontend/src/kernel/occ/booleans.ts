@@ -192,9 +192,15 @@ export function booleanWithHistory(
   algo.Build()
   if (!algo.IsDone()) throw new Error(`boolean ${op} did not complete`)
 
-  const result = algo.Shape()
+  // Track the result until it is handed to the caller: on any throw during
+  // classification the scope deletes it, and on success the detach below leaves
+  // ownership with the caller exactly as before.
+  const result = scope.track(algo.Shape())
   const diff = emptyBrepDiff()
-  if (!algo.HasHistory()) return { shape: result, diff, faceOrigin: [] }
+  if (!algo.HasHistory()) {
+    scope.detach(result)
+    return { shape: result, diff, faceOrigin: [] }
+  }
   const history = scope.track(algo.History()).get()
 
   // Six walks, one per (shape, kind), instead of ten: today the target/tool
@@ -327,6 +333,7 @@ export function booleanWithHistory(
     if (chosen) faceOrigin.push({ output: of, source: chosen.source, fromTool: chosen.fromTool })
   }
 
+  scope.detach(result)
   return { shape: result, diff, faceOrigin }
 }
 
