@@ -133,12 +133,17 @@ function drilledEntities(
   return [picked]
 }
 
-/** Max-axis extent of the target's edge-sampled AABB: the length a through-all
- *  cutter must clear. Vertices alone understate curved bodies (a cylinder's
- *  only vertices sit on its seam), so the edge samples carry the silhouette. */
-function bodySpan(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+/** Extent of the target along the drill axis, from its edge-sampled AABB: the
+ *  length a through-all cutter must clear. The AABB is projected onto the axis
+ *  (2*sum(|axis_i|*half_i)) instead of taking the max world-axis half-extent: an
+ *  oblique axis can cross a cube along its space diagonal, where the max-axis
+ *  span underestimates the body by up to sqrt(3), leaving the far corner uncut
+ *  while intersects() still reports a hit. Vertices alone understate curved
+ *  bodies (a cylinder's only vertices sit on its seam), so the edge samples
+ *  carry the silhouette. */
+function bodySpanAlong(oc: OccModule, scope: DisposeScope, shape: OccShape, axis: Vec3): number {
   const { half } = bodyFrame(oc, scope, shape)
-  return 2.0 * Math.max(half[0], half[1], half[2])
+  return 2.0 * (Math.abs(axis[0]) * half[0] + Math.abs(axis[1]) * half[1] + Math.abs(axis[2]) * half[2])
 }
 
 /** True when `tool` shares any volume with `shape`.
@@ -237,9 +242,13 @@ export function solveHole(
   let throughDepth = 0.0
   let throughBackOffset = 0.0
   if (depthMode === 'through_all') {
-    const span = bodySpan(oc, scope, currentShape)
+    const span = bodySpanAlong(oc, scope, currentShape, axis)
+    // Back the cutter off by the full projected span plus a hair so a site on
+    // the body's near face still clears the far face tangentially; the 3x
+    // length leaves ample margin on the forward side.
+    const margin = span * 1e-3 + 1e-6
     throughDepth = span * 3.0
-    throughBackOffset = span
+    throughBackOffset = span + margin
   }
 
   let skippedCount = 0
