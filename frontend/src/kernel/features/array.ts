@@ -95,7 +95,9 @@ export function buildArrayTransforms(
     const dirY = resolveArrayDirection(feature, 'y', globalRepo, bodyStore)
     for (let j = 0; j < countY; j++) {
       for (let i = 0; i < countX; i++) {
-        if (includeSource && i === 0 && j === 0) continue
+        // The seed cell (0,0) is the source position, never a copy, whether or
+        // not the source is included. Linear and circular already exclude it.
+        if (i === 0 && j === 0) continue
         trsfs.push(
           makeTranslationTrsf(
             oc,
@@ -151,10 +153,12 @@ export function buildCircularTransforms(
       trsfs.push(makeRotationTrsf(oc, scope, axisOrigin, axisDirection, ((step * i) * Math.PI) / 180))
     }
   } else {
-    // No source slot; sweep from the seed angle, stopping before the
-    // full-360 wrap that would place the last copy on the source position.
-    const n = (step !== 0 && Math.abs((step * count) % 360) < 1e-9) ? count - 1 : count
-    for (let i = 0; i < n; i++) {
+    // No source slot; sweep from the first step, never the seed. A sweep that
+    // lands back on the seed (a full 360 wrap) drops that last copy, matching
+    // the linear exclude behaviour of no copy at the source position.
+    const wraps = step !== 0 && Math.abs((step * count) % 360) < 1e-9
+    const n = wraps ? count - 1 : count
+    for (let i = 1; i <= n; i++) {
       trsfs.push(makeRotationTrsf(oc, scope, axisOrigin, axisDirection, ((step * i) * Math.PI) / 180))
     }
   }

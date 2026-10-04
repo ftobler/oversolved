@@ -524,8 +524,12 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
 
     // ─── Circular array: no source ───
 
-    it('circular_array include_source=false produces count copies', () => {
-      // include_source=false should still produce count distinct copies.
+    it('circular_array include_source=false leaves no copy on the seed', () => {
+      // The toggle means no seed copy in every mode. The default step is
+      // 360/count, so the copies must sweep 90, 180, 270: the old exclude branch
+      // swept 0, 90, 180, keeping a coincident seed copy and dropping the 270
+      // slot. Operation new spawns one body per copy, so the copy angles are
+      // read straight off the new bodies.
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
@@ -538,15 +542,23 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           id: 'ca1',
           circular_array: {
             source_body: 'body_s',
-            count: 5, step_angle: null as unknown as number,
+            count: 4, step_angle: null as unknown as number,
             axis: '@axis_z',
             include_source: false,
-            operation: 'add',
+            operation: 'new',
           },
         }, repo, bodyStore)
         expect(result.status).toBe('ok')
-        expect(bodyStore.body_s.modified_by).toContain('ca1')
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_s.shape!))).toBeGreaterThan(0)
+        const copyIds = Object.keys(bodyStore).filter((b) => b.startsWith('body_ca1')).sort()
+        expect(copyIds).toHaveLength(3)
+        const angles = copyIds
+          .map((bid) => {
+            const c = centreOf(scope, table, bodyStore[bid])
+            const deg = (Math.atan2(c[1], c[0]) * 180) / Math.PI
+            return ((Math.round(deg) % 360) + 360) % 360
+          })
+          .sort((a, b) => a - b)
+        expect(angles).toEqual([90, 180, 270])
       } finally {
         scope.dispose()
       }

@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { makeBox, makeBoxAt, makeCylinder } from '../occ/primitives'
+import { makeBox, makeBoxAt, makeCylinder, type Vec3 } from '../occ/primitives'
 import { volumeOf, booleanWithDiff } from '../occ/booleans'
 import { Repository } from '../query'
 import { solveHole } from './hole'
@@ -263,6 +263,59 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
 
         const refBody = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 15, 20)
         const refCutter = makeCylinder(occ, scope, [45, 0, 10], [-1, 0, 0], 3, 90)
+        const refCut = booleanWithDiff(occ, scope, refBody, refCutter, 'cut')
+        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(
+          volumeOf(occ, scope, refCut.shape),
+          3,
+        )
+      } finally {
+        scope.dispose()
+      }
+    })
+
+    it('through-all on an oblique datum plane fully pierces the body', () => {
+      // bodySpan used to size the cutter from the max world-axis half-extent,
+      // but a diagonal drill axis crosses a cube along its space diagonal: the
+      // extent along an oblique unit axis is sum(|axis_i| * size_i), up to
+      // sqrt(3) times the max-axis span. With the plane at one corner and the
+      // body on the far side, the old [-span, +2span] cutter stopped 0.73*span
+      // short of the far corner while intersects() was true, so the hole
+      // reported ok with most of the body uncut. The projected span must drive
+      // the cut fully through; the volume must match an independently built
+      // guaranteed-through cutter.
+      const scope = new DisposeScope()
+      const table = new HandleTable({ finalizerGuard: false })
+      try {
+        const s3 = Math.sqrt(3)
+        const normal = [-1 / s3, -1 / s3, -1 / s3]
+        // A basis in the plane through the origin corner. x_axis and y_axis are
+        // orthonormal to the reversed body diagonal (normal).
+        const xAxis = [1 / Math.SQRT2, -1 / Math.SQRT2, 0]
+        const yAxis = [-1 / Math.sqrt(6), -1 / Math.sqrt(6), 2 / Math.sqrt(6)]
+        const repo = new Repository()
+        repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: xAxis, y_axis: yAxis, normal })
+        repo.register('sk/p1/xy', { external_xy: [0, 0] })
+        const box = makeBox(occ, scope, 10, 10, 10)
+        const bodyStore: Record<string, Body> = {
+          body_t: {
+            id: 'body_t', created_by: 'ex_t', modified_by: [],
+            shape: table.register(box, 'ex_t'),
+            sketch_id: 'sk_t', brep_diff: null,
+            profile_queries: [],
+          },
+        }
+        const result = solveHole(occ, scope, table, {
+          id: 'hole1',
+          hole: { sketch: '@sk', diameter: 6, depth_mode: 'through_all', direction: 'normal', target: 'body_t' },
+        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        expect(result.status).toBe('ok')
+        expect(result.body_ids).toHaveLength(1)
+
+        const refBody = makeBox(occ, scope, 10, 10, 10)
+        // Centre the reference cutter well before the corner along the axis so
+        // it spans both directions through the body diagonal.
+        const refCenter: Vec3 = [normal[0] * -100, normal[1] * -100, normal[2] * -100]
+        const refCutter = makeCylinder(occ, scope, refCenter, normal as Vec3, 3, 200)
         const refCut = booleanWithDiff(occ, scope, refBody, refCutter, 'cut')
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(
           volumeOf(occ, scope, refCut.shape),

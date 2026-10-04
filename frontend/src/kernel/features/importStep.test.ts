@@ -20,7 +20,18 @@ describe('solveImportStep guard paths', () => {
     for (const bad of [NaN, Infinity]) {
       expect(() =>
         solveImportStep(oc, scope, table, { id: 'i1', file_id: 'f1', scale: bad }, repo, {}),
-      ).toThrow(/scale must be a finite number/)
+      ).toThrow(/scale must be a positive finite number/)
+    }
+  })
+
+  it('refuses a zero or negative scale instead of feeding it to OCC', () => {
+    // scale 0 reaches gp_Trsf.SetScale, whose inverse divides by the factor,
+    // and a negative factor is a central inversion the import UI never offers.
+    // Both must be a clear guard error, not a deep OCC failure or an empty part.
+    for (const bad of [0, -1]) {
+      expect(() =>
+        solveImportStep(oc, scope, table, { id: 'i1', file_id: 'f1', scale: bad }, repo, {}),
+      ).toThrow(/scale must be a positive finite number/)
     }
   })
 

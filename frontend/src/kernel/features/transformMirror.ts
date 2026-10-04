@@ -113,6 +113,9 @@ export function solveTransform(
   if (axisQuery) {
     const edgeRef = globalRepo.query(axisQuery, null, bodyStore) as Dict | null
     if (edgeRef === null) throw new Error(`transform: rotation_axis not found: ${JSON.stringify(axisQuery)}`)
+    // An explicit direction from cfg already counts as resolved; the query
+    // exists to derive one, and a query that derives none is a bad pick.
+    let axisResolved = rotationAxisDirection !== null
     const edge = getEdge3d(edgeRef, globalRepo)
     if (edge) {
       const [p0, p1] = edge
@@ -121,7 +124,14 @@ export function solveTransform(
       if (length > 1e-10) {
         rotationAxisOrigin = [...p0]
         rotationAxisDirection = [d[0] / length, d[1] / length, d[2] / length]
+        axisResolved = true
       }
+    }
+    // A pick whose endpoints are (nearly) coincident must fail loud instead of
+    // letting the composition fall back to world Z and commit an arbitrary
+    // rotation as a normal solve.
+    if (!axisResolved && rotationAngle) {
+      throw new Error(`transform: rotation_axis query '${axisQuery}' did not resolve to a non-degenerate edge`)
     }
   }
 
