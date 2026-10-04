@@ -1,5 +1,9 @@
 import * as THREE from 'three'
 
+// Cosine of the angle between the cursor ray and the plane normal below which
+// the projection is treated as edge-on. See projectCursorToSketchPlane.
+const MIN_PLANE_INCIDENCE = 1e-6
+
 /**
  * Math-only drag plane recipe (replaces the old invisible mesh + raycast).
  *
@@ -35,5 +39,12 @@ export function projectCursorToSketchPlane(
   const plane = buildSketchWorldPlane(group)
   const raycaster = new THREE.Raycaster()
   raycaster.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera)
+  // Three.js refuses only an exactly-parallel ray (`denominator === 0`), which
+  // floating point rarely produces for a "parallel" camera. A ray a hair off
+  // edge-on instead returns a finite point at distance/sin(angle), so a tiny
+  // mid-drag camera nudge could commit a vertex far outside the document. Treat
+  // any ray within this incidence of the plane as edge-on and refuse it.
+  const incidence = Math.abs(raycaster.ray.direction.dot(plane.normal))
+  if (incidence < MIN_PLANE_INCIDENCE) return null
   return raycaster.ray.intersectPlane(plane, out)
 }

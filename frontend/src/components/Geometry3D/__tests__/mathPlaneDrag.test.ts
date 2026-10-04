@@ -108,4 +108,26 @@ describe('projectCursorToSketchPlane', () => {
     expect(pt).not.toBeNull()
     expect(pt!.z).toBeCloseTo(5, 5)
   })
+
+  it('returns null for an edge-on camera looking parallel to the plane', () => {
+    const g = makeGroup([0, 0, 0])
+    const cam = new THREE.OrthographicCamera(-10, 10, 10, -10, -100, 100)
+    cam.position.set(0, 0, 50)
+    cam.lookAt(1, 0, 50)  // view direction (1, 0, 0): parallel to the z=0 plane
+    cam.updateMatrixWorld(true)
+    cam.updateProjectionMatrix()
+    expect(projectCursorToSketchPlane(cam, g, { x: 0, y: 0 })).toBeNull()
+  })
+
+  it('rejects a near-parallel hit that would land unbounded from the sketch origin', () => {
+    const g = makeGroup([0, 0, 0])
+    const cam = new THREE.OrthographicCamera(-10, 10, 10, -10, -100, 100)
+    cam.position.set(0, 0, 50)
+    // A hair off edge-on: view direction z = -1e-9. Unguarded, the intersection
+    // sits ~5e10 world units away; the incidence guard must refuse it.
+    cam.lookAt(1, 0, 50 - 1e-9)
+    cam.updateMatrixWorld(true)
+    cam.updateProjectionMatrix()
+    expect(projectCursorToSketchPlane(cam, g, { x: 0, y: 0 })).toBeNull()
+  })
 })
