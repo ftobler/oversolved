@@ -195,7 +195,7 @@ describe('Viewport pointer capture for box drags', () => {
 
     fireEvent.pointerDown(el, { button: 0, isPrimary: true })
     fireEvent.pointerMove(el, { clientX: 40, clientY: 40, isPrimary: true })
-    fireEvent.pointerCancel(el)
+    fireEvent.pointerCancel(el, { isPrimary: true })
     expect(rubberBand.onPointerCancel).toHaveBeenCalledTimes(1)
     // The box had captured; cancel must release it.
     expect(release).toHaveBeenCalledWith(0)
