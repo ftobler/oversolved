@@ -450,7 +450,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
-    clickGesture.current.down(e.button, e.clientX, e.clientY)
+    clickGesture.current.down(e.pointerId, e.button, e.clientX, e.clientY)
     if (e.button !== 2) closeContextMenu()
 
     // 268: attempt rubber-band on left-click in empty space.
@@ -484,7 +484,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     const hadDown = clickGesture.current.state.origin !== null
-    const click = clickGesture.current.up(e.clientX, e.clientY)
+    const click = clickGesture.current.up(e.pointerId, e.clientX, e.clientY)
     // A release with no matching press (the gesture started outside the pane)
     // owns neither the rubber band nor the context menu.
     if (!hadDown) return
@@ -595,7 +595,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // orbit that swings out and returns near its start would otherwise read as a
   // stationary click when only the two end points are compared.
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    clickGesture.current.move(e.clientX, e.clientY)
+    // The pointer id rides along: a second finger's move must not latch the
+    // primary gesture's click tracker (utils/clickGesture guards on it).
+    clickGesture.current.move(e.pointerId, e.clientX, e.clientY)
     // The box just opened: from here on the gesture belongs to the band, and
     // capture is what delivers its release even if it lands off-pane.
     if (rubberBand.onPointerMove(e)) e.currentTarget.setPointerCapture(e.pointerId)

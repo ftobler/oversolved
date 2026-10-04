@@ -47,7 +47,9 @@ export interface AssemblyGestureMachine {
   // Refuses a pointer that is not the opener once one is recorded.
   open: (source: GestureSource, pointer: PointerRef) => boolean
   markMoved: () => void
-  pointerMove: (x: number, y: number) => void
+  // Advances the click tracker only for the recorded opener, so a second
+  // pointer moving while the opener is held cannot latch the opener's travel.
+  pointerMove: (pointer: PointerRef, x: number, y: number) => void
   // The only transition that yields `owned: true`. Requires the opener's pointer
   // id and button, then closes the click tracker and clears the opener. Any
   // other release is inert and leaves the gesture open.
@@ -85,7 +87,7 @@ export function createAssemblyGestureMachine(): AssemblyGestureMachine {
     if (opener) return false
     opener = { id: pointer.id, button: pointer.button }
     moved = false
-    click.down(pointer.button, x, y)
+    click.down(pointer.id, pointer.button, x, y)
     return true
   }
 
@@ -104,11 +106,13 @@ export function createAssemblyGestureMachine(): AssemblyGestureMachine {
 
   const markMoved = (): void => { moved = true }
 
-  const pointerMove = (x: number, y: number): void => { click.move(x, y) }
+  const pointerMove = (pointer: PointerRef, x: number, y: number): void => {
+    click.move(pointer.id, x, y)
+  }
 
   const pointerUp = (pointer: PointerRef, x: number, y: number): GestureOutcome => {
     if (!opener || pointer.id !== opener.id || pointer.button !== opener.button) return REJECTED
-    click.up(x, y)
+    click.up(pointer.id, x, y)
     opener = null
     const outcome: GestureOutcome = { owned: true, source, moved }
     source = null

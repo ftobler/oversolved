@@ -66,20 +66,39 @@ export function isStationaryPrimaryClick(state: ClickGestureState): boolean {
 /** Mutable holder for the state above, for components that keep it in a ref. */
 export interface ClickGestureTracker {
   readonly state: ClickGestureState
-  down(button: number, x: number, y: number): void
-  move(x: number, y: number): void
+  down(pointerId: number, button: number, x: number, y: number): void
+  move(pointerId: number, x: number, y: number): void
   // Returns the closed gesture so the caller can branch on it immediately.
-  up(x: number, y: number): ClickGestureState
+  up(pointerId: number, x: number, y: number): ClickGestureState
   reset(): void
 }
 
 export function createClickGestureTracker(): ClickGestureTracker {
   let state = IDLE_GESTURE
+  // The pointer that opened the gesture. Every other pointer's move and
+  // release must leave the verdict alone: on multi-touch a second finger
+  // travelling while the first is held would otherwise latch wasDrag and turn
+  // the opener's stationary release into a drag, silently dropping its click.
+  let openerId: number | null = null
   return {
     get state() { return state },
-    down(button, x, y) { state = gestureDown(button, x, y) },
-    move(x, y) { state = gestureMove(state, x, y) },
-    up(x, y) { state = gestureUp(state, x, y); return state },
-    reset() { state = IDLE_GESTURE },
+    down(pointerId, button, x, y) {
+      openerId = pointerId
+      state = gestureDown(button, x, y)
+    },
+    move(pointerId, x, y) {
+      if (openerId === null || pointerId !== openerId) return
+      state = gestureMove(state, x, y)
+    },
+    up(pointerId, x, y) {
+      if (openerId === null || pointerId !== openerId) return state
+      openerId = null
+      state = gestureUp(state, x, y)
+      return state
+    },
+    reset() {
+      openerId = null
+      state = IDLE_GESTURE
+    },
   }
 }

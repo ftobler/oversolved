@@ -552,7 +552,9 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     // Latch the travel as it happens: an orbit that swings out and comes back
     // would read as a stationary click if only the two end points were compared.
-    adapter.pointerMove(e.clientX, e.clientY)
+    // The pointer id rides along so a second touch cannot latch the opener's
+    // tracker and turn its stationary release into a dropped click.
+    adapter.pointerMove(pointerOf(e), e.clientX, e.clientY)
     if (!adapter.isActive()) {
       scheduleHover(e)
       return
