@@ -347,8 +347,15 @@ export function applyAddConstraint(
   if (!feature) return
   // Materialize-on-reference: an inferred-point handle target (`dock:`/`isect:`)
   // promotes to a real point before the constraint is built, so the rest of this
-  // function never sees one.
-  targets = _resolveInferredTargets(doc, featureId, targets)
+  // function never sees one. A null return means a dock handle named a contact
+  // the document can no longer materialize; authoring the raw handle would persist
+  // a `$dock:` literal the solver can never resolve, so the whole pick is dropped.
+  const resolved = _resolveInferredTargets(doc, featureId, targets)
+  if (!resolved) {
+    warn('applyAddConstraint: unresolvable inferred target, skipping', { featureId, kind, targets })
+    return
+  }
+  targets = resolved
   const cid = uniqueConstraintId(feature.constraints, kind)
   const c: PartConstraint = { id: cid, kind }
   const pt = (t: string) => parseTarget(t, featureId)
@@ -729,19 +736,25 @@ function _dockPointId(dock: PartConstraint, knownIds: Set<string>): string | nul
  *    intersection (no host). The contributing curves are baked into the handle at
  *    pick time, so this just calls `applyAddPointAtIntersection`.
  *
- *  Non-handle targets pass through untouched. */
-function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: string[]): string[] {
+ *  Non-handle targets pass through untouched. Returns null when a `dock:` handle
+ *  cannot materialize (its host already carries a dock whose point entity is
+ *  gone): there is no vertex to point at and persisting the handle itself would
+ *  author an unresolvable `$dock:` ref, so the caller must drop the pick. */
+function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: string[]): string[] | null {
   if (!targets.some(t => t.startsWith('dock:') || t.startsWith('isect:'))) return targets
   const feature = findFeature(doc, featureId)
   if (!feature) return targets
-  return targets.map(t => {
+  const resolved: string[] = []
+  for (const t of targets) {
     if (t.startsWith('dock:')) {
       const parts = t.split(':')
       const fid = parts[1]
       const hostId = parts.slice(2).join(':')  // host ids are colon-free base64url, but be safe
       const at = dockLocationOf(feature.entities ?? [], feature.constraints ?? [], feature.initial ?? {}, hostId)
       const pid = applyAddDock(doc, fid, at ?? [0, 0], hostId)
-      return pid ? `vertex:${fid}:${pid}:xy` : t
+      if (!pid) return null
+      resolved.push(`vertex:${fid}:${pid}:xy`)
+      continue
     }
     if (t.startsWith('isect:')) {
       const parts = t.split(':')  // isect, fid, x, y, ...curveIds
@@ -752,10 +765,12 @@ function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: strin
       const at: [number, number] = [parseFloat(parts[2]), parseFloat(parts[3])]
       const curves = parts.slice(4)
       const pid = applyAddPointAtIntersection(doc, fid, at, curves)
-      return pid ? `vertex:${fid}:${pid}:xy` : t
+      resolved.push(pid ? `vertex:${fid}:${pid}:xy` : t)
+      continue
     }
-    return t
-  })
+    resolved.push(t)
+  }
+  return resolved
 }
 
 /** Pin the sugar entity's own vertices to what the draw clicks snapped onto,

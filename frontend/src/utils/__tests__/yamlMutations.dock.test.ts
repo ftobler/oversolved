@@ -108,13 +108,12 @@ describe('applyAddDock', () => {
 const coincidents = (doc: PartDoc) => (sketch(doc).constraints ?? []).filter(c => c.kind === 'coincident')
 
 describe('applyAddConstraint dock interception (materialize-on-reference)', () => {
-  // Characterization of a degenerate corner: when the dock exists but its point
-  // id cannot be resolved (_dockPointId returns null because the wire ref names
-  // an entity that is gone), applyAddDock reuses nothing and returns null, and
-  // _resolveInferredTargets passes the raw handle through. The constraint is
-  // then authored with the handle as a literal dead `$dock:` ref. Pinned here so
-  // a future fix (skip authoring, or heal the dock) changes this deliberately.
-  it('an existing dock with an unresolvable point authors the handle as a dead literal ref', () => {
+  // When the dock exists but its point id cannot be resolved (_dockPointId
+  // returns null because the wire ref names an entity that is gone), applyAddDock
+  // reuses nothing and returns null. The pick is dropped rather than authored:
+  // persisting the raw handle would leave a literal `$dock:` ref the solver can
+  // never resolve.
+  it('an existing dock with an unresolvable point authors no constraint', () => {
     const doc = makeSketchDoc()
     const host = hostId(doc)
     sketch(doc).constraints!.push({
@@ -128,13 +127,24 @@ describe('applyAddConstraint dock interception (materialize-on-reference)', () =
       `dock:Sketch1:${host}`,
     ])
 
-    // No second dock, no materialized contact point.
+    // No second dock, no materialized contact point, and no authored constraint.
     expect(docks(doc)).toHaveLength(1)
     expect(points(doc)).toHaveLength(1)
-    // But the coincident WAS authored, naming the unresolved handle verbatim.
-    const cs = coincidents(doc)
-    expect(cs).toHaveLength(1)
-    expect(JSON.stringify(cs[0])).toContain(`$dock:Sketch1:${host}`)
+    expect(coincidents(doc)).toHaveLength(0)
+  })
+
+  it('a dock handle that resolves still authors the constraint', () => {
+    const doc = makeSketchDoc()
+    sketch(doc).entities!.push({ id: 'free', kind: 'point' })
+    sketch(doc).initial!['free'] = [9, 9]
+
+    applyAddConstraint(doc, 'Sketch1', 'coincident', [
+      'vertex:Sketch1:free:xy',
+      `dock:Sketch1:${hostId(doc)}`,
+    ])
+
+    expect(docks(doc)).toHaveLength(1)
+    expect(coincidents(doc)).toHaveLength(1)
   })
 
   it('a dock: handle target materializes the point and rewrites the constraint to it', () => {
