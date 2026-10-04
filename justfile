@@ -47,8 +47,8 @@ static:
 
 # Run every gate (Python + frontend).
 default:
-    just python
-    just frontend
+    mkdir -p tmp
+    { just python && just frontend; } 2>&1 | tee tmp/just_default.log
 
 # Every Python gate. No Python runs at app runtime any more, so this covers only
 # the repo's own tooling: the icon generator under oversolved/ and the tests
@@ -56,12 +56,13 @@ default:
 
 # Every Python gate (mypy + ruff + pytest).
 python:
-    just mypy
-    just ruff
-    just pytest
+    mkdir -p tmp
+    { just mypy && just ruff && just pytest; } 2>&1 | tee tmp/just_python.log
 
 # Each gate tees its full output to tmp/<gate>.log as well as stdout. One run is
 # slow, so the log lets you re-grep the result afterwards without re-running it.
+# Aggregate and asset recipes tee their whole run to tmp/just_<recipe>.log on
+# top of that, so `just frontend` needs no hand-written `| tee` to be re-grepped.
 
 # Type-check the surviving Python tooling.
 mypy:
@@ -80,10 +81,8 @@ pytest:
 
 # Every frontend gate (icons + lint + tests + build).
 frontend:
-    just icons
-    just frontend-lint
-    just frontend-test
-    just build
+    mkdir -p tmp
+    { just icons && just frontend-lint && just frontend-test && just build; } 2>&1 | tee tmp/just_frontend.log
 
 [working-directory: "frontend"]
 frontend-lint:
@@ -102,8 +101,8 @@ frontend-test:
 # Full-document WASM parity gate against the frozen baseline. Slow.
 [working-directory: "frontend"]
 parity:
-    just install-occ
     mkdir -p ../tmp
+    just install-occ
     npm run test:parity 2>&1 | tee ../tmp/parity.log
 
 # Test the Rust solver workspace (solver-core + sketch-solver + mate-solver)
@@ -126,39 +125,48 @@ rust-lint:
 
 # Build both Rust solvers to WASM and copy them into the frontend.
 wasm:
-    cd sketch-solver && wasm-pack build --target web --out-dir pkg --release
-    cd sketch-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
-    cd mate-solver && wasm-pack build --target web --out-dir pkg --release
-    cd mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
-    cd frontend && node scripts/copyWasm.mjs
+    mkdir -p tmp
+    { \
+        (cd sketch-solver && wasm-pack build --target web --out-dir pkg --release) && \
+        (cd sketch-solver && wasm-pack build --target nodejs --out-dir pkg-node --release) && \
+        (cd mate-solver && wasm-pack build --target web --out-dir pkg --release) && \
+        (cd mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release) && \
+        (cd frontend && node scripts/copyWasm.mjs); \
+    } 2>&1 | tee tmp/wasm.log
 
 # Regenerate the icon set from oversolved/icons.py.
 icons:
-    .venv/bin/python oversolved/icons.py
+    mkdir -p tmp
+    .venv/bin/python oversolved/icons.py 2>&1 | tee tmp/icons.log
 
 
 # --- setup ---
 
 # Install all dependencies (Python + frontend + wasm tools + opencascade.js)
 install:
-    test -d .venv || python3 -m venv .venv
+    mkdir -p tmp
     # note cairo needs apt libcairo2-dev
-    .venv/bin/pip install -e ".[dev]"
-    just install-npm
-    just install-wasm
-    just install-occ
+    { \
+        (test -d .venv || python3 -m venv .venv) && \
+        .venv/bin/pip install -e ".[dev]" && \
+        just install-npm && \
+        just install-wasm && \
+        just install-occ; \
+    } 2>&1 | tee tmp/just_install.log
 
 [working-directory: "frontend"]
 install-npm:
-    npm install
+    mkdir -p ../tmp
+    npm install 2>&1 | tee ../tmp/npm_install.log
 
 install-wasm:
-    cargo install wasm-pack
+    mkdir -p tmp
+    cargo install wasm-pack 2>&1 | tee tmp/cargo_install_wasm_pack.log
 
 [working-directory: "frontend"]
 install-occ:
-    npm run occ:install
-    npm run occ:provision
+    mkdir -p ../tmp
+    { npm run occ:install && npm run occ:provision; } 2>&1 | tee ../tmp/occ_install.log
 
 
 # --- cleanup ---
