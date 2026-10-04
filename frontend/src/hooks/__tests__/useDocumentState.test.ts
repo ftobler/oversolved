@@ -270,6 +270,44 @@ describe('useDocumentState load and operation failures', () => {
     expect(reSolveRef.current).not.toHaveBeenCalled()
   })
 
+  it('clears a previous load error when a later load succeeds', async () => {
+    h.loadMock.mockRejectedValueOnce(new Error('first load failed'))
+    const reSolveRef = { current: null }
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useDocumentState(id, reSolveRef, { solveOnLoad: false }),
+      { initialProps: { id: 'A' } },
+    )
+    await tick()
+    expect(result.current.error).toBe('first load failed')
+
+    h.loadMock.mockResolvedValueOnce({ content: 'name: B', name: 'B' })
+    rerender({ id: 'B' })
+    await tick()
+
+    expect(result.current.error).toBeNull()
+    expect(result.current.docName).toBe('B')
+  })
+
+  it('drops the previous document when a later load fails', async () => {
+    h.loadMock.mockResolvedValueOnce({ content: 'name: A', name: 'A' })
+    const reSolveRef = { current: null }
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useDocumentState(id, reSolveRef, { solveOnLoad: false }),
+      { initialProps: { id: 'A' } },
+    )
+    await tick()
+    expect(result.current.docName).toBe('A')
+
+    h.loadMock.mockRejectedValueOnce(new Error('B is corrupt'))
+    rerender({ id: 'B' })
+    await tick()
+
+    expect(result.current.error).toBe('B is corrupt')
+    expect(result.current.doc).toBeNull()
+    expect(result.current.docRef.current).toBeNull()
+    expect(result.current.docName).toBe('')
+  })
+
   it('ignores a superseded load that resolves after a newer one', async () => {
     const resolveLoad: Record<string, (v: unknown) => void> = {}
     h.loadMock.mockImplementation((uuid: string) =>
