@@ -43,14 +43,14 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
   }
 
   it('returns empty result for empty body store', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const result = extractBrepMetadata(occ, table, {})
     expect(result).toEqual({})
     table.assertNoLeaks()
   })
 
   it('skips bodies with null shape', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const bodyStore: Record<string, Body> = {
       body_null: makeBody('body_null', 'f1', null),
     }
@@ -60,7 +60,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
   })
 
   it('skips a body then continues to the next when one shape fails', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
 
     // Stale handle: released before the call, so table.get throws.
@@ -86,7 +86,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
   })
 
   it('skips a body that fails to tessellate, continues, and logs it', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
 
     // Stale handle: released before the call, so the mesh path throws. The
@@ -129,7 +129,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
   })
 
   it('extracts face metadata from a box body with empty geometry arrays', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
     const handle = boxShape(scope, table, 10, 10, 10, 'f1')
 
@@ -172,7 +172,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
   })
 
   it('extracts per-face centroid/normal/surface_type/classifiers', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
     const handle = boxShape(scope, table, 10, 10, 10, 'f1')
 
@@ -202,7 +202,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
   })
 
   it('processes multiple bodies in the store', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
     const h1 = boxShape(scope, table, 10, 10, 10, 'f1')
     const h2 = boxShape(scope, table, 5, 5, 5, 'f2')

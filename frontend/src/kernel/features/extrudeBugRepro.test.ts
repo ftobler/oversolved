@@ -86,7 +86,7 @@ describe.skipIf(!oc || !solveBytes)('extrude radical-line half-lens (real OCC + 
 
   function run(spec: Record<string, unknown>) {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps: BuildDeps = {
         trySolveFeature: createFeatureSolver(oc!, scope, table),

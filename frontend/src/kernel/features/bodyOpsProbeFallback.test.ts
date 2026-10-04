@@ -77,7 +77,7 @@ describe('cut intersection probe failures', () => {
     // contract: a failed probe is not evidence of disjointness), so the throw
     // must not read as a skip. The real cut runs.
     mocks.shapesIntersect.mockReturnValue(true)
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const bodies = store(table)
     mocks.booleanWithDiff.mockImplementation(
       (_oc: unknown, _s: unknown, _a: unknown, _b: unknown, op: string) => {
@@ -99,7 +99,7 @@ describe('cut intersection probe failures', () => {
         throw new Error(`${op} boom`)
       },
     )
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     expect(() => cut(table, store(table))).toThrow(/cut boom/)
   })
 
@@ -116,7 +116,7 @@ describe('cut intersection probe failures', () => {
         return { shape: { delete: () => {} }, diff: emptyBrepDiff(), faceOrigin: [] }
       },
     )
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const result = cut(table, store(table))
     expect(result.status).toBe('ok')
     expect(result.operation).toBe('cut')
@@ -135,7 +135,7 @@ describe('cut intersection probe failures', () => {
         throw new Error('fuse boom')
       },
     )
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     expect(() =>
       applyBodyOperation(oc, new DisposeScope(), table, {
         toolShape: { delete: () => {} } as unknown as OccShape,
@@ -159,7 +159,7 @@ describe('cut intersection probe failures', () => {
       diff: emptyBrepDiff(),
       faceOrigin: [],
     })
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const bodies = store(table)
     const result = applyBodyOperation(oc, new DisposeScope(), table, {
       toolShape: { delete: () => {} } as unknown as OccShape,

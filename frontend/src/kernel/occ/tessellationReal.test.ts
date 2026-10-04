@@ -97,7 +97,7 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
 
   function run(name: string): { ts: TsGeom; fx: Fixture } {
     const fx = allFixtures[name]
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildFixture(occ, table, fx)
     const mesh = solidToMesh(occ, table, h)
     const edges = solidToEdges(occ, table, h).edges
@@ -222,7 +222,7 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
 
   it('emits face_queries and classifiers for a box (2d wiring)', () => {
     const fx = allFixtures['box_10x10x5']
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildFixture(occ, table, fx)
     const mesh = solidToMesh(occ, table, h, {
       createdBy: 'ex1',
@@ -249,7 +249,7 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
   // profile tokens, matching the builder's registered key. Same truthiness trap
   // as classifyFace: `[]` used to null the profile fallback.
   it('treats an empty edgeAncestry list as absent and falls back to the profile tokens', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
     try {
       const base = solidToEdges(occ, table, h, { createdBy: 'ex1', bodyId: 'body_ex1' })
@@ -287,7 +287,7 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
   // then falls back to the ancestral net and must still carry the profile
   // tokens (the net shared with its siblings). Pins the vertex fallback.
   it('vertex no-neighbour fallback: a uuid-less vertex query still carries the profile tokens', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
     try {
       const out = solidToVertices(occ, table, h, {
@@ -318,7 +318,7 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
   // with ''; these two now do the same, which is what makes the consumer guards
   // belt-and-braces instead of load-bearing.
   it('emits one query per entity even with no createdBy (positional zip contract)', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
     try {
       // Exactly what the callers pass for a body with a falsy `created_by`.

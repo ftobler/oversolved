@@ -61,7 +61,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
 
   it('trimAtPlane truncates an over-length prism exactly at the plane', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, bottomLoop(table, bodyStore.body_b), bodyStore))
@@ -81,7 +81,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     // the Common yields no solid. The guard must fail loud rather than return
     // an empty shape the caller registers as a body.
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, bottomLoop(table, bodyStore.body_b), bodyStore))
@@ -97,7 +97,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
 
   it('terminates on a plane NOT parallel to the profile (slanted cut)', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       // z=0 square, x,y in [0,10].
@@ -117,7 +117,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
 
   it('solveExtrude up_to ignores blind distance and terminates at the plane', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const loop = bottomLoop(table, bodyStore.body_b)
@@ -142,7 +142,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
 
   it('auto-reverses when the up_to target is behind the extrude direction', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const loop = bottomLoop(table, bodyStore.body_b)
@@ -167,7 +167,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
 
   it('errors when the up_to target passes through the profile', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const loop = bottomLoop(table, bodyStore.body_b)
@@ -189,7 +189,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
 
   it('resolves a planar body-face up_to target through its OCC plane', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const loop = bottomLoop(table, bodyStore.body_b)
@@ -218,7 +218,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     // loud by name rather than be treated as an unresolved pick and quietly
     // extrude the blind distance.
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const loop = bottomLoop(table, bodyStore.body_b)
@@ -247,7 +247,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
 
   it('falls back to blind distance with a warning when up_to does not resolve', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const loop = bottomLoop(table, bodyStore.body_b)
@@ -269,7 +269,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     // An ambiguous pick matched several elements; reporting "did not resolve"
     // told the user the target was gone while it was actually over-matched.
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const loop = bottomLoop(table, bodyStore.body_b)

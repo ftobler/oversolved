@@ -174,7 +174,7 @@ describe('createFeatureSolver', () => {
 
   beforeEach(() => {
     scope = new DisposeScope()
-    table = new HandleTable({ finalizerGuard: false })
+    table = new HandleTable()
   })
 
   afterEach(() => {

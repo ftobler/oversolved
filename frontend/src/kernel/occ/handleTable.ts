@@ -20,7 +20,6 @@
  */
 
 import type { Disposable } from './disposeScope'
-import { isDevBuild } from '../isDevBuild'
 
 /** Opaque, branded handle into a [[HandleTable]]. Never do arithmetic on it. */
 export type OccHandle = number & { readonly __occHandle: unique symbol }
@@ -37,49 +36,9 @@ export interface LeakInfo {
   owners: string[]
 }
 
-export interface HandleTableOptions {
-  /**
-   * Enable the FinalizationRegistry leak guard. Defaults to dev builds only.
-   * The guard fires when a registered proxy is garbage-collected while the
-   * table still believes it is live -- i.e. a handle reference was dropped
-   * without `release`. It is a best-effort dev signal (GC timing is not
-   * deterministic), not the CI gate; `assertNoLeaks()` is the gate.
-   */
-  finalizerGuard?: boolean
-  // Sink for guard-detected leaks. Defaults to `console.warn`.
-  onLeak?: (info: LeakInfo) => void
-}
-
-function defaultOnLeak(info: LeakInfo): void {
-  console.warn(
-    `HandleTable leak: handle ${info.handle} (refcount ${info.refcount}, ` +
-      `owners [${info.owners.join(', ')}]) was garbage-collected while still live. ` +
-      'A reference was dropped without release().',
-  )
-}
-
 export class HandleTable {
   private readonly slots = new Map<number, Slot>()
   private nextId = 1
-  private readonly registry?: FinalizationRegistry<number>
-  private readonly onLeak: (info: LeakInfo) => void
-
-  constructor(opts: HandleTableOptions = {}) {
-    this.onLeak = opts.onLeak ?? defaultOnLeak
-    const guard = opts.finalizerGuard ?? isDevBuild()
-    if (guard && typeof FinalizationRegistry !== 'undefined') {
-      this.registry = new FinalizationRegistry((heldId: number) => {
-        const slot = this.slots.get(heldId)
-        if (slot && slot.refcount > 0) {
-          this.onLeak({
-            handle: heldId as OccHandle,
-            refcount: slot.refcount,
-            owners: [...slot.owners],
-          })
-        }
-      })
-    }
-  }
 
   /**
    * Take ownership of `obj` at refcount 1. `owner` (a feature id) lets
@@ -90,7 +49,6 @@ export class HandleTable {
     const owners = new Set<string>()
     if (owner !== undefined) owners.add(owner)
     this.slots.set(id, { obj, refcount: 1, owners })
-    this.registry?.register(obj as object, id, obj as object)
     return id as OccHandle
   }
 
@@ -157,7 +115,6 @@ export class HandleTable {
 
   private finalize(h: OccHandle, s: Slot): void {
     this.slots.delete(h)
-    this.registry?.unregister(s.obj as object)
     try {
       if (!(s.obj.isDeleted?.() ?? false)) s.obj.delete()
     } catch {

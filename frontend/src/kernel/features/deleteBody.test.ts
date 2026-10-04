@@ -27,7 +27,7 @@ function body(id: string): Body {
 
 describe('solveDeleteBody', () => {
   it('removes the referenced body and releases its handle', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     let deleted = false
     const stub = { delete: () => { deleted = true } }
     const bodyStore: Record<string, Body> = { body_a: body('body_a'), body_b: body('body_b') }
@@ -41,7 +41,7 @@ describe('solveDeleteBody', () => {
   })
 
   it('removes every listed body and releases each handle', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const deleted: string[] = []
     const bodyStore: Record<string, Body> = { body_a: body('body_a'), body_b: body('body_b'), body_c: body('body_c') }
     bodyStore.body_a.shape = table.register({ delete: () => { deleted.push('a') } }, 'ex')
@@ -90,7 +90,7 @@ describe('solveDeleteBody', () => {
     const bodyStore: Record<string, Body> = { body_a: body('body_a'), body_b: body('body_b') }
     bodyStore.body_a.created_by = 'ex_a'
 
-    solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: ['body_a'] } }, repo, bodyStore)
+    solveDeleteBody(oc, scope, new HandleTable(), { id: 'd', delete_body: { bodies: ['body_a'] } }, repo, bodyStore)
 
     expect(repo.byAncestorId.has('@body_a')).toBe(false)
     expect(repo.byAncestorId.has('@ex_a')).toBe(false)
@@ -101,7 +101,7 @@ describe('solveDeleteBody', () => {
     const bodyStore: Record<string, Body> = { body_ex1: body('body_ex1'), body_b: body('body_b') }
 
     const result = solveDeleteBody(
-      oc, scope, new HandleTable({ finalizerGuard: false }),
+      oc, scope, new HandleTable(),
       { id: 'd', delete_body: { bodies: ['face:ex1:?4;@ex1:face', 'face:ex1:?7;@ex1:face'] } },
       new Repository(), bodyStore,
     )
@@ -112,21 +112,21 @@ describe('solveDeleteBody', () => {
 
   it('deletes nothing when the list is empty', () => {
     const bodyStore: Record<string, Body> = { body_a: body('body_a') }
-    const result = solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: [] } }, new Repository(), bodyStore)
+    const result = solveDeleteBody(oc, scope, new HandleTable(), { id: 'd', delete_body: { bodies: [] } }, new Repository(), bodyStore)
     expect(result).toEqual({ status: 'ok', deleted_body_ids: [] })
     expect(Object.keys(bodyStore)).toEqual(['body_a'])
   })
 
   it('throws when the body ref does not resolve', () => {
     expect(() =>
-      solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: ['nope'] } }, new Repository(), { body_b: body('body_b') }),
+      solveDeleteBody(oc, scope, new HandleTable(), { id: 'd', delete_body: { bodies: ['nope'] } }, new Repository(), { body_b: body('body_b') }),
     ).toThrow()
   })
 
   it('leaves the store untouched when a later ref in the list is bad', () => {
     const bodyStore: Record<string, Body> = { body_a: body('body_a') }
     expect(() =>
-      solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: ['body_a', 'nope'] } }, new Repository(), bodyStore),
+      solveDeleteBody(oc, scope, new HandleTable(), { id: 'd', delete_body: { bodies: ['body_a', 'nope'] } }, new Repository(), bodyStore),
     ).toThrow()
     expect(Object.keys(bodyStore)).toEqual(['body_a'])
   })
@@ -135,7 +135,7 @@ describe('solveDeleteBody', () => {
     // A feature owns each solid its result split into (features/bodySplit.ts).
     // Resolving '@ex1' to the first sibling alone deleted one half of a severed
     // part and reported status ok, leaving the rest of it standing.
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const bodyStore: Record<string, Body> = {
       body_ex1: body('body_ex1'), body_ex1_1: body('body_ex1_1'), body_other: body('body_other'),
     }
@@ -156,7 +156,7 @@ describe('solveDeleteBody', () => {
     const bodyStore: Record<string, Body> = { body_ex1: body('body_ex1'), body_b: body('body_b') }
 
     const result = solveDeleteBody(
-      oc, scope, new HandleTable({ finalizerGuard: false }),
+      oc, scope, new HandleTable(),
       { id: 'd', delete_body: { bodies: ['@body_ex1/face/0'] } }, new Repository(), bodyStore,
     )
 
@@ -168,7 +168,7 @@ describe('solveDeleteBody', () => {
     const bodyStore: Record<string, Body> = { body_ex1: body('body_ex1'), body_ex2: body('body_ex2') }
 
     const result = solveDeleteBody(
-      oc, scope, new HandleTable({ finalizerGuard: false }),
+      oc, scope, new HandleTable(),
       { id: 'd', delete_body: { bodies: ['@body_ex1/edge/3', '@body_ex2/vertex/0'] } },
       new Repository(), bodyStore,
     )
@@ -185,7 +185,7 @@ describe('solveDeleteBody', () => {
     bodyStore.body_ex1_1.created_by = 'ex1'
 
     const result = solveDeleteBody(
-      oc, scope, new HandleTable({ finalizerGuard: false }),
+      oc, scope, new HandleTable(),
       { id: 'd', delete_body: { bodies: ['@body_ex1_1/face/2'] } }, new Repository(), bodyStore,
     )
 
@@ -202,7 +202,7 @@ describe('solveDeleteBody', () => {
     const staleFaceQuery = '?15,4,9,7;@u|u_f38db052aaf9026c@ex1@body_ex1@cls_zn:flatface'
 
     const result = solveDeleteBody(
-      oc, scope, new HandleTable({ finalizerGuard: false }),
+      oc, scope, new HandleTable(),
       { id: 'd', delete_body: { bodies: [staleFaceQuery] } }, new Repository(), bodyStore,
     )
 
@@ -222,7 +222,7 @@ describe('solveDeleteBody', () => {
     expect(resolveBodyIds(faceQuery, bodyStore)).toEqual(['body_a'])
 
     const result = solveDeleteBody(
-      oc, scope, new HandleTable({ finalizerGuard: false }),
+      oc, scope, new HandleTable(),
       { id: 'd', delete_body: { bodies: [faceQuery] } }, repo, bodyStore,
     )
 
@@ -247,7 +247,7 @@ describe('solveDeleteBody', () => {
     const bodyStore: Record<string, Body> = { body_imp1: body('body_imp1'), body_other: body('body_other') }
 
     const result = solveDeleteBody(
-      oc, scope, new HandleTable({ finalizerGuard: false }),
+      oc, scope, new HandleTable(),
       { id: 'd', delete_body: { bodies: [faceQuery] } }, repo, bodyStore,
     )
 
@@ -260,7 +260,7 @@ describe('solveDeleteBody', () => {
     const repo = new Repository()
     repo.query = () => { throw new Error('repo exploded') }
     expect(() =>
-      solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }),
+      solveDeleteBody(oc, scope, new HandleTable(),
         { id: 'd', delete_body: { bodies: ['?4;@body_a:face'] } }, repo, { body_a: body('body_a') }),
     ).toThrow('repo exploded')
   })
@@ -270,7 +270,7 @@ describe('solveDeleteBody', () => {
     bodyStore.body_ex1.created_by = 'ex1'
     bodyStore.body_ex1_1.created_by = 'ex1'
 
-    const result = solveDeleteBody(oc, scope, new HandleTable({ finalizerGuard: false }), { id: 'd', delete_body: { bodies: ['body_ex1_1'] } }, new Repository(), bodyStore)
+    const result = solveDeleteBody(oc, scope, new HandleTable(), { id: 'd', delete_body: { bodies: ['body_ex1_1'] } }, new Repository(), bodyStore)
 
     expect(result.deleted_body_ids).toEqual(['body_ex1_1'])
     expect(Object.keys(bodyStore)).toEqual(['body_ex1'])

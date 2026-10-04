@@ -84,7 +84,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
   for (const c of fx.cases) {
     it(`${c.name}: result + body store match Python`, () => {
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         if (c.register_plane) {
@@ -195,7 +195,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
 
     it('new: every picked body gets its own copy, moved by the same translation', () => {
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
@@ -232,7 +232,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       /** The per-source instance index is what keeps two copies of one shape
        *  from minting the same face UUIDs and colliding in the pick resolver. */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
@@ -258,7 +258,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
 
     it('replace: every picked body moves in place and records the feature', () => {
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
@@ -287,7 +287,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       /** Plural on purpose, like delete_body: `@ex1` after a split must not
        *  move one half and leave the other standing. */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_ex1: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_ex1', 'ex1'),
@@ -308,7 +308,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
 
     it('two refs naming the same body move it once', () => {
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
@@ -328,7 +328,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
 
     it('an unresolvable ref fails the feature without moving the resolvable ones', () => {
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
@@ -358,7 +358,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
        * fused volume on `body_s`, i.e. the pre-bodySplit behaviour.
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
@@ -402,7 +402,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
        * thrown "no shell-oriented partner" and failed the solve.
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
@@ -459,7 +459,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       // matching makeRigidTrsf. A 2x2x2 box at origin rotated 90deg about Z then
       // translated [10,0,0] should have centre at [9,1,1], not [-1,11,1].
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
@@ -491,7 +491,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       // stands as instance 0 (M33), so count=4 with include_source yields 3 new
       // bodies, not 4 -- the source is no longer duplicated in place.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
@@ -527,7 +527,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     it('circular_array include_source=false produces count copies', () => {
       // include_source=false should still produce count distinct copies.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
@@ -557,7 +557,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     it('circular_array with explicit step_angle', () => {
       // Explicit step_angle=45 with count=4 produces correct spacing.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
@@ -589,7 +589,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
        * to fail.
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
@@ -617,7 +617,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     it('linear count=1 with include_source=true equals source shape', () => {
       // count=1 with include_source=true -- no crash, body unchanged.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
@@ -645,7 +645,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     it('linear count=1 with include_source=false produces 1 transformed copy', () => {
       // count=1 with include_source=false produces 1 copy at pitch offset.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
@@ -690,7 +690,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
 
     it('a profile-derived query resolves on the copy to the mirror of the source edge', () => {
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
@@ -737,7 +737,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       // body is rebuilt in place under its old id and its construction UUIDs are
       // re-keyed onto the mirrored faces rather than re-minted.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),

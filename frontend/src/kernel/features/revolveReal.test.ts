@@ -72,7 +72,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
 
   function run(spec: Record<string, unknown>) {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps: BuildDeps = {
         trySolveFeature: createFeatureSolver(oc!, scope, table),

@@ -29,7 +29,7 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
   it('cut mesh has more faces than the original box (new interior faces)', () => {
     // A box cut by a smaller box gains new interior faces from the cut cavity.
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const target = makeBox(occ, scope, 10, 10, 10)
       const tool = makeBox(occ, scope, 4, 4, 4)
@@ -47,7 +47,7 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
     /** The volume of the cut result should be less than the original target
      *  volume (material was removed). */
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const target = makeBox(occ, scope, 10, 10, 10)
       const tool = makeBox(occ, scope, 4, 4, 4)
@@ -65,7 +65,7 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
     /** The tessellated cut result should produce valid mesh vertices and
      *  triangle faces. No mesh_error. */
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const target = makeBox(occ, scope, 10, 10, 10)
       const tool = makeBox(occ, scope, 4, 4, 4)

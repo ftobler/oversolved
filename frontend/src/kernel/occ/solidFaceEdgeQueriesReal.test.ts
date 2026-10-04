@@ -56,7 +56,7 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
   // 2-manifold, so every boundary edge query must still land on exactly 2 faces.
   it('maps each filleted-box face to its boundary edge queries', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const box = makeBox(oc!, scope, 10, 6, 4)
       const res = applyFilletWithLineage(oc!, scope, box, 1.0, [firstEdge(oc!, scope, box)])

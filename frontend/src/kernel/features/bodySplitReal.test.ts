@@ -45,7 +45,7 @@ interface Rig {
 }
 
 function rig(): Rig {
-  return { scope: new DisposeScope(), table: new HandleTable({ finalizerGuard: false }), store: {} }
+  return { scope: new DisposeScope(), table: new HandleTable(), store: {} }
 }
 
 /** Seed a body holding one axis-aligned box. */

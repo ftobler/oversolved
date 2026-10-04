@@ -140,7 +140,7 @@ describe.skipIf(!oc)('parallel mesh deterministic (OCC.js)', () => {
   })
 
   it('serial and parallel meshing yield identical volume', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
 
     try {

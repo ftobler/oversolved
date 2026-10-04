@@ -54,7 +54,7 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
   // spec 1: metadata extraction never triangulates (and solidToMesh does, as a
   // control -- proving the counter actually observes BRepMesh).
   it('triangulates zero faces for box and cylinder, unlike solidToMesh', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const box = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
     const cyl = buildCylinder(occ, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 3, height: 10 })
     try {
@@ -83,7 +83,7 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
   // spec 2: same flat-before-curved (normal, centroid) face order as the render
   // mesh, so registration's face indices line up with the rendered body.
   it('produces face geometry in the same order as solidToMesh', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const cases: Record<string, OccHandle> = {
       box: buildBox(occ, table, { dx: 10, dy: 10, dz: 5 }),
       cylinder: buildCylinder(occ, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 3, height: 10 }),
@@ -124,7 +124,7 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
   // curved face and small new edges -- the most likely place a degenerate face
   // would surface.
   it('keeps face count in sync with the render mesh, including a filleted box', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
     let filleted: OccHandle | null = null
     try {
@@ -155,7 +155,7 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
   // body. This is what a picked face resolves against, so it must not depend on
   // triangulation.
   it('emits face_queries identical to solidToMesh for an identified box', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
     const opts = { createdBy: 'ex1', bodyId: 'body_ex1', profileQueries: ['@sk1/line1'] }
     try {
@@ -181,7 +181,7 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
   // past the gap onto another face's geometry instead of just skipping the
   // face with no query.
   it('keeps face_queries and face_data the same length when no face has a query', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
     try {
       const mesh = solidToMesh(occ, table, h)  // no createdBy -> every query is null
@@ -209,7 +209,7 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
   // emitting a bare createdBy+bodyId net -- a stale cap UUID then had no
   // ancestral recovery.
   it('treats an empty faceAncestry list as absent and falls back to the profile tokens', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
     try {
       const mesh = solidToMesh(occ, table, h)

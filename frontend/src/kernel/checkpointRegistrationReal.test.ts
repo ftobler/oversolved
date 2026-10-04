@@ -69,7 +69,7 @@ function rectSketch(sketchId: string, w: number, h: number) {
 // Solves a document with the production deps and keeps the handle table alive, so the
 // final checkpoint's retained shapes stay readable after the build returns.
 class Harness {
-  readonly table = new HandleTable({ finalizerGuard: false })
+  readonly table = new HandleTable()
 
   run(spec: Record<string, unknown>, files?: ReadonlyMap<string, Uint8Array>): BuildResponse {
     const scope = new DisposeScope()

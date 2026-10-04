@@ -86,7 +86,7 @@ describe('solveBoolean guard paths', () => {
   it('throws when tool body does not exist', () => {
     // The target must carry a real shape so the pre-loop "has no shape" guard
     // passes and the tool resolution is what fails.
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const target = body('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     expect(() =>
@@ -113,7 +113,7 @@ describe('solveBoolean guard paths', () => {
     // The refusal sits in the tool loop, so the target must reach it: a real
     // shape (any disposable) keeps the pre-loop "has no shape" guard from
     // firing first. The throw happens before any OCC work.
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const target = body('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     expect(() =>
@@ -128,7 +128,7 @@ describe('solveBoolean guard paths', () => {
   it('an alias tool ref that resolves to the target is refused the same way', () => {
     // The id comparison catches aliases too: '@ex1' and 'body_t' are the same
     // body, and resolving the tool must not be allowed to eat the target.
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const target = body('body_t')
     target.created_by = 'ex1'
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
@@ -148,7 +148,7 @@ describe('solveBoolean guard paths', () => {
     // 'cut'. Pre-Change 5 the probe ran the whole pipeline a second time
     // ('common').
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const target = body('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     const tool = body('body_u0')
@@ -177,7 +177,7 @@ describe('solveBoolean guard paths', () => {
     // zero-volume bodies can still fold to an empty result; the volume probe
     // names it instead of reporting a green no-op.
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const target = body('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     const tool = body('body_u0')
@@ -200,7 +200,7 @@ describe('solveBoolean guard paths', () => {
 
   it('leaves no empty-result warning when the volume probe itself fails', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const target = body('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     const tool = body('body_u0')

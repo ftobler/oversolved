@@ -72,7 +72,7 @@ describe.skipIf(!oc)('solveExtrude multi-face profiles (real OCC)', () => {
 
   it('fuses picked coplanar faces into one tool, not just the first face', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const store = twoBoxes(scope, table)
       const ia = topFaceIndex(scope, table.get<OccShape>(store.body_a.shape!))
@@ -93,7 +93,7 @@ describe.skipIf(!oc)('solveExtrude multi-face profiles (real OCC)', () => {
 
   it('symmetric multi-face extrude splits each face into a pair first', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const store = twoBoxes(scope, table)
       const ia = topFaceIndex(scope, table.get<OccShape>(store.body_a.shape!))
@@ -114,7 +114,7 @@ describe.skipIf(!oc)('solveExtrude multi-face profiles (real OCC)', () => {
 
   it('reverse multi-face extrude sweeps every picked face the other way', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const store = twoBoxes(scope, table)
       const ia = topFaceIndex(scope, table.get<OccShape>(store.body_a.shape!))

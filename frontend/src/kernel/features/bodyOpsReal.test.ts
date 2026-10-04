@@ -57,7 +57,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
     const [tx, ty, tz] = fx.target
     const [ux, uy, uz] = fx.tool
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const bodyStore: Record<string, Body> = {}
     try {
       if (opts.withTarget) {
@@ -126,7 +126,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        * intersection.
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       const bodyStore: Record<string, Body> = {}
       try {
         const target = makeBox(occ, scope, 10, 10, 10)
@@ -159,7 +159,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        * consumed id in `body_ids` (features/bodySplit.ts:246-253).
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       const bodyStore: Record<string, Body> = {}
       try {
         const target = makeBox(occ, scope, 10, 10, 10)
@@ -193,7 +193,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        * part.
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       const bodyStore: Record<string, Body> = {}
       try {
         const target = makeBox(occ, scope, 10, 10, 10)
@@ -229,7 +229,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        * produce two body entries in the store (not a compound).
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       const bodyStore: Record<string, Body> = {}
       try {
         // Target: a 10x10x10 box at origin. Tool: a tall thin box that cuts
@@ -272,7 +272,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        * consumed-tool and kept-tool fixes removed, arriving by a third route.
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       const bodyStore: Record<string, Body> = {}
       try {
         // Two disjoint boxes, x 0-10 and x 20-30, both crossed by one slab.

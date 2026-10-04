@@ -189,7 +189,7 @@ describe('delete_body repo cleanup', () => {
     repo.registerAncestor([ref('ex2')], { type: 'solid', body_id: 'body_b', created_by: 'ex2' })
 
     const result = solveDeleteBody(
-      oc, scope, new HandleTable({ finalizerGuard: false }),
+      oc, scope, new HandleTable(),
       { id: 'del', delete_body: { bodies: ['body_a'] } }, repo, bodyStore,
     )
 

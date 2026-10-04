@@ -66,7 +66,7 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
 
   it('assembles four coplanar box edges into a profile face and extrudes it', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const bottom = edgeLoopAtZ(table, bodyStore.body_b, 0)
@@ -87,7 +87,7 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
 
   it('solveExtrude builds a new body from an edge-loop profile', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const bottom = edgeLoopAtZ(table, bodyStore.body_b, 0)
@@ -108,7 +108,7 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
 
   it('rejects a non-coplanar / open edge set', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const bottom = edgeLoopAtZ(table, bodyStore.body_b, 0)

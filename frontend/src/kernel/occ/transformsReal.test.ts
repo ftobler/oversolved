@@ -47,7 +47,7 @@ describe.skipIf(!oc)('identity transform sharing (real OCC, D1)', () => {
   })
 
   it('an identity BRepBuilderAPI_Transform does NOT share the source TShape (copy=true rebuilds)', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
     try {
       const hA = table.register(makeBox(occ, scope, 10, 10, 10), 'a')
@@ -74,7 +74,7 @@ describe.skipIf(!oc)('identity transform sharing (real OCC, D1)', () => {
   })
 
   it('a fillet of the source plus its old-handle release leaves the identity copy intact', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
     try {
       const hA = table.register(makeBox(occ, scope, 10, 10, 10), 'a')

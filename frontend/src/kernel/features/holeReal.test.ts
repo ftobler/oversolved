@@ -49,7 +49,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
   for (const c of fx.cases) {
     it(`${c.name}: result + drilled volume match Python`, () => {
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', c.plane)
@@ -106,7 +106,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       // box's bottom face: OCC cut no material and the test's volume drop was
       // float noise, which the per-site probe now correctly reports instead.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
@@ -138,7 +138,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
        * store.
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
@@ -186,7 +186,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       // exactly that cylinder, and a hole that came out at the field's 10 would
       // disagree with the r=3 circle still sitting in the sketch.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
@@ -211,7 +211,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       // Drilling every point in the sketch because the user clicked one of them
       // is a silent extra hole; the vertex form names the same entity.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
@@ -240,7 +240,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       // independently built guaranteed-through cutter, and the body must stay
       // in one piece.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', { origin: [-15, 0, 10], x_axis: [0, 1, 0], y_axis: [0, 0, 1], normal: [-1, 0, 0] })
@@ -279,7 +279,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
        * prefix should be reused with the hole re-drilled.
        */
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
@@ -335,7 +335,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       // with hole_count: 1 and an unchanged body. The site-only emptiness probe
       // must surface it as a warning, and hole_count drops to 0.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', PLANE)
@@ -363,7 +363,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       // result; resplitBody's deletion path must remove the body from the store
       // and the leaf must report body_ids: [] instead of a live id.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', PLANE)
@@ -389,7 +389,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       // One site cuts, one removes nothing: partial, with the miss named so the
       // user knows which pick to move. hole_count counts sites that cut.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('_pt_sk', PLANE)

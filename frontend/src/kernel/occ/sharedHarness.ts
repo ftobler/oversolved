@@ -29,7 +29,7 @@ import type { OccShape } from '../occ/occTypes'
 
 export class SharedHarness {
   readonly oc: OccModule
-  readonly table = new HandleTable({ finalizerGuard: false })
+  readonly table = new HandleTable()
 
   constructor(oc: OccModule) { this.oc = oc }
 
@@ -130,7 +130,7 @@ export class SharedHarness {
       // it discards afterwards, so it must not mint it into `table`.
       isolatedValidationDeps: () => {
         const isoScope = new DisposeScope()
-        const isoTable = new HandleTable({ finalizerGuard: false })
+        const isoTable = new HandleTable()
         return {
           deps: this.makeDeps(isoScope, isoTable, files),
           dispose: () => {

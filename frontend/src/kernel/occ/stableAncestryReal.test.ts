@@ -59,7 +59,7 @@ function fullRectExtrudeSpec(w = 10, h = 10, d = 5): { features: Array<Record<st
 
 function runBuild(spec: Record<string, unknown>) {
   const scope = new DisposeScope()
-  const table = new HandleTable({ finalizerGuard: false })
+  const table = new HandleTable()
   try {
     const deps: BuildDeps = {
       trySolveFeature: createFeatureSolver(oc!, scope, table),
@@ -124,7 +124,7 @@ describe.skipIf(!oc)('stable ancestry hash stability (OCC-level)', () => {
   })
 
   function tessellateFaces(shape: ReturnType<typeof booleanWithHistory>['shape']) {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const handle = table.register(shape, 'test')
     const mesh = solidToMesh(occ, table, handle)
     return mesh.face_data.map((fd) => faceGeometryHash(fd.centroid, fd.normal))

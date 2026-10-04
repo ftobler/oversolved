@@ -103,7 +103,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
   for (const c of fx.cases) {
     it(`${c.name}: result + body store match Python`, () => {
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', c.target_spec),
@@ -148,7 +148,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
     it('multiple tools are all consumed', () => {
       // Boolean with two tools should consume both.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
@@ -179,7 +179,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       // A subtract whose tool does not overlap the target must not silently eat
       // the tool body; it is skipped and a solver warning names the miss.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
@@ -208,7 +208,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       // A common/ of two disjoint solids yields an empty compound; the leaf must
       // not report that as a successful boolean but skip the disjoint tool.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
@@ -241,7 +241,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       // shapesIntersect (a bare Common, history off), so this is exactly ONE
       // per folded tool -- the real boolean only.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
@@ -280,7 +280,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       // the cut runs. The tool crosses the open seam, which is what makes the
       // Common's own shell open.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const targetShape = makeOpenShellBox(occ, scope)
         const tool = makeBoxAt(occ, scope, [5, -5, -5], 10, 10, 20)
@@ -328,7 +328,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       // and a later feature targeting the gone body must fail by name rather
       // than read a null shape.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),

@@ -76,7 +76,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
 
   it('fillet rounds a box edge, updates the body in place, threads construction names', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBody(scope, table)
       const result = solveFillet(
@@ -103,7 +103,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
 
   it('a viewport-form source_body resolves onto the real body and the fillet builds', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBody(scope, table)
       const result = solveFillet(
@@ -126,7 +126,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
 
   it('fillet emits a linear radius handle on the picked edge', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBody(scope, table)
       const result = solveFillet(
@@ -165,7 +165,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
 
   it('chamfer bevels a box edge', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBody(scope, table)
       const result = solveChamfer(
@@ -188,7 +188,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     // an empty diff while the feature reported ok. A green feature that changed
     // nothing also poisoned dirty detection.
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBody(scope, table)
       const body = bodyStore.body_b
@@ -229,7 +229,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
    */
   it('solidToEdges queries resolve back through resolveFilletEdges (pick round-trip)', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBody(scope, table)
       const body = bodyStore.body_b
@@ -261,7 +261,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
 
   it('resolveFilletEdges returns exactly 12 unique edges for a box (IsSame dedup)', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const bodyStore = makeBody(scope, table)
       const allEdgeQueries = Array.from({ length: 24 }, (_, i) => `?body_b:edge:${i}`)
@@ -279,7 +279,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     // the line sorts first (type_order 0) and the circles after -- the exact
     // split that explorer order does not guarantee.
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const cyl = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 3, 10)
       const bodyStore: Record<string, Body> = {
@@ -314,7 +314,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     // nothing to carry forward, so the modifier runs with oldNames null and the
     // body's name maps stay absent rather than being invented from nothing.
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
       const bodyStore: Record<string, Body> = {

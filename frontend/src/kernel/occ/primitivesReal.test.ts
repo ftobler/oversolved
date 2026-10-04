@@ -75,7 +75,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('builds a box with 6 planar faces and outward normals', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
     const faces = readFaces(occ, table.get(h))
 
@@ -99,7 +99,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('builds a cylinder: 2 planar caps + 1 cylindrical wall', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildCylinder(occ, table, {
       center: [0, 0, 0],
       axis: [0, 0, 1],
@@ -161,7 +161,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('faceSurfaceFrame returns null for a plane (the caller already has the right axis: the normal)', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
     const scope = new DisposeScope()
     try {
@@ -207,7 +207,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('faceSurfaceFrame reads the exact axis/origin/radius of a cylinder built at a non-axis-aligned orientation', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const n = 1 / Math.sqrt(3)
     const h = buildCylinder(occ, table, { center: [2, 3, 4], axis: [n, n, n], radius: 3, height: 10, owner: 'c' })
     const scope = new DisposeScope()
@@ -234,7 +234,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('builds an extruded square equivalent to a box', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildExtrudedProfile(occ, table, {
       loop: [
         [0, 0, 0],
@@ -256,7 +256,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('faceSurfaceTypeAndNormal matches faceSurfaceType + faceNormal on all six box faces', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
     const scope = new DisposeScope()
     try {
@@ -392,7 +392,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   // those raw hits to the true unique count. A box's 12 edges are each shared by
   // 2 faces (24 raw hits) and its 8 vertices by 3 (24 raw hits).
   it('readSolidEdges dedups a box to its 12 unique edges', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
     const scope = new DisposeScope()
     try {
@@ -405,7 +405,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('readSolidVertices dedups a box to its 8 unique vertices', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
     const scope = new DisposeScope()
     try {
@@ -428,7 +428,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('readSolidEdges/Vertices dedup a cylinder to 3 edges and 2 vertices', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildCylinder(occ, table, {
       center: [0, 0, 0], axis: [0, 0, 1], radius: 3, height: 10, owner: 'cyl',
     })
@@ -444,7 +444,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('readEdgeSamplePoints carries the full box AABB from deduped edges', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5, owner: 'box' })
     const scope = new DisposeScope()
     try {
@@ -484,7 +484,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('stays leak-free across a 50-iteration build/evict loop', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     for (let i = 0; i < 50; i++) {
       const h = buildBox(occ, table, { dx: 3, dy: 4, dz: 5, owner: `b${i}` })
       readFaces(occ, table.get(h))
@@ -495,7 +495,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
   })
 
   it('sortedFacesOf keeps the build-scope live set at ~2 proxies per face (M45)', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     // Build the solids on their own scope so the measurement sees only the
     // traversal's own track() traffic, not the profile builders'.
     const build = new DisposeScope()

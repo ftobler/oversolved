@@ -185,7 +185,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
 
   function run(spec: Record<string, unknown>) {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps: BuildDeps = {
         trySolveFeature: createFeatureSolver(oc!, scope, table),
@@ -423,7 +423,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     // against a hand-seeded repo: the new pathRefWorldEdges guard must refuse
     // the closed curve by name instead of a raw TypeError.
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const repo = new Repository()
     const FRONT = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
     const TOP = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, -1], normal: [0, 1, 0] }

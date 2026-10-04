@@ -62,7 +62,7 @@ function extrudeSpec(sketchId: string, extrudeId: string, distance: number) {
 
 function run(spec: Record<string, unknown>): BuildResponse {
   const scope = new DisposeScope()
-  const table = new HandleTable({ finalizerGuard: false })
+  const table = new HandleTable()
   try {
     const deps: BuildDeps = {
       trySolveFeature: createFeatureSolver(oc!, scope, table),

@@ -74,7 +74,7 @@ function extrudeSpec(sketchId: string, extrudeId: string, distance: number) {
 // the RENDER path (`tessellateBodies` -> `solidToMesh`) bumps `renderCount`, and
 // every body read by the mesh-free metadata path is recorded in `metaExtracted`.
 class CountingHarness {
-  readonly table = new HandleTable({ finalizerGuard: false })
+  readonly table = new HandleTable()
   renderCount = 0
   rendered: string[] = []  // body ids passed through the render tessellation this run
   metaExtracted: string[] = []  // body ids passed through extractBrepMetadata this run

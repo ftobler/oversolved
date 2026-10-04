@@ -188,7 +188,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
   // Extrude produces face_queries in the mesh.
   it('extrude has face_queries', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps = makeDeps(occ, scope, table)
       const r = build(extrudeDoc(), {}, deps)
@@ -205,7 +205,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
    */
   it('sketch on face via ancestry query', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps = makeDeps(occ, scope, table)
       const r = build(extrudeDoc(), {}, deps)
@@ -260,7 +260,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
    */
   it('a sketch on a flat face query lies in that face plane', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps = makeDeps(occ, scope, table)
       const r = build(extrudeDoc(), {}, deps)
@@ -297,7 +297,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
   // Sketch on face -> extrude builds without exception (round-trip).
   it('sketch on face round-trip second extrude', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps = makeDeps(occ, scope, table)
       const r = build(extrudeDoc(), {}, deps)
@@ -341,7 +341,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
    */
   it('sketch plane resolves from post-fuse face', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps = makeDeps(occ, scope, table)
 
@@ -407,7 +407,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
    */
   it('sketch on face after boolean cut partial rebuild', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps = makeDeps(occ, scope, table)
 
@@ -522,7 +522,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
    */
   it('sketch on multi-profile body face resolves on two rebuilds', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps = makeDeps(occ, scope, table)
 
@@ -590,7 +590,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
    */
   it('sketch plane follows face when centroid drifts via descriptor matching', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps = makeDeps(occ, scope, table)
 

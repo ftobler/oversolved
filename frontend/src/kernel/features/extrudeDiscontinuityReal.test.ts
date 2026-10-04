@@ -96,7 +96,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
 
   function run(spec: Record<string, unknown>) {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const deps: BuildDeps = {
         trySolveFeature: createFeatureSolver(oc!, scope, table),

@@ -51,7 +51,7 @@ describe.skipIf(!oc)('bodyFrame: mesh-free classifier AABB', () => {
   // (a cylinder), where a vertex-only box collapses -- proving the edge samples,
   // not the vertices, carry the radial extent.
   it('matches the mesh AABB on a cylinder where a vertex-only box collapses', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildCylinder(occ, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 3, height: 10 })
     const solid = table.get(h)
     const scope = new DisposeScope()
@@ -83,7 +83,7 @@ describe.skipIf(!oc)('bodyFrame: mesh-free classifier AABB', () => {
   // spec 6: faces and edges classify against the SAME frame. The cap faces and
   // the circular cap edges of a cylinder must agree on the z-classifier.
   it('classifies cap faces and cap edges against one shared frame', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildCylinder(occ, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 3, height: 10 })
     try {
       const mesh = solidToMesh(occ, table, h, { createdBy: 'ex1', bodyId: 'body_ex1' })
@@ -112,7 +112,7 @@ describe.skipIf(!oc)('bodyFrame: mesh-free classifier AABB', () => {
   // identity that survives the rotation (pinned in query.test.ts). No oriented
   // per-body frame is built, by decision.
   it('a 45 deg rotated box classifies against the world-frame AABB, collapsing its long side faces', () => {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 4, dy: 2, dz: 2 })
     const solid = table.get(h)
     const scope = new DisposeScope()

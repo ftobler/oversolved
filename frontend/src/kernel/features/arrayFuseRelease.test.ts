@@ -116,7 +116,7 @@ function run(countX: number, includeSource: boolean): {
   })
   mocks.resplitBody.mockImplementation(() => ['body_ex1'])
 
-  const table = new HandleTable({ finalizerGuard: false })
+  const table = new HandleTable()
   const source = makeDouble('source')
   const body: Body = { ...bareBody('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
   const scope = new DisposeScope()
@@ -217,7 +217,7 @@ describe('array add fuse releases (H21)', () => {
     mocks.transferBooleanNames.mockReturnValue({ face_names: {}, edge_names: {}, face_ancestry: {}, edge_ancestry: {} })
     mocks.resplitBody.mockReturnValue([])
 
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const source = makeDouble('source')
     const body: Body = { ...bareBody('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
     const scope = new DisposeScope()

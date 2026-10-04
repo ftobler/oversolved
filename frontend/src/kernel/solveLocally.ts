@@ -277,7 +277,7 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable, files
     // contain that generation completely and cannot disturb outer accounting.
     isolatedValidationDeps: () => {
       const isoScope = new DisposeScope()
-      const isoTable = new HandleTable({ finalizerGuard: false })
+      const isoTable = new HandleTable()
       return {
         deps: buildDeps(oc, isoScope, isoTable, files),
         dispose: () => {
@@ -357,7 +357,7 @@ async function solveLocallyGuarded(
   }
 
   const scope = new DisposeScope()
-  const table = (persistentTable ??= new HandleTable({ finalizerGuard: false }))
+  const table = (persistentTable ??= new HandleTable())
   // Caller override (tests) wins; otherwise feed the prior solve's state so the
   // builder restores the clean prefix and rebuilds only the dirty tail.
   // When bypassCache is set the previous cache is ignored, the solve builds
@@ -475,7 +475,7 @@ export async function exportLocally(
   if (!oc) return null
 
   const scope = new DisposeScope()
-  const table = new HandleTable({ finalizerGuard: false })
+  const table = new HandleTable()
   try {
     const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, files))
     const shape = resolveExportShape(oc, scope, table, response._build_state, opts.bodyId ?? null)
@@ -532,7 +532,7 @@ export async function exportAssemblyLocally(
   if (!oc) return null
 
   const scope = new DisposeScope()
-  const table = new HandleTable({ finalizerGuard: false })
+  const table = new HandleTable()
   try {
     const placed: OccShape[] = []
     for (const part of parts) {

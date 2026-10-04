@@ -122,7 +122,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     loop: string[]
     bodyStore: Record<string, Body>
   } {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new DisposeScope()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
@@ -240,7 +240,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
   // extra instance minus one: iteration 1 skips the table-owned source and
   // contributes a single release, every later iteration two.
   function arrayRun(countX: number): { released: number } {
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     const scope = new CountingScope()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)

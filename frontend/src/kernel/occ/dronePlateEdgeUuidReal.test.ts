@@ -82,7 +82,7 @@ interface Coverage {
 /** Extrude the loops, then report per-edge queries + unnamed side-face count. */
 function coverage(loops: LoopEdge[][]): Coverage {
   const scope = new DisposeScope()
-  const table = new HandleTable({ finalizerGuard: false })
+  const table = new HandleTable()
   try {
     const res = extrudeProfileWithLineage(oc!, scope, loops, XY, [0, 0, 1], 5, 'sk1', 'ex1')
     // count side faces (near-vertical normal) that earned no face UUID

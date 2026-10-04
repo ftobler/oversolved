@@ -106,7 +106,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
   for (const c of fx.cases) {
     it(`${c.name}: result + imported volume match Python`, () => {
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const bodyStore: Record<string, Body> = {}
         const result = solveImportStep(
@@ -135,7 +135,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
    */
   it('splits a multi-solid STEP into one body per solid', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const fileData = twoBoxStepB64(occ)
       const bodyStore: Record<string, Body> = {}
@@ -168,7 +168,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
 
   it('scales every solid of a multi-solid STEP', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const fileData = twoBoxStepB64(occ)
       const bodyStore: Record<string, Body> = {}
@@ -194,7 +194,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
 
   it("rejects a pre-cut inline file_data by name", () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       expect(() =>
         solveImportStep(
@@ -210,7 +210,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
 
   it("rejects a missing file_id", () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       expect(() =>
         solveImportStep(occ, scope, table, { id: 'x' }, new Repository(), {}),
@@ -222,7 +222,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
 
   it("rejects a file_id absent from the solve file map", () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       expect(() =>
         solveImportStep(

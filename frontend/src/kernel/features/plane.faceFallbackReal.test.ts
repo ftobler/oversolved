@@ -60,7 +60,7 @@ describe.skipIf(!oc)('solvePlane on_face topo-fallback (real OCC)', () => {
 
   it('solves an on_face plane from a @body/face/N pick', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
       // Compute expected centroid + normal before detaching the shape.
@@ -97,7 +97,7 @@ describe.skipIf(!oc)('solvePlane on_face topo-fallback (real OCC)', () => {
 
   it('resolves a split sibling body id to that sibling, not to sibling 0', () => {
     const scope = new DisposeScope()
-    const table = new HandleTable({ finalizerGuard: false })
+    const table = new HandleTable()
     try {
       const SEP = 100
       const first = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
