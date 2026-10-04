@@ -126,7 +126,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
       window.removeEventListener('pointercancel', stop)
       window.removeEventListener('keydown', onKeyDown)
     }
-    }, [draggedRollback, rollbackTargetAt, onSetRollbackPosition, effectiveRollback])
+  }, [draggedRollback, rollbackTargetAt, onSetRollbackPosition, effectiveRollback])
 
   // Enter/Space on a focused row selects it, mirroring the row's click. Only the
   // row itself reacts: a key event bubbling from a control inside the row (an
@@ -150,16 +150,16 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
           <RebuildButton featureTimings={featureTimings} features={features} onClick={onRebuild} isLoading={isRebuilding} validation={validation} />
         )}
       </div>
-      <ul className="features-list" ref={listRef}>
+      <ul className="features-list" ref={listRef} role="listbox" aria-label="Features">
       {doc && features.length === 0 ? (
-        <li className="empty">No features</li>
+        <li className="empty" role="presentation">No features</li>
       ) : (
         features.map((feature, index) => {
           const isBuiltIn = BUILT_IN_IDS.has(feature.id)
           const selectionId = isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`
 
           return (
-          <div key={`feature-${feature.id}`}>
+          <div key={`feature-${feature.id}`} role="presentation">
             {effectiveRollback === index && (
               <RollbackSlider
                 isDragging={draggedRollback}
