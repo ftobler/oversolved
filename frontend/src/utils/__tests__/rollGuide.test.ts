@@ -45,6 +45,18 @@ describe('buildRollGuide', () => {
     expect(guide.tip[2]).toBeCloseTo(-posGuide.tip[2])
   })
 
+  it('uses the part basis for zero roll so it matches the anchor triad', () => {
+    // A part rotated 45 deg about Z: its X basis is (s, s, 0), so the derived
+    // secondary arm is (-s, s, 0). The guide must start there, not at world +Y,
+    // or it disagrees with the triad drawn at the same anchor.
+    const s = Math.SQRT1_2
+    const basis: Vec3[] = [[s, s, 0], [-s, s, 0], [0, 0, 1]]
+    const guide = buildRollGuide([0, 0, 0], [0, 0, 1], 0, 1, basis)!
+    expect(guide.arc[0][0]).toBeCloseTo(-s, 6)
+    expect(guide.arc[0][1]).toBeCloseTo(s, 6)
+    expect(guide.arc[0][2]).toBeCloseTo(0, 6)
+  })
+
   it('a degenerate axis yields no guide rather than NaN points', () => {
     expect(buildRollGuide([0, 0, 0], [0, 0, 0], 45, 1)).toBeNull()
   })

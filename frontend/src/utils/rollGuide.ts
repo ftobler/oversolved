@@ -37,11 +37,22 @@ const SEGMENTS_PER_TURN = 24
  * authored number made visible, not a bug. A degenerate axis (zero-length)
  * yields no guide rather than NaN points.
  */
-export function buildRollGuide(point: Vec3, axis: Vec3, angleDeg: number, radius: number): RollGuide | null {
+export function buildRollGuide(
+  point: Vec3,
+  axis: Vec3,
+  angleDeg: number,
+  radius: number,
+  refAxes?: readonly Vec3[],
+): RollGuide | null {
   const primary = normalize(axis)
   if (!primary || !Number.isFinite(angleDeg)) return null
 
-  const frame = deriveAnchorFrame(primary)
+  // The anchor triad draws its secondary arms from the part's own basis
+  // (resolveAnchorGizmos passes basisByPart[ref.part]); the guide must use the
+  // same reference or, for a rotated part, its zero sits at a different arm than
+  // the triad's at the same anchor. A missing basis keeps the world default the
+  // assembly's own frame relies on.
+  const frame = deriveAnchorFrame(primary, refAxes)
   const zero = frame[1]
   const perp = frame[2]
 
