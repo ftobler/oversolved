@@ -45,15 +45,20 @@ export function useSelectionPointerUpCleanup() {
     // an element involved in the gesture makes the browser end the gesture with
     // pointercancel instead of pointerup. Without catching those, isPointerDown
     // and drag/dragPending stay stuck -- which freezes the camera, since orbit is
-    // derived as !isPointerDown || (!drag && !dragPending). Routing all three to
-    // the same cleanup guarantees the gesture state is released however it ends.
+    // derived as !isPointerDown || (!drag && !dragPending). Routing all of these
+    // to the same cleanup guarantees the gesture state is released however it ends.
     window.addEventListener('pointerup', runPointerUpCleanup)
     window.addEventListener('pointercancel', runPointerUpCleanup)
     window.addEventListener('lostpointercapture', runPointerUpCleanup)
+    // A release with the cursor outside the window delivers no pointerup or
+    // pointercancel. Losing window focus is the observable end of that gesture,
+    // so route it through the same cleanup instead of leaving the drag stuck.
+    window.addEventListener('blur', runPointerUpCleanup)
     return () => {
       window.removeEventListener('pointerup', runPointerUpCleanup)
       window.removeEventListener('pointercancel', runPointerUpCleanup)
       window.removeEventListener('lostpointercapture', runPointerUpCleanup)
+      window.removeEventListener('blur', runPointerUpCleanup)
     }
   }, [])
 }
