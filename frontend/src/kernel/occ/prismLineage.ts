@@ -769,10 +769,15 @@ export function buildPrismLineageMap(
         // unnamed on (0) after the neighbour pass. Both would collapse onto the
         // identical body-wide ancestral query, so flag them instead of silently
         // leaving the edge unnameable.
-        failLoud(
+        const message =
           `[prismLineage] edge has ${distinct.length} distinct named adjacent faces ` +
-            `(expected 1 or 2): non-manifold or unrescued topology (${createdBy})`,
-        )
+          `(expected 1 or 2): non-manifold or unrescued topology (${createdBy})`
+        // failLoud throws in tests and warns in dev only, so pair it with a
+        // production-visible warning: this is a real topology condition, not a
+        // harness invariant, and in production it would otherwise pass in
+        // silence.
+        if (!isDevBuild()) console.warn(message)
+        failLoud(message)
       }
     }
     // Edge midpoints are world coordinates: normalize them by the parent
