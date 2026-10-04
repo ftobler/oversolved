@@ -252,7 +252,7 @@ export function findSnapTarget(
   vertexThreshold: number,
   entityThreshold: number,
 ): SnapTarget | null {
-  let bestVertex: (SnapCandidate & { dist: number }) | null = null
+  let bestVertex: (SnapCandidate & { constraintKind: string }) | null = null
   let bestVertexDist = vertexThreshold
   for (const t of candidates) {
     const d = Math.hypot(t.position[0] - x, t.position[1] - y)
@@ -260,13 +260,12 @@ export function findSnapTarget(
       const cKind = suggestConstraint(draggedType, t.kind)
       if (cKind !== null) {
         bestVertexDist = d
-        bestVertex = { ...t, dist: d }
+        bestVertex = { ...t, constraintKind: cKind }
       }
     }
   }
   if (bestVertex) {
-    const cKind = suggestConstraint(draggedType, bestVertex.kind)!
-    return { kind: 'vertex', position: bestVertex.position, constraintKind: cKind, vertexId: bestVertex.id }
+    return { kind: 'vertex', position: bestVertex.position, constraintKind: bestVertex.constraintKind, vertexId: bestVertex.id }
   }
 
   const pathConstraintKind = suggestConstraint(draggedType, 'path')
