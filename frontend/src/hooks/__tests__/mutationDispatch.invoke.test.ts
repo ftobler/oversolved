@@ -255,7 +255,8 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
 
   it('delete_body handlers do not crash on a legacy singular-body doc', () => {
     // A pre-pluralization delete_body carries `body` and no `bodies`; the
-    // handlers' ??= defense heals the list instead of throwing on indexOf/splice.
+    // handlers seed the list from that pick (so it survives) instead of throwing
+    // on indexOf/splice or dropping it.
     const doc = {
       version: 1,
       kind: 'part',
@@ -264,11 +265,11 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(() => {
       mutationHandlers.add_delete_body_ref(doc, { type: 'add_delete_body_ref', featureId: 'DB', bodyQuery: '@body_2' })
     }).not.toThrow()
-    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_2'])
+    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_1', '@body_2'])
     expect(() => {
       mutationHandlers.remove_delete_body_ref(doc, { type: 'remove_delete_body_ref', featureId: 'DB', index: 0 })
     }).not.toThrow()
-    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual([])
+    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_2'])
   })
 
   it('transform handlers do not crash on a legacy singular-body doc', () => {
@@ -280,7 +281,7 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(() => {
       mutationHandlers.add_transform_body(doc, { type: 'add_transform_body', featureId: 'TR', bodyQuery: '@body_2' })
     }).not.toThrow()
-    expect(feature(doc, 'TR')!.transform!.bodies).toEqual(['@body_2'])
+    expect(feature(doc, 'TR')!.transform!.bodies).toEqual(['@body_1', '@body_2'])
   })
 })
 
