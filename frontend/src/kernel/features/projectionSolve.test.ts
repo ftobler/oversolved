@@ -4,7 +4,7 @@
 // solver. Guards the params-into-`initial` fix -- without it a projected entity
 // solves to the origin instead of its projected location -- and the tilted
 // circle -> ellipse kind promotion (full-brep-projection).
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   solveSketch, setSketchSolver, resetSketchSolver,
   prepareDragContext, solveSketchDrag,
@@ -32,9 +32,6 @@ function deadRepo(): Repository {
 }
 
 describe('solveSketch projection lowering', () => {
-  beforeAll(() => {
-    if (!solveBytes) return
-  })
   beforeEach(() => {
     resetSketchSolver()
     if (solveBytes) setSketchSolver(solveBytes)

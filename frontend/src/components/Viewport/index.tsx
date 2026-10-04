@@ -60,8 +60,6 @@ import {
 } from '@/components/Geometry3D/bodySnapProjection'
 import type { SketchData } from '@/types/cad'
 
-const ENABLE_ID_BUFFER_PICKING = true
-
 // Stabilized props for the R3F Canvas. Inline objects would produce new
 // references every Viewport render, forcing CanvasImpl to re-render needlessly.
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
@@ -282,9 +280,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // 267.2/267.4/267.5: canvas-level pointer dispatcher backed by the ID buffer.
   // Consumes dimensionLabel, B-rep face/edge/vertex, sketch, plane, and origin
   // layers (the shared PART_EDITOR_CONSUMED_LAYERS set).
-  const consumedLayers = useMemo(() => (ENABLE_ID_BUFFER_PICKING
-    ? PART_EDITOR_CONSUMED_LAYERS
-    : new Set<string>()), [])
+  const consumedLayers = PART_EDITOR_CONSUMED_LAYERS
   const clearIdBufferHover = useIdBufferPointerDispatch({ glRef, consumedLayers })
 
   // Bumped when the scene-side prerequisites of a fit become live (the
@@ -666,7 +662,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           onReady={onSceneReady}
         />
 
-        {ENABLE_ID_BUFFER_PICKING && <IdPickingDriver onReady={onIdPipelineReady} />}
+        <IdPickingDriver onReady={onIdPipelineReady} />
         {showDebugHit && <IdDebugOverlay />}
 
         {/* Local boundary so the 1.47 MB HDR no longer hides and re-shows the

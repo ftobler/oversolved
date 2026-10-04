@@ -24,7 +24,6 @@ dist-ssr
 *.sw?
 
 
-public/test_output/*
 .mypy_cache/
 # wasm-pack shadow build artifacts (populated by `npm run shadow:wasm`)
 public/wasm/

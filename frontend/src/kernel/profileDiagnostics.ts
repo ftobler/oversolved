@@ -353,7 +353,7 @@ export function describeProfile(loops: LoopEdge[][]): ProfileReport {
       // decision, which the container comparison below catches on its own.
       note(
         `loop ${li} area ratio ${lr.areaRatio.toFixed(4)}: the 1-sample polygon containment runs on ` +
-        `is not the shape rendered at ${CENTROID_ARC_SAMPLES} samples`,
+        `a shape that is not the one rendered at ${CENTROID_ARC_SAMPLES} samples`,
         false,
       )
     }
