@@ -48,8 +48,8 @@ export function collectCoincidentVertexIds(
   // escape sequence: a literal NUL byte makes git treat the file as binary.
   const visited = new Set<string>([`${entityId}\u0000${vertexKey}`])
   const queue: Array<{ entityId: string; vertexKey: string }> = [{ entityId, vertexKey }]
-  while (queue.length > 0) {
-    const v = queue.shift() as { entityId: string; vertexKey: string }
+  for (let head = 0; head < queue.length; head++) {
+    const v = queue[head]
     const vref = `$${v.entityId}${v.vertexKey}`
     for (const c of constraints) {
       if (c.kind !== 'coincident') continue
@@ -286,5 +286,3 @@ export function computeDragMutation(
     solvedGeometry,
   }
 }
-
-
