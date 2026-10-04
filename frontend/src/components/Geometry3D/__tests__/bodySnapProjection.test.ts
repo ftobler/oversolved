@@ -46,7 +46,7 @@ describe('planeTransformNormal', () => {
   })
 })
 
-describe('projectWorldToSketch  -  front plane (identity)', () => {
+describe('projectWorldToSketch -- front plane (identity)', () => {
   it('maps world XY to sketch XY', () => {
     const [x, y] = projectWorldToSketch([3, 4, 0], FRONT_PT)
     expect(x).toBeCloseTo(3)
@@ -67,7 +67,7 @@ describe('projectWorldToSketch  -  front plane (identity)', () => {
   })
 })
 
-describe('projectWorldToSketch  -  top plane', () => {
+describe('projectWorldToSketch -- top plane', () => {
   it('maps world X to sketch X', () => {
     const [x] = projectWorldToSketch([7, 0, 0], TOP_PT)
     expect(x).toBeCloseTo(7)
@@ -85,7 +85,7 @@ describe('projectWorldToSketch  -  top plane', () => {
   })
 })
 
-describe('projectWorldToSketch  -  right plane', () => {
+describe('projectWorldToSketch -- right plane', () => {
   it('maps world -Z to sketch X', () => {
     const [x] = projectWorldToSketch([0, 0, -6], RIGHT_PT)
     expect(x).toBeCloseTo(6)

@@ -12,7 +12,7 @@ function squareSketch(): Sketch {
   } as Sketch
 }
 
-describe('computeConstraintRender  -  ngon sugar tile', () => {
+describe('computeConstraintRender -- ngon sugar tile', () => {
   it('ngon renders a symbol tile at the polygon centroid', () => {
     const c: PartConstraint = { id: 'ng', kind: 'ngon', refs: ['$l0', '$l1', '$l2', '$l3'] }
     const r = computeConstraintRender(c, squareSketch()) as SymbolRender

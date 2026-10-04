@@ -115,7 +115,7 @@ describe('selectionToQuery', () => {
 })
 
 describe('emitAbsoluteSelectionQuery', () => {
-  it('face passthrough  -  strips prefix', () => {
+  it('face passthrough -- strips prefix', () => {
     expect(emitAbsoluteSelectionQuery('face:ex1:?9;@ex1face0:face')).toBe('?9;@ex1face0:face')
   })
   it('entity always absolute (cross-feature)', () => {
