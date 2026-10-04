@@ -773,6 +773,13 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       if (brep.armed) {
         brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
       }
+      // A swallowed preview frame must still mark the preview as touched,
+      // exactly like the single-mutation funnel: without this, an all-preview
+      // group landed by a suppressed session fails both commitPreview's style
+      // gate and the session's own aggregate, so the color change has no entry.
+      if (previewOriginalDoc.current !== null && ms.every(m => PREVIEW_SCOPE.has(m.type))) {
+        previewTouchedRef.current = true
+      }
       // Mirror the single-mutation funnel: a swallowed part_style mutation must
       // still earn an undo entry at commit.
       if (ms.some(m => BODY_STYLE_MUTATION_TYPES.has(m.type))) {

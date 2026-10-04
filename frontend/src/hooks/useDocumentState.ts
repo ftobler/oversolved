@@ -29,6 +29,9 @@ export function useDocumentState(
     // flight, a slow prior resolution must not overwrite the newer doc. Mirrors
     // the listReqRef guard in Documents.tsx.
     let cancelled = false
+    // A new load clears the previous failure: otherwise a stale error would keep
+    // the terminal panel engaged even after a later load succeeds.
+    setError(null)
     queueMicrotask(() => { if (!cancelled) setLoading(true) })
     store.load(uuid)
       .then(data => {
@@ -58,6 +61,12 @@ export function useDocumentState(
       .catch(e => {
         if (cancelled) return
         setError(errorMessage(e, 'Failed to load document'))
+        // A failed load must not leave the previous document on screen under the
+        // new uuid's route: the editor would render the old doc as if it were the
+        // one that failed. Null it so the page can show a terminal panel instead.
+        docRef.current = null
+        setDoc(null)
+        setDocName('')
         setLoading(false)
       })
     return () => { cancelled = true }

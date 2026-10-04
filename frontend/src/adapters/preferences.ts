@@ -17,6 +17,15 @@
 
 export type DocumentSort = 'alphabetical' | 'date_newest_first' | 'date_oldest_first'
 
+const DOCUMENT_SORTS: ReadonlySet<string> = new Set(['alphabetical', 'date_newest_first', 'date_oldest_first'])
+
+// A persisted value is untrusted: a stale or corrupted localStorage entry can
+// carry anything, and the read is the only place it can be caught before the
+// grid's sort switch sees a non-member.
+function isDocumentSort(value: unknown): value is DocumentSort {
+  return typeof value === 'string' && DOCUMENT_SORTS.has(value)
+}
+
 export interface UserPreferences {
   document_sort: DocumentSort
 }
@@ -39,7 +48,7 @@ function readLocalPrefs(): UserPreferences {
     const raw = localStorage.getItem(LS_KEY)
     if (!raw) return DEFAULT_PREFS
     const parsed = JSON.parse(raw) as Partial<UserPreferences>
-    return { document_sort: parsed.document_sort ?? DEFAULT_PREFS.document_sort }
+    return { document_sort: isDocumentSort(parsed.document_sort) ? parsed.document_sort : DEFAULT_PREFS.document_sort }
   } catch {
     return DEFAULT_PREFS
   }

@@ -26,6 +26,7 @@ import mateIcon from '@/assets/icons/constraint-coincident.svg'
 const MIN_SPLIT_PERCENT = 20
 const MAX_SPLIT_PERCENT = 80
 const DEFAULT_SPLIT_PERCENT = 70
+const SPLIT_STEP_PERCENT = 2
 
 // The tree has no entity selection of its own; the accessor still wants the
 // orthogonal set, and a shared empty instance keeps the read allocation-free.
@@ -142,6 +143,17 @@ export function AssemblyTree({
   }, [])
   const handleMouseUp = useCallback(() => { isDraggingRef.current = false }, [])
 
+  // The splitter is a slider: arrow keys nudge it by a fixed step, clamped to
+  // the same band the drag uses, so the panes can be resized without a pointer.
+  const handleResizeKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    let delta = 0
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') delta = -SPLIT_STEP_PERCENT
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') delta = SPLIT_STEP_PERCENT
+    else return
+    e.preventDefault()
+    setSplitPercent(p => Math.max(MIN_SPLIT_PERCENT, Math.min(MAX_SPLIT_PERCENT, p + delta)))
+  }, [])
+
   useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
@@ -177,10 +189,19 @@ export function AssemblyTree({
   const highlightedMateIds = useMemo(() => relatedMateIds(mates, selectedPartHandle), [mates, selectedPartHandle])
   const highlightedPartHandles = useMemo(() => relatedPartHandles(mates, view.mate), [mates, view.mate])
 
+  // The same display name each mate row shows (stored label, or the bare kind
+  // label for a legacy mate), so the verdict banner names the mates the user
+  // sees instead of their raw solve ids.
+  const mateNames = useMemo(() => {
+    const names = new Map<string, string>()
+    for (const { id, mate } of mates) names.set(id, mate.label || MATE_KIND_LABELS[mate.kind])
+    return names
+  }, [mates])
+
   // The whole-assembly verdict, shown on a root row: overconstrained is a hard
   // error, underconstrained a warning that the assembly is valid but still has
   // freedom. Fully constrained and trivial solves carry no mark.
-  const verdictMark = assemblyVerdict(status ?? null)
+  const verdictMark = assemblyVerdict(status ?? null, id => mateNames.get(id))
 
   return (
     <div className="assembly-tree" ref={rootRef}>
@@ -364,7 +385,19 @@ export function AssemblyTree({
         </ul>
       </div>
 
-      <div className="resize-handle" onMouseDown={handleMouseDown} title="Drag to resize" />
+      <div
+        className="resize-handle"
+        onMouseDown={handleMouseDown}
+        onKeyDown={handleResizeKeyDown}
+        title="Drag to resize"
+        role="slider"
+        tabIndex={0}
+        aria-label="Resize assembly panes"
+        aria-orientation="vertical"
+        aria-valuenow={Math.round(splitPercent)}
+        aria-valuemin={MIN_SPLIT_PERCENT}
+        aria-valuemax={MAX_SPLIT_PERCENT}
+      />
 
       <div className="sidebar-bottom" style={{ height: `${100 - splitPercent}%` }}>
         <div className="sidebar-header"><span>Mates</span></div>
