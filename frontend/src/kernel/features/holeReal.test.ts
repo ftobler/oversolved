@@ -284,7 +284,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
       // the cut fully through; the volume must match an independently built
       // guaranteed-through cutter.
       const scope = new DisposeScope()
-      const table = new HandleTable({ finalizerGuard: false })
+      const table = new HandleTable()
       try {
         const s3 = Math.sqrt(3)
         const normal = [-1 / s3, -1 / s3, -1 / s3]
