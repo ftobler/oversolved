@@ -311,3 +311,22 @@ describe('DrawPlane commit click', () => {
     expect(container.querySelector('mesh')).toBeNull()
   })
 })
+
+describe('DrawPlane window listener registration', () => {
+  it('attaches the window pointermove listener only for the active sketch', () => {
+    toolRegistry.register(stubTool('line'))
+    useSketchEditorStore.setState({ activeTool: 'line' })
+    const addSpy = vi.spyOn(window, 'addEventListener')
+    render(
+      <>
+        <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />
+        <DrawPlane featureId="S2" activeFeatureId="S1" sketchGroupRef={groupRef} />
+      </>,
+    )
+    // One listener: the inactive plane must not register, or N visible
+    // sketches stack N identical projections per pointer move.
+    const moves = addSpy.mock.calls.filter(([type]) => type === 'pointermove').length
+    expect(moves).toBe(1)
+    addSpy.mockRestore()
+  })
+})

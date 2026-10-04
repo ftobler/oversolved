@@ -151,12 +151,16 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     }
   }
 
-  // Attach once per mount; handler ref provides fresh values on every call.
+  // Only the active sketch registers the window listener. Every visible sketch
+  // mounts a DrawPlane, so registering for all of them stacked N listeners
+  // projecting through N planes on every move. The handler's featureId guard
+  // stays as a backstop for the commit window where the active feature changes.
   useEffect(() => {
+    if (featureId !== activeFeatureId) return
     const handler = (e: PointerEvent) => handleDrawMoveRef.current?.(e)
     window.addEventListener('pointermove', handler)
     return () => window.removeEventListener('pointermove', handler)
-  }, [])
+  }, [featureId, activeFeatureId])
 
   if (featureId !== activeFeatureId) return null
 
