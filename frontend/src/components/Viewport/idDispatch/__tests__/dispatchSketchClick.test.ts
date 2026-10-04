@@ -132,6 +132,34 @@ describe('dispatchDragInitiation guard logic', () => {
     expect(s.isPointerDown).toBe(false)
     expect(s.dragPending).toBeNull()
   })
+
+  it('refuses to start a second pending gesture while a drag is active', () => {
+    // A second finger pressing a vertex on another sketch mid-drag used to
+    // overwrite dragPending, which the first finger's release then cleared,
+    // killing gesture B and unlocking the camera while finger B was still down.
+    useSketchEditorStore.setState({
+      activeTool: null,
+      activeFeatureId: 'feat1',
+      drag: {
+        type: 'vertex', vertexId: 'vertex:feat1:line1:start', featureId: 'feat1',
+        entityId: 'line1', vertexKey: 'start', startWorld: [0, 0],
+        currentWorld: [1, 1], startClient: [0, 0],
+      },
+      dragPending: null,
+      dragStartClient: [0, 0],
+      isPointerDown: true,
+    })
+
+    dispatchDragInitiation(
+      'vertex:feat1:line2:start', 'feat1', 'line2', 'start',
+      300, 400,
+    )
+
+    const s = useSketchEditorStore.getState()
+    expect(s.dragPending).toBeNull()
+    expect(s.dragStartClient).toEqual([0, 0])
+    expect(s.isPointerDown).toBe(true)
+  })
 })
 
 describe('dispatchSketchClick null-tool fallback (idle select contract)', () => {

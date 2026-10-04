@@ -72,6 +72,12 @@ export function dispatchDragInitiation(
   // 'drag', and every drawing tool commits on pointer-down instead.
   if (effectiveTool !== 'drag') return
 
+  // The gesture fields are shared, not per-pointer. A second pointer pressing
+  // another sketch mid-gesture would overwrite dragPending, which the first
+  // pointer's release then clears: the second gesture never activates and the
+  // camera unlocks while its finger is still down. Ignore the second press.
+  if (state.drag || state.dragPending) return
+
   state.setIsPointerDown(true)
   state.setDragStartClient([clientX, clientY])
 
