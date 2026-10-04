@@ -17,10 +17,10 @@ export function nearestPointOnLine(
   const dy = y2 - y1
   const lenSq = dx * dx + dy * dy
   if (lenSq === 0) return { position: [x1, y1], distance: Math.hypot(px - x1, py - y1) }
-  
+
   let t = ((px - x1) * dx + (py - y1) * dy) / lenSq
   t = Math.max(0, Math.min(1, t))
-  
+
   const nx = x1 + t * dx
   const ny = y1 + t * dy
   return { position: [nx, ny], distance: Math.hypot(px - nx, py - ny) }
@@ -33,7 +33,7 @@ export function nearestPointOnCircle(
   const angle = Math.atan2(py - cy, px - cx)
   const nx = cx + r * Math.cos(angle)
   const ny = cy + r * Math.sin(angle)
-  return { position: [nx, ny], distance: Math.abs(Math.hypot(px - nx, py - ny)) }
+  return { position: [nx, ny], distance: Math.hypot(px - nx, py - ny) }
 }
 
 export function nearestPointOnArc(
@@ -48,20 +48,20 @@ export function nearestPointOnArc(
   }
   const start = toAngle(angleStart)
   const end = toAngle(angleEnd)
-  
+
   const pointAngle = toAngle(Math.atan2(py - cy, px - cx) * 180 / Math.PI)
-  
+
   let onArc = false
   if (end > start) {
     onArc = pointAngle >= start && pointAngle <= end
   } else {
     onArc = pointAngle >= start || pointAngle <= end
   }
-  
+
   if (onArc) {
     return nearestPointOnCircle(px, py, cx, cy, r)
   }
-  
+
   const startPoint: NearestPointResult = {
     position: [cx + r * Math.cos(angleStart * Math.PI / 180), cy + r * Math.sin(angleStart * Math.PI / 180)],
     distance: Math.hypot(px - (cx + r * Math.cos(angleStart * Math.PI / 180)), py - (cy + r * Math.sin(angleStart * Math.PI / 180)))
@@ -70,7 +70,7 @@ export function nearestPointOnArc(
     position: [cx + r * Math.cos(angleEnd * Math.PI / 180), cy + r * Math.sin(angleEnd * Math.PI / 180)],
     distance: Math.hypot(px - (cx + r * Math.cos(angleEnd * Math.PI / 180)), py - (cy + r * Math.sin(angleEnd * Math.PI / 180)))
   }
-  
+
   return startPoint.distance < endPoint.distance ? startPoint : endPoint
 }
 
