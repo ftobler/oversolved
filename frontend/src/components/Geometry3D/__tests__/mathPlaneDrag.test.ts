@@ -130,4 +130,17 @@ describe('projectCursorToSketchPlane', () => {
     cam.updateProjectionMatrix()
     expect(projectCursorToSketchPlane(cam, g, { x: 0, y: 0 })).toBeNull()
   })
+
+  it('rejects a moderately near-parallel hit that lands far outside the frame', () => {
+    const g = makeGroup([0, 0, 0])
+    const cam = new THREE.OrthographicCamera(-10, 10, 10, -10, -100, 100)
+    cam.position.set(0, 0, 50)
+    // About 0.57 degrees off edge-on: well above the exact-parallel incidence
+    // guard yet still commits a point thousands of units from the sketch. The
+    // far-plane bound must refuse it.
+    cam.lookAt(1, 0, 50 - 0.01)
+    cam.updateMatrixWorld(true)
+    cam.updateProjectionMatrix()
+    expect(projectCursorToSketchPlane(cam, g, { x: 0, y: 0 })).toBeNull()
+  })
 })

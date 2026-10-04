@@ -4,6 +4,13 @@ import * as THREE from 'three'
 // the projection is treated as edge-on. See projectCursorToSketchPlane.
 const MIN_PLANE_INCIDENCE = 1e-6
 
+// A ray only slightly off edge-on still intersects the plane, but at a distance
+// that grows without bound as the incidence shrinks. Cap the hit at this many
+// camera far planes from the sketch origin: the far plane is the world scale of
+// what the camera can even show, so a hit this far out is never a real cursor
+// position. See projectCursorToSketchPlane.
+const MAX_HIT_DISTANCE_FAR_FACTOR = 10
+
 /**
  * Math-only drag plane recipe (replaces the old invisible mesh + raycast).
  *
@@ -46,5 +53,16 @@ export function projectCursorToSketchPlane(
   // any ray within this incidence of the plane as edge-on and refuse it.
   const incidence = Math.abs(raycaster.ray.direction.dot(plane.normal))
   if (incidence < MIN_PLANE_INCIDENCE) return null
-  return raycaster.ray.intersectPlane(plane, out)
+  const hit = raycaster.ray.intersectPlane(plane, out)
+  if (!hit) return null
+  // The incidence test above only catches the near-exact case. A ray a few
+  // thousandths off edge-on still intersects, at a finite point far outside any
+  // document, so bound the hit against the camera's far plane before returning.
+  const far = (camera as { far?: number }).far
+  if (far !== undefined && Number.isFinite(far) && far > 0) {
+    const origin = new THREE.Vector3()
+    group.getWorldPosition(origin)
+    if (hit.distanceTo(origin) > far * MAX_HIT_DISTANCE_FAR_FACTOR) return null
+  }
+  return hit
 }
