@@ -385,7 +385,7 @@ export function buildEdgeSegmentGeometry(edges: EdgeData[]): EdgeSegmentGeometry
       const { center, radius, x_axis, axis, angle_start, angle_end } = edge
       if (!_isValidSegment(center) || !_isValidSegment(x_axis) || !_isValidSegment(axis)
           || Number.isNaN(radius) || !Number.isFinite(radius)
-          || Number.isNaN(angle_start) || Number.isNaN(angle_end)) {
+          || !Number.isFinite(angle_start) || !Number.isFinite(angle_end)) {
         continue
       }
       const sweep = angle_end - angle_start
@@ -427,7 +427,7 @@ export function buildEdgeSegmentGeometry(edges: EdgeData[]): EdgeSegmentGeometry
       const { center, a, b, x_axis, axis, angle_start, angle_end } = edge
       if (!_isValidSegment(center) || !_isValidSegment(x_axis) || !_isValidSegment(axis)
           || !Number.isFinite(a) || !Number.isFinite(b)
-          || Number.isNaN(angle_start) || Number.isNaN(angle_end)) {
+          || !Number.isFinite(angle_start) || !Number.isFinite(angle_end)) {
         continue
       }
       // p(t) = center + a*cos(t)*u + b*sin(t)*v, with v = axis cross x_axis,
