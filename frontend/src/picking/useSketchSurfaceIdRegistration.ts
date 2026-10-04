@@ -71,7 +71,6 @@ export function useSketchSurfaceIdRegistration(params: {
     // Register as one body per surface, each carrying its triangles.
     for (const { shape, query } of surfaces) {
       const geo = new THREE.ShapeGeometry(shape)
-      geo.computeVertexNormals()
       const indexed = geo.getAttribute('position')
       if (!indexed || indexed.count < 3) {
         geo.dispose()

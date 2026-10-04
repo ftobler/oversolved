@@ -6,7 +6,6 @@ import Docs from '@/pages/Docs'
 import Registry from '@/pages/Registry'
 import Licenses from '@/pages/Licenses'
 import '@/components/shared/buttons.css'
-import '@/App.css'
 
 function App() {
   return (
