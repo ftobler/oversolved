@@ -4,6 +4,14 @@ import type { PartDoc } from '@/types/cad'
 
 function emptyDoc(): PartDoc { return { features: [] } }
 
+// A delete_body authored before the pick was pluralized: singular `body`, no
+// `bodies`. Reaching a mutator unmigrated must still preserve `@b1`.
+function legacyBodyDoc(): PartDoc {
+  return {
+    features: [{ id: 'db1', kind: 'delete_body', delete_body: { body: '@b1' } }],
+  } as unknown as PartDoc
+}
+
 describe('applyAddDeleteBody', () => {
   it('adds a delete_body feature', () => {
     const doc = emptyDoc()
@@ -56,6 +64,17 @@ describe('applyAddDeleteBodyRef', () => {
     applyAddDeleteBodyRef(doc, 'nope', '@body_ex1')
     expect(doc).toEqual(before)
     expect(doc.features).toEqual([])
+  })
+
+  // An unmigrated legacy doc carries the singular `body` and no `bodies`. The
+  // backstop must seed the list from it, not start empty, or the original pick
+  // is silently dropped the moment another body is added.
+  it('seeds the list from the legacy pick instead of dropping it', () => {
+    const doc = legacyBodyDoc()
+    applyAddDeleteBodyRef(doc, 'db1', '@b2')
+    const sub = doc.features![0].delete_body!
+    expect(sub.bodies).toEqual(['@b1', '@b2'])
+    expect('body' in sub).toBe(false)
   })
 })
 
