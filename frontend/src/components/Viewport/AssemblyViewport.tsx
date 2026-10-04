@@ -284,9 +284,14 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     [selectedMate, entityMateRefs],
   )
   const rollGuideSpec = useMemo((): RollGuideSpec | null => {
-    if (!rollGuideAnchor) return null
-    return { point: [...rollGuideAnchor.point] as Vec3, axis: [...rollGuideAnchor.axis] as Vec3, angleDeg: rollGuideAngleDeg }
-  }, [rollGuideAnchor, rollGuideAngleDeg])
+    if (!selectedMate || selectedMate.kind !== 'fixed' || !rollGuideAnchor) return null
+    return {
+      point: [...rollGuideAnchor.point] as Vec3,
+      axis: [...rollGuideAnchor.axis] as Vec3,
+      angleDeg: rollGuideAngleDeg,
+      basis: partBases[selectedMate.ref_a.part],
+    }
+  }, [selectedMate, rollGuideAnchor, rollGuideAngleDeg, partBases])
 
   const onPipelineReady = useCallback((p: IdPipeline) => { pipelineRef.current = p }, [])
   // A `fixed` part is the assembly's static frame: it selects, but it gets no

@@ -94,11 +94,12 @@ describe('Transform mutations', () => {
         expect('body' in sub).toBe(false)
       })
 
-      it('applyAddTransformBody does not throw on an unmigrated legacy doc and appends to the healed list', () => {
+      it('applyAddTransformBody seeds the list from the legacy pick instead of dropping it', () => {
         const doc = legacyDoc()
         expect(() => applyAddTransformBody(doc, 'xf1', '@b2')).not.toThrow()
         const sub = doc.features![0].transform!
-        expect(sub.bodies).toEqual(['@b2'])
+        expect(sub.bodies).toEqual(['@b1', '@b2'])
+        expect('body' in sub).toBe(false)
       })
 
       it('after migration, adding @b2 lands next to the healed @b1', () => {

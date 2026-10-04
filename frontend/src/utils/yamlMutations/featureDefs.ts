@@ -7,6 +7,18 @@ function pushFeature(doc: PartDoc, feature: PartFeature): void {
   doc.features.push(feature)
 }
 
+/** Materialize the plural body list a body mutator indexes. A doc that reached
+ *  the mutator unmigrated carries only the singular legacy `body`; seed `bodies`
+ *  from it so the user's original pick is not silently dropped on the next save.
+ *  Mirrors migrateLegacyBodyPicks, which the parse seams run first. */
+function _ensureBodies(sub: { bodies?: string[]; body?: string }): string[] {
+  if (!sub.bodies) {
+    sub.bodies = typeof sub.body === 'string' && sub.body ? [sub.body] : []
+    delete sub.body
+  }
+  return sub.bodies
+}
+
 // ─── Set Feature Field (generic) ───
 
 // Shared body for the `applySet<Kind>Field` mutators that warn when the
@@ -443,14 +455,15 @@ export function applyAddDeleteBodyRef(doc: PartDoc, featureId: string, bodyQuery
     warn(`applyAddDeleteBodyRef: feature ${featureId} has no delete_body`)
     return
   }
-  // A legacy doc reaching a mutation path unmigrated has no `bodies`; heal it
-  // so indexOf/splice cannot throw and take the UI down with them.
-  sub.bodies ??= []
-  const idx = sub.bodies.indexOf(bodyQuery)
+  // A legacy doc reaching a mutation path unmigrated has no `bodies`; seed it
+  // from the singular pick so the user's choice survives, and so indexOf/splice
+  // cannot throw and take the UI down with them.
+  const bodies = _ensureBodies(sub)
+  const idx = bodies.indexOf(bodyQuery)
   if (idx >= 0) {
-    sub.bodies.splice(idx, 1)
+    bodies.splice(idx, 1)
   } else {
-    sub.bodies.push(bodyQuery)
+    bodies.push(bodyQuery)
   }
 }
 
@@ -461,9 +474,9 @@ export function applyRemoveDeleteBodyRef(doc: PartDoc, featureId: string, index:
     return
   }
   // Same legacy-doc healing as applyAddDeleteBodyRef.
-  sub.bodies ??= []
-  if (!removableIndex(sub.bodies, index)) return
-  sub.bodies.splice(index, 1)
+  const bodies = _ensureBodies(sub)
+  if (!removableIndex(bodies, index)) return
+  bodies.splice(index, 1)
 }
 
 export function applyAddHole(doc: PartDoc, featureId: string, label?: string): void {
@@ -508,14 +521,15 @@ export function applyAddTransformBody(doc: PartDoc, featureId: string, bodyQuery
     warn(`applyAddTransformBody: feature ${featureId} has no transform`)
     return
   }
-  // A legacy doc reaching a mutation path unmigrated has no `bodies`; heal it
-  // so indexOf/splice cannot throw and take the UI down with them.
-  sub.bodies ??= []
-  const idx = sub.bodies.indexOf(bodyQuery)
+  // A legacy doc reaching a mutation path unmigrated has no `bodies`; seed it
+  // from the singular pick so the user's choice survives, and so indexOf/splice
+  // cannot throw and take the UI down with them.
+  const bodies = _ensureBodies(sub)
+  const idx = bodies.indexOf(bodyQuery)
   if (idx >= 0) {
-    sub.bodies.splice(idx, 1)
+    bodies.splice(idx, 1)
   } else {
-    sub.bodies.push(bodyQuery)
+    bodies.push(bodyQuery)
   }
 }
 
@@ -526,9 +540,9 @@ export function applyRemoveTransformBody(doc: PartDoc, featureId: string, index:
     return
   }
   // Same legacy-doc healing as applyAddTransformBody.
-  sub.bodies ??= []
-  if (!removableIndex(sub.bodies, index)) return
-  sub.bodies.splice(index, 1)
+  const bodies = _ensureBodies(sub)
+  if (!removableIndex(bodies, index)) return
+  bodies.splice(index, 1)
 }
 
 export function applySetTransformField(

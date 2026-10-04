@@ -18,6 +18,9 @@ export interface RollGuideSpec {
   point: Vec3
   axis: Vec3
   angleDeg: number
+  // ref_a's part basis; the zero arm must match the anchor triad's. Absent for
+  // the assembly's own frame, which has no part rotation.
+  basis?: readonly Vec3[]
 }
 
 // Consecutive-pair segments, not a line strip: `<lineSegments>` is the JSX tag
@@ -42,7 +45,7 @@ export default function RollGuideGizmo({ spec }: { spec: RollGuideSpec | null })
   // so the enclosing group's screen-scale can size it uniformly; the group's
   // own position carries the anchor point, exactly as AnchorGizmos' triads do.
   const guide = useMemo(
-    () => spec && buildRollGuide([0, 0, 0], spec.axis, spec.angleDeg, 1),
+    () => spec && buildRollGuide([0, 0, 0], spec.axis, spec.angleDeg, 1, spec.basis),
     [spec],
   )
   const geometry = useMemo(() => guide && arcGeometry(guide), [guide])

@@ -338,13 +338,17 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     const ea = sketch[eid] as Arc | LineSegment
     const eb = eid2 ? sketch[eid2] as Arc | LineSegment : undefined
     const entities = [eid, eid2].filter(Boolean) as string[]
-    if (eb && 'center' in eb) {
-      const pt = resolved.b?.point !== 'end' ? (eb as Arc).start : (eb as Arc).end
-      return { kind: 'symbol_normal', at: pt, entity: eid2!, entities }
+    // geomPoint resolves the anchor for both arcs and circles: it returns an
+    // arc's start/end (honoring the resolved center key) and a circle's center.
+    // The old Arc cast read `.start` off a circle, which is undefined and dropped
+    // the glyph into the AABB-corner fallback.
+    if (eb && resolved.b && 'center' in eb) {
+      const pt = geomPoint(sketch, resolved.b)
+      if (pt) return { kind: 'symbol_normal', at: pt, entity: eid2!, entities }
     }
-    if (ea && 'center' in ea) {
-      const pt = resolved.a?.point !== 'end' ? (ea as Arc).start : (ea as Arc).end
-      return { kind: 'symbol_normal', at: pt, entity: eid, entities }
+    if (ea && resolved.a && 'center' in ea) {
+      const pt = geomPoint(sketch, resolved.a)
+      if (pt) return { kind: 'symbol_normal', at: pt, entity: eid, entities }
     }
     if (!ea || !('end' in ea)) return { kind: 'unknown' }
     return { kind: 'symbol_normal', at: (ea as LineSegment).end, entity: eid, entities }

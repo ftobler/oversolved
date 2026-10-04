@@ -7,7 +7,12 @@ import { getEntityKind } from '@/types/cad'
  *  the circle (radius checked by the caller). */
 function pointOnArcSpan(a: Arc, px: number, py: number, tol: number): boolean {
   const angDeg = (Math.atan2(py - a.center[1], px - a.center[0]) * 180) / Math.PI
-  const span = (((a.angle_end - a.angle_start) % 360) + 360) % 360
+  // A full turn (a nonzero multiple of 360) folds to 0 under the modulo and would
+  // read as an empty span, admitting only angles near the start. Treat it as the
+  // full circle it is; a genuine zero sweep keeps its empty span.
+  const delta = a.angle_end - a.angle_start
+  const full = delta !== 0 && delta % 360 === 0
+  const span = full ? 360 : (((delta % 360) + 360) % 360)
   const rel = (((angDeg - a.angle_start) % 360) + 360) % 360
   // Arc-length tol -> angular slack; a degenerate (near-zero) radius admits any angle.
   const slack = a.radius > tol ? ((tol / a.radius) * 180) / Math.PI : 360
