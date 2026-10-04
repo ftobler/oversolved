@@ -32,6 +32,16 @@ describe('preferences adapter', () => {
       expect(new LocalPreferences().read().document_sort).toBe('date_newest_first')
     })
 
+    // A stale or corrupted localStorage value is not in the DocumentSort union;
+    // passing it through would reach the grid's sort switch as a bogus member.
+    it('falls back to the default sort when the stored value is not a known sort', () => {
+      localStorage.setItem('oversolved.preferences', JSON.stringify({ document_sort: 'date_newest' }))
+      expect(new LocalPreferences().read().document_sort).toBe('date_newest_first')
+
+      localStorage.setItem('oversolved.preferences', JSON.stringify({ document_sort: 5 }))
+      expect(new LocalPreferences().read().document_sort).toBe('date_newest_first')
+    })
+
     it('round-trips through localStorage', async () => {
       // Typed as the port, so the call sites here are the ones the hook makes.
       const adapter: PreferencesAdapter = new LocalPreferences()
