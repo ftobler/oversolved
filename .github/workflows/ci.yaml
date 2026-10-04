@@ -9,7 +9,7 @@ jobs:
   # Python is build-time tooling only now (icon generation plus the lint/docs
   # guards); the app itself is browser-only, so this job needs no database and
   # no GL/X stack.
-  backend:
+  python:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:

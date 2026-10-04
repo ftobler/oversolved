@@ -362,7 +362,9 @@ describe('parity provisioning guard', () => {
 })
 
 // The null-solve guard does not need OCC.js (it uses a fake child), so it lives
-// outside the skipIf suite and runs in the default vitest run too.
+// outside the skipIf suite and still runs when the kernel is not provisioned.
+// The whole file is excluded from the default suite (see vitest.config.ts), so
+// this runs only under the parity config.
 describe('parity null-solve guard', () => {
   it('fails loudly when the solve returns null (worker load failure or child OOM)', async () => {
     setSolveChildForTest(() => new NullSolveChild() as unknown as SolveChildLike)
