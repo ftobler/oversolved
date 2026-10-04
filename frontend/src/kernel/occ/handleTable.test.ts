@@ -16,8 +16,7 @@ class FakeShape implements Disposable {
   }
 }
 
-// The guard relies on FinalizationRegistry timing, which is nondeterministic,
-// so the tests keep it off and exercise the deterministic refcount paths.
+// Every test drives the deterministic refcount paths through one plain table.
 function table() {
   return new HandleTable()
 }
