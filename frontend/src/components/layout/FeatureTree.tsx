@@ -164,7 +164,11 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
               <RollbackSlider
                 isDragging={draggedRollback}
                 enabled={rollbackDraggable}
+                position={effectiveRollback}
+                min={BUILT_IN_IDS.size}
+                max={features.length}
                 onGrab={() => setDraggedRollback(true)}
+                onSetPosition={onSetRollbackPosition}
               />
             )}
             <li
@@ -289,7 +293,11 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
         <RollbackSlider
           isDragging={draggedRollback}
           enabled={rollbackDraggable}
+          position={effectiveRollback}
+          min={BUILT_IN_IDS.size}
+          max={features.length}
           onGrab={() => setDraggedRollback(true)}
+          onSetPosition={onSetRollbackPosition}
         />
       )}
     </ul>
