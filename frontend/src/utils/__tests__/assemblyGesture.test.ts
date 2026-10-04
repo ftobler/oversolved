@@ -113,9 +113,22 @@ describe('assembly gesture machine', () => {
     const m = createAssemblyGestureMachine()
 
     m.pointerDown(primary, 0, 0)
-    m.pointerMove(1, 1)
+    m.pointerMove(primary, 1, 1)
     expect(m.clickState.wasDrag).toBe(false)
-    m.pointerMove(40, 40)
+    m.pointerMove(primary, 40, 40)
     expect(m.clickState.wasDrag).toBe(true)
+  })
+
+  it('a second pointer move does not latch the opener click tracker', () => {
+    const m = createAssemblyGestureMachine()
+
+    m.pointerDown(primary, 0, 0)
+    // The second touch travels far, but the opener never moved: the opener's
+    // release must still read as a stationary click.
+    m.pointerMove(other, 400, 400)
+    expect(m.clickState.wasDrag).toBe(false)
+
+    expect(m.pointerUp(primary, 0, 0)).toEqual({ owned: true, source: null, moved: false })
+    expect(m.clickState.wasDrag).toBe(false)
   })
 })

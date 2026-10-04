@@ -82,27 +82,48 @@ describe('createClickGestureTracker', () => {
   it('threads down/move/up through mutable state', () => {
     const t = createClickGestureTracker()
     expect(t.state).toEqual(IDLE_GESTURE)
-    t.down(0, 10, 10)
-    t.move(10 + OVER, 10)
-    const closed = t.up(10 + OVER, 10)
+    t.down(1, 0, 10, 10)
+    t.move(1, 10 + OVER, 10)
+    const closed = t.up(1, 10 + OVER, 10)
     expect(closed.wasDrag).toBe(true)
     expect(t.state).toBe(closed)
   })
 
   it('starts each gesture fresh, so a drag does not poison the next click', () => {
     const t = createClickGestureTracker()
-    t.down(0, 0, 0)
-    t.move(500, 500)
-    t.up(500, 500)
-    t.down(0, 7, 7)
-    t.up(7, 7)
+    t.down(1, 0, 0, 0)
+    t.move(1, 500, 500)
+    t.up(1, 500, 500)
+    t.down(1, 0, 7, 7)
+    t.up(1, 7, 7)
     expect(isStationaryPrimaryClick(t.state)).toBe(true)
   })
 
   it('reset clears the verdict', () => {
     const t = createClickGestureTracker()
-    t.down(0, 1, 1)
+    t.down(1, 0, 1, 1)
     t.reset()
     expect(t.state).toEqual(IDLE_GESTURE)
+  })
+
+  it('ignores a move from a pointer that did not open the gesture', () => {
+    const t = createClickGestureTracker()
+    t.down(1, 0, 100, 100)
+    // A second finger travelling while the first is held must not latch the
+    // opener's tracker: the opener never moved, so its release is still a click.
+    t.move(2, 400, 400)
+    expect(t.state.wasDrag).toBe(false)
+    const closed = t.up(1, 100, 100)
+    expect(closed.wasDrag).toBe(false)
+    expect(isStationaryPrimaryClick(closed)).toBe(true)
+  })
+
+  it('ignores a release from a pointer that did not open the gesture', () => {
+    const t = createClickGestureTracker()
+    t.down(1, 0, 100, 100)
+    t.up(2, 400, 400)
+    // The foreign release owns nothing: the opener's gesture is still open.
+    expect(t.state.origin).toEqual([100, 100])
+    expect(t.up(1, 100, 100).wasDrag).toBe(false)
   })
 })

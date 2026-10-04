@@ -51,69 +51,69 @@ describe('assembly: camera manipulation never disturbs the selection', () => {
   })
 
   it('keeps the selection through a right-button orbit that misses on pointer-down', () => {
-    gesture.down(2, 400, 300)
+    gesture.down(1, 2, 400, 300)
     // Chrome/Linux: contextmenu (an R3F click event) lands here, before any move.
     pointerMissed(gesture)
     expect(useAssemblyStore.getState().entitySelection.has(FACE)).toBe(true)
     expect(useAssemblyStore.getState().subject).toEqual({ kind: 'part', handle: 'part-a' })
 
-    gesture.move(600, 380)
-    gesture.up(600, 380)
+    gesture.move(1, 600, 380)
+    gesture.up(1, 600, 380)
     pointerMissed(gesture)
     expect(useAssemblyStore.getState().entitySelection.has(FACE)).toBe(true)
     expect(useAssemblyStore.getState().subject).toEqual({ kind: 'part', handle: 'part-a' })
   })
 
   it('keeps the selection through a middle-button pan', () => {
-    gesture.down(1, 400, 300)
-    gesture.move(500, 300)
-    gesture.up(500, 300)
+    gesture.down(1, 1, 400, 300)
+    gesture.move(1, 500, 300)
+    gesture.up(1, 500, 300)
     pointerMissed(gesture)
     expect(useAssemblyStore.getState().entitySelection.has(FACE)).toBe(true)
   })
 
   it('keeps the selection when a left drag exceeds the click threshold', () => {
-    gesture.down(0, 400, 300)
-    gesture.move(400 + CLICK_THRESHOLD_PX + 1, 300)
-    gesture.up(400 + CLICK_THRESHOLD_PX + 1, 300)
+    gesture.down(1, 0, 400, 300)
+    gesture.move(1, 400 + CLICK_THRESHOLD_PX + 1, 300)
+    gesture.up(1, 400 + CLICK_THRESHOLD_PX + 1, 300)
     pointerMissed(gesture)
     expect(useAssemblyStore.getState().entitySelection.has(FACE)).toBe(true)
   })
 
   it('keeps the selection when an orbit returns to where it started', () => {
-    gesture.down(2, 400, 300)
-    gesture.move(700, 500)
-    gesture.up(400, 300)  // back on the origin pixel: end points alone would say "click"
+    gesture.down(1, 2, 400, 300)
+    gesture.move(1, 700, 500)
+    gesture.up(1, 400, 300)  // back on the origin pixel: end points alone would say "click"
     pointerMissed(gesture)
     expect(useAssemblyStore.getState().entitySelection.has(FACE)).toBe(true)
   })
 
   it('still clears on a stationary left click in empty space', () => {
-    gesture.down(0, 400, 300)
-    gesture.up(400, 300)
+    gesture.down(1, 0, 400, 300)
+    gesture.up(1, 400, 300)
     pointerMissed(gesture)
     expect(useAssemblyStore.getState().entitySelection.size).toBe(0)
     expect(useAssemblyStore.getState().subject).toBeNull()
   })
 
   it('still selects on a stationary left click that hits an entity', () => {
-    gesture.down(0, 400, 300)
-    gesture.up(400, 300)
+    gesture.down(1, 0, 400, 300)
+    gesture.up(1, 400, 300)
     pointerUpSelect(gesture, 0, OTHER_FACE)
     expect(useAssemblyStore.getState().entitySelection.has(OTHER_FACE)).toBe(true)
   })
 
   it('does not select when the left gesture became a drag', () => {
-    gesture.down(0, 400, 300)
-    gesture.move(400 + CLICK_THRESHOLD_PX + 1, 300)
-    gesture.up(400 + CLICK_THRESHOLD_PX + 1, 300)
+    gesture.down(1, 0, 400, 300)
+    gesture.move(1, 400 + CLICK_THRESHOLD_PX + 1, 300)
+    gesture.up(1, 400 + CLICK_THRESHOLD_PX + 1, 300)
     pointerUpSelect(gesture, 0, OTHER_FACE)
     expect(useAssemblyStore.getState().entitySelection.has(OTHER_FACE)).toBe(false)
   })
 
   it('does not clear while a part-manipulation session owns the pointer', () => {
-    gesture.down(0, 400, 300)
-    gesture.up(400, 300)
+    gesture.down(1, 0, 400, 300)
+    gesture.up(1, 400, 300)
     pointerMissed(gesture, true)
     expect(useAssemblyStore.getState().entitySelection.has(FACE)).toBe(true)
   })

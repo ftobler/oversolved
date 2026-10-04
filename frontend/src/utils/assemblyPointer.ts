@@ -128,8 +128,10 @@ export interface AssemblyPointerAdapter {
    * must not open a session for it.
    */
   pointerDown: (pointer: PointerRef, x: number, y: number) => boolean
-  // Advances the click tracker; does not touch the session or the ray math.
-  pointerMove: (x: number, y: number) => void
+  // Advances the click tracker for the pointer that opened the gesture; a
+  // move from any other pointer is inert. Does not touch the session or the
+  // ray math.
+  pointerMove: (pointer: PointerRef, x: number, y: number) => void
   // Abandons the gesture only when the cancelling pointer is the opener, so a
   // secondary pointer going away cannot end the primary's drag.
   pointerCancel: (pointer: PointerRef) => void

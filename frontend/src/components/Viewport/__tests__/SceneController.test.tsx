@@ -15,22 +15,20 @@ vi.mock('@react-three/fiber', () => ({
 
 // A fuller OrbitControls mock than a bare `() => null`: it wires the ref up to
 // a minimal fake controls object (target + mouseButtons + update) so
-// SceneController's save-on-teardown effect has a truthy ctrlRef.current and
-// actually runs, and the right-button remap has a mouseButtons.RIGHT to
-// mutate. Deliberately NOT forwardRef/useImperativeHandle: React auto-nulls
-// those refs during unmount's commit phase, before the passive effect cleanup
-// that reads ctrlRef.current ever runs, which would make the guard always
-// false and the save path untestable. A plain component reading `ref` as an
-// ordinary prop (React 19) has no such auto-managed lifecycle, matching what
-// the save/restore logic here is actually written to assume.
+// SceneController's pose save/restore has a truthy controls object to work
+// with. It calls the ref in a layout effect (attach) and with null on unmount
+// (detach). Layout timing is the point: React detaches a real callback ref in
+// the commit phase, before any passive-effect cleanup, which is exactly why a
+// save living in a passive cleanup always read a null controls. Using a
+// passive effect here would hide that and let the buggy save appear to work.
 // The fake is memoized per MOUNT, mirroring drei's own useMemo'd controls:
 // re-renders keep the instance, only a key change produces a fresh one, so
 // tests can tell "re-rendered" from "re-keyed" by instance identity.
 vi.mock('@react-three/drei', async () => {
-  const { useMemo } = await import('react')
+  const { useMemo, useLayoutEffect } = await import('react')
   const THREE = await import('three')
   return {
-    OrbitControls: (props: { ref?: (v: unknown) => void }) => {
+    OrbitControls: ({ ref }: { ref?: (v: unknown) => void }) => {
       const fake = useMemo(() => ({
         target: new THREE.Vector3(),
         update: () => {},
@@ -38,7 +36,10 @@ vi.mock('@react-three/drei', async () => {
         // the pointerdown remap writes into.
         mouseButtons: { RIGHT: THREE.MOUSE.ROTATE },
       }), [])
-      if (props.ref) props.ref(fake)
+      useLayoutEffect(() => {
+        ref?.(fake)
+        return () => ref?.(null)
+      }, [ref, fake])
       return null
     },
   }
@@ -203,6 +204,11 @@ describe('SceneController saved-orbit-state instance scoping', () => {
 })
 
 describe('SceneController orbit pose across a Suspense reveal', () => {
+  // Regression: the pose save lived in a passive-effect cleanup and read the
+  // controls ref, but React detaches that ref in the commit phase first, so the
+  // save never ran and the rebuilt controls came back at the default (0,0,0)
+  // target. The mock detaches its ref in a layout effect to preserve that
+  // ordering, and the pose now rides on the camera's userData.
   it('restores the saved orbit target onto the controls instance born at the reveal', async () => {
     const { useThree } = await import('@react-three/fiber')
     const { useLayoutEffect, useState } = await import('react')
@@ -350,9 +356,12 @@ describe('SceneController right-button remap binding', () => {
     pressRightButton(gizmoOverlay, { shiftKey: true })
     expect(mapping()).toBe(THREE.MOUSE.ROTATE)
 
-    // Cleanup on unmount: no further presses reach the mapping.
+    // Cleanup on unmount: the controls ref detaches and no further presses
+    // reach the mapping.
+    const controlsAtUnmount = props.controlsRef.current!
     unmount()
+    expect(props.controlsRef.current).toBeNull()
     pressRightButton(rendererCanvas, { ctrlKey: true })
-    expect(mapping()).toBe(THREE.MOUSE.ROTATE)
+    expect(controlsAtUnmount.mouseButtons.RIGHT).toBe(THREE.MOUSE.ROTATE)
   })
 })
