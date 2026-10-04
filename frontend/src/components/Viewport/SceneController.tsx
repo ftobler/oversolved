@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { OrbitControls } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import { useThree, useFrame } from '@react-three/fiber'
@@ -26,12 +26,20 @@ function rightButtonMapping(e: MouseEvent | PointerEvent): THREE.MOUSE {
 // document-level listeners but does not clear the private pointers array,
 // so after reconnect the controls can never re-arm. We force a fresh
 // OrbitControls instance on every show by bumping showSeq in the effect
-// that re-fires on each show, and save/restore the camera pose so the
-// viewport keeps the user's last framing.
+// that re-fires on each show, and carry the camera pose across the rebuild.
 interface SavedOrbitState {
   position: [number, number, number]
   target: [number, number, number]
   zoom: number
+}
+
+// The pose rides on the Canvas camera's userData because the camera outlives
+// the rebuild while the controls does not. A per-instance ref cannot carry it:
+// React detaches the OrbitControls ref during the commit phase, before the
+// passive-effect cleanup that used to read it, so the save never ran and the
+// orbit target reset to (0,0,0) after any Suspense cycle.
+interface PoseCarrier {
+  orbitPose?: SavedOrbitState
 }
 
 interface SceneControllerProps {
@@ -64,9 +72,6 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
   const { camera, gl } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
   const cameraRefStable = useRef(camera)
-  // Per-instance save slot: module scope would leak one viewport's saved
-  // pose into another when multiple SceneControllers are mounted at once.
-  const savedOrbitStateRef = useRef<SavedOrbitState | null>(null)
   // eslint-disable-next-line react-hooks/refs -- mirror the latest camera into a ref without triggering a re-render
   cameraRefStable.current = camera
 
@@ -76,44 +81,42 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
   // A clean OrbitControls key forces drei's useMemo to produce a fresh
   // three-stdlib instance with an empty pointers array.
   const [showSeq, setShowSeq] = useState(0)
-
-  // Save camera pose before the effect is torn down (unmount or Suspense
-  // hide), then bump showSeq on next setup so the controls is re-keyed.
   useEffect(() => {
     setShowSeq(k => k + 1)
-    return () => {
-      const cam = cameraRefStable.current
-      if (ctrlRef.current && cam) {
-        savedOrbitStateRef.current = {
-          position: [cam.position.x, cam.position.y, cam.position.z],
-          target: [ctrlRef.current.target.x, ctrlRef.current.target.y, ctrlRef.current.target.z],
-          zoom: cam.zoom,
-        }
-      }
-    }
   }, [])
 
-  // Restore camera pose onto whatever controls is live when the deferred rAF
-  // fires. The snapshot is consumed inside the callback, reading ctrlRef at
-  // fire time rather than capturing an instance at schedule time: on reveal
-  // this effect's first run lands in the same flush that bumps showSeq, so
-  // its rAF gets cancelled by the key-bump re-render BEFORE any fresh
-  // controls exists -- an early-consumed snapshot would be lost there, and a
-  // closure-captured controls would be the hidden pre-show one.
-  useEffect(() => {
-    const raf = requestAnimationFrame(() => {
-      const state = savedOrbitStateRef.current
-      const ctrl = ctrlRef.current
-      if (!state || !ctrl) return
-      savedOrbitStateRef.current = null
-      camera.position.set(...state.position)
-      ctrl.target.set(...state.target)
-      camera.zoom = state.zoom
-      camera.updateProjectionMatrix()
-      ctrl.update()
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [showSeq, camera])
+  // The one owner of the incoming and outgoing controls. An attach applies the
+  // carried pose before any frame can run, so the rebuilt controls' default
+  // target cannot overwrite it; a detach stashes the live pose on the camera
+  // for the next attach. Doing both in the ref callback is what makes the save
+  // survive: it runs in the commit phase, while the outgoing controls and its
+  // target are still live.
+  const attachControls = useCallback((ctrl: OrbitControlsImpl | null) => {
+    const cam = cameraRefStable.current
+    if (ctrl) {
+      const state = (cam.userData as PoseCarrier).orbitPose
+      if (state) {
+        cam.position.set(...state.position)
+        ctrl.target.set(...state.target)
+        cam.zoom = state.zoom
+        cam.updateProjectionMatrix()
+        ctrl.update()
+      }
+      ctrlRef.current = ctrl
+      controlsRef.current = ctrl
+      return
+    }
+    const last = ctrlRef.current
+    if (last) {
+      ;(cam.userData as PoseCarrier).orbitPose = {
+        position: [cam.position.x, cam.position.y, cam.position.z],
+        target: [last.target.x, last.target.y, last.target.z],
+        zoom: cam.zoom,
+      }
+    }
+    ctrlRef.current = null
+    controlsRef.current = null
+  }, [controlsRef])
 
   // Expose the Canvas-owned camera to the parent Viewport (for fitToContent).
   // eslint-disable-next-line react-hooks/refs -- expose the Canvas-owned camera to the parent Viewport without a re-render
@@ -167,10 +170,7 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
   return (
     <OrbitControls
       key={showSeq}
-      ref={(ctrl) => {
-        ctrlRef.current = ctrl
-        controlsRef.current = ctrl
-      }}
+      ref={attachControls}
       enabled={orbitEnabled ?? sketchOrbitEnabled}
       mouseButtons={MOUSE_BUTTONS}
       enableRotate
