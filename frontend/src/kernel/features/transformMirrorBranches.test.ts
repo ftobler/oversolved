@@ -214,6 +214,20 @@ describe('solveTransform rotation axis guard', () => {
       }, new Repository(), { body_a: body() }),
     ).toThrow(/rotation axis direction must be a non-zero vector/)
   })
+
+  it('refuses a zero-length rotation_axis pick instead of rotating about Z', () => {
+    // A degenerate edge (common on imported B-rep geometry) yields no usable
+    // direction, and the composition fallback then rotated about world Z while
+    // the non-zero guard passed. The pick was requested, so it must fail loud.
+    const repo = new Repository()
+    repo.register('axis', { start: [1, 1, 1], end: [1, 1, 1] })
+    expect(() =>
+      solveTransform(oc, scope, table, {
+        id: 't1',
+        transform: { bodies: ['body_a'], rotation_angle: 45, rotation_axis: '@axis' },
+      }, repo, { body_a: body() }),
+    ).toThrow(/rotation_axis/)
+  })
 })
 
 describe('solveMirror plane payloads and operation selection', () => {
