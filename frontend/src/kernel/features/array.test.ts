@@ -194,14 +194,15 @@ describe('buildArrayTransforms (rectangular)', () => {
     expect(translations(t)).toEqual([[10, 0, 0], [0, 20, 0], [10, 20, 0]])
   })
 
-  it('emits count_x * count_y instances when the source is excluded', () => {
+  it('excludes the seed cell when the source is excluded', () => {
     const t = buildArrayTransforms(
       makeFake(),
       scope,
       { mode: 'rectangular', count_x: 2, count_y: 2, pitch_x: 10, pitch_y: 20, include_source: false, direction_x_query: 'qx', direction_y_query: 'qy' },
       xyRepo,
     )
-    expect(t).toHaveLength(4)
+    // 2x2 lattice minus the seed (0,0): 3 copies, matching linear's no-seed rule.
+    expect(translations(t)).toEqual([[10, 0, 0], [0, 20, 0], [10, 20, 0]])
   })
 
   it('emits count_x * count_y - 1 instances for a 3x2 grid with include_source', () => {
@@ -287,18 +288,19 @@ describe('buildCircularTransforms', () => {
     expect(angles.map((a) => Math.round(a))).toEqual([90, 180, 270])
   })
 
-  it('emits count copies when the source is excluded', () => {
+  it('excludes the seed and emits count - 1 copies across a full wrap', () => {
     const t = buildCircularTransforms(makeFake(), scope, { count: 4, include_source: false, axis: 'az' }, zRepo, {})
-    // Default step = 360/4 = 90. step*count = 360 (full wrap), so the last
-    // copy that would land on the source position is dropped: 3 transforms.
-    expect(t).toHaveLength(3)
+    const angles = rotations(t).map((r) => Math.round((r.angle * 180) / Math.PI))
+    // Default step = 360/4 = 90. No source copy: sweep 90, 180, 270 and drop the
+    // full-360 wrap slot that would land back on the seed.
+    expect(angles).toEqual([90, 180, 270])
   })
 
   it('honours an explicit step_angle over the 360/count default', () => {
     const t = buildCircularTransforms(makeFake(), scope, { count: 3, step_angle: 30, include_source: false, axis: 'az' }, zRepo, {})
     const angles = rotations(t).map((r) => Math.round((r.angle * 180) / Math.PI))
-    // Sweeps from the seed angle (0): 0, 30, 60.
-    expect(angles).toEqual([0, 30, 60])
+    // Partial sweep (90 total): copies at 30, 60, 90, never on the seed.
+    expect(angles).toEqual([30, 60, 90])
   })
 
   it('rotates about the picked axis through its origin', () => {
