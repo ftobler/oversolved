@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_SELECTED } from '@/components/Geometry3D/constants'
+import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER } from '@/components/Geometry3D/constants'
 
 const MockLine = vi.fn((_props: Record<string, unknown>) => null)
 
@@ -19,6 +19,7 @@ function resetStore(overrides: Record<string, unknown> = {}) {
     normalSelection: new Set(),
     hoveredConstraintEntityIds: new Set(),
     hoveredSelectionId: null,
+    hoveredVertexId: null,
     ...overrides,
   } as never)
 }
@@ -62,20 +63,34 @@ describe('ProjectedOriginPoint', () => {
   })
 
   it('takes the hover and selection colours like any other sketch point', async () => {
+    // A point entity has no segment, so it is picked only through the vertex
+    // layer: the dispatcher resolves `vertex:sketch1:p1:xy` and writes
+    // hoveredVertexId / normalSelection with that same key.
     const { ProjectedOriginPoint } = await import('@/components/Geometry3D/VertexDots')
-    const entId = 'entity:sketch1:p1'
+    const vertId = 'vertex:sketch1:p1:xy'
 
-    resetStore({ hoveredSelectionId: entId })
+    resetStore({ hoveredVertexId: vertId })
     const hovered = render(
       <ProjectedOriginPoint x={0} y={0} featureId="sketch1" entityId="p1" isEditing={true} />
     )
     expect(materialColor(hovered.container)).toBe(COLOR_HOVER)
     hovered.unmount()
 
-    resetStore({ normalSelection: new Set([entId]) })
+    resetStore({ normalSelection: new Set([vertId]) })
     const selected = render(
       <ProjectedOriginPoint x={0} y={0} featureId="sketch1" entityId="p1" isEditing={true} />
     )
     expect(materialColor(selected.container)).toBe(COLOR_SELECTED)
+  })
+
+  it('uses the vertex constraint-hover key for the constraint tint', async () => {
+    const { ProjectedOriginPoint } = await import('@/components/Geometry3D/VertexDots')
+    // VertexDot keys constraint hover as `${entityId}:${vertexKey}`; the
+    // projected point's key is `xy`.
+    resetStore({ hoveredConstraintEntityIds: new Set(['p1:xy']) })
+    const { container } = render(
+      <ProjectedOriginPoint x={0} y={0} featureId="sketch1" entityId="p1" isEditing={true} />
+    )
+    expect(materialColor(container)).toBe(COLOR_CONSTRAINT_HOVER)
   })
 })
