@@ -143,6 +143,22 @@ describe('computeConstraintRender (normal)', () => {
     expect(r.kind).toBe('symbol_normal')
     expect(r.at).toEqual([10, 0])  // H1.end
   })
+
+  it('circle on the b slot anchors at the circle center', () => {
+    const c: PartConstraint = { id: 'N', kind: 'normal', a: '$H1', b: '$circ1' }
+    const r = computeConstraintRender(c, makeSketch()) as SymbolRender
+    expect(r.kind).toBe('symbol_normal')
+    expect(r.at).toEqual([4, 4])  // circ1 center, not its AABB corner
+    expect(r.entity).toBe('circ1')
+  })
+
+  it('circle on the a slot anchors at the circle center', () => {
+    const c: PartConstraint = { id: 'N', kind: 'normal', a: '$circ1', b: '$H1' }
+    const r = computeConstraintRender(c, makeSketch()) as SymbolRender
+    expect(r.kind).toBe('symbol_normal')
+    expect(r.at).toEqual([4, 4])
+    expect(r.entity).toBe('circ1')
+  })
 })
 
 describe('computeConstraintRender (concentric / fixed)', () => {
