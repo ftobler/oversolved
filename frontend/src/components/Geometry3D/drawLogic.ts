@@ -297,6 +297,18 @@ export function computeDrawClick(
       return { mutations: [], nextDrawPoints: [[px, py]], nextDrawSnap: startSnap(), gestureComplete: false }
     }
     if (pts.length === 1) {
+      // A second click that lands back on the first point (a double click, or
+      // both clicks snapped to one vertex) would leave two coincident points.
+      // The third click then has no circumcircle, so every later click fails
+      // and the tool dead-ends. Re-arm from that single point instead of
+      // appending a duplicate, so the gesture can recover.
+      if (Math.abs(px - pts[0][0]) < SNAP_EPS && Math.abs(py - pts[0][1]) < SNAP_EPS) {
+        return {
+          mutations: [], nextDrawPoints: [[pts[0][0], pts[0][1]]],
+          nextDrawSnap: { refs: [snap.drawSnapRefs[0] ?? null] },
+          gestureComplete: false,
+        }
+      }
       // Append second point; preserve first (use explicit tuple copy to satisfy types)
       return {
         mutations: [], nextDrawPoints: [[pts[0][0], pts[0][1]], [px, py]],

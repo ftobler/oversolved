@@ -619,6 +619,34 @@ describe('computeDrawClick - arc tool', () => {
     expect(result.nextDrawPoints).toEqual([[0, 0], [10, 0]])
   })
 
+  it('a second click on the first point re-arms from that point, not a dead end', () => {
+    const result = computeDrawClick('arc', [[2, 3]], [2, 3], emptySnap(), FEATURE, newId)
+    expect(result.mutations).toHaveLength(0)
+    expect(result.gestureComplete).toBe(false)
+    expect(result.nextDrawPoints).toEqual([[2, 3]])
+  })
+
+  it('recovers from a double click so the next two clicks still build an arc', () => {
+    // Regression: a [A, A] buffer made every later third click fail because
+    // circumcircle(A, A, C) is always null. The second click must collapse the
+    // buffer back to one point so the gesture can continue.
+    const rearmed = computeDrawClick('arc', [[0, 0]], [0, 0], emptySnap(), FEATURE, newId)
+    expect(rearmed.nextDrawPoints).toEqual([[0, 0]])
+    const second = computeDrawClick('arc', rearmed.nextDrawPoints!, [10, 0], emptySnap(), FEATURE, newId)
+    expect(second.nextDrawPoints).toEqual([[0, 0], [10, 0]])
+    const third = computeDrawClick('arc', second.nextDrawPoints!, [5, 5], emptySnap(), FEATURE, () => 'A1')
+    expect(third.gestureComplete).toBe(true)
+    expect(third.mutations[0]).toMatchObject({ type: 'add_entity', kind: 'arc' })
+  })
+
+  it('keeps the first snapped point and its ref when the second click snaps back to it', () => {
+    const snap = onVertex('vertex:S1:V1:end', [4, 4])
+    snap.drawSnapRefs = ['vertex:S1:V1:end']
+    const result = computeDrawClick('arc', [[4, 4]], [4, 4], snap, FEATURE, newId)
+    expect(result.nextDrawPoints).toEqual([[4, 4]])
+    expect(result.nextDrawSnap?.refs).toEqual(['vertex:S1:V1:end'])
+  })
+
   it('third click emits add_entity arc', () => {
     const result = computeDrawClick('arc', [[0, 0], [10, 0]], [5, 5], emptySnap(), FEATURE, newId)
     expect(result.mutations).toHaveLength(1)
