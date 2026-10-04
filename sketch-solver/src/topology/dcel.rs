@@ -236,6 +236,23 @@ fn dedup(spl: &[Split]) -> Vec<Split> {
     out
 }
 
+// A closed curve anchors its params at a seam (circle at +-pi, ellipse at
+// 0/2pi). Two contacts that merge into one vertex can land on opposite sides of
+// that seam, so their params sit about 2pi apart and `dedup` (which only
+// compares consecutive sorted entries) keeps both. The pair then emits no
+// half-edge: both segments hit the `v0 == v1` skip in the closed pass, and the
+// list no longer fits the standalone `max_keep` count, so a curve that plainly
+// bounds an area reports none. One vertex is no subdivision, so collapse the
+// list to its single split and let the standalone path take it.
+fn collapse_seam_splits(spl: &mut Vec<Split>) {
+    if let Some(first) = spl.first() {
+        if spl.iter().all(|s| s.1 == first.1) {
+            let first = first.clone();
+            *spl = vec![first];
+        }
+    }
+}
+
 // ─── Intersection primitives ───
 
 fn ll(p1: Vec2, p2: Vec2, p3: Vec2, p4: Vec2) -> Option<(f64, f64, Vec2)> {
@@ -1619,6 +1636,15 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         seed_construction_crossings(&tagged, &c_tagged, &all_line_keys, &all_circle_keys, &mut verts);
     }
 
+    // Closed curves wrap at a seam, so a pair of contacts that fused into one
+    // vertex can straddle it. Collapse before both the half-edge build and the
+    // standalone count read the split list.
+    for (eid, _) in cls.circles.iter().chain(cls.ellipses.iter()) {
+        if let Some(spl) = splits.get_mut(eid) {
+            collapse_seam_splits(spl);
+        }
+    }
+
     let (hes, he_eid) = build_half_edge_graph(&cls.lines, &cls.circles, &arcs, &splits, &cls.splines, &cls.ellipses);
 
     let mut surfaces = trace_face_cycles(&hes, &he_eid, &verts);
@@ -1788,6 +1814,34 @@ mod tests {
         assert_eq!(t.surfaces.len(), 2);
         assert!(t.edges.is_empty(), "tangent circles must emit no split edges");
         assert_eq!(t.intersection_points.len(), 1, "one virtual tangent point");
+    }
+
+    #[test]
+    fn near_tangent_lines_at_the_circle_seam_keep_the_disk_face() {
+        // A disk touched by two near-tangent lines whose virtual contacts land a
+        // hair either side of the atan2 branch cut at +-pi. The contacts merge
+        // into one vertex but their params sit ~2pi apart, so the split list kept
+        // both, every segment hit the v0 == v1 skip, and the standalone max_keep
+        // guard dropped the face: a clear disk reported no area. Pin the face.
+        let r: f64 = 50.0;
+        let gap: f64 = 1e-6;
+        let delta: f64 = 5e-8;
+        let tangent_line = |theta: f64| {
+            let n = [theta.cos(), theta.sin()];
+            let d = [-theta.sin(), theta.cos()];
+            let p = [r * n[0] + gap * n[0], r * n[1] + gap * n[1]];
+            line([p[0] - d[0], p[1] - d[1]], [p[0] + d[0], p[1] + d[1]])
+        };
+        let geom = vec![
+            ("c0".into(), circle([0.0, 0.0], r)),
+            ("l1".into(), tangent_line(std::f64::consts::PI - delta)),
+            ("l2".into(), tangent_line(-std::f64::consts::PI + delta)),
+        ];
+        let t = detect_topology(&geom);
+        assert!(
+            t.surfaces.iter().any(|s| s.face_entity_ids == vec!["c0".to_string()]),
+            "the disk face must survive two near-tangent contacts at the seam"
+        );
     }
 
     // One incomplete entity per kind, each missing a field the geometry pass
