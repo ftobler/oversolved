@@ -925,6 +925,43 @@ describe('useIdBufferPointerDispatch', () => {
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('edgeQ')
   })
 
+  it('re-applies a sketch-vertex hover after an external writer clears it', async () => {
+    // The vertex adapter writes hoveredVertexId only, so the M1 branch above,
+    // which watches hoveredSelectionId, never sees a vertex hover come and go.
+    // After a feature switch clears the store, the cache must still be dropped
+    // or the next same-pixel move returns at the dedup guard and the highlight
+    // stays gone until the pointer leaves the vertex's reach.
+    const VERTEX_KEY = 'vertex:feat1:line1:start'
+    pipeline.target.markClean()
+    pipeline.resolveAsync = vi.fn().mockImplementation(async () => ({
+      id: 2, layer: SKETCH_VERTEX_LAYER_NAME, entityKey: VERTEX_KEY, distancePx: 0,
+    })) as unknown as typeof pipeline.resolveAsync
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+      await Promise.resolve()
+    })
+    await flushHoverFrame()
+    expect(useSketchEditorStore.getState().hoveredVertexId).toBe(VERTEX_KEY)
+
+    act(() => {
+      useSketchEditorStore.getState().clearSelectionAndHover()
+    })
+    expect(useSketchEditorStore.getState().hoveredVertexId).toBeNull()
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 50, clientY: 50 }))
+      await Promise.resolve()
+    })
+    await flushHoverFrame()
+    expect(useSketchEditorStore.getState().hoveredVertexId).toBe(VERTEX_KEY)
+  })
+
   // L5a: the effective allowed set is cached keyed on activeTool; a tool switch
   // must invalidate that cache so the next event re-derives the filter.
   it('re-derives the allowed layer set on the next event after a tool change', async () => {

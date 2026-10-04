@@ -327,15 +327,21 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // move returns at applyHoverHit's guard and the highlight never comes
         // back. Drop the cache (no adapter call: the store is already clear) so
         // that move re-resolves and re-applies.
+        // A sketch vertex rides hoveredVertexId only (sketchVertexAdapter), so
+        // its external clear leaves hoveredSelectionId null throughout and is
+        // invisible to the check above; watch hoveredVertexId too or the vertex
+        // highlight stays cleared until the pointer leaves its reach.
         // This branch also fires during the dispatcher's own applyHoverHit
         // teardown (clearAllHover nulls the store mid-apply, and the latch is
         // not held then because that call comes from the scheduler's resolve,
         // not this listener). It is net-zero only because applyHoverHit
         // unconditionally re-assigns all three lastHover* locals after the
         // apply step; do not weaken that.
+        const selectionHoverCleared = prev.hoveredSelectionId !== null && state.hoveredSelectionId === null
+        const vertexHoverCleared = lastHoverLayer === SKETCH_VERTEX_LAYER_NAME
+          && prev.hoveredVertexId !== null && state.hoveredVertexId === null
         if (
-          prev.hoveredSelectionId !== null
-          && state.hoveredSelectionId === null
+          (selectionHoverCleared || vertexHoverCleared)
           && lastHoverLayer !== null
           && lastHoverLayer !== DIMENSION_LABEL_LAYER_NAME
         ) {
