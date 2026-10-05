@@ -20,11 +20,10 @@ use super::curve_intersect::{intersect_curves, Curve};
 use super::curve_split::{bezier_point, ellipse_point_at, subdivide_bezier, BezierCtrl};
 use super::profile_loops::{subdivide_loops, BoundaryEdge, EdgeGeom, Vec2};
 use super::{
-    TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS,
+    TOL_FACE_EXISTENCE_MIN_AREA, TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE,
+    TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI,
 };
 use crate::radians;
-
-const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 
 // Near-tangency collapse: two curves that the solver tried to make tangent leave
 // a contact whose two analytic intersection points sit `2h` apart and tend to a
@@ -1538,7 +1537,7 @@ fn trace_face_cycles(hes: &[HalfEdge], he_eid: &[String], verts: &Verts) -> Vec<
         }
         if !cycle.is_empty() && cur == start {
             let cycle = collapse_spikes(&cycle);
-            if cycle.len() >= 2 && face_area(&cycle, hes, verts) > 1e-10 {
+            if cycle.len() >= 2 && face_area(&cycle, hes, verts) > TOL_FACE_EXISTENCE_MIN_AREA {
                 let boundary: Vec<BoundaryEdge> = cycle
                     .iter()
                     .map(|&i| boundary_edge(&hes[i].2, &he_eid[i], &hes[i].0, &hes[i].1))
@@ -2765,6 +2764,92 @@ mod tests {
             t.surfaces[0].boundary[0].geom,
             EdgeGeom::Spline { .. }
         ));
+    }
+
+    #[test]
+    fn ellipse_split_by_a_center_line_makes_two_faces() {
+        // The conic half of the split pipeline: a line through the ellipse
+        // centre crosses it at the two ends of the minor axis and cuts the
+        // boundary into two elliptical arcs meeting one chord.
+        let geom = vec![
+            ("e0".into(), ellipse([0.0, 0.0], 4.0, 2.0, 0.0)),
+            ("l0".into(), line([0.0, -3.0], [0.0, 3.0])),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 2, "the chord splits the ellipse in two");
+        let arcs = t
+            .edges
+            .iter()
+            .filter(|e| matches!(e.geom, EdgeGeom::EllipseArc { .. }))
+            .count();
+        assert_eq!(arcs, 2, "the ellipse is cut into two sub-arcs");
+    }
+
+    #[test]
+    fn closed_spline_split_by_a_line_makes_two_faces() {
+        // The spline half: a chord across the teardrop loop cuts the single
+        // closed spline into sub-edges and closes two faces on the chord.
+        let geom = vec![
+            (
+                "s0".into(),
+                spline_closed([0.0, 0.0], [1.0, 2.0], [-1.0, 2.0]),
+            ),
+            ("l0".into(), line([-2.0, 1.0], [2.0, 1.0])),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 2, "the chord splits the spline loop");
+        let spline_edges = t
+            .edges
+            .iter()
+            .filter(|e| matches!(e.geom, EdgeGeom::Spline { .. }))
+            .count();
+        assert!(
+            spline_edges >= 2,
+            "the spline must be cut into sub-edges, got {spline_edges}"
+        );
+    }
+
+    #[test]
+    fn quarter_arc_split_by_a_bezier_makes_two_faces() {
+        // The arc half: a quarter disk (arc plus its two radii) cleaved by a
+        // straight cubic that enters on one radius and leaves through the arc,
+        // so the arc reaches the half-edge builder as two sub-arcs.
+        let quarter = InputEntity {
+            kind: Some("arc".into()),
+            center: Some([0.0, 0.0]),
+            radius: Some(1.0),
+            start: Some([1.0, 0.0]),
+            end: Some([0.0, 1.0]),
+            angle_start: Some(0.0),
+            angle_end: Some(90.0),
+            ..Default::default()
+        };
+        let bezier = InputEntity {
+            kind: Some("spline".into()),
+            start: Some([-1.0, 0.8]),
+            end: Some([1.0, 0.8]),
+            c1: Some([-0.3, 0.8]),
+            c2: Some([0.3, 0.8]),
+            ..Default::default()
+        };
+        let geom = vec![
+            ("a0".into(), quarter),
+            ("l0".into(), line([1.0, 0.0], [0.0, 0.0])),
+            ("l1".into(), line([0.0, 0.0], [0.0, 1.0])),
+            ("s0".into(), bezier),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(
+            t.surfaces.len(),
+            2,
+            "the bezier chord splits the quarter disk"
+        );
+        let arcs = t
+            .edges
+            .iter()
+            .filter(|e| matches!(e.geom, EdgeGeom::Arc { .. }))
+            .count();
+        assert_eq!(arcs, 2, "the arc is cut at the bezier crossing");
     }
 
     fn as_construction(mut e: InputEntity) -> InputEntity {

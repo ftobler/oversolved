@@ -48,8 +48,8 @@
 //! header:
 //!   u32  magic = MAGIC_OUT ("SKR2", little-endian on the wire)
 //!   u32  n_params
-//!   u32  n_entities_status   // 0 when skip_status_pass
-//!   u32  vertex_freedom_len  // f32 count
+//!   u32  n_entities_status   // 0 on the drag fast path or when skip_status_pass
+//!   u32  vertex_freedom_len  // f32 count; also 0 on the drag fast path
 //!   u8   overall_status
 //! params_solved:  n_params x f32
 //! entity_status:  n_entities_status x u8

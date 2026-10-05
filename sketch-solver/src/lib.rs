@@ -8,7 +8,7 @@
 //! (`mate-solver`) compiled to its own wasm binary, so nothing here knows what
 //! a mate is.
 //!
-//! Design invariants the implementation keeps (from `feature/wasm-kernel-migration.md`):
+//! Design invariants the implementation keeps:
 //!   - No JS callbacks during a solve; no OCC.js access. The crate does not
 //!     know what a brep is.
 //!   - Projection is NOT modelled here. A projected entity is just an entity
@@ -53,12 +53,15 @@ pub(crate) fn radians(deg: f64) -> f64 {
 /// and a single NaN row poisons the entire solve: every LM step from there on
 /// is NaN and the sketch silently stops converging with no error anywhere.
 /// Flooring the denominator keeps the row finite and very large, which pushes
-/// the ellipse back out of the degeneracy instead. NaN inputs floor too, since
-/// `f64::max` returns the non-NaN operand.
+/// the ellipse back out of the degeneracy instead. A NaN semi-axis floors too:
+/// `f64::max` ignores the NaN operand (IEEE 754 maxNum semantics) and returns
+/// the floor, so the row stays finite. Only a finite tiny axis and a NaN axis
+/// reach the floor; an infinite axis squares to infinity and divides to zero.
 pub(crate) const MIN_SEMI_AXIS_SQ: f64 = 1e-12;
 
-/// Geometric entity kinds the solver understands. Post kind-collapse (phase
-/// 0.5) there are exactly four; projection is a pin-mask concern, not a kind.
+/// Geometric entity kinds the solver understands: six, the four primitives
+/// (line, circle, arc, point) plus ellipse and spline. Projection is a
+/// pin-mask concern, not a kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Line,
@@ -174,12 +177,6 @@ impl Input {
             None => false,
         }
     }
-
-    /// Count of params pinned by `pinned_mask` over `[0, n_params)`. Bits beyond
-    /// the param range are ignored so a slack-padded mask byte never over-counts.
-    pub fn pinned_mask_bit_count(&self, n_params: usize) -> usize {
-        (0..n_params).filter(|&i| self.is_pinned(i)).count()
-    }
 }
 
 /// Per-entity and overall constraint status.
@@ -212,11 +209,13 @@ pub struct Diagnostics {
 #[derive(Debug, Clone, Default)]
 pub struct Output {
     pub params_solved: Vec<f32>,
-    /// Per-entity status code (`Status::to_u8`); empty when `skip_status_pass`.
+    /// Per-entity status code (`Status::to_u8`); empty on the drag fast path and
+    /// when `skip_status_pass` is set, since both skip the per-entity SVD.
     pub entity_status: Vec<u8>,
     pub overall_status: u8,
     /// Per-entity null-space directions for drag (Jacobian SVD), flattened as
-    /// `[entity_count][dir_x, dir_y, ...]`. Empty when `skip_status_pass`.
+    /// `[entity_count][dir_x, dir_y, ...]`. Empty on the drag fast path and
+    /// when `skip_status_pass` is set.
     pub vertex_freedom: Vec<f32>,
     pub diagnostics: Diagnostics,
 }
@@ -262,48 +261,6 @@ mod tests {
         assert!(!input.is_pinned(1));
         assert!(input.is_pinned(2));
         assert!(!input.is_pinned(8)); // out of range -> false
-    }
-
-    #[test]
-    fn pinned_mask_bit_count_counts_set_bits_in_range() {
-        let input = Input {
-            pinned_mask: vec![0b0000_0101],
-            ..Default::default()
-        };
-        // bits 0 and 2 set within the first three params.
-        assert_eq!(input.pinned_mask_bit_count(3), 2);
-    }
-
-    #[test]
-    fn pinned_mask_bit_count_ignores_bits_beyond_n_params() {
-        // A slack-padded byte: bits 0, 5, 6, 7 are set but only the first two
-        // params exist. The doc contract says the high bits must not be counted.
-        let input = Input {
-            pinned_mask: vec![0b1110_0001],
-            ..Default::default()
-        };
-        assert_eq!(input.pinned_mask_bit_count(2), 1);
-    }
-
-    #[test]
-    fn pinned_mask_bit_count_spans_multiple_bytes() {
-        // bit 0 in byte 0, bit 1 (param 9) in byte 1 -> two pinned params.
-        let input = Input {
-            pinned_mask: vec![0b0000_0001, 0b0000_0010],
-            ..Default::default()
-        };
-        assert_eq!(input.pinned_mask_bit_count(10), 2);
-        // Narrowing n_params past the second byte's bit drops it again.
-        assert_eq!(input.pinned_mask_bit_count(9), 1);
-    }
-
-    #[test]
-    fn pinned_mask_bit_count_zero_params_is_zero() {
-        let input = Input {
-            pinned_mask: vec![0b1111_1111],
-            ..Default::default()
-        };
-        assert_eq!(input.pinned_mask_bit_count(0), 0);
     }
 
     #[test]

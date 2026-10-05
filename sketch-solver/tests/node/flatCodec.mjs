@@ -1,11 +1,14 @@
 // Shared little-endian flat codec for the Node-side crate tests (smoke +
 // bench), mirroring sketch-solver/src/codec.rs. The Rust crate is canonical;
-// this is the minimal JS counterpart the headless harness needs.
+// this is the minimal JS counterpart the headless harness needs. Keep the
+// kind, constraint, selector and flag tables in sync with
+// constraints.rs/codec.rs: the vitest wasm-kernel suite owns boundary
+// coverage, so drift here only affects the ungated Node scripts.
 
 export const MAGIC_IN = 0x3247_4b53 // "SKG2": rev 2, mirrors sketch-solver/src/codec.rs
 export const MAGIC_OUT = 0x3252_4b53 // "SKR2"
 
-export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3 }
+export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5 }
 export const CKind = {
   Horizontal: 0,
   Vertical: 1,
@@ -23,9 +26,24 @@ export const CKind = {
   Midpoint: 13,
   Concentric: 14,
   Fixed: 15,
+  RadiusDifference: 16,
+  PointDistanceX: 17,
+  PointDistanceY: 18,
 }
 export const Role = { Target: 0, A: 1, B: 2, Line: 3, Arc: 4, Point: 5, PointA: 6, PointB: 7 }
-export const Sel = { Absent: 0, Start: 1, End: 2, Center: 3, Xy: 4 }
+export const Sel = {
+  Absent: 0,
+  Start: 1,
+  End: 2,
+  Center: 3,
+  Xy: 4,
+  Major: 5,
+  MajorNeg: 6,
+  Minor: 7,
+  MinorNeg: 8,
+  C1: 9,
+  C2: 10,
+}
 export const Status = { FullyConstrained: 0, Underconstrained: 1, Overconstrained: 2 }
 
 class Writer {
@@ -88,6 +106,7 @@ export function encodeInput(input) {
     if (c.value !== undefined) flags |= 0b001
     if (c.xy !== undefined) flags |= 0b010
     if (c.axis !== undefined) flags |= 0b100
+    if (c.sign !== undefined) flags |= 0b1000
     w.u8(flags)
     if (c.value !== undefined) w.f32(c.value)
     if (c.xy !== undefined) {
@@ -95,6 +114,7 @@ export function encodeInput(input) {
       w.f32(c.xy[1])
     }
     if (c.axis !== undefined) w.u8(c.axis)
+    if (c.sign !== undefined) w.f32(c.sign)
   }
   return w.done()
 }
