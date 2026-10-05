@@ -58,10 +58,10 @@ default:
 # the repo's own tooling: the icon generator under oversolved/ and the tests
 # that pin lint.py's behaviour and the docs/config invariants.
 
-# Every Python gate (mypy + ruff + pytest).
+# Every Python gate (mypy + ruff + comment lint + pytest).
 python:
     mkdir -p tmp
-    { just mypy && just ruff && just pytest; } 2>&1 | tee tmp/just_python.log
+    { just mypy && just ruff && just lint-py && just pytest; } 2>&1 | tee tmp/just_python.log
 
 # Each gate tees its full output to tmp/<gate>.log as well as stdout. One run is
 # slow, so the log lets you re-grep the result afterwards without re-running it.
@@ -80,6 +80,12 @@ mypy:
 ruff:
     mkdir -p tmp
     .venv/bin/python -m ruff check tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py 2>&1 | tee tmp/ruff.log
+
+# lint.py itself is not listed: it holds the rule fixtures and is not a folder.
+# Comment-style lint over the repo's Python (dashes, banners).
+lint-py:
+    mkdir -p tmp
+    .venv/bin/python lint.py oversolved tests frontend/scripts --language python 2>&1 | tee tmp/lint_python.log
 
 # Run the Python test suite.
 pytest:

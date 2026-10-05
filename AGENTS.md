@@ -27,21 +27,24 @@ log lets you re-grep the result afterwards without re-running the gate.
 .venv/bin/python -m pytest tests/ 2>&1 | tee tmp/pytest.log
 .venv/bin/python -m mypy tests/ oversolved/ 2>&1 | tee tmp/mypy.log
 .venv/bin/python -m ruff check tests/ oversolved/ 2>&1 | tee tmp/ruff.log   # CI still runs flake8 as the safety net
+.venv/bin/python lint.py oversolved tests frontend/scripts --language python 2>&1 | tee tmp/lint_python.log
 ```
 
 ## Frontend Commands
 from the justfile: `just frontend`
 
-`just frontend` chains four recipes: `icons` (regenerate the SVGs from
+`just frontend` chains five recipes: `icons` (regenerate the SVGs from
 `oversolved/icons.py`), `frontend-lint` (`npm run lint` plus `lint.py src
-scripts`), `frontend-test` (`npx vitest run`), and `build` (`npm run build`).
-Run from the project root; the aggregate tees to `tmp/just_frontend.log` and
-each gate to its own `tmp/` log.
+scripts`), `frontend-test` (`npx vitest run`), `licenses` (verify the
+checked-in notice bundles are current), and `build` (`npm run build`). Run from
+the project root; the aggregate tees to `tmp/just_frontend.log` and each gate
+to its own `tmp/` log.
 
 ```bash
 just icons          # regenerate frontend/src/assets/icons from oversolved/icons.py
 just frontend-lint  # npm run lint + .venv/bin/python lint.py src scripts
 just frontend-test  # npx vitest run
+just licenses       # npm run licenses:check
 just build          # npm run build
 ```
 

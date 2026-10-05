@@ -436,17 +436,19 @@ export class IdPipeline {
           failedLayers.push(layer.name)
           const streak = (this.layerFailureStreak.get(layer.name) ?? 0) + 1
           this.layerFailureStreak.set(layer.name, streak)
+          // Dev-gated: this repeats per failing frame, so the ungated latch warn
+          // below is the production signal that the layer's picking is gone.
           if (isDevBuild()) console.warn(`ID layer render failed: ${layer.name}`, err)
           if (streak >= LAYER_FAILURE_LATCH_THRESHOLD) {
-            // One warn at the latch transition, not one per frame, so the dev
-            // diagnostic names the layer whose picking is gone in one line.
+            // One warn at the latch transition, not one per frame. Reported in
+            // every build: the pipeline has no useNotify, so this line is the
+            // only channel a lost layer's picking gets.
             this.latchedOutLayers.add(layer.name)
-            if (isDevBuild()) {
-              console.warn(
-                `ID layer latched out after ${streak} consecutive render failures; `
-                + `picking on it is disabled until reload: ${layer.name}`,
-              )
-            }
+            console.warn(
+              `ID layer latched out after ${streak} consecutive render failures; `
+              + `picking on it is disabled until reload: ${layer.name}`,
+              err,
+            )
           }
         }
       }
@@ -704,8 +706,9 @@ export class IdPipeline {
         // A throwing readback used to strand every later hover: done() never
         // ran, inFlightAsync stayed set, and each pointermove leaked a
         // never-settled promise. Settle with null and let done() drain the
-        // queue. The warn keeps the failure from vanishing as an unhandled
-        // rejection.
+        // queue; the throw is caught here so it cannot surface as an unhandled
+        // rejection. Dev-gated because a persistently broken readback would
+        // otherwise warn once per pointer move; the loss is one dropped hover.
         if (isDevBuild()) console.warn('ID async resolve read failed', err)
       }
       done(hit)

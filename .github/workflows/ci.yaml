@@ -55,6 +55,11 @@ jobs:
       - name: mypy
         run: mypy tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py
 
+      # The comment-style linter's Python dialect (dashes, banners) is local to
+      # `just lint-py` otherwise; run it here so the same files are enforced.
+      - name: Comment lint (Python)
+        run: python lint.py oversolved tests frontend/scripts --language python
+
       - name: pytest
         run: pytest tests
 

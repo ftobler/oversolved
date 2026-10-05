@@ -147,7 +147,6 @@ Body snap projection (`bodySnapProjection.ts`): projects 3D body vertices/edges 
 
 | Constant | Value |
 |----------|-------|
-| `HIT_PIXELS` | 8 |
 | `POINT_HIT_PIXELS` | 20 |
 | `POINT_VIS_PIXELS` | 4 |
 | `DRAG_SNAP_VERTEX_RADIUS_PX` | 20 |

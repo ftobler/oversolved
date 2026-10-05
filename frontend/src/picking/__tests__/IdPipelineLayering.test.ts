@@ -190,7 +190,7 @@ describe('IdPipeline layering', () => {
         p.markDirty()
         p.render(fakeRenderer(p.faceLayer.scene), camera)
         expect(p.isDirty()).toBe(false)
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('latched out'))
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('latched out'), expect.any(Error))
 
         // Subsequent renders skip the layer entirely: no more warns, and a
         // renderer that would throw on that scene is never handed it.

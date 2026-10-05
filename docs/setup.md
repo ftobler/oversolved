@@ -73,8 +73,8 @@ back up server-side.
 ## Just recipes
 
 ```bash
-just python     # mypy + ruff + pytest over the Python tooling (CI still runs flake8)
-just frontend   # icons + lint + test + build
+just python     # mypy + ruff + lint.py + pytest over the Python tooling (CI still runs flake8)
+just frontend   # icons + lint + test + licenses + build
 just wasm       # rebuild both Rust solvers (web + nodejs targets)
 just rust-test  # cargo test over the solver workspace
 just icons      # regenerate frontend/src/assets/icons from oversolved/icons.py

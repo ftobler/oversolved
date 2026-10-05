@@ -195,11 +195,16 @@ impl MateProblem {
         // index comes off the wire, so a stale mate (one authored against a body
         // that has since left the assembly) would run off the end of x. Drop the
         // whole mate: a half-applied mate is worse than an absent one, and the
-        // solve still reports the remaining assembly honestly.
-        let addressable = |bi: u32| {
-            let bi = bi as usize;
-            bi < n_bodies && (bi + 1) * 7 <= x0.len()
+        // solve still reports the remaining assembly honestly. The block end is
+        // computed checked: on wasm32 an unchecked `(bi + 1) * 7` wraps for
+        // absurd counts, and the wrapped compare would keep a body or mate that
+        // indexes off the end.
+        let block_within = |bi: usize| {
+            bi.checked_add(1)
+                .and_then(|next| next.checked_mul(7))
+                .is_some_and(|end| end <= x0.len())
         };
+        let addressable = |bi: u32| (bi as usize) < n_bodies && block_within(bi as usize);
         let mut mates: Vec<Mate> = Vec::new();
         let mut kept_input_indices: Vec<usize> = Vec::new();
         for (input_index, m) in input.mates.iter().enumerate() {
@@ -223,7 +228,7 @@ impl MateProblem {
         // in-memory caller does not, and matching the stale-mate filter's
         // drop-don't-panic posture above, the missing body is skipped here
         // rather than indexed off the end mid-solve.
-        let block_present = |bi: usize| (bi + 1) * 7 <= x0.len();
+        let block_present = block_within;
         let quat_rows = (0..n_bodies).filter(|&bi| block_present(bi)).count();
         let grounded_rows = (0..n_bodies)
             .filter(|&bi| grounded[bi] && block_present(bi))
@@ -463,7 +468,11 @@ impl MateProblem {
             self.x0.len(),
             "param buffer drifted from the seed length"
         );
-        (bi + 1) * 7 <= self.x0.len().min(len)
+        // Checked to match `new`'s block filter: an unchecked `(bi + 1) * 7`
+        // wraps on wasm32 for absurd body counts.
+        bi.checked_add(1)
+            .and_then(|next| next.checked_mul(7))
+            .is_some_and(|end| end <= self.x0.len().min(len))
     }
 
     /// Compute the full residual vector at x.

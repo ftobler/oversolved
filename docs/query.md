@@ -118,7 +118,7 @@ element's query.
 Faces of 3D bodies use:
 
 ```
-?f;@extrude1face0:flatface
+?f;@extrude1/face0:flatface
 ```
 
 The ancestor ID combines feature ID with a face index. Resolution: parse → lookup in `Repository.ancestral` by subset match → filter by type → return.
