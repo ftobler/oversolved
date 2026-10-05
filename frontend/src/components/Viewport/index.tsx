@@ -19,12 +19,13 @@ import FeatureHandles from '@/components/Viewport/FeatureHandles'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
-import { fitToContent, alignToPlane, alignToFace, traceCamera, computeVertexBounds } from '@/components/Viewport/cameraController'
+import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
-import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
-import { DEFAULT_PLANE_SIZE, builtinPlaneRotation } from '@/components/Viewport/planeConstants'
+import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
+import { calculatePlaneSize, getActiveSketchPlane } from '@/components/Viewport/viewportPlaneSizing'
+import { SketchPlaneDisplay } from '@/components/Viewport/SketchPlaneDisplay'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
 import { IdPickingDriver } from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
@@ -92,112 +93,6 @@ export function isActive(
   const idx = features.findIndex(f => f.id === id)
   if (idx < 0) return false
   return (rollbackPos === undefined || idx < rollbackPos) && (!visible || visible.has(id))
-}
-
-// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
-export function calculateMeshExtentFromFlat(vertices: Float32Array): number {
-  const bounds = computeVertexBounds(vertices)
-  if (!bounds) return 0
-  return Math.max(
-    bounds.max[0] - bounds.min[0],
-    bounds.max[1] - bounds.min[1],
-    bounds.max[2] - bounds.min[2],
-  )
-}
-
-// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
-export function calculateMeshExtent(vertices: Float32Array | [number, number, number][]): number {
-  const bounds = computeVertexBounds(vertices)
-  if (!bounds) return 0
-  return Math.max(
-    bounds.max[0] - bounds.min[0],
-    bounds.max[1] - bounds.min[1],
-    bounds.max[2] - bounds.min[2],
-  )
-}
-
-// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
-export function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | undefined): number {
-  if (!bodies) return 0
-
-  let maxExtent = 0
-  for (const body of Object.values(bodies)) {
-    if (body.mesh?.vertices) {
-      const e = calculateMeshExtent(body.mesh.vertices)
-      if (e > maxExtent) maxExtent = e
-    }
-  }
-
-  return maxExtent
-}
-
-// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
-export function getFaceExtent(faceQuery: string, bodies: Record<string, BodyResult>): number {
-  const match = faceQuery.match(/@([^/]+)/)
-  if (!match) return 0
-
-  const bodyId = match[1]
-  const body = bodies[bodyId]
-  if (!body?.mesh?.vertices) return 0
-
-  return calculateMeshExtent(body.mesh.vertices)
-}
-
-// eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
-export function calculatePlaneSize(
-  planeDefinition: PlaneDef | undefined,
-  bodies: Record<string, BodyResult> | undefined,
-): number {
-  const EXPANSION_FACTOR = 1.1
-
-  if (!planeDefinition || !bodies) return DEFAULT_PLANE_SIZE
-
-  // Plane defined on a face (on_face mode)
-  if (planeDefinition.mode === 'on_face' && planeDefinition.face) {
-    const faceExtent = getFaceExtent(planeDefinition.face, bodies)
-    if (faceExtent > 0) return faceExtent * EXPANSION_FACTOR
-  }
-
-  // Fallback: use model bounding box
-  const modelExtent = getModelBoundingBoxExtent(bodies)
-  if (modelExtent > 0) return modelExtent * EXPANSION_FACTOR
-
-  // Final fallback
-  return DEFAULT_PLANE_SIZE
-}
-
-function getActiveSketchPlane(
-  activeFeatureId: string | null | undefined,
-  features: Feature[] | undefined,
-): string | null {
-  if (!activeFeatureId || !features) return null
-  const activeFeature = features.find(f => f.id === activeFeatureId)
-  if (!activeFeature || activeFeature.kind !== 'sketch') return null
-  return activeFeature.plane || null
-}
-
-interface SketchPlaneDisplayProps {
-  planeQuery: string
-  size: number
-  sketchLabel?: string
-}
-
-export function SketchPlaneDisplay({ planeQuery, size, sketchLabel }: SketchPlaneDisplayProps) {
-  const rotation = builtinPlaneRotation(planeQuery)
-  if (!rotation) return null
-
-  return (
-    <group rotation={rotation}>
-      <PlaneSurface
-        size={size}
-      />
-      {sketchLabel && (
-        <PlaneLabel x={-size/2} y={size/2}>
-          {sketchLabel}
-        </PlaneLabel>
-      )}
-    </group>
-  )
 }
 
 export interface ViewportHandle {

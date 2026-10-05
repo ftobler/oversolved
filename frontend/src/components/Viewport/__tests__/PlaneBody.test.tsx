@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { render, act } from '@testing-library/react'
+import { useSketchEditorStore, type VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 import PlaneBody from '../PlaneBody'
 
 /**
@@ -65,13 +65,43 @@ describe('PlaneBody', () => {
   })
 
   it('hides the fill mesh while any drag is live, so the plane cannot occlude the grab', () => {
-    useSketchEditorStore.setState({
-      drag: {
-        type: 'vertex', vertexId: 'entity:S1:L1', featureId: 'S1', entityId: 'L1',
-        vertexKey: 'start', startWorld: [0, 0], currentWorld: [1, 1], startClient: [0, 0],
-      },
-    })
+    useSketchEditorStore.setState({ drag: makeDrag([1, 1]) })
     render(<PlaneBody selId="p" size={10} rotation={ROT} label="L" />)
     expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ hideMesh: true })
   })
+
+  it('does not re-render on a drag tick that leaves the drag non-null', () => {
+    // The selector narrows DragState to a boolean, so the per-pointermove
+    // replacement of the drag object must not wake every plane.
+    useSketchEditorStore.setState({ drag: makeDrag([1, 1]) })
+    render(<PlaneBody selId="p" size={10} rotation={ROT} label="L" />)
+    const rendersAfterMount = seams.surfaceProps.mock.calls.length
+
+    act(() => { useSketchEditorStore.setState({ drag: makeDrag([2, 2]) }) })
+
+    expect(seams.surfaceProps.mock.calls.length).toBe(rendersAfterMount)
+  })
+
+  it('re-renders when a drag starts or ends', () => {
+    // Pins the other half of the narrowed selector: the boolean must still
+    // flip, or the hidden-mesh state would only land by luck of a sibling update.
+    render(<PlaneBody selId="p" size={10} rotation={ROT} label="L" />)
+    const rendersBeforeDrag = seams.surfaceProps.mock.calls.length
+
+    act(() => { useSketchEditorStore.setState({ drag: makeDrag([1, 1]) }) })
+    expect(seams.surfaceProps.mock.calls.length).toBeGreaterThan(rendersBeforeDrag)
+    expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ hideMesh: true })
+
+    const rendersWhileDragging = seams.surfaceProps.mock.calls.length
+    act(() => { useSketchEditorStore.setState({ drag: null }) })
+    expect(seams.surfaceProps.mock.calls.length).toBeGreaterThan(rendersWhileDragging)
+    expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ hideMesh: false })
+  })
 })
+
+function makeDrag(currentWorld: [number, number]): VertexOrEdgeDrag {
+  return {
+    type: 'vertex', vertexId: 'entity:S1:L1', featureId: 'S1', entityId: 'L1',
+    vertexKey: 'start', startWorld: [0, 0], currentWorld, startClient: [0, 0],
+  }
+}

@@ -130,7 +130,8 @@ export function shouldAutoFit(fitted: boolean, bodyCount: number, manipulating: 
 // Float32Array the kernel hands over or a tuple array from tests and adapters.
 // Non-finite triples are skipped; returns null when no finite vertex was seen so
 // callers can tell "empty" from "origin at zero". The single source for the
-// accumulation shared by zoom-to-fit and the extent helpers in index.tsx.
+// accumulation shared by zoom-to-fit and the extent helpers in
+// viewportPlaneSizing.ts.
 export interface VertexBounds {
   min: [number, number, number]
   max: [number, number, number]
