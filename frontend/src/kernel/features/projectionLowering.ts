@@ -128,7 +128,7 @@ function isParallelToPlane(axis: number[], plane: PlaneFrame): boolean {
 }
 
 /** Extract 3D geometry from a repository payload (mirrors `_resolve_source_geometry`). */
-export function resolve3dGeometry(data: Dict, _sourceQuery: string): Resolved3dGeometry | null {
+export function resolve3dGeometry(data: Dict): Resolved3dGeometry | null {
   const dataType = (data.type as string) ?? ''
   if (dataType === 'face' || dataType === 'flatface' || dataType === 'cylinderface') {
     const pt = data.centroid || data.origin || [0, 0, 0]

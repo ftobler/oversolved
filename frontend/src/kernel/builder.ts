@@ -355,7 +355,14 @@ export function repoFromSnapshot(repoSnapshot: Record<string, unknown>): Reposit
 export function stableJson(obj: unknown): string {
   return JSON.stringify(obj, (_k, v) => {
     if (v instanceof Map) {
-      const entries = [...v.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+      // Codepoint order, not localeCompare: the sort only needs a total order
+      // that is identical in every environment, since this serialization
+      // underpins every checkpoint and parity hash.
+      const entries = [...v.entries()].sort((a, b) => {
+        const ka = String(a[0])
+        const kb = String(b[0])
+        return ka < kb ? -1 : ka > kb ? 1 : 0
+      })
       return Object.fromEntries(entries)
     }
     if (typeof v === 'number' && Object.is(v, -0)) return 0
@@ -764,8 +771,9 @@ function _reconcileFeatureSolids(
   _evictFeatureSolidAncestry(globalRepo, fid)
   for (const body of Object.values(bodyStore)) {
     if (body.created_by !== fid) continue
-    if (body.shape == null) continue  // mirror the solve-loop guard at :1141:
-    // reconcile registers only what the loop would
+    // Mirror the solve loop's shaped-body guard so reconcile registers only
+    // what the loop would.
+    if (body.shape == null) continue
     _registerSolidAncestry(globalRepo, body)
     _registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
   }

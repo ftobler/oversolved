@@ -53,7 +53,7 @@ describe('applyBodyOperation OCC-free branches', () => {
         sketchId: 'skF',
         opName: 'extrude',
       }),
-    ).toThrow(/body not found for merge_target/)
+    ).toThrow(/extrude: merge target 'nope' not found/)
   })
 
   it('cut skips a target body with no shape instead of dereferencing it', () => {

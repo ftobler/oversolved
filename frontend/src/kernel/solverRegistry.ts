@@ -57,11 +57,6 @@ export const PORTED_FEATURE_KINDS = Object.freeze(new Set([
   'variable',
 ]))
 
-/** Kinds that the TS kernel cannot solve (origin, etc.). */
-export const UNPORTED_KINDS = new Set([
-  'origin',
-])
-
 // ─── Per-doc gate ───
 
 /** Return true when every feature in `features` has a ported TS solver. */

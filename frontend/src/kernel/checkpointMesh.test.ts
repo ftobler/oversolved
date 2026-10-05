@@ -1,15 +1,16 @@
 // @vitest-environment node
 //
-// Cross-solve mesh cache: clean prefix, cache hit/miss, pick bodies, fallback, parallel
-// determinism.
+// Parallel mesh determinism and lazy checkpoint meshing (bodies_snapshot). The
+// retired cross-solve cache module's contract now lives in the builder's
+// checkpoints / bodies_snapshot.
 //
-// This suite runs the two scenarios that need no feature solvers: test 7 (parallel
-// mesh determinism) and test 9 (lazy checkpoint meshing). The OCC-backed scenarios
-// of the original suite now live in meshCacheReal.test.ts.
+// This suite runs the two scenarios that need no feature solvers. The OCC-backed
+// scenarios live in checkpointMeshReal.test.ts.
 //
-// Test 3 (pick_bodies served from checkpoint) and test 8 (stale buildstate without
-// bodies_snapshot) are already covered by builder.test.ts: - "supports pick_boundary returning
-// pick_bodies" (L208) - "re-tessellates pick_bodies when bodies_snapshot is empty" (L347)
+// pick_bodies served from a checkpoint and the stale-buildstate-without-
+// bodies_snapshot case are already covered by builder.test.ts:
+// "supports pick_boundary returning pick_bodies" and "re-tessellates
+// pick_bodies when bodies_snapshot is empty".
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { build, type BuildDeps, type FeatureResult } from './builder'
@@ -46,7 +47,7 @@ function makeBody(id: string, createdBy: string): Body {
   }
 }
 
-// ─── Test 9: lazy checkpoint meshing contract (regression guard) ───
+// ─── lazy checkpoint meshing contract (regression guard) ───
 
 /**
  * Under lazy checkpoint meshing only the FINAL feature's checkpoint carries a
@@ -128,7 +129,7 @@ describe('lazy checkpoint meshing contract', () => {
   })
 })
 
-// ─── Test 7: parallel mesh deterministic ───
+// ─── parallel mesh deterministic ───
 
 /** Meshing with in_parallel=True vs False yields identical geometry. */
 describe.skipIf(!oc)('parallel mesh deterministic (OCC.js)', () => {

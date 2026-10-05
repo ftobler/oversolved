@@ -1,8 +1,8 @@
 // @vitest-environment node
 //
-// Mesh cache tests using the OCC.js + Rust WASM build pipeline with a
-// persistent HandleTable. Ports the cross-solve mesh cache scenarios from
-// test_mesh_cache.py.
+// Checkpoint mesh behavior using the OCC.js + Rust WASM build pipeline with a
+// persistent HandleTable. Exercises the cross-solve checkpoint / bodies_snapshot
+// scenarios (ported from the retired Python suite).
 //
 // Skips when OCC.js or the Rust solver is absent.
 
@@ -49,7 +49,7 @@ function extrudeSpec(sketchId: string, extrudeId: string, opts?: { distance?: nu
   }
 }
 
-describe.skipIf(!oc || !solveBytes)('mesh cache (real OCC + Rust solver)', () => {
+describe.skipIf(!oc || !solveBytes)('checkpoint meshing across builds (real OCC + Rust solver)', () => {
   const h = new SharedHarness(oc!)
 
   beforeAll(() => {

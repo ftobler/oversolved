@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  emptyBrepDiff,
   projectWorldToFrame,
   normalToFrame,
   frameFromPlaneTransform,
@@ -8,6 +9,27 @@ import {
 } from './types3d'
 
 const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+describe('emptyBrepDiff', () => {
+  it('returns every classification list empty', () => {
+    const d = emptyBrepDiff()
+    expect(d.new_faces).toEqual([])
+    expect(d.inherited_faces).toEqual([])
+    expect(d.new_edges).toEqual([])
+    expect(d.inherited_edges).toEqual([])
+    expect(d.modified_input_faces).toEqual([])
+    expect(d.deleted_input_faces).toEqual([])
+    expect(d.modified_input_edges).toEqual([])
+    expect(d.deleted_input_edges).toEqual([])
+  })
+
+  it('returns a fresh object and fresh lists on every call', () => {
+    const a = emptyBrepDiff()
+    const b = emptyBrepDiff()
+    expect(a).not.toBe(b)
+    expect(a.new_faces).not.toBe(b.new_faces)
+  })
+})
 
 describe('normalToFrame', () => {
   // For a unit normal the cross-product fallback is mathematically unreachable;

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evalExpr, evalFeatureParams, constraintContext } from './evalExpr'
-import type { PartConstraint } from '@/types/cad'
+import { evalExpr, evalFeatureParams } from './evalExpr'
 
 describe('evalExpr', () => {
   it('returns a plain number string via the fast path', () => {
@@ -97,27 +96,5 @@ describe('evalFeatureParams', () => {
     const sub: Record<string, unknown> = {}
     evalFeatureParams(sub, ['distance'])
     expect(sub.distance).toBeUndefined()
-  })
-})
-
-describe('constraintContext', () => {
-  it('builds a context from labelled numeric constraints', () => {
-    const cs = [
-      { id: 'c1', kind: 'dim', label: 'width', value: 10 },
-      { id: 'c2', kind: 'dim', label: 'height', value: 20 },
-    ] as unknown as PartConstraint[]
-    expect(constraintContext(cs)).toEqual({ width: 10, height: 20 })
-  })
-
-  it('skips unlabelled constraints', () => {
-    const cs = [{ id: 'c1', kind: 'dim', value: 10 }] as unknown as PartConstraint[]
-    expect(constraintContext(cs)).toEqual({})
-  })
-
-  it('skips non-numeric constraints', () => {
-    const cs = [
-      { id: 'c1', kind: 'coincident', label: 'x' },
-    ] as unknown as PartConstraint[]
-    expect(constraintContext(cs)).toEqual({})
   })
 })

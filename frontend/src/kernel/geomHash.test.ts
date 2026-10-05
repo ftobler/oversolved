@@ -23,6 +23,14 @@ describe("sha256Hex", () => {
       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
     )
   })
+
+  it("matches the multi-block FIPS-180-4 vector", () => {
+    // 56 bytes forces the padding into a second 64-byte block, exercising the
+    // message loop (sha256.ts) beyond the two single-block vectors above.
+    expect(
+      sha256Hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+    ).toBe("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")
+  })
 })
 
 describe("pyRound4Str matches CPython str(round(v, 4))", () => {

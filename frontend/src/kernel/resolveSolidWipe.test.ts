@@ -21,6 +21,12 @@ import { Repository, makeAncestryQuery } from './query'
 import { postRegister } from './features/postRegister'
 import { repoFromSnapshot } from './builder'
 import type { Body, FeatureCheckpoint, BuildState } from './types3d'
+// Imported here, not mid-file, so the dependency surface is visible at the top
+// like every other kernel test; only the skipIf-gated real-OCC section uses them.
+import { loadOcc } from './occ/loadOcc'
+import { SharedHarness } from './occ/sharedHarness'
+import { setSketchSolver, resetSketchSolver } from './features/sketch'
+import { loadSolver } from '@/wasm-kernel/loadSolver'
 
 const SHAPE_SEED: Record<string, number> = { f1: 100, f2: 200 }
 
@@ -280,13 +286,14 @@ describe('real postRegister: solids survive a re-solve', () => {
 
   it('a null-shape owned body contributes no phantom solid under [@f1]', () => {
     // The solve loop only registers solids for bodies with `body.shape != null`
-    // (builder.ts:1141), so a body whose geometry never materialized is invisible
-    // to `?@fid:solid`. The reconcile must not re-introduce it: before the guard
-    // it registered a phantom solid for the null-shape body, inflating `[@f1]` to
-    // two solids and making `?@f1:solid` throw AmbiguousQueryError. The two phantom
-    // solids are genuinely distinct payloads (`_dedupeRepo` at builder.ts:234
-    // collapses only byte-identical payloads and they differ by `body_id`), so the
-    // repo holds 2 solids and the restore keeps both.
+    // (the shaped-body guard in the solve loop), so a body whose geometry never
+    // materialized is invisible to `?@fid:solid`. The reconcile must not
+    // re-introduce it: before the guard it registered a phantom solid for the
+    // null-shape body, inflating `[@f1]` to two solids and making
+    // `?@f1:solid` throw AmbiguousQueryError. The two phantom solids are
+    // genuinely distinct payloads (`_dedupeRepo` at builder.ts:234 collapses only
+    // byte-identical payloads and they differ by `body_id`), so the repo holds 2
+    // solids and the restore keeps both.
     const cold = buildNullShapePair(true)
     const cp = cold._build_state!.checkpoints.f1
     const solids = elementsOfType(cp, 'f1', 'solid')
@@ -439,11 +446,6 @@ describe('reconcile hardening: no-body features exit early', () => {
 })
 
 // ─── real OCC: the production pipeline end to end ───
-
-import { loadOcc } from './occ/loadOcc'
-import { SharedHarness } from './occ/sharedHarness'
-import { setSketchSolver, resetSketchSolver } from './features/sketch'
-import { loadSolver } from '@/wasm-kernel/loadSolver'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()

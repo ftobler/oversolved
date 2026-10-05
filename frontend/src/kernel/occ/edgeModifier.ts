@@ -12,6 +12,7 @@ import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccShapeEnumValue } from './occTypes'
 import { faceCentroid, edgeToGeom, SubShapeIndexMap } from './primitives'
 import { edgeGeometryHash } from '../geomHash'
+import { volumeOf } from './booleans'
 import { faceGh, edgeGh } from './lineageHash'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
@@ -385,8 +386,8 @@ function healShape(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShap
   if (after.solids !== before.solids || after.faces !== before.faces || after.edges !== before.edges) {
     return reject()
   }
-  const v0 = shapeVolume(oc, scope, shape)
-  const v1 = shapeVolume(oc, scope, healed)
+  const v0 = volumeOf(oc, scope, shape)
+  const v1 = volumeOf(oc, scope, healed)
   if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return reject()
   return scope.detach(healed)
 }
@@ -406,15 +407,6 @@ function topoCounts(
     return n
   }
   return { solids: count(E.TopAbs_SOLID), faces: count(E.TopAbs_FACE), edges: count(E.TopAbs_EDGE) }
-}
-
-/** Volume via BRepGProp; the heal guard's "same material" test. */
-function shapeVolume(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
-  const props = scope.track(new oc.GProp_GProps_1())
-  oc.BRepGProp.VolumeProperties_1(shape, props, true, false, false)
-  const mass = props.Mass()
-  scope.release(props)
-  return mass
 }
 
 /** What `addEdge` needs beyond the edge itself. The angle-distance chamfer has

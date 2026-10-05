@@ -491,7 +491,7 @@ describe('resolveMergeTargets parity', () => {
   it('throws for a "?" query whose bodies are gone', () => {
     const store = makeStore({ body_ex1: 'ex1' })
     const ref = makeAncestryQuery(['@body_gone', '@ex9'], 'face')
-    expect(() => resolveMergeTargets(ref, store)).toThrow(/body not found/)
+    expect(() => resolveMergeTargets(ref, store)).toThrow(/merge target/)
   })
 })
 

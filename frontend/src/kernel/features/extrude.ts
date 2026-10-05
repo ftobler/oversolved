@@ -202,7 +202,7 @@ export function solveExtrude(
   if (cqFaces.length > 0 && allLoops.length > 0) {
     // Both were built; only one branch below can consume them, and the silent
     // drop reached applyBodyOperation with profile_queries naming geometry the
-    // body does not contain. sweep.ts:459 refuses the same mix by name.
+    // body does not contain. sweep's mixed-profile guard refuses the same mix by name.
     throw new Error(
       'extrude: a profile mixing picked faces/edges with sketch areas is not supported; ' +
         'use one or the other',

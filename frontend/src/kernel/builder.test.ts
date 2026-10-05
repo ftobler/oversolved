@@ -1019,7 +1019,7 @@ describe('edgeAncestryPayload (projection round-trip)', () => {
 
     // The payload (as globalRepo would hand it back) must resolve to 3D ellipse
     // geometry and project to a 5-param ellipse on a coplanar sketch plane.
-    const g = resolve3dGeometry({ type: 'edge', ...payload }, '?e')
+    const g = resolve3dGeometry({ type: 'edge', ...payload })
     expect(g?.kindH).toBe('ellipse')
     const out = projectTo2d(g!, XY)
     expect(out?.kind).toBe('ellipse')

@@ -32,7 +32,7 @@ let occLoading: Promise<OccModule | null> | null = null
 // The checkpoint cache is not a side table: it IS the OCC handles in this
 // HandleTable plus the BuildState that points at them. The table must outlive a
 // single solve so the clean-prefix bodies' OCC shapes survive into the next
-// build() (mirroring the SharedHarness pattern proven by meshCacheReal.test).
+// build() (mirroring the SharedHarness pattern proven by checkpointMeshReal.test).
 // A fresh table per solve (the old behaviour) left every prior handle dangling,
 // so findFirstDirty could never reuse a checkpoint and every edit rebuilt the
 // whole stack. Keyed by doc id; switching documents discards the old table.

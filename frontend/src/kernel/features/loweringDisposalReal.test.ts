@@ -14,7 +14,8 @@
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
-import { DisposeScope, type Disposable } from '../occ/disposeScope'
+import { DisposeScope } from '../occ/disposeScope'
+import { CountingScope } from '../occ/countingScope'
 import { HandleTable } from '../occ/handleTable'
 import { makeBox } from '../occ/primitives'
 import { volumeOf } from '../occ/booleans'
@@ -30,21 +31,8 @@ import type { LoopEdge } from '../profileLoops'
 
 const oc = await loadOcc()
 
-// Counting seam: the intermediates under test are exactly the objects that
-// now flow through track()+release() instead of bypassing the scope.
-class CountingScope extends DisposeScope {
-  trackedCount = 0
-  releasedCount = 0
-  override track<T extends Disposable>(obj: T): T {
-    this.trackedCount++
-    return super.track(obj)
-  }
-  override release<T extends Disposable>(obj: T): T {
-    this.releasedCount++
-    return super.release(obj)
-  }
-}
-
+// Counting seam: the shared CountingScope counts the track()+release() traffic
+// of exactly the intermediates under test (shared module, not a per-file copy).
 const PLANE = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 // Leaves read _topo_/_pt_ entries off repo.elements during profile collection.
 const nullRepo = { query: () => null, elements: new Map() } as unknown as Repository
@@ -80,8 +68,8 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
       } finally {
         scope.dispose()
       }
-      tracked.push(scope.trackedCount)
-      released.push(scope.releasedCount)
+      tracked.push(scope.trackCount)
+      released.push(scope.releaseCount)
     }
     return { tracked, released, values }
   }
@@ -171,7 +159,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
         } finally {
           scope.dispose()
         }
-        released.push(scope.releasedCount)
+        released.push(scope.releaseCount)
       }
       return { released, volumes }
     } finally {
@@ -236,7 +224,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
   // H21: the array add fuse loop releases the superseded fused solid and the
   // consumed instance at the end of every iteration (array.ts:250-274). The
   // loop is the ONLY release traffic on this path (booleans/transformLineage/
-  // bodySplit never call scope.release), so releasedCount is exactly 2 per
+  // bodySplit never call scope.release), so releaseCount is exactly 2 per
   // extra instance minus one: iteration 1 skips the table-owned source and
   // contributes a single release, every later iteration two.
   function arrayRun(countX: number): { released: number } {
@@ -262,7 +250,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
         repo, bodyStore,
       )
       expect(result.status).toBe('ok')
-      return { released: scope.releasedCount }
+      return { released: scope.releaseCount }
     } finally {
       scope.dispose()
       table.disposeAll()

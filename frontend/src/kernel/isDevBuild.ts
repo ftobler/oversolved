@@ -10,3 +10,18 @@ export function isDevBuild(): boolean {
     return false
   }
 }
+
+/**
+ * True in a dev build or under a test runner. The hot-path gates that replaced
+ * their own `import.meta.env.DEV || import.meta.env.MODE === "test"` copies use
+ * this: some test runners do not set `DEV`, so `isDevBuild()` alone would
+ * silence diagnostics the tests rely on.
+ */
+export function isDevOrTestBuild(): boolean {
+  try {
+    const env = (import.meta as unknown as { env?: { DEV?: boolean; MODE?: string } }).env
+    return Boolean(env?.DEV) || env?.MODE === 'test'
+  } catch {
+    return false
+  }
+}

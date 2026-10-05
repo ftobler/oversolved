@@ -1364,9 +1364,13 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
       const e = edges[i].end ?? [0, 0, 0]
       return (s[1] + e[1]) / 2
     })
-    const yExpected = new Set<number>()
-    for (const y of yMids) yExpected.add(y < 7.5 ? Math.round(y) : Math.round(y))
-    expect(yExpected.size).toBe(2)
+    const ySorted = [...yMids].sort((a, b) => a - b)
+    // The two distinct vertical lobe-intersection edges must bind to the two
+    // lobe y positions, one below and one above the midline.
+    expect(ySorted[0]).toBeLessThan(7.5)
+    expect(ySorted[1]).toBeGreaterThanOrEqual(7.5)
+    expect(ySorted[0]).toBeCloseTo(0, 0)
+    expect(ySorted[1]).toBeCloseTo(15, 0)
 
     // Find a flat top-face query from r1 (for ex2's profile).
     const topQuery = topFaceQuery(r1, 'body_ex1')
