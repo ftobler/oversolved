@@ -4,7 +4,7 @@
 #
 #   everyday   dev, build, static
 #   gates      default (python + frontend), python, frontend, rust-test,
-#              rust-lint, parity
+#              rust-lint, rust-fmt, licenses, parity
 #   assets     wasm, icons
 #   setup      install
 #   cleanup    clean, deepclean
@@ -12,6 +12,10 @@
 # pipefail keeps a recipe's own exit code when it pipes into `tee`, which every
 # gate below does; without it the gate would report tee's success instead.
 set shell := ["bash", "-cuo", "pipefail"]
+
+# wasm-pack is installed project-local by `install-wasm`, never into ~/.cargo/bin,
+# so the asset recipes must invoke it by absolute path to match.
+wasm_pack := justfile_directory() / "tmp" / "tools" / "bin" / "wasm-pack"
 
 
 # --- everyday ---
@@ -64,25 +68,37 @@ python:
 # Aggregate and asset recipes tee their whole run to tmp/just_<recipe>.log on
 # top of that, so `just frontend` needs no hand-written `| tee` to be re-grepped.
 
+# frontend/scripts/mergeCorpus.py is the one Python file outside the package,
+# and lint.py is the repo linter, so both are checked alongside the package.
+
 # Type-check the surviving Python tooling.
 mypy:
     mkdir -p tmp
-    .venv/bin/python -m mypy tests/ oversolved/ 2>&1 | tee tmp/mypy.log
+    .venv/bin/python -m mypy tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py 2>&1 | tee tmp/mypy.log
 
 # local ruff gate; CI still runs flake8 (same E/F/W rule set) as the safety net
 ruff:
     mkdir -p tmp
-    .venv/bin/python -m ruff check tests/ oversolved/ 2>&1 | tee tmp/ruff.log
+    .venv/bin/python -m ruff check tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py 2>&1 | tee tmp/ruff.log
 
 # Run the Python test suite.
 pytest:
     mkdir -p tmp
     .venv/bin/python -m pytest tests/ 2>&1 | tee tmp/pytest.log
 
-# Every frontend gate (icons + lint + tests + build).
+# Every frontend gate (icons + lint + tests + licenses + build).
 frontend:
     mkdir -p tmp
-    { just icons && just frontend-lint && just frontend-test && just build; } 2>&1 | tee tmp/just_frontend.log
+    { just icons && just frontend-lint && just frontend-test && just licenses && just build; } 2>&1 | tee tmp/just_frontend.log
+
+# Regenerating the notices is a separate, deliberate act
+# (npm run licenses:generate).
+
+# Verify the checked-in third-party notice bundles are current.
+[working-directory: "frontend"]
+licenses:
+    mkdir -p ../tmp
+    npm run licenses:check 2>&1 | tee ../tmp/licenses_check.log
 
 [working-directory: "frontend"]
 frontend-lint:
@@ -114,7 +130,12 @@ rust-test:
 rust-lint:
     mkdir -p tmp
     cargo clippy --workspace -- -D warnings 2>&1 | tee tmp/cargo_clippy.log
-    python3 lint.py solver-core sketch-solver mate-solver --language rust 2>&1 | tee tmp/lint_rust.log
+    .venv/bin/python lint.py solver-core sketch-solver mate-solver --language rust 2>&1 | tee tmp/lint_rust.log
+
+# Check Rust formatting without rewriting files; CI runs the same command.
+rust-fmt:
+    mkdir -p tmp
+    cargo fmt --all --check 2>&1 | tee tmp/cargo_fmt.log
 
 
 # --- assets ---
@@ -127,10 +148,10 @@ rust-lint:
 wasm:
     mkdir -p tmp
     { \
-        (cd sketch-solver && wasm-pack build --target web --out-dir pkg --release) && \
-        (cd sketch-solver && wasm-pack build --target nodejs --out-dir pkg-node --release) && \
-        (cd mate-solver && wasm-pack build --target web --out-dir pkg --release) && \
-        (cd mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release) && \
+        (cd sketch-solver && {{wasm_pack}} build --target web --out-dir pkg --release) && \
+        (cd sketch-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release) && \
+        (cd mate-solver && {{wasm_pack}} build --target web --out-dir pkg --release) && \
+        (cd mate-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release) && \
         (cd frontend && node scripts/copyWasm.mjs); \
     } 2>&1 | tee tmp/wasm.log
 
@@ -159,9 +180,12 @@ install-npm:
     mkdir -p ../tmp
     npm install 2>&1 | tee ../tmp/npm_install.log
 
+# wasm-pack is installed project-local so nothing leaks into ~/.cargo/bin.
+
+# Install the wasm build tool into tmp/tools.
 install-wasm:
     mkdir -p tmp
-    cargo install wasm-pack 2>&1 | tee tmp/cargo_install_wasm_pack.log
+    cargo install wasm-pack --root tmp/tools 2>&1 | tee tmp/cargo_install_wasm_pack.log
 
 [working-directory: "frontend"]
 install-occ:
