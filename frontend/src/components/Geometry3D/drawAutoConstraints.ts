@@ -39,8 +39,9 @@ export interface SketchGeometry {
   otherSketches?: Record<string, Record<string, Entity>>
 }
 
-// Click positions that agree within this distance are the same point.
-const SNAP_EPS = 1e-6
+// Click positions that agree within this distance are the same point. Shared
+// with drawLogic so the two tolerances can never drift.
+export const SNAP_EPS = 1e-6
 
 // Only these carry a well-defined foot for a cursor point, so only these can
 // host a point. A spline or an ellipse under the cursor is not a snap target.

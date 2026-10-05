@@ -5,6 +5,7 @@ import { PlaneEditor } from '@/components/editors/PlaneEditor'
 import { PlaneSelector } from '@/components/sketch/PlaneSelector'
 import { useFileMeta } from '@/stores/fileRegistry'
 import { formatBytes } from '@/utils/formatBytes'
+import { BUILTIN_FEATURE_IDS } from '@/components/layout/builtinFeatureIds'
 
 interface FeatureItemEditorsProps {
   feature: PartFeature
@@ -14,8 +15,6 @@ interface FeatureItemEditorsProps {
   features: PartFeature[]
   partLabels: Record<string, string>
 }
-
-const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
 
 // The row is its own component because useFileMeta is a hook: FeatureItemEditors
 // returns early for a feature that is not being edited, so the hook cannot live
@@ -46,7 +45,7 @@ export function FeatureItemEditors({
 
   const kind = feature.kind
 
-  if (kind === 'plane' && !BUILT_IN_IDS.has(feature.id)) {
+  if (kind === 'plane' && !BUILTIN_FEATURE_IDS.has(feature.id)) {
     return (
       <PlaneEditor
         feature={feature}

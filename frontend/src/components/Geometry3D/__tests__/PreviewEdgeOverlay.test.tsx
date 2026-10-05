@@ -3,11 +3,6 @@ import { render } from '@testing-library/react'
 import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
 import type { EdgeData } from '@/types/cad'
 
-vi.mock('@react-three/fiber', () => ({
-  useFrame: () => {},
-  useThree: () => ({}),
-}))
-
 vi.mock('../Body3D', () => ({
   buildEdgeSegments: (edges: EdgeData[]) => {
     // Return 6 floats per edge (one line segment) for non-empty input.
@@ -31,20 +26,11 @@ vi.mock('@/components/Geometry3D/bodyGeometry', async (importOriginal) => {
   return { ...actual, buildEdgeSegments: vi.fn(actual.buildEdgeSegments) }
 })
 
-// Render lineSegments as a div for DOM inspection.
+// Render the fiber tree without a WebGL context; <lineSegments> is an unknown
+// JSX string tag jsdom renders directly, so no global stub is needed.
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
-
-function mockLineSegments({ renderOrder, children }: {
-  geometry?: unknown
-  renderOrder?: number
-  children?: React.ReactNode
-}) {
-  return <div data-testid="line-segments" data-render-order={renderOrder}>{children}</div>
-}
-
-vi.stubGlobal('lineSegments', mockLineSegments)
 
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 import { buildEdgeSegments as tessellateSpy } from '@/components/Geometry3D/bodyGeometry'

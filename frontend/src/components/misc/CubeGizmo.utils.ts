@@ -431,9 +431,9 @@ export function drawCubeGizmo(
       const uy = _labelY.copy(poly.axes.y).applyQuaternion(q)
 
       // We want the text to be flat. ux and uy are the projected basis vectors.
-      // Canvas transform: [ m11 m12 m21 m22 dx dy ]
-      // m11 = ux.x * s, m12 = -ux.y * s (because Y is inverted in project)
-      // m21 = uy.x * s, m22 = -uy.y * s
+      // Canvas transform: [ m11 m12 m21 m22 dx dy ]. Canvas +y is screen-down,
+      // so m12/m22 negate the y component, and every term carries the fs scale:
+      // m11 = ux.x*s*fs, m12 = -ux.y*s*fs, m21 = -uy.x*s*fs, m22 = uy.y*s*fs.
 
       ctx.save()
       ctx.translate(fcx, fcy)

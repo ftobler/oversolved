@@ -11,9 +11,7 @@ type Handlers = ReturnType<typeof makeHandlers>
 function makeHandlers() {
   return {
     onEnterEditSketch: vi.fn(),
-    onExitEditSketch: vi.fn(),
     onEnterEditFeature: vi.fn(),
-    onExitEditFeature: vi.fn(),
     onEditCommit: vi.fn(),
     onEditCancel: vi.fn(),
     onToggleVisibility: vi.fn(),

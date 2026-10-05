@@ -65,7 +65,6 @@ describe('EntityItem selected-entity render order', () => {
       <EntityItem
         entity={LINE_ENTITY}
         entityId="line1"
-        entityKind="line"
         featureId="sketch1"
         baseColor="#aaaaaa"
         isEditing={false}
@@ -86,7 +85,6 @@ describe('EntityItem selected-entity render order', () => {
       <EntityItem
         entity={LINE_ENTITY_CONSTRUCTION}
         entityId="line1"
-        entityKind="line"
         featureId="sketch1"
         baseColor="#aaaaaa"
         isEditing={false}
@@ -109,7 +107,6 @@ describe('EntityItem selected-entity render order', () => {
       <EntityItem
         entity={LINE_ENTITY}
         entityId="line1"
-        entityKind="line"
         featureId="sketch1"
         baseColor="#aaaaaa"
         isEditing={false}
@@ -129,7 +126,6 @@ describe('EntityItem selected-entity render order', () => {
       <EntityItem
         entity={LINE_ENTITY}
         entityId="line1"
-        entityKind="line"
         featureId="sketch1"
         baseColor="#aaaaaa"
         isEditing={false}

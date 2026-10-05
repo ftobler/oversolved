@@ -12,7 +12,6 @@ import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, COLOR_PROJECTED, C
 interface EntityItemProps {
   entity: Entity
   entityId: string
-  entityKind?: string
   featureId: string
   baseColor: string
   lineWidth?: number
@@ -136,13 +135,12 @@ interface EntityLinesProps {
   sketch: Sketch
   featureId: string
   color: string | ((entityId: string) => string)
-  kindMap: Record<string, string>
   lineWidth?: number
   isEditing?: boolean
   constraints?: PartConstraint[]
 }
 
-export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, isEditing = false, constraints }: EntityLinesProps) {
+export function EntityLines({ sketch, featureId, color, lineWidth = 1, isEditing = false, constraints }: EntityLinesProps) {
   const getColor = typeof color === 'function' ? color : () => color
   // Coincident-bonded partners collapse to one drawn handle. Constraint-backed
   // only: points that merely overlap stay separate. Pick registration hides the
@@ -156,7 +154,7 @@ export function EntityLines({ sketch, featureId, color, kindMap, lineWidth = 1, 
       {Object.entries(sketch)
         .filter(([, entity]) => !(entity as PointEntity).projected)
         .map(([id, entity]) => (
-          <EntityItem key={id} entity={entity as Entity} entityId={id} entityKind={kindMap[id] ?? 'line'} featureId={featureId} baseColor={getColor(id)} lineWidth={lineWidth} isEditing={isEditing} suppressedVertexIds={suppressedVertexIds} />
+          <EntityItem key={id} entity={entity as Entity} entityId={id} featureId={featureId} baseColor={getColor(id)} lineWidth={lineWidth} isEditing={isEditing} suppressedVertexIds={suppressedVertexIds} />
         ))}
     </>
   )

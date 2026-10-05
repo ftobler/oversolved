@@ -21,16 +21,3 @@ export function worldToLocal3D(
     [q.x, q.y, q.z, q.w],
   )
 }
-
-/** Extract parent transform from a Three.js group ref and convert world point to sketch-local 2D.
- *  Returns null when the group ref is not mounted or when the local Z is far from the sketch
- *  plane (|z| > 1), which indicates a hit on an HTML overlay rather than geometry. */
-export function worldToSketchLocal(
-  worldPt: THREE.Vector3,
-  groupRef: React.RefObject<THREE.Object3D | null>,
-): [number, number] | null {
-  const local = worldToLocal3D(worldPt, groupRef)
-  if (!local) return null
-  if (Math.abs(local[2]) > 1) return null
-  return [local[0], local[1]]
-}

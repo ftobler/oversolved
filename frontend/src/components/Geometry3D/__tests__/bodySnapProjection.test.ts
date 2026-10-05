@@ -137,6 +137,18 @@ describe('buildBodySnapSketch', () => {
     expect(entries[0]).toMatchObject({ x: 5, y: 3 })
   })
 
+  it('creates PointEntity for ellipse center', () => {
+    const s = buildBodySnapSketch(undefined, [
+      {
+        kind: 'ellipse', center: [4, 6, 0], a: 3, b: 2, axis: [0, 0, 1],
+        x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI * 2,
+      },
+    ], FRONT_PT)
+    const entries = Object.values(s)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ x: 4, y: 6 })
+  })
+
   it('creates PointEntity entries for spline endpoints', () => {
     const s = buildBodySnapSketch(undefined, [
       { kind: 'spline', points: [[0, 0, 0], [5, 2, 0], [10, 0, 0]] },

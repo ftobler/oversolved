@@ -1,24 +1,22 @@
 /**
- * Regression tests for Body3D.handleMeshClick (the post-fix contract).
+ * Contract tests for the body face/edge click store sequence.
  *
- * User invariant (solver_arch.user.md §Selection):
+ * User invariant:
  *   "Click a face -> store the face query. Not the part. The part is implied
  *    ancestrally."
  *
- * Pre-fix bug: handleMeshClick also dispatched `addToNormalSelection('@' + bodyId)`
- * which broke the "store what was clicked" principle and made the face/body pair
- * inseparable in selection. The fix removes that branch.
- *
- * These tests exercise the same store API call sequence that handleMeshClick
- * performs (without rendering Three.js) and assert the post-fix contract:
- * normalSelection contains exactly the face/edge query, never the bodyId.
+ * The click path lives in the id-buffer dispatcher (Viewport/idDispatch/
+ * bodyDispatchCallbacks.ts) now; Body3D carries no R3F event props (enforced by
+ * entityMeshNoR3FEventProps.test.ts). These tests exercise the store API
+ * sequence that path performs and assert normalSelection contains exactly the
+ * face/edge query, never the bodyId.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
-// Mirror handleMeshClick from Body3D.tsx so the contract is captured here.
-// If Body3D ever re-introduces the @bodyId auto-add, this mirror must NOT be
-// updated to match -- it documents the intended contract for the file.
+// Mirror the dispatcher's store sequence so the contract is captured here.
+// If the path ever re-introduces the @bodyId auto-add, this mirror must NOT be
+// updated to match -- it documents the intended contract.
 function simulateFaceClick(hoverQuery: string) {
   useSketchEditorStore.getState().setHoveredSelectionId(hoverQuery)
   const state = useSketchEditorStore.getState()
@@ -37,7 +35,7 @@ beforeEach(() => {
   })
 })
 
-describe('Body3D.handleMeshClick contract', () => {
+describe('body face/edge click contract', () => {
   it('stores only the face query, never the parent bodyId', () => {
     simulateFaceClick('@ex1/face/3')
 

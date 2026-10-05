@@ -94,8 +94,11 @@ export function computePreviewPts(
     return ngonPolyline(pts[0], h, ngonSides)
   }
 
-  if (tool === 'line' && pts.length === 1 && h) {
-    return [[pts[0][0], pts[0][1], 0], [h[0], h[1], 0]]
+  if (tool === 'line' && pts.length >= 1 && h) {
+    // The line tool keeps its chain open, so the rubber band always runs from
+    // the last placed point to the cursor, not only before the second point.
+    const last = pts[pts.length - 1]
+    return [[last[0], last[1], 0], [h[0], h[1], 0]]
   }
   if (tool === 'circle' && pts.length === 1 && h) {
     const r = Math.hypot(h[0] - pts[0][0], h[1] - pts[0][1])

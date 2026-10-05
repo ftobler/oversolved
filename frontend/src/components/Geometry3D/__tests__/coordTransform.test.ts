@@ -36,6 +36,26 @@ describe('applyQuaternionInverse', () => {
     expect(result[1]).toBeCloseTo(0)
     expect(result[2]).toBeCloseTo(0)
   })
+
+  it('mixed-axis (X then Z) rotation inverts against a hand-computed result', () => {
+    // q = qz(90) * qx(90) = [x, y, z, w] = [0.5, 0.5, 0.5, 0.5].
+    // Forward maps x->y, y->z, z->x, so the inverse maps x->z, y->x, z->y.
+    const mixed: [number, number, number, number] = [0.5, 0.5, 0.5, 0.5]
+    const ix = applyQuaternionInverse([1, 0, 0], mixed)
+    expect(ix[0]).toBeCloseTo(0)
+    expect(ix[1]).toBeCloseTo(0)
+    expect(ix[2]).toBeCloseTo(1)
+
+    const iy = applyQuaternionInverse([0, 1, 0], mixed)
+    expect(iy[0]).toBeCloseTo(1)
+    expect(iy[1]).toBeCloseTo(0)
+    expect(iy[2]).toBeCloseTo(0)
+
+    const iz = applyQuaternionInverse([0, 0, 1], mixed)
+    expect(iz[0]).toBeCloseTo(0)
+    expect(iz[1]).toBeCloseTo(1)
+    expect(iz[2]).toBeCloseTo(0)
+  })
 })
 
 describe('worldToSketchLocalPure', () => {

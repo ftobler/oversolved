@@ -27,7 +27,8 @@ function vertexFixture(
   skipEntityId: string,
   otherSketches?: Record<string, Sketch>,
 ): ReturnType<typeof sketchToVertexCandidates> {
-  const skip = skipEntityId === '__none__' ? new Set<string>() : new Set([skipEntityId])
+  const skip = skipEntityId === '__none__'
+    ? new Set<string>() : new Set([`${featureId}:${skipEntityId}`])
   const out = collectVertexTargetsFlat(
     sketchToVertexCandidates(sketch, featureId, 'active_sketch'), skip)
   for (const [f, s] of Object.entries(otherSketches ?? {})) {

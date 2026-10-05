@@ -1,93 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
-import { Sidebar } from '@/components/layout/Sidebar'
-import type { PartFeature } from '@/types/cad'
-import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { PartEditorProvider } from '@/contexts/PartEditorContext'
-import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
-
-function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
-  return {
-    onToggleSelect: vi.fn(),
-    onEnterEditSketch: vi.fn(),
-    onExitEditSketch: vi.fn(),
-    onEnterEditFeature: vi.fn(),
-    onExitEditFeature: vi.fn(),
-    onEditCommit: vi.fn(),
-    onEditCancel: vi.fn(),
-    onToggleVisibility: vi.fn(),
-    onRightClick: vi.fn(),
-    onMutation: vi.fn(),
-    onSetRollbackPosition: vi.fn(),
-    ...overrides,
-  }
-}
-
-function renderSidebar(callbacks: PartEditorCallbacks = makeCallbacks()) {
-  return render(
-    <PartEditorProvider value={callbacks}>
-      <Sidebar />
-    </PartEditorProvider>
-  )
-}
-
-const builtInFeatures: PartFeature[] = [
-  { id: 'Origin', kind: 'origin' },
-  { id: 'Top', kind: 'plane' },
-  { id: 'Front', kind: 'plane' },
-  { id: 'Right', kind: 'plane' },
-]
-
-const extrudeFeature: PartFeature = {
-  id: 'ex1',
-  kind: 'extrude',
-  extrude: { sketch: '$sk1', distance: 10, direction: 'normal' },
-}
-
-const sketchFeature: PartFeature = {
-  id: 'sk1',
-  kind: 'sketch',
-}
-
-function setupStore(features: PartFeature[], editingFeatureId: string | null = null) {
-  usePartEditorStore.setState({
-    features,
-    rollbackPosition: null,
-    visibleFeatures: new Set(features.map(f => f.id)),
-    editingFeatureId,
-    doc: null,
-    visibleBodies: new Set(),
-    partLabels: {},
-    solveResults: {},
-    bodies: {},
-    isRebuilding: false,
-    featureTimings: {},
-  })
-  useSketchEditorStore.setState({
-    normalSelection: new Set(),
-    activePickField: null, modeStack: [],
-  })
-}
+import { screen, fireEvent } from '@testing-library/react'
+import {
+  makeCallbacks, renderSidebar, resetStores, setupEditingStore as setupStore,
+  builtInFeatures, extrudeFeature, sketchFeature,
+} from './sidebarTestHarness'
 
 beforeEach(() => {
-  usePartEditorStore.setState({
-    features: [],
-    rollbackPosition: null,
-    visibleFeatures: new Set(),
-    editingFeatureId: null,
-    doc: null,
-    visibleBodies: new Set(),
-    partLabels: {},
-    solveResults: {},
-    bodies: {},
-    isRebuilding: false,
-    featureTimings: {},
-  })
-  useSketchEditorStore.setState({
-    normalSelection: new Set(),
-    activePickField: null, modeStack: [],
-  })
+  resetStores()
 })
 
 describe('FeatureTree double-click to edit', () => {

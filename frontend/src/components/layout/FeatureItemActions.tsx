@@ -4,27 +4,7 @@ import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
-
-// Feature kinds that expose edit (and, while editing, OK/Cancel) buttons, keyed
-// to the word used in the edit tooltip. `sketch` is the lone exception: it edits
-// via onEnterEditSketch rather than onEnterEditFeature (handled below).
-const EDIT_LABELS: Record<string, string> = {
-  sketch: 'sketch',
-  plane: 'plane',
-  extrude: 'extrude',
-  revolve: 'revolve',
-  sweep: 'sweep',
-  fillet: 'fillet',
-  chamfer: 'chamfer',
-  boolean: 'boolean',
-  array: 'array',
-  circular_array: 'circular array',
-  delete_body: 'delete body',
-  hole: 'hole',
-  transform: 'transform',
-  mirror: 'mirror',
-  variable: 'variable',
-}
+import { EDIT_LABELS } from '@/components/layout/featureItemKinds'
 
 interface FeatureItemActionsProps {
   featureKind: string | undefined
@@ -35,9 +15,7 @@ interface FeatureItemActionsProps {
   isVisible: boolean
   hasVisibility: boolean
   onEnterEditSketch: (id: string) => void
-  onExitEditSketch: () => void
   onEnterEditFeature: (id: string) => void
-  onExitEditFeature: () => void
   onEditCommit: () => void
   onEditCancel: () => void
   onToggleVisibility: (id: string) => void
@@ -53,9 +31,7 @@ export function FeatureItemActions({
   isVisible,
   hasVisibility,
   onEnterEditSketch,
-  onExitEditSketch: _onExitEditSketch,
   onEnterEditFeature,
-  onExitEditFeature: _onExitEditFeature,
   onEditCommit,
   onEditCancel,
   onToggleVisibility,
@@ -66,7 +42,10 @@ export function FeatureItemActions({
   const showVisBtn = !isEditing
   const kind = featureKind
 
-  const editLabel = kind ? EDIT_LABELS[kind] : undefined
+  // Own-property lookup so a kind like 'constructor' does not read a prototype
+  // member as an edit label.
+  const editLabel = kind !== undefined && Object.prototype.hasOwnProperty.call(EDIT_LABELS, kind)
+    ? EDIT_LABELS[kind] : undefined
   // Built-in planes (the default origin planes) are not editable.
   const canEdit = editLabel !== undefined && (kind !== 'plane' || !isBuiltIn)
 
@@ -102,7 +81,11 @@ export function FeatureItemActions({
           <img src={isVisible ? iconEyeIcon : iconEyeOffIcon} alt={isVisible ? 'Visible' : 'Hidden'} />
         </button>
       )}
-      {!isEditing && (kind === 'extrude' || kind === 'revolve' || kind === 'sweep' || kind === 'fillet' || kind === 'chamfer' || kind === 'boolean' || kind === 'array' || kind === 'circular_array' || kind === 'delete_body' || kind === 'import_step' || kind === 'mirror' || kind === 'transform') && (
+      {/* Reserve the visibility slot for every editable row that has no
+          visibility button (sketch and plane own one), so the tridot aligns.
+          Non-editable kinds (e.g. import_step) have neither an edit nor a
+          visibility control, so they get no slot and their tridot sits first. */}
+      {!isEditing && canEdit && kind !== 'sketch' && kind !== 'plane' && (
         <span className="feature-visibility-placeholder" />
       )}
       {!isBuiltIn && !isOrigin && (

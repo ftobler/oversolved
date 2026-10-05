@@ -1,36 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { featureFailure } from '@/utils/core/featureFailure'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { RebuildButton } from '@/components/rebuild/RebuildButton'
 import { FeatureItemActions } from '@/components/layout/FeatureItemActions'
+import { isEditableFeatureKind } from '@/components/layout/featureItemKinds'
 import { FeatureItemEditors } from '@/components/layout/FeatureItemEditors'
 import { RollbackSlider } from '@/components/layout/RollbackSlider'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
+import { BUILTIN_FEATURE_IDS } from '@/components/layout/builtinFeatureIds'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
-
-const BUILT_IN_IDS = new Set(['Origin', 'Top', 'Front', 'Right'])
-
-// Kinds that open in the feature editor (onEnterEditFeature) rather than the
-// sketch editor. `sketch` is the lone exception handled separately below. This
-// mirrors the kinds that already expose an Edit button in FeatureItemActions.
-const EDITABLE_FEATURE_KINDS = new Set([
-  'plane',
-  'extrude',
-  'revolve',
-  'sweep',
-  'fillet',
-  'chamfer',
-  'boolean',
-  'array',
-  'circular_array',
-  'delete_body',
-  'hole',
-  'transform',
-  'mirror',
-  'variable',
-])
 
 interface FeatureTreeProps {
   splitPercent: number
@@ -54,9 +34,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   const {
     onToggleSelect,
     onEnterEditSketch,
-    onExitEditSketch,
     onEnterEditFeature,
-    onExitEditFeature,
     onEditCommit,
     onEditCancel,
     onToggleVisibility,
@@ -87,7 +65,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
     for (let i = 0; i < featureEls.length; i++) {
       const rect = featureEls[i].getBoundingClientRect()
       if (clientY < rect.top + rect.height / 2) {
-        return Math.max(i, BUILT_IN_IDS.size)
+        return Math.max(i, BUILTIN_FEATURE_IDS.size)
       }
     }
     return features.length
@@ -155,24 +133,23 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
         <li className="empty" role="presentation">No features</li>
       ) : (
         features.map((feature, index) => {
-          const isBuiltIn = BUILT_IN_IDS.has(feature.id)
+          const isBuiltIn = BUILTIN_FEATURE_IDS.has(feature.id)
           const selectionId = isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`
 
           return (
-          <div key={`feature-${feature.id}`} role="presentation">
+          <Fragment key={`feature-${feature.id}`}>
             {effectiveRollback === index && (
               <RollbackSlider
                 isDragging={draggedRollback}
                 enabled={rollbackDraggable}
                 position={effectiveRollback}
-                min={BUILT_IN_IDS.size}
+                min={BUILTIN_FEATURE_IDS.size}
                 max={features.length}
                 onGrab={() => setDraggedRollback(true)}
                 onSetPosition={onSetRollbackPosition}
               />
             )}
             <li
-              key={feature.id}
               className={`feature-item ${index >= effectiveRollback ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
               role="option"
               tabIndex={0}
@@ -191,7 +168,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 const rect = e.currentTarget.getBoundingClientRect()
                 const midY = rect.top + rect.height / 2
                 const targetIndex = e.clientY < midY ? index : index + 1
-                setDropTargetIndex(Math.max(targetIndex, BUILT_IN_IDS.size))
+                setDropTargetIndex(Math.max(targetIndex, BUILTIN_FEATURE_IDS.size))
               }}
               onDragEnd={() => {
                 setDraggedFeatureId(null)
@@ -202,7 +179,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 e.preventDefault()
                 e.stopPropagation()
                 const fid = e.dataTransfer.getData('text/plain')
-                if (fid && dropTargetIndex !== null && !BUILT_IN_IDS.has(fid)) {
+                if (fid && dropTargetIndex !== null && !BUILTIN_FEATURE_IDS.has(fid)) {
                   onMutation({ type: 'reorder_features', featureId: fid, toIndex: dropTargetIndex })
                 }
                 setDraggedFeatureId(null)
@@ -220,7 +197,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 if (feature.id === editingFeatureId) return
                 if (feature.kind === 'sketch') {
                   onEnterEditSketch(feature.id)
-                } else if (EDITABLE_FEATURE_KINDS.has(feature.kind)) {
+                } else if (isEditableFeatureKind(feature.kind)) {
                   onEnterEditFeature(feature.id)
                 }
               }}
@@ -268,9 +245,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                     feature.id === editingFeatureId
                   }
                   onEnterEditSketch={onEnterEditSketch}
-                  onExitEditSketch={onExitEditSketch}
                   onEnterEditFeature={onEnterEditFeature}
-                  onExitEditFeature={onExitEditFeature}
                   onEditCommit={onEditCommit}
                   onEditCancel={onEditCancel}
                   onToggleVisibility={onToggleVisibility}
@@ -286,7 +261,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 partLabels={partLabels}
               />
             </li>
-          </div>
+          </Fragment>
         )})
       )}
       {effectiveRollback === features.length && (
@@ -294,7 +269,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
           isDragging={draggedRollback}
           enabled={rollbackDraggable}
           position={effectiveRollback}
-          min={BUILT_IN_IDS.size}
+          min={BUILTIN_FEATURE_IDS.size}
           max={features.length}
           onGrab={() => setDraggedRollback(true)}
           onSetPosition={onSetRollbackPosition}

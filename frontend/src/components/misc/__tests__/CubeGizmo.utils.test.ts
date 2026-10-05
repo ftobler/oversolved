@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as THREE from 'three'
 import {
-  computeGizmoHit, drawCubeGizmo, GIZMO_SIZE, getPolys,
+  computeGizmoHit, drawCubeGizmo, GIZMO_SIZE, GIZMO_CULL_NZ, getPolys,
   gizmoLabelFont, fitLabelFontSize, ensureGizmoLabelFont,
   isGizmoLabelFontReady, resetGizmoLabelFontForTest,
 } from '@/components/misc/CubeGizmo.utils'
@@ -19,7 +19,7 @@ const cameraWith = (q: THREE.Quaternion): THREE.Camera => {
 
 // project() in the util uses q = camera.quaternion.inverse(), s = W*0.27, and a
 // Y-flip. For an identity camera the cube front face (normal +z) sits dead centre.
-const C = GIZMO_SIZE / 2  // 64
+const C = GIZMO_SIZE / 2  // 70
 
 describe('computeGizmoHit', () => {
   it('hits the front face at the gizmo centre for an identity camera', () => {
@@ -177,7 +177,7 @@ describe('drawCubeGizmo', () => {
       // old disagreement rather than an ordinary front-facing hit.
       const nz = hit!.snapDir.clone().applyQuaternion(cam.quaternion.clone().invert()).z
       expect(nz).toBeLessThan(0)
-      expect(nz).toBeGreaterThanOrEqual(-0.1)
+      expect(nz).toBeGreaterThanOrEqual(GIZMO_CULL_NZ)
 
       // Consistency contract: whatever the hit-test can return must be drawn,
       // so the hover highlight it promises actually lights up.

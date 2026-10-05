@@ -169,7 +169,6 @@ describe('EntityLines container', () => {
         sketch={SKETCH}
         featureId="S1"
         color="#fff"
-        kindMap={{}}
         lineWidth={1}
         isEditing={true}
       />,
@@ -184,7 +183,6 @@ describe('EntityLines container', () => {
         sketch={{ a: LINE } as unknown as Sketch}
         featureId="S1"
         color={(id) => (id === 'a' ? '#hot' : '#cold')}
-        kindMap={{}}
         isEditing={true}
       />,
     )

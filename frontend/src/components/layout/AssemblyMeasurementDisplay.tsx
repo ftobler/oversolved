@@ -5,6 +5,7 @@
 import { useMemo } from 'react'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { computeAssemblyMeasurements } from '@/utils/assemblyMeasurements'
+import MeasurementList from '@/components/layout/MeasurementList'
 
 interface Props {
   measurementIcon?: string
@@ -20,16 +21,5 @@ export default function AssemblyMeasurementDisplay({ measurementIcon }: Props) {
     [entitySelection, entityMateRefs, anchors],
   )
 
-  if (measurements.length === 0) return null
-
-  return (
-    <div className="measurement-display">
-      {measurements.map((m, idx) => (
-        <div key={idx} className="measurement-item">
-          <img className="measurement-icon" src={measurementIcon} alt="" />
-          <span>{m}</span>
-        </div>
-      ))}
-    </div>
-  )
+  return <MeasurementList measurements={measurements} measurementIcon={measurementIcon} />
 }
