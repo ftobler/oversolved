@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { mergeSnapshot, pickOwnedFields } from '@/stores/storeSnapshot'
 import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, BodyResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
@@ -389,11 +390,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
 export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   ...createDefaultAssemblyEditorData(),
   setSnapshot: (data) => set((prev) => {
-    const prevRec = prev as unknown as Record<string, unknown>
-    const merged = { ...data } as unknown as Record<string, unknown>
-    for (const field of STORE_OWNED_FIELDS) {
-      merged[field] = prevRec[field]
-    }
+    const merged = mergeSnapshot<AssemblyEditorData>(data, prev, STORE_OWNED_FIELDS)
     // An unchanged part list keeps the reference it already had, so a doc edit
     // that moved no part cannot churn everything downstream of `instances`.
     // The updater stays pure: it reads `prev` and `data`, writes only the object
@@ -404,7 +401,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // unrelated snapshot leaves an open editor alone.
     const nextSubject = reduceEditingSubject(prev.editingSubject, { type: 'subject_removed', doc: data.doc })
     if (nextSubject !== prev.editingSubject) merged.editingSubject = nextSubject
-    return merged as unknown as AssemblyEditorData
+    return merged
   }),
   // A part pick replaces the subject wholesale, which is what drops any
   // previously selected mate: there is one slot, so exclusion is structural
@@ -423,17 +420,11 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
 
   clearAssemblyHistory: () => set({ undoStack: [], redoStack: [] }),
 
-  resetTransientAssemblyState: () => set(() => {
-    const next: Record<string, unknown> = {}
-    const defaults = createDefaultAssemblyEditorData() as unknown as Record<string, unknown>
-    for (const field of STORE_OWNED_FIELDS) {
-      // The stacks survive here: a doc load clears them via clearAssemblyHistory,
-      // and the reset is about interaction residue, not history.
-      if (field === 'undoStack' || field === 'redoStack') continue
-      next[field] = defaults[field]
-    }
-    return next as Partial<AssemblyEditorData>
-  }),
+  resetTransientAssemblyState: () => set(() =>
+    // The stacks are omitted: a doc load clears them via clearAssemblyHistory,
+    // and the reset is about interaction residue, not history.
+    pickOwnedFields(createDefaultAssemblyEditorData(), STORE_OWNED_FIELDS, ['undoStack', 'redoStack'] as const),
+  ),
 
   // The disarm is a required coupling, not incidental: the [Delete] path routes
   // through here so a mate delete leaves no armed field pointing at the vanished
