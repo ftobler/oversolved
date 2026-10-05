@@ -73,19 +73,26 @@ describe('sketchEntityAdapter', () => {
     expect(s.dragPending).toBeNull()
   })
 
-  it('onClick passes entityKind from entityKindMap', () => {
-    useSketchEditorStore.setState({ entityKindMap: { 'entity:feat1:circle1': 'circle' } })
-    // The DimensionTool test verifies that 'circle' entityKind opens dialog
-    // immediately. Here we just verify no crash when the map has a match.
+  it('onClick under the idle tool toggles the entity into normalSelection', () => {
+    useSketchEditorStore.setState({ entityKindMap: { 'entity:feat1:circle1': 'circle' }, normalSelection: new Set() })
     sketchEntityAdapter.onClick('entity:feat1:circle1', 100, 100)
     const s = useSketchEditorStore.getState()
-    expect(s.activeTool).toBeNull()  // no tool means no change from onClick
+    expect(s.normalSelection.has('entity:feat1:circle1')).toBe(true)
+    expect(s.activeTool).toBeNull()
   })
 
-  it('onClick passes undefined when entityKey not in entityKindMap', () => {
-    useSketchEditorStore.setState({ entityKindMap: {} })
-    sketchEntityAdapter.onClick('entity:feat1:unknown', 100, 100)
+  it('onClick under the dimension tool lands a pick carrying the entityKind from entityKindMap', () => {
+    useSketchEditorStore.setState({
+      entityKindMap: { 'entity:feat1:circle1': 'circle' },
+      activeTool: 'dimension',
+      activeFeatureId: 'feat1',
+      dimensionPicks: [],
+    })
+    sketchEntityAdapter.onClick('entity:feat1:circle1', 100, 100)
     const s = useSketchEditorStore.getState()
-    expect(s.activeTool).toBeNull()
+    expect(s.dimensionPicks).toEqual([
+      { isVertex: false, target: 'entity:feat1:circle1', entityKind: 'circle' },
+    ])
+    expect(s.activeTool).toBe('dimension')
   })
 })

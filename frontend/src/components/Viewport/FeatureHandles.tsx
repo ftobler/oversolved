@@ -46,10 +46,12 @@ function isDraggableValue(raw: unknown): boolean {
   return typeof raw === 'string' && PLAIN_NUMBER.test(raw.trim())
 }
 
-// Exhaustive kind -> mutation-type map so adding a new handle-emitting
-// feature kind forces an update here (an unknown kind fails to compile).
-// `field` is still cast: handle.field is a plain string, while each mutation
-// narrows to keyof XxxFeatureDef -- both sides agree on the same fields.
+// Handle-emitting feature kind -> its field-mutation type. `PartFeature.kind` is
+// a plain string, so the lookup is cast rather than checked; a kind missing from
+// the map is guarded at the call site (emitFieldMutation returns early).
+// `field` is cast for the same reason: handle.field is a plain string, while
+// each mutation narrows to keyof XxxFeatureDef -- both sides agree on the same
+// fields.
 const FIELD_MUTATION_TYPE = {
   extrude: 'set_extrude_field',
   revolve: 'set_revolve_field',
@@ -63,8 +65,10 @@ function emitFieldMutation(
   field: string,
   value: number | string,
 ): void {
+  const type = FIELD_MUTATION_TYPE[kind]
+  if (!type) return
   getSketchCallback('onMutation')?.({
-    type: FIELD_MUTATION_TYPE[kind], featureId, field, value,
+    type, featureId, field, value,
   } as Mutation)
 }
 

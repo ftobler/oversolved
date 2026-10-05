@@ -125,7 +125,15 @@ export class HoverScheduler {
     // epoch so a clear since it launched wins.
     const pending = result as Promise<readonly ResolvedHit[]>
     if (typeof pending.then !== 'function') {
-      this.onHits(result as readonly ResolvedHit[])
+      // The sync apply is wrapped like the async one: a throwing consumer must
+      // not escape the scheduler as an uncaught error while the async path
+      // swallows the same failure. The dev warn keeps the control flow
+      // identical while a prod build stays quiet.
+      try {
+        this.onHits(result as readonly ResolvedHit[])
+      } catch (err) {
+        if (isDevBuild()) console.warn('hover apply failed', err)
+      }
       return
     }
     pending

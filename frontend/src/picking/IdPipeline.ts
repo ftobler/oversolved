@@ -116,12 +116,6 @@ export interface IdPipelineOptions {
    * it in step with the canvas each frame via `setPixelRatio`.
    */
   pixelRatio?: number
-  /**
-   * When true, the pipeline re-renders the ID buffer every frame while
-   * the camera is in motion. Default false (matches "suppress hover during
-   * camera motion" stance in the architecture).
-   */
-  pickDuringCameraMotion?: boolean
 }
 
 interface PendingAsyncQuery {
@@ -135,10 +129,12 @@ interface PendingAsyncQuery {
  * Orchestrates the off-screen ID render target, its layers, and the
  * resolver. One instance per Canvas.
  *
- * Slice scope (id-buffer-core.md): face layer only. Dirty flag is wired
- * but invalidation sources (camera/scene/resize) land in id-buffer-perf.md.
- * For now, callers can `markDirty()` directly and the pipeline will render
- * once on the next `renderIfDirty()`.
+ * Mounts the full ladder of pick layers (plane, B-rep face/edge/vertex, sketch
+ * surface/entity/vertex, origin, dimension label, feature handle, gizmo handle),
+ * ordered by priority. The driver auto-marks the buffer dirty on a camera-pose
+ * change and on resize; callers can also `markDirty()` directly. The next
+ * `renderIfDirty()` renders once, and `render()` marks the buffer clean unless a
+ * layer failed.
  */
 export class IdPipeline {
   readonly registry: IdRegistry
@@ -161,7 +157,6 @@ export class IdPipeline {
   private pixelRatio = 1
   private renderCount = 0
   private lastDirtyReason: string | null = null
-  pickDuringCameraMotion: boolean
   private nextAsync: PendingAsyncQuery | null = null
   private inFlightAsync: PendingAsyncQuery | null = null
   private disposed = false
@@ -268,15 +263,13 @@ export class IdPipeline {
 
     this.windowSize = opts.windowSize ?? DEFAULT_WINDOW_SIZE
     this.setPixelRatio(opts.pixelRatio ?? 1)
-    this.pickDuringCameraMotion = opts.pickDuringCameraMotion ?? false
   }
 
   /**
    * Mount a layer. Layers are rendered in ascending `priority` order
    * (lowest priority first, highest priority drawn last and therefore
    * highest pick precedence within the depth-test policy).
-   * Used by future plans (#262 edges/vertices, #263 sketches) to extend
-   * the pipeline without modifying this class.
+   * Lets the pipeline grow its layer set without modifying this class.
    */
   addLayer(layer: IdLayer): void {
     this.layers.push(layer)
@@ -398,7 +391,6 @@ export class IdPipeline {
       let firstLayer = true
 
       for (const layer of this.layers) {
-        if (layer.inertWhen?.()) continue
         if (layer.scene.children.length === 0) continue
         // A latched-out layer is a known-broken pass. Skipping it before the
         // depth-clear switch keeps a later clear-then-fresh layer from
@@ -607,7 +599,6 @@ export class IdPipeline {
       // Flip: scratch row 0 is the top of the canvas window; sub row 0 is
       // bottom of the read region; so scratch row = (readH - 1) - (offsetY + row).
       const dstRow = (readH - 1) - (offsetY + srcRow)
-      if (dstRow < 0 || dstRow >= readH) continue
       const srcBase = srcRow * clampW * 4
       const dstBase = (dstRow * readW + offsetX) * 4
       scratch.set(sub.subarray(srcBase, srcBase + clampW * 4), dstBase)
@@ -622,9 +613,8 @@ export class IdPipeline {
    * promise resolves with the newer cursor's result, so callers can safely
    * fire one query per pointermove without queueing up reads.
    *
-   * Uses `readRenderTargetPixelsAsync` when available (three.js r150+);
-   * falls back to the synchronous read otherwise. The fallback still
-   * preserves the latest-wins semantics so call sites can be uniform.
+   * The read itself is the synchronous path, deferred by a microtask; the async
+   * wrapper only coalesces callers and settles them together.
    */
   resolveAsync(
     renderer: THREE.WebGLRenderer,
@@ -647,13 +637,6 @@ export class IdPipeline {
         } else {
           this.nextAsync = { cursorPx, opts, subscribers: [resolve] }
         }
-        return
-      }
-      if (this.nextAsync) {
-        // Coalesce with the not-yet-started query.
-        this.nextAsync.cursorPx = cursorPx
-        this.nextAsync.opts = opts
-        this.nextAsync.subscribers.push(resolve)
         return
       }
       const query: PendingAsyncQuery = { cursorPx, opts, subscribers: [resolve] }

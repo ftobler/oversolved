@@ -644,6 +644,9 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // wiping the selection.
     if (!missClearsSelection(adapter.clickState, adapter.isActive())) return
     const store = useAssemblyStore.getState()
+    // Read the aiming flag before the clears below, so the B-rep selection is
+    // only wiped when the click was NOT a mate pick aiming at nothing.
+    const wasAiming = store.activeMateField !== null
     // A miss deselects the one subject (part or mate), and disarms an armed
     // field just as the old two-field clear did.
     store.selectPart(null)
@@ -651,7 +654,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // An empty-space click clears the B-rep entity selection too, the same "click
     // off to deselect" the part editor gives. Not while aiming: the mate picker
     // owns the click there and a miss simply aims at nothing.
-    if (store.activeMateField === null) store.clearSelection()
+    if (!wasAiming) store.clearSelection()
   }, [adapter])
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])

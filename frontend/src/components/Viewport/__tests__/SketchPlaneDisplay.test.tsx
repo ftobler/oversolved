@@ -62,4 +62,29 @@ describe('SketchPlaneDisplay', () => {
 
     expect(container.innerHTML).toBe('')
   })
+
+  it('renders the top builtin plane with its -90deg X rotation', () => {
+    const { container } = render(
+      <SketchPlaneDisplay planeQuery="@builtin_plane_top" size={100} />
+    )
+    const group = container.querySelector('group')
+    expect(group).not.toBeNull()
+    expect(group!.getAttribute('rotation')).toContain(String(-Math.PI / 2))
+  })
+
+  it('renders the right builtin plane with its 90deg Y rotation', () => {
+    const { container } = render(
+      <SketchPlaneDisplay planeQuery="@builtin_plane_right" size={100} />
+    )
+    const group = container.querySelector('group')
+    expect(group).not.toBeNull()
+    expect(group!.getAttribute('rotation')).toContain(String(Math.PI / 2))
+  })
+
+  it('returns null for a query without an @ selector', () => {
+    const { container } = render(
+      <SketchPlaneDisplay planeQuery="builtin_plane_top" size={100} />
+    )
+    expect(container.innerHTML).toBe('')
+  })
 })

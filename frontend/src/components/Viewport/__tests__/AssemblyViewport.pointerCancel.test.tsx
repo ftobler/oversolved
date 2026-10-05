@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useEffect } from 'react'
 import { render, act, fireEvent } from '@testing-library/react'
-import { GIZMO_HANDLE_LAYER_NAME } from '@/picking'
+import { FACE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME } from '@/picking'
 
 const { pipeline, fakeGl, missedFn } = vi.hoisted(() => {
   const canvas = {
@@ -180,5 +180,45 @@ describe('AssemblyViewport pointercancel closes the pending click gesture', () =
 
     expect(useAssemblyStore.getState().manipulation).toBeNull()
     expect(useAssemblyStore.getState().gizmoDrag).toBeNull()
+  })
+})
+
+describe('AssemblyViewport pointer lifecycle branches', () => {
+  // Unmount mid-drag: the pointerup never arrives, and the session + published
+  // gizmoDrag live outside React, so the wrapper's unmount effect must abandon
+  // them or the next mount comes back camera-locked.
+  it('unmounting mid-drag abandons the live manipulation and gizmoDrag', () => {
+    seedAssembly()
+    pipeline.resolveAllSync.mockImplementation(() => ([
+      { layer: GIZMO_HANDLE_LAYER_NAME, entityKey: 'gizmo:translate:x' },
+    ]))
+    const { container, unmount } = render(<AssemblyViewport />)
+    const el = container.firstChild as Element
+
+    act(() => { fireEvent.pointerDown(el, { button: 0, isPrimary: true, pointerId: 1, clientX: 32, clientY: 32 }) })
+    expect(useAssemblyStore.getState().manipulation).not.toBeNull()
+
+    act(() => { unmount() })
+
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+    expect(useAssemblyStore.getState().gizmoDrag).toBeNull()
+  })
+
+  // Pointer-leave must tear the hover down: the last hovered entity would
+  // otherwise stay advertised while the pointer is off the pane.
+  it('pointerLeave clears the hover hits and the hovered entity', () => {
+    seedAssembly()
+    const store = useAssemblyStore.getState()
+    store.setHoverHits([{ id: 1, layer: FACE_LAYER_NAME, entityKey: 'part-1|face|0', distancePx: 0 }] as never, false)
+    store.setHoveredEntity('part-1|face|0')
+
+    const { container } = render(<AssemblyViewport />)
+    const el = container.firstChild as Element
+
+    act(() => { fireEvent.pointerMove(el, { clientX: 10, clientY: 10 }) })
+    act(() => { fireEvent.pointerLeave(el) })
+
+    expect(useAssemblyStore.getState().hoverHits).toEqual([])
+    expect(useAssemblyStore.getState().hoveredEntity).toBeNull()
   })
 })

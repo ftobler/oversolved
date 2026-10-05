@@ -19,11 +19,12 @@ import FeatureHandles from '@/components/Viewport/FeatureHandles'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
-import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
+import { fitToContent, alignToPlane, alignToFace, traceCamera, computeVertexBounds } from '@/components/Viewport/cameraController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
+import { DEFAULT_PLANE_SIZE, builtinPlaneRotation } from '@/components/Viewport/planeConstants'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
 import { IdPickingDriver } from '@/picking'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
@@ -95,47 +96,24 @@ export function isActive(
 
 // eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
 export function calculateMeshExtentFromFlat(vertices: Float32Array): number {
-  if (vertices.length === 0) return 0
-
-  let minX = Infinity, maxX = -Infinity
-  let minY = Infinity, maxY = -Infinity
-  let minZ = Infinity, maxZ = -Infinity
-
-  for (let i = 0; i < vertices.length; i += 3) {
-    const x = vertices[i], y = vertices[i + 1], z = vertices[i + 2]
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue
-    if (x < minX) minX = x; if (x > maxX) maxX = x
-    if (y < minY) minY = y; if (y > maxY) maxY = y
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
-  }
-
-  if (!Number.isFinite(minX)) return 0
-  return Math.max(maxX - minX, maxY - minY, maxZ - minZ)
+  const bounds = computeVertexBounds(vertices)
+  if (!bounds) return 0
+  return Math.max(
+    bounds.max[0] - bounds.min[0],
+    bounds.max[1] - bounds.min[1],
+    bounds.max[2] - bounds.min[2],
+  )
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
 export function calculateMeshExtent(vertices: Float32Array | [number, number, number][]): number {
-  if (vertices instanceof Float32Array) return calculateMeshExtentFromFlat(vertices)
-  if (vertices.length === 0) return 0
-
-  let minX = Infinity, maxX = -Infinity
-  let minY = Infinity, maxY = -Infinity
-  let minZ = Infinity, maxZ = -Infinity
-
-  for (const [x, y, z] of vertices) {
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue
-    if (x < minX) minX = x; if (x > maxX) maxX = x
-    if (y < minY) minY = y; if (y > maxY) maxY = y
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
-  }
-
-  if (!Number.isFinite(minX)) return 0
-
-  const width = maxX - minX
-  const height = maxY - minY
-  const depth = maxZ - minZ
-
-  return Math.max(width, height, depth)
+  const bounds = computeVertexBounds(vertices)
+  if (!bounds) return 0
+  return Math.max(
+    bounds.max[0] - bounds.min[0],
+    bounds.max[1] - bounds.min[1],
+    bounds.max[2] - bounds.min[2],
+  )
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- test-only pure helper exported alongside the component for direct unit tests
@@ -170,10 +148,9 @@ export function calculatePlaneSize(
   planeDefinition: PlaneDef | undefined,
   bodies: Record<string, BodyResult> | undefined,
 ): number {
-  const FALLBACK_SIZE = 100
   const EXPANSION_FACTOR = 1.1
 
-  if (!planeDefinition || !bodies) return FALLBACK_SIZE
+  if (!planeDefinition || !bodies) return DEFAULT_PLANE_SIZE
 
   // Plane defined on a face (on_face mode)
   if (planeDefinition.mode === 'on_face' && planeDefinition.face) {
@@ -186,7 +163,7 @@ export function calculatePlaneSize(
   if (modelExtent > 0) return modelExtent * EXPANSION_FACTOR
 
   // Final fallback
-  return FALLBACK_SIZE
+  return DEFAULT_PLANE_SIZE
 }
 
 function getActiveSketchPlane(
@@ -206,18 +183,8 @@ interface SketchPlaneDisplayProps {
 }
 
 export function SketchPlaneDisplay({ planeQuery, size, sketchLabel }: SketchPlaneDisplayProps) {
-  const match = planeQuery.match(/@([^/]+)/)
-  if (!match) return null
-
-  const planeId = match[1]
-
-  let rotation: [number, number, number] = [0, 0, 0]
-  if (planeId === 'builtin_plane_front') rotation = [0, 0, 0]
-  else if (planeId === 'builtin_plane_top') rotation = [-Math.PI/2, 0, 0]
-  else if (planeId === 'builtin_plane_right') rotation = [0, Math.PI/2, 0]
-  else {
-    return null
-  }
+  const rotation = builtinPlaneRotation(planeQuery)
+  if (!rotation) return null
 
   return (
     <group rotation={rotation}>
@@ -234,7 +201,6 @@ export function SketchPlaneDisplay({ planeQuery, size, sketchLabel }: SketchPlan
 }
 
 export interface ViewportHandle {
-  captureScreenshot: () => Promise<string | null>
   captureScreenshotForSaving: () => Promise<string | null>
   autoZoomToFit: (force?: boolean) => void
   cancelPendingFit: () => void
@@ -309,15 +275,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     if (createdLiveRef.current) return
     createdLiveRef.current = true
     setSceneTick(t => t + 1)
-  }, [])
-
-  const captureScreenshot = useCallback(async (): Promise<string | null> => {
-    const gl = glRef.current
-    const scene = sceneRef.current
-    const camera = cameraRef.current
-    if (!gl || !scene || !camera) return null
-    gl.render(scene, camera)
-    return gl.domElement.toDataURL('image/png')
   }, [])
 
   const captureScreenshotForSaving = useCallback(
@@ -400,14 +357,13 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   useImperativeHandle(
     ref,
     () => ({
-      captureScreenshot,
       captureScreenshotForSaving,
       autoZoomToFit,
       cancelPendingFit,
       alignCameraToPlane,
       alignCameraToFace,
     }),
-    [captureScreenshot, captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToPlane, alignCameraToFace],
+    [captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToPlane, alignCameraToFace],
   )
 
   const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
@@ -702,10 +658,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const sketchPlaneQuery = getActiveSketchPlane(activeFeatureId, features)
           if (!sketchPlaneQuery) return null
 
-          const planeSize = calculatePlaneSize(
-            undefined,
-            bodies,
-          ) || 100
+          // The active sketch plane has no sized geometry behind it, so it uses
+          // the shared default rather than the model-extent path.
+          const planeSize = DEFAULT_PLANE_SIZE
 
           const sketchFeature = features?.find(f => f.id === activeFeatureId)
           const sketchLabel = sketchFeature?.label || activeFeatureId

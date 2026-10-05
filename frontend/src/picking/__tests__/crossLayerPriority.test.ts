@@ -59,11 +59,10 @@ describe('crossLayerPriority (CPU stand-in for GPU layering)', () => {
     expect(hit!.layer).toBe(VERTEX_LAYER_NAME)
   })
 
-  it('within the snap window: vertex at 5px beats edge at 3px, because layer priority is geometric (vertex overdraws)', () => {
-    // This mirrors the "vertex always wins where it draws" rule:
-    // GPU has already written vertex pixels in a 16-pixel radius around
-    // the vertex center, so within that radius the cursor sees vertex.
-    // The resolver's "nearest non-empty" then returns vertex.
+  it('within the snap window: edge at 3px wins over vertex at 5px, because the resolver takes the nearest pixel and priority is baked into the GPU pass', () => {
+    // This mirrors the "layer priority is baked into render order" rule: the
+    // GPU has already resolved which layer owns each pixel, so the resolver's
+    // "nearest non-empty" picks the edge here even though vertex outranks edge.
     const size = 17
     const buf = new Uint8Array(size * size * 4)
     fillPixel(buf, size, 5, 8, edgeId)     // 3 px left of center

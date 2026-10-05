@@ -14,8 +14,9 @@ import { EDGE_LAYER_NAME } from './layerNames'
  * Depth policy: the layer's zPolicy is 'depth-test-against-prev' (no
  * clearDepth before render), and the material runs `depthTest = true`
  * with `depthWrite = false` so edges are culled by faces but don't
- * occlude each other. A `uXrayEdges` uniform flips depth testing off
- * for the future "select hidden edges" tool mode (#267).
+ * occlude each other. `setXrayEdges(true)` swaps in a second material
+ * cloned with `depthTest = false` for the future "select hidden edges"
+ * tool mode (#267).
  *
  * A small clip-space depth bias is applied so edges lying on a face
  * surface don't z-fight with the face into oblivion.
@@ -97,7 +98,6 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
   readonly name: string
   readonly priority: number
   readonly zPolicy: LayerZPolicy
-  inertWhen?: () => boolean
   protected readonly primitiveNounPlural = 'edges'
 
   private material: THREE.ShaderMaterial

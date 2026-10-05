@@ -23,10 +23,9 @@ function parseVertexKey(entityKey: string): { featureId: string; entityId: strin
  */
 export const sketchVertexAdapter = {
   onHover(entityKey: string): void {
-    // Set hovered vertex state without requiring a known world position.
-    // The vertex position (x,y) is not encoded in the entity key; it was
-    // set by the per-vertex ID registration. The store's hoveredVertexId
-    // is sufficient for selection / highlight.
+    // The hover position is intentionally null: the entity key carries no world
+    // position, and the drag path resolves the pending vertex from the id
+    // registry instead of from this field.
     const s = useSketchEditorStore.getState()
     s.setHoveredVertex(entityKey, null, 'vertex')
   },

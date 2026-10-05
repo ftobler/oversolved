@@ -5,7 +5,7 @@
 // `buildEntityMateRefs` maps to a `__assembly` reference.
 
 import { Dot } from '@/components/Geometry3D/VertexDots'
-import { COLOR_INACTIVE } from '@/components/Geometry3D/constants'
+import { COLOR_INACTIVE, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
 import { PlaneLabel, PlaneSurface } from '@/components/Viewport/PlaneVisual'
 import { useOriginMarkerIdRegistration, usePlaneIdRegistration } from '@/picking'
 import { assemblyBuiltinEntityKey } from '@/utils/anchorCandidates'
@@ -13,7 +13,7 @@ import { ASSEMBLY_PLANE_SIZE, type AssemblyBuiltinItem } from '@/utils/assemblyR
 
 function AssemblyOriginMarker({ id }: { id: string }) {
   useOriginMarkerIdRegistration({ selectionId: assemblyBuiltinEntityKey(id) })
-  return <Dot x={0} y={0} px={4} color={COLOR_INACTIVE} billboard renderOrder={999} depthTest={false} />
+  return <Dot x={0} y={0} px={4} color={COLOR_INACTIVE} billboard renderOrder={RENDER_ORDER_HIGHLIGHT} depthTest={false} />
 }
 
 function AssemblyBuiltinPlane({ item }: { item: AssemblyBuiltinItem }) {

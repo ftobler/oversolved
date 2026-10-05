@@ -27,11 +27,14 @@ vi.mock('@/components/Viewport/assembly/AnchorGizmos', () => ({ default: () => n
 vi.mock('@/components/Viewport/assembly/AssemblyBody', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyBuiltin', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyPickLayers', () => ({
-  default: ({ bodies }: { bodies: unknown }) => { captured.pickBodies = bodies; return null },
+  default: function AssemblyPickLayersMock({ bodies }: { bodies: unknown }) {
+    useEffect(() => { captured.pickBodies = bodies }, [bodies])
+    return null
+  },
 }))
 vi.mock('@/components/Viewport/assembly/AssemblySelectionHighlight', () => ({
-  default: ({ pickBodies }: { pickBodies: unknown }) => {
-    captured.highlightBodies = pickBodies
+  default: function AssemblySelectionHighlightMock({ pickBodies }: { pickBodies: unknown }) {
+    useEffect(() => { captured.highlightBodies = pickBodies }, [pickBodies])
     return <div data-testid="assembly-selection-highlight" />
   },
 }))

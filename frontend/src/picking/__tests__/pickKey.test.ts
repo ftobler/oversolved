@@ -170,21 +170,15 @@ describe('body key single source', () => {
     }
   })
 
-  // The hooks above prove the string the ID layers get; Body3D recomputes the
-  // same key for the dispatch registry without any layer to observe through.
-  // A source pin is the cheap guard that the re-typed literal does not creep
-  // back into any of the four mint sites (the format lives only in pickKey.ts).
-  it('no registration site re-types the `${featureId}/${bodyId}` literal', () => {
-    const files = [
-      join(__dirname, '..', 'useFaceIdRegistration.ts'),
-      join(__dirname, '..', 'useEdgeIdRegistration.ts'),
-      join(__dirname, '..', 'useVertexIdRegistration.ts'),
-      join(__dirname, '..', '..', 'components', 'Geometry3D', 'Body3D.tsx'),
-    ]
-    for (const file of files) {
-      const src = readFileSync(file, 'utf8')
-      expect(src, file).not.toMatch(/\$\{featureId\}\/\$\{bodyId\}/)
-      expect(src, file).toMatch(/bodyKeyFor\(/)
-    }
+  // The registration hooks above prove the string the ID layers get, so the
+  // only mint site without a behavior route is Body3D, which recomputes the
+  // same key for the dispatch registry. A source pin there is the cheap guard
+  // that the re-typed literal does not creep back (the format lives only in
+  // pickKey.ts).
+  it('Body3D does not re-type the `${featureId}/${bodyId}` literal', () => {
+    const file = join(__dirname, '..', '..', 'components', 'Geometry3D', 'Body3D.tsx')
+    const src = readFileSync(file, 'utf8')
+    expect(src, file).not.toMatch(/\$\{featureId\}\/\$\{bodyId\}/)
+    expect(src, file).toMatch(/bodyKeyFor\(/)
   })
 })

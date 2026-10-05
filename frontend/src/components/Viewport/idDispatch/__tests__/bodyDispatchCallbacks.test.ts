@@ -111,14 +111,10 @@ describe('registerBodyCallbacks', () => {
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('someOtherBodyQuery')
   })
 
-  // The ownership check is `face_queries?.includes(h) ?? edgeQueries?.includes(h)
-  // ?? vertexQueries?.includes(h) ?? false`. Because `??` only falls through on a
-  // nullish left side, a present `face_queries` (even when it does not contain the
-  // hovered id) decides the result, and the edge/vertex arms are reached only when
-  // the earlier arrays are absent.
-  // L4: `??` stopped at the first present array, so a body with face_queries
-  // (almost every real body) could not recognise its own hovered edge/vertex
-  // and its teardown stranded the hover. ownsQuery now checks all three maps.
+  // ownsQuery checks all three maps (face, edge, vertex) with `||`, so a body
+  // recognises its own hovered edge or vertex regardless of which arrays are
+  // present. The tests below pin each arm, including the case where face_queries
+  // is present but does not contain the hovered id.
   it('unregister clears a hovered edge query even when face_queries is present', () => {
     const unregister = registerBodyCallbacks('b1', makeCallbacks())  // all three arrays present
     useSketchEditorStore.getState().setHoveredSelectionId('edgeQ0')

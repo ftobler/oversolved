@@ -1,6 +1,6 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
-import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
+import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
 import { Dot } from '@/components/Geometry3D/VertexDots'
 import { useOriginMarkerIdRegistration } from '@/picking'
 
@@ -17,7 +17,7 @@ export default function OriginMarker() {
 
   return (
     <group>
-      <Dot x={0} y={0} px={hovered ? 6 : 4} color={color} billboard renderOrder={999} depthTest={false} />
+      <Dot x={0} y={0} px={hovered ? 6 : 4} color={color} billboard renderOrder={RENDER_ORDER_HIGHLIGHT} depthTest={false} />
     </group>
   )
 }
