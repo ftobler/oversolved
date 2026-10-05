@@ -141,6 +141,12 @@ impl MateKind {
 /// (see the caveat there: it is geometrically right only for centre
 /// anchors and reports no error otherwise), which replaces the
 /// TS-side `?? 0` coercion this enum was introduced for.
+///
+/// `Cone` has no formula of its own: every cone arm reuses the cylinder
+/// axis-distance formula with the single `Mate.radius`. A cone's radius varies
+/// along its axis, so the solve is exact only where the cone's radius equals
+/// that value. Modelling it properly needs a per-side radius (and a wire
+/// format bump); until then this is a documented approximation, not an error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnchorKind {
     Plane = 0,
@@ -274,18 +280,6 @@ impl MateInput {
             .get(byte)
             .map(|b| (b >> bit) & 1 == 1)
             .unwrap_or(false)
-    }
-
-    pub fn n_bodies(&self) -> usize {
-        self.bodies.len()
-    }
-
-    pub fn n_params(&self) -> usize {
-        self.params_initial.len()
-    }
-
-    pub fn n_mates(&self) -> usize {
-        self.mates.len()
     }
 }
 
@@ -555,8 +549,11 @@ pub fn encode_mate_output(out: &MateOutput) -> Vec<u8> {
     w.into_bytes()
 }
 
-/// Decode a flat MateOutput buffer.
-pub fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
+/// Decode a flat MateOutput buffer. Only in-crate tests read the output back
+/// through Rust (the host decodes it on the TS side), so it mirrors
+/// `encode_mate_input`'s test-only visibility.
+#[cfg(test)]
+pub(crate) fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
     let mut r = Reader::new(buf);
     if r.u32()? != MATE_MAGIC_OUT {
         return Err(CodecError::BadMagic);
@@ -758,13 +755,14 @@ mod tests {
         ));
     }
 
-    // A buffer built to the pre-widen 76-byte stride (scalar offset, before it
-    // became a 3-component vector) must fail loudly rather than silently reading
-    // ratio/radius/angle out of the shifted positions -- there is only one mate
-    // here, so the missing bytes run the reader off the end of the buffer. The
-    // encoder and the TS side move in lockstep or not at all.
+    // A buffer built to the pre-offset-vector 104-byte stride (a scalar offset
+    // f32 where the current record carries a 3-component vector, 8 bytes
+    // shorter) must fail loudly rather than silently reading ratio/radius/angle
+    // out of the shifted positions -- there is only one mate here, so the
+    // missing bytes run the reader off the end of the buffer. The encoder and
+    // the TS side move in lockstep or not at all.
     #[test]
-    fn mate_input_old_76_byte_stride_rejected() {
+    fn mate_input_old_104_byte_stride_rejected() {
         let bytes = encode_mate_input(&sample_input());
         let truncated = &bytes[..bytes.len() - 8];
         assert!(matches!(

@@ -710,7 +710,11 @@ impl MateProblem {
                 d0 * b_w[0] + d1 * b_w[1] + d2 * b_w[2] - offset
             }
             (AnchorKind::Plane, AnchorKind::Cylinder) | (AnchorKind::Plane, AnchorKind::Cone) => {
-                // Distance from cylinder/cone point to plane minus radius.
+                // Distance from cylinder/cone point to plane minus radius. A
+                // cone is approximated by a cylinder of the wire's single
+                // Mate.radius: the real radius varies along the cone axis, so
+                // this matches the contact only at whichever station that
+                // radius corresponds to. See the AnchorKind doc.
                 (d0 * a_w[0] + d1 * a_w[1] + d2 * a_w[2]).abs() - radius - offset
             }
             (AnchorKind::Cylinder, AnchorKind::Plane) | (AnchorKind::Cone, AnchorKind::Plane) => {
@@ -720,7 +724,12 @@ impl MateProblem {
             | (AnchorKind::Cylinder, AnchorKind::Cone)
             | (AnchorKind::Cone, AnchorKind::Cylinder)
             | (AnchorKind::Cone, AnchorKind::Cone) => {
-                // Shortest distance between two axes minus sum of radii.
+                // Shortest distance between two axes minus the radii. Each cone
+                // is again the cylinder of the single Mate.radius, so a
+                // cone/cone or cylinder/cone tangency is only exact where the
+                // cone's true radius equals that value; a cone whose radius
+                // changes over the contact cannot be represented by this wire
+                // (one radius per mate). See the AnchorKind doc.
                 let n0 = a_w[1] * b_w[2] - a_w[2] * b_w[1];
                 let n1 = a_w[2] * b_w[0] - a_w[0] * b_w[2];
                 let n2 = a_w[0] * b_w[1] - a_w[1] * b_w[0];

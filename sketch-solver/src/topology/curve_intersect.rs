@@ -15,7 +15,7 @@
 
 use super::curve_split::{bezier_point, ellipse_point_at};
 use super::dcel::pymod;
-use super::TOL_TOPOLOGY_MERGE;
+use super::{TOL_TOPOLOGY_MERGE, TWO_PI};
 use crate::{radians, MIN_SEMI_AXIS_SQ};
 
 pub use super::Vec2;
@@ -54,7 +54,6 @@ pub struct Hit {
     pub t_b: f64,
 }
 
-const TWO_PI: f64 = 2.0 * std::f64::consts::PI;
 const POINT_MERGE: f64 = TOL_TOPOLOGY_MERGE; // two hits closer than this are the same
 
 // ─── recover a curve's parameter from a point known to lie on it ───
@@ -183,52 +182,6 @@ fn dedup_hits(hits: Vec<Hit>) -> Vec<Hit> {
 }
 
 // ─── closed-form pairs ───
-
-fn line_line(a0: Vec2, a1: Vec2, b0: Vec2, b1: Vec2) -> Vec<Vec2> {
-    let dx1 = a1[0] - a0[0];
-    let dy1 = a1[1] - a0[1];
-    let dx2 = b1[0] - b0[0];
-    let dy2 = b1[1] - b0[1];
-    let det = dx1 * dy2 - dy1 * dx2;
-    if det.abs() < 1e-12 {
-        return vec![];
-    }
-    let dx3 = b0[0] - a0[0];
-    let dy3 = b0[1] - a0[1];
-    let t = (dx3 * dy2 - dy3 * dx2) / det;
-    let u = (dx3 * dy1 - dy3 * dx1) / det;
-    if !(-1e-9..=1.0 + 1e-9).contains(&t) || !(-1e-9..=1.0 + 1e-9).contains(&u) {
-        return vec![];
-    }
-    vec![[a0[0] + t * dx1, a0[1] + t * dy1]]
-}
-
-/// Line vs full circle: closed-form quadratic, segment-clamped.
-fn line_circle(l0: Vec2, l1: Vec2, c: Vec2, r: f64) -> Vec<Vec2> {
-    let dx = l1[0] - l0[0];
-    let dy = l1[1] - l0[1];
-    let fx = l0[0] - c[0];
-    let fy = l0[1] - c[1];
-    let aa = dx * dx + dy * dy;
-    if aa < 1e-18 {
-        return vec![];
-    }
-    let bb = 2.0 * (fx * dx + fy * dy);
-    let cc = fx * fx + fy * fy - r * r;
-    let disc = bb * bb - 4.0 * aa * cc;
-    if disc < 0.0 {
-        return vec![];
-    }
-    let sd = disc.sqrt();
-    let mut pts = Vec::new();
-    for sign in [-1.0, 1.0] {
-        let t = (-bb + sign * sd) / (2.0 * aa);
-        if (-1e-9..=1.0 + 1e-9).contains(&t) {
-            pts.push([l0[0] + t * dx, l0[1] + t * dy]);
-        }
-    }
-    pts
-}
 
 /// Line vs ellipse: map the line into the ellipse's local unit-circle space,
 /// intersect the unit circle in closed form, map hit points back to world.
@@ -427,7 +380,9 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
 // ─── public entry point ───
 
 /// Intersection points of two curves with the parameter on each. Order of a and
-/// b is preserved (`t_a` refers to a, `t_b` to b). Tangencies report no point.
+/// b is preserved (`t_a` refers to a, `t_b` to b). The sign-change scan reports
+/// no tangency (a touch with no crossing); the closed-form arms (line/ellipse,
+/// circle/circle) report a coincident double root as a single point.
 pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
     let mut hits: Vec<Hit> = Vec::new();
 
@@ -512,14 +467,12 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
         }
     };
 
+    // Line/line and line/circle pairs never reach this function: the only
+    // production callers (the dcel intersection passes) dispatch those through
+    // their own `ll`/`lc` helpers and call here only once an ellipse or spline
+    // is involved. They fall through to the empty arm rather than duplicating
+    // the dcel-side epsilons.
     match (a, b) {
-        (Curve::Line { p0: a0, p1: a1 }, Curve::Line { p0: b0, p1: b1 }) => {
-            push(line_line(*a0, *a1, *b0, *b1), &mut hits);
-        }
-        (Curve::Line { p0, p1 }, Curve::Circle { c, r })
-        | (Curve::Circle { c, r }, Curve::Line { p0, p1 }) => {
-            push(line_circle(*p0, *p1, *c, *r), &mut hits);
-        }
         (Curve::Line { p0, p1 }, Curve::Ellipse { c, a, b, theta })
         | (Curve::Ellipse { c, a, b, theta }, Curve::Line { p0, p1 }) => {
             push(line_ellipse(*p0, *p1, *c, *a, *b, *theta), &mut hits);
@@ -559,6 +512,7 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
                 [*bp0, *bc1, *bc2, *bp3],
             ));
         }
+        _ => {}
     }
 
     // A clean pair crosses in few points. A blow-up past 10 means the carriers
@@ -578,45 +532,6 @@ mod tests {
 
     fn line(p0: Vec2, p1: Vec2) -> Curve {
         Curve::Line { p0, p1 }
-    }
-
-    #[test]
-    fn line_line_cross_at_center() {
-        let h = intersect_curves(
-            &line([-1.0, 0.0], [1.0, 0.0]),
-            &line([0.0, -1.0], [0.0, 1.0]),
-        );
-        assert_eq!(h.len(), 1);
-        assert!((h[0].point[0]).abs() < 1e-12 && (h[0].point[1]).abs() < 1e-12);
-        assert!((h[0].t_a - 0.5).abs() < 1e-12 && (h[0].t_b - 0.5).abs() < 1e-12);
-    }
-
-    #[test]
-    fn parallel_lines_no_hit() {
-        let h = intersect_curves(&line([0.0, 0.0], [1.0, 0.0]), &line([0.0, 1.0], [1.0, 1.0]));
-        assert!(h.is_empty());
-    }
-
-    #[test]
-    fn line_through_circle_two_points() {
-        let c = Curve::Circle {
-            c: [0.0, 0.0],
-            r: 1.0,
-        };
-        let h = intersect_curves(&line([-2.0, 0.0], [2.0, 0.0]), &c);
-        assert_eq!(h.len(), 2);
-    }
-
-    #[test]
-    fn line_tangent_circle_one_point() {
-        let c = Curve::Circle {
-            c: [0.0, 0.0],
-            r: 1.0,
-        };
-        let h = intersect_curves(&line([-2.0, 1.0], [2.0, 1.0]), &c);
-        // Tangent touches once; the two quadratic roots coincide and dedup.
-        assert_eq!(h.len(), 1);
-        assert!((h[0].point[1] - 1.0).abs() < 1e-9);
     }
 
     #[test]
@@ -649,6 +564,39 @@ mod tests {
         for hit in &h {
             assert!((hit.point[0] - 0.5).abs() < 1e-9);
         }
+    }
+
+    #[test]
+    fn circle_circle_tangent_reports_one_point() {
+        // A coincident double root is a real contact for the closed-form arms,
+        // unlike the sign-change scan's no-tangency rule. The two rims touch at
+        // exactly (1,0).
+        let a = Curve::Circle {
+            c: [0.0, 0.0],
+            r: 1.0,
+        };
+        let b = Curve::Circle {
+            c: [2.0, 0.0],
+            r: 1.0,
+        };
+        let h = intersect_curves(&a, &b);
+        assert_eq!(h.len(), 1);
+        assert!((h[0].point[0] - 1.0).abs() < 1e-9 && (h[0].point[1]).abs() < 1e-9);
+    }
+
+    #[test]
+    fn line_tangent_to_ellipse_reports_one_point() {
+        // Zero discriminant in the closed-form line/ellipse arm: y = 1 touches
+        // the ellipse a=2, b=1 at (0,1) and must report the double root once.
+        let ell = Curve::Ellipse {
+            c: [0.0, 0.0],
+            a: 2.0,
+            b: 1.0,
+            theta: 0.0,
+        };
+        let h = intersect_curves(&line([-3.0, 1.0], [3.0, 1.0]), &ell);
+        assert_eq!(h.len(), 1);
+        assert!((h[0].point[0]).abs() < 1e-9 && (h[0].point[1] - 1.0).abs() < 1e-9);
     }
 
     #[test]

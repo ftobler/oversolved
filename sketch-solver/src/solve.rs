@@ -41,7 +41,10 @@ pub fn solve_sketch(input: &Input) -> Output {
         // Drag only operates when there are free DOF; we assume underconstrained
         // without calling the expensive matrix_rank SVD. The refine pass is
         // harmless when fully constrained (reg rows just pull toward x0).
-        let status = if final_loss > LOSS_THRESHOLD {
+        // A non-finite norm is an unsatisfiable/malformed solve, not a clean
+        // underconstrained one: report it as Overconstrained so NaN never reads
+        // as success.
+        let status = if !result.residual_norm.is_finite() || final_loss > LOSS_THRESHOLD {
             Status::Overconstrained
         } else {
             Status::Underconstrained
@@ -88,7 +91,10 @@ pub fn solve_sketch(input: &Input) -> Output {
     // origin still leaves the geometry free to rotate about it, and that
     // rotation is a real, removable DOF (e.g. a horizontal/angle constraint),
     // not an unconstrainable gauge freedom.
-    let status = if final_loss > LOSS_THRESHOLD {
+    // A non-finite norm (malformed residual, singular blow-up) is not a
+    // satisfiable sketch: classify it Overconstrained rather than let a NaN
+    // fall through to FullyConstrained.
+    let status = if !result.residual_norm.is_finite() || final_loss > LOSS_THRESHOLD {
         Status::Overconstrained
     } else if rank < n {
         Status::Underconstrained
@@ -804,6 +810,71 @@ mod tests {
         // The free, undragged-by-constraints point stays near its seed under reg.
         assert!((dragged.params_solved[2] - 3.0).abs() < 1e-2);
         assert!((dragged.params_solved[3] - 4.0).abs() < 1e-2);
+    }
+
+    /// One line asked for two different lengths: no placement satisfies both,
+    /// so the cold path must reach the unsatisfiable branch.
+    fn contradictory_lengths(drag: bool) -> Input {
+        let mut short = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+        short.value = Some(10.0);
+        let mut long = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+        long.value = Some(20.0);
+        Input {
+            options: Options {
+                drag_mode: drag,
+                ..Default::default()
+            },
+            ..input(vec![line(0)], vec![0.0, 0.0, 10.0, 0.0], vec![short, long])
+        }
+    }
+
+    #[test]
+    fn contradictory_lengths_are_overconstrained_on_the_cold_path() {
+        let out = solve_sketch(&contradictory_lengths(false));
+        assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+        // The per-entity pass mirrors the overall status for every entity.
+        assert_eq!(out.entity_status, vec![Status::Overconstrained.to_u8()]);
+        assert!(out.diagnostics.residual_norm > 1e-2);
+    }
+
+    #[test]
+    fn contradictory_lengths_are_overconstrained_on_the_drag_path() {
+        let out = solve_sketch(&contradictory_lengths(true));
+        assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+        // The drag fast path skips the per-entity SVD; the status is its output.
+        assert!(out.entity_status.is_empty());
+        assert!(out.diagnostics.residual_norm > 1e-2);
+    }
+
+    /// A non-finite param poisons the length residual; the LM driver refuses to
+    /// step and reports a NaN norm, which the solve layer must classify as
+    /// Overconstrained rather than let NaN fall through to a success status.
+    fn non_finite_length(drag: bool) -> Input {
+        let mut length = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+        length.value = Some(10.0);
+        Input {
+            options: Options {
+                drag_mode: drag,
+                ..Default::default()
+            },
+            ..input(vec![line(0)], vec![0.0, 0.0, f32::NAN, 0.0], vec![length])
+        }
+    }
+
+    #[test]
+    fn non_finite_residual_is_overconstrained_on_the_cold_path() {
+        let out = solve_sketch(&non_finite_length(false));
+        assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+        assert_eq!(out.entity_status, vec![Status::Overconstrained.to_u8()]);
+        assert!(!out.diagnostics.residual_norm.is_finite());
+    }
+
+    #[test]
+    fn non_finite_residual_is_overconstrained_on_the_drag_path() {
+        let out = solve_sketch(&non_finite_length(true));
+        assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+        assert!(out.entity_status.is_empty());
+        assert!(!out.diagnostics.residual_norm.is_finite());
     }
 
     #[test]

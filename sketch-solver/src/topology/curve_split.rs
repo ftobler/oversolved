@@ -17,7 +17,7 @@ fn lerp(p: Vec2, q: Vec2, t: f64) -> Vec2 {
 }
 
 /// Split a cubic Bezier at parameter t into (left over `[0,t]`, right over `[t,1]`).
-pub fn split_bezier_at(c: &BezierCtrl, t: f64) -> (BezierCtrl, BezierCtrl) {
+fn split_bezier_at(c: &BezierCtrl, t: f64) -> (BezierCtrl, BezierCtrl) {
     let ab = lerp(c[0], c[1], t);
     let bc = lerp(c[1], c[2], t);
     let cd = lerp(c[2], c[3], t);

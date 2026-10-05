@@ -50,7 +50,7 @@ fn ref_supplies_slots(input: &Input, r: &Ref, slots: usize) -> bool {
 
 /// Point-on-ellipse conic residual. `ep` is the ellipse param block
 /// `[cx, cy, a, b, theta_deg]`; the result is 0 exactly on the curve, negative
-/// inside, positive outside. Mirrors the formula in `feature/ellipse-entity.md`.
+/// inside, positive outside.
 fn ellipse_point_residual(p: P2, ep: &[f64]) -> f64 {
     let (cx, cy, a, b) = (ep[0], ep[1], ep[2], ep[3]);
     let theta = ep[4] * DEG2RAD;
@@ -286,11 +286,14 @@ impl<'a> Problem<'a> {
     fn operand_kinds_supply_slots(input: &Input, c: &Constraint) -> bool {
         let Some(kind) = c.kind() else { return true };
         // Absent optional roles default to eligible: their builders already
-        // contribute no rows for them.
-        let supplies = |role: RefRole, slots: usize| {
+        // contribute no rows for them. An external ref resolves through
+        // `point()` or contributes nothing, so `ref_kind` reports it as `None`
+        // and it never satisfies an entity-kind check.
+        let kind_ok = |role: RefRole, pred: fn(Kind) -> bool| {
             c.ref_for(role)
-                .is_none_or(|r| ref_supplies_slots(input, &r, slots))
+                .is_none_or(|r| ref_kind(input, &r).is_some_and(pred))
         };
+        let is_line = |k: Kind| k == Kind::Line;
         match kind {
             ConstraintKind::Horizontal | ConstraintKind::Vertical => {
                 // The a/b form compares points resolved through `point()` for
@@ -299,14 +302,18 @@ impl<'a> Problem<'a> {
                 if c.ref_for(RefRole::A).is_some() && c.ref_for(RefRole::B).is_some() {
                     true
                 } else {
-                    supplies(RefRole::Target, 4)
+                    kind_ok(RefRole::Target, is_line)
                 }
             }
-            ConstraintKind::Length => supplies(RefRole::Target, 4),
-            ConstraintKind::Radius | ConstraintKind::Diameter => supplies(RefRole::Target, 3),
-            ConstraintKind::LineDistance => supplies(RefRole::A, 4),
-            ConstraintKind::Angle => supplies(RefRole::A, 4) && supplies(RefRole::B, 4),
-            ConstraintKind::Midpoint => supplies(RefRole::Line, 4),
+            // The length, angle and line-distance builders read slots 0..4 as a
+            // line's endpoints. An arc (5 params) or spline (8) has enough slots
+            // but the wrong meaning for them, so the kind must be checked, not
+            // just the count.
+            ConstraintKind::Length => kind_ok(RefRole::Target, is_line),
+            ConstraintKind::Radius | ConstraintKind::Diameter => kind_ok(RefRole::Target, is_curve),
+            ConstraintKind::LineDistance => kind_ok(RefRole::A, is_line),
+            ConstraintKind::Angle => kind_ok(RefRole::A, is_line) && kind_ok(RefRole::B, is_line),
+            ConstraintKind::Midpoint => kind_ok(RefRole::Line, is_line),
             ConstraintKind::Tangent => {
                 // Reproduce the builder's operand pairing: explicit line/arc
                 // roles win, otherwise the A/B pair ordered line-kind-first.
@@ -326,9 +333,11 @@ impl<'a> Problem<'a> {
                     // index past it.
                     Some((lr, _)) if ref_kind(input, &lr) == Some(Kind::Line) => true,
                     // Otherwise both operands feed the centers/radii curve
-                    // branch, which reads each radius at slot 2.
+                    // branch, which reads each radius at slot 2. An ellipse or
+                    // spline has that slot but it is not a radius.
                     Some((lr, ar)) => {
-                        ref_supplies_slots(input, &lr, 3) && ref_supplies_slots(input, &ar, 3)
+                        ref_kind(input, &lr).is_some_and(is_curve)
+                            && ref_kind(input, &ar).is_some_and(is_curve)
                     }
                     None => true,
                 }
@@ -1709,6 +1718,95 @@ mod tests {
                 cons(
                     ConstraintKind::Normal,
                     ab(e_ref(1, absent), e_ref(1, absent)),
+                ),
+            ),
+        ];
+        for (name, c) in payloads {
+            let inp = input(entities(), params(), vec![c]);
+            let p = Problem::new(&inp);
+            let x = p.x0.clone();
+            let n = x.len();
+            assert!(
+                p.residuals(&x).is_empty(),
+                "{name}: wrong-kind operand must drop the whole constraint"
+            );
+            assert_eq!(
+                p.jacobian(&x, n).nrows(),
+                0,
+                "{name}: Jacobian rows must match the dropped residual"
+            );
+        }
+    }
+
+    /// The count check alone is not enough: an arc or ellipse supplies the
+    /// slots a line/curve builder reads but the values mean something else (an
+    /// arc's slot 2 is its radius, not an endpoint x). These payloads have
+    /// enough params and are dropped only by the kind-aware pass.
+    #[test]
+    fn constraints_with_wrong_kind_but_enough_slots_are_dropped() {
+        use RefRole::Line as LineR;
+        let absent = PointSelector::Absent;
+        // line [0..4], arc [4..9], circle [9..12], ellipse [12..17].
+        let entities = || {
+            vec![
+                ent(Kind::Line, 0),
+                ent(Kind::Arc, 4),
+                ent(Kind::Circle, 9),
+                ent(Kind::Ellipse, 12),
+            ]
+        };
+        let params = || {
+            vec![
+                0.0, 0.0, 4.0, 0.0, // line
+                0.0, 0.0, 3.0, 0.0, 90.0, // arc
+                0.0, 0.0, 2.0, // circle
+                0.0, 0.0, 5.0, 3.0, 0.0, // ellipse
+            ]
+        };
+        let payloads: Vec<(&str, Constraint)> = vec![
+            (
+                "radius on a line reads end.x",
+                cons_v(ConstraintKind::Radius, vec![target(0, absent)], 1.0),
+            ),
+            (
+                "diameter on a line reads end.x",
+                cons_v(ConstraintKind::Diameter, vec![target(0, absent)], 2.0),
+            ),
+            (
+                "length on an ellipse reads a and b",
+                cons_v(ConstraintKind::Length, vec![target(3, absent)], 3.0),
+            ),
+            (
+                "angle with an arc operand reads radius and angle",
+                cons_v(
+                    ConstraintKind::Angle,
+                    ab(e_ref(0, absent), e_ref(1, absent)),
+                    30.0,
+                ),
+            ),
+            (
+                "tangent ellipse and circle reads the semi-major axis as radius",
+                cons(
+                    ConstraintKind::Tangent,
+                    ab(e_ref(3, absent), e_ref(2, absent)),
+                ),
+            ),
+            (
+                "line_distance with an arc in the line role",
+                cons_v(
+                    ConstraintKind::LineDistance,
+                    ab(e_ref(1, absent), e_ref(2, PointSelector::Center)),
+                    1.0,
+                ),
+            ),
+            (
+                "midpoint with an arc in the line role",
+                cons(
+                    ConstraintKind::Midpoint,
+                    vec![
+                        (LineR, e_ref(1, absent)),
+                        (RefRole::Point, e_ref(2, PointSelector::Center)),
+                    ],
                 ),
             ),
         ];
@@ -3441,5 +3539,18 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn ellipse_point_residual_floors_a_nan_semi_axis() {
+        // `f64::max` ignores a NaN operand (IEEE maxNum), so a NaN semi-axis
+        // falls back to the floor instead of poisoning the row. The reported
+        // concern that the floor does not apply to NaN does not hold in Rust.
+        let nan_major = [0.0, 0.0, f64::NAN, 2.0, 0.0];
+        let v = ellipse_point_residual([1.0, 0.5], &nan_major);
+        assert!(v.is_finite(), "NaN semi-axis produced {v}");
+        let nan_minor = [0.0, 0.0, 4.0, f64::NAN, 0.0];
+        let v = ellipse_point_residual([1.0, 0.5], &nan_minor);
+        assert!(v.is_finite(), "NaN semi-minor produced {v}");
     }
 }

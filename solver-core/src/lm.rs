@@ -13,11 +13,28 @@ use nalgebra::{DMatrix, DVector};
 
 use crate::sparse::{self, SparseRow};
 
+// Shared LM tuning. Both drivers use the same cold-solve and drag-fast-path
+// constants: a change to one must not silently desynchronize the two paths, so
+// they live at module scope instead of in each function.
+const MAX_ITERS: u32 = 200;
+const GTOL: f64 = 1e-10;
+const XTOL: f64 = 1e-12;
+const FTOL: f64 = 1e-12;
+const LAMBDA_UP: f64 = 3.0;
+const LAMBDA_DOWN: f64 = 0.4;
+/// Per-step lambda-increase retries before the driver gives up on a step.
+const MAX_RETRIES: usize = 30;
+/// Lambda ceiling; past this the damped system is numerically frozen and no
+/// further retry can help, so the driver treats the point as a local minimum.
+const LAMBDA_MAX: f64 = 1e12;
+
 pub struct LmResult {
     pub x: Vec<f64>,
     /// Jacobian at the returned `x` (m rows = residuals, n cols = params).
     pub jacobian: DMatrix<f64>,
-    /// Euclidean norm of the residual vector at `x`.
+    /// Euclidean norm of the residual vector at `x`. Finite on a normal exit;
+    /// a non-finite value is reserved for a non-finite residual input, which
+    /// returns the seed unchanged with `iters == 0`.
     pub residual_norm: f64,
     pub iters: u32,
 }
@@ -84,7 +101,12 @@ pub fn solve_lm(
 /// it never enters the residual or the convergence test, so the solution a fully
 /// constrained problem reaches is unchanged. `damp_scale` should have one
 /// entry per param; shorter slices degrade to undamped per missing entry
-/// instead of panicking mid-solve (see `damp_scale_at`).
+/// instead of panicking mid-solve (see `damp_scale_at`). Entries must be
+/// finite and `>= 0`: a negative or NaN scale destroys the positive-
+/// definiteness the damping and the seed anchor rely on, silently degrading
+/// the solve until the lambda ceiling bails. A zero entry removes that param's
+/// Marquardt diagonal floor (and its anchor weight), so use a positive scale
+/// for any param that must stay regularized.
 pub fn solve_lm_damped(
     x0: &[f64],
     f: &impl Fn(&[f64]) -> Vec<f64>,
@@ -110,12 +132,18 @@ pub fn solve_lm_damped(
         };
     }
 
-    const MAX_ITERS: u32 = 200;
-    const GTOL: f64 = 1e-10;
-    const XTOL: f64 = 1e-12;
-    const FTOL: f64 = 1e-12;
-    const LAMBDA_UP: f64 = 3.0;
-    const LAMBDA_DOWN: f64 = 0.4;
+    // Non-finite contract: a NaN/Inf residual would poison every subsequent
+    // cost comparison, so the driver refuses to step and returns the seed
+    // unchanged. The caller sees a non-finite `residual_norm` and can report
+    // the malformed problem instead of a silent "converged" seed.
+    if r.iter().any(|&v| !v.is_finite()) {
+        return LmResult {
+            x,
+            jacobian: DMatrix::zeros(m, n),
+            residual_norm: norm2(&r),
+            iters: 0,
+        };
+    }
 
     let mut jacm = jac(&x);
 
@@ -162,13 +190,18 @@ pub fn solve_lm_damped(
         // gradient Jᵀr + μ·scale·(x - x0)
         let g = jacm.transpose() * &rv + mu * scale_v.component_mul(&(&xv - &x0v));
 
+        // A non-finite gradient means the curvature/probe has gone bad; stop
+        // here rather than let the comparison below step on NaN.
+        if g.iter().any(|&v| !v.is_finite()) {
+            break;
+        }
         if g.amax() < GTOL {
             break;
         }
 
         // Try damped steps, increasing lambda until the step reduces cost.
         let mut accepted = false;
-        for _ in 0..30 {
+        for _ in 0..MAX_RETRIES {
             let mut a = jtj.clone();
             for i in 0..n {
                 // Marquardt scaling: damp proportional to each column's curvature
@@ -209,7 +242,7 @@ pub fn solve_lm_damped(
                 break;
             }
             lambda *= LAMBDA_UP;
-            if lambda > 1e12 {
+            if lambda > LAMBDA_MAX {
                 break;
             }
         }
@@ -234,7 +267,9 @@ pub fn solve_lm_damped(
 /// (the caller already skips status/rank analysis on drag ticks).
 pub struct SpLmResult {
     pub x: Vec<f64>,
-    /// Euclidean norm of the residual vector at `x`.
+    /// Euclidean norm of the residual vector at `x`. Finite on a normal exit;
+    /// a non-finite value is reserved for a non-finite residual input, which
+    /// returns the seed unchanged with `iters == 0`.
     pub residual_norm: f64,
     pub iters: u32,
 }
@@ -264,12 +299,15 @@ pub fn solve_lm_sparse(
         };
     }
 
-    const MAX_ITERS: u32 = 200;
-    const GTOL: f64 = 1e-10;
-    const XTOL: f64 = 1e-12;
-    const FTOL: f64 = 1e-12;
-    const LAMBDA_UP: f64 = 3.0;
-    const LAMBDA_DOWN: f64 = 0.4;
+    // Non-finite contract: same refusal as the dense driver, so the drag fast
+    // path cannot silently report a bad seed as converged.
+    if r.iter().any(|&v| !v.is_finite()) {
+        return SpLmResult {
+            x,
+            residual_norm: norm2(&r),
+            iters: 0,
+        };
+    }
 
     let mut jac = jac_sparse(&x);
     let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>();
@@ -287,12 +325,15 @@ pub fn solve_lm_sparse(
         iters += 1;
 
         let g = sparse::gradient(&jac, &r, n); // Jᵀr
+        if g.iter().any(|&v| !v.is_finite()) {
+            break;
+        }
         if g.iter().map(|&v| v.abs()).fold(0.0_f64, f64::max) < GTOL {
             break;
         }
 
         let mut accepted = false;
-        for _ in 0..30 {
+        for _ in 0..MAX_RETRIES {
             let (delta, truncated) =
                 sparse::damped_solve(&jac, lambda, &g.iter().map(|&v| -v).collect::<Vec<_>>(), n);
             if truncated {
@@ -331,7 +372,7 @@ pub fn solve_lm_sparse(
                 break;
             }
             lambda *= LAMBDA_UP;
-            if lambda > 1e12 {
+            if lambda > LAMBDA_MAX {
                 break;
             }
         }
@@ -446,10 +487,12 @@ mod tests {
 
     #[test]
     fn solve_lm_sparse_terminates_defined_on_a_degenerate_zero_jacobian() {
-        // Every Jacobian row empty: the gradient is zero, so LM stops at the
-        // seed without stepping. This pins the truncated-step plumbing in the
-        // CG path -- a zero operator is reported, never silently accepted --
-        // while the driver still returns a defined result.
+        // Every Jacobian row empty: the gradient is zero, so LM breaks on the
+        // max|g| < GTOL guard before any damped step is attempted, returning
+        // the seed with a defined result. This pins that zero-gradient guard
+        // (not the CG truncated branch, which the driver's call pattern cannot
+        // reach on a zero gradient); truncated-step semantics are covered at
+        // the `damped_solve` level in `sparse.rs`.
         let f = |x: &[f64]| vec![x[0] - 5.0];
         let jac = |_: &[f64]| vec![vec![]];
         let r = solve_lm_sparse(&[2.0], &f, &jac);
@@ -514,5 +557,79 @@ mod tests {
         let j = fd_jacobian(&f, &[1.0, 2.0], 0);
         assert_eq!(j.nrows(), 0);
         assert_eq!(j.ncols(), 2);
+    }
+
+    // A genuinely nonlinear system the one-step affine fixtures cannot exercise:
+    // the unit circle met by the line y = x. Dense driver.
+    #[test]
+    fn solve_lm_converges_a_nonlinear_circle_line_system() {
+        let f = |x: &[f64]| vec![x[0] * x[0] + x[1] * x[1] - 1.0, x[0] - x[1]];
+        let jac = |x: &[f64]| DMatrix::from_row_slice(2, 2, &[2.0 * x[0], 2.0 * x[1], 1.0, -1.0]);
+        let r = solve_lm(&[1.0, 0.5], &f, &jac);
+        let s = 0.5_f64.sqrt();
+        assert!((r.x[0] - s).abs() < 1e-6, "x={}", r.x[0]);
+        assert!((r.x[1] - s).abs() < 1e-6, "y={}", r.x[1]);
+        assert!(r.residual_norm < 1e-8, "res={}", r.residual_norm);
+    }
+
+    // The sparse drag path must take real LM retry steps too, not just the
+    // affine one-step case. Same nonlinear system, sparse Jacobian rows.
+    #[test]
+    fn solve_lm_sparse_converges_a_nonlinear_circle_line_system() {
+        let f = |x: &[f64]| vec![x[0] * x[0] + x[1] * x[1] - 1.0, x[0] - x[1]];
+        let jac = |x: &[f64]| {
+            vec![
+                vec![(0, 2.0 * x[0]), (1, 2.0 * x[1])],
+                vec![(0, 1.0), (1, -1.0)],
+            ]
+        };
+        let r = solve_lm_sparse(&[1.0, 0.5], &f, &jac);
+        let s = 0.5_f64.sqrt();
+        assert!((r.x[0] - s).abs() < 1e-5, "x={}", r.x[0]);
+        assert!((r.x[1] - s).abs() < 1e-5, "y={}", r.x[1]);
+        assert!(r.residual_norm < 1e-8, "res={}", r.residual_norm);
+    }
+
+    // Underconstrained: one residual over two params leaves x1 free. The seed
+    // anchor (dense) and the zero gradient column (sparse) must both keep the
+    // free direction at its seed rather than drifting it.
+    #[test]
+    fn solve_lm_keeps_a_free_param_near_the_seed() {
+        let f = |x: &[f64]| vec![x[0] - 1.0];
+        let jac = |_: &[f64]| DMatrix::from_row_slice(1, 2, &[1.0, 0.0]);
+        let r = solve_lm(&[0.0, 5.0], &f, &jac);
+        assert!((r.x[0] - 1.0).abs() < 1e-6, "x0={}", r.x[0]);
+        assert!((r.x[1] - 5.0).abs() < 1e-6, "free x1 drifted: {}", r.x[1]);
+    }
+
+    #[test]
+    fn solve_lm_sparse_keeps_a_free_param_at_the_seed() {
+        let f = |x: &[f64]| vec![x[0] - 1.0];
+        let jac = |_: &[f64]| vec![vec![(0, 1.0)]];
+        let r = solve_lm_sparse(&[0.0, 5.0], &f, &jac);
+        assert!((r.x[0] - 1.0).abs() < 1e-6, "x0={}", r.x[0]);
+        assert!((r.x[1] - 5.0).abs() < 1e-6, "free x1 drifted: {}", r.x[1]);
+    }
+
+    // Non-finite residuals short-circuit to the seed with a non-finite norm,
+    // rather than looping on NaN comparisons and reporting convergence.
+    #[test]
+    fn solve_lm_refuses_a_non_finite_residual() {
+        let f = |_: &[f64]| vec![f64::NAN];
+        let jac = |_: &[f64]| DMatrix::from_row_slice(1, 1, &[1.0]);
+        let r = solve_lm(&[3.0], &f, &jac);
+        assert_eq!(r.iters, 0);
+        assert_eq!(r.x, vec![3.0]);
+        assert!(!r.residual_norm.is_finite());
+    }
+
+    #[test]
+    fn solve_lm_sparse_refuses_a_non_finite_residual() {
+        let f = |_: &[f64]| vec![f64::INFINITY];
+        let jac = |_: &[f64]| vec![vec![(0, 1.0)]];
+        let r = solve_lm_sparse(&[3.0], &f, &jac);
+        assert_eq!(r.iters, 0);
+        assert_eq!(r.x, vec![3.0]);
+        assert!(!r.residual_norm.is_finite());
     }
 }
