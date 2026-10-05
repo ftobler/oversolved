@@ -5,7 +5,7 @@ import type { ResolvedHit } from '@/picking'
 
 // The two selection stores (hover + normal) are fed from the same ground-truth
 // resolve via the same key-derivation function, so they can never diverge about
-// identity. See feature/selection-unification.md.
+// identity.
 
 function hit(layer: string, entityKey: string): ResolvedHit {
   return { id: 1, layer, entityKey, distancePx: 0 }

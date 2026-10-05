@@ -24,7 +24,7 @@ function solveFeature(doc: PartDoc): Record<string, number[]> {
   const { sketches, skipped } = partDocToSketches(doc.features)
   expect(skipped).toHaveLength(0)
   expect(sketches).toHaveLength(1)
-  const { input, layout } = lowerSketch(sketches[0].sketch as never)
+  const { input, layout } = lowerSketch(sketches[0].sketch)
   const out = decodeOutput(bytes!(encodeInput(input)))
   const solved: Record<string, number[]> = {}
   for (const l of layout) solved[l.id] = out.paramsSolved.slice(l.offset, l.offset + l.size)

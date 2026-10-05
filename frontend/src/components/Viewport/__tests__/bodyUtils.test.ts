@@ -189,7 +189,7 @@ describe('getGhostBodiesToRender', () => {
     // user-hidden body is. Feeding the ghost layer that set made every removal
     // invisible again, which is the bug this feature exists to fix.
     const preview = { body_ex1: pickBodies.body_ex1 }
-    const derived = computeEffectiveVisibleBodies(preview, new Set(), {})
+    const derived = computeEffectiveVisibleBodies(preview, {})
     expect(derived?.has('body_ex2')).toBe(false)  // the trap
     const items = getGhostBodiesToRender(pickBodies, preview, features, {})
     expect(items.find(i => i.bodyId === 'body_ex2')?.visible).toBe(true)
@@ -209,7 +209,6 @@ describe('computeEffectiveVisibleBodies', () => {
     body_a: twoBodyResult('body_a', 'feat_a'),
     body_b: twoBodyResult('body_b', 'feat_b'),
   }
-  const allVisible = new Set(['feat_a', 'feat_b'])
 
   const partStyle = (overrides: Record<string, Partial<PartStyleEntry>>): Record<string, PartStyleEntry> => {
     const out: Record<string, PartStyleEntry> = {}
@@ -220,29 +219,29 @@ describe('computeEffectiveVisibleBodies', () => {
   }
 
   it('returns undefined when no bodies (nothing to filter)', () => {
-    expect(computeEffectiveVisibleBodies(undefined, allVisible, {})).toBeUndefined()
+    expect(computeEffectiveVisibleBodies(undefined, {})).toBeUndefined()
   })
 
   it('includes all bodies when features are visible and no overrides', () => {
-    const result = computeEffectiveVisibleBodies(bodies, allVisible, {})
+    const result = computeEffectiveVisibleBodies(bodies, {})
     expect(result?.has('body_a')).toBe(true)
     expect(result?.has('body_b')).toBe(true)
   })
 
   it('excludes one body when it is explicitly hidden', () => {
-    const result = computeEffectiveVisibleBodies(bodies, allVisible, partStyle({ body_a: { visible: false } }))
+    const result = computeEffectiveVisibleBodies(bodies, partStyle({ body_a: { visible: false } }))
     expect(result?.has('body_a')).toBe(false)
     expect(result?.has('body_b')).toBe(true)
   })
 
   it('returns empty set (not undefined) when all bodies are explicitly hidden', () => {
-    const result = computeEffectiveVisibleBodies(bodies, allVisible, partStyle({ body_a: { visible: false }, body_b: { visible: false } }))
+    const result = computeEffectiveVisibleBodies(bodies, partStyle({ body_a: { visible: false }, body_b: { visible: false } }))
     expect(result).toBeInstanceOf(Set)
     expect(result?.size).toBe(0)
   })
 
   it('keeps body visibility independent from feature visibility', () => {
-    const result = computeEffectiveVisibleBodies(bodies, new Set(), partStyle({ body_a: { visible: true } }))
+    const result = computeEffectiveVisibleBodies(bodies, partStyle({ body_a: { visible: true } }))
     expect(result?.has('body_a')).toBe(true)
     expect(result?.has('body_b')).toBe(true)
   })
@@ -257,7 +256,6 @@ describe('computeEffectiveVisibleBodies', () => {
 
     const result = computeEffectiveVisibleBodies(
       arrayBodies,
-      new Set(['UAM7nPd8Trb1gGJ7Wefu6uUc']),
       partStyle({ body_UAM7nPd8Trb1gGJ7Wefu6uUc_1: { visible: false } }),
     )
 
@@ -268,7 +266,7 @@ describe('computeEffectiveVisibleBodies', () => {
   })
 
   it('treats missing visible as visible', () => {
-    const result = computeEffectiveVisibleBodies(bodies, allVisible, partStyle({ body_a: { name: 'test' } }))
+    const result = computeEffectiveVisibleBodies(bodies, partStyle({ body_a: { name: 'test' } }))
     expect(result?.has('body_a')).toBe(true)
   })
 })

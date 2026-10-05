@@ -68,7 +68,6 @@ export interface Geometry3DProps {
   originLocal?: [number, number]
   solveStatus?: string
   entityStatus?: EntityStatus
-  showDebugHit?: boolean
   otherSketches?: Record<string, Sketch>
   featureDef?: PartFeature
 }

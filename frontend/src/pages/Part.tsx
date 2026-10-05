@@ -379,8 +379,8 @@ export default function Part() {
   )
 
   const effectiveVisibleBodies = useMemo(
-    () => computeEffectiveVisibleBodies(bodies, visibleFeaturesWithEdit, partStyle),
-    [bodies, visibleFeaturesWithEdit, partStyle],
+    () => computeEffectiveVisibleBodies(bodies, partStyle),
+    [bodies, partStyle],
   )
 
   const activeSketchFeatureId = useMemo(() => {

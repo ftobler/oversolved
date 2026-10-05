@@ -17,7 +17,6 @@ export type { BodyRenderItem }
  */
 export function computeEffectiveVisibleBodies(
   bodies: Record<string, BodyResult> | undefined,
-  _visibleFeatures: Set<string>,
   partStyle: Record<string, PartStyleEntry>,
 ): Set<string> | undefined {
   const visible = new Set<string>()

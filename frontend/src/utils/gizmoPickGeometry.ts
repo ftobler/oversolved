@@ -45,7 +45,8 @@ export const PLANE_BASE_OUTER = 0.55
  * How much bigger the plane grabber is than the span above. Applied about the
  * quad's OWN CENTRE, not about the origin, because the handle is boxed in at
  * both ends: inward by the arrow shafts (PLANE_INNER has to stay a full snap
- * window clear of ARROW_PICK_RADIUS, pinned in gizmoHandleWins.test.ts) and
+ * window clear of ARROW_PICK_RADIUS, pinned in
+ * picking/__tests__/gizmoHandleWins.test.ts) and
  * outward by the rings (PLANE_OUTER plus its outline has to stay under
  * RING_RADIUS). Scaling about the origin would spend the whole increase on the
  * outer edge and drag the centre out with it, moving the target away from where

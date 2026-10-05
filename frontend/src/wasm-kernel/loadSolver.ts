@@ -6,8 +6,9 @@
  * artifact is absent so the shadow harness skips instead of breaking
  * `just frontend` on a fresh checkout.
  *
- * The browser app will instead load the `--target web` build inside the builder
- * Worker; that wiring is a later shard. This loader is for parity testing only.
+ * The browser app instead loads the live `--target web` build through
+ * `solverWasm.ts`, on the main thread (`initSketchSolver` in
+ * `kernel/features/sketch.ts`). This loader is for parity testing only.
  */
 
 import { loadPkgNodeExport } from './loadPkgNode'

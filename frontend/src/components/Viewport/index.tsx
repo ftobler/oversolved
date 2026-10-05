@@ -477,7 +477,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       vertices={b.vertices}
       vertexQueries={b.vertexQueries}
       visible={b.visible}
-      showDebugHit={showDebugHit}
       color={partColors?.[b.key]}
       transparency={partStyle?.[b.key]?.transparency ?? 0}
       roughness={partStyle?.[b.key]?.roughness ?? DEFAULT_PART_ROUGHNESS}
@@ -590,7 +589,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
               originLocal={solveResult?.originLocal}
               solveStatus={solveResult?.status}
               entityStatus={solveResult?.features}
-              showDebugHit={showDebugHit}
               otherSketches={isActiveFeature ? combinedOtherSketches : undefined}
               featureDef={fullFeatureDef}
             />

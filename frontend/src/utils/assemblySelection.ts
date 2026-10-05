@@ -23,10 +23,6 @@ export interface AssemblySelectionView {
   entities: ReadonlySet<string>
 }
 
-// A named null so a caller can sign a cleared slot without spelling `null`
-// where a subject is expected.
-export const NONE_SUBJECT: null = null
-
 /**
  * The ONE accessor every reader uses. Pure, no store: the union guarantees a
  * part and a mate can never both be present, so `parts` and `mate` are never

@@ -3,8 +3,6 @@
  * every other chip (not a parallel commitPlaneSelection path). Activating it and
  * then clicking a plane/face in the viewport (which only ever
  * toggleNormalSelection) must dispatch set_feature_plane via the consumer layer.
- *
- * See feature/selection-unification.md.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render } from '@testing-library/react'
