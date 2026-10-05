@@ -1,14 +1,13 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { parse as parseYaml } from 'yaml'
-import { stringify as stringifyYaml } from 'yaml'
 import type { AssemblyDoc } from '@/types/cad'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
-import { getPreviewStore } from '@/stores/previewStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { mateFeatures, partInstances } from '@/utils/assemblyMutations'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
+import { useDocPersistence } from '@/hooks/useDocPersistence'
 
 export function useAssemblyDoc(uuid: string | undefined, workspace?: string) {
   const [doc, setDoc] = useState<AssemblyDoc | null>(null)
@@ -24,6 +23,7 @@ export function useAssemblyDoc(uuid: string | undefined, workspace?: string) {
     // A new load clears the previous failure: otherwise a stale error would
     // keep the terminal panel (and the `!error` empty-hint guard) engaged even
     // after a later load succeeds.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clearing the stale failure synchronously at load start is the intended external-sync boundary
     setError(null)
     queueMicrotask(() => { if (!cancelled) setLoading(true) })
     store.load(uuid)
@@ -80,61 +80,9 @@ export function useAssemblyDoc(uuid: string | undefined, workspace?: string) {
   // came from.
   const mates = useMemo(() => (doc ? mateFeatures(doc) : []), [doc])
 
-  const saveChain = useRef<Promise<void>>(Promise.resolve())
-
-  const saveDoc = useCallback(async (uuid: string, document: AssemblyDoc, screenshot?: () => Promise<string | null>) => {
-    // Single-flight chain: a save landing while another is in flight waits, so
-    // arrival order is landing order. Without it, two saves started close
-    // together (the toolbar Save and Save & Exit) can reach the store out of
-    // order and leave the older bytes stored under dirty=false.
-    const prior = saveChain.current
-    let release!: () => void
-    const mine = new Promise<void>(resolve => { release = resolve })
-    saveChain.current = mine
-    await prior
-    try {
-      try {
-        // Reference at entry: every mutation installs a fresh doc object (never
-        // edits in place), so identity still holding after the awaits below
-        // proves no edit landed while the save was in flight.
-        const savedRef = docRef.current
-        // Previews are keyed by (workspace, entry) so a multi-document
-        // workspace's tile and picker read the same record a save wrote.
-        if (screenshot) {
-          const dataUrl = await screenshot()
-          if (dataUrl) await getPreviewStore().put(workspace ?? uuid, uuid, dataUrl.split(',')[1])
-        }
-        await store.save(uuid, { content: stringifyYaml(document) })
-        // Same guard as the part editor's saveDoc: an edit during the save
-        // windows postdates the stored bytes, so its dirty flag must survive
-        // or a reload would silently drop those edits.
-        if (docRef.current === savedRef) {
-          useUnsavedChangesStore.getState().setDirty(false)
-        }
-        return true
-      } catch (e) {
-        setError(errorMessage(e, 'Failed to save document'))
-        return false
-      }
-    } finally {
-      release()
-    }
-  }, [store, workspace])
-
-  const renameDoc = useCallback(async (uuid: string, name: string) => {
-    try {
-      await store.rename(uuid, name)
-      setDocName(name)
-      return true
-    } catch (e) {
-      setError(errorMessage(e, 'Failed to rename document'))
-      return false
-    }
-  }, [store])
-
-  const cloneDoc = useCallback(async (id: string): Promise<{ uuid: string }> => {
-    return store.clone(id)
-  }, [store])
+  const { saveDoc, renameDoc, cloneDoc } = useDocPersistence<AssemblyDoc>({
+    docRef, setError, setDocName, workspace,
+  })
 
   return {
     doc, setDoc, docRef, docName, setDocName,
