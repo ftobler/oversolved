@@ -25,6 +25,15 @@ export function setLastDragSolve(v: LastDragSolve | null): void {
   last = v
 }
 
+/** Clear the slot only when the stored entry belongs to `featureId`. The
+ *  registry is one global slot shared by every sketch, so an unscoped clear in
+ *  a foreign sketch's effect cleanup would wipe a live drag's published frames
+ *  and make pointer-up commit fall back to pre-drag seeding. */
+export function clearLastDragSolveFor(featureId: string): void {
+  if (last?.featureId !== featureId) return
+  last = null
+}
+
 export function getLastDragSolve(): LastDragSolve | null {
   return last
 }

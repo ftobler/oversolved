@@ -216,6 +216,47 @@ describe('useWasmDragSolve', () => {
     expect(getLastDragSolve()).toBeNull()
   })
 
+  it('a foreign feature that never engages does not wipe a live drag\'s published frames', () => {
+    // S1 is mid-drag and has published a frame.
+    const s1 = renderHook(() =>
+      useWasmDragSolve({ featureId: 'S1', featureDef, drag: vertexDrag([1, 1]), isDraggingThis: true }))
+    pump()
+    expect(getLastDragSolve()).toEqual({ featureId: 'S1', geometry: { L1: [1, 1, 10, 0] } })
+    // A different sketch renders without a drag: its effect-body clear is
+    // scoped and must leave S1's entry alone.
+    renderHook(() =>
+      useWasmDragSolve({ featureId: 'S2', featureDef, drag: null, isDraggingThis: false }))
+    expect(getLastDragSolve()).toEqual({ featureId: 'S1', geometry: { L1: [1, 1, 10, 0] } })
+    s1.unmount()
+    // Once the owner unmounts, the slot is released.
+    expect(getLastDragSolve()).toBeNull()
+  })
+
+  it('a foreign feature unmount does not wipe another feature\'s entry', () => {
+    // S1's frame is the slot. S2 renders mid-drag so its effect setup takes the
+    // rAF branch (no effect-body clear) and no frame is pumped, leaving the
+    // seeded entry untouched until the unmount cleanup, which is scoped and
+    // must not clear S1's entry.
+    setLastDragSolve({ featureId: 'S1', geometry: { L1: [1, 1, 10, 0] } })
+    const s2 = renderHook(() =>
+      useWasmDragSolve({
+        featureId: 'S2',
+        featureDef,
+        drag: { ...vertexDrag([1, 1]), featureId: 'S2' } as DragState,
+        isDraggingThis: true,
+      }))
+    expect(getLastDragSolve()).toEqual({ featureId: 'S1', geometry: { L1: [1, 1, 10, 0] } })
+    s2.unmount()
+    expect(getLastDragSolve()).toEqual({ featureId: 'S1', geometry: { L1: [1, 1, 10, 0] } })
+  })
+
+  it('a matching feature clear empties the registry', () => {
+    setLastDragSolve({ featureId: 'S1', geometry: { L1: [1, 1, 10, 0] } })
+    renderHook(() =>
+      useWasmDragSolve({ featureId: 'S1', featureDef, drag: null, isDraggingThis: false }))
+    expect(getLastDragSolve()).toBeNull()
+  })
+
   // ─── Edge/entity drag tests ───
 
   it('engages for edge drags too', () => {

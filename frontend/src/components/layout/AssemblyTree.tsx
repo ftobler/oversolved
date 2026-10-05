@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { PartInstance, MateFeature } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { mateFailure, partFailure, assemblyVerdict } from '@/utils/core/assemblyStatus'
@@ -20,13 +20,7 @@ import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
 import iconDotsIcon from '@/assets/icons/dots.svg'
 import constraintFixedIcon from '@/assets/icons/constraint-fixed.svg'
 import mateIcon from '@/assets/icons/constraint-coincident.svg'
-
-// The split follows the part editor's Sidebar so the two editors resize the same
-// way: a top pane (Origin + Parts) and a bottom pane (Mates).
-const MIN_SPLIT_PERCENT = 20
-const MAX_SPLIT_PERCENT = 80
-const DEFAULT_SPLIT_PERCENT = 70
-const SPLIT_STEP_PERCENT = 2
+import { useSplitDrag } from '@/hooks/useSplitDrag'
 
 // The tree has no entity selection of its own; the accessor still wants the
 // orthogonal set, and a shared empty instance keeps the read allocation-free.
@@ -119,10 +113,8 @@ export function AssemblyTree({
   onRequestRenameMate,
   renderMateEditor,
 }: AssemblyTreeProps) {
-  const [splitPercent, setSplitPercent] = useState(DEFAULT_SPLIT_PERCENT)
   const [menu, setMenu] = useState<{ position: [number, number]; items: ContextMenuItem[] } | null>(null)
-  const isDraggingRef = useRef(false)
-  const rootRef = useRef<HTMLDivElement>(null)
+  const { splitPercent, containerRef, handleMouseDown, handleKeyDown, min, max } = useSplitDrag()
 
   // The row picked up by an HTML5 drag. Held in a ref, not state: it changes only
   // at drag start/end and the reorder reads it on drop, so it never needs to
@@ -133,35 +125,6 @@ export function AssemblyTree({
     dragItemRef.current = null
     setDragOverKey(null)
   }, [])
-
-  const handleMouseDown = useCallback(() => { isDraggingRef.current = true }, [])
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDraggingRef.current || !rootRef.current) return
-    const rect = rootRef.current.getBoundingClientRect()
-    const newPercent = ((e.clientY - rect.top) / rect.height) * 100
-    setSplitPercent(Math.max(MIN_SPLIT_PERCENT, Math.min(MAX_SPLIT_PERCENT, newPercent)))
-  }, [])
-  const handleMouseUp = useCallback(() => { isDraggingRef.current = false }, [])
-
-  // The splitter is a slider: arrow keys nudge it by a fixed step, clamped to
-  // the same band the drag uses, so the panes can be resized without a pointer.
-  const handleResizeKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
-    let delta = 0
-    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') delta = -SPLIT_STEP_PERCENT
-    else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') delta = SPLIT_STEP_PERCENT
-    else return
-    e.preventDefault()
-    setSplitPercent(p => Math.max(MIN_SPLIT_PERCENT, Math.min(MAX_SPLIT_PERCENT, p + delta)))
-  }, [])
-
-  useEffect(() => {
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [handleMouseMove, handleMouseUp])
 
   const openMenu = (e: ReactMouseEvent, items: ContextMenuItem[]) => {
     e.stopPropagation()
@@ -204,7 +167,7 @@ export function AssemblyTree({
   const verdictMark = assemblyVerdict(status ?? null, id => mateNames.get(id))
 
   return (
-    <div className="assembly-tree" ref={rootRef}>
+    <div className="assembly-tree" ref={containerRef}>
       <div className="sidebar-top" style={{ height: `${splitPercent}%` }}>
         <div className="sidebar-header"><span>Parts</span></div>
         {verdictMark.level && (
@@ -388,15 +351,15 @@ export function AssemblyTree({
       <div
         className="resize-handle"
         onMouseDown={handleMouseDown}
-        onKeyDown={handleResizeKeyDown}
+        onKeyDown={handleKeyDown}
         title="Drag to resize"
         role="slider"
         tabIndex={0}
         aria-label="Resize assembly panes"
         aria-orientation="vertical"
         aria-valuenow={Math.round(splitPercent)}
-        aria-valuemin={MIN_SPLIT_PERCENT}
-        aria-valuemax={MAX_SPLIT_PERCENT}
+        aria-valuemin={min}
+        aria-valuemax={max}
       />
 
       <div className="sidebar-bottom" style={{ height: `${100 - splitPercent}%` }}>
