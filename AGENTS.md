@@ -55,7 +55,7 @@ just build          # npm run build
 - Gates tee a full copy of their output to `tmp/<gate>.log` while also printing to stdout.
 - For each feature try to make a test.
 - All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. Documents are stored in IndexedDB, the only permanent store; a folder or zip is only an import source or export destination. Nothing is sent to a server; there is no server.
-- mypy and flake8 runs on both `oversolved/` and `tests/`
+- mypy and ruff run on both `oversolved/` and `tests/`; CI additionally runs flake8 as the safety net
 - code style: do not use em or en-dashes.
 - Agents must not commit to git unless prompted directly by the user.
 - Use two spaces before inline comments. Example: `be_nice = True  # sometimes`
