@@ -4,7 +4,7 @@ import math
 
 # ctx is from pycairo
 # coordinates are normalized (0 to 1).
-# use 1.5 stroke with for main lines, 1px or dotted for accents.
+# stroke widths: 2 primary, 1.5 secondary, 1.0 accent.
 
 
 def draw_dotted_line(ctx, x0, y0, x1, y1, num_dots):
@@ -60,7 +60,7 @@ def _draw_plane_grid(ctx, x0, y0, x1, y1, x2, y2, x3, y3):
 
 
 def _arrowhead(ctx, x, y, angle, size):
-    """Draw a filled arrowhead at (x, y) pointing at angle (degrees). Uses arr for size."""
+    """Draw a filled arrowhead at (x, y) pointing at angle (degrees). Uses size for the head length."""
     rad = math.radians(angle)
     # Arrowhead points: tip, left, right
     tip = (x, y)
@@ -513,7 +513,7 @@ def toolbar_extrude(ctx):
     ctx.move_to(arrow_end - arrow_size, arrow_y - arrow_size * 0.6)
     ctx.line_to(arrow_end, arrow_y)
     ctx.line_to(arrow_end - arrow_size, arrow_y + arrow_size * 0.6)
-    ctx.stroke()
+    stroke(ctx, 1.5)
 
 
 @icon("frontend/src/assets/icons/feature-revolve.svg")

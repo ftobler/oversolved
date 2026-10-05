@@ -30,10 +30,6 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = [
-    "repeat: mark a test to be repeated multiple times",
-]
-filterwarnings = []
 
 [tool.mypy]
 ignore_missing_imports = true

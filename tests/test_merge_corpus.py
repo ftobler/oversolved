@@ -10,8 +10,8 @@ import importlib.util
 import json
 import pathlib
 
-LINT_ROOT = pathlib.Path(__file__).resolve().parent.parent
-SCRIPT = LINT_ROOT / "frontend" / "scripts" / "mergeCorpus.py"
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+SCRIPT = REPO_ROOT / "frontend" / "scripts" / "mergeCorpus.py"
 
 spec = importlib.util.spec_from_file_location("mergeCorpus", SCRIPT)
 assert spec is not None and spec.loader is not None
