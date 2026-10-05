@@ -9,7 +9,8 @@
 use crate::codec::{decode_input, encode_output, CodecError};
 use crate::solve::solve_sketch;
 use crate::topology::codec::{
-    decode_input as decode_topology_input, encode_output as encode_topology_output, TopologyCodecError,
+    decode_input as decode_topology_input, encode_output as encode_topology_output,
+    TopologyCodecError,
 };
 use crate::topology::detect_topology;
 

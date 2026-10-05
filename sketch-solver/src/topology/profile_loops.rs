@@ -11,7 +11,7 @@ use super::curve_split::bezier_point;
 use super::TOL_NEAR_ZERO_AREA;
 use crate::radians;
 
-pub type Vec2 = [f64; 2];
+pub use super::Vec2;
 
 const CENTROID_ARC_SAMPLES: usize = 64;
 
@@ -179,7 +179,13 @@ fn ellipse_arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
 
 /// n points spread around a full closed ellipse edge; empty if not one.
 fn ellipse_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
-    if let EdgeGeom::Ellipse { center, a, b, theta } = *e {
+    if let EdgeGeom::Ellipse {
+        center,
+        a,
+        b,
+        theta,
+    } = *e
+    {
         let cx = center[0];
         let cy = center[1];
         let rot = radians(theta);
@@ -448,7 +454,10 @@ mod tests {
             "last interior sample should sit at 4/5 of the sweep: {last:?}"
         );
         for p in &pts[1..] {
-            assert!(p[0] > 0.0 && p[1] > 0.0, "sample off the first quadrant: {p:?}");
+            assert!(
+                p[0] > 0.0 && p[1] > 0.0,
+                "sample off the first quadrant: {p:?}"
+            );
         }
     }
 
@@ -469,12 +478,18 @@ mod tests {
             end_vertex: None,
         };
         let pts = loop_pts(&[e], 2);
-        assert!(pts.len() >= 16, "a full ellipse needs a readable sample count");
+        assert!(
+            pts.len() >= 16,
+            "a full ellipse needs a readable sample count"
+        );
         for p in &pts {
             let u = p[0] - 1.0;
             let v = p[1] - 2.0;
             let on_curve = u * u / 16.0 + v * v / 4.0;
-            assert!((on_curve - 1.0).abs() < 1e-12, "point off the ellipse: {p:?}");
+            assert!(
+                (on_curve - 1.0).abs() < 1e-12,
+                "point off the ellipse: {p:?}"
+            );
         }
     }
 }

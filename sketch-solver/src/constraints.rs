@@ -34,8 +34,8 @@ pub enum PointSelector {
     MajorNeg,
     Minor,
     MinorNeg,
-    /// Spline off-curve control points: `C1` is P2 (params [2,3]), `C2` is P3
-    /// (params [4,5]). The on-curve endpoints use `Start`/`End`.
+    /// Spline off-curve control points: `C1` is P2 (params `[2,3]`), `C2` is P3
+    /// (params `[4,5]`). The on-curve endpoints use `Start`/`End`.
     C1,
     C2,
 }
@@ -276,7 +276,6 @@ impl Constraint {
             .find(|(r, _)| *r == role)
             .map(|(_, rf)| *rf)
     }
-
 }
 
 #[cfg(test)]

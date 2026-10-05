@@ -14,6 +14,9 @@ members = ["solver-core", "sketch-solver", "mate-solver"]
 [workspace.package]
 version = "0.0.0"
 edition = "2021"
+# `Option::is_none_or` (used by the sketch solver) stabilized in 1.82; the
+# toolchain here is newer, but this documents the floor the crates rely on.
+rust-version = "1.82"
 publish = false
 
 [workspace.dependencies]

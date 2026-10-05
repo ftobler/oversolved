@@ -66,6 +66,10 @@
 
 use crate::codec::{finite, CodecError, Reader, Writer};
 
+// The mate wire format is independent of the sketch format (whose magic is
+// plain `MAGIC` in sketch-solver/src/codec.rs): the two crates version their
+// buffers separately and never read each other's bytes, so the naming
+// asymmetry is deliberate and not a rename target.
 pub const MATE_MAGIC: u32 = 0x3353_544D; // "MTS3" in LE
 pub const MATE_MAGIC_OUT: u32 = 0x3252_544D; // "MTR2" in LE
 
@@ -249,7 +253,7 @@ impl Mate {
 /// body's block starts at `index * 7`, which every reader derives directly, so
 /// the struct carries no offset field of its own.
 #[derive(Debug, Clone)]
-pub struct RigidBody {}
+pub struct RigidBody;
 
 /// Input to the mate solver.
 #[derive(Debug, Clone)]
@@ -376,11 +380,9 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
         let body_b_index = r.u32()?;
 
         let ak_a = r.u8()?;
-        let anchor_kind_a = AnchorKind::from_u8(ak_a)
-            .ok_or(CodecError::BadKind(ak_a))?;
+        let anchor_kind_a = AnchorKind::from_u8(ak_a).ok_or(CodecError::BadKind(ak_a))?;
         let ak_b = r.u8()?;
-        let anchor_kind_b = AnchorKind::from_u8(ak_b)
-            .ok_or(CodecError::BadKind(ak_b))?;
+        let anchor_kind_b = AnchorKind::from_u8(ak_b).ok_or(CodecError::BadKind(ak_b))?;
 
         let px_a = finite(r.f32()?)? as f64;
         let py_a = finite(r.f32()?)? as f64;
@@ -452,7 +454,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
 
     // `n_bodies` needs no cap of its own: the param-count check above ties it to
     // `n_params`, whose f32s have already been read out of the buffer.
-    let bodies = vec![RigidBody {}; n_bodies];
+    let bodies = vec![RigidBody; n_bodies];
 
     Ok(MateInput {
         bodies,
@@ -624,7 +626,7 @@ mod tests {
     fn mate_geom(ax: f64, ay: f64, az: f64) -> MateGeometry {
         MateGeometry {
             point: [0.0, 0.0, 0.0],
-            axis: [ax as f64, ay as f64, az as f64],
+            axis: [ax, ay, az],
             // The canonical perp of +Z, the axis every helper here uses.
             perp: [0.0, 1.0, 0.0],
         }
@@ -655,7 +657,7 @@ mod tests {
             weight: 1.0,
         };
         MateInput {
-            bodies: (0..2).map(|_| RigidBody {}).collect(),
+            bodies: (0..2).map(|_| RigidBody).collect(),
             params_initial: params,
             fixed_mask: vec![0b0000_0001],
             mates: vec![mate],
@@ -721,7 +723,10 @@ mod tests {
     fn mate_input_bad_magic_rejected() {
         let mut bytes = encode_mate_input(&sample_input());
         bytes[0] ^= 0xff;
-        assert!(matches!(decode_mate_input(&bytes), Err(CodecError::BadMagic)));
+        assert!(matches!(
+            decode_mate_input(&bytes),
+            Err(CodecError::BadMagic)
+        ));
     }
 
     #[test]
@@ -734,7 +739,10 @@ mod tests {
         };
         let mut bytes = encode_mate_output(&out);
         bytes[0] ^= 0xff;
-        assert!(matches!(decode_mate_output(&bytes), Err(CodecError::BadMagic)));
+        assert!(matches!(
+            decode_mate_output(&bytes),
+            Err(CodecError::BadMagic)
+        ));
     }
 
     #[test]
@@ -744,7 +752,10 @@ mod tests {
         // header(20) + bodies(8) + params_initial(56) + fixed_mask(1) = 85
         // + kind_code is first byte of mate record
         bytes[85] = 0xff; // kind_code in first mate record
-        assert!(matches!(decode_mate_input(&bytes), Err(CodecError::BadKind(_))));
+        assert!(matches!(
+            decode_mate_input(&bytes),
+            Err(CodecError::BadKind(_))
+        ));
     }
 
     // A buffer built to the pre-widen 76-byte stride (scalar offset, before it
@@ -756,7 +767,10 @@ mod tests {
     fn mate_input_old_76_byte_stride_rejected() {
         let bytes = encode_mate_input(&sample_input());
         let truncated = &bytes[..bytes.len() - 8];
-        assert!(matches!(decode_mate_input(truncated), Err(CodecError::UnexpectedEof)));
+        assert!(matches!(
+            decode_mate_input(truncated),
+            Err(CodecError::UnexpectedEof)
+        ));
     }
 
     // The other overrun direction: bytes beyond the declared layout are
@@ -830,7 +844,7 @@ mod tests {
     #[test]
     fn parallel_mate_with_flip_round_trips() {
         let input = MateInput {
-            bodies: vec![RigidBody {}, RigidBody {}],
+            bodies: vec![RigidBody, RigidBody],
             params_initial: vec![0.0; 14],
             fixed_mask: vec![0],
             mates: vec![Mate {
@@ -877,7 +891,7 @@ mod tests {
     #[test]
     fn offset_ratio_radius_round_trip() {
         let input = MateInput {
-            bodies: vec![RigidBody {}, RigidBody {}],
+            bodies: vec![RigidBody, RigidBody],
             params_initial: vec![0.0; 14],
             fixed_mask: vec![0],
             mates: vec![Mate {
@@ -937,7 +951,10 @@ mod tests {
     fn mate_input_short_weight_record_rejected() {
         let bytes = encode_mate_input(&sample_input());
         let truncated = &bytes[..bytes.len() - 4];
-        assert!(matches!(decode_mate_input(truncated), Err(CodecError::UnexpectedEof)));
+        assert!(matches!(
+            decode_mate_input(truncated),
+            Err(CodecError::UnexpectedEof)
+        ));
     }
 
     #[test]
@@ -965,7 +982,10 @@ mod tests {
     fn stale_magic_is_rejected() {
         let mut bytes = encode_mate_input(&sample_input());
         bytes[0..4].copy_from_slice(&0x3253_544Du32.to_le_bytes());
-        assert!(matches!(decode_mate_input(&bytes), Err(CodecError::BadMagic)));
+        assert!(matches!(
+            decode_mate_input(&bytes),
+            Err(CodecError::BadMagic)
+        ));
     }
 
     /// The axial reduction Tangential and ParallelPlaneDistance read. A scalar
@@ -973,7 +993,7 @@ mod tests {
     /// `s` -- that identity is the whole back-compat guarantee for those kinds.
     #[test]
     fn axial_offset_recovers_the_scalar_form() {
-        let axis = [0.0, 0.6, 0.8];  // unit, deliberately not a cardinal direction
+        let axis = [0.0, 0.6, 0.8]; // unit, deliberately not a cardinal direction
         let mut m = sample_input().mates.pop().unwrap();
         m.a.geometry.axis = axis;
         m.offset = [7.0 * axis[0], 7.0 * axis[1], 7.0 * axis[2]];
@@ -1001,7 +1021,7 @@ mod tests {
     #[test]
     fn is_fixed_reads_mask() {
         let input = MateInput {
-            bodies: vec![RigidBody {}],
+            bodies: vec![RigidBody],
             params_initial: vec![0.0; 7],
             fixed_mask: vec![0b0000_0101],
             mates: vec![],
@@ -1018,7 +1038,11 @@ mod tests {
         // fails here instead of falling outside the loop. Codes must be unique
         // and contiguous from 0, which `code == enumerate` proves in one check.
         for (code, &kind) in MateKind::ALL.iter().enumerate() {
-            assert_eq!(kind.to_u8() as usize, code, "kind codes are contiguous from 0");
+            assert_eq!(
+                kind.to_u8() as usize,
+                code,
+                "kind codes are contiguous from 0"
+            );
             assert_eq!(MateKind::from_u8(kind.to_u8()), Some(kind));
         }
         assert_eq!(MateKind::from_u8(MateKind::ALL.len() as u8), None);

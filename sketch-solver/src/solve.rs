@@ -5,10 +5,10 @@
 //! solved params back into the doc stay in the TS builder (the "what stays
 //! scalar TS" boundary).
 
-use solver_core::lm::{solve_lm, solve_lm_sparse};
 use crate::residuals::Problem;
 use crate::{Diagnostics, Input, Output, Status};
 use nalgebra::{DMatrix, SymmetricEigen};
+use solver_core::lm::{solve_lm, solve_lm_sparse};
 
 /// Singular values above this count toward the rank.
 const RANK_TOL: f64 = 1e-6;
@@ -304,7 +304,11 @@ mod tests {
         let inp = input(
             vec![line(0)],
             vec![0.0, 0.0, 10.0, 1.0],
-            vec![c_target(ConstraintKind::Horizontal, 7, PointSelector::Absent)],
+            vec![c_target(
+                ConstraintKind::Horizontal,
+                7,
+                PointSelector::Absent,
+            )],
         );
         let out = solve_sketch(&inp);
         assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
@@ -331,7 +335,11 @@ mod tests {
         let inp = input(
             vec![line(0), ent(Kind::Line, usize::MAX)],
             vec![0.0, 0.0, 10.0, 1.0],
-            vec![c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent)],
+            vec![c_target(
+                ConstraintKind::Horizontal,
+                0,
+                PointSelector::Absent,
+            )],
         );
         let out = solve_sketch(&inp);
         assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
@@ -351,7 +359,11 @@ mod tests {
         let inp = input(
             vec![line(0), ent(Kind::Line, usize::MAX)],
             vec![0.0, 0.0, 10.0, 1.0],
-            vec![c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent)],
+            vec![c_target(
+                ConstraintKind::Horizontal,
+                0,
+                PointSelector::Absent,
+            )],
         );
         let out = solve_sketch(&inp);
         assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
@@ -366,8 +378,15 @@ mod tests {
         // `offset + count` and bump arbitrary weights; it just gets no firmer
         // pull, like any other out-of-range anchor block.
         let inp = Input {
-            options: Options { drag_anchor_id: 1, ..Default::default() },
-            ..input(vec![line(0), ent(Kind::Line, usize::MAX)], vec![0.0; 4], vec![])
+            options: Options {
+                drag_anchor_id: 1,
+                ..Default::default()
+            },
+            ..input(
+                vec![line(0), ent(Kind::Line, usize::MAX)],
+                vec![0.0; 4],
+                vec![],
+            )
         };
         let w = drag_reg_weights(&inp, 4);
         assert_eq!(w, vec![REG_WEIGHT_BASE; 4]);
@@ -400,7 +419,11 @@ mod tests {
         assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
         let p = &out.params_solved;
         // start pinned at origin
-        assert!(p[0].abs() < 1e-4 && p[1].abs() < 1e-4, "start {:?}", &p[0..2]);
+        assert!(
+            p[0].abs() < 1e-4 && p[1].abs() < 1e-4,
+            "start {:?}",
+            &p[0..2]
+        );
         // horizontal -> end.y == 0, length 10 -> end.x ~ 10 (from the +x seed)
         assert!((p[2] - 10.0).abs() < 1e-3, "end.x {}", p[2]);
         assert!(p[3].abs() < 1e-3, "end.y {}", p[3]);
@@ -456,8 +479,16 @@ mod tests {
             },
         ];
         let out = solve_sketch(&inp);
-        assert!((out.params_solved[0] - 5.0).abs() < 1e-4, "x {}", out.params_solved[0]);
-        assert!((out.params_solved[1] - (-4.0)).abs() < 1e-4, "y {}", out.params_solved[1]);
+        assert!(
+            (out.params_solved[0] - 5.0).abs() < 1e-4,
+            "x {}",
+            out.params_solved[0]
+        );
+        assert!(
+            (out.params_solved[1] - (-4.0)).abs() < 1e-4,
+            "y {}",
+            out.params_solved[1]
+        );
         assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
     }
 
@@ -526,8 +557,20 @@ mod tests {
         let on_ellipse = Constraint {
             kind_code: ConstraintKind::Coincident.to_u8(),
             refs: vec![
-                (RefRole::A, Ref::Entity { index: 1, point: PointSelector::Xy }),
-                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Absent }),
+                (
+                    RefRole::A,
+                    Ref::Entity {
+                        index: 1,
+                        point: PointSelector::Xy,
+                    },
+                ),
+                (
+                    RefRole::B,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Absent,
+                    },
+                ),
             ],
             ..Default::default()
         };
@@ -536,13 +579,20 @@ mod tests {
             vec![0.0, 0.0, 4.0, 2.0, 0.0, 3.0, 1.0],
             vec![fix_ellipse, on_ellipse],
         );
-        inp.equality_pins = vec![EqualityPin { param_index: 5, target: 3.0 }];
+        inp.equality_pins = vec![EqualityPin {
+            param_index: 5,
+            target: 3.0,
+        }];
 
         let out = solve_sketch(&inp);
         assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
         let p = &out.params_solved;
         assert!((p[5] - 3.0).abs() < 1e-4, "x pinned: {}", p[5]);
-        assert!((p[6] - 1.75_f32.sqrt()).abs() < 1e-3, "y on ellipse: {}", p[6]);
+        assert!(
+            (p[6] - 1.75_f32.sqrt()).abs() < 1e-3,
+            "y on ellipse: {}",
+            p[6]
+        );
         assert!(out.diagnostics.residual_norm < 1e-4);
     }
 
@@ -557,8 +607,20 @@ mod tests {
         let on_ellipse = Constraint {
             kind_code: ConstraintKind::Coincident.to_u8(),
             refs: vec![
-                (RefRole::A, Ref::Entity { index: 1, point: PointSelector::Xy }),
-                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Absent }),
+                (
+                    RefRole::A,
+                    Ref::Entity {
+                        index: 1,
+                        point: PointSelector::Xy,
+                    },
+                ),
+                (
+                    RefRole::B,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Absent,
+                    },
+                ),
             ],
             ..Default::default()
         };
@@ -567,13 +629,20 @@ mod tests {
             vec![0.0, 0.0, 4.0, 2.0, 90.0, 1.0, 1.0],
             vec![fix_ellipse, on_ellipse],
         );
-        inp.equality_pins = vec![EqualityPin { param_index: 5, target: 1.0 }];
+        inp.equality_pins = vec![EqualityPin {
+            param_index: 5,
+            target: 1.0,
+        }];
 
         let out = solve_sketch(&inp);
         assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
         let p = &out.params_solved;
         assert!((p[5] - 1.0).abs() < 1e-4, "x pinned: {}", p[5]);
-        assert!((p[6] - 2.0 * 3.0_f32.sqrt()).abs() < 1e-3, "y on rotated ellipse: {}", p[6]);
+        assert!(
+            (p[6] - 2.0 * 3.0_f32.sqrt()).abs() < 1e-3,
+            "y on rotated ellipse: {}",
+            p[6]
+        );
         assert!(out.diagnostics.residual_norm < 1e-4);
     }
 
@@ -588,8 +657,20 @@ mod tests {
         let on_spline = Constraint {
             kind_code: ConstraintKind::Coincident.to_u8(),
             refs: vec![
-                (RefRole::A, Ref::Entity { index: 1, point: PointSelector::Xy }),
-                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Absent }),
+                (
+                    RefRole::A,
+                    Ref::Entity {
+                        index: 1,
+                        point: PointSelector::Xy,
+                    },
+                ),
+                (
+                    RefRole::B,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Absent,
+                    },
+                ),
             ],
             ..Default::default()
         };
@@ -598,7 +679,10 @@ mod tests {
             vec![0.0, 0.0, 0.0, 3.0, 3.0, 3.0, 3.0, 0.0, 1.5, 1.0],
             vec![fix_spline, on_spline],
         );
-        inp.equality_pins = vec![EqualityPin { param_index: 8, target: 1.5 }];
+        inp.equality_pins = vec![EqualityPin {
+            param_index: 8,
+            target: 1.5,
+        }];
 
         let out = solve_sketch(&inp);
         assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
@@ -616,8 +700,20 @@ mod tests {
         let pd_major = Constraint {
             kind_code: ConstraintKind::PointDistance.to_u8(),
             refs: vec![
-                (RefRole::A, Ref::Entity { index: 0, point: PointSelector::Center }),
-                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Major }),
+                (
+                    RefRole::A,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Center,
+                    },
+                ),
+                (
+                    RefRole::B,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Major,
+                    },
+                ),
             ],
             value: Some(5.0),
             ..Default::default()
@@ -625,8 +721,20 @@ mod tests {
         let pd_minor = Constraint {
             kind_code: ConstraintKind::PointDistance.to_u8(),
             refs: vec![
-                (RefRole::A, Ref::Entity { index: 0, point: PointSelector::Center }),
-                (RefRole::B, Ref::Entity { index: 0, point: PointSelector::Minor }),
+                (
+                    RefRole::A,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Center,
+                    },
+                ),
+                (
+                    RefRole::B,
+                    Ref::Entity {
+                        index: 0,
+                        point: PointSelector::Minor,
+                    },
+                ),
             ],
             value: Some(3.0),
             ..Default::default()
@@ -650,7 +758,10 @@ mod tests {
     fn drag_reg_weights_bump_only_the_anchor_entity() {
         // line (off 0, 4 params) + point (off 4, 2 params); anchor = the point.
         let inp = Input {
-            options: Options { drag_anchor_id: 1, ..Default::default() },
+            options: Options {
+                drag_anchor_id: 1,
+                ..Default::default()
+            },
             ..input(vec![line(0), point(4)], vec![0.0; 6], vec![])
         };
         let w = drag_reg_weights(&inp, 6);
@@ -667,8 +778,16 @@ mod tests {
         let mut fix_p1 = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);
         fix_p1.xy = Some((0.0, 0.0));
         let make = |drag: bool| Input {
-            options: Options { drag_mode: drag, drag_anchor_id: 1, ..Default::default() },
-            ..input(vec![point(0), point(2)], vec![1.0, 1.0, 3.0, 4.0], vec![fix_p1.clone()])
+            options: Options {
+                drag_mode: drag,
+                drag_anchor_id: 1,
+                ..Default::default()
+            },
+            ..input(
+                vec![point(0), point(2)],
+                vec![1.0, 1.0, 3.0, 4.0],
+                vec![fix_p1.clone()],
+            )
         };
 
         let plain = solve_sketch(&make(false));
@@ -692,14 +811,21 @@ mod tests {
         // Underconstrained, seeded already satisfying all constraints: the refine
         // pass must leave the geometry put (reg pulls toward x0, already there).
         let inp = Input {
-            options: Options { drag_mode: true, drag_anchor_id: 0, ..Default::default() },
+            options: Options {
+                drag_mode: true,
+                drag_anchor_id: 0,
+                ..Default::default()
+            },
             ..input(vec![line(0)], vec![1.0, 2.0, 5.0, 2.0], vec![])
         };
         let out = solve_sketch(&inp);
         assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
         let p = &out.params_solved;
         for (got, want) in p.iter().zip([1.0, 2.0, 5.0, 2.0]) {
-            assert!((got - want).abs() < 1e-4, "drag moved a satisfied DOF: {p:?}");
+            assert!(
+                (got - want).abs() < 1e-4,
+                "drag moved a satisfied DOF: {p:?}"
+            );
         }
     }
 }
