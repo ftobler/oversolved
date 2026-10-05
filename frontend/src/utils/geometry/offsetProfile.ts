@@ -4,7 +4,7 @@
 // selection and tells the caller how to reconnect the clones (miter the meeting
 // point of two offset lines, carry tangency over to arcs). Node-unit-testable.
 
-import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
+import { resolveVertexRef } from '@/types/vertexRef'
 
 export interface VertexRef {
   entityId: string
@@ -18,32 +18,13 @@ export interface OffsetCorner {
 
 /** Parse a constraint ref against a known entity-id set. Accepts the live local
  *  `$<entityId><vertexKey>` wire form and the already-resolved `{entity, point}`
- *  dict form (see `partDocToSketches` `resolveLocal`). Returns null when the ref
- *  is not a vertex of a known entity. */
-export function parseVertexRef(ref: unknown, knownIds: Set<string>): VertexRef | null {
-  if (ref && typeof ref === 'object') {
-    const obj = ref as { entity?: unknown; point?: unknown }
-    if (typeof obj.entity === 'string' && knownIds.has(obj.entity) && typeof obj.point === 'string') {
-      return { entityId: obj.entity, vertexKey: obj.point }
-    }
-    return null
-  }
-  if (typeof ref !== 'string' || !ref.startsWith('$')) return null
-  const bare = ref.slice(1)
-  // The entity id is base64url and can itself end in a vertex-key word, so we
-  // disambiguate by requiring the prefix to be a *known* selected entity. If more
-  // than one (eid, key) split lands on a known id (possible only with adversarial
-  // ids), prefer the longest eid (shortest key) so the match is order-independent.
-  let best: VertexRef | null = null
-  for (const key of VERTEX_POINT_KEYS) {
-    if (bare.length > key.length && bare.endsWith(key)) {
-      const eid = bare.slice(0, -key.length)
-      if (knownIds.has(eid) && (!best || eid.length > best.entityId.length)) {
-        best = { entityId: eid, vertexKey: key }
-      }
-    }
-  }
-  return best
+ *  dict form. Thin wrapper over the shared vertex-ref reader (types/vertexRef):
+ *  it keeps the canonical full-id-first + longest-eid tie-break, and this
+ *  wrapper requires a vertex key because an offset corner is a sub-point, not a
+ *  whole curve. Returns null when the ref is not a vertex of a known entity. */
+export function parseVertexRef(ref: unknown, knownIds: ReadonlySet<string>): VertexRef | null {
+  const resolved = resolveVertexRef(knownIds, ref)
+  return resolved && resolved.point ? { entityId: resolved.entity, vertexKey: resolved.point } : null
 }
 
 /** Discover the corners of a selection: `coincident` constraints whose two refs

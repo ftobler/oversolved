@@ -26,6 +26,30 @@ describe('parseVertexRef object form', () => {
   it('rejects an object whose entity is not a string', () => {
     expect(parseVertexRef({ entity: 99, point: 'end' }, new Set(['aX']))).toBeNull()
   })
+
+  it('rejects an object whose point is not a VERTEX_POINT_KEYS member', () => {
+    expect(parseVertexRef({ entity: 'aX', point: 'bogus' }, new Set(['aX']))).toBeNull()
+  })
+})
+
+describe('parseVertexRef full-id-first tie-break', () => {
+  it('does not split a full known id into a shorter id plus a phantom key', () => {
+    // '$abcenter' names the entity abcenter; it must not read as ab + 'center'
+    // even when ab is also selected. A whole-curve ref is not a vertex, so this
+    // wrapper returns null (it requires a point) rather than a wrong corner.
+    expect(parseVertexRef('$abcenter', new Set(['ab', 'abcenter']))).toBeNull()
+  })
+
+  it('still splits when the full string is not a known entity', () => {
+    expect(parseVertexRef('$abcenterend', new Set(['abcenter']))).toEqual({
+      entityId: 'abcenter',
+      vertexKey: 'end',
+    })
+  })
+
+  it('rejects a bare whole-curve ref (no vertex key)', () => {
+    expect(parseVertexRef('$aX', new Set(['aX']))).toBeNull()
+  })
 })
 
 describe('lineVertexIndices', () => {
