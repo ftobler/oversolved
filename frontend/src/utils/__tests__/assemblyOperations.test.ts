@@ -157,6 +157,27 @@ describe('planAssemblyOperation', () => {
     expect(plan.changed).toBe(false)
     expect(plan.doc).toEqual(doc)
   })
+
+  it('reports a bake-only change on a value no-op as unchanged', () => {
+    // p1 is already fixed, so the flag-only apply is a value no-op for it. p2 is
+    // free and its stored seed (tx 0) differs from its solved transform (tx 7),
+    // so the bake DOES change the document. That incidental bake must not read
+    // as an operation change, or the undo step it earns would restore p2's stale
+    // seed that the bake just refreshed. Under the old pre-op comparison
+    // (assemblyDocEquals(pre, doc)) this reports changed=true.
+    const doc: AssemblyDoc = {
+      kind: 'assembly',
+      features: [instanceFeature('p1', 0, true), instanceFeature('p2', 0)],
+    }
+    const transforms = {
+      p1: { ...IDENTITY_TRANSFORM, tx: 5 },
+      p2: { ...IDENTITY_TRANSFORM, tx: 7 },
+    }
+    const plan = planAssemblyOperation(
+      'set_part_fixed_oneshot', { handle: 'p1', fixed: true }, { doc, transforms },
+    )!
+    expect(plan.changed).toBe(false)
+  })
 })
 
 describe('runAssemblyOperation effect dispatch', () => {
@@ -203,5 +224,19 @@ describe('runAssemblyOperation effect dispatch', () => {
     expect(host.mutateSession).not.toHaveBeenCalled()
     expect(host.requestSolve).not.toHaveBeenCalled()
     expect(host.requestSolveOrDefer).not.toHaveBeenCalled()
+  })
+
+  it('a bake-only value no-op touches no effect', () => {
+    // The free p2 makes the bake a real document diff; the flag-only apply on
+    // the already-fixed p1 is still a value no-op, so no effect may fire.
+    const host = fakeHost()
+    host.doc = { kind: 'assembly', features: [instanceFeature('p1', 0, true), instanceFeature('p2', 0)] }
+    host.transforms = {
+      p1: { ...IDENTITY_TRANSFORM, tx: 5 },
+      p2: { ...IDENTITY_TRANSFORM, tx: 7 },
+    }
+    runAssemblyOperation('set_part_fixed_oneshot', { handle: 'p1', fixed: true }, host)
+    expect(host.mutateOneShot).not.toHaveBeenCalled()
+    expect(host.mutateSession).not.toHaveBeenCalled()
   })
 })

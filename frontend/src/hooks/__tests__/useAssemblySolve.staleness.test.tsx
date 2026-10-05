@@ -45,6 +45,7 @@ import {
   setAssemblyCallbacks,
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
+import { useSolverStore } from '@/stores/solverStore'
 
 function meshPayload() {
   return {
@@ -243,7 +244,7 @@ describe('useAssemblySolve staleness', () => {
     const store = useAssemblyStore.getState()
     expect(store.transforms.p1.tx).toBe(7)
     expect(store.bodies[assemblyBodyId('p1', 0)]).toBeDefined()
-    expect(store.isSolving).toBe(false)
+    expect(useSolverStore.getState().isSolving).toBe(false)
   })
 
   it('a stale non-live failure does not surface an error under a newer live tick', async () => {
@@ -294,7 +295,7 @@ describe('useAssemblySolve staleness', () => {
     const store = useAssemblyStore.getState()
     expect(store.solveStatus?.error).toBeUndefined()
     expect(store.transforms.p2.tx).toBe(5)  // the live tick applied its result
-    expect(store.isSolving).toBe(false)
+    expect(useSolverStore.getState().isSolving).toBe(false)
 
     useAssemblyStore.getState().cancelPartManipulation()
   })
@@ -400,15 +401,15 @@ describe('useAssemblySolve staleness', () => {
     await act(async () => { release3(); await gate3 })
     await act(async () => {})
     expect(useAssemblyStore.getState().transforms.p1.tx).toBe(4)
-    expect(useAssemblyStore.getState().isSolving).toBe(false)
+    expect(useSolverStore.getState().isSolving).toBe(false)
   })
 
-  // The assembly flag's ownership guard: a stale hook instance from a previous
+  // The solver mirror's ownership guard: a stale hook instance from a previous
   // document resolves after a new editor mounted and started its own solve.
-  // Its finally must not clear the new mount's spinner, so ownership of that
-  // clear is proven by a monotonic full-solve sequence, not by instance state.
+  // Its finally must not clear the new mount's spinner, so the clear is gated
+  // on the solve version still being current.
   it("a stale mount's late full solve does not clear a new mount's running solve", async () => {
-    useAssemblyStore.setState({ isSolving: false })
+    useSolverStore.setState({ isSolving: false })
     let releaseA!: () => void
     const gateA = new Promise<void>(r => { releaseA = r })
     let releaseB!: () => void
@@ -420,7 +421,7 @@ describe('useAssemblySolve staleness', () => {
     const first = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
     await act(async () => { first.result.current.requestSolve() })
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
-    expect(useAssemblyStore.getState().isSolving).toBe(true)
+    expect(useSolverStore.getState().isSolving).toBe(true)
 
     // A dies with its solve still hung; B remounts for another document and
     // its own full solve takes the spinner over.
@@ -428,37 +429,37 @@ describe('useAssemblySolve staleness', () => {
     const second = renderHook(() => useAssemblySolve('asm-2', docWith(instance('p2'))))
     await act(async () => { second.result.current.requestSolve() })
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
-    expect(useAssemblyStore.getState().isSolving).toBe(true)
+    expect(useSolverStore.getState().isSolving).toBe(true)
 
     // A's hang resolves late: it must leave B's solving flag alone.
     await act(async () => { releaseA(); await gateA })
     await act(async () => {})
-    expect(useAssemblyStore.getState().isSolving).toBe(true)
+    expect(useSolverStore.getState().isSolving).toBe(true)
 
     // B finishing is what clears it.
     await act(async () => { releaseB(); await gateB })
     await act(async () => {})
-    expect(useAssemblyStore.getState().isSolving).toBe(false)
+    expect(useSolverStore.getState().isSolving).toBe(false)
   })
 
-  // The symmetric half: an unmount mid-hang clears the assembly flag right
+  // The symmetric half: an unmount mid-hang clears the solver mirror right
   // away instead of waiting on a finally the hung solve may never reach.
-  it('unmounting mid-full-solve clears the assembly solving flag immediately', async () => {
-    useAssemblyStore.setState({ isSolving: false })
+  it('unmounting mid-full-solve clears the solver solving flag immediately', async () => {
+    useSolverStore.setState({ isSolving: false })
     let release!: () => void
     const gate = new Promise<void>(r => { release = r })
     h.solveAssemblyViaWorker.mockImplementationOnce(async () => { await gate; return solveResponse(111) })
 
     const first = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
     await act(async () => { first.result.current.requestSolve() })
-    expect(useAssemblyStore.getState().isSolving).toBe(true)
+    expect(useSolverStore.getState().isSolving).toBe(true)
 
     first.unmount()
-    expect(useAssemblyStore.getState().isSolving).toBe(false)
+    expect(useSolverStore.getState().isSolving).toBe(false)
 
     // The hung solve resolving afterwards must not resurrect the flag either.
     await act(async () => { release(); await gate })
     await act(async () => {})
-    expect(useAssemblyStore.getState().isSolving).toBe(false)
+    expect(useSolverStore.getState().isSolving).toBe(false)
   })
 })

@@ -409,11 +409,13 @@ export function applyAddConstraint(
       c.target = pt(targets[0])
     }
   }
-  // A dimension value, label position, or sign is persisted verbatim into the
-  // doc. A non-finite one would round into the document and poison every later
-  // solve, so each is gated here exactly like applySetConstraintValue/Pos.
-  if (value !== undefined && Number.isFinite(value)) c.value = value
-  if (pos !== undefined && Number.isFinite(pos[0]) && Number.isFinite(pos[1])) c.pos = pos
+  // A dimension value, label position, or sign is persisted into the doc. A
+  // non-finite one would poison every later solve, so each is gated here exactly
+  // like applySetConstraintValue/Pos. The finiteness gate alone is not enough to
+  // match the set path: value and pos are rounded to the same precision there,
+  // or the same value would serialize differently depending on the write path.
+  if (value !== undefined && Number.isFinite(value)) c.value = Math.round(value * 1000) / 1000
+  if (pos !== undefined && Number.isFinite(pos[0]) && Number.isFinite(pos[1])) c.pos = [round(pos[0]), round(pos[1])]
   if (sign !== undefined && Number.isFinite(sign)) c.sign = sign
   feature.constraints.push(c)
 }

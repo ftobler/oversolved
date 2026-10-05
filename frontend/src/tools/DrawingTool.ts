@@ -7,7 +7,7 @@ import type { DrawSnapState } from '@/components/Geometry3D/drawLogic'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { randomId } from '@/utils/yamlMutations'
 import { toolModeHandlers } from '@/tools/toolMode'
-import { devOnly } from '@/stores/stateInvariants'
+import { devOnly, failLoud } from '@/stores/stateInvariants'
 
 export interface DrawingToolContext extends ToolContext {
   drawPoints: Point[]
@@ -49,6 +49,13 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
 
   const handlers: ToolHandlers<DrawingToolContext> = {
     onPointerDown: (_e, worldPt, context) => {
+      // Drawing requires an active sketch. A literal fallback here would mint
+      // geometry under a phantom feature id, so refuse loudly instead; prod
+      // still returns the no-op rather than corrupting the doc.
+      if (!context.activeFeatureId) {
+        failLoud(`[DrawingTool] ${config.entityKind}: no active feature to draw into`)
+        return null
+      }
       const snap: DrawSnapState = {
         hoveredVertexId: context.hoveredVertexId,
         hoveredVertexPosition: context.hoveredVertexPosition,
@@ -67,7 +74,7 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         context.drawPoints,
         [worldPt[0], worldPt[1]],
         snap,
-        context.activeFeatureId ?? 'S1',
+        context.activeFeatureId,
         () => randomId(12),
         context.sketch as Record<string, Entity> | undefined,
         context.otherSketches as Record<string, Record<string, Entity>> | undefined,

@@ -22,7 +22,6 @@ vi.mock('@/hooks/useDocumentState', () => ({
     docRef,
     docName: 'test',
     setDocName: vi.fn(),
-    ownerUsername: null,
     loading: false,
     error: null,
     setError: vi.fn(),
@@ -65,7 +64,7 @@ vi.mock('@/hooks/useUndoRedo', () => ({
 
 function makeDoc(): PartDoc {
   return {
-    oversolved: 1,
+    version: 1,
     kind: 'part',
     features: [
       {

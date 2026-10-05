@@ -12,10 +12,11 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import type { PartDoc, Mutation } from '@/types/cad'
 
-// The no-op guard's failLoud for a body-style mutation missing its bodyId must
-// throw in dev/test but only warn in prod, and one test file cannot hold both
-// behaviors of the real failLoud at once. It is mocked with a controllable
-// implementation: the dev tests make it throw, the prod tests make it warn.
+// The no-op guard's failLoud for a body-style mutation missing its bodyId
+// throws in test mode, warns in dev and is a silent no-op in prod, and one test
+// file cannot hold both behaviors of the real failLoud at once. It is mocked
+// with a controllable implementation: the dev/test cases make it throw, the
+// prod case makes it a silent no-op.
 const { failLoudMock } = vi.hoisted(() => ({ failLoudMock: vi.fn() }))
 
 vi.mock('@/stores/stateInvariants', async (importOriginal) => {
@@ -34,7 +35,6 @@ vi.mock('@/hooks/useDocumentState', () => ({
     docRef,
     docName: 'test',
     setDocName: vi.fn(),
-    ownerUsername: null,
     loading: false,
     error: null,
     setError: vi.fn(),
@@ -265,6 +265,30 @@ describe('idempotent no-op guard', () => {
     const before = JSON.stringify(docRef.current)
 
     act(() => { result.current.handleMutation({ type: 'remove_transform_body', featureId: 't1', index: 9 }) })
+
+    expect(JSON.stringify(docRef.current)).toBe(before)
+    expect(pushUndo).not.toHaveBeenCalled()
+    expect(reSolve).not.toHaveBeenCalled()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('remove_dangling_content naming a missing feature (and an empty list) is a no-op', () => {
+    // The cleanup targets come from the last solve; a stale-targets dispatch
+    // leaves the doc byte-identical. Without the idempotent guard this pushed a
+    // dead undo entry, dirtied the doc and wasted a re-solve.
+    setDoc(makeDoc())
+    const { result } = renderPartDoc()
+    const before = JSON.stringify(docRef.current)
+
+    act(() => {
+      result.current.handleMutation({
+        type: 'remove_dangling_content',
+        features: {
+          ghost: { entities: ['e1'], constraints: ['c1'] },
+          sk1: { entities: [], constraints: [] },
+        },
+      })
+    })
 
     expect(JSON.stringify(docRef.current)).toBe(before)
     expect(pushUndo).not.toHaveBeenCalled()

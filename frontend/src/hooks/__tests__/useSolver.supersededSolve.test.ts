@@ -23,7 +23,7 @@ import { SUPERSEDED_ERROR } from '@/kernel/worker/solverProtocol'
 import type { PartDoc } from '@/types/cad'
 
 function makeDoc(): PartDoc {
-  return { oversolved: 1, kind: 'part', features: [{ id: 'feat1', kind: 'sketch', entities: [] }] }
+  return { version: 1, kind: 'part', features: [{ id: 'feat1', kind: 'sketch', entities: [] }] }
 }
 
 function setupHook() {

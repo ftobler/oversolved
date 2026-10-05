@@ -158,7 +158,7 @@ describe('DragTool', () => {
       }))
     })
 
-    it('updates currentWorld and re-publishes the drag on every move after activation', () => {
+    it('leaves per-move updates to the view once a drag is live', () => {
       const setDrag = vi.fn()
       const tool = createDragTool()
       const context = createMockContext({
@@ -186,9 +186,9 @@ describe('DragTool', () => {
 
       tool.handlers.onPointerMove!({ clientX: 220, clientY: 240 } as PointerEvent, [4.2, 2.4], null, context)
 
-      // Already-dragging moves must not re-resolve the activation threshold;
-      // they carry the cursor position into the live drag.
-      expect(setDrag).toHaveBeenCalledWith(expect.objectContaining({ currentWorld: [4.2, 2.4] }))
+      // The tool's context always carries drag: null at activation; Dragging.tsx
+      // owns the live update, so the tool must not re-publish here.
+      expect(setDrag).not.toHaveBeenCalled()
     })
 
     it('ignores a move when no drag is pending', () => {

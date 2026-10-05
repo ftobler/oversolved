@@ -14,7 +14,7 @@ import type { PartDoc } from '@/types/cad'
 
 // A doc with one ported feature so reSolve routes through the local kernel.
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
-  return { oversolved: 1, kind: 'part', features: [{ id: 'feat1', kind: 'sketch', entities: [] }], ...overrides }
+  return { version: 1, kind: 'part', features: [{ id: 'feat1', kind: 'sketch', entities: [] }], ...overrides }
 }
 
 describe('useSolver solve-race guards', () => {
@@ -73,7 +73,7 @@ describe('useSolver solve-race guards', () => {
   it('solve B that completes before A does not get overwritten', async () => {
     // Regression: after the first solve completes, B completes but A was still
     // in-flight. The isStale guard must prevent A from
-    // overwriting B's result when A's WS response arrives.
+    // overwriting B's result when A's worker response arrives.
     const docRef = { current: makeDoc() }
     const setDoc = vi.fn()
 

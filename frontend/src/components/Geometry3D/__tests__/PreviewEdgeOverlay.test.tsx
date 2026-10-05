@@ -162,7 +162,7 @@ describe('PreviewEdgeOverlay', () => {
   })
 
   it('preview is immutable: emits only non-interactive lineSegments (no onClick / onPointerOver)', () => {
-    // User invariant (solver_arch.user.md §Feature Editing):
+    // User invariant (Feature Editing):
     //   "Preview is fully immutable."
     //
     // Structural check: PreviewEdgeOverlay must not attach pointer handlers to

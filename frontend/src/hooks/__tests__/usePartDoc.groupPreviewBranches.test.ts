@@ -22,7 +22,6 @@ vi.mock('@/hooks/useDocumentState', () => ({
     docName: 'test',
     setDocName: vi.fn(),
     setDoc: (d: PartDoc) => { docRef.current = d },
-    ownerUsername: null,
     loading: false,
     error: null,
     setError: vi.fn(),
@@ -72,7 +71,7 @@ describe('commitMutationGroup solve-result prune and restore', () => {
   it('prunes the deleted body feature and restores it through the group re-solve', () => {
     solver.solveResults = { ex1: { solved: {} } }
     docRef.current = {
-      oversolved: 1, kind: 'part',
+      version: 1, kind: 'part',
       features: [{ id: 'ex1', kind: 'extrude' }, { id: 'sk1', kind: 'sketch' }],
     } as unknown as PartDoc
     const { result } = renderPartDoc()
@@ -90,7 +89,7 @@ describe('commitMutationGroup solve-result prune and restore', () => {
 
   it('applies a known mutation in a group that also carries an unknown one', () => {
     docRef.current = {
-      oversolved: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude', label: 'first' }],
+      version: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
@@ -115,7 +114,7 @@ describe('commitMutationGroup solve-result prune and restore', () => {
 describe('preview mutation label over part_style diffs', () => {
   it('names bodies added and removed while the preview was open', () => {
     docRef.current = {
-      oversolved: 1, kind: 'part',
+      version: 1, kind: 'part',
       part_style: { b1: { color: '#ff0000' }, b3: { color: '#0000ff' } },
       features: [{ id: 'ex1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
@@ -137,7 +136,7 @@ describe('preview mutation label over part_style diffs', () => {
 
   it('falls back to the mutation it was handed when the label would be null', () => {
     docRef.current = {
-      oversolved: 1, kind: 'part',
+      version: 1, kind: 'part',
       features: [{ id: 'ex1', kind: 'extrude', label: 'first' }],
     } as unknown as PartDoc
     const { result } = renderPartDoc()
@@ -162,7 +161,7 @@ describe('preview mutation label over part_style diffs', () => {
 describe('group preview scope and suppression', () => {
   it('swallows a group made entirely of preview-scope mutations as one preview frame', () => {
     docRef.current = {
-      oversolved: 1, kind: 'part',
+      version: 1, kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'ex1', kind: 'extrude' }],
     } as unknown as PartDoc
@@ -185,7 +184,7 @@ describe('group preview scope and suppression', () => {
 
   it('escapes a non-preview group and keeps the color change undoable', () => {
     docRef.current = {
-      oversolved: 1, kind: 'part',
+      version: 1, kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'sk1', kind: 'sketch' }],
     } as unknown as PartDoc
@@ -211,7 +210,7 @@ describe('group preview scope and suppression', () => {
 
   it('a suppressed group whose only change is body style still leaves an undo entry', () => {
     docRef.current = {
-      oversolved: 1, kind: 'part',
+      version: 1, kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'sk1', kind: 'sketch' }],
     } as unknown as PartDoc
@@ -235,7 +234,7 @@ describe('group preview scope and suppression', () => {
 
   it('an all-preview group swallowed by a suppressed session with an open preview still earns its entry', () => {
     docRef.current = {
-      oversolved: 1, kind: 'part',
+      version: 1, kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'sk1', kind: 'sketch' }],
     } as unknown as PartDoc
@@ -275,7 +274,7 @@ describe('session and featureless-doc edges', () => {
 
   it('a suppressed session commit without an editing feature names the entry empty', () => {
     docRef.current = {
-      oversolved: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch' }],
+      version: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch' }],
     } as unknown as PartDoc
     const { result } = renderPartDoc()
 
@@ -293,7 +292,7 @@ describe('session and featureless-doc edges', () => {
   })
 
   it('a featureless doc makes an idempotent reorder/rename a no-op', () => {
-    docRef.current = { oversolved: 1, kind: 'part' } as unknown as PartDoc
+    docRef.current = { version: 1, kind: 'part' } as unknown as PartDoc
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'x', toIndex: 0 } as unknown as Mutation) })

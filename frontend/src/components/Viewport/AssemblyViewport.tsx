@@ -57,7 +57,7 @@ import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { drawnPose, isManipulable } from '@/utils/partManipulation'
 import { offsetPickBodies } from '@/utils/assemblyPick'
 import { readSelection } from '@/utils/assemblySelection'
-import { clickTarget, decideAssemblyHit, hoverTarget } from '@/utils/assemblyHitDecision'
+import { decideAssemblyHit } from '@/utils/assemblyHitDecision'
 import { HoverScheduler } from '@/picking/HoverScheduler'
 import type { Ray } from '@/utils/gizmoMath'
 import { rotateVector, transformQuat, type Vec3 } from '@/utils/transform3d'
@@ -412,9 +412,9 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         store.setHoverHits(entityHits, hoverCtrlRef.current)
       } else {
         // A gizmo handle under the cursor occludes the entity behind it exactly
-        // as it does for a click, so hoverTarget is null there and the entity is
+        // as it does for a click, so entityKey is null there and the entity is
         // not advertised as selectable.
-        store.setHoveredEntity(hoverTarget(decision))
+        store.setHoveredEntity(decision.entityKey)
       }
     },
   }), [resolveHitsAtCursor])
@@ -600,7 +600,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     if (store.activeMateField !== null || e.button !== 0 || e.ctrlKey) return
     const click = adapter.clickState
     if (click.button !== 0 || click.wasDrag) return
-    const target = clickTarget(decideAssemblyHit(resolveHitsAt(e)))
+    const target = decideAssemblyHit(resolveHitsAt(e)).entityKey
     if (target !== null) store.toggleSelection(target)
   }, [adapter, resolveHitsAt])
 

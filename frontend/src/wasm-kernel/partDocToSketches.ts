@@ -92,6 +92,12 @@ function resolveLocal(
   return null
 }
 
+/** True when `v` is a usable finite number; undefined fails so a half-authored
+ *  x/y pair is rejected. */
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
 /**
  * Lower one constraint to dict-ref form. Returns null (drop the constraint) when
  * any present ref does not resolve to a local entity -- matching the historical behavior.
@@ -109,15 +115,23 @@ function lowerConstraint(
     if (!resolved) return null
     out[key] = resolved
   }
-  if (typeof c.value === 'number') out.value = c.value
-  if (typeof c.x === 'number' && typeof c.y === 'number') {
+  // A present-but-non-numeric scalar is corrupt: passing it through (or
+  // stripping it) would lower a dimension with no residual, so the sketch
+  // silently solves underconstrained. Drop the whole constraint, the same
+  // fail-loud rule the ref path uses, rather than weakening the model.
+  if (c.value != null && !isFiniteNumber(c.value)) return null
+  if (c.value != null) out.value = c.value
+  if (c.x != null || c.y != null) {
+    if (!isFiniteNumber(c.x) || !isFiniteNumber(c.y)) return null
     out.x = c.x
     out.y = c.y
   }
-  if (typeof c.axis === 'string') out.axis = c.axis
+  if (c.axis != null && typeof c.axis !== 'string') return null
+  if (c.axis != null) out.axis = c.axis
   // Orientation selector for directional dimensions (+1/-1). Carried through so
   // the chosen side survives to the solver; absent for non-directional dims.
-  if (typeof c.sign === 'number') out.sign = c.sign
+  if (c.sign != null && !isFiniteNumber(c.sign)) return null
+  if (c.sign != null) out.sign = c.sign
   return out
 }
 

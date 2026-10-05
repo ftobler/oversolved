@@ -12,8 +12,11 @@ import type { Entity, Mutation, Sketch } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import { parseSelectionId } from '@/utils/query/selectionId'
 
-/** Base entity kinds a projected curve can lower to; anything else is a line. */
-const PROJECTABLE_CURVE_KINDS = new Set(['circle', 'arc', 'ellipse', 'spline'])
+/** Base curve entity kinds a projected body edge can lower to; anything else is
+ *  a line. A vertex projects as 'point', which is not a curve and is handled by
+ *  its own branch, so it is deliberately absent here. Shared with
+ *  projectionMutations so the two lists cannot drift. */
+export const PROJECTABLE_CURVE_KINDS: ReadonlySet<string> = new Set(['circle', 'arc', 'ellipse', 'spline'])
 
 /**
  * The entity kind to declare for a projected body edge. The edge's curve kind

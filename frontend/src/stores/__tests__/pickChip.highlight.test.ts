@@ -1,7 +1,7 @@
 /**
  * Pick-chip highlight contract.
  *
- * User invariant (solver_arch.user.md §Pick Chips):
+ * User invariant (Pick Chips):
  *   "Everything the pick chip contains must be highlighted -- same highlight
  *    mechanism as normal selection."
  *

@@ -23,7 +23,7 @@ import { useSolverStore } from '@/stores/solverStore'
 import type { PartDoc, BodyResult } from '@/types/cad'
 
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
-  return { oversolved: 1, kind: 'part', features: [], ...overrides }
+  return { version: 1, kind: 'part', features: [], ...overrides }
 }
 
 function setupHook(doc: PartDoc = makeDoc()) {
@@ -144,7 +144,7 @@ describe('reSolve drag anchor and doc shape', () => {
 
   it('treats a doc without a features array as empty without invoking the solver', async () => {
     const { result } = setupHook()
-    await act(async () => { await result.current.reSolve({ oversolved: 1, kind: 'part' } as PartDoc) })
+    await act(async () => { await result.current.reSolve({ version: 1, kind: 'part' } as PartDoc) })
     expect(mockSolveLocally).not.toHaveBeenCalled()
     expect(result.current.solveError).toBeNull()
   })
@@ -165,7 +165,7 @@ describe('reSolve drag anchor and doc shape', () => {
     const { result } = setupHook()
     usePartEditorStore.setState({ editingFeatureId: 'ghost', rollbackPosition: null, pickBoundary: 0 })
 
-    await act(async () => { await result.current.reSolve({ oversolved: 1, kind: 'part' } as PartDoc) })
+    await act(async () => { await result.current.reSolve({ version: 1, kind: 'part' } as PartDoc) })
 
     expect(mockSolveLocally).not.toHaveBeenCalled()
     expect(result.current.solveError).toBeNull()

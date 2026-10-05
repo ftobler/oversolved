@@ -14,13 +14,13 @@ import type { PartDoc, Mutation } from '@/types/cad'
 // stack actually compose. This is the flow a user walks.
 
 const makeDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
 } as unknown as PartDoc)
 
 const makeSketchDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{ id: 'sk1', kind: 'sketch' }],
 } as unknown as PartDoc)
@@ -32,7 +32,7 @@ vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
     doc: docRef.current, docRef, docName: 'test', setDocName: vi.fn(),
     setDoc: (d: PartDoc) => { docRef.current = d },
-    ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+    loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
   }),
   BUILTIN_FEATURE_DEFAULTS: {},
@@ -165,7 +165,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a committed preview is one undo step back to the pre-preview doc', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [],
@@ -191,7 +191,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a cancelled preview leaves no undo step and re-enables pushing', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [],
@@ -210,7 +210,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('cancelPreview returns the exact pre-preview doc the caller restores from', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [],
@@ -296,7 +296,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a mutation after undoing mid-preview is still one undo step', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -320,7 +320,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a redo after undoing mid-preview returns to the doc the preview had mutated', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -514,7 +514,7 @@ describe('usePartDoc undo/redo integration', () => {
     // the feature on its own index maps to the clamped built-in boundary, which
     // the reorder handler treats as a no-op.
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       features: [
         { id: 'Origin', kind: 'origin' },
@@ -537,7 +537,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a same-color mutation pushes nothing and neither dirties nor re-solves', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [],
@@ -555,7 +555,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('applying a preview that changed nothing leaves no undo step', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [],
@@ -571,7 +571,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a no-change color Apply pushes nothing and does not set dirty', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [],
@@ -590,7 +590,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a preview that changed multiple material fields commits with a composite label', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [],
@@ -615,7 +615,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a sketch edit mid-preview escapes: color folds into preview_commit, the edit keeps its own entry, and cancel does not rewind', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'sk1', kind: 'sketch' }],
@@ -645,7 +645,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a pure preview swallows slider moves, Apply pushes one preview_commit, and Cancel rewinds', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000', transparency: 0 } },
       features: [],
@@ -677,7 +677,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a preview inside a suppressed feature session keeps suppression on and commits beside the aggregate', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -715,7 +715,7 @@ describe('usePartDoc undo/redo integration', () => {
   // doc from the undo stack (undo-preview-session-exit.md repro).
   it('a preview left open when the session commits is resolved at the boundary, not orphaned', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000', transparency: 0 } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -770,14 +770,14 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   it('a preview left open when the session commits collapses to the single preview_commit when nothing else in the session changed', () => {
-    // Closes the previously-documented gap at the "part_style-only" test
-    // below (undoIntegration.test.ts:790-808 pre-fix): that test never opens
+    // Closes the previously-documented gap in the "part_style-only" test
+    // below: that test never opens
     // a preview, so a bare set_part_color mutation is swallowed with no
     // resolver at all. Here a preview WAS opened, so the session boundary
     // must resolve it into exactly one preview_commit, not an empty
     // edit_session (part_style is excluded from the aggregate's own diff).
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -804,7 +804,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a preview opened but never touched leaves nothing behind when the session commits', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -830,7 +830,7 @@ describe('usePartDoc undo/redo integration', () => {
     // Confirms it is discarded together with the whole session, no dead entry
     // left behind either way.
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -861,7 +861,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a nested startPreviewMode fails loud and leaves the first preview baseline intact', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [],
@@ -885,7 +885,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('a solve-fabricated part_style entry does not manufacture a phantom preview_commit', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [],
@@ -903,7 +903,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('an end-snapped line mid-preview escapes: color folds into preview_commit and the group keeps its own entry', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'sk1', kind: 'sketch' }],
@@ -973,7 +973,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('deleting N selected features is one undo step', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       features: [
         { id: 'f1', kind: 'sketch' },
@@ -1005,7 +1005,7 @@ describe('usePartDoc undo/redo integration', () => {
     // by the session is a real edit that must stay undoable -- otherwise the
     // change lands in the doc (and dirties it) yet can never be reverted.
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -1032,7 +1032,7 @@ describe('usePartDoc undo/redo integration', () => {
     // the user touched, so undo must revert the color first and the edits
     // second -- never resurrect the swallowed edits on the second undo.
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
       features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -1066,7 +1066,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('no-op visibility and suppression toggles push nothing and neither dirty nor re-solve', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       features: [{ id: 'f1', kind: 'sketch' }],
     } as unknown as PartDoc
@@ -1089,7 +1089,7 @@ describe('usePartDoc undo/redo integration', () => {
 
   it('add_fillet_edge is a toggle, so re-adding a listed edge is a real change', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       features: [{ id: 'f1', kind: 'fillet', fillet: { edges: ['?edge1'] } }],
     } as unknown as PartDoc

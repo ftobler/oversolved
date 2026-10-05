@@ -340,6 +340,31 @@ describe('partDocToSketches', () => {
     expect(sketches[0].sketch.constraints.map((c) => c.id)).toEqual(['keep'])
   })
 
+  it('drops a whole constraint whose present scalar is non-numeric', () => {
+    // A present-but-bad scalar must not be stripped and the constraint kept: the
+    // Rust side reads a dimension with no value as no residual, so the sketch
+    // would silently solve underconstrained. A half-authored x/y pair is the
+    // same corruption. All of these drop, mirroring the unresolvable-ref path.
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0] },
+        constraints: [
+          { id: 'keep', kind: 'horizontal', target: '$l1' },
+          { id: 'drop_value', kind: 'length', target: '$l1', value: 'ten' } as unknown as PartConstraint,
+          { id: 'drop_xy', kind: 'fixed', target: '$l1', x: 1 } as unknown as PartConstraint,
+          { id: 'drop_axis', kind: 'fixed', target: '$l1', axis: 4 } as unknown as PartConstraint,
+          { id: 'drop_sign', kind: 'distance', target: '$l1', sign: 'plus' } as unknown as PartConstraint,
+        ],
+      },
+    ]
+    const { sketches, skipped } = partDocToSketches(features)
+    expect(skipped).toHaveLength(0)
+    expect(sketches[0].sketch.constraints.map((c) => c.id)).toEqual(['keep'])
+  })
+
   it.each([...VERTEX_POINT_KEYS])('passes dict-ref point %s through unchanged', (pt) => {
     const features: PartFeature[] = [
       {

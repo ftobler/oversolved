@@ -8,7 +8,7 @@ import type { Mutation } from '@/types/cad'
 import { parseQuery, emitWire, absolute } from '@/utils/query'
 import { isWholeBodySelectionId } from '@/utils/query/selectionId'
 import { isFaceRestriction, isEdgeRestriction } from '@/kernel/occ/primitives'
-import { projectedKindForEdge } from '@/tools/dimensionProjection'
+import { projectedKindForEdge, PROJECTABLE_CURVE_KINDS } from '@/tools/dimensionProjection'
 
 /** Everything the pure lowering needs from the outside world, injected so the
  *  click path can answer from hover state and the selection path from the
@@ -22,10 +22,10 @@ export interface ProjectionResolvers {
   faceEdges: (query: string) => { source: string; kind: string }[] | null
 }
 
-// The base entity kinds a projected curve can take. Anything else (an unknown
-// or unresolved source) degrades to a line, which every downstream consumer
-// can render.
-const PROJECTABLE_KINDS = ['arc', 'circle', 'ellipse', 'spline', 'point']
+// The shared curve kinds plus 'point': a foreign sketch vertex projects as a
+// point, which is not a curve and reaches here through its own branch. Anything
+// else (an unknown or unresolved source) degrades to a line.
+const PROJECTABLE_KINDS: readonly string[] = [...PROJECTABLE_CURVE_KINDS, 'point']
 
 /**
  * Mutations that project one pickable id onto `featureId`'s sketch plane.

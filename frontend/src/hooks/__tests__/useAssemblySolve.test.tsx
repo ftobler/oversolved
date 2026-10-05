@@ -33,6 +33,7 @@ import {
   setAssemblyCallbacks,
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
+import { useSolverStore } from '@/stores/solverStore'
 import { assemblyBodyId } from '@/utils/assemblyBodies'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { DRAG_MATE_ID, DRAG_WEIGHT } from '@/kernel/assemblyDrag'
@@ -401,7 +402,7 @@ describe('useAssemblySolve', () => {
     await act(async () => { result.current.requestSolve() })
 
     expect(useAssemblyStore.getState().solveStatus?.error).toMatch(/unavailable/)
-    expect(useAssemblyStore.getState().isSolving).toBe(false)
+    expect(useSolverStore.getState().isSolving).toBe(false)
   })
 
   it('stores an overconstrained verdict from the payload so the banner predicate is true', async () => {

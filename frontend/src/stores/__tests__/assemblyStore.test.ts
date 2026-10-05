@@ -16,7 +16,6 @@ describe('assemblyStore', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
     useAssemblyStore.getState().selectPart(null)
-    useAssemblyStore.getState().setIsSolving(false)
     useAssemblyStore.setState({ solveStatus: null })
     // Everything from the two calls above down is store-owned, so setSnapshot
     // does not reset it; clear explicitly to keep the tests isolated.
@@ -32,7 +31,6 @@ describe('assemblyStore', () => {
     expect(state.mates).toEqual([])
     expect(state.transforms).toEqual({})
     expect(state.subject).toBeNull()
-    expect(state.isSolving).toBe(false)
     expect(state.solveStatus).toBeNull()
   })
 
@@ -47,7 +45,6 @@ describe('assemblyStore', () => {
   it('setSnapshot replaces mirrored fields but preserves owned fields', () => {
     const { getState } = useAssemblyStore
     getState().selectPart('part-1')
-    getState().setIsSolving(true)
     useAssemblyStore.setState({ solveStatus: FAILED_STATUS })
     getState().setSnapshot({
       ...DEFAULT_ASSEMBLY_EDITOR_DATA,
@@ -56,29 +53,25 @@ describe('assemblyStore', () => {
     })
     // subject is a store-owned field, preserved from setter.
     expect(getState().subject).toEqual({ kind: 'part', handle: 'part-1' })
-    // The snapshot's own false/null for these must not win over the setters.
-    expect(getState().isSolving).toBe(true)
+    // The snapshot's own null must not win over the setter.
     expect(getState().solveStatus).toBe(FAILED_STATUS)
     expect(getState().doc).toEqual({ kind: 'assembly', features: [] })
   })
 
   // resetTransientAssemblyState is what both unmount (AssemblyEditor) and a
-  // document load (useAssemblyDoc) run, so it is where a stale isSolving or
-  // solveStatus now actually gets cleared once setSnapshot no longer touches
-  // them. History is deliberately out of its sweep; clearAssemblyHistory owns
-  // the stacks.
-  it('resetTransientAssemblyState clears the solve flags but leaves the stacks alone', () => {
+  // document load (useAssemblyDoc) run, so it is where a stale solveStatus now
+  // actually gets cleared once setSnapshot no longer touches it. History is
+  // deliberately out of its sweep; clearAssemblyHistory owns the stacks.
+  it('resetTransientAssemblyState clears the solve status but leaves the stacks alone', () => {
     const { getState } = useAssemblyStore
     const entry = { label: 'Add part' as const, doc: { kind: 'assembly' as const, features: [] } }
     const undoStack = [entry]
     const redoStack = [entry]
     useAssemblyStore.setState({ undoStack, redoStack })
-    getState().setIsSolving(true)
     useAssemblyStore.setState({ solveStatus: FAILED_STATUS })
 
     getState().resetTransientAssemblyState()
 
-    expect(getState().isSolving).toBe(false)
     expect(getState().solveStatus).toBeNull()
     // Reference identity: the reset did not rebuild the arrays either.
     expect(getState().undoStack).toBe(undoStack)

@@ -22,7 +22,7 @@ import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
 
 const makeDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
   part_style: { 'body-1': { name: 'Test Body', color: '#ff0000' } },
@@ -50,7 +50,7 @@ vi.mock('@/hooks/useDocumentState', async () => {
       }, [])
       return {
         doc, setDoc, docRef, docName: 'test', setDocName: vi.fn(),
-        ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+        loading: false, error: null, setError: vi.fn(),
         saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
       }
     },

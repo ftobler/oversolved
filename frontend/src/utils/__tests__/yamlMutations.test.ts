@@ -3,6 +3,7 @@ import type { PartDoc, PartConstraint } from '@/types/cad'
 import { applyMoveVertex, applyAddConstraint, applyDeleteElements, applySetConstraintPos, applyAddPlane, applySetPlaneDefinitionField, applyAddEntityWithConstraint, applyAddImportStep, applyDeleteFeature, dropDeadAxisConstraints } from '@/utils/yamlMutations'
 import {
   applyRemoveExtrudeProfile, applyRemoveFilletEdge, applyRemoveDeleteBodyRef, applyRemoveTransformBody,
+  parseTarget, applySetFeatureVisibility, applyReorderFeatures,
 } from '@/utils/yamlMutations'
 
 const makeSampleDoc = (): PartDoc => ({
@@ -586,17 +587,14 @@ describe('applyDeleteElements', () => {
   })
 })
 
-// ─── Step 6: face: selection ID handling ───
-
-import { parseTarget, applySetFeatureVisibility, applyReorderFeatures } from '@/utils/yamlMutations'
-
+// ─── face: selection ID handling ───
 
 const docWithSketch = (id: string): PartDoc => ({
   version: 1, kind: 'part',
   features: [{ id, kind: 'sketch', entities: [{ id: 'lineA', kind: 'line' }], initial: { lineA: [0,0,10,0] }, constraints: [] }],
 })
 
-// 6c: parseTarget for @featureId feature-plane references
+// parseTarget for @featureId feature-plane references
 // A bare @<featureId> (no element suffix) is a feature-plane reference.
 // parseTarget must pass it through unchanged so the solver can resolve
 // it to the feature's defining plane.
@@ -622,7 +620,7 @@ describe('parseTarget for feature-plane references', () => {
   })
 })
 
-// 6a: parseTarget for face: IDs
+// parseTarget for face: IDs
 describe('parseTarget for face IDs', () => {
   it('returns raw query for face from different feature', () => {
     expect(parseTarget('face:sketch0:?3;@sketch0abc', 'sketch1')).toBe('?3;@sketch0abc')
@@ -637,7 +635,7 @@ describe('parseTarget for face IDs', () => {
   })
 })
 
-// 6d: parseTarget for edge: IDs. Before the unified wrapper stripper an edge:
+// parseTarget for edge: IDs. Before the unified wrapper stripper an edge:
 // selection became the dead ref `$edge:sketch0:?...`; it must now yield its
 // inner query like a face: ID does.
 describe('parseTarget for edge IDs', () => {
@@ -654,7 +652,7 @@ describe('parseTarget for edge IDs', () => {
   })
 })
 
-// 6b: applyAddConstraint stores face query verbatim
+// applyAddConstraint stores face query verbatim
 describe('applyAddConstraint with face target', () => {
   it('stores face ancestry query verbatim as constraint field', () => {
     const doc = docWithSketch('sketch1')
@@ -883,7 +881,7 @@ describe('applyAddEntityWithConstraint', () => {
     expect(newConstraint.b).toBe('$line1')
   })
 
-  it('is no-op when neither snapVertexId nor snapEntityRef provided', () => {
+  it('creates the entity but authors no constraint when neither snap target is provided', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{
       id: 'Sketch1', kind: 'sketch',
       entities: [],

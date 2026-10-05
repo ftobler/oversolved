@@ -1,8 +1,8 @@
-// Parity coverage for the werkzeug `secure_filename` port. The backup zip the
-// static build exports must round-trip through the server's import endpoint, so
-// these cases mirror werkzeug.utils.secure_filename's documented behaviour.
-// If this ever diverges from the Python side, backup import/export silently
-// writes mismatched entry paths.
+// Parity coverage for the werkzeug `secure_filename` port. Bundle import and
+// export run in the browser (bundle.ts importBundle/exportBundle), and these
+// cases mirror werkzeug.utils.secure_filename's documented behaviour, the
+// reference implementation this port follows. If this ever diverges from
+// werkzeug, bundle import/export silently writes mismatched entry paths.
 
 import { describe, it, expect } from 'vitest'
 import { secureFilename, uniqueStem } from './secureFilename'
@@ -23,11 +23,11 @@ describe('secureFilename', () => {
   })
 
   it('treats backslash as a separator (diverges from werkzeug on Linux)', () => {
-    // NOTE: this is a known divergence from the server. werkzeug only treats
-    // os.sep / os.altsep as separators, so on a Linux server os.altsep is None
+    // NOTE: this is a known divergence from werkzeug. werkzeug only treats
+    // os.sep / os.altsep as separators, so on a POSIX host os.altsep is None
     // and a backslash is stripped, not split: 'bar\\baz' -> 'barbaz', giving
     // 'foo_barbaz.yaml'. This port replaces '\\' too, yielding 'foo_bar_baz'.
-    // Pinned here so the difference is visible if backup parity ever matters
+    // Pinned here so the difference is visible if werkzeug parity ever matters
     // for names containing backslashes.
     expect(secureFilename('foo/bar\\baz.yaml')).toBe('foo_bar_baz.yaml')
   })

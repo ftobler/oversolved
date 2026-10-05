@@ -83,10 +83,9 @@ describe('assembly solve hang recovery', () => {
 
     await act(async () => { result.current.requestSolve() })
 
-    // The worker never replies: both solving flags stay up (LoadingOverlay reads
-    // the solver store) and no solve status has been raised.
+    // The worker never replies: the solver mirror stays up (LoadingOverlay reads
+    // it) and no solve status has been raised.
     expect(useSolverStore.getState().isSolving).toBe(true)
-    expect(useAssemblyStore.getState().isSolving).toBe(true)
     expect(useAssemblyStore.getState().solveStatus).toBeNull()
 
     // The user cancels through the shared overlay slot.
@@ -96,14 +95,13 @@ describe('assembly solve hang recovery', () => {
 
     expect(h.cancelAssemblySolver).toHaveBeenCalledTimes(1)
     expect(useSolverStore.getState().isSolving).toBe(false)
-    expect(useAssemblyStore.getState().isSolving).toBe(false)
     // A cancel is benign: no solve error banner.
     expect(useAssemblyStore.getState().solveStatus).toBeNull()
 
     // The coalescer is not permanently wedged: a later request runs a real solve.
     await act(async () => { result.current.requestSolve() })
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
-    expect(useAssemblyStore.getState().isSolving).toBe(false)
+    expect(useSolverStore.getState().isSolving).toBe(false)
   })
 
   it('a superseded solve does not clear the mirror under the newer solve still in flight', async () => {

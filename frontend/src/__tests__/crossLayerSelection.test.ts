@@ -1,12 +1,10 @@
 /**
  * Cross-layer selection invariant tests.
  *
- * Feature: cross-layer-selection-invariants.md
- *
  * These tests pin the invariants that gate revisiting dynamic-drag-selection.
  * They exercise the store layer only, no DOM, React, or Three.js required.
  *
- * Invariants (from solver_arch.agent.md):
+ * Invariants:
  *   1. normalSelection is the single source of truth for highlight rendering.
  *   2. Selection survives mode changes (sketch entity stays selected when
  *      switching sketches).

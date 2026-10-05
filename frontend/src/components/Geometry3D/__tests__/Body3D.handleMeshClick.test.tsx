@@ -1,7 +1,7 @@
 /**
  * Regression tests for Body3D.handleMeshClick (the post-fix contract).
  *
- * User invariant (solver_arch.user.md §Selection):
+ * User invariant (Selection):
  *   "Click a face -> store the face query. Not the part. The part is implied
  *    ancestrally."
  *

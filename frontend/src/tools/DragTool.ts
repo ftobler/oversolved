@@ -75,11 +75,9 @@ export function createDragTool(): DragTool {
           startClient: context.startClient,
         })
       }
-
-      if (context.drag) {
-        context.drag.currentWorld = worldPt
-        context.setDrag({ ...context.drag })
-      }
+      // No live-drag update here: the caller passes drag: null while activating,
+      // and once a drag is live the view owns per-move updates itself. A branch
+      // updating context.drag would be unreachable in production.
     },
 
     onPointerUp: (_e, _worldPt, _drag, context) => {
