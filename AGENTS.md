@@ -32,9 +32,10 @@ log lets you re-grep the result afterwards without re-running the gate.
 ## Frontend Commands
 from the justfile: `just frontend`
 
-`just frontend` chains four recipes: `icons` (regenerate the SVGs from
+`just frontend` chains five recipes: `icons` (regenerate the SVGs from
 `oversolved/icons.py`), `frontend-lint` (`npm run lint` plus `lint.py src
-scripts`), `frontend-test` (`npx vitest run`), and `build` (`npm run build`).
+scripts`), `frontend-test` (`npx vitest run`), `licenses` (check the
+third-party notice bundles), and `build` (`npm run build`).
 Run from the project root; the aggregate tees to `tmp/just_frontend.log` and
 each gate to its own `tmp/` log.
 
@@ -42,6 +43,7 @@ each gate to its own `tmp/` log.
 just icons          # regenerate frontend/src/assets/icons from oversolved/icons.py
 just frontend-lint  # npm run lint + .venv/bin/python lint.py src scripts
 just frontend-test  # npx vitest run
+just licenses       # verify the third-party notice bundles are current
 just build          # npm run build
 ```
 
@@ -52,7 +54,7 @@ just build          # npm run build
 - Gates tee a full copy of their output to `tmp/<gate>.log` while also printing to stdout.
 - For each feature try to make a test.
 - All CAD computation (solver + OpenCascade) runs in WASM inside Web Workers in the browser. Documents are stored in IndexedDB, the only permanent store; a folder or zip is only an import source or export destination. Nothing is sent to a server; there is no server.
-- mypy and flake8 runs on both `oversolved/` and `tests/`
+- mypy and ruff run on both `oversolved/` and `tests/`; CI additionally runs flake8 as the safety net
 - code style: do not use em or en-dashes.
 - Agents must not commit to git unless prompted directly by the user.
 - Use two spaces before inline comments. Example: `be_nice = True  # sometimes`

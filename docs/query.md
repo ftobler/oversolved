@@ -106,8 +106,8 @@ element's query.
   share ancestry -- a disk and the ring around it are each identified by their
   own bounding circle (`{@sk/inner}` vs `{@sk/outer}`; the hole circle is in the
   ring's boundary but not its ancestry), so they already resolve by distinct
-  lineage with no tie to break. The `classify_surface_by_circle_side` primitive
-  stays unwired.
+  lineage with no tie to break. A circle-side classifier was investigated and
+  never implemented.
 
 ## Feature-Plane References (`@<FEAT>`)
 

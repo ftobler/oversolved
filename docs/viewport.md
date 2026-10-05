@@ -21,7 +21,7 @@ The frontend 3D viewport is an R3F (React Three Fiber) scene inside a single `Ca
 <ContextMenuDialog />                        (right-click context menu)
 ```
 
-### Root: `Viewport.tsx`
+### Root: `Viewport/index.tsx`
 
 Top-level `forwardRef` component exposing `ViewportHandle`: `captureScreenshot`, `captureScreenshotForSaving`, `autoZoomToFit`, `alignCameraToPlane`, `alignCameraToFace`.
 
@@ -91,7 +91,7 @@ Not every interaction is a registered tool:
 
 A wall separates testable logic from the untestable R3F zone. Only plain TypeScript primitives cross it (`string`, `number`, `boolean`, plain objects, tuples). No `THREE.*`, no refs, no R3F hooks.
 
-**Pure logic files** (header: "PURE LOGIC"): `coordTransform.ts`, `pointerAbstraction.ts`, `snapDetection.ts`, `nearestPoint.ts`, `dragLogic.ts`, `drawLogic.ts`, `bodySnapProjection.ts`, `useDragInitiation.ts`, all registries, `sketchEditorStore.ts`.
+**Pure logic files** (header: "PURE LOGIC"): `coordTransform.ts`, `pointerAbstraction.ts`, `snapDetection.ts`, `nearestPoint.ts`, `dragLogic.ts`, `drawLogic.ts`, `bodySnapProjection.ts`, all registries, `sketchEditorStore.ts`.
 
 **Viewport adapters** (~10 lines, no branching): `coordTransformAdapters.ts`, `pointerAbstractionAdapters.ts`.
 

@@ -1,10 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(just backend *)",
-      "Bash(mypy oversolved/ tests/ *)",
-      "Bash(flake8 oversolved/ tests/ *)",
-      "Bash(pytest tests/ *)"
+      "Bash(just python *)",
+      "Bash(just frontend *)",
+      "Bash(.venv/bin/python -m mypy *)",
+      "Bash(.venv/bin/python -m ruff *)",
+      "Bash(.venv/bin/python -m pytest *)"
     ]
   }
 }
