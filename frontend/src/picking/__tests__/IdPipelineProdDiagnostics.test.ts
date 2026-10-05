@@ -8,7 +8,10 @@ import * as THREE from 'three'
 
 const devGate = vi.hoisted(() => ({ value: false }))
 
-vi.mock('@/kernel/isDevBuild', () => ({ isDevBuild: () => devGate.value }))
+vi.mock('@/kernel/isDevBuild', () => ({
+  isDevBuild: () => devGate.value,
+  isDevOrTestBuild: () => devGate.value,
+}))
 
 import { IdPipeline } from '../IdPipeline'
 

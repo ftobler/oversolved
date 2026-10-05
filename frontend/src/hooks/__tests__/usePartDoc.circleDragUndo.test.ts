@@ -93,10 +93,10 @@ function edgeDrag(currentWorld: [number, number]): VertexOrEdgeDrag {
 
 /** Reproduce the DragTool path: only a non-null computeDragMutation result is
  *  forwarded to the store. Returns the mutation that was (or was not) committed. */
-function commitDrag(drag: VertexOrEdgeDrag, lastDragSolve: Parameters<typeof computeDragMutation>[4]) {
+function commitDrag(drag: VertexOrEdgeDrag, lastDragSolve: Parameters<typeof computeDragMutation>[3]) {
   docRef.current = makeDoc()
   const { result } = renderHookStrict(() => usePartDoc('doc1', { solveOnLoad: false }))
-  const m = computeDragMutation([200, 200], drag, null, null, lastDragSolve)
+  const m = computeDragMutation([200, 200], drag, null, lastDragSolve)
   if (m) act(() => { result.current.handleMutation(m as Mutation) })
   return { m, result }
 }

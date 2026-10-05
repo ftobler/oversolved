@@ -113,19 +113,19 @@ describe('computeDragMove', () => {
 describe('computeDragMutation', () => {
   it('returns null for a pure click (no movement)', () => {
     const drag = makeDrag({ startClient: [100, 100] })
-    const result = computeDragMutation([100, 100], drag, null, null)
+    const result = computeDragMutation([100, 100], drag, null)
     expect(result).toBeNull()
   })
 
   it('returns null for movement below click threshold', () => {
     const drag = makeDrag({ startClient: [100, 100] })
-    const result = computeDragMutation([100 + CLICK_THRESHOLD_PX - 1, 100], drag, null, null)
+    const result = computeDragMutation([100 + CLICK_THRESHOLD_PX - 1, 100], drag, null)
     expect(result).toBeNull()
   })
 
   it('returns move_vertex with raw coordinates when no snap', () => {
     const drag = makeDrag({ startClient: [100, 100], currentWorld: [5, 5] })
-    const result = computeDragMutation([200, 200], drag, null, null)
+    const result = computeDragMutation([200, 200], drag, null)
     expect(result?.type).toBe('move_vertex')
     if (result?.type === 'move_vertex') {
       expect(result.to).toEqual([5, 5])
@@ -141,7 +141,7 @@ describe('computeDragMutation', () => {
       constraintKind: 'coincident',
       vertexId: 'vertex:S1:L2:start',
     }
-    const result = computeDragMutation([200, 200], drag, snapTarget, null)
+    const result = computeDragMutation([200, 200], drag, snapTarget)
     expect(result?.type).toBe('move_vertex_with_constraint')
     if (result?.type === 'move_vertex_with_constraint') {
       expect(result.snapVertexId).toBe('vertex:S1:L2:start')
@@ -157,27 +157,10 @@ describe('computeDragMutation', () => {
       constraintKind: 'coincident',
       entityRef: 'entity:S1:L1',
     }
-    const result = computeDragMutation([200, 200], drag, snapTarget, null)
+    const result = computeDragMutation([200, 200], drag, snapTarget)
     expect(result?.type).toBe('move_vertex_with_constraint')
     if (result?.type === 'move_vertex_with_constraint') {
       expect(result.snapEntityRef).toBe('entity:S1:L1')
-    }
-  })
-
-  it('ignores the alignmentSnap argument: the snapped position is already in currentWorld', () => {
-    const drag = makeDrag({ startClient: [100, 100], currentWorld: [5, 0.1] })
-    // computeDragMove bakes the alignment-snapped position into currentWorld, so
-    // computeDragMutation reads currentWorld and never this argument. A point
-    // deliberately different from currentWorld pins that it stays ignored.
-    const alignmentSnap = {
-      point: [99, 99] as [number, number],
-      kind: 'kinda_horizontal',
-      vertexId: 'vertex:S1:L1:end',
-    }
-    const result = computeDragMutation([200, 200], drag, null, alignmentSnap)
-    expect(result?.type).toBe('move_vertex')
-    if (result?.type === 'move_vertex') {
-      expect(result.to).toEqual([5, 0.1])
     }
   })
 
@@ -188,7 +171,7 @@ describe('computeDragMutation', () => {
       startWorld: [0, 0],
       currentWorld: [3, 4],
     })
-    const result = computeDragMutation([200, 200], drag, null, null)
+    const result = computeDragMutation([200, 200], drag, null)
     expect(result?.type).toBe('move_entity')
     if (result?.type === 'move_entity') {
       expect(result.delta).toEqual([3, 4])
@@ -200,7 +183,7 @@ describe('computeDragMutation', () => {
   it('attaches solvedGeometry when the last drag solve belongs to this feature', () => {
     const drag = makeDrag({ startClient: [100, 100], currentWorld: [5, 5] })
     const geometry = { L1: [0, 0, 5, 5], L2: [5, 5, 5, 10] }
-    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, geometry })
+    const result = computeDragMutation([200, 200], drag, null, { featureId: FEATURE, geometry })
     expect(result?.type).toBe('move_vertex')
     if (result?.type === 'move_vertex') {
       expect(result.solvedGeometry).toEqual(geometry)
@@ -216,7 +199,7 @@ describe('computeDragMutation', () => {
       vertexId: 'vertex:S1:L2:start',
     }
     const geometry = { L1: [0, 0, 10, 0] }
-    const result = computeDragMutation([200, 200], drag, snapTarget, null, { featureId: FEATURE, geometry })
+    const result = computeDragMutation([200, 200], drag, snapTarget, { featureId: FEATURE, geometry })
     expect(result?.type).toBe('move_vertex_with_constraint')
     if (result?.type === 'move_vertex_with_constraint') {
       expect(result.solvedGeometry).toEqual(geometry)
@@ -225,7 +208,7 @@ describe('computeDragMutation', () => {
 
   it('ignores a last drag solve from a different feature (stale registry)', () => {
     const drag = makeDrag({ startClient: [100, 100], currentWorld: [5, 5] })
-    const result = computeDragMutation([200, 200], drag, null, null, { featureId: 'otherFeature', geometry: { X: [1] } })
+    const result = computeDragMutation([200, 200], drag, null, { featureId: 'otherFeature', geometry: { X: [1] } })
     expect(result?.type).toBe('move_vertex')
     if (result?.type === 'move_vertex') {
       expect(result.solvedGeometry).toBeUndefined()
@@ -240,7 +223,7 @@ describe('computeDragMutation', () => {
       currentWorld: [3, 4],
     })
     const geometry = { L1: [3, 4, 13, 4], L2: [10, 0, 10, 10] }
-    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, geometry })
+    const result = computeDragMutation([200, 200], drag, null, { featureId: FEATURE, geometry })
     expect(result?.type).toBe('move_entity')
     if (result?.type === 'move_entity') {
       expect(result.solvedGeometry).toEqual(geometry)
@@ -254,7 +237,7 @@ describe('computeDragMutation', () => {
       startWorld: [0, 0],
       currentWorld: [3, 4],
     })
-    const result = computeDragMutation([200, 200], drag, null, null, null)
+    const result = computeDragMutation([200, 200], drag, null, null)
     expect(result?.type).toBe('move_entity')
     if (result?.type === 'move_entity') {
       expect(result.solvedGeometry).toBeUndefined()
@@ -269,7 +252,7 @@ describe('computeDragMutation', () => {
       currentWorld: [3, 4],
     })
     const geometry = { L1: [0, 0, 7.5, 0] }
-    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, geometry, mode: 'radius' })
+    const result = computeDragMutation([200, 200], drag, null, { featureId: FEATURE, geometry, mode: 'radius' })
     expect(result?.type).toBe('resize_circle')
     if (result?.type === 'resize_circle') {
       expect(result.entityId).toBe('L1')
@@ -287,7 +270,7 @@ describe('computeDragMutation', () => {
     })
     // Radius mode reads the solved radius off the drag frame; with no geometry
     // published for this feature there is nothing to resize to, so emit nothing.
-    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, mode: 'radius' })
+    const result = computeDragMutation([200, 200], drag, null, { featureId: FEATURE, mode: 'radius' })
     expect(result).toBeNull()
   })
 
@@ -298,7 +281,7 @@ describe('computeDragMutation', () => {
       startWorld: [0, 0],
       currentWorld: [3, 4],
     })
-    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, mode: 'locked' })
+    const result = computeDragMutation([200, 200], drag, null, { featureId: FEATURE, mode: 'locked' })
     expect(result).toBeNull()
   })
 
@@ -310,7 +293,7 @@ describe('computeDragMutation', () => {
       currentWorld: [3, 4],
     })
     // No mode field at all: lines/arcs/ellipses and the non-engaged solver path.
-    const result = computeDragMutation([200, 200], drag, null, null, { featureId: FEATURE, geometry: { L1: [3, 4, 13, 4] } })
+    const result = computeDragMutation([200, 200], drag, null, { featureId: FEATURE, geometry: { L1: [3, 4, 13, 4] } })
     expect(result?.type).toBe('move_entity')
     if (result?.type === 'move_entity') {
       expect(result.delta).toEqual([3, 4])
@@ -326,7 +309,7 @@ describe('computeDragMutation', () => {
     })
     // The registry still carries a mode, but for a different feature: must fall
     // back to move_entity, not resize_circle/locked.
-    const result = computeDragMutation([200, 200], drag, null, null, { featureId: 'otherFeature', geometry: { C1: [0, 0, 7.5] }, mode: 'radius' })
+    const result = computeDragMutation([200, 200], drag, null, { featureId: 'otherFeature', geometry: { C1: [0, 0, 7.5] }, mode: 'radius' })
     expect(result?.type).toBe('move_entity')
     if (result?.type === 'move_entity') {
       expect(result.delta).toEqual([3, 4])

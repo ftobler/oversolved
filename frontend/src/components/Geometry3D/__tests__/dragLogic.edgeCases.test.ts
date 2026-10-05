@@ -29,7 +29,7 @@ describe('computeDragMutation body-snap targets are position-only', () => {
       constraintKind: 'coincident',
       vertexId: `vertex:${BODY_SNAP_FEAT_PREFIX}xyz:v0`,
     }
-    const result = computeDragMutation([200, 200], drag, snapTarget, null)
+    const result = computeDragMutation([200, 200], drag, snapTarget)
     expect(result?.type).toBe('move_vertex')
     if (result?.type === 'move_vertex') {
       expect(result.to).toEqual([5, 5])
@@ -46,7 +46,7 @@ describe('computeDragMutation body-snap targets are position-only', () => {
       constraintKind: 'coincident',
       entityRef: `entity:${BODY_SNAP_FEAT_PREFIX}xyz:e1`,
     }
-    const result = computeDragMutation([200, 200], drag, snapTarget, null)
+    const result = computeDragMutation([200, 200], drag, snapTarget)
     expect(result?.type).toBe('move_vertex')
     if (result?.type === 'move_vertex') {
       expect(result.to).toEqual([3, 0])
@@ -61,7 +61,7 @@ describe('computeDragMutation body-snap targets are position-only', () => {
       constraintKind: 'coincident',
       vertexId: 'vertex:S1:L2:start',
     }
-    const result = computeDragMutation([200, 200], drag, snapTarget, null)
+    const result = computeDragMutation([200, 200], drag, snapTarget)
     expect(result?.type).toBe('move_vertex_with_constraint')
   })
 })
