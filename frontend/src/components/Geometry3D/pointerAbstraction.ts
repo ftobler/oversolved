@@ -1,9 +1,12 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
-import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
-
-export { CLICK_THRESHOLD_PX }
+//
+// The click-vs-drag primitives now live in the utils leaf so the kernel and
+// the headless gesture tracker never import across the UI boundary; they are
+// re-exported here so the component callers that already reach this module
+// keep working.
+export { CLICK_THRESHOLD_PX, screenPixelDistance, isPureClick } from '@/utils/pointerAbstraction'
 
 /** A pointer event after coordinate sanitization by the abstraction layer.
  *  All downstream consumers (selection subsystem, tool layer) operate on
@@ -43,13 +46,3 @@ export function isFiniteSketchPoint(p: readonly [number, number]): boolean {
   return Number.isFinite(p[0]) && Number.isFinite(p[1])
 }
 
-/** Pixel distance between two screen-space points.
- *  Used for click-vs-drag disambiguation against CLICK_THRESHOLD_PX. */
-export function screenPixelDistance(a: readonly [number, number], b: readonly [number, number]): number {
-  return Math.hypot(a[0] - b[0], a[1] - b[1])
-}
-
-/** True when the pointer moved less than CLICK_THRESHOLD_PX pixels -- treat as a click, not a drag. */
-export function isPureClick(startClient: readonly [number, number], endClient: readonly [number, number]): boolean {
-  return screenPixelDistance(startClient, endClient) < CLICK_THRESHOLD_PX
-}

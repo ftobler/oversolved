@@ -8,7 +8,7 @@ import {
   resolveDragMode,
   TRANSLATE_RESPONSE_MIN,
   RADIUS_RESPONSE_MIN,
-} from '@/components/Geometry3D/circleDragMode'
+} from './circleDragMode'
 
 describe('resolveDragMode', () => {
   it('a responsive centre gives translate', () => {

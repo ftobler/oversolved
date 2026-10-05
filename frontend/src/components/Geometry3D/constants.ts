@@ -191,8 +191,9 @@ export const DRAG_SNAP_VERTEX_RADIUS_PX = POINT_HIT_PIXELS  // point-to-point co
 export const DRAG_SNAP_ENTITY_RADIUS_PX = ENTITY_HIT_PIXELS  // point-on-entity coincident snap radius
 
 // Click-vs-drag disambiguation: pointer moves smaller than this (in screen pixels)
-// are treated as pure clicks and do not emit geometry mutations.
-export const CLICK_THRESHOLD_PX = 4
+// are treated as pure clicks and do not emit geometry mutations. Defined in the
+// utils leaf so the headless gesture logic does not import the UI tree.
+export { CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
 
 // Visualization
 export const ARC_SEGMENTS = 64

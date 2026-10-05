@@ -20,8 +20,7 @@
  * URL is fetched at runtime instead.
  */
 
-import type { SolveBytes } from './codec'
-import type { TopologyBytes } from './loadTopology'
+import type { SolveBytes, TopologyBytes } from './wasmTypes'
 
 interface SketchModule {
   default: (input?: unknown) => Promise<unknown>

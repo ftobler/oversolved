@@ -21,7 +21,7 @@ import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 import { assemblyVerdict } from '../utils/core/assemblyStatus'
 import { rotateVector } from '../utils/transform3d'
 import type { MateKind, Transform3D } from '../types/cad'
-import type { RelayService } from './worker/anchorSolverWorker'
+import type { RelayService } from './worker/solverProtocol'
 
 const solveMate = loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE)
 const describeReal = solveMate ? describe : describe.skip

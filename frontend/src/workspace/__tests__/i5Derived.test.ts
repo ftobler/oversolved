@@ -5,7 +5,7 @@ import { getPreviewStore } from '@/stores/previewStore'
 import { bundleCacheHas, resetBundleDbConnection } from '@/kernel/bundleCache'
 import { solveAssembly } from '@/kernel/solveAssembly'
 import { BUNDLE_SCHEMA, type PartBundle } from '@/kernel/partBundle'
-import type { RelayService } from '@/kernel/worker/anchorSolverWorker'
+import type { RelayService } from '@/kernel/worker/solverProtocol'
 import { resetWorkspaceIdb } from './idbHarness'
 
 // The exact shape a cold solve caches: a part bundle in its own database,

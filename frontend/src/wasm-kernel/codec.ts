@@ -95,8 +95,10 @@ export interface FlatInput {
   options: { dragMode: boolean; dragAnchorId: number; skipStatusPass: boolean }
 }
 
-/** WASM solver function: flat typed-array in, flat typed-array out. */
-export type SolveBytes = (input: Uint8Array) => Uint8Array
+// WASM solver function: flat typed-array in, flat typed-array out. Declared in
+// the neutral wasmTypes module so the mate glue does not import this sketch
+// codec for its function type; re-exported for existing sketch-side callers.
+export type { SolveBytes } from './wasmTypes'
 
 export interface SolverOutput {
   paramsSolved: number[]

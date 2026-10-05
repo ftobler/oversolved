@@ -16,7 +16,7 @@ import {
   parseGeomDescriptorId,
   type GeomDescriptor,
 } from "./geomDescriptor"
-import { failLoud } from "@/stores/stateInvariants"
+import { failLoud } from '@/utils/invariants'
 import { isDevOrTestBuild } from "./isDevBuild"
 import { VERTEX_POINT_KEYS } from "@/types/vertexKeys"
 import type { LocalQuery, AbsoluteQuery, AncestryQuery, Query } from "@/types/query"

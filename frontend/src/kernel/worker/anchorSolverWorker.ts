@@ -25,17 +25,13 @@ import type {
   AnchorRelayResponse,
   AssemblyWorkerRequest,
   AssemblyWorkerResponse,
+  RelayService,
 } from './solverProtocol'
 
-// ─── RelayService ───
-// The worker cannot touch the document store (main-thread-only) or talk to
-// the OCC bundle-builder worker. Requests are brokered via postMessage to
-// the main thread, which handles them and posts back.
-
-export interface RelayService {
-  requestPartDoc(doc_id: string): Promise<Record<string, unknown>>
-  requestBuildBundle(doc_id: string, content_hash: string, spec: Record<string, unknown>): Promise<unknown>
-}
+// The worker cannot touch the document store (main-thread-only) or talk to the
+// OCC bundle-builder worker, so requests are brokered via postMessage to the
+// main thread, which handles them and posts back. The RelayService shape lives
+// in solverProtocol.ts beside the relay wire types.
 
 let nextRelayId = 1
 const relayPending = new Map<number, { resolve: (val: unknown) => void; reject: (err: Error) => void }>()

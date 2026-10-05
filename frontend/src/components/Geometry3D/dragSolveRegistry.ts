@@ -3,7 +3,7 @@
 // and the pointer-up commit (DragTool). Not Zustand state on purpose: nothing
 // should re-render on it, it is written every drag frame and read exactly
 // once at pointer-up. Same pattern as getSketchCallback in sketchEditorStore.
-import type { CircleDragMode } from '@/components/Geometry3D/circleDragMode'
+import type { CircleDragMode } from '@/kernel/features/circleDragMode'
 
 export interface LastDragSolve {
   featureId: string

@@ -11,8 +11,7 @@
  */
 
 import { loadPkgNodeExport } from './loadPkgNode'
-
-export type SolveBytes = (input: Uint8Array) => Uint8Array
+import type { SolveBytes } from './wasmTypes'
 
 export function loadSolver(): SolveBytes | null {
   return loadPkgNodeExport<SolveBytes>('solve_sketch_bytes')

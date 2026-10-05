@@ -6,7 +6,7 @@
 // processes) -- the split is about what each one has to fetch and compile.
 
 import { loadMateWasm, loadMateWasmLive } from './solverWasm'
-import type { SolveBytes } from './codec'
+import type { SolveBytes } from './wasmTypes'
 
 let mateSolver: SolveBytes | null = null
 let mateSolverLive: SolveBytes | null = null

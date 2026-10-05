@@ -12,6 +12,7 @@
 import { makeAncestryQuery, emitWire, absolute, parseAncestry } from "./query"
 import { loopCentroid } from "./profileLoops"
 import { validateSketchArea } from "./profileDiagnostics"
+import type { TopologyBytes } from "@/wasm-kernel/wasmTypes"
 
 const EPS = 1e-9
 
@@ -26,8 +27,10 @@ export interface TopologyDict {
   surfaces: Record<string, unknown>[]
 }
 
-/** Bytes-in/bytes-out shape of the Rust `detect_topology_bytes` entry point. */
-export type TopologyBytes = (input: Uint8Array) => Uint8Array
+// Bytes-in/bytes-out shape of the Rust `detect_topology_bytes` entry point. The
+// canonical declaration is the neutral wasmTypes module; re-exported here so
+// kernel/features/sketch.ts keeps its import site.
+export type { TopologyBytes } from "@/wasm-kernel/wasmTypes"
 
 /** The structural JSON the Rust kernel returns (no query strings yet). */
 interface StructuralTopology {

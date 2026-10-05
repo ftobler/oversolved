@@ -10,7 +10,7 @@
 // anchor-less entity must resolve to an empty candidate set (Stage 7's
 // contract), and it can only do that if the entity has a pick id at all.
 
-import { buildFaceBoundarySegments, lazyFaceTriangles, toNonIndexedPositions } from '@/components/Geometry3D/bodyGeometry'
+import { buildFaceBoundarySegments, lazyFaceTriangles, toNonIndexedPositions } from '@/utils/bodyGeometry'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { assemblyBodyId } from '@/utils/assemblyBodies'

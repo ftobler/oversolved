@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { IdPipeline } from './IdPipeline'
-import { failLoud } from '@/stores/stateInvariants'
+import { failLoud } from '@/utils/invariants'
 
 /**
  * Live IdPipeline accessor.

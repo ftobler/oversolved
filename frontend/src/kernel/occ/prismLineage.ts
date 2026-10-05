@@ -59,7 +59,7 @@ import {
   FaceEdgeTable,
   type NormalFrame,
 } from './constructionLineage'
-import { failLoud } from '@/stores/stateInvariants'
+import { failLoud } from '@/utils/invariants'
 import {
   mintFaceUuid,
   sideFacePath,

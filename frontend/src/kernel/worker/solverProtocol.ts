@@ -203,6 +203,17 @@ export interface AssemblySolveErrResponse {
 
 export type AssemblySolveResponse = AssemblySolveOkResponse | AssemblySolveErrResponse
 
+/**
+ * The service the anchor solver worker uses to reach the main thread's document
+ * store and the OCC bundle-builder worker. Defined here beside the relay wire
+ * types rather than in the worker entry, so the kernel's `solveAssembly` can
+ * name the relay without importing the module that hosts the WASM engine.
+ */
+export interface RelayService {
+  requestPartDoc(doc_id: string): Promise<Record<string, unknown>>
+  requestBuildBundle(doc_id: string, content_hash: string, spec: Record<string, unknown>): Promise<unknown>
+}
+
 /** The anchor solver worker requests a relayed service from the main thread. */
 export interface AnchorRelayRequest {
   kind: 'asr_relay'
