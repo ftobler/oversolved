@@ -5,11 +5,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
-const { mockSolveLocally, mockUnflattenGeometry, cancelSolverMock, setOnCancelSolveMock } = vi.hoisted(() => ({
+const { mockSolveLocally, mockUnflattenGeometry, cancelSolverMock } = vi.hoisted(() => ({
   mockSolveLocally: vi.fn(),
   mockUnflattenGeometry: vi.fn().mockReturnValue({}),
   cancelSolverMock: vi.fn(),
-  setOnCancelSolveMock: vi.fn(),
 }))
 
 vi.mock('@/kernel/worker/solverClient', () => ({
@@ -17,18 +16,10 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   cancelSolver: cancelSolverMock,
 }))
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: mockUnflattenGeometry }))
-vi.mock('@/stores/solverStore', () => ({
-  useSolverStore: {
-    getState: () => ({
-      setIsSolving: vi.fn(),
-      setOnCancelSolve: setOnCancelSolveMock,
-      onCancelSolve: null,
-    }),
-  },
-}))
 
 import { useSolver, reconcilePartStyle } from '@/hooks/useSolver'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useSolverStore } from '@/stores/solverStore'
 import type { PartDoc, BodyResult } from '@/types/cad'
 
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
@@ -50,6 +41,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockUnflattenGeometry.mockReturnValue({})
   usePartEditorStore.setState({ editingFeatureId: null, rollbackPosition: null, pickBoundary: null })
+  useSolverStore.setState({ isSolving: false, onCancelSolve: null })
 })
 
 describe('reconcilePartStyle unnamed entries', () => {
@@ -191,8 +183,9 @@ describe('reSolve drag anchor and doc shape', () => {
 
   it('wires the solver store cancel handler to cancelSolver', () => {
     setupHook()
-    const handler = setOnCancelSolveMock.mock.calls[0][0] as () => void
-    handler()
+    const handler = useSolverStore.getState().onCancelSolve
+    expect(handler).toBeTypeOf('function')
+    handler!()
     expect(cancelSolverMock).toHaveBeenCalledTimes(1)
   })
 })

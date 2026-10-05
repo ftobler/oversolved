@@ -12,13 +12,11 @@ const { mockUnflattenGeometry } = vi.hoisted(() => ({
 
 vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveLocally }))
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: mockUnflattenGeometry }))
-vi.mock('@/stores/solverStore', () => ({
-  useSolverStore: { getState: () => ({ setIsSolving: vi.fn(), setOnCancelSolve: vi.fn(), onCancelSolve: null }) },
-}))
 
 import { pickPartColor, reconcilePartStyle, useSolver } from '@/hooks/useSolver'
 import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
+import { useSolverStore } from '@/stores/solverStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import type { WorkspaceSession } from '@/workspace/session'
 import type { PartDoc, BodyResult } from '@/types/cad'
@@ -167,6 +165,9 @@ describe('useSolver', () => {
     store.setRollbackPosition(DEFAULT_PART_EDITOR_DATA.rollbackPosition)
     store.setPickBoundary(DEFAULT_PART_EDITOR_DATA.pickBoundary)
     store.setEditingFeatureId(DEFAULT_PART_EDITOR_DATA.editingFeatureId)
+    // The real solver store holds the cancel callback; clear it so a pending
+    // solve from one test cannot be cancelled by the next.
+    useSolverStore.setState({ isSolving: false, onCancelSolve: null })
   })
 
   function setupHook(opts?: { onFirstSolve?: () => void }) {

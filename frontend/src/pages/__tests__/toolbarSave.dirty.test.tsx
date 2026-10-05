@@ -9,11 +9,6 @@ import PartToolbar from '@/pages/PartToolbar'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 
-vi.mock('@/utils/core/commandRegistry', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/utils/core/commandRegistry')>()),
-  executeCommand: vi.fn(),
-}))
-
 function renderToolbar(Toolbar: typeof PartToolbar, handleSave: () => Promise<boolean>) {
   return render(
     <MemoryRouter initialEntries={['/workspaces/w/doc']}>

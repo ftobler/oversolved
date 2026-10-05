@@ -106,8 +106,8 @@ describe('edit exit reSolve', () => {
     // Exit edit
     await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
 
-    // Give pending microtasks (cache lookup, reSolve dispatch) a chance to flush.
-    await new Promise(r => setTimeout(r, 50))
+    // Wait on the observable solve count rather than a fixed sleep.
+    await waitFor(() => { expect(solveMock.mock.calls.length).toBeGreaterThan(callsBeforeExit) })
 
     const callsAfterExit = allSolvePayloads().slice(callsBeforeExit)
 
@@ -168,7 +168,7 @@ describe('edit exit reSolve', () => {
       expect(screen.queryByTitle('OK')).not.toBeInTheDocument()
     }, { timeout: 10000 })
 
-    await new Promise(r => setTimeout(r, 50))
+    await waitFor(() => { expect(solveMock.mock.calls.length).toBeGreaterThan(callsBeforeExit) })
 
     const callsAfterExit = allSolvePayloads().slice(callsBeforeExit)
     expect(callsAfterExit.length).toBeGreaterThan(0)

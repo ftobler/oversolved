@@ -1,15 +1,13 @@
 // The undo/redo buttons and tooltips against the PRODUCTION AssemblyToolbar.
 // The stacks are seeded straight into assemblyStore (the page's mutate pushes
 // into it; the hook that drives it is covered in useAssemblyUndoRedo.test.ts).
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, fireEvent, screen } from '@testing-library/react'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
+import { registerCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 
-const mockExecuteCommand = vi.hoisted(() => vi.fn())
-
-vi.mock('@/utils/core/commandRegistry', () => ({ executeCommand: mockExecuteCommand }))
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
@@ -32,10 +30,30 @@ function entry(label: string): AssemblyUndoEntry {
 const undoButton = () => screen.getByRole('button', { name: 'Undo' })
 const redoButton = () => screen.getByRole('button', { name: 'Redo' })
 
+// The real registry, wired to real stack moves: clicking a toolbar button has
+// to reach a handler and shift the store's history, not just call a spy.
+function stepHistory(direction: 'undo' | 'redo') {
+  const { undoStack, redoStack } = useAssemblyStore.getState()
+  const from = direction === 'undo' ? undoStack : redoStack
+  if (from.length === 0) return
+  const entry = from[from.length - 1]
+  useAssemblyStore.setState(
+    direction === 'undo'
+      ? { undoStack: undoStack.slice(0, -1), redoStack: [...redoStack, entry] }
+      : { undoStack: [...undoStack, entry], redoStack: redoStack.slice(0, -1) },
+  )
+}
+
 describe('AssemblyToolbar undo/redo', () => {
   beforeEach(() => {
-    mockExecuteCommand.mockClear()
+    clearAllHandlers()
+    registerCommand('undo', () => stepHistory('undo'))
+    registerCommand('redo', () => stepHistory('redo'))
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
+  })
+
+  afterEach(() => {
+    clearAllHandlers()
   })
 
   it('disables undo and redo when both stacks are empty', () => {
@@ -51,13 +69,20 @@ describe('AssemblyToolbar undo/redo', () => {
     expect((redoButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('clicking the buttons dispatches the undo and redo commands', () => {
-    useAssemblyStore.setState({ undoStack: [entry('Add part')], redoStack: [entry('Move part')] })
+  it('clicking undo routes through the registry and moves the entry onto redo', () => {
+    useAssemblyStore.setState({ undoStack: [entry('Add part')], redoStack: [] })
     renderToolbar()
     fireEvent.click(undoButton())
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
+    expect(useAssemblyStore.getState().redoStack).toHaveLength(1)
+  })
+
+  it('clicking redo routes through the registry and moves the entry onto undo', () => {
+    useAssemblyStore.setState({ undoStack: [], redoStack: [entry('Move part')] })
+    renderToolbar()
     fireEvent.click(redoButton())
-    expect(mockExecuteCommand).toHaveBeenCalledWith('undo')
-    expect(mockExecuteCommand).toHaveBeenCalledWith('redo')
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
+    expect(useAssemblyStore.getState().redoStack).toHaveLength(0)
   })
 
   it('the undo tooltip shows the up-to-five most recent actions, most recent first', () => {

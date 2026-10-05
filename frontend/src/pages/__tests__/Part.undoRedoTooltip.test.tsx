@@ -3,15 +3,13 @@
 // regression in PartToolbar's real stacking logic could pass every test. The
 // stacks are seeded straight into partEditorStore (the mirror that populates
 // it is covered separately in useSyncPartEditorStore.test.ts).
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, fireEvent, screen } from '@testing-library/react'
 import PartToolbar from '@/pages/PartToolbar'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { registerCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
 import type { Mutation } from '@/types/cad'
 
-const mockExecuteCommand = vi.hoisted(() => vi.fn())
-
-vi.mock('@/utils/core/commandRegistry', () => ({ executeCommand: mockExecuteCommand }))
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
@@ -34,10 +32,30 @@ function entry(label: string): { doc: unknown; mutation: Mutation } {
 const undoButton = () => screen.getByRole('button', { name: 'Undo' })
 const redoButton = () => screen.getByRole('button', { name: 'Redo' })
 
+// The real registry, wired to real stack moves: clicking a toolbar button has
+// to reach a handler and shift the store's history, not just call a spy.
+function stepHistory(direction: 'undo' | 'redo') {
+  const { undoStack, redoStack } = usePartEditorStore.getState()
+  const from = direction === 'undo' ? undoStack : redoStack
+  if (from.length === 0) return
+  const entry = from[from.length - 1]
+  usePartEditorStore.setState(
+    direction === 'undo'
+      ? { undoStack: undoStack.slice(0, -1), redoStack: [...redoStack, entry] }
+      : { undoStack: [...undoStack, entry], redoStack: redoStack.slice(0, -1) },
+  )
+}
+
 describe('PartToolbar undo/redo', () => {
   beforeEach(() => {
-    mockExecuteCommand.mockClear()
+    clearAllHandlers()
+    registerCommand('undo', () => stepHistory('undo'))
+    registerCommand('redo', () => stepHistory('redo'))
     usePartEditorStore.setState({ undoStack: [], redoStack: [] })
+  })
+
+  afterEach(() => {
+    clearAllHandlers()
   })
 
   it('disables undo and redo when both stacks are empty', () => {
@@ -53,13 +71,20 @@ describe('PartToolbar undo/redo', () => {
     expect((redoButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('clicking the buttons dispatches the undo and redo commands', () => {
-    usePartEditorStore.setState({ undoStack: [entry('a')], redoStack: [entry('b')] })
+  it('clicking undo routes through the registry and moves the entry onto redo', () => {
+    usePartEditorStore.setState({ undoStack: [entry('a')], redoStack: [] })
     renderToolbar()
     fireEvent.click(undoButton())
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(0)
+    expect(usePartEditorStore.getState().redoStack).toHaveLength(1)
+  })
+
+  it('clicking redo routes through the registry and moves the entry onto undo', () => {
+    usePartEditorStore.setState({ undoStack: [], redoStack: [entry('b')] })
+    renderToolbar()
     fireEvent.click(redoButton())
-    expect(mockExecuteCommand).toHaveBeenCalledWith('undo')
-    expect(mockExecuteCommand).toHaveBeenCalledWith('redo')
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
+    expect(usePartEditorStore.getState().redoStack).toHaveLength(0)
   })
 
   it('the undo tooltip shows the up-to-five most recent actions, most recent first', () => {

@@ -39,11 +39,6 @@ vi.mock('@/adapters/backend', () => ({
     },
   },
 }))
-vi.mock('@/utils/core/commandRegistry', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/utils/core/commandRegistry')>()),
-  executeCommand: vi.fn(),
-}))
-
 import PartToolbar from '@/pages/PartToolbar'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { useDocumentState } from '@/hooks/useDocumentState'

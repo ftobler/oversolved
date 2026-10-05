@@ -10,7 +10,6 @@ import { join } from 'path'
 import PartToolbar from '@/pages/PartToolbar'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 
-vi.mock('@/utils/core/commandRegistry', () => ({ executeCommand: vi.fn() }))
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))

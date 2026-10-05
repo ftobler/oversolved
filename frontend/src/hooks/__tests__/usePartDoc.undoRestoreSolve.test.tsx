@@ -17,6 +17,7 @@ import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
+import { useSolverStore } from '@/stores/solverStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
@@ -27,9 +28,6 @@ const { mockSolveViaWorker } = vi.hoisted(() => ({ mockSolveViaWorker: vi.fn() }
 
 vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveViaWorker }))
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: vi.fn().mockReturnValue({}) }))
-vi.mock('@/stores/solverStore', () => ({
-  useSolverStore: { getState: () => ({ setIsSolving: vi.fn(), setOnCancelSolve: vi.fn(), onCancelSolve: null }) },
-}))
 
 const docRef: { current: PartDoc | null } = { current: null }
 const saveDocMock = vi.fn()
@@ -99,6 +97,7 @@ describe('undo restore of pruned solve results', () => {
     store.setEditingFeatureId(DEFAULT_PART_EDITOR_DATA.editingFeatureId)
     store.setPickBoundary(DEFAULT_PART_EDITOR_DATA.pickBoundary)
     store.setRollbackPosition(DEFAULT_PART_EDITOR_DATA.rollbackPosition)
+    useSolverStore.setState({ isSolving: false, onCancelSolve: null })
   })
 
   // The reSolve fire-and-forgets; drain the microtask queue so the solve (mock

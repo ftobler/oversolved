@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { captureGrabPoint, dragTargetMate, dragTargetPoseMate, solveDragPose, DRAG_MATE_ID, DRAG_WEIGHT } from './assemblyDrag'
+import { identity } from '@/__tests__/fixtures'
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
 import { loadPkgNodeExport, PKG_MATE } from '../wasm-kernel/loadPkgNode'
 import { BUNDLE_SCHEMA, type PartBundle, type Anchor } from './partBundle'
@@ -24,10 +25,6 @@ import { makeTransform, rotateVector, quatFromAxisAngle, type Vec3 } from '../ut
 
 const solveMate = loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE)
 const describeReal = solveMate ? describe : describe.skip
-
-function identity(): Transform3D {
-  return { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
-}
 
 /** Apply a rigid transform to a point, the world position of a local grab. */
 function worldPoint(t: Transform3D, p: Vec3): Vec3 {
