@@ -69,12 +69,45 @@ to. Surface the failure rather than dropping the change silently.
 
 ### Command System
 
-**Rule:** All user actions must route through `executeCommand()`.
+**Rule:** A user action that changes the persisted document must go through the
+editor's single mutation funnel. An action that changes only transient
+interaction state may call the store's own setters directly.
+
+Document mutations, by editor:
+
+- Sketch: toolbar buttons and shortcuts dispatch `executeCommand(name)` into the
+  command registry (`frontend/src/utils/core/commandRegistry.ts`), whose entries
+  are built by `buildCommandEntries()` in
+  `frontend/src/pages/commandEntries.ts`. Tool and constraint commands reach the
+  document through the sketch store's `onMutation` callback.
+- Part: feature and style edits call `handleMutation` (the `usePartDoc` funnel),
+  both directly and from the command entries; it is the one path that records
+  undo history and triggers a re-solve. `PartEditorContext` exposes the same
+  callbacks to the tree.
+- Assembly: operations dispatch `executeCommand(name)` into
+  `ASSEMBLY_OPERATIONS`. A drag commit writes the doc through the `mutateDoc`
+  funnel the page registers on the store. Undo/redo restores the doc through the
+  page's own `setDoc` (`useAssemblyUndoRedo.ts`); only the undo/redo stacks are
+  written straight through the store as exempt transient state.
 
 ```tsx
-// GOOD - unified command path
+// GOOD - a document mutation through the command path
 onClick={() => executeCommand('set_tool_line')}
 ```
+
+Transient state (hover, selection, the active tool, draw points, drag and gizmo
+previews, the rubber band, solver status, an armed pick field, the undo/redo
+stacks) describes the interaction rather than the document. It is not persisted
+and carries no undo entry, so it is exempt and may use the store's setters or
+`useXStore.setState(...)` directly:
+
+```ts
+useAssemblyStore.setState({ manipulation: null, gizmoDrag: null })
+```
+
+Do not use a raw `setState` to change `doc`, `features`, `instances`, or any
+other persisted-document field; route that through the funnel so undo, redo, and
+the save path see it.
 
 **Keymap construction** (`frontend/src/utils/core/commandRegistry.ts`):
 ```ts
@@ -110,7 +143,8 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
 
 ### State Store
 
-**Rule:** Use Zustand selectors sparingly; prefer command dispatch.
+**Rule:** Read state with selectors and mutate the document through the funnel;
+the store's setters are for the transient fields the store itself owns.
 
 ```ts
 // GOOD - route through executeCommand

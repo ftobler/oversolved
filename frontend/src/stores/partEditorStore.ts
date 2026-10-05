@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { BodyResult, PartFeature, PartDoc, Sketch, PartStyleEntry, Mutation, RebuildValidation } from '@/types/cad'
+import { mergeSnapshot } from '@/stores/storeSnapshot'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
 
@@ -69,12 +70,7 @@ export const usePartEditorStore = create<PartEditorState>((set) => ({
   setSnapshot: (data) => set((prev) => {
     // Preserve store-owned fields; setSnapshot is for React-mirrored state only.
     // Callers write owned fields via their dedicated setters.
-    const prevRec = prev as unknown as Record<string, unknown>
-    const merged = { ...data } as unknown as Record<string, unknown>
-    for (const field of STORE_OWNED_FIELDS) {
-      merged[field] = prevRec[field]
-    }
-    return merged as unknown as PartEditorData
+    return mergeSnapshot(data, prev, STORE_OWNED_FIELDS)
   }),
   setActiveSketchFeatureId: (id) => set({ activeSketchFeatureId: id }),
   setRollbackPosition: (pos) => set({ rollbackPosition: pos }),
