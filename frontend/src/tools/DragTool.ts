@@ -93,7 +93,7 @@ export function createDragTool(): DragTool {
       // seeds from the on-screen state (no basin jump on release). Read here,
       // synchronously in the pointer-up handler -- the rAF loop's cleanup
       // clears the registry only after the store update re-renders.
-      const mutation = computeDragMutation(endClient, context.drag, context.dragSnap ?? null, null, getLastDragSolve())
+      const mutation = computeDragMutation(endClient, context.drag, context.dragSnap ?? null, getLastDragSolve())
       if (mutation) {
         context.onMutation?.(mutation)
       }

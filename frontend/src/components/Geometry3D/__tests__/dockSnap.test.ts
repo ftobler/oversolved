@@ -109,7 +109,7 @@ describe('drag-snap to a dock contact yields a materializing constraint', () => 
       currentWorld: [5, 0],
       startClient: [0, 0],
     } as VertexOrEdgeDrag
-    const mut = computeDragMutation([200, 200], drag, snap, null)
+    const mut = computeDragMutation([200, 200], drag, snap)
     expect(mut?.type).toBe('move_vertex_with_constraint')
     // The snap handle rides through to the mutation, where applyAddConstraint
     // intercepts it and materializes the point.

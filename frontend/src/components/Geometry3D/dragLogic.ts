@@ -184,7 +184,6 @@ export function computeDragMutation(
   endClient: readonly [number, number],
   drag: VertexOrEdgeDrag,
   snapTarget: SnapTarget | null,
-  _alignmentSnap: { point: [number, number]; kind: string; vertexId: string } | null,
   lastDragSolve?: { featureId: string; geometry?: Record<string, number[]>; mode?: CircleDragMode } | null,
 ): Mutation | null {
   // Click-vs-drag: pixel distance from pointer-down to pointer-up
