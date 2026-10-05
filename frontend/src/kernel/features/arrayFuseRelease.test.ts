@@ -47,7 +47,7 @@ vi.mock('./bodySplit', () => ({
 import { HandleTable } from '../occ/handleTable'
 import { DisposeScope } from '../occ/disposeScope'
 import { solveArray } from './array'
-import { bareBody } from './shared'
+import { bareBody } from './shared/bodyResolution'
 import { emptyBrepDiff } from '../types3d'
 import type { OccModule } from '../occ/occTypes'
 import type { Repository } from '../query'

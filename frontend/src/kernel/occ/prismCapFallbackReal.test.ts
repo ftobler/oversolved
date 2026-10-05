@@ -21,7 +21,7 @@ import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
 import { buildPrismLineageMap, sketchLoopsToFace, revolveFace } from './prismLineage'
 import { makeLineEdge, makeArcEdge, makeWire, healWire } from './primitives'
-import type { PlaneLike } from '../features/shared'
+import type { PlaneLike } from '../features/shared/planes'
 import type { LoopEdge } from '../profileLoops'
 import type { OccModule, OccShape, OccListOfShape } from './occTypes'
 

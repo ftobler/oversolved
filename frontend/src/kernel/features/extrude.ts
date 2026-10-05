@@ -2,7 +2,8 @@
 // profile reference to 2D loops (or a body face), builds the tool solid with per-entity
 // lineage, and applies the body operation (add / cut / new).
 //
-// This is the wiring layer: collectExtrudeLoops (faceProfile.ts), resolveDirection (shared.ts),
+// This is the wiring layer: collectExtrudeLoops (faceProfile.ts), resolveDirection
+// (shared/directionQuery.ts),
 // extrudeProfileWithLineage (occ/prismLineage.ts), and applyBodyOperation (bodyOps.ts) do the
 // work. Like every OCC-backed leaf it takes (oc, scope, table) ahead of the Python (feature,
 // globalRepo, bodyStore) signature; the caller owns `scope` and disposes it after ancestry
@@ -18,7 +19,11 @@ import { AmbiguousQueryError } from '../query'
 import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { resolveDirection, registerTopFace, samePlane, surfaceEntityIds, sketchToWorld2d, unbuildableAreaReasons, loopDiagReasons, type PlaneLike } from './shared'
+import { resolveDirection } from './shared/directionQuery'
+import { registerTopFace } from './shared/topFace'
+import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
+import { surfaceEntityIds } from './shared/bodyRef'
+import { unbuildableAreaReasons, loopDiagReasons } from './shared/profileLoops'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'

@@ -8,7 +8,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { clearConsumedBodyAncestry } from '../query'
-import { resolveBodyRefList } from './shared'
+import { resolveBodyRefList } from './shared/bodyResolution'
 
 type Dict = Record<string, unknown>
 

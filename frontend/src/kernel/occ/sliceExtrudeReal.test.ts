@@ -10,7 +10,8 @@ import { DisposeScope } from './disposeScope'
 import { volumeOf } from './booleans'
 import { extrudeProfileWithLineage } from './prismLineage'
 import { detectTopology, topologyAvailable } from '../topologyTestUtil'
-import { extractProfileLoops, type PlaneLike } from '../features/shared'
+import { extractProfileLoops } from '../features/shared/profileLoops'
+import type { PlaneLike } from '../features/shared/planes'
 import { loopSignedArea, type LoopEdge } from '../profileLoops'
 
 const oc = await loadOcc()

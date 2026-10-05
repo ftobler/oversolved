@@ -28,7 +28,7 @@ import type {
   OccPipeShellBuilder,
   OccEnumValue,
 } from './occTypes'
-import type { PlaneLike } from '../features/shared'
+import type { PlaneLike } from '../features/shared/planes'
 import {
   edgeToGeom,
   faceArea,

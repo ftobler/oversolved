@@ -26,7 +26,7 @@ import {
 import { frameFromPlaneTransform } from '../types3d'
 import { loopCentroid, radians, type LoopEdge } from '../profileLoops'
 import { BUILTIN_PLANES } from '../solverConstants'
-import { sketchToWorld2d, type PlaneLike } from './shared'
+import { sketchToWorld2d, type PlaneLike } from './shared/planes'
 
 type Dict = Record<string, unknown>
 

@@ -2,7 +2,7 @@
 // `_collect_extrude_loops`. This is the routing layer the extrude/revolve leaves call to turn a
 // profile reference (a `$sketch`, a body face `@feat/face/N`, or an ancestral surface query)
 // into 2D loops + the plane to build on. The OCC face->loops work lives in occ/faceLoops.ts;
-// the pure surface-loop assembly is extractProfileLoops (features/shared.ts).
+// the pure surface-loop assembly is extractProfileLoops (features/shared/profileLoops.ts).
 //
 // Body shapes are HandleTable handles, so the OCC-backed branches resolve them via the table;
 // the topo-surface branches (`@`/`?` against stored sketch topology) are pure and need no OCC.
@@ -15,7 +15,9 @@ import { Repository, parseAncestry, makeAncestryQuery, ref, constructionUuidToke
 import { faceCentroid, faceNormal } from '../occ/primitives'
 import { faceGeometryHash } from '../geomHash'
 import { extractOccFace, extractFaceLoops, sortedFacesOf, faceLoopsOfFace, computeFaceDatumFrame } from '../occ/faceLoops'
-import { extractProfileLoops, parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds, type PlaneLike, type ProfileLoopDiag } from './shared'
+import { extractProfileLoops, type ProfileLoopDiag } from './shared/profileLoops'
+import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds } from './shared/bodyRef'
+import type { PlaneLike } from './shared/planes'
 
 type Dict = Record<string, unknown>
 type EdgeDict = Record<string, unknown>

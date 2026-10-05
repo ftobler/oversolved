@@ -20,18 +20,14 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import {
-  parseSketchEntityRef,
-  resolveBody,
-  sketchIdFromQuery,
-  soleEntityInQuery,
-  mergeBrepDiff,
-} from './shared'
+import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './shared/bodyRef'
+import { resolveBody } from './shared/bodyResolution'
+import { mergeBrepDiff } from './shared/brepDiff'
 import { makeCylinder, type Vec3 } from '../occ/primitives'
 import { bodyFrame } from '../occ/tessellation'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
-import type { PlaneLike } from './shared'
+import type { PlaneLike } from './shared/planes'
 
 type Dict = Record<string, unknown>
 

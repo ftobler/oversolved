@@ -42,7 +42,7 @@ import { extrudeProfileWithLineage } from './prismLineage'
 import { solidToEdges } from './tessellation'
 import { faceGh } from './lineageHash'
 import { faceNormal } from './primitives'
-import type { PlaneLike } from '../features/shared'
+import type { PlaneLike } from '../features/shared/planes'
 import type { LoopEdge } from '../profileLoops'
 import type { OccShape } from './occTypes'
 

@@ -23,7 +23,7 @@ import {
 } from './primitives'
 import { sketchLoopsToFace } from './prismLineage'
 import type { OccModule } from './occTypes'
-import type { PlaneLike } from '../features/shared'
+import type { PlaneLike } from '../features/shared/planes'
 import type { LoopEdge } from '../profileLoops'
 
 const oc = await loadOcc()
