@@ -7,14 +7,16 @@
 //! is represented exactly by new control points. An ellipse cut at two eccentric
 //! angles yields the endpoints of the resulting elliptical arc.
 
-pub type Vec2 = [f64; 2];
+pub use super::Vec2;
+/// The four control points of a cubic Bezier: endpoints P1/P4 plus off-curve
+/// handles P2/P3, in `[p0, c1, c2, p3]` order.
 pub type BezierCtrl = [Vec2; 4];
 
 fn lerp(p: Vec2, q: Vec2, t: f64) -> Vec2 {
     [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])]
 }
 
-/// Split a cubic Bezier at parameter t into (left over [0,t], right over [t,1]).
+/// Split a cubic Bezier at parameter t into (left over `[0,t]`, right over `[t,1]`).
 pub fn split_bezier_at(c: &BezierCtrl, t: f64) -> (BezierCtrl, BezierCtrl) {
     let ab = lerp(c[0], c[1], t);
     let bc = lerp(c[1], c[2], t);
@@ -25,7 +27,7 @@ pub fn split_bezier_at(c: &BezierCtrl, t: f64) -> (BezierCtrl, BezierCtrl) {
     ([c[0], ab, abc, abcd], [abcd, bcd, cd, c[3]])
 }
 
-/// Control points of the cubic Bezier restricted to [t0, t1] (0 <= t0 < t1 <= 1).
+/// Control points of the cubic Bezier restricted to `[t0, t1]` (0 <= t0 < t1 <= 1).
 /// Two de Casteljau cuts: trim the tail at t1, then trim the head of that piece.
 pub fn subdivide_bezier(c: &BezierCtrl, t0: f64, t1: f64) -> BezierCtrl {
     // Real assert, not debug_assert: this crate ships with debug-assertions off
@@ -46,10 +48,7 @@ pub fn subdivide_bezier(c: &BezierCtrl, t0: f64, t1: f64) -> BezierCtrl {
 pub fn ellipse_point_at(center: Vec2, a: f64, b: f64, cr: f64, sr: f64, phi: f64) -> Vec2 {
     let ax = a * phi.cos();
     let ay = b * phi.sin();
-    [
-        center[0] + ax * cr - ay * sr,
-        center[1] + ax * sr + ay * cr,
-    ]
+    [center[0] + ax * cr - ay * sr, center[1] + ax * sr + ay * cr]
 }
 
 /// Cubic Bezier point at parameter t from control points p0, c1, c2, p3.

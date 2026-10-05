@@ -21,11 +21,15 @@
 //! (`solverConstants.test.ts`) parses this file to fail when either side of
 //! that mirror drifts.
 
-pub mod codec;
-pub mod curve_intersect;
-pub mod curve_split;
-pub mod dcel;
-pub mod profile_loops;
+pub(crate) mod codec;
+pub(crate) mod curve_intersect;
+pub(crate) mod curve_split;
+pub(crate) mod dcel;
+pub(crate) mod profile_loops;
+
+/// A 2D point/vector shared by the intersection, split, loop and DCEL modules.
+/// Defined once here so those modules do not each carry their own alias.
+pub type Vec2 = [f64; 2];
 
 // Tolerances mirrored from frontend/src/kernel/solverConstants.ts. These four
 // must stay byte-equal to their TS counterparts; solverConstants.test.ts reads
@@ -35,4 +39,4 @@ pub const TOL_TOPOLOGY_MERGE: f64 = 1e-5;
 pub const TOL_TOPOLOGY_SPLIT: f64 = 1e-7;
 pub const TOL_NEAR_ZERO_AREA: f64 = 1e-12;
 
-pub use dcel::{detect_topology, InputEntity, TopologyOut};
+pub(crate) use dcel::detect_topology;

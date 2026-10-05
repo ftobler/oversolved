@@ -193,9 +193,12 @@ fn geom_is_finite(eg: &EdgeGeom) -> bool {
         EdgeGeom::Spline { start, c1, c2, end } => {
             pt_ok(start) && pt_ok(c1) && pt_ok(c2) && pt_ok(end)
         }
-        EdgeGeom::Ellipse { center, a, b, theta } => {
-            pt_ok(center) && a.is_finite() && b.is_finite() && theta.is_finite()
-        }
+        EdgeGeom::Ellipse {
+            center,
+            a,
+            b,
+            theta,
+        } => pt_ok(center) && a.is_finite() && b.is_finite() && theta.is_finite(),
     }
 }
 
@@ -209,8 +212,8 @@ fn geom_is_finite(eg: &EdgeGeom) -> bool {
 /// transform downstream.
 fn reject_non_finite_output(out: &TopologyOut) -> Result<(), TopologyCodecError> {
     let pt_ok = |p: &Vec2| p.iter().all(|x| x.is_finite());
-    let points_ok =
-        out.intersection_points.iter().all(|(_, p)| pt_ok(p)) && out.vertices.iter().all(|(_, p)| pt_ok(p));
+    let points_ok = out.intersection_points.iter().all(|(_, p)| pt_ok(p))
+        && out.vertices.iter().all(|(_, p)| pt_ok(p));
     let edges_ok = out.edges.iter().all(|e| geom_is_finite(&e.geom));
     let surfaces_ok = out.surfaces.iter().all(|s| {
         s.boundary
@@ -281,7 +284,12 @@ fn geom_fields(eg: &EdgeGeom, m: &mut Map<String, Value>) {
             m.insert("c1".into(), pt(c1));
             m.insert("c2".into(), pt(c2));
         }
-        EdgeGeom::Ellipse { center, a, b, theta } => {
+        EdgeGeom::Ellipse {
+            center,
+            a,
+            b,
+            theta,
+        } => {
             m.insert("kind".into(), json!("ellipse"));
             m.insert("center".into(), pt(center));
             m.insert("a".into(), json!(a));
@@ -301,7 +309,10 @@ fn opt_vertex(v: &Option<String>) -> Value {
 fn boundary_edge_value(be: &BoundaryEdge) -> Value {
     let mut m = Map::new();
     geom_fields(&be.geom, &mut m);
-    m.insert("id".into(), be.id.as_ref().map(|s| json!(s)).unwrap_or(Value::Null));
+    m.insert(
+        "id".into(),
+        be.id.as_ref().map(|s| json!(s)).unwrap_or(Value::Null),
+    );
     m.insert("start_vertex".into(), opt_vertex(&be.start_vertex));
     m.insert("end_vertex".into(), opt_vertex(&be.end_vertex));
     Value::Object(m)
@@ -389,7 +400,13 @@ mod tests {
         assert_eq!(v["edges"][0]["edge_type"], json!("straightedge"));
         assert_eq!(v["edges"][0]["kind"], json!("line"));
         // The surface carries the source entity id tokens for the TS query.
-        assert_eq!(v["surfaces"][0]["face_entity_ids"].as_array().unwrap().len(), 4);
+        assert_eq!(
+            v["surfaces"][0]["face_entity_ids"]
+                .as_array()
+                .unwrap()
+                .len(),
+            4
+        );
     }
 
     #[test]
@@ -398,10 +415,15 @@ mod tests {
         let bytes = serde_json::to_vec(&input).unwrap();
         let geom = decode_input(&bytes).unwrap();
         let out = super::super::detect_topology(&geom);
-        let v: Value = serde_json::from_slice(&encode_output(&out).expect("ellipse output is finite")).unwrap();
+        let v: Value =
+            serde_json::from_slice(&encode_output(&out).expect("ellipse output is finite"))
+                .unwrap();
         let be = &v["surfaces"][0]["boundary"][0];
         assert_eq!(be["kind"], json!("ellipse"));
-        assert!(be.get("start").is_none(), "full ellipse boundary edge must have no start");
+        assert!(
+            be.get("start").is_none(),
+            "full ellipse boundary edge must have no start"
+        );
         assert!(be.get("id").is_some());
     }
 
@@ -529,7 +551,8 @@ mod tests {
                 out.vertices[0].1[0] = f64::NAN;
             }),
             ("intersection.y", |out: &mut TopologyOut| {
-                out.intersection_points.push(("p".into(), [1.0, f64::INFINITY]));
+                out.intersection_points
+                    .push(("p".into(), [1.0, f64::INFINITY]));
             }),
             ("edge start.x", |out: &mut TopologyOut| {
                 if let EdgeGeom::Line { start, .. } = &mut out.edges[0].geom {
@@ -575,10 +598,7 @@ mod tests {
             let mut out = square();
             poison(&mut out);
             assert!(
-                matches!(
-                    encode_output(&out),
-                    Err(TopologyCodecError::NonFinite)
-                ),
+                matches!(encode_output(&out), Err(TopologyCodecError::NonFinite)),
                 "{name} serialized instead of being rejected"
             );
         }

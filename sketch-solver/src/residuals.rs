@@ -12,9 +12,9 @@
 //! them identically to a `fixed` constraint for solve, rank, and status.
 
 use crate::constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
-use solver_core::sparse::SparseRow;
 use crate::{Entity, Input, Kind, DEG2RAD, MIN_SEMI_AXIS_SQ};
 use nalgebra::DMatrix;
+use solver_core::sparse::SparseRow;
 use std::collections::HashMap;
 
 /// A point in sketch-plane coordinates.
@@ -82,12 +82,8 @@ fn bezier_deriv(sp: &[f64], t: f64) -> P2 {
     let mt = 1.0 - t;
     let mt2 = mt * mt;
     [
-        3.0 * mt2 * (sp[2] - sp[0])
-            + 6.0 * mt * t * (sp[4] - sp[2])
-            + 3.0 * t2 * (sp[6] - sp[4]),
-        3.0 * mt2 * (sp[3] - sp[1])
-            + 6.0 * mt * t * (sp[5] - sp[3])
-            + 3.0 * t2 * (sp[7] - sp[5]),
+        3.0 * mt2 * (sp[2] - sp[0]) + 6.0 * mt * t * (sp[4] - sp[2]) + 3.0 * t2 * (sp[6] - sp[4]),
+        3.0 * mt2 * (sp[3] - sp[1]) + 6.0 * mt * t * (sp[5] - sp[3]) + 3.0 * t2 * (sp[7] - sp[5]),
     ]
 }
 
@@ -177,8 +173,7 @@ impl<'a> Problem<'a> {
     pub fn new(input: &'a Input) -> Self {
         let x0: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
 
-        let pinned_indices: Vec<usize> =
-            (0..x0.len()).filter(|&i| input.is_pinned(i)).collect();
+        let pinned_indices: Vec<usize> = (0..x0.len()).filter(|&i| input.is_pinned(i)).collect();
         // A pin naming a param the buffer does not have is stale in exactly the
         // same way a stale entity ref is; its row would index off the end of x.
         let equality_pins: Vec<(usize, f64)> = input
@@ -230,7 +225,13 @@ impl<'a> Problem<'a> {
                 // a is a line with an explicit point; b is a curve without one.
                 if a_pt.is_present()
                     && input.entities.get(a_idx as usize).map(|e| e.kind) == Some(Kind::Line)
-                    && is_curve(input.entities.get(b_idx as usize).map(|e| e.kind).unwrap_or(Kind::Point))
+                    && is_curve(
+                        input
+                            .entities
+                            .get(b_idx as usize)
+                            .map(|e| e.kind)
+                            .unwrap_or(Kind::Point),
+                    )
                     && !b_pt.is_present()
                 {
                     let sel = if a_pt == PointSelector::End {
@@ -243,7 +244,13 @@ impl<'a> Problem<'a> {
                 // Symmetric: b is a line with an explicit point; a is a curve without one.
                 if b_pt.is_present()
                     && input.entities.get(b_idx as usize).map(|e| e.kind) == Some(Kind::Line)
-                    && is_curve(input.entities.get(a_idx as usize).map(|e| e.kind).unwrap_or(Kind::Point))
+                    && is_curve(
+                        input
+                            .entities
+                            .get(a_idx as usize)
+                            .map(|e| e.kind)
+                            .unwrap_or(Kind::Point),
+                    )
                     && !a_pt.is_present()
                 {
                     let sel = if b_pt == PointSelector::End {
@@ -337,7 +344,11 @@ impl<'a> Problem<'a> {
                 // Mirror the builder's split: whichever operand plays the curve
                 // supplies the contact normal, center-only for a circle but
                 // from the start/end angle params for every other kind.
-                let (line_ref, arc_ref) = if ka == Some(Kind::Line) { (&a, &b) } else { (&b, &a) };
+                let (line_ref, arc_ref) = if ka == Some(Kind::Line) {
+                    (&a, &b)
+                } else {
+                    (&b, &a)
+                };
                 let arc_ok = match ref_kind(input, arc_ref) {
                     None | Some(Kind::Circle) => true,
                     _ => ref_supplies_slots(input, arc_ref, 5),
@@ -488,8 +499,8 @@ impl<'a> Problem<'a> {
             ConstraintKind::Tangent => self.r_tangent(c, x, r),
             ConstraintKind::EqualLength => self.r_equal_length(c, x, r),
             ConstraintKind::PointDistance => self.r_point_distance(c, x, r),
-        ConstraintKind::PointDistanceX => self.r_point_distance_axis(c, x, r, 0),
-        ConstraintKind::PointDistanceY => self.r_point_distance_axis(c, x, r, 1),
+            ConstraintKind::PointDistanceX => self.r_point_distance_axis(c, x, r, 0),
+            ConstraintKind::PointDistanceY => self.r_point_distance_axis(c, x, r, 1),
             ConstraintKind::Midpoint => self.r_midpoint(c, x, r),
             ConstraintKind::Concentric => self.r_concentric(c, x, r),
             ConstraintKind::Fixed => self.r_fixed(c, x, r),
@@ -517,8 +528,7 @@ impl<'a> Problem<'a> {
     }
 
     fn r_length(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
-        let (Some(Ref::Entity { index, .. }), Some(value)) =
-            (c.ref_for(RefRole::Target), c.value)
+        let (Some(Ref::Entity { index, .. }), Some(value)) = (c.ref_for(RefRole::Target), c.value)
         else {
             return;
         };
@@ -528,8 +538,7 @@ impl<'a> Problem<'a> {
     }
 
     fn r_radius(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
-        let (Some(Ref::Entity { index, .. }), Some(value)) =
-            (c.ref_for(RefRole::Target), c.value)
+        let (Some(Ref::Entity { index, .. }), Some(value)) = (c.ref_for(RefRole::Target), c.value)
         else {
             return;
         };
@@ -537,8 +546,7 @@ impl<'a> Problem<'a> {
     }
 
     fn r_diameter(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
-        let (Some(Ref::Entity { index, .. }), Some(value)) =
-            (c.ref_for(RefRole::Target), c.value)
+        let (Some(Ref::Entity { index, .. }), Some(value)) = (c.ref_for(RefRole::Target), c.value)
         else {
             return;
         };
@@ -558,7 +566,11 @@ impl<'a> Problem<'a> {
         let pb = self.point(x, b);
         let (dx, dy) = (ep_a[2] - ep_a[0], ep_a[3] - ep_a[1]);
         let n = (dx * dx + dy * dy).sqrt();
-        let (nx, ny) = if n > 0.0 { (-dy / n, dx / n) } else { (0.0, 1.0) };
+        let (nx, ny) = if n > 0.0 {
+            (-dy / n, dx / n)
+        } else {
+            (0.0, 1.0)
+        };
         let vx = pb[0] - ep_a[0];
         let vy = pb[1] - ep_a[1];
         // The perpendicular offset is already signed (the normal direction picks
@@ -573,20 +585,33 @@ impl<'a> Problem<'a> {
     fn ref_is_point(&self, r: &Ref) -> bool {
         match r {
             Ref::External { .. } => true,
-            Ref::Entity { point, index } => point.is_present() || self.kind_of(*index) == Kind::Point,
+            Ref::Entity { point, index } => {
+                point.is_present() || self.kind_of(*index) == Kind::Point
+            }
         }
     }
 
     /// Residual for a point lying on an entity (line/circle/arc/ellipse/spline).
     /// Used symmetrically regardless of whether the point is the A or B ref.
-    fn r_point_on_entity(&self, x: &[f64], point: Ref, entity_index: u32, entity_kind: Kind, r: &mut Vec<f64>) {
+    fn r_point_on_entity(
+        &self,
+        x: &[f64],
+        point: Ref,
+        entity_index: u32,
+        entity_kind: Kind,
+        r: &mut Vec<f64>,
+    ) {
         let pa = self.point(x, point);
         let ep = self.params(x, entity_index);
         match entity_kind {
             Kind::Line => {
                 let (dx, dy) = (ep[2] - ep[0], ep[3] - ep[1]);
                 let n = (dx * dx + dy * dy).sqrt();
-                let (nx, ny) = if n > 0.0 { (-dy / n, dx / n) } else { (0.0, 1.0) };
+                let (nx, ny) = if n > 0.0 {
+                    (-dy / n, dx / n)
+                } else {
+                    (0.0, 1.0)
+                };
                 r.push((pa[0] - ep[0]) * nx + (pa[1] - ep[1]) * ny);
             }
             Kind::Circle | Kind::Arc => {
@@ -603,34 +628,29 @@ impl<'a> Problem<'a> {
         let (Some(a_ref), Some(b_ref)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
             return;
         };
-        let a_kind = match a_ref {
-            Ref::Entity { index, .. } => Some(self.kind_of(index)),
+        // Carry the entity index and kind together so each arm below can
+        // destructure them without unwrapping a separate Option. An operand
+        // that is not an entity leaves this None and falls through to the
+        // point-point arm, which handles every non-entity reference.
+        let a_entity = match a_ref {
+            Ref::Entity { index, .. } => Some((index, self.kind_of(index))),
             _ => None,
         };
-        let b_kind = match b_ref {
-            Ref::Entity { index, .. } => Some(self.kind_of(index)),
-            _ => None,
-        };
-        let b_index = match b_ref {
-            Ref::Entity { index, .. } => Some(index),
-            _ => None,
-        };
-        let a_index = match a_ref {
-            Ref::Entity { index, .. } => Some(index),
+        let b_entity = match b_ref {
+            Ref::Entity { index, .. } => Some((index, self.kind_of(index))),
             _ => None,
         };
 
         if !self.ref_is_point(&a_ref)
             && !self.ref_is_point(&b_ref)
-            && a_kind == Some(Kind::Line)
-            && b_kind == Some(Kind::Line)
+            && matches!(a_entity, Some((_, Kind::Line)))
+            && matches!(b_entity, Some((_, Kind::Line)))
         {
-            let a_idx = match a_ref {
-                Ref::Entity { index, .. } => index,
-                _ => return,
+            let (Some((a_idx, _)), Some((b_idx, _))) = (a_entity, b_entity) else {
+                return;
             };
             let ea = self.params(x, a_idx);
-            let eb = self.params(x, b_index.unwrap());
+            let eb = self.params(x, b_idx);
             let da = [ea[2] - ea[0], ea[3] - ea[1]];
             let db = [eb[2] - eb[0], eb[3] - eb[1]];
             r.push(da[0] * db[1] - da[1] * db[0]);
@@ -641,27 +661,48 @@ impl<'a> Problem<'a> {
                 (0.0, 1.0)
             };
             r.push((eb[0] - ea[0]) * nx + (eb[1] - ea[1]) * ny);
-        } else if !self.ref_is_point(&b_ref) && b_kind == Some(Kind::Line) {
-            self.r_point_on_entity(x, a_ref, b_index.unwrap(), Kind::Line, r);
+        } else if !self.ref_is_point(&b_ref) && matches!(b_entity, Some((_, Kind::Line))) {
+            let Some((b_idx, _)) = b_entity else { return };
+            self.r_point_on_entity(x, a_ref, b_idx, Kind::Line, r);
         } else if !self.ref_is_point(&b_ref)
-            && (b_kind == Some(Kind::Circle) || b_kind == Some(Kind::Arc))
+            && matches!(b_entity, Some((_, Kind::Circle | Kind::Arc)))
         {
-            self.r_point_on_entity(x, a_ref, b_index.unwrap(), b_kind.unwrap(), r);
-        } else if !self.ref_is_point(&b_ref) && b_kind == Some(Kind::Ellipse) {
-            self.r_point_on_entity(x, a_ref, b_index.unwrap(), Kind::Ellipse, r);
-        } else if !self.ref_is_point(&b_ref) && b_kind == Some(Kind::Spline) {
-            self.r_point_on_entity(x, a_ref, b_index.unwrap(), Kind::Spline, r);
-        } else if !self.ref_is_point(&a_ref) && a_kind == Some(Kind::Line) && self.ref_is_point(&b_ref) {
-            self.r_point_on_entity(x, b_ref, a_index.unwrap(), Kind::Line, r);
+            let Some((b_idx, b_kind)) = b_entity else {
+                return;
+            };
+            self.r_point_on_entity(x, a_ref, b_idx, b_kind, r);
+        } else if !self.ref_is_point(&b_ref) && matches!(b_entity, Some((_, Kind::Ellipse))) {
+            let Some((b_idx, _)) = b_entity else { return };
+            self.r_point_on_entity(x, a_ref, b_idx, Kind::Ellipse, r);
+        } else if !self.ref_is_point(&b_ref) && matches!(b_entity, Some((_, Kind::Spline))) {
+            let Some((b_idx, _)) = b_entity else { return };
+            self.r_point_on_entity(x, a_ref, b_idx, Kind::Spline, r);
         } else if !self.ref_is_point(&a_ref)
-            && (a_kind == Some(Kind::Circle) || a_kind == Some(Kind::Arc))
+            && matches!(a_entity, Some((_, Kind::Line)))
             && self.ref_is_point(&b_ref)
         {
-            self.r_point_on_entity(x, b_ref, a_index.unwrap(), a_kind.unwrap(), r);
-        } else if !self.ref_is_point(&a_ref) && a_kind == Some(Kind::Ellipse) && self.ref_is_point(&b_ref) {
-            self.r_point_on_entity(x, b_ref, a_index.unwrap(), Kind::Ellipse, r);
-        } else if !self.ref_is_point(&a_ref) && a_kind == Some(Kind::Spline) && self.ref_is_point(&b_ref) {
-            self.r_point_on_entity(x, b_ref, a_index.unwrap(), Kind::Spline, r);
+            let Some((a_idx, _)) = a_entity else { return };
+            self.r_point_on_entity(x, b_ref, a_idx, Kind::Line, r);
+        } else if !self.ref_is_point(&a_ref)
+            && matches!(a_entity, Some((_, Kind::Circle | Kind::Arc)))
+            && self.ref_is_point(&b_ref)
+        {
+            let Some((a_idx, a_kind)) = a_entity else {
+                return;
+            };
+            self.r_point_on_entity(x, b_ref, a_idx, a_kind, r);
+        } else if !self.ref_is_point(&a_ref)
+            && matches!(a_entity, Some((_, Kind::Ellipse)))
+            && self.ref_is_point(&b_ref)
+        {
+            let Some((a_idx, _)) = a_entity else { return };
+            self.r_point_on_entity(x, b_ref, a_idx, Kind::Ellipse, r);
+        } else if !self.ref_is_point(&a_ref)
+            && matches!(a_entity, Some((_, Kind::Spline)))
+            && self.ref_is_point(&b_ref)
+        {
+            let Some((a_idx, _)) = a_entity else { return };
+            self.r_point_on_entity(x, b_ref, a_idx, Kind::Spline, r);
         } else {
             let pa = self.point(x, a_ref);
             let pb = self.point(x, b_ref);
@@ -829,13 +870,18 @@ impl<'a> Problem<'a> {
                 // honest for both pin sides: reading the opposite foot measured
                 // tangency at a point the constraints never tied down, and a
                 // correctly-tangent sketch read ~-0.9 instead of 0.
-                let contact = self.point(x, Ref::Entity { index: line_idx, point: pinned_pt });
+                let contact = self.point(
+                    x,
+                    Ref::Entity {
+                        index: line_idx,
+                        point: pinned_pt,
+                    },
+                );
                 let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
                 r.push(line_dir[0] * rd[0] + line_dir[1] * rd[1]);
             } else {
                 let (cx, cy) = (arc_ep[0], arc_ep[1]);
-                let num = (cx - line_ep[0]) * line_dir[1]
-                    - (cy - line_ep[1]) * line_dir[0];
+                let num = (cx - line_ep[0]) * line_dir[1] - (cy - line_ep[1]) * line_dir[0];
                 r.push(num.abs() - arc_ep[2]);
             }
         }
@@ -1481,7 +1527,7 @@ impl<'a> Problem<'a> {
 mod tests {
     use super::*;
     use crate::test_util::*;
-    use crate::{ConstraintKind, EqualityPin, Options, Status, solve_sketch};
+    use crate::{solve_sketch, ConstraintKind, EqualityPin, Options, Status};
 
     #[test]
     fn horizontal_and_length_residuals_on_known_line() {
@@ -1503,7 +1549,11 @@ mod tests {
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
         assert!((r[0] - 1.0).abs() < 1e-12, "horizontal: {}", r[0]);
-        assert!((r[1] - (101.0_f64.sqrt() - 10.0)).abs() < 1e-12, "length: {}", r[1]);
+        assert!(
+            (r[1] - (101.0_f64.sqrt() - 10.0)).abs() < 1e-12,
+            "length: {}",
+            r[1]
+        );
     }
 
     #[test]
@@ -1514,14 +1564,43 @@ mod tests {
             vec![ent(Kind::Line, 0)],
             vec![0.0, 0.0, 10.0, 1.0],
             vec![
-                cons(ConstraintKind::Horizontal, vec![target(0, PointSelector::Absent)]),
-                cons(ConstraintKind::Horizontal, vec![target(3, PointSelector::Absent)]),
+                cons(
+                    ConstraintKind::Horizontal,
+                    vec![target(0, PointSelector::Absent)],
+                ),
+                cons(
+                    ConstraintKind::Horizontal,
+                    vec![target(3, PointSelector::Absent)],
+                ),
             ],
         );
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
-        assert_eq!(r.len(), 1, "only the addressable constraint contributes a row");
+        assert_eq!(
+            r.len(),
+            1,
+            "only the addressable constraint contributes a row"
+        );
         assert!((r[0] - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn r_coincident_with_a_non_entity_ref_does_not_panic() {
+        // A role that is not an entity ref leaves the index/kind option empty;
+        // the builder must fall through to the point-point arm rather than
+        // unwrap, even when called directly with an unfiltered constraint.
+        let inp = input(vec![ent(Kind::Point, 0)], vec![3.0, 4.0], vec![]);
+        let p = Problem::new(&inp);
+        let c = cons(
+            ConstraintKind::Coincident,
+            ab(
+                Ref::External { x: 1.0, y: 2.0 },
+                e_ref(0, PointSelector::Absent),
+            ),
+        );
+        let mut r = Vec::new();
+        p.r_coincident(&c, &p.x0, &mut r);
+        assert_eq!(r.len(), 2, "one x and one y residual row");
     }
 
     #[test]
@@ -1531,7 +1610,10 @@ mod tests {
         let inp = input(
             vec![ent(Kind::Line, 0)],
             vec![0.0, 0.0, 10.0],
-            vec![cons(ConstraintKind::Horizontal, vec![target(0, PointSelector::Absent)])],
+            vec![cons(
+                ConstraintKind::Horizontal,
+                vec![target(0, PointSelector::Absent)],
+            )],
         );
         let p = Problem::new(&inp);
         assert!(p.residuals(&p.x0).is_empty());
@@ -1583,7 +1665,11 @@ mod tests {
             ),
             (
                 "angle circle vs point",
-                cons_v(ConstraintKind::Angle, ab(e_ref(1, absent), e_ref(0, absent)), 30.0),
+                cons_v(
+                    ConstraintKind::Angle,
+                    ab(e_ref(1, absent), e_ref(0, absent)),
+                    30.0,
+                ),
             ),
             (
                 "midpoint point in line role",
@@ -1599,7 +1685,10 @@ mod tests {
             // through to curve/curve and reads the point's slot-2 radius.
             (
                 "tangent point circle",
-                cons(ConstraintKind::Tangent, ab(e_ref(0, absent), e_ref(1, absent))),
+                cons(
+                    ConstraintKind::Tangent,
+                    ab(e_ref(0, absent), e_ref(1, absent)),
+                ),
             ),
             (
                 "tangent explicit roles on wrong kinds",
@@ -1610,11 +1699,17 @@ mod tests {
             ),
             (
                 "normal point line",
-                cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(2, absent))),
+                cons(
+                    ConstraintKind::Normal,
+                    ab(e_ref(0, absent), e_ref(2, absent)),
+                ),
             ),
             (
                 "normal two circles",
-                cons(ConstraintKind::Normal, ab(e_ref(1, absent), e_ref(1, absent))),
+                cons(
+                    ConstraintKind::Normal,
+                    ab(e_ref(1, absent), e_ref(1, absent)),
+                ),
             ),
         ];
         for (name, c) in payloads {
@@ -1641,13 +1736,27 @@ mod tests {
     fn wrong_kind_payload_solves_instead_of_panicking() {
         let absent = PointSelector::Absent;
         let inp = input(
-            vec![ent(Kind::Point, 0), ent(Kind::Circle, 2), ent(Kind::Line, 5)],
+            vec![
+                ent(Kind::Point, 0),
+                ent(Kind::Circle, 2),
+                ent(Kind::Line, 5),
+            ],
             vec![1.0, 2.0, 5.0, 5.0, 1.0, 0.0, 0.0, 4.0, 0.0],
             vec![
-                cons(ConstraintKind::Tangent, ab(e_ref(0, absent), e_ref(1, absent))),
-                cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(2, absent))),
+                cons(
+                    ConstraintKind::Tangent,
+                    ab(e_ref(0, absent), e_ref(1, absent)),
+                ),
+                cons(
+                    ConstraintKind::Normal,
+                    ab(e_ref(0, absent), e_ref(2, absent)),
+                ),
                 cons_v(ConstraintKind::Length, vec![target(0, absent)], 3.0),
-                cons_v(ConstraintKind::Angle, ab(e_ref(1, absent), e_ref(0, absent)), 30.0),
+                cons_v(
+                    ConstraintKind::Angle,
+                    ab(e_ref(1, absent), e_ref(0, absent)),
+                    30.0,
+                ),
             ],
         );
         let out = solve_sketch(&inp);
@@ -1661,8 +1770,14 @@ mod tests {
     fn equality_pin_past_the_param_buffer_is_dropped() {
         let mut inp = input(vec![ent(Kind::Point, 0)], vec![1.0, 2.0], vec![]);
         inp.equality_pins = vec![
-            EqualityPin { param_index: 1, target: 5.0 },
-            EqualityPin { param_index: 9, target: 5.0 },
+            EqualityPin {
+                param_index: 1,
+                target: 5.0,
+            },
+            EqualityPin {
+                param_index: 9,
+                target: 5.0,
+            },
         ];
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
@@ -1783,7 +1898,11 @@ mod tests {
         let inp = input(vec![ent(Kind::Line, 0)], vec![0.0, 0.0, 0.0, 10.0], c);
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
-        assert_eq!(r.len(), 1, "point-on-line is one row, not point-to-point's two");
+        assert_eq!(
+            r.len(),
+            1,
+            "point-on-line is one row, not point-to-point's two"
+        );
         assert!((r[0] - (-3.0)).abs() < 1e-12, "residual: {}", r[0]);
     }
 
@@ -1796,8 +1915,20 @@ mod tests {
         let c = vec![Constraint {
             kind_code: ConstraintKind::Tangent.to_u8(),
             refs: vec![
-                (RefRole::Line, Ref::Entity { index: 0, point: abs }),
-                (RefRole::Arc, Ref::Entity { index: 1, point: abs }),
+                (
+                    RefRole::Line,
+                    Ref::Entity {
+                        index: 0,
+                        point: abs,
+                    },
+                ),
+                (
+                    RefRole::Arc,
+                    Ref::Entity {
+                        index: 1,
+                        point: abs,
+                    },
+                ),
             ],
             ..Default::default()
         }];
@@ -1810,7 +1941,12 @@ mod tests {
         let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         let expected = 7.0 / (10.0_f64).sqrt() - 2.5;
-        assert!((r[0] - expected).abs() < 1e-12, "residual: {}, expected: {}", r[0], expected);
+        assert!(
+            (r[0] - expected).abs() < 1e-12,
+            "residual: {}, expected: {}",
+            r[0],
+            expected
+        );
     }
 
     /// Normal between a line and a circle goes through `radius_dir` at the line
@@ -1826,7 +1962,10 @@ mod tests {
         let inp = input(
             vec![ent(Kind::Line, 0), ent(Kind::Circle, 4)],
             vec![0.0, 0.0, 4.0, 0.0, 8.0, 8.0, 2.0],
-            vec![cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(1, absent)))],
+            vec![cons(
+                ConstraintKind::Normal,
+                ab(e_ref(0, absent), e_ref(1, absent)),
+            )],
         );
         let p = Problem::new(&inp);
         let x = p.x0.clone();
@@ -1834,7 +1973,11 @@ mod tests {
         let r = p.residuals(&x);
         assert_eq!(r.len(), 1);
         let expected = -32.0 / (80.0_f64).sqrt();
-        assert!((r[0] - expected).abs() < 1e-12, "normal line/circle: {}", r[0]);
+        assert!(
+            (r[0] - expected).abs() < 1e-12,
+            "normal line/circle: {}",
+            r[0]
+        );
         // The FD fallback for this kind must mirror the row count.
         assert_eq!(p.jacobian(&x, n).nrows(), 1);
     }
@@ -1852,7 +1995,10 @@ mod tests {
         let inp = input(
             vec![ent(Kind::Line, 0), ent(Kind::Arc, 4)],
             vec![0.0, 0.0, 4.0, 0.0, 4.0, 8.0, 2.0, 0.0, 90.0],
-            vec![cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(1, absent)))],
+            vec![cons(
+                ConstraintKind::Normal,
+                ab(e_ref(0, absent), e_ref(1, absent)),
+            )],
         );
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
@@ -1870,7 +2016,10 @@ mod tests {
         let inp = input(
             vec![ent(Kind::Line, 0), ent(Kind::Arc, 4)],
             vec![0.0, 0.0, 5.0, 5.0, 5.0, 5.0, 2.0, 0.0, 90.0],
-            vec![cons(ConstraintKind::Normal, ab(e_ref(0, absent), e_ref(1, absent)))],
+            vec![cons(
+                ConstraintKind::Normal,
+                ab(e_ref(0, absent), e_ref(1, absent)),
+            )],
         );
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
@@ -1893,8 +2042,20 @@ mod tests {
         let c = vec![Constraint {
             kind_code: ConstraintKind::Tangent.to_u8(),
             refs: vec![
-                (RefRole::Line, Ref::Entity { index: 0, point: abs }),
-                (RefRole::Arc, Ref::Entity { index: 1, point: abs }),
+                (
+                    RefRole::Line,
+                    Ref::Entity {
+                        index: 0,
+                        point: abs,
+                    },
+                ),
+                (
+                    RefRole::Arc,
+                    Ref::Entity {
+                        index: 1,
+                        point: abs,
+                    },
+                ),
             ],
             ..Default::default()
         }];
@@ -1907,7 +2068,11 @@ mod tests {
         let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 1);
         // centre (0,0) to horizontal line y=2: distance = 2, radius = 2 => zero
-        assert!(r[0].abs() < 1e-12, "horizontal line y=2 tangent to arc r=2: {}", r[0]);
+        assert!(
+            r[0].abs() < 1e-12,
+            "horizontal line y=2 tangent to arc r=2: {}",
+            r[0]
+        );
     }
 
     /// A line that is NOT tangent to the arc's circle yields a non-zero
@@ -1919,8 +2084,20 @@ mod tests {
         let c = vec![Constraint {
             kind_code: ConstraintKind::Tangent.to_u8(),
             refs: vec![
-                (RefRole::Line, Ref::Entity { index: 0, point: abs }),
-                (RefRole::Arc, Ref::Entity { index: 1, point: abs }),
+                (
+                    RefRole::Line,
+                    Ref::Entity {
+                        index: 0,
+                        point: abs,
+                    },
+                ),
+                (
+                    RefRole::Arc,
+                    Ref::Entity {
+                        index: 1,
+                        point: abs,
+                    },
+                ),
             ],
             ..Default::default()
         }];
@@ -1965,7 +2142,10 @@ mod tests {
             ],
         );
         let p = Problem::new(&inp);
-        assert_eq!(p.line_circle_coincident.get(&(0, 1)), Some(&PointSelector::End));
+        assert_eq!(
+            p.line_circle_coincident.get(&(0, 1)),
+            Some(&PointSelector::End)
+        );
         let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 2);
         assert!(r[0].abs() < 1e-12, "coincident: {}", r[0]);
@@ -1996,7 +2176,10 @@ mod tests {
             ],
         );
         let p = Problem::new(&inp);
-        assert_eq!(p.line_circle_coincident.get(&(0, 1)), Some(&PointSelector::Start));
+        assert_eq!(
+            p.line_circle_coincident.get(&(0, 1)),
+            Some(&PointSelector::Start)
+        );
         let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 2);
         assert!(r[0].abs() < 1e-12, "coincident: {}", r[0]);
@@ -2018,8 +2201,15 @@ mod tests {
         let inp = input(
             vec![ent(Kind::Line, 0), ent(Kind::Arc, 4)],
             vec![
-                start[0] as f32, start[1] as f32, end[0] as f32, end[1] as f32,
-                0.0, 0.0, 5.0, 0.0, 90.0,
+                start[0] as f32,
+                start[1] as f32,
+                end[0] as f32,
+                end[1] as f32,
+                0.0,
+                0.0,
+                5.0,
+                0.0,
+                90.0,
             ],
             vec![
                 cons(
@@ -2091,7 +2281,12 @@ mod tests {
                 "{name}: residual {} at an already-feasible seed",
                 out.diagnostics.residual_norm
             );
-            for (i, (got, want)) in out.params_solved.iter().zip(&inp.params_initial).enumerate() {
+            for (i, (got, want)) in out
+                .params_solved
+                .iter()
+                .zip(&inp.params_initial)
+                .enumerate()
+            {
                 assert!(
                     (*got as f64 - *want as f64).abs() < 1e-3,
                     "{name}: param {i} moved from {want} to {got}"
@@ -2103,7 +2298,11 @@ mod tests {
     #[test]
     fn arc_endpoint_get_point_uses_radius_and_angle() {
         // Arc center (0,0) r=2, start angle 90deg -> start point (0,2).
-        let inp = input(vec![ent(Kind::Arc, 0)], vec![0.0, 0.0, 2.0, 90.0, 180.0], vec![]);
+        let inp = input(
+            vec![ent(Kind::Arc, 0)],
+            vec![0.0, 0.0, 2.0, 90.0, 180.0],
+            vec![],
+        );
         let p = Problem::new(&inp);
         let pt = p.point(
             &p.x0.clone(),
@@ -2172,9 +2371,9 @@ mod tests {
         // residual by zero: one NaN row makes every later LM step NaN and the
         // whole sketch stops converging with nothing reported.
         for ep in [
-            [0.0, 0.0, 0.0, 1.0, 0.0],  // a collapsed
-            [0.0, 0.0, 2.0, 0.0, 0.0],  // b collapsed
-            [0.0, 0.0, 0.0, 0.0, 0.0],  // both
+            [0.0, 0.0, 0.0, 1.0, 0.0], // a collapsed
+            [0.0, 0.0, 2.0, 0.0, 0.0], // b collapsed
+            [0.0, 0.0, 0.0, 0.0, 0.0], // both
         ] {
             let r = ellipse_point_residual([1.0, 1.0], &ep);
             assert!(r.is_finite(), "residual for {ep:?} was {r}");
@@ -2202,25 +2401,67 @@ mod tests {
     #[test]
     fn ellipse_axis_endpoints_resolve_from_params() {
         // Center (1,2), a=4, b=2, theta=0: major axis along +x, minor along +y.
-        let inp = input(vec![ent(Kind::Ellipse, 0)], vec![1.0, 2.0, 4.0, 2.0, 0.0], vec![]);
+        let inp = input(
+            vec![ent(Kind::Ellipse, 0)],
+            vec![1.0, 2.0, 4.0, 2.0, 0.0],
+            vec![],
+        );
         let p = Problem::new(&inp);
         let x = p.x0.clone();
-        let pt = |sel| p.point(&x, Ref::Entity { index: 0, point: sel });
+        let pt = |sel| {
+            p.point(
+                &x,
+                Ref::Entity {
+                    index: 0,
+                    point: sel,
+                },
+            )
+        };
         assert_eq!(pt(PointSelector::Center), [1.0, 2.0]);
         let maj = pt(PointSelector::Major);
-        assert!((maj[0] - 5.0).abs() < 1e-9 && (maj[1] - 2.0).abs() < 1e-9, "major+ {:?}", maj);
+        assert!(
+            (maj[0] - 5.0).abs() < 1e-9 && (maj[1] - 2.0).abs() < 1e-9,
+            "major+ {:?}",
+            maj
+        );
         let majn = pt(PointSelector::MajorNeg);
-        assert!((majn[0] - (-3.0)).abs() < 1e-9 && (majn[1] - 2.0).abs() < 1e-9, "major- {:?}", majn);
+        assert!(
+            (majn[0] - (-3.0)).abs() < 1e-9 && (majn[1] - 2.0).abs() < 1e-9,
+            "major- {:?}",
+            majn
+        );
         let min = pt(PointSelector::Minor);
-        assert!((min[0] - 1.0).abs() < 1e-9 && (min[1] - 4.0).abs() < 1e-9, "minor+ {:?}", min);
+        assert!(
+            (min[0] - 1.0).abs() < 1e-9 && (min[1] - 4.0).abs() < 1e-9,
+            "minor+ {:?}",
+            min
+        );
         let minn = pt(PointSelector::MinorNeg);
-        assert!((minn[0] - 1.0).abs() < 1e-9 && (minn[1] - 0.0).abs() < 1e-9, "minor- {:?}", minn);
+        assert!(
+            (minn[0] - 1.0).abs() < 1e-9 && (minn[1] - 0.0).abs() < 1e-9,
+            "minor- {:?}",
+            minn
+        );
 
         // Rotated 90deg: major axis now along +y.
-        let inp2 = input(vec![ent(Kind::Ellipse, 0)], vec![0.0, 0.0, 4.0, 2.0, 90.0], vec![]);
+        let inp2 = input(
+            vec![ent(Kind::Ellipse, 0)],
+            vec![0.0, 0.0, 4.0, 2.0, 90.0],
+            vec![],
+        );
         let p2 = Problem::new(&inp2);
-        let maj2 = p2.point(&p2.x0.clone(), Ref::Entity { index: 0, point: PointSelector::Major });
-        assert!((maj2[0]).abs() < 1e-9 && (maj2[1] - 4.0).abs() < 1e-9, "rotated major+ {:?}", maj2);
+        let maj2 = p2.point(
+            &p2.x0.clone(),
+            Ref::Entity {
+                index: 0,
+                point: PointSelector::Major,
+            },
+        );
+        assert!(
+            (maj2[0]).abs() < 1e-9 && (maj2[1] - 4.0).abs() < 1e-9,
+            "rotated major+ {:?}",
+            maj2
+        );
     }
 
     #[test]
@@ -2231,7 +2472,10 @@ mod tests {
             vec![1.0, 2.0, 3.0, 1.0, 0.0, 4.0, 6.0, 2.0],
             vec![cons(
                 ConstraintKind::Concentric,
-                ab(e_ref(0, PointSelector::Absent), e_ref(1, PointSelector::Absent)),
+                ab(
+                    e_ref(0, PointSelector::Absent),
+                    e_ref(1, PointSelector::Absent),
+                ),
             )],
         );
         let p = Problem::new(&inp);
@@ -2349,7 +2593,11 @@ mod tests {
         );
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
-        assert!((r[0] - 20.0).abs() < 1e-12, "signed -1 wrong side: {}", r[0]);
+        assert!(
+            (r[0] - 20.0).abs() < 1e-12,
+            "signed -1 wrong side: {}",
+            r[0]
+        );
     }
 
     #[test]
@@ -2367,7 +2615,11 @@ mod tests {
         );
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
-        assert!(r[0].abs() < 1e-12, "signed -1 correct (left) side: {}", r[0]);
+        assert!(
+            r[0].abs() < 1e-12,
+            "signed -1 correct (left) side: {}",
+            r[0]
+        );
     }
 
     #[test]
@@ -2436,11 +2688,17 @@ mod tests {
         // sign -1 wants b below; b above reads 10.
         let wrong = mk(5.0, Some(-1.0));
         let pw = Problem::new(&wrong);
-        assert!((pw.residuals(&pw.x0)[0] - 10.0).abs() < 1e-12, "signed -1 wrong side");
+        assert!(
+            (pw.residuals(&pw.x0)[0] - 10.0).abs() < 1e-12,
+            "signed -1 wrong side"
+        );
         // sign -1 with b below is satisfied.
         let right = mk(-5.0, Some(-1.0));
         let pr = Problem::new(&right);
-        assert!(pr.residuals(&pr.x0)[0].abs() < 1e-12, "signed -1 correct side");
+        assert!(
+            pr.residuals(&pr.x0)[0].abs() < 1e-12,
+            "signed -1 correct side"
+        );
     }
 
     #[test]
@@ -2450,7 +2708,10 @@ mod tests {
         let mk = |by_end: f32, sign: Option<f64>| {
             let c = Constraint {
                 kind_code: ConstraintKind::Angle.to_u8(),
-                refs: ab(e_ref(0, PointSelector::Absent), e_ref(1, PointSelector::Absent)),
+                refs: ab(
+                    e_ref(0, PointSelector::Absent),
+                    e_ref(1, PointSelector::Absent),
+                ),
                 value: Some(90.0),
                 sign,
                 ..Default::default()
@@ -2504,14 +2765,22 @@ mod tests {
         let p = Problem::new(&inp);
         let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 2);
-        assert!(r[0].abs() < 1e-12 && r[1].abs() < 1e-12, "on-center {:?}", r);
+        assert!(
+            r[0].abs() < 1e-12 && r[1].abs() < 1e-12,
+            "on-center {:?}",
+            r
+        );
 
         // Move the point to (5,7): residual = (5-2, 7-1) = (3, 6).
         let mut x = p.x0.clone();
         x[4] = 5.0;
         x[5] = 7.0;
         let r = p.residuals(&x);
-        assert!((r[0] - 3.0).abs() < 1e-12 && (r[1] - 6.0).abs() < 1e-12, "off-center {:?}", r);
+        assert!(
+            (r[0] - 3.0).abs() < 1e-12 && (r[1] - 6.0).abs() < 1e-12,
+            "off-center {:?}",
+            r
+        );
     }
 
     #[test]
@@ -2519,7 +2788,11 @@ mod tests {
         // PointA (0,0) + PointB (10,4) -> midpoint (5,2). The point-pair branch
         // (RefRole::PointA/PointB) is exercised by no other test.
         let inp = input(
-            vec![ent(Kind::Point, 0), ent(Kind::Point, 2), ent(Kind::Point, 4)],
+            vec![
+                ent(Kind::Point, 0),
+                ent(Kind::Point, 2),
+                ent(Kind::Point, 4),
+            ],
             vec![0.0, 0.0, 10.0, 4.0, 5.0, 5.0],
             vec![cons(
                 ConstraintKind::Midpoint,
@@ -2534,7 +2807,11 @@ mod tests {
         // Point is at (5,5); midpoint is (5,2) -> residual (0, 3).
         let r = p.residuals(&p.x0);
         assert_eq!(r.len(), 2);
-        assert!(r[0].abs() < 1e-12 && (r[1] - 3.0).abs() < 1e-12, "point-pair {:?}", r);
+        assert!(
+            r[0].abs() < 1e-12 && (r[1] - 3.0).abs() < 1e-12,
+            "point-pair {:?}",
+            r
+        );
     }
 
     #[test]
@@ -2577,7 +2854,15 @@ mod tests {
         );
         let p = Problem::new(&inp);
         let x = p.x0.clone();
-        let pt = |sel| p.point(&x, Ref::Entity { index: 0, point: sel });
+        let pt = |sel| {
+            p.point(
+                &x,
+                Ref::Entity {
+                    index: 0,
+                    point: sel,
+                },
+            )
+        };
         assert_eq!(pt(PointSelector::Start), [0.0, 0.0]);
         assert_eq!(pt(PointSelector::End), [3.0, 0.0]);
         // C1/C2 resolve to the off-curve control points P2/P3.
@@ -2585,7 +2870,11 @@ mod tests {
         assert_eq!(pt(PointSelector::C2), [3.0, 3.0]);
         // B(0.5) = (P1 + 3P2 + 3P3 + P4)/8 = (1.5, 2.25).
         let mid = pt(PointSelector::Center);
-        assert!((mid[0] - 1.5).abs() < 1e-9 && (mid[1] - 2.25).abs() < 1e-9, "mid {:?}", mid);
+        assert!(
+            (mid[0] - 1.5).abs() < 1e-9 && (mid[1] - 2.25).abs() < 1e-9,
+            "mid {:?}",
+            mid
+        );
     }
 
     #[test]
@@ -2630,14 +2919,38 @@ mod tests {
             0.0, 0.0, 1.0, 0.5, // line
         ];
         let constraints = vec![
-            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(0, Start)), (B, e_ref(1, Xy))], 2.0),
-            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Xy))], 1.0),
+            cons_v(
+                ConstraintKind::PointDistance,
+                vec![(A, e_ref(0, Start)), (B, e_ref(1, Xy))],
+                2.0,
+            ),
+            cons_v(
+                ConstraintKind::PointDistance,
+                vec![(A, e_ref(0, Absent)), (B, e_ref(1, Xy))],
+                1.0,
+            ),
             // C1/C2 control-point selectors through the analytic point_jac.
-            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(0, C1)), (B, e_ref(1, Xy))], 1.5),
-            cons(ConstraintKind::Coincident, vec![(A, e_ref(0, C2)), (B, e_ref(1, Xy))]),
-            cons(ConstraintKind::Coincident, vec![(A, e_ref(0, Start)), (B, e_ref(1, Xy))]),
-            cons(ConstraintKind::Coincident, vec![(A, e_ref(1, Xy)), (B, e_ref(0, Absent))]),
-            cons(ConstraintKind::Tangent, vec![(LineR, e_ref(2, Absent)), (ArcR, e_ref(0, Start))]),
+            cons_v(
+                ConstraintKind::PointDistance,
+                vec![(A, e_ref(0, C1)), (B, e_ref(1, Xy))],
+                1.5,
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                vec![(A, e_ref(0, C2)), (B, e_ref(1, Xy))],
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                vec![(A, e_ref(0, Start)), (B, e_ref(1, Xy))],
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                vec![(A, e_ref(1, Xy)), (B, e_ref(0, Absent))],
+            ),
+            cons(
+                ConstraintKind::Tangent,
+                vec![(LineR, e_ref(2, Absent)), (ArcR, e_ref(0, Start))],
+            ),
         ];
         let inp = input(entities, params, constraints);
         let p = Problem::new(&inp);
@@ -2735,7 +3048,10 @@ mod tests {
         // Equal radius: residual = rA - rB = 2 - 3 = -1, and the analytic
         // Jacobian agrees with finite differences.
         {
-            let cons_eq = cons(ConstraintKind::EqualLength, ab(e_ref(0, abs), e_ref(1, abs)));
+            let cons_eq = cons(
+                ConstraintKind::EqualLength,
+                ab(e_ref(0, abs), e_ref(1, abs)),
+            );
             let inp = input(make(), params(), vec![cons_eq]);
             let p = Problem::new(&inp);
             let x = p.x0.clone();
@@ -2846,17 +3162,17 @@ mod tests {
     #[test]
     fn analytic_jacobian_matches_finite_difference() {
         use PointSelector::{Absent, Center, End, Major, Minor, Start, Xy};
-        use RefRole::{Arc as ArcR, Line as LineR, Point as PointR, A, B, Target};
+        use RefRole::{Arc as ArcR, Line as LineR, Point as PointR, Target, A, B};
 
         let entities = vec![
-            ent(Kind::Line, 0),   // 0  L1 [0..4]
-            ent(Kind::Line, 4),   // 1  L2 [4..8]
-            ent(Kind::Circle, 8), // 2  C1 [8..11]
-            ent(Kind::Arc, 11),   // 3  A1 [11..16]
-            ent(Kind::Point, 16), // 4  P1 [16..18]
-            ent(Kind::Point, 18), // 5  P2 [18..20]
+            ent(Kind::Line, 0),     // 0  L1 [0..4]
+            ent(Kind::Line, 4),     // 1  L2 [4..8]
+            ent(Kind::Circle, 8),   // 2  C1 [8..11]
+            ent(Kind::Arc, 11),     // 3  A1 [11..16]
+            ent(Kind::Point, 16),   // 4  P1 [16..18]
+            ent(Kind::Point, 18),   // 5  P2 [18..20]
             ent(Kind::Ellipse, 20), // 6  E1 [20..25]
-            ent(Kind::Circle, 25), // 7  C2 [25..28]
+            ent(Kind::Circle, 25),  // 7  C2 [25..28]
         ];
         let params = vec![
             0.0, 0.0, 3.0, 1.0, // L1
@@ -2871,41 +3187,133 @@ mod tests {
 
         let constraints = vec![
             cons(ConstraintKind::Horizontal, vec![(Target, e_ref(0, Absent))]),
-            cons(ConstraintKind::Horizontal, vec![(A, e_ref(0, Start)), (B, e_ref(4, End))]),
+            cons(
+                ConstraintKind::Horizontal,
+                vec![(A, e_ref(0, Start)), (B, e_ref(4, End))],
+            ),
             cons(ConstraintKind::Vertical, vec![(Target, e_ref(1, Absent))]),
-            cons(ConstraintKind::Vertical, vec![(A, e_ref(4, Xy)), (B, e_ref(5, Xy))]),
-            cons_v(ConstraintKind::Length, vec![(Target, e_ref(0, Absent))], 5.0),
-            cons_v(ConstraintKind::Radius, vec![(Target, e_ref(2, Absent))], 4.0),
-            cons_v(ConstraintKind::Diameter, vec![(Target, e_ref(2, Absent))], 8.0),
-            cons(ConstraintKind::Parallel, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
-            cons(ConstraintKind::Concentric, vec![(A, e_ref(2, Absent)), (B, e_ref(3, Absent))]),
-            cons(ConstraintKind::EqualLength, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
-            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(4, Xy)), (B, e_ref(5, Xy))], 3.0),
+            cons(
+                ConstraintKind::Vertical,
+                vec![(A, e_ref(4, Xy)), (B, e_ref(5, Xy))],
+            ),
+            cons_v(
+                ConstraintKind::Length,
+                vec![(Target, e_ref(0, Absent))],
+                5.0,
+            ),
+            cons_v(
+                ConstraintKind::Radius,
+                vec![(Target, e_ref(2, Absent))],
+                4.0,
+            ),
+            cons_v(
+                ConstraintKind::Diameter,
+                vec![(Target, e_ref(2, Absent))],
+                8.0,
+            ),
+            cons(
+                ConstraintKind::Parallel,
+                vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))],
+            ),
+            cons(
+                ConstraintKind::Concentric,
+                vec![(A, e_ref(2, Absent)), (B, e_ref(3, Absent))],
+            ),
+            cons(
+                ConstraintKind::EqualLength,
+                vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))],
+            ),
+            cons_v(
+                ConstraintKind::PointDistance,
+                vec![(A, e_ref(4, Xy)), (B, e_ref(5, Xy))],
+                3.0,
+            ),
             // coincident: analytic point-point (incl. arc endpoint point_jac)
-            cons(ConstraintKind::Coincident, vec![(A, e_ref(4, Xy)), (B, e_ref(5, Xy))]),
-            cons(ConstraintKind::Coincident, vec![(A, e_ref(3, Start)), (B, e_ref(5, Xy))]),
+            cons(
+                ConstraintKind::Coincident,
+                vec![(A, e_ref(4, Xy)), (B, e_ref(5, Xy))],
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                vec![(A, e_ref(3, Start)), (B, e_ref(5, Xy))],
+            ),
             // coincident fallback branches
-            cons(ConstraintKind::Coincident, vec![(A, e_ref(4, Xy)), (B, e_ref(1, Absent))]),
-            cons(ConstraintKind::Coincident, vec![(A, e_ref(4, Xy)), (B, e_ref(2, Absent))]),
-            cons(ConstraintKind::Coincident, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
+            cons(
+                ConstraintKind::Coincident,
+                vec![(A, e_ref(4, Xy)), (B, e_ref(1, Absent))],
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                vec![(A, e_ref(4, Xy)), (B, e_ref(2, Absent))],
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))],
+            ),
             // point-on-ellipse (FD fallback branch) and concentric ellipse+circle
-            cons(ConstraintKind::Coincident, vec![(A, e_ref(5, Xy)), (B, e_ref(6, Absent))]),
-            cons(ConstraintKind::Concentric, vec![(A, e_ref(6, Absent)), (B, e_ref(2, Absent))]),
+            cons(
+                ConstraintKind::Coincident,
+                vec![(A, e_ref(5, Xy)), (B, e_ref(6, Absent))],
+            ),
+            cons(
+                ConstraintKind::Concentric,
+                vec![(A, e_ref(6, Absent)), (B, e_ref(2, Absent))],
+            ),
             // ellipse axis-endpoint point_distance (exercises the endpoint point_jac)
-            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(6, Center)), (B, e_ref(6, Major))], 4.0),
-            cons_v(ConstraintKind::PointDistance, vec![(A, e_ref(6, Center)), (B, e_ref(6, Minor))], 2.0),
+            cons_v(
+                ConstraintKind::PointDistance,
+                vec![(A, e_ref(6, Center)), (B, e_ref(6, Major))],
+                4.0,
+            ),
+            cons_v(
+                ConstraintKind::PointDistance,
+                vec![(A, e_ref(6, Center)), (B, e_ref(6, Minor))],
+                2.0,
+            ),
             // direction-normalizing / atan2 fallbacks
-            cons(ConstraintKind::Normal, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))]),
-            cons_v(ConstraintKind::Angle, vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))], 30.0),
-            cons(ConstraintKind::Tangent, vec![(LineR, e_ref(0, Absent)), (ArcR, e_ref(2, Absent))]),
-            cons(ConstraintKind::Tangent, vec![(LineR, e_ref(0, Absent)), (ArcR, e_ref(3, Start))]),
-            cons(ConstraintKind::Midpoint, vec![(LineR, e_ref(0, Absent)), (PointR, e_ref(4, Xy))]),
-            cons_v(ConstraintKind::LineDistance, vec![(A, e_ref(0, Absent)), (B, e_ref(5, Xy))], 1.0),
+            cons(
+                ConstraintKind::Normal,
+                vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))],
+            ),
+            cons_v(
+                ConstraintKind::Angle,
+                vec![(A, e_ref(0, Absent)), (B, e_ref(1, Absent))],
+                30.0,
+            ),
+            cons(
+                ConstraintKind::Tangent,
+                vec![(LineR, e_ref(0, Absent)), (ArcR, e_ref(2, Absent))],
+            ),
+            cons(
+                ConstraintKind::Tangent,
+                vec![(LineR, e_ref(0, Absent)), (ArcR, e_ref(3, Start))],
+            ),
+            cons(
+                ConstraintKind::Midpoint,
+                vec![(LineR, e_ref(0, Absent)), (PointR, e_ref(4, Xy))],
+            ),
+            cons_v(
+                ConstraintKind::LineDistance,
+                vec![(A, e_ref(0, Absent)), (B, e_ref(5, Xy))],
+                1.0,
+            ),
             // radius-difference dimension between C1 and C2
-            cons_v(ConstraintKind::RadiusDifference, ab(e_ref(2, Absent), e_ref(7, Absent)), 1.0),
+            cons_v(
+                ConstraintKind::RadiusDifference,
+                ab(e_ref(2, Absent), e_ref(7, Absent)),
+                1.0,
+            ),
             // point-distance-x/y between P1 and P2
-            cons_v(ConstraintKind::PointDistanceX, ab(e_ref(4, Xy), e_ref(5, Xy)), 2.0),
-            cons_v(ConstraintKind::PointDistanceY, ab(e_ref(4, Xy), e_ref(5, Xy)), 4.0),
+            cons_v(
+                ConstraintKind::PointDistanceX,
+                ab(e_ref(4, Xy), e_ref(5, Xy)),
+                2.0,
+            ),
+            cons_v(
+                ConstraintKind::PointDistanceY,
+                ab(e_ref(4, Xy), e_ref(5, Xy)),
+                4.0,
+            ),
             // fixed: explicit-xy point, point+xy, and full-entity
             Constraint {
                 kind_code: ConstraintKind::Fixed.to_u8(),
@@ -2967,12 +3375,34 @@ mod tests {
         ];
         let constraints = vec![
             cons(ConstraintKind::Horizontal, vec![(Target, e_ref(0, Absent))]),
-            cons_v(ConstraintKind::Length, vec![(Target, e_ref(0, Absent))], 5.0),
-            cons(ConstraintKind::Parallel, ab(e_ref(0, Absent), e_ref(1, Absent))),
-            cons_v(ConstraintKind::Radius, vec![(Target, e_ref(2, Absent))], 4.0),
-            cons(ConstraintKind::Coincident, ab(e_ref(3, Xy), e_ref(1, Absent))),
-            cons_v(ConstraintKind::Angle, ab(e_ref(0, Absent), e_ref(1, Absent)), 30.0),
-            cons_v(ConstraintKind::PointDistance, ab(e_ref(3, Xy), e_ref(0, Start)), 1.0),
+            cons_v(
+                ConstraintKind::Length,
+                vec![(Target, e_ref(0, Absent))],
+                5.0,
+            ),
+            cons(
+                ConstraintKind::Parallel,
+                ab(e_ref(0, Absent), e_ref(1, Absent)),
+            ),
+            cons_v(
+                ConstraintKind::Radius,
+                vec![(Target, e_ref(2, Absent))],
+                4.0,
+            ),
+            cons(
+                ConstraintKind::Coincident,
+                ab(e_ref(3, Xy), e_ref(1, Absent)),
+            ),
+            cons_v(
+                ConstraintKind::Angle,
+                ab(e_ref(0, Absent), e_ref(1, Absent)),
+                30.0,
+            ),
+            cons_v(
+                ConstraintKind::PointDistance,
+                ab(e_ref(3, Xy), e_ref(0, Start)),
+                1.0,
+            ),
             cons(
                 ConstraintKind::Tangent,
                 vec![(LineR, e_ref(0, Absent)), (ArcR, e_ref(2, Absent))],

@@ -30,7 +30,7 @@ pub mod residuals;
 pub mod solve;
 #[cfg(test)]
 pub mod test_util;
-pub mod topology;
+pub(crate) mod topology;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;

@@ -14,7 +14,8 @@ use wasm_bindgen::prelude::*;
 /// reported inside it.
 #[wasm_bindgen]
 pub fn solve_mate_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
-    crate::api::solve_mate_bytes(input).map_err(|e| JsError::new(&format!("mate decode error: {e:?}")))
+    crate::api::solve_mate_bytes(input)
+        .map_err(|e| JsError::new(&format!("mate decode error: {e:?}")))
 }
 
 /// Live-drag variant of `solve_mate_bytes`: same solved pose, but skips the
@@ -22,5 +23,6 @@ pub fn solve_mate_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
 /// discards. See `api::solve_mate_bytes_live`.
 #[wasm_bindgen]
 pub fn solve_mate_bytes_live(input: &[u8]) -> Result<Vec<u8>, JsError> {
-    crate::api::solve_mate_bytes_live(input).map_err(|e| JsError::new(&format!("mate decode error: {e:?}")))
+    crate::api::solve_mate_bytes_live(input)
+        .map_err(|e| JsError::new(&format!("mate decode error: {e:?}")))
 }

@@ -147,9 +147,10 @@ pub fn solve_lm_damped(
     // Augmented objective 0.5||r||² + 0.5·μ·||x - x0||² -- the gradient/damping and
     // the accept test must use the SAME cost or step acceptance is inconsistent.
     let anchor_cost = |xs: &[f64]| -> f64 {
-        0.5 * mu * (0..n)
-            .map(|i| damp_scale_at(damp_scale, i) * (xs[i] - x0[i]).powi(2))
-            .sum::<f64>()
+        0.5 * mu
+            * (0..n)
+                .map(|i| damp_scale_at(damp_scale, i) * (xs[i] - x0[i]).powi(2))
+                .sum::<f64>()
     };
     let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x);
 
@@ -351,13 +352,20 @@ pub fn solve_lm_sparse(
 mod tests {
     use super::*;
 
-    fn one_d() -> (Vec<f64>, impl Fn(&[f64]) -> Vec<f64>, impl Fn(&[f64]) -> DMatrix<f64>) {
+    // The two test fixtures share this shape: a start point, a residual
+    // closure and a Jacobian closure. Non-capturing closures coerce to fn
+    // pointers, so naming the shape keeps clippy's complexity lint quiet.
+    type ResidualFn = fn(&[f64]) -> Vec<f64>;
+    type JacobianFn = fn(&[f64]) -> DMatrix<f64>;
+    type LmFixture = (Vec<f64>, ResidualFn, JacobianFn);
+
+    fn one_d() -> LmFixture {
         let f = |x: &[f64]| vec![x[0] - 5.0];
         let jac = |_: &[f64]| DMatrix::from_row_slice(1, 1, &[1.0]);
         (vec![0.0], f, jac)
     }
 
-    fn two_d() -> (Vec<f64>, impl Fn(&[f64]) -> Vec<f64>, impl Fn(&[f64]) -> DMatrix<f64>) {
+    fn two_d() -> LmFixture {
         let f = |x: &[f64]| vec![x[0] - 3.0, x[1] - 7.0];
         let jac = |_: &[f64]| DMatrix::from_row_slice(2, 2, &[1.0, 0.0, 0.0, 1.0]);
         (vec![1.0, 2.0], f, jac)
@@ -457,11 +465,7 @@ mod tests {
         // column-shifted or mis-scaled matrix here.
         let f = |x: &[f64]| vec![x[0].sin() + x[0] * x[1], x[0].exp() - x[1] * x[1]];
         let analytic = |x: &[f64]| {
-            DMatrix::from_row_slice(
-                2,
-                2,
-                &[x[0].cos() + x[1], x[0], x[0].exp(), -2.0 * x[1]],
-            )
+            DMatrix::from_row_slice(2, 2, &[x[0].cos() + x[1], x[0], x[0].exp(), -2.0 * x[1]])
         };
         let x = [0.37, -1.2];
         let fd = fd_jacobian(&f, &x, 2);

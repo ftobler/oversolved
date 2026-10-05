@@ -6,8 +6,8 @@
 //! separate domain variants (a bad `MateKind` is not a bad entity `Kind`), and
 //! keeping the enums apart is what lets either format version on its own.
 
-pub use solver_core::bytes::{Reader, Writer};
 use solver_core::bytes::Eof;
+pub use solver_core::bytes::{Reader, Writer};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CodecError {

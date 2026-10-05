@@ -18,16 +18,35 @@ use super::dcel::pymod;
 use super::TOL_TOPOLOGY_MERGE;
 use crate::{radians, MIN_SEMI_AXIS_SQ};
 
-pub type Vec2 = [f64; 2];
+pub use super::Vec2;
 
+/// One of the four carrier curves the area builder intersects. `Vec2` fields are
+/// the shared 2D point type from the topology module.
 #[derive(Clone, Copy, Debug)]
 pub enum Curve {
-    Line { p0: Vec2, p1: Vec2 },
-    Circle { c: Vec2, r: f64 },
-    Ellipse { c: Vec2, a: f64, b: f64, theta: f64 },
-    Bezier { p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2 },
+    Line {
+        p0: Vec2,
+        p1: Vec2,
+    },
+    Circle {
+        c: Vec2,
+        r: f64,
+    },
+    Ellipse {
+        c: Vec2,
+        a: f64,
+        b: f64,
+        theta: f64,
+    },
+    Bezier {
+        p0: Vec2,
+        c1: Vec2,
+        c2: Vec2,
+        p3: Vec2,
+    },
 }
 
+/// A crossing of two curves: the world point plus each curve's parameter at it.
 #[derive(Clone, Copy, Debug)]
 pub struct Hit {
     pub point: Vec2,
@@ -71,17 +90,17 @@ fn param_of(curve: &Curve, p: Vec2) -> f64 {
 
 // ─── implicit residual of a conic at a point (zero on the curve) ───
 
-fn conic_residual(curve: &Curve) -> Box<dyn Fn(Vec2) -> f64> {
+fn conic_residual(curve: &Curve) -> Option<Box<dyn Fn(Vec2) -> f64>> {
     match *curve {
-        Curve::Circle { c, r } => Box::new(move |p: Vec2| {
+        Curve::Circle { c, r } => Some(Box::new(move |p: Vec2| {
             let dx = p[0] - c[0];
             let dy = p[1] - c[1];
             dx * dx + dy * dy - r * r
-        }),
+        })),
         Curve::Ellipse { c, a, b, theta } => {
             let cr = radians(theta).cos();
             let sr = radians(theta).sin();
-            Box::new(move |p: Vec2| {
+            Some(Box::new(move |p: Vec2| {
                 let dx = p[0] - c[0];
                 let dy = p[1] - c[1];
                 let xl = dx * cr + dy * sr;
@@ -91,9 +110,12 @@ fn conic_residual(curve: &Curve) -> Box<dyn Fn(Vec2) -> f64> {
                 (xl * xl) / (a * a).max(MIN_SEMI_AXIS_SQ)
                     + (yl * yl) / (b * b).max(MIN_SEMI_AXIS_SQ)
                     - 1.0
-            })
+            }))
         }
-        _ => panic!("conic_residual: not a conic"),
+        // A line or bezier has no implicit conic residual. The scan dispatch
+        // never pairs one as the "other" curve, so return None rather than
+        // aborting the worker if a future caller does.
+        _ => None,
     }
 }
 
@@ -307,9 +329,9 @@ struct BbBudget {
 /// crossing. This is the copy-paste-duplicate case, reported as no crossing
 /// consistent with the degenerate-overlap policy rather than searched.
 fn ctrl_polygons_coincident(a: &BzCtrl, b: &BzCtrl) -> bool {
-    a.iter().zip(b.iter()).all(|(p, q)| {
-        (p[0] - q[0]).abs() < POINT_MERGE && (p[1] - q[1]).abs() < POINT_MERGE
-    })
+    a.iter()
+        .zip(b.iter())
+        .all(|(p, q)| (p[0] - q[0]).abs() < POINT_MERGE && (p[1] - q[1]).abs() < POINT_MERGE)
 }
 
 fn bz_split(c: &BzCtrl, t: f64) -> (BzCtrl, BzCtrl) {
@@ -343,7 +365,10 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
     }
     let mut out: Vec<Hit> = Vec::new();
     const FLAT: f64 = 1e-7;
-    let mut budget = BbBudget { visits_left: NODE_BUDGET, truncated: false };
+    let mut budget = BbBudget {
+        visits_left: NODE_BUDGET,
+        truncated: false,
+    };
     #[allow(clippy::too_many_arguments)]
     fn recurse(
         x: &BzCtrl,
@@ -423,14 +448,21 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
                      residual: Box<dyn Fn(Vec2) -> f64>,
                      hits: &mut Vec<Hit>| {
         let eval_at: Box<dyn Fn(f64) -> Vec2> = match *scanned {
-            Curve::Circle { c, r } => Box::new(move |phi: f64| [c[0] + r * phi.cos(), c[1] + r * phi.sin()]),
+            Curve::Circle { c, r } => {
+                Box::new(move |phi: f64| [c[0] + r * phi.cos(), c[1] + r * phi.sin()])
+            }
             Curve::Ellipse { c, a, b, theta } => {
                 let cr = (theta * std::f64::consts::PI / 180.0).cos();
                 let sr = (theta * std::f64::consts::PI / 180.0).sin();
                 Box::new(move |phi: f64| ellipse_point_at(c, a, b, cr, sr, phi))
             }
-            Curve::Bezier { p0, c1, c2, p3 } => Box::new(move |t: f64| bezier_point(p0, c1, c2, p3, t)),
-            Curve::Line { .. } => panic!("scan_with: unsupported scanned curve kind"),
+            Curve::Bezier { p0, c1, c2, p3 } => {
+                Box::new(move |t: f64| bezier_point(p0, c1, c2, p3, t))
+            }
+            // A line is never scanned: its closed forms handle every pair it
+            // takes part in. Bail out rather than abort the worker if a caller
+            // ever scans one.
+            Curve::Line { .. } => return,
         };
         let hi = match *scanned {
             Curve::Bezier { .. } => 1.0,
@@ -452,13 +484,23 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
     // conic residual. `scanned_is_a` picks which operand carries the parameter.
     let scan_conic = |scanned_is_a: bool, hits: &mut Vec<Hit>| {
         let (scanned, other) = if scanned_is_a { (a, b) } else { (b, a) };
-        scan_with(scanned, scanned_is_a, conic_residual(other), hits);
+        if let Some(residual) = conic_residual(other) {
+            scan_with(scanned, scanned_is_a, residual, hits);
+        }
     };
 
     // Bezier-vs-line is symmetric: identical crossing math, only the (t_a, t_b)
     // assignment flips depending on which operand is the bezier. `line` is the
     // line operand; segment params outside [0, 1] are off the finite segment.
-    let bezier_line_hits = |p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, l0: Vec2, l1: Vec2, line: &Curve, bezier_is_a: bool, hits: &mut Vec<Hit>| {
+    let bezier_line_hits = |p0: Vec2,
+                            c1: Vec2,
+                            c2: Vec2,
+                            p3: Vec2,
+                            l0: Vec2,
+                            l1: Vec2,
+                            line: &Curve,
+                            bezier_is_a: bool,
+                            hits: &mut Vec<Hit>| {
         for t in bezier_line(p0, c1, c2, p3, l0, l1) {
             let p = bezier_point(p0, c1, c2, p3, t);
             let lp = param_of(line, p);
@@ -494,14 +536,28 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
         (Curve::Line { p0: l0, p1: l1 }, Curve::Bezier { p0, c1, c2, p3 }) => {
             bezier_line_hits(*p0, *c1, *c2, *p3, *l0, *l1, a, false, &mut hits);
         }
-        (Curve::Bezier { .. }, Curve::Circle { .. }) | (Curve::Bezier { .. }, Curve::Ellipse { .. }) => {
-            scan_conic(true, &mut hits)
-        }
-        (Curve::Circle { .. }, Curve::Bezier { .. }) | (Curve::Ellipse { .. }, Curve::Bezier { .. }) => {
-            scan_conic(false, &mut hits)
-        }
-        (Curve::Bezier { p0: ap0, c1: ac1, c2: ac2, p3: ap3 }, Curve::Bezier { p0: bp0, c1: bc1, c2: bc2, p3: bp3 }) => {
-            hits.extend(bezier_bezier([*ap0, *ac1, *ac2, *ap3], [*bp0, *bc1, *bc2, *bp3]));
+        (Curve::Bezier { .. }, Curve::Circle { .. })
+        | (Curve::Bezier { .. }, Curve::Ellipse { .. }) => scan_conic(true, &mut hits),
+        (Curve::Circle { .. }, Curve::Bezier { .. })
+        | (Curve::Ellipse { .. }, Curve::Bezier { .. }) => scan_conic(false, &mut hits),
+        (
+            Curve::Bezier {
+                p0: ap0,
+                c1: ac1,
+                c2: ac2,
+                p3: ap3,
+            },
+            Curve::Bezier {
+                p0: bp0,
+                c1: bc1,
+                c2: bc2,
+                p3: bp3,
+            },
+        ) => {
+            hits.extend(bezier_bezier(
+                [*ap0, *ac1, *ac2, *ap3],
+                [*bp0, *bc1, *bc2, *bp3],
+            ));
         }
     }
 
@@ -526,7 +582,10 @@ mod tests {
 
     #[test]
     fn line_line_cross_at_center() {
-        let h = intersect_curves(&line([-1.0, 0.0], [1.0, 0.0]), &line([0.0, -1.0], [0.0, 1.0]));
+        let h = intersect_curves(
+            &line([-1.0, 0.0], [1.0, 0.0]),
+            &line([0.0, -1.0], [0.0, 1.0]),
+        );
         assert_eq!(h.len(), 1);
         assert!((h[0].point[0]).abs() < 1e-12 && (h[0].point[1]).abs() < 1e-12);
         assert!((h[0].t_a - 0.5).abs() < 1e-12 && (h[0].t_b - 0.5).abs() < 1e-12);
@@ -540,14 +599,20 @@ mod tests {
 
     #[test]
     fn line_through_circle_two_points() {
-        let c = Curve::Circle { c: [0.0, 0.0], r: 1.0 };
+        let c = Curve::Circle {
+            c: [0.0, 0.0],
+            r: 1.0,
+        };
         let h = intersect_curves(&line([-2.0, 0.0], [2.0, 0.0]), &c);
         assert_eq!(h.len(), 2);
     }
 
     #[test]
     fn line_tangent_circle_one_point() {
-        let c = Curve::Circle { c: [0.0, 0.0], r: 1.0 };
+        let c = Curve::Circle {
+            c: [0.0, 0.0],
+            r: 1.0,
+        };
         let h = intersect_curves(&line([-2.0, 1.0], [2.0, 1.0]), &c);
         // Tangent touches once; the two quadratic roots coincide and dedup.
         assert_eq!(h.len(), 1);
@@ -556,18 +621,29 @@ mod tests {
 
     #[test]
     fn line_through_ellipse_center() {
-        let e = Curve::Ellipse { c: [0.0, 0.0], a: 3.0, b: 1.0, theta: 0.0 };
+        let e = Curve::Ellipse {
+            c: [0.0, 0.0],
+            a: 3.0,
+            b: 1.0,
+            theta: 0.0,
+        };
         let h = intersect_curves(&line([-4.0, 0.0], [4.0, 0.0]), &e);
         assert_eq!(h.len(), 2);
         let mut xs: Vec<f64> = h.iter().map(|x| x.point[0]).collect();
-        xs.sort_by(|p, q| p.partial_cmp(q).unwrap());
+        xs.sort_by(|p, q| p.total_cmp(q));
         assert!((xs[0] + 3.0).abs() < 1e-9 && (xs[1] - 3.0).abs() < 1e-9);
     }
 
     #[test]
     fn circle_circle_two_points() {
-        let a = Curve::Circle { c: [0.0, 0.0], r: 1.0 };
-        let b = Curve::Circle { c: [1.0, 0.0], r: 1.0 };
+        let a = Curve::Circle {
+            c: [0.0, 0.0],
+            r: 1.0,
+        };
+        let b = Curve::Circle {
+            c: [1.0, 0.0],
+            r: 1.0,
+        };
         let h = intersect_curves(&a, &b);
         assert_eq!(h.len(), 2);
         for hit in &h {
@@ -577,8 +653,16 @@ mod tests {
 
     #[test]
     fn circle_ellipse_four_points() {
-        let circ = Curve::Circle { c: [0.0, 0.0], r: 2.0 };
-        let ell = Curve::Ellipse { c: [0.0, 0.0], a: 3.0, b: 1.0, theta: 0.0 };
+        let circ = Curve::Circle {
+            c: [0.0, 0.0],
+            r: 2.0,
+        };
+        let ell = Curve::Ellipse {
+            c: [0.0, 0.0],
+            a: 3.0,
+            b: 1.0,
+            theta: 0.0,
+        };
         let h = intersect_curves(&circ, &ell);
         assert_eq!(h.len(), 4);
     }
@@ -588,10 +672,21 @@ mod tests {
         // b == 0 makes the conic residual divide by zero; the resulting NaN is
         // never a sign change, so the scan must simply report nothing (or a
         // finite point), never a NaN coordinate feeding the vertex merge.
-        let flat = Curve::Ellipse { c: [0.0, 0.0], a: 3.0, b: 0.0, theta: 0.0 };
-        let circ = Curve::Circle { c: [0.0, 0.0], r: 2.0 };
-        let g = conic_residual(&flat);
-        assert!(g([1.0, 0.5]).is_finite(), "conic residual off the flat axis");
+        let flat = Curve::Ellipse {
+            c: [0.0, 0.0],
+            a: 3.0,
+            b: 0.0,
+            theta: 0.0,
+        };
+        let circ = Curve::Circle {
+            c: [0.0, 0.0],
+            r: 2.0,
+        };
+        let g = conic_residual(&flat).expect("a flat ellipse is still a conic");
+        assert!(
+            g([1.0, 0.5]).is_finite(),
+            "conic residual off the flat axis"
+        );
         assert!(g([1.0, 0.0]).is_finite(), "conic residual on the flat axis");
         for hit in intersect_curves(&circ, &flat) {
             assert!(
@@ -602,8 +697,27 @@ mod tests {
     }
 
     #[test]
+    fn conic_residual_returns_none_for_non_conics() {
+        // A line or bezier has no implicit conic form. Returning None lets the
+        // scan dispatch skip it instead of aborting the worker.
+        assert!(conic_residual(&line([0.0, 0.0], [1.0, 0.0])).is_none());
+        let bz = Curve::Bezier {
+            p0: [0.0, 0.0],
+            c1: [1.0, 0.0],
+            c2: [0.0, 1.0],
+            p3: [1.0, 1.0],
+        };
+        assert!(conic_residual(&bz).is_none());
+    }
+
+    #[test]
     fn bezier_line_one_crossing() {
-        let bz = Curve::Bezier { p0: [0.0, 0.0], c1: [1.0, 2.0], c2: [2.0, -2.0], p3: [3.0, 0.0] };
+        let bz = Curve::Bezier {
+            p0: [0.0, 0.0],
+            c1: [1.0, 2.0],
+            c2: [2.0, -2.0],
+            p3: [3.0, 0.0],
+        };
         let h = intersect_curves(&bz, &line([-1.0, 0.0], [4.0, 0.0]));
         // y=0 line crosses the symmetric S-curve at the two ends and the middle.
         assert!(!h.is_empty());
@@ -614,8 +728,18 @@ mod tests {
 
     #[test]
     fn bezier_bezier_cross() {
-        let a = Curve::Bezier { p0: [-2.0, 0.0], c1: [-1.0, 0.0], c2: [1.0, 0.0], p3: [2.0, 0.0] };
-        let b = Curve::Bezier { p0: [0.0, -2.0], c1: [0.0, -1.0], c2: [0.0, 1.0], p3: [0.0, 2.0] };
+        let a = Curve::Bezier {
+            p0: [-2.0, 0.0],
+            c1: [-1.0, 0.0],
+            c2: [1.0, 0.0],
+            p3: [2.0, 0.0],
+        };
+        let b = Curve::Bezier {
+            p0: [0.0, -2.0],
+            c1: [0.0, -1.0],
+            c2: [0.0, 1.0],
+            p3: [0.0, 2.0],
+        };
         let h = intersect_curves(&a, &b);
         assert_eq!(h.len(), 1);
         assert!(h[0].point[0].abs() < 1e-5 && h[0].point[1].abs() < 1e-5);
@@ -626,8 +750,18 @@ mod tests {
         // A wiggling spline through a straight-as-bezier segment crosses three
         // times; none of those transversal hits may be lost to the recursion
         // budget or its degenerate-overlap policy.
-        let a = Curve::Bezier { p0: [-3.0, 0.0], c1: [-1.0, 0.0], c2: [1.0, 0.0], p3: [3.0, 0.0] };
-        let b = Curve::Bezier { p0: [0.0, -2.0], c1: [4.0, 6.0], c2: [-4.0, -6.0], p3: [0.0, 2.0] };
+        let a = Curve::Bezier {
+            p0: [-3.0, 0.0],
+            c1: [-1.0, 0.0],
+            c2: [1.0, 0.0],
+            p3: [3.0, 0.0],
+        };
+        let b = Curve::Bezier {
+            p0: [0.0, -2.0],
+            c1: [4.0, 6.0],
+            c2: [-4.0, -6.0],
+            p3: [0.0, 2.0],
+        };
         let h = intersect_curves(&a, &b);
         assert_eq!(h.len(), 3);
         for hit in &h {
@@ -643,7 +777,12 @@ mod tests {
         // pushing ~10^8 phantom leaves into an unbounded Vec on the wasm
         // heap. It must now return promptly under the degenerate-overlap
         // policy (no points), not hang or abort.
-        let bz = Curve::Bezier { p0: [0.0, 0.0], c1: [1.0, 2.0], c2: [2.0, -2.0], p3: [3.0, 0.0] };
+        let bz = Curve::Bezier {
+            p0: [0.0, 0.0],
+            c1: [1.0, 2.0],
+            c2: [2.0, -2.0],
+            p3: [3.0, 0.0],
+        };
         let h = intersect_curves(&bz, &bz);
         assert!(h.is_empty());
     }
@@ -653,7 +792,12 @@ mod tests {
         // The same shape nudged past the control-polygon short-circuit: the
         // search must stay inside its budget and its output inside the >10
         // discard bound, whatever the exact crossing count turns out to be.
-        let a = Curve::Bezier { p0: [0.0, 0.0], c1: [1.0, 2.0], c2: [2.0, -2.0], p3: [3.0, 0.0] };
+        let a = Curve::Bezier {
+            p0: [0.0, 0.0],
+            c1: [1.0, 2.0],
+            c2: [2.0, -2.0],
+            p3: [3.0, 0.0],
+        };
         let b = Curve::Bezier {
             p0: [0.005, 0.0],
             c1: [1.005, 2.0],
