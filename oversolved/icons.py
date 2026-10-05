@@ -513,7 +513,6 @@ def toolbar_extrude(ctx):
     ctx.move_to(arrow_end - arrow_size, arrow_y - arrow_size * 0.6)
     ctx.line_to(arrow_end, arrow_y)
     ctx.line_to(arrow_end - arrow_size, arrow_y + arrow_size * 0.6)
-    # ctx.close_path()
     ctx.stroke()
 
 
@@ -602,21 +601,6 @@ def context_edit(ctx):
 @icon("frontend/src/assets/icons/context-color.svg", angle=120)
 def context_color(ctx):
     _pencil(ctx)
-
-
-# Retired with the code inspection view (2026-09-08); source kept for reference.
-# @icon("frontend/src/assets/icons/toolbar-play.svg")
-# def toolbar_play(ctx):
-#     # Play button icon: triangle pointing right
-#     cx, cy = 0.5, 0.5
-#     size = 0.3
-#
-#     # Triangle pointing right
-#     ctx.move_to(cx - size, cy - size)
-#     ctx.line_to(cx - size, cy + size)
-#     ctx.line_to(cx + size, cy)
-#     ctx.close_path()
-#     ctx.fill()
 
 
 @icon("frontend/src/assets/icons/feature-origin.svg")
@@ -714,69 +698,6 @@ def feature_part(ctx):
     stroke(ctx, 1.5)
 
 
-# Retired with the code inspection view (2026-09-08); source kept for reference.
-# @icon("frontend/src/assets/icons/icon-code.svg")
-# def feature_code(ctx):
-#     # Two curly braces { } - classic code symbol
-#     # Each brace: top hook, straight segment, middle point, straight segment, bottom hook
-#
-#     def draw_brace(tip_x, outer_x, cy, half_h, r):
-#         """Draw one curly brace.
-#         tip_x: x of the middle point (the pointy bit)
-#         outer_x: x of the top/bottom hooks
-#         cy: vertical center
-#         half_h: half the total height
-#         r: corner radius for the hooks
-#         """
-#         top = cy - half_h
-#         bot = cy + half_h
-#         # direction: +1 if tip is to the left of outer, -1 otherwise
-#         d = 1 if outer_x > tip_x else -1
-#
-#         # Top hook: starts at (outer_x, top), curves inward
-#         ctx.move_to(outer_x, top)
-#         ctx.curve_to(
-#             outer_x - r * 1.2 * d,
-#             top,
-#             outer_x - r * 1.2 * d,
-#             top + r * 1.5,
-#             outer_x - r * 1.2 * d,
-#             top + r * 1.5,
-#         )
-#
-#         # Upper straight segment down to middle
-#         ctx.line_to(outer_x - r * 1.2 * d, cy - r * 0.8)
-#
-#         # Middle point curve
-#         ctx.curve_to(
-#             outer_x - r * 1.2 * d, cy - r * 0.3, tip_x, cy - r * 0.3, tip_x, cy
-#         )
-#         ctx.curve_to(
-#             tip_x,
-#             cy + r * 0.3,
-#             outer_x - r * 1.2 * d,
-#             cy + r * 0.3,
-#             outer_x - r * 1.2 * d,
-#             cy + r * 0.8,
-#         )
-#
-#         # Lower straight segment
-#         ctx.line_to(outer_x - r * 1.2 * d, bot - r * 1.5)
-#
-#         # Bottom hook: curves back out to (outer_x, bot)
-#         ctx.curve_to(outer_x - r * 1.2 * d, bot, outer_x, bot, outer_x, bot)
-#         stroke(ctx, 1.5)
-#
-#     half_h = 0.32
-#     cy = 0.5
-#     r = 0.12
-#
-#     # Left brace {  - tip points left, hooks on right
-#     draw_brace(tip_x=0.15, outer_x=0.38, cy=cy, half_h=half_h, r=r)
-#     # Right brace }  - tip points right, hooks on left
-#     draw_brace(tip_x=0.85, outer_x=0.62, cy=cy, half_h=half_h, r=r)
-
-
 @icon("frontend/src/assets/icons/measurement.svg", angle=90)
 def measurement(ctx):
     # Ruler icon with tick marks (centered)
@@ -847,61 +768,6 @@ def context_duplicate(ctx):
     ctx.line_to(fx0, fy1)
     ctx.close_path()
     stroke(ctx, 1.5)
-
-
-# Retired with the code inspection view (2026-09-08); source kept for reference.
-# @icon("frontend/src/assets/icons/toolbar-copy-code.svg")
-# def toolbar_copy_code(ctx):
-#     # Classic copy icon (two overlapping rectangles) with code lines on the front sheet
-#     bx0, by0, bx1, by1 = 0.30, 0.12, 0.82, 0.68
-#     fx0, fy0, fx1, fy1 = 0.18, 0.32, 0.70, 0.88
-#
-#     _copy_icon_back_rect(ctx, bx0, by0, bx1, by1, fx0, fy0, fx1, fy1)
-#
-#     # Front rectangle
-#     ctx.move_to(fx0, fy0)
-#     ctx.line_to(fx1, fy0)
-#     ctx.line_to(fx1, fy1)
-#     ctx.line_to(fx0, fy1)
-#     ctx.close_path()
-#     stroke(ctx, 1.5)
-#
-#     # Code lines on front rectangle (3 short horizontal lines like text)
-#     margin = 0.09
-#     line_x0 = fx0 + margin
-#     line_x1 = fx1 - margin
-#     mid_x = (line_x0 + line_x1) / 2
-#     for y in [0.47, 0.60, 0.73]:
-#         x1 = line_x1 if y != 0.60 else mid_x
-#         ctx.move_to(line_x0, y)
-#         ctx.line_to(x1, y)
-#     stroke(ctx, 1.5)
-
-
-# Retired with the code inspection view (2026-09-08); source kept for reference.
-# @icon("frontend/src/assets/icons/toolbar-copy-result.svg")
-# def toolbar_copy_result(ctx):
-#     # Classic copy icon with a checkmark on the front sheet (result = success/output)
-#     bx0, by0, bx1, by1 = 0.30, 0.12, 0.82, 0.68
-#     fx0, fy0, fx1, fy1 = 0.18, 0.32, 0.70, 0.88
-#
-#     _copy_icon_back_rect(ctx, bx0, by0, bx1, by1, fx0, fy0, fx1, fy1)
-#
-#     # Front rectangle
-#     ctx.move_to(fx0, fy0)
-#     ctx.line_to(fx1, fy0)
-#     ctx.line_to(fx1, fy1)
-#     ctx.line_to(fx0, fy1)
-#     ctx.close_path()
-#     stroke(ctx, 1.5)
-#
-#     # Checkmark on the front rectangle
-#     cx = (fx0 + fx1) / 2 - 0.02
-#     cy = (fy0 + fy1) / 2 + 0.04
-#     ctx.move_to(cx - 0.14, cy)
-#     ctx.line_to(cx - 0.02, cy + 0.13)
-#     ctx.line_to(cx + 0.18, cy - 0.14)
-#     stroke(ctx, 2)
 
 
 @icon("frontend/src/assets/icons/dialog-ok.svg")

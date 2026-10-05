@@ -17,6 +17,16 @@ def run_lint(tmp_path: pathlib.Path, source: str, *extra_args: str) -> subproces
     )
 
 
+def run_lint_py(tmp_path: pathlib.Path, source: str, *extra_args: str) -> subprocess.CompletedProcess:
+    target = tmp_path / "sample.py"
+    target.write_text(source)
+    return subprocess.run(
+        [sys.executable, str(LINT_PY), str(tmp_path), "--language", "python", *extra_args],
+        capture_output=True,
+        text=True,
+    )
+
+
 def assert_violation(proc: subprocess.CompletedProcess, rule: str) -> None:
     assert proc.returncode == 1, proc.stderr
     assert f" {rule} " in proc.stdout, proc.stdout
@@ -313,3 +323,55 @@ def test_block_comment_rule_can_be_disabled(tmp_path):
     source = "interface MeshResult {\n  /** Total sub-shapes. */\n  generated: number\n}\n"
     proc = run_lint(tmp_path, source, "--no-block-comment")
     assert_clean(proc)
+
+
+# ─── python scanner ───
+
+
+def test_python_em_dash_in_comment_is_flagged(tmp_path):
+    source = "x = 1  # bad \u2014 dash\n"
+    assert_violation(run_lint_py(tmp_path, source), "emdash")
+
+
+def test_python_en_dash_in_docstring_is_flagged(tmp_path):
+    source = '"""Range \u2013 inclusive."""\n'
+    assert_violation(run_lint_py(tmp_path, source), "emdash")
+
+
+def test_python_em_dash_in_string_is_flagged(tmp_path):
+    source = 'label = "a \u2014 b"\n'
+    assert_violation(run_lint_py(tmp_path, source), "emdash")
+
+
+def test_python_ascii_banner_is_flagged(tmp_path):
+    source = "# --------\n"
+    assert_violation(run_lint_py(tmp_path, source), "banner")
+
+
+def test_python_ascii_divider_with_text_is_flagged(tmp_path):
+    source = "# --- Section ---\n"
+    assert_violation(run_lint_py(tmp_path, source), "banner")
+
+
+def test_python_box_divider_is_clean(tmp_path):
+    source = "# \u2500\u2500\u2500 Cube geometry \u2500\u2500\u2500\n"
+    assert_clean(run_lint_py(tmp_path, source))
+
+
+def test_python_hash_inside_string_is_not_a_comment(tmp_path):
+    source = 'x = "# --------"\n'
+    assert_clean(run_lint_py(tmp_path, source))
+
+
+def test_python_ts_only_rules_do_not_run(tmp_path):
+    source = "x = 1  # one space is fine in python\n"
+    proc = run_lint_py(tmp_path, source)
+    assert "inline-spacing" not in proc.stdout
+    assert_clean(proc)
+
+
+def test_python_raw_string_escape_does_not_swallow_next_comment(tmp_path):
+    # A raw string's trailing backslash is literal, so the closing quote still
+    # ends it and the `#` on the next line is a real comment, not string body.
+    source = 'p = r"c:\\"\n# --------\n'
+    assert_violation(run_lint_py(tmp_path, source), "banner")
