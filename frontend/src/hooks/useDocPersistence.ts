@@ -89,7 +89,11 @@ export function useDocPersistence<D>({
   }, [store, setDocName, setError])
 
   const cloneDoc = useCallback(async (id: string, name?: string): Promise<{ uuid: string }> => {
-    return store.clone(id, name)
+    // Keep each caller's original call shape: the assembly path clones under the
+    // stored name with a one-arg call, the part path forwards the user's name.
+    // Passing an explicit undefined here would change the store call's arity and
+    // the two seams have drifted before.
+    return name === undefined ? store.clone(id) : store.clone(id, name)
   }, [store])
 
   return { saveDoc, renameDoc, cloneDoc }
