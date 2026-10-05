@@ -177,15 +177,18 @@ export function bodyRemovedColorIsDistinct(): { nearest: string; distance: numbe
   return { nearest, distance }
 }
 
-// Drag snap: vertex pull zone must be larger than entity body pull zone so that
-// dragging near an endpoint always snaps to the vertex, not the entity body.
-// Mirrors the 20/8 point-vs-body split in the hover/click system.
-export const DRAG_SNAP_VERTEX_RADIUS_PX = 20   // point-to-point coincident snap radius
-export const DRAG_SNAP_ENTITY_RADIUS_PX = 8    // point-on-entity coincident snap radius
-
 // Hit detection & collision geometry
 export const POINT_HIT_PIXELS = 20
 export const POINT_VIS_PIXELS = 4
+// Entity body hit zone (a curve's catch radius), the counterpart of the point
+// hit zone above. The drag snap radii alias these so the drag and hover/click
+// zones cannot drift apart.
+export const ENTITY_HIT_PIXELS = 8
+
+// Drag snap: vertex pull zone must be larger than entity body pull zone so that
+// dragging near an endpoint always snaps to the vertex, not the entity body.
+export const DRAG_SNAP_VERTEX_RADIUS_PX = POINT_HIT_PIXELS  // point-to-point coincident snap radius
+export const DRAG_SNAP_ENTITY_RADIUS_PX = ENTITY_HIT_PIXELS  // point-on-entity coincident snap radius
 
 // Click-vs-drag disambiguation: pointer moves smaller than this (in screen pixels)
 // are treated as pure clicks and do not emit geometry mutations.

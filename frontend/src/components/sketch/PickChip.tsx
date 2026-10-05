@@ -39,12 +39,19 @@ export function PickChip({
   const isEmpty = values.length === 0
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
 
-  // Each label is a parse plus a linear feature scan; PickFieldWidget hands us
-  // fresh callback identities every render, so without this memo the whole
-  // chip re-labelled on every keystroke elsewhere in the editor (g2-L4).
+  // Consumers (PlaneSelector, PickFieldWidget) hand us a fresh array identity
+  // every render, so keying the memo/effect on `values` re-ran them on every
+  // parent render. Key on the value CONTENT instead; the key round-trips back to
+  // the list so nothing has to read a ref during render.
+  const valuesKey = values.join('\u0000')
+  const valuesFromKey = valuesKey === '' ? [] : valuesKey.split('\u0000')
+
+  // Each label is a parse plus a linear feature scan; without this memo the
+  // whole chip re-labelled on every keystroke elsewhere in the editor (g2-L4).
   const labels = useMemo(
-    () => (features ? values.map(v => queryLabel(v, features, partLabels)) : null),
-    [values, features, partLabels],
+    () => (features ? valuesFromKey.map(v => queryLabel(v, features, partLabels)) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- valuesKey is the content identity of valuesFromKey
+    [valuesKey, features, partLabels],
   )
 
   // Two effects so a values-only change does not flicker through clear→re-add.
@@ -54,13 +61,13 @@ export function PickChip({
     return () => { clearChipSelection() }
   }, [isPicking, clearChipSelection])
 
-  // Sync when picking starts or values change.  chipOwnedSelection is
+  // Sync when picking starts or values content changes.  chipOwnedSelection is
   // deliberately omitted from deps to avoid an infinite loop: syncChipSelection
   // writes chipOwnedSelection which would re-trigger this effect.
   useEffect(() => {
     if (!isPicking) return
-    syncChipSelection(values)
-  }, [isPicking, values, syncChipSelection])
+    syncChipSelection(valuesKey === '' ? [] : valuesKey.split('\u0000'))
+  }, [isPicking, valuesKey, syncChipSelection])
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
   const [dropSide, setDropSide] = useState<'left' | 'right' | null>(null)
 

@@ -238,7 +238,7 @@ export function AssemblyTree({
           }}
         >
           {builtins.map(b => (
-            <li key={b.id} className={`feature-item builtin${b.visible ? '' : ' invisible'}`}>
+            <li key={b.id} role="presentation" className={`feature-item builtin${b.visible ? '' : ' invisible'}`}>
               <div className="feature-item-title">
                 <img className="feature-icon" src={getFeatureIcon(b.kind)} alt="" />
                 <span className="feature-name">{b.label}</span>
@@ -380,7 +380,7 @@ export function AssemblyTree({
           })}
 
           {builtins.length === 0 && instances.length === 0 && (
-            <li className="empty">No parts yet.</li>
+            <li className="empty" role="presentation">No parts yet.</li>
           )}
         </ul>
       </div>
@@ -514,7 +514,7 @@ export function AssemblyTree({
             )
           })}
           {mates.length === 0 && (
-            <li className="empty">No mates yet.</li>
+            <li className="empty" role="presentation">No mates yet.</li>
           )}
         </ul>
       </div>

@@ -22,6 +22,10 @@ import {
 import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 
+// Secondary (bit 2) or middle (bit 4) mouse button held: a camera/navigation
+// gesture, not a draw hover. Back/forward buttons are not draw gestures either.
+const NAV_BUTTONS = 6
+
 export function DrawPreview({ featureId, activeFeatureId, sketch, otherSketches }: {
   featureId?: string
   activeFeatureId?: string
@@ -127,7 +131,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     // onto its own plane and overwrite the active hover. Mirrors the render
     // guard below and DrawPreview's active-feature guard.
     if (featureId !== activeFeatureId) return
-    if (e.buttons & 6) { setDrawHover(null); return }
+    if (e.buttons & NAV_BUTTONS) { setDrawHover(null); return }
 
     // Live canvas bounds: not cached so sidebar resizes are reflected immediately.
     const rect = gl.domElement.getBoundingClientRect()
@@ -265,6 +269,8 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           sketch: sketch as Record<string, import('@/types/cad').Entity> | undefined,
           otherSketches: otherSketches as Record<string, Record<string, import('@/types/cad').Entity>> | undefined,
           ngonSides: state.ngonSides,
+          // The mode stack is store-owned (activate/deactivate); the pointer-down
+          // context never pushes or pops, so these are inert here.
           pushMode: () => {},
           popMode: () => {},
         }

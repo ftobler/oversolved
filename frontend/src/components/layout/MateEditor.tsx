@@ -205,7 +205,13 @@ export function MateEditor({
                 ariaLabel={MATE_PARAM_LABELS.offset}
                 value={numericValue(mate.offset)}
                 placeholder="0"
-                onChange={raw => onUpdate({ offset: raw === '' ? undefined : Number(raw) })}
+                onChange={raw => {
+                  if (raw === '') { onUpdate({ offset: undefined }); return }
+                  const n = Number(raw)
+                  // A half-typed box ('-', '1e') parses to nothing; refuse it so
+                  // updateMate never persists NaN and stalls the solve.
+                  if (Number.isFinite(n)) onUpdate({ offset: n })
+                }}
                 onStep={n => onUpdate({ offset: n })}
               />
             </label>
@@ -269,7 +275,10 @@ export function MateEditor({
           onChange={raw => {
             // An emptied box means "unset", not zero: the solver defaults these
             // itself, and writing 0 would pin an offset the user did not ask for.
-            onUpdate({ [param]: raw === '' ? undefined : Number(raw) } as MateParamPatch)
+            if (raw === '') { onUpdate({ [param]: undefined } as MateParamPatch); return }
+            const n = Number(raw)
+            // Same finiteness gate as the sibling branches: never persist NaN.
+            if (Number.isFinite(n)) onUpdate({ [param]: n } as MateParamPatch)
           }}
           onStep={n => onUpdate({ [param]: n } as MateParamPatch)}
         />

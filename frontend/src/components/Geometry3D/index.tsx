@@ -18,10 +18,11 @@ import { DimensionPreview } from '@/components/Geometry3D/dimensions/Preview'
 import { TopologySurfaces } from '@/components/Geometry3D/Surfaces'
 
 // Dragging
-import { DragPlane, DragSnapIndicator, DragAlignmentIndicator } from '@/components/Geometry3D/Dragging'
+import { DragPlane, DragSnapIndicator } from '@/components/Geometry3D/Dragging'
 
 // Inferred contact points: tangencies + curve-curve intersections (lazy inferred materialization)
 import { InferredContactMarkers } from '@/components/Geometry3D/InferredContactMarkers'
+import { inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
 
 // Edge drag preview: frontend-only translation of the dragged entity's vertices.
 // No constraint resolution -- the WASM hard solve handles that on pointer-up.
@@ -149,10 +150,10 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   //  - TopologySurfaces / useSketchSurfaceIdRegistration are suppressed
   //    (area fill would render at the pre-drag footprint, self-intersecting
   //    the moved entity lines).
-  //  - InferredContactMarkers / useSketchIdRegistration see topology=undefined
-  //    (free curve-curve intersections would otherwise be registered/picked at
-  //    their pre-drag positions). The dock: half of the inferred set is
-  //    live-derived from `sketch + constraints + params`, so it stays valid.
+  //  - InferredContactMarkers is unmounted while stale, so it sees nothing; the
+  //    dock: half stays offered only through ID registration and the DragPlane
+  //    snap scan (the `isect:` half is live-derived and would otherwise sit at
+  //    its pre-drag position).
   //  - DragPlane snap scan sees topology=undefined (the load-bearing pin:
   //    see feature/drag-topology-staleness.md -- a coincident snap to a stale
   //    `isect:` id at the pre-drag crossing position would commit a
@@ -164,6 +165,17 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // visible while the user repositions a dimension label.
   const isGeometryDragging = isDraggingThis && drag?.type !== 'dim_label'
   const stale = topologyStale(isGeometryDragging, nextHeld, solved)
+
+  // The inferred-contact walk is O(docks x vertices + isects x (docks + vertices))
+  // and the parent re-renders on solve commits, status changes, drag start/end
+  // and active-feature switches. Memoize it here (all inputs are identity-stable)
+  // rather than recomputing inside the marker component on every render.
+  const inferredCandidates = useMemo(() => {
+    if (!displaySketch || stale) return []
+    return inferredContactCandidates(
+      displaySketch, featureId, featureDef?.constraints ?? [], topology, 'active_sketch',
+    )
+  }, [displaySketch, featureId, featureDef?.constraints, stale, topology])
 
   const extent = useMemo(() => sketchExtent(displaySketch), [displaySketch])
 
@@ -206,9 +218,10 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   // far from `solved` (whole constraint chains move), so re-register from the
   // held sketch once at drag end -- hover/pick then matches what is on screen
   // while the commit solve is in flight.
-  // Inactive sketches stay inert (ID buffer excludes their layers; Surfaces.tsx R3F handlers bail out via isInactive)
-  // behavior for non-active sketches). When no sketch is being edited, all
-  // sketches register so they can be picked from the assembly view.
+  // Inactive sketches stay inert: the ID buffer excludes their layers and
+  // Surfaces.tsx gates its click handler on mode === 'inactive'. When no sketch
+  // is being edited, all sketches register so they can be picked from the
+  // assembly view.
   useSketchIdRegistration({
     featureId,
     sketch: nextHeld ?? solved,
@@ -271,13 +284,12 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && !stale && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
-      <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} kindMap={kindMap} isEditing={isEditing} constraints={featureDef?.constraints} />
+      <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} isEditing={isEditing} constraints={featureDef?.constraints} />
       <ProjectedEntities sketch={displaySketch} featureId={featureId} isEditing={isEditing} />
       {constraints && isEditing && <ConstraintOverlays constraints={constraints} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} />}
-      {isEditing && !stale && <InferredContactMarkers sketch={displaySketch} featureId={featureId} constraints={featureDef?.constraints} topology={topology} />}
+      {isEditing && !stale && <InferredContactMarkers candidates={inferredCandidates} />}
       {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={stale ? undefined : topology} />}
       {isEditing && <DragSnapIndicator />}
-      {isEditing && <DragAlignmentIndicator />}
       <DrawPreview featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} otherSketches={otherSketches} />
       <DrawPlane featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} />
       {isEditing && <DimensionPreview featureId={featureId} activeFeatureId={activeFeatureId} sketch={displaySketch} planeTransform={resolvedPlaneTransform} />}
@@ -290,5 +302,5 @@ export { VertexDot, VertexHighlight, ProjectedOriginPoint }
 export { EntityLines, ProjectedEntities }
 export { ConstraintOverlays }
 export { TopologySurfaces }
-export { DragPlane, DragSnapIndicator, DragAlignmentIndicator }
+export { DragPlane, DragSnapIndicator }
 export { DrawPreview, DrawPlane }

@@ -111,9 +111,9 @@ export function TopologySurfaces({ topology, isEditing, activeFeatureId }: Topol
   const mode: TopologyMode = activeFeatureId !== undefined ? (isEditing ? 'editing' : 'inactive') : 'view'
   return (
     <>
-      {surfaces.map((s, si) => (
+      {surfaces.map(s => (
         <SurfaceMesh
-          key={si}
+          key={s.query}
           shape={s.shape}
           query={s.query}
           mode={mode}

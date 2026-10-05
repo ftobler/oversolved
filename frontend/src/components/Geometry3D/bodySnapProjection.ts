@@ -62,7 +62,7 @@ export function resolvePlaneTransform(
 
 /** Build a synthetic 2D Sketch from body vertices and edges projected onto a sketch plane.
  *  Vertices become PointEntity entries. Line edges become LineSegment entries.
- *  Circle/arc edges contribute only their center as a PointEntity.
+ *  Circle/arc/ellipse edges contribute only their center as a PointEntity.
  *  Splines contribute only their first and last point. */
 export function buildBodySnapSketch(
   vertices: [number, number, number][] | undefined,
@@ -85,7 +85,7 @@ export function buildBodySnapSketch(
         const start = projectWorldToSketch(edge.start, planeTransform)
         const end = projectWorldToSketch(edge.end, planeTransform)
         sketch[`be${idx++}`] = { start, end } as Sketch[string]
-      } else if (edge.kind === 'circle' || edge.kind === 'arc') {
+      } else if (edge.kind === 'circle' || edge.kind === 'arc' || edge.kind === 'ellipse') {
         const [cx, cy] = projectWorldToSketch(edge.center, planeTransform)
         sketch[`bec${idx++}`] = { x: cx, y: cy } as Sketch[string]
       } else if (edge.kind === 'spline' && edge.points.length > 0) {

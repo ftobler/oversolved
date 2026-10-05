@@ -1,6 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+
+// A callback installed by one test must not leak into the next (the "normal
+// mode" case relies on no onMutation being set).
+afterEach(() => {
+  setSketchCallback('onMutation', null)
+})
 
 describe('builtinSelectionId', () => {
   it('returns @builtin_plane_front for Front', () => {

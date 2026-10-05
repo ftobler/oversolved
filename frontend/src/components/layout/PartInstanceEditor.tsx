@@ -111,10 +111,20 @@ export function PartInstanceEditor({
     // The other two axes come from what is TYPED, not from the stored
     // quaternion: at gimbal lock the readback is a different (equivalent)
     // triple, and feeding it back would rewrite angles the user did not touch.
+    // An EMPTY or half-typed sibling box has nothing typed to use, so fall back
+    // to the last read-back instead of committing it as 0 (the position row
+    // holds the same way).
+    const readback = rotationFromTransform(t)
+    const axisValue = (key: RotAxis): number => {
+      const text = nextText[key]
+      if (text.trim() === '') return readback[key]
+      const n = Number(text)
+      return Number.isFinite(n) ? n : readback[key]
+    }
     onSetRotation({
-      rx: Number(nextText.rx) || 0,
-      ry: Number(nextText.ry) || 0,
-      rz: Number(nextText.rz) || 0,
+      rx: axisValue('rx'),
+      ry: axisValue('ry'),
+      rz: axisValue('rz'),
     })
   }
 

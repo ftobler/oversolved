@@ -26,24 +26,29 @@ export function RollbackSlider({ isDragging, enabled, position, min, max, onGrab
     if (next !== position) onSetPosition(next)
   }
 
+  // The bar sits inside the feature tree's `role="listbox"` <ul>, whose permitted
+  // children are option/group. A slider is neither, so wrap the slider in a
+  // `group` (a permitted listbox child); the group can hold the slider.
   return (
-    <li
-      className={`rollback-bar ${isDragging ? 'dragging' : ''}`}
-      title="Rollback"
-      role="slider"
-      tabIndex={enabled ? 0 : -1}
-      aria-label="Rollback position"
-      aria-orientation="vertical"
-      aria-valuenow={position}
-      aria-valuemin={min}
-      aria-valuemax={max}
-      aria-disabled={!enabled}
-      onKeyDown={onKeyDown}
-      onPointerDown={(e) => {
-        if (!enabled || e.button !== 0) return
-        e.preventDefault()  // no text selection while the bar is being pulled
-        onGrab(e)
-      }}
-    ></li>
+    <li role="group" aria-label="Rollback">
+      <div
+        className={`rollback-bar ${isDragging ? 'dragging' : ''}`}
+        title="Rollback"
+        role="slider"
+        tabIndex={enabled ? 0 : -1}
+        aria-label="Rollback position"
+        aria-orientation="vertical"
+        aria-valuenow={position}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-disabled={!enabled}
+        onKeyDown={onKeyDown}
+        onPointerDown={(e) => {
+          if (!enabled || e.button !== 0) return
+          e.preventDefault()  // no text selection while the bar is being pulled
+          onGrab(e)
+        }}
+      />
+    </li>
   )
 }

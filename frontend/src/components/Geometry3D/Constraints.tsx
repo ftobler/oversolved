@@ -22,8 +22,8 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
     }
   }, [setHoveredConstraintEntities])
 
-  const bg_color = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : superfluous ? '#2a1f00' : '#1C1C1C'
-  const fg_style = (hovered || selected) ? 'invert(1.0)' : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)' : 'invert(0.7)'
+  const bgColor = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : superfluous ? '#2a1f00' : '#1C1C1C'
+  const fgStyle = (hovered || selected) ? 'invert(1.0)' : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)' : 'invert(0.7)'
   return (
     <div
       key={id}
@@ -34,7 +34,7 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
       style={{
         width: ICON_SIZE,
         height: ICON_SIZE,
-        background: bg_color,
+        background: bgColor,
         borderRadius: 2,
         display: 'flex',
         alignItems: 'center',
@@ -53,7 +53,7 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
         src={url}
         width={ICON_SIZE - 4}
         height={ICON_SIZE - 4}
-        style={{filter: fg_style}}
+        style={{filter: fgStyle}}
       />
     </div>
   )

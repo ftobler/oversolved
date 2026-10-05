@@ -278,7 +278,8 @@ describe('PickChip', () => {
     fireEvent.dragOver(items[0], { dataTransfer })
     fireEvent.drop(items[0], { dataTransfer })
     expect(onReorder).toHaveBeenCalledTimes(1)
-    expect(onReorder).toHaveBeenCalledWith(2, expect.any(Number))
+    // Source index 2 dropped on the right half of index 0 lands at slot 1.
+    expect(onReorder).toHaveBeenCalledWith(2, 1)
   })
 
   it('does not call onReorder when dragged onto itself', () => {

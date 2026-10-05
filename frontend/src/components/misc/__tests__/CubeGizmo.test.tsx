@@ -23,7 +23,7 @@ function mount() {
   const pvRef = { current: [{ sx: 1, sy: 1, z: 0 }] as Pv[] }  // non-empty passes the guard
   const hoverRef = { current: null as Hit | null }
   const snapRef = { current: null as THREE.Vector3 | null }
-  const cameraRef = { current: identityCamera() as THREE.Camera }
+  const cameraRef = { current: identityCamera() as THREE.Camera | null }
 
   // A React ancestor stands in for the viewport pane, whose container-level
   // handlers would otherwise open a band and a click gesture from a press that
@@ -121,6 +121,26 @@ describe('CubeGizmo hover cursor', () => {
     fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
     expect(m.canvas.style.cursor).toBe('pointer')
     fireEvent.mouseLeave(m.canvas)
+    expect(m.canvas.style.cursor).toBe('default')
+  })
+})
+
+describe('CubeGizmo null guards', () => {
+  let m: ReturnType<typeof mount>
+  beforeEach(() => { m = mount() })
+
+  it('a click with no camera leaves snapRef untouched', () => {
+    m.cameraRef.current = null
+    const C = GIZMO_SIZE / 2
+    fireEvent.click(m.canvas, { clientX: C, clientY: C })
+    expect(m.snapRef.current).toBeNull()
+  })
+
+  it('a mouse-move with no canvas leaves hoverRef null and the cursor default', () => {
+    m.canvasRef.current = null
+    const C = GIZMO_SIZE / 2
+    fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
+    expect(m.hoverRef.current).toBeNull()
     expect(m.canvas.style.cursor).toBe('default')
   })
 })

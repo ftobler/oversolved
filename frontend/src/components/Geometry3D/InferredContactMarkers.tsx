@@ -1,10 +1,9 @@
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
-import type { Sketch, PartConstraint, Topology } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
 import { COLOR_SNAP, COLOR_HOVER, COLOR_SELECTED } from '@/components/Geometry3D/constants'
-import { inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
+import type { SnapCandidate } from '@/components/Geometry3D/snapDetection'
 
 // A hollow ring drawn at constant pixel size, billboarded to face the camera.
 // Hollow (not a filled dot) signals "inferred, not yet a real point" -- it is a
@@ -37,14 +36,10 @@ function DockRing({ x, y, px, id }: { x: number; y: number; px: number; id: stri
  *  an ordinary coincident, the real point's VertexDot standing in. Picking is via
  *  the vertex ID layer (`useSketchIdRegistration`), which carries the same
  *  `dock:`/`isect:` handles. */
-export function InferredContactMarkers({ sketch, featureId, constraints, topology }: {
-  sketch?: Sketch
-  featureId: string
-  constraints?: PartConstraint[]
-  topology?: Topology
-}) {
-  if (!sketch) return null
-  const candidates = inferredContactCandidates(sketch, featureId, constraints ?? [], topology, 'active_sketch')
+/** Pure projection of a precomputed inferred-contact set. The candidate walk
+ *  (docks x vertices plus pairwise proximity filters) is memoized at the call
+ *  site, so it does not re-run on unrelated store churn. */
+export function InferredContactMarkers({ candidates }: { candidates: SnapCandidate[] }) {
   if (candidates.length === 0) return null
   return (
     <>

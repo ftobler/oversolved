@@ -119,13 +119,15 @@ describe('drag-snap to a dock contact yields a materializing constraint', () => 
 })
 
 describe('InferredContactMarkers render decision', () => {
-  it('renders nothing without a sketch or without any inferred contact', () => {
-    expect(InferredContactMarkers({ sketch: undefined, featureId: FEATURE })).toBeNull()
-    expect(InferredContactMarkers({ sketch: makeSketch(), featureId: FEATURE, constraints: [] })).toBeNull()
+  it('renders nothing without any inferred contact', () => {
+    expect(InferredContactMarkers({ candidates: [] })).toBeNull()
+    const none = inferredContactCandidates(makeSketch(), FEATURE, [], undefined, 'active_sketch')
+    expect(InferredContactMarkers({ candidates: none })).toBeNull()
   })
 
   it('renders a marker tree when a tangent contact exists', () => {
-    const el = InferredContactMarkers({ sketch: makeSketch(), featureId: FEATURE, constraints: tangent })
-    expect(el).not.toBeNull()
+    const candidates = inferredContactCandidates(makeSketch(), FEATURE, tangent, undefined, 'active_sketch')
+    expect(candidates.length).toBeGreaterThan(0)
+    expect(InferredContactMarkers({ candidates })).not.toBeNull()
   })
 })

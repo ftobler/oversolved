@@ -25,10 +25,10 @@ describe('vertex cylinder hack is removed', () => {
     expect(src).not.toContain('HitPolyline')
   })
 
-  it('VertexDots.tsx vertex hit zones use sphereGeometry only', () => {
+  it('VertexDots.tsx vertex hit zones use circleGeometry only', () => {
     const geos = src.match(/<(\w+)Geometry\b/g) ?? []
-    // Should only contain sphereGeometry and circleGeometry (for Dot).
-    const nonSphere = geos.filter(g => g !== '<sphereGeometry' && g !== '<circleGeometry')
-    expect(nonSphere, `unexpected geometry types: ${nonSphere.join(', ')}`).toEqual([])
+    // The only geometry left is circleGeometry (the Dot visual).
+    const nonCircle = geos.filter(g => g !== '<circleGeometry')
+    expect(nonCircle, `unexpected geometry types: ${nonCircle.join(', ')}`).toEqual([])
   })
 })

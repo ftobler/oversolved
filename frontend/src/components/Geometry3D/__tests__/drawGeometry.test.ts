@@ -71,6 +71,9 @@ describe('ngonPolyline', () => {
 describe('computePreviewPts', () => {
   it('line: previews a segment from the placed point to the cursor', () => {
     expect(computePreviewPts('line', [[0, 0]], [2, 3])).toEqual([[0, 0, 0], [2, 3, 0]])
+    // The chain stays open after the second point, so the rubber band keeps
+    // running from the last placed point to the cursor.
+    expect(computePreviewPts('line', [[0, 0], [5, 5]], [9, 2])).toEqual([[5, 5, 0], [9, 2, 0]])
   })
 
   it('circle: previews a full sampled circle through the cursor radius', () => {

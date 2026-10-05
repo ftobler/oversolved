@@ -48,7 +48,7 @@ beforeEach(() => {
 })
 
 const mockSketch: Sketch = {
-  line1: { kind: 'lineSegment', start: [0, 0], end: [10, 0] } as never,
+  line1: { start: [0, 0], end: [10, 0] } as Sketch[string],
 }
 
 const mockConstraints: Constraints = {
@@ -152,6 +152,24 @@ describe('ConstraintTile hover highlight targets', () => {
     const tile = container.querySelector('img')!.parentElement!
     fireEvent.mouseEnter(tile)
     fireEvent.mouseLeave(tile)
+    expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set())
+  })
+})
+
+describe('ConstraintTile click selection and unmount cleanup', () => {
+  it('clicking a tile selects its composite constraint id', () => {
+    useSketchEditorStore.setState({ normalSelection: new Set() })
+    const { container } = renderOverlays()
+    fireEvent.click(container.querySelector('img')!.parentElement!)
+    expect(useSketchEditorStore.getState().normalSelection.has('constraint:feat1:c1')).toBe(true)
+  })
+
+  it('unmounting a hovered tile clears the constraint highlight', () => {
+    const { container, unmount } = renderOverlays()
+    const tile = container.querySelector('img')!.parentElement!
+    fireEvent.mouseEnter(tile)
+    expect(useSketchEditorStore.getState().hoveredConstraintEntityIds.size).toBeGreaterThan(0)
+    unmount()
     expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set())
   })
 })

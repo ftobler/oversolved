@@ -3,7 +3,7 @@
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import type { Mutation, Entity } from '@/types/cad'
 import type { DrawSnapState, InsertTarget } from '@/components/Geometry3D/drawAutoConstraints'
-import { createInsertionHelper, insertCoincidentPoint, insertAxisConstraint, carriedSnapFields, resolveSnapPoint } from '@/components/Geometry3D/drawAutoConstraints'
+import { createInsertionHelper, insertCoincidentPoint, insertAxisConstraint, carriedSnapFields, resolveSnapPoint, SNAP_EPS } from '@/components/Geometry3D/drawAutoConstraints'
 import { getEntityKind } from '@/types/cad'
 import { projectionMutationsForId } from '@/tools/projectionMutations'
 import { circumcircle, arcEndpointOrder, ELLIPSE_MINOR_RATIO } from '@/components/Geometry3D/drawGeometry'
@@ -33,10 +33,6 @@ export interface DrawClickResult {
   // `staysArmedAfterCommit` policy to decide whether to keep the tool armed.
   gestureComplete: boolean
 }
-
-// Click positions that agree within this distance are the same vertex, used by
-// the line tool to detect a closing click on the open polyline endpoint.
-const SNAP_EPS = 1e-6
 
 /** Pure draw click handler. Accepts all snap/draw state as plain data; has no store reads.
  *  newEntityIdFn is injected so tests can provide a deterministic ID instead of randomId(). */

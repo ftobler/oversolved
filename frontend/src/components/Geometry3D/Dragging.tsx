@@ -5,9 +5,8 @@ import type { Sketch } from '@/types/cad'
 import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { Dot } from '@/components/Geometry3D/VertexDots'
-import { DashedLine } from '@/components/Geometry3D/dimensions'
 import { p2w } from '@/utils/geometry/sketchHelpers'
-import { COLOR_SNAP, COLOR_PREVIEW } from '@/components/Geometry3D/constants'
+import { COLOR_SNAP } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
 import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from '@/components/Geometry3D/dragLogic'
 import type { PartConstraint, Topology } from '@/types/cad'
@@ -100,6 +99,10 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
               isPointerDown: state.isPointerDown,
               activeFeatureId: state.activeFeatureId,
               hoveredVertexId: dragPending.vertexId,
+              // A pending vertex drag carries no hovered position. startWorld is
+              // the per-drag-type placeholder (the document origin for vertex
+              // drags), not a real hover; for edge drags it is the cursor at
+              // activation instead.
               hoveredVertexPosition: [dragPending.startWorld[0], dragPending.startWorld[1]],
               hoveredSnapKind: state.hoveredSnapKind,
               onMutation: getSketchCallback('onMutation'),
@@ -110,6 +113,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
               setDragPending,
               setDragSnap,
               startClient: dragStartClient,
+              // Store-owned mode stack: the drag context never pushes or pops.
               pushMode: () => {},
               popMode: () => {},
             }
@@ -174,12 +178,16 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
 
   useEffect(() => { handleMoveRef.current = moveImpl })
 
+  // Subscribe only while a drag/pending drag exists. Keyed on the boolean, not
+  // on the drag object: the move handler rewrites that object every pointermove
+  // frame, which would otherwise tear down and re-add both listeners per frame.
+  const dragActive = drag !== null || dragPending !== null
   useEffect(() => {
-    if (!drag && !dragPending) return
+    if (!dragActive) return
     const handler = (e: PointerEvent) => handleMoveRef.current?.(e)
     window.addEventListener('pointermove', handler)
     return () => window.removeEventListener('pointermove', handler)
-  }, [drag, dragPending])
+  }, [dragActive])
 
   // Window-level pointerup commit. Fires for any pointer release while a
   // drag/dragPending exists for this featureId; the body filters by
@@ -217,13 +225,13 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
           onMutation({ type: 'set_constraint_pos', featureId: currentDrag.featureId, constraintId: currentDrag.constraintId, pos })
         }
       }
-      setDrag(null); setDragSnap(null)
+      setDrag(null); setDragSnap(null); setDragStartClient(null)
       return
     }
 
     const dragTool = toolRegistry.get('drag')
     if (!dragTool) {
-      setDrag(null); setDragSnap(null)
+      setDrag(null); setDragSnap(null); setDragStartClient(null)
       return
     }
     const state = useSketchEditorStore.getState()
@@ -247,16 +255,19 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
       popMode: () => {},
     }
     dragTool.handlers.onPointerUp?.(e, currentDrag.currentWorld, null, context)
+    // DragTool clears drag/dragPending/dragSnap; clear the start client here so
+    // the store is fully idle after a commit (the safety net skips this path).
+    setDragStartClient(null)
   }
 
   useEffect(() => { handleUpRef.current = upImpl })
 
   useEffect(() => {
-    if (!drag && !dragPending) return
+    if (!dragActive) return
     const handler = (e: PointerEvent) => handleUpRef.current?.(e)
     window.addEventListener('pointerup', handler)
     return () => window.removeEventListener('pointerup', handler)
-  }, [drag, dragPending])
+  }, [dragActive])
 
   // Math-plane drag (#266): no scene-graph mesh required. The window-level
   // pointer listeners above own all move/up handling.
@@ -270,26 +281,5 @@ export function DragSnapIndicator() {
   const [x, y] = dragSnap.position
   return (
     <Dot x={x} y={y} px={6} color={COLOR_SNAP} billboard />
-  )
-}
-
-/** Visual indicator for alignment snap (kinda_horizontal/kinda_vertical). */
-export function DragAlignmentIndicator() {
-  const drag = useSketchEditorStore(s => s.drag)
-  const alignmentSnapPoint = useSketchEditorStore(s => s.alignmentSnapPoint)
-  const alignmentSnapKind = useSketchEditorStore(s => s.alignmentSnapKind)
-
-  if (!drag || drag.type !== 'vertex' || !alignmentSnapPoint || !alignmentSnapKind) return null
-
-  const [x, y] = drag.currentWorld
-  return (
-    <DashedLine
-      points={[
-        [alignmentSnapPoint[0], alignmentSnapPoint[1], 0],
-        [x, y, 0],
-      ]}
-      color={COLOR_PREVIEW}
-      lineWidth={1}
-    />
   )
 }

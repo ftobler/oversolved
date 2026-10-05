@@ -1087,7 +1087,7 @@ describe('computeDrawClick - project tool', () => {
     expect(result.gestureComplete).toBe(true)
   })
 
-  it('returns nothing for malformed ancestry query in project tool', () => {
+  it('still emits for a malformed ancestry query in the project tool', () => {
     const snap = emptySnap()
     snap.hoveredSelectionId = '?not-valid'
     const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId)

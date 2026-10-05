@@ -8,7 +8,7 @@ import { buildSketchWorldPlane, projectCursorToSketchPlane } from '../dragMathPl
  *   2. Project an NDC cursor onto that plane via Ray.intersectPlane.
  *
  * No invisible mesh, no Raycaster.intersectObject. Pure math; pinned by
- * the regression test `noDragPlaneMeshes.test.tsx`.
+ * the regression test `noDragPlaneMeshes.test.ts`.
  */
 
 function makeGroup(position: [number, number, number], quat?: THREE.Quaternion): THREE.Group {
