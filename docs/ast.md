@@ -1,4 +1,4 @@
-# AST — Feature/Sketch Document Schema
+# AST - Feature/Sketch Document Schema
 
 ## Document Structure
 
@@ -53,7 +53,7 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
 - id: ex1
   kind: extrude
   sketch: "$sk1"                # or list of refs
-  distance: 10.0                # depth alias
+  distance: 10.0                # depth is a legacy alias
   direction: normal             # normal | reverse | symmetric
   operation: new                # new | add | cut
 ```
@@ -250,13 +250,13 @@ Refs use `{"entity": "<eid>", "point": "start"|"end"|"center"|"xy"}` or `{"exter
 
 | Prefix | Kind | Example |
 |--------|------|---------|
-| `$<eid><sub>` | LocalQuery — entity in current sketch | `$line1/start` |
-| `@<feature_id>/<eid>/<sub>` | AbsoluteQuery — cross-feature | `@sk1/line1/start`, `@builtin_plane_front` |
-| `?<hex_lengths>;<id_strings>[:<type>]` | AncestryQuery — hierarchical | `?4;@ex1:solid` |
+| `$<eid><sub>` | LocalQuery - entity in current sketch | `$line1/start` |
+| `@<feature_id>/<eid>/<sub>` | AbsoluteQuery - cross-feature | `@sk1/line1/start`, `@builtin_plane_front` |
+| `?<hex_lengths>;<id_strings>[:<type>]` | AncestryQuery - hierarchical | `?4;@ex1:solid` |
 
 Sub suffixes: `start`, `end`, `center`, `xy`. Ancestry types: `solid`, `face`, `flatface`, `cylinderface`, `edge`, `straightedge`, `vertex`.
 
-Geometric classifiers disambiguate topology elements that share ancestry. They are minted `@cls_*` tokens that ride the ancestry id list (no grammar change), not a separate suffix: cardinal/axial (`@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn`) and line-division (`cls_ld_<lineid>_p|n`). See `docs/query.md` for the resolution tiers.
+Geometric classifiers disambiguate topology elements that share ancestry. They are minted `@cls_*` tokens that ride the ancestry id list (no grammar change), not a separate suffix: cardinal/axial (`@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn`) and line-division (`@cls_ld_<lineid>_p|n`). See `docs/query.md` for the resolution tiers.
 
 ## Built-in Planes
 
@@ -272,9 +272,9 @@ Shorthands `"Front"`, `"Top"`, `"Right"` also recognized.
 
 Determined from Jacobian rank at the solution (no rigid-body DOF allowance: a
 point pinned at the origin still leaves a removable rotation DOF):
-- **fully_constrained** — Jacobian rank reaches the parameter count (rank == n_params)
-- **underconstrained** — Jacobian rank < n_params
-- **overconstrained** — final residual loss > 1e-4
+- **fully_constrained** - Jacobian rank reaches the parameter count (rank == n_params)
+- **underconstrained** - Jacobian rank < n_params
+- **overconstrained** - final residual loss > 1e-4
 
 ## Frontend Adapter Note
 

@@ -33,9 +33,9 @@ def my_icon(ctx):
 @icon(path, angle=0, offset_x=0, offset_y=0)
 ```
 
-- `path` — output relative to repo root
-- `angle` — rotation (degrees, around center)
-- `offset_x`, `offset_y` — translation (normalized 0-1)
+- `path` - output relative to repo root
+- `angle` - rotation (degrees, around center)
+- `offset_x`, `offset_y` - translation (normalized 0-1)
 
 ### Coordinates
 
@@ -59,8 +59,8 @@ Normalized 0-1 (not pixels). Use `px()` helper for pixel dimensions: `px(2)` = 2
 
 ## Do Not
 
-- Hardcode colors in SVG output — use Cairo helpers producing consistent black
-- Draw SVG files manually — use `icons.py`
+- Hardcode colors in SVG output - use Cairo helpers producing consistent black
+- Draw SVG files manually - use `icons.py`
 - Mix stroke widths beyond 2/1.5/1.0 without documented reason
-- Use `ctx.fill()` on open paths — use `stroke()` instead
+- Use `ctx.fill()` on open paths - use `stroke()` instead
 - Forget to regenerate: `python oversolved/icons.py`

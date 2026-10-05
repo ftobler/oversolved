@@ -128,7 +128,7 @@ User interaction → Tool logic → Mutation object → onMutation
   → Geometry returned → Store updated → Scene re-rendered
 ```
 
-The Zustand store never directly modifies sketch data — it dispatches through the solver.
+The Zustand store never directly modifies sketch data - it dispatches through the solver.
 
 ## Collision Hiding During Interaction
 

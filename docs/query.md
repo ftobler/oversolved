@@ -97,7 +97,7 @@ element's query.
   edges that predate the UUID tier. Stable under translation + per-axis scale;
   not under body-reorienting rotation (body-local axes are future work).
 - **Line division** (implemented): a sketch surface split from a same-ancestry
-  sibling by a line (e.g. a circle cut by a line) carries `cls_ld_<lineid>_p|n`,
+  sibling by a line (e.g. a circle cut by a line) carries `@cls_ld_<lineid>_p|n`,
   the side of each shared bounding line taken in a canonical direction. A stable
   alternative to the positional `surface:N` index. Stamped in
   `frontend/src/kernel/topologyDecorate.ts` and registered on the surface
@@ -118,7 +118,7 @@ element's query.
 Faces of 3D bodies use:
 
 ```
-?d,d;@extrude1face0:flatface
+?f;@extrude1face0:flatface
 ```
 
 The ancestor ID combines feature ID with a face index. Resolution: parse → lookup in `Repository.ancestral` by subset match → filter by type → return.

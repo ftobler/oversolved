@@ -59,8 +59,8 @@ just build      # static deploy build into frontend/dist
 just static     # serve frontend/dist with an SPA-fallback static server
 ```
 
-`just build` is `just frontend-build` under another name: one build, one
-artifact, nothing to configure per deployment. Both assume `public/occ` and
+`just build` is the app build step that `just frontend` also runs: one build,
+one artifact, nothing to configure per deployment. Both assume `public/occ` and
 `public/wasm` are already provisioned by `just install`.
 
 ## Storage
@@ -97,14 +97,14 @@ layer rather than a suite that passes as skipped.
 
 ## Troubleshooting
 
-**"Dependency cairo not found"** — Install `libcairo2-dev`, re-run `pip install`.
+**"Dependency cairo not found"** - Install `libcairo2-dev`, re-run `pip install`.
 
-**Kernel tests all skip** — OCC.js is not provisioned or the Rust solvers are
+**Kernel tests all skip** - OCC.js is not provisioned or the Rust solvers are
 not built: run `just install-occ` and `just wasm`.
 
-**Frontend not serving** — Build it: `just build`, then `just static`. For dev,
+**Frontend not serving** - Build it: `just build`, then `just static`. For dev,
 use `just dev` (Vite HMR) instead.
 
-**Documents vanished** — IndexedDB is per-origin and per-browser-profile.
+**Documents vanished** - IndexedDB is per-origin and per-browser-profile.
 Serving the same build from a different port or host is a different origin with
 its own empty store.

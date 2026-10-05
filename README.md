@@ -33,6 +33,8 @@ just default    # every gate (python + frontend)
 just python     # mypy, ruff, pytest over the repo tooling
 just frontend   # icons, lint, vitest, build
 just rust-test  # cargo test over the solver workspace
+just rust-lint  # cargo clippy over the solver workspace
+just parity     # full-document WASM parity gate (slow, needs OCC.js)
 ```
 
 Gates tee their output to a log under `tmp/` so a slow run can be re-read
