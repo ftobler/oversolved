@@ -70,7 +70,6 @@ interface Body3DProps {
   vertices?: [number, number, number][]
   vertexQueries?: string[]
   visible?: boolean
-  showDebugHit?: boolean
   color?: string
   transparency?: number  // 0-1 (0 = opaque, 1 = fully transparent)
   metalness?: number     // 0-1 (0 = non-metallic, 1 = fully metallic)
@@ -80,7 +79,7 @@ interface Body3DProps {
   doomed?: boolean  // ghost of a body the previewed edit consumes: drawn "doomed", still pickable
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, showDebugHit: _showDebugHit = false, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false }: Body3DProps) {
+export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, vertices, vertexQueries, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false }: Body3DProps) {
   useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible })
   useEdgeIdRegistration({ featureId, bodyId, edges, edgeQueries, enabled: interactive && visible })
   useVertexIdRegistration({ featureId, bodyId, vertices, vertexQueries, enabled: interactive && visible })

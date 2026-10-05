@@ -216,7 +216,7 @@ export type DragPendingState = EdgeVertexDragPending | DimLabelDragPending | Fea
 // The single, store-owned pick-field coordinator (Layer 2 of the selection
 // model). When non-null, exactly one feature field is consuming picks. There
 // is no parallel plane-pick path: plane selection is just a field like any
-// other. See feature/selection-unification.md.
+// other.
 export interface ActivePickField {
   featureId: string
   field: string

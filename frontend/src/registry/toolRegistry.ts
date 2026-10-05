@@ -75,6 +75,15 @@ export interface ToolDragInit {
   startClient: [number, number]
 }
 
+// The intended event surface for a tool handler. Kept structural and minimal so
+// the id-buffer dispatchers (which synthesize a coordinate-only event, not a DOM
+// PointerEvent) hand over exactly what the contract promises. This is a guard,
+// not an absolute bar: method parameters are bivariant, so an explicitly
+// `PointerEvent`-annotated handler could still accept a richer event. A handler
+// that plainly reads `button` or `shiftKey` off this type will not type-check.
+// Real callers still pass a full PointerEvent, which satisfies this.
+export type ToolPointerEvent = Pick<PointerEvent, 'clientX' | 'clientY'>
+
 /**
  * Unified handlers interface, the single contract all tools must implement.
  *
@@ -83,12 +92,12 @@ export interface ToolDragInit {
  * calls these handlers. See tools/ for implementations.
  */
 export interface ToolHandlers<T extends ToolContext = ToolContext> {
-  onPointerDown?(e: PointerEvent, worldPt: Point, context: T): ToolDragInit | null
-  onPointerMove?(e: PointerEvent, worldPt: Point, drag: ToolDragInit | null, context: T): void
-  onPointerUp?(e: PointerEvent, worldPt: Point, drag: ToolDragInit | null, context: T): void
-  onPointerOver?(e: PointerEvent, worldPt: Point, context: T): void
+  onPointerDown?(e: ToolPointerEvent, worldPt: Point, context: T): ToolDragInit | null
+  onPointerMove?(e: ToolPointerEvent, worldPt: Point, drag: ToolDragInit | null, context: T): void
+  onPointerUp?(e: ToolPointerEvent, worldPt: Point, drag: ToolDragInit | null, context: T): void
+  onPointerOver?(e: ToolPointerEvent, worldPt: Point, context: T): void
   onPointerOut?(context: T): void
-  onClick?(e: PointerEvent, worldPt: Point, context: T): void
+  onClick?(e: ToolPointerEvent, worldPt: Point, context: T): void
 }
 
 // Base tool interface

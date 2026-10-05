@@ -38,7 +38,7 @@ function solve(doc: PartDoc): Solved {
   const { sketches, skipped } = partDocToSketches(doc.features)
   expect(skipped).toHaveLength(0)
   const sketch = sketches[0].sketch
-  const { input, layout } = lowerSketch(sketch as never)
+  const { input, layout } = lowerSketch(sketch)
   const out = decodeOutput(bytes!(encodeInput(input)))
   const params: Record<string, number[]> = {}
   for (const l of layout) params[l.id] = out.paramsSolved.slice(l.offset, l.offset + l.size)

@@ -2,7 +2,6 @@ import { useSketchEditorStore, getEffectiveTool, getSketchCallback } from '@/sto
 import { toolRegistry } from '@/registry/toolRegistry'
 import type { DimensionToolContext } from '@/tools/DimensionTool'
 import type { DragToolContext } from '@/tools/DragTool'
-import type { Point } from '@/types/cad'
 
 /**
  * Shared tool-click dispatch logic called by the id-buffer adapters.
@@ -40,9 +39,13 @@ export function dispatchSketchClick(
 
   if (tool?.handlers.onClick) {
     if (effectiveTool === 'dimension' && !state.activeFeatureId) return
+    // The id buffer resolves the pick, not a screen ray, so there is no world
+    // point here: [0, 0] is a placeholder on a dead part of the contract. The
+    // event is coordinate-only by design (ToolPointerEvent) so a handler that
+    // reaches for a richer field fails to compile rather than reading undefined.
     tool.handlers.onClick(
-      { clientX, clientY } as PointerEvent,
-      [0, 0] as Point,
+      { clientX, clientY },
+      [0, 0],
       context as DimensionToolContext,
     )
     return
@@ -104,8 +107,10 @@ export function dispatchDragInitiation(
     popMode: () => {},
   }
 
+  // Same placeholder world point as the click path: the adapters hand over the
+  // id-buffer pick, which carries no screen-to-world coordinate.
   dragTool.handlers.onPointerDown?.(
-    { clientX, clientY, stopPropagation: () => {} } as PointerEvent,
+    { clientX, clientY },
     [0, 0],
     ctx,
   )

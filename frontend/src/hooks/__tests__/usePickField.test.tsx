@@ -4,8 +4,6 @@
  * - toggle activates/deactivates the field (mutual exclusion)
  * - new non-chip-owned item in normalSelection triggers onPick then clears
  * - multi fields stay open after one pick; single fields auto-close
- *
- * See feature/selection-unification.md.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render, fireEvent } from '@testing-library/react'

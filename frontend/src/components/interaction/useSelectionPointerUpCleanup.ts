@@ -2,8 +2,9 @@ import { useEffect } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 // Safety net for stuck drag state. Orbit (camera pan/drag) is derived as
-// `!drag && !dragPending` (SceneController), and those fields are normally
-// cleared by the per-sketch DragPlane's window pointerup handler (Dragging.tsx).
+// `!isPointerDown || (!drag && !dragPending)` (orbitEnabled.ts), and those fields
+// are normally cleared by the per-sketch DragPlane's window pointerup handler
+// (Dragging.tsx).
 // That handler unmounts with the sketch, so a document load that remounts the
 // DragPlane mid-gesture loses the cleanup and leaves dragPending stuck non-null,
 // disabling the camera permanently. This clears the leftover so orbit recovers.

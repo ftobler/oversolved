@@ -60,7 +60,7 @@ function solveAndSlice(start: [number, number]): { surfaces: number; residual: n
       { kind: 'coincident', a: { entity: 'l1', point: 'end' }, b: { entity: 'e1' } },
     ],
   }
-  const { input, layout } = lowerSketch(sketch as never)
+  const { input, layout } = lowerSketch(sketch)
   const out = decodeOutput(bytes!(encodeInput(input)))
   const solved: Record<string, number[]> = {}
   for (const l of layout) solved[l.id] = out.paramsSolved.slice(l.offset, l.offset + l.size)
