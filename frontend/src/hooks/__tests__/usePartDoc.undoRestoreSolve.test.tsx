@@ -39,7 +39,6 @@ vi.mock('@/hooks/useDocumentState', () => ({
     docRef,
     docName: 'test',
     setDocName: vi.fn(),
-    ownerUsername: null,
     loading: false,
     error: null,
     setError: vi.fn(),
@@ -62,19 +61,19 @@ function okImpl(payload: Record<string, unknown>) {
 }
 
 const importDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{ id: 'imp1', kind: 'import_step', label: 'part', file_id: 'file-1' }],
 } as unknown as PartDoc)
 
 const extrudeDoc = (...ids: string[]): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: ids.map((id, i) => ({ id, kind: 'extrude', label: `ext ${i}` })),
 } as unknown as PartDoc)
 
 const sketchDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{ id: 'sk1', kind: 'sketch', entities: [{ id: 'l1', kind: 'line' }], initial: {} }],
 } as unknown as PartDoc)

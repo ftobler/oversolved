@@ -202,7 +202,7 @@ vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
     doc: docRef.current, docRef, docName: 'test', setDocName: vi.fn(),
     setDoc: (d: PartDoc) => { docRef.current = d },
-    ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+    loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
   }),
   BUILTIN_FEATURE_DEFAULTS: {},
@@ -228,7 +228,7 @@ describe('re-import through the real funnel', () => {
   })
 
   it('a new import references a NEW file while the old entry still references the old one', () => {
-    docRef.current = { oversolved: 1, kind: 'part', features: [] } as PartDoc
+    docRef.current = { version: 1, kind: 'part', features: [] } as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => result.current.handleMutation({ type: 'add_import_step', featureId: 'imp1', fileId: 'file-a', label: 'a.step' }))

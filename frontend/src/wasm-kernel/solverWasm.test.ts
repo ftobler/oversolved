@@ -1,8 +1,10 @@
 // solverWasm is the browser seam to the two gitignored wasm-pack `--target web`
 // packages. Its contract is failure-tolerant: an absent package (or one that
 // predates an entry point) resolves to null so the Worker degrades instead of
-// throwing, and a load is memoized per package until reset. The dynamic import
-// is stubbed here so the contract can be exercised without the binaries.
+// throwing. A successful load is memoized per package until reset; a failed one
+// is not, so the next call can retry a transient fetch or compile failure. The
+// dynamic import is stubbed here so the contract can be exercised without the
+// binaries.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const h = vi.hoisted(() => ({
@@ -73,18 +75,24 @@ describe('solverWasm loaders', () => {
     expect(error).toHaveBeenCalled()
   })
 
-  it('memoizes a failed load per base and resetSolverWasm forces a retry', async () => {
+  it('does not memoize a failed load, so the next call retries', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const attempts = () =>
       error.mock.calls.filter(c => String(c[0]).includes('loading sketch_solver failed')).length
 
     await loadSolverWasm('/no-such-wasm-base/')
     await loadSolverWasm('/no-such-wasm-base/')
-    // The second call returns the cached promise, so the import is attempted once.
-    expect(attempts()).toBe(1)
+    // The failed entry is dropped, so the import is attempted again rather than
+    // pinning the whole session to the degraded null.
+    expect(attempts()).toBe(2)
+
+    // A successful load IS memoized: reset is the only way to force a reload.
+    await loadSolverWasm('/wasm-live/')
+    await loadSolverWasm('/wasm-live/')
+    expect(h.sketchInit).toHaveBeenCalledTimes(1)
 
     resetSolverWasm()
-    await loadSolverWasm('/no-such-wasm-base/')
-    expect(attempts()).toBe(2)
+    await loadSolverWasm('/wasm-live/')
+    expect(h.sketchInit).toHaveBeenCalledTimes(2)
   })
 })

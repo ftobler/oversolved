@@ -13,7 +13,6 @@ vi.mock('@/hooks/useDocumentState', () => ({
     docRef,
     docName: 'test',
     setDocName: vi.fn(),
-    ownerUsername: null,
     loading: false,
     error: null,
     setError: vi.fn(),

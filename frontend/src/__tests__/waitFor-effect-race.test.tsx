@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useEffect, useState } from 'react'
 import { render, screen, waitFor, act } from '@testing-library/react'
 
-// Deterministic pin for the DocumentPage.routing remount flake
-// (feature/documentpage-remount-flake.md). On the RPi worker a slow commit can
-// cross React's ~5ms frame budget, deferring the passive-effect flush to a later
-// macrotask, so a text waitFor resolves while an effect-fed mock has not yet
-// recorded anything. That interleaving is invisible on a fast box, so this
-// meta-test models the same observable ordering: the READY text commits on a
-// real 10ms timer (so waitFor genuinely waits on a macrotask commit) while the
-// effect-fed record fires only when a deferred the test controls is released.
+// Deterministic pin for the DocumentPage.routing remount flake. On the RPi
+// worker a slow commit can cross React's ~5ms frame budget, deferring the
+// passive-effect flush to a later macrotask, so a text waitFor resolves while an
+// effect-fed mock has not yet recorded anything. That interleaving is invisible
+// on a fast box, so this meta-test models the same observable ordering: the
+// READY text commits on a real 10ms timer (so waitFor genuinely waits on a
+// macrotask commit) while the effect-fed record fires only when a deferred the
+// test controls is released.
 //
 // The pin is deterministic because the record is TEST-gated, not because Node
 // fires timers in due-time order: until the test releases the gate the log

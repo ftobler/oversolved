@@ -5,15 +5,15 @@
  * so the forked runner can import source modules without vitest's module
  * hooks.
  *
- * Paired with --experimental-strip-types (Node 22.6+) so plain .ts files
- * load without a build step.
+ * Paired with --experimental-strip-types (Node 20.19+, which backported it;
+ * 22.6+ has it natively) so plain .ts files load without a build step.
  */
 
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 
-const root = path.resolve(fileURLToPath(import.meta.url), '..')
+const root = path.dirname(fileURLToPath(import.meta.url))
 
 export async function resolve(specifier, context, nextResolve) {
   if (specifier.startsWith('@/')) {

@@ -24,12 +24,12 @@ describeReal('wasm package split', () => {
   })
 
   it('keeps the mate solver out of the sketch package', () => {
-    expect(loadPkgNodeExport('solve_mate_bytes', PKG_SKETCH)).toBeUndefined()
+    expect(loadPkgNodeExport('solve_mate_bytes', PKG_SKETCH)).toBeNull()
   })
 
   it('keeps the sketch solver and topology builder out of the mate package', () => {
-    expect(loadPkgNodeExport('solve_sketch_bytes', PKG_MATE)).toBeUndefined()
-    expect(loadPkgNodeExport('detect_topology_bytes', PKG_MATE)).toBeUndefined()
+    expect(loadPkgNodeExport('solve_sketch_bytes', PKG_MATE)).toBeNull()
+    expect(loadPkgNodeExport('detect_topology_bytes', PKG_MATE)).toBeNull()
   })
 
   it('rejects a buffer carrying the other format\'s magic', () => {

@@ -7,16 +7,16 @@ import type { PartDoc, Mutation } from '@/types/cad'
 
 // failLoud throws in test mode, so startEditSession's half-open guard would
 // abort at the throw and never reach the preview resolution the fix is about.
-// Production is the one environment where the two diverge (failLoud only
-// warns), so this file mocks it to a no-op to exercise the resolve path
-// directly -- see usePartDoc.editSessionGuard.test.ts for the dev/test
+// Production is the one environment where the two diverge (failLoud is a
+// silent no-op there), so this file mocks it to a no-op to exercise the resolve
+// path directly -- see usePartDoc.editSessionGuard.test.ts for the dev/test
 // throwing behavior, which is unaffected by this change.
 vi.mock('@/stores/stateInvariants', () => ({
   failLoud: vi.fn(),
 }))
 
 const makeDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   part_style: { b1: { color: '#ff0000' } },
   features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -29,7 +29,7 @@ vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
     doc: docRef.current, docRef, docName: 'test', setDocName: vi.fn(),
     setDoc: (d: PartDoc) => { docRef.current = d },
-    ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+    loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
   }),
   BUILTIN_FEATURE_DEFAULTS: {},
@@ -51,7 +51,7 @@ const labelOf = () => (docRef.current.features?.[0] as { label?: string }).label
 
 const colorOf = () => (docRef.current.part_style?.b1 as { color?: string }).color
 
-describe('usePartDoc startEditSession with an open preview (prod: failLoud warns, resolution still runs)', () => {
+describe('usePartDoc startEditSession with an open preview (prod: failLoud is silent, resolution still runs)', () => {
   beforeEach(() => {
     docRef.current = makeDoc()
     reSolve.mockClear()

@@ -8,15 +8,15 @@ import type { PartDoc, Mutation } from '@/types/cad'
 // failLoud throws in test mode, so a throwing assertion alone cannot tell the
 // pre-fix code from the fix: both stop at the throw before ever reaching the
 // snapshot-overwrite line. Production is the one environment where the two
-// diverge (failLoud only warns), so this file mocks it to a no-op to exercise
-// that path directly -- see usePartDoc.editSessionGuard.test.ts for the
-// dev/test throwing behavior, which is unaffected by this change.
+// diverge (failLoud is a silent no-op there), so this file mocks it to a no-op
+// to exercise that path directly -- see usePartDoc.editSessionGuard.test.ts for
+// the dev/test throwing behavior, which is unaffected by this change.
 vi.mock('@/stores/stateInvariants', () => ({
   failLoud: vi.fn(),
 }))
 
 const makeDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
 } as unknown as PartDoc)
@@ -28,7 +28,7 @@ vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
     doc: docRef.current, docRef, docName: 'test', setDocName: vi.fn(),
     setDoc: (d: PartDoc) => { docRef.current = d },
-    ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+    loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
   }),
   BUILTIN_FEATURE_DEFAULTS: {},
@@ -48,7 +48,7 @@ const renameTo = (label: string): Mutation =>
 
 const labelOf = () => (docRef.current.features?.[0] as { label?: string }).label
 
-describe('usePartDoc nested edit session guard (prod: failLoud warns, does not throw)', () => {
+describe('usePartDoc nested edit session guard (prod: failLoud is silent, does not throw)', () => {
   beforeEach(() => {
     docRef.current = makeDoc()
     reSolve.mockClear()

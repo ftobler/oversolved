@@ -38,14 +38,6 @@ import { useSolverStore } from '@/stores/solverStore'
 // else is a real failure the user should see.
 const BENIGN_ASSEMBLY_FAILURES = new Set(['assembly solve cancelled', 'anchor solver timed out'])
 
-// Monotonic id for non-live solves across EVERY hook instance, the assembly
-// flag's counterpart of drainSeq: a previous document's drain can resolve after
-// a new editor mounted and started its own solve, and per-instance refs die
-// with their owner, so only a module-level counter can prove ownership there.
-// Live ticks never bump it, so a drag superseding a full solve keeps today's
-// behaviour (the full solve still owns and clears the assembly flag).
-let fullSolveSeq = 0
-
 // A live drag tick carries the per-mate and per-part marks only. Withholding the
 // overall verdict (and its error) keeps a per-frame overconstrained from
 // flickering the banner; the pointer-up full solve owns the real verdict.
@@ -266,9 +258,6 @@ export function useAssemblySolve(
     const version = solveVersion.current
     const current = docRef.current
     if (!current) return
-    // The full-solve id this run captures when it starts (0 for live ticks,
-    // which never own the assembly flag's clearing).
-    let myFullSolve = 0
     const store = useAssemblyStore.getState()
     // A manipulation whose handle names no instance in the current doc is residue
     // from an earlier document (a load raced the drag). Route it back to the
@@ -286,8 +275,6 @@ export function useAssemblySolve(
     const live = manip !== null
     const dragObjective = manip?.dragObjective ?? null
     if (!live) {
-      myFullSolve = ++fullSolveSeq
-      store.setIsSolving(true)
       // Mirror into the solver store so LoadingOverlay (mounted in the assembly
       // editor) renders the spinner and cancel button for the full solve; the
       // overlay only reads the solver store.
@@ -353,7 +340,6 @@ export function useAssemblySolve(
         // pose into the session: the render offset draws it there and the commit
         // writes it, BEFORE dropping it from the re-baked set.
         if (transforms[grab]) {
-          if (version !== solveVersion.current) return
           useAssemblyStore.getState().setDragSolvedPose(transforms[grab])
         }
         delete transforms[grab]
@@ -361,7 +347,6 @@ export function useAssemblySolve(
         delete payloadBodies[grab]
         const bodies = toBodyResults(payloadBodies)
         const edgeCurves = toEdgeCurves(payloadBodies)
-        if (version !== solveVersion.current) return
         useAssemblyStore.getState().setDragSolveResult({
           transforms,
           bodies,
@@ -372,7 +357,6 @@ export function useAssemblySolve(
       }
 
       const anchors = buildAnchorTable(res.payload.anchors)
-      if (version !== solveVersion.current) return
       useAssemblyStore.getState().setSolveResult({
         transforms: res.payload.transforms,
         bodies: toBodyResults(res.payload.bodies),
@@ -415,14 +399,6 @@ export function useAssemblySolve(
       }
     } finally {
       if (!live) {
-        // Only the full solve that started LAST may clear the assembly flag:
-        // a stale hook instance from a previous document resolving late under
-        // a new mount's running solve must not drop the new mount's spinner.
-        // A superseding live tick does not bump the sequence, so within one
-        // mount the clear stays unconditional exactly as before.
-        if (myFullSolve === fullSolveSeq) {
-          useAssemblyStore.getState().setIsSolving(false)
-        }
         // Only the current solve owns the mirror: a superseded solve (a uuid
         // switch starts a new drain over the old one) must not clear it under
         // the newer solve still in flight. The live branch re-arms it off, so a
@@ -496,7 +472,6 @@ export function useAssemblySolve(
       solveVersion.current += 1
       inFlight.current = false
       queued.current = false
-      useAssemblyStore.getState().setIsSolving(false)
       useSolverStore.getState().setIsSolving(false)
     }
   }, [])

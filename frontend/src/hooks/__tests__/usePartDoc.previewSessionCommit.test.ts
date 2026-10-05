@@ -16,7 +16,7 @@ vi.mock('@/stores/stateInvariants', () => ({
 }))
 
 const makeDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   part_style: { b1: { color: '#ff0000' } },
   features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
@@ -29,7 +29,7 @@ vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
     doc: docRef.current, docRef, docName: 'test', setDocName: vi.fn(),
     setDoc: (d: PartDoc) => { docRef.current = d },
-    ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+    loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
   }),
   BUILTIN_FEATURE_DEFAULTS: {},

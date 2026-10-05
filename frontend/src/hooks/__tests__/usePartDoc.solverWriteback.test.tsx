@@ -31,7 +31,6 @@ vi.mock('@/hooks/useDocumentState', () => ({
     docRef,
     docName: 'test',
     setDocName: vi.fn(),
-    ownerUsername: null,
     loading: false,
     error: null,
     setError: vi.fn(),
@@ -45,7 +44,7 @@ vi.mock('@/hooks/useDocumentState', () => ({
 
 function makeSuperfluousDoc(): PartDoc {
   return {
-    oversolved: 1,
+    version: 1,
     kind: 'part',
     features: [{
       id: 'sk1',
@@ -84,7 +83,7 @@ function superfluousResponse(): Record<string, unknown> {
 
 function makeProjectionDoc(): PartDoc {
   return {
-    oversolved: 1,
+    version: 1,
     kind: 'part',
     features: [{
       id: 'sk1',
@@ -130,7 +129,7 @@ function sk1Response(): Record<string, unknown> {
 
 function makeTwoSketchDoc(): PartDoc {
   return {
-    oversolved: 1,
+    version: 1,
     kind: 'part',
     features: [
       { id: 'sk1', kind: 'sketch', entities: [{ id: 'l1', kind: 'line' }], initial: {} },
@@ -142,7 +141,7 @@ function makeTwoSketchDoc(): PartDoc {
 // sk1 carries two entities so a partial delete leaves the feature in the doc.
 function makePartialDeleteDoc(): PartDoc {
   return {
-    oversolved: 1,
+    version: 1,
     kind: 'part',
     features: [
       { id: 'sk1', kind: 'sketch', entities: [{ id: 'l1', kind: 'line' }, { id: 'l2', kind: 'line' }], initial: {} },

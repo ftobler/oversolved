@@ -22,6 +22,8 @@ export interface HitDecision {
   // The triad handle under the cursor, if it is the topmost hit.
   gizmoHandle: string | null
   // The B-rep/builtin entity the pixel names, or null when a gizmo occludes it.
+  // Hover and click resolve this identically today; both read it directly rather
+  // than through two names, so a future divergence has to be authored here.
   entityKey: string | null
 }
 
@@ -40,12 +42,3 @@ export function decideAssemblyHit(hits: readonly AssemblyHit[]): HitDecision {
   return { gizmoHandle: null, entityKey: first.entityKey }
 }
 
-/** What a hover should highlight. Mirrors highlightActive's hover builder. */
-export function hoverTarget(decision: HitDecision): string | null {
-  return decision.entityKey
-}
-
-/** What a click should toggle. Mirrors highlightActive's active builder. */
-export function clickTarget(decision: HitDecision): string | null {
-  return decision.entityKey
-}

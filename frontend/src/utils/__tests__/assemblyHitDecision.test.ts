@@ -8,7 +8,7 @@ import {
   EDGE_LAYER_NAME, FACE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
   ORIGIN_LAYER_NAME, PLANE_LAYER_NAME, VERTEX_LAYER_NAME,
 } from '@/picking'
-import { clickTarget, decideAssemblyHit, hoverTarget, type AssemblyHit } from '@/utils/assemblyHitDecision'
+import { decideAssemblyHit, type AssemblyHit } from '@/utils/assemblyHitDecision'
 import { buildAssemblySelectionGeometry } from '@/utils/assemblySelectionGeometry'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 
@@ -20,8 +20,7 @@ describe('decideAssemblyHit through the one layer set', () => {
     it(`names the top entity for both framings on layer '${layer}'`, () => {
       const decision = decideAssemblyHit([{ entityKey: 'k', layer }])
       expect(decision).toEqual({ gizmoHandle: null, entityKey: 'k' })
-      expect(hoverTarget(decision)).toBe('k')
-      expect(clickTarget(decision)).toBe('k')
+      expect(decision.entityKey).toBe('k')
     })
   }
 
@@ -35,14 +34,12 @@ describe('decideAssemblyHit through the one layer set', () => {
     expect(decision.entityKey).toBeNull()
     // A click resolving the old no-gizmo layer set would have named 'k'; the
     // shared decision is what makes both framings agree on null.
-    expect(clickTarget(decision)).toBeNull()
-    expect(hoverTarget(decision)).toBeNull()
+    expect(decision.entityKey).toBeNull()
   })
 
   it('an empty hit list names nothing in either framing', () => {
     const decision = decideAssemblyHit([])
-    expect(clickTarget(decision)).toBeNull()
-    expect(hoverTarget(decision)).toBeNull()
+    expect(decision.entityKey).toBeNull()
     expect(decision.gizmoHandle).toBeNull()
   })
 
@@ -52,8 +49,7 @@ describe('decideAssemblyHit through the one layer set', () => {
       { entityKey: 'below', layer: FACE_LAYER_NAME },
     ]
     const decision = decideAssemblyHit(hits)
-    expect(hoverTarget(decision)).toBe('top')
-    expect(clickTarget(decision)).toBe('top')
+    expect(decision.entityKey).toBe('top')
   })
 })
 

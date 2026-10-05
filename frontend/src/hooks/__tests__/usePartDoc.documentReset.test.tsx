@@ -13,7 +13,7 @@ import type { PartDoc, Mutation } from '@/types/cad'
 // inherited from the previous document.
 
 const makeDoc = (label: string): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{ id: 'extrude-1', kind: 'extrude', label }],
 } as unknown as PartDoc)
@@ -29,7 +29,7 @@ vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
     doc: docRef.current, docRef, docName: 'test', setDocName: vi.fn(),
     setDoc: (d: PartDoc) => { docRef.current = d },
-    ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+    loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
   }),
   BUILTIN_FEATURE_DEFAULTS: {},

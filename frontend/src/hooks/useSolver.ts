@@ -31,7 +31,10 @@ const BENIGN_SOLVE_FAILURES = new Set([
   'solver worker crashed (backoff)',
   SUPERSEDED_ERROR,
 ])
-const EMPTY_PICK_BODIES: Record<string, BodyResult> = {}
+// Frozen so the one shared instance is structurally immutable: WorldState hands
+// it out verbatim in the 'full' world, so an accidental write would otherwise
+// poison every world state of every hook instance.
+const EMPTY_PICK_BODIES: Readonly<Record<string, BodyResult>> = Object.freeze({})
 
 /**
  * Discriminated union over the dual-world invariant:
@@ -44,7 +47,7 @@ const EMPTY_PICK_BODIES: Record<string, BodyResult> = {}
  */
 type WorldState =
   | { status: 'full'; bodies: Record<string, BodyResult> }
-  | { status: 'editing'; bodies: Record<string, BodyResult>; pickBodies: Record<string, BodyResult> }
+  | { status: 'editing'; bodies: Record<string, BodyResult>; pickBodies: Readonly<Record<string, BodyResult>> }
 
 export function pickPartColor(partNumber: number): string {
   return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]
@@ -96,7 +99,7 @@ export function useSolver(
   // inside the 'editing' variant, accessing it on 'full' is a type error.
   const [world, setWorld] = useState<WorldState>({ status: 'full', bodies: {} })
   const bodies: Record<string, BodyResult> = world.bodies
-  const pickBodies: Record<string, BodyResult> = world.status === 'editing' ? world.pickBodies : EMPTY_PICK_BODIES
+  const pickBodies: Readonly<Record<string, BodyResult>> = world.status === 'editing' ? world.pickBodies : EMPTY_PICK_BODIES
   // True once a solve carrying pick bodies has landed. Entering an edit flips
   // the store's editing flags immediately, but the two worlds only exist after
   // that solve returns -- a ghost preview drawn before it has no "before" state

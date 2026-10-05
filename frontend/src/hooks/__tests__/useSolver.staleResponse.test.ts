@@ -1,7 +1,7 @@
 /**
  * Regression tests for the stale-result guard in useSolver.reSolve.
  *
- * User invariant (solver_arch.user.md §Versioned Solves / #220):
+ * User invariant (Versioned Solves / #220):
  *   "A response that arrives after a newer reSolve has started must be
  *    silently dropped. Only the response whose request_version matches the
  *    current counter is applied."
@@ -16,7 +16,7 @@ import { renderHook, act } from '@testing-library/react'
 
 const { mockSolveLocally } = vi.hoisted(() => ({ mockSolveLocally: vi.fn() }))
 
-vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveLocally }))
+vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveLocally, cancelSolver: vi.fn() }))
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: vi.fn().mockReturnValue({}) }))
 vi.mock('@/stores/solverStore', () => ({
   useSolverStore: { getState: () => ({ setIsSolving: vi.fn(), setOnCancelSolve: vi.fn(), onCancelSolve: null }) },
@@ -27,7 +27,7 @@ import type { PartDoc } from '@/types/cad'
 
 // A doc with one ported feature so reSolve routes through the local kernel.
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
-  return { oversolved: 1, kind: 'part', features: [{ id: 'feat1', kind: 'sketch', entities: [] }], ...overrides }
+  return { version: 1, kind: 'part', features: [{ id: 'feat1', kind: 'sketch', entities: [] }], ...overrides }
 }
 
 function setupHook() {

@@ -1,7 +1,7 @@
 /**
  * Contract tests for the body face/edge click store sequence.
  *
- * User invariant:
+ * User invariant (Selection):
  *   "Click a face -> store the face query. Not the part. The part is implied
  *    ancestrally."
  *

@@ -12,7 +12,7 @@ import type { PartDoc } from '@/types/cad'
 
 // A doc with one ported feature so reSolve routes through the local kernel.
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
-  return { oversolved: 1, kind: 'part', features: [{ id: 'feat1', kind: 'sketch', entities: [] }], ...overrides }
+  return { version: 1, kind: 'part', features: [{ id: 'feat1', kind: 'sketch', entities: [] }], ...overrides }
 }
 
 function setupHook(uuid?: string) {

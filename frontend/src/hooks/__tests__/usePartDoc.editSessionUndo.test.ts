@@ -11,7 +11,7 @@ const pushUndo = vi.fn()
 vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
     doc: null, setDoc: vi.fn(), docRef, docName: 'test', setDocName: vi.fn(),
-    ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+    loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(),
   }),
   BUILTIN_FEATURE_DEFAULTS: {},

@@ -12,7 +12,7 @@ import { renderHook, act } from '@testing-library/react'
 
 const { mockSolveViaWorker } = vi.hoisted(() => ({ mockSolveViaWorker: vi.fn() }))
 
-vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveViaWorker }))
+vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveViaWorker, cancelSolver: vi.fn() }))
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: vi.fn().mockReturnValue({}) }))
 vi.mock('@/stores/solverStore', () => ({
   useSolverStore: { getState: () => ({ setIsSolving: vi.fn(), setOnCancelSolve: vi.fn(), onCancelSolve: null }) },
@@ -24,7 +24,7 @@ import type { PartDoc } from '@/types/cad'
 
 function makeDocWithProjection(): PartDoc {
   return {
-    oversolved: 1,
+    version: 1,
     kind: 'part',
     features: [{
       id: 'sk1',

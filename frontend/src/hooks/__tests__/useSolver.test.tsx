@@ -10,7 +10,7 @@ const { mockUnflattenGeometry } = vi.hoisted(() => ({
   mockUnflattenGeometry: vi.fn().mockReturnValue({}),
 }))
 
-vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveLocally }))
+vi.mock('@/kernel/worker/solverClient', () => ({ solveViaWorker: mockSolveLocally, cancelSolver: vi.fn() }))
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: mockUnflattenGeometry }))
 
 import { pickPartColor, reconcilePartStyle, useSolver } from '@/hooks/useSolver'
@@ -22,7 +22,7 @@ import type { WorkspaceSession } from '@/workspace/session'
 import type { PartDoc, BodyResult } from '@/types/cad'
 
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
-  return { oversolved: 1, kind: 'part', features: [], ...overrides }
+  return { version: 1, kind: 'part', features: [], ...overrides }
 }
 
 // A doc with one (ported) feature, so reSolve routes through the local kernel
@@ -226,6 +226,19 @@ describe('useSolver', () => {
       await act(async () => { await result.current.reSolve(solvableDoc()) })
       expect(mockSolveLocally).toHaveBeenCalledTimes(1)
       expect(result.current.solveError).toBeNull()
+    })
+
+    it('maps dragAnchor onto a payload-only drag_anchor and leaves the doc untouched', async () => {
+      const { result } = setupHook()
+      mockSolveLocally.mockResolvedValue({ solve_ms: 0, result: {}, bodies: {}, _build_state: null })
+      const doc = solvableDoc()
+      await act(async () => {
+        await result.current.reSolve(doc, { dragAnchor: { featureId: 'feat1', entityId: 'l1' } })
+      })
+      const payload = mockSolveLocally.mock.calls[0][0] as { features: Array<{ id: string; drag_anchor?: string }> }
+      expect(payload.features[0].drag_anchor).toBe('l1')
+      // The anchor is a transient hint: it never reaches the caller's doc.
+      expect((doc.features![0] as { drag_anchor?: string }).drag_anchor).toBeUndefined()
     })
 
     it('discards a stale local result when a newer solve has started', async () => {

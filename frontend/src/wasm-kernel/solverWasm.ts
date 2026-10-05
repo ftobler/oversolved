@@ -60,6 +60,11 @@ function loadPackage<M>(stem: string, base: string): Promise<M | null> {
       await mod.default(`${base}${stem}_bg.wasm`)
       return mod
     } catch (e) {
+      // A failed load must not be memoized: a transient fetch or compile failure
+      // would otherwise degrade the whole session until reload or HMR. Dropping
+      // the entry lets the next call retry. An absent artifact also retries,
+      // which is one failed dynamic import per call on an already-broken build.
+      moduleCache.delete(key)
       console.error(`[solverWasm] loading ${stem} failed:`, e)
       return null
     }

@@ -189,7 +189,11 @@ export function planAssemblyOperation<K extends AssemblyOperationId>(
   const pre = ctx.doc
   const baked = def.bake ? bakeSolvedTransforms(pre, ctx.transforms) : pre
   const doc = def.apply(baked, input)
-  const changed = !(doc === pre || assemblyDocEquals(pre, doc))
+  // Measure the change against the BAKED doc, not the pre-op one: a bake:true
+  // operation whose value is already what it sets only differs in the seeds, so
+  // comparing against `pre` would push an undo step whose whole diff is the
+  // bake. Undoing that restores the stale seeds the bake was meant to refresh.
+  const changed = !(doc === baked || assemblyDocEquals(baked, doc))
   return { id, label: def.label, doc, changed, undo: def.undo, solve: def.solve }
 }
 

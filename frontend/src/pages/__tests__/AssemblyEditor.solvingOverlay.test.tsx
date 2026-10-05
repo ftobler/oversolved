@@ -123,7 +123,6 @@ describe('AssemblyEditor solving overlay', () => {
     expect(h.cancelAssemblySolver).toHaveBeenCalledTimes(1)
     await waitFor(() => {
       expect(useSolverStore.getState().isSolving).toBe(false)
-      expect(useAssemblyStore.getState().isSolving).toBe(false)
       expect(useAssemblyStore.getState().solveStatus).toBeNull()
       expect(container.querySelector('.loading-overlay.visible')).toBeNull()
     }, { timeout: 10000 })

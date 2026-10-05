@@ -24,7 +24,7 @@ vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
     doc: docRef.current, docRef, docName: 'test', setDocName: vi.fn(),
     setDoc: (d: PartDoc) => { docRef.current = d },
-    ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+    loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
   }),
   BUILTIN_FEATURE_DEFAULTS: {},
@@ -43,10 +43,10 @@ vi.mock('@/hooks/useSolver', () => ({
 
 // ─── Doc builders ───
 
-const emptyDoc = (): PartDoc => ({ oversolved: 1, kind: 'part', features: [] } as unknown as PartDoc)
+const emptyDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [] } as unknown as PartDoc)
 
 const sketchDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'sk1',
@@ -61,7 +61,7 @@ const sketchDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const extrudeDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'ex1', kind: 'extrude', label: 'Ext',
@@ -70,7 +70,7 @@ const extrudeDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const revolveDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'rv1', kind: 'revolve', label: 'Rev',
@@ -79,7 +79,7 @@ const revolveDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const sweepDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'sw1', kind: 'sweep', label: 'Sweep',
@@ -88,7 +88,7 @@ const sweepDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const filletDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'f1', kind: 'fillet', label: 'Fillet',
@@ -97,7 +97,7 @@ const filletDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const chamferDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'ch1', kind: 'chamfer', label: 'Chamfer',
@@ -106,7 +106,7 @@ const chamferDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const booleanDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'b1', kind: 'boolean', label: 'Boolean',
@@ -115,7 +115,7 @@ const booleanDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const arrayDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'a1', kind: 'array', label: 'Array',
@@ -124,7 +124,7 @@ const arrayDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const circularArrayDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'ca1', kind: 'circular_array', label: 'Circular Array',
@@ -133,7 +133,7 @@ const circularArrayDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const holeDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'h1', kind: 'hole', label: 'Hole',
@@ -142,7 +142,7 @@ const holeDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const transformDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 't1', kind: 'transform', label: 'Transform',
@@ -151,7 +151,7 @@ const transformDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const mirrorDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'm1', kind: 'mirror', label: 'Mirror',
@@ -160,7 +160,7 @@ const mirrorDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const variableDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'v1', kind: 'variable', label: 'v1',
@@ -169,14 +169,14 @@ const variableDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const partStyleDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   part_style: { b1: { name: 'part 1', color: '#ff0000' } },
   features: [],
 } as unknown as PartDoc)
 
 const planeDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'Top', kind: 'plane',
@@ -185,7 +185,7 @@ const planeDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const treeDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [
     { id: 'Origin', kind: 'origin' },
@@ -198,7 +198,7 @@ const treeDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const deleteBodyDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [
     { id: 'ex1', kind: 'extrude', label: 'Ext' },
@@ -211,7 +211,7 @@ const deleteBodyDoc = (): PartDoc => ({
 // at featureDefs.ts:470 pre-fix); remove needs the migrated form because
 // splicing the healed empty list is a no-op no undo entry can represent.
 const legacyTransformDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 't1', kind: 'transform', label: 'Transform',
@@ -228,7 +228,7 @@ const migratedLegacyTransformDoc = (): PartDoc => {
 // The remove-by-index handlers need a non-empty list to splice, while the
 // plain sweepDoc/chamferDoc start empty; these feed the remove round-trips.
 const sweepPopulatedDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'sw1', kind: 'sweep', label: 'Sweep',
@@ -237,7 +237,7 @@ const sweepPopulatedDoc = (): PartDoc => ({
 } as unknown as PartDoc)
 
 const chamferPopulatedDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'ch1', kind: 'chamfer', label: 'Chamfer',
@@ -248,7 +248,7 @@ const chamferPopulatedDoc = (): PartDoc => ({
 // A projected entity (source-carrying) and a superfluous constraint, the two
 // things remove_dangling_content is eligible to clean up.
 const danglingDoc = (): PartDoc => ({
-  oversolved: 1,
+  version: 1,
   kind: 'part',
   features: [{
     id: 'sk1', kind: 'sketch',
@@ -428,7 +428,7 @@ describe('round-trip side effects', () => {
 
   it('delete_feature prunes solveResults forward and the undo restores the record for the doc', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       features: [
         { id: 'sk1', kind: 'sketch', entities: [{ id: 'l1', kind: 'line' }] },
@@ -463,7 +463,7 @@ describe('round-trip side effects', () => {
 
   it('a restorable mutation forwards _restoreSolveResults to the re-solve', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       features: [
         { id: 'sk1', kind: 'sketch', entities: [{ id: 'l1', kind: 'line' }] },
@@ -552,7 +552,7 @@ describe('round-trip side effects', () => {
 
   it('set_rollback round-trips doc.rollback against the store-derived restore', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       features: [
         { id: 'sk1', kind: 'sketch' },
@@ -593,7 +593,7 @@ describe('undo/redo restore of the pruned-solve-result stash', () => {
 
   it('the undo re-solve receives the retained snapshot as _restoreSolveResults', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       features: [{ id: 'ex1', kind: 'extrude', label: 'Ext' }],
     } as unknown as PartDoc
@@ -627,7 +627,7 @@ describe('undo/redo restore of the pruned-solve-result stash', () => {
 
   it('a stale stash entry is not handed to an undo whose entry doc lacks the feature', () => {
     docRef.current = {
-      oversolved: 1,
+      version: 1,
       kind: 'part',
       features: [
         { id: 'ex1', kind: 'extrude' },

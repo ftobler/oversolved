@@ -5,7 +5,7 @@ import { useUndoRedo } from '@/hooks/useUndoRedo'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
-  return { oversolved: 1, kind: 'part', features: [], ...overrides }
+  return { version: 1, kind: 'part', features: [], ...overrides }
 }
 
 describe('useUndoRedo integration', () => {

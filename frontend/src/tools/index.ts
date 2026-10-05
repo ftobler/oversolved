@@ -29,6 +29,3 @@ export function initializeTools(): void {
   // in every test that exercises the store.
   toolRegistry.validate()
 }
-
-export { createDrawingTool, createDimensionTool, createDragTool }
-export { toolRegistry } from '@/registry/toolRegistry'

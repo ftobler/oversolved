@@ -154,7 +154,6 @@ export interface AssemblyEditorData {
    * the old one. Retired by the solve that re-bakes them.
    */
   settlingOffsets: Record<string, Transform3D>
-  isSolving: boolean
   undoStack: AssemblyUndoEntry[]
   redoStack: AssemblyUndoEntry[]
 }
@@ -192,7 +191,6 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     manipulation: null,
     gizmoDrag: null,
     settlingOffsets: {},
-    isSolving: false,
     undoStack: [],
     redoStack: [],
   }
@@ -265,7 +263,7 @@ const STORE_OWNED_FIELDS = [
   'editingSubject',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
   'entitySelection', 'hoveredEntity', 'showPickDebug',
-  'isSolving', 'solveStatus',
+  'solveStatus',
   'undoStack', 'redoStack',
 ] as const
 
@@ -317,7 +315,6 @@ interface AssemblyEditorState extends AssemblyEditorData {
   setActiveMateField: (target: MateFieldTarget | null) => void
   // Push a mate edit to the solver, unless a chip is armed; then it is owed.
   requestSolveOrDefer: () => void
-  setIsSolving: (solving: boolean) => void
   setSolveResult: (result: AssemblySolveResult) => void
   /**
    * A live-drag solve: merge the follower parts' new poses over the current
@@ -468,7 +465,6 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     callbacks?.requestSolve()
   },
 
-  setIsSolving: (solving) => set({ isSolving: solving }),
   setSolveResult: (result) => set((prev) => ({
     ...result,
     // A solve that omits the descriptor table (a legacy/test payload) keeps the

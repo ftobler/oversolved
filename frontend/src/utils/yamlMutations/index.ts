@@ -1,4 +1,4 @@
-// Barrel: backward-compatible re-exports for '@//utils/yamlMutations'
+// Barrel: backward-compatible re-exports for '@/utils/yamlMutations'
 
 export { parseTarget, randomId, normalizeRefList } from './helpers'
 

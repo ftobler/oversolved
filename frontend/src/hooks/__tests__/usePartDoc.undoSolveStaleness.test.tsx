@@ -26,7 +26,7 @@ vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
     doc: docRef.current, docRef, docName: 'test', setDocName: vi.fn(),
     setDoc: (d: PartDoc) => { docRef.current = d },
-    ownerUsername: null, loading: false, error: null, setError: vi.fn(),
+    loading: false, error: null, setError: vi.fn(),
     saveDoc: vi.fn(), renameDoc: vi.fn(), cloneDoc: vi.fn(),
   }),
   BUILTIN_FEATURE_DEFAULTS: {},
@@ -42,7 +42,7 @@ describe('usePartDoc undo vs an in-flight solve', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     docRef.current = {
-      oversolved: 1, kind: 'part',
+      version: 1, kind: 'part',
       features: [{ id: 'f1', kind: 'sketch', label: 'first' }],
     } as unknown as PartDoc
     usePartEditorStore.getState().setEditingFeatureId(null)

@@ -26,7 +26,7 @@ import type { PartDoc } from '@/types/cad'
 
 function makeDoc(): PartDoc {
   return {
-    oversolved: 1,
+    version: 1,
     kind: 'part',
     features: [{ id: 'ex1', kind: 'extrude' }],
   } as unknown as PartDoc

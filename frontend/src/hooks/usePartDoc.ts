@@ -61,6 +61,11 @@ const IDEMPOTENT_MUTATION_TYPES = new Set<Mutation['type']>([
   // a splice past the end and a filter that matches nothing both leave the
   // feature identical. noOpSliceFor already slices the whole touched feature,
   // so the compare is O(feature) and covers each of these for free.
+  // remove_dangling_content is the solve-derived cleanup: its targets come from
+  // the last solve, so a stale-targets dispatch leaves a byte-identical doc.
+  // noOpSliceFor reads the features its payload names, so the compare is
+  // O(touched) there too.
+  'remove_dangling_content',
   'remove_extrude_profile',
   'remove_revolve_profile',
   'remove_sweep_profile',
@@ -180,6 +185,11 @@ function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
   if (doc.rollback !== undefined) slice.rollback = doc.rollback
   if (m.type === 'reorder_features') {
     slice.features = (doc.features ?? []).map(f => f.id)
+  } else if (m.type === 'remove_dangling_content') {
+    // The cleanup names the features it might touch in its payload; slice those
+    // whole, or the compare would be blind to the content it removes.
+    const touched = Object.keys((m as { features?: Record<string, unknown> }).features ?? {})
+    slice.features = touched.map(id => (doc.features ?? []).find(f => f.id === id))
   } else if (featureId !== undefined) {
     slice.features = [(doc.features ?? []).find(f => f.id === featureId)]
   }
@@ -570,8 +580,8 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     if (!docRef.current) return
     if (editSnapshotRef.current !== null) {
       failLoud('[usePartDoc] startEditSession called while an edit session is already active (nested edit session not supported)')
-      // In prod failLoud only warns, so without this return the call below
-      // would overwrite editSnapshotRef with the CURRENT (already-edited) doc,
+      // In prod failLoud is a silent no-op, so without this return the call
+      // below would overwrite editSnapshotRef with the CURRENT (already-edited) doc,
       // moving the outer session's restore point past its own edits and
       // making them permanently non-undoable. Refuse instead: the caller is
       // responsible for closing the active session before opening another.
@@ -583,7 +593,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     // cancel would rewind to a doc that carries the cancelled preview color
     // with no undo entry for it. Resolve it FIRST so the snapshot is taken
     // after the preview_commit (color kept, with its own entry). failLoud
-    // throws in test but only warns in prod, where the resolution still runs.
+    // throws in test but is a silent no-op in prod, where the resolution still runs.
     if (previewOriginalDoc.current !== null) {
       failLoud('[usePartDoc] startEditSession called while a preview is active (preview must be resolved before a session starts)')
       commitPreview({ type: 'preview_commit', description: 'preview resolved at session start' })
