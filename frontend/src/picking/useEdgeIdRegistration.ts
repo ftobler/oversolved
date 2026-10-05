@@ -3,6 +3,7 @@ import { useRegisteredBody } from './idRegistrationUtils'
 import { bodyKeyFor } from './pickKey'
 import type { EdgeData } from '@/types/cad'
 import { buildEdgeSegmentGeometry, resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
+import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
  * Hook used by Body3D to register a body's edges with the edge ID layer.
@@ -48,7 +49,7 @@ export function useEdgeIdRegistration(params: {
         p.edgeLayer.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries: resolvedQueries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
-        console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey, err })
+        if (isDevBuild()) console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey, err })
         return false
       }
     },

@@ -9,7 +9,7 @@ import { INITIAL_ZOOM } from './cameraConstants'
 // knob for "how tight is zoom-to-fit" - it is the only thing that decides
 // framing now that fit-to-content is the one camera-framing path (the old
 // fixed-pose Reset Viewport is gone).
-export const FIT_MARGIN = 2.5
+const FIT_MARGIN = 2.5
 
 // ─── clip planes ───
 // near/far are sized to the content, not fixed, because the depth range is not
@@ -34,7 +34,7 @@ export const MIN_CLIP_PAD = 500
 // answers "what moved the camera, and why" - flip CAMERA_TRACE to true to
 // follow every move with its trigger source, which is what makes
 // hard-to-reproduce viewport bugs traceable instead of a needle in a haystack.
-export const CAMERA_TRACE = false
+const CAMERA_TRACE = false
 
 export function traceCamera(op: string, ...detail: unknown[]): void {
   if (CAMERA_TRACE) console.log(`[camera] ${op}`, ...detail)

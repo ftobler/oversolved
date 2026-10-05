@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
+import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
  * Register a single rectangular plane quad with the planeFace ID layer.
@@ -53,7 +54,7 @@ export function usePlaneIdRegistration(params: {
         // A registerBody throw in a passive effect has no error boundary above
         // it and would unmount the viewport root. Match the body hooks: warn
         // and return false so useRegisteredBody skips markDirty.
-        console.warn('Plane ID registration failed; continuing without it', { selectionId, err })
+        if (isDevBuild()) console.warn('Plane ID registration failed; continuing without it', { selectionId, err })
         return false
       }
     },

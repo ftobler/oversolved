@@ -13,7 +13,7 @@ export function DimensionRulesTable() {
       <tbody>
         {DIMENSION_RULES.map((r, i) => {
           const trigger = r.trigger.type === 'single_entity'
-            ? <><code>single_entity</code> — kind: <code>{r.trigger.entityKind}</code></>
+            ? <><code>single_entity</code> - kind: <code>{r.trigger.entityKind}</code></>
             : <code>{r.trigger.type}</code>
           return (
             <tr key={i}>

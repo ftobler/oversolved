@@ -22,7 +22,6 @@ import {
 
 export {
   COLOR_BODY_DEFAULT,
-  PART_COLOR_PALETTE,
   COLOR_BODY_EDGE,
   COLOR_BODY_SELECTED,
   COLOR_BODY_EDGE_SEL,
@@ -180,12 +179,11 @@ export function bodyRemovedColorIsDistinct(): { nearest: string; distance: numbe
 
 // Drag snap: vertex pull zone must be larger than entity body pull zone so that
 // dragging near an endpoint always snaps to the vertex, not the entity body.
-// Mirrors POINT_HIT_PIXELS vs HIT_PIXELS in the hover/click system.
+// Mirrors the 20/8 point-vs-body split in the hover/click system.
 export const DRAG_SNAP_VERTEX_RADIUS_PX = 20   // point-to-point coincident snap radius
 export const DRAG_SNAP_ENTITY_RADIUS_PX = 8    // point-on-entity coincident snap radius
 
 // Hit detection & collision geometry
-export const HIT_PIXELS = 8
 export const POINT_HIT_PIXELS = 20
 export const POINT_VIS_PIXELS = 4
 

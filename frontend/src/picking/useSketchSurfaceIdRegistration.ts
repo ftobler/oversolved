@@ -5,6 +5,7 @@ import type { Topology, PlaneTransform } from '@/types/cad'
 import { buildPlaneMatrix } from './idRegistrationUtils'
 import { planeTransformKey } from './planeTransformKey'
 import { tessellateBoundary } from '@/kernel/topologyBoundary'
+import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
  * Register a sketch's topology surfaces with the sketchSurface ID layer.
@@ -108,7 +109,7 @@ export function useSketchSurfaceIdRegistration(params: {
           faceQueries: [query],
         })
       } catch (err) {
-        console.warn('Sketch surface ID registration failed', { bodyKey, err })
+        if (isDevBuild()) console.warn('Sketch surface ID registration failed', { bodyKey, err })
       }
     }
 

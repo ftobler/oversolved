@@ -3,6 +3,7 @@ import { useRegisteredBody } from './idRegistrationUtils'
 import { bodyKeyFor } from './pickKey'
 import type { Mesh3D } from '@/types/cad'
 import { buildBodyGeometry, faceCount, toNonIndexedPositions, resolveFaceQueries } from '@/components/Geometry3D/bodyGeometry'
+import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
  * Hook used by Body3D to register a body's per-face geometry with the
@@ -45,7 +46,7 @@ export function useFaceIdRegistration(params: {
         p.faceLayer.registerBody({ bodyKey, positions: nonIndexed, triangleToFace: tri2face, faceQueries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
-        console.warn('Face ID registration failed; continuing without face picking for this body', { bodyKey, err })
+        if (isDevBuild()) console.warn('Face ID registration failed; continuing without face picking for this body', { bodyKey, err })
         return false
       }
     },

@@ -34,7 +34,7 @@ export function ConstraintsTable() {
             <td className="reg-cell-center">
               {c.shortcut
                 ? <kbd className="reg-kbd">{c.shortcut.toUpperCase()}</kbd>
-                : <span className="reg-muted">—</span>}
+                : <span className="reg-muted">-</span>}
             </td>
             <td><code>{c.refPattern}</code></td>
             <td className="reg-cell-center">

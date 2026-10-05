@@ -14,6 +14,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useIdPipeline, type IdPipeline } from '@/picking'
+import { isDevBuild } from '@/kernel/isDevBuild'
 import type { AssemblyPickBody } from '@/utils/assemblyPick'
 
 function unregisterAll(pipeline: IdPipeline, registered: Map<string, AssemblyPickBody>): void {
@@ -80,7 +81,7 @@ export default function AssemblyPickLayers({ bodies }: { bodies: AssemblyPickBod
         // One malformed body must not cost the whole assembly its picking. Drop
         // it from the bookkeeping so the next tick retries it.
         registered.delete(bodyKey)
-        console.warn('Assembly ID registration failed for a body', { bodyKey, err })
+        if (isDevBuild()) console.warn('Assembly ID registration failed for a body', { bodyKey, err })
       }
       changed = true
     }

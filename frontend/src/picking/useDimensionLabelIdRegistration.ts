@@ -4,6 +4,7 @@ import { useIdPipeline } from './IdPipelineContext'
 import type { PlaneTransform } from '@/types/cad'
 import { buildPlaneMatrix, useRegisteredBody } from './idRegistrationUtils'
 import { planeTransformKey } from './planeTransformKey'
+import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
  * Register a dimension label hit circle into the dimensionLabel ID layer.
@@ -58,7 +59,7 @@ export function useDimensionLabelIdRegistration(params: {
         // A passive-effect registerBody throw has no error boundary above it and
         // would unmount the viewport root. Warn and return false like the body
         // hooks; useRegisteredBody skips markDirty on false.
-        console.warn('Dimension label ID registration failed; continuing without it', { entityKey, err })
+        if (isDevBuild()) console.warn('Dimension label ID registration failed; continuing without it', { entityKey, err })
         return false
       }
     },

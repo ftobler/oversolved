@@ -8,7 +8,7 @@ function iconUrl(filename: string | undefined): string | undefined {
 
 export function Icon({ file, size = 18 }: { file: string | undefined; size?: number }) {
   const url = iconUrl(file)
-  if (!url) return <span className="reg-no-icon">—</span>
+  if (!url) return <span className="reg-no-icon">-</span>
   return <img src={url} width={size} height={size} className="reg-icon" alt={file} />
 }
 

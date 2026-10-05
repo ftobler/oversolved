@@ -68,10 +68,10 @@ export function wasLastClickConsumedByIdDispatch(): boolean { return lastClickId
 export function wasLastClickStaleResolve(): boolean { return lastClickWasStale }
 
 export function setLastClickStationaryPrimary(v: boolean): void { lastClickStationaryPrimary = v }
-export function wasLastClickStationaryPrimary(): boolean { return lastClickStationaryPrimary }
+function wasLastClickStationaryPrimary(): boolean { return lastClickStationaryPrimary }
 
 export function setLastClickBandDragging(v: boolean): void { lastClickBandDragging = v }
-export function wasLastClickBandDragging(): boolean { return lastClickBandDragging }
+function wasLastClickBandDragging(): boolean { return lastClickBandDragging }
 
 /**
  * Whether a click that fell through to the DrawPlane backplane should clear the

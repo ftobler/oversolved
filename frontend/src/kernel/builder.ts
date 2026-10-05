@@ -1475,12 +1475,6 @@ export function build(
 // The solver registry provides the per-doc solvability gate: a kind-set
 // membership check that dispatches a doc to the TS/WASM leaf solvers when
 // every feature kind is ported, else the doc cannot be solved at all.
-// Re-exported here so `builder.ts` is the canonical integration
-// point for wiring the TS kernel into `BuildDeps.trySolveFeature`.
-export {
-  PORTED_FEATURE_KINDS,
-  isDocFullyPorted,
-  unportedKinds,
-  getSolver,
-  createFeatureSolver,
-} from './solverRegistry'
+// The gate is re-exported here so the solver hook reaches it through the
+// builder, the same module that owns the solve entry points.
+export { isDocFullyPorted, unportedKinds } from './solverRegistry'

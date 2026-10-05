@@ -99,8 +99,10 @@ type LeafSolver = (
   featuresById?: Record<string, Record<string, unknown>>,
 ) => Record<string, unknown>
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- leaf solvers have heterogeneous signatures; the wrapper erases the union
-const _s = (fn: (...args: any[]) => any): LeafSolver => fn
+// Leaf solvers take heterogeneous parameter lists; this catch-all accepts any
+// of them, and the cast narrows the erased result to the dispatch signature.
+type HeterogeneousSolver = (...args: never[]) => unknown
+const _s = (fn: HeterogeneousSolver): LeafSolver => fn as unknown as LeafSolver
 
 const KIND_SOLVER: Record<string, LeafSolver> = {
   sketch: _s((_oc, _scope, _table, feature: Record<string, unknown>, globalRepo: Repository, bodyStore: Record<string, Body>) =>

@@ -27,7 +27,11 @@ export const GIZMO_PIXELS = 90
 export const ARROW_LENGTH = 1.1
 export const SHAFT_RADIUS = ARROW_LENGTH * 0.02
 export const HEAD_LENGTH = ARROW_LENGTH * 0.18
-export const HEAD_RADIUS = ARROW_LENGTH * 0.06
+// One source for the drawn head base and its grab cylinder, exported under the
+// two names consumers know (HEAD_RADIUS, ARROW_HEAD_PICK_RADIUS) so they cannot
+// drift apart.
+const HEAD_RADIUS_UNITS = ARROW_LENGTH * 0.06
+export const HEAD_RADIUS = HEAD_RADIUS_UNITS
 export const RING_RADIUS = 0.75
 export const RING_TUBE = 0.02
 
@@ -102,7 +106,7 @@ export const RING_PICK_TUBE = pickTubeRadius(PICK_LINE_PX)
  * resolver's snap. A cylinder over the cone's span is never wider than the cone
  * is at its base, so this still never exceeds what is drawn.
  */
-export const ARROW_HEAD_PICK_RADIUS = HEAD_RADIUS
+export const ARROW_HEAD_PICK_RADIUS = HEAD_RADIUS_UNITS
 
 export type GizmoHandleKind = 'translate' | 'rotate' | 'plane'
 
