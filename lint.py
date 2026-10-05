@@ -413,14 +413,15 @@ def _scan_rust_string(text: str, i: int, end: int) -> int:
         if i + 2 < end and text[i + 2] == "'":
             return i + 3  # `'c'`
         return i + 1  # a lifetime, not a char literal
-    # double-quoted: raw strings (r prefix) keep no escapes and may use #"..."#
-    raw = i > 0 and text[i - 1] == "r"
-    if raw:
-        hashes = 0
-        k = i - 1
-        while k >= 0 and text[k] == "#":
-            hashes += 1
-            k -= 1
+    # double-quoted: raw strings keep no escapes and may open with any number
+    # of `#`s (`r"..."`, `r#"..."#`, `br##"..."##`), so scan back over the `#`s
+    # to the `r` before treating the quote as raw.
+    hashes = 0
+    k = i - 1
+    while k >= 0 and text[k] == "#":
+        hashes += 1
+        k -= 1
+    if k >= 0 and text[k] == "r":
         close = '"' + "#" * hashes
         j = text.find(close, i + 1, end)
         return end if j == -1 else j + len(close)
@@ -438,10 +439,7 @@ def scan_rust_comments(text: str) -> list[Comment]:
     n = len(text)
     while i < n:
         c = text[i]
-        if c in "'\"`":
-            if c == "`":  # Rust raw string `r"..."`; treat as a string literal
-                i = _scan_rust_string(text, i, n) if i + 1 < n and text[i + 1] == '"' else i + 1
-                continue
+        if c in "'\"":
             i = _scan_rust_string(text, i, n)
             continue
         if c == "/" and i + 1 < n and text[i + 1] in "/*":
@@ -678,7 +676,7 @@ def check_file(path: pathlib.Path, text: str, config: Config) -> list[str]:
     elif config.language == "python":
         comments = scan_python(text)
     else:
-        comments = scan_comments(text)
+        raise ValueError(f"unknown language: {config.language}")
     for rule in RULES.values():
         if not config.enabled(rule.name):
             continue

@@ -27,6 +27,16 @@ def run_lint_py(tmp_path: pathlib.Path, source: str, *extra_args: str) -> subpro
     )
 
 
+def run_lint_rs(tmp_path: pathlib.Path, source: str, *extra_args: str) -> subprocess.CompletedProcess:
+    target = tmp_path / "sample.rs"
+    target.write_text(source)
+    return subprocess.run(
+        [sys.executable, str(LINT_PY), str(tmp_path), "--language", "rust", *extra_args],
+        capture_output=True,
+        text=True,
+    )
+
+
 def assert_violation(proc: subprocess.CompletedProcess, rule: str) -> None:
     assert proc.returncode == 1, proc.stderr
     assert f" {rule} " in proc.stdout, proc.stdout
@@ -169,8 +179,17 @@ def test_filter_limits_scan(tmp_path):
     assert "skip.ts" not in proc.stdout
 
 
-def test_empty_directory_is_clean(tmp_path):
+def test_clean_file_is_clean(tmp_path):
     assert_clean(run_lint(tmp_path, "const a = 1  // fine\n"))
+
+
+def test_empty_directory_is_clean(tmp_path):
+    proc = subprocess.run(
+        [sys.executable, str(LINT_PY), str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+    assert_clean(proc)
 
 
 # ─── scanner edge cases ───
@@ -285,6 +304,17 @@ def test_en_dash_in_comment_is_flagged(tmp_path):
     assert_violation(run_lint(tmp_path, source), "emdash")
 
 
+def test_em_dash_in_string_literal_is_flagged(tmp_path):
+    source = 'const label = "a \u2014 b"\n'
+    assert_violation(run_lint(tmp_path, source), "emdash")
+
+
+def test_em_dash_in_string_literal_can_be_disabled(tmp_path):
+    source = 'const label = "a \u2014 b"\n'
+    proc = run_lint(tmp_path, source, "--no-emdash")
+    assert_clean(proc)
+
+
 # ─── CLI behaviour ───
 
 
@@ -375,3 +405,43 @@ def test_python_raw_string_escape_does_not_swallow_next_comment(tmp_path):
     # ends it and the `#` on the next line is a real comment, not string body.
     source = 'p = r"c:\\"\n# --------\n'
     assert_violation(run_lint_py(tmp_path, source), "banner")
+
+
+# ─── rust scanner ───
+
+
+def test_rust_em_dash_in_line_comment_is_flagged(tmp_path):
+    source = "// bad \u2014 dash\nfn main() {}\n"
+    assert_violation(run_lint_rs(tmp_path, source), "emdash")
+
+
+def test_rust_doc_comment_drops_the_third_slash(tmp_path):
+    source = "/// doc \u2014 dash\npub fn f() {}\n"
+    assert_violation(run_lint_rs(tmp_path, source), "emdash")
+
+
+def test_rust_char_literal_does_not_hide_the_comment(tmp_path):
+    source = "const SLASH: char = '/';\n// bad \u2014 dash\n"
+    assert_violation(run_lint_rs(tmp_path, source), "emdash")
+
+
+def test_rust_raw_string_with_internal_quote_hides_the_comment(tmp_path):
+    # The inner `"` must not end the raw string early, so the `//` carrying the
+    # em dash stays string body and is never reported as a comment.
+    source = 'let s = r#"a " // not \u2014 comment"#;\n'
+    assert_clean(run_lint_rs(tmp_path, source))
+
+
+def test_rust_hashless_raw_string_is_not_a_comment(tmp_path):
+    source = 'let s = r"// not a comment";\n'
+    assert_clean(run_lint_rs(tmp_path, source))
+
+
+def test_rust_double_hash_raw_string_is_not_a_comment(tmp_path):
+    source = 'let s = r##"// not \u2014 comment"##;\n'
+    assert_clean(run_lint_rs(tmp_path, source))
+
+
+def test_rust_slash_in_string_is_not_a_comment(tmp_path):
+    source = 'let url = "http://x";\n// bad \u2014 dash\n'
+    assert_violation(run_lint_rs(tmp_path, source), "emdash")
