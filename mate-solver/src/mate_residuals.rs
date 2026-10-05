@@ -781,6 +781,10 @@ impl MateProblem {
     fn jacobian(&self, x: &[f64]) -> DMatrix<f64> {
         let mut j = DMatrix::zeros(self.m, self.n);
         let mut row = 0usize;
+        // One finite-difference scratch shared by every filler below. The
+        // fillers clone `x` into it and restore each column, so a single
+        // allocation per Jacobian replaces one per tangential/roll mate (5.4).
+        let mut scratch = x.to_vec();
 
         for (mi, mate) in self.mates.iter().enumerate() {
             let off_a = mate.a.body_index as usize * 7;
@@ -816,7 +820,7 @@ impl MateProblem {
                     // Absolute roll about A's current world axis.
                     // Finite-differenced so the Jacobian tracks the moving axis
                     // the residual measures against (see fill_roll_fd).
-                    self.fill_roll_fd(&mut j, row, mi, off_a, off_b, x);
+                    self.fill_roll_fd(&mut j, row, mi, off_a, off_b, x, &mut scratch);
                     row += 1;
                 }
                 MateKind::Spherical => {
@@ -870,7 +874,7 @@ impl MateProblem {
                     row += 3;
                     // Absolute roll pin -- finite-differenced, same as Fixed's
                     // (see fill_roll_fd).
-                    self.fill_roll_fd(&mut j, row, mi, off_a, off_b, x);
+                    self.fill_roll_fd(&mut j, row, mi, off_a, off_b, x, &mut scratch);
                     row += 1;
                 }
                 MateKind::Rotating => {
@@ -921,7 +925,7 @@ impl MateProblem {
                     row += 3;
                 }
                 MateKind::Tangential => {
-                    self.fill_tangential(&mut j, row, mi, off_a, off_b, x, mate);
+                    self.fill_tangential(&mut j, row, mi, off_a, off_b, x, mate, &mut scratch);
                     row += 1;
                 }
                 MateKind::CopyRotation => {
@@ -1201,17 +1205,19 @@ impl MateProblem {
         off_b: usize,
         x: &[f64],
         _mate: &Mate,
+        scratch: &mut [f64],
     ) {
         let eps = 1e-6;
-        let mut xp = x.to_vec();
+        let xp = scratch;
+        xp.clone_from_slice(x);
 
         // Body A params (translation + quaternion).
         for col in off_a..off_a + 7 {
             let orig = xp[col];
             xp[col] = orig + eps;
-            let fp = self.residual_at_mate(mi, &xp);
+            let fp = self.residual_at_mate(mi, xp);
             xp[col] = orig - eps;
-            let fm = self.residual_at_mate(mi, &xp);
+            let fm = self.residual_at_mate(mi, xp);
             xp[col] = orig;
             j[(row, col)] = (fp - fm) / (2.0 * eps);
         }
@@ -1219,9 +1225,9 @@ impl MateProblem {
         for col in off_b..off_b + 7 {
             let orig = xp[col];
             xp[col] = orig + eps;
-            let fp = self.residual_at_mate(mi, &xp);
+            let fp = self.residual_at_mate(mi, xp);
             xp[col] = orig - eps;
-            let fm = self.residual_at_mate(mi, &xp);
+            let fm = self.residual_at_mate(mi, xp);
             xp[col] = orig;
             j[(row, col)] = (fp - fm) / (2.0 * eps);
         }
@@ -1245,6 +1251,7 @@ impl MateProblem {
     /// seed axis and disagreed with the residual off the seed. Same trusted
     /// pattern as `fill_tangential`; the roll row is a single residual, so this
     /// is cheap.
+    #[allow(clippy::too_many_arguments)]
     fn fill_roll_fd(
         &self,
         j: &mut DMatrix<f64>,
@@ -1253,16 +1260,18 @@ impl MateProblem {
         off_a: usize,
         off_b: usize,
         x: &[f64],
+        scratch: &mut [f64],
     ) {
         let eps = 1e-6;
-        let mut xp = x.to_vec();
+        let xp = scratch;
+        xp.clone_from_slice(x);
         for &base in &[off_a, off_b] {
             for col in base..base + 7 {
                 let orig = xp[col];
                 xp[col] = orig + eps;
-                let fp = self.roll_residual_at_mate(mi, &xp);
+                let fp = self.roll_residual_at_mate(mi, xp);
                 xp[col] = orig - eps;
-                let fm = self.roll_residual_at_mate(mi, &xp);
+                let fm = self.roll_residual_at_mate(mi, xp);
                 xp[col] = orig;
                 // Wrap the DIFFERENCE, not just the samples: when the pose sits
                 // on the residual's +/-pi branch cut (a weld a full half-turn
@@ -2618,7 +2627,8 @@ mod tests {
         };
         let x = problem.x0.clone();
         let mut j = DMatrix::zeros(1, 7);
-        problem.fill_roll_fd(&mut j, 0, 0, 0, 0, &x);
+        let mut scratch = x.clone();
+        problem.fill_roll_fd(&mut j, 0, 0, 0, 0, &x, &mut scratch);
 
         let eps = 1e-6;
         for col in 0..7 {

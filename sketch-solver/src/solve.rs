@@ -8,7 +8,7 @@
 use crate::residuals::Problem;
 use crate::{Diagnostics, Input, Output, Status};
 use nalgebra::{DMatrix, SymmetricEigen};
-use solver_core::lm::{solve_lm, solve_lm_sparse};
+use solver_core::lm::{solve_lm, solve_lm_sparse, solve_lm_sparse_anchored};
 
 /// Singular values above this count toward the rank.
 const RANK_TOL: f64 = 1e-6;
@@ -30,31 +30,45 @@ pub fn solve_sketch(input: &Input) -> Output {
     let x0: Vec<f64> = problem.x0.clone();
     let n = x0.len();
 
-    // Drag fast path: sparse CG solve, no SVD/rank analysis.
+    // Drag fast path: sparse CG solves, no SVD/rank analysis.
     if input.options.drag_mode {
         let f = |x: &[f64]| problem.residuals(x);
         let jac_sp = |x: &[f64]| problem.jacobian_sparse(x, n);
-        let result = solve_lm_sparse(&x0, &f, &jac_sp);
 
-        let final_loss = result.residual_norm * result.residual_norm;
+        // Satisfiability comes from the CONSTRAINT system alone. Solve it
+        // unanchored first: an anchored solve pulls x off the manifold by
+        // design, so a satisfiable drag far from a constraint would otherwise
+        // read as Overconstrained and the caller would drop the frame, freezing
+        // the point instead of sliding it.
+        let clean = solve_lm_sparse(&x0, &f, &jac_sp);
+        let final_loss = clean.residual_norm * clean.residual_norm;
 
         // Drag only operates when there are free DOF; we assume underconstrained
-        // without calling the expensive matrix_rank SVD. The refine pass is
-        // harmless when fully constrained (reg rows just pull toward x0).
+        // without calling the expensive matrix_rank SVD.
         // A non-finite norm is an unsatisfiable/malformed solve, not a clean
         // underconstrained one: report it as Overconstrained so NaN never reads
         // as success.
-        let status = if !result.residual_norm.is_finite() || final_loss > LOSS_THRESHOLD {
+        let status = if !clean.residual_norm.is_finite() || final_loss > LOSS_THRESHOLD {
             Status::Overconstrained
         } else {
             Status::Underconstrained
         };
 
+        // Second pass: the driver-owned seed anchor pulls free DOF toward the
+        // pre-drag state (the old caller-side augmented-Jacobian refine, now a
+        // shared driver mechanism). The driver anchors toward its seed, so seed
+        // from the pre-drag x0: that is the cursor/pre-drag gauge reference, and
+        // the anchored solve starts from it with the constraint residual
+        // pulling onto the manifold. Both passes get the full iteration budget,
+        // as the old plain-then-refine pair did.
         let x_final = if status == Status::Underconstrained {
             let weights = drag_reg_weights(input, n);
-            refine_drag_sparse(&result.x, &x0, &problem, n, &weights)
+            // `refine_drag_sparse` appended `w*(x-x0)` residual rows; their
+            // Hessian contribution is `w²`, the absolute anchor weight.
+            let anchor: Vec<f64> = weights.iter().map(|w| w * w).collect();
+            solve_lm_sparse_anchored(&x0, &f, &jac_sp, &anchor).x
         } else {
-            result.x.clone()
+            clean.x
         };
 
         let params_solved = to_f32(&x_final);
@@ -65,10 +79,10 @@ pub fn solve_sketch(input: &Input) -> Output {
             overall_status: status.to_u8(),
             vertex_freedom: Vec::new(),
             diagnostics: Diagnostics {
-                residual_norm: result.residual_norm,
+                residual_norm: clean.residual_norm,
                 rank: 0,
                 dof: 0,
-                iters: result.iters,
+                iters: clean.iters,
                 ms: 0.0,
             },
         };
@@ -136,7 +150,9 @@ pub fn solve_sketch(input: &Input) -> Output {
 /// param gets `REG_WEIGHT_BASE`; the dragged (anchor) entity's params get the
 /// firmer `REG_WEIGHT_DRAG`. The contract carries a single `drag_anchor_id`
 /// (an entity index); an out-of-range id just leaves the base weights (still a
-/// valid, gentle pull toward the pre-drag state).
+/// valid, gentle pull toward the pre-drag state). The caller squares these into
+/// the driver's absolute anchor weights (the old augmented rows' Hessian was
+/// `w²`).
 fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
     let mut weights = vec![REG_WEIGHT_BASE; n];
     let anchor = input.options.drag_anchor_id as usize;
@@ -155,32 +171,6 @@ fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
         }
     }
     weights
-}
-
-/// Sparse version of `refine_drag`: builds an augmented sparse Jacobian
-/// (base + n identity-weighted regularization rows) and solves via sparse CG.
-fn refine_drag_sparse(
-    x_clean: &[f64],
-    x0: &[f64],
-    problem: &Problem,
-    n: usize,
-    weights: &[f64],
-) -> Vec<f64> {
-    let f2 = |x: &[f64]| {
-        let mut r = problem.residuals(x);
-        for (&w, (&xi, &x0i)) in weights.iter().zip(x.iter().zip(x0.iter())) {
-            r.push(w * (xi - x0i));
-        }
-        r
-    };
-    let jac2 = |x: &[f64]| {
-        let mut aug = problem.jacobian_sparse(x, n);
-        for (i, &w) in weights.iter().enumerate() {
-            aug.push(vec![(i, w)]);
-        }
-        aug
-    };
-    solve_lm_sparse(x_clean, &f2, &jac2).x
 }
 
 /// Rank of `j` = count of singular values strictly above `tol` (matches
@@ -878,9 +868,49 @@ mod tests {
     }
 
     #[test]
+    fn dragged_point_far_off_a_line_is_not_overconstrained() {
+        // A point coincident with a fixed horizontal line, seeded 100 units off
+        // it and dragged there. The anchored compromise sits ~0.25 off the line,
+        // so its raw constraint residual exceeds LOSS_THRESHOLD; the status must
+        // still come from the constraint system (satisfiable), exactly as the
+        // old first unanchored solve classified it. Otherwise the caller drops
+        // the frame and the point freezes instead of sliding.
+        let fixed_line = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);
+        let on_line = Constraint {
+            kind_code: ConstraintKind::Coincident.to_u8(),
+            refs: ab(e_ref(1, PointSelector::Xy), e_ref(0, PointSelector::Absent)),
+            ..Default::default()
+        };
+        let inp = Input {
+            options: Options {
+                drag_mode: true,
+                drag_anchor_id: 1,
+                ..Default::default()
+            },
+            ..input(
+                vec![line(0), point(4)],
+                vec![0.0, 0.0, 10.0, 0.0, 5.0, 100.0],
+                vec![fixed_line, on_line],
+            )
+        };
+
+        let out = solve_sketch(&inp);
+        assert_eq!(
+            out.overall_status,
+            Status::Underconstrained.to_u8(),
+            "a satisfiable far drag must not read as overconstrained"
+        );
+        // The anchor still pulls the point toward the cursor: y is off the line
+        // (the anchored compromise) but far below the cursor's y = 100.
+        let y = out.params_solved[5];
+        assert!(y.abs() > 1e-3, "anchor had no effect: y={y}");
+        assert!(y.abs() < 1.0, "point did not settle near the line: y={y}");
+    }
+
+    #[test]
     fn drag_on_manifold_seed_is_a_no_op() {
-        // Underconstrained, seeded already satisfying all constraints: the refine
-        // pass must leave the geometry put (reg pulls toward x0, already there).
+        // Underconstrained, seeded already satisfying all constraints: the seed
+        // anchor must leave the geometry put (it pulls toward x0, already there).
         let inp = Input {
             options: Options {
                 drag_mode: true,
