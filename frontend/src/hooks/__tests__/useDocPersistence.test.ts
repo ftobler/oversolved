@@ -19,7 +19,7 @@ const h = vi.hoisted(() => {
     saves: [] as Array<{ uuid: string; content: string }>,
     renameGates: [] as ReturnType<typeof makeGate>[],
     renames: [] as Array<{ uuid: string; name: string }>,
-    clones: [] as Array<{ uuid: string; name?: string }>,
+    clones: [] as Array<[uuid: string, name?: string]>,
     previewPut: vi.fn(async () => {}),
   }
 })
@@ -44,9 +44,9 @@ vi.mock('@/adapters/backend', () => ({
         h.renames.push({ uuid, name })
         return gate.promise
       },
-      clone: (uuid: string, name?: string) => {
-        h.clones.push({ uuid, name })
-        return Promise.resolve({ uuid: `${uuid}-copy` })
+      clone: (...args: [uuid: string, name?: string]) => {
+        h.clones.push(args)
+        return Promise.resolve({ uuid: `${args[0]}-copy` })
       },
     },
   },
@@ -91,7 +91,7 @@ describe('useDocPersistence', () => {
 
     // A mutation installs a fresh doc object and re-flags dirty mid-save.
     await act(async () => {
-      docRef.current = { ...docRef.current!, name: 'edited' }
+      docRef.current = { ...docRef.current!, version: 2 }
       useUnsavedChangesStore.getState().setDirty(true)
     })
 
@@ -127,7 +127,7 @@ describe('useDocPersistence', () => {
     // The edit lands and a second save fires while save 1 holds the slot.
     let save2!: Promise<boolean>
     await act(async () => {
-      docRef.current = { ...docRef.current!, marker: 'V2' } as PartDoc
+      docRef.current = { ...docRef.current!, version: 2 }
       save2 = result.current.saveDoc('S', docRef.current!)
     })
     expect(h.saveGates).toHaveLength(0)
@@ -140,8 +140,8 @@ describe('useDocPersistence', () => {
     await act(async () => { h.saveGates[1].resolve(undefined) })
     expect(await save2).toBe(true)
     expect(h.saves).toHaveLength(2)
-    expect(h.saves[0].content).not.toContain('V2')
-    expect(h.saves[1].content).toContain('V2')
+    expect(h.saves[0].content).not.toContain('version: 2')
+    expect(h.saves[1].content).toContain('version: 2')
   })
 
   it('returns false and surfaces the error when the write rejects', async () => {
@@ -155,6 +155,29 @@ describe('useDocPersistence', () => {
     expect(await savePromise).toBe(false)
     expect(setError).toHaveBeenCalledWith('disk full')
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  // The chain slot is released in a finally, so a rejected save must not wedge
+  // the queue: a save started behind it still reaches the store.
+  it('lets a save queued behind a rejected save proceed', async () => {
+    const { result, docRef } = renderPersist()
+
+    let save1!: Promise<boolean>
+    await act(async () => { save1 = result.current.saveDoc('S', docRef.current!) })
+    let save2!: Promise<boolean>
+    await act(async () => { save2 = result.current.saveDoc('S', docRef.current!) })
+    // Save 2 is queued behind save 1, so neither has reached the store yet.
+    expect(h.saveGates).toHaveLength(1)
+
+    await act(async () => { h.saveGates[0].reject(new Error('disk full')) })
+    expect(await save1).toBe(false)
+
+    // The finally release lets the queued save proceed to its own store write.
+    await act(async () => {})
+    expect(h.saveGates).toHaveLength(2)
+    await act(async () => { h.saveGates[1].resolve(undefined) })
+    expect(await save2).toBe(true)
+    expect(h.saves).toHaveLength(2)
   })
 
   it('stores the preview under the workspace and uuid, falling back to the uuid', async () => {
@@ -197,10 +220,14 @@ describe('useDocPersistence', () => {
     expect(setDocName).not.toHaveBeenCalled()
   })
 
-  it('forwards the clone name and hands back the new id', async () => {
+  it('forwards the clone name for the part path and keeps the one-arg call for the assembly path', async () => {
     const { result } = renderPersist()
-    const cloned = await result.current.cloneDoc('SRC', 'copy name')
-    expect(h.clones).toEqual([{ uuid: 'SRC', name: 'copy name' }])
-    expect(cloned).toEqual({ uuid: 'SRC-copy' })
+    const named = await result.current.cloneDoc('SRC', 'copy name')
+    const anonymous = await result.current.cloneDoc('ASM')
+    // The assembly path must keep store.clone(id) exactly: an explicit undefined
+    // second argument changed the call arity and broke the assembly seam once.
+    expect(h.clones).toEqual([['SRC', 'copy name'], ['ASM']])
+    expect(named).toEqual({ uuid: 'SRC-copy' })
+    expect(anonymous).toEqual({ uuid: 'ASM-copy' })
   })
 })
