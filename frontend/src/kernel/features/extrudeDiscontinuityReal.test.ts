@@ -12,14 +12,8 @@
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
-import { DisposeScope } from '../occ/disposeScope'
-import { HandleTable } from '../occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
-import { build, type BuildDeps, type BuildResponse } from '../builder'
-import { initGlobalRepo } from '../query'
-import { createFeatureSolver } from '../solverRegistry'
-import { postRegister } from '../features/postRegister'
+import { SharedHarness } from '../occ/sharedHarness'
+import { type BuildResponse } from '../builder'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
@@ -90,81 +84,29 @@ function topFaceQuery(result: BuildResponse, bodyId: string): string {
 }
 
 describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fillet keeps a continuous B-rep', () => {
+  const h = new SharedHarness(oc!)
+
   beforeAll(() => {
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
-
-  function run(spec: Record<string, unknown>) {
-    const scope = new DisposeScope()
-    const table = new HandleTable()
-    try {
-      const deps: BuildDeps = {
-        trySolveFeature: createFeatureSolver(oc!, scope, table),
-        postRegister, initGlobalRepo,
-        tessellateBodies: (bodyStore) => {
-          const out: Record<string, Record<string, unknown>> = {}
-          for (const [, body] of Object.entries(bodyStore)) {
-            if (!body.shape) continue
-            try {
-              const mesh = solidToMesh(oc!, table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id,
-                faceAncestry: body.face_ancestry ?? null, faceNames: body.face_names ?? null,
-                profileQueries: body.profile_queries ?? [],
-              })
-              const edgeResult = solidToEdges(oc!, table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id,
-                profileQueries: body.profile_queries ?? [],
-                edgeAncestry: body.edge_ancestry ?? null, edgeNames: body.edge_names ?? null,
-              })
-              const vertexResult = solidToVertices(oc!, table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id, profileQueries: body.profile_queries ?? [],
-              })
-              out[body.id] = {
-                mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries,
-                vertices: vertexResult.vertices, vertex_queries: vertexResult.vertex_queries,
-              }
-            } catch {  /* non-fatal */ }
-          }
-          return out
-        },
-        brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-        brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-        brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
-      }
-      const result = build(spec, {}, deps)
-      scope.dispose()
-      return result
-    } catch (e) {
-      scope.dispose()
-      throw e
-    }
-  }
-
-  function res(result: BuildResponse, featureId: string): Record<string, unknown> {
-    return (result.result as Record<string, Record<string, unknown>>)[featureId] ?? {}
-  }
-
-  function body(result: BuildResponse, bodyId: string): Record<string, unknown> {
-    return (result.bodies as Record<string, Record<string, unknown>>)[bodyId] ?? {}
-  }
 
   // Build only the first two features (sketch + ex1), pull out the last two
   // lobe-intersection straight edges for the fillet and the top-face query for
   // ex2's profile, then return the fully-built two-extrude-one-fillet spec.
   function buildSpec(filletRadius: number) {
-    const surfs = surfaceQueriesFromSketch(run({ features: [peanutWithHoleSketch] }))
+    const surfs = surfaceQueriesFromSketch(h.run({ features: [peanutWithHoleSketch] }))
     // The hole sits on the LEFT lobe (tAIT7's center).  The 4 ring surfaces end
     // at the two hole-disk surfaces; slice the first four so ex1 keeps the hole.
     const profile = surfs.slice(0, 4)
-    const r1 = run({
+    const r1 = h.run({
       features: [
         peanutWithHoleSketch,
         { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal' },
       ],
     })
-    expect(res(r1, BODY1).status).toBe('ok')
-    const edgeQueries = (body(r1, `body_${BODY1}`).edge_queries as string[]) ?? []
-    const edges = (body(r1, `body_${BODY1}`).edges as Array<{
+    expect(h.res(r1, BODY1).status).toBe('ok')
+    const edgeQueries = (h.body(r1, `body_${BODY1}`).edge_queries as string[]) ?? []
+    const edges = (h.body(r1, `body_${BODY1}`).edges as Array<{
       kind?: string; start?: number[]; end?: number[]
     }>) ?? []
     // The two vertical lobe-intersection edges: straight edges at x~=0 spanning
@@ -208,31 +150,31 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
   it('no fillet: holes/outer walls continuous after add', () => {
     // Baseline: the existing fine-grained test already proves this case, but
     // check the split-signal our radius-5 case fails on so we trust the metric.
-    const surfs = surfaceQueriesFromSketch(run({ features: [peanutWithHoleSketch] }))
+    const surfs = surfaceQueriesFromSketch(h.run({ features: [peanutWithHoleSketch] }))
     const profile = surfs.slice(0, 4)
-    const r1 = run({
+    const r1 = h.run({
       features: [
         peanutWithHoleSketch,
         { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal' },
       ],
     })
     const topQuery = topFaceQuery(r1, `body_${BODY1}`)
-    const result = run({
+    const result = h.run({
       features: [
         peanutWithHoleSketch,
         { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal' },
         { id: 'ex2', kind: 'extrude', label: 'extrude 2', sketch: topQuery, distance: 10, direction: 'normal' },
       ],
     })
-    expect(res(result, 'ex2').status).toBe('ok')
-    const fd = (body(result, `body_${BODY1}`).mesh as { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }).face_data ?? []
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    const fd = (h.body(result, `body_${BODY1}`).mesh as { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }).face_data ?? []
     expect(wallSplitsAtZ10(fd)).toBe(0)
   })
 
   it('small fillet (radius 0.5): outer walls stay continuous after add', () => {
-    const result = run(buildSpec(0.5))
-    expect(res(result, 'ex2').status).toBe('ok')
-    const fd = (body(result, `body_${BODY1}`).mesh as { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }).face_data ?? []
+    const result = h.run(buildSpec(0.5))
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    const fd = (h.body(result, `body_${BODY1}`).mesh as { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }).face_data ?? []
     if ((import.meta.env.DEBUG_FACES ?? '') !== '') {
       console.log('radius 0.5 face count', fd.length)
       fd.forEach((f, i) => {
@@ -243,9 +185,9 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
   })
 
   it('large fillet (radius 5) then top-face add keeps a single continuous hole wall', () => {
-    const result = run(buildSpec(5))
-    expect(res(result, 'ex2').status).toBe('ok')
-    const mesh = body(result, `body_${BODY1}`).mesh as {
+    const result = h.run(buildSpec(5))
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    const mesh = h.body(result, `body_${BODY1}`).mesh as {
       face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }>
     } | undefined
     const fd = mesh?.face_data ?? []

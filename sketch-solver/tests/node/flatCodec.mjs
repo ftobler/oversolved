@@ -1,5 +1,5 @@
-// Shared little-endian flat codec for the Node-side crate tests (smoke +
-// bench), mirroring sketch-solver/src/codec.rs. The Rust crate is canonical;
+// Little-endian flat codec for the Node-side benchmark (bench.mjs), mirroring
+// sketch-solver/src/codec.rs. The Rust crate is canonical;
 // this is the minimal JS counterpart the headless harness needs. Keep the
 // kind, constraint, selector and flag tables in sync with
 // constraints.rs/codec.rs: the vitest wasm-kernel suite owns boundary

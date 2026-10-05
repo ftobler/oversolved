@@ -2,9 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest } from './solverWorker'
 import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
 import { SUPERSEDED_ERROR } from './solverProtocol'
+import { solveLocally, exportLocally, exportAssemblyLocally } from '../solveLocally'
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
 import type { Transform3D } from '../../types/cad'
+
+// The dispatcher binds the production engines directly (not via injection), so
+// the one-shot branches can only be driven without OCC if those engines are
+// mocked. The direct handler tests below still inject their own fakes.
+vi.mock('../solveLocally', () => ({
+  solveLocally: vi.fn(),
+  exportLocally: vi.fn(),
+  exportAssemblyLocally: vi.fn(),
+  setOccLoader: vi.fn(),
+}))
 
 const REQ: SolveRequest = { id: 7, spec: { id: 'doc1' }, options: { rollbackPosition: 2 } }
 
@@ -396,6 +407,84 @@ describe('dispatcher', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+
+  it('routes an export message to a one-shot job that posts transferable bytes', async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4])
+    vi.mocked(exportLocally).mockResolvedValue(bytes)
+    const actor = new WorkerActor()
+    const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    handleWorkerMessage(
+      { id: 21, kind: 'export', spec: { id: 'doc1' }, options: { format: 'step' } },
+      (res, transfer) => { posted.push({ message: res, transfer }) },
+      actor,
+    )
+
+    expect(submitSpy).toHaveBeenCalledTimes(1)
+    const job = submitSpy.mock.calls[0][0] as { supersedable: boolean; run: () => Promise<void> }
+    // Exports are distinct one-shot actions, never superseded by a newer solve.
+    expect(job.supersedable).toBe(false)
+    await job.run()
+    expect(vi.mocked(exportLocally)).toHaveBeenCalledWith(
+      { id: 'doc1' }, { format: 'step' }, fileCacheForTest())
+    expect(posted).toEqual([{ message: { id: 21, ok: true, bytes }, transfer: [bytes.buffer] }])
+  })
+
+  it('routes an exportAssembly message to a one-shot job with the placed parts', async () => {
+    const bytes = new Uint8Array([9, 8])
+    vi.mocked(exportAssemblyLocally).mockResolvedValue(bytes)
+    const parts: ExportAssemblyRequest['parts'] = [
+      { spec: { id: 'partA' }, transform: { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } },
+    ]
+    const actor = new WorkerActor()
+    const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    handleWorkerMessage(
+      { id: 22, kind: 'exportAssembly', parts, options: { format: 'step' } },
+      (res, transfer) => { posted.push({ message: res, transfer }) },
+      actor,
+    )
+
+    expect(submitSpy).toHaveBeenCalledTimes(1)
+    const job = submitSpy.mock.calls[0][0] as { supersedable: boolean; run: () => Promise<void> }
+    expect(job.supersedable).toBe(false)
+    await job.run()
+    expect(vi.mocked(exportAssemblyLocally)).toHaveBeenCalledWith(parts, { format: 'step' }, fileCacheForTest())
+    expect(posted).toEqual([{ message: { id: 22, ok: true, bytes }, transfer: [bytes.buffer] }])
+  })
+
+  it('routes a buildBundle message to a one-shot job that posts typed bundle buffers', async () => {
+    vi.mocked(solveLocally).mockResolvedValue({
+      solve_ms: 1,
+      result: {},
+      bodies: {
+        b1: {
+          id: 'b1', created_by: 'ex1', modified_by: [],
+          mesh: { vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]], faces: [[0, 1, 2]], triangle_to_face: [0] },
+        },
+      },
+      _build_state: DUMMY_STATE,
+    })
+    const actor = new WorkerActor()
+    const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    handleWorkerMessage(
+      { id: 23, kind: 'buildBundle', spec: { id: 'doc1' }, doc_id: 'd1', content_hash: 'h1' },
+      (res, transfer) => { posted.push({ message: res, transfer }) },
+      actor,
+    )
+
+    expect(submitSpy).toHaveBeenCalledTimes(1)
+    const job = submitSpy.mock.calls[0][0] as { supersedable: boolean; run: () => Promise<void> }
+    expect(job.supersedable).toBe(false)
+    await job.run()
+    expect(vi.mocked(solveLocally)).toHaveBeenCalledWith({ id: 'doc1' }, { files: fileCacheForTest() })
+    const bundle = posted[0].message as BundleResponse
+    expect(bundle.ok).toBe(true)
+    expect(bundle.ok && bundle.payload.doc_id).toBe('d1')
+    // One body: vertices + indices + faceIdsPerTriangle.
+    expect(posted[0].transfer).toHaveLength(3)
   })
 })
 

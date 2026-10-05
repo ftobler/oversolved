@@ -21,14 +21,9 @@
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
-import { DisposeScope } from '../occ/disposeScope'
-import { HandleTable } from '../occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
-import { build, type BuildDeps, type BuildResponse } from '../builder'
-import { initGlobalRepo, parseAncestry } from '../query'
-import { createFeatureSolver } from '../solverRegistry'
-import { postRegister } from '../features/postRegister'
+import { SharedHarness } from '../occ/sharedHarness'
+import { type BuildResponse } from '../builder'
+import { parseAncestry } from '../query'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 
@@ -86,67 +81,6 @@ function extractVertexTuples(result: BuildResponse): { descriptor: string; kind:
   return tuples
 }
 
-// ─── Build helper ───
-
-function run(spec: Record<string, unknown>): BuildResponse {
-  const scope = new DisposeScope()
-  const table = new HandleTable()
-  try {
-    const deps: BuildDeps = {
-      trySolveFeature: createFeatureSolver(oc!, scope, table),
-      postRegister, initGlobalRepo,
-      tessellateBodies: (bodyStore) => {
-        const out: Record<string, Record<string, unknown>> = {}
-        for (const [, body] of Object.entries(bodyStore)) {
-          if (!body.shape) continue
-          try {
-            const mesh = solidToMesh(oc!, table, body.shape, {
-              createdBy: body.created_by || '',
-              bodyId: body.id,
-              faceAncestry: body.face_ancestry ?? null,
-              faceNames: body.face_names ?? null,
-              profileQueries: body.profile_queries ?? [],
-            })
-            const edgeResult = solidToEdges(oc!, table, body.shape, {
-              createdBy: body.created_by || '',
-              bodyId: body.id,
-              profileQueries: body.profile_queries ?? [],
-              edgeAncestry: body.edge_ancestry ?? null,
-              edgeNames: body.edge_names ?? null,
-            })
-            const vertexResult = solidToVertices(oc!, table, body.shape, {
-              createdBy: body.created_by || '',
-              bodyId: body.id,
-              profileQueries: body.profile_queries ?? [],
-              faceNames: body.face_names ?? null,
-            })
-            out[body.id] = {
-              id: body.id,
-              created_by: body.created_by,
-              modified_by: body.modified_by ?? [],
-              mesh,
-              edges: edgeResult.edges,
-              edge_queries: edgeResult.edge_queries,
-              vertices: vertexResult.vertices,
-              vertex_queries: vertexResult.vertex_queries,
-            }
-          } catch {  /* non-fatal */ }
-        }
-        return out
-      },
-      brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-      brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-      brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
-    }
-    const result = build(spec, {}, deps)
-    scope.dispose()
-    return result
-  } catch (e) {
-    scope.dispose()
-    throw e
-  }
-}
-
 // ─── Fixture specs ───
 
 function rectSketchSpec(sketchId: string, w: number, h: number) {
@@ -184,6 +118,8 @@ function extrudeSpec(sketchId: string, extrudeId: string, distance: number) {
 }
 
 describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust solver)', () => {
+  const h = new SharedHarness(oc!)
+
   beforeAll(() => {
     if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
@@ -192,7 +128,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   // ─── Descriptor emission ───
 
   it('face_queries emit @u| construction UUID tokens, not old geometry descriptors', () => {
-    const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const result = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const faceTuples = extractFaceTuples(result)
     expect(faceTuples.length).toBeGreaterThan(0)
     for (const ft of faceTuples) {
@@ -203,7 +139,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   })
 
   it('edge_queries emit @u| construction UUID tokens', () => {
-    const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const result = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const edgeTuples = extractEdgeTuples(result)
     expect(edgeTuples.length).toBeGreaterThan(0)
     for (const et of edgeTuples) {
@@ -212,7 +148,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   })
 
   it('vertex_queries emit @u| construction UUID tokens', () => {
-    const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const result = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const vertexTuples = extractVertexTuples(result)
     expect(vertexTuples.length).toBeGreaterThan(0)
     for (const vt of vertexTuples) {
@@ -223,8 +159,8 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   // ─── Tier 1: exact descriptor match on unchanged geometry ───
 
   it('Tier 1: same-dimension rebuild produces identical descriptors', () => {
-    const r1 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const r2 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const r1 = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const r2 = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
 
     const f1 = extractFaceTuples(r1).sort((a, b) => a.descriptor.localeCompare(b.descriptor))
     const f2 = extractFaceTuples(r2).sort((a, b) => a.descriptor.localeCompare(b.descriptor))
@@ -258,8 +194,8 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   // ids), not from geometry. A height change keeps every face's @u| unchanged.
 
   it('Tier 1: construction UUIDs survive dimension edits (same set after height change)', () => {
-    const r5 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const r8 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
+    const r5 = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const r8 = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
 
     const faces5 = extractFaceTuples(r5)
     const faces8 = extractFaceTuples(r8)
@@ -287,8 +223,8 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   // internally consistent.
 
   it('Tier 2: created_by + kind scope is intact after an edit for fallback matching', () => {
-    const r5 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const r8 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
+    const r5 = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const r8 = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
 
     const faces5 = extractFaceTuples(r5)
     const faces8 = extractFaceTuples(r8)
@@ -311,8 +247,8 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   // ─── Edge and vertex descriptors survive dimension edits ───
 
   it('construction UUIDs for edges and vertices are stable across dimension edits', () => {
-    const r5 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
-    const r8 = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
+    const r5 = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const r8 = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 8)] })
 
     const ev5 = extractEdgeTuples(r5).sort((a, b) => a.descriptor.localeCompare(b.descriptor))
     const ev8 = extractEdgeTuples(r8).sort((a, b) => a.descriptor.localeCompare(b.descriptor))
@@ -336,7 +272,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   // ─── Build-side vs ID-buffer: they emit the same descriptors ───
 
   it('build-side tuples match repo population (ID buffer sees the same @u| tokens)', () => {
-    const r = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const r = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
 
     const faceTuples = extractFaceTuples(r)
     const buildDescriptors = new Set(faceTuples.map((t) => t.descriptor))
@@ -364,7 +300,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   // ─── Kind coverage: face surface_types present ───
 
   it('face surface_types are the expected Anchor.kind pre-images (flatface, cylinderface)', () => {
-    const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
+    const result = h.run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const faces = extractFaceTuples(result)
     const kinds = new Set(faces.map((f) => f.kind))
 
@@ -377,7 +313,7 @@ describe.skipIf(!oc || !solveBytes)('anchor migration spike (real OCC + Rust sol
   // ─── Performance: two-feature part produces distinct created_by scopes ───
 
   it('different features produce different created_by scopes for Tier 2 isolation', () => {
-    const r = run({
+    const r = h.run({
       features: [
         rectSketchSpec('sk1', 10, 10),
         extrudeSpec('sk1', 'ex1', 5),

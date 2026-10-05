@@ -13,13 +13,11 @@ import { DisposeScope } from './disposeScope'
 import { HandleTable } from './handleTable'
 import { makeBox } from './primitives'
 import { booleanWithHistory } from './booleans'
-import { solidToMesh, solidToEdges, solidToVertices } from './tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './brepDiffHash'
+import { solidToMesh } from './tessellation'
 import { faceGeometryHash } from '../geomHash'
-import { build, repoFromSnapshot, type BuildDeps } from '../builder'
-import { initGlobalRepo, makeAncestryQuery } from '../query'
-import { createFeatureSolver } from '../solverRegistry'
-import { postRegister } from '../features/postRegister'
+import { SharedHarness } from './sharedHarness'
+import { repoFromSnapshot, type BuildResponse } from '../builder'
+import { makeAncestryQuery } from '../query'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { OccModule } from './occTypes'
@@ -57,54 +55,7 @@ function fullRectExtrudeSpec(w = 10, h = 10, d = 5): { features: Array<Record<st
   return { features: [rectSketch('sk1', w, h), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: d, direction: 'normal', operation: 'new' }] }
 }
 
-function runBuild(spec: Record<string, unknown>) {
-  const scope = new DisposeScope()
-  const table = new HandleTable()
-  try {
-    const deps: BuildDeps = {
-      trySolveFeature: createFeatureSolver(oc!, scope, table),
-      postRegister, initGlobalRepo,
-      tessellateBodies: (bodyStore) => {
-        const out: Record<string, Record<string, unknown>> = {}
-        for (const [, body] of Object.entries(bodyStore)) {
-          if (!body.shape) continue
-          try {
-            const mesh = solidToMesh(oc!, table, body.shape, {
-              createdBy: body.created_by || '', bodyId: body.id,
-              faceAncestry: body.face_ancestry ?? null, faceNames: body.face_names ?? null,
-              profileQueries: body.profile_queries ?? [],
-            })
-            const edgeResult = solidToEdges(oc!, table, body.shape, {
-              createdBy: body.created_by || '', bodyId: body.id,
-              profileQueries: body.profile_queries ?? [],
-              edgeAncestry: body.edge_ancestry ?? null, edgeNames: body.edge_names ?? null,
-            })
-            const vertexResult = solidToVertices(oc!, table, body.shape, {
-              createdBy: body.created_by || '', bodyId: body.id,
-              profileQueries: body.profile_queries ?? [],
-            })
-            out[body.id] = {
-              mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries,
-              vertices: vertexResult.vertices, vertex_queries: vertexResult.vertex_queries,
-            }
-          } catch {  /* non-fatal */ }
-        }
-        return out
-      },
-      brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-      brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-      brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
-    }
-    const result = build(spec, {}, deps)
-    scope.dispose()
-    return result
-  } catch (e) {
-    scope.dispose()
-    throw e
-  }
-}
-
-function lastCheckpoint(result: ReturnType<typeof runBuild>) {
+function lastCheckpoint(result: BuildResponse) {
   const state = result._build_state!
   const lastFid = state.feature_order[state.feature_order.length - 1]
   return state.checkpoints[lastFid]
@@ -186,6 +137,8 @@ describe.skipIf(!oc)('stable ancestry hash stability (OCC-level)', () => {
 })
 
 describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rust solver)', () => {
+  const h = new SharedHarness(oc!)
+
   beforeAll(() => {
     if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
@@ -193,7 +146,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
 
   it('face UUIDs are registered in repo byUuid after extrude', () => {
     // Face (u_ prefixed) UUIDs appear in byUuid in the repo snapshot.
-    const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
+    const r = h.run(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
     const snapshot = ckp!.repo_snapshot as Record<string, unknown>
@@ -203,7 +156,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
 
   it('edge UUIDs are registered in repo byUuid after extrude', () => {
     // Edge (e_ prefixed) UUIDs appear in byUuid.
-    const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
+    const r = h.run(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
     const snapshot = ckp!.repo_snapshot as Record<string, unknown>
@@ -213,7 +166,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
 
   it('vertex queries are registered in the repo after extrude', () => {
     // Vertex elements exist in the repo and carry vertex_queries.
-    const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
+    const r = h.run(fullRectExtrudeSpec(10, 10, 5))
     const bodyResult = (r.bodies as Record<string, { vertex_queries?: string[] }>)['body_ex1']
     const vertexQueries = bodyResult?.vertex_queries ?? []
     expect(vertexQueries.length).toBeGreaterThan(0)
@@ -221,7 +174,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
 
   it('face registrations have at least 3 structural tags', () => {
     // Each face registration key must have >=3 structural tags (index, feature, body).
-    const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
+    const r = h.run(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
     const snapshot = ckp!.repo_snapshot as Record<string, unknown>
@@ -241,7 +194,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
 
   it('old 3-tag query still resolves against repo', () => {
     // Legacy queries with just index-tag + feature + body still resolve.
-    const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
+    const r = h.run(fullRectExtrudeSpec(10, 10, 5))
     const mesh = (r.bodies as Record<string, { mesh?: { face_queries?: string[] } }>)['body_ex1']?.mesh
     const faceQueries = mesh?.face_queries ?? []
     expect(faceQueries.length).toBeGreaterThan(0)
@@ -264,8 +217,8 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
 
   it('face UUIDs are stable across identical builds', () => {
     // Same spec built twice produces identical face UUIDs in byUuid.
-    const r1 = runBuild(fullRectExtrudeSpec(10, 10, 5))
-    const r2 = runBuild(fullRectExtrudeSpec(10, 10, 5))
+    const r1 = h.run(fullRectExtrudeSpec(10, 10, 5))
+    const r2 = h.run(fullRectExtrudeSpec(10, 10, 5))
     const ckp1 = lastCheckpoint(r1)
     const ckp2 = lastCheckpoint(r2)
     expect(ckp1).toBeDefined()
@@ -280,7 +233,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   it('some face UUIDs survive fillet unchanged', () => {
     // Fillet introduces new faces but unchanged ones keep their UUID.
     const spec = fullRectExtrudeSpec(10, 10, 5)
-    const rBefore = runBuild(spec)
+    const rBefore = h.run(spec)
     const ckpBefore = lastCheckpoint(rBefore)
     expect(ckpBefore).toBeDefined()
     const uuidsBefore = findByUuidPrefix(ckpBefore!.repo_snapshot as Record<string, unknown>, 'u_')
@@ -288,7 +241,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
     const edgeQueries = (rBefore.bodies as Record<string, Record<string, unknown>>)['body_ex1']?.edge_queries as string[] | undefined
     const firstEdge = edgeQueries?.find(q => q.includes('@u|')) ?? '?body_ex1:edge:0'
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [firstEdge], radius: 1 })
-    const rAfter = runBuild(spec)
+    const rAfter = h.run(spec)
     const ckpAfter = lastCheckpoint(rAfter)
     expect(ckpAfter).toBeDefined()
     const uuidsAfter = findByUuidPrefix(ckpAfter!.repo_snapshot as Record<string, unknown>, 'u_')
@@ -303,12 +256,12 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
      *  by the construction-name corpus, so this only pins that the fillet build
      *  itself succeeds. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
-    const rBefore = runBuild(spec)
+    const rBefore = h.run(spec)
 
     const edgeQueries = (rBefore.bodies as Record<string, Record<string, unknown>>)['body_ex1']?.edge_queries as string[] | undefined
     const firstEdge = edgeQueries?.find(q => q.includes('@u|')) ?? '?body_ex1:edge:0'
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [firstEdge], radius: 1 })
-    const rAfter = runBuild(spec)
+    const rAfter = h.run(spec)
     const fillet1 = (rAfter.result as Record<string, { status?: string }>).fillet1
     expect(fillet1).toBeDefined()
     expect(fillet1.status).not.toBe('exception')
@@ -319,14 +272,14 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
      *  produced a checkpoint, then that a fillet appended to that spec builds
      *  without an exception. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
-    const rBefore = runBuild(spec)
+    const rBefore = h.run(spec)
     const ckpBefore = lastCheckpoint(rBefore)
     expect(ckpBefore).toBeDefined()
 
     const edgeQueries = (rBefore.bodies as Record<string, Record<string, unknown>>)['body_ex1']?.edge_queries as string[] | undefined
     const firstEdge = edgeQueries?.find(q => q.includes('@u|')) ?? '?body_ex1:edge:0'
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [firstEdge], radius: 1 })
-    const rAfter = runBuild(spec)
+    const rAfter = h.run(spec)
     const fillet1 = (rAfter.result as Record<string, { status?: string }>).fillet1
     expect(fillet1).toBeDefined()
     expect(fillet1.status).not.toBe('exception')
@@ -334,7 +287,7 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
 
   it('face payload includes created_by field', () => {
     // Every face element in the repo must have created_by set.
-    const r = runBuild(fullRectExtrudeSpec(10, 10, 5))
+    const r = h.run(fullRectExtrudeSpec(10, 10, 5))
     const ckp = lastCheckpoint(r)
     expect(ckp).toBeDefined()
     const snapshot = ckp!.repo_snapshot as Record<string, unknown>
