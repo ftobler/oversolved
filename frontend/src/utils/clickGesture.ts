@@ -6,7 +6,7 @@
 // gestures the user aimed at the camera, and clearing the selection there is
 // exactly the bug this module exists to prevent.
 
-import { isPureClick } from '@/components/Geometry3D/pointerAbstraction'
+import { isPureClick } from '@/utils/pointerAbstraction'
 
 export interface ClickGestureState {
   // Which button opened the gesture; null when no pointer-down was seen.

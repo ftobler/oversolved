@@ -43,7 +43,7 @@ import { solveAssembly } from './solveAssembly'
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 import type { BundleRequest } from './worker/solverProtocol'
-import type { RelayService } from './worker/anchorSolverWorker'
+import type { RelayService } from './worker/solverProtocol'
 import { identity } from '@/__tests__/fixtures'
 
 const oc = await loadOcc()

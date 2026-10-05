@@ -7,7 +7,7 @@ import { partBundleKey } from '../contentHash'
 import { bundleCachePut, resetBundleDbConnection } from '@/kernel/bundleCache'
 import { solveAssembly } from '@/kernel/solveAssembly'
 import { BUNDLE_SCHEMA, type PartBundle } from '@/kernel/partBundle'
-import type { RelayService } from '@/kernel/worker/anchorSolverWorker'
+import type { RelayService } from '@/kernel/worker/solverProtocol'
 import { resetDbConnection } from '@/stores/documentStore/idb'
 
 // A warm solve must not read a part document out of the carrier. With the

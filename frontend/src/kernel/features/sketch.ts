@@ -30,7 +30,7 @@ import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, ty
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm, loadTopologyWasm } from '@/wasm-kernel/solverWasm'
-import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from '@/components/Geometry3D/circleDragMode'
+import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
 import type { SolveBytes } from '@/wasm-kernel/codec'
 

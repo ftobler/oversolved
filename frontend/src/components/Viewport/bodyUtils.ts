@@ -1,4 +1,12 @@
-import type { Feature, BodyResult, EdgeData, PartStyleEntry } from '@/types/cad'
+import type { Feature, BodyResult, PartStyleEntry } from '@/types/cad'
+import { getBodiesToRender } from '@/utils/bodyRender'
+import type { BodyRenderItem } from '@/utils/bodyRender'
+
+// `BodyRenderItem` and `getBodiesToRender` live in the utils leaf so the
+// assembly render path can use them without importing the UI tree. They are
+// re-exported here so the viewport callers keep their existing import site.
+export { getBodiesToRender }
+export type { BodyRenderItem }
 
 /**
  * Computes which bodies should be visible given explicit user overrides.
@@ -37,63 +45,6 @@ export function getSketchesToRender(
   return features
     .slice(0, limit)
     .filter(f => f.kind === 'sketch' && (!visibleFeatures || visibleFeatures.has(f.id)))
-}
-
-export interface BodyRenderItem {
-  key: string
-  featureId: string
-  bodyId: string
-  mesh: NonNullable<BodyResult['mesh']>
-  edges: EdgeData[]
-  edgeQueries?: string[]
-  vertices?: [number, number, number][]
-  vertexQueries?: string[]
-  visible: boolean
-  // Ghost layer only: the edit being previewed consumes this body. Orthogonal to
-  // `visible`, which is the user's own show/hide -- a doomed body the user hid
-  // stays hidden.
-  doomed?: boolean
-}
-
-function isInActiveRange(id: string, features: Feature[] | undefined, rollbackPos: number | undefined): boolean {
-  if (!features || features.length === 0) return true
-  const idx = features.findIndex(f => f.id === id)
-  // Keep rendering bodies even when `created_by` can't be resolved
-  // (e.g. imported/legacy payloads). Hiding unknown creators can blank
-  // the viewport despite valid body meshes.
-  if (idx < 0) return true
-  return rollbackPos === undefined || idx < rollbackPos
-}
-
-export function getBodiesToRender(
-  bodies: Record<string, BodyResult> | undefined,
-  features: Feature[] | undefined,
-  rollbackPosition: number | undefined,
-  visibleBodies: Set<string> | undefined,
-): BodyRenderItem[] {
-  const items: BodyRenderItem[] = []
-  if (!bodies) return items
-
-  for (const [bodyId, body] of Object.entries(bodies)) {
-    const createdBy = body.created_by
-    if (!isInActiveRange(createdBy, features, rollbackPosition)) continue
-    if (!body.mesh) continue
-    const featureId = createdBy || bodyId
-
-    items.push({
-      key: bodyId,
-      featureId,
-      bodyId,
-      mesh: body.mesh,
-      edges: body.edges ?? [],
-      edgeQueries: body.edge_queries,
-      vertices: body.vertices,
-      vertexQueries: body.vertex_queries,
-      visible: visibleBodies ? visibleBodies.has(bodyId) : true,
-
-    })
-  }
-  return items
 }
 
 /**

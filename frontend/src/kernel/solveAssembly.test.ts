@@ -37,7 +37,7 @@ import { buildEntityMateRefs } from '../utils/assemblyBodies'
 import { assemblyEntityKey } from '../utils/anchorCandidates'
 import { anchorIdFor, BUNDLE_SCHEMA, type Anchor, type AnchorKind, type PartBundle } from './partBundle'
 import type { Transform3D, MateAnchorDescriptor } from '../types/cad'
-import type { RelayService } from './worker/anchorSolverWorker'
+import type { RelayService } from './worker/solverProtocol'
 
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()

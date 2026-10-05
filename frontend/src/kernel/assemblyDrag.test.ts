@@ -19,7 +19,7 @@ import { loadPkgNodeExport, PKG_MATE } from '../wasm-kernel/loadPkgNode'
 import { BUNDLE_SCHEMA, type PartBundle, type Anchor } from './partBundle'
 import { solveAssembly, type MateSpec } from './solveAssembly'
 import type { Transform3D } from '../types/cad'
-import type { RelayService } from './worker/anchorSolverWorker'
+import type { RelayService } from './worker/solverProtocol'
 import { ASSEMBLY_ORIGIN_ID, ASSEMBLY_RIGHT_ID } from '../utils/assemblyBuiltins'
 import { makeTransform, rotateVector, quatFromAxisAngle, type Vec3 } from '../utils/transform3d'
 

@@ -4,7 +4,7 @@
 import type { Mutation } from '@/types/cad'
 import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 import type { SnapTarget, SnapCandidate, EntityCandidate } from '@/components/Geometry3D/snapDetection'
-import type { CircleDragMode } from '@/components/Geometry3D/circleDragMode'
+import type { CircleDragMode } from '@/kernel/features/circleDragMode'
 import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/components/Geometry3D/snapDetection'
 import { isPureClick, CLICK_THRESHOLD_PX } from '@/components/Geometry3D/pointerAbstraction'
 import { DRAG_SNAP_VERTEX_RADIUS_PX, DRAG_SNAP_ENTITY_RADIUS_PX } from '@/components/Geometry3D/constants'

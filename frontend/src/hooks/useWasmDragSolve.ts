@@ -33,7 +33,7 @@ import {
   probeCircleDragMode,
 } from '@/kernel/features/sketch'
 import { setLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
-import type { CircleDragMode } from '@/components/Geometry3D/circleDragMode'
+import type { CircleDragMode } from '@/kernel/features/circleDragMode'
 
 interface UseWasmDragSolveInput {
   featureId: string

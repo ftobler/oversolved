@@ -8,8 +8,7 @@
  */
 
 import { loadPkgNodeExport } from './loadPkgNode'
-
-export type TopologyBytes = (input: Uint8Array) => Uint8Array
+import type { TopologyBytes } from './wasmTypes'
 
 export function loadTopology(): TopologyBytes | null {
   return loadPkgNodeExport<TopologyBytes>('detect_topology_bytes')

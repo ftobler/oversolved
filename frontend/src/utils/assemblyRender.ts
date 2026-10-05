@@ -9,8 +9,8 @@
 // where the pointer put it without re-meshing anything.
 
 import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
-import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
-import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
+import type { BodyRenderItem } from '@/utils/bodyRender'
+import { getBodiesToRender } from '@/utils/bodyRender'
 import { poseOffsetFor, type ManipulationSession } from '@/utils/partManipulation'
 import {
   composeTransforms,
