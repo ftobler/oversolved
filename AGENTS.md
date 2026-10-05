@@ -32,15 +32,17 @@ log lets you re-grep the result afterwards without re-running the gate.
 ## Frontend Commands
 from the justfile: `just frontend`
 
-Same logging convention. Run from `frontend/`; the `tmp/` log dir lives at the
-project root.
+`just frontend` chains four recipes: `icons` (regenerate the SVGs from
+`oversolved/icons.py`), `frontend-lint` (`npm run lint` plus `lint.py src
+scripts`), `frontend-test` (`npx vitest run`), and `build` (`npm run build`).
+Run from the project root; the aggregate tees to `tmp/just_frontend.log` and
+each gate to its own `tmp/` log.
 
 ```bash
-cd frontend
-npm run lint 2>&1 | tee ../tmp/npm_lint.log
-../.venv/bin/python ../lint.py src 2>&1 | tee ../tmp/lint_py.log
-npx vitest run 2>&1 | tee ../tmp/npx_test.log
-npm run build 2>&1 | tee ../tmp/npm_build.log
+just icons          # regenerate frontend/src/assets/icons from oversolved/icons.py
+just frontend-lint  # npm run lint + .venv/bin/python lint.py src scripts
+just frontend-test  # npx vitest run
+just build          # npm run build
 ```
 
 ## Conventions
@@ -106,7 +108,7 @@ In the agent file the whole idea-knowledge-code flow comes together. Keep it det
 Shipped-feature post-mortems (root causes, traps, measurements) go to `feature/knowledgebase.history.md`, appended at the bottom, never edited afterwards.
 Deferred work and accepted limitations go to `feature/backlog.md` (sections: needs a decision / accepted limitations / resolved); items needing a review-pass decision go under its "Needs a decision" (the separate `review-direction.md` was folded in on 2026-09-15).
 - A change that makes a knowledge-base statement untrue updates that statement in the same batch; reviewers check this.
-- `tests/test_knowledgebase_refs.py` guards the file references in `feature/knowledgebase.agent.md` and bans `file.ts:NNN` line refs; mark an intentional mention of deleted code with `(deleted)` right after the ref.
+- `tests/test_knowledgebase_refs.py` guards the file references in `feature/knowledgebase.agent.md` and bans `file.ts:NNN` line refs; mark an intentional mention of deleted code with `(deleted)` right after the ref. The check runs only where that separate subrepo is present, so it is verified locally and skips in CI.
 
 ## Tmporary Directory
 

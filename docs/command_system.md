@@ -40,7 +40,7 @@ Snap rules for drag; measurement rules for on-canvas display.
 
 ### Command Entries (`commandEntries.ts`)
 
-`buildCommandEntries()` creates the full command entry list — single source of truth for which commands are registered during sketch editing. Includes undo, redo, delete, tool activations, constraint applications, cancel commands, and feature commands.
+`buildCommandEntries()` creates the full command entry list - single source of truth for which commands are registered during sketch editing. Includes undo, redo, delete, tool activations, constraint applications, cancel commands, and feature commands.
 
 ### Registration Hook (`useCommandRegistration.ts`)
 
@@ -66,7 +66,7 @@ Initialized in `tools/index.ts` via `initializeTools()`.
 
 ### Toolbar Components (`frontend/src/components/Toolbar/tools/`)
 
-All buttons route through `executeCommand(name)` — no direct store calls. Components for entity tools, constraint tools, dimension, drag, rectangles, construction toggle, and reset viewport.
+All buttons route through `executeCommand(name)` - no direct store calls. Components for entity tools, constraint tools, dimension, drag, rectangles, construction toggle, and reset viewport.
 
 ### Click Dispatch (`Viewport/idDispatch/dispatchSketchClick.ts`)
 
@@ -95,17 +95,17 @@ Main page: uses `usePartDoc()`, builds command entries via `buildCommandEntries(
 
 ## Command Families
 
-- **`set_tool_*`** — activate tools (dispatch via shortcuts from `ENTITY_SHORTCUTS` / `CORE_KEYBINDINGS`)
-- **`apply_*`** — apply constraints (dispatch via `CONSTRAINT_SHORTCUTS`)
+- **`set_tool_*`** - activate tools (dispatch via shortcuts from `ENTITY_SHORTCUTS` / `CORE_KEYBINDINGS`)
+- **`apply_*`** - apply constraints (dispatch via `CONSTRAINT_SHORTCUTS`)
 - **Other**: `undo`, `redo`, `delete_selected`, `toggle_construction`, `toggle_sketch_plane_visibility`, `toggle_plane_visibility`, `cancel_draw`, `apply_offset`, `add_extrude`, `add_hole`, `add_transform`
 
 `cancel_draw` is the sketch editor's Escape handler. It is staged, first matching rule wins: a modal or the sketch value dialog owns Escape and it stands down; an open pick field clears the draw and the field; a partially-placed entity (draw points) or a partially-built dimension cancels just that and keeps the tool armed; and with nothing in progress it clears the draw, the pick field and the tool (the historical behaviour). It is not the only Escape listener on `window` (`Dialog.tsx`, `ContextMenuDialog.tsx`, `useRubberBandSelect.ts` and `FeatureTree.tsx` each bind their own), so it stands down whenever a dialog is on screen: any modal built on the `Dialog` shell claims Escape through `utils/core/modalEscape.ts` while it is open, and the sketch value dialog is detected via `pendingDialog`. Each of those closes itself, so one Escape does exactly one thing. Coordinate through that claim, never through listener registration order.
 
 ## Keybindings
 
-Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `q` (construction toggle), `y` (toggle sketches/planes), `e` (add extrude), `p` (toggle plane visibility), `escape` (cancel).
+Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `q` (construction toggle), `y` (toggle sketches/planes), `e` (add extrude, feature mode only), `p` (toggle plane visibility), `escape` (cancel).
 
-Constraint shortcuts: `h` (horizontal), `v` (vertical), `c` (coincident), `e` (equal length), `n` (normal), `t` (tangent), `m` (midpoint), `f` (fixed). Parallel is toolbar-only: `p` is owned by plane visibility.
+Constraint shortcuts: `h` (horizontal), `v` (vertical), `c` (coincident), `e` (equal length), `n` (normal), `t` (tangent), `m` (midpoint), `f` (fixed). Parallel is toolbar-only: `p` is owned by plane visibility. Inside sketch edit mode `e` is the equal-length constraint; `FEATURE_KEYMAP` restores add-extrude outside a sketch, so `e` is mode dependent.
 
 Entity shortcuts: `l` (line), `o` (circle), `a` (arc), `s` (spline), `j` (project).
 

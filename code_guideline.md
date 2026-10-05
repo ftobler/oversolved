@@ -41,7 +41,7 @@ length = distance_between(A, B)
 
 ### Character Usage
 
-- **Do not** use em-dashes (—) or en-dashes (–)
+- **Do not** use em-dashes or en-dashes
 - **Do not** use emojis in code and documentation
 
 ## 3. Persistence
@@ -143,9 +143,9 @@ export function randomId(bytes: number): string {
 
 **Classifiers** (edit-stable tie-break tier; minted `@cls_*` tokens that ride the
 ancestry id list, not a separate suffix):
-- `@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn` — which end of the
+- `@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn` - which end of the
   body AABB an element sits past, per world axis (cardinal/axial)
-- `cls_ld_<lineid>_p|n` — side of a shared bounding line for a sketch surface split
+- `@cls_ld_<lineid>_p|n` - side of a shared bounding line for a sketch surface split
   from a same-ancestry sibling (line division)
 
 See `docs/query.md` for the full resolution tiers.
@@ -178,9 +178,9 @@ draw_all()  # Required at end
 ```
 
 **Helpers:**
-- `px(n)` — convert pixels to normalized coordinates
-- `stroke(ctx, width)` — stroke with current color
-- `ctx.fill()` — fill closed paths only
+- `px(n)` - convert pixels to normalized coordinates
+- `stroke(ctx, width)` - stroke with current color
+- `ctx.fill()` - fill closed paths only
 
 **Rules:** (see `docs/icon_guidelines.md` for the full reference)
 - `viewBox="0 0 24 24"`
@@ -250,7 +250,7 @@ describe('buildKeyString', () => {
 
 - `npm run lint` must pass with zero warnings/errors
 - No new `// eslint-disable` suppressions without explanation
-- TypeScript strict mode — no new `any` casts
+- TypeScript strict mode - no new `any` casts
 
 ## 9. Architecture Patterns
 
@@ -260,8 +260,12 @@ describe('buildKeyString', () => {
 
 **Core API:**
 ```ts
-export function registerCommand(name: string, fn: () => void): void
-export function executeCommand(name: string): void
+type CommandHandler = (payload?: unknown) => void
+
+export function registerCommand(name: string, fn: CommandHandler): void
+export function unregisterCommand(name: string): void
+export function clearAllHandlers(): void
+export function executeCommand(name: string, payload?: unknown): void
 export function dispatchKey(e: KeyboardEvent): boolean
 ```
 
