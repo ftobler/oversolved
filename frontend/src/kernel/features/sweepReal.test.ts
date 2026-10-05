@@ -10,12 +10,8 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { solidToMesh } from '../occ/tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
-import { build, type BuildDeps, type BuildResponse } from '../builder'
-import { initGlobalRepo, Repository } from '../query'
-import { createFeatureSolver } from '../solverRegistry'
-import { postRegister } from './postRegister'
+import { SharedHarness } from '../occ/sharedHarness'
+import { Repository } from '../query'
 import { solveSweep } from './sweep'
 import { setSketchSolver, resetSketchSolver } from './sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -178,66 +174,25 @@ function assertMeshValid(mesh: Record<string, unknown>): void {
 }
 
 describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', () => {
+  const h = new SharedHarness(oc!)
+
   beforeAll(() => {
     if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  function run(spec: Record<string, unknown>) {
-    const scope = new DisposeScope()
-    const table = new HandleTable()
-    try {
-      const deps: BuildDeps = {
-        trySolveFeature: createFeatureSolver(oc!, scope, table),
-        postRegister, initGlobalRepo,
-        tessellateBodies: (bodyStore) => {
-          const out: Record<string, Record<string, unknown>> = {}
-          for (const [, body] of Object.entries(bodyStore)) {
-            if (!body.shape) continue
-            try {
-              const mesh = solidToMesh(oc!, table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id,
-                faceAncestry: body.face_ancestry ?? null, faceNames: body.face_names ?? null,
-                profileQueries: body.profile_queries ?? [],
-              })
-              out[body.id] = { mesh, edges: [], edge_queries: [] }
-            } catch {  /* non-fatal */ }
-          }
-          return out
-        },
-        brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-        brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-        brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
-      }
-      const result = build(spec, {}, deps)
-      scope.dispose()
-      return result
-    } catch (e) {
-      scope.dispose()
-      throw e
-    }
-  }
-
-  function res(result: BuildResponse, featureId: string): Record<string, unknown> {
-    return (result.result as Record<string, Record<string, unknown>>)[featureId] ?? {}
-  }
-
-  function body(result: BuildResponse, bodyId: string): Record<string, unknown> {
-    return (result.bodies as Record<string, Record<string, unknown>>)[bodyId] ?? {}
-  }
-
   it('basic sweep produces a valid body with mesh', () => {
     // A rectangle profile swept along a straight path produces a valid body.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketch('prof', 2, 3, '@builtin_plane_front'),
         linePathSketch('pth', [0, 0, 0, 5]),
         sweepSpec('sw1', 'prof', 'pth'),
       ],
     })
-    expect(res(result, 'sw1').status).toBe('ok')
+    expect(h.res(result, 'sw1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_sw1')
-    const mesh = body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
+    const mesh = h.body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -247,15 +202,15 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
      * A 2x3 profile on the front plane swept 5 units along the Top-plane path (running along
      * world -z) produces a box spanning x[0,2] y[0,3] z[-5,0].
      */
-    const result = run({
+    const result = h.run({
       features: [
         rectSketch('prof', 2, 3, '@builtin_plane_front'),
         linePathSketch('pth', [0, 0, 0, 5]),
         sweepSpec('sw1', 'prof', 'pth'),
       ],
     })
-    expect(res(result, 'sw1').status).toBe('ok')
-    const mesh = body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    expect(h.res(result, 'sw1').status).toBe('ok')
+    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       const xs = mesh.vertices.map((v) => v[0])
@@ -272,15 +227,15 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
 
   it('polyline path sweeps without error', () => {
     // An L-shaped two-segment path sweeps without error.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketch('prof', 1, 1, '@builtin_plane_front'),
         linePathSketch('pth', [0, 0, 0, 4, 0, 4, 3, 4]),
         sweepSpec('sw1', 'prof', 'pth'),
       ],
     })
-    expect(res(result, 'sw1').status).toBe('ok')
-    const mesh = body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
+    expect(h.res(result, 'sw1').status).toBe('ok')
+    const mesh = h.body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -290,15 +245,15 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
      * A quarter-circle arc path (<=180 deg) sweeps without error. Profile on Right plane so its
      * normal lines up with the arc's starting tangent.
      */
-    const result = run({
+    const result = h.run({
       features: [
         rectSketch('prof', 1, 1, '@builtin_plane_right'),
         arcPathSketch('pth', 0, 5, 5, -90, 0),
         sweepSpec('sw1', 'prof', 'pth'),
       ],
     })
-    expect(res(result, 'sw1').status).toBe('ok')
-    const mesh = body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
+    expect(h.res(result, 'sw1').status).toBe('ok')
+    const mesh = h.body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -314,30 +269,30 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   }
 
   it('corpus path: 2 segments (line+arc) sweeps to a valid body', () => {
-    const result = run({
+    const result = h.run({
       features: [
         circleSketch('prof', 1.7, '@builtin_plane_right'),
         corpusPathSketch('pth', 2),
         sweepSpec('sw1', 'prof', 'pth'),
       ],
     })
-    const r = res(result, 'sw1')
-    const mesh = body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    const r = h.res(result, 'sw1')
+    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(r.status).toBe('ok')
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
 
   it('corpus path: 3 segments (line+arc+line) sweeps to the correct shape', () => {
-    const result = run({
+    const result = h.run({
       features: [
         circleSketch('prof', 1.7, '@builtin_plane_right'),
         corpusPathSketch('pth', 3),
         sweepSpec('sw1', 'prof', 'pth'),
       ],
     })
-    const r = res(result, 'sw1')
-    const mesh = body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    const r = h.res(result, 'sw1')
+    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(r.status).toBe('ok')
     expect(mesh).toBeDefined()
     if (mesh) {
@@ -353,7 +308,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
 
   it('cut sweep removes volume from existing body', () => {
     // A cut sweep subtracts material from an existing body.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketch('base', 6, 6, '@builtin_plane_front'),
         { id: 'ext0', kind: 'extrude', label: 'Base',
@@ -363,23 +318,23 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
         sweepSpec('sw1', 'prof', 'pth', { operation: 'cut' }),
       ],
     })
-    expect(res(result, 'sw1').status).toBe('ok')
-    expect(res(result, 'sw1').operation).toBe('cut')
+    expect(h.res(result, 'sw1').status).toBe('ok')
+    expect(h.res(result, 'sw1').operation).toBe('cut')
   })
 
   it('spline spine sweeps along the real curve, not its chord (H14)', () => {
     // A circular profile swept along one cubic Bezier: the body must bulge to
     // z ~ +2.25 where the straight chord between the spline's endpoints sits at
     // z=0, so the pre-fix chord spine could never reach the bbox this asserts.
-    const result = run({
+    const result = h.run({
       features: [
         circleSketch('prof', 0.5, '@builtin_plane_front'),
         splinePathSketch('pth'),
         sweepSpec('sw1', 'prof', 'pth'),
       ],
     })
-    expect(res(result, 'sw1').status).toBe('ok')
-    const mesh = body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    expect(h.res(result, 'sw1').status).toBe('ok')
+    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       assertMeshValid(mesh)
@@ -395,7 +350,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     // closed ellipse (quarter arcs), so the tube dips to z ~ -3.5 at the
     // ellipse's bottom. The pre-fix chord spine (the (5,0)->(0,3) line doubled)
     // collapses the sweep and never reaches z=-3.
-    const result = run({
+    const result = h.run({
       features: [
         circleAtSketch('prof', 0.5, 5, 0, '@builtin_plane_front'),
         ellipseArcPathSketch('pth'),
@@ -403,8 +358,8 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
           sweep: { sketch: ['$prof'], path: 'entity:pth:el0', operation: 'new' } },
       ],
     })
-    expect(res(result, 'sw1').status).toBe('ok')
-    const mesh = body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    expect(h.res(result, 'sw1').status).toBe('ok')
+    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       assertMeshValid(mesh)

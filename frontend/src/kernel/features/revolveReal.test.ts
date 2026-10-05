@@ -8,14 +8,8 @@
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
-import { DisposeScope } from '../occ/disposeScope'
-import { HandleTable } from '../occ/handleTable'
-import { solidToMesh } from '../occ/tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
-import { build, type BuildDeps, type BuildResponse } from '../builder'
-import { initGlobalRepo, makeAncestryQuery } from '../query'
-import { createFeatureSolver } from '../solverRegistry'
-import { postRegister } from '../features/postRegister'
+import { SharedHarness } from '../occ/sharedHarness'
+import { makeAncestryQuery } from '../query'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
@@ -65,71 +59,34 @@ function revolveSpec(featureId: string, sketchId: string, opts: {
 }
 
 describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', () => {
+  const h = new SharedHarness(oc!)
+
   beforeAll(() => {
     if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  function run(spec: Record<string, unknown>) {
-    const scope = new DisposeScope()
-    const table = new HandleTable()
-    try {
-      const deps: BuildDeps = {
-        trySolveFeature: createFeatureSolver(oc!, scope, table),
-        postRegister, initGlobalRepo,
-        tessellateBodies: (bodyStore) => {
-          const out: Record<string, Record<string, unknown>> = {}
-          for (const [_, body] of Object.entries(bodyStore)) {
-            if (!body.shape) continue
-            try {
-              const mesh = solidToMesh(oc!, table, body.shape)
-              out[body.id] = { mesh, edges: [], edge_queries: [] }
-            } catch {  /* non-fatal */ }
-          }
-          return out
-        },
-        brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-        brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-        brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
-      }
-      const result = build(spec, {}, deps)
-      scope.dispose()
-      return result
-    } catch (e) {
-      scope.dispose()
-      throw e
-    }
-  }
-
-  function res(result: BuildResponse, featureId: string): Record<string, unknown> {
-    return (result.result as Record<string, Record<string, unknown>>)[featureId] ?? {}
-  }
-
-  function body(result: BuildResponse, bodyId: string): Record<string, unknown> {
-    return (result.bodies as Record<string, Record<string, unknown>>)[bodyId] ?? {}
-  }
-
   it('basic revolve produces a body with mesh', () => {
     // A rectangle [1,0]-[3,1] revolved 360° around Y-axis.
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 })],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
+    expect(h.res(result, 'rev1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev1')
-    expect(body(result, 'body_rev1').mesh).toBeDefined()
+    expect(h.body(result, 'body_rev1').mesh).toBeDefined()
   })
 
   it('revolve result includes body_id field', () => {
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 })],
     })
-    expect(res(result, 'rev1').body_id).toBe('body_rev1')
+    expect(h.res(result, 'rev1').body_id).toBe('body_rev1')
   })
 
   it('nested UI format ({revolve: {sketch, angle}}) works', () => {
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0),
@@ -137,7 +94,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
           revolve: { sketch: '$sk1', angle: 360, axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] } },
       ],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
+    expect(h.res(result, 'rev1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev1')
   })
 
@@ -147,15 +104,15 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     // profile would sever it into two coaxial rings whose centroids both lie on
     // the revolve axis -- an orderless bodySplit near-tie that now refuses
     // loudly (see the symmetric-split test below).
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 }),
         rectSketch('sk2', 1, 0.6, 1.5, 0.2), revolveSpec('rev2', 'sk2', { angle: 360, operation: 'cut' }),
       ],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
-    expect(res(result, 'rev2').status).toBe('ok')
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    expect(h.res(result, 'rev2').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev1')
   })
 
@@ -165,20 +122,20 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     // cannot order them positionally, and per the user decision (2026-08-12) a
     // flipped body id is worse than a failed split: the solve surfaces as an
     // exception instead of naming the rings in OCC explorer order.
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 }),
         rectSketch('sk2', 1, 1, 1.5, 0), revolveSpec('rev2', 'sk2', { angle: 360, operation: 'cut' }),
       ],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
-    expect(res(result, 'rev2').status).toBe('exception')
-    expect(String(res(result, 'rev2').exception)).toMatch(/near-tie/)
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    expect(h.res(result, 'rev2').status).toBe('exception')
+    expect(String(h.res(result, 'rev2').exception)).toMatch(/near-tie/)
   })
 
   it('revolve operation=new creates a separate body', () => {
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 }),
@@ -194,14 +151,14 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
      * When a revolve specifies merge_target pointing to a body created by an earlier feature,
      * the new revolve fuses into that target instead of creating a separate body.
      */
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev0', 'sk1', { angle: 360, operation: 'new' }),
         rectSketch('sk2', 1.5, 1, 1.25, 0), revolveSpec('rev1', 'sk2', { angle: 360, operation: 'add', mergeTarget: '@body_rev0' }),
       ],
     })
-    expect(res(result, 'rev0').status).toBe('ok')
+    expect(h.res(result, 'rev0').status).toBe('ok')
     // The add should fuse into the target, so body_rev0 exists and body_rev1 may not.
     expect(result.bodies).toHaveProperty('body_rev0')
   })
@@ -211,55 +168,55 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     // the target stays one connected solid and the operation succeeds.
     /** A revolve with operation=cut and merge_target cuts from a specific body
      *  created by an earlier feature. Port from test_revolve_merge_target.py. */
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev0', 'sk1', { angle: 360, operation: 'new' }),
         rectSketch('sk2', 1, 0.6, 1.5, 0.2), revolveSpec('rev1', 'sk2', { angle: 360, operation: 'cut', mergeTarget: '@body_rev0' }),
       ],
     })
-    expect(res(result, 'rev0').status).toBe('ok')
-    expect(res(result, 'rev1').status).toBe('ok')
+    expect(h.res(result, 'rev0').status).toBe('ok')
+    expect(h.res(result, 'rev1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev0')
   })
 
   it('reverse direction negates the revolve angle', () => {
     // direction=reverse negates the angle, producing a mirror shape.
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0),
         revolveSpec('rev1', 'sk1', { angle: 90, direction: 'reverse' }),
       ],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
+    expect(h.res(result, 'rev1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev1')
   })
 
   it('symmetric direction revolves half angle each way', () => {
     // direction=symmetric revolves half the angle each way and fuses the two halves.
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0),
         revolveSpec('rev1', 'sk1', { angle: 90, direction: 'symmetric' }),
       ],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
+    expect(h.res(result, 'rev1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev1')
   })
 
   it('revolve cylinder spans expected bbox dimensions', () => {
     // Rectangle [1,0]-[3,1] revolved 360° around Y axis spans x/z roughly [-3,3] and y [0,1].
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0),
         revolveSpec('rev1', 'sk1', { angle: 360 }),
       ],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
-    const mesh = body(result, 'body_rev1').mesh as { vertices?: number[][] } | undefined
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    const mesh = h.body(result, 'body_rev1').mesh as { vertices?: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh?.vertices) {
       let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity, zMin = Infinity, zMax = -Infinity
@@ -286,7 +243,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
      * bodySplit can order them (coaxial same-height tori are the known
      * near-tie refusal, pinned by the concentric revolve-cut case below).
      */
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 1, 1, 1, 0),
@@ -296,13 +253,13 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
           axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
       ],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
-    expect((res(result, 'rev1').body_ids as string[]) ?? []).toEqual(['body_rev1', 'body_rev1_1'])
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    expect((h.res(result, 'rev1').body_ids as string[]) ?? []).toEqual(['body_rev1', 'body_rev1_1'])
     expect(result.bodies).toHaveProperty('body_rev1')
     expect(result.bodies).toHaveProperty('body_rev1_1')
     // Both tori present: one per profile, none of the geometry dropped.
     for (const bid of ['body_rev1', 'body_rev1_1']) {
-      const mesh = body(result, bid).mesh as { vertices?: number[][] } | undefined
+      const mesh = h.body(result, bid).mesh as { vertices?: number[][] } | undefined
       expect(mesh?.vertices?.length).toBeGreaterThan(0)
     }
   })
@@ -312,7 +269,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     // centroids both sit on the rotation axis -- bodySplit cannot order them
     // positionally, so the solve surfaces as an exception instead of dropping
     // one profile silently or naming the tori in OCC explorer order.
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 1, 1, 1, 0),
@@ -322,14 +279,14 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
           axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
       ],
     })
-    expect(res(result, 'rev1').status).toBe('exception')
-    expect(String(res(result, 'rev1').exception)).toMatch(/near-tie/)
+    expect(h.res(result, 'rev1').status).toBe('exception')
+    expect(String(h.res(result, 'rev1').exception)).toMatch(/near-tie/)
   })
 
   it('revolve with two nested profile sketches stays one body (donut)', () => {
     // The inner profile is a genuine hole of the outer, so the sweep is one
     // washer-shaped solid and the profile pair must NOT split into two bodies.
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0),
@@ -339,8 +296,8 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
           axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
       ],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
-    expect((res(result, 'rev1').body_ids as string[]) ?? []).toEqual(['body_rev1'])
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    expect((h.res(result, 'rev1').body_ids as string[]) ?? []).toEqual(['body_rev1'])
     expect(result.bodies).toHaveProperty('body_rev1')
     expect(result.bodies).not.toHaveProperty('body_rev1_1')
   })
@@ -350,7 +307,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     // touch at that plane and the per-group fuse collapses them into ONE solid.
     // The fan-out must not split an adjacent pair that fuses, only a disjoint
     // one.
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0),
@@ -360,12 +317,12 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
           axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
       ],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
-    expect((res(result, 'rev1').body_ids as string[]) ?? []).toEqual(['body_rev1'])
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    expect((h.res(result, 'rev1').body_ids as string[]) ?? []).toEqual(['body_rev1'])
     expect(result.bodies).toHaveProperty('body_rev1')
     expect(result.bodies).not.toHaveProperty('body_rev1_1')
     // The fused torus spans both rects (y in [0,2]); neither profile dropped.
-    const mesh = body(result, 'body_rev1').mesh as { vertices?: number[][] } | undefined
+    const mesh = h.body(result, 'body_rev1').mesh as { vertices?: number[][] } | undefined
     expect(mesh?.vertices?.length).toBeGreaterThan(0)
     if (mesh?.vertices) {
       const ys = mesh.vertices.map((v) => v[1])
@@ -380,7 +337,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     // on another plane would silently build its loops in the wrong place. Same
     // plane, two sketches, is the legitimate multi-sketch profile (the fence
     // cases above); different planes are refused by name.
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 1, 1, 1, 0, '@builtin_plane_front'),
@@ -390,8 +347,8 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
           axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
       ],
     })
-    expect(res(result, 'rev1').status).toBe('exception')
-    expect(String(res(result, 'rev1').exception)).toMatch(/spans two different sketch planes/)
+    expect(h.res(result, 'rev1').status).toBe('exception')
+    expect(String(h.res(result, 'rev1').exception)).toMatch(/spans two different sketch planes/)
   })
 
   it('revolve from sketch surface query (circle profile)', () => {
@@ -400,7 +357,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
      * (?@sk1/c1surface:0@sk1:flatface) instead of a plain sketch ref ($sk1).
      */
     const surfaceQuery = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [
         {
@@ -418,33 +375,33 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
           axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
       ],
     })
-    expect(res(result, 'sk1').status).not.toBe('exception')
-    expect(res(result, 'rev1').status).toBe('ok')
+    expect(h.res(result, 'sk1').status).not.toBe('exception')
+    expect(h.res(result, 'rev1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_rev1')
   })
 
   it('revolve emits an angular handle at the swept profile centroid', () => {
     // Rectangle [1,3]x[0,1] on the front plane, 90deg around the Y axis:
     // centroid (2, 0.5, 0) sweeps to (0, 0.5, -2); the tangent there is -X.
-    const result = run({
+    const result = h.run({
       version: 1, kind: 'part',
       features: [rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 90 })],
     })
-    expect(res(result, 'rev1').status).toBe('ok')
-    const h = res(result, 'rev1').handle as Record<string, unknown>
-    expect(h).toBeDefined()
-    expect(h.kind).toBe('angular')
-    expect(h.field).toBe('angle')
-    expect(h.value).toBe(90)
-    expect(h.max).toBe(360)
-    const anchor = h.anchor as number[]
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    const handle = h.res(result, 'rev1').handle as Record<string, unknown>
+    expect(handle).toBeDefined()
+    expect(handle.kind).toBe('angular')
+    expect(handle.field).toBe('angle')
+    expect(handle.value).toBe(90)
+    expect(handle.max).toBe(360)
+    const anchor = handle.anchor as number[]
     expect(anchor[0]).toBeCloseTo(0, 4)
     expect(anchor[1]).toBeCloseTo(0.5, 4)
     expect(anchor[2]).toBeCloseTo(-2, 4)
-    const dir = h.direction as number[]
+    const dir = handle.direction as number[]
     expect(dir[0]).toBeCloseTo(-1, 4)
     expect(dir[1]).toBeCloseTo(0, 4)
     expect(dir[2]).toBeCloseTo(0, 4)
-    expect(h.unit_scale as number).toBeCloseTo((2 * Math.PI) / 180, 6)
+    expect(handle.unit_scale as number).toBeCloseTo((2 * Math.PI) / 180, 6)
   })
 })

@@ -15,7 +15,7 @@
 //
 // Numbers taken with it live in `feature/knowledgebase.agent.md`.
 
-import { describe, it, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { loadOcc } from './occ/loadOcc'
@@ -108,6 +108,18 @@ async function timed(label: string, fn: () => Promise<unknown>): Promise<number>
   console.log(`  ${label.padEnd(46)} ${ms.toFixed(0).padStart(7)} ms`)
   return ms
 }
+
+// The BUNDLE_BENCH opt-in is the only reason this file skips on a normal run;
+// when it is set, a missing artifact is a provisioning failure, not a silent
+// skip. The timing itself stays log-only (a wall-clock threshold would flake on
+// a contended box, and the file header documents that choice).
+describe('bundle bench provisioning', () => {
+  it('has OCC.js and the node solver build when BUNDLE_BENCH is set', () => {
+    if (!enabled) return
+    expect(oc, 'BUNDLE_BENCH=1 but OCC.js is absent - run `npm run occ:install`').toBeTruthy()
+    expect(solveBytes, 'BUNDLE_BENCH=1 but the node solver build is absent - run `just wasm`').toBeTruthy()
+  })
+})
 
 describe.skipIf(!oc || !solveBytes || !enabled)('bundle rebuild cost (real OCC + Rust solver, log-only)', () => {
   beforeAll(() => {

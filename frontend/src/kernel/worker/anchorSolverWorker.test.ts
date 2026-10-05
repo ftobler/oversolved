@@ -879,6 +879,31 @@ describe('dispatcher', () => {
     expect(posted).toHaveLength(0)
   })
 
+  it('routes a late buildBundle asr_relayRes through the salvage path', async () => {
+    // The late-salvage branches were only driven through handleRelayResponse
+    // directly; route one through handleWorkerMessage to pin the dispatcher
+    // seam itself. A short real timeout keeps the test fast and avoids mixing
+    // fake timers with the relay's grace timer.
+    globalThis.indexedDB = new IDBFactory()
+    resetBundleDbConnection()
+    const requests: AnchorRelayRequest[] = []
+    const relay = createRelayService((m) => requests.push(m), 10)
+    const prom = relay.requestBuildBundle('doc-a', '1', {})
+    await expect(prom).rejects.toThrow(/timed out/)
+
+    const posted: AssemblyWorkerResponse[] = []
+    handleWorkerMessage(
+      { kind: 'asr_relayRes', requestId: requests[0].requestId, ok: true, payload: makeBundle('doc-a', '1') },
+      (msg) => { posted.push(msg) },
+      new WorkerActor(),
+    )
+
+    // The dispatcher handed the late reply to the salvage path, which caches
+    // the finished build; it is not a solve, so nothing is posted.
+    expect(posted).toHaveLength(0)
+    await vi.waitUntil(async () => (await bundleCacheGet('doc-a', '1')) !== undefined)
+  })
+
   it('warns on an unknown message kind instead of silently dropping it', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {

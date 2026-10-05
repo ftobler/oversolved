@@ -1,6 +1,6 @@
 import React, { createRef } from 'react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, act } from '@testing-library/react'
+import { render, act, waitFor } from '@testing-library/react'
 import * as THREE from 'three'
 import SceneController from '@/components/Viewport/SceneController'
 import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
@@ -265,10 +265,9 @@ describe('SceneController orbit pose across a Suspense reveal', () => {
       </React.StrictMode>
     )
 
-    const tick = (ms: number) => act(async () => { await new Promise(r => setTimeout(r, ms)) })
-
     const { rerender } = render(tree(false))
-    await tick(20)
+    // The controls attach in a layout effect during the commit.
+    await waitFor(() => expect(props.controlsRef.current).toBeTruthy())
 
     // The user frames the scene: pivot off the origin.
     const posed = props.controlsRef.current!
@@ -276,31 +275,23 @@ describe('SceneController orbit pose across a Suspense reveal', () => {
     cam.zoom = 42
     posed.target.set(5, 6, 7)
 
-    // Hide: the teardown cleanup saves the posed orbit state.
+    // Hide: the teardown cleanup saves the posed orbit state in the commit,
+    // so poll the camera until the save lands instead of sleeping a fixed 30ms.
     let releaseGate: () => void = () => {}
     gate = new Promise<void>(resolve => { releaseGate = resolve })
-    await act(async () => {
-      rerender(tree(true))
-      await new Promise(r => setTimeout(r, 30))
-    })
+    await act(async () => { rerender(tree(true)) })
+    await waitFor(() => expect((cam.userData as { orbitPose?: unknown }).orbitPose).toBeDefined())
 
     // Reveal: effects re-run and the key bump mounts a FRESH OrbitControls;
     // the saved pose must land on that fresh instance's target.
     gate = null
-    await act(async () => {
-      rerender(tree(false))
-      releaseGate()
-      await new Promise(r => setTimeout(r, 30))
-    })
+    await act(async () => { rerender(tree(false)); releaseGate() })
 
-    // Let the restore's deferred rAF fire against the post-reveal controls.
-    await act(async () => {
-      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    await waitFor(() => {
+      const restored = props.controlsRef.current!
+      expect(restored).not.toBe(posed)
+      expect(restored.target.toArray()).toEqual([5, 6, 7])
     })
-
-    const restored = props.controlsRef.current!
-    expect(restored).not.toBe(posed)
-    expect(restored.target.toArray()).toEqual([5, 6, 7])
     expect(cam.position.toArray()).toEqual([10, 20, 30])
     expect(cam.zoom).toBe(42)
   })

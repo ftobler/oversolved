@@ -14,14 +14,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
-import { DisposeScope } from '../occ/disposeScope'
-import { HandleTable } from '../occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
-import { build, type BuildDeps, type BuildResponse } from '../builder'
-import { initGlobalRepo } from '../query'
-import { createFeatureSolver } from '../solverRegistry'
-import { postRegister } from '../features/postRegister'
+import { SharedHarness } from '../occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
@@ -80,70 +73,22 @@ function bugSpec(selection: string) {
 }
 
 describe.skipIf(!oc || !solveBytes)('extrude radical-line half-lens (real OCC + Rust solver)', () => {
+  const h = new SharedHarness(oc!)
+
   beforeAll(() => {
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  function run(spec: Record<string, unknown>) {
-    const scope = new DisposeScope()
-    const table = new HandleTable()
-    try {
-      const deps: BuildDeps = {
-        trySolveFeature: createFeatureSolver(oc!, scope, table),
-        postRegister, initGlobalRepo,
-        tessellateBodies: (bodyStore) => {
-          const out: Record<string, Record<string, unknown>> = {}
-          for (const [, body] of Object.entries(bodyStore)) {
-            if (!body.shape) continue
-            try {
-              const mesh = solidToMesh(oc!, table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id,
-                faceAncestry: body.face_ancestry ?? null, faceNames: body.face_names ?? null,
-                profileQueries: body.profile_queries ?? [],
-              })
-              const edgeResult = solidToEdges(oc!, table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id,
-                profileQueries: body.profile_queries ?? [],
-                edgeAncestry: body.edge_ancestry ?? null, edgeNames: body.edge_names ?? null,
-              })
-              const vertexResult = solidToVertices(oc!, table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id, profileQueries: body.profile_queries ?? [],
-              })
-              out[body.id] = {
-                mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries,
-                vertices: vertexResult.vertices, vertex_queries: vertexResult.vertex_queries,
-              }
-            } catch {  /* non-fatal */ }
-          }
-          return out
-        },
-        brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-        brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-        brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
-      }
-      const result = build(spec, {}, deps)
-      scope.dispose()
-      return result
-    } catch (e) {
-      scope.dispose()
-      throw e
-    }
-  }
-
-  function res(result: BuildResponse, featureId: string): Record<string, unknown> {
-    return (result.result as Record<string, Record<string, unknown>>)[featureId] ?? {}
-  }
-
   it('half-lens flatface (arc + chord line) extrudes into one body', () => {
-    const result = run(bugSpec(HALF_LENS))
-    const ex = res(result, 'b9WPcaHhXLtCABRq9yR_GR84')
+    const result = h.run(bugSpec(HALF_LENS))
+    const ex = h.res(result, 'b9WPcaHhXLtCABRq9yR_GR84')
     expect(ex.status).toBe('ok')
     expect(Object.keys(result.bodies as Record<string, unknown>)).toHaveLength(1)
   })
 
   it('crescent flatface (arc + arc) extrudes into one body', () => {
-    const result = run(bugSpec(CRESCENT))
-    const ex = res(result, 'b9WPcaHhXLtCABRq9yR_GR84')
+    const result = h.run(bugSpec(CRESCENT))
+    const ex = h.res(result, 'b9WPcaHhXLtCABRq9yR_GR84')
     expect(ex.status).toBe('ok')
     expect(Object.keys(result.bodies as Record<string, unknown>)).toHaveLength(1)
   })

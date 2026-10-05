@@ -387,6 +387,11 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kerne
       const spec = entry.spec
       if (!spec || !entry.ok) {
         if (!entry.ok) {
+          // A baseline entry the frozen Python kernel could not build is not a
+          // TS regression, so it must not fail the gate; the provisioning guard
+          // above (`has at least one baseline entry marked ok`) keeps an
+          // all-failed corpus from hiding behind this branch, and the warning
+          // is the visible record of the skip.
           console.warn(`[parity] ${entry.label}: Python build failed, skipping`)
         }
         return

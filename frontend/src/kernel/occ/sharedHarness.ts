@@ -103,6 +103,10 @@ export class SharedHarness {
               vertices: vertexResult.vertices,
               vertex_queries: vertexResult.vertex_queries,
               vertex_uuids: vertexResult.vertex_uuids,
+              // Mirror production tessellateBodies: the per-body creator and
+              // modifier tags are part of the render payload, not just inputs.
+              created_by: body.created_by ?? '',
+              modified_by: body.modified_by ?? [],
             }
           } catch {  /* non-fatal */ }
         }

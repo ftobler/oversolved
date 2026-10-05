@@ -8,14 +8,9 @@
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
-import { DisposeScope } from '../occ/disposeScope'
-import { HandleTable } from '../occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
-import { build, repoFromSnapshot, type BuildDeps, type BuildResponse } from '../builder'
-import { initGlobalRepo, makeAncestryQuery, AmbiguousQueryError } from '../query'
-import { createFeatureSolver } from '../solverRegistry'
-import { postRegister } from '../features/postRegister'
+import { SharedHarness } from '../occ/sharedHarness'
+import { repoFromSnapshot, type BuildResponse } from '../builder'
+import { makeAncestryQuery, AmbiguousQueryError } from '../query'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
@@ -186,112 +181,51 @@ function vennBisectSpec(operation = 'add') {
 }
 
 describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', () => {
+  const h = new SharedHarness(oc!)
+
   beforeAll(() => {
     if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  function run(spec: Record<string, unknown>) {
-    const scope = new DisposeScope()
-    const table = new HandleTable()
-    try {
-      const deps: BuildDeps = {
-        trySolveFeature: createFeatureSolver(oc!, scope, table),
-        postRegister, initGlobalRepo,
-        tessellateBodies: (bodyStore) => {
-          const out: Record<string, Record<string, unknown>> = {}
-          for (const [, body] of Object.entries(bodyStore)) {
-            if (!body.shape) continue
-            try {
-              const mesh = solidToMesh(oc!, table, body.shape, {
-                createdBy: body.created_by || '',
-                bodyId: body.id,
-                faceNames: body.face_names ?? null,
-                faceAncestry: body.face_ancestry ?? null,
-                profileQueries: body.profile_queries ?? [],
-              })
-              const edgeResult = solidToEdges(oc!, table, body.shape, {
-                createdBy: body.created_by || '',
-                bodyId: body.id,
-                profileQueries: body.profile_queries ?? [],
-                edgeNames: body.edge_names ?? null,
-                edgeAncestry: body.edge_ancestry ?? null,
-              })
-              const vertexResult = solidToVertices(oc!, table, body.shape, {
-                createdBy: body.created_by || '',
-                bodyId: body.id,
-                profileQueries: body.profile_queries ?? [],
-              })
-              out[body.id] = {
-                mesh,
-                edges: edgeResult.edges,
-                edge_queries: edgeResult.edge_queries,
-                vertices: vertexResult.vertices,
-                vertex_queries: vertexResult.vertex_queries,
-              }
-            } catch {  /* non-fatal */ }
-          }
-          return out
-        },
-        brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-        brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-        brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
-      }
-      const result = build(spec, {}, deps)
-      scope.dispose()
-      return result
-    } catch (e) {
-      scope.dispose()
-      throw e
-    }
-  }
-
-  function res(result: BuildResponse, featureId: string): Record<string, unknown> {
-    return (result.result as Record<string, Record<string, unknown>>)[featureId] ?? {}
-  }
-
-  function body(result: BuildResponse, bodyId: string): Record<string, unknown> {
-    return (result.bodies as Record<string, Record<string, unknown>>)[bodyId] ?? {}
-  }
-
   // ─── Basic mesh / bbox tests ───
 
   it('basic rect extrude produces a valid mesh', () => {
-    const result = run(fullRectExtrudeSpec(10, 10, 5))
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const result = h.run(fullRectExtrudeSpec(10, 10, 5))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
 
   it('rect extrude bbox normal direction', () => {
-    const result = run(fullRectExtrudeSpec(10, 8, 5, 'normal'))
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const result = h.run(fullRectExtrudeSpec(10, 8, 5, 'normal'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 8], [0, 5])
   })
 
   it('rect extrude bbox reverse direction', () => {
-    const result = run(fullRectExtrudeSpec(6, 6, 4, 'reverse'))
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const result = h.run(fullRectExtrudeSpec(6, 6, 4, 'reverse'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 6], [0, 6], [-4, 0])
   })
 
   it('rect extrude bbox symmetric direction', () => {
-    const result = run(fullRectExtrudeSpec(4, 4, 6, 'symmetric'))
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const result = h.run(fullRectExtrudeSpec(4, 4, 6, 'symmetric'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 4], [0, 4], [-3, 3])
   })
 
   it('all face indices are valid', () => {
-    const result = run(fullRectExtrudeSpec())
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
+    const result = h.run(fullRectExtrudeSpec())
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       const n = mesh.vertices.length
@@ -304,9 +238,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
   })
 
   it('no degenerate faces', () => {
-    const result = run(fullRectExtrudeSpec())
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
+    const result = h.run(fullRectExtrudeSpec())
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       for (const [a, b, c] of mesh.faces) {
@@ -321,7 +255,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('nested extrude UI format produces valid mesh', () => {
     // Regression: UI serializes extrude as {kind, id, extrude: {sketch, distance,...}}.
-    const result = run({
+    const result = h.run({
       features: [
         {
           id: 'sk1', kind: 'sketch', plane: 'Top',
@@ -336,17 +270,17 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
           extrude: { sketch: '$sk1', distance: 2, direction: 'normal' } },
       ],
     })
-    expect(res(result, 'sk1').status).not.toBe('exception')
-    expect(res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'sk1').status).not.toBe('exception')
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [-0.5, 0.5], [0, 2], [-0.5, 0.5])
   })
 
   it('bare builtin plane id is resolved', () => {
     // Bare plane id 'Top' (no @ prefix) must resolve to the correct builtin plane.
-    const result = run({
+    const result = h.run({
       features: [
         {
           id: 'sk1', kind: 'sketch', plane: 'Top',
@@ -360,17 +294,17 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 2, direction: 'normal' },
       ],
     })
-    expect(res(result, 'sk1').status).not.toBe('exception')
-    expect(res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'sk1').status).not.toBe('exception')
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [-0.5, 0.5], [0, 2], [-0.5, 0.5])
   })
 
   it('circle sketch with ghost line constraints still extrudes', () => {
     // Ghost constraints referencing non-existent line entities must be ignored.
-    const result = run({
+    const result = h.run({
       features: [
         {
           id: 'sk1', kind: 'sketch', plane: 'Top',
@@ -388,10 +322,10 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
           extrude: { sketch: '$sk1', distance: 1, direction: 'normal' } },
       ],
     })
-    expect(res(result, 'sk1').status).not.toBe('exception')
-    expect(res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'sk1').status).not.toBe('exception')
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -404,14 +338,14 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
      * TS kernel, so test directly via mesh face_data z-coordinates.
      */
     const d = 7
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: d }),
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as { face_data?: Array<{ centroid: number[]; normal: number[] }> } | undefined
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as { face_data?: Array<{ centroid: number[]; normal: number[] }> } | undefined
     expect(mesh).toBeDefined()
     const topFace = mesh?.face_data?.find((fd) => fd.normal[2] > 0.9)
     expect(topFace).toBeDefined()
@@ -420,7 +354,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('two extrudes stacked one on top of the other', () => {
     // Second extrude on top of first with operation=new.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: 5 }),
@@ -450,9 +384,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         extrudeSpec('sk2', 'ex2', { distance: 3, operation: 'new' }),
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
-    expect(res(result, 'ex2').status).toBe('ok')
-    const mesh2 = body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    const mesh2 = h.body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
     expect(mesh2).toBeDefined()
     if (mesh2) {
       const zs = mesh2.vertices.map((v) => v[2])
@@ -466,7 +400,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
   it('extrude from sketch surface query (circle profile)', () => {
     // Extrude uses a ?-ancestry query for a sketch surface flatface as the profile.
     const surfaceQuery = makeAncestryQuery(['@sk1/c1', 'surface:0', '@sk1'], 'flatface')
-    const result = run({
+    const result = h.run({
       features: [
         {
           id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
@@ -480,10 +414,10 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         { id: 'ex1', kind: 'extrude', sketch: surfaceQuery, distance: 2, direction: 'normal' },
       ],
     })
-    expect(res(result, 'sk1').status).not.toBe('exception')
-    expect(res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'sk1').status).not.toBe('exception')
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -492,7 +426,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     // When a sketch has two circles and one is selected via ?, only that surface is extruded.
     const sk = 'sk1'
     const surfaceQuery = makeAncestryQuery([`@${sk}/c2`, 'surface:1', `@${sk}`], 'flatface')
-    const result = run({
+    const result = h.run({
       features: [
         {
           id: sk, kind: 'sketch', plane: '@builtin_plane_front',
@@ -507,8 +441,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         { id: 'ex1', kind: 'extrude', sketch: surfaceQuery, distance: 1, direction: 'normal' },
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][] } | undefined
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       const xs = mesh.vertices.map((v) => v[0])
@@ -540,10 +474,10 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     // on the curve rather than on the area fill. The circle sits inside the
     // rectangle, so answering with the sketch (or with every region the circle
     // borders) would sweep the 10x10 plate as well.
-    const result = run(rectWithCircleSpec('entity:sk1:ci'))
-    expect(res(result, 'sk1').status).not.toBe('exception')
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const result = h.run(rectWithCircleSpec('entity:sk1:ci'))
+    expect(h.res(result, 'sk1').status).not.toBe('exception')
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       assertMeshValid(mesh)
@@ -557,7 +491,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     // same collectExtrudeLoops call before the boolean ever runs. The plate
     // keeps its bbox, so the evidence the disc was really removed is the wall
     // the cut leaves behind: mesh vertices sitting r=2 from the circle centre.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10),
         { id: 'ex1', kind: 'extrude', extrude: { sketch: ['$sk1'], distance: 3, direction: 'normal' } },
@@ -573,9 +507,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         },
       ],
     })
-    expect(res(result, 'ex2').status).toBe('ok')
+    expect(h.res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).not.toHaveProperty('body_ex2')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       assertMeshValid(mesh)
@@ -587,24 +521,24 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
   })
 
   it('a picked open curve is refused instead of widened to its sketch', () => {
-    const result = run(rectWithCircleSpec('entity:sk1:bottom'))
-    expect(res(result, 'ex1').status).toBe('exception')
-    expect(String(res(result, 'ex1').exception)).toContain('bounds no closed area')
+    const result = h.run(rectWithCircleSpec('entity:sk1:bottom'))
+    expect(h.res(result, 'ex1').status).toBe('exception')
+    expect(String(h.res(result, 'ex1').exception)).toContain('bounds no closed area')
   })
 
   it('extrude from top face named query (@ex1/top_face)', () => {
     // Second extrude uses @ex1/top_face as its profile.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: 5 }),
         { id: 'ex2', kind: 'extrude', sketch: '@ex1/top_face', distance: 3, direction: 'normal', operation: 'new' },
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
-    expect(res(result, 'ex2').status).toBe('ok')
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex2')
-    const mesh2 = body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
+    const mesh2 = h.body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
     expect(mesh2).toBeDefined()
     if (mesh2) {
       const zs = mesh2.vertices.map((v) => v[2])
@@ -617,16 +551,16 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('extrude sketch list with two profiles produces one body', () => {
     // sketch field as a list of two sketch refs.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 2, 2, '@builtin_plane_front'),
         rectSketchSk('sk2', 2, 2, '@builtin_plane_front'),
         { id: 'ex1', kind: 'extrude', sketch: ['$sk1', '$sk2'], distance: 3, direction: 'normal' },
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
+    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       expect(mesh.vertices.length).toBeGreaterThan(0)
@@ -636,29 +570,29 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('extrude sketch list with single element', () => {
     // A list with one sketch ref behaves like the string form.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 4, 4, '@builtin_plane_front'),
         { id: 'ex1', kind: 'extrude', sketch: ['$sk1'], distance: 2, direction: 'normal' },
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 4], [0, 4], [0, 2])
   })
 
   it('extrude sketch empty list errors', () => {
     // Empty sketch list returns exception.
-    const result = run({
+    const result = h.run({
       features: [{ id: 'ex1', kind: 'extrude', sketch: [], distance: 2 }],
     })
-    expect(res(result, 'ex1').status).toBe('exception')
+    expect(h.res(result, 'ex1').status).toBe('exception')
   })
 
   it('extrude sketch not found returns exception', () => {
     // Extrude with a sketch ref that has no closed profile returns exception.
-    const result = run({
+    const result = h.run({
       features: [
         {
           id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
@@ -668,29 +602,29 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         { id: 'ex1', kind: 'extrude', sketch: ['@sk1'], distance: 5 },
       ],
     })
-    expect(res(result, 'ex1').status).toBe('exception')
+    expect(h.res(result, 'ex1').status).toBe('exception')
   })
 
   it('extrude key error still returns exception dict', () => {
     // A KeyError-like situation must yield exception status.
-    const result = run({
+    const result = h.run({
       features: [{ id: 'ex1', kind: 'extrude', sketch: [] }],
     })
-    expect(res(result, 'ex1').status).toBe('exception')
+    expect(h.res(result, 'ex1').status).toBe('exception')
   })
 
   it('a profile list with one dangling ref extrudes the rest and reports partial', () => {
     // A stale pick in the profile list must not throw the whole feature away:
     // the resolvable sketch still builds, and the result is `partial` with the
     // dangling ref named, so the user can see which pick to re-make.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10),
         { id: 'ex1', kind: 'extrude', sketch: ['$sk1', '$missing'], distance: 5, direction: 'normal', operation: 'new' },
       ],
     })
-    expect(res(result, 'ex1').status).toBe('partial')
-    expect(String(res(result, 'ex1').exception)).toMatch(/sketch not found: missing/)
+    expect(h.res(result, 'ex1').status).toBe('partial')
+    expect(String(h.res(result, 'ex1').exception)).toMatch(/sketch not found: missing/)
     expect(result.bodies).toHaveProperty('body_ex1')
   })
 
@@ -698,25 +632,25 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('cut extrude removes volume from base body', () => {
     // Cut extrusion subtracts from a base body.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: 10 }),
         extrudeSpec('sk1', 'ex2', { distance: 5, operation: 'cut' }),
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
-    expect(res(result, 'ex2').status).toBe('ok')
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).not.toHaveProperty('body_ex2')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 10], [5, 10])
   })
 
   it('cut extrude must not produce a body in output', () => {
     // Cut extrude feature must not produce a body in the bodies dict.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 6, 6, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: 8 }),
@@ -729,7 +663,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('cut extrude nested UI format', () => {
     // Cut operation read from nested extrude sub-dict.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         { id: 'ex1', kind: 'extrude', label: 'Base',
@@ -738,24 +672,24 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
           extrude: { sketch: '$sk1', distance: 5, direction: 'normal', operation: 'cut' } },
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
-    expect(res(result, 'ex2').status).toBe('ok')
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).not.toHaveProperty('body_ex2')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 10], [5, 10])
   })
 
   it('cut extrude with no prior body succeeds without crash', () => {
     // Cut extrude with no prior body must succeed.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 6, 6, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: 5, operation: 'cut' }),
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).not.toHaveProperty('body_ex1')
   })
 
@@ -763,21 +697,21 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('disjoint rects operation=new creates two bodies', () => {
     // Two disjoint sketch profiles with operation=new produce two separate bodies.
-    const result = run(disjointTwoRectSpec('new'))
-    expect(res(result, 'ex1').status).toBe('ok')
+    const result = h.run(disjointTwoRectSpec('new'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
     expect(result.bodies).toHaveProperty('body_ex1_1')
-    expect(res(result, 'ex1').body_ids).toEqual(['body_ex1', 'body_ex1_1'])
-    const m1 = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
-    const m2 = body(result, 'body_ex1_1').mesh as Record<string, unknown> | undefined
+    expect(h.res(result, 'ex1').body_ids).toEqual(['body_ex1', 'body_ex1_1'])
+    const m1 = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const m2 = h.body(result, 'body_ex1_1').mesh as Record<string, unknown> | undefined
     expect(m1).toBeDefined(); if (m1) assertMeshValid(m1)
     expect(m2).toBeDefined(); if (m2) assertMeshValid(m2)
   })
 
   it('disjoint rects add no base creates two bodies', () => {
     // Two profiles with operation=add and no existing body produce two bodies.
-    const result = run(disjointTwoRectSpec('add'))
-    expect(res(result, 'ex1').status).toBe('ok')
+    const result = h.run(disjointTwoRectSpec('add'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
     expect(result.bodies).toHaveProperty('body_ex1_1')
   })
@@ -785,38 +719,38 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
   it('disjoint rects add with base fuses into base body', () => {
     // Disjoint profiles with operation=add and an existing body fuse into that body.
     const spec = disjointTwoRectSpec('add')
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk0', 2, 2, '@builtin_plane_front'),
         extrudeSpec('sk0', 'ex0', { distance: 1, operation: 'new' }),
         ...spec.features,
       ],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex0')
     expect(result.bodies).not.toHaveProperty('body_ex1_1')  // fused into base body
   })
 
   it('single rect still one body', () => {
     // Single rectangle extrude still produces exactly one body.
-    const result = run(fullRectExtrudeSpec(4, 4, 2))
-    expect(res(result, 'ex1').status).toBe('ok')
+    const result = h.run(fullRectExtrudeSpec(4, 4, 2))
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
     expect(result.bodies).not.toHaveProperty('body_ex1_1')
-    expect(res(result, 'ex1').body_ids).toEqual(['body_ex1'])
+    expect(h.res(result, 'ex1').body_ids).toEqual(['body_ex1'])
   })
 
   it('disjoint extrude has body_ids field', () => {
     // body_ids field lists all split body IDs.
-    const result = run(disjointTwoRectSpec('new'))
-    const bodyIds = res(result, 'ex1').body_ids as string[] | undefined
+    const result = h.run(disjointTwoRectSpec('new'))
+    const bodyIds = h.res(result, 'ex1').body_ids as string[] | undefined
     expect(bodyIds).toBeDefined()
     expect(new Set(bodyIds)).toEqual(new Set(['body_ex1', 'body_ex1_1']))
   })
 
   it('two independent extrudes produce two bodies', () => {
     // Two independent sketches extruded independently.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: 5 }),
@@ -831,10 +765,10 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('disjoint bodies have unique face queries', () => {
     // Two-body extrude face queries must be unique per body.
-    const result = run(disjointTwoRectSpec('new'))
-    expect(res(result, 'ex1').status).toBe('ok')
-    const m1 = body(result, 'body_ex1').mesh as { face_queries?: string[] } | undefined
-    const m2 = body(result, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined
+    const result = h.run(disjointTwoRectSpec('new'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const m1 = h.body(result, 'body_ex1').mesh as { face_queries?: string[] } | undefined
+    const m2 = h.body(result, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined
     expect(m1?.face_queries?.length).toBeGreaterThan(0)
     expect(m2?.face_queries?.length).toBeGreaterThan(0)
     const fq1 = new Set(m1?.face_queries ?? [])
@@ -844,10 +778,10 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('disjoint bodies have unique edge queries', () => {
     // Edge queries from two bodies of the same extrude must be disjoint.
-    const result = run(disjointTwoRectSpec('new'))
-    expect(res(result, 'ex1').status).toBe('ok')
-    const eq1 = new Set((body(result, 'body_ex1').edge_queries as string[]) ?? [])
-    const eq2 = new Set((body(result, 'body_ex1_1').edge_queries as string[]) ?? [])
+    const result = h.run(disjointTwoRectSpec('new'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const eq1 = new Set((h.body(result, 'body_ex1').edge_queries as string[]) ?? [])
+    const eq2 = new Set((h.body(result, 'body_ex1_1').edge_queries as string[]) ?? [])
     expect(eq1.size).toBeGreaterThan(0)
     expect(eq2.size).toBeGreaterThan(0)
     for (const q of eq1) expect(eq2.has(q)).toBe(false)
@@ -855,10 +789,10 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('disjoint bodies have unique vertex queries', () => {
     // Vertex queries from two bodies of the same extrude must be disjoint.
-    const result = run(disjointTwoRectSpec('new'))
-    expect(res(result, 'ex1').status).toBe('ok')
-    const vq1 = new Set((body(result, 'body_ex1').vertex_queries as string[]) ?? [])
-    const vq2 = new Set((body(result, 'body_ex1_1').vertex_queries as string[]) ?? [])
+    const result = h.run(disjointTwoRectSpec('new'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const vq1 = new Set((h.body(result, 'body_ex1').vertex_queries as string[]) ?? [])
+    const vq2 = new Set((h.body(result, 'body_ex1_1').vertex_queries as string[]) ?? [])
     expect(vq1.size).toBeGreaterThan(0)
     expect(vq2.size).toBeGreaterThan(0)
     for (const q of vq1) expect(vq2.has(q)).toBe(false)
@@ -868,7 +802,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('disjoint pick_body by feature id returns first split body', () => {
     // @ex1 resolves to the first split body.
-    const result = run(disjointTwoRectSpec('new'))
+    const result = h.run(disjointTwoRectSpec('new'))
     expect(result.bodies).toHaveProperty('body_ex1')
     expect(result.bodies).toHaveProperty('body_ex1_1')
   })
@@ -877,15 +811,15 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     /** Each face query must resolve to the body it belongs to. Split-body
      *  UUID collisions (same construction path across bodies) are a known
      *  construction-naming limitation; those faces are skipped. */
-    const result = run(disjointTwoRectSpec('new'))
-    expect(res(result, 'ex1').status).toBe('ok')
+    const result = h.run(disjointTwoRectSpec('new'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
     const buildState = result._build_state
     const lastFid = buildState!.feature_order[buildState!.feature_order.length - 1]
     const checkpoint = buildState!.checkpoints[lastFid]
     const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
     let resolved = 0
     for (const bid of ['body_ex1', 'body_ex1_1']) {
-      const b = body(result, bid) as { mesh?: { face_queries?: string[] } }
+      const b = h.body(result, bid) as { mesh?: { face_queries?: string[] } }
       const faceQueries = b?.mesh?.face_queries ?? []
       for (const fq of faceQueries) {
         let r: { body_id?: string } | null = null
@@ -905,11 +839,11 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('disjoint body face query usable in downstream feature', () => {
     // A face query from the secondary body can be used as a plane without AmbiguousQueryError.
-    const r1 = run(disjointTwoRectSpec('new'))
-    expect(res(r1, 'ex1').status).toBe('ok')
+    const r1 = h.run(disjointTwoRectSpec('new'))
+    expect(h.res(r1, 'ex1').status).toBe('ok')
 
-    const faceData = (body(r1, 'body_ex1_1').mesh as { face_data?: Array<{ surface_type?: string }> } | undefined)?.face_data ?? []
-    const faceQueries = (body(r1, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const faceData = (h.body(r1, 'body_ex1_1').mesh as { face_data?: Array<{ surface_type?: string }> } | undefined)?.face_data ?? []
+    const faceQueries = (h.body(r1, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     let flatQuery: string | undefined
     for (let i = 0; i < faceData.length; i++) {
       if (faceData[i].surface_type === 'flatface') { flatQuery = faceQueries[i]; break }
@@ -919,8 +853,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     const sk2 = rectSketchSk('sk2', 2, 2, flatQuery!)
     const spec2 = { ...disjointTwoRectSpec('new'), features: [...disjointTwoRectSpec('new').features, sk2] }
 
-    const r2 = run(spec2)
-    const sk2Result = res(r2, 'sk2')
+    const r2 = h.run(spec2)
+    const sk2Result = h.res(r2, 'sk2')
     expect(sk2Result.plane_transform).toBeDefined()
   })
 
@@ -928,19 +862,19 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
 
   it('extrude from slash-style brep face query (@feature/face/N)', () => {
     // Slash-style B-rep face IDs resolve as extrude profiles.
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: 5 }),
         { id: 'ex2', kind: 'extrude', sketch: '@ex1/face/0', distance: 3, direction: 'normal', operation: 'new' },
       ],
     })
-    expect(res(result, 'ex2').status).toBe('ok')
+    expect(h.res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex2')
     // A blind face-profile extrude anchors its distance handle on the swept face
     // (usingFaces handle path), not only the sketch-loop path.
-    expect(res(result, 'ex2').handle).toBeDefined()
-    const mesh2 = body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
+    expect(h.res(result, 'ex2').handle).toBeDefined()
+    const mesh2 = h.body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
     expect(mesh2).toBeDefined()
     if (mesh2) {
       const xs = mesh2.vertices.map((v) => v[0])
@@ -956,10 +890,10 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     // different plane would grow out of its own plane, so the pick is refused by
     // name instead of silently building the wrong solid. The top face and a
     // front/back side face of one box are perpendicular, so their normals differ.
-    const first = run(fullRectExtrudeSpec(10, 10, 5))
-    expect(res(first, 'ex1').status).toBe('ok')
+    const first = h.run(fullRectExtrudeSpec(10, 10, 5))
+    expect(h.res(first, 'ex1').status).toBe('ok')
     const faceQ = (q: string) => makeAncestryQuery([q, '@ex1', '@body_ex1'], 'flatface')
-    const mesh = body(first, 'body_ex1').mesh as
+    const mesh = h.body(first, 'body_ex1').mesh as
       | { face_data?: Array<{ normal: number[]; surface_type?: string }> }
       | undefined
     const fd = mesh?.face_data ?? []
@@ -967,7 +901,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     const sideIdx = fd.findIndex((f) => Math.abs(f.normal[1]) > 0.9 && f.surface_type === 'flatface')
     expect(topIdx).toBeGreaterThanOrEqual(0)
     expect(sideIdx).toBeGreaterThanOrEqual(0)
-    const result = run({
+    const result = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: 5 }),
@@ -980,8 +914,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         },
       ],
     })
-    expect(res(result, 'ex2').status).toBe('exception')
-    expect(String(res(result, 'ex2').exception)).toContain('not coplanar')
+    expect(h.res(result, 'ex2').status).toBe('exception')
+    expect(String(h.res(result, 'ex2').exception)).toContain('not coplanar')
   })
 
   // ─── Fillet + extrude chain (face query after fillet topology change) ───
@@ -994,16 +928,16 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
      */
     const d = 5
     // Step 1: build extrude-only to find edge queries and a flat side face
-    const r1 = run({
+    const r1 = h.run({
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
         extrudeSpec('sk1', 'ex1', { distance: d }),
       ],
     })
-    expect(res(r1, 'ex1').status).toBe('ok')
+    expect(h.res(r1, 'ex1').status).toBe('ok')
 
     // Find a flat side face (centroid z ~ d/2) and build a 3-tag query.
-    const mesh1 = body(r1, 'body_ex1').mesh as {
+    const mesh1 = h.body(r1, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; surface_type?: string }>
     } | undefined
     let bestQ: string | undefined
@@ -1019,7 +953,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     expect(bestQ).toBeDefined()
 
     // Step 2: full build with extrude + fillet + extrude from face.
-    const eq = (body(r1, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
     const spec2 = {
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
@@ -1028,10 +962,10 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         { id: 'ex2', kind: 'extrude', sketch: bestQ!, distance: 3, direction: 'normal', operation: 'new' },
       ],
     }
-    const r2 = run(spec2)
-    expect(res(r2, 'ex2').status).toBe('ok')
+    const r2 = h.run(spec2)
+    expect(h.res(r2, 'ex2').status).toBe('ok')
     expect(r2.bodies).toHaveProperty('body_ex2')
-    const m2 = body(r2, 'body_ex2').mesh as Record<string, unknown> | undefined
+    const m2 = h.body(r2, 'body_ex2').mesh as Record<string, unknown> | undefined
     expect(m2).toBeDefined()
     if (m2) assertMeshValid(m2)
   })
@@ -1043,9 +977,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     // plain numeric distance of 5.
     const spec = { features: [rectSketchSk('sk1', 10, 8), extrudeSpec('sk1', 'ex1', {})] }
     ;(spec.features[1] as Record<string, unknown>).distance = '20/4'
-    const result = run(spec)
-    expect(res(result, 'ex1').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const result = h.run(spec)
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 8], [0, 5])
   })
@@ -1053,12 +987,12 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
   it('adjacent subdivided regions fuse into one body', () => {
     /** Regression: segmented_surface_after_extrude. Four connected sketch regions
      *  extruded together must fuse into a single solid, not split into bodies. */
-    const result = run(vennBisectSpec('add'))
-    expect(res(result, 'ex1').status).toBe('ok')
+    const result = h.run(vennBisectSpec('add'))
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
     expect(result.bodies).not.toHaveProperty('body_ex1_1')
     expect(Object.keys(result.bodies)).toHaveLength(1)
-    const mesh = body(result, 'body_ex1').mesh as {
+    const mesh = h.body(result, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; surface_type?: string }>
     } | undefined
     const fd = mesh?.face_data ?? []
@@ -1077,15 +1011,15 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
       '?7,7,9,4;@sk1/cL@sk1/lnsurface:0@sk1:flatface',
       '?7,7,9,4;@sk1/cL@sk1/cRsurface:2@sk1:flatface',
     ]
-    const result = run({
+    const result = h.run({
       features: [sketch, { id: 'ex1', kind: 'extrude', sketch: refs, distance: 10, direction: 'normal', operation: 'add' }],
     })
-    expect(res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
     expect(result.bodies).not.toHaveProperty('body_ex1_1')
     expect(Object.keys(result.bodies)).toHaveLength(1)
     // The swept top must be ONE planar face, not segmented per source region.
-    const mesh = body(result, 'body_ex1').mesh as {
+    const mesh = h.body(result, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; surface_type?: string }>
     } | undefined
     const fd = mesh?.face_data ?? []
@@ -1098,17 +1032,17 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
   it('invalid distance expression surfaces as a feature exception', () => {
     const spec = { features: [rectSketchSk('sk1', 10, 8), extrudeSpec('sk1', 'ex1', {})] }
     ;(spec.features[1] as Record<string, unknown>).distance = '2+/'
-    const result = run(spec)
-    expect(res(result, 'ex1').status).toBe('exception')
-    expect(String(res(result, 'ex1').exception)).toContain('2+/')
+    const result = h.run(spec)
+    expect(h.res(result, 'ex1').status).toBe('exception')
+    expect(String(h.res(result, 'ex1').exception)).toContain('2+/')
   })
 
   // ─── Editing handle descriptor ───
 
   function handleOf(result: BuildResponse, featureId: string): Record<string, unknown> {
-    const h = res(result, featureId).handle as Record<string, unknown> | undefined
-    expect(h).toBeDefined()
-    return h!
+    const handle = h.res(result, featureId).handle as Record<string, unknown> | undefined
+    expect(handle).toBeDefined()
+    return handle!
   }
 
   function expectVecClose(v: unknown, expected: number[]): void {
@@ -1118,28 +1052,28 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
   }
 
   it('blind extrude emits a linear distance handle at the swept face centroid', () => {
-    const result = run(fullRectExtrudeSpec(10, 10, 5))
-    const h = handleOf(result, 'ex1')
-    expect(h.kind).toBe('linear')
-    expect(h.field).toBe('distance')
-    expect(h.value).toBe(5)
-    expect(h.unit_scale).toBe(1)
-    expectVecClose(h.direction, [0, 0, 1])
-    expectVecClose(h.anchor, [5, 5, 5])
+    const result = h.run(fullRectExtrudeSpec(10, 10, 5))
+    const handle = handleOf(result, 'ex1')
+    expect(handle.kind).toBe('linear')
+    expect(handle.field).toBe('distance')
+    expect(handle.value).toBe(5)
+    expect(handle.unit_scale).toBe(1)
+    expectVecClose(handle.direction, [0, 0, 1])
+    expectVecClose(handle.anchor, [5, 5, 5])
   })
 
   it('reverse extrude handle points the other way', () => {
-    const result = run(fullRectExtrudeSpec(10, 10, 5, 'reverse'))
-    const h = handleOf(result, 'ex1')
-    expectVecClose(h.direction, [0, 0, -1])
-    expectVecClose(h.anchor, [5, 5, -5])
+    const result = h.run(fullRectExtrudeSpec(10, 10, 5, 'reverse'))
+    const handle = handleOf(result, 'ex1')
+    expectVecClose(handle.direction, [0, 0, -1])
+    expectVecClose(handle.anchor, [5, 5, -5])
   })
 
   it('symmetric extrude handle grabs the half-distance face at half scale', () => {
-    const result = run(fullRectExtrudeSpec(10, 10, 8, 'symmetric'))
-    const h = handleOf(result, 'ex1')
-    expect(h.unit_scale).toBe(0.5)
-    expectVecClose(h.anchor, [5, 5, 4])
+    const result = h.run(fullRectExtrudeSpec(10, 10, 8, 'symmetric'))
+    const handle = handleOf(result, 'ex1')
+    expect(handle.unit_scale).toBe(0.5)
+    expectVecClose(handle.anchor, [5, 5, 4])
   })
 
   it('up_to extrude emits no distance handle', () => {
@@ -1150,15 +1084,15 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, termination: 'up_to', up_to: '@pl1', operation: 'new' },
       ],
     }
-    const result = run(spec)
-    expect(res(result, 'ex1').status).toBe('ok')
-    expect(res(result, 'ex1').handle).toBeUndefined()
+    const result = h.run(spec)
+    expect(h.res(result, 'ex1').status).toBe('ok')
+    expect(h.res(result, 'ex1').handle).toBeUndefined()
     // The datum plane is a real terminator: the prism stops at z=7, not at the
     // blind distance of 5. Before the resolver accepted the `plane` tag the
     // pick fell through to blind distance with a "did not resolve" warning, and
     // this test only checked the absent handle, so it passed on the bug.
-    expect(res(result, 'ex1').solver_warning).toBeUndefined()
-    const mesh = body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    expect(h.res(result, 'ex1').solver_warning).toBeUndefined()
+    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 10], [0, 7])
   })
@@ -1206,7 +1140,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
   }
 
   function sk1SurfaceQueries(): string[] {
-    const r = run({ features: [peanutWithHoleSketch] })
+    const r = h.run({ features: [peanutWithHoleSketch] })
     const state = r._build_state as unknown as { checkpoints: Record<string, { repo_snapshot: { elements: Record<string, unknown> } }> }
     const cp = Object.values(state.checkpoints)[0]
     const topo = cp?.repo_snapshot?.elements?.['_topo_sk1'] as { surfaces?: Array<{ query?: string }> } | undefined
@@ -1217,7 +1151,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     // Both `normal[2] > 0.9` AND `surface_type === 'flatface'` -- a fillet's
     // arc face can have a near-vertical normal at parts of its swept arc,
     // which would otherwise grab a fillet face instead of the flat cap.
-    const mesh = body(result, bodyId).mesh as { face_data?: Array<{ normal: number[]; surface_type?: string }>; face_queries?: string[] } | undefined
+    const mesh = h.body(result, bodyId).mesh as { face_data?: Array<{ normal: number[]; surface_type?: string }>; face_queries?: string[] } | undefined
     let q = ''
     mesh?.face_data?.forEach((fd, i) => { if (fd.normal[2] > 0.9 && fd.surface_type === 'flatface') q = mesh.face_queries?.[i] ?? '' })
     return q
@@ -1228,25 +1162,25 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     // Extrude only the four ring surfaces (0..3), excluding the hole disk (4,5),
     // so the resulting body keeps a hole through it.
     const profile = surfs.slice(0, 4)
-    const first = run({
+    const first = h.run({
       features: [
         peanutWithHoleSketch,
         { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
       ],
     })
-    expect(res(first, 'ex1').status).toBe('ok')
+    expect(h.res(first, 'ex1').status).toBe('ok')
     const topQuery = topFaceQuery(first, 'body_ex1')
     expect(topQuery).not.toBe('')
 
-    const result = run({
+    const result = h.run({
       features: [
         peanutWithHoleSketch,
         { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
         { id: 'ex2', kind: 'extrude', sketch: topQuery, distance: 10, direction: 'normal' },  // default add
       ],
     })
-    expect(res(result, 'ex2').status).toBe('ok')
-    const mesh = body(result, 'body_ex1').mesh as { vertices: number[][]; face_data?: unknown[] } | undefined
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][]; face_data?: unknown[] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       const zs = mesh.vertices.map((v) => v[2])
@@ -1267,26 +1201,26 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
      *  spanning z 0..20. */
     const surfs = sk1SurfaceQueries()
     const profile = surfs.slice(0, 4)
-    const first = run({
+    const first = h.run({
       features: [
         peanutWithHoleSketch,
         { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
       ],
     })
-    expect(res(first, 'ex1').status).toBe('ok')
+    expect(h.res(first, 'ex1').status).toBe('ok')
     const topQuery = topFaceQuery(first, 'body_ex1')
     expect(topQuery).not.toBe('')
 
-    const result = run({
+    const result = h.run({
       features: [
         peanutWithHoleSketch,
         { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
         { id: 'ex2', kind: 'extrude', sketch: topQuery, distance: 10, direction: 'normal' },
       ],
     })
-    expect(res(result, 'ex2').status).toBe('ok')
+    expect(h.res(result, 'ex2').status).toBe('ok')
 
-    const mesh = body(result, 'body_ex1').mesh as {
+    const mesh = h.body(result, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }>
     } | undefined
     const fd = mesh?.face_data ?? []
@@ -1327,15 +1261,15 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
     const profile = surfs.slice(0, 4)
     // First pass: build ex1 (no fillet yet); grab its two vertical
     // lobe-intersection edge queries so the fillet can target them.
-    const r1 = run({
+    const r1 = h.run({
       features: [
         peanutWithHoleSketch,
         { id: 'ex1', kind: 'extrude', sketch: profile, distance: 10, direction: 'normal' },
       ],
     })
-    expect(res(r1, 'ex1').status).toBe('ok')
-    const edgeQueries = (body(r1, 'body_ex1').edge_queries as string[]) ?? []
-    const edges = (body(r1, 'body_ex1').edges as Array<{ kind?: string; start?: number[]; end?: number[]; center?: number[]; radius?: number }>) ?? []
+    expect(h.res(r1, 'ex1').status).toBe('ok')
+    const edgeQueries = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
+    const edges = (h.body(r1, 'body_ex1').edges as Array<{ kind?: string; start?: number[]; end?: number[]; center?: number[]; radius?: number }>) ?? []
     // The two vertical edges at the intersections of cL and cR (the lobe seam).
     // Their endpoints sit on x=0 (the vertical line `ln`) and span z=0..10,
     // additionally distinguishing the two edges by their y-intersection-point
@@ -1384,9 +1318,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver)', 
         { id: 'ex2', kind: 'extrude', sketch: topQuery, distance: 10, direction: 'normal' },
       ],
     }
-    const result = run(spec2)
-    expect(res(result, 'ex2').status).toBe('ok')
-    const m2 = body(result, 'body_ex1').mesh as {
+    const result = h.run(spec2)
+    expect(h.res(result, 'ex2').status).toBe('ok')
+    const m2 = h.body(result, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }>
     } | undefined
     const fd = m2?.face_data ?? []
