@@ -85,6 +85,22 @@ fn damp_scale_at(damp_scale: &[f64], i: usize) -> f64 {
     damp_scale.get(i).copied().unwrap_or(1.0)
 }
 
+/// Seed-anchor (Tikhonov) pull toward the seed `x0`, the gauge control both LM
+/// drivers share. The objective gains `0.5 * Σ anchor_i (x_i - x0_i)²`, so the
+/// gradient gains `anchor_i (x_i - x0_i)` and the damped normal-equation
+/// diagonal gains `anchor_i`. `anchor` holds one absolute weight per param; a
+/// short slice leaves the missing params unanchored (mirrors `damp_scale_at`).
+/// The dense driver's inline `mu` anchor is this same term with
+/// `anchor_i = mu * damp_scale_i`.
+fn anchor_cost(anchor: &[f64], x0: &[f64], x: &[f64]) -> f64 {
+    (0..x.len())
+        .map(|i| {
+            let w = anchor.get(i).copied().unwrap_or(0.0);
+            0.5 * w * (x[i] - x0[i]).powi(2)
+        })
+        .sum()
+}
+
 /// Solve `min_x 0.5 * ||f(x)||²` from the seed `x0`. `jac(x)` returns the
 /// Jacobian of `f` at `x` (m rows x n cols); the caller supplies it analytically.
 pub fn solve_lm(
@@ -281,10 +297,43 @@ pub struct SpLmResult {
 /// On the N=100 benchmark this replaces the dominant O(n³) dense factorization
 /// with O(nnz) matvecs inside CG, dropping p95 drag latency from ~600 ms toward
 /// the 5 ms target.
+///
+/// Solves unanchored `0.5||r||²`. An under-constrained caller must anchor the
+/// null space itself; the drag path uses this unanchored form for its
+/// constraint-satisfiability status and `solve_lm_sparse_anchored` for the
+/// anchored geometry, instead of a caller-built augmented Jacobian.
 pub fn solve_lm_sparse(
     x0: &[f64],
     f: &impl Fn(&[f64]) -> Vec<f64>,
     jac_sparse: &impl Fn(&[f64]) -> Vec<SparseRow>,
+) -> SpLmResult {
+    solve_lm_sparse_anchored(x0, f, jac_sparse, &[])
+}
+
+/// As `solve_lm_sparse`, with a per-param seed anchor: the objective gains
+/// `0.5 * Σ anchor_i (x_i - x0_i)²`, the shared gauge-control mechanism the
+/// dense driver uses to bound an under-constrained null-space direction. The
+/// anchor is absolute (does not vanish as lambda shrinks), so it alone resolves
+/// a free DOF whose curvature is zero. `anchor[i]` is the weight on param `i`;
+/// a short or empty slice leaves those params unanchored.
+///
+/// This is an equivalent anchor formulation to adding
+/// `sqrt(anchor_i)*(x_i - x0_i)` residual rows, but not bit-identical to it:
+/// the driver anchor is an absolute diagonal term (the augmented form would
+/// also scale it by lambda), and the initial lambda comes from the unaugmented
+/// JᵀJ diagonal. Pass `w²` where a caller previously appended `w*(x-x0)` rows to
+/// reproduce the same pull.
+///
+/// Value contract: every entry must be finite and `>= 0`. A negative or NaN
+/// anchor destroys the positive-definiteness the damping and the anchor rely
+/// on, silently degrading the solve until the lambda ceiling bails; a zero
+/// entry removes that param's anchor. A short slice degrades to unanchored per
+/// missing entry instead of panicking mid-solve (mirrors `damp_scale_at`).
+pub fn solve_lm_sparse_anchored(
+    x0: &[f64],
+    f: &impl Fn(&[f64]) -> Vec<f64>,
+    jac_sparse: &impl Fn(&[f64]) -> Vec<SparseRow>,
+    anchor: &[f64],
 ) -> SpLmResult {
     let n = x0.len();
     let mut x = x0.to_vec();
@@ -310,7 +359,7 @@ pub fn solve_lm_sparse(
     }
 
     let mut jac = jac_sparse(&x);
-    let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>();
+    let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(anchor, x0, &x);
 
     // Initial damping from the scale of JᵀJ's diagonal.
     let mut lambda = 1e-3
@@ -320,11 +369,20 @@ pub fn solve_lm_sparse(
             .fold(0.0_f64, f64::max)
             .max(1e-12);
 
+    // Reused across retries: `g` is fixed for the whole retry loop, so the
+    // negated right-hand side is refilled in place instead of allocated per
+    // attempt (5.4).
+    let mut neg_g = vec![0.0; n];
     let mut iters = 0;
     while iters < MAX_ITERS {
         iters += 1;
 
-        let g = sparse::gradient(&jac, &r, n); // Jᵀr
+        // Jᵀr, plus the anchor gradient term matching the dense driver's
+        // `μ·scale·(x - x0)`.
+        let mut g = sparse::gradient(&jac, &r, n);
+        for (i, gi) in g.iter_mut().enumerate() {
+            *gi += anchor.get(i).copied().unwrap_or(0.0) * (x[i] - x0[i]);
+        }
         if g.iter().any(|&v| !v.is_finite()) {
             break;
         }
@@ -332,10 +390,13 @@ pub fn solve_lm_sparse(
             break;
         }
 
+        for (slot, gi) in neg_g.iter_mut().zip(&g) {
+            *slot = -gi;
+        }
+
         let mut accepted = false;
         for _ in 0..MAX_RETRIES {
-            let (delta, truncated) =
-                sparse::damped_solve(&jac, lambda, &g.iter().map(|&v| -v).collect::<Vec<_>>(), n);
+            let (delta, truncated) = sparse::damped_solve_anchored(&jac, lambda, &neg_g, anchor, n);
             if truncated {
                 // Same posture as the dense path's `LU.solve -> None`: CG met
                 // an indefinite direction, so this delta cannot be trusted.
@@ -347,7 +408,8 @@ pub fn solve_lm_sparse(
 
             let x_new: Vec<f64> = (0..n).map(|i| x[i] + delta[i]).collect();
             let r_new = f(&x_new);
-            let cost_new = 0.5 * r_new.iter().map(|&e| e * e).sum::<f64>();
+            let cost_new =
+                0.5 * r_new.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(anchor, x0, &x_new);
 
             if cost_new < cost {
                 let dx = norm2(&delta);
@@ -609,6 +671,32 @@ mod tests {
         let r = solve_lm_sparse(&[0.0, 5.0], &f, &jac);
         assert!((r.x[0] - 1.0).abs() < 1e-6, "x0={}", r.x[0]);
         assert!((r.x[1] - 5.0).abs() < 1e-6, "free x1 drifted: {}", r.x[1]);
+    }
+
+    // A coupled free DIRECTION, not just a zero Jacobian column: the residual
+    // reads x0 + x1, so the null vector (1, -1) is not orthogonal to the
+    // gradient and the unanchored solve drifts x1. The driver anchor must hold
+    // it at the seed while x0 takes up the residual. This is the mechanism the
+    // drag fast path relies on to stop a free DOF from wandering.
+    #[test]
+    fn solve_lm_sparse_anchor_holds_a_coupled_free_direction() {
+        let f = |x: &[f64]| vec![x[0] + x[1] - 1.0];
+        let jac = |_: &[f64]| vec![vec![(0, 1.0), (1, 1.0)]];
+
+        let plain = solve_lm_sparse(&[0.0, 5.0], &f, &jac);
+        assert!(
+            plain.x[1] < 4.5,
+            "unanchored x1 should drift off the seed: {}",
+            plain.x[1]
+        );
+
+        let anchored = solve_lm_sparse_anchored(&[0.0, 5.0], &f, &jac, &[0.0, 1e-3]);
+        assert!(
+            (anchored.x[1] - 5.0).abs() < 1e-3,
+            "anchored x1 drifted: {}",
+            anchored.x[1]
+        );
+        assert!((anchored.x[0] + anchored.x[1] - 1.0).abs() < 1e-6);
     }
 
     // Non-finite residuals short-circuit to the seed with a non-finite norm,

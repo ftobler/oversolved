@@ -5,8 +5,11 @@
 //! constraint touches at most 2 entities, each with 2-5 params, so row
 //! occupancy is a handful of entries regardless of the total param count.
 //!
-//! CG solves the LM normal equations (JᵀJ + λ·diag)·δ = -Jᵀr without ever
-//! forming the dense JᵀJ, using only sparse matvecs: J·v then Jᵀ·(J·v).
+//! CG solves the LM normal equations (JᵀJ + λ·diag + diag(anchor))·δ = -Jᵀr
+//! without ever forming the dense JᵀJ, using only sparse matvecs: J·v then
+//! Jᵀ·(J·v). The optional `diag(anchor)` term is the absolute, λ-independent
+//! seed anchor shared with the dense LM driver; passing no anchor reproduces the
+//! plain (JᵀJ + λ·diag) system.
 
 /// One Jacobian row: the `(column_index, value)` pairs of its nonzero entries.
 pub type SparseRow = Vec<(usize, f64)>;
@@ -60,26 +63,44 @@ fn jtj_matvec(jac: &[SparseRow], v: &[f64], n: usize) -> Vec<f64> {
     sparse_transpose_matvec(jac, &jv, n)
 }
 
-/// Apply the damped system matrix A = JᵀJ + λ·diag to vector v in-place.
-/// out = Jᵀ(J·v) + λ·diag ∘ v
-fn apply_damped(jac: &[SparseRow], lambda: f64, diag: &[f64], v: &[f64], out: &mut [f64]) {
+/// Per-param seed-anchor weight read. A short `anchor` is a caller bug, but the
+/// same defensive posture as the dense driver's `damp_scale_at` keeps a short
+/// slice from panicking mid-solve: missing entries contribute no anchor.
+fn anchor_at(anchor: &[f64], i: usize) -> f64 {
+    anchor.get(i).copied().unwrap_or(0.0)
+}
+
+/// Apply the damped system matrix A = JᵀJ + λ·diag + diag(anchor) to vector v
+/// in-place: out = Jᵀ(J·v) + (λ·diag + anchor) ∘ v. The anchor is the absolute
+/// Tikhonov floor shared with the dense LM driver; it does not scale with λ, so
+/// it keeps an otherwise-free direction finite as λ shrinks.
+fn apply_damped(
+    jac: &[SparseRow],
+    lambda: f64,
+    diag: &[f64],
+    anchor: &[f64],
+    v: &[f64],
+    out: &mut [f64],
+) {
     let jv = sparse_matvec(jac, v);
     let jtjv = sparse_transpose_matvec(jac, &jv, out.len());
     for i in 0..out.len() {
-        out[i] = jtjv[i] + lambda * diag[i] * v[i];
+        out[i] = jtjv[i] + (lambda * diag[i] + anchor_at(anchor, i)) * v[i];
     }
 }
 
-/// Conjugate-gradient solve for (JᵀJ + λ·diag)·δ = b.
+/// Conjugate-gradient solve for (JᵀJ + λ·diag + diag(anchor))·δ = b.
 /// Returns `(delta, truncated)`. Converges when `‖r‖ < tol` or `max_iters` is
 /// reached. `truncated` marks an indefinite system (`p'Ap <= 0` mid-run): CG's
 /// descent guarantee is void there, so the partial estimate may be meaningless
 /// and reporting it lets the caller decide -- the LM driver treats it like its
 /// dense-path LU failure and raises lambda for a retry.
+#[allow(clippy::too_many_arguments)]
 fn cg_solve(
     jac: &[SparseRow],
     lambda: f64,
     diag: &[f64],
+    anchor: &[f64],
     b: &[f64],
     n: usize,
     max_iters: usize,
@@ -99,7 +120,7 @@ fn cg_solve(
     let mut truncated = false;
 
     for _ in 0..max_iters {
-        apply_damped(jac, lambda, diag, &p, &mut ap);
+        apply_damped(jac, lambda, diag, anchor, &p, &mut ap);
 
         let p_ap = dot(&p, &ap);
         if p_ap <= 0.0 {
@@ -134,11 +155,24 @@ fn cg_solve(
 /// Precompute the damping diagonal and solve (JᵀJ + λ·diag)·δ = b via CG.
 /// Returns `(delta, truncated)`; see `cg_solve` for the truncation semantics.
 pub fn damped_solve(jac: &[SparseRow], lambda: f64, b: &[f64], n: usize) -> (Vec<f64>, bool) {
+    damped_solve_anchored(jac, lambda, b, &[], n)
+}
+
+/// As `damped_solve` but with a per-param seed anchor added to the diagonal
+/// (the same absolute Tikhonov term the dense driver applies). `anchor[i]` is
+/// the weight on param `i`; a short slice leaves the missing params unanchored.
+pub fn damped_solve_anchored(
+    jac: &[SparseRow],
+    lambda: f64,
+    b: &[f64],
+    anchor: &[f64],
+    n: usize,
+) -> (Vec<f64>, bool) {
     let diag = jtj_diag(jac, n);
     // For small systems, more CG iterations are affordable.
     let max_iters = n * 2;
     let tol = 1e-12;
-    cg_solve(jac, lambda, &diag, b, n, max_iters, tol)
+    cg_solve(jac, lambda, &diag, anchor, b, n, max_iters, tol)
 }
 
 /// Build the gradient Jᵀr given the sparse Jacobian and residual vector.
@@ -212,7 +246,7 @@ mod tests {
         // With λ=0: solve [[5,4],[4,5]] δ = [-3,-3] → δ = [-1/3, -1/3].
         let jac = vec![vec![(0, 2.0), (1, 1.0)], vec![(0, 1.0), (1, 2.0)]];
         let b = vec![-3.0, -3.0];
-        let (delta, truncated) = cg_solve(&jac, 0.0, &[5.0, 5.0], &b, 2, 20, 1e-14);
+        let (delta, truncated) = cg_solve(&jac, 0.0, &[5.0, 5.0], &[], &b, 2, 20, 1e-14);
         assert!(!truncated);
         assert!((delta[0] + 1.0 / 3.0).abs() < 1e-6, "δ₀={}", delta[0]);
         assert!((delta[1] + 1.0 / 3.0).abs() < 1e-6, "δ₁={}", delta[1]);
@@ -234,7 +268,7 @@ mod tests {
     fn cg_solve_zero_columns_returns_empty() {
         // n=0: no variables, returns empty delta, nothing to truncate.
         let jac: Vec<SparseRow> = vec![vec![]];
-        let (delta, truncated) = cg_solve(&jac, 0.1, &[], &[], 0, 10, 1e-12);
+        let (delta, truncated) = cg_solve(&jac, 0.1, &[], &[], &[], 0, 10, 1e-12);
         assert!(delta.is_empty());
         assert!(!truncated);
     }
@@ -248,9 +282,22 @@ mod tests {
         let jac = vec![vec![]];
         let b = vec![5.0, 5.0];
         let diag = vec![0.0, 0.0];
-        let (delta, truncated) = cg_solve(&jac, 0.0, &diag, &b, 2, 10, 1e-12);
+        let (delta, truncated) = cg_solve(&jac, 0.0, &diag, &[], &b, 2, 10, 1e-12);
         assert_eq!(delta, vec![0.0, 0.0], "singular system returns zeros");
         assert!(truncated, "singular system must be reported");
+    }
+
+    #[test]
+    fn damped_solve_anchored_adds_an_absolute_diagonal_floor() {
+        // Identity J, lambda = 0: the base system is I, so x0 solves to b0 and
+        // x1 solves to b1/(1 + anchor1). The anchor contributes a diagonal term
+        // that does not depend on lambda.
+        let jac = vec![vec![(0, 1.0)], vec![(1, 1.0)]];
+        let b = vec![1.0, 1.0];
+        let (delta, truncated) = damped_solve_anchored(&jac, 0.0, &b, &[0.0, 3.0], 2);
+        assert!(!truncated);
+        assert!((delta[0] - 1.0).abs() < 1e-12, "δ₀={}", delta[0]);
+        assert!((delta[1] - 0.25).abs() < 1e-12, "δ₁={}", delta[1]);
     }
 
     #[test]
