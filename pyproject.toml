@@ -16,13 +16,16 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
+# The gates are pinned with conservative upper bounds because a surprise major
+# bump in the checker itself changes what "green" means without any source
+# change; pycairo tracks the system cairo ABI and is bounded the same way.
 dev = [
-    "pytest",
-    "pytest-cov",
-    "mypy",
-    "flake8",
-    "ruff",
-    "pycairo>=1.25",
+    "pytest>=8,<10",
+    "pytest-cov<9",
+    "mypy>=1.10,<3",
+    "flake8<9",
+    "ruff>=0.6,<1",
+    "pycairo>=1.25,<2",
 ]
 
 [tool.pytest.ini_options]
