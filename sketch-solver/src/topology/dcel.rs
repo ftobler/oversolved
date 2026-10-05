@@ -60,8 +60,10 @@ const TANGENT_GAP_REL: f64 = 1e-5;
 // ─── Input geometry (the enriched richGeom dict, classified like classifyEntities) ───
 
 /// One sketch entity's solved+enriched geometry, mirroring the stringly-typed
-/// `richGeom` dict `enrichSketchEntity` produces. Optional fields match exactly
-/// which keys each kind carries, so `classify` reproduces `classifyEntities`.
+/// `richGeom` dict `enrichSketchEntity` produces. This is the DECODE ADAPTER:
+/// `codec` fills it straight from JSON and `detect_topology` still accepts it,
+/// but every record is converted to a `TopoEntity` before any geometry runs, so
+/// the optional fields never reach the topology passes.
 #[derive(Clone, Debug, Default)]
 pub struct InputEntity {
     pub kind: Option<String>,
@@ -77,6 +79,155 @@ pub struct InputEntity {
     pub theta: Option<f64>,
     pub c1: Option<Vec2>,
     pub c2: Option<Vec2>,
+}
+
+/// One classified, geometrically complete sketch entity. The variant is the
+/// kind and each variant carries exactly the fields that kind's geometry pass
+/// reads, so an entity cannot reach the builders truncated: the `Option` unwraps
+/// the passes used to need are gone because the type cannot express the missing
+/// state. `TryFrom<InputEntity>` is the only door in; it classifies by the same
+/// discriminating fields `classifyEntities` uses and drops a record missing a
+/// required field, so an incomplete entity contributes no edges rather than
+/// killing the solve.
+#[derive(Clone, Debug, PartialEq)]
+enum TopoEntity {
+    Line {
+        construction: bool,
+        start: Vec2,
+        end: Vec2,
+    },
+    Circle {
+        construction: bool,
+        center: Vec2,
+        radius: f64,
+    },
+    Arc {
+        construction: bool,
+        center: Vec2,
+        radius: f64,
+        angle_start: f64,
+        angle_end: f64,
+        start: Vec2,
+        end: Vec2,
+    },
+    Spline {
+        construction: bool,
+        start: Vec2,
+        c1: Vec2,
+        c2: Vec2,
+        end: Vec2,
+    },
+    Ellipse {
+        construction: bool,
+        center: Vec2,
+        a: f64,
+        b: f64,
+        // Genuinely optional: an unrotated ellipse omits it.
+        theta: Option<f64>,
+    },
+}
+
+impl TopoEntity {
+    fn construction(&self) -> bool {
+        match *self {
+            TopoEntity::Line { construction, .. }
+            | TopoEntity::Circle { construction, .. }
+            | TopoEntity::Arc { construction, .. }
+            | TopoEntity::Spline { construction, .. }
+            | TopoEntity::Ellipse { construction, .. } => construction,
+        }
+    }
+}
+
+/// Marker error: the decoded record was missing a field its kind requires.
+#[derive(Debug)]
+struct IncompleteEntity;
+
+impl TryFrom<InputEntity> for TopoEntity {
+    type Error = IncompleteEntity;
+
+    /// Classify by the same discriminating fields the old stringly-typed
+    /// `classifyEntities` path used (`kind == "spline"` first, then ellipse,
+    /// then arc by start+radius, then line by start, then circle by center),
+    /// then require the full field set for that kind. A record missing a
+    /// required field is dropped, never demoted to a neighbouring kind.
+    fn try_from(e: InputEntity) -> Result<Self, IncompleteEntity> {
+        let construction = e.construction;
+        if e.kind.as_deref() == Some("spline") {
+            let (Some(start), Some(c1), Some(c2), Some(end)) = (e.start, e.c1, e.c2, e.end) else {
+                return Err(IncompleteEntity);
+            };
+            return Ok(TopoEntity::Spline {
+                construction,
+                start,
+                c1,
+                c2,
+                end,
+            });
+        }
+        if e.kind.as_deref() == Some("ellipse") {
+            let (Some(center), Some(a), Some(b)) = (e.center, e.a, e.b) else {
+                return Err(IncompleteEntity);
+            };
+            return Ok(TopoEntity::Ellipse {
+                construction,
+                center,
+                a,
+                b,
+                theta: e.theta,
+            });
+        }
+        if e.start.is_some() && e.radius.is_some() {
+            let (
+                Some(center),
+                Some(radius),
+                Some(start),
+                Some(end),
+                Some(angle_start),
+                Some(angle_end),
+            ) = (
+                e.center,
+                e.radius,
+                e.start,
+                e.end,
+                e.angle_start,
+                e.angle_end,
+            )
+            else {
+                return Err(IncompleteEntity);
+            };
+            return Ok(TopoEntity::Arc {
+                construction,
+                center,
+                radius,
+                angle_start,
+                angle_end,
+                start,
+                end,
+            });
+        }
+        if e.start.is_some() {
+            let (Some(start), Some(end)) = (e.start, e.end) else {
+                return Err(IncompleteEntity);
+            };
+            return Ok(TopoEntity::Line {
+                construction,
+                start,
+                end,
+            });
+        }
+        if e.center.is_some() {
+            let (Some(center), Some(radius)) = (e.center, e.radius) else {
+                return Err(IncompleteEntity);
+            };
+            return Ok(TopoEntity::Circle {
+                construction,
+                center,
+                radius,
+            });
+        }
+        Err(IncompleteEntity)
+    }
 }
 
 // ─── Output (structural; no query strings) ───
@@ -424,10 +575,19 @@ fn cc(cx1: f64, cy1: f64, r1: f64, cx2: f64, cy2: f64, r2: f64) -> Vec<(f64, f64
         .collect()
 }
 
-fn collinear_overlap(ea: &InputEntity, eb: &InputEntity) -> Vec<(f64, f64, Vec2)> {
-    let (Some(p1), Some(p2), Some(q1), Some(q2)) = (ea.start, ea.end, eb.start, eb.end) else {
+fn collinear_overlap(ea: &TopoEntity, eb: &TopoEntity) -> Vec<(f64, f64, Vec2)> {
+    let (
+        TopoEntity::Line {
+            start: p1, end: p2, ..
+        },
+        TopoEntity::Line {
+            start: q1, end: q2, ..
+        },
+    ) = (ea, eb)
+    else {
         return vec![];
     };
+    let (p1, p2, q1, q2) = (*p1, *p2, *q1, *q2);
 
     let dx1 = p2[0] - p1[0];
     let dy1 = p2[1] - p1[1];
@@ -480,107 +640,162 @@ fn collinear_overlap(ea: &InputEntity, eb: &InputEntity) -> Vec<(f64, f64, Vec2)
 }
 
 /// Pairwise intersection dispatch (line/circle/arc only), mirroring `intersect`.
-fn intersect(
-    eid_a: &str,
-    ea: &InputEntity,
-    eid_b: &str,
-    eb: &InputEntity,
-    line_keys: &HashSet<String>,
-    circle_keys: &HashSet<String>,
-) -> Vec<(f64, f64, Vec2)> {
-    let class = |eid: &str| -> char {
-        if line_keys.contains(eid) {
-            'l'
-        } else if circle_keys.contains(eid) {
-            'c'
-        } else {
-            'a'
-        }
-    };
-    let ta = class(eid_a);
-    let tb = class(eid_b);
-    // Missing geometry yields no crossing rather than an abort: `classify` drops
-    // incomplete entities, so these are defence in depth against a stale record.
-    let line_ends = |e: &InputEntity| -> Option<(Vec2, Vec2)> { Some((e.start?, e.end?)) };
-    let circle_cr = |e: &InputEntity| -> Option<(Vec2, f64)> { Some((e.center?, e.radius?)) };
-    let ia = |e: &InputEntity, ang: f64| match (e.radius, e.angle_start, e.angle_end) {
-        (Some(r), Some(s), Some(en)) => angle_in_arc(ang, r, s, en),
-        _ => false,
-    };
-
-    match (ta, tb) {
-        ('l', 'l') => match (line_ends(ea), line_ends(eb)) {
-            (Some((p1, p2)), Some((q1, q2))) => ll(p1, p2, q1, q2).into_iter().collect(),
-            _ => vec![],
-        },
-        ('l', 'c') => match (line_ends(ea), circle_cr(eb)) {
-            (Some((p1, p2)), Some((c, r))) => lc(p1, p2, c[0], c[1], r),
-            _ => vec![],
-        },
-        ('c', 'l') => match (line_ends(eb), circle_cr(ea)) {
-            (Some((p1, p2)), Some((c, r))) => lc(p1, p2, c[0], c[1], r)
-                .into_iter()
-                .map(|(t, ang, pt)| (ang, t, pt))
-                .collect(),
-            _ => vec![],
-        },
-        ('l', 'a') => match (line_ends(ea), circle_cr(eb)) {
-            (Some((p1, p2)), Some((c, r))) => lc(p1, p2, c[0], c[1], r)
-                .into_iter()
-                .filter(|(_, ang, _)| ia(eb, *ang))
-                .collect(),
-            _ => vec![],
-        },
-        ('a', 'l') => match (line_ends(eb), circle_cr(ea)) {
-            (Some((p1, p2)), Some((c, r))) => lc(p1, p2, c[0], c[1], r)
-                .into_iter()
-                .filter(|(_, ang, _)| ia(ea, *ang))
-                .map(|(t, ang, pt)| (ang, t, pt))
-                .collect(),
-            _ => vec![],
-        },
-        ('c', 'c') => cc_of(ea, eb),
-        ('c', 'a') => cc_of(ea, eb)
+/// The kind is the variant, so an entity that reaches here is complete and the
+/// old "missing geometry yields no crossing" guards are gone with the `Option`s
+/// they protected.
+fn intersect(ea: &TopoEntity, eb: &TopoEntity) -> Vec<(f64, f64, Vec2)> {
+    match (ea, eb) {
+        (
+            TopoEntity::Line {
+                start: ap0,
+                end: ap1,
+                ..
+            },
+            TopoEntity::Line {
+                start: bp0,
+                end: bp1,
+                ..
+            },
+        ) => ll(*ap0, *ap1, *bp0, *bp1).into_iter().collect(),
+        (
+            TopoEntity::Line {
+                start: p0, end: p1, ..
+            },
+            TopoEntity::Circle {
+                center: c,
+                radius: r,
+                ..
+            },
+        ) => lc(*p0, *p1, c[0], c[1], *r),
+        (
+            TopoEntity::Circle {
+                center: c,
+                radius: r,
+                ..
+            },
+            TopoEntity::Line {
+                start: p0, end: p1, ..
+            },
+        ) => lc(*p0, *p1, c[0], c[1], *r)
             .into_iter()
-            .filter(|(_, a2, _)| ia(eb, *a2))
+            .map(|(t, ang, pt)| (ang, t, pt))
             .collect(),
-        ('a', 'c') => cc_of(ea, eb)
+        (
+            TopoEntity::Line {
+                start: p0, end: p1, ..
+            },
+            TopoEntity::Arc {
+                center: c,
+                radius: r,
+                angle_start,
+                angle_end,
+                ..
+            },
+        ) => lc(*p0, *p1, c[0], c[1], *r)
             .into_iter()
-            .filter(|(a1, _, _)| ia(ea, *a1))
+            .filter(|(_, ang, _)| angle_in_arc(*ang, *r, *angle_start, *angle_end))
             .collect(),
-        ('a', 'a') => cc_of(ea, eb)
+        (
+            TopoEntity::Arc {
+                center: c,
+                radius: r,
+                angle_start,
+                angle_end,
+                ..
+            },
+            TopoEntity::Line {
+                start: p0, end: p1, ..
+            },
+        ) => lc(*p0, *p1, c[0], c[1], *r)
             .into_iter()
-            .filter(|(a1, a2, _)| ia(ea, *a1) && ia(eb, *a2))
+            .filter(|(_, ang, _)| angle_in_arc(*ang, *r, *angle_start, *angle_end))
+            .map(|(t, ang, pt)| (ang, t, pt))
+            .collect(),
+        (
+            TopoEntity::Circle {
+                center: ac,
+                radius: ar,
+                ..
+            },
+            TopoEntity::Circle {
+                center: bc,
+                radius: br,
+                ..
+            },
+        ) => cc(ac[0], ac[1], *ar, bc[0], bc[1], *br),
+        (
+            TopoEntity::Circle {
+                center: ac,
+                radius: ar,
+                ..
+            },
+            TopoEntity::Arc {
+                center: bc,
+                radius: br,
+                angle_start,
+                angle_end,
+                ..
+            },
+        ) => cc(ac[0], ac[1], *ar, bc[0], bc[1], *br)
+            .into_iter()
+            .filter(|(_, a2, _)| angle_in_arc(*a2, *br, *angle_start, *angle_end))
+            .collect(),
+        (
+            TopoEntity::Arc {
+                center: ac,
+                radius: ar,
+                angle_start,
+                angle_end,
+                ..
+            },
+            TopoEntity::Circle {
+                center: bc,
+                radius: br,
+                ..
+            },
+        ) => cc(ac[0], ac[1], *ar, bc[0], bc[1], *br)
+            .into_iter()
+            .filter(|(a1, _, _)| angle_in_arc(*a1, *ar, *angle_start, *angle_end))
+            .collect(),
+        (
+            TopoEntity::Arc {
+                center: ac,
+                radius: ar,
+                angle_start: aas,
+                angle_end: aae,
+                ..
+            },
+            TopoEntity::Arc {
+                center: bc,
+                radius: br,
+                angle_start: bas,
+                angle_end: bae,
+                ..
+            },
+        ) => cc(ac[0], ac[1], *ar, bc[0], bc[1], *br)
+            .into_iter()
+            .filter(|(a1, a2, _)| {
+                angle_in_arc(*a1, *ar, *aas, *aae) && angle_in_arc(*a2, *br, *bas, *bae)
+            })
             .collect(),
         _ => vec![],
     }
 }
 
-fn cc_of(ea: &InputEntity, eb: &InputEntity) -> Vec<(f64, f64, Vec2)> {
-    let (Some(ce), Some(re), Some(cb), Some(rb)) = (ea.center, ea.radius, eb.center, eb.radius)
-    else {
-        return vec![];
-    };
-    cc(ce[0], ce[1], re, cb[0], cb[1], rb)
-}
-
 // ─── Half-edge geometry constructors ───
 
-fn line_eg(e: &InputEntity, t0: f64, t1: f64) -> Option<EdgeGeom> {
-    let (Some(p1), Some(p2)) = (e.start, e.end) else {
-        return None;
-    };
-    Some(EdgeGeom::Line {
+/// These take the concrete geometry rather than the entity: callers destructure
+/// the `TopoEntity` first, so the field presence is checked once at the call and
+/// the constructors cannot receive a half-built curve.
+fn line_eg(p1: Vec2, p2: Vec2, t0: f64, t1: f64) -> EdgeGeom {
+    EdgeGeom::Line {
         start: [p1[0] + t0 * (p2[0] - p1[0]), p1[1] + t0 * (p2[1] - p1[1])],
         end: [p1[0] + t1 * (p2[0] - p1[0]), p1[1] + t1 * (p2[1] - p1[1])],
-    })
+    }
 }
 
-fn arc_eg(e: &InputEntity, a0: f64, a1: f64, ccw: bool) -> Option<EdgeGeom> {
-    let (Some(c), Some(r)) = (e.center, e.radius) else {
-        return None;
-    };
-    Some(EdgeGeom::Arc {
+fn arc_eg(c: Vec2, r: f64, a0: f64, a1: f64, ccw: bool) -> EdgeGeom {
+    EdgeGeom::Arc {
         center: [c[0], c[1]],
         radius: r,
         angle_start_deg: degrees(a0),
@@ -588,14 +803,11 @@ fn arc_eg(e: &InputEntity, a0: f64, a1: f64, ccw: bool) -> Option<EdgeGeom> {
         ccw,
         start: [c[0] + r * a0.cos(), c[1] + r * a0.sin()],
         end: [c[0] + r * a1.cos(), c[1] + r * a1.sin()],
-    })
+    }
 }
 
-fn spline_eg(e: &InputEntity) -> Option<EdgeGeom> {
-    let (Some(start), Some(end), Some(c1), Some(c2)) = (e.start, e.end, e.c1, e.c2) else {
-        return None;
-    };
-    Some(EdgeGeom::Spline { start, end, c1, c2 })
+fn spline_eg(start: Vec2, c1: Vec2, c2: Vec2, end: Vec2) -> EdgeGeom {
+    EdgeGeom::Spline { start, c1, c2, end }
 }
 
 fn sub_spline_eg(ctrl: &BezierCtrl) -> EdgeGeom {
@@ -607,14 +819,18 @@ fn sub_spline_eg(ctrl: &BezierCtrl) -> EdgeGeom {
     }
 }
 
-fn ellipse_arc_eg(e: &InputEntity, phi0: f64, phi1: f64, ccw: bool) -> Option<EdgeGeom> {
-    let (Some(c), Some(a), Some(b)) = (e.center, e.a, e.b) else {
-        return None;
-    };
-    let theta = e.theta.unwrap_or(0.0);
+fn ellipse_arc_eg(
+    c: Vec2,
+    a: f64,
+    b: f64,
+    theta: f64,
+    phi0: f64,
+    phi1: f64,
+    ccw: bool,
+) -> EdgeGeom {
     let cr = (theta * std::f64::consts::PI / 180.0).cos();
     let sr = (theta * std::f64::consts::PI / 180.0).sin();
-    Some(EdgeGeom::EllipseArc {
+    EdgeGeom::EllipseArc {
         center: [c[0], c[1]],
         a,
         b,
@@ -624,7 +840,7 @@ fn ellipse_arc_eg(e: &InputEntity, phi0: f64, phi1: f64, ccw: bool) -> Option<Ed
         ccw,
         start: ellipse_point_at([c[0], c[1]], a, b, cr, sr, phi0),
         end: ellipse_point_at([c[0], c[1]], a, b, cr, sr, phi1),
-    })
+    }
 }
 
 fn rev(eg: &EdgeGeom) -> EdgeGeom {
@@ -850,11 +1066,11 @@ fn face_area(cycle: &[usize], hes: &[HalfEdge], verts: &Verts) -> f64 {
 
 #[derive(Default)]
 struct Classified {
-    lines: Vec<(String, InputEntity)>,
-    circles: Vec<(String, InputEntity)>,
-    arcs: Vec<(String, InputEntity)>,
-    splines: Vec<(String, InputEntity)>,
-    ellipses: Vec<(String, InputEntity)>,
+    lines: Vec<(String, TopoEntity)>,
+    circles: Vec<(String, TopoEntity)>,
+    arcs: Vec<(String, TopoEntity)>,
+    splines: Vec<(String, TopoEntity)>,
+    ellipses: Vec<(String, TopoEntity)>,
 }
 
 impl Classified {
@@ -864,10 +1080,10 @@ impl Classified {
     /// `partition` keeps input order within each half, so the real half is
     /// byte-for-byte the list `classify` used to return.
     fn split_construction(self) -> (Classified, Classified) {
-        let part = |bucket: Vec<(String, InputEntity)>| {
+        let part = |bucket: Vec<(String, TopoEntity)>| {
             bucket
                 .into_iter()
-                .partition::<Vec<_>, _>(|(_, e)| !e.construction)
+                .partition::<Vec<_>, _>(|(_, e)| !e.construction())
         };
         let (r_lines, c_lines) = part(self.lines);
         let (r_circles, c_circles) = part(self.circles);
@@ -901,55 +1117,23 @@ impl Classified {
     }
 }
 
-/// The fields the geometry pass unwraps for each kind. Everything downstream of
-/// `classify` (split seeding, the half-edge builders, the standalone-face
-/// builders) dereferences these without asking, so an entity that arrives
-/// truncated or stale would panic the Worker mid-pass. Requiring the full set
-/// here drops the bad record instead: a partial entity contributes no edges
-/// rather than killing the solve.
-fn has_required_fields(kind: &str, e: &InputEntity) -> bool {
-    match kind {
-        "spline" => e.start.is_some() && e.end.is_some() && e.c1.is_some() && e.c2.is_some(),
-        // `theta` is genuinely optional (unrotated ellipses omit it).
-        "ellipse" => e.center.is_some() && e.a.is_some() && e.b.is_some(),
-        "arc" => {
-            e.center.is_some()
-                && e.radius.is_some()
-                && e.start.is_some()
-                && e.end.is_some()
-                && e.angle_start.is_some()
-                && e.angle_end.is_some()
-        }
-        "line" => e.start.is_some() && e.end.is_some(),
-        _ => e.center.is_some() && e.radius.is_some(), // circle
-    }
-}
-
+/// Complete the raw records and sort them into the buckets the passes consume.
+/// Classification and the completeness gate now live in `TryFrom<InputEntity>`,
+/// so this only routes each complete entity to its bucket by variant. A partial
+/// record is dropped at the boundary, never demoted to a neighbouring kind.
 fn classify(geometry: &[(String, InputEntity)]) -> Classified {
     let mut c = Classified::default();
     for (eid, ent) in geometry {
-        let kind = ent.kind.as_deref();
-        // Which bucket an entity belongs to is decided by the same discriminating
-        // fields `classifyEntities` uses; completeness is a separate question, so
-        // an incomplete arc is a dropped arc, never demoted to a line.
-        let (bucket, kind_name): (&mut Vec<(String, InputEntity)>, &str) = if kind == Some("spline")
-        {
-            (&mut c.splines, "spline")
-        } else if kind == Some("ellipse") {
-            (&mut c.ellipses, "ellipse")
-        } else if ent.start.is_some() && ent.radius.is_some() {
-            (&mut c.arcs, "arc")
-        } else if ent.start.is_some() {
-            (&mut c.lines, "line")
-        } else if ent.center.is_some() {
-            (&mut c.circles, "circle")
-        } else {
+        let Ok(entity) = TopoEntity::try_from(ent.clone()) else {
             continue;
         };
-        if !has_required_fields(kind_name, ent) {
-            continue;
+        match &entity {
+            TopoEntity::Spline { .. } => c.splines.push((eid.clone(), entity)),
+            TopoEntity::Ellipse { .. } => c.ellipses.push((eid.clone(), entity)),
+            TopoEntity::Arc { .. } => c.arcs.push((eid.clone(), entity)),
+            TopoEntity::Line { .. } => c.lines.push((eid.clone(), entity)),
+            TopoEntity::Circle { .. } => c.circles.push((eid.clone(), entity)),
         }
-        bucket.push((eid.clone(), ent.clone()));
     }
     c
 }
@@ -958,21 +1142,24 @@ fn classify(geometry: &[(String, InputEntity)]) -> Classified {
 /// `angle_start`/`angle_end` (the split params, `angle_in_arc`) reads the
 /// normalized form, so construction arcs run through this too before their
 /// crossings are tested.
-fn normalize_arc_spans(arcs: &mut [(String, InputEntity)]) {
+fn normalize_arc_spans(arcs: &mut [(String, TopoEntity)]) {
     for (_eid, e) in arcs.iter_mut() {
-        let (Some(start), Some(end)) = (e.angle_start, e.angle_end) else {
-            continue; // incomplete arc: nothing to normalize
+        let TopoEntity::Arc {
+            angle_start,
+            angle_end,
+            start,
+            end,
+            ..
+        } = e
+        else {
+            continue;
         };
-        let a0_rad = radians(start);
-        let a1_rad = radians(end);
+        let a0_rad = radians(*angle_start);
+        let a1_rad = radians(*angle_end);
         let ccw_span = pymod(a1_rad - a0_rad, TWO_PI);
         if ccw_span > std::f64::consts::PI + EPS {
-            let (as_, ae_) = (e.angle_end, e.angle_start);
-            let (s_, en_) = (e.end, e.start);
-            e.angle_start = as_;
-            e.angle_end = ae_;
-            e.start = s_;
-            e.end = en_;
+            std::mem::swap(angle_start, angle_end);
+            std::mem::swap(start, end);
         }
     }
 }
@@ -980,42 +1167,44 @@ fn normalize_arc_spans(arcs: &mut [(String, InputEntity)]) {
 /// Normalize arcs (force CCW span <= pi by swapping endpoints) and seed splits.
 #[allow(clippy::type_complexity)]
 fn normalize_arcs_and_init_splits(
-    arcs_in: &[(String, InputEntity)],
+    arcs_in: &[(String, TopoEntity)],
     arc_verts: &mut Verts,
 ) -> (
     HashMap<String, f64>,
     HashMap<String, Vec<Split>>,
-    Vec<(String, InputEntity)>,
+    Vec<(String, TopoEntity)>,
 ) {
-    let mut arcs: Vec<(String, InputEntity)> = arcs_in.to_vec();
+    let mut arcs: Vec<(String, TopoEntity)> = arcs_in.to_vec();
     let mut arc_a0: HashMap<String, f64> = HashMap::new();
     let mut splits: HashMap<String, Vec<Split>> = HashMap::new();
 
     normalize_arc_spans(&mut arcs);
 
     for (eid, e) in &arcs {
-        let (Some(as_), Some(ae), Some(start), Some(end)) =
-            (e.angle_start, e.angle_end, e.start, e.end)
+        let TopoEntity::Arc {
+            angle_start,
+            angle_end,
+            start,
+            end,
+            ..
+        } = e
         else {
-            continue; // incomplete arc: no split seed, no vertex
+            continue;
         };
-        let a0 = radians(as_);
-        let a1 = norm_arc_param(radians(ae), a0);
+        let a0 = radians(*angle_start);
+        let a1 = norm_arc_param(radians(*angle_end), a0);
         arc_a0.insert(eid.clone(), a0);
         splits.insert(
             eid.clone(),
-            vec![(a0, arc_verts.vid(start)), (a1, arc_verts.vid(end))],
+            vec![(a0, arc_verts.vid(*start)), (a1, arc_verts.vid(*end))],
         );
     }
 
     (arc_a0, splits, arcs)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn find_all_intersections(
-    elist: &[(String, InputEntity)],
-    line_keys: &HashSet<String>,
-    circle_keys: &HashSet<String>,
+    elist: &[(String, TopoEntity)],
     splits: &mut HashMap<String, Vec<Split>>,
     verts: &mut Verts,
     arc_a0: &HashMap<String, f64>,
@@ -1023,8 +1212,11 @@ fn find_all_intersections(
     for i in 0..elist.len() {
         let (eid_a, ea) = &elist[i];
         for (eid_b, eb) in elist.iter().skip(i + 1) {
-            let mut results = intersect(eid_a, ea, eid_b, eb, line_keys, circle_keys);
-            if results.is_empty() && line_keys.contains(eid_a) && line_keys.contains(eid_b) {
+            let mut results = intersect(ea, eb);
+            if results.is_empty()
+                && matches!(ea, TopoEntity::Line { .. })
+                && matches!(eb, TopoEntity::Line { .. })
+            {
                 results = collinear_overlap(ea, eb);
             }
             for (mut pa, mut pb, pt) in results {
@@ -1059,41 +1251,41 @@ fn find_all_intersections(
 #[derive(Clone)]
 struct Tagged {
     eid: String,
-    e: InputEntity,
-    kind: &'static str,
+    e: TopoEntity,
 }
 
-fn to_curve(kind: &str, e: &InputEntity) -> Option<Curve> {
-    match kind {
-        "line" => {
-            let (Some(p0), Some(p1)) = (e.start, e.end) else {
-                return None;
-            };
-            Some(Curve::Line { p0, p1 })
+/// Lift a complete entity to the carrier curve the numeric intersector scans.
+/// The variant is the kind, so the old kind-string dispatch and its `Option`
+/// result are both gone.
+fn to_curve(e: &TopoEntity) -> Curve {
+    match *e {
+        TopoEntity::Line { start, end, .. } => Curve::Line { p0: start, p1: end },
+        TopoEntity::Circle { center, radius, .. } | TopoEntity::Arc { center, radius, .. } => {
+            Curve::Circle {
+                c: center,
+                r: radius,
+            }
         }
-        "circle" | "arc" => {
-            let (Some(c), Some(r)) = (e.center, e.radius) else {
-                return None;
-            };
-            Some(Curve::Circle { c, r })
-        }
-        "ellipse" => {
-            let (Some(c), Some(a), Some(b)) = (e.center, e.a, e.b) else {
-                return None;
-            };
-            Some(Curve::Ellipse {
-                c,
-                a,
-                b,
-                theta: e.theta.unwrap_or(0.0),
-            })
-        }
-        _ => {
-            let (Some(p0), Some(c1), Some(c2), Some(p3)) = (e.start, e.c1, e.c2, e.end) else {
-                return None;
-            };
-            Some(Curve::Bezier { p0, c1, c2, p3 })
-        }
+        TopoEntity::Ellipse {
+            center,
+            a,
+            b,
+            theta,
+            ..
+        } => Curve::Ellipse {
+            c: center,
+            a,
+            b,
+            theta: theta.unwrap_or(0.0),
+        },
+        TopoEntity::Spline {
+            start, c1, c2, end, ..
+        } => Curve::Bezier {
+            p0: start,
+            c1,
+            c2,
+            p3: end,
+        },
     }
 }
 
@@ -1109,8 +1301,8 @@ fn register_hit(
         Some(s) => s,
         None => return,
     };
-    match entry.kind {
-        "line" => {
+    match entry.e {
+        TopoEntity::Line { .. } => {
             if !(-EPS..=1.0 + EPS).contains(&t) {
                 return;
             }
@@ -1119,7 +1311,7 @@ fn register_hit(
                 spl.push((tc, v.to_string()));
             }
         }
-        "spline" => {
+        TopoEntity::Spline { .. } => {
             if t <= SPLIT_EPS || t >= 1.0 - SPLIT_EPS {
                 return; // endpoints already seeded
             }
@@ -1127,7 +1319,7 @@ fn register_hit(
                 spl.push((t, v.to_string()));
             }
         }
-        "circle" => {
+        TopoEntity::Circle { .. } => {
             let a = if t > std::f64::consts::PI {
                 t - TWO_PI
             } else {
@@ -1137,19 +1329,19 @@ fn register_hit(
                 spl.push((a, v.to_string()));
             }
         }
-        "ellipse" => {
+        TopoEntity::Ellipse { .. } => {
             if !has_param(spl, t) {
                 spl.push((t, v.to_string()));
             }
         }
-        _ => {
+        TopoEntity::Arc {
+            radius,
+            angle_start,
+            angle_end,
+            ..
+        } => {
             // arc: keep only hits within the arc span, normalized like the legacy pass.
-            let (Some(r), Some(s), Some(en)) =
-                (entry.e.radius, entry.e.angle_start, entry.e.angle_end)
-            else {
-                return;
-            };
-            if !angle_in_arc(t, r, s, en) {
+            if !angle_in_arc(t, radius, angle_start, angle_end) {
                 return;
             }
             let p = norm_arc_param(t, *arc_a0.get(&entry.eid).unwrap_or(&0.0));
@@ -1170,17 +1362,13 @@ fn add_curve_intersections(
         for j in (i + 1)..tagged.len() {
             let a = &tagged[i];
             let b = &tagged[j];
-            let involves_curve = a.kind == "ellipse"
-                || a.kind == "spline"
-                || b.kind == "ellipse"
-                || b.kind == "spline";
+            let involves_curve =
+                matches!(a.e, TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. })
+                    || matches!(b.e, TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. });
             if !involves_curve {
                 continue;
             }
-            let (Some(ca), Some(cb)) = (to_curve(a.kind, &a.e), to_curve(b.kind, &b.e)) else {
-                continue;
-            };
-            let hits = intersect_curves(&ca, &cb);
+            let hits = intersect_curves(&to_curve(&a.e), &to_curve(&b.e));
             for h in hits {
                 let v = verts.vid(h.point);
                 register_hit(a, h.t_a, &v, splits, arc_a0);
@@ -1190,25 +1378,24 @@ fn add_curve_intersections(
     }
 }
 
-/// Tag a bucket set with the kind names the intersection passes dispatch on.
+/// Tag the buckets with their `TopoEntity`, which already carries the kind.
 /// `arcs` comes in separately because the caller tags the span-normalized arc
 /// copies, not the raw `cls.arcs`.
-fn tag_entities(cls: &Classified, arcs: &[(String, InputEntity)]) -> Vec<Tagged> {
+fn tag_entities(cls: &Classified, arcs: &[(String, TopoEntity)]) -> Vec<Tagged> {
     let mut tagged: Vec<Tagged> = Vec::new();
-    let mut push = |src: &[(String, InputEntity)], kind: &'static str| {
+    let mut push = |src: &[(String, TopoEntity)]| {
         for (eid, e) in src {
             tagged.push(Tagged {
                 eid: eid.clone(),
                 e: e.clone(),
-                kind,
             });
         }
     };
-    push(&cls.lines, "line");
-    push(&cls.circles, "circle");
-    push(arcs, "arc");
-    push(&cls.ellipses, "ellipse");
-    push(&cls.splines, "spline");
+    push(&cls.lines);
+    push(&cls.circles);
+    push(arcs);
+    push(&cls.ellipses);
+    push(&cls.splines);
     tagged
 }
 
@@ -1225,36 +1412,32 @@ fn tag_entities(cls: &Classified, arcs: &[(String, InputEntity)]) -> Vec<Tagged>
 /// line and bezier paths already clamp to the finite segment, so those arms are
 /// defence in depth against a future closed-form path that does not.
 fn hit_on_entity(entry: &Tagged, t: f64) -> bool {
-    match entry.kind {
-        "line" | "spline" => (-EPS..=1.0 + EPS).contains(&t),
-        "arc" => match (entry.e.radius, entry.e.angle_start, entry.e.angle_end) {
-            (Some(r), Some(s), Some(en)) => angle_in_arc(t, r, s, en),
-            _ => false,
-        },
-        _ => true, // a circle or an ellipse is closed: every parameter is on it
+    match entry.e {
+        TopoEntity::Line { .. } | TopoEntity::Spline { .. } => (-EPS..=1.0 + EPS).contains(&t),
+        TopoEntity::Arc {
+            radius,
+            angle_start,
+            angle_end,
+            ..
+        } => angle_in_arc(t, radius, angle_start, angle_end),
+        TopoEntity::Circle { .. } | TopoEntity::Ellipse { .. } => true, // closed: every parameter is on it
     }
 }
 
 /// Every point where `a` and `b` cross, taking the same two dispatch paths the
 /// real passes take (`intersect` for line/circle/arc, `intersect_curves` once an
 /// ellipse or a spline is involved) but yielding only world points.
-fn crossing_points(
-    a: &Tagged,
-    b: &Tagged,
-    line_keys: &HashSet<String>,
-    circle_keys: &HashSet<String>,
-) -> Vec<Vec2> {
-    if matches!(a.kind, "ellipse" | "spline") || matches!(b.kind, "ellipse" | "spline") {
-        let (Some(ca), Some(cb)) = (to_curve(a.kind, &a.e), to_curve(b.kind, &b.e)) else {
-            return vec![];
-        };
-        return intersect_curves(&ca, &cb)
+fn crossing_points(a: &Tagged, b: &Tagged) -> Vec<Vec2> {
+    if matches!(a.e, TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. })
+        || matches!(b.e, TopoEntity::Ellipse { .. } | TopoEntity::Spline { .. })
+    {
+        return intersect_curves(&to_curve(&a.e), &to_curve(&b.e))
             .into_iter()
             .filter(|h| hit_on_entity(a, h.t_a) && hit_on_entity(b, h.t_b))
             .map(|h| h.point)
             .collect();
     }
-    intersect(&a.eid, &a.e, &b.eid, &b.e, line_keys, circle_keys)
+    intersect(&a.e, &b.e)
         .into_iter()
         .map(|(_, _, pt)| pt)
         .collect()
@@ -1277,16 +1460,10 @@ fn crossing_points(
 /// been seeded first and merged into an existing endpoint vertex. Harmless
 /// downstream (`inferredContactCandidates` drops an intersection coinciding
 /// with a sketch vertex), but it is why the counts differ from the real case.
-fn seed_construction_crossings(
-    real: &[Tagged],
-    con: &[Tagged],
-    line_keys: &HashSet<String>,
-    circle_keys: &HashSet<String>,
-    verts: &mut Verts,
-) {
+fn seed_construction_crossings(real: &[Tagged], con: &[Tagged], verts: &mut Verts) {
     for (i, c) in con.iter().enumerate() {
         for other in real.iter().chain(con[i + 1..].iter()) {
-            for pt in crossing_points(c, other, line_keys, circle_keys) {
+            for pt in crossing_points(c, other) {
                 verts.vid(pt);
             }
         }
@@ -1313,12 +1490,12 @@ fn push_half_edge_pair(
 
 #[allow(clippy::too_many_arguments)]
 fn build_half_edge_graph(
-    lines: &[(String, InputEntity)],
-    circles: &[(String, InputEntity)],
-    arcs: &[(String, InputEntity)],
+    lines: &[(String, TopoEntity)],
+    circles: &[(String, TopoEntity)],
+    arcs: &[(String, TopoEntity)],
     splits: &HashMap<String, Vec<Split>>,
-    splines: &[(String, InputEntity)],
-    ellipses: &[(String, InputEntity)],
+    splines: &[(String, TopoEntity)],
+    ellipses: &[(String, TopoEntity)],
 ) -> (Vec<HalfEdge>, Vec<String>) {
     let mut hes: Vec<HalfEdge> = Vec::new();
     let mut he_eid: Vec<String> = Vec::new();
@@ -1326,6 +1503,9 @@ fn build_half_edge_graph(
     let empty: Vec<Split> = Vec::new();
 
     for (eid, e) in lines {
+        let TopoEntity::Line { start, end, .. } = *e else {
+            continue;
+        };
         let spl = dedup(splits.get(eid).unwrap_or(&empty));
         for k in 0..spl.len().saturating_sub(1) {
             let (t0, v0) = &spl[k];
@@ -1340,14 +1520,15 @@ fn build_half_edge_graph(
             }
             seen_lines.insert(key);
             seen_lines.insert(rkey);
-            let Some(eg) = line_eg(e, *t0, *t1) else {
-                continue; // incomplete line: no edge to emit
-            };
+            let eg = line_eg(start, end, *t0, *t1);
             push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
     }
 
     for (eid, e) in arcs {
+        let TopoEntity::Arc { center, radius, .. } = *e else {
+            continue;
+        };
         let spl = dedup(splits.get(eid).unwrap_or(&empty));
         for k in 0..spl.len().saturating_sub(1) {
             let (a0, v0) = &spl[k];
@@ -1355,54 +1536,81 @@ fn build_half_edge_graph(
             if v0 == v1 {
                 continue;
             }
-            let Some(eg) = arc_eg(e, *a0, *a1, true) else {
-                continue; // incomplete arc: no edge to emit
-            };
+            let eg = arc_eg(center, radius, *a0, *a1, true);
             push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
     }
 
     // Circles and ellipses split the same way around a closed loop; only the
     // per-segment geometry constructor differs.
-    let closed_arc_pass = |entities: &[(String, InputEntity)],
-                           eg_fn: fn(&InputEntity, f64, f64, bool) -> Option<EdgeGeom>,
-                           hes: &mut Vec<HalfEdge>,
-                           he_eid: &mut Vec<String>| {
-        for (eid, e) in entities {
-            let spl = dedup(splits.get(eid).unwrap_or(&empty));
-            if spl.len() < 2 {
-                continue;
-            }
-            for k in 0..spl.len() {
-                let (a0, v0) = &spl[k];
-                let nxt = &spl[(k + 1) % spl.len()];
-                let mut a1 = nxt.0;
-                let v1 = &nxt.1;
-                if v0 == v1 {
-                    continue;
-                }
-                if a1 <= *a0 {
-                    a1 += TWO_PI;
-                }
-                let Some(eg) = eg_fn(e, *a0, a1, true) else {
-                    continue; // incomplete closed curve: no edge to emit
-                };
-                push_half_edge_pair(hes, he_eid, eid, v0, v1, eg);
-            }
-        }
-    };
-    closed_arc_pass(circles, arc_eg, &mut hes, &mut he_eid);
-    closed_arc_pass(ellipses, ellipse_arc_eg, &mut hes, &mut he_eid);
-
-    for (eid, e) in splines {
+    for (eid, e) in circles {
+        let TopoEntity::Circle { center, radius, .. } = *e else {
+            continue;
+        };
         let spl = dedup(splits.get(eid).unwrap_or(&empty));
         if spl.len() < 2 {
             continue;
         }
-        let ctrl: BezierCtrl = match (e.start, e.c1, e.c2, e.end) {
-            (Some(start), Some(c1), Some(c2), Some(end)) => [start, c1, c2, end],
-            _ => continue, // incomplete spline: no edge to emit
+        for k in 0..spl.len() {
+            let (a0, v0) = &spl[k];
+            let nxt = &spl[(k + 1) % spl.len()];
+            let mut a1 = nxt.0;
+            let v1 = &nxt.1;
+            if v0 == v1 {
+                continue;
+            }
+            if a1 <= *a0 {
+                a1 += TWO_PI;
+            }
+            let eg = arc_eg(center, radius, *a0, a1, true);
+            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
+        }
+    }
+
+    for (eid, e) in ellipses {
+        let TopoEntity::Ellipse {
+            center,
+            a,
+            b,
+            theta,
+            ..
+        } = *e
+        else {
+            continue;
         };
+        let theta = theta.unwrap_or(0.0);
+        let spl = dedup(splits.get(eid).unwrap_or(&empty));
+        if spl.len() < 2 {
+            continue;
+        }
+        for k in 0..spl.len() {
+            let (a0, v0) = &spl[k];
+            let nxt = &spl[(k + 1) % spl.len()];
+            let mut a1 = nxt.0;
+            let v1 = &nxt.1;
+            if v0 == v1 {
+                continue;
+            }
+            if a1 <= *a0 {
+                a1 += TWO_PI;
+            }
+            let eg = ellipse_arc_eg(center, a, b, theta, *a0, a1, true);
+            push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
+        }
+    }
+
+    for (eid, e) in splines {
+        let TopoEntity::Spline {
+            start, c1, c2, end, ..
+        } = *e
+        else {
+            continue;
+        };
+        let spl = dedup(splits.get(eid).unwrap_or(&empty));
+        if spl.len() < 2 {
+            continue;
+        }
+        let ctrl: BezierCtrl = [start, c1, c2, end];
         for k in 0..spl.len().saturating_sub(1) {
             let (t0, v0) = &spl[k];
             let (t1, v1) = &spl[k + 1];
@@ -1410,12 +1618,9 @@ fn build_half_edge_graph(
                 continue;
             }
             let eg = if *t0 <= 0.0 && *t1 >= 1.0 {
-                spline_eg(e)
+                spline_eg(start, c1, c2, end)
             } else {
-                Some(sub_spline_eg(&subdivide_bezier(&ctrl, *t0, *t1)))
-            };
-            let Some(eg) = eg else {
-                continue;
+                sub_spline_eg(&subdivide_bezier(&ctrl, *t0, *t1))
             };
             push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
         }
@@ -1593,13 +1798,13 @@ fn circle_arcs(cx: f64, cy: f64, r: f64, eid: &str) -> Vec<BoundaryEdge> {
 // `max_keep` is the largest split count that still counts as "undivided"; each
 // entity that passes maps to its boundary loop (or `None` to skip).
 fn build_standalone<F>(
-    entities: &[(String, InputEntity)],
+    entities: &[(String, TopoEntity)],
     splits: &HashMap<String, Vec<Split>>,
     max_keep: usize,
     mut boundary_of: F,
 ) -> Vec<SurfaceOut>
 where
-    F: FnMut(&str, &InputEntity) -> Option<Vec<BoundaryEdge>>,
+    F: FnMut(&str, &TopoEntity) -> Option<Vec<BoundaryEdge>>,
 {
     let empty: Vec<Split> = Vec::new();
     let mut surfaces = Vec::new();
@@ -1619,32 +1824,39 @@ where
 }
 
 fn build_standalone_surfaces(
-    circles: &[(String, InputEntity)],
+    circles: &[(String, TopoEntity)],
     splits: &HashMap<String, Vec<Split>>,
 ) -> Vec<SurfaceOut> {
     build_standalone(circles, splits, 1, |eid, e| {
-        let (Some(c), Some(r)) = (e.center, e.radius) else {
+        let TopoEntity::Circle { center, radius, .. } = *e else {
             return None;
         };
-        Some(circle_arcs(c[0], c[1], r, eid))
+        Some(circle_arcs(center[0], center[1], radius, eid))
     })
 }
 
 fn build_standalone_ellipses(
-    ellipses: &[(String, InputEntity)],
+    ellipses: &[(String, TopoEntity)],
     splits: &HashMap<String, Vec<Split>>,
 ) -> Vec<SurfaceOut> {
     let mut seen: Vec<[f64; 5]> = Vec::new();
     build_standalone(ellipses, splits, 1, move |eid, e| {
-        let (Some(c), Some(a), Some(b)) = (e.center, e.a, e.b) else {
+        let TopoEntity::Ellipse {
+            center,
+            a,
+            b,
+            theta,
+            ..
+        } = *e
+        else {
             return None;
         };
         // A degenerate ellipse (near-zero semi-axis) bounds no area; never a face.
         if a.abs() < MERGE || b.abs() < MERGE {
             return None;
         }
-        let theta = e.theta.unwrap_or(0.0);
-        let key = [c[0], c[1], a, b, theta];
+        let theta = theta.unwrap_or(0.0);
+        let key = [center[0], center[1], a, b, theta];
         if seen
             .iter()
             .any(|k| k.iter().zip(key.iter()).all(|(v, w)| (v - w).abs() < MERGE))
@@ -1654,7 +1866,7 @@ fn build_standalone_ellipses(
         seen.push(key);
         Some(vec![BoundaryEdge {
             geom: EdgeGeom::Ellipse {
-                center: [c[0], c[1]],
+                center: [center[0], center[1]],
                 a,
                 b,
                 theta,
@@ -1667,12 +1879,15 @@ fn build_standalone_ellipses(
 }
 
 fn build_standalone_splines(
-    splines: &[(String, InputEntity)],
+    splines: &[(String, TopoEntity)],
     splits: &HashMap<String, Vec<Split>>,
     verts: &mut Verts,
 ) -> Vec<SurfaceOut> {
     build_standalone(splines, splits, 2, |eid, e| {
-        let (Some(start), Some(end), Some(c1), Some(c2)) = (e.start, e.end, e.c1, e.c2) else {
+        let TopoEntity::Spline {
+            start, c1, c2, end, ..
+        } = *e
+        else {
             return None;
         };
         let v0 = verts.vid(start);
@@ -1741,8 +1956,8 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     let mut arc_a0: HashMap<String, f64> = HashMap::new();
 
     for (eid, e) in &cls.lines {
-        let (Some(start), Some(end)) = (e.start, e.end) else {
-            continue; // incomplete line: no split seed
+        let TopoEntity::Line { start, end, .. } = *e else {
+            continue;
         };
         splits.insert(
             eid.clone(),
@@ -1768,8 +1983,8 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     verts.map.extend(arc_verts.map.drain());
 
     for (eid, e) in &cls.splines {
-        let (Some(start), Some(end)) = (e.start, e.end) else {
-            continue; // incomplete spline: no split seed
+        let TopoEntity::Spline { start, end, .. } = *e else {
+            continue;
         };
         splits.insert(
             eid.clone(),
@@ -1783,21 +1998,11 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
 
     let endpoint_vids = verts.keys();
 
-    let line_keys: HashSet<String> = cls.lines.iter().map(|(k, _)| k.clone()).collect();
-    let circle_keys: HashSet<String> = cls.circles.iter().map(|(k, _)| k.clone()).collect();
-
-    let mut elist: Vec<(String, InputEntity)> = Vec::new();
+    let mut elist: Vec<(String, TopoEntity)> = Vec::new();
     elist.extend(cls.lines.iter().cloned());
     elist.extend(cls.circles.iter().cloned());
     elist.extend(arcs.iter().cloned());
-    find_all_intersections(
-        &elist,
-        &line_keys,
-        &circle_keys,
-        &mut splits,
-        &mut verts,
-        &arc_a0,
-    );
+    find_all_intersections(&elist, &mut splits, &mut verts, &arc_a0);
 
     // Second pass: every pair involving an ellipse or a spline.
     let tagged = tag_entities(&cls, &arcs);
@@ -1807,19 +2012,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         let mut c_arcs = con.arcs.clone();
         normalize_arc_spans(&mut c_arcs);
         let c_tagged = tag_entities(&con, &c_arcs);
-        // `intersect` reads its line/circle/arc dispatch off these key sets, so
-        // they have to name the construction entities as well.
-        let mut all_line_keys = line_keys.clone();
-        let mut all_circle_keys = circle_keys.clone();
-        all_line_keys.extend(con.lines.iter().map(|(k, _)| k.clone()));
-        all_circle_keys.extend(con.circles.iter().map(|(k, _)| k.clone()));
-        seed_construction_crossings(
-            &tagged,
-            &c_tagged,
-            &all_line_keys,
-            &all_circle_keys,
-            &mut verts,
-        );
+        seed_construction_crossings(&tagged, &c_tagged, &mut verts);
     }
 
     // Closed curves wrap at a seam, so a pair of contacts that fused into one
@@ -2128,34 +2321,89 @@ mod tests {
         }
     }
 
+    /// Lift a known-complete record through the same boundary the passes use,
+    /// for the tests that drive an internal helper directly.
+    fn topo(e: InputEntity) -> TopoEntity {
+        TopoEntity::try_from(e).expect("complete entity")
+    }
+
     #[test]
-    fn incomplete_geometry_helpers_degrade_instead_of_panicking() {
-        // The builders behind the classify gate must each survive a truncated
-        // record on their own: if `has_required_fields` ever loosened, these are
-        // the sites that used to unwrap. None/empty is the drop signal.
-        let empty = InputEntity::default();
-        assert!(line_eg(&empty, 0.0, 1.0).is_none());
-        assert!(arc_eg(&empty, 0.0, 1.0, true).is_none());
-        assert!(spline_eg(&empty).is_none());
-        assert!(ellipse_arc_eg(&empty, 0.0, 1.0, true).is_none());
-        assert!(to_curve("line", &empty).is_none());
-        assert!(to_curve("circle", &empty).is_none());
-        assert!(to_curve("ellipse", &empty).is_none());
-        assert!(to_curve("spline", &empty).is_none());
-        assert!(collinear_overlap(&empty, &empty).is_empty());
-        assert!(cc_of(&empty, &empty).is_empty());
+    fn try_from_classifies_and_drops_incomplete_records() {
+        // The `TryFrom` boundary is the only door into the geometry pass, so it
+        // owns both halves of the old `classify` contract: a complete record
+        // becomes the variant naming its kind WITH every field carried across,
+        // and a truncated record becomes Err (dropped) instead of reaching a
+        // builder. Compare whole values rather than `matches!` shape: all four
+        // Vec2 positions are interchangeable, so a scramble would still match
+        // `Variant { .. }`. The end-to-end drop is asserted by
+        // `incomplete_entities_are_dropped_per_kind`.
+        assert_eq!(
+            TopoEntity::try_from(line([0.0, 0.0], [1.0, 0.0])).unwrap(),
+            TopoEntity::Line {
+                construction: false,
+                start: [0.0, 0.0],
+                end: [1.0, 0.0],
+            }
+        );
+        assert_eq!(
+            TopoEntity::try_from(circle([1.0, 2.0], 3.0)).unwrap(),
+            TopoEntity::Circle {
+                construction: false,
+                center: [1.0, 2.0],
+                radius: 3.0,
+            }
+        );
+        // The `arc` helper pins start/end to the horizontal diameter.
+        assert_eq!(
+            TopoEntity::try_from(arc([1.0, 2.0], 3.0, 0.0, 90.0)).unwrap(),
+            TopoEntity::Arc {
+                construction: false,
+                center: [1.0, 2.0],
+                radius: 3.0,
+                angle_start: 0.0,
+                angle_end: 90.0,
+                start: [4.0, 2.0],
+                end: [-2.0, 2.0],
+            }
+        );
+        assert_eq!(
+            TopoEntity::try_from(ellipse([1.0, 2.0], 3.0, 1.0, 30.0)).unwrap(),
+            TopoEntity::Ellipse {
+                construction: false,
+                center: [1.0, 2.0],
+                a: 3.0,
+                b: 1.0,
+                theta: Some(30.0),
+            }
+        );
+        assert_eq!(
+            TopoEntity::try_from(spline_open([0.0, 0.0], [1.0, 1.0], [2.0, 1.0], [3.0, 0.0],))
+                .unwrap(),
+            TopoEntity::Spline {
+                construction: false,
+                start: [0.0, 0.0],
+                c1: [1.0, 1.0],
+                c2: [2.0, 1.0],
+                end: [3.0, 0.0],
+            }
+        );
 
-        let mut line_keys = HashSet::new();
-        line_keys.insert("a".to_string());
-        line_keys.insert("b".to_string());
-        assert!(intersect("a", &empty, "b", &empty, &line_keys, &HashSet::new()).is_empty());
-
-        let tagged = Tagged {
-            eid: "a".into(),
-            e: empty.clone(),
-            kind: "arc",
+        // A malformed arc is dropped AS an arc, never demoted to a line, and a
+        // record with no discriminating field at all is dropped too.
+        let malformed_arc = InputEntity {
+            start: Some([1.0, 0.0]),
+            radius: Some(1.0),
+            ..Default::default()
         };
-        assert!(!hit_on_entity(&tagged, 0.5));
+        assert!(TopoEntity::try_from(malformed_arc).is_err());
+        assert!(TopoEntity::try_from(InputEntity::default()).is_err());
+
+        // The construction flag rides through the conversion.
+        let mut construction_circle = circle([0.0, 0.0], 1.0);
+        construction_circle.construction = true;
+        assert!(TopoEntity::try_from(construction_circle)
+            .unwrap()
+            .construction());
     }
 
     #[test]
@@ -2420,20 +2668,23 @@ mod tests {
     fn collinear_overlap_degenerate_and_normal() {
         // Ported from the deleted TS topology.test.ts collinearOverlap block.
         // Zero-length segment A -> no overlap.
-        assert!(
-            collinear_overlap(&line([1.0, 0.0], [1.0, 0.0]), &line([0.0, 0.0], [2.0, 0.0]))
-                .is_empty()
-        );
+        assert!(collinear_overlap(
+            &topo(line([1.0, 0.0], [1.0, 0.0])),
+            &topo(line([0.0, 0.0], [2.0, 0.0]))
+        )
+        .is_empty());
         // Zero-length segment B -> no overlap.
-        assert!(
-            collinear_overlap(&line([0.0, 0.0], [2.0, 0.0]), &line([1.0, 0.0], [1.0, 0.0]))
-                .is_empty()
-        );
+        assert!(collinear_overlap(
+            &topo(line([0.0, 0.0], [2.0, 0.0])),
+            &topo(line([1.0, 0.0], [1.0, 0.0]))
+        )
+        .is_empty());
         // Genuinely overlapping collinear segments -> overlap points.
-        assert!(
-            !collinear_overlap(&line([0.0, 0.0], [2.0, 0.0]), &line([1.0, 0.0], [3.0, 0.0]))
-                .is_empty()
-        );
+        assert!(!collinear_overlap(
+            &topo(line([0.0, 0.0], [2.0, 0.0])),
+            &topo(line([1.0, 0.0], [3.0, 0.0]))
+        )
+        .is_empty());
     }
 
     #[test]
@@ -2736,6 +2987,47 @@ mod tests {
             c2: Some(c2),
             ..Default::default()
         }
+    }
+
+    fn spline_open(start: Vec2, c1: Vec2, c2: Vec2, end: Vec2) -> InputEntity {
+        InputEntity {
+            kind: Some("spline".into()),
+            start: Some(start),
+            end: Some(end),
+            c1: Some(c1),
+            c2: Some(c2),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn full_open_spline_half_edge_preserves_its_control_points() {
+        // A spline subdivides only when a crossing splits it; otherwise the
+        // whole curve goes through `spline_eg`. All four of its arguments are
+        // `Vec2`, so a positional scramble at the call site would silently emit
+        // a different curve while still producing a `Spline` variant. Pin every
+        // control point, not just the variant.
+        let start = [0.0, 0.0];
+        let c1 = [0.5, 2.0];
+        let c2 = [1.5, 2.0];
+        let end = [2.0, 0.0];
+        // An open spline plus the chord joining its endpoints closes one loop
+        // with no crossing, so the spline stays a single full half-edge.
+        let geom = vec![
+            ("s0".into(), spline_open(start, c1, c2, end)),
+            ("l0".into(), line(end, start)),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(t.surfaces.len(), 1, "spline plus chord close one loop");
+        let spline = t
+            .edges
+            .iter()
+            .find_map(|e| match e.geom {
+                EdgeGeom::Spline { start, c1, c2, end } => Some((start, c1, c2, end)),
+                _ => None,
+            })
+            .expect("the spline must contribute a half-edge");
+        assert_eq!(spline, (start, c1, c2, end));
     }
 
     #[test]
