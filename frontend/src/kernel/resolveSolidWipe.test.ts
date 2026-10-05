@@ -1,7 +1,7 @@
 // `clearFeatureGeometryRegistrations` (`feature-resolve-solid-wipe`) wipes the
 // `solid`/`extrusion-feature` entries a feature registered under `[@fid]` on every
 // re-solve, and the body loop only re-registers solids for bodies it just created.
-// This suite pins the `_reconcileFeatureSolids` evict-then-register invariant that
+// This suite pins the `reconcileFeatureSolids` evict-then-register invariant that
 // keeps exactly one solid + one extrusion-feature per owned body, and it
 // deliberately runs the REAL `postRegister` (the checkpoint-parity suite stubs it,
 // which is why it could not see the wipe). The genuinely red-green fixed bug is

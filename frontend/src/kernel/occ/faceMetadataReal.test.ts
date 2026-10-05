@@ -119,7 +119,7 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
   // Invariant guard (code review of b081b76): the metadata path keeps the same
   // face count as the render mesh. assembleMesh DROPS zero-triangle faces and
   // this path does not, so they agree only because every face triangulates;
-  // _snapshotWithBrepGeometry keys checkpoint eviction on the face index, so a
+  // snapshotWithBrepGeometry keys checkpoint eviction on the face index, so a
   // divergence here would corrupt the checkpoint snapshot. A filleted box adds a
   // curved face and small new edges -- the most likely place a degenerate face
   // would surface.

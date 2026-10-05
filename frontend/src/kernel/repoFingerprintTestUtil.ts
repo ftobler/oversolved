@@ -1,6 +1,6 @@
 // Test-only semantic fingerprint of a persisted repo snapshot (`FeatureCheckpoint.repo_snapshot`).
 //
-// Element ids come from a module-global counter (`genId`, query.ts), so they shift whenever
+// Element ids come from a module-global counter (`genId`, queryRepository.ts), so they shift whenever
 // the number of registrations anywhere in the build changes. Byte-comparing two snapshots
 // therefore proves nothing about equivalence. What must NOT shift is which payloads are
 // reachable under which ancestral key and which uuid -- that is what this fingerprint pins.
@@ -12,7 +12,7 @@
 // `double-registration-pass` removed. Losing a payload entirely is NOT hidden.
 //
 // The payload hash is the SAME predicate `_dedupeRepo` uses
-// (`stableJson`, builder.ts) -- recursive key sort, Map-aware, `-0` normalised. One
+// (`stableJson`, builderHash.ts) -- recursive key sort, Map-aware, `-0` normalised. One
 // predicate everywhere is what makes the replay above agree with the restore, so a
 // dedupe regression shows up here as a fingerprint that no longer matches the source.
 
