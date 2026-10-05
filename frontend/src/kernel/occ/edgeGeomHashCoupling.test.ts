@@ -1,22 +1,14 @@
 // Regression guard for the edgeToGeom <-> edgeGeometryHash coupling.
 //
-// Bug (ellipse-entity, caught in review): adding a GeomAbs_Ellipse arm to
-// edgeToGeom made elliptical B-rep edges return `kind: 'ellipse'`, but
-// edgeGeometryHash had no ellipse branch -- it collapsed every such edge to the
-// constant "ellipse|0|0|0". All elliptical edges then shared one geom hash, so
-// their ancestry queries and selection-buffer ids collided (non-unique ids,
-// drifted queries on pre-existing documents).
-//
-// Invariant this guards: every edge KIND that edgeToGeom can emit must be hashed
-// by edgeGeometryHash as a function of its geometry, so two geometrically
-// distinct edges never collide. We drive the real edgeToGeom with a minimal
-// fake OCC adaptor (no opencascade.js needed). The fake reports an ELLIPSE curve
-// type and exposes a full ellipse accessor, so:
-//   - current code (no edgeToGeom ellipse arm): the edge falls through to the
-//     spline sampler, hashed by its sampled points -> distinct geometries differ.
-//   - if a future edgeToGeom ellipse arm is re-added WITHOUT a matching
-//     edgeGeometryHash branch: both edges become kind:'ellipse' with no points
-//     and collapse to one constant hash -> the distinctness assertion fails.
+// Invariant: every edge KIND edgeToGeom can emit must be hashed by
+// edgeGeometryHash as a function of its geometry, so two geometrically distinct
+// edges never collide. Both sides now carry a first-class ellipse arm
+// (primitives.ts edgeToGeom, geomHash.ts edgeGeometryHash); the original bug was
+// an ellipse arm on the edgeToGeom side only, which collapsed every elliptical
+// edge to the constant "ellipse|0|0|0" and made ancestry queries and selection
+// ids collide. These tests keep the two sides coupled. We drive the real
+// edgeToGeom with a minimal fake OCC adaptor (no opencascade.js needed): it
+// reports an ELLIPSE curve type and exposes a full ellipse accessor.
 import { describe, it, expect } from 'vitest'
 import { edgeToGeom } from '@/kernel/occ/primitives'
 import { edgeGeometryHash } from '@/kernel/geomHash'
@@ -38,13 +30,13 @@ function ellipseEdgeOcc(center: [number, number, number], a: number, b: number):
     GetType: () => ELLIPSE,
     FirstParameter: () => 0,
     LastParameter: () => 2 * Math.PI,
-    // Sampled by the spline fallback today; geometry-dependent so distinct
-    // ellipses sample to distinct polylines.
+    // Sampled only if some future kind falls through to the spline path;
+    // geometry-dependent so distinct ellipses stay distinct either way.
     Value: (u: number) => xyz(center[0] + a * Math.cos(u), center[1] + b * Math.sin(u), center[2]),
     Circle: () => { throw new Error('not a circle') },
-    // Used only if an edgeToGeom ellipse arm is (re-)added; present so that path
-    // fails on the hash-collision assertion, not on a missing accessor. The
-    // frame accessors return by-value proxies too, hence their delete().
+    // The ellipse accessor edgeToGeom now uses; kept so the coupled path fails
+    // on the hash-collision assertion, not on a missing accessor. The frame
+    // accessors return by-value proxies too, hence their delete().
     Ellipse: () => ({
       Location: () => xyz(center[0], center[1], center[2]),
       MajorRadius: () => a,

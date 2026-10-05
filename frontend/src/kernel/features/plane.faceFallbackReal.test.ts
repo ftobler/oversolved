@@ -5,8 +5,8 @@
 // under ancestry keys, never under the slash key, so repo.query alone cannot
 // answer the ref; the frame has to come from the body's OCC shape through the
 // same path the extrude-on-face profile uses (features/faceProfile.ts). Builds
-// a box body and asserts the solved plane equals the box[0] reference recorded
-// for faceLoops (the frozen faceLoops.json snapshot).
+// a box and asserts the solved plane matches that face's own live outward
+// normal and centroid (the H22 fix), not the raw surface frame.
 //
 // Skips when opencascade.js is absent.
 

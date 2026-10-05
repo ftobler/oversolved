@@ -1,7 +1,7 @@
 // @vitest-environment node
 //
 // Cross-solve checkpoint cache tests for the production entry point
-// ``solveLocally``. Unlike meshCacheReal (which drives the builder through
+// ``solveLocally``. Unlike checkpointMeshReal (which drives the builder through
 // SharedHarness), these go through solveLocally itself to prove it now owns a
 // persistent HandleTable + last BuildState and feeds them as prevState, so an
 // incremental rebuild reuses the clean-prefix checkpoints instead of rebuilding

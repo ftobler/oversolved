@@ -15,6 +15,7 @@ import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuil
 import { canonicalPerp } from '../utils/mateOrientation'
 import { mateKindCode, mateOffsetVector, mateReadsAxis, unresolvedMateParams } from '../utils/mateKinds'
 import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
+import { isDevOrTestBuild } from './isDevBuild'
 import { STATUS_NAME } from '@/wasm-kernel/codec'
 
 export type { AnchorPose }
@@ -384,9 +385,9 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
   for (let i = 0; i < nParams; i++) {
     paramsSolved[i] = r.getFloat32(pos, true); pos += 4
   }
-  // Per-mate residual block, in input mate order, between the params and the
-  // diagnostics. The count is solver-owned: a mate the solver dropped simply
-  // yields a shorter block than the caller's mate list.
+  // Per-mate residual block, aligned one slot per input mate, between the
+  // params and the diagnostics. A dropped mate keeps its slot as a non-finite
+  // sentinel (see the fold loop below), so the block is never compressed.
   const nMates = r.getUint32(pos, true); pos += 4
   const mateResiduals = new Float64Array(nMates)
   for (let i = 0; i < nMates; i++) {
@@ -414,7 +415,7 @@ function mateVerdict(code: number): MateVerdict {
 // pressure) is expected noise. A bundle is a derivable artifact, the cold
 // rebuild below is the cache-miss path anyway, so an IndexedDB failure must
 // degrade to that path, never fail a solve whose relayed build already paid.
-const WARN_CACHE_FAILURES = import.meta.env?.DEV || import.meta.env?.MODE === 'test'
+const WARN_CACHE_FAILURES = isDevOrTestBuild()
 
 async function cachedOrUndefined<T>(what: string, op: () => Promise<T>): Promise<T | undefined> {
   try {

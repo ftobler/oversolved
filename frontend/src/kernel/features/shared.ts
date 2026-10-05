@@ -12,7 +12,7 @@
 // isinstance, but the two branches compute identical geometry. In TS both satisfy
 // [[PlaneLike]], so the branch collapses to one path.
 
-import type { Body, BrepDiff, Frame3D } from '../types3d'
+import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { AmbiguousQueryError, parseAncestry } from '../query'
 import { loopCentroid } from '../profileLoops'
@@ -27,11 +27,6 @@ export interface PlaneLike {
 }
 
 type Dict = Record<string, unknown>
-
-/** Python `x % m` (result takes the divisor's sign), unlike JS `%`. */
-export function pymod(x: number, m: number): number {
-  return ((x % m) + m) % m
-}
 
 /**
  * Sorted, deduped entity ids referenced by a surface's ancestry query, or `[]`
@@ -144,84 +139,84 @@ export function extractProfileLoops(surfaces: Dict[], diagnostics?: ProfileLoopD
     // classifyLoops re-nests them (outer + holes) for the OCC face.
     const holes = (surface.holes as Dict[][]) ?? []
     for (const boundary of [(surface.boundary as Dict[]) ?? [], ...holes]) {
-    if (boundary.length === 0) continue
+      if (boundary.length === 0) continue
 
-    // A full ellipse is a single self-closed edge with no shared endpoints: it is
-    // its own complete loop. (The endpoint-chaining below needs start/end edges,
-    // which a full ellipse lacks; a sliced ellipse arrives as ellipse_arc edges.)
-    for (const e of boundary) if (e.kind === 'ellipse') allLoops.push([e])
+      // A full ellipse is a single self-closed edge with no shared endpoints: it is
+      // its own complete loop. (The endpoint-chaining below needs start/end edges,
+      // which a full ellipse lacks; a sliced ellipse arrives as ellipse_arc edges.)
+      for (const e of boundary) if (e.kind === 'ellipse') allLoops.push([e])
 
-    const rawEdges: [number[], number[], Dict][] = []
-    for (const e of boundary) {
-      if (e.kind === 'ellipse') continue
-      const s = e.start as number[] | undefined | null
-      const en = e.end as number[] | undefined | null
-      if (s !== undefined && s !== null && en !== undefined && en !== null) {
-        rawEdges.push([s, en, e])
+      const rawEdges: [number[], number[], Dict][] = []
+      for (const e of boundary) {
+        if (e.kind === 'ellipse') continue
+        const s = e.start as number[] | undefined | null
+        const en = e.end as number[] | undefined | null
+        if (s !== undefined && s !== null && en !== undefined && en !== null) {
+          rawEdges.push([s, en, e])
+        }
       }
-    }
-    if (rawEdges.length < 1) continue
+      if (rawEdges.length < 1) continue
 
-    const used = new Set<number>()
-    let current = [...rawEdges[0][0]]
-    const loop: Dict[] = []
+      const used = new Set<number>()
+      let current = [...rawEdges[0][0]]
+      const loop: Dict[] = []
 
-    for (let _i = 0; _i < rawEdges.length; _i++) {
-      let foundNext = false
-      for (let i = 0; i < rawEdges.length; i++) {
-        if (used.has(i)) continue
-        const [s, e, edict] = rawEdges[i]
-        const forward = dist2d(current, s) <= TOL
-        const reverse = dist2d(current, e) <= TOL
-        if (forward || reverse) {
-          if (forward) {
-            loop.push(edict)
-            current = [...e]
-          } else {
-            const rev: Dict = { ...edict }
-            rev.start = [...(edict.end as number[])]
-            rev.end = [...(edict.start as number[])]
-            // Arc and elliptical-arc carry an angle range + winding that must flip
-            // too, else the OCC edge builder rebuilds the wrong (stale) curve.
-            if (edict.kind === 'arc' || edict.kind === 'ellipse_arc') {
-              rev.angle_start_deg = (edict.angle_end_deg as number) ?? 0
-              rev.angle_end_deg = (edict.angle_start_deg as number) ?? 0
-              rev.ccw = !((edict.ccw as boolean) ?? true)
+      for (let _i = 0; _i < rawEdges.length; _i++) {
+        let foundNext = false
+        for (let i = 0; i < rawEdges.length; i++) {
+          if (used.has(i)) continue
+          const [s, e, edict] = rawEdges[i]
+          const forward = dist2d(current, s) <= TOL
+          const reverse = dist2d(current, e) <= TOL
+          if (forward || reverse) {
+            if (forward) {
+              loop.push(edict)
+              current = [...e]
+            } else {
+              const rev: Dict = { ...edict }
+              rev.start = [...(edict.end as number[])]
+              rev.end = [...(edict.start as number[])]
+              // Arc and elliptical-arc carry an angle range + winding that must flip
+              // too, else the OCC edge builder rebuilds the wrong (stale) curve.
+              if (edict.kind === 'arc' || edict.kind === 'ellipse_arc') {
+                rev.angle_start_deg = (edict.angle_end_deg as number) ?? 0
+                rev.angle_end_deg = (edict.angle_start_deg as number) ?? 0
+                rev.ccw = !((edict.ccw as boolean) ?? true)
+              }
+              loop.push(rev)
+              current = [...s]
             }
-            loop.push(rev)
-            current = [...s]
+            used.add(i)
+            foundNext = true
+            break
           }
-          used.add(i)
-          foundNext = true
+        }
+        if (!foundNext) {
+          // The chain ran out before closing: the remaining edges cannot form
+          // this loop. Emitting nothing made the caller report "no closed profile
+          // found", which is true but names neither the area nor the gap.
+          diagnostics?.push({ kind: 'unclosed', startedAt: rawEdges[0][0], used: used.size, total: rawEdges.length })
+          break
+        }
+        if (dist2d([...rawEdges[0][0]], current) <= TOL && loop.length >= 1) {
+          allLoops.push(loop)
+          // The chain closed, but any edge left unconsumed is a second defect:
+          // it is part of the same boundary and is being silently discarded.
+          const leftover = rawEdges.length - used.size
+          if (leftover > 0) {
+            diagnostics?.push({ kind: 'leftover', leftover, total: rawEdges.length })
+          }
           break
         }
       }
-      if (!foundNext) {
-        // The chain ran out before closing: the remaining edges cannot form
-        // this loop. Emitting nothing made the caller report "no closed profile
-        // found", which is true but names neither the area nor the gap.
+      // The outer bound is rawEdges.length, so a chain that consumed EVERY edge
+      // without closing back to the start never reaches the foundNext=false
+      // branch above (it runs out of iterations first). Same failure, one bound
+      // later: name it too. The `used === total` test keeps the two from
+      // double-reporting (foundNext=false only fires while edges remain).
+      if (loop.length > 0 && rawEdges.length - used.size === 0) {
         diagnostics?.push({ kind: 'unclosed', startedAt: rawEdges[0][0], used: used.size, total: rawEdges.length })
-        break
       }
-      if (dist2d([...rawEdges[0][0]], current) <= TOL && loop.length >= 1) {
-        allLoops.push(loop)
-        // The chain closed, but any edge left unconsumed is a second defect:
-        // it is part of the same boundary and is being silently discarded.
-        const leftover = rawEdges.length - used.size
-        if (leftover > 0) {
-          diagnostics?.push({ kind: 'leftover', leftover, total: rawEdges.length })
-        }
-        break
-      }
-    }
-    // The outer bound is rawEdges.length, so a chain that consumed EVERY edge
-    // without closing back to the start never reaches the foundNext=false
-    // branch above (it runs out of iterations first). Same failure, one bound
-    // later: name it too. The `used === total` test keeps the two from
-    // double-reporting (foundNext=false only fires while edges remain).
-    if (loop.length > 0 && rawEdges.length - used.size === 0) {
-      diagnostics?.push({ kind: 'unclosed', startedAt: rawEdges[0][0], used: used.size, total: rawEdges.length })
-    }
     }
   }
 
@@ -585,14 +580,21 @@ export function resolveBodyRefList(
  * Body IDs a body operation should target (mirrors `_resolve_merge_targets`).
  * Empty/None merge target means ALL bodies; anything else goes through
  * `resolveBodyIds`.
+ *
+ * `opName` names the calling operation in the failure so a bad merge target on
+ * a revolve or sweep is not misreported as an extrude.
  */
 export function resolveMergeTargets(
   mergeTarget: string | null | undefined,
   bodyStore: Record<string, Body>,
+  opName = '',
 ): string[] {
   if (!mergeTarget) return Object.keys(bodyStore)
   const ids = resolveBodyIds(mergeTarget, bodyStore)
-  if (ids.length === 0) throw new Error(`extrude: body not found for merge_target '${mergeTarget}'`)
+  if (ids.length === 0) {
+    const prefix = opName ? `${opName}: ` : ''
+    throw new Error(`${prefix}merge target '${mergeTarget}' not found`)
+  }
   return ids
 }
 
@@ -817,6 +819,3 @@ export function resolveAxisQueryStrict(
   const line = resolveQueryToLine(query, globalRepo, bodyStore)
   return line ? [[...line.start], line.dir] : null
 }
-
-// Re-export so the Frame3D type is visible to consumers of PlaneLike.
-export type { Frame3D }

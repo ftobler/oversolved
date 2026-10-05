@@ -17,6 +17,7 @@ import {
   type GeomDescriptor,
 } from "./geomDescriptor"
 import { failLoud } from "@/stores/stateInvariants"
+import { isDevOrTestBuild } from "./isDevBuild"
 import { VERTEX_POINT_KEYS } from "@/types/vertexKeys"
 import type { LocalQuery, AbsoluteQuery, AncestryQuery, Query } from "@/types/query"
 
@@ -33,7 +34,7 @@ export class AmbiguousQueryError extends Error {}
  *  entity-id set, so a loud failure here would break production writes. The
  *  knownIds readers (resolveLocal / resolveQueryRef) are the resolver for these
  *  strings; emitWire just warns so the ambiguity is never silently hidden. */
-const warnWireAmbiguity = import.meta.env?.DEV || import.meta.env?.MODE === "test"
+const warnWireAmbiguity = isDevOrTestBuild()
   ? (...args: unknown[]) => console.warn(...args)
   : () => undefined
 
@@ -517,7 +518,7 @@ interface AncestralEntry {
  */
 export function canonical(ids: Iterable<string>): string {
   const uniq = [...new Set(ids)]
-  if (import.meta.env?.DEV || import.meta.env?.MODE === "test") {
+  if (isDevOrTestBuild()) {
     for (const id of uniq) {
       if (id.includes("\u0000")) {
         failLoud(

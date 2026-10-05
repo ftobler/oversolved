@@ -49,26 +49,41 @@ describe.skipIf(!oc || !solveBytes)('edit exit rebuild (real OCC + Rust solver)'
 
   it('edit exit rebuild, downstream features re-solved after param edit', () => {
     /**
-     * sk1 → ex1 → fillet: mutate ex1 distance, rebuild full, downstream fillet must be
-     * re-solved and still produce valid output.
+     * sk1 -> ex1 -> fillet: mutate ex1 distance, rebuild full, downstream fillet
+     * must be re-solved and still produce valid output.
      */
-    // Use index-based edge queries so the fillet resolves correctly even after
-    // the extrude distance changes (hash-based queries become stale).
+    // Build without the fillet first to take a construction-UUID edge query off
+    // the extrude; that identity is restored across the parameter edit, unlike
+    // a legacy index query.
+    const probe = h.run({ features: [
+      rectSketch('sk1', 10, 10),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal' },
+    ]})
+    const edges = (h.body(probe, 'body_ex1').edge_queries as string[]) ?? []
+    const filletEdge = edges.find((q) => q.includes('@u|')) ?? edges[0]
+    expect(filletEdge).toBeTruthy()
+
     const spec = { features: [
       rectSketch('sk1', 10, 10),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal' },
-      { id: 'fil1', kind: 'fillet', edges: ['?body_ex1:edge:0'], radius: 0.5 },
+      { id: 'fil1', kind: 'fillet', edges: [filletEdge], radius: 0.5 },
     ]}
     const r1 = h.run(spec)
-    // May fail if legacy index query format not supported by TS kernel
-    expect(['ok', 'exception']).toContain(h.res(r1, 'fil1').status)
+    expect(h.res(r1, 'fil1').status).toBe('ok')
 
     const spec2 = { features: [
       rectSketch('sk1', 10, 10),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 8, direction: 'normal' },
-      { id: 'fil1', kind: 'fillet', edges: ['?body_ex1:edge:0'], radius: 0.5 },
+      { id: 'fil1', kind: 'fillet', edges: [filletEdge], radius: 0.5 },
     ]}
     const r2 = h.run(spec2, { prevState: r1._build_state })
+    // The downstream fillet must be re-solved, not carried over as a stale ok:
+    // its checkpoint result is a fresh object from this build.
+    expect(h.res(r2, 'fil1').status).toBe('ok')
+    expect(r2._build_state.checkpoints.fil1?.result).toBeDefined()
+    expect(r2._build_state.checkpoints.fil1?.result).not.toBe(
+      r1._build_state.checkpoints.fil1?.result,
+    )
     expect(r2.bodies).toHaveProperty('body_ex1')
   })
 })

@@ -297,37 +297,27 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
     expect(shared.size).toBeGreaterThan(0)
   })
 
-  it('fillet introduces new face UUIDs', () => {
-    /** Fillet adds new faces with new UUIDs.
-     *  New UUID counts depend on the geom-hash join between extractNames
-     *  (production) and face registration (tessellation). A 4dp precision gap
-     *  in centroid/normal can drop a face from byUuid, making this assertion
-     *  flaky. The UUID system is verified by the explicit construction-name
-     *  corpus tests. */
+  it('fillet build after extrude does not throw', () => {
+    /** Fillet adds new faces whose UUID join is precision-sensitive (a 4dp
+     *  centroid/normal gap can drop a face from byUuid); that identity is owned
+     *  by the construction-name corpus, so this only pins that the fillet build
+     *  itself succeeds. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = runBuild(spec)
-    const ckpBefore = lastCheckpoint(rBefore)
-    expect(ckpBefore).toBeDefined()
-    const uuidsBefore = findByUuidPrefix(ckpBefore!.repo_snapshot as Record<string, unknown>, 'u_')
 
     const edgeQueries = (rBefore.bodies as Record<string, Record<string, unknown>>)['body_ex1']?.edge_queries as string[] | undefined
     const firstEdge = edgeQueries?.find(q => q.includes('@u|')) ?? '?body_ex1:edge:0'
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [firstEdge], radius: 1 })
     const rAfter = runBuild(spec)
-    const ckpAfter = lastCheckpoint(rAfter)
-    expect(ckpAfter).toBeDefined()
-    void ckpAfter; void uuidsBefore
-    // Verify the fillet ran ok at minimum.
-    expect(rAfter.result['fillet1' as keyof typeof rAfter.result]
-      ? (rAfter.result as Record<string, { status?: string }>)['fillet1']?.status
-      : null
-    ).not.toBe('exception')
+    const fillet1 = (rAfter.result as Record<string, { status?: string }>).fillet1
+    expect(fillet1).toBeDefined()
+    expect(fillet1.status).not.toBe('exception')
   })
 
-  it('fillet increases total face UUID count', () => {
-    /** Fillet adds new faces, increasing the number of registered face UUIDs.
-     *  Same precision caveat as 'fillet introduces new face UUIDs'. Verify the
-     *  fillet ran ok. */
+  it('fillet feature builds after an extrude checkpoint exists', () => {
+    /** Same precision caveat as the sibling above. This checks the extrude
+     *  produced a checkpoint, then that a fillet appended to that spec builds
+     *  without an exception. */
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = runBuild(spec)
     const ckpBefore = lastCheckpoint(rBefore)
@@ -337,10 +327,9 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
     const firstEdge = edgeQueries?.find(q => q.includes('@u|')) ?? '?body_ex1:edge:0'
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [firstEdge], radius: 1 })
     const rAfter = runBuild(spec)
-    expect(rAfter.result['fillet1' as keyof typeof rAfter.result]
-      ? (rAfter.result as Record<string, { status?: string }>)['fillet1']?.status
-      : null
-    ).not.toBe('exception')
+    const fillet1 = (rAfter.result as Record<string, { status?: string }>).fillet1
+    expect(fillet1).toBeDefined()
+    expect(fillet1.status).not.toBe('exception')
   })
 
   it('face payload includes created_by field', () => {

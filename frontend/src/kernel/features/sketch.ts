@@ -13,8 +13,9 @@
  * builder's try/catch returns a clean exception (the browser kernel is the only
  * solver; there is no backend fallback).
  *
- * center_rect sugar is not yet expanded; sketches containing it throw a
- * descriptive error.
+ * center_rect sugar is expanded by the mutation layer before a doc reaches the
+ * kernel; the reject further down is a defensive skip for hand-edited or
+ * imported documents that still carry the raw sugar.
  */
 
 import type { PartFeature, Sketch, Entity } from '@/types/cad'
@@ -161,7 +162,7 @@ function lowerProjectedEntities(
       } else {
         const resolved = globalRepo.query(sourceStr, null) as Dict | null
         if (resolved) {
-          const data3d = resolve3dGeometry(resolved, sourceStr)
+          const data3d = resolve3dGeometry(resolved)
           if (data3d) {
             const declaredKind = (ent.kind as string) ?? 'point'
             const projected = projectTo2d(data3d, plane as PlaneFrame)

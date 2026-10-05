@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
-import { HandleTable } from './handleTable'
+import { HandleTable, type OccHandle } from './handleTable'
 import { makeBox } from './primitives'
 import { booleanWithHistory } from './booleans'
 import { solidToMesh } from './tessellation'
@@ -30,16 +30,19 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
     // A box cut by a smaller box gains new interior faces from the cut cavity.
     const scope = new DisposeScope()
     const table = new HandleTable()
+    let handle: OccHandle | undefined
     try {
       const target = makeBox(occ, scope, 10, 10, 10)
       const tool = makeBox(occ, scope, 4, 4, 4)
       const { shape } = booleanWithHistory(occ, scope, target, tool, 'cut')
-      const handle = table.register(shape, 'featCutter')
+      handle = table.register(shape, 'featCutter')
       const mesh = solidToMesh(occ, table, handle)
       // A 10x10x10 box has 6 faces. Cut by a 4x4x4 box adds interior faces.
       expect(mesh.face_data.length).toBeGreaterThan(6)
     } finally {
+      if (handle !== undefined) table.release(handle)
       scope.dispose()
+      table.assertNoLeaks()
     }
   })
 
@@ -48,16 +51,19 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
      *  volume (material was removed). */
     const scope = new DisposeScope()
     const table = new HandleTable()
+    let handle: OccHandle | undefined
     try {
       const target = makeBox(occ, scope, 10, 10, 10)
       const tool = makeBox(occ, scope, 4, 4, 4)
       const { shape } = booleanWithHistory(occ, scope, target, tool, 'cut')
-      const handle = table.register(shape, 'featCutter')
+      handle = table.register(shape, 'featCutter')
       const vol = volumeOf(occ, scope, table.get(handle))
       expect(vol).toBeLessThan(1000)  // less than 10*10*10
       expect(vol).toBeGreaterThan(0)
     } finally {
+      if (handle !== undefined) table.release(handle)
       scope.dispose()
+      table.assertNoLeaks()
     }
   })
 
@@ -66,18 +72,21 @@ describe.skipIf(!oc)('brep ancestry history after boolean cut', () => {
      *  triangle faces. No mesh_error. */
     const scope = new DisposeScope()
     const table = new HandleTable()
+    let handle: OccHandle | undefined
     try {
       const target = makeBox(occ, scope, 10, 10, 10)
       const tool = makeBox(occ, scope, 4, 4, 4)
       const { shape } = booleanWithHistory(occ, scope, target, tool, 'cut')
-      const handle = table.register(shape, 'featCutter')
+      handle = table.register(shape, 'featCutter')
       const mesh = solidToMesh(occ, table, handle)
       expect(mesh.vertices.length).toBeGreaterThan(0)
       expect(mesh.faces.length).toBeGreaterThan(0)
       expect(mesh.is_fallback).toBe(false)
       expect(mesh.face_data.length).toBeGreaterThan(0)
     } finally {
+      if (handle !== undefined) table.release(handle)
       scope.dispose()
+      table.assertNoLeaks()
     }
   })
 })

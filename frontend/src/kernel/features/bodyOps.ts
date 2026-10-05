@@ -86,7 +86,7 @@ export function applyBodyOperation(
   let needNewBody = false
   let targetIds: string[] = []
   if (operation === 'add' || operation === 'cut') {
-    targetIds = resolveMergeTargets(mergeTarget, bodyStore)
+    targetIds = resolveMergeTargets(mergeTarget, bodyStore, opName)
     if (!targetIds.length && !mergeTarget && operation === 'add') {
       needNewBody = true
     } else {
@@ -99,9 +99,6 @@ export function applyBodyOperation(
         result.operation = 'cut'
         result.body_ids = []
         return result
-      }
-      if (!targetIds.length) {
-        throw new Error(`${opName}: merge target '${mergeTarget}' not found`)
       }
     }
   }

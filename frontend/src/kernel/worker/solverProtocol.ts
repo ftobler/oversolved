@@ -113,7 +113,9 @@ export interface ExportOkResponse {
 
 export type ExportResponse = ExportOkResponse | WorkerErrResponse
 
-/** Bundle response carries the mesh + edge payloads. Empty anchors dict in Stage 2b. */
+/** Bundle response carries the mesh + edge payloads. Anchors are populated
+ *  deterministically from entity descriptor tokens; the dict is empty only when
+ *  no entity carries a token. */
 export interface BundleOkResponse {
   id: number
   ok: true

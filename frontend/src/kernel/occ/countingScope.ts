@@ -23,8 +23,15 @@ export class CountingScope extends DisposeScope {
   }
 
   override release<T extends Disposable>(obj: T): T {
-    this.releaseCount++
-    this.live--
-    return super.release(obj)
+    const before = this.size()
+    const result = super.release(obj)
+    // Base release() drops EVERY tracking entry for `obj`, including none for a
+    // foreign object, so live must fall by the number of entries actually
+    // removed, not by one per call, or peakLive undercounts multiply-tracked
+    // objects and goes negative for never-tracked ones.
+    const dropped = before - this.size()
+    this.releaseCount += dropped
+    this.live -= dropped
+    return result
   }
 }

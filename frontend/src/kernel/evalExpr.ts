@@ -12,7 +12,6 @@
  */
 
 import { create, all } from 'mathjs'
-import type { PartConstraint } from '@/types/cad'
 
 const math = create(all, {})
 
@@ -79,19 +78,4 @@ export function evalFeatureParams(
     }
     sub[key] = result
   }
-}
-
-/** Build a variable context from labelled, numeric-valued sketch constraints.
- *  Each named dimension (`d1`, `width`, ...) becomes a context entry. Unlabelled
- *  or non-numeric constraints are skipped.
- */
-export function constraintContext(constraints: PartConstraint[]): Record<string, number> {
-  const ctx: Record<string, number> = {}
-  for (const c of constraints) {
-    const label = (c as { label?: unknown }).label
-    if (typeof label === 'string' && label !== '' && typeof c.value === 'number') {
-      ctx[label] = c.value
-    }
-  }
-  return ctx
 }

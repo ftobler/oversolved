@@ -11,6 +11,7 @@ const devGate = vi.hoisted(() => ({ value: true }))
 
 vi.mock('./isDevBuild', () => ({
   isDevBuild: () => devGate.value,
+  isDevOrTestBuild: () => devGate.value,
 }))
 
 import { solveLocally, setSolveLocalsForTest } from './solveLocally'
