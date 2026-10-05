@@ -13,7 +13,7 @@
 // dependency-free so it ports to Rust as a clean lift.
 
 import type { PartConstraint, PartEntityDef } from '@/types/cad'
-import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
+import { resolveVertexRef } from '@/types/vertexRef'
 
 export interface DockHost {
   hostId: string
@@ -27,24 +27,13 @@ interface Geo {
 }
 
 /** Resolve an entity-only constraint operand (`$eid` or `{entity}`) to its entity
- *  id. Tolerates a vertex-keyed operand (`$eidstart` / `{entity, point}`) by
- *  stripping the key -- a tangent names whole curves, but being lenient keeps the
- *  resolver reusable for future dockable hosts. */
-function refEntityId(ref: unknown, knownIds: Set<string>): string | null {
-  if (ref && typeof ref === 'object') {
-    const e = (ref as { entity?: unknown }).entity
-    return typeof e === 'string' && knownIds.has(e) ? e : null
-  }
-  if (typeof ref !== 'string' || !ref.startsWith('$')) return null
-  const bare = ref.slice(1)
-  if (knownIds.has(bare)) return bare
-  for (const key of VERTEX_POINT_KEYS) {
-    if (bare.length > key.length && bare.endsWith(key)) {
-      const eid = bare.slice(0, -key.length)
-      if (knownIds.has(eid)) return eid
-    }
-  }
-  return null
+ *  id. Thin wrapper over the shared vertex-ref reader (types/vertexRef), which
+ *  owns the full-id-first + longest-eid tie-break; tolerates a vertex-keyed
+ *  operand (`$eidstart` / `{entity, point}`) by discarding the key -- a tangent
+ *  names whole curves, but being lenient keeps the resolver reusable for future
+ *  dockable hosts. */
+function refEntityId(ref: unknown, knownIds: ReadonlySet<string>): string | null {
+  return resolveVertexRef(knownIds, ref)?.entity ?? null
 }
 
 function center(g: Geo): [number, number] | null {

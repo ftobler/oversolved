@@ -16,7 +16,7 @@
  */
 
 import type { PartConstraint, PartFeature } from '@/types/cad'
-import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
+import { resolveVertexRef } from '@/types/vertexRef'
 import type { SketchInput } from './lowerSketch'
 
 export interface ExtractedSketch {
@@ -36,15 +36,14 @@ export interface ExtractResult {
 
 const REF_KEYS = ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b'] as const
 
-const VERTEX_KEY_SET: ReadonlySet<string> = new Set(VERTEX_POINT_KEYS)
-
 /**
- * Resolve a constraint ref against the sketch's local entity ids. Accepts
- * the live `$entityId[point]` query-string form, the already-resolved
- * `{entity, point}` dict form, and `@builtin_origin` (the origin-point
- * query that every sketch needs for coincident-to-origin constraints --
- * maps to `{external_xy: originLocal}` which the Rust solver's coincident
- * handler accepts natively).
+ * Resolve a constraint ref against the sketch's local entity ids. Thin wrapper
+ * over the shared vertex-ref reader (types/vertexRef), which owns the accepted
+ * `$entityId[point]` / `{entity, point}` forms and the full-id-first +
+ * longest-eid tie-break. This wrapper adds the `@builtin_origin` extra (the
+ * origin-point query that every sketch needs for coincident-to-origin
+ * constraints -- maps to `{external_xy: originLocal}` which the Rust solver's
+ * coincident handler accepts natively).
  *
  * `originLocal` is the document origin (0,0,0) expressed in this sketch's local
  * 2D frame. It is [0,0] for the builtin planes (which pass through the global
@@ -57,39 +56,8 @@ function resolveLocal(
   entityIds: Set<string>,
   originLocal: [number, number],
 ): { entity: string; point?: string } | { external_xy: [number, number] } | null {
-  if (q && typeof q === 'object') {
-    const obj = q as { entity?: unknown; point?: unknown }
-    if (typeof obj.entity === 'string' && entityIds.has(obj.entity)) {
-      // Same vertex-key validation the $-form gets: an unvalidated name would
-      // lower to Sel.absent, which the solver reads as whole-curve locus,
-      // silently weakening an endpoint constraint. Absent point stays bare locus.
-      if (obj.point == null) return { entity: obj.entity }
-      return typeof obj.point === 'string' && VERTEX_KEY_SET.has(obj.point)
-        ? { entity: obj.entity, point: obj.point }
-        : null
-    }
-    return null
-  }
-  if (typeof q === 'string') {
-    if (q === '@builtin_origin') return { external_xy: [...originLocal] }
-    if (!q.startsWith('$')) return null
-    const local = q.slice(1)
-    // The full string names a real entity when it is in the set: a minted
-    // base64url id can itself end in a vertex-key word, so a bare ref to it
-    // must resolve as the WHOLE id, not as a shorter id + a phantom vertex key
-    // (wire-format-hardening). Only when the full string is NOT a known entity
-    // do we split a known suffix -- the `$pwfYD59xKWiSyQhmcenter` sub-point
-    // case, whose residual is the known entity. Same full-id-first tie-break as
-    // resolveQueryRef in geometryMapping.ts.
-    if (entityIds.has(local)) return { entity: local }
-    for (const pt of VERTEX_POINT_KEYS) {
-      if (local.length > pt.length && local.endsWith(pt)) {
-        const eid = local.slice(0, -pt.length)
-        if (entityIds.has(eid)) return { entity: eid, point: pt }
-      }
-    }
-  }
-  return null
+  if (typeof q === 'string' && q === '@builtin_origin') return { external_xy: [...originLocal] }
+  return resolveVertexRef(entityIds, q)
 }
 
 /** True when `v` is a usable finite number; undefined fails so a half-authored

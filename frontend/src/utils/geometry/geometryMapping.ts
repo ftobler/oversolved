@@ -11,7 +11,7 @@ import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
 // pulls in Three.js, and this module sits in the headless closure of the sketch
 // editor store, which must stay Three-free.
 import { ellipseAxisPoints } from '@/utils/geometry/ellipseAxis'
-import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
+import { resolveVertexRef } from '@/types/vertexRef'
 
 type ResolvedRef = { entity: string; point?: string } | null | undefined
 
@@ -118,24 +118,12 @@ export function unflattenGeometry(
 }
 
 /** Resolve a query string (e.g. "$line1" or "$arc1start") to an {entity, point?} ref.
- *  A bare entity lookup wins over a suffix split: a minted base64url id can
- *  itself end in a vertex-key word, so a ref whose FULL string is a known
- *  entity resolves as that whole id (wire-format-hardening). The split reading
- *  (eid + point) applies only when the full string is not an entity, e.g. the
- *  `$pwfYD59xKWiSyQhmcenter` sub-point whose residual is the known id. Same
- *  full-id-first tie-break as resolveLocal in partDocToSketches.ts. */
-function resolveQueryRef(q: string | undefined, sketch: Sketch): { entity: string; point?: string } | null {
-  if (!q) return null
-  if (!q.startsWith('$')) return null
-  const local = q.slice(1)
-  if (sketch[local]) return { entity: local }
-  for (const pt of VERTEX_POINT_KEYS) {
-    if (local.length > pt.length && local.endsWith(pt)) {
-      const eid = local.slice(0, -pt.length)
-      if (sketch[eid]) return { entity: eid, point: pt }
-    }
-  }
-  return null
+ *  Thin wrapper over the shared vertex-ref reader; types/vertexRef owns the
+ *  full-id-first + longest-eid tie-break. Dict refs are passed through by the
+ *  callers' `normalize`, so only the string form reaches here. */
+function resolveQueryRef(q: string | undefined, knownIds: ReadonlySet<string>): { entity: string; point?: string } | null {
+  if (typeof q !== 'string') return null
+  return resolveVertexRef(knownIds, q)
 }
 
 export function geomPoint(sketch: Sketch, ref: { entity: string; point?: string }): [number, number] | null {
@@ -186,7 +174,8 @@ export function computeConstraintRender(constraint: PartConstraint, sketch: Sket
 // `unknown` only when nothing resolves (e.g. every referenced entity is gone),
 // in which case there is genuinely nowhere to put a tile.
 function fallbackConstraintGlyph(constraint: PartConstraint, sketch: Sketch): ConstraintRender {
-  const normalize = (q: string | undefined): ResolvedRef => typeof q === 'string' ? resolveQueryRef(q, sketch) : q
+  const knownIds = new Set(Object.keys(sketch))
+  const normalize = (q: string | undefined): ResolvedRef => typeof q === 'string' ? resolveQueryRef(q, knownIds) : q
   const refs = [
     constraint.a, constraint.b, constraint.target,
     constraint.line, constraint.arc, constraint.point,
@@ -231,7 +220,8 @@ function pointDistanceAxisRender(
 
 function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch): ConstraintRender {
   // Normalize refs: convert query strings to {entity, point?} objects.
-  const normalize = (q: string | undefined): ResolvedRef => typeof q === 'string' ? resolveQueryRef(q, sketch) : q
+  const knownIds = new Set(Object.keys(sketch))
+  const normalize = (q: string | undefined): ResolvedRef => typeof q === 'string' ? resolveQueryRef(q, knownIds) : q
   const resolved: ResolvedConstraint = {
     ...constraint,
     target:  normalize(constraint.target),
@@ -620,7 +610,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
     const pts: Point[] = []
     const entities: string[] = []
     for (const q of refs) {
-      const r = resolveQueryRef(q, sketch)
+      const r = resolveQueryRef(q, knownIds)
       if (!r) continue
       entities.push(r.entity)
       const p = geomPoint(sketch, r)
