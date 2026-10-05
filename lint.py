@@ -2,15 +2,16 @@
 """Comment-style linter for the Oversolved codebase.
 
 Enforces the comment conventions documented in AGENTS.md against a set of
-folders. It understands TypeScript (comments plus string literals) and Rust
-(comments only). The rule set is meant to grow.
+folders. It understands TypeScript (comments plus string literals), Rust
+(comments only) and Python (comments plus string literals). The rule set is
+meant to grow.
 
 Each rule is a function registered with the @rule decorator. The registry is
 the single source of truth: it drives the --no-<rule> switches, the rule list
 in --help, and the enforcement loop in check_file().
 
 Usage:
-    python lint.py [dir ...] [--filter GLOB] [--language {ts,rust}] [--no-<rule>]
+    python lint.py [dir ...] [--filter GLOB] [--language {ts,rust,python}] [--no-<rule>]
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import argparse
 import fnmatch
 import pathlib
 import sys
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -27,10 +29,12 @@ EN_DASH = "\u2013"
 BOX_DASH = "\u2500"
 SEPARATORS = frozenset("-=*_#~+")
 
-# Languages this linter understands. `ts` scans TypeScript sources; `rust`
-# scans Rust sources. The emdash rule spans both; the comment-shape rules are
-# TypeScript-only conventions and never run on Rust.
-LANGUAGES = ("ts", "rust")
+# Languages this linter understands. `ts` scans TypeScript sources, `rust`
+# scans Rust sources and `python` scans Python sources. The emdash rule spans
+# all three; the comment-shape rules are TypeScript-only conventions and never
+# run on Rust or Python. Python carries the banner rule too, since ASCII
+# separators are a codebase-wide ban.
+LANGUAGES = ("ts", "rust", "python")
 
 # A `/` starts a regex literal (not a division) when the previous significant
 # token is one of these, so `//` inside such a regex is not a comment.
@@ -68,7 +72,7 @@ _SKIP_DIRS = frozenset(
     }
 )
 
-EXTENSIONS = {"ts": (".ts", ".tsx"), "rust": (".rs",)}
+EXTENSIONS = {"ts": (".ts", ".tsx"), "rust": (".rs",), "python": (".py",)}
 
 
 @dataclass
@@ -105,13 +109,15 @@ class Rule:
 RULES: dict[str, Rule] = {}
 
 
-def rule(name: str, description: str, languages: frozenset[str] = frozenset(LANGUAGES)) -> Callable[[Callable], Callable]:
+def rule(name: str, description: str, languages: AbstractSet[str] = frozenset(LANGUAGES)) -> Callable[[Callable], Callable]:
     """Register a rule under `name`; the registry drives the CLI and the
     enforcement loop. `languages` restricts which source dialects the rule
-    applies to (default: every language this linter knows)."""
+    applies to (default: every language this linter knows). A read-only set is
+    accepted so call sites can pass plain `set` literals; it is frozen for the
+    registry."""
 
     def decorate(check: Callable) -> Callable:
-        RULES[name] = Rule(name=name, description=description, check=check, languages=languages)
+        RULES[name] = Rule(name=name, description=description, check=check, languages=frozenset(languages))
         return check
 
     return decorate
@@ -467,6 +473,94 @@ def scan_rust_comments(text: str) -> list[Comment]:
     return comments
 
 
+# Letters that can prefix a Python string literal (`r`, `b`, `f`, `u` and
+# combinations, any case). An identifier made only of these that butts up
+# against a quote is a prefix, not a name.
+_PY_STRING_PREFIXES = frozenset("rRbBuUfF")
+
+
+def _python_prefix_end(text: str, i: int, end: int) -> int | None:
+    """If a string literal starts at `i`, return the index of its opening quote.
+
+    That is either a bare quote or a prefix (`r`, `b`, `f`, `u` and blends)
+    immediately followed by one. Returns None when `i` starts ordinary code."""
+    c = text[i]
+    if c in "'\"":
+        return i
+    if c.isalpha() or c == "_":
+        j = i
+        while j < end and (text[j].isalnum() or text[j] == "_"):
+            j += 1
+        if j < end and text[j] in "'\"" and all(ch in _PY_STRING_PREFIXES for ch in text[i:j]):
+            return j
+    return None
+
+
+def _python_string_is_raw(text: str, quote: int) -> bool:
+    """True when the string opening at `quote` carries an `r`/`R` prefix, so a
+    backslash is literal and must not swallow the closing quote."""
+    k = quote - 1
+    while k >= 0 and text[k] in _PY_STRING_PREFIXES:
+        k -= 1
+    return "r" in text[k + 1:quote].lower()
+
+
+def _skip_python_string(text: str, i: int, end: int) -> int:
+    """Return the index just past the Python string literal opening at `i`.
+
+    Handles single and triple quotes plus raw strings; an unterminated literal
+    consumes to the end of the file."""
+    quote = text[i]
+    terminator = quote * 3 if text.startswith(quote * 3, i) else quote
+    raw = _python_string_is_raw(text, i)
+    j = i + len(terminator)
+    while j < end:
+        if not raw and text[j] == "\\":
+            j += 2
+        elif text.startswith(terminator, j):
+            return j + len(terminator)
+        else:
+            j += 1
+    return end
+
+
+def scan_python(text: str) -> list[Comment]:
+    """Return every `#` comment and string-literal segment in a Python file.
+
+    Comments feed the banner rule; comments and strings both feed the emdash
+    rule, mirroring how TS string literals are scanned. Prefixes, triple quotes
+    and escapes are handled so a `#` inside a string is not read as a comment,
+    and an unterminated triple-quoted docstring is reported down to the EOF."""
+    line_starts = _line_starts(text)
+    out: list[Comment] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] == "#":
+            start = i
+            j = text.find("\n", i, n)
+            if j == -1:
+                j = n
+            body = text[start + 1:j]
+            line = _line_of(line_starts, start)
+            col = start - line_starts[line - 1]
+            out.append(Comment(kind="line", line=line, col=col, text=body, lines=body.split("\n")))
+            i = j
+            continue
+        quote = _python_prefix_end(text, i, n)
+        if quote is not None:
+            delim = 3 if text.startswith(text[quote] * 3, quote) else 1
+            seg_start = quote + delim
+            end = _skip_python_string(text, quote, n)
+            seg_end = end - delim
+            if seg_end > seg_start:
+                out.append(_string_comment(line_starts, seg_start, text[seg_start:seg_end]))
+            i = end
+            continue
+        i += 1
+    return out
+
+
 def _dash_runs(text: str) -> list[int]:
     """Lengths of every run of the box-drawing dash in `text`."""
     runs: list[int] = []
@@ -525,7 +619,7 @@ def _check_inline_spacing(path: pathlib.Path, text: str, comments: list[Comment]
     return errors
 
 
-@rule("banner", "no ASCII-art divider lines; the approved divider uses box-drawing dashes", languages={"ts"})
+@rule("banner", "no ASCII-art divider lines; the approved divider uses box-drawing dashes", languages={"ts", "python"})
 def _check_banner(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
@@ -533,7 +627,7 @@ def _check_banner(path: pathlib.Path, text: str, comments: list[Comment]) -> lis
     return errors
 
 
-@rule("emdash", "no em or en dashes in comments or string literals; reword instead", languages={"ts", "rust"})
+@rule("emdash", "no em or en dashes in comments or string literals; reword instead", languages={"ts", "rust", "python"})
 def _check_emdash(path: pathlib.Path, text: str, comments: list[Comment]) -> list[str]:
     errors: list[str] = []
     for c in comments:
@@ -581,6 +675,8 @@ def check_file(path: pathlib.Path, text: str, config: Config) -> list[str]:
         comments = scan_comments(text) + scan_ts_strings(text)
     elif config.language == "rust":
         comments = scan_rust_comments(text)
+    elif config.language == "python":
+        comments = scan_python(text)
     else:
         comments = scan_comments(text)
     for rule in RULES.values():
