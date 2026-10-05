@@ -1,4 +1,4 @@
-// Parity gate for features/shared.ts (phase 2e pure-logic port). Replays the
+// Parity gate for the features/shared/ modules (phase 2e pure-logic port). Replays the
 // inputs recorded in the frozen featuresShared.json fixture through the TS port
 // and asserts identical outputs (coords within 1e-9). The fixture is a golden
 // snapshot; its generator (gen_features_shared_fixture.py) was deleted with the

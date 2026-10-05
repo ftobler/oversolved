@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { Repository, makeAncestryQuery } from '../query'
 import { HandleTable } from '../occ/handleTable'
 import { solveDeleteBody } from './deleteBody'
-import { resolveBodyIds } from './shared'
+import { resolveBodyIds } from './shared/bodyResolution'
 import type { OccModule } from '../occ/occTypes'
 import type { Body } from '../types3d'
 

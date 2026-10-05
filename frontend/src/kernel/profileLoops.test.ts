@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, arcSamplePoints, ellipseArcSamplePoints, loopPts, CENTROID_ARC_SAMPLES, type LoopEdge } from './profileLoops'
-import { extractProfileLoops } from './features/shared'
+import { extractProfileLoops } from './features/shared/profileLoops'
 
 const square = (s: number): LoopEdge[] => [
   { kind: 'line', start: [0, 0], end: [s, 0] },

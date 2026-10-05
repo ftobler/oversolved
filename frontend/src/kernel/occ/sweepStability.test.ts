@@ -20,7 +20,7 @@ import { DisposeScope } from './disposeScope'
 import { sweepProfileWithLineage } from './prismLineage'
 import { collectPathEdges } from '../features/sweep'
 import { Repository } from '../query'
-import type { PlaneLike } from '../features/shared'
+import type { PlaneLike } from '../features/shared/planes'
 import type { LoopEdge } from '../profileLoops'
 import type { OccModule, OccShape } from './occTypes'
 

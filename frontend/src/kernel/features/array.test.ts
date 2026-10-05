@@ -13,7 +13,7 @@ import { Repository as RealRepository } from '../query'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { buildArrayTransforms, buildCircularTransforms, solveArray, solveCircularArray } from './array'
-import { bareBody } from './shared'
+import { bareBody } from './shared/bodyResolution'
 import { emptyBrepDiff } from '../types3d'
 
 // Recording trsf doubles: each builder leaves its translation or rotation on

@@ -22,7 +22,7 @@ import {
   loopSignedArea,
   type LoopEdge,
 } from './profileLoops'
-import { extractProfileLoops } from './features/shared'
+import { extractProfileLoops } from './features/shared/profileLoops'
 import { OCC_CONFUSION, TOL_LOOP_CLOSURE, TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE } from './solverConstants'
 
 /**
@@ -192,7 +192,8 @@ function shoelace(pts: number[][]): number {
  *
  * REQUIRES a head-to-tail oriented loop. That is not a free assumption: the
  * DCEL emits boundaries in cycle order, but `extractProfileLoops` deliberately
- * makes none (features/shared.ts reverses an edge when it attaches backwards),
+ * makes none (features/shared/profileLoops.ts reverses an edge when it attaches
+ * backwards),
  * so a raw surface boundary is only conventionally oriented. Callers must pass
  * loops that are ordered -- `validateSketchArea` gets them from
  * `extractProfileLoops`, `sketchLoopsToFace` from the same function upstream --

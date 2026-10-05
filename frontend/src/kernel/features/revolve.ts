@@ -4,7 +4,8 @@
 // solid with per-entity lineage, and applies the body operation. An axis-less revolve is a solve
 // error, never a revolve about world Z -- see resolveRevolveAxis.
 //
-// The axis logic here is revolve-specific and does NOT go through shared.ts's resolveAxisQuery:
+// The axis logic here is revolve-specific and does NOT go through
+// shared/directionQuery.ts's resolveAxisQuery:
 // _solve_revolve flips the queried axis to match the feature's stored direction (so re-solving
 // a flipped edge does not reverse the body), which resolveAxisQuery (used by circular_array)
 // deliberately omits.
@@ -17,7 +18,9 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
-import { samePlane, sketchToWorld2d, surfaceEntityIds, unbuildableAreaReasons, loopDiagReasons, type PlaneLike } from './shared'
+import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
+import { surfaceEntityIds } from './shared/bodyRef'
+import { unbuildableAreaReasons, loopDiagReasons } from './shared/profileLoops'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
 import { faceCentroid, type Vec3 } from '../occ/primitives'

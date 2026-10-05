@@ -9,7 +9,7 @@ import { loadOcc } from './loadOcc'
 import { DisposeScope } from './disposeScope'
 import { volumeOf } from './booleans'
 import { extrudeProfileWithLineage } from './prismLineage'
-import type { PlaneLike } from '../features/shared'
+import type { PlaneLike } from '../features/shared/planes'
 import type { LoopEdge } from '../profileLoops'
 
 const oc = await loadOcc()
