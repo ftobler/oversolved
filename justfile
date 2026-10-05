@@ -126,10 +126,10 @@ rust-test:
     mkdir -p tmp
     cargo test --workspace 2>&1 | tee tmp/cargo_test.log
 
-# Lint the Rust solver workspace (clippy, deny warnings)
+# Lint the Rust solver workspace (clippy incl. tests, deny warnings)
 rust-lint:
     mkdir -p tmp
-    cargo clippy --workspace -- -D warnings 2>&1 | tee tmp/cargo_clippy.log
+    cargo clippy --workspace --tests -- -D warnings 2>&1 | tee tmp/cargo_clippy.log
     .venv/bin/python lint.py solver-core sketch-solver mate-solver --language rust 2>&1 | tee tmp/lint_rust.log
 
 # Check Rust formatting without rewriting files; CI runs the same command.
