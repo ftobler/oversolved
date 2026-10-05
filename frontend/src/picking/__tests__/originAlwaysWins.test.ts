@@ -6,11 +6,12 @@ import { FACE_LAYER_NAME } from '../FaceIdLayer'
 import { ORIGIN_LAYER_NAME, PLANE_LAYER_NAME } from '../IdPipeline'
 
 /**
- * The origin marker layer has priority=60 and depthTest=false. At the GPU
+ * The origin marker layer has priority=45 and depthTest=false. At the GPU
  * level that means a pixel written by the origin layer always sits in the
  * ID buffer regardless of B-rep depth. At the resolver level the buffer
  * just contains the origin's id, so the pick returns the origin even when
- * a face would have hit at the same world point.
+ * a face would have hit at the same world point. 45 sits deliberately below
+ * sketchVertex (50) so a sketch point sharing the origin's position wins.
  */
 
 function fillPixel(buf: Uint8Array, size: number, x: number, y: number, id: number): void {

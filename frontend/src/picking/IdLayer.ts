@@ -25,8 +25,6 @@ export interface IdLayer {
   readonly zPolicy: LayerZPolicy
   // Scene graph drawn by the pipeline into the ID render target.
   readonly scene: THREE.Scene
-  // True when the active tool excludes this layer entirely.
-  inertWhen?: () => boolean
   /**
    * Optional pre-render hook. The pipeline calls this with the current
    * render-target dimensions (device pixels) and its device-pixel ratio so the

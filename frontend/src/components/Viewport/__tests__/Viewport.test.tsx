@@ -94,6 +94,16 @@ vi.mock('../UserDefinedPlane', () => ({
   __esModule: true,
 }))
 
+vi.mock('../IdDebugOverlay', () => ({
+  default: () => <div data-testid="id-debug-overlay" />,
+  __esModule: true,
+}))
+
+vi.mock('../IdPickReadout', () => ({
+  default: () => <div data-testid="id-pick-readout" />,
+  __esModule: true,
+}))
+
 function makeFeature(id: string, kind: string, overrides?: Partial<Feature>): Feature {
   return { id, kind, ...overrides } as Feature
 }
@@ -311,5 +321,21 @@ describe('Viewport overlay stacking pen', () => {
     const { container } = render(<Viewport />)
     const root = container.firstElementChild as HTMLElement
     expect(root.style.isolation).toBe('isolate')
+  })
+})
+
+describe('Viewport collision debug gate', () => {
+  it('mounts IdDebugOverlay only while showDebugHit is on', () => {
+    usePartEditorStore.setState({ features: [sketch], bodies: makeBody() })
+
+    useSketchEditorStore.setState({ showDebugHit: false })
+    const off = render(<Viewport />)
+    expect(off.queryByTestId('id-debug-overlay')).toBeNull()
+    off.unmount()
+
+    useSketchEditorStore.setState({ showDebugHit: true })
+    const on = render(<Viewport />)
+    expect(on.getByTestId('id-debug-overlay')).not.toBeNull()
+    on.unmount()
   })
 })

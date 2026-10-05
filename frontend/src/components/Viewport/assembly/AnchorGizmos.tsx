@@ -17,7 +17,7 @@ import type { AnchorGizmo } from '@/utils/anchorGizmos'
 import type { Vec3 } from '@/utils/transform3d'
 
 /** Ring radius on screen. Constant in pixels, so a gizmo reads the same at any zoom. */
-export const ANCHOR_GIZMO_PX = 14
+const ANCHOR_GIZMO_PX = 14
 
 /** Ring colours, keyed to the display frame's axes: axis[0] red, [1] green, [2] blue. */
 const RING_COLORS = [0xff4d4d, 0x4dff4d, 0x4d8dff] as const

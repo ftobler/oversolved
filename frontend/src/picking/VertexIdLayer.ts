@@ -203,7 +203,6 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
   readonly name: string
   readonly priority: number
   readonly zPolicy: LayerZPolicy
-  inertWhen?: () => boolean
   protected readonly primitiveNounPlural = 'vertices'
 
   private readonly cubePixels: number | undefined

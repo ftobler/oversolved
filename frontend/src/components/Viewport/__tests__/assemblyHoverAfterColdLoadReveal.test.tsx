@@ -58,9 +58,9 @@ function faceMesh(): Mesh3D {
   }
 }
 
-// Mirrors AssemblyViewport's pipelineRef + resolveHitsAt: the ref is written by
-// IdPickingDriver's onReady, and a hover reads pipelineRef.current exactly as
-// the assembly editor does (line 280 of AssemblyViewport.tsx). IdPickingDriver
+// Mirrors AssemblyViewport's pipelineRef + resolveHitsAt/resolveHitsAtCursor:
+// the ref is written by IdPickingDriver's onReady, and a hover reads
+// pipelineRef.current exactly as the assembly editor does. IdPickingDriver
 // is the REAL driver, so the onReady re-fire on a fresh pipeline is exercised.
 function Harness({ pipelineRef, onReady }: {
   pipelineRef: { current: IdPipeline | null }

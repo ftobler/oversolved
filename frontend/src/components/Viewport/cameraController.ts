@@ -24,8 +24,8 @@ const FIT_MARGIN = 2.5
 // can still orbit (an AABB measured along one axis grows by up to sqrt(3) when
 // turned) and geometry can still be added. Two extents of slack on each side
 // covers both, and reproduces the historical ~1000-unit range for small models.
-export const CLIP_PAD_FACTOR = 2
-export const MIN_CLIP_PAD = 500
+const CLIP_PAD_FACTOR = 2
+const MIN_CLIP_PAD = 500
 
 // ─── camera chokepoint ───
 // Every programmatic camera move in the viewport goes through this module.
@@ -126,6 +126,40 @@ export function shouldAutoFit(fitted: boolean, bodyCount: number, manipulating: 
   return !fitted && bodyCount > 0 && !manipulating
 }
 
+// Min/max accumulation over a body's vertex list, accepting either the flat
+// Float32Array the kernel hands over or a tuple array from tests and adapters.
+// Non-finite triples are skipped; returns null when no finite vertex was seen so
+// callers can tell "empty" from "origin at zero". The single source for the
+// accumulation shared by zoom-to-fit and the extent helpers in index.tsx.
+export interface VertexBounds {
+  min: [number, number, number]
+  max: [number, number, number]
+}
+
+export function computeVertexBounds(
+  vertices: Float32Array | readonly [number, number, number][],
+): VertexBounds | null {
+  let minX = Infinity, maxX = -Infinity
+  let minY = Infinity, maxY = -Infinity
+  let minZ = Infinity, maxZ = -Infinity
+
+  const visit = (x: number, y: number, z: number): void => {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return
+    if (x < minX) minX = x; if (x > maxX) maxX = x
+    if (y < minY) minY = y; if (y > maxY) maxY = y
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
+  }
+
+  if (vertices instanceof Float32Array) {
+    for (let i = 0; i < vertices.length; i += 3) visit(vertices[i], vertices[i + 1], vertices[i + 2])
+  } else {
+    for (const [x, y, z] of vertices) visit(x, y, z)
+  }
+
+  if (!Number.isFinite(minX)) return null
+  return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] }
+}
+
 // Frame all body geometry (or, failing that, all scene meshes) so it fits the
 // viewport. Returns false when there is nothing finite to fit yet (geometry not
 // arrived), so the caller can retry. Camera-only; never mutates app state.
@@ -144,22 +178,11 @@ export function fitToContent(
     for (const body of Object.values(bodies)) {
       const verts = body.mesh?.vertices
       if (!verts) continue
-      if (verts instanceof Float32Array) {
-        for (let i = 0; i < verts.length; i += 3) {
-          const x = verts[i], y = verts[i + 1], z = verts[i + 2]
-          if (!Number.isFinite(x)) continue
-          if (x < minX) minX = x; if (x > maxX) maxX = x
-          if (y < minY) minY = y; if (y > maxY) maxY = y
-          if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
-        }
-      } else {
-        for (const [x, y, z] of verts) {
-          if (!Number.isFinite(x)) continue
-          if (x < minX) minX = x; if (x > maxX) maxX = x
-          if (y < minY) minY = y; if (y > maxY) maxY = y
-          if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
-        }
-      }
+      const bounds = computeVertexBounds(verts)
+      if (!bounds) continue
+      if (bounds.min[0] < minX) minX = bounds.min[0]; if (bounds.max[0] > maxX) maxX = bounds.max[0]
+      if (bounds.min[1] < minY) minY = bounds.min[1]; if (bounds.max[1] > maxY) maxY = bounds.max[1]
+      if (bounds.min[2] < minZ) minZ = bounds.min[2]; if (bounds.max[2] > maxZ) maxZ = bounds.max[2]
     }
   }
 

@@ -73,7 +73,6 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
   readonly name: string
   readonly priority: number
   readonly zPolicy: LayerZPolicy
-  inertWhen?: () => boolean
   protected readonly primitiveNounPlural = 'faces'
 
   private material = buildFaceIdMaterial()

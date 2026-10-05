@@ -2,24 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { resolvePickAtEvent } from '../useIdBufferPointerDispatch'
 import { IdPipeline, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
+import { StubRenderer, makeCanvas } from './pickCanvasFixture'
 
 // The single resolve seam shared by the click-selection dispatch and the
 // project draw tool. These tests pin that contract so project can never drift
 // back to reading the stale async hover (the flaky-edge-pick dual path).
-
-class StubRenderer {
-  domElement: HTMLCanvasElement
-  constructor(canvas: HTMLCanvasElement) { this.domElement = canvas }
-}
-
-function makeCanvas(): HTMLCanvasElement {
-  const c = document.createElement('canvas')
-  c.width = 800; c.height = 600
-  c.getBoundingClientRect = () => ({
-    x: 0, y: 0, top: 0, left: 0, right: 800, bottom: 600, width: 800, height: 600, toJSON() { return {} },
-  })
-  return c
-}
 
 const evt = (x: number, y: number) => new MouseEvent('pointerdown', { clientX: x, clientY: y })
 

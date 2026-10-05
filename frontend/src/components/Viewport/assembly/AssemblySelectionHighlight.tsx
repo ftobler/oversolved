@@ -1,9 +1,11 @@
 // Draws the assembly's B-rep selection and hover, mode-gated by the viewport so
 // it never shows while a mate field is armed (that mode has its own anchor
-// gizmos). The geometry is pulled from `pickGeometry` in solved-pose world
-// coordinates by a pure helper, so this component only turns Float32Arrays into
-// three.js buffers and picks the highlight colours -- the part editor's
-// COLOR_SELECTED / COLOR_HOVER, so the two editors read the same.
+// gizmos). The pick bodies arrive at the DRAWN pose (the solved pose plus the
+// live drag/settling offset the viewport already applied), so the highlight
+// follows a settle instead of hanging at the last baked pose. This component
+// only turns their Float32Arrays into three.js buffers and picks the highlight
+// colours -- the part editor's COLOR_SELECTED / COLOR_HOVER, so the two editors
+// read the same.
 
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'

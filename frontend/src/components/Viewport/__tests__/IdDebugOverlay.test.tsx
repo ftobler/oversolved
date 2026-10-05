@@ -4,14 +4,13 @@ import * as THREE from 'three'
 import { Canvas } from '@react-three/fiber'
 import IdDebugOverlay from '../IdDebugOverlay'
 import { buildOverlayMaterial } from '../IdDebugOverlayMaterial'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { IdPipeline } from '@/picking/IdPipeline'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 
 /**
- * Acceptance: overlay mounts only when showDebugHit is true; shader
- * decodes packed RGB ids and uses golden-ratio hue mapping; empty
- * pixels (a < 0.5) render as black.
+ * Acceptance: the shader decodes packed RGB ids and uses golden-ratio hue
+ * mapping; empty pixels (a < 0.5) render as black. The showDebugHit gate that
+ * mounts this overlay is covered in Viewport.test.tsx.
  *
  * The rendered output cannot be inspected in jsdom (no WebGL), so this
  * test exercises the shader source + uniform wiring at the component
@@ -25,15 +24,6 @@ describe('IdDebugOverlay', () => {
     )
     // Canvas renders a wrapper div; the overlay itself shouldn't contribute geometry.
     expect(container.textContent).toBe('')
-  })
-
-  it('toggle is gated on showDebugHit (default false)', () => {
-    const state = useSketchEditorStore.getState()
-    expect(state.showDebugHit).toBe(false)
-    // Toggle: the store action exists and updates the flag.
-    state.setShowDebugHit(true)
-    expect(useSketchEditorStore.getState().showDebugHit).toBe(true)
-    state.setShowDebugHit(false)
   })
 
   it('builds a ShaderMaterial whose fragment shader decodes RGB ids with golden-ratio hue mapping', () => {

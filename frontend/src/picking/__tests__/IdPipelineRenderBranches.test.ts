@@ -94,19 +94,6 @@ describe('IdPipeline.render z-policy', () => {
     expect(mat.uniforms.uHalfPixels.value).toBe(2.5)
     p.dispose()
   })
-
-  it('skips a layer that declares itself inert', () => {
-    const p = new IdPipeline({ width: 32, height: 32 })
-    registerFace(p.faceLayer, 'face')
-    p.faceLayer.inertWhen = () => true
-
-    const { renderer, rendered } = countingRenderer()
-    p.markDirty()
-    p.render(renderer, new THREE.Camera())
-
-    expect(rendered).not.toContain(p.faceLayer.scene)
-    p.dispose()
-  })
 })
 
 describe('IdPipeline.resolveAllSync', () => {

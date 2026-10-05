@@ -91,7 +91,6 @@ export function viewportMockModule(handle: Record<string, unknown> = {}) {
     default: forwardRef(function MockViewport(props: Record<string, unknown>, ref: React.Ref<unknown>) {
       useImperativeHandle(ref, () => ({
         autoZoomToFit: vi.fn(),
-        captureScreenshot: vi.fn(),
         captureScreenshotForSaving: vi.fn(),
         alignCameraToPlane: vi.fn(),
         alignCameraToFace: vi.fn(),

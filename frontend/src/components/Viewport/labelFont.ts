@@ -28,7 +28,7 @@ export const LABEL_CHARACTERS: string | undefined = undefined
 
 // The exact key drei computes for a <Text font={LABEL_FONT}> with no
 // `characters` prop. Derived rather than written out so it cannot drift.
-export const LABEL_FONT_KEY = ['troika-text', LABEL_FONT, LABEL_CHARACTERS]
+const LABEL_FONT_KEY = ['troika-text', LABEL_FONT, LABEL_CHARACTERS]
 
 // What the warm-up actually typesets, which is NOT the same thing as the
 // `characters` prop above and must not be confused with it.

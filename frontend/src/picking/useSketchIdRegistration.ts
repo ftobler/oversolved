@@ -23,7 +23,7 @@ import { isDevBuild } from '@/kernel/isDevBuild'
  * Composite-ID format matches the live store:
  *   entity composite:  `entity:${featureId}:${entityId}`
  *   vertex composite:  `vertex:${featureId}:${entityId}:${vertexKey}`
- * (See VertexDots.tsx:124 and EntityLines.tsx:21.)
+ * (built by VertexDots and EntityLines, see their composite-key helpers.)
  *
  * Inactive features (those not being edited) are still registered, so a
  * user can pick across other visible sketches. Suppressing those is a

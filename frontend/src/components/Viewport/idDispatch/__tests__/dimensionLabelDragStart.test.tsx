@@ -5,20 +5,7 @@ import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabe
 import { IdPipeline, DIMENSION_LABEL_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-
-class StubRenderer {
-  domElement: HTMLCanvasElement
-  constructor(canvas: HTMLCanvasElement) { this.domElement = canvas }
-}
-
-function makeCanvas(): HTMLCanvasElement {
-  const c = document.createElement('canvas')
-  c.width = 800; c.height = 600
-  c.getBoundingClientRect = () => ({
-    x: 0, y: 0, top: 0, left: 0, right: 800, bottom: 600, width: 800, height: 600, toJSON() { return {} },
-  })
-  return c
-}
+import { StubRenderer, makeCanvas } from './pickCanvasFixture'
 
 describe('useIdBufferPointerDispatch: dimension label drag start', () => {
   let canvas: HTMLCanvasElement

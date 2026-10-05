@@ -155,4 +155,24 @@ describe('HoverScheduler', () => {
     expect(onHits).toHaveBeenCalledWith([hit('h')])
     warn.mockRestore()
   })
+
+  // The synchronous apply is wrapped like the async one: a consumer that throws
+  // while applying a sync resolve must not escape into the pointer handler that
+  // scheduled it, and must be reported the same way.
+  it('swallows a throwing onHits on the synchronous path and warns', () => {
+    const frames = frameController()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const onHits = vi.fn(() => { throw new Error('consumer blew up') })
+    const scheduler = new HoverScheduler({
+      resolve: () => [hit('h')],
+      onHits,
+      requestFrame: frames.requestFrame,
+      cancelFrame: frames.cancelFrame,
+    })
+
+    expect(() => scheduler.schedule(query(1, 1))).not.toThrow()
+    expect(onHits).toHaveBeenCalledWith([hit('h')])
+    expect(warn).toHaveBeenCalledWith('hover apply failed', expect.any(Error))
+    warn.mockRestore()
+  })
 })

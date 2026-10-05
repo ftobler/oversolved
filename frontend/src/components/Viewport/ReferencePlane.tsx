@@ -1,7 +1,6 @@
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import PlaneBody from '@/components/Viewport/PlaneBody'
-
-const PLANE_SIZE = 100
+import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
 
 interface ReferencePlaneProps {
   rotation: [number, number, number]
@@ -12,7 +11,7 @@ export default function ReferencePlane({ rotation, label }: ReferencePlaneProps)
   return (
     <PlaneBody
       selId={builtinSelectionId(label)}
-      size={PLANE_SIZE}
+      size={DEFAULT_PLANE_SIZE}
       rotation={rotation}
       label={label}
     />

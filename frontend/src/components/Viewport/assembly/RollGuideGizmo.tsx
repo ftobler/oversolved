@@ -12,7 +12,7 @@ import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
 import { buildRollGuide, type RollGuide } from '@/utils/rollGuide'
 import type { Vec3 } from '@/utils/transform3d'
 
-export const ROLL_GUIDE_RADIUS_PX = 24
+const ROLL_GUIDE_RADIUS_PX = 24
 
 export interface RollGuideSpec {
   point: Vec3

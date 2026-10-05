@@ -46,10 +46,6 @@ vi.mock('../idDispatch/useIdBufferPointerDispatch', async (importOriginal) => {
 })
 vi.mock('../../../picking/IdPickingDriver', () => ({ default: () => null, __esModule: true }))
 vi.mock('../IdDebugOverlay', () => ({ default: () => null, __esModule: true }))
-vi.mock('../../../picking/wasLastClickConsumedByIdDispatch', () => ({
-  wasLastClickConsumedByIdDispatch: () => false,
-  wasLastClickStaleResolve: () => false,
-}))
 
 function makeBodyWithVertices(): Record<string, BodyResult> {
   // Provide non-degenerate Float32Array vertices so autoZoomToFitNow can compute a bounding box.

@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- module mixes the default component export with non-component helpers */
 
 import { Suspense, useRef } from 'react'
-import { useThree, useFrame, type ThreeEvent } from '@react-three/fiber'
+import { useThree, useFrame } from '@react-three/fiber'
 import { Line, Text } from '@react-three/drei'
 import * as THREE from 'three'
 import { LABEL_CHARACTERS, LABEL_FONT } from '@/components/Viewport/labelFont'
@@ -95,15 +95,12 @@ interface PlaneSurfaceProps {
   // @internal
   borderOpacity?: never
   hideMesh?: boolean
-  onPointerOver?: (e: ThreeEvent<PointerEvent>) => void
-  onPointerOut?: () => void
-  onClick?: (e: ThreeEvent<PointerEvent>) => void
 }
 
 const BORDER_WIDTH = 1
 const BORDER_OPACITY = 0.5
 
-export function PlaneSurface({ size, state = 'default', hideMesh, onPointerOver, onPointerOut, onClick }: PlaneSurfaceProps) {
+export function PlaneSurface({ size, state = 'default', hideMesh }: PlaneSurfaceProps) {
   const points = planeBorderPoints(size)
   const { fillColor, fillOpacity, borderColor } = STATE_STYLES[state]
 
@@ -115,7 +112,7 @@ export function PlaneSurface({ size, state = 'default', hideMesh, onPointerOver,
         // Screen-scaled helpers (markers, labels, dimension meshes, vertex dots)
         // size themselves as const/zoom, so measuring them would make the fit a
         // moving target that oscillates on repeated Reset Viewport presses.
-        <mesh userData={{ fitBounds: true }} onPointerOver={onPointerOver} onPointerOut={onPointerOut} onClick={onClick}>
+        <mesh userData={{ fitBounds: true }}>
           <planeGeometry args={[size, size]} />
           <meshBasicMaterial color={fillColor} transparent opacity={fillOpacity} side={THREE.DoubleSide} depthWrite={false} wireframe={false} />
         </mesh>

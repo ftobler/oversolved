@@ -14,11 +14,7 @@ import { sketchVertexAdapter } from '../sketchVertexAdapter'
 import { sketchEntityAdapter } from '../sketchEntityAdapter'
 import { markDrawToolClickConsumed, takeDrawToolClickConsumed } from '../drawToolClickGuard'
 import type { ActiveTool } from '@/types/cad'
-
-class StubRenderer {
-  domElement: HTMLCanvasElement
-  constructor(canvas: HTMLCanvasElement) { this.domElement = canvas }
-}
+import { StubRenderer, makeCanvas } from './pickCanvasFixture'
 
 /**
  * Let the hover throttle's trailing frame fire. Hover resolves are capped at ~two
@@ -30,17 +26,6 @@ async function flushHoverFrame(): Promise<void> {
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     await Promise.resolve()
   })
-}
-
-function makeCanvas(): HTMLCanvasElement {
-  const c = document.createElement('canvas')
-  c.width = 800; c.height = 600
-  // jsdom doesn't lay out elements; stub getBoundingClientRect so cursor
-  // math sees a 800x600 viewport at origin.
-  c.getBoundingClientRect = () => ({
-    x: 0, y: 0, top: 0, left: 0, right: 800, bottom: 600, width: 800, height: 600, toJSON() { return {} },
-  })
-  return c
 }
 
 describe('useIdBufferPointerDispatch', () => {
@@ -127,7 +112,7 @@ describe('useIdBufferPointerDispatch', () => {
 
       renderHook(() => useIdBufferPointerDispatch({
         glRef: glRef as { current: import('three').WebGLRenderer | null },
-        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+        consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
       }))
 
       await act(async () => { firePointerDown(canvas) })
@@ -142,7 +127,7 @@ describe('useIdBufferPointerDispatch', () => {
 
       renderHook(() => useIdBufferPointerDispatch({
         glRef: glRef as { current: import('three').WebGLRenderer | null },
-        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+        consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
       }))
 
       await act(async () => { firePointerDown(canvas) })
@@ -157,7 +142,7 @@ describe('useIdBufferPointerDispatch', () => {
 
       renderHook(() => useIdBufferPointerDispatch({
         glRef: glRef as { current: import('three').WebGLRenderer | null },
-        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+        consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
       }))
 
       await act(async () => { firePointerDown(canvas) })
@@ -172,7 +157,7 @@ describe('useIdBufferPointerDispatch', () => {
 
       renderHook(() => useIdBufferPointerDispatch({
         glRef: glRef as { current: import('three').WebGLRenderer | null },
-        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME]),
+        consumedLayers: new Set([SKETCH_VERTEX_LAYER_NAME]),
       }))
 
       await act(async () => { firePointerDown(canvas) })
@@ -1222,6 +1207,34 @@ describe('useIdBufferPointerDispatch', () => {
 
     expect(spy).toHaveBeenCalledWith('?03;abc:edge', { isVertexPick: false, sourceKind: null })
     spy.mockRestore()
+  })
+
+  it('a B-rep face click under the dimension tool falls through to the generic selection toggle (pinned decision)', async () => {
+    // isBrepDimensionPick excludes faces on purpose: a face lowers to a whole
+    // wire, naming no single dim target. So a face click while dimensioning is
+    // not consumed; it toggles normalSelection like any idle-tool face click.
+    // Pinned here so the intended behavior is explicit rather than incidental.
+    pipeline.resolveSync = vi.fn().mockReturnValue({
+      id: 8, layer: FACE_LAYER_NAME, entityKey: '@feat1/face/0', pickKey: '@feat1/face/0', distancePx: 0,
+    })
+    useSketchEditorStore.setState({
+      activeTool: 'dimension', activeFeatureId: 'feat1',
+      normalSelection: new Set(), dimensionPicks: [],
+    })
+    const dimSpy = vi.spyOn(useSketchEditorStore.getState(), 'addBrepDimensionPick')
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([FACE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    expect(dimSpy).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().normalSelection.has('@feat1/face/0')).toBe(true)
+    dimSpy.mockRestore()
   })
 
   it('an origin click while dimensioning inside a sketch records a builtin vertex pick', async () => {
