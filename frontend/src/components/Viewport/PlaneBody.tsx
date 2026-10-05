@@ -21,14 +21,16 @@ export default function PlaneBody({
   label: string
 }) {
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
-  const drag = useSketchEditorStore(s => s.drag)
+  // Select only the boolean the plane cares about: the DragState object is
+  // replaced on every pointermove tick, so subscribing to `s.drag` would
+  // re-render every plane on every tick.
+  const isDragging = useSketchEditorStore(s => s.drag !== null)
   const selected = useSketchEditorStore(s => s.normalSelection.has(selId))
 
   usePlaneIdRegistration({ selectionId: selId, size, rotation, origin })
 
   const hovered = hoveredSelectionId === selId
   const planeState: PlaneState = hovered ? 'hovered' : selected ? 'selected' : 'default'
-  const isDragging = drag !== null
   const ph = size / 2
 
   return (

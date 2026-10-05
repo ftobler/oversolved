@@ -1,6 +1,7 @@
-// The extent helpers behind Viewport camera fitting and plane sizing are pure
-// math/lookup, so they are unit tested directly instead of rendering the Canvas.
-// They are exported only for that reason.
+// The extent and plane-sizing helpers behind the Viewport are pure math/lookup
+// and live in viewportPlaneSizing.ts, so they are unit tested directly against
+// that leaf instead of rendering the Canvas. isActive still lives in the
+// Viewport barrel and is covered last.
 import { describe, it, expect } from 'vitest'
 import {
   calculateMeshExtentFromFlat,
@@ -8,8 +9,9 @@ import {
   getModelBoundingBoxExtent,
   getFaceExtent,
   calculatePlaneSize,
-  isActive,
-} from '@/components/Viewport'
+  getActiveSketchPlane,
+} from '@/components/Viewport/viewportPlaneSizing'
+import { isActive } from '@/components/Viewport'
 import type { BodyResult, Feature, PlaneDef } from '@/types/cad'
 
 function body(id: string, vertices: Float32Array | [number, number, number][] | undefined): BodyResult {
@@ -119,6 +121,33 @@ describe('calculatePlaneSize', () => {
 
   it('returns 100 when no body carries a mesh', () => {
     expect(calculatePlaneSize({ mode: 'offset' }, { b1: body('b1', undefined) })).toBe(100)
+  })
+})
+
+describe('getActiveSketchPlane', () => {
+  const features = [
+    { id: 'S1', kind: 'sketch', plane: '@builtin_plane_front' },
+    { id: 'S2', kind: 'sketch' },
+    { id: 'E1', kind: 'extrude', plane: '@builtin_plane_top' },
+  ] as Feature[]
+
+  it('returns null without an active id or feature list', () => {
+    expect(getActiveSketchPlane(null, features)).toBeNull()
+    expect(getActiveSketchPlane(undefined, features)).toBeNull()
+    expect(getActiveSketchPlane('S1', undefined)).toBeNull()
+  })
+
+  it('returns the plane query of the active sketch', () => {
+    expect(getActiveSketchPlane('S1', features)).toBe('@builtin_plane_front')
+  })
+
+  it('returns null for a non-sketch feature or an unknown id', () => {
+    expect(getActiveSketchPlane('E1', features)).toBeNull()
+    expect(getActiveSketchPlane('missing', features)).toBeNull()
+  })
+
+  it('returns null for a sketch without a plane', () => {
+    expect(getActiveSketchPlane('S2', features)).toBeNull()
   })
 })
 
