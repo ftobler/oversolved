@@ -32,7 +32,7 @@ import {
   solveSketchDrag,
   probeCircleDragMode,
 } from '@/kernel/features/sketch'
-import { setLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
+import { setLastDragSolve, clearLastDragSolveFor } from '@/components/Geometry3D/dragSolveRegistry'
 import type { CircleDragMode } from '@/kernel/features/circleDragMode'
 
 interface UseWasmDragSolveInput {
@@ -146,7 +146,10 @@ export function useWasmDragSolve(
       latestCursorRef.current = null
       dirtyRef.current = false
       startWorldRef.current = null
-      setLastDragSolve(null)
+      // Scope the clear to this sketch: the registry is a global slot and this
+      // effect also runs for a foreign sketch's render/unmount, which must not
+      // wipe a live drag's frames.
+      clearLastDragSolveFor(featureId)
       // Reset in response to an external event (pointer-up / drag end).
       // eslint-disable-next-line react-hooks/set-state-in-effect -- the reset must apply after render, in response to an external pointer-up
       setPreview(null)
@@ -211,7 +214,9 @@ export function useWasmDragSolve(
       // Also clear on unmount (feature deleted / viewport teardown mid-drag):
       // a published frame must never outlive its drag, or a later non-engaged
       // drag on the same feature would commit this drag's stale geometry.
-      setLastDragSolve(null)
+      // Scoped to the owner so a foreign sketch's unmount cannot wipe a live
+      // drag's frames.
+      clearLastDragSolveFor(featureId)
     }
   }, [ctx, featureId, isDragHere, dragMode])
 
