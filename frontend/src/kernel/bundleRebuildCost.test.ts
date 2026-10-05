@@ -44,7 +44,7 @@ import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
 import type { BundleRequest } from './worker/solverProtocol'
 import type { RelayService } from './worker/anchorSolverWorker'
-import type { Transform3D } from '../types/cad'
+import { identity } from '@/__tests__/fixtures'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -62,10 +62,6 @@ function bundleReq(doc_id: string, content_hash: string, spec: Record<string, un
 let nextBundleId = 1
 
 // ─── the assembly side: which parts get rebuilt at all ───
-
-function identity(): Transform3D {
-  return { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
-}
 
 function stubBundle(doc_id: string, content_hash: string): PartBundle {
   return {

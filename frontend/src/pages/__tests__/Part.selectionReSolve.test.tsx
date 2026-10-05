@@ -87,9 +87,7 @@ describe('selection across a re-solve (clearSelectedPicks contract)', () => {
     const solvesBeforeExit = solveMock.mock.calls.length
     fireEvent.click(screen.getByTitle('OK'))
     await waitFor(() => { expect(usePartEditorStore.getState().editingFeatureId).toBeNull() })
-    // Let the commit's re-solve settle inside act so its UI updates are wrapped.
-    await act(async () => { await new Promise(r => setTimeout(r, 50)) })
-    expect(solveMock.mock.calls.length).toBeGreaterThan(solvesBeforeExit)
+    await waitFor(() => { expect(solveMock.mock.calls.length).toBeGreaterThan(solvesBeforeExit) })
 
     // Leaving the sketch is not a re-solve question: setActiveFeatureId retires
     // the selection wholesale so a sketch-scoped query cannot outlive its sketch.

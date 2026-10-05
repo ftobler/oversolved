@@ -5,17 +5,11 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, screen, waitFor, act } from '@testing-library/react'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { useAssemblyStore } from '@/stores/assemblyStore'
+import { deferred } from '@/__tests__/fixtures'
 
-vi.mock('@/utils/core/commandRegistry', () => ({ executeCommand: vi.fn() }))
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
-
-function deferred() {
-  let resolve!: (saved: boolean) => void
-  const promise = new Promise<boolean>(r => { resolve = r })
-  return { promise, resolve }
-}
 
 function renderToolbar(handleSave: () => Promise<boolean>) {
   return render(

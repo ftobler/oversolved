@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { solveAssembly, encodeMateInput, type MateSpec } from './solveAssembly'
+import { identity } from '@/__tests__/fixtures'
 import { bundleCachePut, resetBundleDbConnection } from './bundleCache'
 import { loadPkgNodeExport, PKG_MATE } from '../wasm-kernel/loadPkgNode'
 import { BUNDLE_SCHEMA, type PartBundle } from './partBundle'
@@ -24,10 +25,6 @@ import type { RelayService } from './worker/anchorSolverWorker'
 
 const solveMate = loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE)
 const describeReal = solveMate ? describe : describe.skip
-
-function identity(): Transform3D {
-  return { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
-}
 
 function at(tx: number, ty: number, tz: number): Transform3D {
   return { tx, ty, tz, qx: 0, qy: 0, qz: 0, qw: 1 }

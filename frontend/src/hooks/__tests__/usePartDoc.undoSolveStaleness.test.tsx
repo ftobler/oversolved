@@ -14,12 +14,10 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: h.solveViaWorker,
 }))
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: vi.fn().mockReturnValue({}) }))
-vi.mock('@/stores/solverStore', () => ({
-  useSolverStore: { getState: () => ({ setIsSolving: vi.fn(), setOnCancelSolve: vi.fn(), onCancelSolve: null }) },
-}))
 
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useSolverStore } from '@/stores/solverStore'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 const docRef: { current: PartDoc | null } = { current: null }
@@ -50,6 +48,7 @@ describe('usePartDoc undo vs an in-flight solve', () => {
     usePartEditorStore.getState().setEditingFeatureId(null)
     usePartEditorStore.getState().setRollbackPosition(null)
     usePartEditorStore.getState().setPickBoundary(null)
+    useSolverStore.setState({ isSolving: false, onCancelSolve: null })
   })
 
   it('drops a pre-undo solve result and lets the queued restored-doc solve win', async () => {
