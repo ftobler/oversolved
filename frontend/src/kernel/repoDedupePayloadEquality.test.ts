@@ -1,5 +1,5 @@
 // feature-repo-dedupe-payload-equality: live and restored repos must agree on
-// duplicates. `_registerExtrusionFeature` registers one byte-identical payload
+// duplicates. `registerExtrusionFeature` registers one byte-identical payload
 // per body a feature owns, so a 2-body feature left TWO identical
 // `extrusion-feature` elements under `[@fid]` live while `repoFromSnapshot`
 // collapsed them to one - `?@fid:extrusion-feature` threw AmbiguousQueryError

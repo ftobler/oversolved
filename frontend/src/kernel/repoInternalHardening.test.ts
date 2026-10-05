@@ -121,15 +121,21 @@ describe("gc tag classification", () => {
 })
 
 describe("single-implementation canonical", () => {
-  it("builder.ts never re-implements canonical()'s NUL-join inline", () => {
+  it("the builder modules never re-implement canonical()'s NUL-join inline", () => {
     // The deleted face-ancestry dedup-skip used to. This is the headstone: if
     // canonical() ever changes (escaping, framing) the builder must not carry a
     // second copy of its join. The scan matches `join(` with either quote style,
-    // so a reintroduced double-quoted NUL escape cannot slip through.
-    const src = readFileSync(join(__dirname, "builder.ts"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/(?:^|\s)\/\/[^\n]*/g, "")
-    expect(src).not.toMatch(/join\(\s*['"](?:\\0|\\u0000)/)
-    expect(src).toContain("canonical(")  // still the one key derivation, never an inline join
+    // so a reintroduced double-quoted NUL escape cannot slip through. The
+    // ancestry registrar (builderAncestry.ts) is where canonical() is still
+    // called, so the one-key-derivation pin follows it there.
+    const sources = ["builder.ts", "builderAncestry.ts"].map((f) =>
+      readFileSync(join(__dirname, f), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(?:^|\s)\/\/[^\n]*/g, ""),
+    )
+    for (const src of sources) {
+      expect(src).not.toMatch(/join\(\s*['"](?:\\0|\\u0000)/)
+    }
+    expect(sources[1]).toContain("canonical(")  // still the one key derivation, never an inline join
   })
 })

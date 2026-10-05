@@ -1,5 +1,5 @@
 // Equivalence gate for `double-registration-pass`: the post-loop checkpoint pass
-// (`_snapshotWithBrepGeometry`) may skip a body the feature loop already registered into
+// (`snapshotWithBrepGeometry`) may skip a body the feature loop already registered into
 // the very snapshot the pass is rehydrating, but only if what a checkpoint OFFERS stays
 // identical. Element ids move (module-global counter), so equivalence is stated
 // semantically via `repoSemanticFingerprint`, never by byte comparison.

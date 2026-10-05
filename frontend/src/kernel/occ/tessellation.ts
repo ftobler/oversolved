@@ -316,7 +316,7 @@ function classifyFace(
  * `solidToMesh().face_data.length`. The render path's `assembleMesh` DROPS
  * zero-triangle faces, this path does not; they stay in sync only because every
  * B-rep face the system builds tessellates to >=1 triangle. The post-loop
- * checkpoint registration (`_snapshotWithBrepGeometry`) re-registers off the
+ * checkpoint registration (`snapshotWithBrepGeometry`) re-registers off the
  * render mesh and keys eviction on the face index, so a divergence here would
  * shift those indices. If a zero-triangle face ever appears, register the
  * checkpoint snapshot off this metadata too.
