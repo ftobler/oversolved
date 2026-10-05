@@ -7,6 +7,7 @@ import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic
 import { inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
 import { buildPlaneMatrix } from './idRegistrationUtils'
 import { buildSketchSegments, buildSketchVertices } from './sketchIdBuilders'
+import { isDevBuild } from '@/kernel/isDevBuild'
 
 
 /**
@@ -94,7 +95,7 @@ export function useSketchIdRegistration(params: {
           edgeQueries: seg.edgeQueries,
         })
       } catch (err) {
-        console.warn('Sketch entity ID registration failed; continuing without it', { featureId, err })
+        if (isDevBuild()) console.warn('Sketch entity ID registration failed; continuing without it', { featureId, err })
       }
     }
     if (vtx.vertices.length > 0) {
@@ -105,7 +106,7 @@ export function useSketchIdRegistration(params: {
           vertexQueries: vtx.vertexQueries,
         })
       } catch (err) {
-        console.warn('Sketch vertex ID registration failed; continuing without it', { featureId, err })
+        if (isDevBuild()) console.warn('Sketch vertex ID registration failed; continuing without it', { featureId, err })
       }
     }
     pipeline.markDirty()

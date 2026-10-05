@@ -1,5 +1,6 @@
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
+import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
  * Register the origin marker as a single pickable vertex.
@@ -31,7 +32,7 @@ export function useOriginMarkerIdRegistration(params: {
         // escalates to the nearest error boundary, and there is none: the whole
         // viewport root would unmount. Swallow it like the body hooks do;
         // useRegisteredBody skips markDirty on false.
-        console.warn('Origin marker ID registration failed; continuing without it', { selectionId, err })
+        if (isDevBuild()) console.warn('Origin marker ID registration failed; continuing without it', { selectionId, err })
         return false
       }
     },

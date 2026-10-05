@@ -16,6 +16,7 @@
  */
 
 import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader } from '../solveLocally'
+import { isDevBuild } from '../isDevBuild'
 import { extractErrorMessage } from '../errors'
 import { inWorker } from '../inWorker'
 import { loadOccWorker } from '../occ/loadOccWorker'
@@ -262,7 +263,7 @@ function collectBodyBuffers(bodies: Record<string, unknown> | undefined): Transf
       // handed the worker an engine-owned mesh packBody never packed. Skip the
       // transfer (a silent detach would corrupt the producer's cached copy) and
       // make the regression loud.
-      console.warn('mesh transfer: typed mesh was not freshly packed; skipping its buffers', mesh)
+      if (isDevBuild()) console.warn('mesh transfer: typed mesh was not freshly packed; skipping its buffers', mesh)
     }
     if (!fresh) continue
     if (mesh.vertices instanceof Float32Array) out.push(mesh.vertices.buffer)
@@ -340,7 +341,7 @@ export class WorkerActor {
           // The reply must not be able to lose the new job or leave the
           // superseded one queued to run after its superseded reply was sent.
           try { queued.onSuperseded() } catch (e) {
-            console.warn('superseded solve reply failed to post', e)
+            if (isDevBuild()) console.warn('superseded solve reply failed to post', e)
           }
         } else kept.push(queued)
       }
@@ -426,7 +427,7 @@ export function handleWorkerMessage(
       },
     })
   } else {
-    console.warn('[solverWorker] unknown message kind', msg.kind)
+    if (isDevBuild()) console.warn('[solverWorker] unknown message kind', msg.kind)
   }
 }
 

@@ -1,5 +1,6 @@
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
+import { isDevBuild } from '@/kernel/isDevBuild'
 
 /** Selection-id key for a feature editing handle. */
 export function featureHandleKey(featureId: string, field: string): string {
@@ -46,7 +47,7 @@ export function useFeatureHandleIdRegistration(params: {
         // No error boundary above a passive effect throw here: a registerBody
         // failure would unmount the viewport root. Warn and return false, as
         // the body hooks do; useRegisteredBody skips markDirty on false.
-        console.warn('Feature handle ID registration failed; continuing without it', { entityKey, err })
+        if (isDevBuild()) console.warn('Feature handle ID registration failed; continuing without it', { entityKey, err })
         return false
       }
     },

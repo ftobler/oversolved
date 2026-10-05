@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Dialog from '@/components/dialogs/Dialog'
 import { Spinner } from '@/components/shared/Spinner'
 import { defaultExportFileName, ensureExtension, swapExtension } from '@/utils/core/exportFileName'
+import { isDevBuild } from '@/kernel/isDevBuild'
 import '@/components/dialogs/ExportDialog.css'
 
 export type ExportFormat = 'step' | 'stl' | 'yaml'
@@ -72,7 +73,9 @@ export default function ExportDialog({
     try {
       await onDownload(format, format === 'stl' ? tessellation : 0, name)
     } catch (e) {
-      console.error('Export failed:', e)  // the parent reports it; never leave the dialog stuck busy
+      // The parent surfaces the failure; log it only under a dev build so the
+      // dialog can still reset its busy state without prod console chatter.
+      if (isDevBuild()) console.error('Export failed:', e)
     } finally {
       setIsExporting(false)
     }

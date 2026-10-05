@@ -31,7 +31,7 @@ export function EntitiesTable() {
                 </span>
               ))}
             </td>
-            <td>{e.activeTool ? <code>{e.activeTool}</code> : <span className="reg-muted">—</span>}</td>
+            <td>{e.activeTool ? <code>{e.activeTool}</code> : <span className="reg-muted">-</span>}</td>
             <td className="reg-cell-center">
               {e.showInToolbar
                 ? <Badge text="yes" variant="yes" />

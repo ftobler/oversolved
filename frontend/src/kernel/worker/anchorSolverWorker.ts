@@ -11,6 +11,7 @@
  */
 
 import { inWorker } from '../inWorker'
+import { isDevBuild } from '../isDevBuild'
 import { extractErrorMessage } from '../errors'
 import { initAnchorSolver, getMateSolver, getMateSolverLive } from '../../wasm-kernel/anchorSolver'
 import { solveAssembly } from '../solveAssembly'
@@ -156,7 +157,7 @@ async function cacheLateBundle(bundle: PartBundle): Promise<void> {
   } catch (e) {
     // Best effort: the solve already failed, so a failed cache write must not
     // surface as an unhandled rejection in the worker.
-    console.warn('failed to cache a late relayed bundle', e)
+    if (isDevBuild()) console.warn('failed to cache a late relayed bundle', e)
   }
 }
 
@@ -243,7 +244,7 @@ export class WorkerActor {
       .then(() => job().then(respond))
       .catch(err => {
         try { onError?.(err) } catch (e) {
-          console.warn('error callback threw while reporting a failed solve', e)
+          if (isDevBuild()) console.warn('error callback threw while reporting a failed solve', e)
         }
       })
   }
@@ -284,7 +285,7 @@ export function handleWorkerMessage(
   } else {
     // The union is exhaustive, so TS narrows msg to never here; log the kind
     // through the raw message so a malformed one is observable.
-    console.warn('[anchorSolverWorker] unknown message kind', (msg as { kind?: unknown }).kind)
+    if (isDevBuild()) console.warn('[anchorSolverWorker] unknown message kind', (msg as { kind?: unknown }).kind)
   }
 }
 

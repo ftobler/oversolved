@@ -149,11 +149,10 @@ export function tessellateBodies(
       }
     } catch (e) {
       // Non-fatal: a body that fails to tessellate still has valid topology, so
-      // the rest of the document still solves. But it must not be SILENT --
-      // dropping the only body of a STEP import leaves a document that solved
-      // "ok" and renders nothing, with no way to tell that from an empty file
+      // the rest of the document still solves. The dev-gated error names the
+      // dropped body so a failed STEP import is not mistakable for an empty file
       // (that is exactly how the assembly-sized `bodyFrame` overflow hid).
-      console.error(`[kernel] body ${bodyId} failed to tessellate; it will not render`, e)
+      if (isDevBuild()) console.error(`[kernel] body ${bodyId} failed to tessellate; it will not render`, e)
     }
   }
   return out
@@ -222,8 +221,8 @@ export function extractBrepMetadata(
       }
     } catch (e) {
       // Non-fatal: a body whose B-rep cannot be read just lacks ancestry, as in
-      // the tessellation path -- and reported for the same reason.
-      console.error(`[kernel] body ${bodyId} failed B-rep identification; it loses its ancestry`, e)
+      // the tessellation path -- and reported through the same dev gate.
+      if (isDevBuild()) console.error(`[kernel] body ${bodyId} failed B-rep identification; it loses its ancestry`, e)
     } finally {
       scope.dispose()
     }

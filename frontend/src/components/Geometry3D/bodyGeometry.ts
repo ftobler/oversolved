@@ -68,14 +68,14 @@ export function toNonIndexedPositions(positions: Float32Array, indices: Uint32Ar
   return out
 }
 
-export function getFaceIndices(faces: Mesh3D['faces'], i: number): [number, number, number] {
+function getFaceIndices(faces: Mesh3D['faces'], i: number): [number, number, number] {
   if (faces instanceof Uint32Array) {
     return [faces[i * 3], faces[i * 3 + 1], faces[i * 3 + 2]]
   }
   return faces[i]
 }
 
-export function getVertex(vertices: Mesh3D['vertices'], vi: number): [number, number, number] {
+function getVertex(vertices: Mesh3D['vertices'], vi: number): [number, number, number] {
   if (vertices instanceof Float32Array) {
     return [vertices[vi * 3], vertices[vi * 3 + 1], vertices[vi * 3 + 2]]
   }
@@ -87,7 +87,7 @@ export function faceCount(faces: Mesh3D['faces']): number {
   return faces.length
 }
 
-export function vertexCount(vertices: Mesh3D['vertices']): number {
+function vertexCount(vertices: Mesh3D['vertices']): number {
   if (vertices instanceof Float32Array) return vertices.length / 3
   return vertices.length
 }

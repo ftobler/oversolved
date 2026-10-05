@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { isDevBuild } from '@/kernel/isDevBuild'
 import { IdRegistry } from './IdRegistry'
 import { IdRenderTarget } from './IdRenderTarget'
 import { IdResolver, type ResolveOptions, type ResolvedHit, type WindowGeometry } from './IdResolver'
@@ -435,15 +436,17 @@ export class IdPipeline {
           failedLayers.push(layer.name)
           const streak = (this.layerFailureStreak.get(layer.name) ?? 0) + 1
           this.layerFailureStreak.set(layer.name, streak)
-          console.warn(`ID layer render failed: ${layer.name}`, err)
+          if (isDevBuild()) console.warn(`ID layer render failed: ${layer.name}`, err)
           if (streak >= LAYER_FAILURE_LATCH_THRESHOLD) {
-            // One warn at the latch transition, not one per frame: the pipeline
-            // has no useNotify, so this is the only channel the loss gets.
+            // One warn at the latch transition, not one per frame, so the dev
+            // diagnostic names the layer whose picking is gone in one line.
             this.latchedOutLayers.add(layer.name)
-            console.warn(
-              `ID layer latched out after ${streak} consecutive render failures; `
-              + `picking on it is disabled until reload: ${layer.name}`,
-            )
+            if (isDevBuild()) {
+              console.warn(
+                `ID layer latched out after ${streak} consecutive render failures; `
+                + `picking on it is disabled until reload: ${layer.name}`,
+              )
+            }
           }
         }
       }
@@ -703,7 +706,7 @@ export class IdPipeline {
         // never-settled promise. Settle with null and let done() drain the
         // queue. The warn keeps the failure from vanishing as an unhandled
         // rejection.
-        console.warn('ID async resolve read failed', err)
+        if (isDevBuild()) console.warn('ID async resolve read failed', err)
       }
       done(hit)
     })

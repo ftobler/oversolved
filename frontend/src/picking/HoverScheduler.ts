@@ -13,6 +13,7 @@
 // cannot be undone by a queued resolve. Pure: no DOM, no store, no three.js. The
 // frame functions are injected so tests need no requestAnimationFrame.
 
+import { isDevBuild } from '@/kernel/isDevBuild'
 import type { ResolvedHit } from './IdResolver'
 
 export interface HoverQuery {
@@ -115,7 +116,7 @@ export class HoverScheduler {
     try {
       result = this.resolveQuery(query)
     } catch (err) {
-      console.warn('hover resolve failed', err)
+      if (isDevBuild()) console.warn('hover resolve failed', err)
       return
     }
     // A synchronous resolver (the assembly's resolveAllSync) applies in the same
@@ -134,8 +135,9 @@ export class HoverScheduler {
         if (epoch !== this.epoch) return
         this.onHits(hits)
       })
-      // Never silent: a swallowed apply error would kill the hover state
-      // machine with no trace. The warn keeps the control flow identical.
-      .catch(err => console.warn('hover apply failed', err))
+      // A swallowed apply error would kill the hover state machine with no
+      // trace; the dev warn keeps the control flow identical while a prod build
+      // stays quiet.
+      .catch(err => { if (isDevBuild()) console.warn('hover apply failed', err) })
   }
 }

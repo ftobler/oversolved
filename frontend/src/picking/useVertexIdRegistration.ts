@@ -2,6 +2,7 @@ import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
 import { bodyKeyFor } from './pickKey'
 import { resolveVertexQueries } from '@/components/Geometry3D/bodyGeometry'
+import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
  * Hook used by Body3D to register a body's vertices with the vertex ID
@@ -29,7 +30,7 @@ export function useVertexIdRegistration(params: {
         p.vertexLayer.registerBody({ bodyKey, vertices, vertexQueries: resolvedQueries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
-        console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey, err })
+        if (isDevBuild()) console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey, err })
         return false
       }
     },
