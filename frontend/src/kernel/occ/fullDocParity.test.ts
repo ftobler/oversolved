@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Full-document parity test: replays the 20 PartDoc specs from the regression
+// Full-document parity test: replays the 70 PartDoc specs from the regression
 // baseline through the TS/WASM kernel (OCC.js + Rust sketch solver) and diffs
 // the output against the frozen baseline.
 //
