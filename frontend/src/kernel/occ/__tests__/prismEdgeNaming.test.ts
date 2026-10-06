@@ -23,9 +23,9 @@ vi.mock('@/kernel/isDevBuild', () => ({
   isDevOrTestBuild: () => false,
 }))
 
-import { derivePrismEdgeNames } from './prismEdgeNaming'
-import type { OccModule, OccShape } from './occTypes'
-import type { DisposeScope } from './disposeScope'
+import { derivePrismEdgeNames } from '../prismEdgeNaming'
+import type { OccModule, OccShape } from '../occTypes'
+import type { DisposeScope } from '../disposeScope'
 
 describe('derivePrismEdgeNames production warn', () => {
   it('warns when an edge has no nameable face pair (unrescued topology) in production', () => {
