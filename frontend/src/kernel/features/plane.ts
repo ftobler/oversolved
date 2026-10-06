@@ -10,8 +10,7 @@ import { getPoint3d } from '../query'
 import type { Body, Frame3D } from '../types3d'
 import { normalToFrame } from '../types3d'
 import type { PlaneLike } from './shared/planes'
-import type { Vec3 } from './vec3'
-import { sub, dot, cross } from './vec3'
+import { add, cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
@@ -34,14 +33,6 @@ function normalize(v: number[]): Vec3 {
   const n = norm(v)
   if (n < 1e-12) throw new Error('Cannot normalize zero-length vector')
   return [v[0] / n, v[1] / n, v[2] / n]
-}
-
-function scale(v: number[], s: number): Vec3 {
-  return [v[0] * s, v[1] * s, v[2] * s]
-}
-
-function add(a: number[], b: number[]): Vec3 {
-  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
 /** Rotate (x, y) about `normal` by `degrees` (mirrors `_rotate_frame_around_normal`). */

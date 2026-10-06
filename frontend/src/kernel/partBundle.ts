@@ -6,6 +6,7 @@
 
 import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor } from '../types/cad'
 import { sha256Hex } from './sha256'
+import { cross, sub } from '@/utils/vec3'
 
 export type AnchorKind = 'plane' | 'cylinder' | 'cone' | 'sphere' | 'torus' | 'line' | 'circle' | 'point'
 
@@ -159,14 +160,6 @@ export function anchorKindHasAxis(kind: AnchorKind): boolean {
 
 type Vec3 = [number, number, number]
 
-function cross(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ]
-}
-
 function normalize(v: Vec3): Vec3 {
   const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
   if (len < 1e-15) return [0, 0, 0]
@@ -175,10 +168,6 @@ function normalize(v: Vec3): Vec3 {
 
 function midpoint(a: Vec3, b: Vec3): Vec3 {
   return [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5]
-}
-
-function sub(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
 /** Point on a circle at parametric angle, given center, radius, x_axis, and the circle's normal axis. */

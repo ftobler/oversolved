@@ -15,7 +15,7 @@ import type { Repository } from '../query'
 import { AmbiguousQueryError } from '../query'
 import type { Vec3 } from '../occ/primitives'
 import { makePrism } from '../occ/primitives'
-import { dot, cross } from './vec3'
+import { dot, cross } from '@/utils/vec3'
 import { booleanWithHistory, countSolids } from '../occ/booleans'
 import { extractOccFace, computeFacePlane } from '../occ/faceLoops'
 

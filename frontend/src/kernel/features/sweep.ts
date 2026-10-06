@@ -21,6 +21,7 @@ import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage } from '../occ/prismLineage'
 import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, type Vec3 } from '../occ/primitives'
+import { stripRefSigil } from '@/utils/refSigil'
 
 type Dict = Record<string, unknown>
 type Lineage = Record<string, string[]>
@@ -43,7 +44,7 @@ export function pathRefToSketchId(pathRef: string, globalRepo: Repository): stri
     }
     throw new Error(`sweep: could not resolve path sketch from ${JSON.stringify(pathRef)}`)
   }
-  return pathRef.replace(/^\$+/, '')
+  return stripRefSigil(pathRef, '$')
 }
 
 /**

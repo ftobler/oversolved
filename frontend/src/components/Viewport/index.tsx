@@ -24,6 +24,7 @@ import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
 import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
+import { BUILTIN_PLANE_ROTATIONS } from '@/utils/builtinPlanes'
 import { calculatePlaneSize, getActiveSketchPlane } from '@/components/Viewport/viewportPlaneSizing'
 import { SketchPlaneDisplay } from '@/components/Viewport/SketchPlaneDisplay'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
@@ -527,9 +528,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         <EnvLight />
 
         {showOrigin && <OriginMarker />}
-        {showFront  && <ReferencePlane rotation={[0,0,0]} label="Front" />}
-        {showTop    && <ReferencePlane rotation={[-Math.PI/2,0,0]} label="Top" />}
-        {showRight  && <ReferencePlane rotation={[0,Math.PI/2,0]} label="Right" />}
+        {showFront  && <ReferencePlane rotation={BUILTIN_PLANE_ROTATIONS.builtin_plane_front} label="Front" />}
+        {showTop    && <ReferencePlane rotation={BUILTIN_PLANE_ROTATIONS.builtin_plane_top} label="Top" />}
+        {showRight  && <ReferencePlane rotation={BUILTIN_PLANE_ROTATIONS.builtin_plane_right} label="Right" />}
 
         {(features ?? [])
           .filter(f => f.kind === 'plane' && !['Origin','Top','Front','Right'].includes(f.id))

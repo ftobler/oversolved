@@ -23,6 +23,7 @@ import type { Repository } from '../query'
 import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './shared/bodyRef'
 import { resolveBody } from './shared/bodyResolution'
 import { mergeBrepDiff } from './shared/brepDiff'
+import { stripRefSigil } from '@/utils/refSigil'
 import { makeCylinder, type Vec3 } from '../occ/primitives'
 import { bodyFrame } from '../occ/tessellation'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
@@ -68,7 +69,7 @@ function parseHoleSketchRef(
     if (sketchId === null) return { sketchId: ref, entityId: null }
     return { sketchId, entityId: soleEntityInQuery(ref, sketchId) }
   }
-  return { sketchId: ref.replace(/^[@$]+/, ''), entityId: null }
+  return { sketchId: stripRefSigil(ref, '@$'), entityId: null }
 }
 
 /**

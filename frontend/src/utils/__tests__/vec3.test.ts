@@ -1,9 +1,10 @@
-// Unit coverage for the shared vec3 primitives extracted from the feature
-// solvers. These helpers are byte-for-byte identical across plane/upTo/
-// projectionLowering, so they get one direct test here instead of per-leaf.
+// Unit coverage for the shared vec3 primitives used by the viewport math and
+// the feature solvers. These helpers are byte-for-byte identical across
+// plane/upTo/projectionLowering/gizmoMath, so they get one direct test here
+// instead of per-caller.
 
 import { describe, it, expect } from 'vitest'
-import { sub, dot, cross, type Vec3 } from './vec3'
+import { add, scale, sub, dot, cross, type Vec3 } from '@/utils/vec3'
 
 describe('vec3.sub', () => {
   it('subtracts componentwise', () => {
@@ -19,6 +20,28 @@ describe('vec3.sub', () => {
     const b: Vec3 = [-2, 5, 0]
     const ba = sub(b, a)
     expect(sub(a, b)).toEqual([-ba[0], -ba[1], -ba[2]])
+  })
+})
+
+describe('vec3.add', () => {
+  it('adds componentwise', () => {
+    expect(add([1, 2, 3], [4, 6, 8])).toEqual([5, 8, 11])
+  })
+
+  it('inverts sub', () => {
+    const a: Vec3 = [3, -1, 4]
+    const b: Vec3 = [-2, 5, 0]
+    expect(add(a, sub(b, a))).toEqual(b)
+  })
+})
+
+describe('vec3.scale', () => {
+  it('multiplies every component', () => {
+    expect(scale([1, -2, 3], 2)).toEqual([2, -4, 6])
+  })
+
+  it('returns the zero vector at factor zero', () => {
+    expect(scale([1, 2, 3], 0)).toEqual([0, 0, 0])
   })
 })
 

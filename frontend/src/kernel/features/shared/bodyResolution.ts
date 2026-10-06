@@ -3,6 +3,7 @@
 
 import type { Body } from '../../types3d'
 import { AmbiguousQueryError, parseAncestry, type Repository } from '../../query'
+import { stripRefSigil } from '@/utils/refSigil'
 
 type Dict = Record<string, unknown>
 
@@ -92,7 +93,7 @@ const TOPO_FALLBACK_REF = /^@([^/]+)\/(?:face|edge|vertex)\/\d+$/
  * delete-body still falls back to `resolveBody` for viewport-prefix forms.
  */
 export function resolveBodyIds(ref: string, bodyStore: Record<string, Body>): string[] {
-  const key = ref.replace(/^@+/, '')
+  const key = stripRefSigil(ref, '@')
   // An exact body id names exactly that one sibling.
   if (key in bodyStore) return [key]
   // A topo-fallback element ref names the body it sits on. The render layer

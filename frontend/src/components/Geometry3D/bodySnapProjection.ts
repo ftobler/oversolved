@@ -1,6 +1,7 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 import type { PlaneTransform, EdgeData, Sketch } from '@/types/cad'
+import { stripRefSigil } from '@/utils/refSigil'
 
 /** Sentinel prefix for body-snap featureIds in synthetic otherSketches entries.
  *  computeDragMutation detects this to emit move_vertex (position only, no constraint). */
@@ -34,7 +35,7 @@ export function planeTransformNormal(
 
 /** Derive a PlaneTransform for a builtin sketch plane when no backend transform is available. */
 export function builtinPlaneTransform(plane: string): PlaneTransform | null {
-  const p = plane.startsWith('@') ? plane.slice(1) : plane
+  const p = stripRefSigil(plane, '@')
   if (p === 'builtin_plane_front') {
     return { rotation: [1, 0, 0,  0, 1, 0,  0, 0, 1], origin: [0, 0, 0] }
   }
