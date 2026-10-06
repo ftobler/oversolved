@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { parseTarget } from '@/utils/yamlMutations'
 
 // parseTarget maps a selection id to a query string. The @-passthrough and
-// face: passthrough are covered in yamlMutations.test.ts; this pins the final
+// face: passthrough are covered in yamlMutations.parseTarget.test.ts; this pins the final
 // fallback branch: a bare element token (no entity:/vertex:/face:/@ prefix) is
 // treated as a host-local reference and gets the `$` wire prefix.
 

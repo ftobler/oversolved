@@ -17,6 +17,51 @@ export function findFeature(doc: PartDoc, featureId: string): PartFeature | unde
   return doc.features?.find(f => f.id === featureId)
 }
 
+/** The three lazily-created containers of a sketch feature. A feature straight out
+ *  of YAML may be missing any of them, so every mutation that writes one has to
+ *  materialize it first. */
+export type SketchLists = {
+  entities: PartEntityDef[]
+  initial: Record<string, number[]>
+  constraints: PartConstraint[]
+}
+
+/** Find a sketch feature and materialize exactly the containers named in `lists`,
+ *  returning it narrowed so the mutation body can index them without a `!` per
+ *  line. Which containers get created is per call rather than all three always:
+ *  an unrequested `constraints: []` would show up in the serialized document.
+ *
+ *  A missing feature yields undefined and every mutation below bails on it -- a
+ *  stale feature id from the UI is not an error, the feature was just deleted.
+ *
+ *  Pass string LITERALS. A union-typed argument (`which: 'entities' | 'initial'`)
+ *  infers K as the whole union, so the return type would claim both containers
+ *  while only one was created. Every caller today passes literals. */
+export function resolveSketch<K extends keyof SketchLists>(
+  doc: PartDoc,
+  featureId: string,
+  ...lists: K[]
+): (PartFeature & Pick<SketchLists, K>) | undefined {
+  const feature = findFeature(doc, featureId)
+  if (!feature) return undefined
+  for (const list of lists) {
+    if (list === 'entities') {
+      if (!feature.entities) feature.entities = []
+    } else if (list === 'initial') {
+      if (!feature.initial) feature.initial = {}
+    } else if (list === 'constraints') {
+      if (!feature.constraints) feature.constraints = []
+    } else {
+      // Exhaustive by construction: a container added to SketchLists without a
+      // branch here would be asserted present by the cast below and materialized
+      // by nobody. Fail at the type level rather than at the first index.
+      const unhandled: never = list
+      throw new Error(`resolveSketch: unhandled container ${String(unhandled)}`)
+    }
+  }
+  return feature as PartFeature & Pick<SketchLists, K>
+}
+
 /** Convert a selection ID to a query string.
  *  If the target belongs to a different feature than the host, use `@<featId>/<eleId>[/<sub>]`
  *  (absolute ref, slash-joined). Otherwise use `$<eleId>` (local ref).
