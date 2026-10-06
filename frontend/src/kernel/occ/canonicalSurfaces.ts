@@ -27,6 +27,7 @@ import type {
   OccOrientedShape,
   OccSurfaceAdaptor,
 } from './occTypes'
+import { volumeOf } from './volume'
 
 const FIT_SAMPLES = 7  // grid per direction -> 49 samples per face
 const FIT_TOL = 1e-6  // max radial deviation for "this face IS a cylinder"
@@ -217,13 +218,6 @@ function countWires(oc: OccModule, scope: DisposeScope, face: OccShape): number 
   return count
 }
 
-/** Volume via BRepGProp (local copy of booleans.volumeOf to avoid an import cycle). */
-function shapeVolume(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
-  const props = scope.track(new oc.GProp_GProps_1())
-  oc.BRepGProp.VolumeProperties_1(shape, props, true, false, false)
-  return props.Mass()
-}
-
 /**
  * Replace every non-analytic face of `shape` that sits on a true cylinder
  * with a face rebuilt on a shared analytic gp_Cylinder.  Returns the input
@@ -325,8 +319,8 @@ export function canonicalizeCylinderFaces(
     // 5. Guards: an orientation slip would corrupt the solid, so require both
     //    BRepCheck validity and an unchanged volume before adopting the result.
     if (!scope.track(new oc.BRepCheck_Analyzer(healed, true)).IsValid_2()) return identity
-    const v0 = shapeVolume(oc, scope, shape)
-    const v1 = shapeVolume(oc, scope, healed)
+    const v0 = volumeOf(oc, scope, shape)
+    const v1 = volumeOf(oc, scope, healed)
     if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return identity
 
     // 6. Re-base the swap targets through the fixer's substitution context:
