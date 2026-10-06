@@ -5,10 +5,10 @@ import {
   cancelSolver, getPendingCount,
   EMPTY_BUILD_STATE,
   type SolverWorkerLike,
-} from './solverClient'
-import { fileIdsMissingFromWorker, dropWorkerFileId } from './workerFiles'
-import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
-import type { BuildState } from '../types3d'
+} from '../solverClient'
+import { fileIdsMissingFromWorker, dropWorkerFileId } from '../workerFiles'
+import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from '../solverProtocol'
+import type { BuildState } from '../../types3d'
 
 type AnyResponse = SolveResponse | ExportResponse | BundleResponse
 

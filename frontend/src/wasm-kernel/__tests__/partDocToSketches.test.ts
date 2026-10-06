@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { PartFeature, PartConstraint } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
-import { partDocToSketches } from './partDocToSketches'
+import { partDocToSketches } from '../partDocToSketches'
 
 describe('partDocToSketches', () => {
   it('resolves $-form sketch-local refs to dict form', () => {

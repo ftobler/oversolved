@@ -8,7 +8,7 @@
  * re-merge them -- so the boundary is asserted here rather than left to review.
  */
 import { describe, it, expect } from 'vitest'
-import { loadPkgNodeExport, PKG_SKETCH, PKG_MATE } from './loadPkgNode'
+import { loadPkgNodeExport, PKG_SKETCH, PKG_MATE } from '../loadPkgNode'
 
 const sketchPkg = loadPkgNodeExport<unknown>('solve_sketch_bytes', PKG_SKETCH)
 const matePkg = loadPkgNodeExport<unknown>('solve_mate_bytes', PKG_MATE)

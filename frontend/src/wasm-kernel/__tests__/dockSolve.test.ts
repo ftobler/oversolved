@@ -12,10 +12,10 @@
 
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
-import { loadSolver } from './loadSolver'
-import { lowerSketch } from './lowerSketch'
-import { encodeInput, decodeOutput } from './codec'
-import { partDocToSketches } from './partDocToSketches'
+import { loadSolver } from '../loadSolver'
+import { lowerSketch } from '../lowerSketch'
+import { encodeInput, decodeOutput } from '../codec'
+import { partDocToSketches } from '../partDocToSketches'
 import { applyAddConstraint, applyAddDock, applyMoveEntity, applyDeleteElements } from '@/utils/yamlMutations'
 
 const bytes = loadSolver()

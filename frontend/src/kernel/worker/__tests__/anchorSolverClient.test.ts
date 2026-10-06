@@ -17,10 +17,10 @@ import {
   getPendingCount,
   relayReplyTransferables,
   BUNDLE_FRESH,
-} from './anchorSolverClient'
+} from '../anchorSolverClient'
 import type {
   AnchorSolverWorkerLike,
-} from './anchorSolverClient'
+} from '../anchorSolverClient'
 import type {
   SolveAssemblyRequest,
   AssemblyWorkerRequest,
@@ -28,8 +28,8 @@ import type {
   AnchorRelayRequest,
   AnchorRelayOkResponse,
   AnchorRelayErrResponse,
-} from './solverProtocol'
-import { BUNDLE_SCHEMA, type PartBundle } from '../partBundle'
+} from '../solverProtocol'
+import { BUNDLE_SCHEMA, type PartBundle } from '../../partBundle'
 
 class FakeWorker implements AnchorSolverWorkerLike {
   onmessage: ((e: { data: AssemblyWorkerResponse }) => void) | null = null

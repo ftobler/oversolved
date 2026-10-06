@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest } from './solverWorker'
-import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from './solverProtocol'
-import { SUPERSEDED_ERROR } from './solverProtocol'
-import { solveLocally, exportLocally, exportAssemblyLocally } from '../solveLocally'
-import type { BuildResponse } from '../builder'
-import type { BuildState } from '../types3d'
-import type { Transform3D } from '../../types/cad'
+import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest } from '../solverWorker'
+import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from '../solverProtocol'
+import { SUPERSEDED_ERROR } from '../solverProtocol'
+import { solveLocally, exportLocally, exportAssemblyLocally } from '../../solveLocally'
+import type { BuildResponse } from '../../builder'
+import type { BuildState } from '../../types3d'
+import type { Transform3D } from '../../../types/cad'
 
 // The dispatcher binds the production engines directly (not via injection), so
 // the one-shot branches can only be driven without OCC if those engines are
 // mocked. The direct handler tests below still inject their own fakes.
-vi.mock('../solveLocally', () => ({
+vi.mock('../../solveLocally', () => ({
   solveLocally: vi.fn(),
   exportLocally: vi.fn(),
   exportAssemblyLocally: vi.fn(),

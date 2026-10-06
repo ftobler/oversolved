@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { lowerSketch, pinnedMaskFor, type EntityLayout } from './lowerSketch'
-import { Kind, Role, Sel } from './codec'
+import { lowerSketch, pinnedMaskFor, type EntityLayout } from '../lowerSketch'
+import { Kind, Role, Sel } from '../codec'
 
 describe('lowerSketch ellipse entity', () => {
   it('lays out an ellipse as 5 params with kind code 4', () => {

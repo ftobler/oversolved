@@ -11,9 +11,9 @@
 // Skips when the Rust solver build is absent.
 
 import { describe, it, expect } from 'vitest'
-import { loadSolver } from './loadSolver'
-import { lowerSketch } from './lowerSketch'
-import { encodeInput, decodeOutput, Status } from './codec'
+import { loadSolver } from '../loadSolver'
+import { lowerSketch } from '../lowerSketch'
+import { encodeInput, decodeOutput, Status } from '../codec'
 
 const bytes = loadSolver()
 

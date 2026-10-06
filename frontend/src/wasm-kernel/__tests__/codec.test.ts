@@ -10,8 +10,8 @@ import { describe, it, expect } from 'vitest'
 import {
   encodeInput, decodeOutput, ConstraintKindCode, Kind, Role, Sel, Status,
   type FlatInput,
-} from './codec'
-import { loadSolver } from './loadSolver'
+} from '../codec'
+import { loadSolver } from '../loadSolver'
 
 const solveBytes = loadSolver()
 
