@@ -107,91 +107,120 @@ export function buildContextMenu(
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
 ): BuildContextMenuOutput {
+  if (input.targetId?.startsWith('body:')) return buildBodyMenu(input, callbacks)
+
+  const ctx = buildMenuContext(input, callbacks)
+  return {
+    items: [
+      ...surfaceItems(ctx),
+      ...rebuildItems(ctx),
+      ...sketchSessionItems(ctx),
+      ...visibilityItems(ctx),
+      ...managementItems(ctx),
+    ],
+  }
+}
+
+/** The body menu is its own three-item board, independent of the feature menu. */
+function buildBodyMenu(
+  input: BuildContextMenuInput,
+  callbacks: BuildContextMenuCallbacks,
+): BuildContextMenuOutput {
+  const bodyId = input.targetId!.slice('body:'.length)
+  return {
+    items: [
+      {
+        label: 'Rename',
+        icon: iconRenameIcon,
+        onClick: () => callbacks.onRequestRename({
+          kind: 'body',
+          id: bodyId,
+          currentName: input.partLabels[bodyId] || bodyId,
+        }),
+      },
+      {
+        label: 'Color',
+        icon: contextColorIcon,
+        onClick: () => callbacks.onSetPartColorPopover({ bodyId, position: input.pos }),
+      },
+      {
+        label: 'Export',
+        icon: featureExportIcon,
+        onClick: () => callbacks.onExportBody(bodyId, input.partLabels[bodyId] || bodyId),
+      },
+    ],
+  }
+}
+
+/** The resolved target and the enable/disable verdict for every fixed slot. */
+interface MenuContext {
+  input: BuildContextMenuInput
+  callbacks: BuildContextMenuCallbacks
+  featureId: string | undefined
+  target: PartFeature | undefined
+  surfaceTarget: SurfaceTarget | null
+  visibilityFeature: PartFeature | undefined
+  canNewSketch: boolean
+  canNormalTo: boolean
+  canRemoveDangling: boolean
+  canEdit: boolean
+  canExitSketch: boolean
+  canNormalToSketch: boolean
+  canToggleVisibility: boolean
+  visibilityIsOn: boolean
+  canToggleConstraints: boolean
+  canManageFeature: boolean
+}
+
+/**
+ * The surface the New Sketch and Normal to items act on, resolved from the tree
+ * target, then the viewport hover, then the selection. A tree plane wins, then a
+ * plane hovered in the viewport, then a flat face hovered there (a plane carries
+ * no face frame, a curved face carries none either, so each drops out of the
+ * other's branch). Only a bare viewport right-click falls back to the selection,
+ * and only outside a sketch edit, where the edited sketch's own plane is the
+ * view already offered.
+ */
+function resolveSurfaceTarget(
+  input: BuildContextMenuInput,
+  target: PartFeature | undefined,
+): SurfaceTarget | null {
   const {
-    pos,
     targetId,
     hoveredSelectionId,
     hoveredFaceNormal,
     hoveredFaceCenter,
     selectedNormalTarget,
     features,
-    visibleFeatures,
     activeSketchFeatureId,
-    showConstraintTiles,
-    partLabels,
     builtInIds,
-    hasDanglingContent,
   } = input
-
-  if (targetId?.startsWith('body:')) {
-    const bodyId = targetId.slice('body:'.length)
-    return {
-      items: [
-        {
-          label: 'Rename',
-          icon: iconRenameIcon,
-          onClick: () => callbacks.onRequestRename({
-            kind: 'body',
-            id: bodyId,
-            currentName: partLabels[bodyId] || bodyId,
-          }),
-        },
-        {
-          label: 'Color',
-          icon: contextColorIcon,
-          onClick: () => callbacks.onSetPartColorPopover({ bodyId, position: pos }),
-        },
-        {
-          label: 'Export',
-          icon: featureExportIcon,
-          onClick: () => callbacks.onExportBody(bodyId, partLabels[bodyId] || bodyId),
-        },
-      ],
-    }
-  }
-
-  // Creating a sketch enters its edit session, which cannot nest inside the
-  // one an active sketch already holds. Exit first.
-  const canStartSketch = !activeSketchFeatureId
-
-  const featureId = targetId
-  const target = featureId ? features.find(f => f.id === featureId) : undefined
 
   // Only a viewport right-click has no targetId. The feature tree always names
   // its target, and must not be hijacked by whatever the pointer last hovered
   // in the viewport (hover is not cleared when the pointer leaves the canvas).
   const hoveredInViewport = targetId ? null : hoveredSelectionId
 
-  // A tree plane wins, then a plane hovered in the viewport, then a flat face
-  // hovered there (a plane carries no face frame, a curved face carries none
-  // either, so each drops out of the other's branch). Only a bare viewport
-  // right-click falls back to the selection, and only outside a sketch edit,
-  // where the edited sketch's own plane is the view already offered.
-  let surfaceTarget: SurfaceTarget | null = null
   if (target?.kind === 'plane') {
-    surfaceTarget = {
-      kind: 'plane',
-      featureId: target.id,
-      query: planeQuery(target.id, builtInIds),
-    }
-  } else if (hoveredInViewport) {
+    return { kind: 'plane', featureId: target.id, query: planeQuery(target.id, builtInIds) }
+  }
+  if (hoveredInViewport) {
     const hoveredPlane = findPlaneByQuery(hoveredInViewport, features, builtInIds)
     if (hoveredPlane) {
-      surfaceTarget = {
-        kind: 'plane',
-        featureId: hoveredPlane.id,
-        query: planeQuery(hoveredPlane.id, builtInIds),
-      }
-    } else if (hoveredFaceNormal && hoveredFaceCenter) {
-      surfaceTarget = {
+      return { kind: 'plane', featureId: hoveredPlane.id, query: planeQuery(hoveredPlane.id, builtInIds) }
+    }
+    if (hoveredFaceNormal && hoveredFaceCenter) {
+      return {
         kind: 'face',
         query: hoveredInViewport,
         normal: hoveredFaceNormal,
         center: hoveredFaceCenter,
       }
     }
-  } else if (!targetId && !activeSketchFeatureId && selectedNormalTarget) {
-    surfaceTarget = selectedNormalTarget.kind === 'plane'
+    return null
+  }
+  if (!targetId && !activeSketchFeatureId && selectedNormalTarget) {
+    return selectedNormalTarget.kind === 'plane'
       ? {
           kind: 'plane',
           featureId: selectedNormalTarget.featureId,
@@ -204,44 +233,66 @@ export function buildContextMenu(
           center: selectedNormalTarget.center,
         }
   }
+  return null
+}
 
-  const canNewSketch = canStartSketch && surfaceTarget !== null
+function buildMenuContext(
+  input: BuildContextMenuInput,
+  callbacks: BuildContextMenuCallbacks,
+): MenuContext {
+  const featureId = input.targetId
+  const target = featureId ? input.features.find(f => f.id === featureId) : undefined
+  const surfaceTarget = resolveSurfaceTarget(input, target)
+
+  // Creating a sketch enters its edit session, which cannot nest inside the
+  // one an active sketch already holds. Exit first.
+  const canNewSketch = !input.activeSketchFeatureId && surfaceTarget !== null
   const canNormalTo = surfaceTarget !== null
   // Cleanup is explicit and undoable: the solve path no longer writes the
   // flagged content out of the doc, so this command is the only way to remove
   // it, and undo restores it without a re-solve re-deleting. Only offered
   // outside a sketch edit, where the solve cannot remove what is being edited.
-  const canRemoveDangling = hasDanglingContent && !activeSketchFeatureId
+  const canRemoveDangling = input.hasDanglingContent && !input.activeSketchFeatureId
   // A rename/Edit gesture names a tree feature. A built-in has no author to edit
   // and no place in the doc to rename or delete, so it is left out.
-  const canEdit = !!featureId && !!target && !builtInIds.has(featureId)
+  const canEdit = !!featureId && !!target && !input.builtInIds.has(featureId)
     && (target.kind === 'plane' || target.kind === 'sketch')
-  const canExitSketch = !!activeSketchFeatureId
+  const canExitSketch = !!input.activeSketchFeatureId
   // The tree row of the edited sketch and a bare viewport right-click both
   // mean "this sketch"; a tree click on any other feature does not.
-  const canNormalToSketch = !!activeSketchFeatureId
-    && (!featureId || featureId === activeSketchFeatureId)
+  const canNormalToSketch = !!input.activeSketchFeatureId
+    && (!featureId || featureId === input.activeSketchFeatureId)
   // Hide/Show only ever touches a plane or a sketch, the two overlays the tree
   // draws. A tree target wins when it is one of those and is not the sketch
   // already under edit; otherwise the edited sketch is the thing on screen to
   // hide or show. With neither, the slot is greyed.
-  const targetIsHideable = !!featureId && featureId !== activeSketchFeatureId
-    && !!target && !builtInIds.has(featureId)
+  const targetIsHideable = !!featureId && featureId !== input.activeSketchFeatureId
+    && !!target && !input.builtInIds.has(featureId)
     && (target.kind === 'plane' || target.kind === 'sketch')
   const visibilityFeature = targetIsHideable
     ? target
-    : activeSketchFeatureId
-      ? features.find(f => f.id === activeSketchFeatureId)
+    : input.activeSketchFeatureId
+      ? input.features.find(f => f.id === input.activeSketchFeatureId)
       : undefined
   const canToggleVisibility = !!visibilityFeature
-  const visibilityIsOn = !!visibilityFeature && visibleFeatures.has(visibilityFeature.id)
-  const canToggleConstraints = !!activeSketchFeatureId
+  const visibilityIsOn = !!visibilityFeature && input.visibleFeatures.has(visibilityFeature.id)
+  const canToggleConstraints = !!input.activeSketchFeatureId
   // The sketch under edit keeps its commands: renaming it would fight the open
   // session and deleting it would pull the sketch out from under the edit.
-  const canManageFeature = !!featureId && !builtInIds.has(featureId)
-    && featureId !== activeSketchFeatureId
+  const canManageFeature = !!featureId && !input.builtInIds.has(featureId)
+    && featureId !== input.activeSketchFeatureId
 
-  const items: ContextMenuItem[] = [
+  return {
+    input, callbacks, featureId, target, surfaceTarget, visibilityFeature,
+    canNewSketch, canNormalTo, canRemoveDangling, canEdit, canExitSketch,
+    canNormalToSketch, canToggleVisibility, visibilityIsOn, canToggleConstraints,
+    canManageFeature,
+  }
+}
+
+function surfaceItems(ctx: MenuContext): ContextMenuItem[] {
+  const { callbacks, surfaceTarget, canNewSketch, canNormalTo } = ctx
+  return [
     {
       label: 'New Sketch',
       icon: featureSketchIcon,
@@ -260,6 +311,12 @@ export function buildContextMenu(
         else callbacks.onAlignToFace(surfaceTarget.normal, surfaceTarget.center)
       },
     },
+  ]
+}
+
+function rebuildItems(ctx: MenuContext): ContextMenuItem[] {
+  const { callbacks, canRemoveDangling } = ctx
+  return [
     {
       label: 'Rebuild',
       icon: contextRebuildIcon,
@@ -273,6 +330,12 @@ export function buildContextMenu(
         if (canRemoveDangling) callbacks.onRemoveDanglingContent()
       },
     },
+  ]
+}
+
+function sketchSessionItems(ctx: MenuContext): ContextMenuItem[] {
+  const { callbacks, featureId, canEdit, canExitSketch, canNormalToSketch } = ctx
+  return [
     {
       label: 'Edit',
       icon: contextEditIcon,
@@ -297,6 +360,12 @@ export function buildContextMenu(
         if (canNormalToSketch) callbacks.onAlignCameraToSketchPlane()
       },
     },
+  ]
+}
+
+function visibilityItems(ctx: MenuContext): ContextMenuItem[] {
+  const { callbacks, visibilityFeature, canToggleVisibility, visibilityIsOn } = ctx
+  return [
     {
       label: visibilityIsOn ? 'Hide' : 'Show',
       icon: contextHideIcon,
@@ -305,8 +374,14 @@ export function buildContextMenu(
         if (canToggleVisibility && visibilityFeature) callbacks.onToggleVisibility(visibilityFeature.id)
       },
     },
+  ]
+}
+
+function managementItems(ctx: MenuContext): ContextMenuItem[] {
+  const { input, callbacks, featureId, target, canToggleConstraints, canManageFeature } = ctx
+  return [
     {
-      label: showConstraintTiles ? 'Hide Constraints' : 'Show Constraints',
+      label: input.showConstraintTiles ? 'Hide Constraints' : 'Show Constraints',
       icon: constraintTileIcon,
       disabled: !canToggleConstraints,
       onClick: () => {
@@ -344,6 +419,4 @@ export function buildContextMenu(
       },
     },
   ]
-
-  return { items }
 }

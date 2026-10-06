@@ -86,6 +86,43 @@ function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
 }
 
 /**
+ * Hash a face to its canonical built-solid geometry key. Modified()/Generated()
+ * hand back faces carrying a FORWARD orientation, but every downstream consumer
+ * (deriveEdgeNames, tessellation, registration) explores faces from the built
+ * SOLID, where the shell orients each face outward. faceGh is normal-signed, so
+ * the two disagree for any face the op reshaped, leaving its edges unnamed.
+ * Canonicalize every minted key to the built-solid face reached by IsSame
+ * (orientation-independent identity).
+ */
+function builtFaceHasher(
+  oc: OccModule,
+  scope: DisposeScope,
+  builtFaces: OccShape[],
+): (f: OccShape) => string {
+  const builtIdx = new SubShapeIndexMap()
+  const memo = new Array<string>(builtFaces.length)
+  builtFaces.forEach((bf, i) => builtIdx.set(bf as OccSubShape, i))
+  return (f) => {
+    // The fallback: a Modified() image with no built-solid counterpart is still
+    // hashed as itself.
+    const at = builtIdx.get(f as OccSubShape)
+    if (at >= 0) return (memo[at] ??= faceGh(oc, scope, asFace(oc, builtFaces[at])))
+    return faceGh(oc, scope, asFace(oc, f))
+  }
+}
+
+/** The name maps under construction plus the shared machinery the steps read. */
+interface NameBuildContext {
+  oc: OccModule
+  scope: DisposeScope
+  maker: OccEdgeModifierMaker
+  old: OldNames
+  builtGh: (f: OccShape) => string
+  faceNames: Names
+  faceAncestry: Lineage
+}
+
+/**
  * Rebuilt construction-name maps after a fillet/chamfer (query-naming-by-
  * construction). Inherited faces carry their source UUID across the op by
  * `maker.Modified()` subshape identity (a split orders its children); the fillet
@@ -107,34 +144,39 @@ export function extractNames(
 ): NewNames {
   const faceNames: Names = {}
   const faceAncestry: Lineage = {}
+  const ctx: NameBuildContext = {
+    oc, scope, maker, old,
+    builtGh: builtFaceHasher(oc, scope, newFaces),
+    faceNames,
+    faceAncestry,
+  }
+
+  // Step 1: old named faces -> output faces via Modified() (subshape identity).
+  inheritOldFaceNames(ctx, oldFaces, oldFaceIdx, oldFaceModified)
+
+  // Step 2: modified edges -> generated fillet faces, minted role=fillet.
+  mintGeneratedFilletFaces(ctx, newShape, modifiedEdges)
+
+  // Step 3: the corner patches steps 1-2 cannot reach (generated from a vertex
+  // where blends meet), named off their neighbours so their edges stay pickable.
+  const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, newShape, faceNames, faceAncestry)
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
+}
+
+/** Carry every named old face to its output image, keyed by built-solid hash. */
+function inheritOldFaceNames(
+  ctx: NameBuildContext,
+  oldFaces: OccShape[],
+  oldFaceIdx: SubShapeIndexMap,
+  oldFaceModified: Map<number, OccShape[]>,
+): void {
+  const { oc, scope, maker, old, builtGh, faceNames, faceAncestry } = ctx
   // Keys a merge collision already cancelled: the two faces that merged into
   // one dropped their names, so the key is up for grabs. A third face
   // modifying to the same output must not re-claim it -- topology order would
   // pick whichever, and the name was deliberately left to the neighbours.
   const mergedAway = new Set<string>()
-  // Generated-face centroids are world coordinates: normalize them by the new
-  // solid's span so the split-sibling refusal is relative, not unit-dependent.
-  let frame: NormalFrame | null = null
 
-  // Modified()/Generated() hand back faces carrying a FORWARD orientation, but
-  // every downstream consumer (deriveEdgeNames, tessellation, registration)
-  // explores faces from the built SOLID, where the shell orients each face
-  // outward. faceGh is normal-signed, so the two disagree for any face the op
-  // reshaped, leaving its edges unnamed. Canonicalize every minted key to the
-  // built-solid face reached by IsSame (orientation-independent identity).
-  const builtFaces = newFaces
-  const builtIdx = new SubShapeIndexMap()
-  const builtGhMemo = new Array<string>(builtFaces.length)
-  builtFaces.forEach((bf, i) => builtIdx.set(bf as OccSubShape, i))
-  const builtGh = (f: OccShape): string => {
-    // `same ?? f` fallback: a Modified() image with no built-solid counterpart
-    // is still hashed as itself.
-    const at = builtIdx.get(f as OccSubShape)
-    if (at >= 0) return (builtGhMemo[at] ??= faceGh(oc, scope, asFace(oc, builtFaces[at])))
-    return faceGh(oc, scope, asFace(oc, f))
-  }
-
-  // Step 1: old named faces -> output faces via Modified() (subshape identity).
   for (const oldF of oldFaces) {
     const oldGh = faceGh(oc, scope, asFace(oc, oldF))
     const uuid = old.faceNames[oldGh]
@@ -179,8 +221,19 @@ export function extractNames(
       })
     }
   }
+}
 
-  // Step 2: modified edges -> generated fillet faces, minted role=fillet.
+/** Mint the fillet faces a modified edge generated, slotted by that edge's UUID. */
+function mintGeneratedFilletFaces(
+  ctx: NameBuildContext,
+  newShape: OccShape,
+  modifiedEdges: OccShape[],
+): void {
+  const { oc, scope, maker, old, builtGh, faceNames, faceAncestry } = ctx
+  // Generated-face centroids are world coordinates: normalize them by the new
+  // solid's span so the split-sibling refusal is relative, not unit-dependent.
+  let frame: NormalFrame | null = null
+
   for (const edge of modifiedEdges) {
     const egh = edgeGh(oc, scope, edge)
     const edgeUuid = egh !== null ? old.edgeNames[egh] : undefined
@@ -215,11 +268,6 @@ export function extractNames(
       if (ordered !== null) ordered.forEach((f, i) => assign(f, mintFaceUuid(splitFacePath(base, i))))
     }
   }
-
-  // Step 3: the corner patches steps 1-2 cannot reach (generated from a vertex
-  // where blends meet), named off their neighbours so their edges stay pickable.
-  const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, newShape, faceNames, faceAncestry)
-  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }
 
 /**
