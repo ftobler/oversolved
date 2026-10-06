@@ -329,9 +329,12 @@ fn pinned_mask_bytes(n_bodies: usize) -> usize {
     n_bodies.div_ceil(8)
 }
 
-/// Decode a flat `MateInput` buffer.
-pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
-    let mut r = Reader::new(buf);
+/// Read the header: magic, the three body/param/mate counts, the informational
+/// fixed-body count, and the informational per-body index entries. Returns the
+/// three counts that drive the rest of the decode. The `checked_mul` param-count
+/// gate lives here because it is what makes `n_bodies` a count nothing
+/// downstream can index off the end of.
+fn read_header(r: &mut Reader<'_>) -> Result<(usize, usize, usize), CodecError> {
     if r.u32()? != MATE_MAGIC {
         return Err(CodecError::BadMagic);
     }
@@ -356,6 +359,87 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
         r.u32()?;
     }
 
+    Ok((n_bodies, n_params, n_mates))
+}
+
+/// Read one wire f32, gate it against non-finite, and widen to f64. The mate
+/// record's float fields are f32 on the wire (see the layout docs) but f64 in
+/// the solver structs.
+fn read_f64(r: &mut Reader<'_>) -> Result<f64, CodecError> {
+    Ok(finite(r.f32()?)? as f64)
+}
+
+/// Read a point/axis/perp/offset triple: three consecutive wire f32s as f64.
+fn read_vec3(r: &mut Reader<'_>) -> Result<[f64; 3], CodecError> {
+    Ok([read_f64(r)?, read_f64(r)?, read_f64(r)?])
+}
+
+/// Read one fixed-length (112-byte) mate record in wire order: kind byte, body
+/// indices, anchor kinds, point/axis triplets, flags/flip, offset/ratio/radius/
+/// angle, perp triplets, weight.
+fn read_mate_record(r: &mut Reader<'_>) -> Result<Mate, CodecError> {
+    let kind_byte = r.u8()?;
+    let kind = MateKind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
+    let body_a_index = r.u32()?;
+    let body_b_index = r.u32()?;
+
+    let ak_a = r.u8()?;
+    let anchor_kind_a = AnchorKind::from_u8(ak_a).ok_or(CodecError::BadKind(ak_a))?;
+    let ak_b = r.u8()?;
+    let anchor_kind_b = AnchorKind::from_u8(ak_b).ok_or(CodecError::BadKind(ak_b))?;
+
+    let point_a = read_vec3(r)?;
+    let axis_a = read_vec3(r)?;
+    let point_b = read_vec3(r)?;
+    let axis_b = read_vec3(r)?;
+
+    let flags = r.u8()?;
+    let flip = (flags & 0b001) != 0;
+
+    let offset = read_vec3(r)?;
+    let ratio = read_f64(r)?;
+    let radius = read_f64(r)?;
+    let angle = read_f64(r)?;
+
+    let perp_a = read_vec3(r)?;
+    let perp_b = read_vec3(r)?;
+
+    let weight = read_f64(r)?;
+
+    Ok(Mate {
+        kind,
+        a: MateRef {
+            body_index: body_a_index,
+            geometry: MateGeometry {
+                point: point_a,
+                axis: axis_a,
+                perp: perp_a,
+            },
+            anchor_kind: anchor_kind_a,
+        },
+        b: MateRef {
+            body_index: body_b_index,
+            geometry: MateGeometry {
+                point: point_b,
+                axis: axis_b,
+                perp: perp_b,
+            },
+            anchor_kind: anchor_kind_b,
+        },
+        flip,
+        offset,
+        ratio,
+        radius,
+        angle,
+        weight,
+    })
+}
+
+/// Decode a flat `MateInput` buffer.
+pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
+    let mut r = Reader::new(buf);
+    let (n_bodies, n_params, n_mates) = read_header(&mut r)?;
+
     // Header counts are untrusted; see `Reader::capacity_for`. A mate record is
     // a fixed 112 bytes, a param a single f32.
     let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 4));
@@ -368,82 +452,7 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
 
     let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 112));
     for _ in 0..n_mates {
-        let kind_byte = r.u8()?;
-        let kind = MateKind::from_u8(kind_byte).ok_or(CodecError::BadKind(kind_byte))?;
-        let body_a_index = r.u32()?;
-        let body_b_index = r.u32()?;
-
-        let ak_a = r.u8()?;
-        let anchor_kind_a = AnchorKind::from_u8(ak_a).ok_or(CodecError::BadKind(ak_a))?;
-        let ak_b = r.u8()?;
-        let anchor_kind_b = AnchorKind::from_u8(ak_b).ok_or(CodecError::BadKind(ak_b))?;
-
-        let px_a = finite(r.f32()?)? as f64;
-        let py_a = finite(r.f32()?)? as f64;
-        let pz_a = finite(r.f32()?)? as f64;
-        let ax_a = finite(r.f32()?)? as f64;
-        let ay_a = finite(r.f32()?)? as f64;
-        let az_a = finite(r.f32()?)? as f64;
-
-        let px_b = finite(r.f32()?)? as f64;
-        let py_b = finite(r.f32()?)? as f64;
-        let pz_b = finite(r.f32()?)? as f64;
-        let ax_b = finite(r.f32()?)? as f64;
-        let ay_b = finite(r.f32()?)? as f64;
-        let az_b = finite(r.f32()?)? as f64;
-
-        let flags = r.u8()?;
-        let flip = (flags & 0b001) != 0;
-
-        let offset = [
-            finite(r.f32()?)? as f64,
-            finite(r.f32()?)? as f64,
-            finite(r.f32()?)? as f64,
-        ];
-        let ratio = finite(r.f32()?)? as f64;
-        let radius = finite(r.f32()?)? as f64;
-        let angle = finite(r.f32()?)? as f64;
-
-        let perp_a = [
-            finite(r.f32()?)? as f64,
-            finite(r.f32()?)? as f64,
-            finite(r.f32()?)? as f64,
-        ];
-        let perp_b = [
-            finite(r.f32()?)? as f64,
-            finite(r.f32()?)? as f64,
-            finite(r.f32()?)? as f64,
-        ];
-
-        let weight = finite(r.f32()?)? as f64;
-
-        mates.push(Mate {
-            kind,
-            a: MateRef {
-                body_index: body_a_index,
-                geometry: MateGeometry {
-                    point: [px_a, py_a, pz_a],
-                    axis: [ax_a, ay_a, az_a],
-                    perp: perp_a,
-                },
-                anchor_kind: anchor_kind_a,
-            },
-            b: MateRef {
-                body_index: body_b_index,
-                geometry: MateGeometry {
-                    point: [px_b, py_b, pz_b],
-                    axis: [ax_b, ay_b, az_b],
-                    perp: perp_b,
-                },
-                anchor_kind: anchor_kind_b,
-            },
-            flip,
-            offset,
-            ratio,
-            radius,
-            angle,
-            weight,
-        });
+        mates.push(read_mate_record(&mut r)?);
     }
 
     // `n_bodies` needs no cap of its own: the param-count check above ties it to

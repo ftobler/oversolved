@@ -77,6 +77,50 @@ fn near_tangent_lines_at_the_circle_seam_keep_the_disk_face() {
     );
 }
 
+#[test]
+fn near_tangent_lines_at_the_ellipse_seam_keep_the_face() {
+    // Mirror of the circle seam test for the ellipse: a closed ellipse anchors
+    // its params at 0/2pi (the +a major-axis direction), not the circle's
+    // atan2 branch cut at +-pi. Two near-tangent lines whose contacts land a
+    // hair either side of that seam must collapse to one split and keep the
+    // standalone face.
+    //
+    // The circle test drives its contact through `lc`'s miss-side virtual
+    // tangent point; the ellipse's `line_ellipse` has no miss-side rule, so the
+    // lines graze instead (pushed inward by `g`). Each graze yields two roots
+    // within MERGE of the foot, which the point de-dup folds to one contact;
+    // the two lines' contacts are `2*b*delta` apart and fuse into one vertex.
+    let a: f64 = 50.0;
+    let b: f64 = 10.0;
+    let g: f64 = 2e-14; // inward graze: disc stays robustly positive
+    let delta: f64 = 4e-7; // eccentric angle either side of the 0/2pi seam
+    let tangent_line = |phi: f64| {
+        let p = [(1.0 - g) * a * phi.cos(), (1.0 - g) * b * phi.sin()];
+        let d = [-a * phi.sin(), b * phi.cos()];
+        line([p[0] - d[0], p[1] - d[1]], [p[0] + d[0], p[1] + d[1]])
+    };
+    let geom = vec![
+        ("e0".into(), ellipse([0.0, 0.0], a, b, 0.0)),
+        ("l1".into(), tangent_line(delta)),
+        ("l2".into(), tangent_line(-delta)),
+    ];
+    let t = detect_topology(&geom);
+    // The two contacts land a hair either side of the 0/2pi seam and must fuse
+    // into one vertex; without the seam collapse that vertex splits the ellipse
+    // into two zero-length segments and the standalone face is dropped.
+    assert_eq!(
+        t.intersection_points.len(),
+        1,
+        "the two seam contacts must merge into one virtual tangent vertex"
+    );
+    assert!(
+        t.surfaces
+            .iter()
+            .any(|s| s.face_entity_ids == vec!["e0".to_string()]),
+        "the ellipse face must survive two near-tangent contacts at the 0/2pi seam"
+    );
+}
+
 // One incomplete entity per kind, each missing a field the geometry pass
 // unwraps. The Worker is fed by structured-clone postMessage and cannot
 // trust its input, so a truncated record must be dropped, not panicked on.
