@@ -15,7 +15,7 @@
 
 use super::curve_split::{bezier_point, ellipse_point_at};
 use super::dcel::pymod;
-use super::{TOL_TOPOLOGY_MERGE, TWO_PI};
+use super::{TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE, TWO_PI};
 use crate::{radians, MIN_SEMI_AXIS_SQ};
 
 pub use super::Vec2;
@@ -56,6 +56,15 @@ pub struct Hit {
 
 const POINT_MERGE: f64 = TOL_TOPOLOGY_MERGE; // two hits closer than this are the same
 
+/// A squared direction/length below which the segment is treated as having no
+/// extent. Squared, so it is the square of the 1e-9 length floor.
+const ZERO_LENGTH_SQ: f64 = 1e-18;
+
+/// Tangent/coincidence budget for the circle-circle arm: a centre distance or
+/// half-chord this small is the degenerate touch, not a transversal crossing.
+/// Kept separate from the area notions because it is a length, not an area.
+const CIRCLE_TANGENT_EPS: f64 = 1e-12;
+
 // ─── recover a curve's parameter from a point known to lie on it ───
 
 fn param_of(curve: &Curve, p: Vec2) -> f64 {
@@ -64,7 +73,7 @@ fn param_of(curve: &Curve, p: Vec2) -> f64 {
             let dx = p1[0] - p0[0];
             let dy = p1[1] - p0[1];
             let len2 = dx * dx + dy * dy;
-            if len2 < 1e-18 {
+            if len2 < ZERO_LENGTH_SQ {
                 return 0.0;
             }
             ((p[0] - p0[0]) * dx + (p[1] - p0[1]) * dy) / len2
@@ -198,7 +207,7 @@ fn line_ellipse(l0: Vec2, l1: Vec2, c: Vec2, a: f64, b: f64, theta: f64) -> Vec<
     let dx = q1[0] - q0[0];
     let dy = q1[1] - q0[1];
     let aa = dx * dx + dy * dy;
-    if aa < 1e-18 {
+    if aa < ZERO_LENGTH_SQ {
         return vec![];
     }
     let bb = 2.0 * (q0[0] * dx + q0[1] * dy);
@@ -211,7 +220,7 @@ fn line_ellipse(l0: Vec2, l1: Vec2, c: Vec2, a: f64, b: f64, theta: f64) -> Vec<
     let mut pts = Vec::new();
     for sign in [-1.0, 1.0] {
         let t = (-bb + sign * sd) / (2.0 * aa);
-        if (-1e-9..=1.0 + 1e-9).contains(&t) {
+        if (-TOL_TOPOLOGY_EPS..=1.0 + TOL_TOPOLOGY_EPS).contains(&t) {
             pts.push([l0[0] + t * (l1[0] - l0[0]), l0[1] + t * (l1[1] - l0[1])]);
         }
     }
@@ -222,7 +231,10 @@ fn circle_circle(ac: Vec2, ar: f64, bc: Vec2, br: f64) -> Vec<Vec2> {
     let dx = bc[0] - ac[0];
     let dy = bc[1] - ac[1];
     let d = dx.hypot(dy);
-    if d < 1e-12 || d > ar + br + 1e-12 || d < (ar - br).abs() - 1e-12 {
+    if d < CIRCLE_TANGENT_EPS
+        || d > ar + br + CIRCLE_TANGENT_EPS
+        || d < (ar - br).abs() - CIRCLE_TANGENT_EPS
+    {
         return vec![];
     }
     let x = (ar * ar - br * br + d * d) / (2.0 * d);
@@ -235,7 +247,7 @@ fn circle_circle(ac: Vec2, ar: f64, bc: Vec2, br: f64) -> Vec<Vec2> {
     let my = ac[1] + (x * dy) / d;
     let ox = (h * dy) / d;
     let oy = (h * dx) / d;
-    if h < 1e-12 {
+    if h < CIRCLE_TANGENT_EPS {
         return vec![[mx, my]];
     }
     vec![[mx + ox, my - oy], [mx - ox, my + oy]]
@@ -379,120 +391,135 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
 
 // ─── public entry point ───
 
-/// Intersection points of two curves with the parameter on each. Order of a and
-/// b is preserved (`t_a` refers to a, `t_b` to b). The sign-change scan reports
-/// no tangency (a touch with no crossing); the closed-form arms (line/ellipse,
-/// circle/circle) report a coincident double root as a single point.
-pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
-    let mut hits: Vec<Hit> = Vec::new();
+/// Push closed-form world points, recovering both params from each.
+fn push_points(a: &Curve, b: &Curve, points: Vec<Vec2>, hits: &mut Vec<Hit>) {
+    for p in points {
+        hits.push(Hit {
+            point: p,
+            t_a: param_of(a, p),
+            t_b: param_of(b, p),
+        });
+    }
+}
 
-    // Push closed-form world points, recovering both params from each.
-    let push = |points: Vec<Vec2>, hits: &mut Vec<Hit>| {
-        for p in points {
-            hits.push(Hit {
-                point: p,
-                t_a: param_of(a, p),
-                t_b: param_of(b, p),
-            });
+/// Scan one parametric curve against the other's implicit residual, recovering
+/// both params from each resulting point. A line is never scanned: its closed
+/// forms handle every pair it takes part in, so bail out rather than abort the
+/// worker if a caller ever scans one.
+fn scan_curve(
+    a: &Curve,
+    b: &Curve,
+    scanned: &Curve,
+    scanned_is_a: bool,
+    residual: Box<dyn Fn(Vec2) -> f64>,
+    hits: &mut Vec<Hit>,
+) {
+    let eval_at: Box<dyn Fn(f64) -> Vec2> = match *scanned {
+        Curve::Circle { c, r } => {
+            Box::new(move |phi: f64| [c[0] + r * phi.cos(), c[1] + r * phi.sin()])
         }
-    };
-
-    // Scan a parametric curve, recovering both params from each resulting point.
-    let scan_with = |scanned: &Curve,
-                     scanned_is_a: bool,
-                     residual: Box<dyn Fn(Vec2) -> f64>,
-                     hits: &mut Vec<Hit>| {
-        let eval_at: Box<dyn Fn(f64) -> Vec2> = match *scanned {
-            Curve::Circle { c, r } => {
-                Box::new(move |phi: f64| [c[0] + r * phi.cos(), c[1] + r * phi.sin()])
-            }
-            Curve::Ellipse { c, a, b, theta } => {
-                let cr = (theta * std::f64::consts::PI / 180.0).cos();
-                let sr = (theta * std::f64::consts::PI / 180.0).sin();
-                Box::new(move |phi: f64| ellipse_point_at(c, a, b, cr, sr, phi))
-            }
-            Curve::Bezier { p0, c1, c2, p3 } => {
-                Box::new(move |t: f64| bezier_point(p0, c1, c2, p3, t))
-            }
-            // A line is never scanned: its closed forms handle every pair it
-            // takes part in. Bail out rather than abort the worker if a caller
-            // ever scans one.
-            Curve::Line { .. } => return,
-        };
-        let hi = match *scanned {
-            Curve::Bezier { .. } => 1.0,
-            _ => TWO_PI,
-        };
-        let g = |t: f64| residual(eval_at(t));
-        let params = scan_roots(&g, 0.0, hi);
-        for t in params {
-            let pt = eval_at(t);
-            hits.push(Hit {
-                point: pt,
-                t_a: if scanned_is_a { t } else { param_of(a, pt) },
-                t_b: if scanned_is_a { param_of(b, pt) } else { t },
-            });
+        Curve::Ellipse { c, a, b, theta } => {
+            let cr = (theta * std::f64::consts::PI / 180.0).cos();
+            let sr = (theta * std::f64::consts::PI / 180.0).sin();
+            Box::new(move |phi: f64| ellipse_point_at(c, a, b, cr, sr, phi))
         }
+        Curve::Bezier { p0, c1, c2, p3 } => Box::new(move |t: f64| bezier_point(p0, c1, c2, p3, t)),
+        Curve::Line { .. } => return,
     };
+    let hi = match *scanned {
+        Curve::Bezier { .. } => 1.0,
+        _ => TWO_PI,
+    };
+    let g = |t: f64| residual(eval_at(t));
+    let params = scan_roots(&g, 0.0, hi);
+    for t in params {
+        let pt = eval_at(t);
+        hits.push(Hit {
+            point: pt,
+            t_a: if scanned_is_a { t } else { param_of(a, pt) },
+            t_b: if scanned_is_a { param_of(b, pt) } else { t },
+        });
+    }
+}
 
-    // Every scanned crossing is symmetric: scan one operand against the other's
-    // conic residual. `scanned_is_a` picks which operand carries the parameter.
-    let scan_conic = |scanned_is_a: bool, hits: &mut Vec<Hit>| {
-        let (scanned, other) = if scanned_is_a { (a, b) } else { (b, a) };
-        if let Some(residual) = conic_residual(other) {
-            scan_with(scanned, scanned_is_a, residual, hits);
+/// Every scanned crossing is symmetric: scan one operand against the other's
+/// conic residual. `scanned_is_a` picks which operand carries the parameter.
+fn scan_conic(a: &Curve, b: &Curve, scanned_is_a: bool, hits: &mut Vec<Hit>) {
+    let (scanned, other) = if scanned_is_a { (a, b) } else { (b, a) };
+    if let Some(residual) = conic_residual(other) {
+        scan_curve(a, b, scanned, scanned_is_a, residual, hits);
+    }
+}
+
+/// Bezier-vs-line is symmetric: identical crossing math, only the (t_a, t_b)
+/// assignment flips depending on which operand is the bezier. `line` is the
+/// line operand; segment params outside [0, 1] are off the finite segment.
+#[allow(clippy::too_many_arguments)]
+fn bezier_line_pair(
+    p0: Vec2,
+    c1: Vec2,
+    c2: Vec2,
+    p3: Vec2,
+    l0: Vec2,
+    l1: Vec2,
+    line: &Curve,
+    bezier_is_a: bool,
+    hits: &mut Vec<Hit>,
+) {
+    for t in bezier_line(p0, c1, c2, p3, l0, l1) {
+        let p = bezier_point(p0, c1, c2, p3, t);
+        let lp = param_of(line, p);
+        if !(-TOL_TOPOLOGY_EPS..=1.0 + TOL_TOPOLOGY_EPS).contains(&lp) {
+            continue;
         }
-    };
+        let (t_a, t_b) = if bezier_is_a { (t, lp) } else { (lp, t) };
+        hits.push(Hit { point: p, t_a, t_b });
+    }
+}
 
-    // Bezier-vs-line is symmetric: identical crossing math, only the (t_a, t_b)
-    // assignment flips depending on which operand is the bezier. `line` is the
-    // line operand; segment params outside [0, 1] are off the finite segment.
-    let bezier_line_hits = |p0: Vec2,
-                            c1: Vec2,
-                            c2: Vec2,
-                            p3: Vec2,
-                            l0: Vec2,
-                            l1: Vec2,
-                            line: &Curve,
-                            bezier_is_a: bool,
-                            hits: &mut Vec<Hit>| {
-        for t in bezier_line(p0, c1, c2, p3, l0, l1) {
-            let p = bezier_point(p0, c1, c2, p3, t);
-            let lp = param_of(line, p);
-            if !(-1e-9..=1.0 + 1e-9).contains(&lp) {
-                continue;
-            }
-            let (t_a, t_b) = if bezier_is_a { (t, lp) } else { (lp, t) };
-            hits.push(Hit { point: p, t_a, t_b });
-        }
-    };
-
-    // Line/line and line/circle pairs never reach this function: the only
-    // production callers (the dcel intersection passes) dispatch those through
-    // their own `ll`/`lc` helpers and call here only once an ellipse or spline
-    // is involved. They fall through to the empty arm rather than duplicating
-    // the dcel-side epsilons.
+/// Dispatch one unordered pair to its closed-form or scanned arm. Line/line and
+/// line/circle pairs never reach here: the only production callers (the dcel
+/// intersection passes) dispatch those through their own `ll`/`lc` helpers and
+/// call here only once an ellipse or spline is involved. They fall through to
+/// the empty arm rather than duplicating the dcel-side epsilons.
+fn intersect_pair(a: &Curve, b: &Curve, hits: &mut Vec<Hit>) {
     match (a, b) {
-        (Curve::Line { p0, p1 }, Curve::Ellipse { c, a, b, theta })
-        | (Curve::Ellipse { c, a, b, theta }, Curve::Line { p0, p1 }) => {
-            push(line_ellipse(*p0, *p1, *c, *a, *b, *theta), &mut hits);
+        (
+            Curve::Line { p0, p1 },
+            Curve::Ellipse {
+                c,
+                a: ea,
+                b: eb,
+                theta,
+            },
+        )
+        | (
+            Curve::Ellipse {
+                c,
+                a: ea,
+                b: eb,
+                theta,
+            },
+            Curve::Line { p0, p1 },
+        ) => {
+            push_points(a, b, line_ellipse(*p0, *p1, *c, *ea, *eb, *theta), hits);
         }
         (Curve::Circle { c: ac, r: ar }, Curve::Circle { c: bc, r: br }) => {
-            push(circle_circle(*ac, *ar, *bc, *br), &mut hits);
+            push_points(a, b, circle_circle(*ac, *ar, *bc, *br), hits);
         }
-        (Curve::Circle { .. }, Curve::Ellipse { .. }) => scan_conic(false, &mut hits),
-        (Curve::Ellipse { .. }, Curve::Circle { .. }) => scan_conic(true, &mut hits),
-        (Curve::Ellipse { .. }, Curve::Ellipse { .. }) => scan_conic(true, &mut hits),
+        (Curve::Circle { .. }, Curve::Ellipse { .. }) => scan_conic(a, b, false, hits),
+        (Curve::Ellipse { .. }, Curve::Circle { .. }) => scan_conic(a, b, true, hits),
+        (Curve::Ellipse { .. }, Curve::Ellipse { .. }) => scan_conic(a, b, true, hits),
         (Curve::Bezier { p0, c1, c2, p3 }, Curve::Line { p0: l0, p1: l1 }) => {
-            bezier_line_hits(*p0, *c1, *c2, *p3, *l0, *l1, b, true, &mut hits);
+            bezier_line_pair(*p0, *c1, *c2, *p3, *l0, *l1, b, true, hits);
         }
         (Curve::Line { p0: l0, p1: l1 }, Curve::Bezier { p0, c1, c2, p3 }) => {
-            bezier_line_hits(*p0, *c1, *c2, *p3, *l0, *l1, a, false, &mut hits);
+            bezier_line_pair(*p0, *c1, *c2, *p3, *l0, *l1, a, false, hits);
         }
         (Curve::Bezier { .. }, Curve::Circle { .. })
-        | (Curve::Bezier { .. }, Curve::Ellipse { .. }) => scan_conic(true, &mut hits),
+        | (Curve::Bezier { .. }, Curve::Ellipse { .. }) => scan_conic(a, b, true, hits),
         (Curve::Circle { .. }, Curve::Bezier { .. })
-        | (Curve::Ellipse { .. }, Curve::Bezier { .. }) => scan_conic(false, &mut hits),
+        | (Curve::Ellipse { .. }, Curve::Bezier { .. }) => scan_conic(a, b, false, hits),
         (
             Curve::Bezier {
                 p0: ap0,
@@ -514,6 +541,15 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
         }
         _ => {}
     }
+}
+
+/// Intersection points of two curves with the parameter on each. Order of a and
+/// b is preserved (`t_a` refers to a, `t_b` to b). The sign-change scan reports
+/// no tangency (a touch with no crossing); the closed-form arms (line/ellipse,
+/// circle/circle) report a coincident double root as a single point.
+pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
+    let mut hits: Vec<Hit> = Vec::new();
+    intersect_pair(a, b, &mut hits);
 
     // A clean pair crosses in few points. A blow-up past 10 means the carriers
     // are (near-)coincident -- a degenerate overlap, not a transversal crossing

@@ -278,15 +278,23 @@ function documentKind(path: string, text: string): KnownDocKind | undefined {
 export function readBagTree(bag: ImportBag): ImportedTree {
   const detected = detectManifest(bag.items)
   const wrapper = detected?.wrapper ?? ''
-  let skippedReserved = 0
+  const { effective, skippedReserved } = collectEffectiveItems(bag.items, wrapper)
+  return detected
+    ? readManifestCarryingTree(detected, effective, skippedReserved)
+    : readManifestlessTree(effective, skippedReserved)
+}
 
+// Drop the manifest row itself and every reserved-segment path except trash
+// payloads, counting what was skipped. Trash payloads stay: they are a manifest
+// entry's payload, not bookkeeping.
+function collectEffectiveItems(
+  items: BagItem[], wrapper: string,
+): { effective: BagItem[]; skippedReserved: number } {
   const effective: BagItem[] = []
-  for (const item of bag.items) {
+  let skippedReserved = 0
+  for (const item of items) {
     const path = relative(item.path, wrapper)
     if (path === MANIFEST_PATH) continue
-    // The manifest is reserved but always parsed; every other reserved segment
-    // is skipped and counted. Trash payloads stay: they are a manifest entry's
-    // payload, not bookkeeping.
     if (path.split('/').some(segment => segment.startsWith(RESERVED_PREFIX))
       && !path.startsWith(`${TRASH_DIR}/`)) {
       skippedReserved++
@@ -294,96 +302,121 @@ export function readBagTree(bag: ImportBag): ImportedTree {
     }
     effective.push({ path, bytes: item.bytes })
   }
+  return { effective, skippedReserved }
+}
 
-  if (detected) {
-    const manifest = parseManifest(decode(detected.item.bytes))
-    const documentPaths = new Set(
-      Object.values(manifest.entries).filter(row => row.kind === 'document').map(row => row.path),
-    )
-    const byPath = new Map<string, BagItem>()
-    for (const item of effective) {
-      if (siblingDocument(item.path, documentPaths) !== undefined) {
-        skippedReserved++
-        continue
-      }
-      byPath.set(item.path, item)
+// A manifest-carrying bag is the format's own export: match every named row to
+// its payload, prune the rows the bag does not carry so the manifest describes
+// only what the tree can hold, and adopt the unnamed leftovers as orphan file
+// entries rather than dropping them.
+function readManifestCarryingTree(
+  detected: DetectedManifest,
+  effective: BagItem[],
+  skippedReserved: number,
+): ImportedTree {
+  const manifest = parseManifest(decode(detected.item.bytes))
+  const documentPaths = new Set(
+    Object.values(manifest.entries).filter(row => row.kind === 'document').map(row => row.path),
+  )
+  const byPath = new Map<string, BagItem>()
+  for (const item of effective) {
+    if (siblingDocument(item.path, documentPaths) !== undefined) {
+      skippedReserved++
+      continue
     }
-    const files: SerializedFile[] = [{ path: MANIFEST_PATH, data: decode(detected.item.bytes) }]
-    const named = new Set<string>()
-    for (const row of Object.values(manifest.entries)) {
-      named.add(row.path)
-      // A trashed entry's payload may sit under the trash dir (a folder that had
-      // a zip unzipped into it); both locations are the manifest's.
-      named.add(`${TRASH_DIR}/${row.path}`)
-    }
-    // A named file the bag does not carry is skipped and reported, never fatal.
-    // Rejecting the bag made one deleted payload cost every other document in
-    // it, which is the opposite of how an unnamed file is treated three lines
-    // down. The manifest is pruned to match, because a row whose payload is
-    // absent is not an entry the tree can hold.
-    const missingPayloads: string[] = []
-    const present: Record<string, ManifestEntry> = {}
-    for (const [id, row] of Object.entries(manifest.entries)) {
-      const item = byPath.get(row.path) ?? byPath.get(`${TRASH_DIR}/${row.path}`)
-      if (!item) {
-        missingPayloads.push(row.path)
-        continue
-      }
-      present[id] = row
-      files.push({ path: row.path, data: item.bytes })
-    }
-    if (missingPayloads.length > 0) {
-      files[0] = { path: MANIFEST_PATH, data: serializeManifest(withoutEntries(manifest, present)) }
-    }
-    const tree = deserializeTree(files)
-    // A bag path the manifest does not name is an orphan: adopt it as a file
-    // entry so it is preserved, and report it, rather than dropping it on the
-    // floor the way reading only the manifest would.
-    const unknownFiles: string[] = []
-    for (const [path, item] of byPath) {
-      if (named.has(path)) continue
-      addEntry(tree, {
-        id: randomUuid(),
-        kind: 'file',
-        name: basename(path),
-        mime: inferMime(path),
-        bytes: item.bytes,
-      })
-      unknownFiles.push(path)
-    }
-    return {
-      tree,
-      manifestPresent: true,
-      skippedReserved,
-      synthesizedParts: 0,
-      unattached: [],
-      unknownFiles: unknownFiles.sort(),
-      missingPayloads: missingPayloads.sort(),
-      // A manifest-carrying bag is this format's own export, and I5 keeps every
-      // preview out of it, so there is never a sidecar here to seed from.
-      previews: new Map(),
-    }
+    byPath.set(item.path, item)
   }
+  const files: SerializedFile[] = [{ path: MANIFEST_PATH, data: decode(detected.item.bytes) }]
+  const named = new Set<string>()
+  for (const row of Object.values(manifest.entries)) {
+    named.add(row.path)
+    // A trashed entry's payload may sit under the trash dir (a folder that had
+    // a zip unzipped into it); both locations are the manifest's.
+    named.add(`${TRASH_DIR}/${row.path}`)
+  }
+  // A named file the bag does not carry is skipped and reported, never fatal.
+  // Rejecting the bag made one deleted payload cost every other document in
+  // it, which is the opposite of how an unnamed file is treated further down.
+  // The manifest is pruned to match, because a row whose payload is absent is
+  // not an entry the tree can hold.
+  const missingPayloads: string[] = []
+  const present: Record<string, ManifestEntry> = {}
+  for (const [id, row] of Object.entries(manifest.entries)) {
+    const item = byPath.get(row.path) ?? byPath.get(`${TRASH_DIR}/${row.path}`)
+    if (!item) {
+      missingPayloads.push(row.path)
+      continue
+    }
+    present[id] = row
+    files.push({ path: row.path, data: item.bytes })
+  }
+  if (missingPayloads.length > 0) {
+    files[0] = { path: MANIFEST_PATH, data: serializeManifest(withoutEntries(manifest, present)) }
+  }
+  const tree = deserializeTree(files)
+  // A bag path the manifest does not name is an orphan: adopt it as a file
+  // entry so it is preserved, and report it, rather than dropping it on the
+  // floor the way reading only the manifest would.
+  const unknownFiles: string[] = []
+  for (const [path, item] of byPath) {
+    if (named.has(path)) continue
+    addEntry(tree, {
+      id: randomUuid(),
+      kind: 'file',
+      name: basename(path),
+      mime: inferMime(path),
+      bytes: item.bytes,
+    })
+    unknownFiles.push(path)
+  }
+  return {
+    tree,
+    manifestPresent: true,
+    skippedReserved,
+    synthesizedParts: 0,
+    unattached: [],
+    unknownFiles: unknownFiles.sort(),
+    missingPayloads: missingPayloads.sort(),
+    // A manifest-carrying bag is this format's own export, and I5 keeps every
+    // preview out of it, so there is never a sidecar here to seed from.
+    previews: new Map(),
+  }
+}
 
-  // Manifest-absent: the bag is a pile of sources, not a graph. Documents are
-  // classified first so a preview sidecar can be recognized and dropped.
-  // Each payload is classified once here and the verdict carried forward, so
-  // the shape guess below does not re-parse every document a second time.
+// Manifest-absent: the bag is a pile of sources, not a graph. Documents are
+// classified first so a preview sidecar can be recognized and dropped. Each
+// payload is classified once here and the verdict carried forward, so the shape
+// guess below does not re-parse every document a second time.
+function classifyLooseDocuments(effective: BagItem[]): Map<string, KnownDocKind> {
   const documentKinds = new Map<string, KnownDocKind>()
   for (const item of effective) {
     if (isStepPath(item.path) || isPngPath(item.path)) continue
     const kind = documentKind(item.path, decode(item.bytes))
     if (kind !== undefined) documentKinds.set(item.path, kind)
   }
-  const documentPaths = new Set(documentKinds.keys())
+  return documentKinds
+}
 
-  const tree = createTree(emptyManifest(randomUuid()))
+interface LooseAdoption {
+  synthesizedParts: number
+  skippedSidecars: number
+  sidecarBytes: Map<string, Uint8Array>  // document path -> png bytes
+  documentIds: Map<string, string>  // document path -> entry id
+}
+
+// Add every loose payload to the tree, synthesizing a part around each STEP. A
+// sidecar can precede its document, and the document's id is minted as it is
+// classified, so the two halves are collected here and paired after the pass.
+function adoptLooseItems(
+  tree: WorkspaceTree,
+  effective: BagItem[],
+  documentKinds: Map<string, KnownDocKind>,
+  documentPaths: Set<string>,
+): LooseAdoption {
   let synthesizedParts = 0
-  // A sidecar can precede its document in the bag, and the document's id is
-  // minted as it is classified, so the two halves are collected here and paired
-  // after the pass rather than in it.
-  const sidecarBytes = new Map<string, Uint8Array>()  // document path -> png bytes
-  const documentIds = new Map<string, string>()  // document path -> entry id
+  let skippedSidecars = 0
+  const sidecarBytes = new Map<string, Uint8Array>()
+  const documentIds = new Map<string, string>()
   for (const item of effective) {
     const pictured = siblingDocument(item.path, documentPaths)
     if (pictured !== undefined) {
@@ -395,7 +428,7 @@ export function readBagTree(bag: ImportBag): ImportedTree {
       // bytes were dropped, so the cap is what keeps that unchanged: an
       // oversized sidecar is skipped exactly as it used to be.
       if (item.bytes.byteLength <= MAX_PREVIEW_BYTES) sidecarBytes.set(pictured, item.bytes)
-      skippedReserved++
+      skippedSidecars++
       continue
     }
     const text = isStepPath(item.path) ? undefined : decode(item.bytes)
@@ -436,7 +469,12 @@ export function readBagTree(bag: ImportBag): ImportedTree {
       bytes: item.bytes,
     })
   }
+  return { synthesizedParts, skippedSidecars, sidecarBytes, documentIds }
+}
 
+// Documents whose text points at an entry the tree does not hold. Reported,
+// never silently dropped.
+function findUnattachedDocuments(tree: WorkspaceTree): string[] {
   const unattached: string[] = []
   for (const [id, row] of Object.entries(tree.manifest.entries)) {
     if (row.kind !== 'document') continue
@@ -445,23 +483,35 @@ export function readBagTree(bag: ImportBag): ImportedTree {
       unattached.push(id)
     }
   }
+  return unattached
+}
 
+function pairPreviews(
+  sidecarBytes: Map<string, Uint8Array>, documentIds: Map<string, string>,
+): Map<string, Uint8Array> {
   const previews = new Map<string, Uint8Array>()
   for (const [documentPath, bytes] of sidecarBytes) {
     const id = documentIds.get(documentPath)
     if (id !== undefined) previews.set(id, bytes)
   }
+  return previews
+}
 
+function readManifestlessTree(effective: BagItem[], skippedReserved: number): ImportedTree {
+  const documentKinds = classifyLooseDocuments(effective)
+  const documentPaths = new Set(documentKinds.keys())
+  const tree = createTree(emptyManifest(randomUuid()))
+  const adopted = adoptLooseItems(tree, effective, documentKinds, documentPaths)
   return {
     tree,
     manifestPresent: false,
-    skippedReserved,
-    synthesizedParts,
-    unattached: unattached.sort(),
+    skippedReserved: skippedReserved + adopted.skippedSidecars,
+    synthesizedParts: adopted.synthesizedParts,
+    unattached: findUnattachedDocuments(tree).sort(),
     unknownFiles: [],
     // A bag with no manifest names no file it does not carry.
     missingPayloads: [],
-    previews,
+    previews: pairPreviews(adopted.sidecarBytes, adopted.documentIds),
   }
 }
 
@@ -574,37 +624,64 @@ export async function importBag(
 ): Promise<ImportResult> {
   const imported = readBagTree(bag)
   const descriptor = normalizeOrigin(opts.origin)
-  const documents = Object.values(imported.tree.manifest.entries).filter(row => row.kind === 'document').length
-  const files = Object.values(imported.tree.manifest.entries).filter(row => row.kind === 'file').length
+  return opts.into !== undefined
+    ? joinWorkspace(opts.into, imported, descriptor, store)
+    : createWorkspace(imported, descriptor, opts, store)
+}
 
-  if (opts.into !== undefined) {
-    const remapped = remapTree(imported.tree, {
-      workspace: opts.into,
-      // A manifest-less pile had every id minted fresh by this very read, so it
-      // cannot collide with the destination, and re-minting would only strand
-      // the references its synthesized documents carry in their TEXT (a STEP's
-      // part names its file by id there), which the remap does not rewrite.
-      mintIds: imported.manifestPresent,
-      origin: descriptor.locator,
-    })
-    stampProvenance(remapped.tree, descriptor, imported, remapped.idMap)
-    const destination = await store.open(opts.into)
-    mergeTrees(destination.tree, remapped.tree)
-    await store.save(opts.into, destination.tree)
-    await seedPreviews(opts.into, imported, remapped.idMap)
-    return {
-      workspace: opts.into,
-      mode: 'join',
-      documents,
-      files,
-      synthesizedParts: imported.synthesizedParts,
-      skippedReserved: imported.skippedReserved,
-      unattached: imported.unattached,
-      unknownFiles: imported.unknownFiles,
-      missingPayloads: imported.missingPayloads,
-    }
+function countEntries(tree: WorkspaceTree): { documents: number; files: number } {
+  const rows = Object.values(tree.manifest.entries)
+  return {
+    documents: rows.filter(row => row.kind === 'document').length,
+    files: rows.filter(row => row.kind === 'file').length,
   }
+}
 
+function importResult(imported: ImportedTree, workspace: string, mode: 'new' | 'join'): ImportResult {
+  return {
+    workspace,
+    mode,
+    ...countEntries(imported.tree),
+    synthesizedParts: imported.synthesizedParts,
+    skippedReserved: imported.skippedReserved,
+    unattached: imported.unattached,
+    unknownFiles: imported.unknownFiles,
+    missingPayloads: imported.missingPayloads,
+  }
+}
+
+// Join an existing workspace. A manifest-present source re-mints its ids: they
+// could collide with the destination. A manifest-less pile had every id minted
+// fresh by this very read, so it cannot collide, and re-minting would only
+// strand the references its synthesized documents carry in their TEXT (a STEP's
+// part names its file by id there), which the remap does not rewrite.
+async function joinWorkspace(
+  workspace: string,
+  imported: ImportedTree,
+  descriptor: OriginDescriptor,
+  store: WorkspaceStore,
+): Promise<ImportResult> {
+  const remapped = remapTree(imported.tree, {
+    workspace,
+    mintIds: imported.manifestPresent,
+    origin: descriptor.locator,
+  })
+  stampProvenance(remapped.tree, descriptor, imported, remapped.idMap)
+  const destination = await store.open(workspace)
+  mergeTrees(destination.tree, remapped.tree)
+  await store.save(workspace, destination.tree)
+  await seedPreviews(workspace, imported, remapped.idMap)
+  return importResult(imported, workspace, 'join')
+}
+
+// The copy lands in the permanent store and the source is forgotten: the
+// folder or archive it came out of is left exactly as it was found.
+async function createWorkspace(
+  imported: ImportedTree,
+  descriptor: OriginDescriptor,
+  opts: ImportOptions,
+  store: WorkspaceStore,
+): Promise<ImportResult> {
   const { workspace } = await store.create(opts.name ?? defaultWorkspaceName(imported.tree))
   const remapped = remapTree(imported.tree, {
     workspace,
@@ -612,21 +689,9 @@ export async function importBag(
     origin: descriptor.locator,
   })
   stampProvenance(remapped.tree, descriptor, imported, remapped.idMap)
-  // The copy lands in the permanent store and the source is forgotten: the
-  // folder or archive it came out of is left exactly as it was found.
   await store.land(workspace, remapped.tree)
   await seedPreviews(workspace, imported, remapped.idMap)
-  return {
-    workspace,
-    mode: 'new',
-    documents,
-    files,
-    synthesizedParts: imported.synthesizedParts,
-    skippedReserved: imported.skippedReserved,
-    unattached: imported.unattached,
-    unknownFiles: imported.unknownFiles,
-    missingPayloads: imported.missingPayloads,
-  }
+  return importResult(imported, workspace, 'new')
 }
 
 // The adoption half of D6: a legacy bundle's `<doc>.png` sidecars become the
