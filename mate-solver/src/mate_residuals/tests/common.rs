@@ -1,7 +1,6 @@
 //! Shared fixtures and builders for the split mate residual tests.
 
 use crate::mate::*;
-use crate::mate_residuals::math::*;
 use crate::mate_residuals::*;
 
 #[allow(clippy::too_many_arguments)]
