@@ -2,7 +2,7 @@
 
 The app is browser-only: the CAD kernel runs as WASM in the browser and
 persistence is IndexedDB, so no Python executes at runtime. All that is left of
-the `oversolved` package is the icon generator (`icons.py` + `icon_cairo.py`),
+the `oversolved` package is the icon generator (`icons/` + `icon_cairo.py`),
 which `just icons` runs at build time against pycairo alone.
 
 Two boundaries used to be enforced separately and are now one rule. The old

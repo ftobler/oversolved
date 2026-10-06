@@ -1,12 +1,12 @@
-"""Guard the icon set's registry in oversolved/icons.py.
+"""Guard the icon set's registry in the oversolved/icons/ package.
 
-Importing icons.py runs every `@icon` decorator against icon_cairo's
+Importing the icons package runs every `@icon` decorator against icon_cairo's
 module-level registry. `just icons` walks that registry to write the SVGs, so a
 duplicate output path would mean one icon silently overwrites another's file.
 This is the cheap invariant; per-icon pixel goldens would just pin the art.
 
 Mirrors the build invocation (`python oversolved/icons.py`) by putting
-oversolved/ on sys.path: icons.py imports icon_cairo as a top-level module.
+oversolved/ on sys.path: the icons package imports icon_cairo as a top-level module.
 """
 
 import pathlib
