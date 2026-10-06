@@ -14,26 +14,26 @@ import {
   LATE_RELAY_GRACE_MS,
   WorkerActor,
   handleWorkerMessage,
-} from './anchorSolverWorker'
+} from '../anchorSolverWorker'
 import type {
   SolveAssemblyRequest,
   AssemblySolveOkResponse,
   AnchorRelayRequest,
   AssemblyWorkerRequest,
   AssemblyWorkerResponse,
-} from './solverProtocol'
+} from '../solverProtocol'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { bundleCachePut, bundleCachePutIfAbsent, bundleCacheGet, resetBundleDbConnection } from '../bundleCache'
-import { BUNDLE_SCHEMA, type Anchor, type PartBundle } from '../partBundle'
+import { bundleCachePut, bundleCachePutIfAbsent, bundleCacheGet, resetBundleDbConnection } from '../../bundleCache'
+import { BUNDLE_SCHEMA, type Anchor, type PartBundle } from '../../partBundle'
 
-vi.mock('../../wasm-kernel/anchorSolver', () => ({
+vi.mock('../../../wasm-kernel/anchorSolver', () => ({
   initAnchorSolver: vi.fn().mockResolvedValue(undefined),
   getMateSolver: vi.fn().mockReturnValue(null),
   getMateSolverLive: vi.fn().mockReturnValue(null),
 }))
 
-vi.mock('../solveAssembly', () => ({
+vi.mock('../../solveAssembly', () => ({
   solveAssembly: vi.fn().mockResolvedValue({
     transforms: {},
     bodies: {},
@@ -46,8 +46,8 @@ vi.mock('../solveAssembly', () => ({
 // Wrap bundleCachePut in a delegating spy (real IndexedDB behaviour intact) so
 // the late-relay tests can assert the timed-out build was cached. Mirrors the
 // pattern solveAssembly.test.ts uses for bundleCacheGet/bundleCachePut.
-vi.mock('../bundleCache', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../bundleCache')>()
+vi.mock('../../bundleCache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../bundleCache')>()
   return {
     ...actual,
     bundleCachePut: vi.fn(actual.bundleCachePut),
@@ -55,7 +55,7 @@ vi.mock('../bundleCache', async (importOriginal) => {
   }
 })
 
-import { solveAssembly } from '../solveAssembly'
+import { solveAssembly } from '../../solveAssembly'
 
 function makeReq(overrides?: Partial<SolveAssemblyRequest>): SolveAssemblyRequest {
   return {
@@ -120,7 +120,7 @@ describe('handleSolveAssembly', () => {
     })
 
     const mockSolver = vi.fn()
-    const { getMateSolver } = await import('../../wasm-kernel/anchorSolver')
+    const { getMateSolver } = await import('../../../wasm-kernel/anchorSolver')
     vi.mocked(getMateSolver).mockReturnValue(mockSolver)
 
     await handleSolveAssembly(req, relay.service)
@@ -138,7 +138,7 @@ describe('handleSolveAssembly', () => {
     const relay = fakeRelay()
     const fullSolver = vi.fn()
     const liveSolver = vi.fn()
-    const mod = await import('../../wasm-kernel/anchorSolver')
+    const mod = await import('../../../wasm-kernel/anchorSolver')
     vi.mocked(mod.getMateSolver).mockReturnValue(fullSolver)
     vi.mocked(mod.getMateSolverLive).mockReturnValue(liveSolver)
 
@@ -689,7 +689,7 @@ describe('relay timeout + late bundle cache with solveAssembly', () => {
     try {
       // The file-level mock is only for the handler-level tests; this test
       // drives the real solveAssembly through the real relay service.
-      const real = await vi.importActual<typeof import('../solveAssembly')>('../solveAssembly')
+      const real = await vi.importActual<typeof import('../../solveAssembly')>('../../solveAssembly')
 
       const requests: AnchorRelayRequest[] = []
       const post = (msg: AnchorRelayRequest): void => { requests.push(msg) }
@@ -739,7 +739,7 @@ describe('relay requestId scoping across worker generations', () => {
       // Generation 1: the crashed worker. Its client had issued solve id 1,
       // so its relay ids sit in the 1000 band.
       vi.resetModules()
-      const gen1 = await import('./anchorSolverWorker')
+      const gen1 = await import('../anchorSolverWorker')
       const r1: AnchorRelayRequest[] = []
       const service1 = gen1.createRelayService((m) => r1.push(m))
       await gen1.handleSolveAssembly(makeReq({ id: 1 }), service1)
@@ -752,7 +752,7 @@ describe('relay requestId scoping across worker generations', () => {
       // Generation 2: the respawned worker. The client's nextId has grown, so
       // its relay ids sit in a higher band and cannot collide.
       vi.resetModules()
-      const gen2 = await import('./anchorSolverWorker')
+      const gen2 = await import('../anchorSolverWorker')
       const r2: AnchorRelayRequest[] = []
       const service2 = gen2.createRelayService((m) => r2.push(m))
       await gen2.handleSolveAssembly(makeReq({ id: 2 }), service2)

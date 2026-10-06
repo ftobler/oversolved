@@ -10,15 +10,15 @@ const engines = vi.hoisted(() => ({
   exportAssemblyLocally: vi.fn(),
 }))
 
-vi.mock('../solveLocally', () => ({
+vi.mock('../../solveLocally', () => ({
   solveLocally: (...args: unknown[]) => engines.solveLocally(...args),
   exportLocally: (...args: unknown[]) => engines.exportLocally(...args),
   exportAssemblyLocally: (...args: unknown[]) => engines.exportAssemblyLocally(...args),
   setOccLoader: vi.fn(),
 }))
 
-import { handleWorkerMessage, WorkerActor } from './solverWorker'
-import type { BundleResponse, ExportResponse, SolveResponse } from './solverProtocol'
+import { handleWorkerMessage, WorkerActor } from '../solverWorker'
+import type { BundleResponse, ExportResponse, SolveResponse } from '../solverProtocol'
 
 type Posted = { res: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }
 

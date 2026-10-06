@@ -10,10 +10,10 @@
 
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, PartFeature } from '@/types/cad'
-import { loadSolver } from './loadSolver'
-import { lowerSketch } from './lowerSketch'
-import { encodeInput, decodeOutput, Status, type SolverOutput } from './codec'
-import { partDocToSketches } from './partDocToSketches'
+import { loadSolver } from '../loadSolver'
+import { lowerSketch } from '../lowerSketch'
+import { encodeInput, decodeOutput, Status, type SolverOutput } from '../codec'
+import { partDocToSketches } from '../partDocToSketches'
 import { applyAddNgon, applyAddConstraint, applyDeleteElements } from '@/utils/yamlMutations'
 
 const bytes = loadSolver()

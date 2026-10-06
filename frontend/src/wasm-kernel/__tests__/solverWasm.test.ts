@@ -43,7 +43,7 @@ import {
   loadSolverWasm,
   loadTopologyWasm,
   resetSolverWasm,
-} from './solverWasm'
+} from '../solverWasm'
 
 describe('solverWasm loaders', () => {
   beforeEach(() => {

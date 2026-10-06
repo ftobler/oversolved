@@ -43,7 +43,7 @@ let entries: RegressionEntry[]
 
 beforeAll(() => {
   const __dirname = dirname(fileURLToPath(import.meta.url))
-  const raw = readFileSync(resolve(__dirname, 'regression-baseline.json'), 'utf-8')
+  const raw = readFileSync(resolve(__dirname, '../regression-baseline.json'), 'utf-8')
   entries = JSON.parse(raw) as RegressionEntry[]
 })
 
@@ -145,7 +145,7 @@ describe('WASM kernel regression baseline', () => {
 // parity gate cannot catch a projection-lowering break (red-green proven).
 describe('WASM kernel projection corpus', () => {
   interface ManifestCase { feature_kind: string; query_tier: string; ok: boolean }
-  const manifest = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'corpus-manifest.json'), 'utf-8')) as {
+  const manifest = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../corpus-manifest.json'), 'utf-8')) as {
     summary: { by_tier: Record<string, number> }
     coverage: Record<string, string[]>
     cases: Record<string, ManifestCase>

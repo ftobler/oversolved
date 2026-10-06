@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { loadExportOrNull } from './loadPkgNode'
+import { loadExportOrNull } from '../loadPkgNode'
 
 const PKG_PATH = '/repo/sketch-solver/pkg-node/sketch_solver.js'
 

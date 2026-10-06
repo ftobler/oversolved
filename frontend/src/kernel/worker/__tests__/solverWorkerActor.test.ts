@@ -6,7 +6,7 @@
  * outside; only the cancel button's Worker terminate can end it early.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { WorkerActor, type ActorJob } from './solverWorker'
+import { WorkerActor, type ActorJob } from '../solverWorker'
 
 /** A promise the test resolves by hand, to hold a job open. */
 function gate(): { promise: Promise<void>; open: () => void } {
