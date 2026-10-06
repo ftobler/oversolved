@@ -46,6 +46,25 @@ describe('loadOccWeb', () => {
     expect(String((error.mock.calls[0][1] as Error).message)).toMatch(/HTTP 404/)
   })
 
+  it('retries after a failed load instead of pinning the null result', async () => {
+    const fetchSpy = vi.fn(async () => ({ ok: false, status: 404 }))
+    vi.stubGlobal('fetch', fetchSpy)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const loadOccWeb = await freshLoadOccWeb()
+    // First call fails (no window.opencascade, the fetch 404s) and resolves null.
+    expect(await loadOccWeb('/occ/')).toBeNull()
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+    // The null result must be evicted, so a later call retries from scratch
+    // rather than returning the cached null. Attach a factory and confirm the
+    // second call reaches it.
+    const factory = vi.fn(async () => ({ occt: 'ready' }))
+    ;(window as unknown as { opencascade?: unknown }).opencascade = factory
+    expect(await loadOccWeb('/occ/')).toEqual({ occt: 'ready' })
+    expect(factory).toHaveBeenCalledTimes(1)
+  })
+
   it('reuses a factory already attached to window and maps the wasm locateFile', async () => {
     const factory = vi.fn(async (_opts: { locateFile: (p: string) => string }) => ({ occt: 'ready' }))
     ;(window as unknown as { opencascade?: unknown }).opencascade = factory
