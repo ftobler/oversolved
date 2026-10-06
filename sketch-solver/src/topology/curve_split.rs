@@ -33,7 +33,7 @@ pub fn subdivide_bezier(c: &BezierCtrl, t0: f64, t1: f64) -> BezierCtrl {
     // Real assert, not debug_assert: this crate ships with debug-assertions off
     // in release, and a silently-passed t0 >= t1 would produce a degenerate
     // zero-length control net instead of surfacing the caller's bug. The only
-    // caller (`dcel.rs`) already skips t1 <= t0 pairs, so this should never
+    // caller (`dcel/build.rs`) already skips t1 <= t0 pairs, so this should never
     // actually fire; it exists to catch a future caller that doesn't.
     assert!(t1 > t0, "subdivide_bezier: need t0 < t1");
     let (left, _) = split_bezier_at(c, t1); // curve over [0, t1]
