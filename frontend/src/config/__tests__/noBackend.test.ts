@@ -25,8 +25,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve, relative, sep } from 'node:path'
 
-// src/ root, derived from this file's location (src/config/<this>).
-const SRC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+// src/ root, derived from this file's location (src/config/__tests__/<this>).
+const SRC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 interface Rule {
   // Named in the failure message, so make it read as the thing being banned.

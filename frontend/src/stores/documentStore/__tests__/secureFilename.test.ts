@@ -5,7 +5,7 @@
 // werkzeug, bundle import/export silently writes mismatched entry paths.
 
 import { describe, it, expect } from 'vitest'
-import { secureFilename, uniqueStem } from './secureFilename'
+import { secureFilename, uniqueStem } from '../secureFilename'
 
 describe('secureFilename', () => {
   it('joins internal spaces with underscores', () => {

@@ -4,7 +4,7 @@
 // that was laxer than this would let the store lean on behaviour real Chromium
 // does not have.
 import { describe, it, expect } from 'vitest'
-import { MemoryDirectory, fileFrom, toBytes } from './memoryDirectory'
+import { MemoryDirectory, fileFrom, toBytes } from '../memoryDirectory'
 
 const decoder = new TextDecoder()
 
