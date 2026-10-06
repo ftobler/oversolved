@@ -18,6 +18,7 @@ import { extractOccFace, extractFaceLoops, sortedFacesOf, faceLoopsOfFace, compu
 import { extractProfileLoops, type ProfileLoopDiag } from './shared/profileLoops'
 import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds } from './shared/bodyRef'
 import type { PlaneLike } from './shared/planes'
+import { stripRefSigil } from '@/utils/refSigil'
 
 type Dict = Record<string, unknown>
 type EdgeDict = Record<string, unknown>
@@ -390,7 +391,7 @@ export function collectExtrudeLoops(
     return { loops, plane, sketchId, face, loopDiags }
   }
 
-  const sketchId = sketchRef.replace(/^\$+/, '')
+  const sketchId = stripRefSigil(sketchRef, '$')
   const pt = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
   if (pt === undefined) throw new Error(`sketch not found: ${sketchId}`)
   const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}

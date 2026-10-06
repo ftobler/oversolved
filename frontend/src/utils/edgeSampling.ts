@@ -10,19 +10,12 @@
 
 import type { EdgeCurve } from '@/kernel/partBundle'
 import type { Vec3 } from '@/utils/transform3d'
+import { cross } from '@/utils/vec3'
 
 /** Segments per full turn. An arc gets a share proportional to its sweep. */
 export const DEFAULT_CURVE_RESOLUTION = 64
 
 const TWO_PI = Math.PI * 2
-
-function cross(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ]
-}
 
 function normalize(v: Vec3): Vec3 | null {
   const len = Math.hypot(v[0], v[1], v[2])

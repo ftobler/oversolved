@@ -27,6 +27,7 @@ import { frameFromPlaneTransform } from '../types3d'
 import { loopCentroid, radians, type LoopEdge } from '../profileLoops'
 import { BUILTIN_PLANES } from '../solverConstants'
 import { sketchToWorld2d, type PlaneLike } from './shared/planes'
+import { stripRefSigil } from '@/utils/refSigil'
 
 type Dict = Record<string, unknown>
 
@@ -80,7 +81,7 @@ export function resolveSketchPlane(
     return front
   }
 
-  const bare = planeQuery.replace(/^[@$]/, '')
+  const bare = stripRefSigil(planeQuery, '@$')
   if (BUILTIN_PLANES[bare]) return planeLikeOf(BUILTIN_PLANES[bare])
   if (BARE_PLANE[planeQuery]) return planeLikeOf(BUILTIN_PLANES[BARE_PLANE[planeQuery]])
   const reg = globalRepo.elements.get('_pt_' + bare) ?? globalRepo.elements.get(bare)

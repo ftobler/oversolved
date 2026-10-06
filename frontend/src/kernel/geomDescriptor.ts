@@ -9,6 +9,8 @@
 //   @gde|kind|x,y,z|ax,ay,az|scalar      edge: point + axis + length/radius
 //   @gdv|x,y,z                          vertex: the point
 
+import { cross, dot, sub } from '@/utils/vec3'
+
 export interface FaceDescriptor {
   kind: "face"
   point: number[]  // centroid
@@ -83,9 +85,6 @@ export function parseGeomDescriptorId(idStr: string): GeomDescriptor | null {
 
 // ─── Derivation ───
 
-function sub(a: number[], b: number[]): number[] {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
 function norm(v: number[]): number {
   return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
 }
@@ -93,16 +92,6 @@ function normalize(v: number[]): number[] {
   const n = norm(v)
   if (n < 1e-12) return [0, 0, 0]
   return [v[0] / n, v[1] / n, v[2] / n]
-}
-function cross(a: number[], b: number[]): number[] {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ]
-}
-function dot(a: number[], b: number[]): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
 function asVec(v: unknown): number[] | null {

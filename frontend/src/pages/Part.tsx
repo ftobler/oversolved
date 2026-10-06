@@ -4,6 +4,7 @@ import type { ViewportHandle } from '@/components/Viewport'
 import type { PartDoc, PartFeature, Mutation, Sketch } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
 import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
+import { stripRefSigil } from '@/utils/refSigil'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { visibleFeatureIds } from '@/utils/featureVisibility'
@@ -886,7 +887,7 @@ export default function Part() {
 
     const planeId = activeSketch.plane
     if (!planeId) return
-    const cleanPlaneId = planeId.replace(/^@/, '')
+    const cleanPlaneId = stripRefSigil(planeId, '@')
 
     viewportRef.current?.alignCameraToPlane(cleanPlaneId)  // camera-only; intentional no-op when Viewport absent
   }, [activeSketchFeatureId, features])

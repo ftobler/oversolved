@@ -11,6 +11,7 @@
 import type { SelectionId, EntitySelectionId, VertexSelectionId, FaceSelectionId, EdgeSelectionId, PlaneSelectionId, ConstraintSelId } from "@/types/query"
 import { parseQuery, emitWire } from "@/utils/query"
 import type { Query } from "@/types/query"
+import { stripRefSigil } from "@/utils/refSigil"
 
 export const sel = {
   entity:     (featureId: string, eid: string): EntitySelectionId =>
@@ -51,7 +52,8 @@ export function parseSelectionId(s: string): SelectionId {
   if (s.startsWith("face:"))       return _splitFace(s)
   if (s.startsWith("edge:"))       return _splitEdge(s)
   if (s.startsWith("constraint:")) return _splitConstraint(s)
-  if (s.startsWith("@"))           return { kind: "plane", featureId: s.slice(1) }
+  const featureId = stripRefSigil(s, "@")
+  if (featureId !== s)             return { kind: "plane", featureId }
   throw new Error(`Unrecognized selection ID: ${s}`)
 }
 

@@ -13,7 +13,7 @@
 // the CURRENT value, so the frontend previews a drag as
 // `anchor + direction * (newValue - value) * unit_scale`.
 
-import { sub, dot, cross, type Vec3 } from './vec3'
+import { add, cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
 
 export interface FeatureHandle {
   [key: string]: unknown
@@ -37,19 +37,11 @@ function normalize(v: number[]): Vec3 | null {
   return [v[0] / len, v[1] / len, v[2] / len]
 }
 
-function add3(a: number[], b: number[]): Vec3 {
-  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-}
-
-function scale3(v: number[], s: number): Vec3 {
-  return [v[0] * s, v[1] * s, v[2] * s]
-}
-
 /** `base + normalize(dir) * dist`, or null when dir is degenerate. */
 export function offsetAlong(base: number[], dir: number[], dist: number): Vec3 | null {
   const n = normalize(dir)
   if (n === null) return null
-  return add3(base, scale3(n, dist))
+  return add(base, scale(n, dist))
 }
 
 /**
@@ -104,7 +96,7 @@ export function angularHandle(
   const k = normalize(axisDir)
   if (k === null) return null
   const v = sub(refPoint, axisOrigin)
-  const axial = scale3(k, dot(k, v))
+  const axial = scale(k, dot(k, v))
   const radial = sub(v, axial)
   const radius = Math.sqrt(dot(radial, radial))
   if (radius < 1e-9) return null
@@ -114,15 +106,15 @@ export function angularHandle(
   const endFactor = directionSetting === 'reverse' ? -1 : directionSetting === 'symmetric' ? 0.5 : 1
   const theta = (angleDeg * endFactor * Math.PI) / 180
   // radial is perpendicular to k, so Rodrigues reduces to cos/sin terms.
-  const rotated = add3(scale3(radial, Math.cos(theta)), scale3(cross(k, radial), Math.sin(theta)))
-  const anchor = add3(add3(axisOrigin, axial), rotated)
+  const rotated = add(scale(radial, Math.cos(theta)), scale(cross(k, radial), Math.sin(theta)))
+  const anchor = add(add(axisOrigin, axial), rotated)
 
   const tangent = normalize(cross(k, rotated))
   if (tangent === null) return null
   // d(anchor)/d(value) = tangent * endFactor * radius * pi/180; direction must
   // stay unit-length, so the sign folds into direction and the magnitude into
   // unit_scale.
-  const direction = endFactor < 0 ? scale3(tangent, -1) : tangent
+  const direction = endFactor < 0 ? scale(tangent, -1) : tangent
   return {
     kind: 'angular',
     field,

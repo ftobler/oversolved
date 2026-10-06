@@ -10,6 +10,7 @@
 // pointer gesture that cannot be interpreted must leave the part where it is.
 
 import type { Vec3 } from '@/utils/transform3d'
+import { add, cross, dot, scale, sub } from '@/utils/vec3'
 
 export interface Ray {
   origin: Vec3
@@ -18,29 +19,9 @@ export interface Ray {
 
 const EPS = 1e-9
 
-export function dot(a: Vec3, b: Vec3): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-export function cross(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ]
-}
-
-export function sub(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-export function add(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-}
-
-export function scale(v: Vec3, s: number): Vec3 {
-  return [v[0] * s, v[1] * s, v[2] * s]
-}
+// The componentwise helpers are shared with the feature solvers; re-exported
+// here so this module's many call sites keep importing them from one place.
+export { add, cross, dot, scale, sub }
 
 export function normalize(v: Vec3): Vec3 | null {
   const n = Math.hypot(v[0], v[1], v[2])

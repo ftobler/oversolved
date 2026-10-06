@@ -11,7 +11,7 @@
  */
 
 import { fitCubicBezier } from '@/utils/geometry/bezierFit'
-import { dot as dot3, sub as sub3, cross as cross3 } from './vec3'
+import { dot as dot3, sub as sub3, cross as cross3 } from '@/utils/vec3'
 
 type Dict = Record<string, unknown>
 

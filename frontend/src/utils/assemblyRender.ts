@@ -26,9 +26,10 @@ import {
   ASSEMBLY_RIGHT_ID,
   ASSEMBLY_TOP_ID,
 } from '@/utils/assemblyBuiltins'
+import { BUILTIN_PLANE_ROTATIONS, DEFAULT_PLANE_SIZE } from '@/utils/builtinPlanes'
 
-/** Matches the part editor's reference planes (ReferencePlane.tsx). */
-export const ASSEMBLY_PLANE_SIZE = 100
+// The assembly's plane quads use the part editor's default extent (ReferencePlane.tsx).
+export const ASSEMBLY_PLANE_SIZE = DEFAULT_PLANE_SIZE
 
 export interface AssemblyBuiltinItem {
   id: string
@@ -43,9 +44,9 @@ export interface AssemblyBuiltinItem {
 // kernel/solveAssembly.ts carry the matching normals.
 const BUILTIN_RENDER: Record<string, AssemblyBuiltinItem> = {
   [ASSEMBLY_ORIGIN_ID]: { id: ASSEMBLY_ORIGIN_ID, kind: 'origin', label: 'Origin', rotation: [0, 0, 0] },
-  [ASSEMBLY_FRONT_ID]:  { id: ASSEMBLY_FRONT_ID,  kind: 'plane',  label: 'Front',  rotation: [0, 0, 0] },
-  [ASSEMBLY_TOP_ID]:    { id: ASSEMBLY_TOP_ID,    kind: 'plane',  label: 'Top',    rotation: [-Math.PI / 2, 0, 0] },
-  [ASSEMBLY_RIGHT_ID]:  { id: ASSEMBLY_RIGHT_ID,  kind: 'plane',  label: 'Right',  rotation: [0, Math.PI / 2, 0] },
+  [ASSEMBLY_FRONT_ID]:  { id: ASSEMBLY_FRONT_ID,  kind: 'plane',  label: 'Front',  rotation: BUILTIN_PLANE_ROTATIONS.builtin_plane_front },
+  [ASSEMBLY_TOP_ID]:    { id: ASSEMBLY_TOP_ID,    kind: 'plane',  label: 'Top',    rotation: BUILTIN_PLANE_ROTATIONS.builtin_plane_top },
+  [ASSEMBLY_RIGHT_ID]:  { id: ASSEMBLY_RIGHT_ID,  kind: 'plane',  label: 'Right',  rotation: BUILTIN_PLANE_ROTATIONS.builtin_plane_right },
 }
 
 /** One row in the tree's Origin section: a built-in and whether it is shown. */
