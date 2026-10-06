@@ -15,7 +15,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    include: ['src/kernel/occ/fullDocParity.test.ts'],
+    include: ['src/kernel/occ/__tests__/fullDocParity.test.ts'],
     // Heavy gate (OCC.js download + WASM compile in hooks) on a contended box.
     // The first test pays the cold start (fork child + load OCC.js + compile
     // WASM) and solveWithTimeout already guards each solve at 30s, so a vitest
