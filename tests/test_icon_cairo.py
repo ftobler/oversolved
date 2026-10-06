@@ -3,7 +3,7 @@
 `icon_cairo` holds the actual drawing pipeline: the `@icon` registry, the
 normalized-coordinate scale, the angle/offset transform applied around the
 unit square's center, and the idempotent write that leaves an already correct
-file alone. The icon set itself (oversolved/icons.py) declares the drawings;
+file alone. The icon set itself (the oversolved/icons/ package) declares the drawings;
 this file checks the engine that renders them.
 """
 

@@ -1,6 +1,6 @@
 # Icon Guidelines
 
-Icons are defined programmatically in `oversolved/icons.py` using Cairo and the `@icon` decorator from `oversolved/icon_cairo.py`. Running `python oversolved/icons.py` regenerates all SVGs in `frontend/src/assets/icons/`.
+Icons are defined programmatically in the `oversolved/icons/` package (family modules such as `toolbar.py` and `features.py`) using Cairo and the `@icon` decorator from `oversolved/icon_cairo.py`. Running `python oversolved/icons.py` regenerates all SVGs in `frontend/src/assets/icons/`.
 
 ## SVG Properties
 

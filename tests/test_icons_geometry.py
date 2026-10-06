@@ -1,4 +1,4 @@
-"""Behavior tests for the drawing-math helpers in oversolved/icons.py.
+"""Behavior tests for the drawing-math helpers in the oversolved/icons/ package.
 
 The icon engine (icon_cairo) is covered elsewhere; the registry is covered in
 test_icons.py. The geometry helpers those 72 icons share were not: a dotted
@@ -18,7 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _load(monkeypatch):
-    # icons.py imports icon_cairo as a top-level module, mirroring `just icons`.
+    # The icons package imports icon_cairo as a top-level module, mirroring `just icons`.
     monkeypatch.syspath_prepend(str(ROOT / "oversolved"))
     import icons
 

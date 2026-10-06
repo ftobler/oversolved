@@ -195,7 +195,7 @@ side and `@cls_ld_<lineid>_n` for the other.
 
 ## 6. Icon Guidelines
 
-### Drawing in `oversolved/icons.py`
+### Drawing in the `oversolved/icons/` package
 
 **Rule:** Use normalized coordinates (0-1), draw with Cairo, regenerate at build time.
 
@@ -323,4 +323,4 @@ export function dispatchKey(e: KeyboardEvent): boolean
 | Add new tool | `frontend/src/registry/entityRegistry.ts` | `frontend/src/registry/` |
 | Add new constraint | `frontend/src/registry/constraintRegistry.ts` | `frontend/src/registry/` |
 | Add new measurement | `frontend/src/registry/measurementRegistry.ts` | `frontend/src/registry/` |
-| Add icon | `@icon()` decorator | `oversolved/icons.py` |
+| Add icon | `@icon()` decorator | `oversolved/icons/` (family module, e.g. `toolbar.py`; launcher is `icons.py`) |

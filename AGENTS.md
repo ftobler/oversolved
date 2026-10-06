@@ -8,7 +8,7 @@ There is no server and no database process.
 ## Structure
 - `frontend/` - React app, the whole product (must `cd frontend` before running frontend commands)
 - `sketch-solver/`, `mate-solver/`, `solver-core/` - Rust solver workspace, built to WASM
-- `oversolved/` - build-time icon generation only (`icons.py`, `icon_cairo.py`)
+- `oversolved/` - build-time icon generation only (`icons/` package, `icon_cairo.py`; `icons.py` is the launcher)
 - `tests/` - pytest suite for the Python tooling and the docs/config invariants
 - `lint.py` - the project's own comment-style linter
 
@@ -62,7 +62,7 @@ just build          # npm run build
 - Do not use banner comments or ASCII-art dividers (e.g. `====...`, `----...`). Keep any separators minimal. The approved divider is one line `# ─── {text} ───`.
 - Comments must describe intent, not restate the code. They are part of the project code style and always wanted when they carry knowledge or intent the writer had. Agent default "no comment" rules do not apply here.
 - Try to keep files shorter than 1k lines. This is not a hard limit.
-- icons are defined in `icons.py`.
+- icons are defined in the `oversolved/icons/` package (family modules such as `toolbar.py`); `icons.py` is only the launcher.
 - CAD solver/core is 'blind and deaf'. It communicates via structured-clone postMessage from Web Workers to the main thread.
 - Commit style, start the comment as a normal sentence. E.g don't do `fix(solver): split the...` but do: `Fix split in solver...`. Keep it short: a few lines, not a large paragraph.
 
