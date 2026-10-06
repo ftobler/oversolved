@@ -1,0 +1,94 @@
+import { describe, it, expect } from 'vitest'
+import { Repository, makeAncestryQuery, constructionUuidToken, AmbiguousQueryError } from '../query'
+
+describe('resolver UUID-first tier', () => {
+  it('short-circuits on a UUID match even when ancestral tokens do not match', () => {
+    const repo = new Repository()
+    const face = { type: 'face', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1', '@body_b'], face, 'u_X')
+    // The ancestral token is deliberately wrong; the UUID still resolves it.
+    const q = makeAncestryQuery([constructionUuidToken('u_X'), '@nonexistent'], 'face')
+    expect(repo.query(q)).toBe(face)
+  })
+
+  it('beats a drifted/absent ancestral match: UUID wins over the ancestral net', () => {
+    const repo = new Repository()
+    // Two faces share the same ancestral tokens; only the UUID disambiguates them.
+    const wanted = { type: 'face', body_id: 'body_b', created_by: 'f1' }
+    const other = { type: 'face', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1', '@body_b'], wanted, 'u_want')
+    repo.registerAncestor(['@f1', '@body_b'], other, 'u_other')
+    // The ancestral subset alone is ambiguous (two hits); the UUID picks the one.
+    const q = makeAncestryQuery([constructionUuidToken('u_want'), '@f1', '@body_b'], 'face')
+    expect(repo.query(q)).toBe(wanted)
+  })
+
+  it('falls through to the ancestral net when the UUID is absent (fallback, not primary)', () => {
+    const repo = new Repository()
+    const face = { type: 'face', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1', '@body_b'], face, 'u_X')
+    // The persisted UUID names no live element (the slot changed); the primary
+    // tier misses and the ancestral subset must recover it as the fallback.
+    const q = makeAncestryQuery([constructionUuidToken('u_missing'), '@f1', '@body_b'], 'face')
+    expect(repo.byUuid.has('u_missing')).toBe(false)  // proves the primary tier had nothing to hit
+    expect(repo.query(q)).toBe(face)
+  })
+
+  it('respects the type restriction on the UUID tier', () => {
+    const repo = new Repository()
+    const face = { type: 'flatface', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1'], face, 'u_Y')
+    // flatface is a subtype of face, so a face restriction still resolves.
+    expect(repo.query(makeAncestryQuery([constructionUuidToken('u_Y')], 'face'))).toBe(face)
+    // A vertex restriction must not resolve a face by UUID.
+    expect(repo.query(makeAncestryQuery([constructionUuidToken('u_Y')], 'vertex'))).toBeNull()
+  })
+
+  it('fails loud on a construction-UUID collision (impossible by construction)', () => {
+    const repo = new Repository()
+    repo.registerAncestor(['@a'], { type: 'face' }, 'u_dup')
+    repo.registerAncestor(['@b'], { type: 'face' }, 'u_dup')
+    expect(() => repo.query(makeAncestryQuery([constructionUuidToken('u_dup')], 'face'))).toThrow(
+      AmbiguousQueryError,
+    )
+  })
+
+  it('fails loud when the uuid element is excluded by type but a right-type sibling shares the ancestors', () => {
+    const repo = new Repository()
+    const face = { type: 'flatface', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1', '@body_b'], face, 'u_Y')
+    repo.registerAncestor(['@f1', '@body_b'], { type: 'straightedge', body_id: 'body_b', created_by: 'f1' })
+    // The old resolver fell through to the ancestral net and silently resolved
+    // the straightedge sibling, masking the swap behind _lastTier "ancestral".
+    const q = makeAncestryQuery([constructionUuidToken('u_Y'), '@f1', '@body_b'], 'straightedge')
+    expect(() => repo.query(q)).toThrow(AmbiguousQueryError)
+  })
+})
+
+describe('resolver tier channel (_lastTier)', () => {
+  it('reports the uuid tier on a construction-UUID hit', () => {
+    const repo = new Repository()
+    const face = { type: 'face', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1', '@body_b'], face, 'u_X')
+    const q = makeAncestryQuery([constructionUuidToken('u_X'), '@f1', '@body_b'], 'face')
+    expect(repo.query(q)).toBe(face)
+    // A silent downgrade to the ancestral net would report a weaker tier here.
+    expect(repo._lastTier).toBe('uuid')
+  })
+
+  it('reports the ancestral tier when the UUID misses and the ancestral net recovers it', () => {
+    const repo = new Repository()
+    const face = { type: 'face', body_id: 'body_b', created_by: 'f1' }
+    repo.registerAncestor(['@f1', '@body_b'], face, 'u_X')
+    const q = makeAncestryQuery([constructionUuidToken('u_missing'), '@f1', '@body_b'], 'face')
+    expect(repo.query(q)).toBe(face)
+    expect(repo._lastTier).toBe('ancestral')
+  })
+
+  it('reports miss when nothing resolves', () => {
+    const repo = new Repository()
+    const q = makeAncestryQuery([constructionUuidToken('u_nope'), '@nothing'], 'face')
+    expect(repo.query(q)).toBeNull()
+    expect(repo._lastTier).toBe('miss')
+  })
+})

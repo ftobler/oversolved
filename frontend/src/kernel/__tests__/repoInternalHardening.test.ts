@@ -1,0 +1,141 @@
+// repo-internal-hardening: two latent Repository defects plus a
+// single-implementation guard.
+//   1. canonical() joins ancestor ids on an unescaped NUL. Ids are internally
+//      generated (feature ids, sketch entity ids, profile-query text,
+//      construction uuids), none NUL-validated, so a NUL would silently merge
+//      two DISTINCT ancestor sets into one ancestral key. It must fail loud in
+//      test mode instead of merging.
+//   2. gc() compared every @-tag to feature ids, so construction uuids (@u|),
+//      classifiers (@cls_*), body tags (@body_*), geom-hash refs (@gface_ etc.)
+//      and legacy descriptors (@gdf| etc.) counted as feature refs. Tags are
+//      now classified before they are treated as feature references.
+//   3. builder.ts once re-implemented the canonical sorted-NUL-join inline in a
+//      face-ancestry dedup-skip (since deleted). It must never do so again: the
+//      source-scan below pins that no inline NUL-join returns, and that the
+//      remaining canonical() calls stay the one key derivation.
+
+import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import {
+  Repository,
+  canonical,
+  constructionUuidToken,
+  isFeatureRefTag,
+} from '../query'
+import { assertRepoIndicesConsistent, assertNoDeadUuidBuckets } from '../repoIndexTestUtil'
+
+describe('canonical NUL failLoud', () => {
+  it("throws in test mode when an ancestor id contains the NUL separator", () => {
+    // failLoud throws in test mode (dev-only warn elsewhere), so a NUL is a
+    // loud bug signal instead of a silent key merge.
+    expect(() => canonical(["a\u0000b", "c"])).toThrow(/NUL/)
+  })
+
+  it("still dedups and sorts as a frozenset key for NUL-free ids", () => {
+    expect(canonical(["b", "a", "b"])).toBe(canonical(["a", "b"]))
+    expect(canonical([])).toBe("")
+  })
+})
+
+describe("gc tag classification", () => {
+  it("keeps an entry whose only @-tags are construction uuid + body tags", () => {
+    // A hypothetical uuid+body-only producer: @u| and @body_ tags carry no
+    // feature reference. gc keys on feature activity, so it must keep the entry
+    // while its body is registered (body liveness is registration eviction's
+    // job, see index-shrink-ghost-eviction) instead of wrongly deleting it.
+    const repo = new Repository()
+    repo.registerAncestor(
+      [constructionUuidToken("u_face"), "@body_b/face0", "@body_b"],
+      { type: "flatface", body_id: "body_b" },
+    )
+    repo.gc(new Set())
+    expect(repo.ancestral.size).toBe(1)
+    assertRepoIndicesConsistent(repo)
+  })
+
+  it("keeps an entry whose only @-tags are a classifier", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["@cls_zn", "@body_b"], { type: "flatface" })
+    repo.gc(new Set())
+    expect(repo.ancestral.size).toBe(1)
+    assertRepoIndicesConsistent(repo)
+  })
+
+  it("keeps a tagless entry (builtin planes)", () => {
+    const repo = new Repository()
+    repo.registerAncestor(["builtin_front", "builtin_plane"], { type: "plane" })
+    repo.gc(new Set())
+    expect(repo.ancestral.size).toBe(1)
+  })
+
+  it("evicts a feature-tagged entry when its feature is inactive", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      [constructionUuidToken("u_face"), "@body_b", "@f1"],
+      { type: "flatface", body_id: "body_b" },
+      "u_face",
+    )
+    repo.gc(new Set())
+    expect(repo.ancestral.size).toBe(0)
+    assertNoDeadUuidBuckets(repo)
+    assertRepoIndicesConsistent(repo)
+  })
+
+  it("keeps a feature-tagged entry when its feature is active", () => {
+    const repo = new Repository()
+    repo.registerAncestor(
+      [constructionUuidToken("u_face"), "@body_b", "@f1"],
+      { type: "flatface", body_id: "body_b" },
+      "u_face",
+    )
+    repo.gc(new Set(["f1"]))
+    expect(repo.ancestral.size).toBe(1)
+    assertRepoIndicesConsistent(repo)
+  })
+
+  it("classifies the known non-feature tag families as not feature refs", () => {
+    // Pins the classification table directly so a new tag family cannot drift
+    // in silently: only a plain @<featureId> shape is a feature reference.
+    // Sketch-entity profile-query ids like `@sk1/line1` are intentionally
+    // classified feature-ref-shaped too: they are never feature ids and always
+    // co-occur with a real `@<featureId>` ref, so they cannot pin an entry or
+    // wrongly evict one.
+    const nonFeature = [
+      "@u|u_f38db052aaf9026c",
+      "@cls_zn",
+      "@body_b",
+      "@body_b/face0",
+      "@gface_abc123",
+      "@gedge_abc123",
+      "@gvertex_abc123",
+      "@gnormal_abc123",
+      "@gdf|0,0,0|0,0,1",
+      "@gde|line|0,0,0|1,0,0|1",
+      "@gdv|0,0,0",
+    ]
+    const feature = ["@extrude1", "@sketch1", "@ex1", "@import_step1", "@sk1/line1"]
+    for (const t of nonFeature) expect(isFeatureRefTag(t)).toBe(false)
+    for (const t of feature) expect(isFeatureRefTag(t)).toBe(true)
+  })
+})
+
+describe("single-implementation canonical", () => {
+  it("the builder modules never re-implement canonical()'s NUL-join inline", () => {
+    // The deleted face-ancestry dedup-skip used to. This is the headstone: if
+    // canonical() ever changes (escaping, framing) the builder must not carry a
+    // second copy of its join. The scan matches `join(` with either quote style,
+    // so a reintroduced double-quoted NUL escape cannot slip through. The
+    // ancestry registrar (builderAncestry.ts) is where canonical() is still
+    // called, so the one-key-derivation pin follows it there.
+    const sources = ["builder.ts", "builderAncestry.ts"].map((f) =>
+      readFileSync(join(__dirname, '..', f), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(?:^|\s)\/\/[^\n]*/g, ""),
+    )
+    for (const src of sources) {
+      expect(src).not.toMatch(/join\(\s*['"](?:\\0|\\u0000)/)
+    }
+    expect(sources[1]).toContain("canonical(")  // still the one key derivation, never an inline join
+  })
+})
