@@ -53,4 +53,21 @@ describe('loadOccWorker', () => {
     const loadOccWorker = await freshLoadOccWorker()
     expect(await loadOccWorker('/occ/')).toEqual({ occt: 'ready' })
   })
+
+  it('retries after a failed load instead of pinning the null', async () => {
+    const js = 'export default async () => ({ occt: "ready" });'
+    const fetchSpy = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce({ ok: true, text: async () => js })
+    vi.stubGlobal('fetch', fetchSpy)
+    stubObjectUrl(`data:text/javascript,${encodeURIComponent(js)}`)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const loadOccWorker = await freshLoadOccWorker()
+    expect(await loadOccWorker('/occ/')).toBeNull()
+    // The failed (null) load was evicted, so the retry runs the loader again and
+    // installs the now-available module instead of returning the pinned null.
+    expect(await loadOccWorker('/occ/')).toEqual({ occt: 'ready' })
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
 })

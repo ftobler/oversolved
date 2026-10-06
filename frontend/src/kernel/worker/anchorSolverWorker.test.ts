@@ -904,7 +904,7 @@ describe('dispatcher', () => {
     await vi.waitUntil(async () => (await bundleCacheGet('doc-a', '1')) !== undefined)
   })
 
-  it('warns on an unknown message kind instead of silently dropping it', () => {
+  it('replies with an error on an unknown message kind so the client settles', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const actor = new WorkerActor()
@@ -916,8 +916,33 @@ describe('dispatcher', () => {
         actor,
       )
       expect(warnSpy).toHaveBeenCalledWith('[anchorSolverWorker] unknown message kind', 'futureKind')
-      // An unknown kind is dropped, but loudly: no solve is queued and nothing
-      // is posted.
+      // No solve is queued, but the message still gets an error reply keyed to
+      // its id and stamped with the solveAssembly discriminant, or the client
+      // would drop the reply and hang the request.
+      expect(runSpy).not.toHaveBeenCalled()
+      expect(posted).toEqual([{
+        id: 5,
+        kind: 'solveAssembly',
+        ok: false,
+        error: 'unknown message kind: futureKind',
+      }])
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('only warns on an unknown kind with no numeric id, since it names no slot to settle', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const actor = new WorkerActor()
+      const runSpy = vi.spyOn(actor, 'run')
+      const posted: AssemblyWorkerResponse[] = []
+      handleWorkerMessage(
+        { kind: 'futureKind', assemblyId: 'asm', parts: [], revs: {}, mates: [] } as unknown as AssemblyWorkerRequest,
+        (msg) => { posted.push(msg) },
+        actor,
+      )
+      expect(warnSpy).toHaveBeenCalledWith('[anchorSolverWorker] unknown message kind', 'futureKind')
       expect(runSpy).not.toHaveBeenCalled()
       expect(posted).toHaveLength(0)
     } finally {

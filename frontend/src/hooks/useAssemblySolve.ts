@@ -34,9 +34,20 @@ import { useSolverStore } from '@/stores/solverStore'
 
 // A failure the user walked into is not an error to banner: a cancel kills the
 // in-flight solve deliberately, and a watchdog timeout is the same drop of a
-// presumed-stuck worker as the part path (`useSolver`'s benign set). Everything
-// else is a real failure the user should see.
-const BENIGN_ASSEMBLY_FAILURES = new Set(['assembly solve cancelled', 'anchor solver timed out'])
+// presumed-stuck worker as the part path (`useSolver`'s benign set). A worker
+// trap and its cooldown backoff are infrastructure noise too -- the console
+// error already surfaced the crash, and every request inside the backoff window
+// rejects with the backoff string purely by design -- so both the anchor and the
+// OCC worker crash strings are benign, matching `BENIGN_SOLVE_FAILURES`.
+// Everything else is a real failure the user should see.
+const BENIGN_ASSEMBLY_FAILURES = new Set([
+  'assembly solve cancelled',
+  'anchor solver timed out',
+  'anchor solver worker crashed',
+  'anchor solver worker crashed (backoff)',
+  'solver worker crashed',
+  'solver worker crashed (backoff)',
+])
 
 // A live drag tick carries the per-mate and per-part marks only. Withholding the
 // overall verdict (and its error) keeps a per-frame overconstrained from

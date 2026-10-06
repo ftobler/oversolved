@@ -390,7 +390,9 @@ interface WorkerCtx {
  * Dispatch one Worker message to its handler. Exported so tests can drive the
  * dispatcher without a real Worker (the bootstrap below only runs in a Worker).
  * The solve branch is reached only through an explicit kind check: a malformed
- * message must not be mistaken for a solve, it is warned on and dropped.
+ * message must not be mistaken for a solve. An unknown kind is warned on and,
+ * when it carries a numeric id, answered with an error so the client settles; a
+ * message with no numeric id names no slot and is only warned on.
  */
 export function handleWorkerMessage(
   msg: WorkerRequest,
@@ -427,7 +429,18 @@ export function handleWorkerMessage(
       },
     })
   } else {
-    if (isDevBuild()) console.warn('[solverWorker] unknown message kind', msg.kind)
+    // A message this dispatcher does not recognize can never be answered by a
+    // handler, so reply with an error tied to its id: without a reply the
+    // client's pending entry never settles and its promise hangs forever (the
+    // production solve watchdog is Infinity, so nothing else would break it). A
+    // message with no numeric id names no slot to settle, so it is only warned
+    // on. The kind is read off the raw value because TS has already narrowed
+    // `msg` to the kind-less solve shape here.
+    const kind = (msg as { kind?: unknown }).kind
+    if (isDevBuild()) console.warn('[solverWorker] unknown message kind', kind)
+    if (typeof msg.id === 'number') {
+      post({ id: msg.id, ok: false, error: `unknown message kind: ${String(kind)}` }, [])
+    }
   }
 }
 
