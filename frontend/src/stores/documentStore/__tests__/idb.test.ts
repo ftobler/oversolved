@@ -11,7 +11,7 @@ import {
   DB_NAME, DB_VERSION, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META, STORE_WORKSPACE_META,
   idbGet, idbGetAllFrom, idbGetFrom,
   idbPut, idbTransaction, resetDbConnection,
-} from './idb'
+} from '../idb'
 import { sha256Hex, sha256HexBytes } from '@/kernel/sha256'
 
 function freshDb(): void {

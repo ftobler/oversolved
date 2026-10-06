@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { computeHighlight, HighlightIndex, type ActiveHighlight } from './selectionHighlight'
-import { primitivePickKey } from './pickKey'
+import { computeHighlight, HighlightIndex, type ActiveHighlight } from '../selectionHighlight'
+import { primitivePickKey } from '../pickKey'
 
 const BODY = 'extrude1/body0'
 const LAYER = 'edge'
