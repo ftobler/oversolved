@@ -258,7 +258,8 @@ interface WorkerCtx {
  * dispatcher without a real Worker (the bootstrap below only runs in a Worker).
  * The relay service is built per message from the post callback; the pending
  * relay map and id counter it wraps are module-level, so it carries no state.
- * An unknown kind is dropped, loudly, instead of silently.
+ * An unknown kind is warned on and, when it carries a numeric id, answered with
+ * an error so the client settles instead of hanging.
  */
 export function handleWorkerMessage(
   msg: AssemblyWorkerRequest,
@@ -279,9 +280,18 @@ export function handleWorkerMessage(
       },
     )
   } else {
-    // The union is exhaustive, so TS narrows msg to never here; log the kind
-    // through the raw message so a malformed one is observable.
-    if (isDevBuild()) console.warn('[anchorSolverWorker] unknown message kind', (msg as { kind?: unknown }).kind)
+    // The union is exhaustive, so TS narrows msg to never here; read the kind
+    // and id off the raw message. An unknown kind can never be answered by a
+    // handler, so a numeric id gets an error reply: without one the client's
+    // pending entry never settles and its promise hangs. The reply must carry
+    // `kind: 'solveAssembly'` or the client drops it. A message with no numeric
+    // id names no slot to settle, so it is only warned on.
+    const kind = (msg as { kind?: unknown }).kind
+    const id = (msg as { id?: unknown }).id
+    if (isDevBuild()) console.warn('[anchorSolverWorker] unknown message kind', kind)
+    if (typeof id === 'number') {
+      post({ id, kind: 'solveAssembly', ok: false, error: `unknown message kind: ${String(kind)}` })
+    }
   }
 }
 

@@ -405,6 +405,25 @@ describe('useAssemblySolve', () => {
     expect(useSolverStore.getState().isSolving).toBe(false)
   })
 
+  it.each([
+    'anchor solver worker crashed',
+    'anchor solver worker crashed (backoff)',
+    'solver worker crashed',
+    'solver worker crashed (backoff)',
+  ])('treats the infrastructure failure "%s" as benign (no error banner)', async (reason) => {
+    // A worker trap and its cooldown backoff are crash noise, not document
+    // failures: they must not paint a raw internal string in the banner. The
+    // part hook's benign set already covers them; the assembly hook must match.
+    useAssemblyStore.setState({ solveStatus: null })
+    h.solveAssemblyViaWorker.mockRejectedValue(new Error(reason))
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
+
+    await act(async () => { result.current.requestSolve() })
+
+    expect(useAssemblyStore.getState().solveStatus?.error).toBeUndefined()
+    expect(useSolverStore.getState().isSolving).toBe(false)
+  })
+
   it('stores an overconstrained verdict from the payload so the banner predicate is true', async () => {
     h.solveAssemblyViaWorker.mockResolvedValue({
       id: 1, kind: 'solveAssembly' as const, ok: true as const,

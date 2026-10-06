@@ -387,26 +387,45 @@ describe('dispatcher', () => {
     expect(posted).toEqual([{ message: { id: 77, ok: false, error: SUPERSEDED_ERROR }, transfer: [] }])
   })
 
-  it('warns on an unknown message kind and never submits a solve job', () => {
+  it('replies with an error on an unknown message kind so the client settles', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const actor = new WorkerActor()
       const submitSpy = vi.spyOn(actor, 'submit')
-      const posted: unknown[] = []
+      const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
       handleWorkerMessage(
         { id: 99, kind: 'futureKind', spec: {}, options: {} } as unknown as WorkerRequest,
-        (res) => { posted.push(res) },
+        (res, transfer) => { posted.push({ message: res, transfer }) },
         actor,
       )
       expect(warnSpy).toHaveBeenCalledWith('[solverWorker] unknown message kind', 'futureKind')
       // The solve branch is reached only through an explicit kind check, so a
-      // malformed message cannot be mistaken for a solve: no job is queued and
-      // no response is posted.
+      // malformed message cannot be mistaken for a solve: no job is queued. It
+      // still gets an error reply keyed to its id, or the client promise hangs.
       expect(submitSpy).not.toHaveBeenCalled()
-      expect(posted).toHaveLength(0)
+      expect(posted).toEqual([{
+        message: { id: 99, ok: false, error: 'unknown message kind: futureKind' },
+        transfer: [],
+      }])
     } finally {
       warnSpy.mockRestore()
     }
+  })
+
+  it('settles a kind-less solve-shaped message with an error instead of dropping it', () => {
+    const actor = new WorkerActor()
+    const submitSpy = vi.spyOn(actor, 'submit')
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    handleWorkerMessage(
+      { id: 55, spec: { id: 'doc1' }, options: {} } as WorkerRequest,
+      (res, transfer) => { posted.push({ message: res, transfer }) },
+      actor,
+    )
+    expect(submitSpy).not.toHaveBeenCalled()
+    expect(posted).toEqual([{
+      message: { id: 55, ok: false, error: 'unknown message kind: undefined' },
+      transfer: [],
+    }])
   })
 
   it('routes an export message to a one-shot job that posts transferable bytes', async () => {
