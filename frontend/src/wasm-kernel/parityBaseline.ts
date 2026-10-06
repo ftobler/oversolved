@@ -1,5 +1,5 @@
 // Shared baseline-building helpers for the full-doc parity gate
-// (occ/fullDocParity.test.ts) and the corpus generator
+// (occ/__tests__/fullDocParity.test.ts) and the corpus generator
 // (scripts/regenCorpus.ts). Both must agree on how a live TS body is reduced
 // to a frozen golden baseline body; keeping it here single-sources the replay
 // and the regen so a drift on one side cannot hide a divergence.

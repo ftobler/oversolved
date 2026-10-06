@@ -1,0 +1,403 @@
+// @vitest-environment node
+//
+// Edge/face construction-UUID coverage + the "no duplicate query" regression
+// lock (query-naming-by-construction.md).
+//
+// The per-edge/-face geom token was dropped on the premise that every pickable
+// element carries a construction UUID. It does not for every class: single-face
+// seam edges (a cylinder's lateral seam) got no UUID and fell back to
+// createdBy+classifiers -- non-unique, so they collided in both the id buffer
+// and the fillet/chamfer resolver. This file locks two things:
+//   1. every edge of a named-face solid gets a UUID (incl. the seam edge), and
+//   2. the full build pipeline emits NO duplicate edge_queries, face_queries or
+//      vertex_queries for the representative bodies (box, cylinder, filleted
+//      box, boolean cut).
+// (2) is the guard that would have caught the original break at commit time.
+//
+// Skips when opencascade.js (or, for the build-level lock, the Rust solver) is
+// absent, like the other real-OCC gates.
+import { describe, it, expect, beforeAll } from 'vitest'
+import { loadOcc } from '../loadOcc'
+import { DisposeScope } from '../disposeScope'
+import { makeBox, makeCylinder } from '../primitives'
+import { deriveEdgeNames, nameFacesFromNeighbours } from '../constructionLineage'
+import { faceGh, edgeGh } from '../lineageHash'
+import type { OccShape } from '../occTypes'
+import { SharedHarness } from '../sharedHarness'
+import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
+import { loadSolver } from '@/wasm-kernel/loadSolver'
+import type { BuildResponse } from '../../builder'
+
+const oc = await loadOcc()
+const solveBytes = loadSolver()
+
+function nameAllFaces(scope: DisposeScope, shape: OccShape) {
+  const E = oc!.TopAbs_ShapeEnum
+  const faceNames: Record<string, string> = {}
+  const faceAncestry: Record<string, string[]> = {}
+  const exp = scope.track(new oc!.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  let i = 0
+  for (; exp.More(); exp.Next()) {
+    const face = scope.track(oc!.TopoDS.Face_1(exp.Current()))
+    const gh = faceGh(oc!, scope, face)
+    if (!(gh in faceNames)) { faceNames[gh] = `u_face${i++}`; faceAncestry[faceNames[gh]] = [`@anc${i}`] }
+  }
+  return { faceNames, faceAncestry }
+}
+
+function edgeGhs(scope: DisposeScope, shape: OccShape): string[] {
+  const E = oc!.TopAbs_ShapeEnum
+  const ghs = new Set<string>()
+  const exp = scope.track(new oc!.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  for (; exp.More(); exp.Next()) {
+    const gh = edgeGh(oc!, scope, scope.track(oc!.TopoDS.Edge_1(exp.Current())))
+    if (gh) ghs.add(gh)
+  }
+  return [...ghs]
+}
+
+describe.skipIf(!oc)('edge UUID coverage', () => {
+  it('box: every edge gets a UUID', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(oc!, scope, 10, 10, 10)
+      const { faceNames, faceAncestry } = nameAllFaces(scope, box)
+      const { edgeNames } = deriveEdgeNames(oc!, scope, box, faceNames, faceAncestry)
+      for (const g of edgeGhs(scope, box)) expect(edgeNames[g]).toBeDefined()
+    } finally { scope.dispose() }
+  })
+
+  it('cylinder: the single-face seam edge gets a UUID too', () => {
+    const scope = new DisposeScope()
+    try {
+      const cyl = makeCylinder(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
+      const { faceNames, faceAncestry } = nameAllFaces(scope, cyl)
+      const { edgeNames, edgeAncestry } = deriveEdgeNames(oc!, scope, cyl, faceNames, faceAncestry)
+      const ghs = edgeGhs(scope, cyl)
+      expect(ghs.length).toBeGreaterThan(0)
+      for (const g of ghs) {
+        expect(edgeNames[g]).toBeDefined()
+        // ancestry present so a stale UUID still resolves via the ancestral tier
+        expect(edgeAncestry[edgeNames[g]]).toBeDefined()
+      }
+      // seam edge uses the seam derivation (e_ prefix, single-face path)
+      expect(Object.values(edgeNames).every(u => u.startsWith('e_'))).toBe(true)
+    } finally { scope.dispose() }
+  })
+
+  // A producer that cannot name every face it makes (the fillet corner patch of
+  // bugreports/edge_resolves_not_unique_20260728_213049.md) leaves a hole that
+  // spreads to the edges: an edge whose other face is unnamed is misread as a
+  // SEAM of the one named face, and where both faces are unnamed the edge gets
+  // no UUID at all and falls back to the body-wide ancestral string every other
+  // unnamed edge also carries.
+  it('a face the producer could not name is named off its neighbours', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(oc!, scope, 10, 10, 10)
+      const { faceNames, faceAncestry } = nameAllFaces(scope, box)
+      const orphan = Object.keys(faceNames)[0]
+      const kept = { ...faceNames }
+      delete faceNames[orphan]
+      delete faceAncestry[kept[orphan]]
+
+      const before = deriveEdgeNames(oc!, scope, box, faceNames, faceAncestry).edgeNames
+
+      nameFacesFromNeighbours(oc!, scope, box, faceNames, faceAncestry)
+      expect(faceNames[orphan]).toBeDefined()
+      expect(faceNames[orphan]).not.toBe(kept[orphan])  // its own identity, not the lost one
+      // Ancestry is inherited from the neighbours, so a stale UUID still lands
+      // in the right lineage.
+      expect(faceAncestry[faceNames[orphan]].length).toBeGreaterThan(0)
+
+      const after = deriveEdgeNames(oc!, scope, box, faceNames, faceAncestry).edgeNames
+      const ghs = edgeGhs(scope, box)
+      for (const g of ghs) expect(after[g]).toBeDefined()
+      expect(new Set(Object.values(after)).size).toBe(ghs.length)
+      // The 4 edges bounding the orphan were deriving from ONE face (the seam
+      // path, ordered by multiplicity); now they derive from a real face pair.
+      expect(ghs.filter((g) => after[g] !== before[g]).length).toBe(4)
+    } finally { scope.dispose() }
+  })
+
+  it('leaves a face with no named neighbour unnamed rather than guessing', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(oc!, scope, 10, 10, 10)
+      const faceNames: Record<string, string> = {}
+      const faceAncestry: Record<string, string[]> = {}
+      nameFacesFromNeighbours(oc!, scope, box, faceNames, faceAncestry)
+      expect(faceNames).toEqual({})
+    } finally { scope.dispose() }
+  })
+
+  it('never rewrites a producer-minted UUID (nameFacesFromNeighbours invariance)', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(oc!, scope, 10, 10, 10)
+      const { faceNames, faceAncestry } = nameAllFaces(scope, box)
+      const namesBefore = { ...faceNames }
+      const ancestryBefore = { ...faceAncestry }
+      nameFacesFromNeighbours(oc!, scope, box, faceNames, faceAncestry)
+      // Every producer-minted UUID and its ancestry survive the pass untouched;
+      // the pass only ever ADDS names for faces that had none.
+      expect(faceNames).toEqual(namesBefore)
+      expect(faceAncestry).toEqual(ancestryBefore)
+    } finally { scope.dispose() }
+  })
+
+  it('deterministic: two builds of the same cylinder mint identical edge UUIDs', () => {
+    const s1 = new DisposeScope(); const s2 = new DisposeScope()
+    try {
+      const c1 = makeCylinder(oc!, s1, [0, 0, 0], [0, 0, 1], 5, 10)
+      const c2 = makeCylinder(oc!, s2, [0, 0, 0], [0, 0, 1], 5, 10)
+      const n1 = nameAllFaces(s1, c1)
+      const n2 = nameAllFaces(s2, c2)
+      const e1 = deriveEdgeNames(oc!, s1, c1, n1.faceNames, n1.faceAncestry).edgeNames
+      const e2 = deriveEdgeNames(oc!, s2, c2, n2.faceNames, n2.faceAncestry).edgeNames
+      expect(new Set(Object.values(e1))).toEqual(new Set(Object.values(e2)))
+    } finally { s1.dispose(); s2.dispose() }
+  })
+})
+
+// ─── build-level no-duplicate-query regression lock ───
+
+/** A rectangle sketch (four constrained lines) at an optional in-plane offset. */
+function rectSketch(sketchId: string, w: number, h: number, opts?: { offsetX?: number; offsetY?: number }) {
+  const ox = opts?.offsetX ?? 0
+  const oy = opts?.offsetY ?? 0
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'bottom', kind: 'line' as const }, { id: 'right', kind: 'line' as const },
+      { id: 'top', kind: 'line' as const }, { id: 'left', kind: 'line' as const },
+    ],
+    initial: {
+      bottom: [ox, oy, ox + w, oy], right: [ox + w, oy, ox + w, oy + h],
+      top: [ox + w, oy + h, ox, oy + h], left: [ox, oy + h, ox, oy],
+    },
+    constraints: [
+      { id: 'c1', kind: 'coincident' as const, a: { entity: 'bottom', point: 'end' as const }, b: { entity: 'right', point: 'start' as const } },
+      { id: 'c2', kind: 'coincident' as const, a: { entity: 'right', point: 'end' as const }, b: { entity: 'top', point: 'start' as const } },
+      { id: 'c3', kind: 'coincident' as const, a: { entity: 'top', point: 'end' as const }, b: { entity: 'left', point: 'start' as const } },
+      { id: 'c4', kind: 'coincident' as const, a: { entity: 'left', point: 'end' as const }, b: { entity: 'bottom', point: 'start' as const } },
+      { id: 'c5', kind: 'horizontal' as const, target: { entity: 'bottom' } },
+      { id: 'c6', kind: 'horizontal' as const, target: { entity: 'top' } },
+      { id: 'c7', kind: 'vertical' as const, target: { entity: 'right' } },
+      { id: 'c8', kind: 'vertical' as const, target: { entity: 'left' } },
+      { id: 'c9', kind: 'length' as const, target: { entity: 'bottom' }, value: w },
+      { id: 'c10', kind: 'length' as const, target: { entity: 'left' }, value: h },
+    ],
+  }
+}
+
+/** A single-circle sketch centered at the origin with a diameter constraint. */
+function circleSketch(sketchId: string, diameter: number) {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Circle', plane: '@builtin_plane_front',
+    entities: [{ id: 'c1', kind: 'circle' as const }],
+    initial: { c1: [0, 0, diameter / 2] },
+    constraints: [
+      { id: 'co1', kind: 'coincident' as const, a: `$${sketchId}c1center`, b: '@builtin_origin' },
+      { id: 'd1', kind: 'diameter' as const, target: `$${sketchId}c1`, value: diameter },
+    ],
+  }
+}
+
+/** Duplicate entries in a query list (the exact non-uniqueness the lock guards). */
+function duplicates(queries: string[]): string[] {
+  const seen = new Set<string>()
+  const dup = new Set<string>()
+  for (const q of queries) {
+    if (seen.has(q)) dup.add(q)
+    seen.add(q)
+  }
+  return [...dup]
+}
+
+function faceQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
+  const mesh = h.body(r, bodyId).mesh as { face_queries?: string[] } | undefined
+  return mesh?.face_queries ?? []
+}
+
+function edgeQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
+  return (h.body(r, bodyId).edge_queries as string[]) ?? []
+}
+
+function vertexQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
+  return (h.body(r, bodyId).vertex_queries as string[]) ?? []
+}
+
+/**
+ * Every pickable primitive of `bodyId` carries a query no sibling shares.
+ *
+ * Vertices are in here for the same reason edges were: a query is the key of
+ * the durable selection, so two primitives that emit the same string are ONE
+ * selectable thing. A cylinder's two seam vertices used to do exactly that --
+ * neither met the >=3-named-faces bar for a construction UUID, and a vertex
+ * query carries no classifiers to fall back on (faces and edges do), so both
+ * collapsed onto a single `createdBy + bodyId` string.
+ */
+function expectUniquePrimitiveQueries(h: SharedHarness, r: BuildResponse, bodyId: string) {
+  const faces = faceQueriesOf(h, r, bodyId)
+  const edges = edgeQueriesOf(h, r, bodyId)
+  const vertices = vertexQueriesOf(h, r, bodyId)
+  expect(faces.length).toBeGreaterThan(0)
+  expect(edges.length).toBeGreaterThan(0)
+  expect(vertices.length).toBeGreaterThan(0)
+  expect(duplicates(faces)).toEqual([])
+  expect(duplicates(edges)).toEqual([])
+  expect(duplicates(vertices)).toEqual([])
+}
+
+describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OCC + Rust solver)', () => {
+  const h = new SharedHarness(oc!)
+
+  beforeAll(() => {
+    if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
+    if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
+  })
+
+  // Build the spec, then assert the body's face, edge and vertex queries are unique.
+  function expectUniqueQueries(spec: { features: Array<Record<string, unknown>> }, bodyId: string) {
+    expectUniquePrimitiveQueries(h, h.run(spec), bodyId)
+  }
+
+  it('box: no duplicate face or edge queries', () => {
+    expectUniqueQueries({ features: [
+      rectSketch('sk1', 10, 10),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
+    ] }, 'body_ex1')
+  })
+
+  it('cylinder: the seam edge no longer collides (no duplicate queries)', () => {
+    expectUniqueQueries({ features: [
+      circleSketch('sk1', 10),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 8, direction: 'normal', operation: 'new' },
+    ] }, 'body_ex1')
+  })
+
+  it('filleted box: no duplicate face or edge queries', () => {
+    const base = { features: [
+      rectSketch('sk1', 10, 10),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
+    ] }
+    const eq = edgeQueriesOf(h, h.run(base), 'body_ex1')
+    expect(eq.length).toBeGreaterThan(0)
+    expectUniqueQueries({ features: [
+      ...base.features,
+      { id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 },
+    ] }, 'body_ex1')
+  })
+
+  it('boolean cut (target minus tool): no duplicate face or edge queries', () => {
+    expectUniqueQueries({ features: [
+      rectSketch('sk1', 10, 10),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'add' },
+      rectSketch('sk2', 4, 4, { offsetX: 3, offsetY: 3 }),
+      { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 12, direction: 'normal', operation: 'cut' },
+    ] }, 'body_ex1')
+  })
+
+  // The EXPLICIT boolean leaf (features/boolean.ts), which the cut case above
+  // does not reach -- that one goes through bodyOps. This leaf used to skip the
+  // construction-name transfer entirely ("the target keeps its now partly stale
+  // lineage dicts"), so every face the fuse reshaped lost its UUID and every
+  // edge around it fell back to the body-wide ancestral string. See
+  // bugreports/pick_identity_20260728_215425.md, where one edge pick highlighted
+  // six edges and the fillet after the union could not resolve it.
+  it('explicit boolean union: every primitive keeps a construction UUID', () => {
+    const spec = { features: [
+      rectSketch('sk1', 10, 10),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
+      rectSketch('sk2', 4, 4, { offsetX: 8, offsetY: 3 }),
+      { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 6, direction: 'normal', operation: 'new' },
+      { id: 'bool1', kind: 'boolean', boolean: { operation: 'union', target: '@body_ex1', tools: ['@body_ex2'] } },
+    ] }
+    const result = h.run(spec)
+    expect((h.res(result, 'bool1') as { status: string }).status).toBe('ok')
+    expectUniquePrimitiveQueries(h, result, 'body_ex1')
+    // Uniqueness alone would pass on classifiers that happen to separate the
+    // unnamed siblings; the identity itself has to survive the boolean.
+    const unnamed = [
+      ...faceQueriesOf(h, result, 'body_ex1'),
+      ...edgeQueriesOf(h, result, 'body_ex1'),
+    ].filter((q) => !q.includes('@u|'))
+    expect(unnamed).toEqual([])
+  })
+
+  it('circular array add: no duplicate face or edge queries', () => {
+    // Offset box so rotated copies do not self-intersect the axis.
+    expectUniqueQueries({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 10, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'ca1', kind: 'circular_array', source_body: '@body_ex1',
+        count: 6, axis: '@builtin_plane_front',
+        include_source: true, operation: 'add',
+      },
+    ] }, 'body_ex1')
+  })
+
+  it('mirror merge: no duplicate face or edge queries', () => {
+    expectUniqueQueries({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 10, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'mir1', kind: 'mirror', body: '@body_ex1', plane: '@builtin_plane_front',
+        keep_original: true, merge: true,
+      },
+    ] }, 'body_ex1')
+  })
+
+  it('transform new: no duplicate face or edge queries', () => {
+    const r = h.run({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 5, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'tr1', kind: 'transform', bodies: ['@body_ex1'], operation: 'new',
+        translation: [20, 0, 0],
+      },
+    ] })
+    expectUniquePrimitiveQueries(h, r, 'body_tr1')
+  })
+
+  it('transform new over TWO picks: two separately selectable bodies come out', () => {
+    /** The pick is a list, so one transform emits one new body per pick. This
+     *  is the build-level lock that both survive as their own part with their
+     *  own queries; the sources here already carry distinct UUIDs, so the
+     *  per-source instancing itself is locked in transformGroupReal.test.ts
+     *  where the two sources are named identically. */
+    const r = h.run({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 5, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      rectSketch('sk2', 4, 4, { offsetX: 30, offsetY: -2 }),
+      { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'tr1', kind: 'transform', bodies: ['@body_ex1', '@body_ex2'], operation: 'new',
+        translation: [0, 0, 20],
+      },
+    ] })
+    expectUniquePrimitiveQueries(h, r, 'body_tr1')
+    expectUniquePrimitiveQueries(h, r, 'body_tr1_1')
+    const first = new Set([...faceQueriesOf(h, r, 'body_tr1'), ...edgeQueriesOf(h, r, 'body_tr1')])
+    const second = [...faceQueriesOf(h, r, 'body_tr1_1'), ...edgeQueriesOf(h, r, 'body_tr1_1')]
+    expect(second.length).toBeGreaterThan(0)
+    expect(second.filter(q => first.has(q))).toEqual([])
+  })
+
+  it('circular array new: no duplicate face or edge queries in any instance body', () => {
+    const r = h.run({ features: [
+      rectSketch('sk1', 4, 4, { offsetX: 10, offsetY: -2 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 4, direction: 'normal', operation: 'new' },
+      {
+        id: 'ca1', kind: 'circular_array', source_body: '@body_ex1',
+        count: 4, axis: '@builtin_plane_front',
+        include_source: true, operation: 'new',
+      },
+    ] })
+    for (const bodyId of ['body_ca1', 'body_ca1_1']) {
+      expectUniquePrimitiveQueries(h, r, bodyId)
+    }
+  })
+})

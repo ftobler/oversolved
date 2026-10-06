@@ -69,7 +69,7 @@ export default defineConfig({
     // The full-document parity gate is slow, needs OCC.js provisioned, and
     // hard-fails on any kernel divergence. It runs via its own config
     // (`just parity` / vitest.parity.config.ts), not the fast default suite.
-    exclude: [...configDefaults.exclude, 'src/kernel/occ/fullDocParity.test.ts'],
+    exclude: [...configDefaults.exclude, 'src/kernel/occ/__tests__/fullDocParity.test.ts'],
     setupFiles: ['src/test-setup.ts'],
     testTimeout: ci ? 180000 : undefined,
     hookTimeout: ci ? 300000 : undefined,

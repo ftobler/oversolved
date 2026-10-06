@@ -3,7 +3,7 @@
  *
  * Loads the regression baseline (a frozen golden snapshot of the now-removed
  * Python kernel) and validates its structure.  The live TS/WASM-kernel-vs-baseline
- * diff lives in occ/fullDocParity.test.ts.
+ * diff lives in occ/__tests__/fullDocParity.test.ts.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
