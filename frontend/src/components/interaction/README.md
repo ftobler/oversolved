@@ -39,9 +39,9 @@ Rule: any file that needs to read or write global UI state but cannot be a
 React hook should use a Zustand store. Pure-logic files (no Three.js, no
 R3F hooks) may import and subscribe to stores directly.
 
-### 3. Module-level callback slots (`_sketchCbs`)
+### 3. Module-level callback slots (`sketchCallbacks`)
 
-Location: `stores/sketchEditorStore.ts`, registered via `setSketchCallback()`.
+Location: `stores/sketchEditorCallbacks.ts`, registered via `setSketchCallback()`.
 
 Use for: pure store actions that need to dispatch *back* into React-owned state
 (mutations, rebuilds, sketch exit). The pure-layer rule forbids importing
