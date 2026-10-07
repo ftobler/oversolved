@@ -11,6 +11,8 @@ import '@/components/layout/AppHeader.css'
 
 // The copyright note rides on the logo's tooltip rather than a footer bar: it
 // is a credit, not a control, and the editors need the vertical space.
+// It names the product, not the holder, on purpose: this is branding, and the
+// legal statement is LICENSE.md.
 const COPYRIGHT = 'Copyright 2026 - Oversolved'
 
 // Where the burger has nowhere to go, because this IS the workspace overview.
