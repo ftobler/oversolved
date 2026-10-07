@@ -1,3 +1,6 @@
+# The full gate. Both forges read this file, but every job is gated to Gitea;
+# GitHub runs the lighter main-only main.yaml instead, so anything merged to
+# main has already passed this run.
 name: CI
 
 on: [push, pull_request]
@@ -11,6 +14,7 @@ jobs:
   # guards); the app itself is browser-only, so this job needs no database and
   # no GL/X stack.
   python:
+    if: github.server_url != 'https://github.com'  # gitea
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -64,15 +68,14 @@ jobs:
           path: dist/*.whl
 
   frontend:
+    if: github.server_url != 'https://github.com'  # gitea
     strategy:
       matrix:
         os: [ubuntu-latest]
         node-version: [20, 22, 24]
-        # The arm64 runner is a self-hosted Gitea label; GitHub has no runner
-        # behind it, so the job would only queue there. Include it everywhere
-        # except GitHub. A job-level `if` cannot see `matrix`, hence the
-        # expression on the include list itself.
-        include: ${{ github.server_url != 'https://github.com' && fromJSON('[{"os":"ubuntu-latest-arm64","node-version":24}]') || fromJSON('[]') }}
+        include:
+          - os: ubuntu-latest-arm64  # self-hosted runner label
+            node-version: 24
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -80,12 +83,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-
-      - name: Install cairo  # github needs dependencies for pycairo
-        if: github.server_url == 'https://github.com'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev pkg-config
 
       - name: Install Python dependencies
         run: pip install -e ".[dev]"
@@ -166,6 +163,7 @@ jobs:
           path: frontend/dist/
 
   rust:
+    if: github.server_url != 'https://github.com'  # gitea
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -218,6 +216,7 @@ jobs:
   # in phase 4d, so this is a post-migration regression gate, not a live
   # old-vs-new comparison. Heavy: OCC.js ~66 MB download + WASM compile.
   parity:
+    if: github.server_url != 'https://github.com'  # gitea
     runs-on: ubuntu-latest
     env:
       CI: "true"

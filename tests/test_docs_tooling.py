@@ -38,6 +38,7 @@ DOC_AND_TOOLING_SURFACE = (
     "justfile",
     "pyproject.toml",
     ".github/workflows/ci.yaml",
+    ".github/workflows/main.yaml",
 )
 
 
