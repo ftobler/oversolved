@@ -15,7 +15,9 @@
 import type { OccModule } from './occTypes'
 import { memoizedLoad } from './memoizedLoad'
 
-const DEFAULT_BASE = `${import.meta.env.BASE_URL}occ/`  // under the deploy base, e.g. /oversolved/ on Pages
+// Under the deploy base, e.g. /oversolved/ on Pages. Plain Node (the parity
+// gate) has no import.meta.env, hence the optional chain.
+const DEFAULT_BASE = `${import.meta.env?.BASE_URL ?? '/'}occ/`
 
 const occWorker = memoizedLoad(async (base: string): Promise<OccModule | null> => {
   try {

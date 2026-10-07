@@ -60,4 +60,20 @@ describe('deploy base', () => {
     }
     expect(offenders).toEqual([])
   })
+
+  // The kernel also runs outside Vite: the parity gate and the solve-timeout
+  // runner load it under plain Node, where import.meta.env is undefined. A bare
+  // `import.meta.env.BASE_URL` at module scope throws on import there while
+  // every vitest run passes, so only the optional form is allowed.
+  it('kernel modules read import.meta.env only through an optional chain', () => {
+    const offenders: string[] = []
+    for (const dir of ['kernel', 'wasm-kernel']) {
+      for (const file of sourceFiles(join(SRC, dir))) {
+        stripComments(readFileSync(file, 'utf8')).split('\n').forEach((line, i) => {
+          if (/import\.meta\.env\./.test(line)) offenders.push(`${relative(SRC, file)}:${i + 1}: ${line.trim()}`)
+        })
+      }
+    }
+    expect(offenders).toEqual([])
+  })
 })
