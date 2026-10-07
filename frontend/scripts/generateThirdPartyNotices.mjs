@@ -55,6 +55,15 @@ const SPDX_FALLBACKS = new Set(
     : [],
 )
 
+// Packages whose declared license is wrong upstream. Fontsource labels the
+// Material Icons fonts OFL-1.1 and ships the OFL text, but Google publishes
+// them under Apache-2.0 (google/material-design-icons), so the entry carries
+// the upstream license and its canonical text instead of the repackager's.
+const LICENSE_CORRECTIONS = new Map([
+  ['@fontsource/material-icons', 'Apache-2.0'],
+  ['@fontsource/material-icons-outlined', 'Apache-2.0'],
+])
+
 function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'))
 }
@@ -117,13 +126,15 @@ function collectPackages(rootDir) {
     const key = `${pkg.name}@${pkg.version}`
     if (found.has(key)) continue
 
+    const correction = LICENSE_CORRECTIONS.get(pkg.name)
     found.set(key, {
       name: pkg.name,
       version: pkg.version,
-      license: declaredLicense(pkg),
+      license: correction ?? declaredLicense(pkg),
+      declaredAs: correction ? declaredLicense(pkg) : null,
       author: authorName(pkg),
       homepage: pkg.homepage ?? repositoryUrl(pkg),
-      licenseText: findFile(dir, LICENSE_FILES),
+      licenseText: correction ? null : findFile(dir, LICENSE_FILES),
       noticeText: findFile(dir, NOTICE_FILES),
     })
 
@@ -166,7 +177,7 @@ function byName(a, b) {
 }
 
 function render({ packages, missing }) {
-  const withoutText = packages.filter(entry => !entry.licenseText)
+  const withoutText = packages.filter(entry => !entry.licenseText && !entry.declaredAs)
   const lines = []
 
   lines.push('Third-party licenses: npm dependencies')
@@ -214,7 +225,9 @@ function render({ packages, missing }) {
       lines.push(entry.licenseText)
       lines.push('')
     } else {
-      lines.push('This package ships no license file of its own.')
+      lines.push(entry.declaredAs
+        ? `The package declares ${entry.declaredAs}, but upstream publishes it under ${entry.license}.`
+        : 'This package ships no license file of its own.')
       if (entry.license && SPDX_FALLBACKS.has(entry.license)) {
         lines.push(`The terms are the standard ${entry.license} text, in ../spdx/${entry.license}.txt,`)
         lines.push('held by the copyright holder named above.')

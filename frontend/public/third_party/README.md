@@ -47,8 +47,8 @@ get the corresponding source.
 | --- | --- | --- |
 | Roboto | The Roboto Project Authors | SIL Open Font License 1.1 |
 | Roboto Mono | The Roboto Project Authors | SIL Open Font License 1.1 |
-| Material Icons | Google Inc. | SIL Open Font License 1.1 |
-| Material Icons Outlined | Google Inc. | SIL Open Font License 1.1 |
+| Material Icons | Google Inc. | Apache License 2.0 |
+| Material Icons Outlined | Google Inc. | Apache License 2.0 |
 
 These arrive through the `@fontsource` packages and are bundled into the app, so
 their license texts sit with the rest of the npm dependencies in

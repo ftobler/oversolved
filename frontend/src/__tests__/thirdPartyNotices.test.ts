@@ -43,6 +43,16 @@ describe('third-party notices', () => {
     }
   })
 
+  // Fontsource declares these OFL-1.1, but Google publishes Material Icons
+  // under Apache-2.0; the notices must carry the upstream terms.
+  it('credit Material Icons under Apache-2.0, not the repackager\'s label', () => {
+    const bundle = readNotices('npm', 'LICENSES.txt')
+    for (const name of ['@fontsource/material-icons', '@fontsource/material-icons-outlined']) {
+      const entry = bundle.split(`\n${name}@`)[1].split('\n=')[0]
+      expect(entry, name).toMatch(/^[^\n]*\nLicense: Apache-2\.0\n/)
+    }
+  })
+
   it('publish the licenses the notices point at', () => {
     for (const file of [
       'README.md',
