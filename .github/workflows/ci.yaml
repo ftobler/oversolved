@@ -68,9 +68,11 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         node-version: [20, 22, 24]
-        include:
-          - os: ubuntu-latest-arm64
-            node-version: 24
+        # The arm64 runner is a self-hosted Gitea label; GitHub has no runner
+        # behind it, so the job would only queue there. Include it everywhere
+        # except GitHub. A job-level `if` cannot see `matrix`, hence the
+        # expression on the include list itself.
+        include: ${{ github.server_url != 'https://github.com' && fromJSON('[{"os":"ubuntu-latest-arm64","node-version":24}]') || fromJSON('[]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
