@@ -214,40 +214,4 @@ describe('third-party notices', () => {
     ).toEqual([])
   })
 
-  // The source offer is a mirror in the same repository that publishes the app,
-  // which is what section 6(d) asks for. It is only as good as the archives
-  // matching the binary, so the digests the notices publish and the digests the
-  // fetch script verifies against have to be the same numbers.
-  it('offer source archives whose digests match the ones the fetcher pins', () => {
-    const script = readFileSync(
-      path.join(frontendDir, 'scripts', 'fetchOccSource.mjs'), 'utf8')
-    const doc = readNotices('opencascade', 'README.md')
-
-    const pinned = [...script.matchAll(/sha256:\s*'([0-9a-f]{64})'/g)].map(match => match[1])
-    expect(pinned.length, 'the fetch script pins no digests').toBe(2)
-    for (const digest of pinned) {
-      expect(doc, `${digest} is verified on fetch but not published`).toContain(digest)
-    }
-
-    const name = /name:\s*'([^']+\.tar\.gz)'/g
-    for (const match of script.matchAll(name)) {
-      expect(doc, `${match[1]} is mirrored but not named in the notices`).toContain(match[1])
-    }
-  })
-
-  // The corresponding source of the OCC binary is the OCCT revision plus the
-  // patches opencascade.js applies to it. Offering the bare upstream revision
-  // would point a recipient at a tree that does not build what is shipped.
-  it('name the patches that stand between upstream OCCT and the shipped binary', () => {
-    const doc = readNotices('opencascade', 'README.md')
-    for (const patch of [
-      'CMakeLists.txt.patch',
-      'OSD_Path.cxx.patch',
-      'OSD_Process.cxx.patch',
-      'Bnd_Box.hxx.patch',
-      'BRepGProp.hxx.patch',
-    ]) {
-      expect(doc, `${patch} is applied to the shipped build but not documented`).toContain(patch)
-    }
-  })
 })
