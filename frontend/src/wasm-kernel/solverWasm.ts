@@ -38,7 +38,7 @@ interface MateModule {
 }
 
 /** Base URL the `--target web` pkgs are served from. Override per deployment. */
-const DEFAULT_BASE = '/wasm/'
+const DEFAULT_BASE = `${import.meta.env.BASE_URL}wasm/`
 
 /** One entry per package, so a Worker that only mates never inits the sketch
  *  wasm. Keyed by `${base}${stem}`: a test can reload from a different base

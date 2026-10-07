@@ -20,10 +20,14 @@ the module shape the loader expects.
 ## Corresponding source
 
 OCCT V7_4_0p1 together with the opencascade.js 1.1.1 build, which patches the
-OCCT tree in `make.py` before compiling it. Both archives are mirrored as
-release assets of the repository that publishes this application:
+OCCT tree in `make.py` before compiling it. Both archives are served from this
+site, next to the binary they build:
 
-**Release `occ-source-v7_4_0p1`: MIRROR_RELEASE_URL_PENDING**
+- [occt-V7_4_0p1.tar.gz](source/occt-V7_4_0p1.tar.gz)
+  (sha256 `85b66265cd861147fdc6e428b01a917a37fc3902d2d06d73c7298b1ac9a2cb0d`)
+- [opencascade.js-1.1.1-src.tar.gz](source/opencascade.js-1.1.1-src.tar.gz)
+  (sha256 `7ce8617e77013c24ba4b32df7933094400a61fc96d143060634f1101f5ed6b93`)
+- [SHA256SUMS](source/SHA256SUMS)
 
 Upstream:
 

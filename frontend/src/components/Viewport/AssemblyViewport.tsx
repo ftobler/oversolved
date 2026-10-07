@@ -695,7 +695,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         {showPickDebug && <IdDebugOverlay />}
 
         <Suspense fallback={null}>
-          <Environment files="/env.hdr" background={false} environmentIntensity={ENV_INTENSITY} />
+          <Environment files={`${import.meta.env.BASE_URL}env.hdr`} background={false} environmentIntensity={ENV_INTENSITY} />
         </Suspense>
         <EnvLight />
 

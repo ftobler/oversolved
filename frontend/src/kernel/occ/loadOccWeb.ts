@@ -16,7 +16,7 @@ import type { OccModule } from './occTypes'
 import { isDevBuild } from '../isDevBuild'
 import { memoizedLoad } from './memoizedLoad'
 
-const DEFAULT_BASE = '/occ/'
+const DEFAULT_BASE = `${import.meta.env.BASE_URL}occ/`  // under the deploy base, e.g. /oversolved/ on Pages
 
 // Memoized like the other OCC loaders. A null result (artifact absent or a
 // failed load) is evicted so the next call retries, instead of pinning "local

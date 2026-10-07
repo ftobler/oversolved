@@ -523,7 +523,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
             entire Canvas subtree (which destroys and recreates the IdPipeline on
             every cold new-tab reveal). Mirrors PlaneVisual's <Text> boundary. */}
         <Suspense fallback={null}>
-          <Environment files="/env.hdr" background={false} environmentIntensity={ENV_INTENSITY} />
+          <Environment files={`${import.meta.env.BASE_URL}env.hdr`} background={false} environmentIntensity={ENV_INTENSITY} />
         </Suspense>
         <EnvLight />
 

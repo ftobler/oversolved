@@ -184,34 +184,37 @@ describe('third-party notices', () => {
     }
   })
 
-  // The source mirror is the one obligation that cannot be discharged in the
-  // repository: it needs a release that exists, at a URL that resolves, in a
-  // public repository that has not been created yet. So the notices carry a
-  // marker instead of a fabricated link, and this test makes the marker
-  // impossible to ship: the moment a deployment workflow appears, publishing
-  // becomes real and the URL has to be real too.
-  it('do not let a deployment be configured while the source mirror is unpublished', () => {
-    const doc = readNotices('opencascade', 'README.md')
-    if (!doc.includes('MIRROR_RELEASE_URL_PENDING')) {
-      // The marker is gone, so a concrete release link must have replaced it.
-      expect(doc).toMatch(/https:\/\/\S+\/releases\/tag\/occ-source-v7_4_0p1/)
-      return
-    }
+  // The corresponding source is served from the deployed site itself, at
+  // relative links beside the binary. The archives are too large for the
+  // repository, so the deploy fetches them against fetchOccSource.mjs's pins;
+  // these two checks keep the notice, the pins and the deploy agreeing on that.
+  describe('OpenCascade corresponding source', () => {
+    const fetchScript = readFileSync(path.join(frontendDir, 'scripts', 'fetchOccSource.mjs'), 'utf8')
+    const pinned = [...fetchScript.matchAll(/name: '([^']+)',[\s\S]*?sha256: '([0-9a-f]{64})'/g)]
+      .map(match => ({ name: match[1], sha256: match[2] }))
 
-    const workflowDir = path.join(frontendDir, '..', '.github', 'workflows')
-    const workflows = existsSync(workflowDir) ? readdirSync(workflowDir) : []
-    const deploying = workflows.filter(name => {
-      const text = readFileSync(path.join(workflowDir, name), 'utf8')
-      return /pages|deploy/i.test(text)
+    it('links every pinned archive beside the binary, with its digest', () => {
+      const doc = readNotices('opencascade', 'README.md')
+      expect(pinned.length, 'no pinned archives parsed from fetchOccSource.mjs').toBe(2)
+      for (const { name, sha256 } of pinned) {
+        expect(doc, `${name} is not linked`).toContain(`](source/${name})`)
+        expect(doc, `${name}'s pinned digest is not listed`).toContain(sha256)
+      }
     })
 
-    expect(
-      deploying,
-      'A deployment workflow exists while the OpenCascade source mirror is still '
-      + 'unpublished. Serving the app distributes the library, and the notices promise '
-      + 'a release that does not exist. Create the release, then replace '
-      + 'MIRROR_RELEASE_URL_PENDING in opencascade/README.md with its URL.',
-    ).toEqual([])
+    // Serving the app distributes the library, so a deploy without the source
+    // beside it would promise links that 404.
+    it('is shipped by every deployment workflow', () => {
+      const workflowDir = path.join(frontendDir, '..', '.github', 'workflows')
+      const deploying = readdirSync(workflowDir).filter(name =>
+        /deploy/i.test(readFileSync(path.join(workflowDir, name), 'utf8')))
+      expect(deploying.length, 'expected the Pages deploy workflow').toBeGreaterThan(0)
+      for (const name of deploying) {
+        const text = readFileSync(path.join(workflowDir, name), 'utf8')
+        expect(text, `${name} deploys without the OpenCascade source`)
+          .toContain('fetchOccSource.mjs frontend/dist/third_party/opencascade/source')
+      }
+    })
   })
 
 })

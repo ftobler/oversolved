@@ -1,19 +1,23 @@
 // Fetches the corresponding source of the OpenCascade binary this project
-// serves, ready to be attached to a release in the public mirror.
+// serves, so a deploy can ship it beside the binary.
 //
 // The LGPL lets a distributor satisfy its source obligation by offering
 // "equivalent access to copy the above specified materials from the same
 // place" (section 6d). Linking at upstream is not that: neither OCCT's gitweb
 // nor a third party's GitHub repository is the same place as this project's
-// own deployment, and neither is under this project's control. Hosting the two
-// archives as release assets in the same repository that publishes the app is.
+// own deployment, and neither is under this project's control. Serving the two
+// archives from the deployed site itself, at the relative links in
+// public/third_party/opencascade/README.md, is.
 //
 // The corresponding source is BOTH archives. opencascade.js patches the OCCT
 // tree before compiling it, so the upstream revision alone does not build the
 // binary that ships.
 //
-// Run this, then attach both files and the printed checksums to the release
-// named in public/third_party/opencascade/README.md.
+// Every deploy runs this into dist/third_party/opencascade/source. It fails
+// the deploy if upstream moves or drops an archive. The default output in tmp/
+// doubles as a cache: an existing file is checked against its pin instead of
+// downloaded, so a dev machine that ran this once still holds verified copies
+// to restore from if upstream is ever gone.
 //
 // Usage:
 //   node scripts/fetchOccSource.mjs [outputDir]     # default: tmp/occ-source
@@ -89,8 +93,6 @@ async function main() {
 
   console.log('')
   console.log(`Archives and ${path.basename(manifest)} are in ${outputDir}`)
-  console.log('Attach all three to the release named in')
-  console.log('public/third_party/opencascade/README.md, then verify the link resolves.')
 }
 
 async function readAll(file) {

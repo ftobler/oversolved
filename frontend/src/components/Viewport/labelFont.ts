@@ -15,7 +15,8 @@ import { configureTextBuilder, preloadFont } from 'troika-three-text'
 //
 // Self-hosted. Must stay a WOFF1/glyf file: troika parses fonts with Typr and
 // does not support .woff2.
-export const LABEL_FONT: string = '/fonts/roboto-latin-400-normal.woff'
+// Prefixed with the deploy base so a GitHub project page (/oversolved/) finds it.
+export const LABEL_FONT: string = `${import.meta.env.BASE_URL}fonts/roboto-latin-400-normal.woff`
 
 // Deliberately undefined, and not merely unset-by-omission.
 //

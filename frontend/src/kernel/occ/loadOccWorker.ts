@@ -15,7 +15,7 @@
 import type { OccModule } from './occTypes'
 import { memoizedLoad } from './memoizedLoad'
 
-const DEFAULT_BASE = '/occ/'
+const DEFAULT_BASE = `${import.meta.env.BASE_URL}occ/`  // under the deploy base, e.g. /oversolved/ on Pages
 
 const occWorker = memoizedLoad(async (base: string): Promise<OccModule | null> => {
   try {
