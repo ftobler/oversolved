@@ -2,13 +2,17 @@ import { Html } from '@react-three/drei'
 import { useDimLabelScale } from './useDimLabelScale'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 
-type DimEvent = { stopPropagation: () => void; clientX: number; clientY: number }
+// Hugs the glyphs only, so the geometry between and around them shows through.
+const LABEL_HALO = '0 0 2px #111, 0 0 2px #111'
+
+type DimEvent ={ stopPropagation: () => void; clientX: number; clientY: number }
 
 /**
  * The shared invisible hit mesh plus the `<Html>` text block used by every
  * dimension label (Linear / Radius / Diameter / Angle). The mesh keeps a
- * constant on-screen size and only renders when the label is not being dragged
- * (the drag preview owns the visual while dragging). Diameter omits the
+ * constant on-screen size and only renders when the label is not being dragged,
+ * so the hit halo stays quiet mid-drag; the text keeps rendering and follows
+ * the cursor. Diameter omits the
  * `userSelect: none` the others set, so `selectable` toggles it.
  */
 export function DimensionLabel({
@@ -41,8 +45,9 @@ export function DimensionLabel({
           onDoubleClick={(e) => { if (interactive) { e.stopPropagation(); onDoubleClick({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
           onPointerDown={(e) => { if (interactive) { e.stopPropagation(); onPointerDown({ stopPropagation: () => {}, clientX: e.clientX, clientY: e.clientY }) } }}
           // No background: the label sits under the cursor while dragging, and
-          // an opaque box hid the vertex the user was aiming at.
-          style={{ color, fontSize: 14, fontFamily: "'Roboto Mono', monospace", background: 'transparent', padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', ...(selectable ? { userSelect: 'none', WebkitUserSelect: 'none' } : {}), cursor: interactive ? 'pointer' : undefined }}
+          // an opaque box hid the vertex the user was aiming at. A thin halo in
+          // the canvas color keeps the digits legible where they cross a line.
+          style={{ color, fontSize: 14, fontFamily: "'Roboto Mono', monospace", background: 'transparent', textShadow: LABEL_HALO, padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', ...(selectable ? { userSelect: 'none', WebkitUserSelect: 'none' } : {}), cursor: interactive ? 'pointer' : undefined }}
         >
           {label}
         </div>

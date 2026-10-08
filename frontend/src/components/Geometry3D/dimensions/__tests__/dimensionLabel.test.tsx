@@ -93,6 +93,15 @@ describe('DimensionLabel text', () => {
     const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
     expect(div.style.background).toBe('transparent')
   })
+
+  // With no box behind it, the halo is what keeps the digits readable where
+  // they cross sketch lines.
+  it('draws a text halo in place of the box', () => {
+    const { container } = renderLabel()
+
+    const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
+    expect(div.style.textShadow).toContain('#111')
+  })
 })
 
 describe('DimensionLabel handlers', () => {
