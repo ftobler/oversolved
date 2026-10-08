@@ -11,7 +11,9 @@ vi.mock('react-router-dom', () => ({
   // The breadcrumb reads the route's workspace to build its trail.
   useParams: () => ({ workspaceId: 'ws', entryId: 'test-uuid' }),
   useNavigate: () => navigateSpy,
-  useHref: (to: string) => to,
+  // A stand-in basename, so a new tab that skips the router and opens a
+  // root-absolute URL fails the open-in-new-tab test instead of passing it.
+  useHref: (to: string) => `/base${to}`,
   // AppHeader (rendered via AssemblyToolbar) navigates with <Link>; a plain
   // anchor is enough for these tests, which assert on useNavigate instead.
   Link: ({ to, children, ...props }: { to: string; children?: ReactNode }) =>
@@ -506,7 +508,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(screen.queryByText('Open')).toBeNull()
     fireEvent.click(screen.getByText('Open in new tab'))
     await tick()
-    expect(openSpy).toHaveBeenCalledWith('/workspaces/asm-1/entries/part-1', '_blank')
+    expect(openSpy).toHaveBeenCalledWith('/base/workspaces/asm-1/entries/part-1', '_blank')
     expect(navigateSpy).not.toHaveBeenCalledWith('/documents/part-1')
     // Assembly state is unchanged by opening the part.
     expect(useAssemblyStore.getState().instances).toHaveLength(1)

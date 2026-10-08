@@ -5,8 +5,9 @@ import type { ReactNode } from 'react'
 import { useOpenEntryInNewTab } from '@/hooks/useOpenEntryInNewTab'
 
 function routerAt(basename?: string) {
+  const prefix = (basename ?? '').replace(/\/$/, '')
   return ({ children }: { children: ReactNode }) => (
-    <MemoryRouter basename={basename} initialEntries={[`${basename ?? ''}/workspaces/ws/entries/asm`]}>
+    <MemoryRouter basename={basename} initialEntries={[`${prefix}/workspaces/ws/entries/asm`]}>
       {children}
     </MemoryRouter>
   )
@@ -15,12 +16,12 @@ function routerAt(basename?: string) {
 describe('useOpenEntryInNewTab', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
-  // A new tab is a full page load, not a router navigation, so the URL must
-  // carry the deploy base itself. A root-absolute `/workspaces/...` opened the
-  // host root under GitHub Pages (`/oversolved/`) and got the host's 404.
-  it('opens the entry under a non-root basename', () => {
+  // A root-absolute `/workspaces/...` opened the host root under GitHub Pages
+  // and got its 404. Vite hands the router its base with a trailing slash, so
+  // both spellings must join into one clean URL.
+  it.each(['/oversolved', '/oversolved/'])('opens the entry under basename %s', (basename) => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
-    const { result } = renderHook(() => useOpenEntryInNewTab('ws'), { wrapper: routerAt('/oversolved') })
+    const { result } = renderHook(() => useOpenEntryInNewTab('ws'), { wrapper: routerAt(basename) })
     result.current('part-1')
     expect(open).toHaveBeenCalledWith('/oversolved/workspaces/ws/entries/part-1', '_blank')
   })
