@@ -22,7 +22,9 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
     }
   }, [setHoveredConstraintEntities])
 
-  const bgColor = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : superfluous ? '#2a1f00' : '#1C1C1C'
+  // Idle tiles are see-through so the geometry under them stays visible and
+  // pickable by eye; only the transient hover / selected states get a fill.
+  const bgColor = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : 'transparent'
   const fgStyle = (hovered || selected) ? 'invert(1.0)' : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)' : 'invert(0.7)'
   return (
     <div

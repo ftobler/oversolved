@@ -107,6 +107,38 @@ describe('ConstraintTile user-select', () => {
   })
 })
 
+// An idle tile must not hide the geometry under it (the user aims at vertices
+// behind tiles); only hover and selection paint a fill.
+describe('ConstraintTile see-through background', () => {
+  function tileStyle(container: HTMLElement): CSSStyleDeclaration {
+    return container.querySelector('img')!.parentElement!.style
+  }
+
+  it('an idle tile has a transparent background', () => {
+    useSketchEditorStore.setState({ normalSelection: new Set() })
+    const { container } = renderOverlays()
+    expect(tileStyle(container).background).toBe('transparent')
+  })
+
+  it('a superfluous tile is transparent and keeps its outline marker', () => {
+    useSketchEditorStore.setState({ normalSelection: new Set() })
+    const constraints: Constraints = {
+      c1: { render: { kind: 'symbol_horizontal', at: [5, 0] }, residual: 0, superfluous: true } as Constraints[string],
+    }
+    const { container } = renderOverlays(constraints)
+    const style = tileStyle(container)
+    expect(style.background).toBe('transparent')
+    expect(style.outline).toContain('solid')
+  })
+
+  it('hovering a tile still paints a fill', () => {
+    useSketchEditorStore.setState({ normalSelection: new Set() })
+    const { container } = renderOverlays()
+    fireEvent.mouseEnter(container.querySelector('img')!.parentElement!)
+    expect(tileStyle(container).background).not.toBe('transparent')
+  })
+})
+
 // Hovering a symbol tile highlights the geometry the constraint actually
 // targets, which differs by constraint shape. These are the three branches the
 // overlay derives before informing the store.

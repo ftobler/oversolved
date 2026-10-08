@@ -84,6 +84,15 @@ describe('DimensionLabel text', () => {
     const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
     expect(div.style.userSelect).toBe('none')
   })
+
+  // The label sits under the cursor while a dim is dragged, so an opaque box
+  // would hide the vertex the user is aiming at.
+  it('has no background fill while dragged', () => {
+    const { container } = renderLabel({ isDragged: true })
+
+    const div = container.querySelector('[data-testid="html"] > div') as HTMLElement
+    expect(div.style.background).toBe('transparent')
+  })
 })
 
 describe('DimensionLabel handlers', () => {
