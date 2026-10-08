@@ -11,6 +11,7 @@ import { LoadingState } from '@/components/shared/LoadingState'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
+import { useOpenEntryInNewTab } from '@/hooks/useOpenEntryInNewTab'
 import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
 import { useAssemblyCommands } from '@/pages/AssemblyKeyboardShortcuts'
 import { buildAssemblyHandlers, insertMateCommand, type AssemblyCommandHandlers } from '@/pages/assemblyCommandEntries'
@@ -335,10 +336,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     executeCommand('add_part', { docId, docRev })
   }, [])
 
+  const openEntryInNewTab = useOpenEntryInNewTab(workspaceId ?? uuid)
   const handleOpenPartNewTab = useCallback((handle: string) => {
     const inst = instances.find(i => i.handle === handle)
-    if (inst) window.open(`/workspaces/${workspaceId ?? uuid}/entries/${inst.doc_id}`, '_blank')
-  }, [instances, workspaceId, uuid])
+    if (inst) openEntryInNewTab(inst.doc_id)
+  }, [instances, openEntryInNewTab])
 
   const handleSelect = useCallback((handle: string) => {
     useAssemblyStore.getState().selectPart(handle)

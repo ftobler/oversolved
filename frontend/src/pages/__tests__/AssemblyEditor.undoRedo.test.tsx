@@ -11,6 +11,7 @@ vi.mock('react-router-dom', () => ({
   // The breadcrumb reads the route's workspace to build its trail.
   useParams: () => ({ workspaceId: 'ws', entryId: 'test-uuid' }),
   useNavigate: () => navigateSpy,
+  useHref: (to: string) => to,
   // AppHeader (rendered via AssemblyToolbar) navigates with <Link>; a plain
   // anchor is enough for these tests, which assert on useNavigate instead.
   Link: ({ to, children, ...props }: { to: string; children?: ReactNode }) =>
