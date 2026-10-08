@@ -127,6 +127,27 @@ function isDimensionToolArmed(): boolean {
   return state.activeTool === 'dimension' && state.activeFeatureId !== null
 }
 
+/**
+ * Area layers that name no dimension target. The ladder keeps them above the
+ * planes and below sketch geometry, so a hit on one means no curve or point is
+ * within reach. Planes are absent: the dimension preset never resolves them
+ * (toolPickConfig.ts), so they already arrive here as a miss.
+ */
+const DIMENSION_BACKDROP_LAYERS: ReadonlySet<string> = new Set([
+  SKETCH_SURFACE_LAYER_NAME, FACE_LAYER_NAME,
+])
+
+/**
+ * Whether a click on `layer` is the placement click of a pending dimension.
+ * Only with picks pending: with none, an area click keeps its plain selection
+ * toggle (the pinned face decision), since there is nothing to place yet.
+ */
+function isDimensionPlacementOverArea(layer: string): boolean {
+  if (!DIMENSION_BACKDROP_LAYERS.has(layer)) return false
+  const state = useSketchEditorStore.getState()
+  return state.activeTool === 'dimension' && state.dimensionPicks.length > 0
+}
+
 function isBrepDimensionPick(layer: string): boolean {
   if (layer !== EDGE_LAYER_NAME && layer !== VERTEX_LAYER_NAME) return false
   return isDimensionToolArmed()
@@ -418,6 +439,14 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
           store.finalizeDimensionPlacement([e.clientX, e.clientY])
           setLastClickIdHit(true)
         }
+        return
+      }
+      if (isDimensionPlacementOverArea(hit.layer)) {
+        // An area under the placement click is backdrop, not a target: the
+        // label of a circle's diameter or a rectangle's width lands inside the
+        // region it measures, and a body face may sit behind the sketch.
+        useSketchEditorStore.getState().finalizeDimensionPlacement([e.clientX, e.clientY])
+        setLastClickIdHit(true)
         return
       }
       // Single click outcome for every selectable layer: toggle into normal

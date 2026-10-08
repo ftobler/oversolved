@@ -319,6 +319,8 @@ describe('useIdBufferPointerDispatch', () => {
     // wire, naming no single dim target. So a face click while dimensioning is
     // not consumed; it toggles normalSelection like any idle-tool face click.
     // Pinned here so the intended behavior is explicit rather than incidental.
+    // It holds only with no picks pending: once a dimension waits for its
+    // placement click, a face is backdrop and places it (test below).
     pipeline.resolveSync = vi.fn().mockReturnValue({
       id: 8, layer: FACE_LAYER_NAME, entityKey: '@feat1/face/0', pickKey: '@feat1/face/0', distancePx: 0,
     })
@@ -401,6 +403,34 @@ describe('useIdBufferPointerDispatch', () => {
 
     expect(finalize).toHaveBeenCalledWith([100, 100])
     expect(useSketchEditorStore.getState().normalSelection.has('@builtin_plane_top')).toBe(false)
+    finalize.mockRestore()
+  })
+
+  it.each([
+    ['a sketch region', SKETCH_SURFACE_LAYER_NAME, 'sk1/surf:face0'],
+    ['a body face', FACE_LAYER_NAME, '@feat0/face/0'],
+  ])('a placement click over %s places the pending dimension instead of selecting the area', async (_label, layer, key) => {
+    // Areas rank above the planes and below sketch geometry, so a hit on one
+    // means no curve or point was within reach: the label of a circle's
+    // diameter lands inside the region it measures.
+    pipeline.resolveSync = vi.fn().mockReturnValue({ id: 4, layer, entityKey: key, pickKey: key, distancePx: 0 })
+    useSketchEditorStore.setState({
+      activeTool: 'dimension', activeFeatureId: 'feat1',
+      normalSelection: new Set(), dimensionPicks: [{ isVertex: false, target: 'entity:feat1:c1' }],
+    })
+    const finalize = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement').mockImplementation(() => {})
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([layer]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    expect(finalize).toHaveBeenCalledWith([100, 100])
+    expect(useSketchEditorStore.getState().normalSelection.has(key)).toBe(false)
     finalize.mockRestore()
   })
 
