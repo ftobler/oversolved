@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getToolPickConfig, getToolAllowedLayers, effectiveAllowedLayers,
-  SKETCH_DRAW_EXCLUDED, PROJECT_EXCLUDED,
+  SKETCH_DRAW_EXCLUDED, PROJECT_EXCLUDED, DIMENSION_EXCLUDED,
 } from '../toolPickConfig'
 import {
   DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
@@ -10,9 +10,8 @@ import {
 } from '@/picking/layerNames'
 
 describe('getToolAllowedLayers', () => {
-  it('allows all layers under null (idle select) / dimension / drag / offset', () => {
+  it('allows all layers under null (idle select) / drag / offset', () => {
     expect(getToolAllowedLayers(null)).toBeNull()
-    expect(getToolAllowedLayers('dimension')).toBeNull()
     expect(getToolAllowedLayers('drag')).toBeNull()
     expect(getToolAllowedLayers('offset')).toBeNull()
   })
@@ -38,6 +37,16 @@ describe('getToolAllowedLayers', () => {
     expect(allowed.has(VERTEX_LAYER_NAME)).toBe(false)
   })
 
+  it('drops only the document planes under the dimension tool so a click over one places the dimension', () => {
+    const allowed = getToolAllowedLayers('dimension')!
+    expect(allowed.has(PLANE_LAYER_NAME)).toBe(false)
+    // Everything a dimension can target, or a label it can grab, stays pickable.
+    for (const layer of [
+      SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
+      EDGE_LAYER_NAME, VERTEX_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
+    ]) expect(allowed.has(layer), layer).toBe(true)
+  })
+
   it('adds B-rep layers under the project tool so 3D geometry can be projected', () => {
     const allowed = getToolAllowedLayers('project')!
     expect(allowed.has(FACE_LAYER_NAME)).toBe(true)
@@ -54,10 +63,11 @@ describe('part-editor pick-layer partition', () => {
   // L2: every filtered preset is the canonical pick-layer list minus an explicit
   // exclusion set, so a layer added to PART_EDITOR_PICK_LAYER_NAMES is pickable
   // under every tool until that tool deliberately excludes it.
-  it('SKETCH_DRAW and PROJECT_PICK partition the part-editor pick layers', () => {
+  it('SKETCH_DRAW, PROJECT_PICK and DIMENSION_PICK partition the part-editor pick layers', () => {
     for (const [tool, excluded] of [
       ['line', SKETCH_DRAW_EXCLUDED],
       ['project', PROJECT_EXCLUDED],
+      ['dimension', DIMENSION_EXCLUDED],
     ] as const) {
       const allowed = getToolAllowedLayers(tool)!
       const drop = new Set<string>(excluded)

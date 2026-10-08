@@ -372,6 +372,38 @@ describe('useIdBufferPointerDispatch', () => {
     spy.mockRestore()
   })
 
+  it('a click over a document plane while dimensioning places the dimension like empty space', async () => {
+    // Regression: the planes fill most of the view behind a sketch. Resolved as
+    // a plane hit, the placement click toggled the plane into the selection and
+    // the dimension never committed. The resolver stub honours the allowed set
+    // the way the real pipeline does: the plane is under the cursor, so it only
+    // answers when the active tool lets the plane layer through.
+    pipeline.resolveSync = vi.fn((_gl, _cursor, opts?: { allowedLayers?: ReadonlySet<string> }) => (
+      opts?.allowedLayers?.has(PLANE_LAYER_NAME)
+        ? { id: 3, layer: PLANE_LAYER_NAME, entityKey: '@builtin_plane_top', pickKey: '@builtin_plane_top', distancePx: 0 }
+        : null
+    )) as unknown as IdPipeline['resolveSync']
+    pipeline.target.markClean()
+    useSketchEditorStore.setState({
+      activeTool: 'dimension', activeFeatureId: 'feat1',
+      normalSelection: new Set(), dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
+    })
+    const finalize = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement').mockImplementation(() => {})
+
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    expect(finalize).toHaveBeenCalledWith([100, 100])
+    expect(useSketchEditorStore.getState().normalSelection.has('@builtin_plane_top')).toBe(false)
+    finalize.mockRestore()
+  })
+
   it('an origin click outside the dimension tool still toggles the normal selection', async () => {
     pipeline.resolveSync = vi.fn().mockReturnValue({
       id: 13, layer: ORIGIN_LAYER_NAME, entityKey: '@builtin_origin', pickKey: '@builtin_origin', distancePx: 0,

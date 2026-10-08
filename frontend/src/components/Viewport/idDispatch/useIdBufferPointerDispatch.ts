@@ -457,8 +457,9 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // `@builtin_` point picks and resolveDimension has a two_vertices
         // path), but it resolves on the origin layer, which otherwise only
         // toggles normal selection. Route it through the sketch-click path so
-        // the dimension tool records the pick. Planes stay out: a plane names
-        // no point and resolveDimension has no pick for one.
+        // the dimension tool records the pick. Planes never get here: a plane
+        // names no point, so the dimension preset (toolPickConfig.ts) drops
+        // the plane layer and a click on one reads as empty space.
         dispatchSketchClick(hit.entityKey, undefined, e.clientX, e.clientY)
       } else if (isBrepDimensionPick(hit.layer)) {
         // Dimensioning a body edge / vertex from inside a sketch: project it

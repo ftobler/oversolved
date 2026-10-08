@@ -2,7 +2,7 @@ import type { ActiveTool } from '@/types/cad'
 import {
   FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   SKETCH_SURFACE_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME,
-  PART_EDITOR_PICK_LAYER_NAMES,
+  PLANE_LAYER_NAME, PART_EDITOR_PICK_LAYER_NAMES,
 } from '@/picking/layerNames'
 
 /**
@@ -70,11 +70,20 @@ export const PROJECT_EXCLUDED = [
   DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME,
 ] as const
 
+// Dimension tool: the document planes name no point or curve, so they are no
+// dimension target. Left pickable, a click on one resolved as a plane hit and
+// toggled the plane into the selection instead of reading as the empty-space
+// click that places the dimension; the planes fill most of the view behind a
+// sketch, so placement failed wherever the label landed over one.
+export const DIMENSION_EXCLUDED = [PLANE_LAYER_NAME] as const
+
 // ─── Presets: the only sites where a new field's default is decided ───
-// Select / drag / dimension / offset can pick anything (no filter). The
-// dimension tool additionally wipes selection on enter.
+// Select / drag / offset can pick anything (no filter). The dimension tool
+// drops the planes and additionally wipes selection on enter.
 const FULL_PICK: ToolPickConfig = { allowedLayers: null, clearsSelectionOnEnter: false, staysArmedAfterCommit: false }
-const DIMENSION_PICK: ToolPickConfig = { allowedLayers: null, clearsSelectionOnEnter: true, staysArmedAfterCommit: true }
+const DIMENSION_PICK: ToolPickConfig = {
+  allowedLayers: allExcept(DIMENSION_EXCLUDED), clearsSelectionOnEnter: true, staysArmedAfterCommit: true,
+}
 const SKETCH_DRAW: ToolPickConfig = {
   allowedLayers: allExcept(SKETCH_DRAW_EXCLUDED), clearsSelectionOnEnter: false, staysArmedAfterCommit: true,
 }
