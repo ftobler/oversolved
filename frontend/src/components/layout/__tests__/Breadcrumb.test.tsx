@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { ReactNode } from 'react'
 
@@ -27,6 +27,7 @@ describe('Breadcrumb', () => {
   beforeEach(() => {
     carrierMock.readWorkspaceMeta.mockClear()
     useUnsavedChangesStore.getState().setDirty(false)
+    useUnsavedChangesStore.getState().dismissConfirm()
   })
 
   // J2: one segment per route level, and the ancestor is the way back up. The
@@ -114,5 +115,26 @@ describe('Breadcrumb', () => {
     carrierMock.readWorkspaceMeta.mockRejectedValueOnce(new Error('gone'))
     renderAt('/workspaces/ws', <Breadcrumb />)
     await waitFor(() => expect(screen.getByText('ws')).toBeTruthy())
+  })
+
+  // The guarded crumb defers its navigation to the unsaved-changes dialog. The
+  // rendered href already carries the router basename, so navigating to it
+  // prefixed the base twice and confirming landed on a blank, unmatched route.
+  it('confirming the guard lands on the workspace under a non-root basename', async () => {
+    useUnsavedChangesStore.getState().setDirty(true)
+    render(
+      <MemoryRouter basename="/oversolved" initialEntries={['/oversolved/workspaces/ws/entries/e1']}>
+        <Routes>
+          <Route path="/workspaces/:workspaceId" element={<p>workspace page</p>} />
+          <Route path="/workspaces/:workspaceId/entries/:entryId" element={<Breadcrumb docName="Part" />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByRole('link'))
+    act(() => {
+      useUnsavedChangesStore.getState().pendingCallback!()
+      useUnsavedChangesStore.getState().dismissConfirm()
+    })
+    expect(screen.getByText('workspace page')).toBeTruthy()
   })
 })

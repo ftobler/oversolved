@@ -73,4 +73,27 @@ describe('AppHeader unsaved-changes navigation guard', () => {
     expect(useUnsavedChangesStore.getState().pendingCallback).not.toBeNull()
     expect(window.location.pathname).toBe('/workspaces/ws/entries/abc')
   })
+
+  // The deferred navigation must land on the route the link names. A Link's
+  // rendered href carries the router basename (GitHub Pages serves the app
+  // under /oversolved/), and handing that back to navigate() prefixed it a
+  // second time: Discard and Save & Exit both landed on an unmatched, blank
+  // route. Only a non-root base shows it, so the test mounts under one.
+  it('confirming lands on the target under a non-root basename', () => {
+    window.history.pushState({}, '', '/oversolved/workspaces/ws/entries/abc')
+    useUnsavedChangesStore.getState().setDirty(true)
+    render(
+      <BrowserRouter basename="/oversolved/">
+        <AppHeader title="Test" />
+      </BrowserRouter>,
+    )
+    act(() => {
+      fireEvent.click(screen.getByTitle('Workspaces'))
+    })
+    act(() => {
+      useUnsavedChangesStore.getState().pendingCallback!()
+      useUnsavedChangesStore.getState().dismissConfirm()
+    })
+    expect(window.location.pathname).toBe('/oversolved/workspaces')
+  })
 })

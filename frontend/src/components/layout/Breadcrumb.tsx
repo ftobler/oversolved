@@ -36,9 +36,11 @@ export default function Breadcrumb({ docName, fallbackName, onRename }: Breadcru
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(docName ?? '')
 
+  // Navigates to the route, not the anchor's rendered href: that carries the
+  // router basename, which navigate() would prefix a second time.
+  const workspaceRoute = `/workspaces/${workspaceId}`
   const guardLink = (e: MouseEvent<HTMLAnchorElement>) => {
-    const href = e.currentTarget.getAttribute('href')
-    if (!confirmDiscardUnsavedChanges(() => { if (href) navigate(href) })) {
+    if (!confirmDiscardUnsavedChanges(() => navigate(workspaceRoute))) {
       e.preventDefault()
     }
   }
@@ -74,7 +76,7 @@ export default function Breadcrumb({ docName, fallbackName, onRename }: Breadcru
     <nav className="breadcrumb" aria-label="Breadcrumb">
       {hasDoc ? (
         <Link
-          to={`/workspaces/${workspaceId}`}
+          to={workspaceRoute}
           className="breadcrumb-crumb"
           onClick={guardLink}
           title={workspaceName ?? workspaceId}

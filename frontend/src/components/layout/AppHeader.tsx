@@ -95,11 +95,12 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
   // client-side Links bypass the browser's beforeunload prompt. Cancel the click
   // when the user backs out of discarding unsaved edits so the Link does not
   // navigate.
-  const guardLink = (e: MouseEvent) => {
-    const href = (e.currentTarget as HTMLAnchorElement).getAttribute('href')
-    if (!confirmDiscardUnsavedChanges(() => {
-      if (href) navigate(href)
-    })) {
+  //
+  // The deferred navigation takes the Link's route, never its rendered href:
+  // the href carries the router basename, and navigate() would prefix it again,
+  // landing on an unmatched blank page under a non-root deploy base.
+  const guardLink = (to: string) => (e: MouseEvent) => {
+    if (!confirmDiscardUnsavedChanges(() => navigate(to))) {
       e.preventDefault()
     }
   }
@@ -110,7 +111,7 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
 
   const handleBurger = (e: MouseEvent) => {
     if (!isOverview) {
-      guardLink(e)
+      guardLink('/workspaces')(e)
       return
     }
     e.preventDefault()
@@ -129,7 +130,7 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
         >
           <span className="material-icons-outlined">menu</span>
         </Link>
-        <Link to="/" className="logo" title={COPYRIGHT} onClick={guardLink}>
+        <Link to="/" className="logo" title={COPYRIGHT} onClick={guardLink('/')}>
           Oversolved
         </Link>
         {breadcrumb}
@@ -153,7 +154,7 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
           className="toolbar-btn"
           aria-label="Docs"
           title="Docs"
-          onClick={guardLink}
+          onClick={guardLink('/docs')}
         >
           <span className="material-icons-outlined">help_outline</span>
         </Link>
