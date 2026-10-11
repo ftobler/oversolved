@@ -130,6 +130,43 @@ fn line_circle_tangent_residual() {
     );
 }
 
+#[test]
+fn circle_circle_tangent_keeps_the_seeded_tangency_type() {
+    // Seeded at d=5 with r=4 and r=2: external reads -1, internal 3, so the
+    // tangency is external. Moving the second center inward must stay on the
+    // external branch (d - 6) instead of jumping to internal (d - 2) once
+    // that one happens to be nearer.
+    let inp = input(
+        vec![ent(Kind::Circle, 0), ent(Kind::Circle, 3)],
+        vec![0.0, 0.0, 4.0, 5.0, 0.0, 2.0],
+        vec![cons(
+            ConstraintKind::Tangent,
+            ab(
+                e_ref(0, PointSelector::Absent),
+                e_ref(1, PointSelector::Absent),
+            ),
+        )],
+    );
+    let p = Problem::new(&inp);
+    let mut x = p.x0.clone();
+    for d in [5.0, 4.0, 3.5, 2.5] {
+        x[3] = d;
+        let r = p.residuals(&x)[0];
+        assert!((r - (d - 6.0)).abs() < 1e-12, "d={d}: residual {r}");
+    }
+
+    // Seeded inside instead (d=1.5): internal (-0.5) wins and stays.
+    let mut inner = inp.clone();
+    inner.params_initial[3] = 1.5;
+    let p = Problem::new(&inner);
+    let mut x = p.x0.clone();
+    for d in [1.5, 3.0, 4.5] {
+        x[3] = d;
+        let r = p.residuals(&x)[0];
+        assert!((r - (d - 2.0)).abs() < 1e-12, "inner d={d}: residual {r}");
+    }
+}
+
 /// Normal between a line and a circle goes through `radius_dir` at the line
 /// endpoint: the residual is the cross product of the line direction with
 /// the unit radial direction there, and the FD-fallback Jacobian has a

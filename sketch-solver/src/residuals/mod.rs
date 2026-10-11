@@ -47,6 +47,10 @@ pub struct Problem<'a> {
     /// curve (circle or arc). An arc tangent uses the same pinned-foot path as
     /// a circle once the coincident is known.
     line_circle_coincident: HashMap<(u32, u32), PointSelector>,
+    /// (first, second) curve operands of a curve/curve tangent -> true when
+    /// the tangency is internal. Decided once from `x0`, so the residual is
+    /// one smooth branch for the whole solve.
+    curve_tangent_internal: HashMap<(u32, u32), bool>,
 }
 
 impl<'a> Problem<'a> {
@@ -143,14 +147,30 @@ impl<'a> Problem<'a> {
             }
         }
 
-        Problem {
+        let mut problem = Problem {
             entities: &input.entities,
             x0,
             constraints,
             pinned_indices,
             equality_pins,
             line_circle_coincident,
-        }
+            curve_tangent_internal: HashMap::new(),
+        };
+        // Curve/curve tangents follow whichever tangency the drawn geometry is
+        // nearest; ties go external.
+        let decided: Vec<((u32, u32), bool)> = problem
+            .constraints
+            .iter()
+            .filter(|c| c.kind() == Some(ConstraintKind::Tangent))
+            .filter_map(|c| problem.tangent_operands(c))
+            .filter(|&(first, _, _)| problem.kind_of(first) != Kind::Line)
+            .map(|(first, second, _)| {
+                let (external, internal) = problem.curve_tangent_terms(&problem.x0, first, second);
+                ((first, second), internal.abs() < external.abs())
+            })
+            .collect();
+        problem.curve_tangent_internal.extend(decided);
+        problem
     }
 
     /// Kind-aware counterpart to the range filter above. A well-formed
