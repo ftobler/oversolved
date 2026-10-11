@@ -14,8 +14,19 @@ use solver_core::lm::{
 
 /// Singular values above this count toward the rank.
 const RANK_TOL: f64 = 1e-6;
-/// Sum of squared residuals above this means the system is unsatisfiable.
-const LOSS_THRESHOLD: f64 = 1e-4;
+/// A residual norm above this fraction of the sketch's size (see
+/// `Problem::scale`) means the system is unsatisfiable. Every row is a length
+/// now, so the verdict can be relative: the old absolute 1e-4 on the squared
+/// norm accepted a 1e-2 miss on any sketch, 4% of a 0.25-wide one, while a
+/// huge sketch could not even be represented that finely in f32. The floor
+/// stays an order of magnitude above f32 rounding of the wire params.
+const LOSS_REL: f64 = 1e-5;
+
+/// True when a solve's final residual reads as a satisfied system. A
+/// non-finite norm (malformed residual, singular blow-up) never does.
+fn satisfied(residual_norm: f64, scale: f64) -> bool {
+    residual_norm.is_finite() && residual_norm <= LOSS_REL * scale
+}
 /// Drag re-solve regularization. A linear
 /// penalty `w*(x - x0)` per param biases the constraint null-space toward the
 /// pre-drag state so free DOF do not drift; weights are small vs hard
@@ -43,17 +54,16 @@ pub fn solve_sketch(input: &Input) -> Output {
         // read as Overconstrained and the caller would drop the frame, freezing
         // the point instead of sliding it.
         let clean = solve_lm_sparse(&x0, &f, &jac_sp);
-        let final_loss = clean.residual_norm * clean.residual_norm;
 
         // Drag only operates when there are free DOF; we assume underconstrained
         // without calling the expensive matrix_rank SVD.
         // A non-finite norm is an unsatisfiable/malformed solve, not a clean
         // underconstrained one: report it as Overconstrained so NaN never reads
         // as success.
-        let status = if !clean.residual_norm.is_finite() || final_loss > LOSS_THRESHOLD {
-            Status::Overconstrained
-        } else {
+        let status = if satisfied(clean.residual_norm, problem.scale()) {
             Status::Underconstrained
+        } else {
+            Status::Overconstrained
         };
 
         // Second pass: the driver-owned seed anchor pulls free DOF toward the
@@ -105,7 +115,6 @@ pub fn solve_sketch(input: &Input) -> Output {
     let result = solve_lm(&x0, &f, &jac);
 
     let jac = result.jacobian;
-    let final_loss = result.residual_norm * result.residual_norm;
     // One SVD serves the rank and, unless skipped, the whole status pass.
     let spectrum = Spectrum::of(&jac, n, !input.options.skip_status_pass);
     let rank = spectrum.rank;
@@ -121,7 +130,7 @@ pub fn solve_sketch(input: &Input) -> Output {
     // A non-finite norm (malformed residual, singular blow-up) is not a
     // satisfiable sketch: classify it Overconstrained rather than let a NaN
     // fall through to FullyConstrained.
-    let status = if !result.residual_norm.is_finite() || final_loss > LOSS_THRESHOLD {
+    let status = if !satisfied(result.residual_norm, problem.scale()) {
         Status::Overconstrained
     } else if rank < n {
         Status::Underconstrained
@@ -515,6 +524,26 @@ mod tests {
                 out.diagnostics.residual_norm
             );
         }
+    }
+
+    #[test]
+    fn a_small_sketch_with_a_four_percent_conflict_is_overconstrained() {
+        // Length 0.1 and 0.104 on one line, about 0.1 wide: the least-squares
+        // compromise misses by ~3e-3. The absolute verdict (norm up to 1e-2)
+        // called that satisfied; relative to the sketch it is a 4% conflict.
+        let mut fixed_start = c_target(ConstraintKind::Fixed, 0, PointSelector::Start);
+        fixed_start.xy = Some((0.0, 0.0));
+        let mut short = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+        short.value = Some(0.1);
+        let mut long = short.clone();
+        long.value = Some(0.104);
+        let inp = input(
+            vec![line(0)],
+            vec![0.0, 0.0, 0.1, 0.0],
+            vec![fixed_start, short, long],
+        );
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
     }
 
     #[test]
@@ -1033,7 +1062,7 @@ mod tests {
     fn dragged_point_far_off_a_line_is_not_overconstrained() {
         // A point coincident with a fixed horizontal line, seeded 100 units off
         // it and dragged there. The anchored compromise sits ~0.25 off the line,
-        // so its raw constraint residual exceeds LOSS_THRESHOLD; the status must
+        // so its raw constraint residual exceeds the LOSS_REL verdict; the status must
         // still come from the constraint system (satisfiable), exactly as the
         // old first unanchored solve classified it. Otherwise the caller drops
         // the frame and the point freezes instead of sliding. The returned
