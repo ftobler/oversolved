@@ -797,7 +797,8 @@ export class Repository {
    *    it too passes subtypes through via the same coerceType fallback (upward to
    *    solid, or sibling), which also runs here when nothing subtype-matches; an
    *    internal AmbiguousQueryError from coerceType propagates.
-   *  - Classifier narrowing applies to the ancestral candidate set; a total veto
+   *  - Classifier narrowing applies to the ancestral candidate set, before the
+   *    type restriction as in the resolver; a total veto
    *    (narrowByClassifier -> []) yields [] - the multi-result shape of the
    *    resolver's classifier miss/ambiguity, never the un-narrowed set.
    *  - The ancestral-partial and descriptor-only global fallbacks are not ported:
@@ -872,6 +873,13 @@ export class Repository {
     }
     candidateIds = orderFilter(candidateIds)
 
+    // Classifiers narrow BEFORE the type block, as in the resolver: the coerce
+    // branch returns early, so narrowing after it let a contradicted candidate
+    // coerce (e.g. upward to its solid) and enumerate while query() missed.
+    if (classifierIds.length && candidateIds.length) {
+      candidateIds = this.narrowByClassifier(candidateIds, classifierIds)
+    }
+
     if (typeRestriction !== null && candidateIds.length) {
       const subtypeMatches = candidateIds.filter(eid => {
         const t = objType(this.elements.get(eid))
@@ -896,10 +904,6 @@ export class Repository {
         }
         candidateIds = []
       }
-    }
-
-    if (classifierIds.length && candidateIds.length) {
-      candidateIds = this.narrowByClassifier(candidateIds, classifierIds)
     }
 
     if (candidateIds.length > 1 && descriptorIds.length) {

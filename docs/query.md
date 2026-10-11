@@ -167,13 +167,13 @@ UUID tier (primary): 2+ distinct uuids, or one uuid on 2+ live elements
 Ancestral tier: candidates where provenance_set ⊆ registered_key; live-filter;
   order-filter
   ↓
-Type restriction: keep exact-type matches; else coerce (subtype/upward/downward),
-  1 coercion → return  [ancestral], >1 distinct coercions → AmbiguousQueryError,
-  0 → candidates := []
-  ↓
 Classifier tier: narrow by real evidence (full match > partial match >
   no-evidence); a pure contradiction refuses a lone candidate as a miss and
   vetoes a multi-candidate set to []
+  ↓
+Type restriction: keep exact-type matches; else coerce (subtype/upward/downward),
+  1 coercion → return  [ancestral], >1 distinct coercions → AmbiguousQueryError,
+  0 → candidates := []
   ↓
 Legacy descriptor tier (if >1 candidates): narrow by @gd*| descriptors
   ↓
