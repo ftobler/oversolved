@@ -687,9 +687,15 @@ export class Repository {
       let partialCandidates = this.partialEntryEids(querySet)
       partialCandidates = orderFilter([...new Set(partialCandidates)])
       if (typeRestriction !== null) {
-        partialCandidates = partialCandidates.filter(
+        // Same type rule as the subset tier: an exact match wins, else a
+        // subtype passes (a `:face` query recovers a lone flatface). Exact-only
+        // here made every `:face`/`:edge` query unrecoverable by this tier.
+        const exact = partialCandidates.filter(
           eid => objType(this.elements.get(eid)) === typeRestriction,
         )
+        partialCandidates = exact.length
+          ? exact
+          : partialCandidates.filter(eid => isSubtype(objType(this.elements.get(eid)), typeRestriction))
       }
       // The partial tier only resolves a single hit; a wanted @cls_* set must
       // narrow that hit before it is returned, or `?@ex1@extra@cls_zp` could

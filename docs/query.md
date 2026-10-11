@@ -178,8 +178,9 @@ Classifier tier: narrow by real evidence (full match > partial match >
 Legacy descriptor tier (if >1 candidates): narrow by @gd*| descriptors
   ↓
 Fallbacks when the ancestral tier found nothing:
-  |-- partial ancestral (registered_key ⊆ provenance_set), order/type/classifier
-  |   filtered, exactly 1 → return  [ancestral-partial]
+  |-- partial ancestral (registered_key ⊆ provenance_set), order/type (exact
+  |   preferred, else subtype)/classifier filtered,
+  |   exactly 1 → return  [ancestral-partial]
   |-- descriptor-only tight match over all elements, unless the classifier veto
   |   fired  [descriptor]
   ↓
