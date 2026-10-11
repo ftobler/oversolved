@@ -1,13 +1,10 @@
 //! Hand-rolled Levenberg-Marquardt driver accepting an analytic Jacobian from
 //! the caller.
 //!
-//! This replaces scipy's `least_squares(method="trf", jac="3-point")`. Per the
-//! migration plan we deliberately do NOT try to match `trf` (trust-region
-//! reflective with per-iteration Jacobian scaling) point-for-point: the parity
-//! gate is status + residual-norm + gauge-aware geometry, not param equality.
-//! A classical LM on the normal equations `(JᵀJ + λ·diag(JᵀJ)) δ = -Jᵀr`
-//! converges the trivial sketches the tests cover. Analytic/zero-copy speedups
-//! are explicitly later work (do not blend a perf change with the port).
+//! A classical LM on the normal equations `(JᵀJ + λ·diag(JᵀJ)) δ = -Jᵀr`, in a
+//! dense form (LU) for cold solves that also need the final Jacobian, and a
+//! sparse form (conjugate gradient) for the drag fast path. Both share a seed
+//! anchor that keeps directions the constraints leave free near their seed.
 
 use nalgebra::{DMatrix, DVector};
 

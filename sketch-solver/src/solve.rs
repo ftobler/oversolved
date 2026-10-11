@@ -67,16 +67,14 @@ pub fn solve_sketch(input: &Input) -> Output {
         };
 
         // Second pass: the driver-owned seed anchor pulls free DOF toward the
-        // pre-drag state (the old caller-side augmented-Jacobian refine, now a
-        // shared driver mechanism). The driver anchors toward its seed, so seed
-        // from the pre-drag x0: that is the cursor/pre-drag gauge reference, and
-        // the anchored solve starts from it with the constraint residual
-        // pulling onto the manifold. Both passes get the full iteration budget,
-        // as the old plain-then-refine pair did.
+        // pre-drag state. The driver anchors toward its seed, so seed from the
+        // pre-drag x0: that is the cursor/pre-drag gauge reference, and the
+        // anchored solve starts from it with the constraint residual pulling
+        // onto the manifold. Each pass gets the full iteration budget.
         let x_final = if status == Status::Underconstrained {
             let weights = drag_reg_weights(input, n);
-            // `refine_drag_sparse` appended `w*(x-x0)` residual rows; their
-            // Hessian contribution is `w²`, the absolute anchor weight.
+            // A pull of `w * (x - x0)` per param has Hessian `w²`, the
+            // driver's absolute anchor weight.
             let anchor: Vec<f64> = weights.iter().map(|w| w * w).collect();
             let anchored = solve_lm_sparse_anchored(&x0, &f, &jac_sp, &anchor).x;
             // The anchored result is a compromise that violates the
@@ -177,8 +175,7 @@ pub fn solve_sketch(input: &Input) -> Output {
 /// firmer `REG_WEIGHT_DRAG`. The contract carries a single `drag_anchor_id`
 /// (an entity index); an out-of-range id just leaves the base weights (still a
 /// valid, gentle pull toward the pre-drag state). The caller squares these into
-/// the driver's absolute anchor weights (the old augmented rows' Hessian was
-/// `w²`).
+/// the driver's absolute anchor weights.
 fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
     let mut weights = vec![REG_WEIGHT_BASE; n];
     let anchor = input.options.drag_anchor_id as usize;

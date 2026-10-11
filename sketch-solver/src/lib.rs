@@ -15,8 +15,8 @@
 //!     whose params are pinned (`pinned_mask` / `equality_pins`). Residual
 //!     builders branch on geometric kind only (line/circle/arc/point), never on
 //!     projected-ness.
-//!   - `equality_pins` carries `_residual_fixed` mode 3 (pin a param to an
-//!     explicit user (x, y) target that is constraint payload, not x0).
+//!   - `equality_pins` pin a param to an explicit target that is constraint
+//!     payload, not x0 (which is what `pinned_mask` holds a param to).
 //!   - `vertex_freedom` (per-entity null-space directions from the Jacobian
 //!     SVD) is emitted as the seed for the frontend drag math, which does not
 //!     consume it yet (see `solve::vertex_freedom`); the wire field stays so
@@ -37,8 +37,8 @@ pub mod wasm;
 
 pub use constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 
-/// Degrees->radians factor. Angle params are stored in degrees (matching the
-/// backend arc-angle convention) and converted at use sites. The `radians`
+/// Degrees->radians factor. Angle params are stored in degrees (the document's
+/// arc-angle convention) and converted at use sites. The `radians`
 /// helper keeps the multiply-then-divide grouping its call sites have always
 /// used, so it is bit-identical to the conversions it replaces.
 pub(crate) const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
@@ -73,7 +73,8 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// Number of scalar params in the flat array (mirrors backend ENTITY_SIZES).
+    /// Number of scalar params in the flat array (the frontend lowering lays
+    /// entities out with the same sizes).
     /// Ellipse is `[cx, cy, a, b, theta]` where `a >= b >= 0` are the semi-major
     /// and semi-minor radii and `theta` is the major-axis rotation (degrees, to
     /// match the arc-angle convention; the residuals convert to radians).
@@ -230,7 +231,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn param_counts_match_backend_entity_sizes() {
+    fn param_counts_match_the_wire_entity_sizes() {
         assert_eq!(Kind::Line.param_count(), 4);
         assert_eq!(Kind::Circle.param_count(), 3);
         assert_eq!(Kind::Arc.param_count(), 5);
@@ -264,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn status_codes_match_backend() {
+    fn status_codes_match_the_wire() {
         assert_eq!(Status::FullyConstrained.to_u8(), 0);
         assert_eq!(Status::Underconstrained.to_u8(), 1);
         assert_eq!(Status::Overconstrained.to_u8(), 2);

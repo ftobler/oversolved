@@ -7,9 +7,9 @@
 //! narrowed only at output.
 //!
 //! `pinned_mask` and `equality_pins` are lowered to extra residual rows here
-//! (one `x[i] - target` row each), which is exactly what `_residual_fixed`
-//! produces for a full-entity / explicit-target pin. The crate therefore treats
-//! them identically to a `fixed` constraint for solve, rank, and status.
+//! (one `x[i] - target` row each), the same rows `r_fixed` produces for a
+//! full-entity pin. The crate therefore treats them identically to a `fixed`
+//! constraint for solve, rank, and status.
 
 use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use crate::{Entity, Input, Kind};
