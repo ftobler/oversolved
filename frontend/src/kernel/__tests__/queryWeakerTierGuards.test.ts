@@ -110,6 +110,15 @@ describe("ancestral-partial tier type restriction", () => {
     expect((repo.query(makeAncestryQuery(["@a", "@b"], "face")) as Payload).tag).toBe("exact")
   })
 
+  it("an entry with no ancestors never answers an unrelated miss", () => {
+    // It is trivially a subset of every query set; before the fix a lone one
+    // resolved any miss of a matching type as "ancestral-partial".
+    const repo = new Repository()
+    repo.registerAncestor([], { type: "flatface", tag: "orphan" })
+    expect(repo.query(makeAncestryQuery(["@gone1", "@gone2"], "flatface"))).toBeNull()
+    expect(repo._lastTier).toBe("miss")
+  })
+
   it("an unrelated type is still filtered out", () => {
     const repo = new Repository()
     repo.registerAncestor(["@a"], { type: "straightedge" })

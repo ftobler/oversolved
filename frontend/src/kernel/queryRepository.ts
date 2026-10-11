@@ -227,13 +227,17 @@ export class Repository {
    *  repeated per frame during hover/selection over a large import). Here the
    *  candidate keys are found through `byAncestorId`: union the bucket of every
    *  query id (a partial match shares at least one query id, so it is indexed
-   *  under one of them), plus the empty-set entries that no bucket carries (an
-   *  entry with no ancestors is a subset of every query set). Then `ancestral`
-   *  is re-walked once in insertion order, keeping only those candidate keys and
-   *  re-applying the real `isSubset` predicate so the index cannot invent a
-   *  match - the per-entry set arithmetic is gone, replaced by an O(1) key
-   *  membership test, and order is preserved exactly. Exposed (not private) so
-   *  the resolver parity tests can assert the enumeration order directly. */
+   *  under one of them). Then `ancestral` is re-walked once in insertion order,
+   *  keeping only those candidate keys and re-applying the real `isSubset`
+   *  predicate so the index cannot invent a match - the per-entry set
+   *  arithmetic is gone, replaced by an O(1) key membership test, and order is
+   *  preserved exactly. Exposed (not private) so the resolver parity tests can
+   *  assert the enumeration order directly.
+   *
+   *  An entry with NO ancestors is deliberately never a candidate: it is a
+   *  subset of every query set, so it shares no lineage with the query at all,
+   *  and a lone one would answer any unrelated miss of a matching type. Only
+   *  entries sharing at least one query id can partially match. */
   partialEntryEids(querySet: ReadonlySet<string>): string[] {
     const keys = new Set<string>()
     for (const id of querySet) {
@@ -242,9 +246,7 @@ export class Repository {
     }
     const out: string[] = []
     for (const [key, entry] of this.ancestral) {
-      if (keys.has(key) || entry.set.size === 0) {
-        if (isSubset(entry.set, querySet)) out.push(...this.liveEntryEids(entry))
-      }
+      if (keys.has(key) && isSubset(entry.set, querySet)) out.push(...this.liveEntryEids(entry))
     }
     return out
   }
