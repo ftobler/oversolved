@@ -66,7 +66,10 @@ impl Problem<'_> {
             let eb = self.params(x, b_idx);
             let da = [ea[2] - ea[0], ea[3] - ea[1]];
             let db = [eb[2] - eb[0], eb[3] - eb[1]];
-            r.push(da[0] * db[1] - da[1] * db[0]);
+            // Collinear: parallel (sin times a seed length, as `r_parallel`)
+            // and B's start on A's line (a plain distance, below).
+            let (nn, _) = self.norm_product(da, db);
+            r.push(self.line_pair_len0(a_idx, b_idx) * (da[0] * db[1] - da[1] * db[0]) / nn);
             let n = (da[0] * da[0] + da[1] * da[1]).sqrt();
             let (nx, ny) = if n > 0.0 {
                 (-da[1] / n, da[0] / n)

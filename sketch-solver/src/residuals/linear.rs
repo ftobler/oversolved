@@ -47,7 +47,11 @@ impl Problem<'_> {
         let eb = self.params(x, b_idx);
         let da = [ea[2] - ea[0], ea[3] - ea[1]];
         let db = [eb[2] - eb[0], eb[3] - eb[1]];
-        r.push(da[0] * db[1] - da[1] * db[0]);
+        // sin(angle) times a seed length (see `scale.rs`). The raw cross
+        // product scaled with length squared, and shrinking either line was a
+        // way to satisfy it.
+        let (nn, _) = self.norm_product(da, db);
+        r.push(self.line_pair_len0(a_idx, b_idx) * (da[0] * db[1] - da[1] * db[0]) / nn);
     }
 
     pub(super) fn r_normal(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
@@ -64,7 +68,9 @@ impl Problem<'_> {
             let eb = self.params(x, b_idx);
             let da = [ea[2] - ea[0], ea[3] - ea[1]];
             let db = [eb[2] - eb[0], eb[3] - eb[1]];
-            r.push(da[0] * db[0] + da[1] * db[1]);
+            // cos(angle) times a seed length, as for parallel.
+            let (nn, _) = self.norm_product(da, db);
+            r.push(self.line_pair_len0(a_idx, b_idx) * (da[0] * db[0] + da[1] * db[1]) / nn);
             return;
         }
         let (line_ref, arc_ref) = if a_kind == Kind::Line { (a, b) } else { (b, a) };
@@ -87,7 +93,9 @@ impl Problem<'_> {
             Kind::Ellipse => self.ellipse_normal(x, arc_idx, contact),
             _ => self.radius_dir(x, arc_idx, arc_pt, contact),
         };
-        r.push(line_dir[0] * nd[1] - line_dir[1] * nd[0]);
+        // sin(angle to the normal) times the line's seed length.
+        let scale = self.line_len0(line_idx) / self.dir_norm(line_dir);
+        r.push(scale * (line_dir[0] * nd[1] - line_dir[1] * nd[0]));
     }
 
     /// Unit normal of a spline at the point a normal constraint names: its
@@ -149,13 +157,15 @@ impl Problem<'_> {
         // user-facing value stays non-negative. The signed difference is
         // wrapped back into (-180, 180]: atan2 jumps at the +-180 cut, so a
         // target of 180 against a line at -179 would otherwise read -359 and
-        // steer the solver the long way round.
-        match c.sign {
+        // steer the solver the long way round. The angle error is weighted by
+        // a seed length so the row reads as a displacement like the others.
+        let err = match c.sign {
             Some(s) => {
                 let d = cross.atan2(dot) - s * value.to_radians();
-                r.push(d.sin().atan2(d.cos()));
+                d.sin().atan2(d.cos())
             }
-            None => r.push(cross.abs().atan2(dot) - value.to_radians()),
-        }
+            None => cross.abs().atan2(dot) - value.to_radians(),
+        };
+        r.push(self.line_pair_len0(a_idx, b_idx) * err);
     }
 }

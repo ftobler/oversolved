@@ -120,6 +120,7 @@ describe.skipIf(!solveBytes)('tangent line closes its own sketch area', () => {
     // the origin. That is what separates "construction" from "deleted".
     expect(solved.status).toBe('fully_constrained')
     const [x1, y1, x2, y2] = solved.geometry[VERT]
-    expect([x1, y1, x2, y2].map((v) => Math.round(v * 1e6) / 1e6)).toEqual([0, 10, 0, 0])
+    // `+ 0` folds -0 into 0: a coordinate solved to -1e-12 is still the origin.
+    expect([x1, y1, x2, y2].map((v) => Math.round(v * 1e6) / 1e6 + 0)).toEqual([0, 10, 0, 0])
   })
 })

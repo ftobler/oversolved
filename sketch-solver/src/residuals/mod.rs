@@ -23,6 +23,7 @@ mod geom;
 mod jacobian;
 mod linear;
 mod misc;
+mod scale;
 mod tangent;
 
 #[cfg(test)]
@@ -51,6 +52,8 @@ pub struct Problem<'a> {
     /// the tangency is internal. Decided once from `x0`, so the residual is
     /// one smooth branch for the whole solve.
     curve_tangent_internal: HashMap<(u32, u32), bool>,
+    /// Characteristic length of the seed geometry (see `scale.rs`).
+    scale: f64,
 }
 
 impl<'a> Problem<'a> {
@@ -147,6 +150,7 @@ impl<'a> Problem<'a> {
             }
         }
 
+        let scale = scale::geometry_scale(input, &x0, &constraints);
         let mut problem = Problem {
             entities: &input.entities,
             x0,
@@ -155,6 +159,7 @@ impl<'a> Problem<'a> {
             equality_pins,
             line_circle_coincident,
             curve_tangent_internal: HashMap::new(),
+            scale,
         };
         // Curve/curve tangents follow whichever tangency the drawn geometry is
         // nearest; ties go external.

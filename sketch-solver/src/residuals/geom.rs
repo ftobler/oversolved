@@ -19,18 +19,29 @@ pub(super) fn ref_kind(input: &Input, r: &Ref) -> Option<Kind> {
     }
 }
 
-/// Point-on-ellipse conic residual. `ep` is the ellipse param block
-/// `[cx, cy, a, b, theta_deg]`; the result is 0 exactly on the curve, negative
-/// inside, positive outside.
+/// Point-on-ellipse residual: the approximate distance from `p` to the curve.
+/// `ep` is the ellipse param block `[cx, cy, a, b, theta_deg]`; the result is
+/// 0 exactly on the curve, negative inside, positive outside.
+///
+/// It is the conic value `f = (u/a)^2 + (v/b)^2 - 1` divided by its gradient's
+/// length (the first-order, Sampson, distance), which turns the dimensionless
+/// conic into a length like every other row. The gradient vanishes at the
+/// centre, so it is floored at its smallest value on the curve, `2 / a_max`.
 pub(super) fn ellipse_point_residual(p: P2, ep: &[f64]) -> f64 {
-    let (cx, cy, a, b) = (ep[0], ep[1], ep[2], ep[3]);
+    let (cx, cy) = (ep[0], ep[1]);
+    let (aa, bb) = (
+        (ep[2] * ep[2]).max(MIN_SEMI_AXIS_SQ),
+        (ep[3] * ep[3]).max(MIN_SEMI_AXIS_SQ),
+    );
     let theta = ep[4] * DEG2RAD;
     let (ct, st) = (theta.cos(), theta.sin());
     let dx = p[0] - cx;
     let dy = p[1] - cy;
     let u = dx * ct + dy * st;
     let v = dy * ct - dx * st;
-    u * u / (a * a).max(MIN_SEMI_AXIS_SQ) + v * v / (b * b).max(MIN_SEMI_AXIS_SQ) - 1.0
+    let f = u * u / aa + v * v / bb - 1.0;
+    let grad = 2.0 * ((u / aa).powi(2) + (v / bb).powi(2)).sqrt();
+    f / grad.max(2.0 / aa.max(bb).sqrt())
 }
 
 /// Evaluate a cubic Bezier `B(t)`. `sp` is the spline param block

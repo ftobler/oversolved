@@ -345,16 +345,36 @@ impl Problem<'_> {
         let da = [ea[2] - ea[0], ea[3] - ea[1]];
         let db = [eb[2] - eb[0], eb[3] - eb[1]];
         let (oa, ob) = (self.offset_of(ai), self.offset_of(bi));
+        // r = L * u / N with u = da.x*db.y - da.y*db.x, N = |da| |db| and L a
+        // constant seed length. dr = L * (du / N - u * dN / N^2); N is
+        // constant once floored (see `norm_product`).
+        let l = self.line_pair_len0(ai, bi);
+        let u = da[0] * db[1] - da[1] * db[0];
+        let (nn, live) = self.norm_product(da, db);
+        let (na, nb) = (
+            (da[0] * da[0] + da[1] * da[1]).sqrt(),
+            (db[0] * db[0] + db[1] * db[1]).sqrt(),
+        );
+        let k = if live { u / (nn * nn) } else { 0.0 };
+        // Derivatives w.r.t. the direction vectors themselves.
+        let d_da = [
+            l * (db[1] / nn - k * nb * da[0] / na.max(f64::MIN_POSITIVE)),
+            l * (-db[0] / nn - k * nb * da[1] / na.max(f64::MIN_POSITIVE)),
+        ];
+        let d_db = [
+            l * (-da[1] / nn - k * na * db[0] / nb.max(f64::MIN_POSITIVE)),
+            l * (da[0] / nn - k * na * db[1] / nb.max(f64::MIN_POSITIVE)),
+        ];
+        // da = a_end - a_start, db = b_end - b_start.
         let mut row = RowBuf::new();
-        // r = da.x*db.y - da.y*db.x
-        row.add(oa, -db[1]);
-        row.add(oa + 2, db[1]);
-        row.add(oa + 1, db[0]);
-        row.add(oa + 3, -db[0]);
-        row.add(ob, da[1]);
-        row.add(ob + 2, -da[1]);
-        row.add(ob + 1, -da[0]);
-        row.add(ob + 3, da[0]);
+        row.add(oa, -d_da[0]);
+        row.add(oa + 1, -d_da[1]);
+        row.add(oa + 2, d_da[0]);
+        row.add(oa + 3, d_da[1]);
+        row.add(ob, -d_db[0]);
+        row.add(ob + 1, -d_db[1]);
+        row.add(ob + 2, d_db[0]);
+        row.add(ob + 3, d_db[1]);
         rows.push(row.finish());
     }
 

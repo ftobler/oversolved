@@ -27,11 +27,22 @@ fn point_on_ellipse_coincident_residual() {
     let r = p.residuals(&x);
     assert!(r[0].abs() < 1e-12, "minor vertex on ellipse: {}", r[0]);
 
-    // Move the point to the center: residual -1 (fully inside).
+    // Move the point to the center: conic -1 over the floored gradient
+    // 2 / a = 0.5, so -a / 2 = -2 (inside, in length units).
     x[0] = 1.0;
     x[1] = 2.0;
     let r = p.residuals(&x);
-    assert!((r[0] + 1.0).abs() < 1e-12, "center inside: {}", r[0]);
+    assert!((r[0] + 2.0).abs() < 1e-12, "center inside: {}", r[0]);
+
+    // Off the curve the residual reads as a distance: 0.1 past the major
+    // vertex is ~0.1 out, where the conic alone read 0.05.
+    x[0] = 5.1;
+    let r = p.residuals(&x);
+    assert!(
+        (r[0] - 0.1).abs() < 2e-3,
+        "distance past the vertex: {}",
+        r[0]
+    );
 }
 
 #[test]

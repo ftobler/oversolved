@@ -465,6 +465,58 @@ mod tests {
         );
     }
 
+    /// Eight lines, each parallel to the previous one, of length `10 s` and
+    /// with its start `s` from the previous start; line 0 fixed. Satisfiable
+    /// at every scale `s`.
+    fn parallel_chain(s: f32) -> Input {
+        let mut entities = vec![];
+        let mut params = vec![];
+        let mut constraints = vec![c_target(ConstraintKind::Fixed, 0, PointSelector::Absent)];
+        for k in 0..8u32 {
+            let (kf, y) = (k as f32, k as f32 * 1.1);
+            entities.push(line(4 * k as usize));
+            params.extend([0.1 * kf * s, y * s, (10.0 + 0.3 * kf) * s, (y + 0.5) * s]);
+            if k > 0 {
+                let pair = ab(
+                    e_ref(k - 1, PointSelector::Absent),
+                    e_ref(k, PointSelector::Absent),
+                );
+                constraints.push(cons(ConstraintKind::Parallel, pair));
+                let mut len = c_target(ConstraintKind::Length, k, PointSelector::Absent);
+                len.value = Some(10.0 * s as f64);
+                constraints.push(len);
+                let starts = ab(
+                    e_ref(k - 1, PointSelector::Start),
+                    e_ref(k, PointSelector::Start),
+                );
+                constraints.push(cons_v(ConstraintKind::PointDistance, starts, s as f64));
+            }
+        }
+        input(entities, params, constraints)
+    }
+
+    #[test]
+    fn a_satisfiable_chain_solves_at_every_scale() {
+        // The raw cross-product parallel row weighed length squared against
+        // the length rows: this chain solved at s=0.01 and read
+        // Overconstrained after 200 iterations at s=1 and s=100.
+        for s in [0.01f32, 1.0, 100.0] {
+            let out = solve_sketch(&parallel_chain(s));
+            assert_eq!(
+                out.overall_status,
+                Status::Underconstrained.to_u8(),
+                "s={s}: norm {} after {} iterations",
+                out.diagnostics.residual_norm,
+                out.diagnostics.iters
+            );
+            assert!(
+                out.diagnostics.residual_norm < 1e-6 * s as f64,
+                "s={s}: norm {}",
+                out.diagnostics.residual_norm
+            );
+        }
+    }
+
     #[test]
     fn entity_status_marks_only_the_entities_with_free_params() {
         // Line 0 fixed; line 1 hangs off its end by one coincident (free to

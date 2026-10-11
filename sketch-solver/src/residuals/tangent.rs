@@ -81,7 +81,8 @@ impl Problem<'_> {
             };
             let tn = (tan[0] * tan[0] + tan[1] * tan[1]).sqrt().max(1e-12);
             let (tx, ty) = (tan[0] / tn, tan[1] / tn);
-            r.push(line_dir[0] * ty - line_dir[1] * tx);
+            // sin(angle) times the line's seed length (see `scale.rs`).
+            r.push(self.line_len0(line_idx) * (line_dir[0] * ty - line_dir[1] * tx));
         } else if matches!(self.kind_of(arc_idx), Kind::Circle | Kind::Arc) {
             // Line tangent to a circle or arc (identical math: an arc reuses its
             // underlying circle). If a coincident maps a line endpoint to the
@@ -104,7 +105,7 @@ impl Problem<'_> {
                     },
                 );
                 let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
-                r.push(line_dir[0] * rd[0] + line_dir[1] * rd[1]);
+                r.push(self.line_len0(line_idx) * (line_dir[0] * rd[0] + line_dir[1] * rd[1]));
             } else {
                 let (cx, cy) = (arc_ep[0], arc_ep[1]);
                 let num = (cx - line_ep[0]) * line_dir[1] - (cy - line_ep[1]) * line_dir[0];
