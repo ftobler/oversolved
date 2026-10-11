@@ -7,7 +7,7 @@
 
 use crate::residuals::Problem;
 use crate::{Diagnostics, Input, Output, Status};
-use nalgebra::{DMatrix, SymmetricEigen};
+use nalgebra::DMatrix;
 use solver_core::lm::{
     solve_lm, solve_lm_sparse, solve_lm_sparse_anchored, solve_lm_sparse_proximal,
 };
@@ -106,7 +106,9 @@ pub fn solve_sketch(input: &Input) -> Output {
 
     let jac = result.jacobian;
     let final_loss = result.residual_norm * result.residual_norm;
-    let rank = matrix_rank(&jac, RANK_TOL);
+    // One SVD serves the rank and, unless skipped, the whole status pass.
+    let spectrum = Spectrum::of(&jac, n, !input.options.skip_status_pass);
+    let rank = spectrum.rank;
 
     // Fully constrained means zero remaining DOF: the rank of the constraint
     // Jacobian reaches the parameter count. Every grounding constraint (fixed,
@@ -135,8 +137,12 @@ pub fn solve_sketch(input: &Input) -> Output {
     let (entity_status, vertex_freedom) = if input.options.skip_status_pass {
         (Vec::new(), Vec::new())
     } else {
-        let es = entity_status(input, &jac, rank, status);
-        let vf = vertex_freedom(input, &jac);
+        let es = entity_status(input, &spectrum, status);
+        let vf = if jac.nrows() == 0 {
+            vec![0.0; input.entities.len() * 2]
+        } else {
+            vertex_freedom(input, &spectrum)
+        };
         (es, vf)
     };
 
@@ -184,20 +190,73 @@ fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
     weights
 }
 
-/// Rank of `j` = count of singular values strictly above `tol` (matches
-/// `np.linalg.matrix_rank(J, tol=RANK_TOL)`).
-fn matrix_rank(j: &DMatrix<f64>, tol: f64) -> usize {
-    if j.nrows() == 0 || j.ncols() == 0 {
-        return 0;
-    }
-    let sv = j.clone().svd(false, false).singular_values;
-    sv.iter().filter(|&&s| s > tol).count()
+/// The singular structure of the final Jacobian: its rank and, on request, an
+/// orthonormal basis of its null space (the directions the constraints leave
+/// free), each with its singular value.
+struct Spectrum {
+    rank: usize,
+    /// `n x k`, one null direction per column; empty unless requested.
+    null: DMatrix<f64>,
+    null_sv: Vec<f64>,
 }
 
-/// Per-entity status via the column-pinning rank bump from `_entity_status`:
-/// pin all of an entity's params (append identity rows) and see whether the
-/// rank rises. If it does, that entity had free DOF -> underconstrained.
-fn entity_status(input: &Input, jac: &DMatrix<f64>, rank: usize, overall: Status) -> Vec<u8> {
+impl Spectrum {
+    fn of(j: &DMatrix<f64>, n: usize, want_null: bool) -> Spectrum {
+        if n == 0 {
+            return Spectrum {
+                rank: 0,
+                null: DMatrix::zeros(0, 0),
+                null_sv: Vec::new(),
+            };
+        }
+        // A thin SVD of an m x n matrix only returns min(m, n) right vectors,
+        // so with fewer rows than params part of the null space would be
+        // missing. Zero rows change neither the rank nor the null space, so
+        // pad up to square first.
+        let padded;
+        let j = if j.nrows() < n {
+            let mut p = DMatrix::<f64>::zeros(n, n);
+            p.view_mut((0, 0), (j.nrows(), n)).copy_from(j);
+            padded = p;
+            &padded
+        } else {
+            j
+        };
+        let svd = j.clone().svd(false, want_null);
+        let sv = &svd.singular_values;
+        let rank = sv.iter().filter(|&&s| s > RANK_TOL).count();
+        let Some(v_t) = svd.v_t else {
+            return Spectrum {
+                rank,
+                null: DMatrix::zeros(n, 0),
+                null_sv: Vec::new(),
+            };
+        };
+        let free: Vec<usize> = (0..sv.len()).filter(|&i| sv[i] <= RANK_TOL).collect();
+        let mut null = DMatrix::<f64>::zeros(n, free.len());
+        for (k, &i) in free.iter().enumerate() {
+            null.set_column(k, &v_t.row(i).transpose());
+        }
+        Spectrum {
+            rank,
+            null,
+            null_sv: free.iter().map(|&i| sv[i]).collect(),
+        }
+    }
+}
+
+/// A param is free when some null direction moves it by more than this. The
+/// null basis is orthonormal, so a genuinely free param reads O(1) and a
+/// constrained one reads round-off.
+const FREE_COMPONENT_TOL: f64 = 1e-6;
+
+/// Per-entity status. An entity is underconstrained exactly when one of its
+/// params can move without disturbing the constraints, i.e. when the null
+/// space has a component on its columns. That is the same test as pinning the
+/// entity (appending identity rows) and watching the rank rise, which is how
+/// this used to run: one SVD per entity, 5.9 s for 200 lines against 0.2 s
+/// for the solve itself.
+fn entity_status(input: &Input, spectrum: &Spectrum, overall: Status) -> Vec<u8> {
     match overall {
         Status::Overconstrained => {
             return vec![Status::Overconstrained.to_u8(); input.entities.len()]
@@ -208,30 +267,24 @@ fn entity_status(input: &Input, jac: &DMatrix<f64>, rank: usize, overall: Status
         Status::Underconstrained => {}
     }
 
-    let n = input.params_initial.len();
-    let m = jac.nrows();
+    let null = &spectrum.null;
     input
         .entities
         .iter()
         .enumerate()
         .map(|(ei, e)| {
-            let size = e.kind.param_count();
             // A stale entity whose block runs past the param buffer has no
-            // columns to pin; call it unconstrained rather than indexing out of
-            // bounds (its constraints were dropped in `Problem::new` anyway).
-            // The shared range check is checked arithmetic, so a verbatim
-            // offset near u32::MAX cannot wrap past the guard on wasm32 and
-            // index far out of bounds below.
+            // columns to read; call it unconstrained rather than indexing out
+            // of bounds (its constraints were dropped in `Problem::new`
+            // anyway). The shared range check is checked arithmetic, so a
+            // verbatim offset near u32::MAX cannot wrap past the guard on
+            // wasm32 and index far out of bounds below.
             if !input.entity_params_in_range(ei) {
                 return Status::Underconstrained.to_u8();
             }
-            let mut aug = DMatrix::<f64>::zeros(m + size, n);
-            aug.view_mut((0, 0), (m, n)).copy_from(jac);
-            for k in 0..size {
-                aug[(m + k, e.param_offset + k)] = 1.0;
-            }
-            let new_rank = matrix_rank(&aug, RANK_TOL);
-            if new_rank > rank {
+            let mut cols = e.param_offset..e.param_offset + e.kind.param_count();
+            let free = cols.any(|i| null.row(i).iter().any(|v| v.abs() > FREE_COMPONENT_TOL));
+            if free {
                 Status::Underconstrained.to_u8()
             } else {
                 Status::FullyConstrained.to_u8()
@@ -249,34 +302,21 @@ fn entity_status(input: &Input, jac: &DMatrix<f64>, rank: usize, overall: Status
 /// written) will consume to project a cursor delta onto allowed directions; the
 /// exact reduction across multiple null directions is refined when drag is
 /// wired (phase 5). Emitted as `entity_count` pairs flattened.
-fn vertex_freedom(input: &Input, jac: &DMatrix<f64>) -> Vec<f32> {
-    let n = input.params_initial.len();
+fn vertex_freedom(input: &Input, spectrum: &Spectrum) -> Vec<f32> {
     let mut out = vec![0.0f32; input.entities.len() * 2];
-    if n == 0 || jac.nrows() == 0 {
-        return out;
-    }
 
-    let jtj = jac.transpose() * jac;
-    let eig = SymmetricEigen::new(jtj);
-
-    // The freest direction is the eigenvector with the smallest eigenvalue,
-    // provided it is in the null space (eigenvalue <= RANK_TOL^2).
-    let tol2 = RANK_TOL * RANK_TOL;
-    let mut best: Option<usize> = None;
-    for i in 0..eig.eigenvalues.len() {
-        let ev = eig.eigenvalues[i];
-        if ev <= tol2 {
-            match best {
-                Some(b) if eig.eigenvalues[b] <= ev => {}
-                _ => best = Some(i),
-            }
-        }
-    }
-
+    // The freest direction is the null vector with the smallest singular
+    // value. It comes out of the status pass's SVD; a separate JᵀJ eigen
+    // solve used to cost another O(n³) for this output alone.
+    let best = (0..spectrum.null_sv.len()).min_by(|&a, &b| {
+        spectrum.null_sv[a]
+            .partial_cmp(&spectrum.null_sv[b])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let Some(col) = best else {
         return out; // fully constrained: no free direction
     };
-    let v = eig.eigenvectors.column(col);
+    let v = spectrum.null.column(col);
     for (ei, e) in input.entities.iter().enumerate() {
         let off = e.param_offset;
         // Same stale-entity guard as `entity_status`: no anchor params in the
@@ -423,6 +463,39 @@ mod tests {
             "coincidence left open by {}",
             out.diagnostics.residual_norm
         );
+    }
+
+    #[test]
+    fn entity_status_marks_only_the_entities_with_free_params() {
+        // Line 0 fixed; line 1 hangs off its end by one coincident (free to
+        // swing and stretch); line 2 fixed too. Fewer rows (4 + 2 + 4) than
+        // params (12), so the null space only shows up whole because the
+        // Jacobian is padded square before the thin SVD.
+        let joint = Constraint {
+            kind_code: ConstraintKind::Coincident.to_u8(),
+            refs: ab(e_ref(1, PointSelector::Start), e_ref(0, PointSelector::End)),
+            ..Default::default()
+        };
+        let inp = input(
+            vec![line(0), line(4), line(8)],
+            vec![0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 2.0, 1.0, 5.0, 5.0, 6.0, 5.0],
+            vec![
+                c_target(ConstraintKind::Fixed, 0, PointSelector::Absent),
+                joint,
+                c_target(ConstraintKind::Fixed, 2, PointSelector::Absent),
+            ],
+        );
+        let out = solve_sketch(&inp);
+        let (full, under) = (
+            Status::FullyConstrained.to_u8(),
+            Status::Underconstrained.to_u8(),
+        );
+        assert_eq!(out.entity_status, vec![full, under, full]);
+        assert_eq!(out.diagnostics.dof, 2);
+        // The freedom direction moves line 1's start not at all (it is pinned
+        // to line 0) and the fixed lines not at all.
+        assert_eq!(&out.vertex_freedom[0..4], &[0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(&out.vertex_freedom[4..6], &[0.0, 0.0]);
     }
 
     #[test]
