@@ -12,6 +12,20 @@ mod helpers;
 mod primitives;
 
 #[test]
+fn a_point_between_two_vertices_merges_into_the_first_registered() {
+    // Two vertices 1.5 MERGE apart and a point within MERGE of both. Every
+    // pool gets a fresh HashMap seed, so scanning one picked either vertex at
+    // random across these runs; the insertion-ordered pool always picks _v0.
+    use crate::topology::dcel::Verts;
+    for _ in 0..64 {
+        let mut verts = Verts::new();
+        assert_eq!(verts.vid([0.0, 0.0]), "_v0");
+        assert_eq!(verts.vid([1.5 * MERGE, 0.0]), "_v1");
+        assert_eq!(verts.vid([0.8 * MERGE, 0.0]), "_v0");
+    }
+}
+
+#[test]
 fn single_square_is_one_surface() {
     let t = detect_topology(&square(2.0));
     assert_eq!(t.surfaces.len(), 1);

@@ -316,39 +316,42 @@ fn arc_tangent(a_rad: f64, ccw: bool) -> Vec2 {
 
 // ─── Vertex registry ───
 
+/// The merged vertex pool, kept in insertion order. A point within MERGE of two
+/// registered vertices joins the one registered first; scanning a `HashMap`
+/// instead let its randomized iteration order pick, so the same sketch could
+/// name its vertices differently from run to run.
+#[derive(Clone)]
 struct Verts {
-    map: HashMap<String, Vec2>,
+    pts: Vec<(String, Vec2)>,
+    index: HashMap<String, usize>,
 }
 impl Verts {
     fn new() -> Self {
         Verts {
-            map: HashMap::new(),
-        }
-    }
-    fn clone_verts(&self) -> Verts {
-        Verts {
-            map: self.map.clone(),
+            pts: Vec::new(),
+            index: HashMap::new(),
         }
     }
     /// Merge a point into the pool, returning its `_vN` id (mirrors `vid`).
     fn vid(&mut self, pt: Vec2) -> String {
-        for (k, v) in &self.map {
+        for (k, v) in &self.pts {
             if (v[0] - pt[0]).powi(2) + (v[1] - pt[1]).powi(2) < MERGE * MERGE {
                 return k.clone();
             }
         }
-        let k = format!("_v{}", self.map.len());
-        self.map.insert(k.clone(), [pt[0], pt[1]]);
+        let k = format!("_v{}", self.pts.len());
+        self.index.insert(k.clone(), self.pts.len());
+        self.pts.push((k.clone(), [pt[0], pt[1]]));
         k
     }
     /// Look up a registered vertex. Returns `None` for an unknown id instead of
     /// aborting: a half-edge naming a vertex that is not in the pool bounds no
     /// area, and the worker must survive that rather than trap.
     fn get(&self, k: &str) -> Option<Vec2> {
-        self.map.get(k).copied()
+        self.index.get(k).map(|&i| self.pts[i].1)
     }
     fn keys(&self) -> HashSet<String> {
-        self.map.keys().cloned().collect()
+        self.index.keys().cloned().collect()
     }
 }
 
@@ -458,7 +461,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
 
     // Seed arc vertex registration with line-endpoint data so coincident arc/line
     // endpoints share vertex ids, then merge new arc vertices back.
-    let mut arc_verts = verts.clone_verts();
+    let mut arc_verts = verts.clone();
     let (a0_from_norm, arc_splits, arcs) =
         normalize_arcs_and_init_splits(&cls.arcs, &mut arc_verts);
     for (k, v) in a0_from_norm {
@@ -467,7 +470,9 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     for (k, v) in arc_splits {
         splits.insert(k, v);
     }
-    verts.map.extend(arc_verts.map.drain());
+    // `arc_verts` started as a copy of `verts` and only ever appended to it,
+    // so it already is the merged pool.
+    verts = arc_verts;
 
     for (eid, e) in &cls.splines {
         let TopoEntity::Spline { start, end, .. } = *e else {
@@ -530,7 +535,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
 
     let mut intersection_points: Vec<(String, Vec2)> = Vec::new();
     let mut vertices: Vec<(String, Vec2)> = Vec::new();
-    for (k, v) in &verts.map {
+    for (k, v) in &verts.pts {
         if !endpoint_vids.contains(k.as_str()) {
             intersection_points.push((k.clone(), *v));
         }
