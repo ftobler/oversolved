@@ -19,19 +19,6 @@ pub(super) fn ref_kind(input: &Input, r: &Ref) -> Option<Kind> {
     }
 }
 
-/// True when a ref supplies at least `slots` local params. External refs
-/// trivially do (nothing local is read); absent optional roles never reach
-/// this helper (callers default them to eligible).
-pub(super) fn ref_supplies_slots(input: &Input, r: &Ref, slots: usize) -> bool {
-    match r {
-        Ref::External { .. } => true,
-        Ref::Entity { index, .. } => input
-            .entities
-            .get(*index as usize)
-            .is_some_and(|e| e.kind.param_count() >= slots),
-    }
-}
-
 /// Point-on-ellipse conic residual. `ep` is the ellipse param block
 /// `[cx, cy, a, b, theta_deg]`; the result is 0 exactly on the curve, negative
 /// inside, positive outside.

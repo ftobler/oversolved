@@ -259,6 +259,83 @@ fn normal_between_line_and_circle_contributes_one_row() {
     assert_eq!(p.jacobian(&x, n).nrows(), 1);
 }
 
+#[test]
+fn normal_to_a_spline_end_runs_across_its_tangent() {
+    // Spline end tangent is +x (P4 - P3), so a vertical line ending at P4 is
+    // normal there. The old circle path read P1 as a centre and wanted the
+    // line to point at (0,0) instead.
+    let inp = input(
+        vec![ent(Kind::Line, 0), ent(Kind::Spline, 4)],
+        vec![
+            10.0, 10.0, 10.0, 4.0, 0.0, 0.0, 3.0, 4.0, 6.0, 4.0, 10.0, 4.0,
+        ],
+        vec![cons(
+            ConstraintKind::Normal,
+            ab(
+                e_ref(0, PointSelector::Absent),
+                e_ref(1, PointSelector::End),
+            ),
+        )],
+    );
+    let p = Problem::new(&inp);
+    let r = p.residuals(&p.x0);
+    assert_eq!(r.len(), 1);
+    assert!(r[0].abs() < 1e-12, "normal at spline end: {}", r[0]);
+}
+
+#[test]
+fn normal_to_an_ellipse_follows_its_conic_gradient() {
+    // (3, 2.4) is on the a=5, b=3 ellipse; its normal is along
+    // (3/25, 2.4/9). A line ending there along that normal satisfies the
+    // constraint, though it misses the centre the old circle path aimed at.
+    let g: [f64; 2] = [3.0 / 25.0, 2.4 / 9.0];
+    let gn = (g[0] * g[0] + g[1] * g[1]).sqrt();
+    let start = [3.0 - 2.0 * g[0] / gn, 2.4 - 2.0 * g[1] / gn];
+    let inp = input(
+        vec![ent(Kind::Line, 0), ent(Kind::Ellipse, 4)],
+        vec![
+            start[0] as f32,
+            start[1] as f32,
+            3.0,
+            2.4,
+            0.0,
+            0.0,
+            5.0,
+            3.0,
+            0.0,
+        ],
+        vec![cons(
+            ConstraintKind::Normal,
+            ab(
+                e_ref(1, PointSelector::Absent),
+                e_ref(0, PointSelector::Absent),
+            ),
+        )],
+    );
+    let p = Problem::new(&inp);
+    let r = p.residuals(&p.x0);
+    assert_eq!(r.len(), 1);
+    assert!(r[0].abs() < 1e-5, "normal to ellipse: {}", r[0]);
+}
+
+#[test]
+fn normal_between_two_arcs_is_dropped() {
+    // No operand is a line, so neither can be read as endpoints.
+    let inp = input(
+        vec![ent(Kind::Arc, 0), ent(Kind::Arc, 5)],
+        vec![0.0, 0.0, 2.0, 0.0, 90.0, 5.0, 0.0, 1.0, 0.0, 90.0],
+        vec![cons(
+            ConstraintKind::Normal,
+            ab(
+                e_ref(0, PointSelector::Absent),
+                e_ref(1, PointSelector::Absent),
+            ),
+        )],
+    );
+    let p = Problem::new(&inp);
+    assert!(p.residuals(&p.x0).is_empty());
+}
+
 /// Normal between a line and an ARC is keyed to the actual contact (the
 /// line endpoint), not the arc's own angle params. Pinned at a
 /// configuration where the two readings disagree on purpose: with start/end

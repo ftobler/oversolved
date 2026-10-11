@@ -14,7 +14,7 @@
 use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use crate::{Entity, Input, Kind};
 
-use self::geom::{bezier_eval, is_curve, ref_kind, ref_supplies_slots};
+use self::geom::{bezier_eval, is_curve, ref_kind};
 use std::collections::HashMap;
 
 mod coincident;
@@ -250,19 +250,20 @@ impl<'a> Problem<'a> {
                 if ka == Some(Kind::Line) && kb == Some(Kind::Line) {
                     return true;
                 }
-                // Mirror the builder's split: whichever operand plays the curve
-                // supplies the contact normal, center-only for a circle but
-                // from the start/end angle params for every other kind.
-                let (line_ref, arc_ref) = if ka == Some(Kind::Line) {
-                    (&a, &b)
+                // Mixed form: exactly one operand must be the line, read as
+                // endpoints, and the other a curve with a contact normal. Two
+                // curves would read one of them as a line's endpoints.
+                let curve = if ka == Some(Kind::Line) {
+                    kb
+                } else if kb == Some(Kind::Line) {
+                    ka
                 } else {
-                    (&b, &a)
+                    return false;
                 };
-                let arc_ok = match ref_kind(input, arc_ref) {
-                    None | Some(Kind::Circle) => true,
-                    _ => ref_supplies_slots(input, arc_ref, 5),
-                };
-                arc_ok && ref_supplies_slots(input, line_ref, 4)
+                matches!(
+                    curve,
+                    Some(Kind::Circle | Kind::Arc | Kind::Ellipse | Kind::Spline)
+                )
             }
             // Parallel, equal-length and radius-difference gate their own
             // kinds in their builders; coincident and the point-distance

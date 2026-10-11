@@ -1,6 +1,7 @@
-use super::Problem;
-use crate::constraints::{Constraint, Ref, RefRole};
-use crate::Kind;
+use super::geom::{bezier_closest_t, bezier_deriv};
+use super::{Problem, P2};
+use crate::constraints::{Constraint, PointSelector, Ref, RefRole};
+use crate::{Kind, DEG2RAD, MIN_SEMI_AXIS_SQ};
 
 impl Problem<'_> {
     // horizontal (`horizontal=true`) / vertical share structure: the a/b form
@@ -80,8 +81,50 @@ impl Problem<'_> {
         let line_ep = self.params(x, line_idx);
         let line_dir = [line_ep[2] - line_ep[0], line_ep[3] - line_ep[1]];
         let contact = [line_ep[2], line_ep[3]];
-        let rd = self.radius_dir(x, arc_idx, arc_pt, contact);
-        r.push(line_dir[0] * rd[1] - line_dir[1] * rd[0]);
+        // The curve's unit normal at the contact; the line must run along it.
+        let nd = match self.kind_of(arc_idx) {
+            Kind::Spline => self.spline_normal(x, arc_idx, arc_pt, contact),
+            Kind::Ellipse => self.ellipse_normal(x, arc_idx, contact),
+            _ => self.radius_dir(x, arc_idx, arc_pt, contact),
+        };
+        r.push(line_dir[0] * nd[1] - line_dir[1] * nd[0]);
+    }
+
+    /// Unit normal of a spline at the point a normal constraint names: its
+    /// start or end for those selectors, otherwise the curve point closest to
+    /// the contact. A spline has no centre, so reading its first control
+    /// point as one (the circle path) made the line merely pass through it.
+    fn spline_normal(&self, x: &[f64], index: u32, sel: PointSelector, contact: P2) -> P2 {
+        let sp = self.params(x, index);
+        let t = match sel {
+            PointSelector::Start => 0.0,
+            PointSelector::End => 1.0,
+            _ => bezier_closest_t(sp, contact),
+        };
+        let d = bezier_deriv(sp, t);
+        let n = (d[0] * d[0] + d[1] * d[1]).sqrt();
+        if n < 1e-12 {
+            return [0.0, 0.0];
+        }
+        [-d[1] / n, d[0] / n]
+    }
+
+    /// Unit normal of an ellipse at `contact`: the gradient of its conic
+    /// `(u/a)^2 + (v/b)^2`. The line through the centre (the circle path) is
+    /// normal to an ellipse only at its four axis ends.
+    fn ellipse_normal(&self, x: &[f64], index: u32, contact: P2) -> P2 {
+        let ep = self.params(x, index);
+        let theta = ep[4] * DEG2RAD;
+        let (ct, st) = (theta.cos(), theta.sin());
+        let (dx, dy) = (contact[0] - ep[0], contact[1] - ep[1]);
+        let gu = (dx * ct + dy * st) / (ep[2] * ep[2]).max(MIN_SEMI_AXIS_SQ);
+        let gv = (dy * ct - dx * st) / (ep[3] * ep[3]).max(MIN_SEMI_AXIS_SQ);
+        let g = [gu * ct - gv * st, gu * st + gv * ct];
+        let n = (g[0] * g[0] + g[1] * g[1]).sqrt();
+        if n < 1e-12 {
+            return [0.0, 0.0];
+        }
+        [g[0] / n, g[1] / n]
     }
 
     pub(super) fn r_angle(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
