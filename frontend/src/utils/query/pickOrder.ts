@@ -19,8 +19,8 @@ const BODY_PREFIX = 'body_'
  * Resolve an ancestor token to the feature that owns it. Handles the three
  * shapes `ref()` and the query builders emit: a bare `@<featureId>`, the topo
  * fallback `@<featureId>/face/3`, and the slash-joined absolute `@<featureId>/<eid>`.
- * Geom-descriptor tokens (`@gdf|...`), classifiers and builtin planes own no
- * feature and resolve to null. The concatenated `@<featureId><eid>` form is a
+ * Construction UUIDs, classifiers and builtin planes own no feature and
+ * resolve to null. The concatenated `@<featureId><eid>` form is a
  * legacy fallback for tokens persisted before the slash-joined format.
  *
  * Exported for the label resolver (queryLabel) so display text and the pick

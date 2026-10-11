@@ -91,19 +91,6 @@ describe("dead eid ambiguity filter", () => {
     expect(repo._lastTier).toBe("miss")
   })
 
-  it("descriptor-only fallback never returns a dead element", () => {
-    const repo = new Repository()
-    const deadEid = repo.registerAncestor(
-      ["@ex1", "@body1"],
-      { type: "flatface", centroid: [0, 0, 10], normal: [0, 0, 1], sketch_id: "sketch1" },
-    )
-    repo.deleteElement(deadEid)
-
-    const q = makeAncestryQuery(["@gdf|0,0,10|0,0,1", "@X", "@Y"], "flatface")
-    const result = repo.query(q)
-    expect(result).toBeNull()
-    expect(repo._lastTier).toBe("miss")
-  })
 })
 
 /** The orchestration prunes ancestral + elements together, leaving no

@@ -10,6 +10,7 @@ import {
   canonical,
   ref,
   evictAncestryAndRegister,
+  classifiersOfQuery,
 } from './query'
 import type { Repository } from './query'
 import { faceGeometryHash, edgeGeometryHash, vertexGeometryHash } from './geomHash'
@@ -97,12 +98,17 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
  * field a consumer (projection lowering, measurements) might read: circle/arc
  * use `radius`, ellipse needs `a`/`b` (semi-axes) -- omitting those makes a
  * resolved elliptical edge unprojectable (resolve3dGeometry returns null).
+ *
+ * `classifiers` are the ones minted into the edge's query (OCC edge data
+ * carries none of its own); registering [] while the query asked for `cls_*`
+ * left the classifier tier with no evidence on any edge.
  */
 export function edgeAncestryPayload(
   edge: Record<string, unknown>,
   bodyId: string,
   edgeCreatedBy: string,
   idx: number,
+  classifiers: string[] = [],
 ): Record<string, unknown> {
   return {
     type: edge.kind === 'line' ? 'straightedge' : 'edge',
@@ -120,7 +126,7 @@ export function edgeAncestryPayload(
     x_axis: edge.x_axis,
     angle_start: edge.angle_start,
     angle_end: edge.angle_end,
-    classifiers: (edge.classifiers as string[]) ?? [],
+    classifiers,
   }
 }
 
@@ -152,7 +158,11 @@ function _registerBrepEdgeAncestry(
     } else if (body.profile_queries.length) {
       ancestorIds.push(...body.profile_queries)
     }
-    const payload = { ...edgeAncestryPayload(edge, body.id, edgeCreatedBy, idx), ...(uuid !== null ? { uuid } : {}) }
+    const classifiers = classifiersOfQuery(edgeQueries[idx])
+    const payload = {
+      ...edgeAncestryPayload(edge, body.id, edgeCreatedBy, idx, classifiers),
+      ...(uuid !== null ? { uuid } : {}),
+    }
     const indexTag = emitWire(absolute(body.id, `edge${idx}`))
     evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }

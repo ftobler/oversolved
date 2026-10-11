@@ -137,7 +137,7 @@
     "label": "fillet 2",
     "fillet": {
       "edges": [
-        "?17,19,1e,2a,7;@gedge_bcf1c5337bbcaab7@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@ekISVf71mWteTf7QD6J02cDH/wvbsXsxOCIb6FYgP@cls_zp:edge"
+        "?19,1e,2a,7;@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@ekISVf71mWteTf7QD6J02cDH/wvbsXsxOCIb6FYgP@cls_zp:edge"
       ],
       "radius": 0.3
     }
@@ -148,7 +148,7 @@
     "label": "chamfer 2",
     "chamfer": {
       "edges": [
-        "?17,19,1e,7;@gedge_156495784f369f83@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@cls_zp:straightedge",
+        "?19,1e,7;@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@cls_zp:straightedge",
         "?15,19,1e,2a,7;@u|e_a2de177f1b9e2beb@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@ekISVf71mWteTf7QD6J02cDH/MKn327ovt_SB3N3A@cls_zp:straightedge"
       ],
       "distance": 0.1,
@@ -162,7 +162,7 @@
     "label": "fillet 2",
     "fillet": {
       "edges": [
-        "?17,19,1e;@gedge_68cec626671cb772@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T:edge",
+        "?19,1e;@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T:edge",
         "?15,19,1e,2a,2a,7;@u|e_d45c7dd832026dcf@XQve4bZ3hUdqFK-heNCKkm0T@body_XQve4bZ3hUdqFK-heNCKkm0T@ekISVf71mWteTf7QD6J02cDH/O3t5KfPmOkyb45yu@ekISVf71mWteTf7QD6J02cDH/wvbsXsxOCIb6FYgP@cls_yn:straightedge"
       ],
       "radius": 0.2

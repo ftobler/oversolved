@@ -42,7 +42,7 @@ function extractFaceTuples(result: BuildResponse): { descriptor: string; kind: s
     const fqs = (raw.mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     for (const fq of fqs) {
       const [ids, typeRestriction] = parseAncestry(fq)
-      const desc = findDescriptorToken(ids, '@u|') ?? findDescriptorToken(ids, '@gdf|')
+      const desc = findDescriptorToken(ids, '@u|')
       if (desc && raw.created_by) {
         tuples.push({ descriptor: desc, kind: typeRestriction || 'face', created_by: raw.created_by as string })
       }
@@ -57,7 +57,7 @@ function extractEdgeTuples(result: BuildResponse): { descriptor: string; kind: s
     const eqs = (raw.edge_queries as string[] | undefined) ?? []
     for (const eq of eqs) {
       const [ids, typeRestriction] = parseAncestry(eq)
-      const desc = findDescriptorToken(ids, '@u|') ?? findDescriptorToken(ids, '@gde|')
+      const desc = findDescriptorToken(ids, '@u|')
       if (desc && raw.created_by) {
         tuples.push({ descriptor: desc, kind: typeRestriction || 'edge', created_by: raw.created_by as string })
       }
@@ -72,7 +72,7 @@ function extractVertexTuples(result: BuildResponse): { descriptor: string; kind:
     const vqs = (raw.vertex_queries as string[] | undefined) ?? []
     for (const vq of vqs) {
       const [ids] = parseAncestry(vq)
-      const desc = findDescriptorToken(ids, '@u|') ?? findDescriptorToken(ids, '@gdv|')
+      const desc = findDescriptorToken(ids, '@u|')
       if (desc && raw.created_by) {
         tuples.push({ descriptor: desc, kind: 'vertex', created_by: raw.created_by as string })
       }

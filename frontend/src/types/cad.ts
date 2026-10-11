@@ -405,8 +405,9 @@ export interface Transform3D {
  * the assembly built-ins carry none and resolve exactly as they do today.
  */
 export interface MateAnchorDescriptor {
-  // The element's construction token (@u|<uuid>) when it has one, else its
-  // positional descriptor (@gdf|/@gde|/@gdv|). The strongest cross-edit key.
+  // The element's construction token (@u|<uuid>), the strongest cross-edit
+  // key. Bundles no longer emit positional descriptors, so a ref captured
+  // with one never matches here and falls to the positional tier-2 match.
   geom_hash: string
   // AnchorKind as a string so this base type stays free of a kernel import;
   // the solve already refuses an unknown anchor kind by name.

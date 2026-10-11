@@ -19,6 +19,10 @@
 // build (filletCornerNamingReal.test.ts covers one). Only an unhealable result
 // fails the feature.
 //
+// The fixture's three legacy `@gedge_` picks had that token dropped when
+// geometry hashes stopped being query tokens; the fillet's edge index never
+// matched on them, so the remaining lineage names the same edges.
+//
 // Skips when OCC.js or the Rust solver is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'

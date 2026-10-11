@@ -76,9 +76,7 @@ export function resolveFaceIndexViaHash(
   // the stable construction UUID, and the repo resolves the UUID to the
   // CURRENT face index. The query token must be the wire `@u|<uuid>` form; a
   // bare `u_...` string is in no ancestral set, so the resolver never matches
-  // it. The old geometry-hash tier (`@gface_...`) is gone: the resolver
-  // filters geom-hash tokens out of the ancestral tiers entirely, so a query
-  // naming only a geom-hash could never resolve either.
+  // it. Geometry hashes are no resolution tier at all.
   if (faceNames && geomHash in faceNames) {
     const uuid = faceNames[geomHash]
     try {

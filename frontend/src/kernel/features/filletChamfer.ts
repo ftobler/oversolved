@@ -319,10 +319,10 @@ export function resolveEdgesWithIndex(
 }
 
 /**
- * Stable-ancestry tier: resolve a stored query whose gedge_ hash no longer
- * matches any current edge (the edge moved when an upstream dimension changed)
- * by its geometry-independent tokens -- creating feature, body, sketch-entity
- * lineage -- with classifiers narrowing ancestral siblings (e.g. the two seam
+ * Stable-ancestry tier: resolve a stored query that no longer exactly matches
+ * any current edge query (its uuid died, or an upstream edit changed its
+ * classifiers) by its geometry-independent tokens -- creating feature, body,
+ * sketch-entity lineage -- with classifiers narrowing ancestral siblings (e.g. the two seam
  * edges of overlapping extruded circles, distinguished only by @cls_yp/@cls_yn).
  * An ambiguous match stays unresolved: fail safe over filleting the wrong edge.
  */

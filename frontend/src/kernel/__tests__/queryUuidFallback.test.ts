@@ -2,7 +2,6 @@
 
 import { describe, it, expect } from "vitest"
 import {
-  isGeomHashId,
   makeAncestryQuery,
   ancestry,
   constructionUuidToken,
@@ -11,16 +10,11 @@ import {
 } from "../query"
 import { type Payload, makeFacePayload } from "../queryTestUtils"
 
-describe("UUID fallback (two-tier ancestry resolution)", () => {
-  it("isGeomHashId detects prefixes", () => {
-    expect(isGeomHashId("@gface_abc123")).toBe(true)
-    expect(isGeomHashId("@gedge_abc123")).toBe(true)
-    expect(isGeomHashId("@gvertex_abc123")).toBe(true)
-    expect(isGeomHashId("@ex1")).toBe(false)
-    expect(isGeomHashId("@body_ex1")).toBe(false)
-    expect(isGeomHashId("@body_ex1/face0")).toBe(false)
-  })
+// The uuids these tests register (gface_abc, gedge_xyz, gvertex_def) must live
+// in byUuid only, never as a tag of the ancestral key.
+const UUID_IN_KEY = /g(face|edge|vertex)_/
 
+describe("UUID fallback (two-tier ancestry resolution)", () => {
   // Hash in byUuid does not affect pure-ancestry queries.
   it("uuid in byUuid does not affect pure-ancestry queries", () => {
     const repo = new Repository()
@@ -49,7 +43,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
 
     for (const entry of repo.ancestral.values()) {
       for (const tag of entry.set) {
-        expect(isGeomHashId(tag)).toBe(false)
+        expect(tag).not.toMatch(UUID_IN_KEY)
       }
     }
   })
@@ -128,7 +122,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
 
     for (const entry of repo.ancestral.values()) {
       for (const tag of entry.set) {
-        expect(isGeomHashId(tag)).toBe(false)
+        expect(tag).not.toMatch(UUID_IN_KEY)
       }
     }
   })
@@ -147,7 +141,7 @@ describe("UUID fallback (two-tier ancestry resolution)", () => {
 
     for (const entry of repo.ancestral.values()) {
       for (const tag of entry.set) {
-        expect(isGeomHashId(tag)).toBe(false)
+        expect(tag).not.toMatch(UUID_IN_KEY)
       }
     }
   })

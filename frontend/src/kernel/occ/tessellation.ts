@@ -255,7 +255,7 @@ export function solidToMesh(
       // `extractBodyAnchors` zips the two by index; a shorter `face_queries`
       // would shift every anchor past the gap onto the WRONG face's geometry
       // instead of just skipping the one face with no query. An empty string
-      // is a safe placeholder: `findDescriptorInQuery('', ...)` returns null,
+      // is a safe placeholder: `uuidTokenOfQuery('')` returns null,
       // so that face is (correctly) skipped, same as it would have been.
       faceQueries.push(query ?? '')
     }

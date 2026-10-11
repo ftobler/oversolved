@@ -6,9 +6,8 @@
 //      two DISTINCT ancestor sets into one ancestral key. It must fail loud in
 //      test mode instead of merging.
 //   2. gc() compared every @-tag to feature ids, so construction uuids (@u|),
-//      classifiers (@cls_*), body tags (@body_*), geom-hash refs (@gface_ etc.)
-//      and legacy descriptors (@gdf| etc.) counted as feature refs. Tags are
-//      now classified before they are treated as feature references.
+//      classifiers (@cls_*) and body tags (@body_*) counted as feature refs.
+//      Tags are now classified before they are treated as feature references.
 //   3. builder.ts once re-implemented the canonical sorted-NUL-join inline in a
 //      face-ancestry dedup-skip (since deleted). It must never do so again: the
 //      source-scan below pins that no inline NUL-join returns, and that the
@@ -106,13 +105,6 @@ describe("gc tag classification", () => {
       "@cls_zn",
       "@body_b",
       "@body_b/face0",
-      "@gface_abc123",
-      "@gedge_abc123",
-      "@gvertex_abc123",
-      "@gnormal_abc123",
-      "@gdf|0,0,0|0,0,1",
-      "@gde|line|0,0,0|1,0,0|1",
-      "@gdv|0,0,0",
     ]
     const feature = ["@extrude1", "@sketch1", "@ex1", "@import_step1", "@sk1/line1"]
     for (const t of nonFeature) expect(isFeatureRefTag(t)).toBe(false)

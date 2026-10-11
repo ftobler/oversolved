@@ -8,6 +8,8 @@ import {
 import { resolve3dGeometry, projectTo2d } from '../features/projectionLowering'
 import type { BuildState, FeatureCheckpoint, Body } from '../types3d'
 import { makeDeps } from '../builderTestUtils'
+import { registerBodyBrepFromMeta } from '../builderAncestry'
+import { Repository, makeAncestryQuery, constructionUuidToken, classifiersOfQuery } from '../query'
 
 describe('edgeAncestryPayload (projection round-trip)', () => {
   const XY = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0] }
@@ -39,6 +41,68 @@ describe('edgeAncestryPayload (projection round-trip)', () => {
     )
     expect(payload.radius).toBe(5)
     expect(payload.type).toBe('edge')
+  })
+})
+
+describe('B-rep edge registration carries the classifiers of its own query', () => {
+  const body = {
+    id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: null, sketch_id: '',
+    brep_diff: null, profile_queries: [],
+  } as unknown as Body
+  const edges = [
+    { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
+    { kind: 'line', start: [0, 0, 5], end: [10, 0, 5] },
+  ]
+
+  it('registers the cls_* set minted into the edge query, not []', () => {
+    // The registered payload used to be [] for every OCC edge while the query
+    // carried @cls_* tokens, so the classifier tier had no evidence on edges.
+    const repo = new Repository()
+    registerBodyBrepFromMeta(repo, body, {
+      edges,
+      edge_queries: [
+        makeAncestryQuery(['@ex1', '@body_ex1', '@cls_zn'], 'straightedge'),
+        makeAncestryQuery(['@ex1', '@body_ex1', '@cls_zp'], 'straightedge'),
+      ],
+    })
+    const byIndex = (i: number) => [...repo.elements.values()].find(
+      (e) => (e as { edge_index?: number }).edge_index === i,
+    ) as { classifiers: string[] }
+    expect(byIndex(0).classifiers).toEqual(['cls_zn'])
+    expect(byIndex(1).classifiers).toEqual(['cls_zp'])
+
+    // ... so the two lineage-sharing edges are told apart by their classifier.
+    const q = makeAncestryQuery(['@ex1', '@body_ex1', '@cls_zp'], 'straightedge')
+    expect((repo.query(q) as { edge_index: number }).edge_index).toBe(1)
+  })
+
+  it('a dead-uuid edge query whose classifiers contradict every sibling misses', () => {
+    // With real evidence on edges, a stale pick no longer resolves a sibling as
+    // "no evidence": it goes red instead of actuating a different edge.
+    const repo = new Repository()
+    registerBodyBrepFromMeta(repo, body, {
+      edges,
+      edge_queries: [
+        makeAncestryQuery(['@ex1', '@body_ex1', '@cls_zn'], 'straightedge'),
+        makeAncestryQuery(['@ex1', '@body_ex1', '@cls_zp'], 'straightedge'),
+      ],
+    })
+    const stale = makeAncestryQuery([constructionUuidToken('e_dead'), '@ex1', '@body_ex1', '@cls_xp'], 'straightedge')
+    expect(repo.query(stale)).toBeNull()
+    expect(repo._lastTier).toBe('miss')
+  })
+})
+
+describe('classifiersOfQuery', () => {
+  it('reads the bare classifier names of an ancestry query', () => {
+    expect(classifiersOfQuery(makeAncestryQuery(['@u|e_1', '@ex1', '@cls_xp', '@cls_yn'], 'edge'))).toEqual(['cls_xp', 'cls_yn'])
+  })
+
+  it('is [] for an empty, non-ancestry or malformed string, never a throw', () => {
+    expect(classifiersOfQuery('')).toEqual([])
+    expect(classifiersOfQuery('@ex1/face0')).toEqual([])
+    expect(classifiersOfQuery('?zz;@ex1')).toEqual([])
+    expect(classifiersOfQuery('?9;@ex1')).toEqual([])
   })
 })
 

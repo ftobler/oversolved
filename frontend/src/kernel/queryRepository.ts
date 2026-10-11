@@ -2,22 +2,12 @@
 // resolver, coercion, gc and the body-scoped eviction helpers. Split out of
 // query.ts; the query.ts barrel re-exports the public surface unchanged.
 
-import {
-  DEFAULT_DESCRIPTOR_MATCH,
-  descriptorDistance,
-  descriptorOfElement,
-  isGeomDescriptorId,
-  narrowByDescriptor,
-  parseGeomDescriptorId,
-  type GeomDescriptor,
-} from "./geomDescriptor"
 import { failLoud } from '@/utils/invariants'
 import { isDevOrTestBuild } from "./isDevBuild"
 import {
   isClassifierId,
-  isGeomHashId,
   isConstructionUuidId,
-  parseConstructionUuidId,
+  partitionAncestryIds,
   parseAncestry,
   parseAbsolute,
   localFromString,
@@ -78,22 +68,18 @@ export function canonical(ids: Iterable<string>): string {
 /**
  * True when a full ancestor token (`@<id>`) is a feature reference. gc() keys
  * on feature activity, so only feature refs pin an entry to a feature;
- * construction uuid tokens (`@u|`), classifiers (`@cls_*`), body tags
- * (`@body_*`), geom-hash refs (`@gface_`/`@gedge_`/`@gvertex_`/`@gnormal_`)
- * and legacy descriptors (`@gdf|`/`@gde|`/`@gdv|`) are entity/geometry
- * identity, never feature references: comparing them to feature ids would
- * wrongly evict an entry whose only @-tags are non-feature (e.g. a
- * uuid+body producer) while its body is still registered. Sketch-entity
- * profile-query ids (`@sk1/line1`, `@sk9/r1`) and the test-fixture family
- * `@profile_<fid>` are intentionally NOT excluded: they are never feature ids
- * and always co-occur with a real `@<featureId>` ref, so they cannot pin an
- * entry or wrongly evict one.
+ * construction uuid tokens (`@u|`), classifiers (`@cls_*`) and body tags
+ * (`@body_*`) are entity identity, never feature references: comparing them
+ * to feature ids would wrongly evict an entry whose only @-tags are
+ * non-feature (e.g. a uuid+body producer) while its body is still
+ * registered. Sketch-entity profile-query ids (`@sk1/line1`, `@sk9/r1`) and
+ * the test-fixture family `@profile_<fid>` are intentionally NOT excluded:
+ * they are never feature ids and always co-occur with a real `@<featureId>`
+ * ref, so they cannot pin an entry or wrongly evict one.
  */
 export function isFeatureRefTag(tag: string): boolean {
   if (isConstructionUuidId(tag)) return false
   if (isClassifierId(tag)) return false
-  if (isGeomHashId(tag)) return false
-  if (isGeomDescriptorId(tag)) return false
   return !tag.startsWith("@body_")
 }
 
@@ -111,13 +97,10 @@ function genId(): string {
  *  corpus tests assert the tier so a query silently falling back from UUID to
  *  a weaker tier is caught, not masked. Not persisted, not part of any result. */
 export type ResolveTier =
-  | "uuid"           // primary: construction UUID exact match
-  | "ancestral"      // ancestor-set subset match (optionally classifier/descriptor narrowed)
+  | "uuid"               // primary: construction UUID exact match
+  | "ancestral"          // ancestor-set subset match (optionally classifier narrowed)
   | "ancestral-partial"  // relaxed superset fallback when the subset match was empty
-  | "descriptor"     // legacy-only: @gd*| geometry-descriptor fallback for queries
-                     // saved before faces/edges/vertices earned UUIDs; current
-                     // producers emit no descriptor tokens
-  | "miss"           // nothing resolved
+  | "miss"               // nothing resolved
 
 export class Repository {
   elements = new Map<string, unknown>()
@@ -255,18 +238,14 @@ export class Repository {
    *  behind the `@cls_*` wire tokens), scoping the veto to REAL evidence.
    *  Classifiers are world-frame best-effort and the `@u|` uuid tier is the
    *  primary identity (see geomHash.ts), so an element with NO classifiers
-   *  carries no evidence and can never contradict the wanted set - it must not
-   *  be vetoed, or persisted pre-uuid edge picks (whose registered payloads
-   *  collapse to [] for OCC-B-rep edges, see the knowledgebase follow-up) would
-   *  regress. Priority:
+   *  carries no evidence and can never contradict the wanted set: a body
+   *  rotated off the world axes legitimately collapses to none. Priority:
    *    1. candidates whose payload carries every wanted token (a positive match
    *       outranks no-evidence: an empty-payload sibling must not dilute the
    *       narrowing into a false ambiguity);
    *    2. candidates whose payload carries SOME wanted token (a partial match is
    *       positive evidence, not a contradiction: a wanted set is a snapshot of
-   *       an earlier geometry and a moved face can legitimately lose a token, so
-   *       vetoing it would break the persisted plane-on-face rescue that the
-   *       legacy descriptor tier exists for, see pickIdentityCorpus);
+   *       an earlier geometry and a moved face can legitimately lose a token);
    *    3. else the no-evidence candidates (the only non-contradicted ones), so
    *       resolution proceeds exactly as it did before this feature, except in
    *       a MIXED set where a no-evidence sibling resolves (with the full set
@@ -274,8 +253,7 @@ export class Repository {
    *       fix;
    *    4. else [] - every candidate carried evidence with NO wanted token in
    *       common (a pure contradiction). The resolver turns it into a miss and
-   *       gates the legacy descriptor-only fallback off, queryAll into [] -
-   *       never the un-narrowed set.
+   *       queryAll into [], never the un-narrowed set.
    *  Shared by the subset and ancestral-partial tiers. */
   private narrowByClassifier(candidateIds: string[], classifierIds: string[]): string[] {
     const wanted = new Set(classifierIds.map(c => c.slice(1)))
@@ -306,6 +284,19 @@ export class Repository {
     if (partial.length) return partial
     if (noEvidence.length) return noEvidence
     return []
+  }
+
+  /** The classifier pool: the candidates of the requested type (subtypes
+   *  included) when there are any, else all of them. A wanted `cls_*` set is a
+   *  snapshot of one element of that type, so a face's or vertex's classifiers
+   *  are not evidence about an edge; pooled, a matching face outranked the
+   *  edge itself and the query then coerced across every sibling edge. With no
+   *  type-compatible candidate the whole set is kept, so the coerce path still
+   *  sees the veto (the M1 case). */
+  private typeCompatible(candidateIds: string[], typeRestriction: string | null): string[] {
+    if (typeRestriction === null) return candidateIds
+    const typed = candidateIds.filter(eid => isSubtype(objType(this.elements.get(eid)), typeRestriction))
+    return typed.length ? typed : candidateIds
   }
 
   /** Drop an ancestral entry, keeping `byAncestorId` in step. Does not touch the
@@ -373,8 +364,8 @@ export class Repository {
    * active feature; a feature's elements die when the feature leaves the order.
    * Body ownership is NOT a gc concern: bodies are re-registered and evicted by
    * index-tag registration (`evictAncestryAndRegister` / `clearBodyAncestry`,
-   * see index-shrink-ghost-eviction), so body tags and entity/geometry identity
-   * tags (`@u|`, `@cls_*`, `@gface_*`, `@gd*|`, `@body_*`) are classified away
+   * see index-shrink-ghost-eviction), so body tags and entity identity tags
+   * (`@u|`, `@cls_*`, `@body_*`) are classified away
    * before anything is compared to feature ids. Tagless entries (builtin
    * planes) always live.
    */
@@ -542,17 +533,7 @@ export class Repository {
   ): unknown {
     this._lastTier = "miss"
     const orderFilter = this.orderFilter(currentFeatureId)
-
-    const classifierIds = ids.filter(isClassifierId)
-    const descriptorIds = ids.filter(isGeomDescriptorId)
-    const uuidIds = ids.filter(isConstructionUuidId)
-    const nonHashIds = ids.filter(
-      i =>
-        !isGeomHashId(i) &&
-        !isClassifierId(i) &&
-        !isGeomDescriptorId(i) &&
-        !isConstructionUuidId(i),
-    )
+    const { uuids: uuidTokens, classifiers: classifierIds, lineage } = partitionAncestryIds(ids)
 
     // Primary tier: construction UUID exact match.
     //
@@ -570,9 +551,6 @@ export class Repository {
     // the query falls through to the weaker tiers, exactly as queryAll pins in
     // resolveAllAncestryIds. That fallthrough is safe because the weaker tiers
     // order-filter too, so they still cannot resolve the hidden element.
-    const uuidTokens = [...new Set(
-      uuidIds.map(parseConstructionUuidId).filter((u): u is string => u !== null),
-    )]
     if (uuidTokens.length > 1) {
       throw new AmbiguousQueryError(
         `Query names ${uuidTokens.length} distinct construction UUIDs; refusing to silently pick one`,
@@ -620,15 +598,13 @@ export class Repository {
     // Every weaker tier sees the order guard plus the foreign-uuid exclusion.
     const visible = this.weakerTierFilter(orderFilter, uuidTokens)
 
+    // A query with no lineage names nothing the ancestral tiers can match on
+    // (the empty set is a subset of every entry).
+    if (!lineage.length) return null
+    const querySet = new Set(lineage)
     let candidateIds: string[] = []
-    let descriptorFallback = false
-    let classifierVetoFired = false
-    let querySet = new Set<string>()
-    if (nonHashIds.length) {
-      querySet = new Set(nonHashIds)
-      for (const entry of this.entriesContainingAll(querySet)) {
-        candidateIds.push(...this.liveEntryEids(entry))
-      }
+    for (const entry of this.entriesContainingAll(querySet)) {
+      candidateIds.push(...this.liveEntryEids(entry))
     }
     candidateIds = visible(candidateIds)
 
@@ -639,30 +615,20 @@ export class Repository {
       // supertype and return early (the M1 bug: `:face` over a lone flatface
       // returned the contradicted element without ever consulting the wanted
       // classifier). The veto is scoped to REAL evidence (narrowByClassifier):
-      // an empty payload is no evidence and never vetoes, so a lone edge whose
-      // registered payload collapses to [] (the pre-existing solidToEdges vs
-      // edgeAncestryPayload asymmetry) still resolves as it did before, and a
-      // candidate sharing ANY wanted token is positive evidence, not a
-      // contradiction (a wanted set snapshots an earlier geometry - a moved face
-      // can lose a token, and the legacy descriptor tier exists to rescue that
-      // persisted query). Only a PURE contradiction (every candidate's non-empty
-      // payload has NO wanted token in common) vetoes: a lone candidate is
-      // refused as a miss, and a multi-candidate set is vetoed as a whole -
-      // candidateIds empties exactly like queryAll's unconditional assignment,
-      // so the descriptor tier and the descriptor-only fallback cannot shrink
-      // the contradictory set to a wrong winner. Narrowing here works on repo
-      // eids only, so coerceType's upward `:solid` body-store object (not an
-      // eid, no payload) is naturally never classified - a non-contradicted
-      // upward coercion still resolves to the body, a contradicted one misses.
-      const narrowed = this.narrowByClassifier(candidateIds, classifierIds)
-      if (narrowed.length) {
-        candidateIds = narrowed
-      } else if (candidateIds.length === 1) {
-        return null
-      } else {
-        candidateIds = []
-        classifierVetoFired = true
-      }
+      // an empty payload is no evidence and never vetoes, and a candidate
+      // sharing ANY wanted token is positive evidence, not a contradiction (a
+      // wanted set snapshots an earlier geometry; a moved face can lose a
+      // token). Only a PURE contradiction (every candidate's non-empty payload
+      // has NO wanted token in common) vetoes, and a veto is a miss whether the
+      // set held one candidate or several: no weaker tier may then recover a
+      // different element in place of the refused set (queryAll yields []).
+      // Narrowing works on repo eids only, so coerceType's upward `:solid`
+      // body-store object (not an eid, no payload) is never classified: a
+      // non-contradicted upward coercion still resolves to the body.
+      candidateIds = this.narrowByClassifier(
+        this.typeCompatible(candidateIds, typeRestriction), classifierIds,
+      )
+      if (!candidateIds.length) return null
     }
 
     if (typeRestriction !== null && candidateIds.length) {
@@ -692,22 +658,7 @@ export class Repository {
       }
     }
 
-    if (candidateIds.length > 1 && descriptorIds.length) {
-      // Legacy descriptor tier: resolves @gd*| tokens in queries saved before
-      // the producers stopped emitting them. Current code mints no descriptor
-      // tokens, so this only fires for old persisted queries.
-      for (const dTok of descriptorIds) {
-        if (candidateIds.length <= 1) break
-        const qd = parseGeomDescriptorId(dTok)
-        if (qd === null) continue
-        const pairs = candidateIds.map(
-          eid => [eid, descriptorOfElement(this.elements.get(eid))] as [string, GeomDescriptor | null],
-        )
-        candidateIds = narrowByDescriptor(qd, pairs)
-      }
-    }
-
-    if (!candidateIds.length && nonHashIds.length) {
+    if (!candidateIds.length) {
       let partialCandidates = this.partialEntryEids(querySet)
       partialCandidates = visible([...new Set(partialCandidates)])
       if (typeRestriction !== null) {
@@ -733,33 +684,9 @@ export class Repository {
       }
     }
 
-    if (!candidateIds.length && descriptorIds.length && !classifierVetoFired) {
-      // Descriptor-only fallback: fires whenever the ancestry tiers produced no
-      // candidate, i.e. when the query had no non-special ancestry tokens, or
-      // they were present but failed to match or coerce (candidateIds is empty).
-      // Match TIGHT only. A fired classifier veto must gate it off too: the
-      // fallback scans EVERY element with no classifier re-check, so after a
-      // total veto it would otherwise tight-match a contradictory element that
-      // the partial tier already refused (the veto is a veto, matching
-      // queryAll's []).
-      const qd = descriptorIds.map(parseGeomDescriptorId).find(d => d !== null) ?? null
-      if (qd !== null) {
-        const fallbackIds: string[] = []
-        for (const [eid, el] of this.elements) {
-          if (typeRestriction !== null && objType(el) !== typeRestriction) continue
-          const cd = descriptorOfElement(el)
-          if (cd === null) continue
-          const dist = descriptorDistance(qd, cd)
-          if (dist !== null && dist <= DEFAULT_DESCRIPTOR_MATCH.tightTol) fallbackIds.push(eid)
-        }
-        candidateIds = visible(fallbackIds)
-        if (candidateIds.length) descriptorFallback = true
-      }
-    }
-
     // Resolve can only happen on a live element: every scan above filters by
     // liveness, but re-check here so the tier label never claims a resolve
-    // ("ancestral"/"descriptor") while returning null for a dead winner.
+    // while returning null for a dead winner.
     candidateIds = candidateIds.filter(eid => this.elements.has(eid))
 
     if (!candidateIds.length) return null
@@ -768,7 +695,7 @@ export class Repository {
         `Query matched ${candidateIds.length} elements: ${JSON.stringify(candidateIds)}`,
       )
     }
-    this._lastTier = descriptorFallback ? "descriptor" : "ancestral"
+    this._lastTier = "ancestral"
     return refuseUuidSwap(this.elements.get(candidateIds[0]) ?? null)
   }
 
@@ -798,14 +725,14 @@ export class Repository {
   /** Multi-result analogue of resolveAncestryIds for queryAll/queryAllTyped.
    *
    *  Alignment decisions vs the single-result resolver (queryall-special-token-trap):
-   *  - Guard: a query whose ids are ALL special tokens (uuid/classifier/geom-hash/
-   *    descriptor) never enumerates the whole repo. A uuid-only query returns that
-   *    uuid's bucket; every other special-only query returns [].
+   *  - Guard: a query with no lineage (only uuid/classifier tokens) never
+   *    enumerates the whole repo. A uuid-only query returns that uuid's bucket;
+   *    a classifier-only query returns [].
    *  - UUID tier first and exclusive: a query naming a live uuid returns exactly
-   *    that bucket's live elements (order- and type-filtered). Classifiers and
-   *    descriptors never narrow the uuid tier, exactly as the resolver's uuid tier
-   *    ignores them. A live uuid element that the type restriction excludes yields
-   *    [] with NO weaker-tier fallback - the multi-result shape of refuseUuidSwap,
+   *    that bucket's live elements (order- and type-filtered). Classifiers never
+   *    narrow the uuid tier, exactly as the resolver's uuid tier ignores them.
+   *    A live uuid element that the type restriction excludes yields [] with
+   *    NO weaker-tier fallback - the multi-result shape of refuseUuidSwap,
    *    softened because an enumeration has no single wrong element to swap to. A
    *    dead or order-hidden uuid bucket falls through to the ancestral tier, the
    *    resolver's "continue", with the same foreign-uuid exclusion
@@ -827,32 +754,15 @@ export class Repository {
    *    type restriction as in the resolver; a total veto
    *    (narrowByClassifier -> []) yields [] - the multi-result shape of the
    *    resolver's classifier miss/ambiguity, never the un-narrowed set.
-   *  - The ancestral-partial and descriptor-only global fallbacks are not ported:
-   *    queryAll's contract is superset enumeration, not recovery of a single
-   *    element. Legacy descriptor tokens still narrow a multi-candidate ancestral
-   *    set exactly as the resolver's descriptor tier does. */
+   *  - The ancestral-partial fallback is not ported: queryAll's contract is
+   *    superset enumeration, not recovery of a single element. */
   private resolveAllAncestryIds(
     ids: string[],
     typeRestriction: string | null,
     orderFilter: (eids: string[]) => string[],
     bodyStore: Record<string, unknown> | null,
   ): unknown[] {
-    const classifierIds = ids.filter(isClassifierId)
-    const descriptorIds = ids.filter(isGeomDescriptorId)
-    const uuidIds = ids.filter(isConstructionUuidId)
-    const nonHashIds = ids.filter(
-      i =>
-        !isGeomHashId(i) &&
-        !isClassifierId(i) &&
-        !isGeomDescriptorId(i) &&
-        !isConstructionUuidId(i),
-    )
-
-    const uuidTokens = [
-      ...new Set(
-        uuidIds.map(parseConstructionUuidId).filter((u): u is string => u !== null),
-      ),
-    ]
+    const { uuids: uuidTokens, classifiers: classifierIds, lineage } = partitionAncestryIds(ids)
     if (uuidTokens.length) {
       const liveBucket: string[] = []
       const seen = new Set<string>()
@@ -884,16 +794,16 @@ export class Repository {
       }
     }
 
-    // Guard: no non-special ids means the query set is empty; subset({}, set) is
-    // trivially true for every entry, so without this check a classifier/hash-only
+    // Guard: no lineage means the query set is empty; subset({}, set) is
+    // trivially true for every entry, so without this check a classifier-only
     // query would enumerate the whole repo (the original trap).
-    if (!nonHashIds.length) {
+    if (!lineage.length) {
       this._lastTier = "miss"
       return []
     }
 
     const visible = this.weakerTierFilter(orderFilter, uuidTokens)
-    const querySet = new Set(nonHashIds)
+    const querySet = new Set(lineage)
     let candidateIds: string[] = []
     for (const entry of this.entriesContainingAll(querySet)) {
       candidateIds.push(...this.liveEntryEids(entry))
@@ -904,7 +814,9 @@ export class Repository {
     // branch returns early, so narrowing after it let a contradicted candidate
     // coerce (e.g. upward to its solid) and enumerate while query() missed.
     if (classifierIds.length && candidateIds.length) {
-      candidateIds = this.narrowByClassifier(candidateIds, classifierIds)
+      candidateIds = this.narrowByClassifier(
+        this.typeCompatible(candidateIds, typeRestriction), classifierIds,
+      )
     }
 
     if (typeRestriction !== null && candidateIds.length) {
@@ -930,18 +842,6 @@ export class Repository {
           return coercedResults
         }
         candidateIds = []
-      }
-    }
-
-    if (candidateIds.length > 1 && descriptorIds.length) {
-      for (const dTok of descriptorIds) {
-        if (candidateIds.length <= 1) break
-        const qd = parseGeomDescriptorId(dTok)
-        if (qd === null) continue
-        const pairs = candidateIds.map(
-          eid => [eid, descriptorOfElement(this.elements.get(eid))] as [string, GeomDescriptor | null],
-        )
-        candidateIds = narrowByDescriptor(qd, pairs)
       }
     }
 

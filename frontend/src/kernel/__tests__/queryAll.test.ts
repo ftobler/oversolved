@@ -92,11 +92,10 @@ describe("queryAll", () => {
     expect(results[0].tag).toBe("u_ele")
   })
 
-  it("classifier-only and geom-hash-only queries return []", () => {
+  it("a classifier-only query returns []", () => {
     const repo = new Repository()
     repo.registerAncestor(["@feat1"], { type: "flatface", classifiers: ["cls_zp"] })
     expect(repo.queryAll(makeAncestryQuery(["@cls_zp"]))).toEqual([])
-    expect(repo.queryAll(makeAncestryQuery(["@gface_abc"]))).toEqual([])
   })
 
   it("type restriction matches subtypes (face finds flatfaces)", () => {
@@ -267,14 +266,6 @@ describe("queryAll", () => {
       "sk1",
     ) as Record<string, unknown>[]
     expect(results.map(r => r.tag)).toEqual(["a"])
-  })
-
-  it("descriptor-only query returns []", () => {
-    // A legacy @gd*| token carries no ancestral ids, so the nonHashIds guard
-    // fires exactly like the classifier/hash-only cases.
-    const repo = new Repository()
-    repo.registerAncestor(["@feat1"], { type: "flatface", tag: "ff" })
-    expect(repo.queryAll(makeAncestryQuery(["@gdf|0,0,0|0,0,1"]))).toEqual([])
   })
 
   it("fails loud on upward :solid coercion with no body store", () => {

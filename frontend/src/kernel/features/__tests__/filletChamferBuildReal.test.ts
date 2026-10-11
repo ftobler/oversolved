@@ -457,7 +457,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
         // Ignore the construction UUID too: it is what distinguishes the sibling
         // edges directly now, so two ancestral siblings share this reduced
         // signature and the classifier/UUID tier picks the right one below.
-        ids.filter((i) => !i.startsWith('@gde|') && !i.startsWith('@cls_') && !i.startsWith('@u|')),
+        ids.filter((i) => !i.startsWith('@cls_') && !i.startsWith('@u|')),
         tr,
       )
     }

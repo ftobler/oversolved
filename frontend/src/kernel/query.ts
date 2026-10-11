@@ -26,7 +26,8 @@ export {
   parseAncestry,
   makeAncestryQuery,
   isClassifierId,
-  isGeomHashId,
+  classifiersOfQuery,
+  partitionAncestryIds,
   isConstructionUuidId,
   constructionUuidToken,
   parseConstructionUuidId,
@@ -40,6 +41,7 @@ export {
   getCurrentFeatureId,
 } from './queryRepository'
 export type { ResolveTier } from './queryRepository'
+export type { AncestryTokens } from './queryWire'
 export { AmbiguousQueryError } from './queryCoerce'
 export {
   initGlobalRepo,

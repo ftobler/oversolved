@@ -1,8 +1,7 @@
 // Guard, fallback and self-heal paths of the ancestry resolver that the
 // corpus/round-trip tests do not reach: the coercion scan's rejection rules,
-// the descriptor-only fallback, the legacy descriptor tier, the reverse-index
-// rot self-heal, and the non-object element hardening. Each asserts the
-// concrete query outcome, not just that a helper returned.
+// the reverse-index rot self-heal, and the non-object element hardening. Each
+// asserts the concrete query outcome, not just that a helper returned.
 
 import { describe, it, expect } from "vitest"
 import {
@@ -173,72 +172,6 @@ describe("reverse-index rot self-heal", () => {
     // The body range is still swept; the empty creator tag only skips the
     // solid-owner sweep, so no dangling ancestral entry is left behind.
     expect(repo.ancestral.size).toBe(0)
-  })
-})
-
-describe("legacy descriptor tier", () => {
-  it("narrows multiple ancestral candidates, skips malformed tokens and breaks early", () => {
-    const repo = new Repository()
-    repo.registerAncestor(
-      ["@ex1", "surface:0"],
-      { type: "flatface", centroid: [0, 0, 0], normal: [0, 0, 1], created_by: "ex1" },
-    )
-    repo.registerAncestor(
-      ["@ex1", "surface:1"],
-      { type: "flatface", centroid: [5, 0, 0], normal: [0, 0, 1], created_by: "ex1" },
-    )
-    // The malformed token is skipped; the tight token picks the z=0 face; the
-    // trailing token makes the loop re-check and break at a single candidate.
-    const q = makeAncestryQuery(
-      ["@gdf|bad", "@gdf|0,0,0|0,0,1", "@gdf|0,0,0|0,0,1", "@ex1"],
-      "flatface",
-    )
-    const result = repo.query(q) as Payload
-    expect(result.centroid).toEqual([0, 0, 0])
-    expect(repo._lastTier).toBe("ancestral")
-  })
-
-  it("queryAll narrows a multi-candidate ancestral set by a descriptor", () => {
-    const repo = new Repository()
-    repo.registerAncestor(
-      ["@ex1", "surface:0"],
-      { type: "flatface", centroid: [0, 0, 0], normal: [0, 0, 1], created_by: "ex1" },
-    )
-    repo.registerAncestor(
-      ["@ex1", "surface:1"],
-      { type: "flatface", centroid: [5, 0, 0], normal: [0, 0, 1], created_by: "ex1" },
-    )
-    const results = repo.queryAll(makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1"])) as Payload[]
-    expect(results).toHaveLength(1)
-    expect(results[0].centroid).toEqual([0, 0, 0])
-  })
-})
-
-describe("descriptor-only fallback", () => {
-  it("filters by type and geometry before the tight match", () => {
-    const repo = new Repository()
-    repo.registerAncestor(["@solid"], { type: "solid", body_id: "b", created_by: "ex1" })
-    repo.registerAncestor(["@nog"], { type: "flatface", body_id: "b", created_by: "ex1" })
-    repo.registerAncestor(
-      ["@hit"],
-      { type: "flatface", centroid: [0, 0, 0], normal: [0, 0, 1], created_by: "ex1" },
-    )
-    // No ancestry token matches, so the fallback scans every element: the solid
-    // fails the type filter and the geometry-less flatface has no descriptor.
-    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@none"], "flatface")
-    const result = repo.query(q) as Payload
-    expect(result.centroid).toEqual([0, 0, 0])
-    expect(repo._lastTier).toBe("descriptor")
-  })
-
-  it("stays a miss when no descriptor token parses", () => {
-    const repo = new Repository()
-    repo.registerAncestor(
-      ["@hit"],
-      { type: "flatface", centroid: [0, 0, 0], normal: [0, 0, 1], created_by: "ex1" },
-    )
-    expect(repo.query(makeAncestryQuery(["@gdf|bad", "@none"], "flatface"))).toBeNull()
-    expect(repo._lastTier).toBe("miss")
   })
 })
 

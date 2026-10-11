@@ -6,6 +6,7 @@
 
 import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor } from '../types/cad'
 import { sha256Hex } from './sha256'
+import { constructionUuidToken, parseAncestry, partitionAncestryIds } from './queryWire'
 import { cross, sub } from '@/utils/vec3'
 
 export type AnchorKind = 'plane' | 'cylinder' | 'cone' | 'sphere' | 'torus' | 'line' | 'circle' | 'point'
@@ -133,10 +134,9 @@ function shortHash(s: string): string {
 
 /**
  * An anchor's deterministic identity, shortHash(geom_hash + kind). The geom_hash
- * is the stable `@u|` construction token (or the positional `@gdf|`/`@gde|`/
- * `@gdv|` descriptor), so a rebuilt bundle mints the same id for the same
- * element and a persisted MateRef.anchor survives a cache wipe or schema bump
- * with no migration chain at all. Two elements sharing a geom_hash AND a kind
+ * is the stable `@u|` construction token, so a rebuilt bundle mints the same id
+ * for the same element and a persisted MateRef.anchor survives a cache wipe or
+ * schema bump with no migration chain at all. Two elements sharing a geom_hash AND a kind
  * would hash to one id; `toPartBundle` disambiguates those with a suffix (the
  * tier-1 collision rule: never two elements on one id).
  */
@@ -403,24 +403,26 @@ function edgeAnchorAxis(ed: EdgeData): Vec3 {
 }
 
 /**
- * Find the descriptor token in an ancestry query string. Query format:
- * `?<hex>;<id1><id2>...:<typeRestriction>`. Each id starts with `@`.
- * Returns the full id including the `@` prefix.
+ * The construction-UUID token (`@u|<uuid>`) of a primitive's ancestry query,
+ * the anchor's durable key, or null when the query names none.
  */
-function findDescriptorInQuery(query: string | undefined, prefix: string): string | null {
-  // Absent is "no descriptor", never a throw. solidToEdges/solidToVertices now
+function uuidTokenOfQuery(query: string | undefined): string | null {
+  // Absent or malformed is "unnamed", never a throw. solidToEdges/solidToVertices
   // pad their arrays with '' so the positional zip below cannot run off the end,
   // the way solidToMesh has always padded face_queries -- but a BodyResult can
   // also arrive from outside this kernel (a cached bundle, a remote solve), so
   // this stays a real guard rather than an assertion. Degrading to "unnamed"
-  // beats taking the whole bundle's anchors down with a TypeError:
-  // toPartBundle's body loop has no per-body catch.
-  if (query === undefined) return null
-  const searchToken = '@' + prefix
-  const idx = query.indexOf(searchToken)
-  if (idx === -1) return null
-  const endIdx = query.indexOf('@', idx + 1)
-  return endIdx === -1 ? query.slice(idx) : query.slice(idx, endIdx)
+  // beats taking the whole bundle's anchors down: toPartBundle's body loop has
+  // no per-body catch.
+  if (!query?.startsWith('?')) return null
+  let ids: string[]
+  try {
+    ids = parseAncestry(query)[0]
+  } catch {
+    return null
+  }
+  const [uuid] = partitionAncestryIds(ids).uuids
+  return uuid === undefined ? null : constructionUuidToken(uuid)
 }
 
 export interface BodyAnchorExtraction {
@@ -465,7 +467,7 @@ export function extractBodyAnchors(
       entityAnchors.faces.push([])
       const fd = fds[i]
       const fq = fqs?.[i]
-      const desc = findDescriptorInQuery(fq, 'u|') ?? findDescriptorInQuery(fq, 'gdf|')
+      const desc = uuidTokenOfQuery(fq)
       if (!desc) continue
       const kind = faceTypeToAnchorKind(fd?.surface_type)
       if (!kind) continue
@@ -489,7 +491,7 @@ export function extractBodyAnchors(
       const kind = edgeAnchorKind(ed)
       if (!kind) continue
       const eq = bodyResult.edge_queries?.[i]
-      const desc = findDescriptorInQuery(eq, 'u|') ?? findDescriptorInQuery(eq, 'gde|')
+      const desc = uuidTokenOfQuery(eq)
       if (!desc) continue
       emit(entityAnchors.edges, {
         kind,
@@ -506,7 +508,7 @@ export function extractBodyAnchors(
     for (let i = 0; i < bodyResult.vertices.length; i++) {
       entityAnchors.vertices.push([])
       const vq = bodyResult.vertex_queries?.[i]
-      const desc = findDescriptorInQuery(vq, 'u|') ?? findDescriptorInQuery(vq, 'gdv|')
+      const desc = uuidTokenOfQuery(vq)
       if (!desc) continue
       emit(entityAnchors.vertices, {
         kind: 'point',

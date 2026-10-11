@@ -331,7 +331,7 @@ describe('toPartBundle', () => {
         id: 'b1', created_by: 'ex1', modified_by: [],
         mesh: {
           vertices: [], faces: [],
-          face_queries: [makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface')],
+          face_queries: [makeQuery([`@u|f:0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface')],
           face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
         },
       },
@@ -354,17 +354,17 @@ describe('toPartBundle', () => {
   })
 
   it('two elements hashing to one id get distinct ids (tier-1 collision rule)', () => {
-    // Same geom_hash + kind in one bundle (e.g. two coincident vertices whose
-    // positional @gdv descriptor is identical): the first keeps the bare id,
-    // the second gets a disambiguation suffix. Never two elements on one id.
+    // Same geom_hash + kind in one bundle (two elements carrying one uuid
+    // token): the first keeps the bare id, the second gets a disambiguation
+    // suffix. Never two elements on one id.
     const bodies: Record<string, BodyResult> = {
       b1: {
         id: 'b1', created_by: 'ex1', modified_by: [],
         mesh: {
           vertices: [], faces: [],
           face_queries: [
-            makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface'),
-            makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface'),
+            makeQuery([`@u|f:0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface'),
+            makeQuery([`@u|f:0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface'),
           ],
           face_data: [
             { centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' },
@@ -377,14 +377,14 @@ describe('toPartBundle', () => {
     const ids = Object.keys(bundle.anchors)
     expect(ids).toHaveLength(2)
     expect(new Set(ids).size).toBe(2)
-    const base = anchorIdFor('@gdf|0,0,0|0,0,1', 'plane')
+    const base = anchorIdFor('@u|f:0,0,0|0,0,1', 'plane')
     expect(ids.sort()).toEqual([base, `${base}_2`].sort())
   })
 })
 
 // ─── Anchor extraction (Stage 2c) ───
 
-/** Build a query string in the ancestry format that `findDescriptorInQuery` can parse. */
+/** Build a query string in the ancestry format that `uuidTokenOfQuery` can parse. */
 function makeQuery(ids: string[], typeRestriction: string | null): string {
   const hexLengths = ids.map((id) => id.length.toString(16)).join(',')
   const body = ids.join('')
@@ -436,7 +436,7 @@ describe('extractBodyAnchors', () => {
   it('skips entities instead of throwing when the query array runs short', () => {
     // solidToEdges/solidToVertices return every edge and vertex but an EMPTY
     // query array when the body carries no `created_by`, so the positional zip
-    // runs off the end. That used to throw out of findDescriptorInQuery and,
+    // runs off the end. That used to throw out of the descriptor lookup and,
     // since toPartBundle's body loop has no per-body catch, cost EVERY body its
     // anchors -- not just this one.
     const body: BodyResult = {
@@ -471,7 +471,7 @@ describe('extractBodyAnchors', () => {
     const fds: FaceData[] = []
     for (let i = 0; i < types.length; i++) {
       const [st, , axis] = types[i]
-      fqs.push(makeQuery([`@gdf|0,0,${i}|0,0,1`, `@${EX_FEATURE}`], st))
+      fqs.push(makeQuery([`@u|f:0,0,${i}|0,0,1`, `@${EX_FEATURE}`], st))
       fds.push({
         centroid: [0, 0, i], normal: [0, 0, 1], area: 1, surface_type: st,
         surface_frame: axis ? { axis, origin: [5, 5, i] } : undefined,
@@ -487,7 +487,7 @@ describe('extractBodyAnchors', () => {
     const kinds = vals.map((a) => a.kind).sort()
     expect(kinds).toEqual(['cone', 'cylinder', 'plane', 'sphere', 'torus'])
     for (const a of vals) {
-      expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
+      expect(a.geom_hash.startsWith('@u|f:')).toBe(true)
       expect(a.created_by).toBe(EX_FEATURE)
     }
     // The plane anchor keeps the centroid/normal; the curved anchors take
@@ -504,7 +504,7 @@ describe('extractBodyAnchors', () => {
   })
 
   it('emits no anchor for a curved face with no surface_frame (fail-safe, not fail-wrong)', () => {
-    const fq = makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'cylinderface')
+    const fq = makeQuery([`@u|f:0,0,0|0,0,1`, `@${EX_FEATURE}`], 'cylinderface')
     const body: BodyResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
@@ -518,7 +518,7 @@ describe('extractBodyAnchors', () => {
   })
 
   it('skips faces with unsupported surface type (bspline)', () => {
-    const fq = makeQuery([`@gdf|10,10,5|0,0,1`, `@${EX_FEATURE}`], 'face')
+    const fq = makeQuery([`@u|f:10,10,5|0,0,1`, `@${EX_FEATURE}`], 'face')
     const body: BodyResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
@@ -541,17 +541,17 @@ describe('extractBodyAnchors', () => {
         { kind: 'spline', points: [[0, 0, 0], [1, 1, 0], [2, 0, 0]] },
       ],
       edge_queries: [
-        makeQuery([`@gde|line|5,0,0|1,0,0|10`, `@${EX_FEATURE}`], 'straightedge'),
-        makeQuery([`@gde|circle|0,0,0|0,0,1|5`, `@${EX_FEATURE}`], 'edge'),
-        makeQuery([`@gde|ellipse|0,0,0|0,0,1|4`, `@${EX_FEATURE}`], 'edge'),
-        makeQuery([`@gde|spline|1,0,0|0,0,0|0`, `@${EX_FEATURE}`], 'edge'),
+        makeQuery([`@u|e:line|5,0,0|1,0,0|10`, `@${EX_FEATURE}`], 'straightedge'),
+        makeQuery([`@u|e:circle|0,0,0|0,0,1|5`, `@${EX_FEATURE}`], 'edge'),
+        makeQuery([`@u|e:ellipse|0,0,0|0,0,1|4`, `@${EX_FEATURE}`], 'edge'),
+        makeQuery([`@u|e:spline|1,0,0|0,0,0|0`, `@${EX_FEATURE}`], 'edge'),
       ],
     }
     const { anchors } = extractBodyAnchors(body, mintFactory())
     const vals = Object.values(anchors)
     expect(vals).toHaveLength(2)
     expect(vals[0].kind).toBe('line')
-    expect(vals[0].geom_hash.startsWith('@gde|')).toBe(true)
+    expect(vals[0].geom_hash.startsWith('@u|e:')).toBe(true)
     expect(vals[1].kind).toBe('circle')
     // line anchor point is the midpoint
     expect(vals[0].point[0]).toBeCloseTo(5)
@@ -569,9 +569,9 @@ describe('extractBodyAnchors', () => {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       vertices: [[0, 0, 0], [10, 0, 0], [10, 10, 0]],
       vertex_queries: [
-        makeQuery([`@gdv|0,0,0`, `@${EX_FEATURE}`], 'vertex'),
-        makeQuery([`@gdv|10,0,0`, `@${EX_FEATURE}`], 'vertex'),
-        makeQuery([`@gdv|10,10,0`, `@${EX_FEATURE}`], 'vertex'),
+        makeQuery([`@u|v:0,0,0`, `@${EX_FEATURE}`], 'vertex'),
+        makeQuery([`@u|v:10,0,0`, `@${EX_FEATURE}`], 'vertex'),
+        makeQuery([`@u|v:10,10,0`, `@${EX_FEATURE}`], 'vertex'),
       ],
     }
     const { anchors } = extractBodyAnchors(body, mintFactory())
@@ -579,7 +579,7 @@ describe('extractBodyAnchors', () => {
     expect(vals).toHaveLength(3)
     for (const a of vals) {
       expect(a.kind).toBe('point')
-      expect(a.geom_hash.startsWith('@gdv|')).toBe(true)
+      expect(a.geom_hash.startsWith('@u|v:')).toBe(true)
       expect(a.axis).toEqual([0, 0, 1])
       expect(a.created_by).toBe(EX_FEATURE)
     }
@@ -604,8 +604,8 @@ describe('extractBodyAnchors', () => {
       mesh: {
         vertices: [], faces: [],
         face_queries: [
-          makeQuery([`@gdf|0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface'),
-          makeQuery([`@gdf|1,0,0|1,0,0`, `@${EX_FEATURE}`], 'flatface'),
+          makeQuery([`@u|f:0,0,0|0,0,1`, `@${EX_FEATURE}`], 'flatface'),
+          makeQuery([`@u|f:1,0,0|1,0,0`, `@${EX_FEATURE}`], 'flatface'),
         ],
         face_data: [
           { centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' },
@@ -615,9 +615,9 @@ describe('extractBodyAnchors', () => {
       edges: [
         { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
       ],
-      edge_queries: [makeQuery([`@gde|line|5,0,0|1,0,0|10`, `@${EX_FEATURE}`], 'straightedge')],
+      edge_queries: [makeQuery([`@u|e:line|5,0,0|1,0,0|10`, `@${EX_FEATURE}`], 'straightedge')],
       vertices: [[0, 0, 0]],
-      vertex_queries: [makeQuery([`@gdv|0,0,0`, `@${EX_FEATURE}`], 'vertex')],
+      vertex_queries: [makeQuery([`@u|v:0,0,0`, `@${EX_FEATURE}`], 'vertex')],
     }
     const { anchors } = extractBodyAnchors(body, mintFactory())
     const keys = Object.keys(anchors)
@@ -625,14 +625,13 @@ describe('extractBodyAnchors', () => {
     expect(new Set(keys).size).toBe(keys.length)
   })
 
-  it('prefers @u| construction UUID over @gdf| geometry descriptor for geom_hash', () => {
+  it('keys each anchor on the @u| construction UUID of its query', () => {
     const body: BodyResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
         vertices: [], faces: [],
         face_queries: [
-          // @u| token present alongside @gdf|, prefers @u|
-          makeQuery(['@u|aaa1112223334445', '@gdf|0,0,0|0,0,1', `@${EX_FEATURE}`], 'flatface'),
+          makeQuery(['@u|aaa1112223334445', `@${EX_FEATURE}`], 'flatface'),
         ],
         face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
       },
@@ -653,19 +652,17 @@ describe('extractBodyAnchors', () => {
     expect(vertexAnchors[0].geom_hash).toBe('@u|ccc1112223334445')
   })
 
-  it('falls back to @gdf| when @u| is absent (backward compat with pre-Stage-7 bundles)', () => {
+  it('emits no anchor for a primitive whose query carries no @u| uuid', () => {
     const body: BodyResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
         vertices: [], faces: [],
-        face_queries: [makeQuery(['@gdf|0,0,0|0,0,1', `@${EX_FEATURE}`], 'flatface')],
+        face_queries: [makeQuery([`@${EX_FEATURE}`, '@body_b1'], 'flatface')],
         face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
       },
     }
     const { anchors } = extractBodyAnchors(body, mintFactory())
-    expect(Object.keys(anchors)).toHaveLength(1)
-    const a = Object.values(anchors)[0]
-    expect(a.geom_hash.startsWith('@gdf|')).toBe(true)
+    expect(Object.keys(anchors)).toHaveLength(0)
   })
 })
 
@@ -684,8 +681,8 @@ describe('extractBodyAnchors entity index', () => {
       mesh: {
         vertices: [], faces: [],
         face_queries: [
-          makeQuery(['@gdf|0,0,0|0,0,1', `@${EX_FEATURE}`], 'flatface'),
-          makeQuery(['@gdf|1,1,1|0,0,1', `@${EX_FEATURE}`], 'face'),
+          makeQuery(['@u|f_plane', `@${EX_FEATURE}`], 'flatface'),
+          makeQuery(['@u|f_freeform', `@${EX_FEATURE}`], 'face'),
         ],
         face_data: [
           { centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' },
@@ -697,11 +694,11 @@ describe('extractBodyAnchors entity index', () => {
         { kind: 'ellipse', center: [0, 0, 0], a: 5, b: 3, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: 1 },
       ],
       edge_queries: [
-        makeQuery(['@gde|5,0,0|1,0,0', `@${EX_FEATURE}`], 'edge'),
-        makeQuery(['@gde|0,0,0|0,0,1', `@${EX_FEATURE}`], 'edge'),
+        makeQuery(['@u|e_line', `@${EX_FEATURE}`], 'edge'),
+        makeQuery(['@u|e_ellipse', `@${EX_FEATURE}`], 'edge'),
       ],
       vertices: [[0, 0, 0]],
-      vertex_queries: [makeQuery(['@gdv|0,0,0', `@${EX_FEATURE}`], 'vertex')],
+      vertex_queries: [makeQuery(['@u|v_origin', `@${EX_FEATURE}`], 'vertex')],
     }
   }
 

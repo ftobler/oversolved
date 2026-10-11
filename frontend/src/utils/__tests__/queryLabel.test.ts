@@ -181,12 +181,6 @@ describe('queryLabel', () => {
       expect(queryLabel(q, features)).toBe(q)
     })
 
-    it('falls through to the raw query when the last ancestor is a descriptor', () => {
-      // @gde|line|x = 11 chars → hex "b".
-      const q = '?b;@gde|line|x:flatface'
-      expect(queryLabel(q, features)).toBe(q)
-    })
-
     it('resolves an earlier ancestor id when the last ancestor is a special token', () => {
       // The trailing @cls_zp (7 chars) is a classifier token and extractFeatureId
       // returns null for it, but the backward scan keeps looking and finds the
@@ -371,34 +365,6 @@ describe('extractFeatureId', () => {
 
     it('falls through for a classifier token', () => {
       expect(extractFeatureId('@cls_zp')).toBeNull()
-    })
-
-    it('falls through for a face geom-hash reference', () => {
-      expect(extractFeatureId('@gface_abc123')).toBeNull()
-    })
-
-    it('falls through for an edge geom-hash reference', () => {
-      expect(extractFeatureId('@gedge_abc123')).toBeNull()
-    })
-
-    it('falls through for a vertex geom-hash reference', () => {
-      expect(extractFeatureId('@gvertex_abc123')).toBeNull()
-    })
-
-    it('falls through for a normal geom-hash reference', () => {
-      expect(extractFeatureId('@gnormal_abc123')).toBeNull()
-    })
-
-    it('falls through for a face descriptor', () => {
-      expect(extractFeatureId('@gdf|0.000|0.000|0.000|0.000|0.000|1.000')).toBeNull()
-    })
-
-    it('falls through for an edge descriptor', () => {
-      expect(extractFeatureId('@gde|line|0,0,0|1,0,0|2.0')).toBeNull()
-    })
-
-    it('falls through for a vertex descriptor', () => {
-      expect(extractFeatureId('@gdv|0,0,0')).toBeNull()
     })
   })
 

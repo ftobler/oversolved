@@ -313,14 +313,42 @@ export function isClassifierId(idStr: string): boolean {
   return idStr.startsWith("@cls_")
 }
 
-/** Wire-format geom_hash reference (@gface_/@gedge_/@gvertex_/@gnormal_). */
-export function isGeomHashId(idStr: string): boolean {
-  return (
-    idStr.startsWith("@gface_") ||
-    idStr.startsWith("@gedge_") ||
-    idStr.startsWith("@gvertex_") ||
-    idStr.startsWith("@gnormal_")
-  )
+/** An ancestry id list split by role. The wire keeps every token in one
+ *  length-framed list; this is the one place that tells them apart.
+ *  - `uuids`: construction UUIDs (the bare uuid, deduped), the primary identity;
+ *  - `classifiers`: `@cls_*` tokens, a tie-break that only narrows;
+ *  - `lineage`: everything else, the ancestral path the subset match runs on. */
+export interface AncestryTokens {
+  uuids: string[]
+  classifiers: string[]
+  lineage: string[]
+}
+
+export function partitionAncestryIds(ids: readonly string[]): AncestryTokens {
+  const uuids = new Set<string>()
+  const classifiers: string[] = []
+  const lineage: string[] = []
+  for (const id of ids) {
+    const uuid = parseConstructionUuidId(id)
+    if (uuid !== null) uuids.add(uuid)
+    else if (isClassifierId(id)) classifiers.push(id)
+    else lineage.push(id)
+  }
+  return { uuids: [...uuids], classifiers, lineage }
+}
+
+/** The bare classifier names (`cls_*`) an ancestry query carries, [] for an
+ *  empty, non-ancestry or malformed string. Registration reads an element's
+ *  classifiers from the query it was minted into, so the payload the resolver
+ *  narrows on is by construction the set the query asks for. It never throws:
+ *  a throw inside registration would cost the whole body its ancestry. */
+export function classifiersOfQuery(query: string): string[] {
+  if (!query.startsWith("?")) return []
+  try {
+    return parseAncestry(query)[0].filter(isClassifierId).map(c => c.slice(1))
+  } catch {
+    return []
+  }
 }
 
 // ─── construction-by-name UUID token (query-naming-by-construction) ───

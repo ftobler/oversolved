@@ -4,24 +4,12 @@ import { parseQuery } from '@/utils/query'
 import { parseSelectionId, parseTopoFallbackQuery } from './selectionId'
 import { featureIdOfToken } from './pickOrder'
 import { isFaceRestriction, isEdgeRestriction, isVertexRestriction } from '@/kernel/occ/primitives'
+import { isClassifierId, isConstructionUuidId } from '@/kernel/query'
 
 export function extractFeatureId(ancestorId: string): string | null {
-  // Special tokens (@u|<uuid>, @cls_* classifiers, @gd*| descriptors, @g*_
-  // geom-hash refs) are geometry identity, never feature refs: they must fall
-  // through to the raw query string.
-  if (
-    ancestorId.startsWith("@u|") ||
-    ancestorId.startsWith("@cls_") ||
-    ancestorId.startsWith("@gdf|") ||
-    ancestorId.startsWith("@gde|") ||
-    ancestorId.startsWith("@gdv|") ||
-    ancestorId.startsWith("@gface_") ||
-    ancestorId.startsWith("@gedge_") ||
-    ancestorId.startsWith("@gvertex_") ||
-    ancestorId.startsWith("@gnormal_")
-  ) {
-    return null
-  }
+  // Construction UUIDs and classifiers are element identity, never feature
+  // refs: they must fall through to the raw query string.
+  if (isConstructionUuidId(ancestorId) || isClassifierId(ancestorId)) return null
 
   // The candidate id lives in the segment before the first "/" for the current
   // slash-joined wire tokens (@body_ex1/face0, @extrude1/face/3).
@@ -129,9 +117,9 @@ export function queryLabel(
 
       case 'ancestry': {
         // Scan from the closest (last-in-chain) ancestor id backward toward the
-        // root, since a trailing special token (classifier/geom-hash/uuid/
-        // descriptor -- see extractFeatureId) resolves to null even when an
-        // earlier id in the same chain names the owning feature.
+        // root, since a trailing special token (classifier/uuid, see
+        // extractFeatureId) resolves to null even when an earlier id in the
+        // same chain names the owning feature.
         let featureId: string | null = null
         for (let i = parsed.ancestorIds.length - 1; i >= 0; i--) {
           featureId = ownerOf(parsed.ancestorIds[i])

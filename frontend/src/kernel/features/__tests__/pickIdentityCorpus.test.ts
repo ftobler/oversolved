@@ -4,9 +4,14 @@
 // first capture, edge_resolves_not_unique_20260728_213049.md): "fillet 2 has one
 // edge pick but 6 faces highlight and fillet 2 fails".
 //
-// The AST is the user's document verbatim (`__fixtures__/pickIdentityCorpus.json`,
+// The AST is the user's document (`__fixtures__/pickIdentityCorpus.json`),
 // minus the trailing fillet whose stored pick is the broken query itself --
-// this test re-picks instead, which is what the user has to do once). It runs
+// this test re-picks instead, which is what the user has to do once. Its
+// legacy geometric picks (`@gde|`/`@gdf|`, no longer resolved) were migrated
+// once to the `@u|` queries of the elements they resolved to. Of fillet 2's six
+// edge picks, the two at x=2 resolved to the two edges kept here; the four at
+// x=6/x=10 name positions today's geometry no longer has and were ambiguous
+// (so refused by the fillet's index) before the migration too. It runs
 // extrude -> linear array -> fillet -> transform -> circular array -> sketch on a
 // body face -> up_to extrude -> 3-tool boolean union, and every one of those
 // stages had to keep its construction names for the last pick to be unique.

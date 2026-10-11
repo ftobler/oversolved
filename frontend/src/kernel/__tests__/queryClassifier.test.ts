@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from "vitest"
 import {
-  isGeomHashId,
+  partitionAncestryIds,
   isClassifierId,
   makeAncestryQuery,
   canonical,
@@ -47,23 +47,23 @@ describe("face registration structural tags", () => {
     expect(foundFace).toBe(true)
   })
 
-  /** No geom_hash tag appears in the ancestral key Set of any face registration.
-   *  This is a structural invariant: uuids live in byUuid only. */
-  it("no geom_hash tag in face registration ancestral key", () => {
+  /** The construction UUID never enters the ancestral key Set of a face
+   *  registration. This is a structural invariant: uuids live in byUuid only. */
+  it("no uuid token in face registration ancestral key", () => {
     const repo = new Repository()
     repo.registerAncestor(
       ["@body1/face0", "@ex1", "@body1"],
       makeFacePayload("body1", "ex1", 0),
-      "gface_abc",
+      "u_abc",
     )
 
     for (const entry of repo.ancestral.values()) {
       for (const tag of entry.set) {
-        expect(isGeomHashId(tag)).toBe(false)
+        expect(tag.startsWith("@u|")).toBe(false)
       }
     }
 
-    expect(repo.byUuid.has("gface_abc")).toBe(true)
+    expect(repo.byUuid.has("u_abc")).toBe(true)
   })
 })
 
@@ -82,8 +82,12 @@ describe("geometric classifier predicates", () => {
     expect(isClassifierId("@sk1/left")).toBe(false)
   })
 
-  it("classifier is not a geom hash (partitions are disjoint)", () => {
-    expect(isGeomHashId("@cls_zp")).toBe(false)
+  it("partitions an id list into uuids, classifiers and lineage", () => {
+    expect(partitionAncestryIds(["@u|a", "@ex1", "@cls_zp", "@u|a", "@body1"])).toEqual({
+      uuids: ["a"],
+      classifiers: ["@cls_zp"],
+      lineage: ["@ex1", "@body1"],
+    })
   })
 })
 
@@ -117,9 +121,9 @@ describe("classifier tier resolution", () => {
   it("classifier on resolved element matches the query tokens", () => {
     const repo = new Repository()
     const payload = { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_xp", "cls_yp"] }
-    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payload, "gface_abc")
+    repo.registerAncestor(["@body1/face0", "@ex1", "@body1"], payload, "u_abc")
 
-    const result = repo.query(makeAncestryQuery(["@cls_xp", "@cls_yp", "@gface_abc", "@ex1", "@body1"]))
+    const result = repo.query(makeAncestryQuery(["@cls_xp", "@cls_yp", "@ex1", "@body1"]))
     expect(result).not.toBeNull()
     const cls = (result as Payload).classifiers as string[]
     expect(cls).toEqual(["cls_xp", "cls_yp"])
@@ -160,43 +164,25 @@ describe("classifier tier resolution", () => {
     expect((resolved as Payload).classifiers).toEqual(["cls_ld_cut_p"])
   })
 
-  it("stale geom hash resolves via classifier after rebuild (edit-survival)", () => {
-    /** The value proposition: a query captured from a short build carries
-     *  a @gface_ hash. After a taller rebuild, that hash is stale (the
-     *  rebuilt face has a different geometry due to the new dimensions).
-     *  The @cls_ classifier, which is edit-stable, still discriminates the
-     *  correct face among ancestral siblings in the new repo. */
+  it("a dead uuid resolves via classifier among no-uuid siblings (edit-survival)", () => {
+    /** A query whose construction UUID no longer names a live element falls
+     *  to the ancestral net. The faces there carry no uuid of their own (so
+     *  the foreign-uuid exclusion keeps them), share the whole lineage, and
+     *  only the edit-stable @cls_ classifier tells them apart. */
+    const repo = new Repository()
+    repo.registerAncestor(["@ex1", "@body1", "surface:0"], { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zp"] })
+    repo.registerAncestor(["@ex1", "@body1", "surface:1"], { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] })
 
-    // Short build: two sibling faces with different classifiers.
-    const shortRepo = new Repository()
-    const pZp = { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zp"] }
-    const pZn = { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] }
-    shortRepo.registerAncestor(["@ex1", "@body1", "surface:0"], pZp, "gface_short_zp")
-    shortRepo.registerAncestor(["@ex1", "@body1", "surface:1"], pZn, "gface_short_zn")
+    // Without the classifier the lineage alone is a tie, and the resolver
+    // raises rather than silently picking one.
+    const lineageOnly = makeAncestryQuery([constructionUuidToken("u_dead"), "@ex1", "@body1"])
+    expect(() => repo.query(lineageOnly)).toThrow(AmbiguousQueryError)
+    expect(() => repo.query(lineageOnly)).toThrow(/matched 2/)
 
-    // Capture the +Z cap query from the short build.
-    const captured = makeAncestryQuery(["@gface_short_zp", "@cls_zp", "@ex1", "@body1"])
-    expect(shortRepo.query(captured)).not.toBeNull()
-
-    // Tall build: same faces, same classifiers, DIFFERENT hashes.
-    const tallRepo = new Repository()
-    const tZp = { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zp"] }
-    const tZn = { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] }
-    tallRepo.registerAncestor(["@ex1", "@body1", "surface:0"], tZp, "gface_tall_zp")
-    tallRepo.registerAncestor(["@ex1", "@body1", "surface:1"], tZn, "gface_tall_zn")
-
-    // The stale hash alone is ambiguous: both faces share the ancestry and
-    // the hash matches neither, so the resolver raises rather than silently
-    // picking one. Asserted directly, matching the tied-ancestor case above.
-    const staleOnly = makeAncestryQuery(["@gface_short_zp", "@ex1", "@body1"])
-    expect(() => tallRepo.query(staleOnly)).toThrow(AmbiguousQueryError)
-    expect(() => tallRepo.query(staleOnly)).toThrow(/matched 2/)
-
-    // The captured query (stale hash + @cls_zp classifier) resolves
-    // to the +Z cap in the tall build via the classifier tier.
-    const resolved = tallRepo.query(captured)
-    expect(resolved).not.toBeNull()
+    const captured = makeAncestryQuery([constructionUuidToken("u_dead"), "@cls_zp", "@ex1", "@body1"])
+    const resolved = repo.query(captured)
     expect((resolved as Payload).classifiers).toEqual(["cls_zp"])
+    expect(repo._lastTier).toBe("ancestral")
   })
 })
 
@@ -337,63 +323,39 @@ describe("classifier veto semantics", () => {
     expect(repo._lastTier).toBe("ancestral-partial")
   })
 
-  it("a multi-candidate classifier veto is not re-bypassed by legacy descriptor tokens", () => {
-    // Two sibling caps share the ancestry tokens and BOTH carry NON-EMPTY
-    // contradictory evidence (cls_zn against the wanted cls_zp). The legacy
-    // descriptor token names the surface:0 face tightly, so the descriptor tier
-    // (and, after the veto empties the set, the descriptor-only fallback) would
-    // each pick a wrong face. The veto must win either way.
+  it("a vetoed subset set misses whether it held one candidate or several", () => {
+    // The partial tier must not recover what the veto refused: with a lone
+    // contradicted candidate the resolver returned null, but adding a second,
+    // unrelated contradicted sibling let the partial tier resolve a no-evidence
+    // element sharing only part of the lineage.
     const repo = new Repository()
-    repo.registerAncestor(
-      ["@ex1", "@body1", "surface:0"],
-      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
-    )
-    repo.registerAncestor(
-      ["@ex1", "@body1", "surface:1"],
-      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] },
-    )
-    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_zp"])
+    repo.registerAncestor(["@a", "@b"], { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] })
+    repo.registerAncestor(["@a"], makeFacePayload("body1", "ex1", 1))
+    const q = makeAncestryQuery(["@a", "@b", "@cls_zp"], "face")
+    expect(repo.query(q)).toBeNull()
+
+    repo.registerAncestor(["@a", "@b", "@c"], { ...makeFacePayload("body1", "ex1", 2), classifiers: ["cls_xn"] })
     expect(repo.query(q)).toBeNull()
     expect(repo._lastTier).toBe("miss")
   })
 
-  it("the descriptor-only fallback cannot resolve a vetoed contradictory candidate either", () => {
-    // Same veto, but the candidates share EXACTLY the query's non-hash tokens:
-    // after the veto empties the subset set, the ancestral-partial tier sees
-    // them again (and narrows them to []), and the descriptor-only fallback
-    // then tight-matches the surface:0 face over the WHOLE repo with no
-    // classifier re-check. It must stay a miss.
+  it("classifier evidence is weighed only among candidates of the queried type", () => {
+    // An edge query's lineage is shared by the faces around it. A face whose
+    // classifiers match the edge's wanted set is no evidence about the edge:
+    // pooled, it outranked the edge and the query coerced across sibling edges.
     const repo = new Repository()
-    repo.registerAncestor(
-      ["@ex1", "@body1"],
-      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
-    )
-    repo.registerAncestor(
-      ["@ex1", "@body1"],
-      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] },
-    )
-    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_zp"])
-    expect(repo.query(q)).toBeNull()
-    expect(repo._lastTier).toBe("miss")
-  })
-
-  it("a positive classifier match outranks a legacy descriptor token", () => {
-    const repo = new Repository()
-    repo.registerAncestor(
-      ["@ex1", "@body1", "surface:0"],
-      { ...makeFacePayload("body1", "ex1", 0), classifiers: ["cls_zn"] },
-    )
-    repo.registerAncestor(
-      ["@ex1", "@body1", "surface:1"],
-      { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zp"] },
-    )
-    // The descriptor names the cls_zn face (centroid [0,0,0]) but the wanted
-    // cls_zp is real positive evidence on the other sibling and must outrank it.
-    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_zp"])
-    const result = repo.query(q)
-    expect(result).not.toBeNull()
-    expect((result as Payload).classifiers).toEqual(["cls_zp"])
-    expect(repo._lastTier).toBe("ancestral")
+    repo.registerAncestor(["@ex1", "@body1", "@sk/bottom", "@sk/left"], {
+      type: "flatface", body_id: "body1", created_by: "ex1", classifiers: ["cls_xn"],
+    })
+    repo.registerAncestor(["@body1/edge0", "@ex1", "@body1", "@sk/bottom", "@sk/left"], {
+      type: "straightedge", body_id: "body1", created_by: "ex1", classifiers: ["cls_xn", "cls_yn"],
+    })
+    repo.registerAncestor(["@body1/edge1", "@ex1", "@body1", "@sk/bottom", "@sk/left"], {
+      type: "straightedge", body_id: "body1", created_by: "ex1", classifiers: ["cls_xp", "cls_yn"],
+    })
+    const q = makeAncestryQuery(["@ex1", "@body1", "@sk/bottom", "@sk/left", "@cls_xn", "@cls_yn"], "straightedge")
+    expect((repo.query(q) as Payload).classifiers).toEqual(["cls_xn", "cls_yn"])
+    expect(repo.queryAll(q)).toHaveLength(1)
   })
 
   it("a partial classifier overlap is positive evidence, not a contradiction", () => {
@@ -410,7 +372,7 @@ describe("classifier veto semantics", () => {
       ["@ex1", "@body1", "surface:1"],
       { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_yp"] },
     )
-    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_xp", "@cls_yp"])
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_xp", "@cls_yp"])
     const result = repo.query(q)
     expect(result).not.toBeNull()
     expect((result as Payload).classifiers).toEqual(["cls_yp"])
@@ -430,7 +392,7 @@ describe("classifier veto semantics", () => {
     // Same fixture as the resolver pin above: queryAll must enumerate exactly
     // the partial-overlap sibling, not the zero-overlap one and not the empty
     // whole set.
-    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_xp", "@cls_yp"])
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_xp", "@cls_yp"])
     const results = repo.queryAll(q) as Payload[]
     expect(results.length).toBe(1)
     expect(results[0].classifiers).toEqual(["cls_yp"])
@@ -470,7 +432,7 @@ describe("classifier veto semantics", () => {
       ["@ex1", "@body1", "surface:1"],
       { ...makeFacePayload("body1", "ex1", 1), classifiers: ["cls_zn"] },
     )
-    const q = makeAncestryQuery(["@gdf|0,0,0|0,0,1", "@ex1", "@body1", "@cls_zp"])
+    const q = makeAncestryQuery(["@ex1", "@body1", "@cls_zp"])
     expect(repo.query(q)).toBeNull()
     expect(repo.queryAll(q)).toEqual([])
   })

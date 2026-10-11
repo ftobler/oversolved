@@ -138,12 +138,8 @@
     {
       "fillet": {
         "edges": [
-          "?29,19,1e,7;@gde|line|2.0,1.0,1.9596|0.0,-1.0,0.0|2.0@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@cls_zp:straightedge",
-          "?29,19,1e,7;@gde|line|6.0,1.0,1.9596|0.0,-1.0,0.0|2.0@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@cls_zp:straightedge",
-          "?2a,19,1e,7;@gde|line|10.0,1.0,1.9596|0.0,-1.0,0.0|2.0@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@cls_zp:straightedge",
-          "?2b,19,1e,7;@gde|line|10.0,1.0,-1.9596|0.0,-1.0,0.0|2.0@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@cls_zn:straightedge",
-          "?2a,19,1e,7;@gde|line|6.0,1.0,-1.9596|0.0,-1.0,0.0|2.0@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@cls_zn:straightedge",
-          "?2a,19,1e,7;@gde|line|2.0,1.0,-1.9596|0.0,-1.0,0.0|2.0@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@cls_zn:straightedge"
+          "?15,19,1e,2a,7;@u|e_ee31fa2945238805@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm@cls_zp:straightedge",
+          "?15,19,1e,2a,7;@u|e_fc03a8088e3e7f1e@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm@cls_zn:straightedge"
         ],
         "radius": 2
       },
@@ -386,7 +382,7 @@
       },
       "kind": "sketch",
       "label": "sketch 3",
-      "plane": "?1d,19,1e,7,7;@gdf|12.0,2.0,0.0|0.0,1.0,0.0@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@cls_xp@cls_yp:flatface",
+      "plane": "?15,19,1e,2a,2a,7;@u|u_973b654de7ff9940@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm@lWImF_YFjIL5NhMmBe0IZhXq/ArdV8SVWXjjg8-gP@cls_yp:flatface",
       "visible": false
     },
     {
@@ -397,7 +393,7 @@
           "?2a,2a,2a,2a,2a,2a,2a,2a,9,19;@dsl-zwpJJFv1iwNcNin7ooOU/2B42vio1R_oT-6yP@dsl-zwpJJFv1iwNcNin7ooOU/GN8aRePGNUyCU13q@dsl-zwpJJFv1iwNcNin7ooOU/GsSwOas5ozGJu7Y_@dsl-zwpJJFv1iwNcNin7ooOU/M_t8MWrjDJxIxF9g@dsl-zwpJJFv1iwNcNin7ooOU/UOdC9S1pDP-TrWJx@dsl-zwpJJFv1iwNcNin7ooOU/Y3XOp4Hwkb5SeFmH@dsl-zwpJJFv1iwNcNin7ooOU/pI0i-cuE2IuJyIB2@dsl-zwpJJFv1iwNcNin7ooOU/u6SzTV2MkNYPh5Jwsurface:2@dsl-zwpJJFv1iwNcNin7ooOU:flatface"
         ],
         "termination": "up_to",
-        "up_to": "?1e,19,1e,7,7;@gdf|12.0,0.0,0.0|0.0,-1.0,0.0@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@cls_xp@cls_yn:flatface"
+        "up_to": "?15,19,1e,2a,2a,7;@u|u_f4f6072954e571e6@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm@lWImF_YFjIL5NhMmBe0IZhXq/ArdV8SVWXjjg8-gP@cls_yn:flatface"
       },
       "id": "lYuuhb-HO3FIEl_8kHN8a-Hg",
       "kind": "extrude",

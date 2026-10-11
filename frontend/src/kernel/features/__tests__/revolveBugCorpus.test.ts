@@ -37,11 +37,11 @@ const REV = 'WUTeR_1EJBghfkHfBJODbBCM'
 // The exact stored revolve.axis query from the bug report (the picker's
 // capture stored a near-identical query with one extra classifier cls_zn and
 // the sketch-line tokens in the opposite order; the persisted version is what
-// the resolver sees). Used verbatim so the registry-resolution path matches
-// the user's bug-corpus state.
+// the resolver sees). Used verbatim, minus the legacy `@gde|` descriptor token
+// the capture led with (old-document descriptors are no longer resolved), so
+// the registry-resolution path matches the user's bug-corpus state.
 const STORED_AXIS_QUERY =
-  '?2f,19,1e,2a,2a,7,7;' +
-  '@gde|line|-18.5789,-3.3349,5.0|0.0,0.0,1.0|10.0' +
+  '?19,1e,2a,2a,7,7;' +
   '@' + EX +
   '@body_' + EX +
   '@' + SK + '/kbNgbTt-fnV7itwD' +
@@ -49,22 +49,21 @@ const STORED_AXIS_QUERY =
   '@cls_xn@cls_yn:straightedge'
 
 // The exact fillet-edge query from the bug report (a top z=10 Y-direction
-// edge at the inner wall of the upper profile). Used verbatim so the fillet
-// narrows the body geometry that the revolve axis query resolves against.
+// edge at the inner wall of the upper profile), minus its legacy `@gde|`
+// token. The fillet narrows the body geometry that the revolve axis query
+// resolves against.
 const FILLET_EDGE_QUERY =
-  '?2f,19,1e,2a,7;' +
-  '@gde|line|-9.3942,15.3228,10.0|0.0,1.0,0.0|17.8' +
+  '?19,1e,2a,7;' +
   '@' + EX +
   '@body_' + EX +
   '@' + SK + '/DoQ5WShzeIONGpxe' +
   '@cls_zp:straightedge'
 
 // The exact revolve profile query from the bug report (the LEFT lateral body
-// face inherited from sketch line suTKXFLy4QtrjqED). Used verbatim so the
-// revolve sweeps the same profile the user picked.
+// face inherited from sketch line suTKXFLy4QtrjqED), minus its legacy `@gdf|`
+// token, so the revolve sweeps the same profile the user picked.
 const STORED_PROFILE_QUERY =
-  '?25,19,1e,2a,7;' +
-  '@gdf|-18.334,14.6761,5.0|-1.0,0.0,0.0' +
+  '?19,1e,2a,7;' +
   '@' + EX +
   '@body_' + EX +
   '@' + SK + '/suTKXFLy4QtrjqED' +
@@ -204,14 +203,10 @@ describe.skipIf(!oc || !solveBytes)('revolve axis verbatim from bug report corpu
 
   it('resolves the revolve axis front-back direction (no fillet, sanity)', () => {
     // The stored axis query's @cls_xn@cls_yn tokens are the picker's spatial
-    // hints, but the rebuilt vertical-corner edge's registered payload carries
-    // NO classifiers: `solidToEdges` mints the tokens into the edge query
-    // string while `edgeAncestryPayload` registers [] for OCC-B-rep edges. The
-    // scoped classifier veto (classifier-disambiguation-hardening) treats an
-    // empty payload as NO classifier evidence, never a contradiction, so the
-    // lone candidate still resolves exactly as it did before the veto; only a
-    // non-empty payload lacking the wanted tokens vetoes. The verbatim stored
-    // query therefore resolves the correct Z axis again.
+    // hints, and the rebuilt vertical-corner edge registers the classifiers
+    // minted into its own query, so the classifier tier picks that corner edge
+    // out of the edges sharing its sketch lineage and the stored query
+    // resolves the correct Z axis.
     const result = h.run(bugReportSpec({ noFillet: true }))
     expect(h.res(result, EX).status).toBe('ok')
     const revRes = h.res(result, REV)
