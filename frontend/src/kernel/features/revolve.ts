@@ -1,14 +1,8 @@
 // The revolve leaf, analogous to extrude but sweeping each profile around an axis. It resolves
-// each profile to 2D loops (or a body face), resolves the revolve axis (an `axis` query and/or a
-// stored origin/direction, the query flipped to agree with the stored direction), builds the tool
-// solid with per-entity lineage, and applies the body operation. An axis-less revolve is a solve
-// error, never a revolve about world Z -- see resolveRevolveAxis.
-//
-// The axis logic here is revolve-specific and does NOT go through
-// shared/directionQuery.ts's resolveAxisQuery:
-// _solve_revolve flips the queried axis to match the feature's stored direction (so re-solving
-// a flipped edge does not reverse the body), which resolveAxisQuery (used by circular_array)
-// deliberately omits.
+// each profile to 2D loops (or a body face), resolves the revolve axis from its required `axis`
+// pick, builds the tool solid with per-entity lineage, and applies the body operation. An
+// axis-less revolve is a solve error, never a revolve about a default axis -- see
+// resolveRevolveAxis.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import { extractErrorMessage } from '../errors'
@@ -71,43 +65,24 @@ function fuseConsuming(
 }
 
 /**
- * Read one stored axis vector, or null when the field is absent. A present but
- * malformed vector (wrong arity, NaN, a string) is a throw, not a silent
- * fallback: it would otherwise reach OCC as a garbage `Vec3`.
- */
-function readAxisVector(raw: unknown, field: string): number[] | null {
-  if (raw === undefined || raw === null) return null
-  const vec = Array.isArray(raw) ? raw.map(Number) : []
-  if (vec.length !== 3 || vec.some((c) => !Number.isFinite(c))) {
-    throw new Error(`revolve: ${field} must be three finite numbers, got ${JSON.stringify(raw)}`)
-  }
-  return vec
-}
-
-/**
- * Resolve the revolve axis (mirrors the inline block in `_solve_revolve`). Starts
- * from the stored origin/direction; an `axis` query overrides them but is flipped
- * (origin becomes the line's far end, direction negated) when it points opposite
- * the stored direction.
+ * Resolve the revolve axis from its `axis` pick (mirrors the inline block in
+ * `_solve_revolve`): a line edge or sketch line gives start -> end, a circular
+ * edge gives its center and plane normal. The pick's own orientation is the
+ * sweep sense; `direction: reverse` is how the user flips it.
  *
- * The axis is REQUIRED. With neither an `axis` query nor a stored
- * `axis_direction` the resolver throws rather than revolving about world Z at
- * the world origin: a revolve has no meaningful default axis, and the arbitrary
- * one silently produced a plausible-looking wrong solid. Same contract as the
- * circular-array leaf (`circular_array: axis is required`) and the array
- * direction picks. A stored `axis_direction` without an `axis_origin` is
- * accepted as that direction through the world origin -- the direction was
- * stated deliberately, only the anchor is conventional.
+ * The pick is REQUIRED and is the only axis input. There is no default axis and
+ * no stored `axis_origin` / `axis_direction` alternative: a revolve about world
+ * Z (or any other stored vector) silently produced a plausible-looking wrong
+ * solid for a user who never picked an axis. Same contract as the
+ * circular-array leaf (`circular_array: axis is required`).
  *
- * Fail-loud guards: when an `axis` query is set but the registry returns null
- * (stale pick -- the body rebuild minted new ancestry tokens, the edge was
- * deleted, or the sketch line was removed), OR when the resolved payload carries
- * no usable axis geometry (a degenerate line, a missing sketch plane, or an
- * unrecognised shape), the resolver throws instead of silently falling back to
- * the stored/default axis. A silent fallback there produces a wrong (squished)
- * solid the user can't diagnose; a thrown error surfaces the revolve as a red
- * feature so the user re-picks the axis. Mirrors the rotation-axis guard in
- * transformMirror (`transform: rotation_axis not found`).
+ * Fail-loud guards: when the pick is set but the registry returns null (stale
+ * pick -- the body rebuild minted new ancestry tokens, the edge was deleted, or
+ * the sketch line was removed), OR when the resolved payload carries no usable
+ * axis geometry (a degenerate line, a missing sketch plane, or an unrecognised
+ * shape), the resolver throws so the revolve surfaces as a red feature and the
+ * user re-picks the axis. Mirrors the rotation-axis guard in transformMirror
+ * (`transform: rotation_axis not found`).
  */
 export function resolveRevolveAxis(
   feature: Dict,
@@ -115,86 +90,54 @@ export function resolveRevolveAxis(
   bodyStore: Record<string, Body>,
 ): [number[], number[]] {
   const axisQuery = (feature.axis as string | undefined) || undefined
-  const storedOrigin = readAxisVector(feature.axis_origin, 'axis_origin')
-  const storedDir = readAxisVector(feature.axis_direction, 'axis_direction')
-  if (storedDir && Math.hypot(storedDir[0], storedDir[1], storedDir[2]) <= 1e-12) {
-    throw new Error(`revolve: axis_direction must be a non-zero vector, got ${JSON.stringify(feature.axis_direction)}`)
+  if (!axisQuery) {
+    throw new Error('revolve: axis is required; pick an edge, sketch line, or circular edge')
   }
-  if (!axisQuery && !storedDir) {
-    throw new Error(
-      'revolve: axis is required; pick an edge, sketch entity, or face ' +
-        '(or store axis_origin + axis_direction)',
-    )
-  }
-
-  let axisOrigin = storedOrigin ?? [0, 0, 0]
-  // Only reachable with an `axis` query in hand (the guard above rejects the
-  // axis-less case), where it is the sign reference the query is flipped to
-  // agree with -- never the axis the revolve is built about.
-  let axisDirection = storedDir ?? [0, 0, 1]
-  const storedDirection = [...axisDirection]
-  if (!axisQuery) return [axisOrigin, axisDirection]
 
   const axisData = globalRepo.query(axisQuery, null, bodyStore) as Dict | null
   if (axisData === null) {
     throw new Error(`revolve: axis query did not resolve: ${JSON.stringify(axisQuery)}`)
   }
 
-  // Tracks whether any branch actually produced an axis. The branches below can
-  // all silently no-op (a degenerate line, a zero-length axis, a missing sketch
-  // plane); without this flag the resolver would silently return the stored
-  // default -- the fail-wrong path the throw below closes.
-  let applied = false
-
-  const apply = (start: number[], end: number[]): void => {
+  const fromLine = (start: number[], end: number[]): [number[], number[]] | null => {
     const dx = end[0] - start[0]
     const dy = end[1] - start[1]
     const dz = end[2] - start[2]
     const length = Math.sqrt(dx * dx + dy * dy + dz * dz)
-    if (length <= 1e-12) return
-    const computed = [dx / length, dy / length, dz / length]
-    const dot = computed[0] * storedDirection[0] + computed[1] * storedDirection[1] + computed[2] * storedDirection[2]
-    if (dot < 0) {
-      axisOrigin = [...end]
-      axisDirection = [-computed[0], -computed[1], -computed[2]]
-    } else {
-      axisOrigin = [...start]
-      axisDirection = computed
-    }
-    applied = true
+    if (length <= 1e-12) return null
+    return [[...start], [dx / length, dy / length, dz / length]]
   }
 
+  // Each branch yields null when its payload is degenerate (a zero-length line
+  // or circle normal, a sketch line whose plane is gone); the throw below turns
+  // that into a red feature rather than a revolve about some leftover axis.
+  let axis: [number[], number[]] | null = null
   if ('start' in axisData && 'end' in axisData) {
-    apply(axisData.start as number[], axisData.end as number[])
+    axis = fromLine(axisData.start as number[], axisData.end as number[])
   } else if ('center' in axisData && 'axis' in axisData) {
     // Circle / arc / ellipse edge: the center sits on the rotation axis and the
-    // axis field (the circle's plane normal) is the rotation direction, flipped
-    // to match the stored direction (same sign convention as the line-edge arm).
+    // axis field (the circle's plane normal) is the rotation direction.
     const raw = axisData.axis as number[]
     const axLen = Math.sqrt(raw[0] * raw[0] + raw[1] * raw[1] + raw[2] * raw[2])
     if (axLen > 1e-12) {
-      const normal: number[] = [raw[0] / axLen, raw[1] / axLen, raw[2] / axLen]
-      const dot = normal[0] * storedDirection[0] + normal[1] * storedDirection[1] + normal[2] * storedDirection[2]
-      axisOrigin = [...(axisData.center as number[])]
-      axisDirection = dot < 0 ? [-normal[0], -normal[1], -normal[2]] : normal
-      applied = true
+      axis = [[...(axisData.center as number[])], [raw[0] / axLen, raw[1] / axLen, raw[2] / axLen]]
     }
   } else if ('external_params' in axisData && axisData.kind === 'line') {
     const sketchId = (axisData.sketch_id as string) ?? ''
     const plane = sketchId ? (globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined) : undefined
     if (plane) {
       const params = axisData.external_params as number[]
-      apply(sketchToWorld2d(params.slice(0, 2), plane), sketchToWorld2d(params.slice(2, 4), plane))
+      axis = fromLine(sketchToWorld2d(params.slice(0, 2), plane), sketchToWorld2d(params.slice(2, 4), plane))
     }
   }
 
-  if (!applied) {
+  if (axis === null) {
     throw new Error(
       'revolve: resolved axis payload carries no usable axis ' +
         `(missing start/end, center/axis, or external_params+sketch plane for): ${JSON.stringify(axisQuery)}`,
     )
   }
-  return [axisOrigin, axisDirection]
+  return axis
 }
 
 /** Solve a revolve feature into the body store (mirrors `_solve_revolve`). */
@@ -308,7 +251,7 @@ export function solveRevolve(
     )
   }
 
-  // Throws when no axis was picked or stored -- never a sweep about world Z.
+  // Throws when no axis was picked -- never a sweep about a default axis.
   const [axisOrigin, axisDirection] = resolveRevolveAxis(merged, globalRepo, bodyStore)
   const ao = axisOrigin as Vec3
   const ad = axisDirection as Vec3

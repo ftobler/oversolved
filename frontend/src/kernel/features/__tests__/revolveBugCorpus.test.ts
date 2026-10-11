@@ -154,7 +154,6 @@ function bugReportSpec(opts?: { noFillet?: boolean; axisQuery?: string }) {
     id: REV, kind: 'revolve', label: 'revolve 2',
     revolve: {
       angle: 45, axis: opts?.axisQuery ?? STORED_AXIS_QUERY,
-      axis_direction: [0, 0, 1], axis_origin: [0, 0, 0],
       operation: 'add', sketch: [STORED_PROFILE_QUERY],
     },
   })

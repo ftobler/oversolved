@@ -74,7 +74,7 @@ const revolveDoc = (): PartDoc => ({
   kind: 'part',
   features: [{
     id: 'rv1', kind: 'revolve', label: 'Rev',
-    revolve: { sketch: ['@sk1'], angle: 360, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] },
+    revolve: { sketch: ['@sk1'], angle: 360, axis: '@axis' },
   }],
 } as unknown as PartDoc)
 

@@ -87,9 +87,7 @@ export interface RevolveFeatureDef {
   sketch: string | string[]
   angle: NumberOrExpr
   direction?: RevolveDirection
-  axis?: string
-  axis_origin?: [number, number, number]
-  axis_direction?: [number, number, number]
+  axis?: string  // required at solve time; there is no stored or default axis
   operation?: 'add' | 'cut' | 'new'
   merge_target?: string
 }

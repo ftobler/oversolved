@@ -108,7 +108,7 @@ const REMOVE_CASES: { name: string; makeDoc: () => PartDoc; mutation: Mutation }
   },
   {
     name: 'remove_revolve_profile',
-    makeDoc: () => ({ version: 1, kind: 'part', features: [{ id: 'rv1', kind: 'revolve', revolve: { sketch: ['@sk1'], angle: 360, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] } }] }) as unknown as PartDoc,
+    makeDoc: () => ({ version: 1, kind: 'part', features: [{ id: 'rv1', kind: 'revolve', revolve: { sketch: ['@sk1'], angle: 360, axis: '@axis' } }] }) as unknown as PartDoc,
     mutation: { type: 'remove_revolve_profile', featureId: 'rv1', index: 9 },
   },
   {
@@ -304,7 +304,7 @@ describe('idempotent no-op guard', () => {
 // one undo entry through the real handleMutation. Each case narrows to the
 // touched feature (or part_style entry), matching noOpSliceFor's scope.
 const extrudeNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: ['@sk1'], distance: 10, direction: 'normal' } }] }) as unknown as PartDoc
-const revolveNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'rv1', kind: 'revolve', revolve: { sketch: ['@sk1'], angle: 360, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] } }] }) as unknown as PartDoc
+const revolveNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'rv1', kind: 'revolve', revolve: { sketch: ['@sk1'], angle: 360, axis: '@axis' } }] }) as unknown as PartDoc
 const sweepNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: ['@sk1'], path: [] } }] }) as unknown as PartDoc
 const filletNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'f1', kind: 'fillet', fillet: { edges: [], radius: 1 } }] }) as unknown as PartDoc
 const chamferNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'ch1', kind: 'chamfer', chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 } }] }) as unknown as PartDoc

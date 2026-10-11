@@ -65,8 +65,7 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
   kind: revolve
   sketch: "$sk1"
   angle: 360.0
-  axis_origin: [0, 0, 0]
-  axis_direction: [0, 1, 0]
+  axis: "@sk1/axisLine"         # required pick: line edge, sketch line, or circular edge
   operation: new
 ```
 

@@ -457,7 +457,7 @@ describe('applyReorderPickField', () => {
   })
 
   it('reorders revolve sketch', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'rev1', kind: 'revolve', revolve: { sketch: ['s1', 's2'], angle: 90, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] } }] }
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'rev1', kind: 'revolve', revolve: { sketch: ['s1', 's2'], angle: 90, axis: '@axis' } }] }
     applyReorderPickField(doc, 'rev1', 'sketch', 1, 0)
     expect(doc.features![0].revolve!.sketch).toEqual(['s2', 's1'])
   })
@@ -489,7 +489,7 @@ describe('applyReorderPickField', () => {
   })
 
   it('normalizes a bare-string revolve sketch onto the live document instead of a throwaway array', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'rev2', kind: 'revolve', revolve: { sketch: 's1', angle: 90, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] } }] }
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'rev2', kind: 'revolve', revolve: { sketch: 's1', angle: 90, axis: '@axis' } }] }
     applyReorderPickField(doc, 'rev2', 'sketch', 0, 0)
     expect(doc.features![0].revolve!.sketch).toEqual(['s1'])
   })

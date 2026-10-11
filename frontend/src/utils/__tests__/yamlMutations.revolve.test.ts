@@ -45,9 +45,7 @@ describe('add_revolve', () => {
     // world Z; the revolve leaf now rejects an axis-less feature instead.
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
-    expect(doc.features![0].revolve!.axis_origin).toBeUndefined()
-    expect(doc.features![0].revolve!.axis_direction).toBeUndefined()
-    expect(doc.features![0].revolve!.axis).toBeUndefined()
+    expect(Object.keys(doc.features![0].revolve!).sort()).toEqual(['angle', 'sketch'])
   })
 })
 

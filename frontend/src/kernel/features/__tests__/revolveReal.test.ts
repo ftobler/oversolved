@@ -43,14 +43,25 @@ function rectSketch(sketchId: string, w: number, h: number, offsetX: number, off
   }
 }
 
+// The revolve axis is a required pick, so every spec here revolves about this
+// one-line sketch: world +Y through the origin, on the front plane.
+const AXIS = '@skax/ax'
+
+function axisSketch() {
+  return {
+    id: 'skax', kind: 'sketch' as const, label: 'Axis', plane: '@builtin_plane_front',
+    entities: [{ id: 'ax', kind: 'line' as const }],
+    initial: { ax: [0, 0, 0, 1] },
+    constraints: [],
+  }
+}
+
 function revolveSpec(featureId: string, sketchId: string, opts: {
   angle?: number; operation?: string; direction?: string; mergeTarget?: string
-  axisOrigin?: number[]; axisDirection?: number[]
 } = {}) {
   const spec: Record<string, unknown> = {
     id: featureId, kind: 'revolve', label: 'Revolve',
-    sketch: '$' + sketchId, angle: opts.angle ?? 360,
-    axis_origin: opts.axisOrigin ?? [0, 0, 0], axis_direction: opts.axisDirection ?? [0, 1, 0],
+    sketch: '$' + sketchId, angle: opts.angle ?? 360, axis: AXIS,
   }
   if (opts.operation) spec.operation = opts.operation
   if (opts.direction) spec.direction = opts.direction
@@ -59,7 +70,13 @@ function revolveSpec(featureId: string, sketchId: string, opts: {
 }
 
 describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', () => {
-  const h = new SharedHarness(oc!)
+  const harness = new SharedHarness(oc!)
+  const h = {
+    run: (spec: { features: unknown[] } & Record<string, unknown>) =>
+      harness.run({ ...spec, features: [axisSketch(), ...spec.features] }),
+    res: harness.res.bind(harness),
+    body: harness.body.bind(harness),
+  }
 
   beforeAll(() => {
     if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
@@ -91,7 +108,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
       features: [
         rectSketch('sk1', 2, 1, 1, 0),
         { id: 'rev1', kind: 'revolve', label: 'Revolve',
-          revolve: { sketch: '$sk1', angle: 360, axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] } },
+          revolve: { sketch: '$sk1', angle: 360, axis: AXIS } },
       ],
     })
     expect(h.res(result, 'rev1').status).toBe('ok')
@@ -139,7 +156,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
       version: 1, kind: 'part',
       features: [
         rectSketch('sk1', 2, 1, 1, 0), revolveSpec('rev1', 'sk1', { angle: 360 }),
-        rectSketch('sk2', 1, 1, 4, 0), revolveSpec('rev2', 'sk2', { angle: 360, operation: 'new', axisDirection: [0, 0, 1] }),
+        rectSketch('sk2', 1, 1, 4, 0), revolveSpec('rev2', 'sk2', { angle: 360, operation: 'new' }),
       ],
     })
     expect(result.bodies).toHaveProperty('body_rev1')
@@ -250,7 +267,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
         rectSketch('sk2', 1, 1, 3, 2),
         { id: 'rev1', kind: 'revolve', label: 'Revolve',
           sketch: ['$sk1', '$sk2'], angle: 360,
-          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+          axis: AXIS },
       ],
     })
     expect(h.res(result, 'rev1').status).toBe('ok')
@@ -276,7 +293,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
         rectSketch('sk2', 1, 1, 3, 0),
         { id: 'rev1', kind: 'revolve', label: 'Revolve',
           sketch: ['$sk1', '$sk2'], angle: 360,
-          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+          axis: AXIS },
       ],
     })
     expect(h.res(result, 'rev1').status).toBe('exception')
@@ -293,7 +310,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
         rectSketch('sk2', 0.5, 0.5, 1.75, 0),
         { id: 'rev1', kind: 'revolve', label: 'Revolve',
           sketch: ['$sk1', '$sk2'], angle: 360,
-          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+          axis: AXIS },
       ],
     })
     expect(h.res(result, 'rev1').status).toBe('ok')
@@ -314,7 +331,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
         rectSketch('sk2', 2, 1, 1, 1),
         { id: 'rev1', kind: 'revolve', label: 'Revolve',
           sketch: ['$sk1', '$sk2'], angle: 360,
-          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+          axis: AXIS },
       ],
     })
     expect(h.res(result, 'rev1').status).toBe('ok')
@@ -344,7 +361,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
         rectSketch('sk2', 1, 1, 3, 2, '@builtin_plane_top'),
         { id: 'rev1', kind: 'revolve', label: 'Revolve',
           sketch: ['$sk1', '$sk2'], angle: 360,
-          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+          axis: AXIS },
       ],
     })
     expect(h.res(result, 'rev1').status).toBe('exception')
@@ -372,7 +389,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
           ],
         },
         { id: 'rev1', kind: 'revolve', sketch: surfaceQuery, angle: 360,
-          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] },
+          axis: AXIS },
       ],
     })
     expect(h.res(result, 'sk1').status).not.toBe('exception')

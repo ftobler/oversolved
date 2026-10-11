@@ -153,12 +153,14 @@ describe.skipIf(!oc || !solveBytes)('revolve axis from query (real OCC + Rust so
 
   it('an axis-less revolve fails the feature instead of sweeping about world Z', () => {
     // The end-to-end half of resolveRevolveAxis's required-axis guard: a
-    // profile with no `axis` pick and no stored axis_direction used to build a
-    // silent world-Z solid. It must surface as a red feature instead.
+    // profile with no `axis` pick used to build a silent world-Z solid, and a
+    // leftover stored axis_origin/axis_direction used to stand in for the pick.
+    // Both must surface as a red feature instead.
     const spec = { features: [
       rectSketch('sk1', 1, 1, 5, 1),
       { id: 'rev1', kind: 'revolve', label: 'Revolve',
-        revolve: { sketch: ['$sk1'], angle: 360, operation: 'new' } },
+        revolve: { sketch: ['$sk1'], angle: 360, operation: 'new',
+          axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] } },
     ]}
     const r = h.run(spec)
     expect(h.res(r, 'rev1').status).toBe('exception')

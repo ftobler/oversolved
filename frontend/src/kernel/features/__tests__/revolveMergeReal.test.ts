@@ -42,11 +42,22 @@ function rectSketchAt(sketchId: string, w: number, h: number, offsetX: number, p
   }
 }
 
+// The revolve axis is a required pick: every revolve here turns about this
+// one-line sketch, world +Y through the origin on the front plane.
+function axisSketch() {
+  return {
+    id: 'skax', kind: 'sketch' as const, label: 'Axis', plane: '@builtin_plane_front',
+    entities: [{ id: 'ax', kind: 'line' as const }],
+    initial: { ax: [0, 0, 0, 1] },
+    constraints: [],
+  }
+}
+
 function revolveSpec(sketchId: string, revId: string, opts: { angle?: number; operation?: string; mergeTarget?: string } = {}) {
   const r: Record<string, unknown> = {
     id: revId, kind: 'revolve', label: 'Revolve',
     revolve: { sketch: ['$' + sketchId], angle: opts.angle ?? 360,
-      axis_origin: [0, 0, 0], axis_direction: [0, 1, 0], operation: opts.operation ?? 'add' },
+      axis: '@skax/ax', operation: opts.operation ?? 'add' },
   }
   if (opts.mergeTarget) (r.revolve as Record<string, unknown>).merge_target = opts.mergeTarget
   return r
@@ -54,6 +65,7 @@ function revolveSpec(sketchId: string, revId: string, opts: { angle?: number; op
 
 function bodyA() {
   return { features: [
+    axisSketch(),
     rectSketchAt('sk0', 2, 1, 1),
     revolveSpec('sk0', 'rev0', { operation: 'new' }),
   ]}
@@ -61,6 +73,7 @@ function bodyA() {
 
 function twoBodies() {
   return { features: [
+    axisSketch(),
     rectSketchAt('sk0', 2, 1, 1),
     revolveSpec('sk0', 'rev0', { operation: 'new' }),
     rectSketchAt('sk1', 2, 1, 10),

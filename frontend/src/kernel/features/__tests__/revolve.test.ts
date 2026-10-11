@@ -150,42 +150,20 @@ describe('solveRevolve guard paths', () => {
 // instead of getting a fail-wrong result. Mirrors transformMirror's
 // `rotation_axis not found` guard.
 describe('resolveRevolveAxis fail-loud guards', () => {
-  it('throws when neither an axis query nor a stored axis is given', () => {
+  it('throws when no axis is picked', () => {
     // The silent [0,0,0]/[0,0,1] fallback revolved about world Z whenever the
     // user never picked an axis -- a wrong solid that looked plausible.
     const repo = new Repository()
     expect(() => resolveRevolveAxis({}, repo, {})).toThrow(/axis is required/)
   })
 
-  it('throws when only an axis origin is stored (no direction, no query)', () => {
+  it('ignores a stored axis_origin/axis_direction: the pick is the only axis input', () => {
+    // The stored vectors were a back-compat way to revolve without a pick; a
+    // doc that still carries them and no pick must fail like any axis-less one.
     const repo = new Repository()
     expect(() =>
-      resolveRevolveAxis({ axis_origin: [1, 2, 3] }, repo, {}),
+      resolveRevolveAxis({ axis_origin: [0, 0, 0], axis_direction: [0, 1, 0] }, repo, {}),
     ).toThrow(/axis is required/)
-  })
-
-  it('throws on a zero-length stored axis direction', () => {
-    const repo = new Repository()
-    expect(() =>
-      resolveRevolveAxis({ axis_direction: [0, 0, 0] }, repo, {}),
-    ).toThrow(/axis_direction must be a non-zero vector/)
-  })
-
-  it('throws on a malformed stored axis vector instead of passing it to OCC', () => {
-    const repo = new Repository()
-    expect(() =>
-      resolveRevolveAxis({ axis_direction: [0, 1] }, repo, {}),
-    ).toThrow(/axis_direction must be three finite numbers/)
-    expect(() =>
-      resolveRevolveAxis({ axis_origin: [0, 'x', 0], axis_direction: [0, 0, 1] }, repo, {}),
-    ).toThrow(/axis_origin must be three finite numbers/)
-  })
-
-  it('accepts a stored direction alone as that axis through the world origin', () => {
-    const repo = new Repository()
-    const [origin, direction] = resolveRevolveAxis({ axis_direction: [0, 1, 0] }, repo, {})
-    expect(origin).toEqual([0, 0, 0])
-    expect(direction).toEqual([0, 1, 0])
   })
 
   it('treats an empty axis query as no axis at all', () => {
@@ -259,31 +237,26 @@ describe('resolveRevolveAxis fail-loud guards', () => {
     expect(direction).toEqual([0, 0, 1])
   })
 
-  it('flips the queried line edge to agree with the stored direction', () => {
-    // The stored direction is the sign reference: a picked edge pointing the
-    // other way is anchored at its far end and negated, so re-solving a flipped
-    // edge does not reverse the revolve.
+  it('keeps the picked edge orientation instead of flipping it toward world +Z', () => {
+    // The old resolver flipped every pick to agree with a [0,0,1] default
+    // reference; with no stored direction left, the pick's own sense stands.
     const repo = new Repository()
     repo.register('edge', {
       type: 'straightedge',
-      start: [1, 2, 3],
-      end: [1, 2, 8],
+      start: [1, 2, 8],
+      end: [1, 2, 3],
     })
-    const [origin, direction] = resolveRevolveAxis({ axis: '@edge', axis_direction: [0, 0, -1] }, repo, {})
+    const [origin, direction] = resolveRevolveAxis({ axis: '@edge' }, repo, {})
     expect(origin).toEqual([1, 2, 8])
-    expect(direction[0]).toBeCloseTo(0)
-    expect(direction[1]).toBeCloseTo(0)
-    expect(direction[2]).toBe(-1)
+    expect(direction).toEqual([0, 0, -1])
   })
 
-  it('takes a circular edge axis from its center and plane normal, flipped to the stored direction', () => {
+  it('takes a circular edge axis from its center and plane normal', () => {
     const repo = new Repository()
-    repo.register('arc', { type: 'edge', center: [5, 5, 5], axis: [0, 0, 2] })
-    const [origin, direction] = resolveRevolveAxis({ axis: '@arc', axis_direction: [0, 0, -1] }, repo, {})
+    repo.register('arc', { type: 'edge', center: [5, 5, 5], axis: [0, 0, -2] })
+    const [origin, direction] = resolveRevolveAxis({ axis: '@arc' }, repo, {})
     expect(origin).toEqual([5, 5, 5])
-    expect(direction[0]).toBeCloseTo(0)
-    expect(direction[1]).toBeCloseTo(0)
-    expect(direction[2]).toBe(-1)
+    expect(direction).toEqual([0, 0, -1])
   })
 
   it('lifts a sketch-line axis through its registered sketch plane', () => {
