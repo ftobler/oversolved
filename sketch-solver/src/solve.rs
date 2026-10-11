@@ -8,7 +8,9 @@
 use crate::residuals::Problem;
 use crate::{Diagnostics, Input, Output, Status};
 use nalgebra::{DMatrix, SymmetricEigen};
-use solver_core::lm::{solve_lm, solve_lm_sparse, solve_lm_sparse_anchored};
+use solver_core::lm::{
+    solve_lm, solve_lm_sparse, solve_lm_sparse_anchored, solve_lm_sparse_proximal,
+};
 
 /// Singular values above this count toward the rank.
 const RANK_TOL: f64 = 1e-6;
@@ -66,7 +68,16 @@ pub fn solve_sketch(input: &Input) -> Output {
             // `refine_drag_sparse` appended `w*(x-x0)` residual rows; their
             // Hessian contribution is `w²`, the absolute anchor weight.
             let anchor: Vec<f64> = weights.iter().map(|w| w * w).collect();
-            solve_lm_sparse_anchored(&x0, &f, &jac_sp, &anchor).x
+            let anchored = solve_lm_sparse_anchored(&x0, &f, &jac_sp, &anchor).x;
+            // The anchored result is a compromise that violates the
+            // constraints in proportion to the cursor's distance from them (a
+            // point dragged 100 off its line sat 0.25 off it). It already
+            // picked the spot on the solution set nearest the cursor; a
+            // proximal pass from there projects back onto it. Its anchor
+            // follows the iterate, so it leaves no bias of its own while still
+            // holding the free directions: unanchored, a vertical line through
+            // the origin slid its dragged end off to ~1e4.
+            solve_lm_sparse_proximal(&anchored, &f, &jac_sp, &anchor).x
         } else {
             clean.x
         };
@@ -900,7 +911,8 @@ mod tests {
         // so its raw constraint residual exceeds LOSS_THRESHOLD; the status must
         // still come from the constraint system (satisfiable), exactly as the
         // old first unanchored solve classified it. Otherwise the caller drops
-        // the frame and the point freezes instead of sliding.
+        // the frame and the point freezes instead of sliding. The returned
+        // geometry is the polished one: on the line, below the cursor.
         let fixed_line = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);
         let on_line = Constraint {
             kind_code: ConstraintKind::Coincident.to_u8(),
@@ -926,11 +938,59 @@ mod tests {
             Status::Underconstrained.to_u8(),
             "a satisfiable far drag must not read as overconstrained"
         );
-        // The anchor still pulls the point toward the cursor: y is off the line
-        // (the anchored compromise) but far below the cursor's y = 100.
-        let y = out.params_solved[5];
-        assert!(y.abs() > 1e-3, "anchor had no effect: y={y}");
-        assert!(y.abs() < 1.0, "point did not settle near the line: y={y}");
+        let (x, y) = (out.params_solved[4], out.params_solved[5]);
+        assert!(y.abs() < 1e-5, "dragged point left off its line: y={y}");
+        assert!(
+            (x - 5.0).abs() < 1e-3,
+            "point did not slide under the cursor: x={x}"
+        );
+    }
+
+    /// A vertical line through an external origin at (-5, 0), its end
+    /// dragged to the cursor (3, -10). The constraints leave the line free to
+    /// grow along itself, and the absolute vertical offset against the
+    /// angular point-on-line row opens a valley in that direction.
+    fn vertical_line_through_origin(drag: bool) -> Input {
+        let through_origin = Constraint {
+            kind_code: ConstraintKind::Coincident.to_u8(),
+            refs: ab(
+                e_ref(0, PointSelector::Absent),
+                Ref::External { x: -5.0, y: 0.0 },
+            ),
+            ..Default::default()
+        };
+        let vertical = c_target(ConstraintKind::Vertical, 0, PointSelector::Absent);
+        Input {
+            options: Options {
+                drag_mode: drag,
+                drag_anchor_id: 0,
+                skip_status_pass: drag,
+            },
+            ..input(
+                vec![line(0)],
+                vec![-5.0, 21.95, 3.0, -10.0],
+                vec![through_origin, vertical],
+            )
+        }
+    }
+
+    #[test]
+    fn polish_holds_a_free_direction_with_a_valley() {
+        // Regression for the polish phases: dropping the anchor outright to
+        // remove its bias let LM slide the dragged end off to ~1e4 here.
+        for drag in [false, true] {
+            let out = solve_sketch(&vertical_line_through_origin(drag));
+            let p = &out.params_solved;
+            assert!(out.diagnostics.residual_norm < 1e-6, "drag={drag}: {p:?}");
+            assert!(
+                (p[0] + 5.0).abs() < 1e-4 && (p[2] + 5.0).abs() < 1e-4,
+                "drag={drag}: {p:?}"
+            );
+            assert!(
+                p[1].abs() < 100.0 && p[3].abs() < 100.0,
+                "drag={drag}: line ran off: {p:?}"
+            );
+        }
     }
 
     #[test]

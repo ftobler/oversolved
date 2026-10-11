@@ -367,6 +367,31 @@ pub fn solve_lm_sparse_anchored(
     jac_sparse: &impl Fn(&[f64]) -> Vec<SparseRow>,
     anchor: &[f64],
 ) -> SpLmResult {
+    sparse_lm(x0, f, jac_sparse, anchor, false)
+}
+
+/// As `solve_lm_sparse_anchored`, but the anchor follows the iterate: it is
+/// re-centred on `x` after every accepted step (a proximal point iteration).
+/// It still damps how far each step moves the free directions, yet it never
+/// pulls toward a fixed spot, so the result carries none of the seed anchor's
+/// `|r| ~ anchor * |x - x0|` bias. Use it to project an anchored compromise
+/// back onto the solution set without letting it wander.
+pub fn solve_lm_sparse_proximal(
+    x0: &[f64],
+    f: &impl Fn(&[f64]) -> Vec<f64>,
+    jac_sparse: &impl Fn(&[f64]) -> Vec<SparseRow>,
+    anchor: &[f64],
+) -> SpLmResult {
+    sparse_lm(x0, f, jac_sparse, anchor, true)
+}
+
+fn sparse_lm(
+    x0: &[f64],
+    f: &impl Fn(&[f64]) -> Vec<f64>,
+    jac_sparse: &impl Fn(&[f64]) -> Vec<SparseRow>,
+    anchor: &[f64],
+    proximal: bool,
+) -> SpLmResult {
     let n = x0.len();
     let mut x = x0.to_vec();
     let mut r = f(&x);
@@ -391,7 +416,9 @@ pub fn solve_lm_sparse_anchored(
     }
 
     let mut jac = jac_sparse(&x);
-    let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(anchor, x0, &x);
+    // Where the anchor pulls: the seed, or the iterate itself when proximal.
+    let mut target = x0.to_vec();
+    let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(anchor, &target, &x);
 
     // Initial damping from the scale of JᵀJ's diagonal.
     let mut lambda = 1e-3
@@ -413,7 +440,7 @@ pub fn solve_lm_sparse_anchored(
         // `μ·scale·(x - x0)`.
         let mut g = sparse::gradient(&jac, &r, n);
         for (i, gi) in g.iter_mut().enumerate() {
-            *gi += anchor.get(i).copied().unwrap_or(0.0) * (x[i] - x0[i]);
+            *gi += anchor.get(i).copied().unwrap_or(0.0) * (x[i] - target[i]);
         }
         if g.iter().any(|&v| !v.is_finite()) {
             break;
@@ -440,8 +467,8 @@ pub fn solve_lm_sparse_anchored(
 
             let x_new: Vec<f64> = (0..n).map(|i| x[i] + delta[i]).collect();
             let r_new = f(&x_new);
-            let cost_new =
-                0.5 * r_new.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(anchor, x0, &x_new);
+            let cost_new = 0.5 * r_new.iter().map(|&e| e * e).sum::<f64>()
+                + anchor_cost(anchor, &target, &x_new);
 
             if cost_new < cost {
                 let dx = norm2(&delta);
@@ -463,6 +490,11 @@ pub fn solve_lm_sparse_anchored(
                     };
                 }
                 cost = cost_new;
+                if proximal {
+                    // The anchor follows the iterate, so its cost drops to 0.
+                    target.clone_from(&x);
+                    cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>();
+                }
                 break;
             }
             lambda *= LAMBDA_UP;
