@@ -103,9 +103,15 @@ impl Problem<'_> {
         // so the two mirror configurations (line B turned +theta or -theta from
         // line A) both satisfy it. With a sign the *signed* angle in (-180, 180]
         // is matched against `sign * value`, pinning the handedness while the
-        // user-facing value stays non-negative.
+        // user-facing value stays non-negative. The signed difference is
+        // wrapped back into (-180, 180]: atan2 jumps at the +-180 cut, so a
+        // target of 180 against a line at -179 would otherwise read -359 and
+        // steer the solver the long way round.
         match c.sign {
-            Some(s) => r.push(cross.atan2(dot) - s * value.to_radians()),
+            Some(s) => {
+                let d = cross.atan2(dot) - s * value.to_radians();
+                r.push(d.sin().atan2(d.cos()));
+            }
             None => r.push(cross.abs().atan2(dot) - value.to_radians()),
         }
     }

@@ -431,3 +431,33 @@ fn angle_signed_pins_handedness_legacy_is_side_agnostic() {
     let smn = Problem::new(&smneg);
     assert!(smn.residuals(&smn.x0)[0].abs() < 1e-12, "signed -1 with -y");
 }
+
+#[test]
+fn signed_angle_residual_takes_the_short_way_across_the_branch_cut() {
+    // Target +180. Line B at -179 deg is 1 deg away; atan2 reports -179, and
+    // the unwrapped residual read -359 deg, pointing the solver the long way
+    // round through a full turn.
+    let b = (-179.0f64).to_radians();
+    let c = Constraint {
+        kind_code: ConstraintKind::Angle.to_u8(),
+        refs: ab(
+            e_ref(0, PointSelector::Absent),
+            e_ref(1, PointSelector::Absent),
+        ),
+        value: Some(180.0),
+        sign: Some(1.0),
+        ..Default::default()
+    };
+    let inp = input(
+        vec![ent(Kind::Line, 0), ent(Kind::Line, 4)],
+        vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, b.cos() as f32, b.sin() as f32],
+        vec![c],
+    );
+    let p = Problem::new(&inp);
+    let r = p.residuals(&p.x0)[0];
+    assert!(
+        (r.abs() - 1f64.to_radians()).abs() < 1e-6,
+        "residual {} deg, want 1 deg",
+        r.to_degrees()
+    );
+}
