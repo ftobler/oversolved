@@ -175,6 +175,10 @@ export function randomId(bytes: number): string {
 
 **Format:** `$<ELE>`, `@<FEAT>`, `?<hex-lengths>;<ids>[:<TYPE>]`
 
+An ancestry id is one of three roles (`partitionAncestryIds` in
+`frontend/src/kernel/queryWire.ts`): a construction UUID `@u|<uuid>` (the
+identity), a classifier `@cls_*` (a tie-break), or lineage (everything else).
+
 **Classifiers** (edit-stable tie-break tier; minted `@cls_*` tokens that ride the
 ancestry id list, not a separate suffix):
 - `@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn` - which end of the

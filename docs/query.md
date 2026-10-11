@@ -1,205 +1,157 @@
 # Query System
 
-The solver uses queries to reference geometry. A query is a string (or typed object) that identifies an element registered in the `Repository`.
+The kernel uses queries to reference geometry. A query is a string (or typed
+`Query` object, `frontend/src/types/query.ts`) that names an element registered
+in the `Repository` (`frontend/src/kernel/queryRepository.ts`). The wire codec
+lives in `queryWire.ts`, type coercion in `queryCoerce.ts`, registration and
+eviction in `queryAncestryOps.ts`; `query.ts` is the barrel.
 
 ## ID Conventions
 
-- **Feature IDs**: user-assigned in the YAML document, never change.
-- **Element IDs within a feature**: user-assigned at creation. Sub-element suffixes (`start`, `end`, `center`, `xy`) identify sub-portions.
-- **Auto-generated topology IDs**: `genId()` → `el_<base36 counter>` (e.g. `el_0`, `el_1a`), assigned during `registerAncestor`.
+- **Feature IDs**: minted at creation (`randomId`), never change.
+- **Element IDs within a feature**: minted at creation. Sub-element suffixes
+  (`start`, `end`, `center`, `xy`) identify sub-portions.
+- **Repository element ids**: `genId()` -> `el_<base36 counter>`, assigned by
+  `registerAncestor`. Internal only; never persisted in a document.
 
-There are two element-key conventions, one per repository:
-
-- **Local sketch repo** (concatenated): no separator. Example: `sketch1line1start`.
-- **Global repo** (slash-separated): Example: `sketch1/line1/start`. Matches `@` `AbsoluteQuery` resolution (`feat + "/" + ele + "/" + sub`) and, for `$` `LocalQuery` resolution, the registered `featureId/eid/sub` sub-point keys.
+Element keys registered under a fixed name are slash-separated:
+`featureId/eid/sub` (e.g. `sketch1/line1/start`).
 
 ## Query Syntax
 
-| Prefix | Kind | Description |
-|--------|------|-------------|
-| `$<ELE><SUB>` | Local | Element within current feature context. Resolved as `context + eid` (bare) or `context + eid + "/" + sub` (sub-point), matching the slash-registered `featureId/eid/sub` keys. |
-| `@<FEAT>/<ELE>/<SUB>` | Absolute | Cross-feature lookup by slash-separated key `feat + "/" + ele + "/" + sub`. |
-| `?<H,L>;<idA><idB>[:TYPE]` | Ancestry | Ancestry-based query with hex-encoded lengths and optional type filter. |
+| Prefix | Kind | Resolution |
+|--------|------|------------|
+| `$<ELE>[<SUB>]` | Local | `context + eid`, or `context + eid + "/" + sub` for a sub-point. `context` must end in `/`. |
+| `@<FEAT>[/<ELE>[/<SUB>]]` | Absolute | Flat lookup of the slash-joined key. 1 to 3 non-empty parts; anything else is rejected. |
+| `?<H,L,...>;<id><id>...[:TYPE]` | Ancestry | Hex lengths frame the concatenated ids; optional type restriction. |
 
-Dispatched by `Repository.query()` on the first character. Sub suffixes require a non-alphanumeric character before them to avoid false matches (e.g. `sketch_start` ≠ `sketch_` + `start`).
+`Repository.query()` dispatches on the first character.
+
+The ids of an ancestry query play three roles (`partitionAncestryIds`):
+
+| Token | Role |
+|-------|------|
+| `@u|<uuid>` | Construction UUID, the primary identity. |
+| `@cls_*` | Classifier, a tie-break that only narrows. |
+| anything else | Lineage: the ancestral path the subset match runs on (`@<feature>`, `@body_*`, sketch-entity tokens, ...). |
+
+There is no other token family. Geometry hashes and geometric descriptors are
+not part of a query, and old documents that carried them are not supported: a
+stored `@gface_`/`@gedge_`/`@gd*|` token is now plain lineage that no element
+carries, so such a pick misses (shows red) and has to be re-picked.
 
 ## Geometry Types
 
-| Type | Description | Parent |
-|------|-------------|--------|
-| `solid` | 3D solid body | - |
-| `face` | General face | - |
-| `flatface` | Planar face | `face` |
-| `cylinderface` | Cylindrical face | `face` |
-| `edge` | Non-straight edge | - |
-| `straightedge` | Straight edge | `edge` |
-| `vertex` | Topological vertex | - |
+| Type | Parent |
+|------|--------|
+| `solid` | - |
+| `face` | - |
+| `flatface`, `cylinderface`, `coneface`, `sphereface`, `torusface` | `face` |
+| `edge` (any non-straight edge) | - |
+| `straightedge` | `edge` |
+| `vertex` | - |
 
-A query for a parent type also matches subtypes (e.g. `face` matches `flatface`).
+A query for a parent type also matches its subtypes (`face` matches `flatface`).
+
+## B-rep Primitive Queries
+
+Every face, edge and vertex of a body gets a query minted at tessellation
+(`buildFaceQuery` in `faceQuery.ts`, `solidToEdges` / `solidToVertices` in
+`occ/tessellation.ts`):
+
+```
+?<lengths>;@u|<uuid>@<createdBy>@body_<id><ancestry tokens>@cls_*...:<type>
+```
+
+The builder registers the same primitive under its ancestor set
+(`builderAncestry.ts`): the index tag `@body_<id>/face<N>`, the creating
+feature, the body, and the ancestry tokens; the UUID goes to `byUuid` and the
+classifiers to the element payload. An edge's payload classifiers are read from
+its own minted query (`classifiersOfQuery`), so the two cannot disagree.
+
+Invariant (`querySelfResolutionReal.test.ts`): every emitted query resolves to
+the very element registered for that primitive through the UUID tier. With
+its UUID removed, the ancestral net resolves it to that element, or is
+ambiguous among siblings that include it; it never misses it and never
+resolves a different element.
 
 ## Construction UUIDs (`@u|<uuid>`)
 
 The primary identity tier. Every produced face/edge/vertex carries a UUID
 derived from HOW it was constructed (feature ids, sketch entity ids, cap roles,
 parent UUIDs, split indices), never from where it sits in space
-(`constructionName.ts`). The ingredients are symbolic, so the UUID recomputes to
-the same value on every rebuild and a persisted token still matches after a
-reload. The one confined use of geometry is `orderSplitChildren`, which sorts
-genuine split siblings by their arrangement in the parent's own frame into
-stable integer indices; that relative key is consumed at mint time and never
-stored or emitted.
+(`constructionName.ts`). The UUID recomputes to the same value on every rebuild.
 
-Wire form: `@u|<uuid>` tokens ride the length-prefixed ancestry id list like the
-`@cls_*` tokens, and are registered in `Repository.byUuid`.
+Fail-loud contract (`refuseUuidSwap`): a query naming a live UUID resolves to
+the element carrying that UUID or throws. It never falls through to a weaker
+tier and silently returns a DIFFERENT element.
 
-Fail-loud contract (`refuseUuidSwap`, `queryRepository.ts`): a query naming a live UUID
-resolves to the element carrying that UUID or throws. It must never fall
-through to a weaker tier and silently return a DIFFERENT element.
+- 2+ distinct UUIDs in one query, or one UUID on 2+ live elements (a collision
+  by construction), throw `AmbiguousQueryError`, counted before the type/order
+  filters so a collision cannot be narrowed away.
+- When the type restriction excludes the live UUID element, a weaker tier may
+  only resolve nothing; a non-null weaker-tier result throws.
+- When the ordering guard hides the UUID element, resolution continues into the
+  weaker tiers, which order-filter too and so cannot reach it.
+- Foreign-UUID exclusion (`weakerTierFilter`): whenever the named UUID does not
+  answer, every weaker tier (coercion included) drops candidates registered
+  under a DIFFERENT UUID. Only elements with no UUID stay recoverable.
 
-- 2+ distinct UUID tokens in one query, or one UUID matching 2+ live elements
-  (a collision by construction), throw `AmbiguousQueryError`. The multiplicity
-  check runs BEFORE the type/order filters so a genuine collision cannot be
-  narrowed away.
-- When the type restriction excludes the live UUID element, the weaker tiers may
-  only resolve nothing; any non-null weaker-tier result throws instead.
-- The one deliberate fallthrough is the order-hidden case: when the ordering
-  guard hides the UUID element, resolution continues into the weaker tiers,
-  which order-filter too and so still cannot reach it.
-- Foreign-UUID exclusion (`weakerTierFilter`): whenever the query names a UUID
-  that does not answer (dead bucket or order-hidden), every weaker tier,
-  including the coerce sibling scan, drops candidates registered under a
-  DIFFERENT UUID. Such an element is by construction a different one, so the
-  query misses (red) instead of failing wrong. Only elements with no UUID at
-  all (pre-UUID registrations) stay recoverable through the ancestral net.
+## Classifiers (`@cls_*`)
 
-`queryAll` mirrors this: a live UUID enumerates exactly that bucket, a
-type-excluded bucket yields `[]` with no fallback, a dead bucket falls through
-with the same foreign-UUID exclusion, and where the resolver must
-throw (collision, multiple UUIDs) the enumeration just returns the deduped
-union, since it has no single element to pick wrongly.
+An edit-stable tie-break below the UUID tier, separating elements that share
+lineage. Classifier tokens ride the id list like UUID tokens.
 
-## Geometric Classifiers
+- Cardinal / axial `@cls_xp`/`xn`/`yp`/`yn`/`zp`/`zn`: which end of the body
+  AABB the element's representative point sits past, per world axis. Stable
+  under translation and per-axis scale, not under rotation.
+- Line division `@cls_ld_<lineid>_p|n`: the side of a shared bounding line for
+  a sketch surface split from a same-lineage sibling (`topologyDecorate.ts`).
 
-An edit-stable tie-break tier BELOW the UUID tier, disambiguating elements that
-share ancestry (genuine siblings of one operation).
+`narrowByClassifier` weighs real evidence, in priority order: candidates
+carrying every wanted token, else some wanted token, else no classifiers at all
+(no evidence never vetoes). A pure contradiction (every candidate carries
+evidence, none of it wanted) is a veto: the query misses, whether one candidate
+or several were vetoed, and no weaker tier may recover a different element.
 
-Wire form: classifier tokens are minted `@cls_*` and ride the existing
-length-prefixed ancestry id list (no grammar change), exactly like the `@u|`
-uuid tokens. `isClassifierId` partitions them out of the ancestral subset match;
-`narrowByClassifier` then narrows the ancestral candidates by them. The veto is
-scoped to REAL evidence, in priority order: candidates carrying every wanted
-token, else candidates carrying some wanted token (a wanted set snapshots an
-earlier geometry, so a partial match is evidence, not a contradiction), else the
-candidates with no classifier payload at all (no evidence never vetoes). Only a
-pure contradiction (every candidate carries evidence and none of it is wanted)
-empties the set, which the resolver reports as a miss rather than falling
-through to a wrong winner. Each face/edge element carries its bare token list in
-`payload["classifiers"]`; the matching `@cls_*` tokens are embedded in the
-element's query.
-
-- **Cardinal / axial** (Phase 1, implemented): `@cls_xp`/`@cls_xn`/`@cls_yp`/
-  `@cls_yn`/`@cls_zp`/`@cls_zn` -- which end of the body AABB an element's
-  representative point sits past, per world axis (`geometry_classifiers`). Splits
-  extrude caps and cylinder rims; the only edit-stable discriminator for sibling
-  edges that predate the UUID tier. Stable under translation + per-axis scale;
-  not under body-reorienting rotation (body-local axes are future work).
-- **Line division** (implemented): a sketch surface split from a same-ancestry
-  sibling by a line (e.g. a circle cut by a line) carries `@cls_ld_<lineid>_p|n`,
-  the side of each shared bounding line taken in a canonical direction. A stable
-  alternative to the positional `surface:N` index. Stamped in
-  `frontend/src/kernel/topologyDecorate.ts` and registered on the surface
-  element's payload.
-- **Circle containment** (investigated, not needed): concentric regions do not
-  share ancestry -- a disk and the ring around it are each identified by their
-  own bounding circle (`{@sk/inner}` vs `{@sk/outer}`; the hole circle is in the
-  ring's boundary but not its ancestry), so they already resolve by distinct
-  lineage with no tie to break. A circle-side classifier was investigated and
-  never implemented.
-
-## Feature-Plane References (`@<FEAT>`)
-
-`@<FEAT>` where FEAT matches a registered feature ID resolves via flat lookup in `self.elements`. Sketches, extrudes, and built-in planes are registered this way. Must match the registered key exactly (slash-separated for element/sub keys, e.g. `@sketch1/line1/start`).
-
-## 3D B-rep Face Queries
-
-Faces of 3D bodies use:
-
-```
-?f;@extrude1/face0:flatface
-```
-
-The ancestor ID combines feature ID with a face index. Resolution: parse → lookup in `Repository.ancestral` by subset match → filter by type → return.
-
-Frontend: Three.js `faceIndex` → `triangle_to_face` → B-rep face number → `face_queries[faceIndex]` → query string.
-
-## Repository Resolution
-
-`Repository.query(queryStr, context, bodyStore, currentFeatureId)`:
-
-- **`$` (local)**: requires a slash-terminated `context` (null is also allowed, returning null). Looks up `this.elements[context + eid]` for a bare local, or `this.elements[context + eid + "/" + sub]` for a sub-point, matching the slash-registered `featureId/eid/sub` keys.
-- **`@` (absolute)**: looks up `this.elements[feature_id + eid + sub]`.
-- **`?` (ancestry)**: resolves the `@u|` UUID tier first (see above); failing that, finds elements whose registered ancestor set is a **superset** of the query's provenance ids (`query ⊆ registered`). If `type_restriction` given, filters to exact type matches first, then attempts type coercion. Raises `AmbiguousQueryError` if multiple candidates match. The relaxed `registered ⊆ query` direction is the ancestral-partial fallback, and only when it finds exactly one element.
-
-### Type Coercion
-
-When a type-restricted query finds no exact match:
-1. **Subtype match**: element returned as-is (e.g. `flatface` matches `face`)
-2. **Upward (child → solid)**: if target is `solid`, returns parent from `body_store`
-3. **Downward/sibling scan**: scan repo by `body_id`
-
-### Repository.query_all
-
-Finds elements whose registered ancestor set is a **superset** of the query's set (`query ⊆ registered`). Used to enumerate topology belonging to a feature. Only works with `?` queries.
+Evidence is only weighed among candidates of the requested type
+(`typeCompatible`): a face's classifiers say nothing about an edge.
 
 ## Resolution Decision Tree
 
-`resolveAncestryIds` (`frontend/src/kernel/query.ts`). The tier that answered is
-recorded in `_lastTier` (`uuid` | `ancestral` | `ancestral-partial` |
-`descriptor` | `miss`) so a corpus test catches a query silently degrading to a
-weaker tier.
+`resolveAncestryIds` (`queryRepository.ts`). The answering tier is recorded in
+`_lastTier` (`uuid` | `ancestral` | `ancestral-partial` | `miss`).
 
 ```
-Parse → ids, type_restriction
-  ↓
-Partition ids → provenance (ancestry) | uuids (@u|) | classifiers (@cls_*)
-                | legacy descriptors (@gd*|) | legacy geom hashes (@g*_, ignored)
-  ↓
-UUID tier (primary): 2+ distinct uuids, or one uuid on 2+ live elements
-  → AmbiguousQueryError (counted before type/order filters)
-  live + visible + type-compatible → return  [uuid]
-  dead bucket, or order-hidden → fall through; every weaker tier drops
-    candidates carrying a different uuid (foreign-uuid exclusion)
-  type-excluded → fall through with refuseUuidSwap armed: any non-null result
-    from a weaker tier is a different element → AmbiguousQueryError
-  ↓
-Ancestral tier: candidates where provenance_set ⊆ registered_key; live-filter;
-  order-filter; foreign-uuid filter
-  ↓
-Classifier tier: narrow by real evidence (full match > partial match >
-  no-evidence); a pure contradiction refuses a lone candidate as a miss and
-  vetoes a multi-candidate set to []
-  ↓
-Type restriction: keep exact-type matches; else coerce (subtype/upward/downward),
-  1 coercion → return  [ancestral], >1 distinct coercions → AmbiguousQueryError,
-  0 → candidates := []
-  ↓
-Legacy descriptor tier (if >1 candidates): narrow by @gd*| descriptors
-  ↓
-Fallbacks when the ancestral tier found nothing:
-  |-- partial ancestral (registered_key ⊆ provenance_set), order/foreign-uuid/
-  |   type (exact preferred, else subtype)/classifier filtered,
-  |   exactly 1 → return  [ancestral-partial]
-  |-- descriptor-only tight match over all elements, unless the classifier veto
-  |   fired  [descriptor]
-  ↓
-0 → null | 1 → element (through refuseUuidSwap) | >1 → AmbiguousQueryError
+Partition ids -> uuids | classifiers | lineage
+  |
+UUID tier: 2+ uuids, or a uuid on 2+ live elements -> AmbiguousQueryError
+  live + visible + type-compatible -> return  [uuid]
+  dead or order-hidden -> continue, foreign-uuid exclusion armed
+  type-excluded -> continue, refuseUuidSwap armed
+  |
+no lineage -> null
+  |
+Ancestral tier: entries whose set contains every lineage id; live, order and
+  foreign-uuid filtered
+  |
+Classifier tier (type-compatible pool): narrow; a veto -> null
+  |
+Type restriction: exact-type matches, else coerce (subtype as-is, upward to
+  the body's solid, or a same-body sibling); 1 coercion -> return, 2+ -> throw
+  |
+Partial tier (only when nothing is left): entries whose set is a SUBSET of
+  the lineage and shares at least one id; type then classifier filtered;
+  exactly 1 -> return  [ancestral-partial]
+  |
+0 -> null | 1 -> element (through refuseUuidSwap) | 2+ -> AmbiguousQueryError
 ```
 
-There is no geometry-hash resolution tier. `@gface_`/`@gedge_`/`@gvertex_`/
-`@gnormal_` tokens are only partitioned out of old persisted queries and
-otherwise ignored; geometry hashes live on as body-side lookup keys
-(`face_names`, brep diffing), never as identity. Identity is the construction
-UUID plus the ancestral path.
+`queryAll` enumerates instead of picking: a live UUID yields its bucket, a
+classifier-only query yields `[]`, and the partial tier is not used.
 
-The classifier and descriptor tiers only ever *narrow* an already
-ancestry-matched candidate set, so neither can reach across lineages.
+## Ordering Guard
+
+When `currentFeatureId` is set (or the solve loop's current feature is), the
+resolver refuses elements whose owning feature comes after it in the build
+order, and elements whose owner left the order. Built-ins are always visible.
