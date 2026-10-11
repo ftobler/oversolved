@@ -17,6 +17,10 @@ use crate::sparse::{self, SparseRow};
 // constants: a change to one must not silently desynchronize the two paths, so
 // they live at module scope instead of in each function.
 const MAX_ITERS: u32 = 200;
+/// Iteration budget of the dense driver's proximal polish phase. It starts
+/// next to a solution, where LM converges in a handful of steps; the cap only
+/// bounds an unsatisfiable system that keeps creeping.
+const POLISH_ITERS: u32 = 50;
 const GTOL: f64 = 1e-10;
 const XTOL: f64 = 1e-12;
 const FTOL: f64 = 1e-12;
@@ -169,7 +173,8 @@ pub fn solve_lm_damped(
         .map(|i| jtj[(i, i)])
         .fold(0.0_f64, f64::max)
         .max(1e-12);
-    let mut lambda = 1e-3 * max_diag;
+    let lambda0 = 1e-3 * max_diag;
+    let mut lambda = lambda0;
 
     // Seed anchor (Tikhonov toward x0). Pure Marquardt damping (lambda * diag(JᵀJ))
     // gives a null-space DOF -- a direction the constraints leave free -- almost no
@@ -185,87 +190,114 @@ pub fn solve_lm_damped(
     // free rotation-vs-translation choice settle on the slide: unlike the
     // Marquardt term it does not vanish as lambda shrinks. Still O(mu), so a
     // rotation a mate actually constrains is unmoved.
+    //
+    // The anchor is a penalty, so it also moves the minimizer: a converged
+    // anchored solve leaves `|r| ~ mu * |x - x0|` in every constrained
+    // direction, which a fixed r=2000 arc with a coincident line endpoint
+    // showed as a 5e-3 gap reported as satisfied. So the first phase only
+    // picks WHERE on the solution set to land, and a polish phase then
+    // re-anchors at the current iterate after every accepted step (a proximal
+    // point iteration). The anchor still damps each step's free directions
+    // (dropping it outright let a vertical line through a point slide off to
+    // 1e4 along its own valley), but it never pulls toward a fixed spot, so it
+    // cannot leave a residual behind; re-anchoring once at the landing point
+    // still left 3e-6 of that 5e-3 gap.
     let mu = 2e-9 * max_diag;
-    let x0v = DVector::from_column_slice(x0);
     let scale_v = DVector::from_iterator(n, (0..n).map(|i| damp_scale_at(damp_scale, i)));
-    // Augmented objective 0.5||r||² + 0.5·μ·||x - x0||² -- the gradient/damping and
-    // the accept test must use the SAME cost or step acceptance is inconsistent.
-    let anchor_cost = |xs: &[f64]| -> f64 {
+    // Augmented objective 0.5||r||² + 0.5·μ·||x - target||² -- the
+    // gradient/damping and the accept test must use the SAME cost or step
+    // acceptance is inconsistent.
+    let anchor_cost = |xs: &[f64], target: &[f64]| -> f64 {
         0.5 * mu
             * (0..n)
-                .map(|i| damp_scale_at(damp_scale, i) * (xs[i] - x0[i]).powi(2))
+                .map(|i| damp_scale_at(damp_scale, i) * (xs[i] - target[i]).powi(2))
                 .sum::<f64>()
     };
-    let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x);
 
     let mut iters = 0;
-    while iters < MAX_ITERS {
-        iters += 1;
-        let rv = DVector::from_vec(r.clone());
-        let xv = DVector::from_column_slice(&x);
-        // gradient Jᵀr + μ·scale·(x - x0)
-        let g = jacm.transpose() * &rv + mu * scale_v.component_mul(&(&xv - &x0v));
-
-        // A non-finite gradient means the curvature/probe has gone bad; stop
-        // here rather than let the comparison below step on NaN.
-        if g.iter().any(|&v| !v.is_finite()) {
-            break;
+    let mut target = x0.to_vec();
+    for (phase, budget) in [MAX_ITERS, POLISH_ITERS].into_iter().enumerate() {
+        let proximal = phase > 0;
+        if proximal {
+            target.clone_from(&x);
         }
-        if g.amax() < GTOL {
-            break;
-        }
+        // A phase that ended on the lambda ceiling would hand the next one a
+        // frozen damped system, so each phase starts no stiffer than the seed.
+        lambda = lambda.min(lambda0);
+        let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x, &target);
+        let mut phase_iters = 0;
+        while phase_iters < budget {
+            phase_iters += 1;
+            iters += 1;
+            let rv = DVector::from_vec(r.clone());
+            let xv = DVector::from_column_slice(&x);
+            let target_v = DVector::from_column_slice(&target);
+            // gradient Jᵀr + μ·scale·(x - target)
+            let g = jacm.transpose() * &rv + mu * scale_v.component_mul(&(&xv - &target_v));
 
-        // Try damped steps, increasing lambda until the step reduces cost.
-        let mut accepted = false;
-        for _ in 0..MAX_RETRIES {
-            let mut a = jtj.clone();
-            for i in 0..n {
-                // Marquardt scaling: damp proportional to each column's curvature
-                // (times the caller's per-param `damp_scale`), plus the absolute
-                // seed-anchor floor `mu` so flat (free) directions stay finite.
-                a[(i, i)] += (lambda * jtj[(i, i)].max(1e-12) + mu) * damp_scale_at(damp_scale, i);
+            // A non-finite gradient means the curvature/probe has gone bad; stop
+            // here rather than let the comparison below step on NaN.
+            if g.iter().any(|&v| !v.is_finite()) {
+                break;
             }
-            let Some(delta) = a.clone().lu().solve(&(-&g)) else {
-                lambda *= LAMBDA_UP;
-                continue;
-            };
+            if g.amax() < GTOL {
+                break;
+            }
 
-            let x_new: Vec<f64> = (0..n).map(|i| x[i] + delta[i]).collect();
-            let r_new = f(&x_new);
-            let cost_new = 0.5 * r_new.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x_new);
-
-            if cost_new < cost {
-                let dx = norm2(delta.as_slice());
-                let cost_drop = cost - cost_new;
-                x = x_new;
-                r = r_new;
-                jacm = jac(&x);
-                jtj = jacm.transpose() * &jacm;
-                lambda = (lambda * LAMBDA_DOWN).max(1e-12);
-                accepted = true;
-
-                // Convergence on tiny step or tiny relative cost reduction.
-                let xnorm = norm2(&x).max(1e-30);
-                if dx < XTOL * xnorm || cost_drop < FTOL * cost.max(1e-30) {
-                    return LmResult {
-                        x,
-                        jacobian: jacm,
-                        residual_norm: norm2(&r),
-                        iters,
-                    };
+            // Try damped steps, increasing lambda until the step reduces cost.
+            let mut accepted = false;
+            let mut converged = false;
+            for _ in 0..MAX_RETRIES {
+                let mut a = jtj.clone();
+                for i in 0..n {
+                    // Marquardt scaling: damp proportional to each column's
+                    // curvature (times the caller's per-param `damp_scale`), plus
+                    // the absolute seed-anchor floor `mu` so flat (free)
+                    // directions stay finite.
+                    a[(i, i)] +=
+                        (lambda * jtj[(i, i)].max(1e-12) + mu) * damp_scale_at(damp_scale, i);
                 }
-                cost = cost_new;
-                break;
-            }
-            lambda *= LAMBDA_UP;
-            if lambda > LAMBDA_MAX {
-                break;
-            }
-        }
+                let Some(delta) = a.lu().solve(&(-&g)) else {
+                    lambda *= LAMBDA_UP;
+                    continue;
+                };
 
-        if !accepted {
-            // No downhill step found; treat as converged at a local min.
-            break;
+                let x_new: Vec<f64> = (0..n).map(|i| x[i] + delta[i]).collect();
+                let r_new = f(&x_new);
+                let cost_new =
+                    0.5 * r_new.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x_new, &target);
+
+                if cost_new < cost {
+                    let dx = norm2(delta.as_slice());
+                    let cost_drop = cost - cost_new;
+                    x = x_new;
+                    r = r_new;
+                    jacm = jac(&x);
+                    jtj = jacm.transpose() * &jacm;
+                    lambda = (lambda * LAMBDA_DOWN).max(1e-12);
+                    accepted = true;
+
+                    // Convergence on tiny step or tiny relative cost reduction.
+                    let xnorm = norm2(&x).max(1e-30);
+                    converged = dx < XTOL * xnorm || cost_drop < FTOL * cost.max(1e-30);
+                    cost = cost_new;
+                    if proximal {
+                        // The anchor follows the iterate, so its cost drops to 0.
+                        target.clone_from(&x);
+                        cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>();
+                    }
+                    break;
+                }
+                lambda *= LAMBDA_UP;
+                if lambda > LAMBDA_MAX {
+                    break;
+                }
+            }
+
+            // No downhill step found means a local min of this phase's cost.
+            if converged || !accepted {
+                break;
+            }
         }
     }
 
@@ -697,6 +729,23 @@ mod tests {
             anchored.x[1]
         );
         assert!((anchored.x[0] + anchored.x[1] - 1.0).abs() < 1e-6);
+    }
+
+    // The seed anchor must only choose among solutions, never bias the one it
+    // lands on. A stiff row far from the seed is where the bias showed: the
+    // anchored minimum sits at |r| ~ mu * |x - x0| ~ 1e-5 here, and the
+    // proximal polish phase has to remove it.
+    #[test]
+    fn solve_lm_anchor_leaves_no_residual_bias_far_from_the_seed() {
+        let f = |x: &[f64]| vec![100.0 * (x[0] - 50.0)];
+        let jac = |_: &[f64]| DMatrix::from_row_slice(1, 2, &[100.0, 0.0]);
+        let r = solve_lm(&[0.0, 7.0], &f, &jac);
+        assert!(
+            r.residual_norm < 1e-9,
+            "anchor bias left: {}",
+            r.residual_norm
+        );
+        assert!((r.x[1] - 7.0).abs() < 1e-9, "free x1 drifted: {}", r.x[1]);
     }
 
     // Non-finite residuals short-circuit to the seed with a non-finite norm,

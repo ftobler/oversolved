@@ -389,6 +389,32 @@ mod tests {
     }
 
     #[test]
+    fn line_end_reaches_a_far_fixed_arc_end_exactly() {
+        // A fixed r=2000 arc and a line whose start must sit on the arc end,
+        // seeded ~2000 away. The old seed anchor stopped this at a 5e-3 gap
+        // (degree-param columns inflate its weight with r^2) and still called
+        // the sketch satisfied.
+        let fixed_arc = c_target(ConstraintKind::Fixed, 0, PointSelector::Absent);
+        let joint = Constraint {
+            kind_code: ConstraintKind::Coincident.to_u8(),
+            refs: ab(e_ref(1, PointSelector::Start), e_ref(0, PointSelector::End)),
+            ..Default::default()
+        };
+        let inp = input(
+            vec![ent(Kind::Arc, 0), line(5)],
+            vec![13.7, -4.2, 2000.0, 3.0, 91.0, 0.0, 0.0, 50.0, 50.0],
+            vec![fixed_arc, joint],
+        );
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+        assert!(
+            out.diagnostics.residual_norm < 1e-8,
+            "coincidence left open by {}",
+            out.diagnostics.residual_norm
+        );
+    }
+
+    #[test]
     fn free_line_is_underconstrained() {
         let inp = input(vec![line(0)], vec![0.0, 0.0, 10.0, 1.0], vec![]);
         let out = solve_sketch(&inp);
