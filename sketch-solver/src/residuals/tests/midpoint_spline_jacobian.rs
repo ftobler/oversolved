@@ -155,6 +155,39 @@ fn point_on_spline_coincident_residual() {
     assert!(r[0].abs() > 1e-3, "off-curve residual {}", r[0]);
 }
 
+#[test]
+fn point_past_a_spline_end_is_off_the_curve() {
+    // End tangent is P4 - P3 = +x. A point 5 past P4 along that ray has its
+    // closest curve point clamped to t=1, where the old perpendicular-only
+    // residual read exactly 0: the solver could park the point there.
+    let inp = input(
+        vec![ent(Kind::Spline, 0), ent(Kind::Point, 8)],
+        vec![0.0, 0.0, 3.0, 4.0, 6.0, 4.0, 10.0, 4.0, 15.0, 4.0],
+        vec![cons(
+            ConstraintKind::Coincident,
+            ab(e_ref(1, PointSelector::Xy), e_ref(0, PointSelector::Absent)),
+        )],
+    );
+    let p = Problem::new(&inp);
+    let r = p.residuals(&p.x0);
+    assert!(
+        (r[0].abs() - 5.0).abs() < 1e-9,
+        "past-end residual {}",
+        r[0]
+    );
+
+    // Same before the start: B'(0) = 3*(P2 - P1) points along (3, 4).
+    let mut x = p.x0.clone();
+    x[8] = -3.0;
+    x[9] = -4.0;
+    let r = p.residuals(&x);
+    assert!(
+        (r[0].abs() - 5.0).abs() < 1e-9,
+        "before-start residual {}",
+        r[0]
+    );
+}
+
 /// Exercise both the analytic point_jac spline arm (point_distance on
 /// start + midpoint, coincident point-point) and the FD fallback branches
 /// (point-on-spline coincident, line-spline tangent) against full FD.

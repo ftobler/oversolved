@@ -118,19 +118,26 @@ pub(super) fn bezier_closest_t(sp: &[f64], p: P2) -> f64 {
     t
 }
 
-/// Signed perpendicular distance from `p` to the Bezier at its closest point:
-/// `0` exactly on the curve. Used as the point-on-spline coincident residual,
-/// mirroring the point-on-line normal-distance row.
+/// Distance from `p` to its closest point on the Bezier, signed by the side of
+/// the tangent there: `0` exactly on the curve. Used as the point-on-spline
+/// coincident residual.
+///
+/// The magnitude is the full distance, not the component normal to the
+/// tangent. Inside the curve the two agree (the closest point makes `p - B`
+/// normal to `B'`), but past an end the closest `t` clamps to 0 or 1, and
+/// there the normal component of a point lying on the end tangent's ray is 0
+/// although the point is off the curve.
 pub(super) fn spline_point_residual(p: P2, sp: &[f64]) -> f64 {
     let t = bezier_closest_t(sp, p);
     let b = bezier_eval(sp, t);
-    let d1 = bezier_deriv(sp, t);
-    let n = (d1[0] * d1[0] + d1[1] * d1[1]).sqrt();
-    if n < 1e-12 {
-        // Degenerate tangent: fall back to plain distance to the closest point.
-        return ((p[0] - b[0]).powi(2) + (p[1] - b[1]).powi(2)).sqrt();
-    }
-    let (tx, ty) = (d1[0] / n, d1[1] / n);
     let w = [p[0] - b[0], p[1] - b[1]];
-    tx * w[1] - ty * w[0]
+    let dist = (w[0] * w[0] + w[1] * w[1]).sqrt();
+    // The sign only says which side; a degenerate tangent (or a point on the
+    // tangent ray itself) has none, and the distance alone is then correct.
+    let d1 = bezier_deriv(sp, t);
+    if d1[0] * w[1] - d1[1] * w[0] < 0.0 {
+        -dist
+    } else {
+        dist
+    }
 }
