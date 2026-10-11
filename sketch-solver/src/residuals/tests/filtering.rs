@@ -262,6 +262,13 @@ fn constraints_with_wrong_kind_but_enough_slots_are_dropped() {
             ),
         ),
         (
+            "concentric with a line reads its start as a centre",
+            cons(
+                ConstraintKind::Concentric,
+                ab(e_ref(0, absent), e_ref(2, absent)),
+            ),
+        ),
+        (
             "midpoint with an arc in the line role",
             cons(
                 ConstraintKind::Midpoint,
@@ -286,6 +293,17 @@ fn constraints_with_wrong_kind_but_enough_slots_are_dropped() {
             0,
             "{name}: Jacobian rows must match the dropped residual"
         );
+    }
+
+    // Every kind that owns a centre keeps concentric: arc, circle, ellipse.
+    for (a, b) in [(1, 2), (2, 3), (3, 1)] {
+        let c = cons(
+            ConstraintKind::Concentric,
+            ab(e_ref(a, absent), e_ref(b, absent)),
+        );
+        let inp = input(entities(), params(), vec![c]);
+        let p = Problem::new(&inp);
+        assert_eq!(p.residuals(&p.x0).len(), 2, "concentric {a}/{b} kept");
     }
 }
 

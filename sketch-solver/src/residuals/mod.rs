@@ -265,6 +265,13 @@ impl<'a> Problem<'a> {
                     Some(Kind::Circle | Kind::Arc | Kind::Ellipse | Kind::Spline)
                 )
             }
+            // Concentric equates the first two params of both operands, which
+            // are a centre only for these kinds; on a line or spline they are
+            // its start point.
+            ConstraintKind::Concentric => {
+                let has_center = |k: Kind| matches!(k, Kind::Circle | Kind::Arc | Kind::Ellipse);
+                kind_ok(RefRole::A, has_center) && kind_ok(RefRole::B, has_center)
+            }
             // Parallel, equal-length and radius-difference gate their own
             // kinds in their builders; coincident and the point-distance
             // family resolve all operands through `point()` and are safe for
