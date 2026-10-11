@@ -418,6 +418,25 @@ export class Repository {
     }
   }
 
+  /** The weaker-tier candidate filter for a query naming `uuidTokens`: the order
+   *  guard, plus the foreign-uuid exclusion. An element registered under a
+   *  DIFFERENT construction uuid is by construction a different element, so
+   *  when the named uuid is dead (or order-hidden) the ancestral net must not
+   *  hand back a sibling in its place: the query misses (red) instead of
+   *  failing wrong. Elements with no uuid at all carry no contrary evidence and
+   *  stay recoverable. With no uuid named this is just the order guard. */
+  private weakerTierFilter(
+    orderFilter: (eids: string[]) => string[],
+    uuidTokens: string[],
+  ): (eids: string[]) => string[] {
+    if (uuidTokens.length === 0) return orderFilter
+    const named = new Set(uuidTokens)
+    return eids => orderFilter(eids).filter(eid => {
+      const u = this.elementUuid.get(eid)
+      return u === undefined || named.has(u)
+    })
+  }
+
   /** Resolve a query against the repo.
    *
    *  Context contract: `context` applies to `$` local queries only and must be
@@ -566,7 +585,7 @@ export class Repository {
           `Construction UUID ${uuid} matched ${liveHits.length} live elements (collision by construction)`,
         )
       }
-      if (liveHits.length === 0) continue  // no live element carries the uuid: weaker tiers may recover
+      if (liveHits.length === 0) continue  // dead uuid: weaker tiers may recover only an element with no uuid of its own
       const eid = liveHits[0]
       if (orderFilter([eid]).length === 0) continue  // ordering guard: the element is not visible from here yet
       const element = this.elements.get(eid)
@@ -596,6 +615,9 @@ export class Repository {
       return result
     }
 
+    // Every weaker tier sees the order guard plus the foreign-uuid exclusion.
+    const visible = this.weakerTierFilter(orderFilter, uuidTokens)
+
     let candidateIds: string[] = []
     let descriptorFallback = false
     let classifierVetoFired = false
@@ -606,7 +628,7 @@ export class Repository {
         candidateIds.push(...this.liveEntryEids(entry))
       }
     }
-    candidateIds = orderFilter(candidateIds)
+    candidateIds = visible(candidateIds)
 
     if (classifierIds.length && candidateIds.length) {
       // Classifier tier: narrow the subset candidates by the wanted @cls_* set.
@@ -652,7 +674,7 @@ export class Repository {
         const seen = new Set<unknown>()
         for (const eid of candidateIds) {
           const element = this.elements.get(eid)
-          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet, orderFilter)
+          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet, visible)
           if (coerced !== null && coerced !== undefined && !seen.has(coerced)) {
             seen.add(coerced)
             coercedResults.push(coerced)
@@ -685,7 +707,7 @@ export class Repository {
 
     if (!candidateIds.length && nonHashIds.length) {
       let partialCandidates = this.partialEntryEids(querySet)
-      partialCandidates = orderFilter([...new Set(partialCandidates)])
+      partialCandidates = visible([...new Set(partialCandidates)])
       if (typeRestriction !== null) {
         // Same type rule as the subset tier: an exact match wins, else a
         // subtype passes (a `:face` query recovers a lone flatface). Exact-only
@@ -728,7 +750,7 @@ export class Repository {
           const dist = descriptorDistance(qd, cd)
           if (dist !== null && dist <= DEFAULT_DESCRIPTOR_MATCH.tightTol) fallbackIds.push(eid)
         }
-        candidateIds = orderFilter(fallbackIds)
+        candidateIds = visible(fallbackIds)
         if (candidateIds.length) descriptorFallback = true
       }
     }
@@ -784,7 +806,9 @@ export class Repository {
    *    [] with NO weaker-tier fallback - the multi-result shape of refuseUuidSwap,
    *    softened because an enumeration has no single wrong element to swap to. A
    *    dead or order-hidden uuid bucket falls through to the ancestral tier, the
-   *    resolver's "continue".
+   *    resolver's "continue", with the same foreign-uuid exclusion
+   *    (`weakerTierFilter`): an element carrying a different uuid is never
+   *    enumerated in the named one's place.
    *  - Where the resolver must fail loud, enumeration answers: a bucket holding
    *    2+ live elements (collision by construction) and a query naming 2+ distinct
    *    uuids both enumerate the deduped bucket union, order- and type-filtered like
@@ -866,12 +890,13 @@ export class Repository {
       return []
     }
 
+    const visible = this.weakerTierFilter(orderFilter, uuidTokens)
     const querySet = new Set(nonHashIds)
     let candidateIds: string[] = []
     for (const entry of this.entriesContainingAll(querySet)) {
       candidateIds.push(...this.liveEntryEids(entry))
     }
-    candidateIds = orderFilter(candidateIds)
+    candidateIds = visible(candidateIds)
 
     // Classifiers narrow BEFORE the type block, as in the resolver: the coerce
     // branch returns early, so narrowing after it let a contradicted candidate
@@ -892,7 +917,7 @@ export class Repository {
         const seen = new Set<unknown>()
         for (const eid of candidateIds) {
           const element = this.elements.get(eid)
-          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet, orderFilter)
+          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet, visible)
           if (coerced !== null && coerced !== undefined && !seen.has(coerced)) {
             seen.add(coerced)
             coercedResults.push(coerced)

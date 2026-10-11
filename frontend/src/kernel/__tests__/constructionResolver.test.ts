@@ -23,15 +23,25 @@ describe('resolver UUID-first tier', () => {
     expect(repo.query(q)).toBe(wanted)
   })
 
-  it('falls through to the ancestral net when the UUID is absent (fallback, not primary)', () => {
+  it('falls through to the ancestral net when the UUID is absent and recovers an unnamed element', () => {
     const repo = new Repository()
     const face = { type: 'face', body_id: 'body_b', created_by: 'f1' }
-    repo.registerAncestor(['@f1', '@body_b'], face, 'u_X')
-    // The persisted UUID names no live element (the slot changed); the primary
-    // tier misses and the ancestral subset must recover it as the fallback.
+    repo.registerAncestor(['@f1', '@body_b'], face)
+    // The persisted UUID names no live element; the primary tier misses and the
+    // ancestral subset recovers the one element that carries no uuid of its own.
     const q = makeAncestryQuery([constructionUuidToken('u_missing'), '@f1', '@body_b'], 'face')
     expect(repo.byUuid.has('u_missing')).toBe(false)  // proves the primary tier had nothing to hit
     expect(repo.query(q)).toBe(face)
+  })
+
+  it('a dead UUID never recovers an element carrying a different UUID (fail safe, not wrong)', () => {
+    const repo = new Repository()
+    // The named face is gone; a sibling under the same ancestral net carries its
+    // own uuid, so it is by construction a different face.
+    repo.registerAncestor(['@f1', '@body_b'], { type: 'face', body_id: 'body_b', created_by: 'f1' }, 'u_X')
+    const q = makeAncestryQuery([constructionUuidToken('u_missing'), '@f1', '@body_b'], 'face')
+    expect(repo.query(q)).toBeNull()
+    expect(repo._lastTier).toBe('miss')
   })
 
   it('respects the type restriction on the UUID tier', () => {
@@ -79,7 +89,7 @@ describe('resolver tier channel (_lastTier)', () => {
   it('reports the ancestral tier when the UUID misses and the ancestral net recovers it', () => {
     const repo = new Repository()
     const face = { type: 'face', body_id: 'body_b', created_by: 'f1' }
-    repo.registerAncestor(['@f1', '@body_b'], face, 'u_X')
+    repo.registerAncestor(['@f1', '@body_b'], face)
     const q = makeAncestryQuery([constructionUuidToken('u_missing'), '@f1', '@body_b'], 'face')
     expect(repo.query(q)).toBe(face)
     expect(repo._lastTier).toBe('ancestral')

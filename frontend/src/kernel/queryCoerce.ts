@@ -56,7 +56,9 @@ function bodyModifiersOf(
  *  `orderFilter` is the caller's ordering guard: the coerce scan walks the
  *  lineage independently of the ancestry-tier candidate filter, so it must apply
  *  the same owner-order rule or a coerced sibling could belong to a feature
- *  ordered after the current one (the forward-geometry hazard). The upward
+ *  ordered after the current one (the forward-geometry hazard). The resolver
+ *  also folds its foreign-uuid exclusion into it, so a query naming a dead uuid
+ *  cannot coerce to a sibling carrying a different uuid. The upward
  *  `:solid` branch returns the body straight from the body store and stays
  *  deliberately exempt from the owner-order rule. */
 export function coerceType(

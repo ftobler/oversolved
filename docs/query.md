@@ -52,7 +52,7 @@ stored or emitted.
 Wire form: `@u|<uuid>` tokens ride the length-prefixed ancestry id list like the
 `@cls_*` tokens, and are registered in `Repository.byUuid`.
 
-Fail-loud contract (`refuseUuidSwap`, `query.ts`): a query naming a live UUID
+Fail-loud contract (`refuseUuidSwap`, `queryRepository.ts`): a query naming a live UUID
 resolves to the element carrying that UUID or throws. It must never fall
 through to a weaker tier and silently return a DIFFERENT element.
 
@@ -65,9 +65,16 @@ through to a weaker tier and silently return a DIFFERENT element.
 - The one deliberate fallthrough is the order-hidden case: when the ordering
   guard hides the UUID element, resolution continues into the weaker tiers,
   which order-filter too and so still cannot reach it.
+- Foreign-UUID exclusion (`weakerTierFilter`): whenever the query names a UUID
+  that does not answer (dead bucket or order-hidden), every weaker tier,
+  including the coerce sibling scan, drops candidates registered under a
+  DIFFERENT UUID. Such an element is by construction a different one, so the
+  query misses (red) instead of failing wrong. Only elements with no UUID at
+  all (pre-UUID registrations) stay recoverable through the ancestral net.
 
 `queryAll` mirrors this: a live UUID enumerates exactly that bucket, a
-type-excluded bucket yields `[]` with no fallback, and where the resolver must
+type-excluded bucket yields `[]` with no fallback, a dead bucket falls through
+with the same foreign-UUID exclusion, and where the resolver must
 throw (collision, multiple UUIDs) the enumeration just returns the deduped
 union, since it has no single element to pick wrongly.
 
@@ -160,12 +167,13 @@ Partition ids → provenance (ancestry) | uuids (@u|) | classifiers (@cls_*)
 UUID tier (primary): 2+ distinct uuids, or one uuid on 2+ live elements
   → AmbiguousQueryError (counted before type/order filters)
   live + visible + type-compatible → return  [uuid]
-  dead bucket, or order-hidden → fall through
+  dead bucket, or order-hidden → fall through; every weaker tier drops
+    candidates carrying a different uuid (foreign-uuid exclusion)
   type-excluded → fall through with refuseUuidSwap armed: any non-null result
     from a weaker tier is a different element → AmbiguousQueryError
   ↓
 Ancestral tier: candidates where provenance_set ⊆ registered_key; live-filter;
-  order-filter
+  order-filter; foreign-uuid filter
   ↓
 Classifier tier: narrow by real evidence (full match > partial match >
   no-evidence); a pure contradiction refuses a lone candidate as a miss and
@@ -178,8 +186,8 @@ Type restriction: keep exact-type matches; else coerce (subtype/upward/downward)
 Legacy descriptor tier (if >1 candidates): narrow by @gd*| descriptors
   ↓
 Fallbacks when the ancestral tier found nothing:
-  |-- partial ancestral (registered_key ⊆ provenance_set), order/type (exact
-  |   preferred, else subtype)/classifier filtered,
+  |-- partial ancestral (registered_key ⊆ provenance_set), order/foreign-uuid/
+  |   type (exact preferred, else subtype)/classifier filtered,
   |   exactly 1 → return  [ancestral-partial]
   |-- descriptor-only tight match over all elements, unless the classifier veto
   |   fired  [descriptor]

@@ -331,29 +331,29 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(String(h.res(r, 'fil').exception ?? '')).toContain('no edges resolved')
   })
 
-  it('fillet resolves stale geometry token via stable ancestry', () => {
+  // Fillet `edgeQ` on the 10x10x`d` box; the fillet result.
+  function filletOn(edgeQ: string, d = 5, radius = 0.5): Record<string, unknown> {
+    const s = fullRectExtrudeSpec(10, 10, d)
+    s.features.push({ id: 'fil', kind: 'fillet', edges: [edgeQ], radius })
+    return h.res(h.run(s), 'fil') as Record<string, unknown>
+  }
+
+  it('a dead construction UUID goes red instead of recovering a differently-named edge', () => {
     /**
-     * A query whose geometry token matches nothing must resolve through its
-     * geometry-independent tokens (feature, body, lineage, classifiers) to the
-     * same edge the fresh query names -- not hard-fail, not pick a sibling.
+     * Every box edge carries its own construction UUID, so once the query's
+     * UUID matches nothing, any edge the ancestral net could hand back is by
+     * construction a different one (weakerTierFilter). The fillet must fail
+     * loud, never land on an edge recovered by lineage + classifiers alone.
      */
-    const spec = fullRectExtrudeSpec(10, 10, 5)
-    const r0 = h.run(spec)
+    const r0 = h.run(fullRectExtrudeSpec(10, 10, 5))
     const q = (h.body(r0, 'body_ex1').edge_queries as string[])[0]
     expect(q.startsWith('?')).toBe(true)
     expect(geomTokenOf(q)).toBeDefined()
 
-    const staleQ = withDeadGeomToken(q)
-    const anchorOf = (edgeQ: string): number[] => {
-      const s = fullRectExtrudeSpec(10, 10, 5)
-      s.features.push({ id: 'fil', kind: 'fillet', edges: [edgeQ], radius: 0.5 })
-      const r = h.run(s)
-      expect(h.res(r, 'fil').status).toBe('ok')
-      return (h.res(r, 'fil').handle as { anchor: number[] }).anchor
-    }
-    const stale = anchorOf(staleQ)
-    const fresh = anchorOf(q)
-    stale.forEach((v, i) => expect(v).toBeCloseTo(fresh[i], 9))
+    expect(filletOn(q).status).toBe('ok')
+    const stale = filletOn(withDeadGeomToken(q))
+    expect(stale.status).toBe('exception')
+    expect(String(stale.exception ?? '')).toContain('no edges resolved')
   })
 
   it('fillet with stale hash and ambiguous ancestry is hard exception', () => {
@@ -377,8 +377,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     /**
      * Construction UUIDs (@u|) are geometry-independent, so a fillet picked
      * at d=5 resolves identically when the body is rebuilt at d=8 through the
-     * UUID tier. Verify anchors match when the UUID is intact, and also verify
-     * that a dead UUID still resolves through stable ancestry + classifiers.
+     * UUID tier. A dead UUID goes red rather than recovering by lineage.
      */
     const eq5 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 5)), 'body_ex1').edge_queries as string[]) ?? []
     const eq8 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 8)), 'body_ex1').edge_queries as string[]) ?? []
@@ -388,19 +387,18 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(uuids5.size).toBeGreaterThan(0)
     for (const u of uuids5) expect(uuids8.has(u)).toBe(true)
 
-    const anchorOf = (edgeQ: string): number[] => {
-      const s = fullRectExtrudeSpec(10, 10, 8)
-      s.features.push({ id: 'fil', kind: 'fillet', edges: [edgeQ], radius: 1 })
-      const r = h.run(s)
-      expect(h.res(r, 'fil').status).toBe('ok')
-      return (h.res(r, 'fil').handle as { anchor: number[] }).anchor
-    }
-    // Stale (dead UUID) query resolves via stable ancestry + classifiers.
-    const staleQ = withDeadGeomToken(eq5[0])
-    const freshQ = eq5[0]
-    const staleAnchor = anchorOf(staleQ)
-    const freshAnchor = anchorOf(freshQ)
-    staleAnchor.forEach((v, i) => expect(v).toBeCloseTo(freshAnchor[i], 9))
+    // A pick made at d=5 fillets the same edge of the d=8 body as the d=8 pick
+    // carrying the same UUID.
+    const q8 = eq8.find((q) => geomTokenOf(q) === geomTokenOf(eq5[0]))
+    expect(q8).toBeDefined()
+    const picked5 = filletOn(eq5[0], 8, 1)
+    const picked8 = filletOn(q8!, 8, 1)
+    expect(picked5.status).toBe('ok')
+    expect(picked8.status).toBe('ok')
+    const a = (picked5.handle as { anchor: number[] }).anchor
+    const b = (picked8.handle as { anchor: number[] }).anchor
+    a.forEach((v, i) => expect(v).toBeCloseTo(b[i], 9))
+    expect(filletOn(withDeadGeomToken(eq5[0]), 8, 1).status).toBe('exception')
   })
 
   it('stale UUID on modifier-created edge resolves or fails loud', () => {
@@ -442,12 +440,14 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     }
   })
 
-  it('classifier narrows ancestral sibling edges on stale hash', () => {
+  it('a dead UUID on a classifier-distinguished sibling edge goes red, not to the sibling', () => {
     /**
      * Two edges can share every lineage token (e.g. the two cap edges swept
      * from one sketch line, or the bugreport's two seam edges of overlapping
-     * circles) and differ only in @cls_* spatial role. With a stale hash the
-     * classifier tier must pick the right sibling.
+     * circles) and differ only in @cls_* spatial role. Both carry their own
+     * UUID, so with the query's UUID dead neither may be recovered, even the
+     * one the classifiers would pick: the fillet fails loud. Classifier
+     * narrowing among UUID-less siblings is unit-tested in queryClassifier.
      */
     const r0 = h.run(fullRectExtrudeSpec(10, 10, 5))
     const eq = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
@@ -468,17 +468,8 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     )
     expect(target).toBeDefined()
 
-    const staleQ = withDeadGeomToken(target!)
-    const anchorOf = (edgeQ: string): number[] => {
-      const s = fullRectExtrudeSpec(10, 10, 5)
-      s.features.push({ id: 'fil', kind: 'fillet', edges: [edgeQ], radius: 0.5 })
-      const r = h.run(s)
-      expect(h.res(r, 'fil').status).toBe('ok')
-      return (h.res(r, 'fil').handle as { anchor: number[] }).anchor
-    }
-    const stale = anchorOf(staleQ)
-    const fresh = anchorOf(target!)
-    stale.forEach((v, i) => expect(v).toBeCloseTo(fresh[i], 9))
+    expect(filletOn(target!).status).toBe('ok')
+    expect(filletOn(withDeadGeomToken(target!)).status).toBe('exception')
   })
 
   it('fillet populates brepDiff on the modified body', () => {
