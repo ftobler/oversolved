@@ -110,6 +110,21 @@ impl Problem<'_> {
                 let num = (cx - line_ep[0]) * line_dir[1] - (cy - line_ep[1]) * line_dir[0];
                 r.push(num.abs() - arc_ep[2]);
             }
+        } else if self.kind_of(arc_idx) == Kind::Ellipse {
+            // Line body tangent to an ellipse: the infinite line touches it
+            // exactly when the centre's distance to the line equals the
+            // ellipse's support distance along the line normal n,
+            // sqrt((a n.u)^2 + (b n.v)^2) with u, v the major/minor axes. The
+            // circle branch above is the a = b case of the same formula.
+            let (cx, cy, a, b) = (arc_ep[0], arc_ep[1], arc_ep[2], arc_ep[3]);
+            let theta = arc_ep[4].to_radians();
+            let (ct, st) = (theta.cos(), theta.sin());
+            let n = [-line_dir[1], line_dir[0]];
+            let n_u = n[0] * ct + n[1] * st;
+            let n_v = -n[0] * st + n[1] * ct;
+            let support = ((a * n_u).powi(2) + (b * n_v).powi(2)).sqrt();
+            let dist = (cx - line_ep[0]) * n[0] + (cy - line_ep[1]) * n[1];
+            r.push(dist.abs() - support);
         }
     }
 }

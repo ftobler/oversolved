@@ -131,6 +131,65 @@ fn line_circle_tangent_residual() {
 }
 
 #[test]
+fn line_ellipse_tangent_measures_the_support_distance() {
+    // Horizontal line y=3 against an ellipse at the origin, a=5, b=3. Axis
+    // aligned the minor axis is vertical, so the line touches: residual 0.
+    // Rotated 90 deg the major axis is vertical: |3| - 5 = -2. Rotated 45 deg
+    // the support distance is sqrt((25 + 9) / 2).
+    let mk = |theta: f32| {
+        input(
+            vec![ent(Kind::Line, 0), ent(Kind::Ellipse, 4)],
+            vec![-10.0, 3.0, 10.0, 3.0, 0.0, 0.0, 5.0, 3.0, theta],
+            vec![cons(
+                ConstraintKind::Tangent,
+                ab(
+                    e_ref(0, PointSelector::Absent),
+                    e_ref(1, PointSelector::Absent),
+                ),
+            )],
+        )
+    };
+    for (theta, want) in [(0.0, 0.0), (90.0, -2.0), (45.0, 3.0 - 17.0_f64.sqrt())] {
+        let inp = mk(theta);
+        let p = Problem::new(&inp);
+        let r = p.residuals(&p.x0);
+        assert_eq!(r.len(), 1, "theta={theta}: tangent contributed no row");
+        assert!(
+            (r[0] - want).abs() < 1e-9,
+            "theta={theta}: residual {}",
+            r[0]
+        );
+    }
+}
+
+#[test]
+fn horizontal_line_settles_tangent_to_an_ellipse() {
+    // A fixed rotated ellipse and a horizontal line seeded above it: the
+    // solve must bring the line down onto the ellipse's top support line.
+    let fixed = c_target(ConstraintKind::Fixed, 1, PointSelector::Absent);
+    let horizontal = c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent);
+    let tangent = cons(
+        ConstraintKind::Tangent,
+        ab(
+            e_ref(0, PointSelector::Absent),
+            e_ref(1, PointSelector::Absent),
+        ),
+    );
+    let inp = input(
+        vec![ent(Kind::Line, 0), ent(Kind::Ellipse, 4)],
+        vec![-10.0, 6.0, 10.0, 6.5, 1.0, 2.0, 5.0, 3.0, 45.0],
+        vec![fixed, horizontal, tangent],
+    );
+    let out = solve_sketch(&inp);
+    let y = out.params_solved[1] as f64;
+    assert!(
+        (y - (2.0 + 17.0_f64.sqrt())).abs() < 1e-4,
+        "line at y={y}, status {}",
+        out.overall_status
+    );
+}
+
+#[test]
 fn circle_circle_tangent_keeps_the_seeded_tangency_type() {
     // Seeded at d=5 with r=4 and r=2: external reads -1, internal 3, so the
     // tangency is external. Moving the second center inward must stay on the
