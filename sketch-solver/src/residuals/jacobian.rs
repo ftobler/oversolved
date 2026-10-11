@@ -7,6 +7,35 @@ use crate::{Kind, DEG2RAD};
 use nalgebra::DMatrix;
 use solver_core::sparse::SparseRow;
 
+/// One Jacobian row under construction. A column may be added more than once
+/// (two point references on the same entity, say), and `finish` sums the
+/// repeats: `jtj_diag` squares sparse entries one by one, so a repeated column
+/// would read `a² + b²` where the true entry is `(a + b)²`.
+struct RowBuf(Vec<(usize, f64)>);
+
+impl RowBuf {
+    fn new() -> Self {
+        RowBuf(Vec::new())
+    }
+
+    fn add(&mut self, col: usize, v: f64) {
+        self.0.push((col, v));
+    }
+
+    fn finish(mut self) -> SparseRow {
+        self.0.sort_unstable_by_key(|&(col, _)| col);
+        let mut out: SparseRow = Vec::with_capacity(self.0.len());
+        for (col, v) in self.0 {
+            match out.last_mut() {
+                Some(last) if last.0 == col => last.1 += v,
+                _ => out.push((col, v)),
+            }
+        }
+        out.retain(|&(_, v)| v != 0.0);
+        out
+    }
+}
+
 impl Problem<'_> {
     // ─── Analytic Jacobian ───
     //
@@ -17,52 +46,44 @@ impl Problem<'_> {
     // The fallback keeps correctness trivially (it IS finite differences) while
     // the common cheap constraints avoid the O(2N) full-FD cost.
 
-    /// Dense rows of the full stacked Jacobian: one row per residual (constraint
-    /// rows from `jac_one`) followed by the pin and equality-pin rows. Shared by
-    /// both the dense and sparse Jacobian builders.
-    fn jacobian_rows(&self, x: &[f64], n: usize) -> Vec<Vec<f64>> {
-        let mut rows: Vec<Vec<f64>> = Vec::new();
+    /// Sparse rows of the full stacked Jacobian: one row per residual
+    /// (constraint rows from `jac_one`) followed by the pin and equality-pin
+    /// rows. Shared by both the dense and sparse Jacobian builders. Rows are
+    /// built sparse from the start; materializing them n wide made every drag
+    /// tick O(m n) before the sparse solver even saw them.
+    fn jacobian_rows(&self, x: &[f64]) -> Vec<SparseRow> {
+        let mut rows: Vec<SparseRow> = Vec::new();
+        // One perturbation buffer for every finite-difference constraint.
+        let mut scratch = x.to_vec();
         for c in &self.constraints {
-            self.jac_one(c, x, n, &mut rows);
+            self.jac_one(c, x, &mut scratch, &mut rows);
         }
         for &i in &self.pinned_indices {
-            let mut row = vec![0.0; n];
-            row[i] = 1.0;
-            rows.push(row);
+            rows.push(vec![(i, 1.0)]);
         }
         for &(i, _) in &self.equality_pins {
-            let mut row = vec![0.0; n];
-            row[i] = 1.0;
-            rows.push(row);
+            rows.push(vec![(i, 1.0)]);
         }
         rows
     }
 
     /// Jacobian of the full stacked residual at `x` (m rows x `n` params).
     pub fn jacobian(&self, x: &[f64], n: usize) -> DMatrix<f64> {
-        let rows = self.jacobian_rows(x, n);
-        let m = rows.len();
-        let mut j = DMatrix::<f64>::zeros(m, n);
+        let rows = self.jacobian_rows(x);
+        let mut j = DMatrix::<f64>::zeros(rows.len(), n);
         for (r_i, row) in rows.iter().enumerate() {
-            for (c_i, &v) in row.iter().enumerate() {
+            for &(c_i, v) in row {
                 j[(r_i, c_i)] = v;
             }
         }
         j
     }
 
-    /// Sparse Jacobian: each row as `(col_index, value)` pairs for nonzero entries.
-    /// Builds the same row set as `jacobian` but converts to sparse representation.
-    pub fn jacobian_sparse(&self, x: &[f64], n: usize) -> Vec<SparseRow> {
-        self.jacobian_rows(x, n)
-            .into_iter()
-            .map(|row| {
-                row.into_iter()
-                    .enumerate()
-                    .filter(|&(_, v)| v != 0.0)
-                    .collect::<Vec<_>>()
-            })
-            .collect()
+    /// Sparse Jacobian: each row as `(col_index, value)` pairs for nonzero
+    /// entries, the same row set as `jacobian`. `n` is kept for symmetry with
+    /// the dense builder; sparse rows carry their own column indices.
+    pub fn jacobian_sparse(&self, x: &[f64], _n: usize) -> Vec<SparseRow> {
+        self.jacobian_rows(x)
     }
 
     fn residual_one_vec(&self, c: &Constraint, x: &[f64]) -> Vec<f64> {
@@ -91,27 +112,28 @@ impl Problem<'_> {
     /// Central finite-difference rows for one constraint, perturbing only the
     /// params it touches. Used as the fallback for constraints without an
     /// analytic derivative.
-    fn fd_constraint_rows(&self, c: &Constraint, x: &[f64], n: usize) -> Vec<Vec<f64>> {
+    /// `xp` is a copy of `x` the caller owns; each perturbed param is restored
+    /// before the next, so it is a copy of `x` again on return.
+    fn fd_constraint_rows(&self, c: &Constraint, x: &[f64], xp: &mut [f64]) -> Vec<SparseRow> {
         let base = self.residual_one_vec(c, x);
         let k = base.len();
         if k == 0 {
             return Vec::new();
         }
-        let mut rows = vec![vec![0.0; n]; k];
-        let mut xp = x.to_vec();
+        let mut rows: Vec<RowBuf> = (0..k).map(|_| RowBuf::new()).collect();
         for j in self.involved_params(c) {
             let h = f64::EPSILON.cbrt() * x[j].abs().max(1.0);
             xp[j] = x[j] + h;
-            let fp = self.residual_one_vec(c, &xp);
+            let fp = self.residual_one_vec(c, xp);
             xp[j] = x[j] - h;
-            let fm = self.residual_one_vec(c, &xp);
+            let fm = self.residual_one_vec(c, xp);
             xp[j] = x[j];
             let inv = 1.0 / (2.0 * h);
             for (row, (&p, &m)) in fp.iter().zip(fm.iter()).enumerate() {
-                rows[row][j] = (p - m) * inv;
+                rows[row].add(j, (p - m) * inv);
             }
         }
-        rows
+        rows.into_iter().map(RowBuf::finish).collect()
     }
 
     /// Jacobian of a 2D point reference w.r.t. its entity params: a list of
@@ -209,20 +231,20 @@ impl Problem<'_> {
         }
     }
 
-    fn jac_one(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+    fn jac_one(&self, c: &Constraint, x: &[f64], xp: &mut [f64], rows: &mut Vec<SparseRow>) {
         let Some(kind) = c.kind() else { return };
         match kind {
-            ConstraintKind::Horizontal => self.jac_axis_aligned(c, x, n, rows, true),
-            ConstraintKind::Vertical => self.jac_axis_aligned(c, x, n, rows, false),
-            ConstraintKind::Length => self.jac_length(c, x, n, rows),
-            ConstraintKind::Radius => self.jac_single_param(c, n, rows, 2, 1.0),
-            ConstraintKind::Diameter => self.jac_single_param(c, n, rows, 2, 2.0),
-            ConstraintKind::Parallel => self.jac_parallel(c, x, n, rows),
-            ConstraintKind::Concentric => self.jac_concentric(c, n, rows),
-            ConstraintKind::EqualLength => self.jac_equal_length(c, x, n, rows),
-            ConstraintKind::PointDistance => self.jac_point_distance(c, x, n, rows),
-            ConstraintKind::Coincident => self.jac_coincident(c, x, n, rows),
-            ConstraintKind::Fixed => self.jac_fixed(c, x, n, rows),
+            ConstraintKind::Horizontal => self.jac_axis_aligned(c, x, rows, true),
+            ConstraintKind::Vertical => self.jac_axis_aligned(c, x, rows, false),
+            ConstraintKind::Length => self.jac_length(c, x, rows),
+            ConstraintKind::Radius => self.jac_single_param(c, rows, 2, 1.0),
+            ConstraintKind::Diameter => self.jac_single_param(c, rows, 2, 2.0),
+            ConstraintKind::Parallel => self.jac_parallel(c, x, rows),
+            ConstraintKind::Concentric => self.jac_concentric(c, rows),
+            ConstraintKind::EqualLength => self.jac_equal_length(c, x, rows),
+            ConstraintKind::PointDistance => self.jac_point_distance(c, x, rows),
+            ConstraintKind::Coincident => self.jac_coincident(c, x, xp, rows),
+            ConstraintKind::Fixed => self.jac_fixed(c, x, rows),
             // Direction-normalizing / atan2 residuals: finite-difference fallback.
             ConstraintKind::LineDistance
             | ConstraintKind::Normal
@@ -231,7 +253,7 @@ impl Problem<'_> {
             | ConstraintKind::Midpoint
             | ConstraintKind::RadiusDifference
             | ConstraintKind::PointDistanceX
-            | ConstraintKind::PointDistanceY => rows.extend(self.fd_constraint_rows(c, x, n)),
+            | ConstraintKind::PointDistanceY => rows.extend(self.fd_constraint_rows(c, x, xp)),
         }
     }
 
@@ -239,36 +261,35 @@ impl Problem<'_> {
         &self,
         c: &Constraint,
         x: &[f64],
-        n: usize,
-        rows: &mut Vec<Vec<f64>>,
+        rows: &mut Vec<SparseRow>,
         horizontal: bool,
     ) {
         // component index in a 2D point: y for horizontal, x for vertical.
         let comp = if horizontal { 1 } else { 0 };
         if let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) {
-            let mut row = vec![0.0; n];
+            let mut row = RowBuf::new();
             for (i, dx, dy) in self.point_jac(x, a) {
-                row[i] += if comp == 1 { dy } else { dx };
+                row.add(i, if comp == 1 { dy } else { dx });
             }
             for (i, dx, dy) in self.point_jac(x, b) {
-                row[i] -= if comp == 1 { dy } else { dx };
+                row.add(i, -(if comp == 1 { dy } else { dx }));
             }
-            rows.push(row);
+            rows.push(row.finish());
         } else if let Some(Ref::Entity { index, .. }) = c.ref_for(RefRole::Target) {
             let off = self.offset_of(index);
-            let mut row = vec![0.0; n];
+            let mut row = RowBuf::new();
             if horizontal {
-                row[off + 3] += 1.0; // ep[3] (end.y)
-                row[off + 1] -= 1.0; // ep[1] (start.y)
+                row.add(off + 3, 1.0); // ep[3] (end.y)
+                row.add(off + 1, -1.0); // ep[1] (start.y)
             } else {
-                row[off + 2] += 1.0; // ep[2] (end.x)
-                row[off] -= 1.0; // ep[0] (start.x)
+                row.add(off + 2, 1.0); // ep[2] (end.x)
+                row.add(off, -1.0); // ep[0] (start.x)
             }
-            rows.push(row);
+            rows.push(row.finish());
         }
     }
 
-    fn jac_length(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+    fn jac_length(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
         let Some(Ref::Entity { index, .. }) = c.ref_for(RefRole::Target) else {
             return;
         };
@@ -279,21 +300,20 @@ impl Problem<'_> {
         let ep = self.params(x, index);
         let (dx, dy) = (ep[2] - ep[0], ep[3] - ep[1]);
         let nrm = (dx * dx + dy * dy).sqrt();
-        let mut row = vec![0.0; n];
+        let mut row = RowBuf::new();
         if nrm > 0.0 {
-            row[off] = -dx / nrm;
-            row[off + 1] = -dy / nrm;
-            row[off + 2] = dx / nrm;
-            row[off + 3] = dy / nrm;
+            row.add(off, -dx / nrm);
+            row.add(off + 1, -dy / nrm);
+            row.add(off + 2, dx / nrm);
+            row.add(off + 3, dy / nrm);
         }
-        rows.push(row);
+        rows.push(row.finish());
     }
 
     fn jac_single_param(
         &self,
         c: &Constraint,
-        n: usize,
-        rows: &mut Vec<Vec<f64>>,
+        rows: &mut Vec<SparseRow>,
         local: usize,
         coeff: f64,
     ) {
@@ -304,12 +324,12 @@ impl Problem<'_> {
             return;
         }
         let off = self.offset_of(index);
-        let mut row = vec![0.0; n];
-        row[off + local] = coeff;
-        rows.push(row);
+        let mut row = RowBuf::new();
+        row.add(off + local, coeff);
+        rows.push(row.finish());
     }
 
-    fn jac_parallel(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+    fn jac_parallel(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
         let (Some(Ref::Entity { index: ai, .. }), Some(Ref::Entity { index: bi, .. })) =
             (c.ref_for(RefRole::A), c.ref_for(RefRole::B))
         else {
@@ -325,37 +345,37 @@ impl Problem<'_> {
         let da = [ea[2] - ea[0], ea[3] - ea[1]];
         let db = [eb[2] - eb[0], eb[3] - eb[1]];
         let (oa, ob) = (self.offset_of(ai), self.offset_of(bi));
-        let mut row = vec![0.0; n];
+        let mut row = RowBuf::new();
         // r = da.x*db.y - da.y*db.x
-        row[oa] += -db[1];
-        row[oa + 2] += db[1];
-        row[oa + 1] += db[0];
-        row[oa + 3] += -db[0];
-        row[ob] += da[1];
-        row[ob + 2] += -da[1];
-        row[ob + 1] += -da[0];
-        row[ob + 3] += da[0];
-        rows.push(row);
+        row.add(oa, -db[1]);
+        row.add(oa + 2, db[1]);
+        row.add(oa + 1, db[0]);
+        row.add(oa + 3, -db[0]);
+        row.add(ob, da[1]);
+        row.add(ob + 2, -da[1]);
+        row.add(ob + 1, -da[0]);
+        row.add(ob + 3, da[0]);
+        rows.push(row.finish());
     }
 
-    fn jac_concentric(&self, c: &Constraint, n: usize, rows: &mut Vec<Vec<f64>>) {
+    fn jac_concentric(&self, c: &Constraint, rows: &mut Vec<SparseRow>) {
         let (Some(Ref::Entity { index: ai, .. }), Some(Ref::Entity { index: bi, .. })) =
             (c.ref_for(RefRole::A), c.ref_for(RefRole::B))
         else {
             return;
         };
         let (oa, ob) = (self.offset_of(ai), self.offset_of(bi));
-        let mut rx = vec![0.0; n];
-        rx[oa] = 1.0;
-        rx[ob] = -1.0;
-        rows.push(rx);
-        let mut ry = vec![0.0; n];
-        ry[oa + 1] = 1.0;
-        ry[ob + 1] = -1.0;
-        rows.push(ry);
+        let mut rx = RowBuf::new();
+        rx.add(oa, 1.0);
+        rx.add(ob, -1.0);
+        rows.push(rx.finish());
+        let mut ry = RowBuf::new();
+        ry.add(oa + 1, 1.0);
+        ry.add(ob + 1, -1.0);
+        rows.push(ry.finish());
     }
 
-    fn jac_equal_length(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+    fn jac_equal_length(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
         let (Some(Ref::Entity { index: ai, .. }), Some(Ref::Entity { index: bi, .. })) =
             (c.ref_for(RefRole::A), c.ref_for(RefRole::B))
         else {
@@ -367,10 +387,10 @@ impl Problem<'_> {
         // radius params (index 2). Mirror the residual's kind branching so the
         // row count agrees; a line/curve mix contributes no row.
         if is_curve(ka) && is_curve(kb) {
-            let mut row = vec![0.0; n];
-            row[oa + 2] += 1.0;
-            row[ob + 2] += -1.0;
-            rows.push(row);
+            let mut row = RowBuf::new();
+            row.add(oa + 2, 1.0);
+            row.add(ob + 2, -1.0);
+            rows.push(row.finish());
             return;
         }
         if ka != Kind::Line || kb != Kind::Line {
@@ -380,25 +400,25 @@ impl Problem<'_> {
         let eb = self.params(x, bi);
         let na = ((ea[2] - ea[0]).powi(2) + (ea[3] - ea[1]).powi(2)).sqrt();
         let nb = ((eb[2] - eb[0]).powi(2) + (eb[3] - eb[1]).powi(2)).sqrt();
-        let mut row = vec![0.0; n];
+        let mut row = RowBuf::new();
         if na > 0.0 {
             let (dx, dy) = (ea[2] - ea[0], ea[3] - ea[1]);
-            row[oa] += -dx / na;
-            row[oa + 1] += -dy / na;
-            row[oa + 2] += dx / na;
-            row[oa + 3] += dy / na;
+            row.add(oa, -dx / na);
+            row.add(oa + 1, -dy / na);
+            row.add(oa + 2, dx / na);
+            row.add(oa + 3, dy / na);
         }
         if nb > 0.0 {
             let (dx, dy) = (eb[2] - eb[0], eb[3] - eb[1]);
-            row[ob] += dx / nb;
-            row[ob + 1] += dy / nb;
-            row[ob + 2] += -dx / nb;
-            row[ob + 3] += -dy / nb;
+            row.add(ob, dx / nb);
+            row.add(ob + 1, dy / nb);
+            row.add(ob + 2, -dx / nb);
+            row.add(ob + 3, -dy / nb);
         }
-        rows.push(row);
+        rows.push(row.finish());
     }
 
-    fn jac_point_distance(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+    fn jac_point_distance(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
         let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
             return;
         };
@@ -410,39 +430,39 @@ impl Problem<'_> {
         let ux = pb[0] - pa[0];
         let uy = pb[1] - pa[1];
         let d = (ux * ux + uy * uy).sqrt();
-        let mut row = vec![0.0; n];
+        let mut row = RowBuf::new();
         if d > 0.0 {
             for (i, dpx, dpy) in self.point_jac(x, a) {
-                row[i] += (-ux / d) * dpx + (-uy / d) * dpy;
+                row.add(i, (-ux / d) * dpx + (-uy / d) * dpy);
             }
             for (i, dpx, dpy) in self.point_jac(x, b) {
-                row[i] += (ux / d) * dpx + (uy / d) * dpy;
+                row.add(i, (ux / d) * dpx + (uy / d) * dpy);
             }
         }
-        rows.push(row);
+        rows.push(row.finish());
     }
 
-    fn jac_coincident(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+    fn jac_coincident(&self, c: &Constraint, x: &[f64], xp: &mut [f64], rows: &mut Vec<SparseRow>) {
         if !self.coincident_is_point_point(c) {
-            rows.extend(self.fd_constraint_rows(c, x, n));
+            rows.extend(self.fd_constraint_rows(c, x, xp));
             return;
         }
         let (Some(a), Some(b)) = (c.ref_for(RefRole::A), c.ref_for(RefRole::B)) else {
             return;
         };
         // r = [pa.x - pb.x, pa.y - pb.y]
-        let mut rx = vec![0.0; n];
-        let mut ry = vec![0.0; n];
+        let mut rx = RowBuf::new();
+        let mut ry = RowBuf::new();
         for (i, dpx, dpy) in self.point_jac(x, a) {
-            rx[i] += dpx;
-            ry[i] += dpy;
+            rx.add(i, dpx);
+            ry.add(i, dpy);
         }
         for (i, dpx, dpy) in self.point_jac(x, b) {
-            rx[i] -= dpx;
-            ry[i] -= dpy;
+            rx.add(i, -dpx);
+            ry.add(i, -dpy);
         }
-        rows.push(rx);
-        rows.push(ry);
+        rows.push(rx.finish());
+        rows.push(ry.finish());
     }
 
     /// True when `r_coincident` would take its final point-to-point branch (the
@@ -476,7 +496,7 @@ impl Problem<'_> {
         )
     }
 
-    fn jac_fixed(&self, c: &Constraint, x: &[f64], n: usize, rows: &mut Vec<Vec<f64>>) {
+    fn jac_fixed(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
         let Some(target) = c.ref_for(RefRole::Target) else {
             return;
         };
@@ -487,21 +507,19 @@ impl Problem<'_> {
         let has_xy = c.xy.is_some();
         if has_point || has_xy {
             // r = [pt.x - fix_x, pt.y - fix_y]; fix is constant.
-            let mut rx = vec![0.0; n];
-            let mut ry = vec![0.0; n];
+            let mut rx = RowBuf::new();
+            let mut ry = RowBuf::new();
             for (i, dpx, dpy) in self.point_jac(x, target) {
-                rx[i] += dpx;
-                ry[i] += dpy;
+                rx.add(i, dpx);
+                ry.add(i, dpy);
             }
-            rows.push(rx);
-            rows.push(ry);
+            rows.push(rx.finish());
+            rows.push(ry.finish());
         } else {
             let off = self.offset_of(index);
             let size = self.kind_of(index).param_count();
             for i in 0..size {
-                let mut row = vec![0.0; n];
-                row[off + i] = 1.0;
-                rows.push(row);
+                rows.push(vec![(off + i, 1.0)]);
             }
         }
     }

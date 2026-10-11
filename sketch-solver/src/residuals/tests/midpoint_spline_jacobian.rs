@@ -715,6 +715,10 @@ fn jacobian_sparse_matches_dense_jacobian() {
         "expected the zero-stripping to drop columns from at least one row"
     );
     for (r, row) in sparse.iter().enumerate() {
+        assert!(
+            row.windows(2).all(|w| w[0].0 < w[1].0),
+            "row {r} repeats or misorders a column: {row:?}"
+        );
         let mut reconstructed = vec![0.0; n];
         for &(c, v) in row {
             assert_ne!(v, 0.0, "row {r} col {c} stored an explicit zero");
@@ -728,6 +732,35 @@ fn jacobian_sparse_matches_dense_jacobian() {
                 dense[(r, c)],
             );
         }
+    }
+}
+
+#[test]
+fn sparse_rows_sum_columns_that_two_references_share() {
+    // Start and end of one arc: both resolve through the same centre and
+    // radius params. The centre entries cancel and the radius entries sum to
+    // cos(a0) - cos(a1); stored as two separate entries, `jtj_diag` would
+    // square them one by one and get the damping diagonal wrong.
+    let inp = input(
+        vec![ent(Kind::Arc, 0)],
+        vec![1.0, 2.0, 3.0, 0.0, 90.0],
+        vec![cons(
+            ConstraintKind::Coincident,
+            ab(e_ref(0, PointSelector::Start), e_ref(0, PointSelector::End)),
+        )],
+    );
+    let p = Problem::new(&inp);
+    let x = p.x0.clone();
+    let rows = p.jacobian_sparse(&x, x.len());
+    // x row: d/dr = cos 0 - cos 90 = 1, d/da0 = 0 (sin 0), d/da1 = 3*sin(90)*pi/180.
+    assert_eq!(rows[0].len(), 2, "x row: {:?}", rows[0]);
+    assert_eq!(rows[0][0].0, 2);
+    assert!((rows[0][0].1 - 1.0).abs() < 1e-12, "x row: {:?}", rows[0]);
+    let diag = solver_core::sparse::jtj_diag(&rows, x.len());
+    let dense = p.jacobian(&x, x.len());
+    for (c, d) in diag.iter().enumerate() {
+        let want: f64 = (0..dense.nrows()).map(|r| dense[(r, c)].powi(2)).sum();
+        assert!((d - want).abs() < 1e-12, "col {c}: diag {d} want {want}");
     }
 }
 
