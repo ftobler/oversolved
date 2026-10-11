@@ -171,7 +171,10 @@ pub fn damped_solve_anchored(
     let diag = jtj_diag(jac, n);
     // For small systems, more CG iterations are affordable.
     let max_iters = n * 2;
-    let tol = 1e-12;
+    // Relative to the right-hand side: an absolute 1e-12 sits below the
+    // round-off floor of any gradient much larger than 1, so CG never met it
+    // and every LM step paid the full 2n iterations.
+    let tol = 1e-10 * dot(b, b).sqrt();
     cg_solve(jac, lambda, &diag, anchor, b, n, max_iters, tol)
 }
 
@@ -250,6 +253,27 @@ mod tests {
         assert!(!truncated);
         assert!((delta[0] + 1.0 / 3.0).abs() < 1e-6, "δ₀={}", delta[0]);
         assert!((delta[1] + 1.0 / 3.0).abs() < 1e-6, "δ₁={}", delta[1]);
+    }
+
+    #[test]
+    fn damped_solve_stays_accurate_on_a_large_right_hand_side() {
+        // The tolerance scales with |b|, so a gradient of 1e8 must still come
+        // back solved to near machine precision rather than merely to 1e-12
+        // absolute, which this |b| could never reach anyway.
+        let jac = vec![vec![(0, 2.0), (1, 1.0)], vec![(0, 1.0), (1, 2.0)]];
+        let b = vec![-3e8, -1e8];
+        let (delta, truncated) = damped_solve(&jac, 0.0, &b, 2);
+        assert!(!truncated);
+        // [[5,4],[4,5]] δ = b  ->  δ = [-11/9, 7/9] * 1e8.
+        let want = [-11.0 / 9.0 * 1e8, 7.0 / 9.0 * 1e8];
+        for i in 0..2 {
+            assert!(
+                ((delta[i] - want[i]) / want[i]).abs() < 1e-9,
+                "δ{i}={} want {}",
+                delta[i],
+                want[i]
+            );
+        }
     }
 
     #[test]
