@@ -400,8 +400,7 @@ function collapseCircleWire(oc: OccModule, scope: DisposeScope, wire: OccShape):
  * uses two distinct circles and must not collapse). Returns the original face
  * unchanged when no hole needed canonicalizing, so callers can skip a redundant
  * face rebuild. Planar geometry is identical (same outer wire, same hole
- * curves), so the face's centroid/normal -- and therefore its geom hash -- is
- * preserved.
+ * curves), so the face's centroid and normal are preserved.
  */
 export function canonicalizeFaceCircles(oc: OccModule, scope: DisposeScope, face: OccShape): OccShape {
   const E = oc.TopAbs_ShapeEnum

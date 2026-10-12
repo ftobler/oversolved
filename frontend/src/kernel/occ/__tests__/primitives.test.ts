@@ -162,7 +162,7 @@ describe('makeEllipseEdge radius validation', () => {
 
 describe('faceNormal undefined-normal refusal', () => {
   it('throws naming the surface type when the UV-midpoint normal is undefined', () => {
-    // Callers (faceGh, the naming passes) treat the throw as a failed geometry
+    // Callers (the naming passes, tessellation) treat the throw as a failed geometry
     // read, so the failure must name the surface class rather than return a
     // fabricated normal. No OCC needed: the guard fires before any sign read.
     const oc = {

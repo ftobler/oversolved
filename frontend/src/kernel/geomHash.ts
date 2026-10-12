@@ -1,7 +1,10 @@
-// Stable face/edge/vertex identity from geometry attributes rounded to 4 decimals.
-// The float formatting below must reproduce CPython's str(round(v, 4)) exactly:
-// geomHash.test.ts pins it against a frozen golden snapshot of the Python kernel's
-// digests.
+// Geometry fingerprints (face/edge attributes rounded to 4 decimals) and the
+// spatial classifier tokens. A fingerprint only compares whole builds as sorted
+// sets (`wasm-kernel/parityBaseline.ts`); it is never an identity or a lookup
+// key for a face or edge: construction names travel by sub-shape identity and
+// history (`occ/bodyNames.ts`). The float formatting below must reproduce
+// CPython's str(round(v, 4)) exactly: geomHash.test.ts pins it against a frozen
+// golden snapshot of the Python kernel's digests.
 
 import { sha256Hex } from "./sha256"
 
@@ -135,11 +138,6 @@ export function edgeGeometryHash(edge: Record<string, unknown>): string {
     }
   }
   return "gedge_" + sha256Hex(items.join("|")).slice(0, 16)
-}
-
-/** "gvertex_<hash>". */
-export function vertexGeometryHash(pt: number[]): string {
-  return "gvertex_" + sha256Hex(pt.map(pyRound4Str).join("|")).slice(0, 16)
 }
 
 // Fraction of a half-extent a representative point must clear, on an axis, to

@@ -4,7 +4,6 @@ import {
   pyRound4Str,
   faceGeometryHash,
   edgeGeometryHash,
-  vertexGeometryHash,
   geometryClassifiers,
 } from "../geomHash"
 import { sha256Hex } from "../sha256"
@@ -116,14 +115,6 @@ describe("edge hashes match Python", () => {
   })
 })
 
-describe("vertex hashes match Python", () => {
-  for (const c of fixture.vertices) {
-    it(`vertex ${c.vertex_geometry_hash}`, () => {
-      expect(vertexGeometryHash(c.pt)).toBe(c.vertex_geometry_hash)
-    })
-  }
-})
-
 describe("geometry classifiers match Python", () => {
   for (const c of fixture.classifiers) {
     it(`classifiers ${JSON.stringify(c.classifiers)}`, () => {
@@ -230,9 +221,6 @@ describe("negative-zero normalization parity (Python _r4str(-0.0) == '0.0')", ()
     expect(faceGeometryHash([-0, 0.00004, 0.00006], [-0.00006, 1.0000000001, 0.0])).toBe(
       "gface_eb4440e4bb1f8812",
     )
-  })
-  it("vertex", () => {
-    expect(vertexGeometryHash([-0, 1.5, -0])).toBe("gvertex_20cd7b4277207ef7")
   })
   it("edge line", () => {
     expect(
