@@ -143,9 +143,9 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
   }
 
   // Baseline documents written in a feature schema the TS kernel no longer reads
-  // (a revolve's bare axis_origin/axis_direction, a sweep's old profile field):
-  // they build no body today, so they have no query to check.
-  const NO_BODY_TODAY = new Set(['revolve_360deg', 'sweep_straight_z'])
+  // (a sweep's old profile field): they build no body today, so they have no
+  // query to check.
+  const NO_BODY_TODAY = new Set(['sweep_straight_z'])
 
   describe('regression baseline', () => {
     const entries = baseline as unknown as Array<{ label: string; ok: boolean; spec: Spec }>
