@@ -21,6 +21,7 @@ import {
   makeCylinder,
   makeArcEdge,
   makeEllipseEdge,
+  makeBezierEdge,
   faceCentroid,
   faceNormal,
   edgeToGeom,
@@ -324,6 +325,24 @@ describe.skipIf(!hasOcc)('edge multiplicity: a face pair sharing 2 edges', () =>
       ])
       expect(ordered, 'distinct arc keys order instead of permanently refusing').not.toBeNull()
       expect(new Set(ordered!).size).toBe(2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a spline edge keys off its mid-parameter point instead of refusing with NaN', () => {
+    // A spline carries neither start/end nor a centre, so the key was NaN and
+    // orderSplitChildren refused the edge's WHOLE face-pair group: on the array-cut
+    // corpus a seam spline left two ellipse siblings unnamed with it.
+    const scope = new DisposeScope()
+    try {
+      const bezier = makeBezierEdge(oc, scope, [[0, 0, 0], [1, 2, 0], [3, 2, 0], [4, 0, 0]])
+      expect(edgeToGeom(oc, scope, bezier).ed.kind).toBe('spline')
+      const m = edgeMidpoint(oc, scope, bezier)
+      // B(1/2) of these poles: x = (0 + 3 + 9 + 4) / 8, y = (0 + 6 + 6 + 0) / 8.
+      expect(m[0]).toBeCloseTo(2, 9)
+      expect(m[1]).toBeCloseTo(1.5, 9)
+      expect(m[2]).toBeCloseTo(0, 9)
     } finally {
       scope.dispose()
     }

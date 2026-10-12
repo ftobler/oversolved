@@ -23,6 +23,7 @@ import { normalToFrame, projectWorldToFrame } from '../types3d'
 import {
   deriveEdgeUuid,
   deriveSeamEdgeUuid,
+  deriveEndsEdgeUuid,
   deriveCornerFaceUuid,
   orderSplitChildren,
   type SplitChild,
@@ -87,9 +88,9 @@ export function normalizedWorldKey(frame: NormalFrame, point: readonly number[])
 }
 
 /**
- * The world-space midpoint of an edge (line) or, for a circle/arc/ellipse, the
- * point at the MID-PARAMETER (eccentric angle for an ellipse) of its trimmed
- * angle range -- never the bare centre. Two arcs of one conic would otherwise
+ * The world-space midpoint of an edge (line) or, for a circle/arc/ellipse or a
+ * spline, the point at the MID-PARAMETER (eccentric angle for an ellipse) of its
+ * trimmed range -- never the bare centre. Two arcs of one conic would otherwise
  * share the centre and produce byte-identical keys: a permanent tie, always
  * refused and both left unnamed, never a swap. The mid-parameter point moves
  * along the curve with the angle range, so distinct arcs order instead. It
@@ -107,8 +108,16 @@ export function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape)
     const s = (ed as { start?: number[] }).start
     const e = (ed as { end?: number[] }).end
     const c = (ed as { center?: number[] }).center
+    const samples = (ed as { points?: number[][] }).points
     if (Array.isArray(s) && Array.isArray(e)) {
       return [(s[0] + e[0]) / 2, (s[1] + e[1]) / 2, (s[2] + e[2]) / 2]
+    }
+    // A spline has no endpoints or centre, only its samples, taken uniformly in
+    // the parameter with both ends included, so the middle one (an odd count) is
+    // the mid-parameter point, the same point the conic arm keys off. Without
+    // this arm the key was NaN, and one spline refused its whole sibling group.
+    if (Array.isArray(samples) && samples.length % 2 === 1) {
+      return [...samples[(samples.length - 1) / 2]]
     }
     if (Array.isArray(c)) {
       const radius = (ed as { radius?: number }).radius
@@ -215,10 +224,16 @@ export class FaceEdgeTable {
       }
       rowIndex.set(face, rows.push({ face, edges }) - 1)
     }
-    return new FaceEdgeTable(oc, rows, shape, rowIndex)
+    return new FaceEdgeTable(oc, scope, rows, shape, rowIndex)
   }
 
   private readonly oc: OccModule
+  // The scope `read` was given: the vertex proxies `facesAtEnds` reads live on it
+  // like the face and edge proxies do.
+  private readonly scope: DisposeScope
+  // Vertex -> the faces around it, built on the first `facesAtEnds`; only a
+  // refused edge ordering asks, so the other passes never pay for the walk.
+  private lazyVertexFaces: SubShapeMap<OccSubShape[]> | null = null
   // Lazy per-row caches: `undefined` means not yet computed, so a row whose read
   // threw is memoized as null and not recomputed on every access.
   private readonly lazyCentroidNormal = new Map<FaceRow, { centroid: Vec3; normal: Vec3 } | null>()
@@ -232,11 +247,13 @@ export class FaceEdgeTable {
 
   private constructor(
     oc: OccModule,
+    scope: DisposeScope,
     rows: readonly FaceRow[],
     shape: OccShape,
     rowIndex: SubShapeIndexMap,
   ) {
     this.oc = oc
+    this.scope = scope
     this.rows = rows
     this.shape = shape
     this.rowIndex = rowIndex
@@ -298,6 +315,36 @@ export class FaceEdgeTable {
     }
     this.lazySurfaceType.set(row, out)
     return out
+  }
+
+  // The faces around each distinct end vertex of `edge` (one list for a closed
+  // edge), in canonical face order.
+  facesAtEnds(edge: OccSubShape): OccSubShape[][] {
+    const vertexFaces = (this.lazyVertexFaces ??= this.readVertexFaces())
+    return this.verticesOf(edge).map((v) => vertexFaces.get(v) ?? [])
+  }
+
+  private verticesOf(edge: OccSubShape): OccSubShape[] {
+    const E = this.oc.TopAbs_ShapeEnum
+    const seen = new SubShapeDedup()
+    const out: OccSubShape[] = []
+    const exp = this.scope.track(new this.oc.TopExp_Explorer_2(edge, E.TopAbs_VERTEX, E.TopAbs_SHAPE))
+    for (; exp.More(); exp.Next()) {
+      const v = this.scope.track(this.oc.TopoDS.Vertex_1(exp.Current())) as OccSubShape
+      if (seen.add(v)) out.push(v)
+    }
+    return out
+  }
+
+  private readVertexFaces(): SubShapeMap<OccSubShape[]> {
+    const map = new SubShapeMap<OccSubShape[]>()
+    for (const row of this.rows) {
+      const seen = new SubShapeDedup()  // a vertex meets this face through two of its edges
+      for (const edge of row.edges) {
+        for (const v of this.verticesOf(edge)) if (seen.add(v)) pushTo(map, v, row.face)
+      }
+    }
+    return map
   }
 }
 
@@ -495,7 +542,7 @@ export function deriveEdgeNames(
     if (distinct.length === 2) pushGroup(byPair, [...distinct].sort().join('|'), edge)
     else if (distinct.length === 1) pushGroup(bySingle, distinct[0], edge)
   }
-  return nameEdgeGroups(oc, scope, t.shape, byPair, bySingle, (uuids) => {
+  return nameEdgeGroups(oc, scope, t, faceNames, byPair, bySingle, (uuids) => {
     const tokens: string[] = []
     for (const fu of uuids) for (const tk of faceAncestry[fu] ?? []) if (!tokens.includes(tk)) tokens.push(tk)
     return tokens
@@ -505,14 +552,17 @@ export function deriveEdgeNames(
 /**
  * Name grouped edges: an edge between two named faces from the face pair, a
  * seam edge from its one face. A group of more than one edge (a face pair
- * sharing several edges) is ordered by the edge midpoints in `shape`'s own
- * normalized frame, and a near-tie leaves the whole group unnamed. `ancestryOf`
- * gives an edge's tokens from the face uuids it was named by.
+ * sharing several edges) is ordered by the edge midpoints in the table shape's
+ * own normalized frame. When that ordering refuses on a near-tie, each edge
+ * whose ends tell it apart from its siblings by name is named by them instead
+ * (`endsKey`), and only an edge still indistinguishable stays unnamed.
+ * `ancestryOf` gives an edge's tokens from the face uuids it was named by.
  */
 export function nameEdgeGroups(
   oc: OccModule,
   scope: DisposeScope,
-  shape: OccShape,
+  table: FaceEdgeTable,
+  faceNames: SubShapeMap<string>,
   byPair: ReadonlyMap<string, OccSubShape[]>,
   bySingle: ReadonlyMap<string, OccSubShape[]>,
   ancestryOf: (faceUuids: string[], edge: OccSubShape) => string[],
@@ -524,26 +574,56 @@ export function nameEdgeGroups(
     if (edges.length < 2) return edges
     // Edge midpoints are world coordinates: normalize them by the parent
     // shape's span so a uniform resize cancels and the refusal is relative.
-    frame ??= shapeNormalFrame(oc, scope, shape)
+    frame ??= shapeNormalFrame(oc, scope, table.shape)
     const f = frame
     return orderSplitChildren(
       edges.map<SplitChild<OccSubShape>>((edge) => ({ item: edge, key: normalizedWorldKey(f, edgeMidpoint(oc, scope, edge)) })),
-    )  // null on a near-tie -> leave unnamed
+    )  // null on a near-tie -> try the ends below
+  }
+  const name = (edge: OccSubShape, uuid: string, namedBy: string[]): void => {
+    edgeNames.set(edge, uuid)
+    edgeAncestry[uuid] = ancestryOf(namedBy, edge)
+  }
+  const nameByEnds = (edges: OccSubShape[], namedBy: string[]): void => {
+    const keys = edges.map((edge) => endsKey(table, faceNames, edge, namedBy))
+    edges.forEach((edge, i) => {
+      if (keys.indexOf(keys[i]) === keys.lastIndexOf(keys[i])) name(edge, deriveEndsEdgeUuid(namedBy, keys[i]), namedBy)
+    })
   }
   for (const [pairKey, edges] of byPair) {
     const [a, b] = pairKey.split('|')
-    order(edges)?.forEach((edge, i) => {
-      const uuid = deriveEdgeUuid(a, b, edges.length > 1 ? i : 0)
-      edgeNames.set(edge, uuid)
-      edgeAncestry[uuid] = ancestryOf([a, b], edge)
-    })
+    const ordered = order(edges)
+    if (ordered === null) nameByEnds(edges, [a, b])
+    else ordered.forEach((edge, i) => name(edge, deriveEdgeUuid(a, b, edges.length > 1 ? i : 0), [a, b]))
   }
   for (const [faceUuid, edges] of bySingle) {
-    order(edges)?.forEach((edge, i) => {
-      const uuid = deriveSeamEdgeUuid(faceUuid, edges.length > 1 ? i : 0)
-      edgeNames.set(edge, uuid)
-      edgeAncestry[uuid] = ancestryOf([faceUuid], edge)
-    })
+    const ordered = order(edges)
+    if (ordered === null) nameByEnds(edges, [faceUuid])
+    else ordered.forEach((edge, i) => name(edge, deriveSeamEdgeUuid(faceUuid, edges.length > 1 ? i : 0), [faceUuid]))
   }
   return { edgeNames, edgeAncestry }
+}
+
+/**
+ * What an edge's ends say about it by name: per distinct end vertex, the named
+ * faces met there other than `namedBy` (the faces the edge is named after, which
+ * every sibling shares), sorted; the ends sorted too, so the edge's orientation
+ * does not matter. Topology and face uuids only, so it is copy-stable and no
+ * geometry becomes identity. On the array-cut corpus a long elliptical edge and
+ * a tiny spline between the same two faces near-tie on their midpoints, yet one
+ * runs between two vertices only that pair meets at, the other ends on a third
+ * face.
+ */
+function endsKey(table: FaceEdgeTable, faceNames: SubShapeMap<string>, edge: OccSubShape, namedBy: string[]): string {
+  return table.facesAtEnds(edge)
+    .map((faces) => {
+      const uuids = new Set<string>()
+      for (const face of faces) {
+        const uuid = faceNames.get(face)
+        if (uuid && !namedBy.includes(uuid)) uuids.add(uuid)
+      }
+      return [...uuids].sort().join(',')
+    })
+    .sort()
+    .join(';')
 }

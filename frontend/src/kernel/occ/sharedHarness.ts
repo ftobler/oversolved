@@ -111,6 +111,7 @@ export class SharedHarness {
               bodyId: body.id,
               profileQueries: body.profile_queries ?? [],
               faceUuids: body.face_uuids ?? null,
+              edgeUuids: body.edge_uuids ?? null,
               newElements: newIndexSets(body.brep_new, body.shape),
               modifiedBy: body.modified_by,
             })

@@ -187,7 +187,7 @@ export function derivePrismEdgeNames(
     }
   }
   // An edge's tokens are the union of its named adjacent faces' ancestry.
-  return nameEdgeGroups(oc, scope, table.shape, byPair, bySingle, (_uuids, edge) => {
+  return nameEdgeGroups(oc, scope, table, faceNames, byPair, bySingle, (_uuids, edge) => {
     const tokens: string[] = []
     for (const fu of adjacency.get(edge) ?? []) {
       for (const t of faceAncestry[fu] ?? []) if (!tokens.includes(t)) tokens.push(t)

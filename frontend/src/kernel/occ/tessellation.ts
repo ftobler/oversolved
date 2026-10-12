@@ -30,7 +30,7 @@ import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } fro
 import { geometryClassifiers } from '../geomHash'
 import { assertAligned, canonicalEdges, canonicalFaces, canonicalIndex, canonicalVertices } from './bodyNames'
 import { elementCreator, type NewIndexSets } from './modifierAttribution'
-import { deriveVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
+import { deriveVertexUuid, deriveEdgesVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
 import { shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { buildFaceQuery } from '../faceQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
@@ -501,6 +501,9 @@ interface SolidVerticesOptions {
   // is derived from the UUIDs of the faces meeting at it, so the emitter needs
   // the face names to walk the adjacency.
   faceUuids?: (string | null)[] | null
+  // The body's edge UUIDs in canonical order (Body.edge_uuids): the symbolic
+  // tiebreak for vertices whose face sets match and whose positions near-tie.
+  edgeUuids?: (string | null)[] | null
   // What the body's last modifier created and the modifier history, for the
   // per-vertex creator.
   newElements?: NewIndexSets | null
@@ -523,8 +526,9 @@ interface SolidVerticesResult {
  * vertex of `solid` (null where none). A vertex's UUID is the
  * (unordered) set of its adjacent NAMED face UUIDs (`deriveVertexUuid`).
  * Multiplicity (>1 vertex sharing one face set) is ordered by
- * `orderSplitChildren` and refuses on a near-tie -- never fail-wrong. Mirrors
- * the edge derivation, op-independent.
+ * `orderSplitChildren`; on a near-tie the named edges at each vertex break it
+ * (`nameVerticesByEdges`), else the vertex stays unnamed -- never fail-wrong.
+ * Mirrors the edge derivation, op-independent.
  *
  * ANY non-empty named-face set identifies a vertex; there is no >=3 bar. The
  * bar came from "a vertex is where 3 faces meet", which holds for a box but not
@@ -543,6 +547,7 @@ function vertexUuidsFromFaces(
   solid: OccShape,
   vertexPoints: readonly Vec3[],
   faceUuids: readonly (string | null)[],
+  edgeUuids: readonly (string | null)[] | null,
 ): (string | null)[] {
   const faces = canonicalFaces(oc, scope, solid)
   assertAligned(faces.length, faceUuids, 'vertex naming faces')
@@ -582,14 +587,56 @@ function vertexUuidsFromFaces(
         item: vi,
         key: normalizedWorldKey(f, vertexPoints[vi]),
       }))
-      ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
+      ordered = orderSplitChildren(children)  // null on a near-tie -> try the edges below
     }
-    if (ordered === null) continue
+    if (ordered === null) {
+      nameVerticesByEdges(oc, scope, solid, group, adjacent, edgeUuids, out)
+      continue
+    }
     ordered.forEach((vi, i) => {
       out[vi] = deriveVertexUuid(adjacent, group.length > 1 ? i : 0)
     })
   }
   return out
+}
+
+/**
+ * The fallback for a vertex group whose positions near-tie: a vertex the named
+ * edges it bounds tell apart from its siblings is named by them
+ * (`deriveEdgesVertexUuid`), so the tiebreak stays symbolic and copy-stable.
+ * One whose edge set matches a sibling's stays unnamed. On the array-cut corpus
+ * the two ends of a long elliptical edge both meet only the same two faces and
+ * sit a hair apart, yet each also bounds a different second edge.
+ */
+function nameVerticesByEdges(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  group: readonly number[],
+  adjacent: string[],
+  edgeUuids: readonly (string | null)[] | null,
+  out: (string | null)[],
+): void {
+  if (!edgeUuids) return
+  const edges = canonicalEdges(oc, scope, solid)
+  assertAligned(edges.length, edgeUuids, 'vertex naming edges')
+  const vertexIdx = canonicalIndex(canonicalVertices(oc, scope, solid))
+  const inGroup = new Set(group)
+  const bounds = new Map<number, string[]>(group.map((vi) => [vi, []]))
+  edges.forEach((edge, ei) => {
+    const uuid = edgeUuids[ei]
+    if (!uuid) return
+    for (const vertex of canonicalVertices(oc, scope, edge)) {
+      const vi = vertexIdx.get(vertex)
+      if (inGroup.has(vi)) bounds.get(vi)!.push(uuid)
+    }
+  })
+  const keys = group.map((vi) => [...new Set(bounds.get(vi))].sort().join('|'))
+  group.forEach((vi, i) => {
+    if (keys[i] !== '' && keys.indexOf(keys[i]) === keys.lastIndexOf(keys[i])) {
+      out[vi] = deriveEdgesVertexUuid(adjacent, bounds.get(vi)!)
+    }
+  })
 }
 
 /** AABB center + half-extents over one or more point clouds; degrades to
@@ -813,7 +860,9 @@ export function solidToVertices(
       // -- the fail-safe outcome of having nothing symbolic to name it by.
       // `readSolidVertices` walks the canonical vertex order, so index idx of
       // `vertices` is canonical vertex idx.
-      const uuids = opts.faceUuids ? vertexUuidsFromFaces(oc, scope, solid, vertices, opts.faceUuids) : null
+      const uuids = opts.faceUuids
+        ? vertexUuidsFromFaces(oc, scope, solid, vertices, opts.faceUuids, opts.edgeUuids ?? null)
+        : null
       for (let idx = 0; idx < vertices.length; idx++) {
         const uuid = uuids?.[idx] ?? null
         vertex_uuids[idx] = uuid

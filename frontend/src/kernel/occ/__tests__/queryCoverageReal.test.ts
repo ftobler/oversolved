@@ -91,8 +91,7 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
   })
 
   /** Builds `spec` and checks every query of every emitted body. Returns the number
-   *  of primitives checked, so a case can prove it saw some geometry. With
-   *  `resolve: false` the queries are only checked for being there.
+   *  of primitives checked, so a case can prove it saw some geometry.
    *
    *  A face query that fell to buildFaceQuery's last resort still resolves (it
    *  carries the registrar's `@<body>/face<N>` index tag), so resolving alone
@@ -102,7 +101,7 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
   function expectFullCoverage(
     spec: Spec,
     label: string,
-    opts?: { resolve?: boolean; indexTagged?: readonly string[] },
+    opts?: { indexTagged?: readonly string[] },
   ): number {
     const r: BuildResponse = h.run(spec)
     const state = r._build_state!
@@ -127,7 +126,6 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
           const where = `${label}: ${bodyId} ${kind} ${idx}`
           expect(query, `${where} has a query`).not.toBe('')
           checked++
-          if (opts?.resolve === false) return
           const hits = elements.filter((e) => e?.body_id === bodyId && e[`${kind}_index`] === idx)
           expect(hits, `${where} is registered exactly once`).toHaveLength(1)
           let resolved: unknown
@@ -167,15 +165,28 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
     expect(expectFullCoverage(structuredClone(pickIdentityCorpus) as unknown as Spec, 'pickIdentity')).toBeGreaterThan(0)
   }, 120_000)
 
-  // Only presence is checked here. One face of this body is a sliver that
-  // tessellates to no triangle: the render mesh drops it, so every render face
-  // index past it is one below the index the mesh-free registration gave the same
-  // face (readShapeFaceMetadata documents the invariant this breaks), and the
-  // edges around it tie in the split ordering, stay unnamed, and share one
-  // ambiguous ancestral query. Both are open apart from naming.
+  // One face of this body is a sliver that tessellates to no triangle, so it
+  // also guards that render face indices stay equal to the registered ones.
   it('array cut corpus', () => {
     const spec = structuredClone(arrayCutCorpus) as unknown as Spec
-    expect(expectFullCoverage(spec, 'arrayCut', { resolve: false })).toBeGreaterThan(0)
+    expect(expectFullCoverage(spec, 'arrayCut')).toBeGreaterThan(0)
+  }, 120_000)
+
+  // The edges around that sliver near-tie on their split ordering keys (one is a
+  // spline, which once keyed NaN and refused its whole group), and so do two of
+  // their vertices. The named faces at an edge's ends, and the named edges at a
+  // vertex, tell them apart, so none needs the index-tag last resort.
+  it('array cut corpus names every edge and vertex', () => {
+    const r = h.run(structuredClone(arrayCutCorpus) as unknown as Spec)
+    const bodies = Object.entries((r.bodies ?? {}) as Record<string, Record<string, unknown>>)
+    expect(bodies.length).toBeGreaterThan(0)
+    for (const [bodyId, body] of bodies) {
+      for (const kind of ['edge', 'vertex'] as const) {
+        const uuids = (body[`${kind}_uuids`] as (string | null)[] | undefined) ?? []
+        expect(uuids.length, `${bodyId} has ${kind}s`).toBeGreaterThan(0)
+        expect(uuids.flatMap((u, i) => (u ? [] : [i])), `${bodyId} unnamed ${kind}s`).toEqual([])
+      }
+    }
   }, 120_000)
 
   it('blind hole', () => {

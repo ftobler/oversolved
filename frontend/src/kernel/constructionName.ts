@@ -170,6 +170,18 @@ export function deriveSeamEdgeUuid(faceUuid: string, multiplicity = 0): string {
 }
 
 /**
+ * An edge of a multiplicity group whose split ordering refused on a near-tie,
+ * told apart from its siblings by name instead: `endsKey` spells the named faces
+ * met at its end vertices (see `nameEdgeGroups`). `namedBy` is the face pair, or
+ * the one face of a seam. The `|ends|` marker keeps the path out of the
+ * multiplicity namespace, whose suffix is a bare integer.
+ */
+export function deriveEndsEdgeUuid(namedBy: string[], endsKey: string): string {
+  const base = namedBy.length === 1 ? `${namedBy[0]}|seam` : [...namedBy].sort().join('|')
+  return EDGE_UUID_PREFIX + shortHash(`${base}|ends|${endsKey}`)
+}
+
+/**
  * A face no producer could name -- typically the corner patch a fillet grows
  * where several blend faces meet, which OCC generates from a VERTEX rather than
  * from any filleted edge. Its identity is the (unordered) set of its named
@@ -193,6 +205,18 @@ export function deriveVertexUuid(faceUuids: string[], multiplicity = 0): string 
   const base = sorted.join('|')
   const path = multiplicity > 0 ? `${base}|#${multiplicity}` : base
   return VERTEX_UUID_PREFIX + shortHash(path)
+}
+
+/**
+ * A vertex of a multiplicity group whose split ordering refused on a near-tie,
+ * told apart from its siblings by the named edges it bounds (`edgeUuids`)
+ * instead of by position. The `|edges|` marker keeps the path out of the
+ * multiplicity namespace (`|#n`).
+ */
+export function deriveEdgesVertexUuid(faceUuids: string[], edgeUuids: string[]): string {
+  const faces = [...new Set(faceUuids)].sort().join('|')
+  const edges = [...new Set(edgeUuids)].sort().join('|')
+  return VERTEX_UUID_PREFIX + shortHash(`${faces}|edges|${edges}`)
 }
 
 // ─── split-sibling ordering (the confined geometry) ───
