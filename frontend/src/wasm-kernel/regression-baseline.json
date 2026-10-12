@@ -14003,6 +14003,22 @@
           ]
         },
         "status": "underconstrained"
+      },
+      "skax": {
+        "features": {
+          "ax": {
+            "status": "underconstrained"
+          }
+        },
+        "geometry": {
+          "ax": [
+            0,
+            0,
+            0,
+            1
+          ]
+        },
+        "status": "underconstrained"
       }
     },
     "spec": {
@@ -14152,17 +14168,29 @@
           "plane": "@builtin_plane_front"
         },
         {
+          "constraints": [],
+          "entities": [
+            {
+              "id": "ax",
+              "kind": "line"
+            }
+          ],
+          "id": "skax",
+          "initial": {
+            "ax": [
+              0,
+              0,
+              0,
+              1
+            ]
+          },
+          "kind": "sketch",
+          "label": "Axis",
+          "plane": "@builtin_plane_front"
+        },
+        {
           "angle": 360,
-          "axis_direction": [
-            0,
-            1,
-            0
-          ],
-          "axis_origin": [
-            0,
-            0,
-            0
-          ],
+          "axis": "@skax/ax",
           "id": "rev1",
           "kind": "revolve",
           "label": "Revolve",
