@@ -25,6 +25,7 @@ import type {
   OccSubShape,
   OccOrientableShape,
   OccOrientedShape,
+  OccReShape,
   OccSurfaceAdaptor,
 } from './occTypes'
 import { volumeOf } from './volume'
@@ -56,6 +57,13 @@ export interface CanonicalizedShape {
   shape: OccShape
   changed: boolean
   swaps: CanonicalFaceSwap[]
+  /**
+   * A sub-shape of the input mapped to its counterpart in `shape`: a swapped
+   * face to its rebuilt face, anything else through the healer's substitution
+   * context, since ShapeFix re-makes faces and edges it did not swap too.
+   * The identity when nothing changed.
+   */
+  rebase: (s: OccSubShape) => OccSubShape
 }
 
 interface CylFit {
@@ -230,7 +238,7 @@ export function canonicalizeCylinderFaces(
   scope: DisposeScope,
   shape: OccShape,
 ): CanonicalizedShape {
-  const identity: CanonicalizedShape = { shape, changed: false, swaps: [] }
+  const identity: CanonicalizedShape = { shape, changed: false, swaps: [], rebase: (s) => s }
   try {
     const E = oc.TopAbs_ShapeEnum
     const planeType = oc.GeomAbs_SurfaceType.GeomAbs_Plane.value
@@ -325,9 +333,12 @@ export function canonicalizeCylinderFaces(
 
     // 6. Re-base the swap targets through the fixer's substitution context:
     //    ShapeFix may re-make a face rather than update it in place, and the
-    //    diff must reference sub-shapes of the HEALED shape.
+    //    diff must reference sub-shapes of the HEALED shape. The same context
+    //    rebases every other sub-shape (`rebase`): the faces ShapeFix re-made
+    //    without a swap would otherwise point at faces the result no longer has.
+    let context: OccReShape | null = null
     try {
-      const context = scope.track(fixer.Context()).get()
+      context = scope.track(fixer.Context()).get()
       if (context) {
         for (const swap of swaps) {
           swap.to = scope.track(context.Apply(swap.to, E.TopAbs_SHAPE)) as OccSubShape
@@ -336,8 +347,19 @@ export function canonicalizeCylinderFaces(
     } catch {
       // Best-effort: an unmapped swap degrades lineage on that face, not geometry.
     }
+    const ctx = context
+    const rebase = (s: OccSubShape): OccSubShape => {
+      const swap = swaps.find((sw) => sw.from.IsSame(s))
+      if (swap) return swap.to
+      if (!ctx) return s
+      try {
+        return scope.track(ctx.Apply(s, E.TopAbs_SHAPE)) as OccSubShape
+      } catch {
+        return s
+      }
+    }
 
-    return { shape: scope.detach(healed), changed: true, swaps }
+    return { shape: scope.detach(healed), changed: true, swaps, rebase }
   } catch {
     // Recognition is best-effort: the un-canonicalized boolean result is a
     // sound solid, it just keeps the seam UnifySameDomain cannot fold.

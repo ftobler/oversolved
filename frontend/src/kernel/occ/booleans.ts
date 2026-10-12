@@ -18,7 +18,7 @@
 
 import { drainList, DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
-import { canonicalizeCylinderFaces, type CanonicalFaceSwap } from './canonicalSurfaces'
+import { canonicalizeCylinderFaces } from './canonicalSurfaces'
 import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex } from './primitives'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
@@ -410,26 +410,24 @@ function composeDiffThroughClean(
 }
 
 /**
- * Rewrite a BrepDiff's face lists through the canonicalization swaps (raw face
- * -> analytic-cylinder rebuild).  Edges are untouched by the rebuild (the new
- * faces reuse the original wires), so only the face lists need mapping.
+ * Rewrite a BrepDiff's output lists through the canonicalization (raw face ->
+ * analytic-cylinder rebuild, then the heal that re-makes faces and edges it did
+ * not swap as well), so they reference sub-shapes of the canonical shape.
  */
-function mapDiffThroughCanonical(diff: BrepDiff, swaps: CanonicalFaceSwap[]): BrepDiff {
-  const mapOne = (s: OccSubShape): OccSubShape => swaps.find((sw) => sw.from.IsSame(s))?.to ?? s
-  const mapList = (items: unknown[]): OccSubShape[] => (items as OccSubShape[]).map(mapOne)
+function mapDiffThroughCanonical(diff: BrepDiff, rebase: (s: OccSubShape) => OccSubShape): BrepDiff {
+  const mapList = (items: unknown[]): OccSubShape[] => (items as OccSubShape[]).map(rebase)
   return {
     ...diff,
     new_faces: mapList(diff.new_faces),
     inherited_faces: mapList(diff.inherited_faces),
+    new_edges: mapList(diff.new_edges),
+    inherited_edges: mapList(diff.inherited_edges),
   }
 }
 
-/** Rewrite faceOrigin.output through the canonical-cylinder rebuild swaps. */
-function mapOriginThroughCanonical(origin: FaceOrigin[], swaps: CanonicalFaceSwap[]): FaceOrigin[] {
-  return origin.map((o) => ({
-    ...o,
-    output: swaps.find((sw) => sw.from.IsSame(o.output))?.to ?? o.output,
-  }))
+/** Rewrite faceOrigin.output through the canonicalization, onto the canonical shape's faces. */
+function mapOriginThroughCanonical(origin: FaceOrigin[], rebase: (s: OccSubShape) => OccSubShape): FaceOrigin[] {
+  return origin.map((o) => ({ ...o, output: rebase(o.output) }))
 }
 
 /**
@@ -501,8 +499,8 @@ export function booleanWithDiff(
   const canonical = canonicalizeCylinderFaces(oc, scope, raw)
   const preClean = canonical.shape
   if (canonical.changed) scope.track(preClean)
-  const preDiff = canonical.changed ? mapDiffThroughCanonical(rawDiff, canonical.swaps) : rawDiff
-  const preOrigin = canonical.changed ? mapOriginThroughCanonical(rawOrigin, canonical.swaps) : rawOrigin
+  const preDiff = canonical.changed ? mapDiffThroughCanonical(rawDiff, canonical.rebase) : rawDiff
+  const preOrigin = canonical.changed ? mapOriginThroughCanonical(rawOrigin, canonical.rebase) : rawOrigin
   let cleaned: OccShape
   let history: OccHistory
   try {
