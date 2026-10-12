@@ -150,7 +150,7 @@ export function readShapeFaces(
 
 /**
  * Mirror of `_append_face_triangles`: append one face's triangles to the
- * accumulators, returning (faceArea, triangleCount).
+ * accumulators, returning the face's area.
  */
 function appendFaceTriangles(
   allVertices: Vec3[],
@@ -159,11 +159,10 @@ function appendFaceTriangles(
   faceIdx: number,
   verts: Vec3[],
   tris: [number, number, number][],
-): { faceArea: number; triangleCount: number } {
+): number {
   const offset = allVertices.length
   let area = 0
   for (const v of verts) allVertices.push(v)
-  const before = triangleToFace.length
   for (const tri of tris) {
     const i0 = offset + tri[0]
     const i1 = offset + tri[1]
@@ -172,7 +171,7 @@ function appendFaceTriangles(
     area += triangleArea(allVertices[i0], allVertices[i1], allVertices[i2])
     triangleToFace.push(faceIdx)
   }
-  return { faceArea: area, triangleCount: triangleToFace.length - before }
+  return area
 }
 
 /**
@@ -186,8 +185,7 @@ export function assembleMesh(rawFaces: RawFaceGeom[]): TessMesh {
 }
 
 /** `assembleMesh`, plus the raw face behind each `face_data` entry, index for index. */
-function assembleMeshKeeping(rawFaces: RawFaceGeom[]): { mesh: TessMesh; kept: RawFaceGeom[] } {
-  const kept: RawFaceGeom[] = []
+function assembleMeshKeeping(rawFaces: RawFaceGeom[]): { mesh: TessMesh; sorted: RawFaceGeom[] } {
   const sorted = [...rawFaces].sort((a, b) => {
     const ka = faceSortKey(a as FaceSortItem)
     const kb = faceSortKey(b as FaceSortItem)
@@ -199,38 +197,35 @@ function assembleMeshKeeping(rawFaces: RawFaceGeom[]): { mesh: TessMesh; kept: R
   const triangleToFace: number[] = []
   const faceData: FaceDatum[] = []
 
-  // `triangle_to_face` must index `faceData`, NOT the position in `sorted`: a
-  // face that tessellates to nothing is dropped from `faceData` below, and
-  // numbering by sorted position would then point every later face's triangles
-  // one slot past its own data (verified: three faces, empty middle, yields
-  // triangle_to_face [0, 2] against a face_data of length 2). Since a dropped
-  // face contributes no triangles, `faceData.length` is exactly the index the
-  // entry about to be pushed will occupy.
-  sorted.forEach((rf) => {
-    const { faceArea: area, triangleCount } = appendFaceTriangles(
+  // Every B-rep face gets a `faceData` slot, a face that tessellates to nothing
+  // (a sliver below the deflection) included: it is a slot with no triangles.
+  // The mesh-free `readShapeFaceMetadata` numbers faces the same way and the
+  // builder registers `@body/faceN` off that numbering, so dropping the empty
+  // face here would shift every later render face index one below its
+  // registered one, and picks, `face_queries[i]` and the registrar would name
+  // different faces by the same index.
+  sorted.forEach((rf, faceIdx) => {
+    const area = appendFaceTriangles(
       vertices,
       faces,
       triangleToFace,
-      faceData.length,
+      faceIdx,
       rf.vertices,
       rf.triangles,
     )
-    if (triangleCount > 0) {
-      faceData.push({
-        centroid: rf.centroid,
-        normal: rf.normal,
-        area,
-        surface_type: rf.surfaceType,
-        surface_frame: rf.surfaceFrame ?? undefined,
-        axis: rf.axis,
-      })
-      kept.push(rf)
-    }
+    faceData.push({
+      centroid: rf.centroid,
+      normal: rf.normal,
+      area,
+      surface_type: rf.surfaceType,
+      surface_frame: rf.surfaceFrame ?? undefined,
+      axis: rf.axis,
+    })
   })
 
   return {
     mesh: { vertices, faces, face_data: faceData, triangle_to_face: triangleToFace, face_queries: [], is_fallback: false },
-    kept,
+    sorted,
   }
 }
 
@@ -307,7 +302,7 @@ export function solidToMesh(
   try {
     const raw = readShapeFaces(oc, scope, solid, deflection, angularDeflection)
     assertAligned(canonicalCount(raw), opts.faceUuids, `${opts.bodyId ?? 'solid'} faces`)
-    const { mesh, kept } = assembleMeshKeeping(raw)
+    const { mesh, sorted } = assembleMeshKeeping(raw)
     const { center, half } = bodyFrame(oc, scope, solid)
     const faceQueries: string[] = []
     const faceUuids: (string | null)[] = []
@@ -315,9 +310,9 @@ export function solidToMesh(
     const faceCreatedBy: string[] = []
     for (let faceIdx = 0; faceIdx < mesh.face_data.length; faceIdx++) {
       const fd = mesh.face_data[faceIdx]
-      const uuid = faceUuidAt(opts, kept[faceIdx].canon)
+      const uuid = faceUuidAt(opts, sorted[faceIdx].canon)
       faceUuids.push(uuid)
-      const creator = creators[kept[faceIdx].canon ?? -1] ?? opts.createdBy ?? ''
+      const creator = creators[sorted[faceIdx].canon ?? -1] ?? opts.createdBy ?? ''
       faceCreatedBy.push(creator)
       const { classifiers, query } = classifyFace(
         faceIdx, fd.centroid, fd.surface_type, center, half, opts, uuid, creator,
@@ -390,13 +385,12 @@ function classifyFace(
  * triangles); registration never reads it.
  *
  * INVARIANT (guarded by faceMetadataReal.test): the face count here must equal
- * `solidToMesh().face_data.length`. The render path's `assembleMesh` DROPS
- * zero-triangle faces, this path does not; they stay in sync only because every
- * B-rep face the system builds tessellates to >=1 triangle. The post-loop
- * checkpoint registration (`snapshotWithBrepGeometry`) re-registers off the
- * render mesh and keys eviction on the face index, so a divergence here would
- * shift those indices. If a zero-triangle face ever appears, register the
- * checkpoint snapshot off this metadata too.
+ * `solidToMesh().face_data.length`, index for index. Both walk the same faces
+ * in the same sort order, and the render path's `assembleMesh` keeps a face
+ * that tessellates to nothing as a slot with no triangles, so they agree by
+ * construction. The post-loop checkpoint registration
+ * (`snapshotWithBrepGeometry`) re-registers off the render mesh and keys
+ * eviction on the face index, so a divergence here would shift those indices.
  */
 export function readShapeFaceMetadata(
   oc: OccModule,

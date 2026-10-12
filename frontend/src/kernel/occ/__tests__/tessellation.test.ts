@@ -99,7 +99,9 @@ describe('assembleMesh', () => {
     expect(mesh.face_data[0].area).toBeCloseTo(4, 12)  // 2x2 quad
   })
 
-  it('drops a face with no triangles from face_data', () => {
+  // The mesh-free metadata path the builder registers from counts this face, so
+  // the render mesh must too or every later face index shifts by one.
+  it('keeps a face with no triangles in face_data, with zero area', () => {
     const empty: RawFaceGeom = {
       vertices: [],
       triangles: [],
@@ -115,7 +117,10 @@ describe('assembleMesh', () => {
       [0, 1, 0],
     ])
     const mesh = assembleMesh([empty, real])
-    expect(mesh.face_data).toHaveLength(1)
+    expect(mesh.face_data).toHaveLength(2)
+    const slot = mesh.face_data.findIndex((fd) => fd.centroid[0] === 9)
+    expect(mesh.face_data[slot].area).toBe(0)
+    expect(mesh.triangle_to_face).not.toContain(slot)
   })
 })
 
@@ -164,9 +169,11 @@ describe('compareEdgeSortKeys', () => {
 })
 
 describe('assembleMesh face indexing', () => {
-  // Regression: `triangle_to_face` numbered faces by their position in the
-  // sorted list while `face_data` skipped zero-triangle faces, so every face
-  // after an empty one pointed at the next face's data (or past the end).
+  // Regression: `triangle_to_face` once numbered faces by sorted position while
+  // `face_data` skipped zero-triangle faces, so every face after an empty one
+  // pointed at the next face's data. Then `face_data` was renumbered to skip
+  // the empty face, which put render indices one below the registered ones.
+  // An empty face now keeps its slot, so both numberings are the sorted one.
   const face = (hasTriangles: boolean, z: number): RawFaceGeom => ({
     vertices: hasTriangles ? [[0, 0, z], [1, 0, z], [0, 1, z]] : [],
     triangles: hasTriangles ? [[0, 1, 2]] : [],
@@ -179,9 +186,9 @@ describe('assembleMesh face indexing', () => {
   it('keeps triangle_to_face pointing into face_data when a face tessellates to nothing', () => {
     const mesh = assembleMesh([face(true, 0), face(false, 1), face(true, 2)])
 
-    expect(mesh.face_data).toHaveLength(2)
-    // Not [0, 2]: the empty face takes no slot, so the third face is index 1.
-    expect(mesh.triangle_to_face).toEqual([0, 1])
+    expect(mesh.face_data).toHaveLength(3)
+    // The empty face keeps slot 1 and owns no triangle.
+    expect(mesh.triangle_to_face).toEqual([0, 2])
     for (const idx of mesh.triangle_to_face) {
       expect(idx).toBeLessThan(mesh.face_data.length)
     }

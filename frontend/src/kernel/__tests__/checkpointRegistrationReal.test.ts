@@ -6,10 +6,10 @@
 // Every other checkpoint identifies off `extractBrepMetadata` (mesh-free), exactly what
 // the feature loop used, so "the loop already registered this body version" is trivially
 // true. The final checkpoint instead reuses the RENDER tessellation (`tessellateBodies`)
-// for both its display snapshot and its ancestry -- a different producer. The metadata
-// path keeps zero-triangle faces while `assembleMesh` drops them (occ/tessellation.ts),
-// so face INDEX agreement is a real invariant, not a given, and face indices are both a
-// payload field and part of the ancestral key.
+// for both its display snapshot and its ancestry -- a different producer. Face INDEX
+// agreement is a real invariant, not a given (a zero-triangle face once got dropped
+// from the render mesh only), and face indices are both a payload field and part of
+// the ancestral key.
 //
 // This test registers one body twice into two fresh repos, once per producer, and
 // compares the eid-free fingerprints. Equal => the final checkpoint may skip too.
@@ -33,6 +33,7 @@ import { repoSemanticFingerprint } from '../repoFingerprintTestUtil'
 import type { Body } from '../types3d'
 import { indexModifierDiffs } from '../occ/modifierAttribution'
 import importFixture from '../occ/__fixtures__/importStep.json'
+import arrayCutCorpus from '../features/__fixtures__/faceExtrudeAfterArrayCut.json'
 import { base64ToBytes } from '../occ/stepIo'
 
 const oc = await loadOcc()
@@ -139,6 +140,33 @@ describe.skipIf(!oc || !solveBytes)('checkpoint registration: metadata vs render
     expect(fp.faceCounts[1]).toBe(fp.faceCounts[0])
     expect(fp.render).toEqual(fp.meta)
   })
+
+  // A body of this corpus has a sliver face below the deflection that tessellates to
+  // no triangle. The render mesh keeps it as an empty slot, so every face index (and
+  // with it each query's `@body/faceN` tag, picks and eviction keys) still equals the
+  // metadata index; dropping it once shifted every later face by one.
+  it('a body with a zero-triangle face keeps render face indices equal to metadata', () => {
+    const h = new Harness()
+    const r = h.run(structuredClone(arrayCutCorpus) as unknown as Record<string, unknown>)
+    const order = r._build_state.feature_order
+    const bodies = r._build_state.checkpoints[order[order.length - 1]].body_store_snapshot
+    let emptyFaces = 0
+    for (const body of Object.values(bodies)) {
+      const metaOut = extractBrepMetadata(oc!, h.table, { [body.id]: body })[body.id]
+      const renderOut = tessellateBodies(oc!, h.table, { [body.id]: body })[body.id]
+      const meta = metaOut.mesh as { face_queries: string[]; face_uuids: (string | null)[] }
+      const render = renderOut.mesh as {
+        face_data: unknown[]; triangle_to_face: number[]; face_queries: string[]; face_uuids: (string | null)[]
+      }
+      expect(render.face_queries, `${body.id} face queries`).toEqual(meta.face_queries)
+      expect(render.face_uuids, `${body.id} face uuids`).toEqual(meta.face_uuids)
+      const owning = new Set(render.triangle_to_face)
+      emptyFaces += render.face_data.filter((_fd, i) => !owning.has(i)).length
+      const fp = h.fingerprints(body)
+      expect(fp.render, `${body.id} registration`).toEqual(fp.meta)
+    }
+    expect(emptyFaces, 'the corpus still yields a face with no triangle').toBeGreaterThan(0)
+  }, 120_000)
 
   it('an imported STEP body registers identically off metadata and off the render mesh', () => {
     const h = new Harness()
