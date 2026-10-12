@@ -44,7 +44,7 @@
     "ancestor_tokens": null,
     "classifiers": null
    },
-   "expected": null
+   "expected": "?7,7,d;@feat_a@body_x@body_x/face0:flatface"
   },
   {
    "name": "body_with_face_tokens",
@@ -95,7 +95,7 @@
     "ancestor_tokens": null,
     "classifiers": null
    },
-   "expected": null
+   "expected": "?7,7,d,a;@feat_a@body_x@body_x/face2?7;@feat_a:flatface"
   },
   {
    "name": "body_empty_ancestor_tokens_use_profile",
@@ -120,7 +120,7 @@
     "ancestor_tokens": [],
     "classifiers": null
    },
-   "expected": null
+   "expected": "?7,7,d,a;@feat_a@body_x@body_x/face5?7;@feat_a:flatface"
   },
   {
    "name": "body_face_tokens_win_over_profile",
