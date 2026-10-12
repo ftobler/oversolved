@@ -113,6 +113,27 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     setSketchSolver(solveBytes)
   })
 
+  /** The last run solved only the features `spec` adds to `prefix`: the prefix came
+   *  back from its checkpoint. A silent fall back to a full build would make every
+   *  restored-vs-full comparison pass for nothing. */
+  function expectRestored(prefix: Spec, spec: Spec): void {
+    const clean = new Set(prefix.features.map((f) => f.id))
+    expect(h.lastSolved, 'the incremental build solved only the tail')
+      .toEqual(spec.features.map((f) => String(f.id)).filter((fid) => !clean.has(fid)))
+  }
+
+  /** Builds `tail` in full and on top of `prefix`'s checkpoints, and expects both to
+   *  emit the same face, edge and vertex queries for `bodyId`. */
+  function expectRestoredMatchesFull(prefix: Spec, tail: Spec, bodyId: string): void {
+    const full = h.run(tail)
+    const restored = h.run(tail, { prevState: h.run(prefix)._build_state })
+    expectRestored(prefix, tail)
+    for (const kind of ['face', 'edge', 'vertex'] as const) {
+      expect(queriesOf(h, restored, bodyId, kind), `${kind} queries, restored vs full`)
+        .toEqual(queriesOf(h, full, bodyId, kind))
+    }
+  }
+
   /** Returns how many checked primitives are owned by a feature other than the
    *  first extrude, so the modifier cases can prove they exercised one. With
    *  `restoreFrom`, that spec is built first and `spec` incrementally on top, so
@@ -120,6 +141,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
   function expectSelfResolution(spec: Spec, bodyId: string, opts?: { restoreFrom?: Spec }): number {
     const prevState = opts?.restoreFrom ? h.run(opts.restoreFrom)._build_state : null
     const r = h.run(spec, { prevState })
+    if (opts?.restoreFrom) expectRestored(opts.restoreFrom, spec)
     const state = r._build_state!
     const lastFid = state.feature_order[state.feature_order.length - 1]
     // Sketches report their constraint state (often 'underconstrained'); only
@@ -198,14 +220,9 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
       { id: 'fillet1', kind: 'fillet', edges: [edges[0]], radius: 1 },
     ] }
     const withTail: Spec = { features: [...filleted.features, rectSketch('sk9', 2, 2)] }
-    const full = h.run(withTail)
     const modifierOwned = expectSelfResolution(withTail, 'body_ex1', { restoreFrom: filleted })
     expect(modifierOwned).toBeGreaterThan(0)
-    const restored = h.run(withTail, { prevState: h.run(filleted)._build_state })
-    for (const kind of ['face', 'edge', 'vertex'] as const) {
-      expect(queriesOf(h, restored, 'body_ex1', kind), `${kind} queries, restored vs full`)
-        .toEqual(queriesOf(h, full, 'body_ex1', kind))
-    }
+    expectRestoredMatchesFull(filleted, withTail, 'body_ex1')
   })
 
   // The cut's walls, rim edges and corners belong to the cut. The old

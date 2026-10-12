@@ -31,6 +31,11 @@ export class SharedHarness {
   readonly oc: OccModule
   readonly table = new HandleTable()
 
+  /** Feature ids the last `run` solved, in solve order. An incremental test checks its
+   *  clean prefix is missing here, which proves the build restored it from the
+   *  checkpoint instead of quietly falling back to a full build. */
+  lastSolved: string[] = []
+
   constructor(oc: OccModule) { this.oc = oc }
 
   run(
@@ -43,12 +48,21 @@ export class SharedHarness {
     },
   ): BuildResponse {
     const scope = new DisposeScope()
+    const deps = this.makeDeps(scope, this.table, opts?.files)
+    const solved: string[] = []
+    this.lastSolved = solved
     try {
       return build(spec, {
         prevState: opts?.prevState ?? null,
         pickBoundary: opts?.pickBoundary ?? null,
         rollbackPosition: opts?.rollbackPosition ?? null,
-      }, this.makeDeps(scope, this.table, opts?.files))
+      }, {
+        ...deps,
+        trySolveFeature: (feature, ...rest) => {
+          solved.push(String(feature.id))
+          return deps.trySolveFeature(feature, ...rest)
+        },
+      })
     } finally {
       scope.dispose()
     }
