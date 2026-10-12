@@ -578,6 +578,9 @@ function vertexUuidsFromFaces(
   // Vertex points are world coordinates: normalize them by the solid's span so
   // a uniform resize cancels and the refusal is relative, not unit-dependent.
   let frame: NormalFrame | null = null
+  // Built on the first near-tie only: most bodies never need the edge fallback,
+  // and one that does reuses the same walk for every tied group.
+  let boundingEdges: Map<number, string[]> | null = null
   for (const [setKey, group] of bySet) {
     const adjacent = setKey.split('|')
     let ordered: number[] | null = group
@@ -591,7 +594,10 @@ function vertexUuidsFromFaces(
       ordered = orderSplitChildren(children)  // null on a near-tie -> try the edges below
     }
     if (ordered === null) {
-      nameVerticesByEdges(oc, scope, solid, group, adjacent, edgeUuids, out)
+      if (edgeUuids) {
+        boundingEdges ??= vertexBoundingEdges(oc, scope, solid, vertexIdx, edgeUuids)
+        nameVerticesByEdges(group, adjacent, boundingEdges, out)
+      }
       continue
     }
     ordered.forEach((vi, i) => {
@@ -610,34 +616,44 @@ function vertexUuidsFromFaces(
  * sit a hair apart, yet each also bounds a different second edge.
  */
 function nameVerticesByEdges(
+  group: readonly number[],
+  adjacent: string[],
+  boundingEdges: ReadonlyMap<number, string[]>,
+  out: (string | null)[],
+): void {
+  const bounds = group.map((vi) => boundingEdges.get(vi) ?? [])
+  const keys = bounds.map((b) => [...new Set(b)].sort().join('|'))
+  group.forEach((vi, i) => {
+    if (keys[i] !== '' && keys.indexOf(keys[i]) === keys.lastIndexOf(keys[i])) {
+      out[vi] = deriveEdgesVertexUuid(adjacent, bounds[i])
+    }
+  })
+}
+
+/** Canonical vertex index -> the uuids of the named edges it bounds, in edge
+ *  order (a closed edge lists its one vertex twice, as the walk meets it). */
+function vertexBoundingEdges(
   oc: OccModule,
   scope: DisposeScope,
   solid: OccShape,
-  group: readonly number[],
-  adjacent: string[],
-  edgeUuids: readonly (string | null)[] | null,
-  out: (string | null)[],
-): void {
-  if (!edgeUuids) return
+  vertexIdx: ReturnType<typeof canonicalIndex>,
+  edgeUuids: readonly (string | null)[],
+): Map<number, string[]> {
   const edges = canonicalEdges(oc, scope, solid)
   assertAligned(edges.length, edgeUuids, 'vertex naming edges')
-  const vertexIdx = canonicalIndex(canonicalVertices(oc, scope, solid))
-  const inGroup = new Set(group)
-  const bounds = new Map<number, string[]>(group.map((vi) => [vi, []]))
+  const bounds = new Map<number, string[]>()
   edges.forEach((edge, ei) => {
     const uuid = edgeUuids[ei]
     if (!uuid) return
     for (const vertex of canonicalVertices(oc, scope, edge)) {
       const vi = vertexIdx.get(vertex)
-      if (inGroup.has(vi)) bounds.get(vi)!.push(uuid)
+      if (vi < 0) continue
+      const list = bounds.get(vi)
+      if (list === undefined) bounds.set(vi, [uuid])
+      else list.push(uuid)
     }
   })
-  const keys = group.map((vi) => [...new Set(bounds.get(vi))].sort().join('|'))
-  group.forEach((vi, i) => {
-    if (keys[i] !== '' && keys.indexOf(keys[i]) === keys.lastIndexOf(keys[i])) {
-      out[vi] = deriveEdgesVertexUuid(adjacent, bounds.get(vi)!)
-    }
-  })
+  return bounds
 }
 
 /** AABB center + half-extents over one or more point clouds; degrades to

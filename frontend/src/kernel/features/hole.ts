@@ -137,12 +137,15 @@ function drilledEntities(
 
 /**
  * Construction names for one drill site's cutter, keyed by its faces before the
- * cut: the bore wall, the floor (the disc at the drill depth) and the mouth (the
- * disc on the sketch plane). The roles come from the cylinder primitive itself,
- * never from where a face sits, and the uuid from the hole, the site and the
- * role, so a bore is the same bore whatever other sites the hole drills and in
- * whatever order. The site's sketch entity is the ancestry, as a profile entity
- * is a prism side face's.
+ * cut: the bore wall, the mouth (the cutter's start disc) and the floor (its end
+ * disc). A through_all cutter starts backed off outside the body and ends past
+ * it, so only a blind hole's floor, or a mouth at a site inside the body, ever
+ * survives the cut; the names are minted for all three anyway, since which
+ * survive is the boolean's to say. The roles come from the cylinder primitive
+ * itself, never from where a face sits, and the uuid from the hole, the site and
+ * the role, so a bore is the same bore whatever other sites the hole drills and
+ * in whatever order. The site's sketch entity is the ancestry, as a profile
+ * entity is a prism side face's.
  */
 function cutterNames(
   holeId: string,

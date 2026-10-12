@@ -404,11 +404,11 @@ function pushGroup<T>(groups: Map<string, T[]>, key: string, item: T): void {
  *
  * Mutates `faceNames`/`faceAncestry` in place, only adding faces that had no
  * name -- a producer-minted UUID is never rewritten. It runs in rounds until
- * one names nothing, so a face reachable only through other new faces (the floor
- * of a pocket cut by an unnamed tool, behind its walls) is named too. Each round reads only the names
- * fixed by the rounds before it, so the result is independent of face iteration
- * order. The first round is the old single pass, so a face it names keeps the
- * uuid it always had.
+ * one names nothing, so a face reachable only through other new faces (the
+ * floor of a pocket cut by an unnamed tool, behind its walls) is named too.
+ * Each round reads only the names fixed by the rounds before it, so the result
+ * is independent of face iteration order. The first round is the old single
+ * pass, so a face it names keeps the uuid it always had.
  *
  * `skip` names faces the caller has assigned a ROLE the pass must not
  * override: a prism cap whose builder omitted FirstShape/LastShape is such a

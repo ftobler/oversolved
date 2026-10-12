@@ -53,9 +53,11 @@ export function filletFacePath(createdBy: string, filletedEdgeUuid: string): str
   return `${createdBy}|fillet|${filletedEdgeUuid}`
 }
 
-/** What a hole's cutter face is: the bore wall, the floor at the drill depth, or
- *  the disc at the sketch plane (a real face only when the site lies inside the
- *  body, where it roofs the drilled pocket). */
+/** What a hole's cutter face is: the bore wall, or one of the cutter's discs,
+ *  `mouth` where the cutter starts and `floor` where it ends. A through_all
+ *  cutter starts backed off outside the body and ends past it, so neither disc
+ *  survives its cut; only a blind hole's floor, or a mouth at a site inside the
+ *  body (where it roofs the drilled pocket), is a real face of the result. */
 export type HoleFaceRole = 'bore' | 'floor' | 'mouth'
 
 /**

@@ -119,6 +119,10 @@ export function makeCylinderWithFaces(
   height: number,
 ): { shape: OccShape; faces: CylinderFaces } {
   const builder = cylinderBuilder(oc, scope, center, axis, radius, height)
+  // Shape() must run before Cylinder(): embind hands back a COPY of the
+  // builder's BRepPrim_Cylinder, and that copy's faces are IsSame to the solid's
+  // only because Shape() already built and cached them in the original. Asked
+  // first, the copy would build faces of its own that match nothing in `shape`.
   const shape = builder.Shape()
   const prim = scope.track(builder.Cylinder())
   return {
