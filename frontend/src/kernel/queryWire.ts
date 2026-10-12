@@ -167,7 +167,7 @@ function parseAncestryObj(s: string): AncestryQuery {
   return { kind: "ancestry", ancestorIds: ids, typeRestriction: typeRestriction || null, classifier: classifier || null }
 }
 
-/** Mint an ancestor token referencing a feature/body/geom-hash: "@<id>". */
+/** Mint an ancestor token referencing a feature, body or other element id: "@<id>". */
 export function ref(elementId: string): string {
   return "@" + elementId
 }

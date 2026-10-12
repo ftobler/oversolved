@@ -224,11 +224,6 @@ describe("uuid tier fail-loud semantics", () => {
   })
 })
 
-/**
- * Face registrations have >=3 structural tags (positional /face tag, feature ref, body ref).
- * The geom hash lives in by_geom_hash, not in the ancestral key itself.
- */
-
 describe("ordering guard: order-hidden uuid fallthrough (the deliberate exception)", () => {
   // Same shape as the ordering-guard reg helper but with a tag, so the
   // assertions can name which sibling resolved.

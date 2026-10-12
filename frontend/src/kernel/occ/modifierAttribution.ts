@@ -44,7 +44,7 @@ function newSubShapes(oc: OccModule, scope: DisposeScope, diff: BrepDiff): {
 }
 
 /** The canonical indices of `shape`'s elements that `diff` records as created. */
-export function newElementIndices(
+function newElementIndices(
   oc: OccModule,
   scope: DisposeScope,
   handle: OccHandle,
