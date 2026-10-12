@@ -33,6 +33,7 @@ import { elementCreator, type NewIndexSets } from './modifierAttribution'
 import { deriveVertexUuid, deriveEdgesVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
 import { shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { buildFaceQuery } from '../faceQuery'
+import { emitWithTiesTagged, type QueryParts } from '../tiedQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
 import type { EdgeData } from '@/types/cad'
 
@@ -706,6 +707,7 @@ export function solidToEdges(
     const { createdBy, bodyId } = opts
     if (createdBy) {
       const { center, half } = bodyFrame(oc, scope, solid)
+      const parts: QueryParts[] = []
       // An edge the last modifier created is attributed to it, the same
       // attribution the fillet/chamfer edge index applies.
       edges.forEach((ed, i) => {
@@ -731,13 +733,14 @@ export function solidToEdges(
           if (ancestorTokens && ancestorTokens.length) ids.push(...ancestorTokens)
           else if (fallbackPq && fallbackPq.length) ids.push(...fallbackPq)
           if (classifiers.length) ids.push(...classifiers.map(ref))
-          edge_queries.push(makeAncestryQuery(ids, edgeType))
+          parts.push({ ids, type: edgeType, named: uuid !== null })
         } else {
           const ids = [ref(edgeCreatedBy)]
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         }
       })
+      if (bodyId) edge_queries.push(...emitWithTiesTagged(parts, bodyId, 'edge'))
     }
     // Pad to one query per edge, like solidToMesh does for faces (see the
     // reasoning there). Without `createdBy` the loop above emits NOTHING while
@@ -855,14 +858,15 @@ export function solidToVertices(
       // Vertex UUID = the set of its adjacent named-face UUIDs (adjacency-derived,
       // op-independent). A vertex query carries only its @u| UUID (whenever it
       // touches at least one named face) plus the ancestral tokens. A vertex with
-      // no named neighbour at all falls back to the ancestral net; that net is
-      // shared with its siblings, so such a vertex is not individually selectable
-      // -- the fail-safe outcome of having nothing symbolic to name it by.
+      // no uuid falls back to the ancestral net; that net is shared with its
+      // unnamed siblings, so the tied ones get the registrar's index tag as a last
+      // resort (`emitWithTiesTagged`): selectable, though only by position.
       // `readSolidVertices` walks the canonical vertex order, so index idx of
       // `vertices` is canonical vertex idx.
       const uuids = opts.faceUuids
         ? vertexUuidsFromFaces(oc, scope, solid, vertices, opts.faceUuids, opts.edgeUuids ?? null)
         : null
+      const parts: QueryParts[] = []
       for (let idx = 0; idx < vertices.length; idx++) {
         const uuid = uuids?.[idx] ?? null
         vertex_uuids[idx] = uuid
@@ -873,8 +877,11 @@ export function solidToVertices(
           ids.push(ref(bodyId))
           if (opts.profileQueries && opts.profileQueries.length) ids.push(...opts.profileQueries)
         }
-        vertex_queries.push(makeAncestryQuery(ids, 'vertex'))
+        parts.push({ ids, type: 'vertex', named: uuid !== null })
       }
+      vertex_queries.push(...(bodyId
+        ? emitWithTiesTagged(parts, bodyId, 'vertex')
+        : parts.map((p) => makeAncestryQuery(p.ids, p.type))))
     }
     // One query per vertex even with no `createdBy`, for the reason spelled out
     // in solidToEdges: the positional zip is the contract, '' is the placeholder.
