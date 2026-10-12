@@ -92,8 +92,18 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
 
   /** Builds `spec` and checks every query of every emitted body. Returns the number
    *  of primitives checked, so a case can prove it saw some geometry. With
-   *  `resolve: false` the queries are only checked for being there. */
-  function expectFullCoverage(spec: Spec, label: string, opts?: { resolve?: boolean }): number {
+   *  `resolve: false` the queries are only checked for being there.
+   *
+   *  A face query that fell to buildFaceQuery's last resort still resolves (it
+   *  carries the registrar's `@<body>/face<N>` index tag), so resolving alone
+   *  would hide a face the naming passes missed. Every such face must be listed
+   *  in `indexTagged` as `<bodyId>/face<N>`, which stays empty unless a case
+   *  justifies an entry. */
+  function expectFullCoverage(
+    spec: Spec,
+    label: string,
+    opts?: { resolve?: boolean; indexTagged?: readonly string[] },
+  ): number {
     const r: BuildResponse = h.run(spec)
     const state = r._build_state!
     const lastFid = state.feature_order[state.feature_order.length - 1]
@@ -103,8 +113,12 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
     const elements = [...repo.elements.values()] as Array<Record<string, unknown>>
 
     let checked = 0
+    const indexTagged: string[] = []
     for (const [bodyId, body] of Object.entries((r.bodies ?? {}) as Record<string, Record<string, unknown>>)) {
       if (!(bodyId in bodyStore)) continue  // a body the build did not keep has no registration to match
+      queriesOf(body, 'face').forEach((query, idx) => {
+        if (query.includes(`@${bodyId}/face${idx}`)) indexTagged.push(`${bodyId}/face${idx}`)
+      })
       for (const kind of ['face', 'edge', 'vertex'] as const) {
         const queries = queriesOf(body, kind)
         expect(queries.length, `${label}: ${bodyId} emits one ${kind} query per ${kind}`)
@@ -126,6 +140,7 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
         })
       }
     }
+    expect(indexTagged, `${label}: faces named only by their index tag`).toEqual(opts?.indexTagged ?? [])
     return checked
   }
 

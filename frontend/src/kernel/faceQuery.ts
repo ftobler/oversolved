@@ -27,9 +27,11 @@ export function buildFaceQuery(
     // ancestor tag (builderAncestry `_registerBrepFaceAncestry`), which makes it
     // unique. An index is not stable identity: after a rebuild that reorders the
     // body's faces it names whichever face took the slot. The neighbour naming
-    // pass names every face connected to a named one, so only a face nothing
-    // symbolic reaches (a refused near-tie, a producer that named no face) lands
-    // here.
+    // pass runs in rounds and names every face connected to a named one, so few
+    // faces land here: a face on a body whose producer named nothing at all, and
+    // a near-tie group the split ordering refused that is still tied once a round
+    // names nothing more. A refused group is not given up on at once; each later
+    // round that names a neighbour of it retries it with the larger neighbour set.
     if (!uuid && !(ancestorTokens && ancestorTokens.length) && !(classifiers && classifiers.length)) {
       const ids = [ref(createdBy), ref(bodyId), emitWire(absolute(bodyId, `face${faceIdx}`))]
       if (profileQueries && profileQueries.length) ids.push(...profileQueries)
