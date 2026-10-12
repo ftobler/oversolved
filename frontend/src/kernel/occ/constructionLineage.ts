@@ -356,9 +356,12 @@ function pushGroup<T>(groups: Map<string, T[]>, key: string, item: T): void {
  * `bugreports/edge_resolves_not_unique_20260728_213049.md`.
  *
  * Mutates `faceNames`/`faceAncestry` in place, only adding faces that had no
- * name -- a producer-minted UUID is never rewritten. Neighbours are read from
- * the pre-pass name set, so no residual name is derived from another residual
- * name and the result is independent of face iteration order.
+ * name -- a producer-minted UUID is never rewritten. It runs in rounds until
+ * one names nothing, so a face reachable only through other new faces (a blind
+ * hole's floor behind its bore) is named too. Each round reads only the names
+ * fixed by the rounds before it, so the result is independent of face iteration
+ * order. The first round is the old single pass, so a face it names keeps the
+ * uuid it always had.
  *
  * `skip` names faces the caller has assigned a ROLE the pass must not
  * override: a prism cap whose builder omitted FirstShape/LastShape is such a
@@ -379,47 +382,60 @@ export function nameFacesFromNeighbours(
   const facesOnEdge = new SubShapeMap<OccSubShape[]>()  // edge -> the faces touching it
   for (const row of rows) for (const edge of row.edges) pushTo(facesOnEdge, edge, row.face)
 
-  // Neighbours are read from the pre-pass names, before any residual is named.
-  const bySet = new Map<string, OccSubShape[]>()  // "uuidA|uuidB|..." -> residual faces
-  for (const row of rows) {
-    if (faceNames.has(row.face)) continue
-    const neighbours = new Set<string>()
-    for (const edge of row.edges) {
-      for (const other of facesOnEdge.get(edge) ?? []) {
-        if (other.IsSame(row.face)) continue
-        const uuid = faceNames.get(other)
-        if (uuid) neighbours.add(uuid)
-      }
-    }
-    if (neighbours.size === 0) continue  // nothing symbolic to name it by
-    pushGroup(bySet, [...neighbours].sort().join('|'), row.face)
-  }
-
   let frame: NormalFrame | null = null
-  for (const [setKey, group] of bySet) {
-    const neighbours = setKey.split('|')
-    let ordered: OccSubShape[] | null = group
-    if (group.length > 1) {
-      // The centroid key must be in the shape's OWN normalized frame, not raw
-      // world coordinates: a uniform resize otherwise scales the absolute
-      // distance under SPLIT_EPS and makes the refusal unit-dependent.
-      frame ??= shapeNormalFrame(oc, scope, t.shape)
-      const f = frame
-      ordered = orderSplitChildren(
-        group.map<SplitChild<OccSubShape>>((face) => ({
-          item: face,
-          key: normalizedWorldKey(f, faceCentroid(oc, scope, face)),
-        })),
-      )  // null on a near-tie -> leave unnamed
+  // Rounds, until a round names nothing. A face whose every neighbour is itself
+  // new (a blind hole's floor, inside its unnamed bore) has nothing to be named
+  // by until that neighbour is, so a single round left it unnamed. Each round
+  // reads only the names fixed before it began, never one minted in the same
+  // round, so the result is still independent of face iteration order.
+  for (;;) {
+    const bySet = new Map<string, OccSubShape[]>()  // "uuidA|uuidB|..." -> residual faces
+    for (const row of rows) {
+      if (faceNames.has(row.face)) continue
+      const neighbours = new Set<string>()
+      for (const edge of row.edges) {
+        for (const other of facesOnEdge.get(edge) ?? []) {
+          if (other.IsSame(row.face)) continue
+          const uuid = faceNames.get(other)
+          if (uuid) neighbours.add(uuid)
+        }
+      }
+      if (neighbours.size === 0) continue  // nothing symbolic to name it by (yet)
+      pushGroup(bySet, [...neighbours].sort().join('|'), row.face)
     }
-    if (ordered === null) continue
-    ordered.forEach((face, i) => {
-      const uuid = deriveCornerFaceUuid(neighbours, group.length > 1 ? i : 0)
+
+    const named: Array<{ face: OccSubShape; uuid: string; neighbours: string[] }> = []
+    for (const [setKey, group] of bySet) {
+      const neighbours = setKey.split('|')
+      let ordered: OccSubShape[] | null = group
+      if (group.length > 1) {
+        // The centroid key must be in the shape's OWN normalized frame, not raw
+        // world coordinates: a uniform resize otherwise scales the absolute
+        // distance under SPLIT_EPS and makes the refusal unit-dependent.
+        frame ??= shapeNormalFrame(oc, scope, t.shape)
+        const f = frame
+        ordered = orderSplitChildren(
+          group.map<SplitChild<OccSubShape>>((face) => ({
+            item: face,
+            key: normalizedWorldKey(f, faceCentroid(oc, scope, face)),
+          })),
+        )  // null on a near-tie -> leave unnamed
+      }
+      if (ordered === null) continue
+      ordered.forEach((face, i) => {
+        named.push({ face, uuid: deriveCornerFaceUuid(neighbours, group.length > 1 ? i : 0), neighbours })
+      })
+    }
+    if (named.length === 0) return
+
+    // Committed after the whole round is grouped, so no face of this round sees
+    // another's fresh name as a neighbour.
+    for (const { face, uuid, neighbours } of named) {
       faceNames.set(face, uuid)
       const tokens: string[] = []
       for (const nu of neighbours) for (const t of faceAncestry[nu] ?? []) if (!tokens.includes(t)) tokens.push(t)
       faceAncestry[uuid] = tokens
-    })
+    }
   }
 }
 

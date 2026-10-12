@@ -242,12 +242,33 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
         id: 'skh', kind: 'sketch', label: 'Drill site', plane: '@builtin_plane_front',
         entities: [{ id: 'p1', kind: 'point' }], initial: { p1: [5, 5] }, constraints: [],
       },
-      // Through all: a blind hole's floor touches only the new bore, so the neighbour
-      // pass leaves it unnamed and it emits no query to check (feature/backlog.md).
-      { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, depth_mode: 'through_all', target: 'body_ex1' } },
+      { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, depth: 3, target: 'body_ex1' } },
     ] }
     expectSelfResolution(drilled, 'body_ex1', { restoreFrom: filleted })
     expectRestoredMatchesFull(filleted, drilled, 'body_ex1')
+  })
+
+  // A blind hole's floor touches only the new bore, itself a new face: a neighbour
+  // pass that reads only the producer's names reaches the bore and never the floor,
+  // which then emitted an empty query.
+  const blindHole = (): Spec => ({ features: [
+    ...box().features,
+    {
+      id: 'skh', kind: 'sketch', label: 'Drill site', plane: '@builtin_plane_front',
+      entities: [{ id: 'p1', kind: 'point' }], initial: { p1: [5, 5] }, constraints: [],
+    },
+    { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, depth: 3, target: 'body_ex1' } },
+  ] })
+
+  it('blind hole', () => {
+    const modifierOwned = expectSelfResolution(blindHole(), 'body_ex1')
+    expect(modifierOwned).toBeGreaterThan(0)
+  })
+
+  it('blind hole restored from the box checkpoint', () => {
+    const base: Spec = { features: blindHole().features.filter((f) => f.id !== 'hole1') }
+    expectSelfResolution(blindHole(), 'body_ex1', { restoreFrom: base })
+    expectRestoredMatchesFull(base, blindHole(), 'body_ex1')
   })
 
   // The cut's walls, rim edges and corners belong to the cut. The old
