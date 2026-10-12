@@ -10,9 +10,9 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccShapeEnumValue } from './occTypes'
-import { faceCentroid, edgeToGeom, SubShapeIndexMap } from './primitives'
-import { edgeGeometryHash } from '../geomHash'
+import { faceCentroid, SubShapeIndexMap } from './primitives'
 import { volumeOf } from './booleans'
+import { SubShapeDedup } from './subshapeIdentity'
 import { faceGh, edgeGh } from './lineageHash'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
@@ -326,50 +326,19 @@ function edgeModifierDiff(
   diff.modified_input_edges = edges.modified
   diff.deleted_input_edges = edges.deleted
 
-  // Orientation-independent geometry keys for an edge (lines hashed both ways,
-  // mirroring brepDiffNewEdgeHashes). Used as the geometry fallback below.
-  const edgeGeomKeys = (s: OccShape): string[] => {
-    try {
-      const { ed } = edgeToGeom(oc, scope, s)
-      if (ed.kind === 'line') {
-        const a = (ed as { start: number[] }).start
-        const b = (ed as { end: number[] }).end
-        return [
-          edgeGeometryHash({ kind: 'line', start: a, end: b }),
-          edgeGeometryHash({ kind: 'line', start: b, end: a }),
-        ]
-      }
-      return [edgeGeometryHash(ed as unknown as Record<string, unknown>)]
-    } catch {
-      return []
-    }
-  }
-
   const walk = (
     outputs: OccShape[],
     pool: OccShape[],
-    geomPool?: Set<string>,
-    keysOf?: (s: OccShape) => string[],
+    inheritedAnyway?: (s: OccShape) => boolean,
   ): { fresh: OccShape[]; inherited: OccShape[] } => {
     const fresh: OccShape[] = []
     const inherited: OccShape[] = []
-    // Geometry fallback (edges only): BRepFilletAPI is an unreliable narrator --
-    // it rebuilds the whole solid and reports edges far from the filleted one as
-    // IsDeleted/regenerated, so they never reach `pool` and IsSame misses them.
-    // An output edge whose geometry already existed in the *old* shape is
-    // unchanged and must stay inherited, so the builder does not re-attribute
-    // its @created_by to the fillet (which would evict the original ancestry
-    // entry and break stored edge picks like a revolve axis). See
-    // bugreports/revolve_bug_20260707_151218.md. This only adds inherited
-    // classifications, never removes: modified edges (new geometry) still match
-    // via IsSame on their Modified() image, and genuinely new fillet edges have
-    // geometry absent from the old shape, so both stay correct.
     for (const s of outputs) {
       if (pool.some((p) => (s as OccSubShape).IsSame(p as OccSubShape))) {
         inherited.push(s)
         continue
       }
-      if (geomPool && keysOf && keysOf(s).some((k) => geomPool.has(k))) {
+      if (inheritedAnyway?.(s)) {
         inherited.push(s)
         continue
       }
@@ -378,9 +347,22 @@ function edgeModifierDiff(
     return { fresh, inherited }
   }
 
-  const oldEdgeKeys = new Set(oldEdges.flatMap((e) => edgeGeomKeys(e)))
   const of = walk(newFaces, faces.preimages)
-  const oe = walk(newEdges, edges.preimages, oldEdgeKeys, edgeGeomKeys)
+  // Edge fallback: BRepFilletAPI is an unreliable narrator -- it rebuilds the
+  // whole solid and reports edges far from the filleted one as
+  // IsDeleted/regenerated, so they never reach the pool and IsSame misses them.
+  // Such an edge must stay inherited, so the builder does not re-attribute its
+  // @created_by to the fillet (which would evict the original ancestry entry
+  // and break stored edge picks like a revolve axis). See
+  // bugreports/revolve_bug_20260707_151218.md. Every edge the modifier really
+  // made bounds a face it made (a blend or chamfer face), so an unmatched edge
+  // touching no new face is an old edge rebuilt: face history decides, no
+  // geometry is compared.
+  const freshFaceEdges = new SubShapeDedup()
+  for (const f of of.fresh) {
+    for (const e of exploreEdges(oc, scope, f)) freshFaceEdges.add(e as OccSubShape)
+  }
+  const oe = walk(newEdges, edges.preimages, (s) => !freshFaceEdges.has(s as OccSubShape))
   diff.new_faces = of.fresh
   diff.inherited_faces = of.inherited
   diff.new_edges = oe.fresh
@@ -570,7 +552,7 @@ function applyEdgeModifier(
     // Drain the maker's Modified() history ONCE per old face, shared by
     // extractNames and the diff classify -- both drained the same query per
     // face today (L15). BRepFilletAPI is an unreliable narrator (see the
-    // geometry fallback in edgeModifierDiff), so this edit is last and alone:
+    // edge fallback in edgeModifierDiff), so this edit is last and alone:
     // if the history is order- or call-count-sensitive, the shared drain
     // shows up as a diff-count change in edgeModifierReal.test.ts with one
     // candidate cause. The edge drain stays separate, in classify.
@@ -604,7 +586,7 @@ function applyEdgeModifier(
   // off the healed shape instead left every inherited face looking fresh -- 11
   // of 12 on the corner corpus against 6 truly new -- so the builder
   // re-attributed the whole body's ancestry to this feature and evicted the
-  // picks stored against it, the same eviction the edge geometry fallback in
+  // picks stored against it, the same eviction the edge fallback in
   // edgeModifierDiff exists to prevent. The hand-off to the healed shape is by
   // geometry hash, which the heal guard's unchanged counts and volume keep valid.
   if (healed !== null) {
