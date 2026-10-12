@@ -126,10 +126,9 @@ interface HarnessOptions {
 
 class Harness {
   /** One entry per face-ancestry registration pass, in call order. Both the loop pass and
-   *  the checkpoint pass read a blob's `mesh.face_data` once they decide to register its
-   *  faces, so a getter there counts registrations (`probe`). */
+   *  the checkpoint pass go through `registerBodyBrepFromMeta`, which reads `blob.mesh`
+   *  once per call, so a getter there counts registrations (`probe`). */
   faceRegistrations: string[] = []
-  edgeRegistrations: string[] = []
 
   readonly options: HarnessOptions
 
@@ -155,33 +154,26 @@ class Harness {
         }),
     )
 
-  /** Record the first face and the first edge registration read of `blob`, and throw
-   *  inside the face registrar for a body named in `registrarThrows`. */
+  /** Count every face registration pass over `blob`, and throw inside the face
+   *  registrar for a body named in `registrarThrows`. The builder caches one blob per
+   *  body version, so the count must be per registrar call, never per blob: a once-per-
+   *  blob latch would hide an untouched body re-registered from its cached blob. */
   private probe(body: Body, blob: Record<string, unknown>): Record<string, unknown> {
     const mesh = blob.mesh as Record<string, unknown>
+    Object.defineProperty(blob, 'mesh', {
+      enumerable: true,
+      get: () => {
+        // The registrar reads `mesh` once per call and skips a fallback mesh.
+        if (!mesh.is_fallback) this.faceRegistrations.push(body.id)
+        return mesh
+      },
+    })
     const faceData = mesh.face_data
-    let facesSeen = false
     Object.defineProperty(mesh, 'face_data', {
       enumerable: true,
       get: () => {
-        if (!facesSeen) {
-          facesSeen = true
-          this.faceRegistrations.push(body.id)
-        }
         if (this.options.registrarThrows?.includes(body.id)) throw new Error('synthetic registrar throw')
         return faceData
-      },
-    })
-    const edgeCreators = blob.edge_created_by
-    let edgesSeen = false
-    Object.defineProperty(blob, 'edge_created_by', {
-      enumerable: true,
-      get: () => {
-        if (!edgesSeen) {
-          edgesSeen = true
-          this.edgeRegistrations.push(body.id)
-        }
-        return edgeCreators
       },
     })
     return blob
