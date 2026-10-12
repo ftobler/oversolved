@@ -265,6 +265,21 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     expect(modifierOwned).toBeGreaterThan(0)
   })
 
+  // The hole cuts its sites one at a time, and both bores run between the same
+  // two caps. Named off that neighbour set, the second bore was handed the uuid
+  // the first already held, and both picks failed as a collision by construction.
+  it('two through holes between the same two faces', () => {
+    expectSelfResolution({ features: [
+      ...box().features,
+      {
+        id: 'skh', kind: 'sketch', label: 'Drill sites', plane: '@builtin_plane_front',
+        entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }],
+        initial: { p1: [3, 3], p2: [7, 6] }, constraints: [],
+      },
+      { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, depth_mode: 'through_all', target: 'body_ex1' } },
+    ] }, 'body_ex1')
+  })
+
   it('blind hole restored from the box checkpoint', () => {
     const base: Spec = { features: blindHole().features.filter((f) => f.id !== 'hole1') }
     expectSelfResolution(blindHole(), 'body_ex1', { restoreFrom: base })

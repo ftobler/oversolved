@@ -381,6 +381,15 @@ export function nameFacesFromNeighbours(
   const rows = t.rows.filter((row) => !skip?.has(row.face))
   const facesOnEdge = new SubShapeMap<OccSubShape[]>()  // edge -> the faces touching it
   for (const row of rows) for (const edge of row.edges) pushTo(facesOnEdge, edge, row.face)
+  // Every uuid already on a face. A corner uuid is a hash of the neighbour set, so
+  // an earlier pass over the same body (a hole drills its sites one cut at a time)
+  // can already hold the very uuid this pass derives for a different face: two
+  // through-bores between the same two caps both hash to {top, bottom}.
+  const taken = new Set<string>()
+  for (const row of t.rows) {
+    const uuid = faceNames.get(row.face)
+    if (uuid) taken.add(uuid)
+  }
 
   let frame: NormalFrame | null = null
   // Rounds, until a round names nothing. A face whose every neighbour is itself
@@ -422,9 +431,15 @@ export function nameFacesFromNeighbours(
         )  // null on a near-tie -> leave unnamed
       }
       if (ordered === null) continue
-      ordered.forEach((face, i) => {
-        named.push({ face, uuid: deriveCornerFaceUuid(neighbours, group.length > 1 ? i : 0), neighbours })
-      })
+      // The multiplicity skips a uuid some face already holds; without a clash it
+      // is 0 for a lone face and the sibling rank for a group, as it always was.
+      let multiplicity = 0
+      for (const face of ordered) {
+        while (taken.has(deriveCornerFaceUuid(neighbours, multiplicity))) multiplicity++
+        const uuid = deriveCornerFaceUuid(neighbours, multiplicity++)
+        taken.add(uuid)
+        named.push({ face, uuid, neighbours })
+      }
     }
     if (named.length === 0) return
 
