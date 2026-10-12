@@ -588,7 +588,7 @@ export function build(
     newCheckpoints[fid] = {
       spec: checkpoint.spec,
       result: checkpoint.result,
-      repo_snapshot: snapshotWithBrepGeometry(checkpoint, cpMeta, deps, needing),
+      repo_snapshot: snapshotWithBrepGeometry(checkpoint, cpMeta, needing),
       body_store_snapshot: checkpoint.body_store_snapshot,
       bodies_snapshot: bodiesSnapshot,
     }

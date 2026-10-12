@@ -22,7 +22,6 @@ import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
 import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
 import { extractBrepMetadata } from '../solveLocally'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
 import { copyShape } from '../occ/transforms'
 import { assertOneSolidPerBody } from '../features/bodySplit'
 import type { OccShape } from '../occ/occTypes'
@@ -78,15 +77,17 @@ export class SharedHarness {
               createdBy: body.created_by || '',
               bodyId: body.id,
               faceAncestry: body.face_ancestry ?? null,
-              faceNames: body.face_names ?? null,
+              faceUuids: body.face_uuids ?? null,
               profileQueries: body.profile_queries ?? [],
+              brepDiff: body.brep_diff ?? null,
+              modifiedBy: body.modified_by,
             })
             const edgeResult = solidToEdges(this.oc, table, body.shape, {
               createdBy: body.created_by || '',
               bodyId: body.id,
               profileQueries: body.profile_queries ?? [],
               edgeAncestry: body.edge_ancestry ?? null,
-              edgeNames: body.edge_names ?? null,
+              edgeUuids: body.edge_uuids ?? null,
               brepDiff: body.brep_diff ?? null,
               modifiedBy: body.modified_by,
             })
@@ -94,15 +95,20 @@ export class SharedHarness {
               createdBy: body.created_by || '',
               bodyId: body.id,
               profileQueries: body.profile_queries ?? [],
-              faceNames: body.face_names ?? null,
+              faceUuids: body.face_uuids ?? null,
+              brepDiff: body.brep_diff ?? null,
+              modifiedBy: body.modified_by,
             })
             out[body.id] = {
               mesh,
               edges: edgeResult.edges,
               edge_queries: edgeResult.edge_queries,
+              edge_uuids: edgeResult.edge_uuids,
+              edge_created_by: edgeResult.edge_created_by,
               vertices: vertexResult.vertices,
               vertex_queries: vertexResult.vertex_queries,
               vertex_uuids: vertexResult.vertex_uuids,
+              vertex_created_by: vertexResult.vertex_created_by,
               // Mirror production tessellateBodies: the per-body creator and
               // modifier tags are part of the render payload, not just inputs.
               created_by: body.created_by ?? '',
@@ -115,9 +121,6 @@ export class SharedHarness {
       // Wire the real production metadata extractor so the build-level tests
       // exercise the mesh-free in-loop registration path (not the fallback).
       extractBrepMetadata: (bodyStore) => extractBrepMetadata(this.oc, table, bodyStore),
-      brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(this.oc, scope, b),
-      brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(this.oc, scope, b),
-      brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(this.oc, scope, b),
       retainCheckpointShape: (h, owner) => table.retain(h, owner),
       copyBodyShape: (h, owner) =>
         table.register(copyShape(this.oc, scope, table.get<OccShape>(h)), owner),

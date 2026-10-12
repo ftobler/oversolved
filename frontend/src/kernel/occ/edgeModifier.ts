@@ -9,11 +9,11 @@
 // the modifying feature.
 
 import { drainList, type DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccShapeEnumValue } from './occTypes'
+import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccShapeEnumValue, OccShapeFixShape } from './occTypes'
 import { faceCentroid, SubShapeIndexMap } from './primitives'
 import { volumeOf } from './booleans'
-import { SubShapeDedup } from './subshapeIdentity'
-import { faceGh, edgeGh } from './lineageHash'
+import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
+import { canonicalEdges, type ShapeNames } from './bodyNames'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
 import {
@@ -25,24 +25,15 @@ import {
 } from './constructionLineage'
 
 type Lineage = Record<string, string[]>
-type Names = Record<string, string>
+type Names = SubShapeMap<string>
 
-/** The pre-op construction-name maps the modifier carries forward. */
-export interface OldNames {
+/** The pre-op construction names the modifier carries forward, keyed by the input solid. */
+export interface OldNames extends ShapeNames {
   createdBy: string
-  faceNames: Names
-  edgeNames: Names
-  faceAncestry: Lineage
-  edgeAncestry: Lineage
 }
 
-/** The rebuilt construction-name maps after a fillet/chamfer. */
-export interface NewNames {
-  faceNames: Names
-  edgeNames: Names
-  faceAncestry: Lineage
-  edgeAncestry: Lineage
-}
+/** The rebuilt construction names after a fillet/chamfer, keyed by the output solid. */
+export type NewNames = ShapeNames
 
 export interface EdgeModifierResult {
   shape: OccShape
@@ -86,28 +77,19 @@ function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
 }
 
 /**
- * Hash a face to its canonical built-solid geometry key. Modified()/Generated()
- * hand back faces carrying a FORWARD orientation, but every downstream consumer
- * (deriveEdgeNames, tessellation, registration) explores faces from the built
- * SOLID, where the shell orients each face outward. faceGh is normal-signed, so
- * the two disagree for any face the op reshaped, leaving its edges unnamed.
- * Canonicalize every minted key to the built-solid face reached by IsSame
- * (orientation-independent identity).
+ * The built-solid face a Modified()/Generated() image is, by IsSame. The
+ * images carry the builder's FORWARD orientation while the solid's shell
+ * orients each face outward; IsSame ignores orientation, so the image and its
+ * solid face are one key, and keying by the solid's own face keeps every name
+ * on a sub-shape the body will hold. An image with no built-solid counterpart
+ * stays itself (and is never written to the body).
  */
-function builtFaceHasher(
-  oc: OccModule,
-  scope: DisposeScope,
-  builtFaces: OccShape[],
-): (f: OccShape) => string {
+function builtFaceOf(builtFaces: OccShape[]): (f: OccShape) => OccSubShape {
   const builtIdx = new SubShapeIndexMap()
-  const memo = new Array<string>(builtFaces.length)
   builtFaces.forEach((bf, i) => builtIdx.set(bf as OccSubShape, i))
   return (f) => {
-    // The fallback: a Modified() image with no built-solid counterpart is still
-    // hashed as itself.
     const at = builtIdx.get(f as OccSubShape)
-    if (at >= 0) return (memo[at] ??= faceGh(oc, scope, asFace(oc, builtFaces[at])))
-    return faceGh(oc, scope, asFace(oc, f))
+    return (at >= 0 ? builtFaces[at] : f) as OccSubShape
   }
 }
 
@@ -117,7 +99,7 @@ interface NameBuildContext {
   scope: DisposeScope
   maker: OccEdgeModifierMaker
   old: OldNames
-  builtGh: (f: OccShape) => string
+  builtFace: (f: OccShape) => OccSubShape
   faceNames: Names
   faceAncestry: Lineage
 }
@@ -142,11 +124,11 @@ export function extractNames(
   oldFaceIdx: SubShapeIndexMap,
   oldFaceModified: Map<number, OccShape[]>,
 ): NewNames {
-  const faceNames: Names = {}
+  const faceNames: Names = new SubShapeMap()
   const faceAncestry: Lineage = {}
   const ctx: NameBuildContext = {
     oc, scope, maker, old,
-    builtGh: builtFaceHasher(oc, scope, newFaces),
+    builtFace: builtFaceOf(newFaces),
     faceNames,
     faceAncestry,
   }
@@ -163,23 +145,22 @@ export function extractNames(
   return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }
 
-/** Carry every named old face to its output image, keyed by built-solid hash. */
+/** Carry every named old face to its output image, keyed by the built solid's face. */
 function inheritOldFaceNames(
   ctx: NameBuildContext,
   oldFaces: OccShape[],
   oldFaceIdx: SubShapeIndexMap,
   oldFaceModified: Map<number, OccShape[]>,
 ): void {
-  const { oc, scope, maker, old, builtGh, faceNames, faceAncestry } = ctx
-  // Keys a merge collision already cancelled: the two faces that merged into
-  // one dropped their names, so the key is up for grabs. A third face
+  const { oc, scope, maker, old, builtFace, faceNames, faceAncestry } = ctx
+  // Faces a merge collision already cancelled: the two faces that merged into
+  // one dropped their names, so the face is up for grabs. A third face
   // modifying to the same output must not re-claim it -- topology order would
   // pick whichever, and the name was deliberately left to the neighbours.
-  const mergedAway = new Set<string>()
+  const mergedAway = new SubShapeMap<true>()
 
   for (const oldF of oldFaces) {
-    const oldGh = faceGh(oc, scope, asFace(oc, oldF))
-    const uuid = old.faceNames[oldGh]
+    const uuid = old.faceNames.get(oldF as OccSubShape)
     if (!uuid) continue
     let deleted = false
     try {
@@ -191,23 +172,23 @@ function inheritOldFaceNames(
     const ancestry = old.faceAncestry[uuid] ?? []
     const mods = oldFaceModified.get(oldFaceIdx.get(oldF as OccSubShape)) ?? []
     if (mods.length === 0) {
-      // Unchanged face: its geom-hash key persists, so the UUID carries by key.
-      faceNames[oldGh] = uuid
+      // Unchanged face: the output holds the same face, so the UUID carries over.
+      faceNames.set(builtFace(oldF), uuid)
       faceAncestry[uuid] = [...ancestry]
     } else if (mods.length === 1) {
-      const key = builtGh(mods[0])
-      const prior = faceNames[key]
+      const key = builtFace(mods[0])
+      const prior = faceNames.get(key)
       if (prior !== undefined && prior !== uuid) {
         // Two named faces merged into one. Whichever we kept would be picked by
         // topology order, which is not construction-stable. Drop both and let
         // nameFacesFromNeighbours mint a name from the surviving neighbourhood.
-        delete faceNames[key]
+        faceNames.delete(key)
         delete faceAncestry[prior]
-        mergedAway.add(key)
+        mergedAway.set(key, true)
         continue
       }
       if (mergedAway.has(key)) continue
-      faceNames[key] = uuid
+      faceNames.set(key, uuid)
       faceAncestry[uuid] = [...ancestry]
     } else {
       const ordered = orderSplitChildren(
@@ -216,7 +197,7 @@ function inheritOldFaceNames(
       if (ordered === null) continue  // ambiguous -> ancestral fallback
       ordered.forEach((m, i) => {
         const childUuid = mintFaceUuid(splitFacePath(uuid, i))
-        faceNames[builtGh(m)] = childUuid
+        faceNames.set(builtFace(m), childUuid)
         faceAncestry[childUuid] = [...ancestry]
       })
     }
@@ -229,14 +210,13 @@ function mintGeneratedFilletFaces(
   newShape: OccShape,
   modifiedEdges: OccShape[],
 ): void {
-  const { oc, scope, maker, old, builtGh, faceNames, faceAncestry } = ctx
+  const { oc, scope, maker, old, builtFace, faceNames, faceAncestry } = ctx
   // Generated-face centroids are world coordinates: normalize them by the new
   // solid's span so the split-sibling refusal is relative, not unit-dependent.
   let frame: NormalFrame | null = null
 
   for (const edge of modifiedEdges) {
-    const egh = edgeGh(oc, scope, edge)
-    const edgeUuid = egh !== null ? old.edgeNames[egh] : undefined
+    const edgeUuid = old.edgeNames.get(edge as OccSubShape)
     if (!edgeUuid) continue
     const edgeAncestry = old.edgeAncestry[edgeUuid] ?? []
     let generated: OccShape[]
@@ -249,9 +229,9 @@ function mintGeneratedFilletFaces(
     for (const g of generated) for (const gf of exploreFaces(oc, scope, g)) genFaces.push(gf)
     const base = mintFaceUuid(filletFacePath(old.createdBy, edgeUuid))
     const assign = (face: OccShape, uuid: string): void => {
-      const gh = builtGh(face)
-      if (gh in faceNames) return
-      faceNames[gh] = uuid
+      const key = builtFace(face)
+      if (faceNames.has(key)) return
+      faceNames.set(key, uuid)
       faceAncestry[uuid] = [...edgeAncestry]
     }
     if (genFaces.length === 1) {
@@ -360,7 +340,7 @@ function edgeModifierDiff(
   // geometry is compared.
   const freshFaceEdges = new SubShapeDedup()
   for (const f of of.fresh) {
-    for (const e of exploreEdges(oc, scope, f)) freshFaceEdges.add(e as OccSubShape)
+    for (const e of canonicalEdges(oc, scope, f)) freshFaceEdges.add(e)
   }
   const oe = walk(newEdges, edges.preimages, (s) => !freshFaceEdges.has(s as OccSubShape))
   diff.new_faces = of.fresh
@@ -396,12 +376,22 @@ function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape): bool
  * than projected a curve, which is the corrupt case wearing a repair, so it is
  * refused. The returned shape is DETACHED, matching `maker.Shape()`: the
  * caller owns it exactly as it owns an unhealed result.
+ *
+ * ShapeFix re-makes every face rather than editing it in place, so `rebase`
+ * maps a sub-shape of the input to its counterpart in the healed shape through
+ * the fixer's own substitution context (its history): the hand-off of names
+ * keyed by the input's faces and edges.
  */
-function healShape(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape | null {
+function healShape(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+): { shape: OccShape; rebase: (s: OccSubShape) => OccSubShape } | null {
   const before = topoCounts(oc, scope, shape)
   let healed: OccShape
+  let fixer: OccShapeFixShape
   try {
-    const fixer = scope.track(new oc.ShapeFix_Shape_2(shape))
+    fixer = scope.track(new oc.ShapeFix_Shape_2(shape))
     fixer.Perform(scope.track(new oc.Handle_Message_ProgressIndicator_1()))
     healed = scope.track(fixer.Shape())
   } catch {
@@ -419,7 +409,38 @@ function healShape(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShap
   const v0 = volumeOf(oc, scope, shape)
   const v1 = volumeOf(oc, scope, healed)
   if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return reject()
-  return scope.detach(healed)
+  const context = scope.track(fixer.Context()).get()
+  const E = oc.TopAbs_ShapeEnum
+  return {
+    shape: scope.detach(healed),
+    rebase: (s) => (context ? scope.track(context.Apply(s, E.TopAbs_SHAPE)) as OccSubShape : s),
+  }
+}
+
+/** `names` re-keyed onto another shape's sub-shapes through `rebase`. */
+function rebaseNames(names: NewNames, rebase: (s: OccSubShape) => OccSubShape): NewNames {
+  const move = (from: Names): Names => {
+    const out: Names = new SubShapeMap()
+    for (const [s, uuid] of from.entries()) out.set(rebase(s), uuid)
+    return out
+  }
+  return { ...names, faceNames: move(names.faceNames), edgeNames: move(names.edgeNames) }
+}
+
+/**
+ * `diff` with its output-side lists moved onto the healed shape through
+ * `rebase`, so attribution finds the new faces and edges by identity there.
+ * The input-side lists name sub-shapes of the old body and stay as they are.
+ */
+function rebaseDiff(diff: BrepDiff, rebase: (s: OccSubShape) => OccSubShape): BrepDiff {
+  const move = (items: unknown[]): unknown[] => items.map((s) => rebase(s as OccSubShape))
+  return {
+    ...diff,
+    new_faces: move(diff.new_faces),
+    inherited_faces: move(diff.inherited_faces),
+    new_edges: move(diff.new_edges),
+    inherited_edges: move(diff.inherited_edges),
+  }
 }
 
 /** Solid/face/edge occurrence counts, the structural fingerprint the heal guard compares. */
@@ -530,10 +551,10 @@ function applyEdgeModifier(
   //
   // Only the DECISION happens here. The repair is substituted at the return,
   // after the name and diff extraction below have read the maker's own output.
-  let healed: OccShape | null = null
+  let heal: ReturnType<typeof healShape> = null
   if (!isValidShape(oc, scope, built)) {
-    healed = healShape(oc, scope, built)
-    if (healed === null) {
+    heal = healShape(oc, scope, built)
+    if (heal === null) {
       scope.release(built)
       // This string reaches the user as the feature's failure message
       // (utils/core/featureFailure.ts), so it names a way out rather than a
@@ -575,7 +596,7 @@ function applyEdgeModifier(
   } catch (e) {
     // Release both candidate shapes so a throw does not leak either.
     scope.release(built)
-    if (healed !== null) scope.release(healed)
+    if (heal !== null) scope.release(heal.shape)
     throw e
   }
 
@@ -587,11 +608,13 @@ function applyEdgeModifier(
   // of 12 on the corner corpus against 6 truly new -- so the builder
   // re-attributed the whole body's ancestry to this feature and evicted the
   // picks stored against it, the same eviction the edge fallback in
-  // edgeModifierDiff exists to prevent. The hand-off to the healed shape is by
-  // geometry hash, which the heal guard's unchanged counts and volume keep valid.
-  if (healed !== null) {
+  // edgeModifierDiff exists to prevent. The names are handed to the healed
+  // shape through the fixer's own history (`rebase`), and so is the diff.
+  if (heal !== null) {
+    const rebased = names === null ? null : rebaseNames(names, heal.rebase)
+    const healedDiff = rebaseDiff(diff, heal.rebase)
     scope.release(built)
-    return { shape: healed, success: true, reason: null, names, diff, skippedEdgeIndices: skippedIdx }
+    return { shape: heal.shape, success: true, reason: null, names: rebased, diff: healedDiff, skippedEdgeIndices: skippedIdx }
   }
 
   return { shape: built, success: true, reason: null, names, diff, skippedEdgeIndices: skippedIdx }

@@ -67,9 +67,10 @@ describe.skipIf(!oc)('construction-name minting (real OCC)', () => {
         SKETCH_ID,
         CREATED_BY,
       )
+      // The uuids alone: the sub-shapes they are keyed by die with the scope.
       return {
-        faceNames: { ...r.faceNames },
-        edgeNames: { ...r.edgeNames },
+        faceUuids: [...r.faceNames.values()],
+        edgeUuids: [...r.edgeNames.values()],
         faceAncestry: { ...r.faceAncestry },
         edgeAncestry: { ...r.edgeAncestry },
       }
@@ -79,8 +80,7 @@ describe.skipIf(!oc)('construction-name minting (real OCC)', () => {
   }
 
   it('mints one construction UUID per face, exactly the symbolic values', () => {
-    const { faceNames, faceAncestry } = build()
-    const uuids = Object.values(faceNames)
+    const { faceUuids: uuids, faceAncestry } = build()
     // A box has 6 faces: 4 sides + 2 caps.
     expect(uuids.length).toBe(6)
     // Collision-free within a build.
@@ -106,8 +106,7 @@ describe.skipIf(!oc)('construction-name minting (real OCC)', () => {
   })
 
   it('derives collision-free edge UUIDs from face adjacency', () => {
-    const { edgeNames } = build()
-    const uuids = Object.values(edgeNames)
+    const { edgeUuids: uuids } = build()
     // A box has 12 edges; each is a distinct face pair.
     expect(uuids.length).toBe(12)
     expect(new Set(uuids).size).toBe(12)
@@ -117,10 +116,9 @@ describe.skipIf(!oc)('construction-name minting (real OCC)', () => {
   it('recomputes identical UUIDs on an independent rebuild', () => {
     const a = build()
     const b = build()
-    // The gh keys are geometry-derived and identical across identical builds,
-    // and the UUID values are symbolic, so both maps match exactly.
-    expect(new Set(Object.values(a.faceNames))).toEqual(new Set(Object.values(b.faceNames)))
-    expect(new Set(Object.values(a.edgeNames))).toEqual(new Set(Object.values(b.edgeNames)))
+    // The UUID values are symbolic, so both builds name exactly the same set.
+    expect(new Set(a.faceUuids)).toEqual(new Set(b.faceUuids))
+    expect(new Set(a.edgeUuids)).toEqual(new Set(b.edgeUuids))
     expect(a.faceAncestry).toEqual(b.faceAncestry)
   })
 })

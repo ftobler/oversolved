@@ -13,13 +13,13 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
-import { makeBox, makeBoxAt, faceCentroid, faceNormal } from '../../occ/primitives'
+import { makeBox, makeBoxAt } from '../../occ/primitives'
 import { sortedFacesOf } from '../../occ/faceLoops'
+import { canonicalFaces, canonicalIndex } from '../../occ/bodyNames'
 import { Repository } from '../../query'
-import { resolveFaceProfile, resolveFaceIndexViaHash } from '../faceProfile'
-import { faceGeometryHash } from '../../geomHash'
+import { resolveFaceProfile, resolveFaceIndexViaUuid } from '../faceProfile'
 import type { Body } from '../../types3d'
-import type { OccModule } from '../../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 import faceLoopsFixture from '../../occ/__fixtures__/faceLoops.json'
 
 const oc = await loadOcc()
@@ -59,6 +59,20 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     if (!oc) throw new Error('unreachable: skipIf guards this')
     occ = oc
   })
+
+  // The body array (canonical face order of `shape`) giving sorted face i the uuid `uuidOf(i)`.
+  function faceUuidsFor(
+    scope: DisposeScope,
+    shape: OccShape,
+    sorted: OccShape[],
+    uuidOf: (i: number) => string | null,
+  ): (string | null)[] {
+    const canon = canonicalFaces(occ, scope, shape)
+    const index = canonicalIndex(canon)
+    const out: (string | null)[] = canon.map(() => null)
+    sorted.forEach((f, i) => { out[index.get(f as OccSubShape)] = uuidOf(i) })
+    return out
+  }
 
   it('resolves a body face by slash form to its loops + plane', () => {
     const scope = new DisposeScope()
@@ -139,8 +153,8 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
   })
 
   // g1-H1: the persisted `@<body>/face/<N>` pick survives a rebuild. The remap
-  // (resolveFaceIndexViaHash) finds the CURRENT face at the old index, looks up
-  // its construction UUID in the body's face_names, and returns the repo's
+  // (resolveFaceIndexViaUuid) finds the CURRENT face at the old index, looks up
+  // its construction UUID in the body's face_uuids, and returns the repo's
   // face_index for that uuid. The repo registration below deliberately carries
   // a rebuilt index space (the pick named face 1, and after the rebuild that
   // face is registered at index 5), so a resolving remap must answer 5, not the
@@ -153,12 +167,9 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
       const faces = sortedFacesOf(occ, scope, box)
       expect(faces.length).toBe(6)
-      const geomHashOf = (i: number) =>
-        faceGeometryHash(faceCentroid(occ, scope, faces[i]), faceNormal(occ, scope, faces[i]))
 
       const uuids = faces.map((_, i) => `u_face${i}`)
-      const faceNames: Record<string, string> = {}
-      faces.forEach((_, i) => { faceNames[geomHashOf(i)] = uuids[i] })
+      const faceUuids = faceUuidsFor(scope, box, faces, (i) => uuids[i])
 
       const rebuilt = [0, 5, 2, 3, 4, 1]
       const repo = new Repository()
@@ -179,10 +190,10 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
           sketch_id: 'sk',
           brep_diff: null,
           profile_queries: [],
-          face_names: faceNames,
+          face_uuids: faceUuids,
         },
       }
-      const remapped = resolveFaceIndexViaHash(occ, scope, box, 1, repo, bodyStore, faceNames, faces)
+      const remapped = resolveFaceIndexViaUuid(occ, scope, box, 1, repo, bodyStore, faceUuids, faces)
       expect(remapped).toBe(5)
     } finally {
       scope.dispose()
@@ -199,8 +210,8 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     try {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
       const faces = sortedFacesOf(occ, scope, box)
-      const gh1 = faceGeometryHash(faceCentroid(occ, scope, faces[1]), faceNormal(occ, scope, faces[1]))
-      const faceNames = { [gh1]: 'u_ghost' }  // a uuid with no registered element
+      // A uuid with no registered element, on sorted face 1.
+      const faceUuids = faceUuidsFor(scope, box, faces, (i) => (i === 1 ? 'u_ghost' : null))
       const bodyStore: Record<string, Body> = {
         body_feat: {
           id: 'body_feat',
@@ -210,7 +221,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
           sketch_id: 'sk',
           brep_diff: null,
           profile_queries: [],
-          face_names: faceNames,
+          face_uuids: faceUuids,
         },
       }
       const repo = new Repository()
@@ -230,11 +241,8 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     try {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
       const faces = sortedFacesOf(occ, scope, box)
-      const geomHashOf = (i: number) =>
-        faceGeometryHash(faceCentroid(occ, scope, faces[i]), faceNormal(occ, scope, faces[i]))
       const uuids = faces.map((_, i) => `u_face${i}`)
-      const faceNames: Record<string, string> = {}
-      faces.forEach((_, i) => { faceNames[geomHashOf(i)] = uuids[i] })
+      const faceUuids = faceUuidsFor(scope, box, faces, (i) => uuids[i])
 
       const repo = new Repository()
       faces.forEach((_, i) => {
@@ -253,12 +261,12 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
           sketch_id: 'sk',
           brep_diff: null,
           profile_queries: [],
-          face_names: faceNames,
+          face_uuids: faceUuids,
         },
       }
 
-      const withFaces = resolveFaceIndexViaHash(occ, scope, box, 1, repo, bodyStore, faceNames, faces)
-      const withoutFaces = resolveFaceIndexViaHash(occ, scope, box, 1, repo, bodyStore, faceNames)
+      const withFaces = resolveFaceIndexViaUuid(occ, scope, box, 1, repo, bodyStore, faceUuids, faces)
+      const withoutFaces = resolveFaceIndexViaUuid(occ, scope, box, 1, repo, bodyStore, faceUuids)
       expect(withFaces).toBe(5)
       expect(withoutFaces).toBe(withFaces)
     } finally {
@@ -274,9 +282,9 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
       const faces = sortedFacesOf(occ, scope, box)
       const repo = new Repository()
-      expect(resolveFaceIndexViaHash(occ, scope, box, faces.length, repo, {}, undefined, faces)).toBeNull()
+      expect(resolveFaceIndexViaUuid(occ, scope, box, faces.length, repo, {}, undefined, faces)).toBeNull()
       // The internal traversal (no pre-sorted list) refuses the same index.
-      expect(resolveFaceIndexViaHash(occ, scope, box, faces.length, repo, {})).toBeNull()
+      expect(resolveFaceIndexViaUuid(occ, scope, box, faces.length, repo, {})).toBeNull()
     } finally {
       scope.dispose()
     }
@@ -310,7 +318,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     }
   })
 
-  // The documented no-UUID path: a body with no face_names has nothing to remap
+  // The documented no-UUID path: a body with no face_uuids has nothing to remap
   // against, so the raw index is the only answer and is kept as-is. This is
   // what every plain sketch-extrude pick rides on, and what the extrude/plane
   // slash-ref real tests resolve.
@@ -332,7 +340,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         },
       }
       const repo = new Repository()
-      expect(resolveFaceIndexViaHash(occ, scope, box, 1, repo, bodyStore, undefined, faces)).toBeNull()
+      expect(resolveFaceIndexViaUuid(occ, scope, box, 1, repo, bodyStore, undefined, faces)).toBeNull()
       const { face } = resolveFaceProfile(occ, scope, table, '@body_feat/face/1', repo, bodyStore)
       expect(face).not.toBeNull()
     } finally {

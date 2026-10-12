@@ -28,6 +28,8 @@ import { makeCylinder, type Vec3 } from '../occ/primitives'
 import { bodyFrame } from '../occ/tessellation'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
+import { transferBooleanNames } from './booleanLineage'
+import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
 import type { PlaneLike } from './shared/planes'
 
 type Dict = Record<string, unknown>
@@ -235,6 +237,9 @@ export function solveHole(
   const drilled = drilledEntities((sketchFeature.entities as Dict[]) ?? [], sketchId, entityId)
 
   let currentShape = table.get<OccShape>(targetBody.shape)
+  // The body's names, carried through every drill cut by its face history.
+  // Read at the first cut: a hole that places nothing never touches the shape.
+  let names: ShapeNames | null = null
 
   let throughDepth = 0.0
   let throughBackOffset = 0.0
@@ -293,8 +298,20 @@ export function solveHole(
       missedSites.push(eid)
       continue
     }
+    names ??= readBodyNames(oc, scope, currentShape, targetBody)
     const res = booleanWithDiff(oc, scope, currentShape, cyl, 'cut', { unifyFaces: !targetBody.imported })
     scope.release(cyl)
+    // The cutter carries no names: a drilled face keeps its own, and the bore
+    // is named off its neighbours.
+    names = transferBooleanNames(oc, scope, {
+      bodyShape: res.shape,
+      faceOrigin: res.faceOrigin,
+      targetFaceNames: names.faceNames,
+      targetFaceAncestry: names.faceAncestry,
+      toolFaceNames: null,
+      toolFaceAncestry: null,
+      toolUuidScope: null,
+    })
     if (i > 0) scope.release(currentShape)
     currentShape = scope.track(res.shape)
     // Accumulate per-cut diffs so all rims survive, not just the last.
@@ -317,7 +334,7 @@ export function solveHole(
   if (cutAny) {
     // A hole is a cut, so it can sever the body: a through-hole wider than the
     // web between two features leaves two disconnected solids.
-    bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, currentShape, feature.id as string)
+    bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, currentShape, feature.id as string, names ?? {})
     if (bodyIds.length === 0) {
       // The cut ate the whole body: resplitBody deleted it from the store.
       // Report the deletion with body_id still naming the consumed body (that

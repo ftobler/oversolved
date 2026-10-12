@@ -13,7 +13,6 @@ import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
 import { build, type BuildDeps, type BuildResponse } from '../builder'
 import { initGlobalRepo } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
@@ -76,7 +75,7 @@ function run(spec: Record<string, unknown>): BuildResponse {
               createdBy: body.created_by || '',
               bodyId: body.id,
               faceAncestry: body.face_ancestry ?? null,
-              faceNames: body.face_names ?? null,
+              faceUuids: body.face_uuids ?? null,
               profileQueries: body.profile_queries ?? [],
             })
             const edgeResult = solidToEdges(oc!, table, body.shape, {
@@ -84,13 +83,13 @@ function run(spec: Record<string, unknown>): BuildResponse {
               bodyId: body.id,
               profileQueries: body.profile_queries ?? [],
               edgeAncestry: body.edge_ancestry ?? null,
-              edgeNames: body.edge_names ?? null,
+              edgeUuids: body.edge_uuids ?? null,
             })
             const vertexResult = solidToVertices(oc!, table, body.shape, {
               createdBy: body.created_by || '',
               bodyId: body.id,
               profileQueries: body.profile_queries ?? [],
-              faceNames: body.face_names ?? null,
+              faceUuids: body.face_uuids ?? null,
             })
             out[body.id] = {
               id: body.id,
@@ -99,6 +98,7 @@ function run(spec: Record<string, unknown>): BuildResponse {
               mesh,
               edges: edgeResult.edges,
               edge_queries: edgeResult.edge_queries,
+              edge_uuids: edgeResult.edge_uuids,
               vertices: vertexResult.vertices,
               vertex_queries: vertexResult.vertex_queries,
             }
@@ -106,9 +106,6 @@ function run(spec: Record<string, unknown>): BuildResponse {
         }
         return out
       },
-      brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-      brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-      brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
     }
     const result = build(spec, {}, deps)
     scope.dispose()

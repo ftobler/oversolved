@@ -11,12 +11,12 @@
 
 import type { DisposeScope } from '../occ/disposeScope'
 import { extractErrorMessage } from '../errors'
-import type { OccModule, OccShape } from '../occ/occTypes'
+import type { OccModule, OccPrismBuilder, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { AmbiguousQueryError } from '../query'
-import { faceNormal, faceCentroid, makePrism, type Vec3 } from '../occ/primitives'
+import { faceNormal, faceCentroid, type Vec3 } from '../occ/primitives'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
 import { resolveDirection } from './shared/directionQuery'
@@ -30,11 +30,12 @@ import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
 import { resolveUpToPlane, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane } from './upTo'
-import { faceGh } from '../occ/lineageHash'
-import { nameNeighboursAndDeriveEdges } from '../occ/constructionLineage'
+import { deriveEdgeNames, nameNeighboursAndDeriveEdges } from '../occ/constructionLineage'
+import {
+  canonicalFaces, canonicalIndex, carryFaceNames, emptyShapeNames, mergeShapeNames,
+} from '../occ/bodyNames'
 
 type Dict = Record<string, unknown>
-type Lineage = Record<string, string[]>
 
 interface ExtrudeResult {
   [key: string]: unknown
@@ -44,31 +45,48 @@ interface ExtrudeResult {
   body_ids?: string[]
 }
 
-function fuse(oc: OccModule, scope: DisposeScope, a: OccShape, b: OccShape): OccShape {
-  return booleanWithHistory(oc, scope, a, b, 'fuse').shape
-}
-
 /**
- * Fuse a chain of prisms into one tool shape. Every consumed input (the
- * running result and each newly added prism) is tracked so a throw leaves it
- * to dispose(), and released once the next fuse has copied what it needs, so
+ * Fuse a chain of prisms into one tool shape with `join`. Every consumed input
+ * (the running result and each newly added prism) is tracked so a throw leaves
+ * it to dispose(), and released once the next fuse has copied what it needs, so
  * re-solving a dirty feature does not stack dead intermediates on the heap.
  */
 function fuseChain(
-  oc: OccModule,
   scope: DisposeScope,
   first: OccShape,
   rest: OccShape[],
+  join: (a: OccShape, b: OccShape) => OccShape,
 ): OccShape {
   let tool = scope.track(first)
   for (const shape of rest) {
     const next = scope.track(shape)
-    const fused = scope.track(fuse(oc, scope, tool, next))
+    const fused = scope.track(join(tool, next))
     scope.release(tool)
     scope.release(next)
     tool = fused
   }
   return tool
+}
+
+/**
+ * The construction name a body gives `face` (one of its own faces, as a face
+ * profile pick resolves it), with its ancestry; null when no body names it.
+ */
+function bodyFaceName(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  bodyStore: Record<string, Body>,
+  face: OccShape,
+): { uuid: string; ancestry: string[] } | null {
+  for (const body of Object.values(bodyStore)) {
+    if (body.shape === null || body.face_uuids === undefined) continue
+    const at = canonicalIndex(canonicalFaces(oc, scope, table.get<OccShape>(body.shape))).get(face as OccSubShape)
+    if (at < 0) continue
+    const uuid = body.face_uuids[at]
+    return uuid ? { uuid, ancestry: [...(body.face_ancestry?.[uuid] ?? [])] } : null
+  }
+  return null
 }
 
 /** Solve an extrude feature into the body store (mirrors `_solve_extrude`). */
@@ -118,10 +136,8 @@ export function solveExtrude(
   const profileErrors: string[] = []
   const profileQueries: string[] = []
   const unbuildableReasons: string[] = []
-  const faceNames: Record<string, string> = {}
-  const edgeNames: Record<string, string> = {}
-  const faceAncestry: Lineage = {}
-  const edgeAncestry: Lineage = {}
+  // The tool's construction names, keyed by the faces and edges of the tool.
+  const names = emptyShapeNames()
 
   for (const sketchRef of profileRefs) {
     let resolved
@@ -272,25 +288,47 @@ export function solveExtrude(
   if (usingFaces) {
     const faceNormalVec = profileNormal()
     const reverseVec = faceNormalVec.map((n) => -n) as Vec3
+    // The picked face's own name, when a body names it, seeds the tool: it goes
+    // on the prism cap copied from that face, rides every fuse and the up-to
+    // trim by their face history, and the neighbour pass below names the rest
+    // of the tool from it.
+    const seed = bodyFaceName(oc, scope, table, bodyStore, cqFaces[0])
+    if (seed !== null) names.faceAncestry[seed.uuid] = seed.ancestry
+    const prism = (face: OccShape, dir: Vec3, length: number, seeded: boolean): OccShape => {
+      const vec = scope.track(new oc.gp_Vec_4(dir[0] * length, dir[1] * length, dir[2] * length))
+      const builder = scope.track(new oc.BRepPrimAPI_MakePrism_1(face, vec, true, true)) as OccPrismBuilder
+      const cap = seeded && seed !== null ? builder.FirstShape?.() : undefined
+      if (cap !== undefined) names.faceNames.set(scope.track(cap) as OccSubShape, seed!.uuid)
+      return builder.Shape()
+    }
+    const fuse = (a: OccShape, b: OccShape): OccShape => {
+      const r = booleanWithHistory(oc, scope, a, b, 'fuse')
+      names.faceNames = carryFaceNames(r.faceOrigin, names.faceNames, names.faceNames)
+      return r.shape
+    }
     if (cutPlane !== null) {
       const nominal = (direction === 'reverse' ? reverseVec : faceNormalVec) as Vec3
       const dirVec = orientToTarget(cutPlane, faceCentroid(oc, scope, cqFaces[0]), nominal)
       const tool = fuseChain(
-        oc, scope,
-        scope.track(makePrism(oc, scope, cqFaces[0], dirVec, UP_TO_REACH)),
-        cqFaces.slice(1).map((f) => scope.track(makePrism(oc, scope, f, dirVec, UP_TO_REACH))),
+        scope,
+        scope.track(prism(cqFaces[0], dirVec, UP_TO_REACH, true)),
+        cqFaces.slice(1).map((f) => scope.track(prism(f, dirVec, UP_TO_REACH, false))),
+        fuse,
       )
       // The trim's Common consumes the over-length prism.
-      toolShape = scope.track(trimAtPlane(oc, scope, tool, cutPlane, dirVec))
+      const trimmed = trimAtPlane(oc, scope, tool, cutPlane, dirVec)
+      toolShape = scope.track(trimmed.shape)
+      names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
       scope.release(tool)
     } else if (direction === 'symmetric') {
       const half = distance / 2.0
       // Pair-first order preserved from the pre-disposal version: both halves
-      // of a face fuse together, then into the running tool.
+      // of a face fuse together, then into the running tool. Both halves' caps
+      // sit inside the pair, so neither is seeded.
       const halfPair = (f: OccShape): OccShape => {
-        const pos = scope.track(makePrism(oc, scope, f, faceNormalVec, half))
-        const neg = scope.track(makePrism(oc, scope, f, reverseVec, half))
-        const pair = scope.track(fuse(oc, scope, pos, neg))
+        const pos = scope.track(prism(f, faceNormalVec, half, false))
+        const neg = scope.track(prism(f, reverseVec, half, false))
+        const pair = scope.track(fuse(pos, neg))
         scope.release(pos)
         scope.release(neg)
         return pair
@@ -298,40 +336,24 @@ export function solveExtrude(
       let tool = scope.track(halfPair(cqFaces[0]))
       for (const f of cqFaces.slice(1)) {
         const pair = scope.track(halfPair(f))
-        const fused = scope.track(fuse(oc, scope, tool, pair))
+        const fused = scope.track(fuse(tool, pair))
         scope.release(tool)
         scope.release(pair)
         tool = fused
       }
       toolShape = tool
-    } else if (direction === 'reverse') {
-      toolShape = fuseChain(
-        oc, scope,
-        scope.track(makePrism(oc, scope, cqFaces[0], reverseVec, distance)),
-        cqFaces.slice(1).map((f) => scope.track(makePrism(oc, scope, f, reverseVec, distance))),
-      )
     } else {
+      const dir = direction === 'reverse' ? reverseVec : faceNormalVec
       toolShape = fuseChain(
-        oc, scope,
-        scope.track(makePrism(oc, scope, cqFaces[0], faceNormalVec, distance)),
-        cqFaces.slice(1).map((f) => scope.track(makePrism(oc, scope, f, faceNormalVec, distance))),
+        scope,
+        scope.track(prism(cqFaces[0], dir, distance, true)),
+        cqFaces.slice(1).map((f) => scope.track(prism(f, dir, distance, false))),
+        fuse,
       )
     }
-    // Seed face names from the source body so nameFacesFromNeighbours can
-    // propagate to the rest of the tool solid's faces.
-    const seedGh = faceGh(oc, scope, cqFaces[0])
-    for (const body of Object.values(bodyStore)) {
-      const fn = body.face_names
-      if (fn && seedGh in fn) {
-        faceNames[seedGh] = fn[seedGh]
-        const fa = body.face_ancestry
-        if (fa) faceAncestry[fn[seedGh]] = fa[fn[seedGh]] ?? []
-        break
-      }
-    }
-    const edgeResult = nameNeighboursAndDeriveEdges(oc, scope, toolShape, faceNames, faceAncestry)
-    Object.assign(edgeNames, edgeResult.edgeNames)
-    Object.assign(edgeAncestry, edgeResult.edgeAncestry)
+    const edgeResult = nameNeighboursAndDeriveEdges(oc, scope, toolShape, names.faceNames, names.faceAncestry)
+    names.edgeNames = edgeResult.edgeNames
+    Object.assign(names.edgeAncestry, edgeResult.edgeAncestry)
   } else {
     const normal = (firstPt?.normal as number[]) ?? [0, 0, 1]
     const [directionVec, effectiveDistance, effectivePlane] = resolveDirection(
@@ -363,17 +385,21 @@ export function solveExtrude(
     // becomes a body, and the leftover (an add/cut tool, a compound wrapper)
     // frees at dispose instead of living for the worker session.
     const swept = scope.track(lineage.solid)
+    mergeShapeNames(names, lineage)
     if (cutPlane !== null) {
-      // The trim's Common consumes the over-length sweep.
-      toolShape = scope.track(trimAtPlane(oc, scope, swept, cutPlane, sweepDir))
+      // The trim's Common consumes the over-length sweep. Its face history
+      // carries the sweep's names onto the trimmed faces, and the edges are
+      // derived again on the trimmed solid.
+      const trimmed = trimAtPlane(oc, scope, swept, cutPlane, sweepDir)
+      toolShape = scope.track(trimmed.shape)
       scope.release(swept)
+      names.faceNames = carryFaceNames(trimmed.faceOrigin, names.faceNames, null)
+      const edges = deriveEdgeNames(oc, scope, toolShape, names.faceNames, names.faceAncestry)
+      names.edgeNames = edges.edgeNames
+      Object.assign(names.edgeAncestry, edges.edgeAncestry)
     } else {
       toolShape = swept
     }
-    Object.assign(faceNames, lineage.faceNames)
-    Object.assign(edgeNames, lineage.edgeNames)
-    Object.assign(faceAncestry, lineage.faceAncestry)
-    Object.assign(edgeAncestry, lineage.edgeAncestry)
   }
 
   // Editing handle: blind extrudes expose a draggable distance arrow anchored
@@ -411,10 +437,10 @@ export function solveExtrude(
     sketchId: firstSketchId,
     opName: 'extrude',
     profileQueries,
-    faceNames,
-    edgeNames,
-    faceAncestry,
-    edgeAncestry,
+    faceNames: names.faceNames,
+    edgeNames: names.edgeNames,
+    faceAncestry: names.faceAncestry,
+    edgeAncestry: names.edgeAncestry,
   })
   Object.assign(result, opResult)
 

@@ -1,11 +1,9 @@
 // `_build_prism_lineage_map`, `extrude_profile_with_lineage`. This is the OCC
 // adapter the extrude/revolve/sweep leaves call to turn a built solid plus its
-// generating profile face into the per-face / per-edge lineage keyed by
-// copy-stable geometry hash.
+// generating profile face into the per-face / per-edge construction names,
+// keyed by the solid's own faces and edges (occ/bodyNames.ts).
 //
-// Lineage keying mirrors lineage-stable-keying.md: faces/edges are keyed by their geometry
-// hash, not the copy-fragile OCC subshape hash, so the tokens survive the shape copies the
-// build pipeline does. The profile-edge -> lateral face association comes from
+// The profile-edge -> lateral face association comes from
 // BRepPrimAPI_MakePrism.Generated() (the lineage sharp edge), drained via
 // Size/First_1/RemoveFirst like every other list in this build (no iterator binding).
 //
@@ -37,8 +35,10 @@ import {
   type Vec3,
 } from './primitives'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
-import { booleanWithHistory, cleanWithHistory, countSolids } from './booleans'
+import { booleanWithHistory, cleanWithHistory, composeOriginThroughClean, countSolids } from './booleans'
 import { FaceEdgeTable, nameFacesFromNeighbours } from './constructionLineage'
+import { canonicalFaces, carryFaceNames, emptyShapeNames, type ShapeNames } from './bodyNames'
+import { SubShapeMap } from './subshapeIdentity'
 import { mintFaceUuid, sideFacePath, capFacePath } from '../constructionName'
 import { sketchLoopsToFace, canonicalizeFaceCircles } from './prismProfile'
 import { entityForEdges, derivePrismEdgeNames } from './prismEdgeNaming'
@@ -49,17 +49,8 @@ export { sketchLoopsToFace, canonicalizeFaceCirclesWith } from './prismProfile'
 
 // ─── prism lineage ───
 
-/** The construction-name maps for a built solid (see LineageResult). */
-export interface LineageMaps {
-  faceNames: Record<string, string>  // faceGh -> face uuid
-  edgeNames: Record<string, string>  // edgeGh -> edge uuid
-  faceAncestry: Record<string, string[]>  // face uuid -> ancestral tokens
-  edgeAncestry: Record<string, string[]>  // edge uuid -> ancestral tokens
-}
-
-function emptyLineageMaps(): LineageMaps {
-  return { faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} }
-}
+/** The construction names for a built solid, keyed by its own faces and edges. */
+export type LineageMaps = ShapeNames
 
 /** A built solid plus its construction-name maps. */
 export type LineageResult = LineageMaps & { solid: OccShape }
@@ -104,19 +95,20 @@ function capGeneratedFaces(
  *
  * `caps` is [] unless exactly two such faces are found (a rotated cap, e.g. an
  * arc sweep, is deliberately not matched -- those builders still report their
- * caps). `capRoleGhs` is the face-gh set of EVERY planar face with the profile
- * face's area, named or not: the faces whose only legitimate names come from
- * the cap path. The caller passes it to the neighbour pass as a skip set, so a
- * cap the cap path could not reach (its builder omitted FirstShape/LastShape
- * and the probe found no translation pair) stays exactly as the old wire output
- * left it -- unnamed -- instead of being reclassified as a corner face.
+ * caps). `capRoles` is the set of EVERY planar face with the profile face's
+ * area, named or not: the faces whose only legitimate names come from the cap
+ * path. The caller passes it to the neighbour pass as a skip set, so a cap the
+ * cap path could not reach (its builder omitted FirstShape/LastShape and the
+ * probe found no translation pair) stays exactly as the old wire output left
+ * it -- unnamed -- instead of being reclassified as a corner face.
  */
 function geometricCapFaces(
   oc: OccModule,
   scope: DisposeScope,
   faces: FaceEdgeTable,
   occFace: OccShape,
-): { caps: { face: OccSubShape; which: 'start' | 'end' }[]; capRoleGhs: ReadonlySet<string> } {
+): { caps: { face: OccSubShape; which: 'start' | 'end' }[]; capRoles: SubShapeDedup } {
+  const capRoles = new SubShapeDedup()
   let pc: Vec3
   let pn: Vec3
   let pa: number
@@ -125,17 +117,16 @@ function geometricCapFaces(
     pn = faceNormal(oc, scope, occFace)
     pa = faceArea(oc, scope, occFace)
   } catch {
-    return { caps: [], capRoleGhs: new Set() }
+    return { caps: [], capRoles }
   }
   const candidates: { face: OccSubShape; d: number }[] = []
-  const capRoleGhs = new Set<string>()
   for (const row of faces.rows) {
     // A row whose centroid/normal read failed (undefined UV-midpoint normal) is
     // skipped exactly as the old per-face try/catch-continue over `solid` did.
-    if (row.gh === null) continue
-    const n = row.normal
-    const c = row.centroid
-    if (n === null || c === null) continue
+    const cn = faces.centroidNormal(row)
+    if (cn === null) continue
+    const n = cn.normal
+    const c = cn.centroid
     const a = faces.area(row)
     if (a === null) continue  // the area read failed -> same skip as the catch
     if (faces.surfaceType(row) !== 'flatface') continue
@@ -148,7 +139,7 @@ function geometricCapFaces(
     ]
     if (Math.hypot(cross[0], cross[1], cross[2]) > 1e-6) continue
     // Only after passing the parallel test, classify as a cap candidate.
-    capRoleGhs.add(row.gh)
+    capRoles.add(row.face)
     // The centroid offset is along the profile normal only (the sweep leaves no
     // in-plane shift), so (c - pc) - d*pn is zero.
     const d = (c[0] - pc[0]) * pn[0] + (c[1] - pc[1]) * pn[1] + (c[2] - pc[2]) * pn[2]
@@ -160,7 +151,7 @@ function geometricCapFaces(
     if (inPlane > 1e-6) continue
     candidates.push({ face: row.face as OccSubShape, d })
   }
-  if (candidates.length !== 2) return { caps: [], capRoleGhs }
+  if (candidates.length !== 2) return { caps: [], capRoles }
   // Sort by absolute distance so the cap coincident with the profile plane is
   // always `start`, regardless of which side the sweep extends toward.
   candidates.sort((x, y) => Math.abs(x.d) - Math.abs(y.d))
@@ -169,16 +160,15 @@ function geometricCapFaces(
       { face: candidates[0].face, which: 'start' },
       { face: candidates[1].face, which: 'end' },
     ],
-    capRoleGhs,
+    capRoles,
   }
 }
 
 /**
- * The construction-name maps for an extruded solid
- * (query-naming-by-construction.md). Internally builds a geom-hash-keyed
- * face/edge lineage (mirrors `_build_prism_lineage_map`) from the raw profile
- * entity ids, used only to seed each UUID's ancestral tokens (the caller
- * prepends `@sketch_id/`). When `createdBy` is non-empty, each side/cap face is
+ * The construction names for an extruded solid, keyed by its own faces and
+ * edges (query-naming-by-construction.md). Each face's raw profile entity id
+ * seeds its UUID's ancestral tokens (the caller prepends `@sketch_id/`). When
+ * `createdBy` is non-empty, each side/cap face is
  * minted a construction UUID (side = the generating profile entity, cap = the
  * FirstShape/LastShape role, or the profile-derived fallback when the builder
  * omits them), a face neither match reached is named off its named neighbours,
@@ -266,7 +256,7 @@ export function buildPrismLineageMap(
   // them (or they throw), the geometric fallback derives the two caps from the
   // profile face itself so a cap's identity never depends on builder reporting.
   const capCandidates = createdBy ? capGeneratedFaces(oc, scope, prismBuilder) : []
-  let capRoleGhs: ReadonlySet<string> | undefined
+  let capRoles: SubShapeDedup | undefined
   if (createdBy && capCandidates.length < 2) {
     const geo = geometricCapFaces(oc, scope, faces, occFace)
     // Seed with the builder's own caps so the geometric fallback neither
@@ -279,25 +269,15 @@ export function buildPrismLineageMap(
     // A cap-role face the cap path could not reach must stay exactly as the old
     // wire output left it (unnamed): the neighbour pass must not reclassify a
     // cap as a corner face, which would change every fixture's ancestry.
-    capRoleGhs = geo.capRoleGhs
+    capRoles = geo.capRoles
   }
 
-  // solid face -> tokens + construction uuid, keyed by geometry hash. Also track
-  // each face's uuid and, per edge, its geom hash + the adjacent face ghs.
-  const faceLineage: Record<string, string[]> = {}
-  const faceNames: Record<string, string> = {}
+  // solid face -> construction uuid, its tokens the generating profile entity.
+  const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
-  const adjacency: Record<string, Set<string>> = {}  // edge gh -> set of adjacent face gh
-  const edgeShapes: Record<string, OccShape> = {}  // edge gh -> a representative edge
   for (const row of faces.rows) {
-    // Same fail-loud rule as the naming passes: the direct faceGh call sat at
-    // the top of every face iteration, and rows are explorer order, so the
-    // throw lands on the same face at the same point as before.
-    if (row.gh === null) throw row.ghError
-    const gh = row.gh
     const sf = row.face
     const match = genIdx.get(sf)[0]
-    faceLineage[gh] = match !== undefined ? [match.eid] : []
     if (createdBy) {
       let uuid: string | null = null
       if (match !== undefined) {
@@ -310,13 +290,9 @@ export function buildPrismLineageMap(
         if (cap) uuid = mintFaceUuid(capFacePath(createdBy, cap.which, groupIndex))
       }
       if (uuid !== null) {
-        faceNames[gh] = uuid
-        faceAncestry[uuid] = [...faceLineage[gh]]
+        faceNames.set(sf, uuid)
+        faceAncestry[uuid] = match !== undefined ? [match.eid] : []
       }
-    }
-    for (const { egh, edge } of row.edges) {
-      ;(adjacency[egh] ??= new Set()).add(gh)
-      edgeShapes[egh] ??= edge
     }
   }
 
@@ -327,12 +303,12 @@ export function buildPrismLineageMap(
   // edge named. Cap-role faces are skipped: their only legitimate name comes
   // from the cap path, and a cap the path could not reach stays unnamed so the
   // output stays byte-identical to the pre-neighbour-pass wire.
-  nameFacesFromNeighbours(oc, scope, faces, faceNames, faceAncestry, capRoleGhs)
+  nameFacesFromNeighbours(oc, scope, faces, faceNames, faceAncestry, capRoles)
 
   // solid edge -> construction uuid, derived from its two adjacent face uuids.
   const { edgeNames, edgeAncestry } = createdBy
-    ? derivePrismEdgeNames(oc, scope, solid, adjacency, faceNames, faceAncestry, edgeShapes, createdBy)
-    : { edgeNames: {}, edgeAncestry: {} }
+    ? derivePrismEdgeNames(oc, scope, faces, faceNames, faceAncestry, createdBy)
+    : { edgeNames: new SubShapeMap<string>(), edgeAncestry: {} }
 
   scope.release(solid)
   return { faceNames, edgeNames, faceAncestry, edgeAncestry }
@@ -475,7 +451,7 @@ function tryCanonicalMergedProfile(
 
 /**
  * Prism a single profile face, then attach the per-profile-edge lineage keyed
- * by geometry hash. `lineageLoops` is the set of profile loops whose entity ids
+ * by sub-shape identity. `lineageLoops` is the set of profile loops whose entity ids
  * the merged face's edges will be matched against (flat across groups for the
  * pre-prism-union path, the per-group loops for the single-group path).
  */
@@ -517,6 +493,62 @@ function prismFaceWithLineage(
 }
 
 /**
+ * Fuse named parts into one solid, one part at a time, carrying the face names
+ * through each fuse's history and through a final clean (`carryFaceNames`).
+ * Ancestry maps are merged; edges are derived once, on the finished solid,
+ * from its face adjacency. Every intermediate solid is released as soon as the
+ * next one replaces it; `finish` hands the survivor over untracked.
+ */
+function namedFuse(oc: OccModule, scope: DisposeScope) {
+  let solid: OccShape | null = null
+  const names = emptyShapeNames()
+  return {
+    // `part` must be tracked in `scope`; it is consumed by the next fuse.
+    add(part: OccShape, lineage: LineageMaps): void {
+      Object.assign(names.faceAncestry, lineage.faceAncestry)
+      Object.assign(names.edgeAncestry, lineage.edgeAncestry)
+      if (solid === null) {
+        solid = part
+        names.faceNames = new SubShapeMap(lineage.faceNames)
+        return
+      }
+      const res = booleanWithHistory(oc, scope, solid, part, 'fuse')
+      const fused = scope.track(res.shape)
+      names.faceNames = carryFaceNames(res.faceOrigin, names.faceNames, lineage.faceNames)
+      scope.release(solid)  // the previous running solid is consumed by the fuse
+      solid = fused
+    },
+    // `clean` folds coplanar caps and cocylindrical walls; a clean that rejects
+    // the shape (a disjoint multi-solid compound, occasionally) keeps it raw.
+    finish(clean: boolean, emptyMessage: string): LineageResult {
+      if (solid === null) throw new Error(emptyMessage)
+      let out: OccShape = solid
+      if (clean) {
+        try {
+          const r = cleanWithHistory(oc, scope, out)
+          const cleaned = scope.track(r.shape)
+          const passThrough = canonicalFaces(oc, scope, out).map((f) => ({ output: f, source: f, fromTool: false }))
+          names.faceNames = carryFaceNames(
+            composeOriginThroughClean(oc, scope, passThrough, r.history, cleaned), names.faceNames, null,
+          )
+          scope.release(out)  // the previous running solid is consumed by the clean
+          out = cleaned
+        } catch {
+          // kept raw solid -- segmentation faces survive but the volume is intact.
+        }
+      }
+      // The prism pass, so an edge's ancestry tokens keep the order every
+      // single-group prism gives them.
+      const table = FaceEdgeTable.read(oc, scope, out)
+      const { edgeNames, edgeAncestry } = derivePrismEdgeNames(oc, scope, table, names.faceNames, names.faceAncestry, '', false)
+      names.edgeNames = edgeNames
+      Object.assign(names.edgeAncestry, edgeAncestry)
+      return { solid: scope.detach(out), ...names }
+    },
+  }
+}
+
+/**
  * Legacy per-group prism + fuse path (the fallback for a multi-group extrude
  * whose planar profile union cannot be safely reconstructed). Each group's
  * loops become one prism, prisms are fused, and the fused solid is cleaned
@@ -535,8 +567,7 @@ function perGroupPrismWithLineage(
   createdBy: string,
   sketchId: string,
 ): LineageResult {
-  let solid: OccShape | null = null
-  const merged = emptyLineageMaps()
+  const fuse = namedFuse(oc, scope)
 
   for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
     const [outer, holes] = groups[groupIdx]
@@ -565,38 +596,15 @@ function perGroupPrismWithLineage(
     prefixLineageMaps(lineage, tokenPrefix)
     // The profile face is dead once the lineage has been read off it.
     scope.release(face)
-    Object.assign(merged.faceNames, lineage.faceNames)
-    Object.assign(merged.edgeNames, lineage.edgeNames)
-    Object.assign(merged.faceAncestry, lineage.faceAncestry)
-    Object.assign(merged.edgeAncestry, lineage.edgeAncestry)
-
-    if (solid === null) {
-      solid = part
-    } else {
-      const fused: OccShape = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
-      scope.track(fused)
-      scope.release(solid)  // the previous running solid is consumed by the fuse
-      solid = fused
-    }
+    fuse.add(part, lineage)
   }
 
-  if (solid === null) throw new Error('no loops to extrude')
-  if (groups.length > 1) {
-    // cleanWithHistory collapses the per-region coplanar caps into one each
-    // and the cocylindrical walls into one.  On a disjoint multi-solid
-    // compound (the fallback path here) UnifySameDomain can occasionally
-    // reject the compound; keep the un-merged raw_solid in that rare case
-    // rather than crash the feature -- the caller side splits multi-solids.
-    try {
-      const cleaned = cleanWithHistory(oc, scope, solid).shape
-      scope.track(cleaned)
-      scope.release(solid)  // the previous running solid is consumed by the clean
-      solid = cleaned
-    } catch {
-      // kept raw solid -- segmentation faces survive but the volume is intact.
-    }
-  }
-  return { solid: scope.detach(solid), ...merged }
+  // The clean collapses the per-region coplanar caps into one each and the
+  // cocylindrical walls into one. On a disjoint multi-solid compound (the
+  // fallback path here) UnifySameDomain can occasionally reject the compound;
+  // the un-merged raw solid is kept in that rare case rather than crash the
+  // feature -- the caller side splits multi-solids.
+  return fuse.finish(groups.length > 1, 'no loops to extrude')
 }
 
 /**
@@ -730,8 +738,7 @@ export function revolveProfileWithLineage(
   // the caller splits them into separate bodies. Adjacent groups (an area an
   // edit cut in two) fuse into one solid; the clean folds their coplanar seam
   // faces, and a clean that rejects the compound keeps the raw fused solid.
-  let solid: OccShape | null = null
-  const merged = emptyLineageMaps()
+  const fuse = namedFuse(oc, scope)
   for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
     const [outer, holes] = groups[groupIdx]
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
@@ -747,30 +754,9 @@ export function revolveProfileWithLineage(
     prefixLineageMaps(lineage, tokenPrefix)
     // The profile face is dead once the lineage has been read off it.
     scope.release(face)
-    Object.assign(merged.faceNames, lineage.faceNames)
-    Object.assign(merged.edgeNames, lineage.edgeNames)
-    Object.assign(merged.faceAncestry, lineage.faceAncestry)
-    Object.assign(merged.edgeAncestry, lineage.edgeAncestry)
-
-    if (solid === null) {
-      solid = part
-    } else {
-      const fused: OccShape = booleanWithHistory(oc, scope, solid, part, 'fuse').shape
-      scope.track(fused)
-      scope.release(solid)  // the previous running solid is consumed by the fuse
-      solid = fused
-    }
+    fuse.add(part, lineage)
   }
-  if (solid === null) throw new Error('no loops to revolve')
-  try {
-    const cleaned = cleanWithHistory(oc, scope, solid).shape
-    scope.track(cleaned)
-    scope.release(solid)  // the previous running solid is consumed by the clean
-    solid = cleaned
-  } catch {
-    // kept raw fused solid -- segmentation faces survive but the volume is intact.
-  }
-  return { solid: scope.detach(solid), ...merged }
+  return fuse.finish(true, 'no loops to revolve')
 }
 
 // ─── sweep (the sweep leaf's brep producer) ───

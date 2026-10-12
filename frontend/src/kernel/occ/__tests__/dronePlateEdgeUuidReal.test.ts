@@ -40,11 +40,11 @@ import { DisposeScope } from '../disposeScope'
 import { HandleTable } from '../handleTable'
 import { extrudeProfileWithLineage } from '../prismLineage'
 import { solidToEdges } from '../tessellation'
-import { faceGh } from '../lineageHash'
+import { canonicalEdges, namesToArray } from '../bodyNames'
 import { faceNormal } from '../primitives'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
-import type { OccShape } from '../occTypes'
+import type { OccShape, OccSubShape } from '../occTypes'
 
 const oc = await loadOcc()
 const XY: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
@@ -92,12 +92,13 @@ function coverage(loops: LoopEdge[][]): Coverage {
     for (; fexp.More(); fexp.Next()) {
       const f = scope.track(oc!.TopoDS.Face_1(fexp.Current()))
       const n = faceNormal(oc!, scope, f)
-      if (Math.abs(n[2]) < 0.5 && !res.faceNames[faceGh(oc!, scope, f)]) unnamedSideFaces++
+      if (Math.abs(n[2]) < 0.5 && !res.faceNames.get(f as OccSubShape)) unnamedSideFaces++
     }
     const handle = table.register(res.solid)
     const eres = solidToEdges(oc!, table, handle, {
       createdBy: 'ex1', bodyId: 'body_ex1',
-      edgeAncestry: res.edgeAncestry, edgeNames: res.edgeNames, profileQueries: [],
+      edgeAncestry: res.edgeAncestry, profileQueries: [],
+      edgeUuids: namesToArray(canonicalEdges(oc!, scope, res.solid as OccShape), res.edgeNames),
     })
     const vertical = eres.edges.map((ed) => {
       const e = ed as unknown as { start?: number[]; end?: number[] }

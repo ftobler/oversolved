@@ -11,7 +11,6 @@ import { HandleTable } from '../handleTable'
 import { buildBox, buildCylinder, buildExtrudedProfile, buildProfileExtrude, type EdgeSpec } from '../shapes'
 import { solidToMesh, solidToEdges, solidToVertices, type TessMesh, type FaceDatum } from '../tessellation'
 import { parseAncestry } from '../../query'
-import { edgeGeometryHash } from '../../geomHash'
 import type { OccModule } from '../occTypes'
 import type { OccHandle } from '../handleTable'
 import type { Vec3 } from '../primitives'
@@ -252,19 +251,18 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     const table = new HandleTable()
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
     try {
-      const base = solidToEdges(occ, table, h, { createdBy: 'ex1', bodyId: 'body_ex1' })
-      const edgeNames: Record<string, string> = {}
+      // One uuid per canonical edge; the first call reports which one the
+      // first displayed edge carries, and that one gets the empty list.
+      const edgeUuids = Array.from({ length: 12 }, (_, i) => `u_${i}`)
+      const base = solidToEdges(occ, table, h, { createdBy: 'ex1', bodyId: 'body_ex1', edgeUuids })
       const edgeAncestry: Record<string, string[]> = {}
-      base.edges.forEach((ed, idx) => {
-        const gh = edgeGeometryHash(ed as unknown as Record<string, unknown>)
-        const uuid = idx === 0 ? 'u_empty' : 'u_' + idx
-        edgeNames[gh] = uuid
-        edgeAncestry[uuid] = idx === 0 ? [] : ['@sk1/bottom']
+      base.edge_uuids.forEach((uuid, idx) => {
+        edgeAncestry[uuid!] = idx === 0 ? [] : ['@sk1/bottom']
       })
       const out = solidToEdges(occ, table, h, {
         createdBy: 'ex1',
         bodyId: 'body_ex1',
-        edgeNames,
+        edgeUuids,
         edgeAncestry,
         profileQueries: ['@sk1/bottom', '@sk1/top'],
       })

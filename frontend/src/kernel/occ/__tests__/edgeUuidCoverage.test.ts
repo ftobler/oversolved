@@ -21,7 +21,8 @@ import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import { makeBox, makeCylinder } from '../primitives'
 import { deriveEdgeNames, nameFacesFromNeighbours } from '../constructionLineage'
-import { faceGh, edgeGh } from '../lineageHash'
+import { canonicalEdges, canonicalFaces } from '../bodyNames'
+import { SubShapeMap } from '../subshapeIdentity'
 import type { OccShape } from '../occTypes'
 import { SharedHarness } from '../sharedHarness'
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
@@ -32,28 +33,17 @@ const oc = await loadOcc()
 const solveBytes = loadSolver()
 
 function nameAllFaces(scope: DisposeScope, shape: OccShape) {
-  const E = oc!.TopAbs_ShapeEnum
-  const faceNames: Record<string, string> = {}
+  const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
-  const exp = scope.track(new oc!.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  let i = 0
-  for (; exp.More(); exp.Next()) {
-    const face = scope.track(oc!.TopoDS.Face_1(exp.Current()))
-    const gh = faceGh(oc!, scope, face)
-    if (!(gh in faceNames)) { faceNames[gh] = `u_face${i++}`; faceAncestry[faceNames[gh]] = [`@anc${i}`] }
-  }
+  canonicalFaces(oc!, scope, shape).forEach((face, i) => {
+    faceNames.set(face, `u_face${i}`)
+    faceAncestry[`u_face${i}`] = [`@anc${i + 1}`]
+  })
   return { faceNames, faceAncestry }
 }
 
-function edgeGhs(scope: DisposeScope, shape: OccShape): string[] {
-  const E = oc!.TopAbs_ShapeEnum
-  const ghs = new Set<string>()
-  const exp = scope.track(new oc!.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-  for (; exp.More(); exp.Next()) {
-    const gh = edgeGh(oc!, scope, scope.track(oc!.TopoDS.Edge_1(exp.Current())))
-    if (gh) ghs.add(gh)
-  }
-  return [...ghs]
+function edgesOf(scope: DisposeScope, shape: OccShape) {
+  return canonicalEdges(oc!, scope, shape)
 }
 
 describe.skipIf(!oc)('edge UUID coverage', () => {
@@ -63,7 +53,7 @@ describe.skipIf(!oc)('edge UUID coverage', () => {
       const box = makeBox(oc!, scope, 10, 10, 10)
       const { faceNames, faceAncestry } = nameAllFaces(scope, box)
       const { edgeNames } = deriveEdgeNames(oc!, scope, box, faceNames, faceAncestry)
-      for (const g of edgeGhs(scope, box)) expect(edgeNames[g]).toBeDefined()
+      for (const g of edgesOf(scope, box)) expect(edgeNames.get(g)).toBeDefined()
     } finally { scope.dispose() }
   })
 
@@ -73,15 +63,15 @@ describe.skipIf(!oc)('edge UUID coverage', () => {
       const cyl = makeCylinder(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
       const { faceNames, faceAncestry } = nameAllFaces(scope, cyl)
       const { edgeNames, edgeAncestry } = deriveEdgeNames(oc!, scope, cyl, faceNames, faceAncestry)
-      const ghs = edgeGhs(scope, cyl)
-      expect(ghs.length).toBeGreaterThan(0)
-      for (const g of ghs) {
-        expect(edgeNames[g]).toBeDefined()
+      const edges = edgesOf(scope, cyl)
+      expect(edges.length).toBeGreaterThan(0)
+      for (const g of edges) {
+        expect(edgeNames.get(g)).toBeDefined()
         // ancestry present so a stale UUID still resolves via the ancestral tier
-        expect(edgeAncestry[edgeNames[g]]).toBeDefined()
+        expect(edgeAncestry[edgeNames.get(g)!]).toBeDefined()
       }
       // seam edge uses the seam derivation (e_ prefix, single-face path)
-      expect(Object.values(edgeNames).every(u => u.startsWith('e_'))).toBe(true)
+      expect([...edgeNames.values()].every(u => u.startsWith('e_'))).toBe(true)
     } finally { scope.dispose() }
   })
 
@@ -96,27 +86,27 @@ describe.skipIf(!oc)('edge UUID coverage', () => {
     try {
       const box = makeBox(oc!, scope, 10, 10, 10)
       const { faceNames, faceAncestry } = nameAllFaces(scope, box)
-      const orphan = Object.keys(faceNames)[0]
-      const kept = { ...faceNames }
-      delete faceNames[orphan]
-      delete faceAncestry[kept[orphan]]
+      const orphan = canonicalFaces(oc!, scope, box)[0]
+      const lost = faceNames.get(orphan)!
+      faceNames.delete(orphan)
+      delete faceAncestry[lost]
 
       const before = deriveEdgeNames(oc!, scope, box, faceNames, faceAncestry).edgeNames
 
       nameFacesFromNeighbours(oc!, scope, box, faceNames, faceAncestry)
-      expect(faceNames[orphan]).toBeDefined()
-      expect(faceNames[orphan]).not.toBe(kept[orphan])  // its own identity, not the lost one
+      expect(faceNames.get(orphan)).toBeDefined()
+      expect(faceNames.get(orphan)).not.toBe(lost)  // its own identity, not the lost one
       // Ancestry is inherited from the neighbours, so a stale UUID still lands
       // in the right lineage.
-      expect(faceAncestry[faceNames[orphan]].length).toBeGreaterThan(0)
+      expect(faceAncestry[faceNames.get(orphan)!].length).toBeGreaterThan(0)
 
       const after = deriveEdgeNames(oc!, scope, box, faceNames, faceAncestry).edgeNames
-      const ghs = edgeGhs(scope, box)
-      for (const g of ghs) expect(after[g]).toBeDefined()
-      expect(new Set(Object.values(after)).size).toBe(ghs.length)
+      const edges = edgesOf(scope, box)
+      for (const g of edges) expect(after.get(g)).toBeDefined()
+      expect(new Set(after.values()).size).toBe(edges.length)
       // The 4 edges bounding the orphan were deriving from ONE face (the seam
       // path, ordered by multiplicity); now they derive from a real face pair.
-      expect(ghs.filter((g) => after[g] !== before[g]).length).toBe(4)
+      expect(edges.filter((g) => after.get(g) !== before.get(g)).length).toBe(4)
     } finally { scope.dispose() }
   })
 
@@ -124,10 +114,10 @@ describe.skipIf(!oc)('edge UUID coverage', () => {
     const scope = new DisposeScope()
     try {
       const box = makeBox(oc!, scope, 10, 10, 10)
-      const faceNames: Record<string, string> = {}
+      const faceNames = new SubShapeMap<string>()
       const faceAncestry: Record<string, string[]> = {}
       nameFacesFromNeighbours(oc!, scope, box, faceNames, faceAncestry)
-      expect(faceNames).toEqual({})
+      expect(faceNames.size).toBe(0)
     } finally { scope.dispose() }
   })
 
@@ -136,12 +126,14 @@ describe.skipIf(!oc)('edge UUID coverage', () => {
     try {
       const box = makeBox(oc!, scope, 10, 10, 10)
       const { faceNames, faceAncestry } = nameAllFaces(scope, box)
-      const namesBefore = { ...faceNames }
+      const faces = canonicalFaces(oc!, scope, box)
+      const namesBefore = faces.map((f) => faceNames.get(f))
       const ancestryBefore = { ...faceAncestry }
       nameFacesFromNeighbours(oc!, scope, box, faceNames, faceAncestry)
       // Every producer-minted UUID and its ancestry survive the pass untouched;
       // the pass only ever ADDS names for faces that had none.
-      expect(faceNames).toEqual(namesBefore)
+      expect(faces.map((f) => faceNames.get(f))).toEqual(namesBefore)
+      expect(faceNames.size).toBe(faces.length)
       expect(faceAncestry).toEqual(ancestryBefore)
     } finally { scope.dispose() }
   })
@@ -155,7 +147,7 @@ describe.skipIf(!oc)('edge UUID coverage', () => {
       const n2 = nameAllFaces(s2, c2)
       const e1 = deriveEdgeNames(oc!, s1, c1, n1.faceNames, n1.faceAncestry).edgeNames
       const e2 = deriveEdgeNames(oc!, s2, c2, n2.faceNames, n2.faceAncestry).edgeNames
-      expect(new Set(Object.values(e1))).toEqual(new Set(Object.values(e2)))
+      expect(new Set(e1.values())).toEqual(new Set(e2.values()))
     } finally { s1.dispose(); s2.dispose() }
   })
 })

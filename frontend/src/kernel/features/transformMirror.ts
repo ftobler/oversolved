@@ -18,6 +18,7 @@ import { booleanWithDiff } from '../occ/booleans'
 import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
+import { readBodyNames } from '../occ/bodyNames'
 
 type Dict = Record<string, unknown>
 
@@ -173,12 +174,7 @@ export function solveTransform(
   let consumedReplace: string | null = null  // a source the replace resplit deleted (defensive)
   sources.forEach(({ body: sourceBody, shape: sourceHandle }, index) => {
     const sourceShape = table.get<OccShape>(sourceHandle)
-    const sourceNames: NameMaps = {
-      faceNames: sourceBody.face_names ?? {},
-      faceAncestry: sourceBody.face_ancestry ?? {},
-      edgeNames: sourceBody.edge_names ?? {},
-      edgeAncestry: sourceBody.edge_ancestry ?? {},
-    }
+    const sourceNames: NameMaps = readBodyNames(oc, scope, sourceShape, sourceBody)
     // One transform copy per source body, so there is nothing per-instance to
     // hoist: the source rows are read once here, per body (M37 Change 2a).
     const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
@@ -186,14 +182,10 @@ export function solveTransform(
 
     if (operation === 'replace') {
       const names = rekeyNamesForTransformedBody(oc, scope, newShape, sourceShape, sourceNames, builder)
-      sourceBody.face_names = names.faceNames
-      sourceBody.face_ancestry = names.faceAncestry
-      sourceBody.edge_names = names.edgeNames
-      sourceBody.edge_ancestry = names.edgeAncestry
       // A rigid transform cannot disconnect a body, but a non-uniform scale is in
       // the same composed Trsf, so this goes through the one path anyway rather
       // than resting on that argument.
-      const ids = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(newShape), featureId)
+      const ids = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(newShape), featureId, names)
       if (ids.length === 0) {
         // Defensive: a transform copy cannot consume its source, but if the
         // resplit ever deleted it there is nothing to register here; the
@@ -275,12 +267,7 @@ export function solveMirror(
   const merge = (cfg.merge as boolean) ?? true
 
   const sourceShape = table.get<OccShape>(sourceBody.shape)
-  const sourceNames: NameMaps = {
-    faceNames: sourceBody.face_names ?? {},
-    faceAncestry: sourceBody.face_ancestry ?? {},
-    edgeNames: sourceBody.edge_names ?? {},
-    edgeAncestry: sourceBody.edge_ancestry ?? {},
-  }
+  const sourceNames: NameMaps = readBodyNames(oc, scope, sourceShape, sourceBody)
   // One mirror copy of one source body: no per-instance repetition, so the rows
   // are simply read once here (M37 Change 2a).
   const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
@@ -297,11 +284,7 @@ export function solveMirror(
     : rebuildNamesForTransformedCopy(oc, scope, mirrored, rows, featureId, 0, builder)
 
   if (!keepOriginal) {
-    sourceBody.face_names = mirroredNames.faceNames
-    sourceBody.face_ancestry = mirroredNames.faceAncestry
-    sourceBody.edge_names = mirroredNames.edgeNames
-    sourceBody.edge_ancestry = mirroredNames.edgeAncestry
-    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(mirrored), featureId)
+    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(mirrored), featureId, mirroredNames)
     if (bodyIds.length === 0) {
       // Defensive: mirroring cannot consume a body, but if the resplit ever
       // deleted it, body_ids must not name a live id for a body that is gone.
@@ -329,13 +312,9 @@ export function solveMirror(
       // The mirrored copy already carries per-instance UUIDs, so nothing collides.
       toolUuidScope: null,
     })
-    sourceBody.face_names = names.face_names
-    sourceBody.face_ancestry = names.face_ancestry
-    sourceBody.edge_names = names.edge_names
-    sourceBody.edge_ancestry = names.edge_ancestry
     // "merge" is a fuse, and a body mirrored across a plane it does not reach
     // fuses into two disjoint solids: two parts, not one merged part.
-    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(res.shape), featureId)
+    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(res.shape), featureId, names)
     if (bodyIds.length === 0) {
       // Defensive: a fuse of a body with its mirror cannot consume it, but if
       // the resplit ever deleted it, report the deletion rather than a live id.

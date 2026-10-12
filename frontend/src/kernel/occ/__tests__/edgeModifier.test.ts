@@ -16,8 +16,8 @@ import { DisposeScope, drainList } from '../disposeScope'
 import { extractNames, applyChamferWithDiff, type NewNames, type OldNames } from '../edgeModifier'
 import { emptyBrepDiff } from '../../types3d'
 import { mintFaceUuid, splitFacePath, filletFacePath } from '../../constructionName'
-import { faceGh, edgeGh } from '../lineageHash'
 import { SubShapeIndexMap } from '../primitives'
+import { SubShapeMap } from '../subshapeIdentity'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker } from '../occTypes'
 
 type Vec3 = [number, number, number]
@@ -188,13 +188,13 @@ function run(oldFaces: OccShape[], newFace: OccShape, uuids: string[], maker = m
   const scope = new DisposeScope()
   const old: OldNames = {
     createdBy: 'fillet1',
-    faceNames: {},
-    edgeNames: {},
+    faceNames: new SubShapeMap(),
+    edgeNames: new SubShapeMap(),
     faceAncestry: {},
     edgeAncestry: {},
   }
   oldFaces.forEach((f, i) => {
-    old.faceNames[faceGh(oc, scope, f)] = uuids[i]
+    old.faceNames.set(f as OccSubShape, uuids[i])
     old.faceAncestry[uuids[i]] = ['extrude1']
   })
   // Mirror applyEdgeModifier's shared Modified() drain: one drain per old face,
@@ -223,8 +223,7 @@ describe('extractNames face-merge collision', () => {
   it('assigns the name when one face modifies to one output', () => {
     const merged = makeFace([0, 0, 0], [0, 0, 1])
     const res = run([makeFace([-1, -1, 0], [0, 0, 1])], merged, ['uuid_A'])
-    const key = faceGh(makeOcc(), new DisposeScope(), merged)
-    expect(res.faceNames[key]).toBe('uuid_A')
+    expect(res.faceNames.get(merged as OccSubShape)).toBe('uuid_A')
     expect(res.faceAncestry['uuid_A']).toEqual(['extrude1'])
   })
 
@@ -235,7 +234,7 @@ describe('extractNames face-merge collision', () => {
       merged,
       ['uuid_A', 'uuid_B'],
     )
-    expect(Object.keys(res.faceNames)).toHaveLength(0)
+    expect(res.faceNames.size).toBe(0)
     expect(Object.keys(res.faceAncestry)).toHaveLength(0)
   })
 
@@ -250,10 +249,9 @@ describe('extractNames face-merge collision', () => {
       merged,
       ['uuid_A', 'uuid_B', 'uuid_C'],
     )
-    const key = faceGh(makeOcc(), new DisposeScope(), merged)
-    expect(res.faceNames[key]).toBeUndefined()
+    expect(res.faceNames.get(merged as OccSubShape)).toBeUndefined()
     expect(res.faceAncestry['uuid_C']).toBeUndefined()
-    expect(Object.keys(res.faceNames)).toHaveLength(0)
+    expect(res.faceNames.size).toBe(0)
   })
 
   it('keeps a named face when the IsDeleted probe throws', () => {
@@ -266,8 +264,7 @@ describe('extractNames face-merge collision', () => {
       throw new Error('history unavailable')
     }
     const res = run([makeFace([-1, -1, 0], [0, 0, 1])], merged, ['uuid_A'], maker)
-    const key = faceGh(makeOcc(), new DisposeScope(), merged)
-    expect(res.faceNames[key]).toBe('uuid_A')
+    expect(res.faceNames.get(merged as OccSubShape)).toBe('uuid_A')
     expect(res.faceAncestry['uuid_A']).toEqual(['extrude1'])
   })
 })
@@ -280,23 +277,28 @@ function runExtract(opts: {
   oc: OccModule
   maker: OccEdgeModifierMaker
   oldFaces: OccShape[]
-  oldFaceNames: Record<string, string>
+  oldFaceNames: [OccShape, string][]
   newShapeFaces: OccShape[]
   newFaces: OccShape[]
   modifiedEdges?: OccShape[]
-  oldEdgeNames?: Record<string, string>
+  oldEdgeNames?: [OccShape, string][]
 }): NewNames {
   const scope = new DisposeScope()
   try {
+    const mapOf = (pairs: [OccShape, string][]): SubShapeMap<string> => {
+      const m = new SubShapeMap<string>()
+      for (const [s, uuid] of pairs) m.set(s as OccSubShape, uuid)
+      return m
+    }
     const old: OldNames = {
       createdBy: 'fillet1',
-      faceNames: { ...opts.oldFaceNames },
-      edgeNames: { ...(opts.oldEdgeNames ?? {}) },
+      faceNames: mapOf(opts.oldFaceNames),
+      edgeNames: mapOf(opts.oldEdgeNames ?? []),
       faceAncestry: {},
       edgeAncestry: {},
     }
-    for (const uuid of Object.values(opts.oldFaceNames)) old.faceAncestry[uuid] = ['extrude1']
-    for (const uuid of Object.values(opts.oldEdgeNames ?? {})) old.edgeAncestry[uuid] = ['extrude1']
+    for (const [, uuid] of opts.oldFaceNames) old.faceAncestry[uuid] = ['extrude1']
+    for (const [, uuid] of opts.oldEdgeNames ?? []) old.edgeAncestry[uuid] = ['extrude1']
     const oldFaceIdx = new SubShapeIndexMap()
     opts.oldFaces.forEach((f, i) => oldFaceIdx.set(f as OccSubShape, i))
     const oldFaceModified = new Map<number, OccShape[]>()
@@ -326,7 +328,6 @@ describe('extractNames split children / orphan image / generated failure', () =>
     // a distinct, position-ordered UUID: a shared one would collide, and the
     // ancestral fallback would drop the face picks entirely.
     const oc = makeOcc()
-    const scope = new DisposeScope()
     const parent = makeFace([0, 0, 0], [0, 0, 1], 4)
     const childA = makeFace([-1, 0, 0], [0, 0, 1])
     const childB = makeFace([1, 0, 0], [0, 0, 1])
@@ -338,7 +339,7 @@ describe('extractNames split children / orphan image / generated failure', () =>
       oc,
       maker,
       oldFaces: [parent],
-      oldFaceNames: { [faceGh(oc, scope, parent)]: 'uuid_P' },
+      oldFaceNames: [[parent, 'uuid_P']],
       newShapeFaces: [childA, childB],
       newFaces: [childA, childB],
     })
@@ -348,16 +349,15 @@ describe('extractNames split children / orphan image / generated failure', () =>
       mintFaceUuid(splitFacePath('uuid_P', 0)),
       mintFaceUuid(splitFacePath('uuid_P', 1)),
     ]
-    expect(new Set(Object.values(res.faceNames))).toEqual(new Set(expected))
+    expect(new Set(res.faceNames.values())).toEqual(new Set(expected))
     for (const uuid of expected) expect(res.faceAncestry[uuid]).toEqual(['extrude1'])
   })
 
-  it('hashes a Modified() image with no built-solid twin as itself, keeping the name', () => {
+  it('keys a Modified() image with no built-solid twin as itself, keeping the name', () => {
     // BRepFilletAPI can hand back a Modified() image the built solid does not
-    // expose (an orientation/identity mismatch). Its geometry hash must still
-    // carry the UUID rather than silently dropping the face.
+    // expose (an orientation/identity mismatch). The image itself must still
+    // carry the UUID rather than the transfer silently dropping the face.
     const oc = makeOcc()
-    const scope = new DisposeScope()
     const oldF = makeFace([-1, -1, 0], [0, 0, 1])
     const twin = makeFace([5, 5, 0], [0, 0, 1])
     const orphan = makeFace([9, 9, 0], [0, 0, 1])
@@ -365,11 +365,11 @@ describe('extractNames split children / orphan image / generated failure', () =>
       oc,
       maker: makeMaker(orphan),
       oldFaces: [oldF],
-      oldFaceNames: { [faceGh(oc, scope, oldF)]: 'uuid_A' },
+      oldFaceNames: [[oldF, 'uuid_A']],
       newShapeFaces: [twin],
       newFaces: [twin],
     })
-    expect(res.faceNames[faceGh(oc, scope, orphan)]).toBe('uuid_A')
+    expect(res.faceNames.get(orphan as OccSubShape)).toBe('uuid_A')
     expect(res.faceAncestry['uuid_A']).toEqual(['extrude1'])
   })
 
@@ -378,12 +378,9 @@ describe('extractNames split children / orphan image / generated failure', () =>
     // the face names already assigned have to survive, and no fillet UUID is
     // minted from the failed edge.
     const oc = makeOcc()
-    const scope = new DisposeScope()
     const oldF = makeFace([-1, -1, 0], [0, 0, 1])
     const twin = makeFace([5, 5, 0], [0, 0, 1])
     const edge = makeLineEdge([0, 0, 0], [1, 0, 0])
-    const egh = edgeGh(oc, scope, edge)
-    expect(egh).not.toBeNull()
     const maker = {
       ...makeMaker(twin),
       Generated: () => {
@@ -394,14 +391,14 @@ describe('extractNames split children / orphan image / generated failure', () =>
       oc,
       maker,
       oldFaces: [oldF],
-      oldFaceNames: { [faceGh(oc, scope, oldF)]: 'uuid_A' },
+      oldFaceNames: [[oldF, 'uuid_A']],
       newShapeFaces: [twin],
       newFaces: [twin],
       modifiedEdges: [edge],
-      oldEdgeNames: { [egh as string]: 'edge_A' },
+      oldEdgeNames: [[edge, 'edge_A']],
     })
-    expect(res.faceNames[faceGh(oc, scope, twin)]).toBe('uuid_A')
-    expect(Object.keys(res.faceNames)).toHaveLength(1)
+    expect(res.faceNames.get(twin as OccSubShape)).toBe('uuid_A')
+    expect(res.faceNames.size).toBe(1)
     expect(res.faceAncestry[mintFaceUuid(filletFacePath('fillet1', 'edge_A'))]).toBeUndefined()
   })
 })

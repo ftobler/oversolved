@@ -24,8 +24,10 @@ vi.mock('@/kernel/isDevBuild', () => ({
 }))
 
 import { derivePrismEdgeNames } from '../prismEdgeNaming'
-import type { OccModule, OccShape } from '../occTypes'
+import type { OccModule, OccSubShape } from '../occTypes'
 import type { DisposeScope } from '../disposeScope'
+import type { FaceEdgeTable } from '../constructionLineage'
+import { SubShapeMap } from '../subshapeIdentity'
 
 describe('derivePrismEdgeNames production warn', () => {
   it('warns when an edge has no nameable face pair (unrescued topology) in production', () => {
@@ -33,20 +35,23 @@ describe('derivePrismEdgeNames production warn', () => {
     try {
       // One solid edge whose two adjacent faces both stayed unnamed after the
       // neighbour pass: 0 distinct named adjacent faces -> the else branch. The
-      // ordering passes never run (no pair or seam groups), so oc/scope/solid
-      // and the edge-shape table are all unused and can stay undefined.
-      const adjacency: Record<string, Set<string>> = { egh0: new Set(['f0', 'f1']) }
+      // ordering passes never run (no pair or seam groups), so oc/scope and
+      // the table's shape are unused and can stay undefined.
+      const fake = (): OccSubShape => {
+        const s = { IsSame: (o: unknown) => o === s, HashCode: () => 1 }
+        return s as unknown as OccSubShape
+      }
+      const edge = fake()
+      const table = { rows: [{ face: fake(), edges: [edge] }, { face: fake(), edges: [edge] }] } as unknown as FaceEdgeTable
       const { edgeNames } = derivePrismEdgeNames(
         undefined as unknown as OccModule,
         undefined as unknown as DisposeScope,
-        undefined as unknown as OccShape,
-        adjacency,
-        {},
-        {},
+        table,
+        new SubShapeMap<string>(),
         {},
         'feat',
       )
-      expect(edgeNames).toEqual({})
+      expect(edgeNames.size).toBe(0)
       const message =
         '[prismLineage] edge has 0 distinct named adjacent faces ' +
         '(expected 1 or 2): non-manifold or unrescued topology (feat)'

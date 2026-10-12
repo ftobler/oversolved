@@ -17,7 +17,8 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { countSolids, volumeOf, booleanWithDiff } from '../../occ/booleans'
 import { makeBoxAt, readSolidVertices, solidCentroid } from '../../occ/primitives'
-import { faceGh } from '../../occ/lineageHash'
+import { canonicalFaces } from '../../occ/bodyNames'
+import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { Repository } from '../../query'
 import { bareBody, resolveBody } from '../shared/bodyResolution'
 import { solveBoolean } from '../boolean'
@@ -161,7 +162,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    expect(resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1')).toEqual(['body_t', 'body_t_1'])
+    expect(resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1', {})).toEqual(['body_t', 'body_t_1'])
     expect(r.store.body_t).toBe(body)  // identity preserved, not replaced
     expectOnePartEach(r, 2)
     r.scope.dispose()
@@ -176,7 +177,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     const body = seedBox(r, 'body_t', [0, 0, 0], 10)
     const oldHandle = body.shape
     const emptyShape = compoundOf(r.scope, [])
-    expect(resplitBody(oc, r.scope, r.table, r.store, body, emptyShape, 'f1')).toEqual([])
+    expect(resplitBody(oc, r.scope, r.table, r.store, body, emptyShape, 'f1', {})).toEqual([])
     expect('body_t' in r.store).toBe(false)
     // seedBox always registers a shape, so the handle existed and the deletion
     // released it.
@@ -195,7 +196,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1')
+    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1', {})
     const sib = r.store.body_t_1
     expect(sib.created_by).toBe(body.created_by)
     expect(sib.sketch_id).toBe('sk9')
@@ -216,7 +217,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1')
+    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1', {})
     expect(r.store.body_t_1.modified_by).toEqual(['fillet1', 'cut1'])
     expect(r.store.body_t_1.brep_diff).toBeNull()  // the diff describes the whole pre-split shape
     r.scope.dispose()
@@ -233,7 +234,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1')
+    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1', {})
     expect(r.store.body_t_1.modified_by).toEqual(['cut1'])
     r.scope.dispose()
   })
@@ -249,24 +250,20 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
 
-    const E = oc.TopAbs_ShapeEnum
-    const faceNames: Record<string, string> = {}
+    const faceNames = new SubShapeMap<string>()
     const faceAncestry: Record<string, string[]> = {}
-    const exp = r.scope.track(new oc.TopExp_Explorer_2(newShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-    let n = 0
-    for (; exp.More(); exp.Next()) {
-      const gh = faceGh(oc, r.scope, r.scope.track(oc.TopoDS.Face_1(exp.Current())))
-      const uuid = `@u|f${n++}`
-      faceNames[gh] = uuid
+    const faces = canonicalFaces(oc, r.scope, newShape)
+    faces.forEach((face, n) => {
+      const uuid = `@u|f${n}`
+      faceNames.set(face, uuid)
       faceAncestry[uuid] = ['@body_t']
-    }
-    expect(n).toBe(12)  // two boxes, six faces each
-    body.face_names = faceNames
-    body.face_ancestry = faceAncestry
+    })
+    expect(faces).toHaveLength(12)  // two boxes, six faces each
 
-    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1')
-    const a = Object.keys(r.store.body_t.face_names ?? {})
-    const b = Object.keys(r.store.body_t_1.face_names ?? {})
+    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1', { faceNames, faceAncestry })
+    const named = (uuids: (string | null)[] | undefined): string[] => (uuids ?? []).filter((u): u is string => u !== null)
+    const a = named(r.store.body_t.face_uuids)
+    const b = named(r.store.body_t_1.face_uuids)
     expect(a).toHaveLength(6)
     expect(b).toHaveLength(6)
     for (const k of a) expect(b).not.toContain(k)  // no face claimed by both
@@ -293,13 +290,13 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     r.scope.dispose()
   })
 
-  it('a resplitBody near-tie refusal leaves the pre-call parent writes intact and adds no sibling', () => {
-    // The near-tie throw lands AFTER callers have written their pre-call state
-    // onto the parent: boolean.ts pushes modified_by and overwrites all four
-    // name maps before resplitting (boolean.ts ~100-107), while transformMirror
-    // only writes its name maps first and pushes modified_by after (~240-247).
-    // The documented post-refusal state is therefore: caller writes survive on
-    // the parent, old shape still registered, no siblings, store still satisfies
+  it('a resplitBody near-tie refusal leaves the parent as it was and adds no sibling', () => {
+    // The near-tie throw lands AFTER a caller may have written pre-call state
+    // onto the parent (boolean.ts pushes modified_by before resplitting). The
+    // names are no caller write any more: they reach the body only through
+    // resplitBody, and the refusal comes before it writes them. The documented
+    // post-refusal state is therefore: caller writes survive on the parent, its
+    // names and old shape are untouched, no siblings, store still satisfies
     // one-solid-per-body. Nothing needs cleanup because the solve-level caller
     // discards the whole in-memory store on {status:'exception'}, but this pins
     // the contract so a future reorder (throwing after the first mutation)
@@ -308,22 +305,22 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     const body = seedBox(r, 'body_t', [0, 0, 0], 10)
     body.modified_by = ['cut0']
     const oldHandle = body.shape
-    // The pre-call writes boolean.ts performs on the target before resplitting.
-    body.modified_by.push('cut1')
-    body.face_names = { ghX: '@u|f0' }
+    body.face_uuids = ['@u|f0', null, null, null, null, null]
     body.face_ancestry = { '@u|f0': ['@body_t'] }
-    body.edge_names = { ghE: '@u|e0' }
-    body.edge_ancestry = { '@u|e0': ['@body_t'] }
+    // The pre-call write boolean.ts performs on the target before resplitting.
+    body.modified_by.push('cut1')
     body.brep_diff = null
     const newShape = compoundOf(r.scope, [
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
     ])
-    expect(() => resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1')).toThrow(/near-tie/)
+    expect(() => resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1', {
+      faceNames: new SubShapeMap<string>(), faceAncestry: { '@u|f9': ['@body_t'] },
+    })).toThrow(/near-tie/)
     expect(Object.keys(r.store)).toEqual(['body_t'])  // no sibling landed
     expect(r.store.body_t.modified_by).toEqual(['cut0', 'cut1'])  // caller write retained through the throw
-    expect(r.store.body_t.face_names).toEqual({ ghX: '@u|f0' })  // the caller's fresh map survived; resplit overwrote nothing
-    expect(r.store.body_t.edge_names).toEqual({ ghE: '@u|e0' })
+    expect(r.store.body_t.face_uuids).toEqual(['@u|f0', null, null, null, null, null])  // resplit overwrote nothing
+    expect(r.store.body_t.face_ancestry).toEqual({ '@u|f0': ['@body_t'] })
     expect(body.shape).toBe(oldHandle)  // identity preserved; resplit released/replaced nothing
     expect(() => assertOneSolidPerBody(oc, r.scope, r.table, r.store)).not.toThrow()
     r.scope.dispose()

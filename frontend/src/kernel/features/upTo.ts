@@ -16,7 +16,7 @@ import { AmbiguousQueryError } from '../query'
 import type { Vec3 } from '../occ/primitives'
 import { makePrism } from '../occ/primitives'
 import { dot, cross } from '@/utils/vec3'
-import { booleanWithHistory, countSolids } from '../occ/booleans'
+import { booleanWithHistory, countSolids, type FaceOrigin } from '../occ/booleans'
 import { extractOccFace, computeFacePlane } from '../occ/faceLoops'
 
 type Dict = Record<string, unknown>
@@ -149,7 +149,8 @@ export function orientToTarget(cut: CutPlane, profileOrigin: number[], direction
  * Trim an over-length extrude solid at the cut plane, keeping the side the
  * profile sits on. Built as a boolean Common with a half-space box whose cap
  * lies in the cut plane, so the result terminates exactly on the plane for any
- * plane orientation.
+ * plane orientation. `faceOrigin` is the Common's face history (the solid is
+ * its target), which carries the extrude's face names onto the trimmed faces.
  */
 export function trimAtPlane(
   oc: OccModule,
@@ -157,7 +158,7 @@ export function trimAtPlane(
   solid: OccShape,
   cut: CutPlane,
   directionVec: Vec3,
-): OccShape {
+): { shape: OccShape; faceOrigin: FaceOrigin[] } {
   const [u, v] = inPlaneAxes(cut.normal)
   const big = UP_TO_REACH
   const corners: Vec3[] = [
@@ -185,8 +186,8 @@ export function trimAtPlane(
   // re-solved up_to feature does not leave one of each behind per edit.
   const halfSpace = scope.track(makePrism(oc, scope, capFace, keepDir, big + UP_TO_REACH))
   try {
-    const result = booleanWithHistory(oc, scope, solid, halfSpace, 'common').shape
-    if (countSolids(oc, scope, result) === 0) {
+    const result = booleanWithHistory(oc, scope, solid, halfSpace, 'common')
+    if (countSolids(oc, scope, result.shape) === 0) {
       throw new Error('extrude up_to: boolean Common produced no solid')
     }
     return result

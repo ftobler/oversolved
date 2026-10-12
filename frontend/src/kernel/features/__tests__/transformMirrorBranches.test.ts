@@ -37,6 +37,11 @@ vi.mock('../bodySplit', () => ({
   registerSplitBodies: mocks.registerSplitBodies,
   resplitBody: mocks.resplitBody,
 }))
+// Reading a body's names walks its OCC shape; these bodies have none.
+vi.mock('../../occ/bodyNames', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/bodyNames')>()
+  return { ...actual, readBodyNames: () => actual.emptyShapeNames() }
+})
 vi.mock('../../occ/transforms', () => ({
   makeMirrorTrsf: mocks.makeMirrorTrsf,
   makeTranslationTrsf: mocks.makeTranslationTrsf,
@@ -91,7 +96,7 @@ beforeEach(() => {
   mocks.rebuildNamesForTransformedCopy.mockReturnValue(NAMES)
   mocks.readSourceFaceRows.mockReturnValue([])
   mocks.booleanWithDiff.mockReturnValue({ shape: {}, faceOrigin: [], diff: {} })
-  mocks.transferBooleanNames.mockReturnValue({ face_names: {}, face_ancestry: {}, edge_names: {}, edge_ancestry: {} })
+  mocks.transferBooleanNames.mockReturnValue({ faceNames: {}, faceAncestry: {}, edgeNames: {}, edgeAncestry: {} })
   mocks.resplitBody.mockReturnValue(['body_a'])
   mocks.registerSplitBodies.mockReturnValue(['body_t1'])
   mocks.makeTranslationTrsf.mockImplementation((_oc: unknown, _sc: unknown, dx: number, dy: number, dz: number) => ({ tag: 'translate', dx, dy, dz }))

@@ -24,7 +24,6 @@ import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
 import { solidToMesh, solidToEdges, solidToVertices } from '../occ/tessellation'
 import { extractBrepMetadata } from '../solveLocally'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
 import { copyShape } from '../occ/transforms'
 import type { OccShape } from '../occ/occTypes'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
@@ -97,19 +96,19 @@ class CountingHarness {
               this.rendered.push(body.id)
               const mesh = solidToMesh(oc!, this.table, body.shape, {
                 createdBy: body.created_by || '', bodyId: body.id,
-                faceAncestry: body.face_ancestry ?? null, faceNames: body.face_names ?? null,
+                faceAncestry: body.face_ancestry ?? null, faceUuids: body.face_uuids ?? null,
                 profileQueries: body.profile_queries ?? [],
               })
               const edgeResult = solidToEdges(oc!, this.table, body.shape, {
                 createdBy: body.created_by || '', bodyId: body.id,
                 profileQueries: body.profile_queries ?? [],
-                edgeAncestry: body.edge_ancestry ?? null, edgeNames: body.edge_names ?? null,
+                edgeAncestry: body.edge_ancestry ?? null, edgeUuids: body.edge_uuids ?? null,
               })
               const vertexResult = solidToVertices(oc!, this.table, body.shape, {
                 createdBy: body.created_by || '', bodyId: body.id, profileQueries: body.profile_queries ?? [],
               })
               out[body.id] = {
-                mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries,
+                mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries, edge_uuids: edgeResult.edge_uuids,
                 vertices: vertexResult.vertices, vertex_queries: vertexResult.vertex_queries,
               }
             } catch {  /* non-fatal */ }
@@ -120,9 +119,6 @@ class CountingHarness {
           for (const b of Object.values(bodyStore)) if (b.shape) this.metaExtracted.push(b.id)
           return extractBrepMetadata(oc!, this.table, bodyStore)
         },
-        brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-        brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-        brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
         copyBodyShape: (h, owner) =>
           this.table.register(copyShape(oc!, scope, this.table.get<OccShape>(h)), owner),

@@ -127,7 +127,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
       const { edges, edge_queries } = solidToEdges(occ, table, bodyB.shape!, {
         createdBy: bodyB.created_by, bodyId: bodyB.id,
         profileQueries: [],
-        edgeAncestry: null, edgeNames: null,
+        edgeAncestry: null, edgeUuids: null,
       })
       const loop: string[] = []
       for (let i = 0; i < edges.length; i++) {

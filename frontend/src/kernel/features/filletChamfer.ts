@@ -8,13 +8,15 @@ import type { EdgeData } from '@/types/cad'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body, BrepDiff } from '../types3d'
+import type { Body } from '../types3d'
 import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId, constructionUuidToken } from '../query'
-import { edgeGeometryHash, faceGeometryHash, geometryClassifiers } from '../geomHash'
+import { geometryClassifiers } from '../geomHash'
 import { resolveBody, resolveBodyIds } from './shared/bodyResolution'
 import { resplitBody } from './bodySplit'
+import { canonicalEdges, canonicalFaces, assertAligned, readBodyNames } from '../occ/bodyNames'
+import { elementCreator, newSubShapes } from '../occ/modifierAttribution'
 import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
-import { faceCentroid, faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
+import { faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
   applyFilletWithLineage,
@@ -79,28 +81,6 @@ function exploreFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
   return out
 }
 
-/** geom hashes of body.brep_diff.new_edges (mirrors `_brep_diff_new_edge_hashes`). */
-function brepDiffNewEdgeHashes(oc: OccModule, scope: DisposeScope, diff: BrepDiff | null): Set<string> {
-  const out = new Set<string>()
-  if (diff === null || diff.new_edges.length === 0) return out
-  for (const raw of diff.new_edges) {
-    try {
-      const { ed } = edgeToGeom(oc, scope, raw as OccShape)
-      if (ed.kind === 'line') {
-        const s = (ed as { start: number[] }).start
-        const e = (ed as { end: number[] }).end
-        out.add(edgeGeometryHash({ kind: 'line', start: s, end: e }))
-        out.add(edgeGeometryHash({ kind: 'line', start: e, end: s }))
-      } else if (ed.kind === 'circle' || ed.kind === 'arc') {
-        out.add(edgeGeometryHash(ed as unknown as Record<string, unknown>))
-      }
-    } catch {
-      // skip un-hashable edges (splines, freed handles)
-    }
-  }
-  return out
-}
-
 /**
  * Register an edge under its exact-match query, guarding query uniqueness.
  * When a second DISTINCT edge claims a query already in the map, the query is
@@ -131,15 +111,13 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   if (body.shape === null) return { queryToEdge, ambiguousQueries, ancestryRepo }
   const shape = table.get<OccShape>(body.shape)
 
-  const uniq: OccShape[] = []
-  const dedup = new SubShapeDedup()
-  for (const e of exploreEdges(oc, scope, shape)) {
-    if (dedup.add(e as OccSubShape)) uniq.push(e)
-  }
+  // The unique edges in explorer order ARE the canonical order, so an edge's
+  // position here indexes `body.edge_uuids`.
+  const uniq = canonicalEdges(oc, scope, shape)
+  assertAligned(uniq.length, body.edge_uuids, `${body.id} edge index`)
 
-  const hasModifier =
-    body.brep_diff !== null && body.modified_by.length > 0 && body.modified_by[body.modified_by.length - 1] !== body.created_by
-  const newEdgeHashes = hasModifier ? brepDiffNewEdgeHashes(oc, scope, body.brep_diff) : new Set<string>()
+  // The same attribution solidToEdges mints into the edge queries.
+  const created = newSubShapes(oc, scope, body.brep_diff)
   const { center, half } = bodyFrame(oc, scope, shape)
 
   // Number the `?body:edge:N` alias by the DISPLAYED geometric sort order
@@ -149,21 +127,21 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   // readSolidEdges, and an edge whose geometry cannot be read has no sort key
   // and never appears on the display side, so it is numbered AFTER the sorted,
   // geometry-bearing edges where it cannot shift a displayed index.
-  type IndexEntry = { te: OccShape; geom: { ed: EdgeData; sortKey: EdgeSortKey } | null }
+  type IndexEntry = { te: OccShape; canon: number; geom: { ed: EdgeData; sortKey: EdgeSortKey } | null }
   const indexEntries: IndexEntry[] = []
-  for (const te of uniq) {
-    if (oc.BRep_Tool.Degenerated?.(te)) continue
+  uniq.forEach((te, canon) => {
+    if (oc.BRep_Tool.Degenerated?.(te)) return
     try {
-      indexEntries.push({ te, geom: edgeToGeom(oc, scope, te) })
+      indexEntries.push({ te, canon, geom: edgeToGeom(oc, scope, te) })
     } catch {
-      indexEntries.push({ te, geom: null })
+      indexEntries.push({ te, canon, geom: null })
     }
-  }
+  })
   const withGeom = indexEntries.filter((e): e is IndexEntry & { geom: { ed: EdgeData; sortKey: EdgeSortKey } } => e.geom !== null)
   withGeom.sort((a, b) => compareEdgeSortKeys(a.geom.sortKey, b.geom.sortKey))
   const sorted = [...withGeom, ...indexEntries.filter((e) => e.geom === null)]
 
-  sorted.forEach(({ te, geom }, idx) => {
+  sorted.forEach(({ te, canon, geom }, idx) => {
     if (geom === null) {
       // On failure, skip geometry processing but still register the body:edge:N alias
       queryToEdge.set(`?${body.id}:edge:${idx}`, te)
@@ -171,11 +149,9 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
     }
     const ed = geom.ed
     const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
-    const geomHash = edgeGeometryHash(ed as unknown as Record<string, unknown>)
     if (body.created_by) {
-      let edgeCreatedBy = body.created_by
-      if (newEdgeHashes.has(geomHash)) edgeCreatedBy = body.modified_by[body.modified_by.length - 1]
-      const uuid = body.edge_names?.[geomHash] ?? null
+      const edgeCreatedBy = elementCreator(created?.edges.has(te as OccSubShape) ?? false, body.created_by, body.modified_by)
+      const uuid = body.edge_uuids?.[canon] ?? null
       const pt = edgeRepresentativePoint(ed)
       const classifiers = pt ? geometryClassifiers(pt, center, half) : []
       const ids: string[] = []
@@ -239,16 +215,11 @@ function resolveFaceToEdges(
 
   const uuidTok = ids.find((i) => i.startsWith('@u|'))
   const faceUuid = uuidTok !== undefined ? uuidTok.slice(3) : null
-  if (faceUuid !== null && body.face_names) {
-    for (const face of exploreFaces(oc, scope, shape)) {
-      const gh = faceGeometryHash(
-        faceCentroid(oc, scope, face),
-        faceNormal(oc, scope, face),
-      )
-      if (body.face_names[gh] === faceUuid) return exploreEdges(oc, scope, face)
-    }
-  }
-  return []
+  if (faceUuid === null || body.face_uuids === undefined) return []
+  const faces = canonicalFaces(oc, scope, shape)
+  assertAligned(faces.length, body.face_uuids, `${body.id} face lookup`)
+  const at = body.face_uuids.indexOf(faceUuid)
+  return at >= 0 ? exploreEdges(oc, scope, faces[at]) : []
 }
 
 /**
@@ -563,15 +534,9 @@ function applyEdgeFeature(
       if (geom !== null) handle = makeHandle(geom.anchor, geom.direction)
     }
 
-    const wantNames = Object.keys(body.face_names ?? {}).length > 0 || Object.keys(body.edge_names ?? {}).length > 0
-    const oldNames: OldNames | null = wantNames
-      ? {
-          createdBy: featureId,
-          faceNames: body.face_names ?? {},
-          edgeNames: body.edge_names ?? {},
-          faceAncestry: body.face_ancestry ?? {},
-          edgeAncestry: body.edge_ancestry ?? {},
-        }
+    const named = (uuids: (string | null)[] | undefined): boolean => uuids?.some((u) => u !== null) ?? false
+    const oldNames: OldNames | null = named(body.face_uuids) || named(body.edge_uuids)
+      ? { createdBy: featureId, ...readBodyNames(oc, scope, oldShape, body) }
       : null
     const res = applyFn(oc, scope, oldShape, topoEdges, oldNames)
     if (!res.success) {
@@ -585,12 +550,6 @@ function applyEdgeFeature(
       continue
     }
 
-    if (res.names !== null) {
-      body.face_names = res.names.faceNames
-      body.edge_names = res.names.edgeNames
-      body.face_ancestry = res.names.faceAncestry
-      body.edge_ancestry = res.names.edgeAncestry
-    }
     // Skipped/failed edges force a partial status so the user sees the warning.
     if (res.skippedEdgeIndices.length > 0) {
       // The indices are positions in the `edges` argument, which is topoEdges;
@@ -602,7 +561,8 @@ function applyEdgeFeature(
     }
     // A chamfer removes material and can sever a thin web, so even this leaf
     // can turn one body into two.
-    const ids = resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId)
+    // A body that carried no names gets none: the modifier only transfers names it was given.
+    const ids = resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId, res.names ?? {})
     if (ids.length === 0) {
       // A fillet/chamfer cannot consume its whole body, so this is defensive:
       // the resplit deleted the body, and the applied count must not grow from

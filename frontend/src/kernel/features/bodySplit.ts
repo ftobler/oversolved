@@ -31,30 +31,35 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { exploreSolids } from '../occ/booleans'
 import { solidCentroid } from '../occ/primitives'
-import { faceGh, edgeGh } from '../occ/lineageHash'
+import { canonicalEdges, canonicalFaces, namesToArray, type UuidArray } from '../occ/bodyNames'
+import type { SubShapeMap } from '../occ/subshapeIdentity'
 import { orderSplitChildren, type SplitChild } from '../constructionName'
 import { shapeNormalFrame } from '../occ/constructionLineage'
 
+/** The construction names a producer hands over, keyed by the shape it built. */
+export interface ProducedNames {
+  faceNames?: SubShapeMap<string> | null
+  edgeNames?: SubShapeMap<string> | null
+  faceAncestry?: Record<string, string[]> | null
+  edgeAncestry?: Record<string, string[]> | null
+}
+
 /** The per-body identity fields a split has to hand down to every sibling. */
-export interface BodyTemplate {
+export interface BodyTemplate extends ProducedNames {
   // Base id: the first sibling takes it verbatim, the rest get `_1`, `_2`, ...
   id: string
   createdBy: string
   sketchId?: string
   profileQueries?: string[]
   imported?: boolean
-  faceNames?: Record<string, string> | null
-  edgeNames?: Record<string, string> | null
-  faceAncestry?: Record<string, string[]> | null
-  edgeAncestry?: Record<string, string[]> | null
 }
 
-/** Construction-name maps narrowed to the faces and edges of one split sibling. */
+/** The names one body stores, read off the solid it was given. */
 interface SiblingNames {
-  faceNames: Record<string, string>
-  edgeNames: Record<string, string>
-  faceAncestry: Record<string, string[]>
-  edgeAncestry: Record<string, string[]>
+  face_uuids: UuidArray
+  edge_uuids: UuidArray
+  face_ancestry: Record<string, string[]>
+  edge_ancestry: Record<string, string[]>
 }
 
 /**
@@ -98,42 +103,33 @@ function orderSolids(oc: OccModule, scope: DisposeScope, parent: OccShape, solid
 }
 
 /**
- * The subset of `template`'s name maps that belongs to `solid`.
- *
- * `face_names`/`edge_names` are keyed by the in-build geom-hash of the face or
- * edge, so a sibling keeps exactly the entries its own sub-shapes hash to; the
- * ancestry maps are then narrowed to the UUIDs that survived. Without this a
- * split sibling inherited either everything (including its neighbour's faces)
- * or nothing at all, and picks on it fell back to the ancestral path.
+ * The names the body holding `solid` stores: one uuid per face and edge in the
+ * solid's canonical order, so a split sibling keeps exactly the names of its
+ * own sub-shapes. With `narrow` the ancestry maps keep only the UUIDs that
+ * landed (a split sibling must not carry its neighbour's); a lone part keeps
+ * the producer's maps whole. Without the narrowing a split sibling inherited
+ * either everything or nothing, and picks on it fell back to the ancestral path.
  */
-function namesForSolid(oc: OccModule, scope: DisposeScope, solid: OccShape, template: BodyTemplate): SiblingNames {
-  const srcFaceNames = template.faceNames ?? {}
-  const srcEdgeNames = template.edgeNames ?? {}
-  const srcFaceAnc = template.faceAncestry ?? {}
-  const srcEdgeAnc = template.edgeAncestry ?? {}
-  const out: SiblingNames = { faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} }
-
-  const E = oc.TopAbs_ShapeEnum
-  const faceExp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; faceExp.More(); faceExp.Next()) {
-    const rawFace = scope.track(faceExp.Current())
-    const gh = faceGh(oc, scope, scope.track(oc.TopoDS.Face_1(rawFace)))
-    const uuid = srcFaceNames[gh]
-    if (uuid === undefined) continue
-    out.faceNames[gh] = uuid
-    if (srcFaceAnc[uuid] !== undefined) out.faceAncestry[uuid] = [...srcFaceAnc[uuid]]
+function namesForSolid(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  names: ProducedNames,
+  narrow: boolean,
+): SiblingNames {
+  const face_uuids = namesToArray(canonicalFaces(oc, scope, solid), names.faceNames ?? null)
+  const edge_uuids = namesToArray(canonicalEdges(oc, scope, solid), names.edgeNames ?? null)
+  const srcFaceAnc = names.faceAncestry ?? {}
+  const srcEdgeAnc = names.edgeAncestry ?? {}
+  if (!narrow) {
+    return { face_uuids, edge_uuids, face_ancestry: { ...srcFaceAnc }, edge_ancestry: { ...srcEdgeAnc } }
   }
-  const edgeExp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-  for (; edgeExp.More(); edgeExp.Next()) {
-    const rawEdge = scope.track(edgeExp.Current())
-    const gh = edgeGh(oc, scope, scope.track(oc.TopoDS.Edge_1(rawEdge)))
-    if (gh === null) continue
-    const uuid = srcEdgeNames[gh]
-    if (uuid === undefined) continue
-    out.edgeNames[gh] = uuid
-    if (srcEdgeAnc[uuid] !== undefined) out.edgeAncestry[uuid] = [...srcEdgeAnc[uuid]]
+  const pick = (uuids: UuidArray, src: Record<string, string[]>): Record<string, string[]> => {
+    const out: Record<string, string[]> = {}
+    for (const uuid of uuids) if (uuid !== null && src[uuid] !== undefined) out[uuid] = [...src[uuid]]
+    return out
   }
-  return out
+  return { face_uuids, edge_uuids, face_ancestry: pick(face_uuids, srcFaceAnc), edge_ancestry: pick(edge_uuids, srcEdgeAnc) }
 }
 
 /**
@@ -191,17 +187,8 @@ export function registerSplitBodies(
   const ids: string[] = []
   parts.forEach((part, i) => {
     const id = mintSiblingId(template.id, i, bodyStore)
-    // A lone part keeps the caller's maps whole: narrowing them would be a
-    // no-op walk over the same sub-shapes, and a shell-only shape has no
-    // solid to walk at all.
-    const names = parts.length > 1
-      ? namesForSolid(oc, scope, part, template)
-      : {
-        faceNames: { ...(template.faceNames ?? {}) },
-        edgeNames: { ...(template.edgeNames ?? {}) },
-        faceAncestry: { ...(template.faceAncestry ?? {}) },
-        edgeAncestry: { ...(template.edgeAncestry ?? {}) },
-      }
+    // Read before `detach`: the arrays index the part's own sub-shapes.
+    const names = namesForSolid(oc, scope, part, template, parts.length > 1)
     bodyStore[id] = {
       id,
       created_by: template.createdBy,
@@ -210,10 +197,7 @@ export function registerSplitBodies(
       sketch_id: template.sketchId ?? '',
       brep_diff: null,
       profile_queries: [...(template.profileQueries ?? [])],
-      face_names: names.faceNames,
-      edge_names: names.edgeNames,
-      face_ancestry: names.faceAncestry,
-      edge_ancestry: names.edgeAncestry,
+      ...names,
       ...(template.imported ? { imported: true } : {}),
     }
     ids.push(id)
@@ -230,9 +214,10 @@ export function registerSplitBodies(
  * `body` keeps its identity (id, created_by, modified_by, sketch_id,
  * brep_diff, profile_queries, imported) and takes the first solid; siblings are
  * fresh bodies that inherit those fields, minus the diff -- the diff describes
- * the whole pre-split shape and no sibling owns all of it. The caller is
- * expected to have already updated `body`'s name maps for the WHOLE new shape
- * -- this narrows them per sibling. The old handle is released here.
+ * the whole pre-split shape and no sibling owns all of it. `produced` are the
+ * construction names the producer built for the WHOLE new shape, keyed by its
+ * faces and edges; this writes them onto each sibling's own sub-shapes. The
+ * old handle is released here.
  *
  * `featureId` is the feature doing the splitting. A sibling MUST carry the same
  * `modified_by` history as the body it broke off, or it reads as untouched
@@ -260,6 +245,7 @@ export function resplitBody(
   body: Body,
   newShape: OccShape,
   featureId: string,
+  produced: ProducedNames,
 ): string[] {
   const solids = splitSolids(oc, scope, newShape)
   const oldHandle = body.shape
@@ -292,36 +278,20 @@ export function resplitBody(
       delete bodyStore[body.id]
       return []
     }
+    Object.assign(body, namesForSolid(oc, scope, solids[0], produced, false))
     body.shape = table.register(scope.detach(solids[0]), featureId)
     if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
     return ids
   }
 
-  const template: BodyTemplate = {
-    id: body.id,
-    createdBy: body.created_by,
-    sketchId: body.sketch_id,
-    profileQueries: body.profile_queries,
-    imported: body.imported,
-    faceNames: body.face_names,
-    edgeNames: body.edge_names,
-    faceAncestry: body.face_ancestry,
-    edgeAncestry: body.edge_ancestry,
-  }
-
   // The caller may push `featureId` onto the parent before OR after this call;
   // either way every sibling ends up with the same history the parent has.
-  const names0 = namesForSolid(oc, scope, solids[0], template)
+  Object.assign(body, namesForSolid(oc, scope, solids[0], produced, true))
   body.shape = table.register(scope.detach(solids[0]), featureId)
-  body.face_names = names0.faceNames
-  body.edge_names = names0.edgeNames
-  body.face_ancestry = names0.faceAncestry
-  body.edge_ancestry = names0.edgeAncestry
   if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
 
   for (let i = 1; i < solids.length; i++) {
     const id = mintSiblingId(body.id, i, bodyStore)
-    const names = namesForSolid(oc, scope, solids[i], template)
     bodyStore[id] = {
       id,
       created_by: body.created_by,
@@ -330,10 +300,7 @@ export function resplitBody(
       sketch_id: body.sketch_id,
       brep_diff: null,
       profile_queries: [...body.profile_queries],
-      face_names: names.faceNames,
-      edge_names: names.edgeNames,
-      face_ancestry: names.faceAncestry,
-      edge_ancestry: names.edgeAncestry,
+      ...namesForSolid(oc, scope, solids[i], produced, true),
       ...(body.imported ? { imported: true } : {}),
     }
     ids.push(id)

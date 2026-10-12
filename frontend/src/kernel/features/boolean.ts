@@ -11,7 +11,7 @@
 // Construction names are folded through the tool loop the same way bodyOps' cut/add and the
 // array fuse do: each `booleanWithDiff` hands back a faceOrigin map, and `transferBooleanNames`
 // carries the accumulated names onto the new shape by subshape identity. Skipping that (which
-// this leaf used to do, keeping the target's now-stale geom-hash keys) silently unnamed every
+// this leaf used to do, keeping names keyed by the target's pre-boolean faces) silently unnamed every
 // face the boolean reshaped, and every edge around them with it. Only the LAST tool's brep_diff
 // is retained.
 
@@ -25,6 +25,7 @@ import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, volumeOf, shapesIntersect } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
+import { readBodyNames } from '../occ/bodyNames'
 
 type Dict = Record<string, unknown>
 
@@ -73,10 +74,7 @@ export function solveBoolean(
   let foldedAny = false
   // Folded across the tools: each step's output names are the next step's target
   // names, so a face keeps its identity through a multi-tool boolean.
-  let faceNames = targetBody.face_names ?? {}
-  let faceAncestry = targetBody.face_ancestry ?? {}
-  let edgeNames = targetBody.edge_names ?? {}
-  let edgeAncestry = targetBody.edge_ancestry ?? {}
+  let { faceNames, edgeNames, faceAncestry, edgeAncestry } = readBodyNames(oc, scope, resultShape, targetBody)
   const result: BooleanResult = { status: 'ok', body_id: targetBody.id, body_ids: [], operation }
 
   for (const toolRef of toolRefs) {
@@ -118,14 +116,11 @@ export function solveBoolean(
       faceOrigin: res.faceOrigin,
       targetFaceNames: faceNames,
       targetFaceAncestry: faceAncestry,
-      toolFaceNames: toolBody.face_names ?? null,
+      toolFaceNames: readBodyNames(oc, scope, toolShape, toolBody).faceNames,
       toolFaceAncestry: toolBody.face_ancestry ?? null,
       toolUuidScope: keepTools ? featureId : null,
     })
-    faceNames = names.face_names
-    faceAncestry = names.face_ancestry
-    edgeNames = names.edge_names
-    edgeAncestry = names.edge_ancestry
+    ;({ faceNames, faceAncestry, edgeNames, edgeAncestry } = names)
     lastDiff = res.diff
     foldedAny = true
     if (!keepTools) consumedKeys.push(toolBody.id)
@@ -133,10 +128,6 @@ export function solveBoolean(
 
   targetBody.modified_by.push(featureId)
   targetBody.brep_diff = lastDiff
-  targetBody.face_names = faceNames
-  targetBody.face_ancestry = faceAncestry
-  targetBody.edge_names = edgeNames
-  targetBody.edge_ancestry = edgeAncestry
 
   // Mirror the implicit cut/add warning: a boolean that consumed a tool but left
   // the target's brep_diff untouched produced no real geometry change.
@@ -161,12 +152,12 @@ export function solveBoolean(
   }
 
   // Drop consumed tool bodies (release their handles first). Dedup so a tool
-  // listed twice is not double-released. This has to happen BEFORE the resplit:
-  // the target already carries the tools' face UUIDs (committed above), and the
-  // build loop evicts a consumed tool's registrations by watching it leave the
-  // store. If `resplitBody` throws -- `orderSolids` refuses a near-tie loudly --
-  // a tool still in the store would leave that UUID naming two live faces with
-  // nothing left to notice. Nothing between here and the resplit reads a tool.
+  // listed twice is not double-released. This has to happen BEFORE the resplit,
+  // which hands the target the tools' face UUIDs: the build loop evicts a
+  // consumed tool's registrations by watching it leave the store, so a tool
+  // still there once the target holds its UUIDs would leave one UUID naming two
+  // live faces with nothing left to notice. Nothing between here and the
+  // resplit reads a tool.
   for (const key of new Set(consumedKeys)) {
     const tool = bodyStore[key]
     if (tool !== undefined) {
@@ -180,7 +171,9 @@ export function solveBoolean(
     }
   }
 
-  const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId)
+  const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId, {
+    faceNames, edgeNames, faceAncestry, edgeAncestry,
+  })
 
   if (bodyIds.length === 0) {
     // The operation ate the whole target (a subtract whose tool swallows it).

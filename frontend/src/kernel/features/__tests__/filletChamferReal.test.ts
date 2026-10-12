@@ -17,10 +17,10 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
-import { makeBox, makeCylinder, faceCentroid, faceNormal, edgeToGeom } from '../../occ/primitives'
+import { makeBox, makeCylinder, edgeToGeom } from '../../occ/primitives'
 import { volumeOf } from '../../occ/booleans'
-import { faceGeometryHash } from '../../geomHash'
 import { deriveEdgeNames } from '../../occ/constructionLineage'
+import { canonicalEdges, canonicalFaces, namesFromArray, namesToArray } from '../../occ/bodyNames'
 import { ref, Repository } from '../../query'
 import { solveFillet, solveChamfer, resolveFilletEdges } from '../filletChamfer'
 import { solidToEdges } from '../../occ/tessellation'
@@ -40,22 +40,14 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
   function makeBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
     const box = makeBox(occ, scope, 10, 10, 10)
 
-    // Compute face_names and edge_names so that solidToEdges and buildEdgeIndex
-    // both emit @u| construction UUID tokens, enabling identity-based edge
-    // resolution.
-    const E = occ.TopAbs_ShapeEnum
-    const faceNames: Record<string, string> = {}
-    const faceAncestry: Record<string, string[]> = {}
-    const fexp = scope.track(new occ.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
-    let fi = 0
-    for (; fexp.More(); fexp.Next()) {
-      const f = scope.track(occ.TopoDS.Face_1(fexp.Current()))
-      const gh = faceGeometryHash(faceCentroid(occ, scope, f), faceNormal(occ, scope, f))
-      const uuid = `f${fi++}`
-      faceNames[gh] = uuid
-      faceAncestry[uuid] = [ref('ex1'), ref('body_b')]
-    }
-    const { edgeNames, edgeAncestry } = deriveEdgeNames(occ, scope, box, faceNames, faceAncestry)
+    // Name the faces and derive the edges so that solidToEdges and
+    // buildEdgeIndex both emit @u| construction UUID tokens, enabling
+    // identity-based edge resolution.
+    const faces = canonicalFaces(occ, scope, box)
+    const face_uuids = faces.map((_, i) => `f${i}`)
+    const faceAncestry = Object.fromEntries(face_uuids.map((u) => [u, [ref('ex1'), ref('body_b')]]))
+    const { edgeNames, edgeAncestry } = deriveEdgeNames(occ, scope, box, namesFromArray(faces, face_uuids), faceAncestry)
+    const edge_uuids = namesToArray(canonicalEdges(occ, scope, box), edgeNames)
 
     return {
       body_b: {
@@ -66,8 +58,8 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
         sketch_id: 'sk',
         brep_diff: null,
         profile_queries: [],
-        face_names: faceNames,
-        edge_names: edgeNames,
+        face_uuids,
+        edge_uuids,
         face_ancestry: faceAncestry,
         edge_ancestry: edgeAncestry,
       },
@@ -94,7 +86,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeLessThan(1000)
       expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeGreaterThan(985)
       // Original face construction names survive onto the trimmed output faces.
-      expect(Object.keys(body.face_names ?? {}).length).toBeGreaterThan(0)
+      expect(body.face_uuids?.some((u) => u !== null)).toBe(true)
       expect(body.brep_diff).not.toBeNull()
     } finally {
       scope.dispose()
@@ -193,8 +185,8 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       const bodyStore = makeBody(scope, table)
       const body = bodyStore.body_b
       const shapeBefore = body.shape
-      const faceNamesBefore = JSON.stringify(body.face_names)
-      const edgeNamesBefore = JSON.stringify(body.edge_names)
+      const faceNamesBefore = JSON.stringify(body.face_uuids)
+      const edgeNamesBefore = JSON.stringify(body.edge_uuids)
 
       let threw: unknown = null
       try {
@@ -214,8 +206,8 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       expect(body.modified_by).toEqual([])
       expect(body.brep_diff).toBeNull()
       expect(body.shape).toBe(shapeBefore)
-      expect(JSON.stringify(body.face_names)).toBe(faceNamesBefore)
-      expect(JSON.stringify(body.edge_names)).toBe(edgeNamesBefore)
+      expect(JSON.stringify(body.face_uuids)).toBe(faceNamesBefore)
+      expect(JSON.stringify(body.edge_uuids)).toBe(edgeNamesBefore)
     } finally {
       scope.dispose()
     }
@@ -238,7 +230,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
         bodyId: body.id,
         profileQueries: body.profile_queries,
         edgeAncestry: body.edge_ancestry,
-        edgeNames: body.edge_names,
+        edgeUuids: body.edge_uuids,
       })
       expect(edges.length).toBe(12)
       expect(edge_queries.length).toBe(12)
@@ -330,8 +322,9 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
         new Repository(), bodyStore,
       )
       expect(result.status).toBe('ok')
-      expect(bodyStore.body_b.face_names).toBeUndefined()
-      expect(bodyStore.body_b.edge_names).toBeUndefined()
+      // A body that carried no names gains none: every slot of the rewritten arrays is empty.
+      expect(bodyStore.body_b.face_uuids?.every((u) => u === null)).toBe(true)
+      expect(bodyStore.body_b.edge_uuids?.every((u) => u === null)).toBe(true)
       const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
       expect(vol).toBeLessThan(1000)
       expect(vol).toBeGreaterThan(985)

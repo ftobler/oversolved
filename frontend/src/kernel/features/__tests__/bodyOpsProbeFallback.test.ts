@@ -20,9 +20,14 @@ vi.mock('../../occ/booleans', () => ({
 }))
 vi.mock('../booleanLineage', () => ({
   transferBooleanNames: () => ({
-    face_names: {}, edge_names: {}, face_ancestry: {}, edge_ancestry: {},
+    faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {},
   }),
 }))
+// Reading a body's names walks its OCC shape; these bodies have none.
+vi.mock('../../occ/bodyNames', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/bodyNames')>()
+  return { ...actual, readBodyNames: () => actual.emptyShapeNames() }
+})
 vi.mock('../bodySplit', () => ({
   registerSplitBodies: () => ['body_t'],
   resplitBody: () => ['body_t'],

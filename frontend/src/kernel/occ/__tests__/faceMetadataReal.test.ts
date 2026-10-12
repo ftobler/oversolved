@@ -16,7 +16,6 @@ import { buildBox, buildCylinder, buildExtrudedProfile } from '../shapes'
 import { solidToMesh, readShapeFaceMetadata } from '../tessellation'
 import { makeBox } from '../primitives'
 import { applyFilletWithDiff } from '../edgeModifier'
-import { faceGeometryHash } from '../../geomHash'
 import { parseAncestry } from '../../query'
 import type { OccModule, OccShape } from '../occTypes'
 import type { OccHandle } from '../handleTable'
@@ -217,18 +216,17 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
       const sideIdx = mesh.face_data.findIndex((fd) => Math.abs(fd.normal[2]) < 0.1 && fd.normal[0] > 0.9)
       expect(capIdx).toBeGreaterThanOrEqual(0)
       expect(sideIdx).toBeGreaterThanOrEqual(0)
-      const cap = mesh.face_data[capIdx]
-      const side = mesh.face_data[sideIdx]
-      const capUuid = 'u_cap'
-      const sideUuid = 'u_side'
+      // One uuid per canonical face; the first pass reports which ones the cap
+      // and the side carry.
+      const faceUuids = Array.from({ length: 6 }, (_, i) => `u_${i}`)
+      const named = solidToMesh(occ, table, h, { faceUuids })
+      const capUuid = named.face_uuids![capIdx]!
+      const sideUuid = named.face_uuids![sideIdx]!
       const opts = {
         createdBy: 'ex1',
         bodyId: 'body_ex1',
         profileQueries: ['@sk1/bottom', '@sk1/top'],
-        faceNames: {
-          [faceGeometryHash(cap.centroid, cap.normal)]: capUuid,
-          [faceGeometryHash(side.centroid, side.normal)]: sideUuid,
-        },
+        faceUuids,
         faceAncestry: {
           [capUuid]: [],
           [sideUuid]: ['@sk1/bottom'],

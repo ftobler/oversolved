@@ -11,7 +11,7 @@ import type {
 import { makeScaleTrsf } from './transforms'
 import { readShapeFaces, assembleMesh } from './tessellation'
 import { SubShapeIndexMap, unplacer } from './primitives'
-import { faceGh } from './lineageHash'
+import { SubShapeMap } from './subshapeIdentity'
 import { encodeBinaryStl } from '../stl'
 
 // A fixed short scratch path in the emscripten MEMFS. Two quirks of this OCC.js
@@ -44,12 +44,12 @@ export function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
 export interface StepReadResult {
   shape: OccShape
   /**
-   * `faceGh` (hashed exactly as a `TopExp_Explorer` walk over `shape` sees the
-   * face) -> the STEP entity id the file wrote it under, i.e. the `17` of
-   * `#17=ADVANCED_FACE(...)`. A face the transfer map does not cover is simply
-   * absent; `importedNameMaps` names those from their neighbours instead.
+   * A face of `shape` -> the STEP entity id the file wrote it under, i.e. the
+   * `17` of `#17=ADVANCED_FACE(...)`. A face the transfer map does not cover
+   * is simply absent; `importedNameMaps` names those from their neighbours
+   * instead.
    */
-  faceStepIds: Record<string, number>
+  faceStepIds: SubShapeMap<number>
 }
 
 /**
@@ -114,7 +114,7 @@ function readStep(
     const shape = builder ? builder.Shape() : read
     // The reader (and with it the transfer map) is tracked in `scope`, but the
     // caller's scope may outlive this call by a lot -- read the map now.
-    const faceStepIds = withIdentity ? faceEntityIds(oc, scope, reader, read, shape, builder) : {}
+    const faceStepIds = withIdentity ? faceEntityIds(oc, scope, reader, read, shape, builder) : new SubShapeMap<number>()
     return { shape, faceStepIds }
   } finally {
     try {
@@ -219,7 +219,8 @@ function sameEnum(a: unknown, b: unknown): boolean {
 }
 
 /**
- * `faceGh -> STEP entity id` for the faces of `finalShape`.
+ * The faces of `finalShape` (as its explorer walk yields them) -> the STEP
+ * entity id each was transferred from.
  *
  * Two traps this navigates, both measured on `double_with_hole.step`:
  *
@@ -227,14 +228,10 @@ function sameEnum(a: unknown, b: unknown): boolean {
  *    `BRepBuilderAPI_Transform` copy (the `scale != 1` path) none of its faces
  *    appear in it at all, so the lookup runs on the pre-transform faces and the
  *    result is carried over with `ModifiedShape`.
- * 2. The map may NOT be keyed on `faceGh` of a face taken from anywhere but the
- *    explorer walk. `ModifiedShape` hands a face back with its own orientation,
- *    `faceGh` folds in the normal, and for 3 of those 7 faces that hash differs
- *    from the explorer's. Every consumer (`classifyFace`, `namesForSolid`,
- *    `_registerBrepFaceAncestry`) looks names up by the EXPLORER's hash, so
- *    keying it the other way silently loses ~40% of the faces with no error
- *    anywhere. `SubShapeIndexMap` pairs by topological identity instead, which
- *    is orientation-insensitive and O(1) per face.
+ * 2. `ModifiedShape` hands a face back with its own orientation, so the
+ *    pairing to the final faces goes by topological identity
+ *    (`SubShapeIndexMap`), which is orientation-insensitive and O(1) per face,
+ *    and the map is keyed by the final shape's own explorer faces.
  */
 function faceEntityIds(
   oc: OccModule,
@@ -243,7 +240,7 @@ function faceEntityIds(
   readShape: OccShape,
   finalShape: OccShape,
   builder: OccTransformBuilder | null,
-): Record<string, number> {
+): SubShapeMap<number> {
   const unplaced = unplacer(oc, scope)
   const finalFaces = explodeFaces(oc, scope, finalShape)
   // The transfer only knows the shape it read, which IS the final one unless a
@@ -256,7 +253,7 @@ function faceEntityIds(
   // the entity loop instead would put the quadratic straight back.
   const targets = builder ? pairAcrossTransform(oc, scope, sourceFaces, finalFaces, builder) : finalFaces
 
-  const out: Record<string, number> = {}
+  const out = new SubShapeMap<number>()
   let transferred = 0
   forEachTransferredFace(oc, reader, (face, entityId) => {
     transferred++
@@ -266,10 +263,9 @@ function faceEntityIds(
     for (const at of positions) {
       const target = targets[at]
       if (!target) continue
-      const gh = faceGh(oc, scope, target)
       // First writer wins, so the result cannot depend on binder order should
       // two entities ever resolve to one face.
-      if (!(gh in out)) out[gh] = entityId
+      if (!out.has(target as OccSubShape)) out.set(target as OccSubShape, entityId)
     }
   })
 
@@ -277,7 +273,7 @@ function faceEntityIds(
   // is silent by nature: the import still builds, every face just shares one
   // query again. It has already happened once (the multi-root placement bug
   // below), so it fails loudly rather than degrading.
-  if (transferred > 0 && Object.keys(out).length === 0) {
+  if (transferred > 0 && out.size === 0) {
     throw new Error(
       `import_step: the STEP transfer named ${transferred} faces but none of them ` +
       `matched the ${finalFaces.length} faces of the imported shape`,

@@ -24,7 +24,6 @@ import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, type Vec3 }
 import { stripRefSigil } from '@/utils/refSigil'
 
 type Dict = Record<string, unknown>
-type Lineage = Record<string, string[]>
 
 /** Resolve a sweep path reference to the sketch id holding the spine. */
 export function pathRefToSketchId(pathRef: string, globalRepo: Repository): string {
@@ -526,10 +525,6 @@ export function solveSweep(
   let firstSketchId = ''
   const profileErrors: string[] = []
   const profileQueries: string[] = []
-  const faceNames: Record<string, string> = {}
-  const edgeNames: Record<string, string> = {}
-  const faceAncestry: Lineage = {}
-  const edgeAncestry: Lineage = {}
 
   for (const sketchRef of [...new Set(regionRefs)]) {
     let resolved
@@ -621,10 +616,6 @@ export function solveSweep(
   const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId)
   const swept = scope.track(lineage.solid)
   for (const e of spineEdges) scope.release(e)
-  Object.assign(faceNames, lineage.faceNames)
-  Object.assign(edgeNames, lineage.edgeNames)
-  Object.assign(faceAncestry, lineage.faceAncestry)
-  Object.assign(edgeAncestry, lineage.edgeAncestry)
 
   const opResult = applyBodyOperation(oc, scope, table, {
     toolShape: swept,
@@ -636,10 +627,10 @@ export function solveSweep(
     sketchId: firstSketchId,
     opName: 'sweep',
     profileQueries,
-    faceNames,
-    edgeNames,
-    faceAncestry,
-    edgeAncestry,
+    faceNames: lineage.faceNames,
+    edgeNames: lineage.edgeNames,
+    faceAncestry: lineage.faceAncestry,
+    edgeAncestry: lineage.edgeAncestry,
   })
   Object.assign(result, opResult)
 

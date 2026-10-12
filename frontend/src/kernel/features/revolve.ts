@@ -17,12 +17,13 @@ import { surfaceEntityIds } from './shared/bodyRef'
 import { unbuildableAreaReasons, loopDiagReasons } from './shared/profileLoops'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
+import { carryFaceNames, emptyShapeNames, mergeShapeNames } from '../occ/bodyNames'
+import { deriveEdgeNames } from '../occ/constructionLineage'
 import { faceCentroid, type Vec3 } from '../occ/primitives'
 import { loopCentroid } from '../profileLoops'
 import { angularHandle } from './featureHandles'
 
 type Dict = Record<string, unknown>
-type Lineage = Record<string, string[]>
 
 interface RevolveResult {
   [key: string]: unknown
@@ -175,10 +176,8 @@ export function solveRevolve(
   const profileErrors: string[] = []
   const profileQueries: string[] = []
   const unbuildableReasons: string[] = []
-  const faceNames: Record<string, string> = {}
-  const edgeNames: Record<string, string> = {}
-  const faceAncestry: Lineage = {}
-  const edgeAncestry: Lineage = {}
+  // The tool's construction names, keyed by the faces and edges of the tool.
+  const names = emptyShapeNames()
 
   for (const sketchRef of sketchRefs) {
     let resolved
@@ -294,21 +293,22 @@ export function solveRevolve(
       const posTracked = scope.track(pos.solid)
       const neg = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, -half, firstSketchId, featureId + '|sym|neg')
       const negTracked = scope.track(neg.solid)
-      toolShape = scope.track(fuse(oc, scope, posTracked, negTracked))
+      // The fuse's face history carries each half's names onto the tool; the
+      // edges are derived again on the fused tool.
+      const fused = booleanWithHistory(oc, scope, posTracked, negTracked, 'fuse')
+      toolShape = scope.track(fused.shape)
       scope.release(posTracked)
       scope.release(negTracked)
-      Object.assign(faceNames, pos.faceNames, neg.faceNames)
-      Object.assign(edgeNames, pos.edgeNames, neg.edgeNames)
-      Object.assign(faceAncestry, pos.faceAncestry, neg.faceAncestry)
-      Object.assign(edgeAncestry, pos.edgeAncestry, neg.edgeAncestry)
+      mergeShapeNames(mergeShapeNames(names, pos), neg)
+      names.faceNames = carryFaceNames(fused.faceOrigin, pos.faceNames, neg.faceNames)
+      const edges = deriveEdgeNames(oc, scope, toolShape, names.faceNames, names.faceAncestry)
+      names.edgeNames = edges.edgeNames
+      Object.assign(names.edgeAncestry, edges.edgeAncestry)
     } else {
       const eff = direction === 'reverse' ? -angle : angle
       const lineage = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, eff, firstSketchId, featureId)
       toolShape = scope.track(lineage.solid)
-      Object.assign(faceNames, lineage.faceNames)
-      Object.assign(edgeNames, lineage.edgeNames)
-      Object.assign(faceAncestry, lineage.faceAncestry)
-      Object.assign(edgeAncestry, lineage.edgeAncestry)
+      mergeShapeNames(names, lineage)
     }
   }
 
@@ -335,10 +335,10 @@ export function solveRevolve(
     sketchId: firstSketchId,
     opName: 'revolve',
     profileQueries,
-    faceNames,
-    edgeNames,
-    faceAncestry,
-    edgeAncestry,
+    faceNames: names.faceNames,
+    edgeNames: names.edgeNames,
+    faceAncestry: names.faceAncestry,
+    edgeAncestry: names.edgeAncestry,
   })
   Object.assign(result, opResult)
 

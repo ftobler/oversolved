@@ -27,7 +27,8 @@ import {
 } from '../primitives'
 import { booleanWithDiff } from '../booleans'
 import { transformCopy, makeScaleTrsf } from '../transforms'
-import { faceGh, edgeGh } from '../lineageHash'
+import { canonicalEdges, canonicalFaces } from '../bodyNames'
+import { SubShapeMap } from '../subshapeIdentity'
 import {
   faceSplitKey,
   shapeNormalFrame,
@@ -59,73 +60,60 @@ function bottomFace(scope: DisposeScope, box: OccShape): OccShape {
 /** Assign every face a name keyed by sorted centroid, so two uniform rescales
  *  of the same shape map the same physical face to the same name. */
 function nameFacesByGeometry(scope: DisposeScope, shape: OccShape): {
-  faceNames: Record<string, string>
+  faceNames: SubShapeMap<string>
   faceAncestry: Record<string, string[]>
 } {
-  const E = oc.TopAbs_ShapeEnum
-  const faces: { gh: string; c: number[] }[] = []
-  const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; exp.More(); exp.Next()) {
-    const f = scope.track(oc.TopoDS.Face_1(exp.Current()))
-    faces.push({ gh: faceGh(oc, scope, f), c: faceCentroid(oc, scope, f) })
-  }
+  const faces = canonicalFaces(oc, scope, shape).map((f) => ({ f, c: faceCentroid(oc, scope, f) }))
   faces.sort((a, b) => a.c[0] - b.c[0] || a.c[1] - b.c[1] || a.c[2] - b.c[2])
-  const faceNames: Record<string, string> = {}
+  const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
-  faces.forEach((f, i) => {
-    faceNames[f.gh] = `u_f${i}`
+  faces.forEach(({ f }, i) => {
+    faceNames.set(f, `u_f${i}`)
     faceAncestry[`u_f${i}`] = [`@anc${i}`]
   })
   return { faceNames, faceAncestry }
 }
 
-/** A face pair sharing exactly 2 edges, keyed by midpoint x sign. Returns the
- *  pair's two edge ghs and their deriveEdgeNames UUIDs (undefined = unnamed). */
+/** A face pair sharing exactly 2 edges, ordered by midpoint x. Returns the
+ *  pair's deriveEdgeNames UUIDs (undefined = unnamed). */
 function multiplicityPair(
   scope: DisposeScope,
   shape: OccShape,
-  faceNames: Record<string, string>,
-  edgeNames: Record<string, string>,
-): { leftGh: string; rightGh: string; leftUuid?: string; rightUuid?: string } | null {
-  const E = oc.TopAbs_ShapeEnum
-  const adj: Record<string, string[]> = {}  // edge gh -> adjacent face uuids
-  const mid: Record<string, number> = {}  // edge gh -> midpoint x
-  const fexp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; fexp.More(); fexp.Next()) {
-    const f = scope.track(oc.TopoDS.Face_1(fexp.Current()))
-    const fu = faceNames[faceGh(oc, scope, f)]
+  faceNames: SubShapeMap<string>,
+  edgeNames: SubShapeMap<string>,
+): { leftUuid?: string; rightUuid?: string } | null {
+  const adj = new SubShapeMap<string[]>()  // edge -> adjacent face uuids
+  const edges: OccSubShape[] = []
+  for (const f of canonicalFaces(oc, scope, shape)) {
+    const fu = faceNames.get(f)
     if (!fu) continue
-    const eexp = scope.track(new oc.TopExp_Explorer_2(f, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-    for (; eexp.More(); eexp.Next()) {
-      const e = scope.track(oc.TopoDS.Edge_1(eexp.Current()))
-      const gh = edgeGh(oc, scope, e)
-      if (gh === null) continue
-      if (!adj[gh]) adj[gh] = []
-      if (!adj[gh].includes(fu)) adj[gh].push(fu)
-      const { ed } = edgeToGeom(oc, scope, e)
-      const s = (ed as { start?: number[] }).start
-      const end = (ed as { end?: number[] }).end
-      const c = (ed as { center?: number[] }).center
-      const mx = s && end ? (s[0] + end[0]) / 2 : c ? c[0] : 0
-      mid[gh] ??= mx
-    }
-  }
-  const byPair: Record<string, string[]> = {}
-  for (const [gh, set] of Object.entries(adj)) {
-    if (set.length === 2) {
-      const k = [...set].sort().join('|')
-      ;(byPair[k] ??= []).push(gh)
-    }
-  }
-  for (const eghs of Object.values(byPair)) {
-    if (eghs.length === 2) {
-      const sorted = [...eghs].sort((x, y) => mid[x] - mid[y])
-      return {
-        leftGh: sorted[0],
-        rightGh: sorted[1],
-        leftUuid: edgeNames[sorted[0]],
-        rightUuid: edgeNames[sorted[1]],
+    for (const e of canonicalEdges(oc, scope, f)) {
+      let set = adj.get(e)
+      if (set === undefined) {
+        adj.set(e, (set = []))
+        edges.push(e)
       }
+      if (!set.includes(fu)) set.push(fu)
+    }
+  }
+  const midX = (e: OccSubShape): number => {
+    const { ed } = edgeToGeom(oc, scope, e)
+    const s = (ed as { start?: number[] }).start
+    const end = (ed as { end?: number[] }).end
+    const c = (ed as { center?: number[] }).center
+    return s && end ? (s[0] + end[0]) / 2 : c ? c[0] : 0
+  }
+  const byPair = new Map<string, OccSubShape[]>()
+  for (const e of edges) {
+    const set = adj.get(e)!
+    if (set.length !== 2) continue
+    const k = [...set].sort().join('|')
+    byPair.set(k, [...(byPair.get(k) ?? []), e])
+  }
+  for (const pair of byPair.values()) {
+    if (pair.length === 2) {
+      const sorted = [...pair].sort((x, y) => midX(x) - midX(y))
+      return { leftUuid: edgeNames.get(sorted[0]), rightUuid: edgeNames.get(sorted[1]) }
     }
   }
   return null

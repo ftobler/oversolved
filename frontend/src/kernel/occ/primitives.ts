@@ -840,8 +840,8 @@ export function edgeToGeom(
 
   if (t === oc.GeomAbs_CurveType.GeomAbs_Ellipse.value) {
     // First-class elliptical edge. The matching `edgeGeometryHash` ellipse
-    // branch keeps distinct ellipses on distinct geom hashes (selection ids /
-    // ancestry queries); see edgeGeomHashCoupling.test.ts.
+    // branch keeps distinct ellipses on distinct fingerprints (the parity
+    // baseline); see edgeGeomHashCoupling.test.ts.
     const el = scope.track(ad.Ellipse())
     const c = el.Location()
     const ax1 = el.Axis()
@@ -861,7 +861,7 @@ export function edgeToGeom(
     return {
       ed: { kind: 'ellipse', center, a, b, axis: ax, x_axis: xd, angle_start: u0, angle_end: u1 },
       // u0/u1 distinguish a partial elliptical arc from a full ellipse and keep
-      // two arcs of the same conic on distinct geom hashes (mirrors the arc arm).
+      // two arcs of the same conic on distinct sort keys and fingerprints (mirrors the arc arm).
       sortKey: [1, 'ellipse', round6(center[0]), round6(center[1]), round6(center[2]), round6(a), round6(b), round6(u0), round6(u1), round6(xd[0]), round6(xd[1]), round6(xd[2])],
     }
   }
@@ -888,19 +888,23 @@ export function readSolidEdges(
   oc: OccModule,
   scope: DisposeScope,
   solid: OccShape,
-): { ed: EdgeData; sortKey: EdgeSortKey }[] {
+): { ed: EdgeData; sortKey: EdgeSortKey; canon: number }[] {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
   const dedup = new SubShapeDedup()
-  const uniq: OccSubShape[] = []
+  const uniq: { edge: OccSubShape; canon: number }[] = []
+  // The position in the canonical edge order (occ/bodyNames.ts), which counts
+  // degenerated edges even though they are skipped here.
+  let canon = 0
   for (; exp.More(); exp.Next()) {
     const raw = scope.track(exp.Current())
     const edge = scope.track(oc.TopoDS.Edge_1(raw)) as OccSubShape
     if (!dedup.add(edge)) continue
+    const at = canon++
     if (oc.BRep_Tool.Degenerated?.(edge)) continue
-    uniq.push(edge)
+    uniq.push({ edge, canon: at })
   }
-  return uniq.map((edge) => edgeToGeom(oc, scope, edge))
+  return uniq.map(({ edge, canon: at }) => ({ ...edgeToGeom(oc, scope, edge), canon: at }))
 }
 
 /** Unique B-rep vertices of a solid (deduped by topological identity). */

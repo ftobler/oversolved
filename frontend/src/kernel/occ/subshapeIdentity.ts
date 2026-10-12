@@ -125,6 +125,84 @@ export class SubShapeMultiIndex<T> {
 }
 
 /**
+ * A mutable map from a sub-shape's topological identity to one value: set
+ * overwrites, delete removes. The construction names a producer builds are
+ * held in one (`bodyNames.ts`), keyed by the sub-shape itself rather than by
+ * anything derived from its geometry. Same HashCode bucketing and IsSame
+ * confirm as the indexes above; placement-sensitive, like plain `IsSame`.
+ */
+export class SubShapeMap<T> {
+  private readonly buckets = new Map<number, { shape: OccSubShape; value: T }[]>()
+  private count = 0
+
+  // A copy of `from`'s entries (the shapes are shared, the map is not).
+  constructor(from?: SubShapeMap<T>) {
+    if (from !== undefined) this.assign(from)
+  }
+
+  // Set every entry of `from` here, overwriting: Object.assign for identity keys.
+  assign(from: SubShapeMap<T>): this {
+    for (const [shape, value] of from.entries()) this.set(shape, value)
+    return this
+  }
+
+  get size(): number {
+    return this.count
+  }
+
+  get(shape: OccSubShape): T | undefined {
+    return this.entry(shape)?.value
+  }
+
+  has(shape: OccSubShape): boolean {
+    return this.entry(shape) !== undefined
+  }
+
+  set(shape: OccSubShape, value: T): void {
+    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const bucket = this.buckets.get(key)
+    if (bucket === undefined) {
+      this.buckets.set(key, [{ shape, value }])
+      this.count++
+      return
+    }
+    const hit = bucket.find((b) => b.shape.IsSame(shape))
+    if (hit !== undefined) {
+      hit.value = value
+      return
+    }
+    bucket.push({ shape, value })
+    this.count++
+  }
+
+  delete(shape: OccSubShape): boolean {
+    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const bucket = this.buckets.get(key)
+    if (bucket === undefined) return false
+    const at = bucket.findIndex((b) => b.shape.IsSame(shape))
+    if (at < 0) return false
+    bucket.splice(at, 1)
+    if (bucket.length === 0) this.buckets.delete(key)
+    this.count--
+    return true
+  }
+
+  // Entries in insertion order within a bucket; callers must not depend on the order.
+  *entries(): IterableIterator<[OccSubShape, T]> {
+    for (const bucket of this.buckets.values()) for (const b of bucket) yield [b.shape, b.value]
+  }
+
+  // The values alone, in the same unspecified order as `entries`.
+  *values(): IterableIterator<T> {
+    for (const [, value] of this.entries()) yield value
+  }
+
+  private entry(shape: OccSubShape): { shape: OccSubShape; value: T } | undefined {
+    return this.buckets.get(shape.HashCode(SHAPE_HASH_UPPER))?.find((b) => b.shape.IsSame(shape))
+  }
+}
+
+/**
  * Strip a shape's placement, so `IsSame` and `HashCode` compare TShapes alone.
  *
  * Needed because a STEP file with several roots comes back with each root under

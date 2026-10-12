@@ -11,7 +11,6 @@
 import { describe, it, expect } from 'vitest'
 import { build, bodiesNeedingCheckpointRegistration, bodyVersion, type BuildDeps, type FeatureResult } from '../builder'
 import { Repository } from '../query'
-import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { repoSemanticFingerprint, checkpointFingerprints } from '../repoFingerprintTestUtil'
 import type { Body, BuildState } from '../types3d'
 
@@ -37,33 +36,32 @@ function verticesOf(shape: number): number[][] {
   return [[0, 0, 0], [shape, 0, 0]]
 }
 
+// The fake geometry's canonical order is its display order, so the body's
+// arrays pass straight through, the way the real tessellator emits them.
 function fakeMeta(body: Body, isFallback = false): Record<string, unknown> {
   const shape = Number(body.shape)
   return {
     mesh: {
       vertices: [], faces: [], triangle_to_face: [], face_queries: [],
       face_data: faceData(shape),
+      face_uuids: body.face_uuids ?? [],
       is_fallback: isFallback,
     },
     edges: edgesOf(shape),
     edge_queries: ['@eq0', '@eq1'],
+    edge_uuids: body.edge_uuids ?? [],
+    edge_created_by: [],
     vertices: verticesOf(shape),
     vertex_queries: ['@vq0', '@vq1'],
     vertex_uuids: [`u_${body.id}_v0`, null],
   }
 }
 
-// Construction UUIDs are keyed by the in-build geom hash, so they follow the shape.
+// Construction UUIDs index the body's shape, so they are rewritten with it.
 function refreshNames(body: Body): void {
   const shape = Number(body.shape)
-  body.face_names = Object.fromEntries(
-    faceData(shape).map((f, i) => [
-      faceGeometryHash(f.centroid as number[], f.normal as number[]), `u_${body.id}_f${i}`,
-    ]),
-  )
-  body.edge_names = Object.fromEntries(
-    edgesOf(shape).map((e, i) => [edgeGeometryHash(e), `u_${body.id}_e${i}`]),
-  )
+  body.face_uuids = faceData(shape).map((_, i) => `u_${body.id}_f${i}`)
+  body.edge_uuids = edgesOf(shape).map((_, i) => `u_${body.id}_e${i}`)
 }
 
 // ─── stub build deps ───
@@ -128,7 +126,8 @@ interface HarnessOptions {
 
 class Harness {
   /** One entry per face-ancestry registration pass, in call order. Both the loop pass and
-   *  the checkpoint pass go through `brepDiffNewFaceHashes`, so this counts registrations. */
+   *  the checkpoint pass read a blob's `mesh.face_data` once they decide to register its
+   *  faces, so a getter there counts registrations (`probe`). */
   faceRegistrations: string[] = []
   edgeRegistrations: string[] = []
 
@@ -152,9 +151,41 @@ class Harness {
             delete blob.edge_queries
             delete blob.vertex_queries
           }
-          return [bid, blob]
+          return [bid, this.probe(body, blob)]
         }),
     )
+
+  /** Record the first face and the first edge registration read of `blob`, and throw
+   *  inside the face registrar for a body named in `registrarThrows`. */
+  private probe(body: Body, blob: Record<string, unknown>): Record<string, unknown> {
+    const mesh = blob.mesh as Record<string, unknown>
+    const faceData = mesh.face_data
+    let facesSeen = false
+    Object.defineProperty(mesh, 'face_data', {
+      enumerable: true,
+      get: () => {
+        if (!facesSeen) {
+          facesSeen = true
+          this.faceRegistrations.push(body.id)
+        }
+        if (this.options.registrarThrows?.includes(body.id)) throw new Error('synthetic registrar throw')
+        return faceData
+      },
+    })
+    const edgeCreators = blob.edge_created_by
+    let edgesSeen = false
+    Object.defineProperty(blob, 'edge_created_by', {
+      enumerable: true,
+      get: () => {
+        if (!edgesSeen) {
+          edgesSeen = true
+          this.edgeRegistrations.push(body.id)
+        }
+        return edgeCreators
+      },
+    })
+    return blob
+  }
 
   deps(): BuildDeps {
     return {
@@ -168,13 +199,6 @@ class Harness {
         }
         return this.meta(store, true)
       },
-      brepDiffNewFaceHashes: (body) => {
-        this.faceRegistrations.push(body.id)
-        if (this.options.registrarThrows?.includes(body.id)) throw new Error('synthetic registrar throw')
-        return new Set()
-      },
-      brepDiffNewEdgeHashes: (body) => { this.edgeRegistrations.push(body.id); return new Set() },
-      brepDiffNewVertexHashes: () => new Set(),
     }
   }
 

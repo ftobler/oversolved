@@ -1,27 +1,25 @@
 // Construction-name transfer for transformed shape copies (array/mirror/transform
 // leaves). A rigid transform/mirror/rotation creates a new topological copy of
 // the source body, so the source face UUIDs must be remapped to instance-specific
-// UUIDs (and re-keyed by the new geometry hash) before the copies are fused or
+// UUIDs (and re-keyed onto the copy's own faces) before the copies are fused or
 // exposed as separate bodies. Without this, identical array instances share the
 // same face/edge UUIDs and their queries collide.
 
 import { type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccTrsf, OccTransformBuilder } from './occTypes'
-import { faceGh } from './lineageHash'
 import { deriveEdgeNames, FaceEdgeTable } from './constructionLineage'
 import { mintFaceUuid, arrayInstancePath } from '../constructionName'
 import { drainList } from './disposeScope'
 import { unplacer, SubShapeIndexMap } from './primitives'
+import { SubShapeMap } from './subshapeIdentity'
+import type { ShapeNames } from './bodyNames'
 
 export interface FaceNameMaps {
-  faceNames: Record<string, string>
+  faceNames: SubShapeMap<string>
   faceAncestry: Record<string, string[]>
 }
 
-export interface NameMaps extends FaceNameMaps {
-  edgeNames: Record<string, string>
-  edgeAncestry: Record<string, string[]>
-}
+export type NameMaps = ShapeNames
 
 export interface SourceFaceRow {
   face: OccSubShape
@@ -32,13 +30,12 @@ export interface SourceFaceRow {
 /**
  * The source faces that carry a construction UUID, read once for a whole
  * array/mirror. Identical for every instance: the source shape does not change
- * between them, so hashing it per instance was pure repetition (M37). Rows are
- * in explorer order, which matters because faceNames is last-write-wins on a gh
- * collision.
+ * between them, so reading it per instance was pure repetition (M37). Rows are
+ * in explorer order.
  */
 export function readSourceFaceRows(
   oc: OccModule, scope: DisposeScope, sourceShape: OccShape,
-  sourceFaceNames: Record<string, string>, sourceFaceAncestry: Record<string, string[]>,
+  sourceFaceNames: SubShapeMap<string>, sourceFaceAncestry: Record<string, string[]>,
 ): SourceFaceRow[] {
   const E = oc.TopAbs_ShapeEnum
   const sourceExp = scope.track(new oc.TopExp_Explorer_2(sourceShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
@@ -46,7 +43,7 @@ export function readSourceFaceRows(
   for (; sourceExp.More(); sourceExp.Next()) {
     const raw = scope.track(sourceExp.Current())
     const sourceFace = scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape
-    const sourceUuid = sourceFaceNames[faceGh(oc, scope, sourceFace)]
+    const sourceUuid = sourceFaceNames.get(sourceFace)
     if (!sourceUuid) continue
     rows.push({ face: sourceFace, uuid: sourceUuid, ancestry: sourceFaceAncestry[sourceUuid] ?? [] })
   }
@@ -71,7 +68,7 @@ export function transformCopyWithMapping(
 
 /**
  * Remap a source body's face UUIDs to instance-specific UUIDs and re-key them
- * by the transformed shape's face geometry hash. `builder` is the transform
+ * onto the transformed shape's own faces. `builder` is the transform
  * builder that produced `instanceShape`; `Modified()` maps each source face to
  * its transformed image in the builder's forward orientation. The transformed
  * image and the shell-oriented instance face share the same TShape (only
@@ -88,7 +85,7 @@ export function remapFaceNamesForInstance(
   builder: OccTransformBuilder,
 ): FaceNameMaps {
   const E = oc.TopAbs_ShapeEnum
-  const faceNames: Record<string, string> = {}
+  const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
 
   // Cache shell-oriented instance faces so each source face's image can be
@@ -117,7 +114,7 @@ export function remapFaceNamesForInstance(
       if (j < 0) throw new Error('transformed source face has no shell-oriented partner')
       const match = instanceFaces[j]
       const newUuid = mintFaceUuid(arrayInstancePath(row.uuid, featureId, index))
-      faceNames[faceGh(oc, scope, match)] = newUuid
+      faceNames.set(match, newUuid)
       faceAncestry[newUuid] = [...row.ancestry]
     }
   }
@@ -125,7 +122,7 @@ export function remapFaceNamesForInstance(
 }
 
 /**
- * Re-key a body's existing face UUIDs by the transformed shape's geometry hash
+ * Re-key a body's existing face UUIDs onto the transformed shape's own faces
  * without minting new UUIDs. Used for in-place transforms where the
  * construction path does not change (e.g. a pure translation/rotation that
  * keeps the same body), so existing face queries keep resolving.
@@ -135,12 +132,12 @@ export function rekeyFaceNamesForTransform(
   scope: DisposeScope,
   transformedShape: OccShape,
   sourceShape: OccShape,
-  sourceFaceNames: Record<string, string>,
+  sourceFaceNames: SubShapeMap<string>,
   sourceFaceAncestry: Record<string, string[]>,
   builder: OccTransformBuilder,
 ): FaceNameMaps {
   const E = oc.TopAbs_ShapeEnum
-  const faceNames: Record<string, string> = {}
+  const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
 
   const transformedFaces: OccSubShape[] = []
@@ -163,7 +160,7 @@ export function rekeyFaceNamesForTransform(
   for (; sourceExp.More(); sourceExp.Next()) {
     const raw = scope.track(sourceExp.Current())
     const sourceFace = scope.track(oc.TopoDS.Face_1(raw)) as OccSubShape
-    const sourceUuid = sourceFaceNames[faceGh(oc, scope, sourceFace)]
+    const sourceUuid = sourceFaceNames.get(sourceFace)
     if (!sourceUuid) continue
     const transformed = drainList(scope, builder.Modified(sourceFace))
     for (const t of transformed) {
@@ -171,7 +168,7 @@ export function rekeyFaceNamesForTransform(
       const j = unplaced.borrow(tFace, (bare) => transformedIdx.get(bare))
       if (j < 0) throw new Error('transformed source face has no shell-oriented partner')
       const match = transformedFaces[j]
-      faceNames[faceGh(oc, scope, match)] = sourceUuid
+      faceNames.set(match, sourceUuid)
       faceAncestry[sourceUuid] = [...(sourceFaceAncestry[sourceUuid] ?? [])]
     }
   }

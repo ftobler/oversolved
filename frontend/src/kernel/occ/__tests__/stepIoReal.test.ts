@@ -15,8 +15,8 @@ import { DisposeScope } from '../disposeScope'
 import type { OccModule, OccShape } from '../occTypes'
 import { makeBox, makeBoxAt, faceCentroid } from '../primitives'
 import { makeTranslationTrsf } from '../transforms'
-import { stepShapeToBytes, stepBytesToShape, stepBytesToShapeWithIdentity, shapeToStlBytes } from '../stepIo'
-import { faceGh } from '../lineageHash'
+import { stepShapeToBytes, stepBytesToShape, stepBytesToShapeWithIdentity, shapeToStlBytes, type StepReadResult } from '../stepIo'
+import { canonicalFaces } from '../bodyNames'
 import { volumeOf } from '../booleans'
 
 const oc = await loadOcc()
@@ -26,14 +26,8 @@ function fixtureBytes(): Uint8Array {
   return new Uint8Array(readFileSync(new URL('../__fixtures__/double_with_hole.step', import.meta.url)))
 }
 
-/** Explorer-ordered face geom-hashes of a shape -- the keys every consumer uses. */
-function explorerFaceGhs(occ: OccModule, scope: DisposeScope, shape: OccShape): string[] {
-  const E = occ.TopAbs_ShapeEnum
-  const exp = scope.track(new occ.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  const out: string[] = []
-  for (; exp.More(); exp.Next()) out.push(faceGh(occ, scope, scope.track(occ.TopoDS.Face_1(exp.Current()))))
-  return out
-}
+/** The entity ids `faceStepIds` holds, in no particular order. */
+const idsOf = (r: StepReadResult): number[] => [...r.faceStepIds.values()]
 
 describe.skipIf(!oc)('stepShapeToBytes (real OCC)', () => {
   let occ: OccModule
@@ -195,12 +189,12 @@ describe.skipIf(!oc)('stepBytesToShapeWithIdentity (real OCC)', () => {
   it('recovers a distinct STEP entity id for every face', () => {
     const scope = new DisposeScope()
     try {
-      const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
-      const ghs = explorerFaceGhs(occ, scope, shape)
-      expect(ghs.length).toBeGreaterThan(1)
-      expect(Object.keys(faceStepIds).length).toBe(ghs.length)
+      const read = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
+      const faces = canonicalFaces(occ, scope, read.shape)
+      expect(faces.length).toBeGreaterThan(1)
+      expect(read.faceStepIds.size).toBe(faces.length)
       // Ids are the file's own `#N`, so they are positive and never repeat.
-      const ids = Object.values(faceStepIds)
+      const ids = idsOf(read)
       expect(new Set(ids).size).toBe(ids.length)
       for (const id of ids) expect(id).toBeGreaterThan(0)
     } finally {
@@ -208,23 +202,23 @@ describe.skipIf(!oc)('stepBytesToShapeWithIdentity (real OCC)', () => {
     }
   })
 
-  it('keys the map the way the explorer hashes the faces, not the way ModifiedShape does', () => {
-    // The orientation trap: `ModifiedShape` returns a face whose `faceGh` differs
-    // from the explorer's for a subset of faces (3 of 7 in this fixture at scale
-    // 2). Every consumer looks up by the explorer's hash, so a map keyed on
+  it('keys the map by the explorer faces of the shape, not the way ModifiedShape hands them back', () => {
+    // The orientation trap: `ModifiedShape` returns a face with its own
+    // orientation for a subset of faces (3 of 7 in this fixture at scale 2).
+    // Every consumer looks up by the shape's explorer faces, so a map keyed on
     // `ModifiedShape` output would silently miss those faces. Asserted at BOTH
     // scales because the unscaled path cannot reach the bug at all.
     for (const scale of [1.0, 2.0]) {
       const scope = new DisposeScope()
       try {
         const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes(), scale)
-        const ghs = new Set(explorerFaceGhs(occ, scope, shape))
-        for (const gh of Object.keys(faceStepIds)) {
-          expect(ghs.has(gh), `scale ${scale}: ${gh} is not an explorer face hash`).toBe(true)
-        }
-        // Every key being an explorer hash is only half of it: losing 3 of 7 to
-        // the orientation trap would still satisfy the loop above.
-        expect(Object.keys(faceStepIds).length, `scale ${scale}`).toBe(ghs.size)
+        const faces = canonicalFaces(occ, scope, shape)
+        faces.forEach((face, i) => {
+          expect(faceStepIds.has(face), `scale ${scale}: explorer face ${i} has no entity id`).toBe(true)
+        })
+        // Every explorer face found is only half of it: the map must hold no
+        // key the explorer walk does not yield.
+        expect(faceStepIds.size, `scale ${scale}`).toBe(faces.length)
       } finally {
         scope.dispose()
       }
@@ -236,12 +230,10 @@ describe.skipIf(!oc)('stepBytesToShapeWithIdentity (real OCC)', () => {
     try {
       const plain = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes(), 1.0)
       const scaled = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes(), 2.0)
-      // The geometry moved, so the KEYS differ; the identity did not, so the
-      // id sets must match exactly and stay complete.
-      expect(new Set(Object.values(scaled.faceStepIds)))
-        .toEqual(new Set(Object.values(plain.faceStepIds)))
-      expect(Object.keys(scaled.faceStepIds).length).toBe(Object.keys(plain.faceStepIds).length)
-      expect(Object.keys(scaled.faceStepIds)).not.toEqual(Object.keys(plain.faceStepIds))
+      // The geometry moved; the identity did not, so the id sets must match
+      // exactly and stay complete.
+      expect(new Set(idsOf(scaled))).toEqual(new Set(idsOf(plain)))
+      expect(scaled.faceStepIds.size).toBe(plain.faceStepIds.size)
     } finally {
       scope.dispose()
     }
@@ -258,16 +250,12 @@ describe.skipIf(!oc)('stepBytesToShapeWithIdentity (real OCC)', () => {
       const factor = 2.0
       const plain = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes(), 1.0)
       const scaled = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes(), factor)
-      const centroidsById = (r: { shape: OccShape; faceStepIds: Record<string, number> }) => {
-        const byGh = new Map<string, number[]>()
-        const E = occ.TopAbs_ShapeEnum
-        const exp = scope.track(new occ.TopExp_Explorer_2(r.shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-        for (; exp.More(); exp.Next()) {
-          const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
-          byGh.set(faceGh(occ, scope, f), faceCentroid(occ, scope, f))
-        }
+      const centroidsById = (r: StepReadResult) => {
         const out = new Map<number, number[]>()
-        for (const [gh, id] of Object.entries(r.faceStepIds)) out.set(id, byGh.get(gh)!)
+        for (const face of canonicalFaces(occ, scope, r.shape)) {
+          const id = r.faceStepIds.get(face)
+          if (id !== undefined) out.set(id, faceCentroid(occ, scope, face as unknown as OccShape))
+        }
         return out
       }
       const before = centroidsById(plain)
@@ -297,8 +285,8 @@ describe.skipIf(!oc)('stepBytesToShapeWithIdentity (real OCC)', () => {
         for (let i = 0; i < n; i++) builder.Add(compound, makeBoxAt(occ, scope, [i * 30, 0, 0], 10, 10, 10))
         const bytes = stepShapeToBytes(occ, scope, compound)
         const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, bytes)
-        expect(explorerFaceGhs(occ, scope, shape).length).toBe(n * 6)
-        expect(Object.keys(faceStepIds).length, `${n} solids`).toBe(n * 6)
+        expect(canonicalFaces(occ, scope, shape).length).toBe(n * 6)
+        expect(faceStepIds.size, `${n} solids`).toBe(n * 6)
       }
     } finally {
       scope.dispose()
@@ -328,12 +316,12 @@ describe.skipIf(!oc)('stepBytesToShapeWithIdentity (real OCC)', () => {
       builder.Add(compound, mover.Shape())
       const bytes = stepShapeToBytes(occ, scope, compound)
 
-      const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, bytes)
-      expect(explorerFaceGhs(occ, scope, shape).length).toBe(12)
-      expect(Object.keys(faceStepIds).length).toBe(12)
+      const read = stepBytesToShapeWithIdentity(occ, scope, bytes)
+      expect(canonicalFaces(occ, scope, read.shape).length).toBe(12)
+      expect(read.faceStepIds.size).toBe(12)
       // Six ids for twelve faces is the proof that the two instances really do
       // share entities: a first-wins index would have returned six keys.
-      expect(new Set(Object.values(faceStepIds)).size).toBe(6)
+      expect(new Set(idsOf(read)).size).toBe(6)
     } finally {
       scope.dispose()
     }
@@ -344,7 +332,9 @@ describe.skipIf(!oc)('stepBytesToShapeWithIdentity (real OCC)', () => {
     try {
       const a = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
       const b = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
-      expect(b.faceStepIds).toEqual(a.faceStepIds)
+      // Two reads are two shapes: face by face in canonical order, the same ids.
+      const inOrder = (r: StepReadResult) => canonicalFaces(occ, scope, r.shape).map((f) => r.faceStepIds.get(f))
+      expect(inOrder(b)).toEqual(inOrder(a))
     } finally {
       scope.dispose()
     }

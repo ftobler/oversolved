@@ -15,7 +15,6 @@ import {
   ref,
 } from '../query'
 import { registerBodyBrepFromMeta, build, type BuildDeps } from '../builder'
-import { faceGeometryHash, edgeGeometryHash } from '../geomHash'
 import { solveDeleteBody } from '../features/deleteBody'
 import { assertRepoIndicesConsistent, assertNoDeadUuidBuckets } from '../repoIndexTestUtil'
 import { HandleTable } from '../occ/handleTable'
@@ -35,7 +34,9 @@ function faceData(shape: number, count: number): Array<Record<string, unknown>> 
   }))
 }
 
-function metaOf(shape: number, count: number): Record<string, unknown> {
+// The fake geometry's canonical order is its display order, so the body's
+// names pass straight through, the way the real tessellator emits them.
+function metaOf(shape: number, count: number, body: Body): Record<string, unknown> {
   const edges = Array.from({ length: count }, (_, i) => ({
     kind: 'line', start: [i, 0, 0], end: [i + 1, 0, 0],
   }))
@@ -44,17 +45,19 @@ function metaOf(shape: number, count: number): Record<string, unknown> {
     mesh: {
       vertices: [], faces: [], triangle_to_face: [], face_queries: [],
       face_data: faceData(shape, count),
+      face_uuids: (body.face_uuids ?? []).slice(0, count),
       is_fallback: false,
     },
     edges,
     edge_queries: edges.map(() => '@eq'),
+    edge_uuids: (body.edge_uuids ?? []).slice(0, count),
     vertices,
     vertex_queries: vertices.map(() => '@vq'),
     vertex_uuids: vertices.map(() => null),
   }
 }
 
-function makeBody(id: string, shape: number, createdBy: string, faceCount: number): Body {
+function makeBody(id: string, _shape: number, createdBy: string, faceCount: number): Body {
   return {
     id,
     created_by: createdBy,
@@ -63,19 +66,14 @@ function makeBody(id: string, shape: number, createdBy: string, faceCount: numbe
     sketch_id: 'sk1',
     brep_diff: null,
     profile_queries: [],
-    face_names: Object.fromEntries(
-      Array.from({ length: faceCount }, (_, i) => [
-        faceGeometryHash([shape, i, 0], [0, 0, 1]),
-        `u_${id}_f${i}`,
-      ]),
-    ),
-    edge_names: Object.fromEntries(
-      Array.from({ length: faceCount }, (_, i) => [
-        edgeGeometryHash({ kind: 'line', start: [i, 0, 0], end: [i + 1, 0, 0] }),
-        `u_${id}_e${i}`,
-      ]),
-    ),
+    face_uuids: Array.from({ length: faceCount }, (_, i) => `u_${id}_f${i}`),
+    edge_uuids: Array.from({ length: faceCount }, (_, i) => `u_${id}_e${i}`),
   }
+}
+
+// Register `body` off fake geometry for `shape` holding `count` of each element.
+function registerFake(repo: Repository, body: Body, shape: number, count: number): void {
+  registerBodyBrepFromMeta(repo, body, metaOf(shape, count, body))
 }
 
 function faceKey(bodyId: string, idx: number): string {
@@ -89,7 +87,7 @@ function faceQuery(bodyId: string, featureId: string, idx: number): string {
 describe('clearBodyAncestry', () => {
   it('evicts every index of a body and prunes its dead uuid buckets', () => {
     const repo = new Repository()
-    registerBodyBrepFromMeta(repo, makeBody('body_a', 1, 'ex1', 3), metaOf(1, 3))
+    registerFake(repo, makeBody('body_a', 1, 'ex1', 3), 1, 3)
     expect(repo.ancestral.has(faceKey('body_a', 2))).toBe(true)
     expect(repo.byUuid.has('u_body_a_f2')).toBe(true)
 
@@ -104,7 +102,7 @@ describe('clearBodyAncestry', () => {
 
   it('is a no-op for a body that owns no entries', () => {
     const repo = new Repository()
-    registerBodyBrepFromMeta(repo, makeBody('body_a', 1, 'ex1', 2), metaOf(1, 2))
+    registerFake(repo, makeBody('body_a', 1, 'ex1', 2), 1, 2)
 
     clearBodyAncestry(repo, 'body_ghost')
 
@@ -116,11 +114,11 @@ describe('clearBodyAncestry', () => {
 describe('index range shrink across a re-registration', () => {
   it('drops the tail faces when a modified body comes back with one fewer face', () => {
     const repo = new Repository()
-    registerBodyBrepFromMeta(repo, makeBody('body_a', 1, 'ex1', 3), metaOf(1, 3))
+    registerFake(repo, makeBody('body_a', 1, 'ex1', 3), 1, 3)
     expect(repo.query(faceQuery('body_a', 'ex1', 2))).not.toBeNull()
 
     // The same body re-registers with two faces: the old face2 entry must die.
-    registerBodyBrepFromMeta(repo, makeBody('body_a', 1, 'ex1', 3), metaOf(1, 2))
+    registerFake(repo, makeBody('body_a', 1, 'ex1', 3), 1, 2)
 
     expect(repo.ancestral.has(faceKey('body_a', 2))).toBe(false)
     expect(repo.query(faceQuery('body_a', 'ex1', 2))).toBeNull()
@@ -138,10 +136,10 @@ describe('index range shrink across a re-registration', () => {
 
   it('leaves a body whose range did not change alone', () => {
     const repo = new Repository()
-    registerBodyBrepFromMeta(repo, makeBody('body_a', 1, 'ex1', 2), metaOf(1, 2))
+    registerFake(repo, makeBody('body_a', 1, 'ex1', 2), 1, 2)
     const before = repo.ancestral.size
 
-    registerBodyBrepFromMeta(repo, makeBody('body_a', 1, 'ex1', 2), metaOf(1, 2))
+    registerFake(repo, makeBody('body_a', 1, 'ex1', 2), 1, 2)
 
     expect(repo.ancestral.size).toBe(before)
     // The payload-equality dedup-skip is gone; idempotency now rests entirely on
@@ -182,8 +180,8 @@ describe('delete_body repo cleanup', () => {
       body_a: makeBody('body_a', 1, 'ex1', 2),
       body_b: makeBody('body_b', 2, 'ex2', 2),
     }
-    registerBodyBrepFromMeta(repo, bodyStore.body_a, metaOf(1, 2))
-    registerBodyBrepFromMeta(repo, bodyStore.body_b, metaOf(2, 2))
+    registerFake(repo, bodyStore.body_a, 1, 2)
+    registerFake(repo, bodyStore.body_b, 2, 2)
     // Solids are registered under the creating feature's bare tag (builder.ts).
     repo.registerAncestor([ref('ex1')], { type: 'solid', body_id: 'body_a', created_by: 'ex1' })
     repo.registerAncestor([ref('ex2')], { type: 'solid', body_id: 'body_b', created_by: 'ex2' })
@@ -239,10 +237,7 @@ describe('consumed body repo cleanup', () => {
         if (fid === 'bool') {
           const target = bodyStore.body_a
           target.modified_by.push('bool')
-          target.face_names = {
-            ...target.face_names,
-            [faceGeometryHash([1, 0, 0], [0, 0, 1])]: 'u_body_b_f0',
-          }
+          target.face_uuids = ['u_body_b_f0', ...(target.face_uuids ?? []).slice(1)]
           delete bodyStore.body_b
         }
         return { status: 'ok' }
@@ -251,7 +246,7 @@ describe('consumed body repo cleanup', () => {
       initGlobalRepo: () => repo,
       tessellateBodies: (bodyStore) =>
         Object.fromEntries(
-          Object.keys(bodyStore).map((bid) => [bid, metaOf(bid === 'body_a' ? 1 : 2, 2)]),
+          Object.keys(bodyStore).map((bid) => [bid, metaOf(bid === 'body_a' ? 1 : 2, 2, bodyStore[bid])]),
         ),
     }
   }

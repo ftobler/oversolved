@@ -21,6 +21,8 @@ import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, countSolids, shapesIntersect } from '../occ/booleans'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
+import { readBodyNames } from '../occ/bodyNames'
+import type { SubShapeMap } from '../occ/subshapeIdentity'
 
 export type BodyOperation = 'add' | 'cut' | 'new'
 
@@ -35,8 +37,8 @@ export interface ApplyBodyOperationInput {
   opName?: string
   profileQueries?: string[]
   // The tool body's construction-name maps (query-naming-by-construction).
-  faceNames?: Record<string, string> | null
-  edgeNames?: Record<string, string> | null
+  faceNames?: SubShapeMap<string> | null
+  edgeNames?: SubShapeMap<string> | null
   faceAncestry?: Record<string, string[]> | null
   edgeAncestry?: Record<string, string[]> | null
 }
@@ -139,7 +141,7 @@ export function applyBodyOperation(
       const names = transferBooleanNames(oc, scope, {
         bodyShape: newShape,
         faceOrigin,
-        targetFaceNames: existingBody.face_names ?? {},
+        targetFaceNames: readBodyNames(oc, scope, oldShape, existingBody).faceNames,
         targetFaceAncestry: existingBody.face_ancestry ?? {},
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
@@ -152,10 +154,6 @@ export function applyBodyOperation(
       })
       existingBody.modified_by.push(featureId)
       existingBody.brep_diff = diff
-      existingBody.face_names = names.face_names
-      existingBody.edge_names = names.edge_names
-      existingBody.face_ancestry = names.face_ancestry
-      existingBody.edge_ancestry = names.edge_ancestry
 
       cutAnything = true
       if (cutBodyId === null) cutBodyId = bid
@@ -163,7 +161,7 @@ export function applyBodyOperation(
       // A cut is the classic disconnector, and the sibling bodies inherit the
       // names just transferred onto `newShape`, narrowed to the faces each one
       // actually owns.
-      cutBodyIds.push(...resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId))
+      cutBodyIds.push(...resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId, names))
     }
     if (!cutAnything) {
       throw new Error(`${opName}: cut does not intersect any target body - nothing to remove`)
@@ -225,7 +223,7 @@ export function applyBodyOperation(
       const names = transferBooleanNames(oc, scope, {
         bodyShape: newShape,
         faceOrigin,
-        targetFaceNames: existingBody.face_names ?? {},
+        targetFaceNames: readBodyNames(oc, scope, oldShape, existingBody).faceNames,
         targetFaceAncestry: existingBody.face_ancestry ?? {},
         toolFaceNames: faceNames,
         toolFaceAncestry: faceAncestry,
@@ -233,14 +231,10 @@ export function applyBodyOperation(
         // tool shape is transient, so nothing else claims these names.
         toolUuidScope: null,
       })
-      existingBody.face_names = names.face_names
-      existingBody.edge_names = names.edge_names
-      existingBody.face_ancestry = names.face_ancestry
-      existingBody.edge_ancestry = names.edge_ancestry
       // The connectivity guards above make a disjoint fuse unreachable here, so
       // this normally re-seats the body on one solid. It still goes through
       // resplitBody so the guards are the only thing that has to stay right.
-      fusedIds = resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId)
+      fusedIds = resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId, names)
       existingBody.modified_by.push(featureId)
       existingBody.brep_diff = diff
       fused = true

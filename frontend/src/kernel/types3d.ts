@@ -38,14 +38,15 @@ export interface Body {
   brep_diff: BrepDiff | null
   profile_queries: string[]
   /**
-   * Construction-by-name identity (query-naming-by-construction). `face_names`/
-   * `edge_names` map the in-build copy-stable geom-hash key to a construction
-   * UUID; `face_ancestry`/`edge_ancestry` map each UUID to its ancestral fallback
-   * tokens. The geom-hash key is a transient in-build join only; it never enters
-   * a persisted query.
+   * Construction-by-name identity (query-naming-by-construction). `face_uuids`/
+   * `edge_uuids` hold one construction UUID (or null) per face/edge of `shape`,
+   * in its canonical sub-shape order (occ/bodyNames.ts): written by the one
+   * place a shape becomes a body (features/bodySplit.ts) and read on that same
+   * shape, so they change whenever `shape` does. `face_ancestry`/`edge_ancestry`
+   * map each UUID to its ancestral fallback tokens.
    */
-  face_names?: Record<string, string>
-  edge_names?: Record<string, string>
+  face_uuids?: (string | null)[]
+  edge_uuids?: (string | null)[]
   face_ancestry?: Record<string, string[]>
   edge_ancestry?: Record<string, string[]>
   /**

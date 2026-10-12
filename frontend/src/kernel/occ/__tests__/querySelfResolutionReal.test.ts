@@ -183,13 +183,60 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     expect(modifierOwned).toBeGreaterThan(0)
   })
 
+  // The cut's walls, rim edges and corners belong to the cut. The old
+  // geometry-hash attribution never matched a boolean's edges (it threw on the
+  // uncast sub-shapes and swallowed it), so this also guards that regression.
   it('boolean cut', () => {
-    expectSelfResolution({ features: [
+    const modifierOwned = expectSelfResolution({ features: [
       rectSketch('sk1', 10, 10),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'add' },
       rectSketch('sk2', 4, 4, { offsetX: 3, offsetY: 3 }),
       { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 12, direction: 'normal', operation: 'cut' },
     ] }, 'body_ex1')
+    expect(modifierOwned).toBeGreaterThan(0)
+  })
+
+  // A ring groove cut into the bottom face leaves the outer floor and the
+  // island disc coplanar with one centroid and one normal. Identity that keyed
+  // on geometry collapsed such a pair onto one name; both must keep their own
+  // uuid and resolve to themselves.
+  it('two faces with one centroid and normal', () => {
+    const ring = {
+      id: 'sk2', kind: 'sketch' as const, label: 'Ring', plane: '@builtin_plane_front',
+      entities: [{ id: 'a', kind: 'circle' as const }, { id: 'b', kind: 'circle' as const }],
+      initial: { a: [0, 0, 3], b: [0, 0, 6] },
+      constraints: [
+        { id: 'k1', kind: 'coincident' as const, a: '$sk2acenter', b: '@builtin_origin' },
+        { id: 'k2', kind: 'coincident' as const, a: '$sk2bcenter', b: '@builtin_origin' },
+        { id: 'k3', kind: 'diameter' as const, target: '$sk2a', value: 6 },
+        { id: 'k4', kind: 'diameter' as const, target: '$sk2b', value: 12 },
+      ],
+    }
+    const base: Spec = { features: [
+      rectSketch('sk1', 20, 20, { offsetX: -10, offsetY: -10 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
+      ring,
+    ] }
+    // The ring region is the sketch surface with a hole.
+    const surfaces = (h.res(h.run(base), 'sk2').topology as { surfaces: Array<{ query: string; holes?: unknown[] }> }).surfaces
+    const ringQuery = surfaces.find((s) => (s.holes ?? []).length > 0)!.query
+    const spec: Spec = { features: [
+      ...base.features,
+      { id: 'ex2', kind: 'extrude', sketch: [ringQuery], distance: 3, direction: 'normal', operation: 'cut' },
+    ] }
+    expectSelfResolution(spec, 'body_ex1')
+
+    const mesh = h.body(h.run(spec), 'body_ex1').mesh as {
+      face_data: Array<{ centroid: number[]; normal: number[] }>
+      face_uuids: (string | null)[]
+    }
+    const key = (i: number): string =>
+      [...mesh.face_data[i].centroid, ...mesh.face_data[i].normal].map((v) => v.toFixed(4).replace('-0.0000', '0.0000')).join(',')
+    const twins = mesh.face_data.map((_fd, i) => i).filter((i) => mesh.face_data.some((_g, j) => j !== i && key(j) === key(i)))
+    expect(twins, 'faces sharing centroid and normal').toHaveLength(2)
+    const uuids = twins.map((i) => mesh.face_uuids[i])
+    expect(uuids.every((u) => u !== null), 'both twins are named').toBe(true)
+    expect(new Set(uuids).size, 'the twins keep distinct uuids').toBe(2)
   })
 
   it('explicit boolean union', () => {

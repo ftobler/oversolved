@@ -15,6 +15,7 @@ import { booleanWithDiff } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
+import { readBodyNames } from '../occ/bodyNames'
 
 type Dict = Record<string, unknown>
 
@@ -184,12 +185,9 @@ function applyArray(
   // the fail-loud idiom the rest of this directory uses for required fields.
   if (body.shape === null) throw new Error(`${opLabel}: source body has no shape`)
   const sourceShape = table.get<OccShape>(body.shape)
-  const sourceNames: NameMaps = {
-    faceNames: body.face_names ?? {},
-    faceAncestry: body.face_ancestry ?? {},
-    edgeNames: body.edge_names ?? {},
-    edgeAncestry: body.edge_ancestry ?? {},
-  }
+  // Read on first use: the no-op returns below must not touch the shape.
+  let sourceNamesRead: NameMaps | null = null
+  const sourceNames = (): NameMaps => (sourceNamesRead ??= readBodyNames(oc, scope, sourceShape, body))
 
   const resultBodyId = 'body_' + featureId
 
@@ -206,7 +204,7 @@ function applyArray(
     // above the instance loop instead of re-explored and re-hashed per copy
     // (M37 Change 2a). The count_x=1 no-op below never reads them.
     const rows = transforms.length > 0
-      ? readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
+      ? readSourceFaceRows(oc, scope, sourceShape, sourceNames().faceNames, sourceNames().faceAncestry)
       : []
     for (let i = 0; i < transforms.length; i++) {
       const idx = includeSource ? i + 1 : i
@@ -250,11 +248,11 @@ function applyArray(
   const instanceNames: NameMaps[] = []
   if (includeSource) {
     instances.push(sourceShape)
-    instanceNames.push(sourceNames)
+    instanceNames.push(sourceNames())
   }
   // Same one-read-per-instance-loop hoist as the new branch: the source rows
   // are identical for every instance (M37 Change 2a).
-  const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
+  const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames().faceNames, sourceNames().faceAncestry)
   for (let i = 0; i < transforms.length; i++) {
     const idx = includeSource ? i + 1 : i
     const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
@@ -282,12 +280,7 @@ function applyArray(
       // `rebuildNamesForTransformedCopy`, so nothing collides.
       toolUuidScope: null,
     })
-    fusedNames = {
-      faceNames: names.face_names,
-      faceAncestry: names.face_ancestry,
-      edgeNames: names.edge_names,
-      edgeAncestry: names.edge_ancestry,
-    }
+    fusedNames = names
     lastDiff = r.diff
     // Release ONLY here, never above. `r.faceOrigin`'s `source` entries are
     // sub-shapes OF THE OPERANDS, and transferBooleanNames downcasts and hashes
@@ -309,14 +302,10 @@ function applyArray(
   }
   body.modified_by.push(featureId)
   body.brep_diff = lastDiff
-  body.face_names = fusedNames.faceNames
-  body.face_ancestry = fusedNames.faceAncestry
-  body.edge_names = fusedNames.edgeNames
-  body.edge_ancestry = fusedNames.edgeAncestry
   // "add" fuses the instances into the source body, but a pitch wider than the
   // part leaves that fuse disjoint: the union of N non-touching copies is an
   // N-solid compound, which is N parts, not one.
-  const bodyIds = resplitBody(oc, scope, table, bodyStore, body, fused, featureId)
+  const bodyIds = resplitBody(oc, scope, table, bodyStore, body, fused, featureId, fusedNames)
   if (bodyIds.length === 0) {
     // A union can only be empty through a failed boolean, so this is defensive:
     // resplitBody deleted the body, and body_ids must not hand back a live id

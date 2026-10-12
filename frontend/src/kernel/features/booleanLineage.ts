@@ -1,13 +1,14 @@
 // Rebuild a body's per-face and per-edge construction names after a boolean op.
 //
-// Pre-boolean, the target body and tool carry per-face construction UUIDs. After the boolean the
-// OCC handles change, so the geom-hash keys go stale. `transferBooleanNames` re-derives them by
-// subshape identity (faceOrigin), carrying each source face's UUID onto its output face(s).
+// Pre-boolean, the target body and tool carry per-face construction UUIDs keyed by their own
+// faces. The boolean makes new faces, so `transferBooleanNames` re-keys them by subshape
+// history (faceOrigin), carrying each source face's UUID onto its output face(s).
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import { SubShapeIndexMap } from '../occ/primitives'
-import { faceGh } from '../occ/lineageHash'
+import { SubShapeMap } from '../occ/subshapeIdentity'
+import type { ShapeNames } from '../occ/bodyNames'
 import {
   mintFaceUuid,
   splitFacePath,
@@ -25,11 +26,11 @@ interface TransferNamesInput {
   bodyShape: OccShape
   // Per-output-face origin from booleanWithDiff.
   faceOrigin: FaceOrigin[]
-  // Target body's pre-boolean face names (face_gh -> uuid) + ancestry (uuid -> tokens).
-  targetFaceNames: Record<string, string>
+  // Target body's pre-boolean face names (its faces -> uuid) + ancestry (uuid -> tokens).
+  targetFaceNames: SubShapeMap<string>
   targetFaceAncestry: Record<string, string[]>
   // Tool body's face names + ancestry (or null for ops without a named tool).
-  toolFaceNames: Record<string, string> | null
+  toolFaceNames: SubShapeMap<string> | null
   toolFaceAncestry: Record<string, string[]> | null
   // What makes this body's copy of the tool's UUIDs distinct, or null to carry
   // them verbatim. Non-null whenever some OTHER live face keeps the originals:
@@ -55,80 +56,74 @@ export function transferBooleanNames(
   oc: OccModule,
   scope: DisposeScope,
   input: TransferNamesInput,
-): {
-  face_names: Record<string, string>
-  edge_names: Record<string, string>
-  face_ancestry: Record<string, string[]>
-  edge_ancestry: Record<string, string[]>
-} {
+): ShapeNames {
   const {
     bodyShape, faceOrigin, targetFaceNames, targetFaceAncestry,
     toolFaceNames, toolFaceAncestry, toolUuidScope,
   } = input
 
-  // One Face_1 proxy and one faceGh per distinct sub-shape identity, not per
-  // origin entry: a split source appears in faceOrigin once per child, and the
-  // output of a merge once per contributing source, so both key spaces repeat
-  // (L7). PLACEMENT-SENSITIVE on purpose -- plain IsSame semantics, the
-  // opposite of Change 2's placement-stripped unplacer index that looks
-  // identical: stripping would collapse two distinct placed faces onto one cell.
+  // One Face_1 proxy per distinct sub-shape identity, not per origin entry: a
+  // split source appears in faceOrigin once per child, and the output of a
+  // merge once per contributing source, so both key spaces repeat (L7).
+  // PLACEMENT-SENSITIVE on purpose -- plain IsSame semantics, the opposite of
+  // Change 2's placement-stripped unplacer index that looks identical:
+  // stripping would collapse two distinct placed faces onto one cell.
   const faceIdx = new SubShapeIndexMap()
-  const cells: { face: OccShape; gh: string }[] = []
-  const cellOf = (s: OccSubShape): { face: OccShape; gh: string } => {
+  const cells: OccSubShape[] = []
+  const faceOf = (s: OccSubShape): OccSubShape => {
     const at = faceIdx.get(s)
     if (at >= 0) return cells[at]
-    const face = scope.track(oc.TopoDS.Face_1(s as unknown as OccShape))
-    const cell = { face, gh: faceGh(oc, scope, face) }
-    faceIdx.set(s, cells.push(cell) - 1)
-    return cell
+    const face = scope.track(oc.TopoDS.Face_1(s as unknown as OccShape)) as OccSubShape
+    faceIdx.set(s, cells.push(face) - 1)
+    return face
   }
 
-  // source uuid -> [{output, source, outGh}], collecting the outputs each source
-  // face produced (>1 is a split).
-  const bySource: Record<string, { output: OccShape; source: OccShape; outGh: string }[]> = {}
+  // source uuid -> [{output, source}], collecting the outputs each source face
+  // produced (>1 is a split).
+  const bySource = new Map<string, { output: OccSubShape; source: OccSubShape }[]>()
   const ancestryOf: Record<string, string[]> = {}  // source uuid -> ancestral tokens
-  const seenOutput = new Set<string>()  // dedupe merged faces by output gh
+  const seenOutput = new SubShapeMap<true>()  // dedupe merged faces by output identity
   for (const o of faceOrigin) {
     const names = o.fromTool ? toolFaceNames : targetFaceNames
     const ancestry = o.fromTool ? toolFaceAncestry : targetFaceAncestry
     if (!names) continue
-    const sourceCell = cellOf(o.source)
-    const sourceUuid = names[sourceCell.gh]
+    const source = faceOf(o.source)
+    const sourceUuid = names.get(source)
     if (!sourceUuid) continue
     // Something else live keeps `sourceUuid`, so this copy takes a scoped one
     // instead of laying a second claim on the same id.
     const uuid = o.fromTool && toolUuidScope !== null
       ? mintFaceUuid(toolCopyFacePath(sourceUuid, toolUuidScope))
       : sourceUuid
-    const outputCell = cellOf(o.output)
-    const outGh = outputCell.gh
-    if (seenOutput.has(outGh)) continue
-    seenOutput.add(outGh)
-    ;(bySource[uuid] ??= []).push({ output: outputCell.face, source: sourceCell.face, outGh })
+    const output = faceOf(o.output)
+    if (seenOutput.has(output)) continue
+    seenOutput.set(output, true)
+    const children = bySource.get(uuid)
+    if (children === undefined) bySource.set(uuid, [{ output, source }])
+    else children.push({ output, source })
     if (!(uuid in ancestryOf)) ancestryOf[uuid] = [...((ancestry ?? {})[sourceUuid] ?? [])]
   }
 
-  const faceNames: Record<string, string> = {}
+  const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
-  for (const [uuid, children] of Object.entries(bySource)) {
+  for (const [uuid, children] of bySource) {
     if (children.length === 1) {
-      faceNames[children[0].outGh] = uuid
+      faceNames.set(children[0].output, uuid)
       faceAncestry[uuid] = ancestryOf[uuid]
       continue
     }
     // Genuine split: order the children in the parent frame; refuse on near-tie.
     const parent = children[0].source
     const ordered = orderSplitChildren(
-      children.map<SplitChild<OccShape>>((c) => ({
+      children.map<SplitChild<OccSubShape>>((c) => ({
         item: c.output,
         key: faceSplitKey(oc, scope, parent, c.output),
       })),
     )
     if (ordered === null) continue  // ambiguous -> ancestral fallback
-    const outGhOf = new Map(children.map((c) => [c.output, c.outGh]))
     ordered.forEach((out, i) => {
       const childUuid = mintFaceUuid(splitFacePath(uuid, i))
-      faceNames[outGhOf.get(out)!] = childUuid
+      faceNames.set(out, childUuid)
       faceAncestry[childUuid] = ancestryOf[uuid]
     })
   }
@@ -137,5 +132,5 @@ export function transferBooleanNames(
   // split refusal above) is named off its named neighbours, so the edges around
   // it do not all collapse onto the body-wide ancestral fallback.
   const { edgeNames, edgeAncestry } = nameNeighboursAndDeriveEdges(oc, scope, bodyShape, faceNames, faceAncestry)
-  return { face_names: faceNames, edge_names: edgeNames, face_ancestry: faceAncestry, edge_ancestry: edgeAncestry }
+  return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }

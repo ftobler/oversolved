@@ -15,10 +15,9 @@ import { extrudeProfileWithLineage } from '../prismLineage'
 import { booleanWithDiff } from '../booleans'
 import { applyFilletWithLineage } from '../edgeModifier'
 import { transferBooleanNames } from '../../features/booleanLineage'
-import { edgeGh } from '../lineageHash'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
-import type { OccModule, OccShape } from '../occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../occTypes'
 import type { Vec3 } from '../primitives'
 import {
   mintFaceUuid,
@@ -76,7 +75,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
         toolFaceAncestry: bump.faceAncestry,
         toolUuidScope: null,
       })
-      const carried = new Set(Object.values(names.face_names))
+      const carried = new Set(names.faceNames.values())
 
       // The base box's bottom cap and 4 side walls are untouched by the fuse, so
       // their exact minted UUIDs must survive.
@@ -113,10 +112,10 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
         toolFaceAncestry: bump.faceAncestry,
         toolUuidScope: 'bool1',
       })
-      const carried = new Set(Object.values(kept.face_names))
+      const carried = new Set(kept.faceNames.values())
 
       // Not one of the surviving tool's own UUIDs appears on the target.
-      for (const toolUuid of Object.values(bump.faceNames)) {
+      for (const toolUuid of bump.faceNames.values()) {
         expect(carried.has(toolUuid)).toBe(false)
       }
       // They are re-minted, not dropped: each tool face still has a stable
@@ -139,7 +138,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
         toolFaceAncestry: bump.faceAncestry,
         toolUuidScope: null,
       })
-      const consumedCarried = new Set(Object.values(consumed.face_names))
+      const consumedCarried = new Set(consumed.faceNames.values())
       expect(consumedCarried.has(mintFaceUuid(sideFacePath('e2', 'sk2/l0')))).toBe(true)
 
       // Ancestry follows the re-minted UUID -- and carries the tool face's own
@@ -148,11 +147,11 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       // fallback tier with nothing and sends the face to the body-wide
       // profile_queries bucket (builder.ts), so `toBeDefined` is not enough.
       let withTokens = 0
-      for (const toolUuid of Object.values(bump.faceNames)) {
+      for (const toolUuid of bump.faceNames.values()) {
         const reminted = mintFaceUuid(toolCopyFacePath(toolUuid, 'bool1'))
         if (!carried.has(reminted)) continue  // face consumed by the fuse
-        expect(kept.face_ancestry[reminted]).toEqual(bump.faceAncestry[toolUuid])
-        if ((kept.face_ancestry[reminted] ?? []).length > 0) withTokens++
+        expect(kept.faceAncestry[reminted]).toEqual(bump.faceAncestry[toolUuid])
+        if ((kept.faceAncestry[reminted] ?? []).length > 0) withTokens++
       }
       // And at least one of them really has tokens -- the wrong lookup key
       // satisfies the equality above only by making every list empty.
@@ -172,8 +171,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       let picked: OccShape | null = null
       let pickedUuid = ''
       for (const e of edges) {
-        const gh = edgeGh(occ, scope, e)
-        const u = gh !== null ? box.edgeNames[gh] : undefined
+        const u = box.edgeNames.get(e as OccSubShape)
         if (u) {
           picked = e
           pickedUuid = u
@@ -191,7 +189,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       })
       expect(res.success).toBe(true)
       expect(res.names).not.toBeNull()
-      const carried = new Set(Object.values(res.names!.faceNames))
+      const carried = new Set(res.names!.faceNames.values())
 
       // The generated fillet face is named role=fillet slotted by the edge UUID.
       expect(carried.has(mintFaceUuid(filletFacePath('f1', pickedUuid)))).toBe(true)

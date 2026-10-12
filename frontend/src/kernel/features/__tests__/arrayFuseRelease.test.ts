@@ -43,6 +43,11 @@ vi.mock('../bodySplit', () => ({
   registerSplitBodies: () => ['body_ex1'],
   resplitBody: mocks.resplitBody,
 }))
+// Reading a body's names walks its OCC shape; these bodies have none.
+vi.mock('../../occ/bodyNames', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/bodyNames')>()
+  return { ...actual, readBodyNames: () => actual.emptyShapeNames() }
+})
 
 import { HandleTable } from '../../occ/handleTable'
 import { DisposeScope } from '../../occ/disposeScope'
@@ -112,7 +117,7 @@ function run(countX: number, includeSource: boolean): {
   mocks.transferBooleanNames.mockImplementation(() => {
     transferCount++
     order.push(`transfer:${transferCount}`)
-    return { face_names: {}, edge_names: {}, face_ancestry: {}, edge_ancestry: {} }
+    return { faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} }
   })
   mocks.resplitBody.mockImplementation(() => ['body_ex1'])
 
@@ -214,7 +219,7 @@ describe('array add fuse releases (H21)', () => {
     mocks.transformCopyWithMapping.mockImplementation(() => ({ shape: makeDouble('inst'), builder: {} }))
     mocks.rebuildNamesForTransformedCopy.mockReturnValue({ faceNames: {}, faceAncestry: {}, edgeNames: {}, edgeAncestry: {} })
     mocks.readSourceFaceRows.mockReturnValue([])
-    mocks.transferBooleanNames.mockReturnValue({ face_names: {}, edge_names: {}, face_ancestry: {}, edge_ancestry: {} })
+    mocks.transferBooleanNames.mockReturnValue({ faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} })
     mocks.resplitBody.mockReturnValue([])
 
     const table = new HandleTable()

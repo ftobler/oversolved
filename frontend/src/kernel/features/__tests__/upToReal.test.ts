@@ -47,7 +47,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
       createdBy: body.created_by, bodyId: body.id,
       profileQueries: body.profile_queries,
-      edgeAncestry: body.edge_ancestry ?? null, edgeNames: body.edge_names ?? null,
+      edgeAncestry: body.edge_ancestry ?? null, edgeUuids: body.edge_uuids ?? null,
     })
     const out: string[] = []
     for (let i = 0; i < edges.length; i++) {
@@ -69,7 +69,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       const prism = makePrism(occ, scope, face, n, 1e4)
       // Plane offset 7 along the face normal from the z=0 profile.
       const origin: Vec3 = [0, 0, 7 * n[2]]
-      const trimmed = trimAtPlane(occ, scope, prism, { origin, normal: n }, n)
+      const trimmed = trimAtPlane(occ, scope, prism, { origin, normal: n }, n).shape
       expect(volumeOf(occ, scope, trimmed)).toBeCloseTo(700, 2)
     } finally {
       scope.dispose()
@@ -107,7 +107,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       // Plane through z=5 at y=0, tilted 45deg in y: z_top = 5 + y. Whole profile
       // is below it, so the result is a wedge, not a box.
       const s = Math.SQRT1_2
-      const trimmed = trimAtPlane(occ, scope, prism, { origin: [0, 0, 5], normal: [0, -s, s] }, dir)
+      const trimmed = trimAtPlane(occ, scope, prism, { origin: [0, 0, 5], normal: [0, -s, s] }, dir).shape
       // Volume = 10 * integral_0^10 (5 + y) dy = 10 * (50 + 50) = 1000.
       expect(volumeOf(occ, scope, trimmed)).toBeCloseTo(1000, 1)
     } finally {

@@ -15,31 +15,22 @@ import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
 import { mintFaceUuid, importedInstanceFacePath } from '../constructionName'
 import { nameNeighboursAndDeriveEdges } from './constructionLineage'
-import { faceGh } from './lineageHash'
+import { canonicalFaces, type ShapeNames } from './bodyNames'
+import { SubShapeMap } from './subshapeIdentity'
 
-export interface ImportedNameMaps {
-  faceNames: Record<string, string>
-  edgeNames: Record<string, string>
-  faceAncestry: Record<string, string[]>
-  edgeAncestry: Record<string, string[]>
-}
+export type ImportedNameMaps = ShapeNames
 
 /**
- * Index per face geometry-hash: which split solid of the import it belongs to.
- * The caller hands in `splitSolids` (features/bodySplit.ts) so the index is the
- * SAME order `registerSplitBodies` names the sibling bodies with (`body_x_1`'s
- * faces carry index 1), and a near-tie refusal falls back the same way body ids
- * do. A face with no entry (a shell-only shape has no solids) defaults to 0.
+ * Per face: which split solid of the import it belongs to. The caller hands in
+ * `splitSolids` (features/bodySplit.ts) so the index is the SAME order
+ * `registerSplitBodies` names the sibling bodies with (`body_x_1`'s faces carry
+ * index 1), and a near-tie refusal falls back the same way body ids do. A face
+ * with no entry (a shell-only shape has no solids) defaults to 0.
  */
-function solidIndexByFaceGh(oc: OccModule, scope: DisposeScope, solids: OccShape[]): Record<string, number> {
-  const out: Record<string, number> = {}
-  const E = oc.TopAbs_ShapeEnum
+function solidIndexByFace(oc: OccModule, scope: DisposeScope, solids: OccShape[]): SubShapeMap<number> {
+  const out = new SubShapeMap<number>()
   solids.forEach((solid, i) => {
-    const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
-    for (; exp.More(); exp.Next()) {
-      const gh = faceGh(oc, scope, scope.track(oc.TopoDS.Face_1(exp.Current())))
-      if (!(gh in out)) out[gh] = i
-    }
+    for (const face of canonicalFaces(oc, scope, solid)) if (!out.has(face)) out.set(face, i)
   })
   return out
 }
@@ -48,9 +39,8 @@ function solidIndexByFaceGh(oc: OccModule, scope: DisposeScope, solids: OccShape
  * Name every face of an imported `shape` from its STEP entity id, then derive
  * the edges from the face pairs the way every other producer does.
  *
- * `faceStepIds` is keyed by `faceGh` as the explorer over `shape` hashes it --
- * the same key `bodySplit.namesForSolid` and `tessellation.classifyFace` look
- * names up by.
+ * `faceStepIds` is keyed by the faces of `shape` as its explorer walk yields
+ * them.
  *
  * `solids` is the `splitSolids` order of `shape`. A repeated assembly instance
  * (one part placed twice) shares its STEP entity ids, so without a per-solid
@@ -68,17 +58,18 @@ export function importedNameMaps(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
-  faceStepIds: Record<string, number>,
+  faceStepIds: SubShapeMap<number>,
   createdBy: string,
   solids: OccShape[],
 ): ImportedNameMaps {
-  const solidIndexByGh = solidIndexByFaceGh(oc, scope, solids)
-  const faceNames: Record<string, string> = {}
+  const solidIndex = solidIndexByFace(oc, scope, solids)
+  const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
-  for (const [gh, entityId] of Object.entries(faceStepIds)) {
-    const solidIndex = solidIndexByGh[gh] ?? 0
-    const uuid = mintFaceUuid(importedInstanceFacePath(createdBy, entityId, solidIndex))
-    faceNames[gh] = uuid
+  for (const face of canonicalFaces(oc, scope, shape)) {
+    const entityId = faceStepIds.get(face)
+    if (entityId === undefined) continue
+    const uuid = mintFaceUuid(importedInstanceFacePath(createdBy, entityId, solidIndex.get(face) ?? 0))
+    faceNames.set(face, uuid)
     faceAncestry[uuid] = []
   }
 

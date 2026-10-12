@@ -34,7 +34,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBoxAt, readSolidVertices, edgeToGeom, type Vec3 } from '../../occ/primitives'
 import { volumeOf } from '../../occ/booleans'
-import { faceGh } from '../../occ/lineageHash'
+import { canonicalFaces } from '../../occ/bodyNames'
 import { bodyFrame, edgeRepresentativePoint, solidToEdges } from '../../occ/tessellation'
 import { geometryClassifiers } from '../../geomHash'
 import { Repository, ref, makeAncestryQuery } from '../../query'
@@ -164,27 +164,17 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
   }
 
   /**
-   * Give a body construction names keyed by its faces' real geom hashes, with
-   * UUIDs numbered in explorer order. Two congruent bodies named this way get
-   * the SAME UUID strings, which is what makes instance disambiguation testable.
+   * Give a body construction names numbered in its canonical face order. Two
+   * congruent bodies named this way get the SAME UUID strings, which is what
+   * makes instance disambiguation testable.
    */
   function nameFacesInOrder(scope: DisposeScope, table: HandleTable, body: Body) {
-    const E = occ.TopAbs_ShapeEnum
-    const shape = table.get<OccShape>(body.shape!)
-    const faceNames: Record<string, string> = {}
-    const faceAncestry: Record<string, string[]> = {}
-    const exp = scope.track(new occ.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-    let i = 0
-    for (; exp.More(); exp.Next()) {
-      const gh = faceGh(occ, scope, scope.track(occ.TopoDS.Face_1(exp.Current())))
-      if (gh in faceNames) continue
-      const uuid = `u_face${i++}`
-      faceNames[gh] = uuid
-      faceAncestry[uuid] = ['@anc']
-    }
-    body.face_names = faceNames
-    body.face_ancestry = faceAncestry
+    const faces = canonicalFaces(occ, scope, table.get<OccShape>(body.shape!))
+    body.face_uuids = faces.map((_, i) => `u_face${i}`)
+    body.face_ancestry = Object.fromEntries(body.face_uuids.map((u) => [u, ['@anc']]))
   }
+
+  const namedUuids = (body: Body): string[] => (body.face_uuids ?? []).filter((u): u is string => u !== null)
 
   describe('transform over a list of picks', () => {
     // The pick is a LIST and the one composed Trsf is applied to every entry
@@ -246,8 +236,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           transform: { bodies: ['body_a', 'body_b'], operation: 'new', translation: [0, 0, 50] },
         }, new Repository(), bodyStore)
 
-        const uuidsA = new Set(Object.values(bodyStore.body_tr1.face_names ?? {}))
-        const uuidsB = new Set(Object.values(bodyStore.body_tr1_1.face_names ?? {}))
+        const uuidsA = new Set(namedUuids(bodyStore.body_tr1))
+        const uuidsB = new Set(namedUuids(bodyStore.body_tr1_1))
         expect(uuidsA.size).toBeGreaterThan(0)
         expect(uuidsB.size).toBeGreaterThan(0)
         for (const u of uuidsB) expect(uuidsA.has(u)).toBe(false)
@@ -755,7 +745,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
         }
         nameFacesInOrder(scope, table, bodyStore.body_a)
-        const uuidsBefore = new Set(Object.values(bodyStore.body_a.face_names ?? {}))
+        const uuidsBefore = new Set(namedUuids(bodyStore.body_a))
         expect(uuidsBefore.size).toBeGreaterThan(0)
 
         const repo = new Repository()
@@ -769,7 +759,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         // The 4-cube sits at [0,4]^3, so its centre reflects from (2,2,2) to (2,2,-2).
         expectCentreClose(centreOf(scope, table, bodyStore.body_a), [2, 2, -2])
         expect(bodyStore.body_a.modified_by).toContain('mi1')
-        expect(new Set(Object.values(bodyStore.body_a.face_names ?? {}))).toEqual(uuidsBefore)
+        expect(new Set(namedUuids(bodyStore.body_a))).toEqual(uuidsBefore)
       } finally {
         scope.dispose()
       }

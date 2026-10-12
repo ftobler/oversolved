@@ -16,7 +16,8 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBox, makeBoxAt } from '../../occ/primitives'
 import { volumeOf } from '../../occ/booleans'
-import { faceGh } from '../../occ/lineageHash'
+import { canonicalFaces } from '../../occ/bodyNames'
+import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { applyBodyOperation, type BodyOperation } from '../bodyOps'
 import type { Body } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -286,14 +287,12 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         const tool = scope.track(makeBoxAt(occ, scope, [-1, 3, 3], 40, 4, 4))
 
         // Name the tool's faces the way a real extrude tool arrives named.
-        const faceNames: Record<string, string> = {}
+        const faceNames = new SubShapeMap<string>()
         const faceAncestry: Record<string, string[]> = {}
-        const exp = scope.track(new occ.TopExp_Explorer_2(tool, occ.TopAbs_ShapeEnum.TopAbs_FACE, occ.TopAbs_ShapeEnum.TopAbs_SHAPE))
-        for (let i = 0; exp.More(); exp.Next(), i++) {
-          const gh = faceGh(occ, scope, scope.track(occ.TopoDS.Face_1(exp.Current())))
-          faceNames[gh] = `u_tool_${i}`
+        canonicalFaces(occ, scope, tool).forEach((face, i) => {
+          faceNames.set(face, `u_tool_${i}`)
           faceAncestry[`u_tool_${i}`] = [`@skT/side${i}`]
-        }
+        })
 
         const result = applyBodyOperation(occ, scope, table, {
           toolShape: tool,
@@ -307,10 +306,11 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         expect(result.status).toBe('ok')
 
         // Every live face uuid in the store is claimed by exactly one face.
+        const named = (body: Body): string[] => (body.face_uuids ?? []).filter((u): u is string => u !== null)
         const seen = new Map<string, string>()
         const dupes: string[] = []
         for (const body of Object.values(bodyStore)) {
-          for (const uuid of Object.values(body.face_names ?? {})) {
+          for (const uuid of named(body)) {
             const owner = seen.get(uuid)
             if (owner !== undefined && owner !== body.id) dupes.push(uuid)
             seen.set(uuid, body.id)
@@ -321,14 +321,15 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         // Scoped, not dropped: the second body still names its cut walls, and
         // its ancestry keeps the tool's own tokens for the fallback tier.
         const b = bodyStore.body_b
-        const scoped = Object.values(b.face_names ?? {}).filter(u => !Object.values(faceNames).includes(u))
+        const toolUuids = [...faceNames.entries()].map(([, u]) => u)
+        const scoped = named(b).filter(u => !toolUuids.includes(u))
         expect(scoped.length).toBeGreaterThan(0)
         for (const uuid of scoped) {
           expect((b.face_ancestry ?? {})[uuid]).toBeDefined()
         }
         // The FIRST body cut keeps the tool uuids verbatim, so an ordinary
         // single-target cut names its walls exactly as it did before.
-        const aNames = Object.values(bodyStore.body_a.face_names ?? {})
+        const aNames = named(bodyStore.body_a)
         expect(aNames.some(u => u.startsWith('u_tool_'))).toBe(true)
       } finally {
         scope.dispose()

@@ -25,7 +25,6 @@ import { Repository, initGlobalRepo } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
 import { extractBrepMetadata, tessellateBodies } from '../solveLocally'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from '../occ/brepDiffHash'
 import { copyShape } from '../occ/transforms'
 import type { OccShape } from '../occ/occTypes'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
@@ -79,9 +78,6 @@ class Harness {
         postRegister, initGlobalRepo,
         tessellateBodies: (bodyStore) => tessellateBodies(oc!, this.table, bodyStore),
         extractBrepMetadata: (bodyStore) => extractBrepMetadata(oc!, this.table, bodyStore),
-        brepDiffNewFaceHashes: (b) => brepDiffNewFaceHashes(oc!, scope, b),
-        brepDiffNewEdgeHashes: (b) => brepDiffNewEdgeHashes(oc!, scope, b),
-        brepDiffNewVertexHashes: (b) => brepDiffNewVertexHashes(oc!, scope, b),
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
         copyBodyShape: (h, owner) =>
           this.table.register(copyShape(oc!, scope, this.table.get<OccShape>(h)), owner),
@@ -106,28 +102,18 @@ class Harness {
 
   // Fingerprint of a repo holding only this body's B-rep ancestry, per producer.
   fingerprints(body: Body): { meta: string; render: string; faceCounts: [number, number] } {
-    const scope = new DisposeScope()
-    try {
-      const deps = {
-        brepDiffNewFaceHashes: (b: Body) => brepDiffNewFaceHashes(oc!, scope, b),
-        brepDiffNewEdgeHashes: (b: Body) => brepDiffNewEdgeHashes(oc!, scope, b),
-        brepDiffNewVertexHashes: (b: Body) => brepDiffNewVertexHashes(oc!, scope, b),
-      } as BuildDeps
-      const metaOut = extractBrepMetadata(oc!, this.table, { [body.id]: body })[body.id]
-      const renderOut = tessellateBodies(oc!, this.table, { [body.id]: body })[body.id]
-      const repoMeta = new Repository()
-      registerBodyBrepFromMeta(repoMeta, body, metaOut, deps)
-      const repoRender = new Repository()
-      registerBodyBrepFromMeta(repoRender, body, renderOut, deps)
-      const faces = (out: Record<string, unknown>): number =>
-        ((out.mesh as { face_data: unknown[] }).face_data ?? []).length
-      return {
-        meta: repoSemanticFingerprint(snapshotRepo(repoMeta)),
-        render: repoSemanticFingerprint(snapshotRepo(repoRender)),
-        faceCounts: [faces(metaOut), faces(renderOut)],
-      }
-    } finally {
-      scope.dispose()
+    const metaOut = extractBrepMetadata(oc!, this.table, { [body.id]: body })[body.id]
+    const renderOut = tessellateBodies(oc!, this.table, { [body.id]: body })[body.id]
+    const repoMeta = new Repository()
+    registerBodyBrepFromMeta(repoMeta, body, metaOut)
+    const repoRender = new Repository()
+    registerBodyBrepFromMeta(repoRender, body, renderOut)
+    const faces = (out: Record<string, unknown>): number =>
+      ((out.mesh as { face_data: unknown[] }).face_data ?? []).length
+    return {
+      meta: repoSemanticFingerprint(snapshotRepo(repoMeta)),
+      render: repoSemanticFingerprint(snapshotRepo(repoRender)),
+      faceCounts: [faces(metaOut), faces(renderOut)],
     }
   }
 }

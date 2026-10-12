@@ -44,9 +44,10 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
       const spineWire = healWire(occ, scope, makeWire(occ, scope, spineEdges))
       const outerWire = scope.track(healWire(occ, scope, scope.track(occ.BRepTools.OuterWire(face))))
 
+      // The uuids, sorted: two builds are two solids, so their keys differ.
       const build = (): {
-        faces: Record<string, string>
-        edges: Record<string, string>
+        faces: string[]
+        edges: string[]
         ancestry: Record<string, string[]>
       } => {
         const builder = scope.track(new occ.BRepOffsetAPI_MakePipeShell(spineWire))
@@ -60,7 +61,11 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
           Generated: (s: OccShape): OccListOfShape => builder.Generated(s),
         }
         const maps = buildPrismLineageMap(occ, scope, face, stub, square, planeXY, 'feat', 'sk1')
-        return { faces: { ...maps.faceNames }, edges: { ...maps.edgeNames }, ancestry: { ...maps.faceAncestry } }
+        return {
+          faces: [...maps.faceNames.values()].sort(),
+          edges: [...maps.edgeNames.values()].sort(),
+          ancestry: { ...maps.faceAncestry },
+        }
       }
 
       const first = build()
@@ -68,7 +73,7 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
 
       // Six faces: 4 lateral (named from Generated side edges) + 2 caps (named
       // from the geometric fallback). Zero faces left unnamed.
-      expect(Object.keys(first.faces).length).toBe(6)
+      expect(first.faces.length).toBe(6)
 
       // The caps went through the cap construction path: their ancestry is
       // EMPTY (a cap carries no profile token), exactly like a builder-reported
@@ -77,8 +82,8 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
 
       // Every rim edge (cap-lateral pair) and every lateral-lateral edge earns
       // a unique construction UUID: 12 edges on a 2x2 square swept 3 units.
-      expect(Object.keys(first.edges).length).toBe(12)
-      const edgeUuids = Object.values(first.edges)
+      expect(first.edges.length).toBe(12)
+      const edgeUuids = first.edges
       expect(new Set(edgeUuids).size).toBe(12)
       for (const u of edgeUuids) expect(u.startsWith('e_')).toBe(true)
 
@@ -153,11 +158,11 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
       // longer classifies as a cap-role face because it is rotated by the arc
       // spine) are named.  The start cap (parallel to the profile) stays
       // absent from faceNames AND faceAncestry.
-      expect(Object.keys(maps.faceNames).length).toBe(5)
+      expect(maps.faceNames.size).toBe(5)
       expect(Object.keys(maps.faceAncestry).length).toBe(5)
       // Every rim edge still resolves as a single-face seam (its cap is
       // unnamed, exactly the old wire), and the lateral-lateral edges as pairs.
-      expect(Object.keys(maps.edgeNames).length).toBe(12)
+      expect(maps.edgeNames.size).toBe(12)
     } finally {
       scope.dispose()
     }

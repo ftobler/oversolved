@@ -57,9 +57,6 @@ function twoBodyDeps(liveRepo: Repository): BuildDeps {
     initGlobalRepo: () => liveRepo,
     tessellateBodies: () => ({}),
     extractBrepMetadata: () => ({}),
-    brepDiffNewFaceHashes: () => new Set<string>(),
-    brepDiffNewEdgeHashes: () => new Set<string>(),
-    brepDiffNewVertexHashes: () => new Set<string>(),
   }
 }
 

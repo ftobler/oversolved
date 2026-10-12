@@ -18,7 +18,6 @@ import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, readShapeFaceMetadata } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
-import { brepDiffNewFaceHashes, brepDiffNewEdgeHashes, brepDiffNewVertexHashes } from './occ/brepDiffHash'
 import { copyShape, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import type { OccModule, OccShape } from './occ/occTypes'
@@ -117,15 +116,17 @@ export function tessellateBodies(
         createdBy: body.created_by || '',
         bodyId: body.id,
         faceAncestry: body.face_ancestry ?? null,
-        faceNames: body.face_names ?? null,
+        faceUuids: body.face_uuids ?? null,
         profileQueries: body.profile_queries ?? [],
+        brepDiff: body.brep_diff ?? null,
+        modifiedBy: body.modified_by,
       })
       const edgeResult = solidToEdges(oc, table, body.shape, {
         createdBy: body.created_by || '',
         bodyId: body.id,
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
-        edgeNames: body.edge_names ?? null,
+        edgeUuids: body.edge_uuids ?? null,
         brepDiff: body.brep_diff ?? null,
         modifiedBy: body.modified_by,
       })
@@ -133,7 +134,9 @@ export function tessellateBodies(
         createdBy: body.created_by || '',
         bodyId: body.id,
         profileQueries: body.profile_queries ?? [],
-        faceNames: body.face_names ?? null,
+        faceUuids: body.face_uuids ?? null,
+        brepDiff: body.brep_diff ?? null,
+        modifiedBy: body.modified_by,
       })
       // Per-face boundary edge queries: a face pick projects as a closed wire.
       mesh.face_edge_queries = solidToFaceEdgeQueries(oc, table, body.shape, edgeResult.edge_queries)
@@ -141,9 +144,12 @@ export function tessellateBodies(
         mesh,
         edges: edgeResult.edges,
         edge_queries: edgeResult.edge_queries,
+        edge_uuids: edgeResult.edge_uuids,
+        edge_created_by: edgeResult.edge_created_by,
         vertices: vertexResult.vertices,
         vertex_queries: vertexResult.vertex_queries,
         vertex_uuids: vertexResult.vertex_uuids,
+        vertex_created_by: vertexResult.vertex_created_by,
         created_by: body.created_by ?? '',
         modified_by: body.modified_by ?? [],
       }
@@ -180,12 +186,14 @@ export function extractBrepMetadata(
     const scope = new DisposeScope()
     try {
       const solid = table.get<OccShape>(body.shape)
-      const { face_data, face_queries } = readShapeFaceMetadata(oc, scope, solid, {
+      const { face_data, face_queries, face_uuids, face_created_by } = readShapeFaceMetadata(oc, scope, solid, {
         createdBy: body.created_by || '',
         bodyId: body.id,
         faceAncestry: body.face_ancestry ?? null,
-        faceNames: body.face_names ?? null,
+        faceUuids: body.face_uuids ?? null,
         profileQueries: body.profile_queries ?? [],
+        brepDiff: body.brep_diff ?? null,
+        modifiedBy: body.modified_by,
       })
       const mesh: TessMesh = {
         vertices: [],
@@ -193,6 +201,8 @@ export function extractBrepMetadata(
         face_data,
         triangle_to_face: [],
         face_queries,
+        face_uuids,
+        face_created_by,
         is_fallback: false,
       }
       const edgeResult = solidToEdges(oc, table, body.shape, {
@@ -200,7 +210,7 @@ export function extractBrepMetadata(
         bodyId: body.id,
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
-        edgeNames: body.edge_names ?? null,
+        edgeUuids: body.edge_uuids ?? null,
         brepDiff: body.brep_diff ?? null,
         modifiedBy: body.modified_by,
       })
@@ -208,15 +218,20 @@ export function extractBrepMetadata(
         createdBy: body.created_by || '',
         bodyId: body.id,
         profileQueries: body.profile_queries ?? [],
-        faceNames: body.face_names ?? null,
+        faceUuids: body.face_uuids ?? null,
+        brepDiff: body.brep_diff ?? null,
+        modifiedBy: body.modified_by,
       })
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,
         edge_queries: edgeResult.edge_queries,
+        edge_uuids: edgeResult.edge_uuids,
+        edge_created_by: edgeResult.edge_created_by,
         vertices: vertexResult.vertices,
         vertex_queries: vertexResult.vertex_queries,
         vertex_uuids: vertexResult.vertex_uuids,
+        vertex_created_by: vertexResult.vertex_created_by,
         created_by: body.created_by ?? '',
         modified_by: body.modified_by ?? [],
       }
@@ -248,9 +263,6 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable, files
     initGlobalRepo,
     tessellateBodies: (bodyStore, _repo) => tessellateBodies(oc, table, bodyStore),
     extractBrepMetadata: (bodyStore, _repo) => extractBrepMetadata(oc, table, bodyStore),
-    brepDiffNewFaceHashes: (body) => brepDiffNewFaceHashes(oc, scope, body),
-    brepDiffNewEdgeHashes: (body) => brepDiffNewEdgeHashes(oc, scope, body),
-    brepDiffNewVertexHashes: (body) => brepDiffNewVertexHashes(oc, scope, body),
     // Cross-solve checkpoint cache: retain each checkpoint's shape so it
     // survives a downstream consume/free and into the next build; copy it on
     // restore so the rebuilt tail consumes an independent shape (registered

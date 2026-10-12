@@ -27,12 +27,14 @@ import {
   type Vec3,
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
-import { geometryClassifiers, edgeGeometryHash, faceGeometryHash, vertexGeometryHash } from '../geomHash'
+import { geometryClassifiers } from '../geomHash'
+import { assertAligned, canonicalEdges, canonicalFaces, canonicalIndex, canonicalVertices } from './bodyNames'
+import { elementCreator, newSubShapes } from './modifierAttribution'
+import type { BrepDiff } from '../types3d'
 import { deriveVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
 import { shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { buildFaceQuery } from '../faceQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
-import type { BrepDiff } from '../types3d'
 import type { EdgeData } from '@/types/cad'
 
 export interface FaceDatum {
@@ -57,6 +59,13 @@ export interface TessMesh {
   face_data: FaceDatum[]
   triangle_to_face: number[]
   face_queries: string[]
+  // The construction UUID minted into face_queries[i] (null where none). The
+  // registrar reads this rather than re-deriving it, so the query a face
+  // carries and the element it is registered as agree by construction.
+  face_uuids?: (string | null)[]
+  // The feature each face is registered under: the last modifier for a face it
+  // created, else the body's creator.
+  face_created_by?: string[]
   // Per-face boundary edge ancestry queries, aligned with `face_queries`.
   face_edge_queries?: string[][]
   is_fallback: boolean
@@ -77,6 +86,33 @@ export interface RawFaceGeom {
   surfaceFrame: SurfaceFrame | null
   // Cylinder axis direction; set for cylinderface only (circular-array axis picks).
   axis?: Vec3
+  // The face's position in the shape's canonical order (occ/bodyNames.ts),
+  // which indexes the body's `face_uuids`. Never leaves the worker; always set
+  // by `readShapeFaces`, optional only for hand-built mesh fixtures.
+  canon?: number
+}
+
+/**
+ * Canonical index of each face an explorer walk visits, in visit order. The
+ * canonical order is that walk deduped by IsSame, so a repeat visit (a face
+ * shared by two solids of a shell-only shape) maps to its first index.
+ */
+function canonicalCounter(): (face: OccSubShape) => number {
+  const seen = new SubShapeIndexMap()
+  let next = 0
+  return (face) => {
+    const at = seen.get(face)
+    if (at >= 0) return at
+    seen.set(face, next)
+    return next++
+  }
+}
+
+/** How many canonical faces a `readShapeFaces` walk saw (its distinct `canon`s). */
+function canonicalCount(raw: readonly { canon?: number }[]): number {
+  let n = 0
+  for (const r of raw) if (r.canon !== undefined && r.canon >= n) n = r.canon + 1
+  return n
 }
 
 /** Mirror of `_sort_shape_faces`: tessellate + classify every face (unsorted). */
@@ -90,8 +126,10 @@ export function readShapeFaces(
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   const raw: RawFaceGeom[] = []
+  const canonOf = canonicalCounter()
   for (; exp.More(); exp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
+    const canon = canonOf(face as OccSubShape)
     const { vertices, triangles } = tessellateFace(oc, scope, face, deflection, angularDeflection)
     const surfaceType = faceSurfaceType(oc, scope, face)
     // faceCylinderAxis returns null on a degenerate surface; fold to undefined
@@ -105,6 +143,7 @@ export function readShapeFaces(
       surfaceType,
       surfaceFrame: faceSurfaceFrame(oc, scope, face),
       axis,
+      canon,
     })
   }
   return raw
@@ -144,6 +183,12 @@ function appendFaceTriangles(
  * `_tessellate_and_assemble_faces`. Exposed for always-on unit testing.
  */
 export function assembleMesh(rawFaces: RawFaceGeom[]): TessMesh {
+  return assembleMeshKeeping(rawFaces).mesh
+}
+
+/** `assembleMesh`, plus the raw face behind each `face_data` entry, index for index. */
+function assembleMeshKeeping(rawFaces: RawFaceGeom[]): { mesh: TessMesh; kept: RawFaceGeom[] } {
+  const kept: RawFaceGeom[] = []
   const sorted = [...rawFaces].sort((a, b) => {
     const ka = faceSortKey(a as FaceSortItem)
     const kb = faceSortKey(b as FaceSortItem)
@@ -180,10 +225,14 @@ export function assembleMesh(rawFaces: RawFaceGeom[]): TessMesh {
         surface_frame: rf.surfaceFrame ?? undefined,
         axis: rf.axis,
       })
+      kept.push(rf)
     }
   })
 
-  return { vertices, faces, face_data: faceData, triangle_to_face: triangleToFace, face_queries: [], is_fallback: false }
+  return {
+    mesh: { vertices, faces, face_data: faceData, triangle_to_face: triangleToFace, face_queries: [], is_fallback: false },
+    kept,
+  }
 }
 
 // Edge samples per curved edge feeding the body AABB. Lines contribute only
@@ -220,7 +269,23 @@ interface SolidMeshOptions extends TessellateOptions {
   bodyId?: string
   profileQueries?: string[] | null
   faceAncestry?: Record<string, string[]> | null
-  faceNames?: Record<string, string> | null
+  // The body's face UUIDs in the solid's canonical order (Body.face_uuids).
+  faceUuids?: (string | null)[] | null
+  // The body's last diff and modifier history, for the per-face creator.
+  brepDiff?: BrepDiff | null
+  modifiedBy?: string[]
+}
+
+/** Per canonical face, the feature it is attributed to (modifierAttribution.ts). */
+function faceCreators(oc: OccModule, scope: DisposeScope, solid: OccShape, opts: SolidMeshOptions): string[] {
+  const createdBy = opts.createdBy ?? ''
+  const created = newSubShapes(oc, scope, opts.brepDiff)
+  return canonicalFaces(oc, scope, solid).map((f) => elementCreator(created?.faces.has(f) ?? false, createdBy, opts.modifiedBy))
+}
+
+/** The uuid of the face at canonical index `canon`, or null. */
+function faceUuidAt(opts: SolidMeshOptions, canon: number | undefined): string | null {
+  return canon === undefined ? null : (opts.faceUuids?.[canon] ?? null)
 }
 
 /**
@@ -241,13 +306,21 @@ export function solidToMesh(
   const scope = new DisposeScope()
   try {
     const raw = readShapeFaces(oc, scope, solid, deflection, angularDeflection)
-    const mesh = assembleMesh(raw)
+    assertAligned(canonicalCount(raw), opts.faceUuids, `${opts.bodyId ?? 'solid'} faces`)
+    const { mesh, kept } = assembleMeshKeeping(raw)
     const { center, half } = bodyFrame(oc, scope, solid)
     const faceQueries: string[] = []
+    const faceUuids: (string | null)[] = []
+    const creators = faceCreators(oc, scope, solid, opts)
+    const faceCreatedBy: string[] = []
     for (let faceIdx = 0; faceIdx < mesh.face_data.length; faceIdx++) {
       const fd = mesh.face_data[faceIdx]
+      const uuid = faceUuidAt(opts, kept[faceIdx].canon)
+      faceUuids.push(uuid)
+      const creator = creators[kept[faceIdx].canon ?? -1] ?? opts.createdBy ?? ''
+      faceCreatedBy.push(creator)
       const { classifiers, query } = classifyFace(
-        faceIdx, fd.centroid, fd.normal, fd.surface_type, center, half, opts,
+        faceIdx, fd.centroid, fd.surface_type, center, half, opts, uuid, creator,
       )
       fd.classifiers = classifiers
       // Push a placeholder even when `buildFaceQuery` returns null, so
@@ -260,27 +333,31 @@ export function solidToMesh(
       faceQueries.push(query ?? '')
     }
     mesh.face_queries = faceQueries
+    mesh.face_uuids = faceUuids
+    mesh.face_created_by = faceCreatedBy
     return mesh
   } finally {
     scope.dispose()
   }
 }
 
-// Spatial classifier + ancestry query for one face, given the body frame. The
-// single source of truth for both the render mesh (which adds triangles/area)
-// and `readShapeFaceMetadata` (which does not), so identification is computed
-// identically whether or not the face was triangulated.
+// Spatial classifier + ancestry query for one face, given the body frame and
+// the face's construction UUID. The single source of truth for both the render
+// mesh (which adds triangles/area) and `readShapeFaceMetadata` (which does
+// not), so identification is computed identically whether or not the face was
+// triangulated. `creator` is the face's attributed feature (`faceCreators`),
+// the same one the registrar records, so the query's ancestral net matches it.
 function classifyFace(
   faceIdx: number,
   centroid: Vec3,
-  normal: Vec3,
   surfaceType: SurfaceType,
   center: Vec3,
   half: Vec3,
   opts: SolidMeshOptions,
+  uuid: string | null,
+  creator: string,
 ): { classifiers: string[]; query: string | null } {
   const classifiers = geometryClassifiers(centroid, center, half)
-  const uuid = opts.faceNames ? (opts.faceNames[faceGeometryHash(centroid, normal)] ?? null) : null
   // An EMPTY ancestry token list (a prism cap face) is "no ancestry": read
   // `[]` as absent so the profile-token fallback fires, matching buildFaceQuery
   // and the builder's registered key. A bare createdBy+bodyId net would leave a
@@ -291,7 +368,7 @@ function classifyFace(
       : null
   const fallbackPq = ancestorTokens ? null : opts.profileQueries
   const query = buildFaceQuery(
-    opts.createdBy,
+    opts.createdBy ? creator : undefined,
     opts.bodyId,
     faceIdx,
     surfaceType,
@@ -326,12 +403,14 @@ export function readShapeFaceMetadata(
   scope: DisposeScope,
   solid: OccShape,
   opts: SolidMeshOptions = {},
-): { face_data: FaceDatum[]; face_queries: string[] } {
+): { face_data: FaceDatum[]; face_queries: string[]; face_uuids: (string | null)[]; face_created_by: string[] } {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  const faces: (FaceSortItem & { surfaceFrame: SurfaceFrame | null })[] = []
+  const faces: (FaceSortItem & { surfaceFrame: SurfaceFrame | null; canon: number })[] = []
+  const canonOf = canonicalCounter()
   for (; exp.More(); exp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
+    const canon = canonOf(face as OccSubShape)
     const surfaceType = faceSurfaceType(oc, scope, face)
     const axis = (surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined) ?? undefined
     faces.push({
@@ -340,15 +419,23 @@ export function readShapeFaceMetadata(
       surfaceType,
       surfaceFrame: faceSurfaceFrame(oc, scope, face),
       axis,
+      canon,
     })
   }
+  assertAligned(canonicalCount(faces), opts.faceUuids, `${opts.bodyId ?? 'solid'} faces`)
   faces.sort((a, b) => compareFaceSortKeys(faceSortKey(a), faceSortKey(b)))
   const { center, half } = bodyFrame(oc, scope, solid)
   const face_data: FaceDatum[] = []
   const face_queries: string[] = []
+  const face_uuids: (string | null)[] = []
+  const creators = faceCreators(oc, scope, solid, opts)
+  const face_created_by: string[] = []
   faces.forEach((face, faceIdx) => {
+    const uuid = faceUuidAt(opts, face.canon)
+    face_uuids.push(uuid)
+    face_created_by.push(creators[face.canon])
     const { classifiers, query } = classifyFace(
-      faceIdx, face.centroid, face.normal, face.surfaceType, center, half, opts,
+      faceIdx, face.centroid, face.surfaceType, center, half, opts, uuid, creators[face.canon],
     )
     face_data.push({
       centroid: face.centroid,
@@ -363,7 +450,7 @@ export function readShapeFaceMetadata(
     // face_queries[i] aligned with face_data[i] for extractBodyAnchors's zip.
     face_queries.push(query ?? '')
   })
-  return { face_data, face_queries }
+  return { face_data, face_queries, face_uuids, face_created_by }
 }
 
 /** Lexicographic comparator over heterogeneous edge sort keys (number|string). */
@@ -396,7 +483,8 @@ interface SolidEdgesOptions {
   bodyId?: string
   profileQueries?: string[] | null
   edgeAncestry?: Record<string, string[]> | null
-  edgeNames?: Record<string, string> | null
+  // The body's edge UUIDs in the solid's canonical order (Body.edge_uuids).
+  edgeUuids?: (string | null)[] | null
   brepDiff?: BrepDiff | null
   modifiedBy?: string[]
 }
@@ -404,16 +492,24 @@ interface SolidEdgesOptions {
 interface SolidEdgesResult {
   edges: EdgeData[]
   edge_queries: string[]
+  // The construction UUID minted into edge_queries[i] (null where none), for
+  // the registrar; same contract as TessMesh.face_uuids.
+  edge_uuids: (string | null)[]
+  // The feature edge_queries[i] names (empty without a `createdBy`).
+  edge_created_by: string[]
 }
 
 interface SolidVerticesOptions {
   createdBy?: string
   bodyId?: string
   profileQueries?: string[] | null
-  // The body's face-name map (faceGeometryHash -> face uuid). A vertex UUID is
-  // derived from the UUIDs of the faces meeting at it, so the emitter needs the
-  // face names to walk the adjacency; threaded like `SolidEdgesOptions.edgeNames`.
-  faceNames?: Record<string, string> | null
+  // The body's face UUIDs in canonical order (Body.face_uuids). A vertex UUID
+  // is derived from the UUIDs of the faces meeting at it, so the emitter needs
+  // the face names to walk the adjacency.
+  faceUuids?: (string | null)[] | null
+  // The body's last diff and modifier history, for the per-vertex creator.
+  brepDiff?: BrepDiff | null
+  modifiedBy?: string[]
 }
 
 interface SolidVerticesResult {
@@ -423,11 +519,13 @@ interface SolidVerticesResult {
   // parallel to `vertices`. The registrar attaches it to the vertex payload and
   // to `byUuid` so the resolver's UUID tier can resolve a persisted vertex query.
   vertex_uuids: (string | null)[]
+  // The feature each vertex is registered under (modifierAttribution.ts).
+  vertex_created_by: string[]
 }
 
 /**
- * Vertex construction UUIDs derived from face adjacency, keyed by vertex geom
- * hash so a lookup on a vertex point lines up. A vertex's UUID is the
+ * Vertex construction UUIDs derived from face adjacency, one per canonical
+ * vertex of `solid` (null where none). A vertex's UUID is the
  * (unordered) set of its adjacent NAMED face UUIDs (`deriveVertexUuid`).
  * Multiplicity (>1 vertex sharing one face set) is ordered by
  * `orderSplitChildren` and refuses on a near-tie -- never fail-wrong. Mirrors
@@ -448,55 +546,52 @@ function vertexUuidsFromFaces(
   oc: OccModule,
   scope: DisposeScope,
   solid: OccShape,
-  faceNames: Record<string, string>,
-): Record<string, string> {
-  const E = oc.TopAbs_ShapeEnum
-  const adjacency: Record<string, Set<string>> = {}  // vertex gh -> set of adjacent face uuid
-  const vertexPoints: Record<string, number[]> = {}  // vertex gh -> its point (split ordering key)
-  const faceExp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  for (; faceExp.More(); faceExp.Next()) {
-    const face = scope.track(oc.TopoDS.Face_1(faceExp.Current()))
-    const uuid = faceNames[faceGeometryHash(faceCentroid(oc, scope, face), faceNormal(oc, scope, face))]
-    if (!uuid) continue
-    const vExp = scope.track(new oc.TopExp_Explorer_2(face, E.TopAbs_VERTEX, E.TopAbs_SHAPE))
-    for (; vExp.More(); vExp.Next()) {
-      const vertex = scope.track(oc.TopoDS.Vertex_1(vExp.Current()))
-      // Pnt() hands back a fresh by-value point per vertex (one per face
-      // corner): read it and drop it before the next iteration.
-      const p = oc.BRep_Tool.Pnt(vertex)
-      const pt = [p.X(), p.Y(), p.Z()]
-      p.delete()
-      const vgh = vertexGeometryHash(pt)
-      ;(adjacency[vgh] ??= new Set()).add(uuid)
-      vertexPoints[vgh] ??= pt
+  vertexPoints: readonly Vec3[],
+  faceUuids: readonly (string | null)[],
+): (string | null)[] {
+  const faces = canonicalFaces(oc, scope, solid)
+  assertAligned(faces.length, faceUuids, 'vertex naming faces')
+  const vertexIdx = canonicalIndex(canonicalVertices(oc, scope, solid))
+  // Canonical vertex index -> its adjacent named face uuids, in first-touch order.
+  const adjacency = new Map<number, Set<string>>()
+  faces.forEach((face, fi) => {
+    const uuid = faceUuids[fi]
+    if (!uuid) return
+    for (const vertex of canonicalVertices(oc, scope, face)) {
+      const vi = vertexIdx.get(vertex)
+      if (vi < 0) continue
+      let set = adjacency.get(vi)
+      if (set === undefined) adjacency.set(vi, (set = new Set()))
+      set.add(uuid)
     }
-  }
+  })
 
-  const out: Record<string, string> = {}
-  const bySet: Record<string, string[]> = {}  // "uuidA|uuidB|uuidC..." -> [vertex gh...]
-  for (const [vgh, uuidSet] of Object.entries(adjacency)) {
-    if (uuidSet.size === 0) continue  // no named neighbour: nothing symbolic to name it by
+  const out: (string | null)[] = vertexPoints.map(() => null)
+  const bySet = new Map<string, number[]>()  // "uuidA|uuidB|uuidC..." -> [vertex index...]
+  for (const [vi, uuidSet] of adjacency) {
     const setKey = [...uuidSet].sort().join('|')
-    ;(bySet[setKey] ??= []).push(vgh)
+    const group = bySet.get(setKey)
+    if (group === undefined) bySet.set(setKey, [vi])
+    else group.push(vi)
   }
   // Vertex points are world coordinates: normalize them by the solid's span so
   // a uniform resize cancels and the refusal is relative, not unit-dependent.
   let frame: NormalFrame | null = null
-  for (const [setKey, vghs] of Object.entries(bySet)) {
-    const faceUuids = setKey.split('|')
-    let ordered: string[] | null = vghs
-    if (vghs.length > 1) {
+  for (const [setKey, group] of bySet) {
+    const adjacent = setKey.split('|')
+    let ordered: number[] | null = group
+    if (group.length > 1) {
       frame ??= shapeNormalFrame(oc, scope, solid)
       const f = frame
-      const children: SplitChild<string>[] = vghs.map((vgh) => ({
-        item: vgh,
-        key: normalizedWorldKey(f, vertexPoints[vgh]),
+      const children: SplitChild<number>[] = group.map((vi) => ({
+        item: vi,
+        key: normalizedWorldKey(f, vertexPoints[vi]),
       }))
       ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
     }
     if (ordered === null) continue
-    ordered.forEach((vgh, i) => {
-      out[vgh] = deriveVertexUuid(faceUuids, vghs.length > 1 ? i : 0)
+    ordered.forEach((vi, i) => {
+      out[vi] = deriveVertexUuid(adjacent, group.length > 1 ? i : 0)
     })
   }
   return out
@@ -542,35 +637,12 @@ export function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
   return [ed.center[0], ed.center[1], ed.center[2]]
 }
 
-/** Compute geom hashes of a BrepDiff's new_edges for the pick-side creator rewrite. */
-function _solidToEdgesNewEdgeHashes(oc: OccModule, scope: DisposeScope, diff: BrepDiff): Set<string> {
-  const out = new Set<string>()
-  if (!diff.new_edges || diff.new_edges.length === 0) return out
-  for (const raw of diff.new_edges) {
-    try {
-      const { ed } = edgeToGeom(oc, scope, raw as OccShape)
-      if (ed.kind === 'line') {
-        const s = (ed as { start: number[] }).start
-        const e = (ed as { end: number[] }).end
-        out.add(edgeGeometryHash({ kind: 'line', start: s, end: e }))
-        out.add(edgeGeometryHash({ kind: 'line', start: e, end: s }))
-      } else if (ed.kind === 'circle' || ed.kind === 'arc') {
-        out.add(edgeGeometryHash(ed as unknown as Record<string, unknown>))
-      }
-    } catch {
-      // skip un-hashable edges (splines, freed handles)
-    }
-  }
-  return out
-}
-
 /**
  * Unique edge geometry of a solid, sorted into deterministic indices, plus the
  * per-edge ancestry `edge_queries`, ALWAYS one per edge. A real query is built
  * only when `createdBy` is set; the rest are '' placeholders that keep the
- * positional zip `edges[i]` <-> `edge_queries[i]` intact. The geom-hash token a
- * real query carries is what the fillet/chamfer resolver matches a picked edge
- * against.
+ * positional zip `edges[i]` <-> `edge_queries[i]` intact. `edge_created_by[i]`
+ * is the feature the query names, which the registrar registers the edge under.
  */
 export function solidToEdges(
   oc: OccModule,
@@ -582,25 +654,23 @@ export function solidToEdges(
   const scope = new DisposeScope()
   try {
     const raw = readSolidEdges(oc, scope, solid)
+    const canon = canonicalEdges(oc, scope, solid)
+    assertAligned(canon.length, opts.edgeUuids, `${opts.bodyId ?? 'solid'} edges`)
     raw.sort((a, b) => compareEdgeSortKeys(a.sortKey, b.sortKey))
     const edges = raw.map((r) => r.ed)
+    const edge_uuids = raw.map((r) => opts.edgeUuids?.[r.canon] ?? null)
     const edge_queries: string[] = []
+    const edge_created_by: string[] = []
     const { createdBy, bodyId } = opts
     if (createdBy) {
       const { center, half } = bodyFrame(oc, scope, solid)
-      // Compute new-edge hashes so the pick side matches the builder's
-      // modified_by[last] rewrite for edges created by a fillet/chamfer.
-      const hasModifier = opts.brepDiff !== null && opts.brepDiff !== undefined
-        && opts.modifiedBy !== undefined && opts.modifiedBy.length > 0
-        && opts.modifiedBy[opts.modifiedBy.length - 1] !== createdBy
-      const newEdgeHashes = hasModifier ? _solidToEdgesNewEdgeHashes(oc, scope, opts.brepDiff!) : new Set<string>()
-      for (const ed of edges) {
+      // An edge the last modifier created is attributed to it, the same
+      // attribution the fillet/chamfer edge index applies.
+      const created = newSubShapes(oc, scope, opts.brepDiff)
+      edges.forEach((ed, i) => {
         const pt = edgeRepresentativePoint(ed)
         const classifiers = pt ? geometryClassifiers(pt, center, half) : []
-        const geomHash = edgeGeometryHash(ed as unknown as Record<string, unknown>)
-        const uuid = opts.edgeNames
-          ? (opts.edgeNames[geomHash] ?? null)
-          : null
+        const uuid = edge_uuids[i]
         // An EMPTY edge ancestry token list is "no ancestry": read `[]` as
         // absent so the profile-token fallback fires, matching the builder's
         // registered key (same truthiness trap as classifyFace).
@@ -610,12 +680,9 @@ export function solidToEdges(
             : null
         const fallbackPq = ancestorTokens ? null : (opts.profileQueries ?? null)
         const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
-        // Apply the same creator rewrite as buildEdgeIndex: new edges from a
-        // modifier are attributed to the modifier, not the body's original creator.
-        let edgeCreatedBy = createdBy
-        if (newEdgeHashes.has(geomHash) && opts.modifiedBy !== undefined) {
-          edgeCreatedBy = opts.modifiedBy[opts.modifiedBy.length - 1]
-        }
+        const isNew = created?.edges.has(canon[raw[i].canon]) ?? false
+        const edgeCreatedBy = elementCreator(isNew, createdBy, opts.modifiedBy)
+        edge_created_by.push(edgeCreatedBy)
         if (bodyId) {
           const ids: string[] = []
           if (uuid) ids.push(constructionUuidToken(uuid))
@@ -629,7 +696,7 @@ export function solidToEdges(
           if (classifiers.length) ids.push(...classifiers.map(ref))
           edge_queries.push(makeAncestryQuery(ids, edgeType))
         }
-      }
+      })
     }
     // Pad to one query per edge, like solidToMesh does for faces (see the
     // reasoning there). Without `createdBy` the loop above emits NOTHING while
@@ -640,7 +707,7 @@ export function solidToEdges(
     // placeholder: it carries no descriptor and no ancestry, so an edge with no
     // query is skipped rather than silently taking a neighbour's identity.
     while (edge_queries.length < edges.length) edge_queries.push('')
-    return { edges, edge_queries }
+    return { edges, edge_queries, edge_uuids, edge_created_by }
   } finally {
     scope.dispose()
   }
@@ -738,6 +805,12 @@ export function solidToVertices(
     const vertex_queries: string[] = []
     const vertex_uuids: (string | null)[] = vertices.map(() => null)
     const { createdBy, bodyId } = opts
+    // A vertex the last modifier created is attributed to it, in the query and
+    // in the registered ancestry alike, so the query's ancestral net matches.
+    const created = newSubShapes(oc, scope, opts.brepDiff)
+    const vertex_created_by = created
+      ? canonicalVertices(oc, scope, solid).map((v) => elementCreator(created.vertices.has(v), createdBy ?? '', opts.modifiedBy))
+      : vertices.map(() => createdBy ?? '')
     if (createdBy) {
       // Vertex UUID = the set of its adjacent named-face UUIDs (adjacency-derived,
       // op-independent). A vertex query carries only its @u| UUID (whenever it
@@ -745,14 +818,15 @@ export function solidToVertices(
       // no named neighbour at all falls back to the ancestral net; that net is
       // shared with its siblings, so such a vertex is not individually selectable
       // -- the fail-safe outcome of having nothing symbolic to name it by.
-      const uuidByGh = opts.faceNames ? vertexUuidsFromFaces(oc, scope, solid, opts.faceNames) : {}
+      // `readSolidVertices` walks the canonical vertex order, so index idx of
+      // `vertices` is canonical vertex idx.
+      const uuids = opts.faceUuids ? vertexUuidsFromFaces(oc, scope, solid, vertices, opts.faceUuids) : null
       for (let idx = 0; idx < vertices.length; idx++) {
-        const v = vertices[idx]
-        const uuid = uuidByGh[vertexGeometryHash(v)] ?? null
+        const uuid = uuids?.[idx] ?? null
         vertex_uuids[idx] = uuid
         const ids: string[] = []
         if (uuid) ids.push(constructionUuidToken(uuid))
-        ids.push(ref(createdBy))
+        ids.push(ref(vertex_created_by[idx]))
         if (bodyId) {
           ids.push(ref(bodyId))
           if (opts.profileQueries && opts.profileQueries.length) ids.push(...opts.profileQueries)
@@ -763,7 +837,7 @@ export function solidToVertices(
     // One query per vertex even with no `createdBy`, for the reason spelled out
     // in solidToEdges: the positional zip is the contract, '' is the placeholder.
     while (vertex_queries.length < vertices.length) vertex_queries.push('')
-    return { vertices, vertex_queries, vertex_uuids }
+    return { vertices, vertex_queries, vertex_uuids, vertex_created_by }
   } finally {
     scope.dispose()
   }

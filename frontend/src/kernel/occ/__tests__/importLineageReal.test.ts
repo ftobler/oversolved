@@ -14,7 +14,8 @@ import { DisposeScope } from '../disposeScope'
 import type { OccModule, OccShape } from '../occTypes'
 import { stepBytesToShapeWithIdentity, stepShapeToBytes } from '../stepIo'
 import { importedNameMaps } from '../importLineage'
-import { faceGh, edgeGh } from '../lineageHash'
+import { canonicalEdges, canonicalFaces, namesToArray } from '../bodyNames'
+import { SubShapeMap } from '../subshapeIdentity'
 import { FACE_UUID_PREFIX, EDGE_UUID_PREFIX } from '../../constructionName'
 import { makeBoxAt } from '../primitives'
 import { makeTranslationTrsf } from '../transforms'
@@ -26,16 +27,7 @@ function fixtureBytes(): Uint8Array {
   return new Uint8Array(readFileSync(new URL('../__fixtures__/double_with_hole.step', import.meta.url)))
 }
 
-function edgeGhs(occ: OccModule, scope: DisposeScope, shape: OccShape): string[] {
-  const E = occ.TopAbs_ShapeEnum
-  const exp = scope.track(new occ.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-  const out = new Set<string>()
-  for (; exp.More(); exp.Next()) {
-    const gh = edgeGh(occ, scope, scope.track(occ.TopoDS.Edge_1(exp.Current())))
-    if (gh !== null) out.add(gh)
-  }
-  return [...out]
-}
+const valuesOf = (m: SubShapeMap<string>): string[] => [...m.values()]
 
 describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
   let occ: OccModule
@@ -49,11 +41,11 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     try {
       const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
       const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
-      const uuids = Object.values(maps.faceNames)
+      const uuids = valuesOf(maps.faceNames)
       // Without a floor here the whole test passes on an empty map: every
       // length check becomes 0 === 0 and every loop body is skipped.
       expect(uuids.length).toBeGreaterThan(1)
-      expect(uuids.length).toBe(Object.keys(faceStepIds).length)
+      expect(uuids.length).toBe(faceStepIds.size)
       expect(new Set(uuids).size).toBe(uuids.length)
       for (const u of uuids) expect(u.startsWith(FACE_UUID_PREFIX)).toBe(true)
       // Empty on purpose: the UUID tier answers first and an imported face has
@@ -69,13 +61,13 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     try {
       const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
       const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
-      const ghs = edgeGhs(occ, scope, shape)
-      expect(ghs.length).toBeGreaterThan(0)
-      for (const gh of ghs) {
-        expect(maps.edgeNames[gh], `edge ${gh} unnamed`).toBeDefined()
-        expect(maps.edgeNames[gh].startsWith(EDGE_UUID_PREFIX)).toBe(true)
-      }
-      expect(new Set(Object.values(maps.edgeNames)).size).toBe(Object.keys(maps.edgeNames).length)
+      const edges = canonicalEdges(occ, scope, shape)
+      expect(edges.length).toBeGreaterThan(0)
+      edges.forEach((edge, i) => {
+        expect(maps.edgeNames.get(edge), `edge ${i} unnamed`).toBeDefined()
+        expect(maps.edgeNames.get(edge)!.startsWith(EDGE_UUID_PREFIX)).toBe(true)
+      })
+      expect(new Set(maps.edgeNames.values()).size).toBe(maps.edgeNames.size)
     } finally {
       scope.dispose()
     }
@@ -87,11 +79,11 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
       const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
       const a = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
       const b = importedNameMaps(occ, scope, shape, faceStepIds, 'import2', [])
-      const bFaces = new Set(Object.values(b.faceNames))
-      expect(Object.values(a.faceNames).filter((u) => bFaces.has(u))).toEqual([])
+      const bFaces = new Set(b.faceNames.values())
+      expect(valuesOf(a.faceNames).filter((u) => bFaces.has(u))).toEqual([])
       // The edge UUIDs derive from the face pairs, so they must part company too.
-      const bEdges = new Set(Object.values(b.edgeNames))
-      expect(Object.values(a.edgeNames).filter((u) => bEdges.has(u))).toEqual([])
+      const bEdges = new Set(b.edgeNames.values())
+      expect(valuesOf(a.edgeNames).filter((u) => bEdges.has(u))).toEqual([])
     } finally {
       scope.dispose()
     }
@@ -101,14 +93,14 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
-      const dropped = Object.keys(faceStepIds)[0]
-      const partial = { ...faceStepIds }
-      delete partial[dropped]
+      const dropped = canonicalFaces(occ, scope, shape).find((f) => faceStepIds.has(f))!
+      const partial = new SubShapeMap(faceStepIds)
+      partial.delete(dropped)
       const maps = importedNameMaps(occ, scope, shape, partial, 'import1', [])
-      expect(maps.faceNames[dropped], 'residual face left unnamed').toBeDefined()
+      expect(maps.faceNames.get(dropped), 'residual face left unnamed').toBeDefined()
       // Named off the neighbour set, so it must NOT be the entity-derived UUID.
       const full = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
-      expect(maps.faceNames[dropped]).not.toBe(full.faceNames[dropped])
+      expect(maps.faceNames.get(dropped)).not.toBe(full.faceNames.get(dropped))
     } finally {
       scope.dispose()
     }
@@ -121,44 +113,41 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
       const second = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
       const a = importedNameMaps(occ, scope, first.shape, first.faceStepIds, 'import1', [])
       const b = importedNameMaps(occ, scope, second.shape, second.faceStepIds, 'import1', [])
-      expect(b.faceNames).toEqual(a.faceNames)
-      expect(b.edgeNames).toEqual(a.edgeNames)
+      // Two reads are two shapes; position by position in their canonical order
+      // they must carry the same names.
+      const facesOf = (s: OccShape, m: SubShapeMap<string>) => namesToArray(canonicalFaces(occ, scope, s), m)
+      const edgesOf = (s: OccShape, m: SubShapeMap<string>) => namesToArray(canonicalEdges(occ, scope, s), m)
+      expect(facesOf(second.shape, b.faceNames)).toEqual(facesOf(first.shape, a.faceNames))
+      expect(edgesOf(second.shape, b.edgeNames)).toEqual(edgesOf(first.shape, a.edgeNames))
     } finally {
       scope.dispose()
     }
   })
 
   it('gives a face the same UUID at a different import scale', () => {
-    // The whole point of using the file's entity id: the geometry (and with it
-    // every geom-hash KEY) moves, the identity does not.
+    // The whole point of using the file's entity id: the geometry moves, the
+    // identity does not.
     const scope = new DisposeScope()
     try {
       const plain = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes(), 1.0)
       const scaled = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes(), 3.0)
       const a = importedNameMaps(occ, scope, plain.shape, plain.faceStepIds, 'import1', [])
       const b = importedNameMaps(occ, scope, scaled.shape, scaled.faceStepIds, 'import1', [])
-      expect(new Set(Object.values(b.faceNames))).toEqual(new Set(Object.values(a.faceNames)))
-      expect(new Set(Object.values(b.edgeNames))).toEqual(new Set(Object.values(a.edgeNames)))
-      expect(Object.keys(b.faceNames)).not.toEqual(Object.keys(a.faceNames))
+      expect(new Set(b.faceNames.values())).toEqual(new Set(a.faceNames.values()))
+      expect(new Set(b.edgeNames.values())).toEqual(new Set(a.edgeNames.values()))
     } finally {
       scope.dispose()
     }
   })
 
-  it('keys the face names by the hash the explorer produces', () => {
+  it('names every face the explorer walk of the shape yields', () => {
     const scope = new DisposeScope()
     try {
       const { shape, faceStepIds } = stepBytesToShapeWithIdentity(occ, scope, fixtureBytes())
       const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', [])
-      const E = occ.TopAbs_ShapeEnum
-      const exp = scope.track(new occ.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
-      let n = 0
-      for (; exp.More(); exp.Next()) {
-        const gh = faceGh(occ, scope, scope.track(occ.TopoDS.Face_1(exp.Current())))
-        expect(maps.faceNames[gh], `explorer face ${gh} has no name`).toBeDefined()
-        n++
-      }
-      expect(n).toBeGreaterThan(1)
+      const faces = canonicalFaces(occ, scope, shape)
+      faces.forEach((face, i) => expect(maps.faceNames.get(face), `explorer face ${i} has no name`).toBeDefined())
+      expect(faces.length).toBeGreaterThan(1)
     } finally {
       scope.dispose()
     }
@@ -191,11 +180,11 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
       const maps = importedNameMaps(occ, scope, shape, faceStepIds, 'import1', solids)
       // 12 face keys (six per placement) carrying 12 DISTINCT uuids: pre-fix
       // this was 12 keys collapsing onto 6 shared uuids.
-      expect(Object.keys(maps.faceNames).length).toBe(12)
-      expect(new Set(Object.values(maps.faceNames)).size).toBe(12)
+      expect(maps.faceNames.size).toBe(12)
+      expect(new Set(maps.faceNames.values()).size).toBe(12)
       // Edge UUIDs derive from the face pairs, so they part company too.
-      expect(Object.keys(maps.edgeNames).length).toBeGreaterThan(0)
-      expect(new Set(Object.values(maps.edgeNames)).size).toBe(Object.keys(maps.edgeNames).length)
+      expect(maps.edgeNames.size).toBeGreaterThan(0)
+      expect(new Set(maps.edgeNames.values()).size).toBe(maps.edgeNames.size)
     } finally {
       scope.dispose()
     }

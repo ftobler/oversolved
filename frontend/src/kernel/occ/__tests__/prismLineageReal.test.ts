@@ -336,7 +336,7 @@ describe.skipIf(!oc)('sweptProfile lineage off a rebuilt wire (real OCC)', () =>
       // With sweptProfile the explorer walks the rebuilt wire, Generated()
       // answers, and all four lateral faces plus both caps get named.
       const maps = buildPrismLineageMap(occ, scope, face, stub, square, planeXY, 'feat', 'sk1', 0, rebuiltWire)
-      expect(Object.keys(maps.faceNames).length).toBe(6)
+      expect(maps.faceNames.size).toBe(6)
       expect(Object.values(maps.faceAncestry).filter((tokens) => tokens.length > 0).length).toBe(4)
     } finally {
       scope.dispose()

@@ -9,23 +9,13 @@
 // derivation simply skips an edge no named face touches.
 
 import type { DisposeScope } from './disposeScope'
-import type { OccModule, OccShape } from './occTypes'
+import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import { edgeToGeom } from './primitives'
 import type { LoopEdge } from '../profileLoops'
 import type { PlaneLike } from '../features/shared/planes'
 import { POINT_TOL, pointsMatch, uvTo3d } from './prismGeometry'
-import {
-  edgeMidpoint,
-  normalizedWorldKey,
-  shapeNormalFrame,
-  type NormalFrame,
-} from './constructionLineage'
-import {
-  deriveEdgeUuid,
-  deriveSeamEdgeUuid,
-  orderSplitChildren,
-  type SplitChild,
-} from '../constructionName'
+import { nameEdgeGroups, type FaceEdgeTable } from './constructionLineage'
+import { SubShapeMap } from './subshapeIdentity'
 import { failLoud } from '@/utils/invariants'
 import { isDevBuild } from '../isDevBuild'
 
@@ -127,56 +117,59 @@ export function entityForEdges(
 
 /**
  * Derive each solid edge's construction UUID from its two adjacent face UUIDs.
- * `adjacency` maps an edge geom hash to every adjacent face geom hash (named or
- * not); `edgeShapes` maps it to a representative edge for the split ordering.
+ * `table` is the solid's face/edge topology.
  *
  * A pair sharing >1 edge (multiplicity) is ordered by `orderSplitChildren` and
  * refuses on a near-tie, and an edge that is neither between two named faces nor
  * a single-face seam is a non-manifold junction or an unrescued topology, which
- * fails loud rather than silently collapsing onto the body-wide query.
+ * fails loud rather than silently collapsing onto the body-wide query. With
+ * `strict` off (a fused multi-group solid, where a merged face may legitimately
+ * stay unnamed) such an edge is just left unnamed.
  */
 export function derivePrismEdgeNames(
   oc: OccModule,
   scope: DisposeScope,
-  solid: OccShape,
-  adjacency: Record<string, Set<string>>,
-  faceNames: Record<string, string>,
+  table: FaceEdgeTable,
+  faceNames: SubShapeMap<string>,
   faceAncestry: Record<string, string[]>,
-  edgeShapes: Record<string, OccShape>,
   createdBy: string,
-): { edgeNames: Record<string, string>; edgeAncestry: Record<string, string[]> } {
-  // solid edge -> tokens, gathered from adjacent faces' ancestry.
-  const edgeLineage: Record<string, string[]> = {}
-  for (const [egh, faceGhs] of Object.entries(adjacency)) {
-    const tokens: string[] = []
-    for (const fgh of faceGhs) {
-      const fu = faceNames[fgh]
-      if (!fu) continue
-      for (const t of faceAncestry[fu] ?? []) {
-        if (!tokens.includes(t)) tokens.push(t)
+  strict = true,
+): { edgeNames: SubShapeMap<string>; edgeAncestry: Record<string, string[]> } {
+  // solid edge -> the uuids of its named adjacent faces, every edge once in
+  // first-seen order.
+  const adjacency = new SubShapeMap<Set<string>>()
+  const edgeOrder: OccSubShape[] = []
+  for (const row of table.rows) {
+    const uuid = faceNames.get(row.face)
+    for (const edge of row.edges) {
+      let set = adjacency.get(edge)
+      if (set === undefined) {
+        adjacency.set(edge, (set = new Set()))
+        edgeOrder.push(edge)
       }
+      if (uuid) set.add(uuid)
     }
-    edgeLineage[egh] = tokens
   }
 
-  // solid edge -> construction uuid, derived from its two adjacent face uuids.
   // Group edges by their face-pair so a pair sharing >1 edge (multiplicity) is
   // ordered deterministically and each edge gets a stable multiplicity index.
-  const edgeNames: Record<string, string> = {}
-  const edgeAncestry: Record<string, string[]> = {}
-  const byPair: Record<string, string[]> = {}  // "uuidA|uuidB" -> [edge gh...]
-  const bySingle: Record<string, string[]> = {}  // "uuidA" -> [seam edge gh...]
-  for (const [egh, faceGhs] of Object.entries(adjacency)) {
-    const uuids = [...faceGhs].map((fgh) => faceNames[fgh]).filter((u): u is string => Boolean(u))
-    const distinct = [...new Set(uuids)]
+  const byPair = new Map<string, OccSubShape[]>()  // "uuidA|uuidB" -> its edges
+  const bySingle = new Map<string, OccSubShape[]>()  // "uuidA" -> its seam edges
+  const group = (groups: Map<string, OccSubShape[]>, key: string, edge: OccSubShape): void => {
+    const list = groups.get(key)
+    if (list === undefined) groups.set(key, [edge])
+    else list.push(edge)
+  }
+  for (const edge of edgeOrder) {
+    const distinct = [...adjacency.get(edge)!]
     // Two named faces -> normal edge; one named face -> seam edge (e.g. a
     // circle-extrude cylinder's lateral seam). Both get a UUID so no pickable
     // edge falls back to the ambiguous createdBy+classifiers query.
     if (distinct.length === 2) {
-      (byPair[[...distinct].sort().join('|')] ??= []).push(egh)
+      group(byPair, [...distinct].sort().join('|'), edge)
     } else if (distinct.length === 1) {
-      (bySingle[distinct[0]] ??= []).push(egh)
-    } else {
+      group(bySingle, distinct[0], edge)
+    } else if (strict) {
       // Neither an edge between two named faces nor a single-face seam: a
       // non-manifold junction (>2) or an edge every adjacent face stayed
       // unnamed on (0) after the neighbour pass. Both would collapse onto the
@@ -193,45 +186,12 @@ export function derivePrismEdgeNames(
       failLoud(message)
     }
   }
-  // Edge midpoints are world coordinates: normalize them by the parent
-  // solid's span so a uniform resize cancels and the refusal is relative.
-  let frame: NormalFrame | null = null
-  for (const [pairKey, eghs] of Object.entries(byPair)) {
-    const [a, b] = pairKey.split('|')
-    let ordered: string[] | null = eghs
-    if (eghs.length > 1) {
-      frame ??= shapeNormalFrame(oc, scope, solid)
-      const f = frame
-      const children: SplitChild<string>[] = eghs.map((egh) => ({
-        item: egh,
-        key: normalizedWorldKey(f, edgeMidpoint(oc, scope, edgeShapes[egh])),
-      }))
-      ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
+  // An edge's tokens are the union of its named adjacent faces' ancestry.
+  return nameEdgeGroups(oc, scope, table.shape, byPair, bySingle, (_uuids, edge) => {
+    const tokens: string[] = []
+    for (const fu of adjacency.get(edge) ?? []) {
+      for (const t of faceAncestry[fu] ?? []) if (!tokens.includes(t)) tokens.push(t)
     }
-    if (ordered === null) continue
-    ordered.forEach((egh, i) => {
-      const uuid = deriveEdgeUuid(a, b, eghs.length > 1 ? i : 0)
-      edgeNames[egh] = uuid
-      edgeAncestry[uuid] = [...(edgeLineage[egh] ?? [])]
-    })
-  }
-  for (const [faceUuid, eghs] of Object.entries(bySingle)) {
-    let ordered: string[] | null = eghs
-    if (eghs.length > 1) {
-      frame ??= shapeNormalFrame(oc, scope, solid)
-      const f = frame
-      const children: SplitChild<string>[] = eghs.map((egh) => ({
-        item: egh,
-        key: normalizedWorldKey(f, edgeMidpoint(oc, scope, edgeShapes[egh])),
-      }))
-      ordered = orderSplitChildren(children)  // null on a near-tie -> leave unnamed
-    }
-    if (ordered === null) continue
-    ordered.forEach((egh, i) => {
-      const uuid = deriveSeamEdgeUuid(faceUuid, eghs.length > 1 ? i : 0)
-      edgeNames[egh] = uuid
-      edgeAncestry[uuid] = [...(edgeLineage[egh] ?? [])]
-    })
-  }
-  return { edgeNames, edgeAncestry }
+    return tokens
+  })
 }

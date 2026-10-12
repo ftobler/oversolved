@@ -436,7 +436,7 @@ function mapOriginThroughCanonical(origin: FaceOrigin[], rebase: (s: OccSubShape
  * out; a merged face keeps the first source seen. The source handle references
  * an input shape, untouched by clean, so it is carried as-is.
  */
-function composeOriginThroughClean(
+export function composeOriginThroughClean(
   oc: OccModule,
   scope: DisposeScope,
   origin: FaceOrigin[],

@@ -48,18 +48,6 @@ export interface BuildDeps {
   ) => Record<string, Record<string, unknown>>
   // Optional: normalize legacy projected_* entity kinds. Defaults to identity.
   normalizeProjectedEntities?: (f: Record<string, unknown>) => Record<string, unknown>
-  /** Compute face geometry hashes for brep_diff.new_faces. Called per-body
-   *  inside the feature loop / checkpoint assembly while OCC handles are live,
-   *  so the downstream ``face_created_by`` tag correctly distinguishes new faces
-   *  (attributed to the modifying feature) from inherited faces (original
-   *  creator). When omitted, all faces get ``body.created_by``. */
-  brepDiffNewFaceHashes?: (body: Body) => Set<string>
-  /** Compute edge geometry hashes for brep_diff.new_edges. Same contract as
-   *  ``brepDiffNewFaceHashes`` but for edge ancestry. */
-  brepDiffNewEdgeHashes?: (body: Body) => Set<string>
-  /** Compute vertex geometry hashes for purely-new vertices (endpoints of new
-   *  edges minus endpoints of inherited edges). Same contract. */
-  brepDiffNewVertexHashes?: (body: Body) => Set<string>
   /** Retain a checkpoint's live shape under an owner tag so a later feature in
    *  the same build that consumes/frees that shape cannot strand the snapshot,
    *  and the shape survives into the next build for incremental restore. A pure

@@ -102,9 +102,6 @@ class Harness {
       initGlobalRepo: () => new Repository(),
       tessellateBodies: (store) => meta(store, false),
       extractBrepMetadata: (store) => meta(store, true),
-      brepDiffNewFaceHashes: () => new Set(),
-      brepDiffNewEdgeHashes: () => new Set(),
-      brepDiffNewVertexHashes: () => new Set(),
     }
   }
 
@@ -180,9 +177,6 @@ function buildNullShapePair(secondShapeNull: boolean) {
     initGlobalRepo: () => new Repository(),
     tessellateBodies: meta,
     extractBrepMetadata: meta,
-    brepDiffNewFaceHashes: () => new Set<string>(),
-    brepDiffNewEdgeHashes: () => new Set<string>(),
-    brepDiffNewVertexHashes: () => new Set<string>(),
   }
   return build(spec, { prevState: null }, deps)
 }
@@ -263,9 +257,6 @@ describe('real postRegister: solids survive a re-solve', () => {
         Object.fromEntries(Object.entries(store).map(([bid, b]) => [bid, fakeMeta(b)])),
       extractBrepMetadata: (store: Record<string, Body>) =>
         Object.fromEntries(Object.entries(store).map(([bid, b]) => [bid, fakeMeta(b)])),
-      brepDiffNewFaceHashes: () => new Set<string>(),
-      brepDiffNewEdgeHashes: () => new Set<string>(),
-      brepDiffNewVertexHashes: () => new Set<string>(),
     }
     const cold = build(multi, { prevState: null }, deps)
     const coldSolids = elementsOfType(cold._build_state!.checkpoints.f1, 'f1', 'solid')
@@ -358,9 +349,6 @@ describe('reconcile hardening: the evict drops dead eids', () => {
       initGlobalRepo: () => liveRepo,
       tessellateBodies: () => ({}),
       extractBrepMetadata: () => ({}),
-      brepDiffNewFaceHashes: () => new Set<string>(),
-      brepDiffNewEdgeHashes: () => new Set<string>(),
-      brepDiffNewVertexHashes: () => new Set<string>(),
     }
     build({ features: [{ id: 'f1', kind: 'make' }] }, { prevState: null }, deps)
 
@@ -390,9 +378,6 @@ describe('reconcile hardening: no-body features exit early', () => {
       initGlobalRepo: () => liveRepo,
       tessellateBodies: () => ({}),
       extractBrepMetadata: () => ({}),
-      brepDiffNewFaceHashes: () => new Set<string>(),
-      brepDiffNewEdgeHashes: () => new Set<string>(),
-      brepDiffNewVertexHashes: () => new Set<string>(),
     }
     build(
       { features: [{ id: 'sk1', kind: 'sketch' }, { id: 'f1', kind: 'make' }] },
@@ -430,9 +415,6 @@ describe('reconcile hardening: no-body features exit early', () => {
       initGlobalRepo: () => liveRepo,
       tessellateBodies: () => ({}),
       extractBrepMetadata: () => ({}),
-      brepDiffNewFaceHashes: () => new Set<string>(),
-      brepDiffNewEdgeHashes: () => new Set<string>(),
-      brepDiffNewVertexHashes: () => new Set<string>(),
     }
     build({ features: [{ id: 'f1', kind: 'make' }] }, { prevState: null }, deps)
 
