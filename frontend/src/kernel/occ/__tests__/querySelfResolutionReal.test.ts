@@ -260,25 +260,109 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, depth: 3, target: 'body_ex1' } },
   ] })
 
+  // The face queries of body_ex1 that name `holeId` as their creator, by surface type.
+  function holeFaceQueries(spec: Spec, holeId: string): Record<string, string[]> {
+    const out: Record<string, string[]> = {}
+    for (const q of queriesOf(h, h.run(spec), 'body_ex1', 'face')) {
+      const [ids, type] = parseAncestry(q)
+      if (ids.includes(`@${holeId}`)) (out[type ?? ''] ??= []).push(q)
+    }
+    return out
+  }
+
+  // The hole names its own faces from the drill site, the way an extrude names a
+  // side face from its sketch entity: the bore and the floor carry a construction
+  // uuid and the site's entity as ancestry, not whatever their neighbours were.
   it('blind hole', () => {
     const modifierOwned = expectSelfResolution(blindHole(), 'body_ex1')
     expect(modifierOwned).toBeGreaterThan(0)
+    const faces = holeFaceQueries(blindHole(), 'hole1')
+    expect(faces.cylinderface, 'one bore').toHaveLength(1)
+    expect(faces.flatface, 'one floor').toHaveLength(1)
+    for (const q of [...faces.cylinderface, ...faces.flatface]) {
+      expect(q).toContain('@u|')
+      expect(parseAncestry(q)[0], q).toContain('@skh/p1')
+    }
   })
+
+  // A circle names its own drill site and diameter; its bore is named from it.
+  it('blind hole drilled at a picked circle', () => {
+    const spec: Spec = { features: [
+      ...box().features,
+      {
+        id: 'skh', kind: 'sketch', label: 'Drill circle', plane: '@builtin_plane_front',
+        entities: [{ id: 'c1', kind: 'circle' }], initial: { c1: [5, 5, 1.5] }, constraints: [],
+      },
+      { id: 'hole1', kind: 'hole', hole: { sketch: 'entity:skh:c1', diameter: 2, depth: 3, target: 'body_ex1' } },
+    ] }
+    expectSelfResolution(spec, 'body_ex1')
+    const faces = holeFaceQueries(spec, 'hole1')
+    expect(faces.cylinderface).toHaveLength(1)
+    expect(faces.flatface).toHaveLength(1)
+    for (const q of [...faces.cylinderface, ...faces.flatface]) {
+      expect(q).toContain('@u|')
+      expect(parseAncestry(q)[0], q).toContain('@skh/c1')
+    }
+  })
+
+  const drillSites = (points: Array<[string, [number, number]]>, hole: Record<string, unknown>): Spec => ({ features: [
+    ...box().features,
+    {
+      id: 'skh', kind: 'sketch', label: 'Drill sites', plane: '@builtin_plane_front',
+      entities: points.map(([id]) => ({ id, kind: 'point' })),
+      initial: Object.fromEntries(points), constraints: [],
+    },
+    { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, target: 'body_ex1', ...hole } },
+  ] })
 
   // The hole cuts its sites one at a time, and both bores run between the same
   // two caps. Named off that neighbour set, the second bore was handed the uuid
   // the first already held, and both picks failed as a collision by construction.
   it('two through holes between the same two faces', () => {
-    expectSelfResolution({ features: [
-      ...box().features,
-      {
-        id: 'skh', kind: 'sketch', label: 'Drill sites', plane: '@builtin_plane_front',
-        entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }],
-        initial: { p1: [3, 3], p2: [7, 6] }, constraints: [],
-      },
-      { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, depth_mode: 'through_all', target: 'body_ex1' } },
-    ] }, 'body_ex1')
+    expectSelfResolution(drillSites([['p1', [3, 3]], ['p2', [7, 6]]], { depth_mode: 'through_all' }), 'body_ex1')
   })
+
+  it('two through holes restored from the box checkpoint', () => {
+    const spec = drillSites([['p1', [3, 3]], ['p2', [7, 6]]], { depth_mode: 'through_all' })
+    const base: Spec = { features: spec.features.filter((f) => f.id !== 'hole1') }
+    expectSelfResolution(spec, 'body_ex1', { restoreFrom: base })
+    expectRestoredMatchesFull(base, spec, 'body_ex1')
+  })
+
+  /** Each hole face's uuid, keyed by where the face is (test-side only: it pairs
+   *  the same face across two documents, it identifies nothing in the kernel). */
+  function holeFaceUuidsByPlace(spec: Spec): Map<string, string> {
+    const mesh = h.body(h.run(spec), 'body_ex1').mesh as {
+      face_data: Array<{ centroid: number[]; normal: number[] }>
+      face_uuids: (string | null)[]
+      face_queries: string[]
+    }
+    const out = new Map<string, string>()
+    mesh.face_queries.forEach((q, i) => {
+      if (!parseAncestry(q)[0].includes('@hole1')) return
+      const fd = mesh.face_data[i]
+      const place = [...fd.centroid, ...fd.normal].map((v) => v.toFixed(3).replace('-0.000', '0.000')).join(',')
+      out.set(place, mesh.face_uuids[i] ?? '')
+    })
+    return out
+  }
+
+  // A bore's identity is its own drill site, not its rank among the hole's cuts.
+  // Named off its neighbours, the second bore took the first one's uuid as soon as
+  // the first site was deleted or the points were reordered, and a stored pick on
+  // it silently moved to another bore.
+  for (const hole of [{ depth: 3 }, { depth_mode: 'through_all' }]) {
+    const mode = 'depth_mode' in hole ? 'through' : 'blind'
+    it(`${mode} hole: a bore keeps its uuid when another site is deleted or reordered`, () => {
+      const both = holeFaceUuidsByPlace(drillSites([['p1', [3, 3]], ['p2', [7, 6]]], hole))
+      const swapped = holeFaceUuidsByPlace(drillSites([['p2', [7, 6]], ['p1', [3, 3]]], hole))
+      const onlySecond = holeFaceUuidsByPlace(drillSites([['p2', [7, 6]]], hole))
+      expect(both.size, 'faces of both bores').toBeGreaterThanOrEqual(2)
+      expect(swapped).toEqual(both)
+      expect(onlySecond.size).toBeGreaterThan(0)
+      for (const [place, uuid] of onlySecond) expect(both.get(place), place).toBe(uuid)
+    })
+  }
 
   it('blind hole restored from the box checkpoint', () => {
     const base: Spec = { features: blindHole().features.filter((f) => f.id !== 'hole1') }

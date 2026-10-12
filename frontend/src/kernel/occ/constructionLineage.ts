@@ -357,8 +357,8 @@ function pushGroup<T>(groups: Map<string, T[]>, key: string, item: T): void {
  *
  * Mutates `faceNames`/`faceAncestry` in place, only adding faces that had no
  * name -- a producer-minted UUID is never rewritten. It runs in rounds until
- * one names nothing, so a face reachable only through other new faces (a blind
- * hole's floor behind its bore) is named too. Each round reads only the names
+ * one names nothing, so a face reachable only through other new faces (the floor
+ * of a pocket cut by an unnamed tool, behind its walls) is named too. Each round reads only the names
  * fixed by the rounds before it, so the result is independent of face iteration
  * order. The first round is the old single pass, so a face it names keeps the
  * uuid it always had.
@@ -382,9 +382,11 @@ export function nameFacesFromNeighbours(
   const facesOnEdge = new SubShapeMap<OccSubShape[]>()  // edge -> the faces touching it
   for (const row of rows) for (const edge of row.edges) pushTo(facesOnEdge, edge, row.face)
   // Every uuid already on a face. A corner uuid is a hash of the neighbour set, so
-  // an earlier pass over the same body (a hole drills its sites one cut at a time)
-  // can already hold the very uuid this pass derives for a different face: two
-  // through-bores between the same two caps both hash to {top, bottom}.
+  // an earlier pass over the same body can already hold the very uuid this pass
+  // derives for a different face: two unnamed through-cuts made one after another
+  // between the same two caps both hash to {top, bottom}. Holes hit this until
+  // they named their faces from the drill site (features/hole.ts); the skip stays
+  // as the safety net for any producer that still leaves its tool unnamed.
   const taken = new Set<string>()
   for (const row of t.rows) {
     const uuid = faceNames.get(row.face)
@@ -393,7 +395,7 @@ export function nameFacesFromNeighbours(
 
   let frame: NormalFrame | null = null
   // Rounds, until a round names nothing. A face whose every neighbour is itself
-  // new (a blind hole's floor, inside its unnamed bore) has nothing to be named
+  // new (a pocket floor inside unnamed walls) has nothing to be named
   // by until that neighbour is, so a single round left it unnamed. Each round
   // reads only the names fixed before it began, never one minted in the same
   // round, so the result is still independent of face iteration order.

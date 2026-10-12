@@ -54,6 +54,20 @@ export interface OccPrismBuilder extends OccDisposable {
   LastShape?(): OccShape
 }
 
+/** BRepPrimAPI_MakeCylinder: a prism builder whose primitive also hands out its
+ *  three faces by role, the same faces (IsSame) its Shape() is made of. */
+export interface OccCylinderBuilder extends OccPrismBuilder {
+  Cylinder(): OccCylinderPrimitive
+}
+
+/** BRepPrim_Cylinder (a BRepPrim_OneAxis): the lateral face and the two discs,
+ *  bottom at the axis origin and top at the far end of the height. */
+export interface OccCylinderPrimitive extends OccDisposable {
+  LateralFace(): OccShape
+  TopFace(): OccShape
+  BottomFace(): OccShape
+}
+
 export interface OccListOfShape extends OccDisposable {
   Size(): number
   First_1(): OccShape
@@ -492,7 +506,7 @@ export interface OccModule extends OccBaseModule {
   BRepPrimAPI_MakeBox_1: new (dx: number, dy: number, dz: number) => OccPrismBuilder
   // BRepPrimAPI_MakeBox(corner, dx, dy, dz): an axis-aligned box at a corner.
   BRepPrimAPI_MakeBox_2: new (corner: OccPnt, dx: number, dy: number, dz: number) => OccPrismBuilder
-  BRepPrimAPI_MakeCylinder_3: new (axis: OccDisposable, radius: number, height: number) => OccPrismBuilder
+  BRepPrimAPI_MakeCylinder_3: new (axis: OccDisposable, radius: number, height: number) => OccCylinderBuilder
   ShapeFix_Face_2: new (face: OccShape) => OccShapeFixFace
   ShapeFix_Wire_1: new () => OccShapeFixWire
 

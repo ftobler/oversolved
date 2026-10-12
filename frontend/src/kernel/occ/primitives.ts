@@ -14,7 +14,14 @@
  */
 
 import type { DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccOrientedShape, OccSubShape, OccSurfaceAdaptor } from './occTypes'
+import type {
+  OccCylinderBuilder,
+  OccModule,
+  OccShape,
+  OccOrientedShape,
+  OccSubShape,
+  OccSurfaceAdaptor,
+} from './occTypes'
 import {
   SubShapeDedup,
   SubShapeIndexMap,
@@ -65,6 +72,18 @@ export function makeCylinder(
   radius: number,
   height: number,
 ): OccShape {
+  return cylinderBuilder(oc, scope, center, axis, radius, height).Shape()
+}
+
+/** The scope-tracked builder both cylinder makers share. */
+function cylinderBuilder(
+  oc: OccModule,
+  scope: DisposeScope,
+  center: Vec3,
+  axis: Vec3,
+  radius: number,
+  height: number,
+): OccCylinderBuilder {
   // gp_Ax2(location, mainDirection) -- the 2-arg form, matching
   // ocp_make_cylinder; the X reference direction is chosen by OCC.
   const ax2 = scope.track(
@@ -73,8 +92,43 @@ export function makeCylinder(
       scope.track(new oc.gp_Dir_4(axis[0], axis[1], axis[2])),
     ),
   )
-  const builder = scope.track(new oc.BRepPrimAPI_MakeCylinder_3(ax2, radius, height))
-  return builder.Shape()
+  return scope.track(new oc.BRepPrimAPI_MakeCylinder_3(ax2, radius, height))
+}
+
+/** A cylinder's faces by the role the primitive built them for. */
+export interface CylinderFaces {
+  lateral: OccShape
+  // The disc at `center`, where the cylinder starts.
+  bottom: OccShape
+  // The disc `height` along the axis.
+  top: OccShape
+}
+
+/**
+ * `makeCylinder` plus its faces by role, read from the builder's own primitive
+ * rather than from where they sit, so a caller can name each face by what it is.
+ * The faces are tracked in `scope` and are the very faces (IsSame) of the shape.
+ * @returns the shape untracked - caller owns; the faces scope-tracked.
+ */
+export function makeCylinderWithFaces(
+  oc: OccModule,
+  scope: DisposeScope,
+  center: Vec3,
+  axis: Vec3,
+  radius: number,
+  height: number,
+): { shape: OccShape; faces: CylinderFaces } {
+  const builder = cylinderBuilder(oc, scope, center, axis, radius, height)
+  const shape = builder.Shape()
+  const prim = scope.track(builder.Cylinder())
+  return {
+    shape,
+    faces: {
+      lateral: scope.track(prim.LateralFace()),
+      bottom: scope.track(prim.BottomFace()),
+      top: scope.track(prim.TopFace()),
+    },
+  }
 }
 
 // ─── profile -> face -> prism ───

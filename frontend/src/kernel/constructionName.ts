@@ -53,6 +53,23 @@ export function filletFacePath(createdBy: string, filletedEdgeUuid: string): str
   return `${createdBy}|fillet|${filletedEdgeUuid}`
 }
 
+/** What a hole's cutter face is: the bore wall, the floor at the drill depth, or
+ *  the disc at the sketch plane (a real face only when the site lies inside the
+ *  body, where it roofs the drilled pocket). */
+export type HoleFaceRole = 'bore' | 'floor' | 'mouth'
+
+/**
+ * A face one hole drills at one site: `<createdBy>|hole|<siteSlot>|<role>`,
+ * `siteSlot` being the drill site's `<sketchId>/<entityId>`. A hole cuts its
+ * sites one after another, and named off their neighbours its bores were told
+ * apart only by the order of those cuts: deleting a site or reordering the
+ * points handed a bore the uuid another one had held. The site names the face
+ * instead, as the profile entity names a prism's side face.
+ */
+export function holeFacePath(createdBy: string, siteSlot: string, role: HoleFaceRole): string {
+  return `${createdBy}|hole|${siteSlot}|${role}`
+}
+
 /**
  * A child face that split off a parent face during a boolean/modifier op. The
  * integer `index` is assigned by `orderSplitChildren`, so two rebuilds of the

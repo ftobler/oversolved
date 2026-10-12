@@ -16,7 +16,7 @@
 // Python's Bnd_Box-sized cylinder.
 
 import { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
@@ -24,7 +24,10 @@ import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './sh
 import { resolveBody } from './shared/bodyResolution'
 import { mergeBrepDiff } from './shared/brepDiff'
 import { stripRefSigil } from '@/utils/refSigil'
-import { makeCylinder, type Vec3 } from '../occ/primitives'
+import { makeCylinderWithFaces, type CylinderFaces, type Vec3 } from '../occ/primitives'
+import { SubShapeMap } from '../occ/subshapeIdentity'
+import { holeFacePath, mintFaceUuid, type HoleFaceRole } from '../constructionName'
+import { absolute, emitWire } from '../query'
 import { bodyFrame } from '../occ/tessellation'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
@@ -130,6 +133,34 @@ function drilledEntities(
     )
   }
   return [picked]
+}
+
+/**
+ * Construction names for one drill site's cutter, keyed by its faces before the
+ * cut: the bore wall, the floor (the disc at the drill depth) and the mouth (the
+ * disc on the sketch plane). The roles come from the cylinder primitive itself,
+ * never from where a face sits, and the uuid from the hole, the site and the
+ * role, so a bore is the same bore whatever other sites the hole drills and in
+ * whatever order. The site's sketch entity is the ancestry, as a profile entity
+ * is a prism side face's.
+ */
+function cutterNames(
+  holeId: string,
+  sketchId: string,
+  entityId: string,
+  faces: CylinderFaces,
+): { faceNames: SubShapeMap<string>; faceAncestry: Record<string, string[]> } {
+  const faceNames = new SubShapeMap<string>()
+  const faceAncestry: Record<string, string[]> = {}
+  const site = `${sketchId}/${entityId}`
+  const token = emitWire(absolute(sketchId, entityId))
+  const roles: Array<[HoleFaceRole, OccShape]> = [['bore', faces.lateral], ['floor', faces.top], ['mouth', faces.bottom]]
+  for (const [role, face] of roles) {
+    const uuid = mintFaceUuid(holeFacePath(holeId, site, role))
+    faceNames.set(face as OccSubShape, uuid)
+    faceAncestry[uuid] = [token]
+  }
+  return { faceNames, faceAncestry }
 }
 
 /** Extent of the target along the drill axis, from its edge-sampled AABB: the
@@ -292,7 +323,8 @@ export function solveHole(
       h = depth
     }
 
-    const cyl = scope.track(makeCylinder(oc, scope, start3d, axis, site.radius, h))
+    const cutter = makeCylinderWithFaces(oc, scope, start3d, axis, site.radius, h)
+    const cyl = scope.track(cutter.shape)
     if (!intersects(oc, currentShape, cyl)) {
       // The cutter does not reach the body: a drill site that removes nothing.
       // Skipping the cut keeps it out of accumulatedDiff, so the body's stored
@@ -303,18 +335,21 @@ export function solveHole(
     }
     names ??= readBodyNames(oc, scope, currentShape, targetBody)
     const res = booleanWithDiff(oc, scope, currentShape, cyl, 'cut', { unifyFaces: !targetBody.imported })
-    scope.release(cyl)
-    // The cutter carries no names: a drilled face keeps its own, and the bore
-    // is named off its neighbours.
+    // A drilled face keeps its own name, and the cutter's faces carry theirs from
+    // the drill site onto the bore and floor they leave behind. The cutter is
+    // dropped after the cut and reaches this one body, so nothing else holds its
+    // uuids and they carry verbatim (no toolUuidScope).
+    const tool = cutterNames(feature.id as string, sketchId, eid, cutter.faces)
     names = transferBooleanNames(oc, scope, {
       bodyShape: res.shape,
       faceOrigin: res.faceOrigin,
       targetFaceNames: names.faceNames,
       targetFaceAncestry: names.faceAncestry,
-      toolFaceNames: null,
-      toolFaceAncestry: null,
+      toolFaceNames: tool.faceNames,
+      toolFaceAncestry: tool.faceAncestry,
       toolUuidScope: null,
     })
+    scope.release(cyl)
     if (i > 0) scope.release(currentShape)
     currentShape = scope.track(res.shape)
     // Accumulate per-cut diffs so all rims survive, not just the last.
