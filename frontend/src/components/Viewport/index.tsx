@@ -65,7 +65,7 @@ import type { SketchData } from '@/types/cad'
 
 // Stabilized props for the R3F Canvas. Inline objects would produce new
 // references every Viewport render, forcing CanvasImpl to re-render needlessly.
-const CANVAS_STYLE = { width: '100%', height: '100%', background: '#111' }
+const CANVAS_STYLE = { width: '100%', height: '100%', background: '#0b0b0b' }
 const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
 // `isolation: isolate` makes this div a stacking context, which pens every
 // overlay drei portals next to the canvas inside the viewport. drei hands each
