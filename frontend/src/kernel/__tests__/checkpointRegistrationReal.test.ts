@@ -31,6 +31,7 @@ import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { repoSemanticFingerprint } from '../repoFingerprintTestUtil'
 import type { Body } from '../types3d'
+import { indexModifierDiffs } from '../occ/modifierAttribution'
 import importFixture from '../occ/__fixtures__/importStep.json'
 import { base64ToBytes } from '../occ/stepIo'
 
@@ -78,6 +79,7 @@ class Harness {
         postRegister, initGlobalRepo,
         tessellateBodies: (bodyStore) => tessellateBodies(oc!, this.table, bodyStore),
         extractBrepMetadata: (bodyStore) => extractBrepMetadata(oc!, this.table, bodyStore),
+        indexModifierDiffs: (bodyStore) => indexModifierDiffs(oc!, this.table, bodyStore),
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
         copyBodyShape: (h, owner) =>
           this.table.register(copyShape(oc!, scope, this.table.get<OccShape>(h)), owner),

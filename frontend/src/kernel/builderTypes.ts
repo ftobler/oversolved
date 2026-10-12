@@ -46,6 +46,11 @@ export interface BuildDeps {
     bodyStore: Record<string, Body>,
     repo: Repository | null,
   ) => Record<string, Record<string, unknown>>
+  /** Record, on each body, the canonical indices of the elements its last
+   *  modifier created (``Body.brep_new``), while the feature's ``brep_diff``
+   *  sub-shapes are still alive. Called after every feature solve. Optional --
+   *  when omitted (pure non-OCC tests) nothing is attributed to a modifier. */
+  indexModifierDiffs?: (bodyStore: Record<string, Body>) => void
   // Optional: normalize legacy projected_* entity kinds. Defaults to identity.
   normalizeProjectedEntities?: (f: Record<string, unknown>) => Record<string, unknown>
   /** Retain a checkpoint's live shape under an owner tag so a later feature in

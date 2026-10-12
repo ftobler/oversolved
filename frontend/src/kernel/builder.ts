@@ -453,6 +453,9 @@ export function build(
     } finally {
       setCurrentFeatureId(null)
     }
+    // Before the snapshot and the registration below read the bodies, and
+    // even after a failed solve: a solver can modify a body and then throw.
+    deps.indexModifierDiffs?.(bodyStore)
 
     // A body the feature consumed (a boolean tool, a fused array source) is out of
     // the store but still fully registered: its faces stay live carrying the very

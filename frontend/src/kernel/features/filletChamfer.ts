@@ -14,7 +14,7 @@ import { geometryClassifiers } from '../geomHash'
 import { resolveBody, resolveBodyIds } from './shared/bodyResolution'
 import { resplitBody } from './bodySplit'
 import { canonicalEdges, canonicalFaces, assertAligned, readBodyNames } from '../occ/bodyNames'
-import { elementCreator, newSubShapes } from '../occ/modifierAttribution'
+import { elementCreator, newIndexSets } from '../occ/modifierAttribution'
 import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
 import { faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
@@ -117,7 +117,7 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   assertAligned(uniq.length, body.edge_uuids, `${body.id} edge index`)
 
   // The same attribution solidToEdges mints into the edge queries.
-  const created = newSubShapes(oc, scope, body.brep_diff)
+  const created = newIndexSets(body.brep_new, body.shape)
   const { center, half } = bodyFrame(oc, scope, shape)
 
   // Number the `?body:edge:N` alias by the DISPLAYED geometric sort order
@@ -150,7 +150,7 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
     const ed = geom.ed
     const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
     if (body.created_by) {
-      const edgeCreatedBy = elementCreator(created?.edges.has(te as OccSubShape) ?? false, body.created_by, body.modified_by)
+      const edgeCreatedBy = elementCreator(created?.edges.has(canon) ?? false, body.created_by, body.modified_by)
       const uuid = body.edge_uuids?.[canon] ?? null
       const pt = edgeRepresentativePoint(ed)
       const classifiers = pt ? geometryClassifiers(pt, center, half) : []

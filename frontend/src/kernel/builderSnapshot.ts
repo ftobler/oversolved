@@ -24,11 +24,12 @@ export const RESTORE_OWNER = 'restore'
 export type ShapeMapper = (shape: NonNullable<Body['shape']>) => NonNullable<Body['shape']>
 
 function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
+  const shape = (body.shape != null && mapShape) ? mapShape(body.shape) : body.shape
   return {
     id: body.id,
     created_by: body.created_by,
     modified_by: [...body.modified_by],
-    shape: (body.shape != null && mapShape) ? mapShape(body.shape) : body.shape,
+    shape,
     sketch_id: body.sketch_id,
     brep_diff: body.brep_diff,
     profile_queries: [...body.profile_queries],
@@ -36,6 +37,10 @@ function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
     ...(body.edge_uuids ? { edge_uuids: [...body.edge_uuids] } : {}),
     ...(body.face_ancestry ? { face_ancestry: { ...body.face_ancestry } } : {}),
     ...(body.edge_ancestry ? { edge_ancestry: { ...body.edge_ancestry } } : {}),
+    // A copied shape keeps the canonical order, so the indices move with it.
+    ...(body.brep_new && body.brep_new.shape === body.shape && shape != null
+      ? { brep_new: { ...body.brep_new, shape } }
+      : {}),
     ...(body.imported ? { imported: true } : {}),
   }
 }

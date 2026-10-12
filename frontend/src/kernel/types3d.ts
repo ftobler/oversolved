@@ -27,6 +27,14 @@ export function emptyBrepDiff(): BrepDiff {
   }
 }
 
+/** Canonical indices of the elements a modifier created, valid for `shape` only. */
+export interface NewElements {
+  shape: OccHandle
+  faces: number[]
+  edges: number[]
+  vertices: number[]
+}
+
 /** A 3D solid body tracked through the feature stack. */
 export interface Body {
   id: string
@@ -49,6 +57,14 @@ export interface Body {
   edge_uuids?: (string | null)[]
   face_ancestry?: Record<string, string[]>
   edge_ancestry?: Record<string, string[]>
+  /**
+   * The elements the body's last modifier created (`brep_diff`'s new faces,
+   * edges and their vertices), as canonical indices into `shape`
+   * (occ/modifierAttribution.ts). `brep_diff` holds live sub-shapes that die
+   * with the build, so a checkpoint restore nulls it; these indices survive,
+   * because the restore copy keeps the canonical order.
+   */
+  brep_new?: NewElements | null
   /**
    * True when the body's geometry originates from a STEP import (as opposed to
    * native modelling). Imported B-rep carries freeform faces and STEP tolerances

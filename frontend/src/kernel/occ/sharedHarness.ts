@@ -25,6 +25,7 @@ import { extractBrepMetadata } from '../solveLocally'
 import { copyShape } from '../occ/transforms'
 import { assertOneSolidPerBody } from '../features/bodySplit'
 import type { OccShape } from '../occ/occTypes'
+import { indexModifierDiffs, newIndexSets } from './modifierAttribution'
 
 export class SharedHarness {
   readonly oc: OccModule
@@ -79,7 +80,7 @@ export class SharedHarness {
               faceAncestry: body.face_ancestry ?? null,
               faceUuids: body.face_uuids ?? null,
               profileQueries: body.profile_queries ?? [],
-              brepDiff: body.brep_diff ?? null,
+              newElements: newIndexSets(body.brep_new, body.shape),
               modifiedBy: body.modified_by,
             })
             const edgeResult = solidToEdges(this.oc, table, body.shape, {
@@ -88,7 +89,7 @@ export class SharedHarness {
               profileQueries: body.profile_queries ?? [],
               edgeAncestry: body.edge_ancestry ?? null,
               edgeUuids: body.edge_uuids ?? null,
-              brepDiff: body.brep_diff ?? null,
+              newElements: newIndexSets(body.brep_new, body.shape),
               modifiedBy: body.modified_by,
             })
             const vertexResult = solidToVertices(this.oc, table, body.shape, {
@@ -96,7 +97,7 @@ export class SharedHarness {
               bodyId: body.id,
               profileQueries: body.profile_queries ?? [],
               faceUuids: body.face_uuids ?? null,
-              brepDiff: body.brep_diff ?? null,
+              newElements: newIndexSets(body.brep_new, body.shape),
               modifiedBy: body.modified_by,
             })
             out[body.id] = {
@@ -121,6 +122,7 @@ export class SharedHarness {
       // Wire the real production metadata extractor so the build-level tests
       // exercise the mesh-free in-loop registration path (not the fallback).
       extractBrepMetadata: (bodyStore) => extractBrepMetadata(this.oc, table, bodyStore),
+      indexModifierDiffs: (bodyStore) => indexModifierDiffs(this.oc, table, bodyStore),
       retainCheckpointShape: (h, owner) => table.retain(h, owner),
       copyBodyShape: (h, owner) =>
         table.register(copyShape(this.oc, scope, table.get<OccShape>(h)), owner),

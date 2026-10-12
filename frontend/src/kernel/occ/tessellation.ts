@@ -29,8 +29,7 @@ import {
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
 import { geometryClassifiers } from '../geomHash'
 import { assertAligned, canonicalEdges, canonicalFaces, canonicalIndex, canonicalVertices } from './bodyNames'
-import { elementCreator, newSubShapes } from './modifierAttribution'
-import type { BrepDiff } from '../types3d'
+import { elementCreator, type NewIndexSets } from './modifierAttribution'
 import { deriveVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
 import { shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { buildFaceQuery } from '../faceQuery'
@@ -271,16 +270,17 @@ interface SolidMeshOptions extends TessellateOptions {
   faceAncestry?: Record<string, string[]> | null
   // The body's face UUIDs in the solid's canonical order (Body.face_uuids).
   faceUuids?: (string | null)[] | null
-  // The body's last diff and modifier history, for the per-face creator.
-  brepDiff?: BrepDiff | null
+  // What the body's last modifier created (Body.brep_new) and the modifier
+  // history, for the per-face creator.
+  newElements?: NewIndexSets | null
   modifiedBy?: string[]
 }
 
 /** Per canonical face, the feature it is attributed to (modifierAttribution.ts). */
 function faceCreators(oc: OccModule, scope: DisposeScope, solid: OccShape, opts: SolidMeshOptions): string[] {
   const createdBy = opts.createdBy ?? ''
-  const created = newSubShapes(oc, scope, opts.brepDiff)
-  return canonicalFaces(oc, scope, solid).map((f) => elementCreator(created?.faces.has(f) ?? false, createdBy, opts.modifiedBy))
+  return canonicalFaces(oc, scope, solid).map((_f, i) =>
+    elementCreator(opts.newElements?.faces.has(i) ?? false, createdBy, opts.modifiedBy))
 }
 
 /** The uuid of the face at canonical index `canon`, or null. */
@@ -485,7 +485,7 @@ interface SolidEdgesOptions {
   edgeAncestry?: Record<string, string[]> | null
   // The body's edge UUIDs in the solid's canonical order (Body.edge_uuids).
   edgeUuids?: (string | null)[] | null
-  brepDiff?: BrepDiff | null
+  newElements?: NewIndexSets | null
   modifiedBy?: string[]
 }
 
@@ -507,8 +507,9 @@ interface SolidVerticesOptions {
   // is derived from the UUIDs of the faces meeting at it, so the emitter needs
   // the face names to walk the adjacency.
   faceUuids?: (string | null)[] | null
-  // The body's last diff and modifier history, for the per-vertex creator.
-  brepDiff?: BrepDiff | null
+  // What the body's last modifier created and the modifier history, for the
+  // per-vertex creator.
+  newElements?: NewIndexSets | null
   modifiedBy?: string[]
 }
 
@@ -666,7 +667,6 @@ export function solidToEdges(
       const { center, half } = bodyFrame(oc, scope, solid)
       // An edge the last modifier created is attributed to it, the same
       // attribution the fillet/chamfer edge index applies.
-      const created = newSubShapes(oc, scope, opts.brepDiff)
       edges.forEach((ed, i) => {
         const pt = edgeRepresentativePoint(ed)
         const classifiers = pt ? geometryClassifiers(pt, center, half) : []
@@ -680,7 +680,7 @@ export function solidToEdges(
             : null
         const fallbackPq = ancestorTokens ? null : (opts.profileQueries ?? null)
         const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
-        const isNew = created?.edges.has(canon[raw[i].canon]) ?? false
+        const isNew = opts.newElements?.edges.has(raw[i].canon) ?? false
         const edgeCreatedBy = elementCreator(isNew, createdBy, opts.modifiedBy)
         edge_created_by.push(edgeCreatedBy)
         if (bodyId) {
@@ -807,10 +807,9 @@ export function solidToVertices(
     const { createdBy, bodyId } = opts
     // A vertex the last modifier created is attributed to it, in the query and
     // in the registered ancestry alike, so the query's ancestral net matches.
-    const created = newSubShapes(oc, scope, opts.brepDiff)
-    const vertex_created_by = created
-      ? canonicalVertices(oc, scope, solid).map((v) => elementCreator(created.vertices.has(v), createdBy ?? '', opts.modifiedBy))
-      : vertices.map(() => createdBy ?? '')
+    // `readSolidVertices` walks the canonical vertex order (see below).
+    const vertex_created_by = vertices.map((_v, i) =>
+      elementCreator(opts.newElements?.vertices.has(i) ?? false, createdBy ?? '', opts.modifiedBy))
     if (createdBy) {
       // Vertex UUID = the set of its adjacent named-face UUIDs (adjacency-derived,
       // op-independent). A vertex query carries only its @u| UUID (whenever it

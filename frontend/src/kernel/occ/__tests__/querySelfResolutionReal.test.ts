@@ -114,9 +114,12 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
   })
 
   /** Returns how many checked primitives are owned by a feature other than the
-   *  first extrude, so the modifier cases can prove they exercised one. */
-  function expectSelfResolution(spec: Spec, bodyId: string): number {
-    const r = h.run(spec)
+   *  first extrude, so the modifier cases can prove they exercised one. With
+   *  `restoreFrom`, that spec is built first and `spec` incrementally on top, so
+   *  its clean prefix comes back from the checkpoint copy (no `brep_diff`). */
+  function expectSelfResolution(spec: Spec, bodyId: string, opts?: { restoreFrom?: Spec }): number {
+    const prevState = opts?.restoreFrom ? h.run(opts.restoreFrom)._build_state : null
+    const r = h.run(spec, { prevState })
     const state = r._build_state!
     const lastFid = state.feature_order[state.feature_order.length - 1]
     // Sketches report their constraint state (often 'underconstrained'); only
@@ -181,6 +184,28 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
       { id: 'fillet1', kind: 'fillet', edges: [edges[0]], radius: 1 },
     ] }, 'body_ex1')
     expect(modifierOwned).toBeGreaterThan(0)
+  })
+
+  // The fillet restored from its checkpoint copy: the live `brep_diff` is gone,
+  // so the fillet's elements must stay attributed to it through the canonical
+  // indices the body carries (`Body.brep_new`), or the incremental build mints
+  // other queries than the full one.
+  it('filleted box restored from its checkpoint', () => {
+    const base = box()
+    const edges = queriesOf(h, h.run(base), 'body_ex1', 'edge')
+    const filleted: Spec = { features: [
+      ...base.features,
+      { id: 'fillet1', kind: 'fillet', edges: [edges[0]], radius: 1 },
+    ] }
+    const withTail: Spec = { features: [...filleted.features, rectSketch('sk9', 2, 2)] }
+    const full = h.run(withTail)
+    const modifierOwned = expectSelfResolution(withTail, 'body_ex1', { restoreFrom: filleted })
+    expect(modifierOwned).toBeGreaterThan(0)
+    const restored = h.run(withTail, { prevState: h.run(filleted)._build_state })
+    for (const kind of ['face', 'edge', 'vertex'] as const) {
+      expect(queriesOf(h, restored, 'body_ex1', kind), `${kind} queries, restored vs full`)
+        .toEqual(queriesOf(h, full, 'body_ex1', kind))
+    }
   })
 
   // The cut's walls, rim edges and corners belong to the cut. The old
