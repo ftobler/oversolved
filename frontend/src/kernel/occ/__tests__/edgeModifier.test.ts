@@ -429,6 +429,25 @@ interface EdgeOccOptions {
   modifiedThrows?: boolean
   // Shape the fake ShapeFix returns; a healed shape with different topology.
   healed?: OccShape
+  // The maker's output topology (default: empty) and its Generated() history.
+  builtFaces?: EdgeFake[]
+  builtEdges?: EdgeFake[]
+  generated?: Map<OccShape, OccShape[]>
+}
+
+// A fake face bounded by `edges`, for the explorer to walk. Exploring a face for
+// faces yields the face itself, as it does in OCC.
+function makeFaceFake(edges: EdgeFake[]): EdgeFake {
+  const face: { IsSame(o: unknown): boolean; edges: EdgeFake[]; faces: unknown[]; delete(): void } =
+    { IsSame: (o) => o === face, edges, faces: [], delete: () => {} }
+  face.faces.push(face)
+  return face as unknown as EdgeFake
+}
+
+// A fake TopTools_ListOfShape over `items`, as drainList consumes it.
+function fakeList(items: OccShape[]) {
+  const rest = [...items]
+  return { Size: () => rest.length, First_1: () => rest[0], RemoveFirst: () => { rest.shift() }, delete: () => {} }
 }
 
 function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShape } {
@@ -439,7 +458,7 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
     TopAbs_SOLID: { value: 2 },
     TopAbs_SHAPE: { value: 8 },
   }
-  const built = { faces: [], edges: [], delete: () => {} } as unknown as OccShape
+  const built = { faces: opts.builtFaces ?? [], edges: opts.builtEdges ?? [], delete: () => {} } as unknown as OccShape
   const maker = {
     Add_2: (_d: number, edge: OccShape): void => {
       if (edge === opts.addThrowsFor) throw new Error('addEdge rejected this edge')
@@ -458,7 +477,7 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
       if (opts.modifiedThrows) throw new Error('history unavailable')
       return { Size: () => 0, delete: () => {} }
     },
-    Generated: () => ({ Size: () => 0, delete: () => {} }),
+    Generated: (s: OccShape) => fakeList(opts.generated?.get(s) ?? []),
     delete: () => {},
   }
   const shape = {
@@ -473,6 +492,7 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
     TopoDS: {
       Face_1: (s: OccShape) => s,
       Edge_1: (s: OccShape) => s,
+      Vertex_1: (s: OccShape) => s,
     },
     TopExp_Explorer_2: function (s: OccShape, kind: object) {
       const holder = s as unknown as { faces?: OccShape[]; edges?: OccShape[] }
@@ -641,5 +661,31 @@ describe('applyEdgeModifier guard / error classification', () => {
     const res = runChamfer(oc, shape, [edge])
     expect(res.success).toBe(false)
     expect(res.reason).toContain('invalid geometry')
+  })
+})
+
+describe('edgeModifierDiff: what the modifier made', () => {
+  // BRepFillet misreports far sub-shapes. A far face it rebuilt without any
+  // Modified() history matches nothing in the preimage pool, yet the modifier did
+  // not make it: only Generated() faces are new. Crediting the far face would also
+  // credit every edge around it, evicting the ancestry stored picks resolve by.
+  it('keeps an unmatched face the maker did not generate, and its edges, inherited', () => {
+    const picked = makeEdgeFake()
+    const blendEdge = makeEdgeFake()
+    const farEdge = makeEdgeFake()
+    const blend = makeFaceFake([blendEdge])
+    const far = makeFaceFake([farEdge])
+    const { oc, shape } = makeEdgeOcc({
+      shapeEdges: [picked],
+      builtFaces: [blend, far],
+      builtEdges: [blendEdge, farEdge],
+      generated: new Map([[picked as OccShape, [blend as OccShape]]]),
+    })
+    const res = runChamfer(oc, shape, [picked])
+    expect(res.success).toBe(true)
+    expect(res.diff?.new_faces).toEqual([blend])
+    expect(res.diff?.inherited_faces).toEqual([far])
+    expect(res.diff?.new_edges).toEqual([blendEdge])
+    expect(res.diff?.inherited_edges).toEqual([farEdge])
   })
 })

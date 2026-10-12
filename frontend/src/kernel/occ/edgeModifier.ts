@@ -13,7 +13,7 @@ import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccShapeEn
 import { faceCentroid, SubShapeIndexMap } from './primitives'
 import { volumeOf } from './booleans'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
-import { canonicalEdges, type ShapeNames } from './bodyNames'
+import { canonicalEdges, canonicalVertices, type ShapeNames } from './bodyNames'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'
 import {
@@ -250,6 +250,37 @@ function mintGeneratedFilletFaces(
   }
 }
 
+/** The faces the maker Generated() from any input edge or vertex. Every input edge,
+ *  not just the applied ones: a fillet runs along the whole tangent chain of an
+ *  applied edge, so blend faces also grow from edges nobody picked. */
+function generatedFaces(
+  oc: OccModule,
+  scope: DisposeScope,
+  maker: OccEdgeModifierMaker,
+  oldEdges: OccShape[],
+): SubShapeDedup {
+  const sources: OccShape[] = [...oldEdges]
+  const seenVertex = new SubShapeDedup()
+  for (const e of oldEdges) {
+    for (const v of canonicalVertices(oc, scope, e)) {
+      if (seenVertex.has(v)) continue
+      seenVertex.add(v)
+      sources.push(v as unknown as OccShape)
+    }
+  }
+  const made = new SubShapeDedup()
+  for (const s of sources) {
+    let generated: OccShape[]
+    try {
+      generated = drainList(scope, maker.Generated(s))
+    } catch {
+      continue  // a source the maker cannot narrate made nothing we can claim
+    }
+    for (const g of generated) for (const f of exploreFaces(oc, scope, g)) made.add(f as OccSubShape)
+  }
+  return made
+}
+
 /**
  * Classify the modifier output into a BrepDiff (mirrors `ocp_edge_modifier_diff`).
  * Inputs are partitioned via IsDeleted/Modified; outputs partition new vs
@@ -327,8 +358,14 @@ function edgeModifierDiff(
     return { fresh, inherited }
   }
 
-  const of = walk(newFaces, faces.preimages)
-  // Edge fallback: BRepFilletAPI is an unreliable narrator -- it rebuilds the
+  // A face outside the preimage pool is new only if the modifier made it: a blend
+  // or chamfer face Generated() from an edge, or a corner patch Generated() from a
+  // vertex. The edge history below is known to misreport far edges; holding faces
+  // to what the maker generated keeps one misreported far face from being credited
+  // to the modifier and dragging all its edges along.
+  const made = generatedFaces(oc, scope, maker, oldEdges)
+  const of = walk(newFaces, faces.preimages, (s) => !made.has(s as OccSubShape))
+  // Far-edge rule: BRepFilletAPI is an unreliable narrator -- it rebuilds the
   // whole solid and reports edges far from the filleted one as
   // IsDeleted/regenerated, so they never reach the pool and IsSame misses them.
   // Such an edge must stay inherited, so the builder does not re-attribute its
@@ -573,7 +610,7 @@ function applyEdgeModifier(
     // Drain the maker's Modified() history ONCE per old face, shared by
     // extractNames and the diff classify -- both drained the same query per
     // face today (L15). BRepFilletAPI is an unreliable narrator (see the
-    // edge fallback in edgeModifierDiff), so this edit is last and alone:
+    // far-edge rule in edgeModifierDiff), so this edit is last and alone:
     // if the history is order- or call-count-sensitive, the shared drain
     // shows up as a diff-count change in edgeModifierReal.test.ts with one
     // candidate cause. The edge drain stays separate, in classify.
@@ -607,7 +644,7 @@ function applyEdgeModifier(
   // off the healed shape instead left every inherited face looking fresh -- 11
   // of 12 on the corner corpus against 6 truly new -- so the builder
   // re-attributed the whole body's ancestry to this feature and evicted the
-  // picks stored against it, the same eviction the edge fallback in
+  // picks stored against it, the same eviction the far-edge rule in
   // edgeModifierDiff exists to prevent. The names are handed to the healed
   // shape through the fixer's own history (`rebase`), and so is the diff.
   if (heal !== null) {
