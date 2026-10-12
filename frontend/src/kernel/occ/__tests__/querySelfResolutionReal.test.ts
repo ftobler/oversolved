@@ -225,6 +225,31 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     expectRestoredMatchesFull(filleted, withTail, 'body_ex1')
   })
 
+  // A hole drilled after a fillet, rebuilt with only the hole dirty. The restored
+  // body has no `brep_diff`, so a hole that seeded its own diff with the body's
+  // previous one credited the surviving fillet elements to itself in a full build
+  // and not in the incremental one.
+  it('hole after a fillet, restored from the fillet checkpoint', () => {
+    const base = box()
+    const edges = queriesOf(h, h.run(base), 'body_ex1', 'edge')
+    const filleted: Spec = { features: [
+      ...base.features,
+      { id: 'fillet1', kind: 'fillet', edges: [edges[0]], radius: 1 },
+    ] }
+    const drilled: Spec = { features: [
+      ...filleted.features,
+      {
+        id: 'skh', kind: 'sketch', label: 'Drill site', plane: '@builtin_plane_front',
+        entities: [{ id: 'p1', kind: 'point' }], initial: { p1: [5, 5] }, constraints: [],
+      },
+      // Through all: a blind hole's floor touches only the new bore, so the neighbour
+      // pass leaves it unnamed and it emits no query to check (feature/backlog.md).
+      { id: 'hole1', kind: 'hole', hole: { sketch: '@skh', diameter: 2, depth_mode: 'through_all', target: 'body_ex1' } },
+    ] }
+    expectSelfResolution(drilled, 'body_ex1', { restoreFrom: filleted })
+    expectRestoredMatchesFull(filleted, drilled, 'body_ex1')
+  })
+
   // The cut's walls, rim edges and corners belong to the cut. The old
   // geometry-hash attribution never matched a boolean's edges (it threw on the
   // uncast sub-shapes and swallowed it), so this also guards that regression.

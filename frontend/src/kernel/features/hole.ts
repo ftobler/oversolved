@@ -255,7 +255,10 @@ export function solveHole(
 
   let skippedCount = 0
   const skippedEntityIds: string[] = []
-  let accumulatedDiff: BrepDiff | null = targetBody.brep_diff
+  // This hole's own cuts only, like boolean and bodyOps. Seeding with the body's
+  // previous diff credited the last modifier's surviving elements to the hole in a
+  // full build, while a build restored past that modifier has no diff to seed with.
+  let accumulatedDiff: BrepDiff | null = null
   const missedSites: string[] = []
   let cutAny = false
 
