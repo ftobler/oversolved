@@ -11,7 +11,11 @@
 // once to the `@u|` queries of the elements they resolved to. Of fillet 2's six
 // edge picks, the two at x=2 resolved to the two edges kept here; the four at
 // x=6/x=10 name positions today's geometry no longer has and were ambiguous
-// (so refused by the fillet's index) before the migration too. It runs
+// (so refused by the fillet's index) before the migration too. When a
+// unify-merged face started taking its target source's name instead of the
+// first one seen (occ/booleans.ts composeOriginThroughClean), the picks on the
+// array's merged ring tops and the edges they bound were re-pointed once more,
+// each to the uuid the same element carries now. It runs
 // extrude -> linear array -> fillet -> transform -> circular array -> sketch on a
 // body face -> up_to extrude -> 3-tool boolean union, and every one of those
 // stages had to keep its construction names for the last pick to be unique.

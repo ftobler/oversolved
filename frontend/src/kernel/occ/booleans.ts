@@ -433,8 +433,12 @@ function mapOriginThroughCanonical(origin: FaceOrigin[], rebase: (s: OccSubShape
 /**
  * Map faceOrigin.output from raw-boolean space onto the cleaned shape (mirrors
  * composeDiffThroughClean). A raw output face removed by the unify step drops
- * out; a merged face keeps the first source seen. The source handle references
- * an input shape, untouched by clean, so it is carried as-is.
+ * out. A merged face prefers a target source over a tool source, as the raw
+ * level does, and otherwise keeps the first source seen: a tool face folded into
+ * an existing coplanar or coaxial face (a hole floor on a step's lower level, a
+ * bore drilled down an existing bore) must leave the existing face its name, and
+ * which raw face the explorer lists first must not decide that. The source
+ * handle references an input shape, untouched by clean, so it is carried as-is.
  */
 export function composeOriginThroughClean(
   oc: OccModule,
@@ -445,12 +449,12 @@ export function composeOriginThroughClean(
 ): FaceOrigin[] {
   const E = oc.TopAbs_ShapeEnum
   const cleanedFaces = explore(oc, scope, cleanedShape, E.TopAbs_FACE)
-  const out: FaceOrigin[] = []
-  const seen = new Set<OccSubShape>()
+  // Cleaned outputs in first-seen order, each with every source that reached it.
+  const candidates = new Map<OccSubShape, FaceOrigin[]>()
   const push = (output: OccSubShape, o: FaceOrigin): void => {
-    if (seen.has(output)) return
-    seen.add(output)
-    out.push({ output, source: o.source, fromTool: o.fromTool })
+    const seen = candidates.get(output)
+    if (seen === undefined) candidates.set(output, [o])
+    else seen.push(o)
   }
   for (const o of origin) {
     if (cleanHistory.IsRemoved(o.output)) continue
@@ -464,6 +468,11 @@ export function composeOriginThroughClean(
         for (const p of matched.length ? matched : [m]) push(p, o)
       }
     }
+  }
+  const out: FaceOrigin[] = []
+  for (const [output, sources] of candidates) {
+    const chosen = sources.find((s) => !s.fromTool) ?? sources[0]
+    out.push({ output, source: chosen.source, fromTool: chosen.fromTool })
   }
   return out
 }
