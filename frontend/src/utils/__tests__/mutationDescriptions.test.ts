@@ -1,8 +1,10 @@
 // Every undo/redo label the UI shows comes out of describeMutation's switch.
 // The table below is the contract: one representative mutation per variant and
-// the exact text it must render. Both maps are keyed by Mutation['type'], so a
-// new variant makes this file fail to compile instead of silently rendering
-// "unknown mutation" in the history tooltip.
+// the exact text it must render. Coverage of the union is the switch's own never
+// guard in mutationDescriptions.ts; these maps key off Mutation['type'] too, so
+// they pin the wording per variant and fail to compile on an added one. What
+// only a runtime test can hold is the fallback below, which is the one path a
+// cast past the union can still reach.
 import { describe, it, expect } from 'vitest'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import type { Mutation } from '@/types/cad'
