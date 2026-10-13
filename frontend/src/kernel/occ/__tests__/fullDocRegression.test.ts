@@ -1,40 +1,70 @@
 // @vitest-environment node
 //
-// Full-document parity test: replays the 70 PartDoc specs from the regression
-// baseline through the TS/WASM kernel (OCC.js + Rust sketch solver) and diffs
-// the output against the frozen baseline.
+// Full-document regression test: replays the 70 PartDoc specs from the
+// regression baseline through the TS/WASM kernel (OCC.js + Rust sketch solver)
+// and diffs the output against the frozen baseline.
 //
-// The baseline (regression-baseline.json) is a golden snapshot frozen by
-// frontend/scripts/regenCorpus.ts + mergeCorpus.py, so it IS regenerable via
-// `npm run regen:corpus`. But the Python kernel is gone, so this is no longer a
-// live old-vs-new comparison -- it is a TS regression gate (live TS/WASM kernel
-// == frozen golden file). Gated: skips entirely when OCC.js or the Rust solver
-// is absent, so the default CI run stays green (the dedicated parity job
-// installs OCC.js so it does run there).
+// The baseline (regression-baseline.json) is a golden snapshot of the kernel's
+// own earlier output, regenerated with `npm run regen:corpus`
+// (scripts/regenCorpus.ts + mergeCorpus.py). A failure means a whole document
+// now builds differently; if that change is intended, regenerate and review
+// the JSON diff. The corpus was first frozen from the deleted Python kernel,
+// which is where the "parity" name of the old dedicated gate came from.
 //
-// Provision OCC.js:
-//   cd frontend && npm run occ:install
+// Part of the default suite. Skips when OCC.js or the Rust WASM is absent,
+// like every *Real suite; under CI the provisioning guard turns that skip into
+// a failure. Provision locally with `just install-occ` and `just wasm`.
 
-import { describe, it, expect } from 'vitest'
-import { loadOcc } from '../loadOcc'
+import { createRequire } from 'node:module'
+import { describe, it, expect, afterAll } from 'vitest'
 import { unportedKinds } from '../../solverRegistry'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import {
   solveWithTimeout,
+  disposeWorker,
   setSolveChildForTest,
   resetSolveChildForTest,
   type SolveChildLike,
 } from '../../solveTimeout'
 import type { BuildResponse } from '../../builder'
-import { buildBaselineBody } from '@/wasm-kernel/parityBaseline'
+import { buildBaselineBody } from '@/wasm-kernel/baselineBody'
 import baseline from '@/wasm-kernel/regression-baseline.json'
 
-// ─── Pre-load OCC.js and the Rust solver ───
+// ─── Provisioning ───
 
-const oc = await loadOcc()
+// Every solve runs in the forked child of solveWithTimeout, which loads its own
+// OCC.js. Loading it here as well would only answer "is it installed" at the
+// cost of a second ~0.75 GB heap in this fork, which the memory-sized pool in
+// vitest.config.ts does not budget for. Resolving the package is enough.
+function occInstalled(): boolean {
+  try {
+    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
+    return true
+  } catch {
+    return false
+  }
+}
+
+const oc = occInstalled()
 const solveBytes = loadSolver()
 const topologyBytes = loadTopology()
+
+// The solve child runs the TS sources through --experimental-strip-types,
+// which Node only has from 22.6. package.json still allows 20.19, so on an
+// older Node the documents cannot be solved here at all; skip them rather than
+// report every entry as a null solve.
+const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
+const stripTypes = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 6)
+
+const ci = !!process.env.CI
+
+// The first entry pays the child's cold start (fork, load OCC.js, compile the
+// WASM) on top of its solve, which solveWithTimeout caps at 30 s. The default
+// local timeout of 5 s would flake on that, so the replay carries its own,
+// equal to the CI timeout in vitest.config.ts so the arm64 runner keeps its
+// allowance.
+const ENTRY_TIMEOUT_MS = 180_000
 
 // ─── Baseline types ───
 
@@ -73,53 +103,53 @@ function sortHashes(arr: string[]): string[] {
 
 function diffResult(
   tsResult: Record<string, unknown>,
-  pyResult: Record<string, unknown>,
+  baseResult: Record<string, unknown>,
   label: string,
 ): string[] {
   const issues: string[] = []
   const tsKeys = new Set(Object.keys(tsResult))
-  const pyKeys = new Set(Object.keys(pyResult))
+  const baseKeys = new Set(Object.keys(baseResult))
 
-  for (const key of pyKeys) {
+  for (const key of baseKeys) {
     if (!tsKeys.has(key)) {
       issues.push(`${label}/result/${key}: missing in TS output`)
       continue
     }
     const tsVal = tsResult[key] as Record<string, unknown> | undefined
-    const pyVal = pyResult[key] as Record<string, unknown> | undefined
-    if (!tsVal || !pyVal) continue
+    const baseVal = baseResult[key] as Record<string, unknown> | undefined
+    if (!tsVal || !baseVal) continue
 
     // Compare status. On a TS exception, surface the error so the gate says
     // *why* a feature failed, not just that it did.
-    if (tsVal.status !== pyVal.status) {
+    if (tsVal.status !== baseVal.status) {
       const detail = tsVal.status === 'exception' ? ` (${String(tsVal.exception)})` : ''
-      issues.push(`${label}/result/${key}/status: TS=${tsVal.status} Python=${pyVal.status}${detail}`)
+      issues.push(`${label}/result/${key}/status: TS=${tsVal.status} baseline=${baseVal.status}${detail}`)
     }
 
     // Compare geometry (for sketch features). Gauge-free: underconstrained
-    // entities live on a shared solution manifold where the Rust LM and scipy
-    // legitimately differ, so only compare geometry where Python marks the
-    // entity determinate (the same rule shadowCompare applies).
+    // entities live on a shared solution manifold where any two solves may
+    // legitimately land on different points, so only compare geometry where
+    // the baseline marks the entity determinate.
     const tsGeom = tsVal.geometry as Record<string, number[]> | undefined
-    const pyGeom = pyVal.geometry as Record<string, number[]> | undefined
+    const baseGeom = baseVal.geometry as Record<string, number[]> | undefined
     const tsGeomFeat = tsVal.features as Record<string, { status: string }> | undefined
-    const pyGeomFeat = pyVal.features as Record<string, { status: string }> | undefined
-    if (tsGeom && pyGeom) {
-      for (const [eid, pyParams] of Object.entries(pyGeom)) {
-        if (pyGeomFeat?.[eid]?.status !== 'fully_constrained') continue
+    const baseGeomFeat = baseVal.features as Record<string, { status: string }> | undefined
+    if (tsGeom && baseGeom) {
+      for (const [eid, baseParams] of Object.entries(baseGeom)) {
+        if (baseGeomFeat?.[eid]?.status !== 'fully_constrained') continue
         const tsParams = tsGeom[eid]
         if (!tsParams) {
           issues.push(`${label}/result/${key}/geometry/${eid}: missing in TS`)
           continue
         }
-        if (tsParams.length !== pyParams.length) {
+        if (tsParams.length !== baseParams.length) {
           issues.push(`${label}/result/${key}/geometry/${eid}: length mismatch`)
           continue
         }
-        for (let i = 0; i < pyParams.length; i++) {
-          if (Math.abs(tsParams[i] - pyParams[i]) > 1e-3) {
+        for (let i = 0; i < baseParams.length; i++) {
+          if (Math.abs(tsParams[i] - baseParams[i]) > 1e-3) {
             issues.push(
-              `${label}/result/${key}/geometry/${eid}[${i}]: TS=${tsParams[i].toFixed(4)} Python=${pyParams[i].toFixed(4)}`,
+              `${label}/result/${key}/geometry/${eid}[${i}]: TS=${tsParams[i].toFixed(4)} baseline=${baseParams[i].toFixed(4)}`,
             )
           }
         }
@@ -129,7 +159,7 @@ function diffResult(
       // never had are extra on the TS side. Only flag determinate entities so
       // gauge-free/underconstrained ones (shared solution manifold) stay quiet.
       for (const eid of Object.keys(tsGeom)) {
-        if (eid in pyGeom) continue
+        if (eid in baseGeom) continue
         if (tsGeomFeat?.[eid]?.status !== 'fully_constrained') continue
         issues.push(`${label}/result/${key}/geometry/${eid}: extra in TS`)
       }
@@ -137,17 +167,17 @@ function diffResult(
 
     // Compare per-entity status (for sketch features)
     const tsFeat = tsVal.features as Record<string, { status: string }> | undefined
-    const pyFeat = pyVal.features as Record<string, { status: string }> | undefined
-    if (tsFeat && pyFeat) {
-      for (const [eid, pyEnt] of Object.entries(pyFeat)) {
+    const baseFeat = baseVal.features as Record<string, { status: string }> | undefined
+    if (tsFeat && baseFeat) {
+      for (const [eid, baseEnt] of Object.entries(baseFeat)) {
         const tsEnt = tsFeat[eid]
         if (!tsEnt) {
           issues.push(`${label}/result/${key}/features/${eid}: missing in TS`)
           continue
         }
-        if (tsEnt.status !== pyEnt.status) {
+        if (tsEnt.status !== baseEnt.status) {
           issues.push(
-            `${label}/result/${key}/features/${eid}/status: TS=${tsEnt.status} Python=${pyEnt.status}`,
+            `${label}/result/${key}/features/${eid}/status: TS=${tsEnt.status} baseline=${baseEnt.status}`,
           )
         }
       }
@@ -155,7 +185,7 @@ function diffResult(
       // Reverse per-entity pass: entities the live kernel produced but the
       // baseline never froze are extra on the TS side.
       for (const eid of Object.keys(tsFeat)) {
-        if (!(eid in pyFeat)) {
+        if (!(eid in baseFeat)) {
           issues.push(`${label}/result/${key}/features/${eid}: extra in TS`)
         }
       }
@@ -166,8 +196,8 @@ function diffResult(
   // never saw are extra features/entities on the TS side. One-directional diffs
   // silently pass these, so flag them explicitly.
   for (const key of tsKeys) {
-    if (!pyKeys.has(key)) {
-      issues.push(`${label}/result/${key}: missing in Python baseline`)
+    if (!baseKeys.has(key)) {
+      issues.push(`${label}/result/${key}: missing in baseline`)
     }
   }
 
@@ -182,12 +212,12 @@ const VERT_TOL = 1e-4
 
 function diffBodies(
   tsBodies: Record<string, Record<string, unknown>>,
-  pyBodies: Record<string, BaselineBody>,
+  baseBodies: Record<string, BaselineBody>,
   label: string,
 ): string[] {
   const issues: string[] = []
 
-  for (const [bid, pyBody] of Object.entries(pyBodies)) {
+  for (const [bid, baseBody] of Object.entries(baseBodies)) {
     const tsBody = tsBodies[bid]
     if (!tsBody) {
       issues.push(`${label}/bodies/${bid}: missing in TS output`)
@@ -195,44 +225,44 @@ function diffBodies(
     }
 
     // Lineage identity.
-    if ((tsBody.created_by ?? '') !== pyBody.created_by) {
-      issues.push(`${label}/bodies/${bid}/created_by: TS=${tsBody.created_by} Python=${pyBody.created_by}`)
+    if ((tsBody.created_by ?? '') !== baseBody.created_by) {
+      issues.push(`${label}/bodies/${bid}/created_by: TS=${tsBody.created_by} baseline=${baseBody.created_by}`)
     }
     const tsMod = sortHashes((tsBody.modified_by as string[]) ?? [])
-    const pyMod = sortHashes(pyBody.modified_by ?? [])
-    if (JSON.stringify(tsMod) !== JSON.stringify(pyMod)) {
-      issues.push(`${label}/bodies/${bid}/modified_by: TS=[${tsMod}] Python=[${pyMod}]`)
+    const baseMod = sortHashes(baseBody.modified_by ?? [])
+    if (JSON.stringify(tsMod) !== JSON.stringify(baseMod)) {
+      issues.push(`${label}/bodies/${bid}/modified_by: TS=[${tsMod}] baseline=[${baseMod}]`)
     }
 
-    // mesh_error presence parity (a silent unit-cube fallback must not pass).
+    // mesh_error presence must match (a silent unit-cube fallback must not pass).
     const tsErr = tsBody.mesh_error != null
-    const pyErr = pyBody.mesh_error != null
-    if (tsErr !== pyErr) {
-      issues.push(`${label}/bodies/${bid}/mesh_error: TS=${tsErr} Python=${pyErr}`)
+    const baseErr = baseBody.mesh_error != null
+    if (tsErr !== baseErr) {
+      issues.push(`${label}/bodies/${bid}/mesh_error: TS=${tsErr} baseline=${baseErr}`)
     }
 
     // Structural counts. A missing or non-numeric count must fail, never pass
     // as if it matched: the live body is always enriched to carry real numbers.
-    const faceCountOk = typeof tsBody.face_count === 'number' && tsBody.face_count === pyBody.face_count
-    const edgeCountOk = typeof tsBody.edge_count === 'number' && tsBody.edge_count === pyBody.edge_count
+    const faceCountOk = typeof tsBody.face_count === 'number' && tsBody.face_count === baseBody.face_count
+    const edgeCountOk = typeof tsBody.edge_count === 'number' && tsBody.edge_count === baseBody.edge_count
     if (!faceCountOk) {
-      issues.push(`${label}/bodies/${bid}/face_count: TS=${tsBody.face_count} Python=${pyBody.face_count}`)
+      issues.push(`${label}/bodies/${bid}/face_count: TS=${tsBody.face_count} baseline=${baseBody.face_count}`)
     }
     if (!edgeCountOk) {
-      issues.push(`${label}/bodies/${bid}/edge_count: TS=${tsBody.edge_count} Python=${pyBody.edge_count}`)
+      issues.push(`${label}/bodies/${bid}/edge_count: TS=${tsBody.edge_count} baseline=${baseBody.edge_count}`)
     }
 
     // Vertex multiset within tolerance (count is a fast pre-filter).
     let vertsOk = false
     const tsMesh = tsBody.mesh as { vertices?: number[][] } | undefined
-    if (tsMesh?.vertices && pyBody.mesh.vertices) {
+    if (tsMesh?.vertices && baseBody.mesh.vertices) {
       const tsV = tsMesh.vertices
-      const pyV = pyBody.mesh.vertices
-      if (tsV.length !== pyV.length) {
-        issues.push(`${label}/bodies/${bid}/vertices: count TS=${tsV.length} Python=${pyV.length}`)
+      const baseV = baseBody.mesh.vertices
+      if (tsV.length !== baseV.length) {
+        issues.push(`${label}/bodies/${bid}/vertices: count TS=${tsV.length} baseline=${baseV.length}`)
       } else {
         const a = sortedVerts(tsV)
-        const b = sortedVerts(pyV)
+        const b = sortedVerts(baseV)
         let maxd = 0
         for (let i = 0; i < a.length; i++) {
           maxd = Math.max(
@@ -251,19 +281,20 @@ function diffBodies(
     }
 
     // Geometry-hash set equality. A hash mismatch when counts AND the vertex
-    // multiset already match is the accepted curved-face divergence: OCC.js and
-    // Python sample curved centroids/normals slightly differently and the 4dp
+    // multiset already match is the accepted curved-face divergence: entries
+    // still frozen from the Python kernel sampled curved centroids/normals
+    // slightly differently from OCC.js, and the 4dp
     // hash rounding is sensitive to it, though the body is equal within
     // tolerance. Warn but do not fail -- the structural + vertex checks already
     // passed. Any hash mismatch with a count or vertex mismatch stays a failure.
     const bodyGeomOk = faceCountOk && edgeCountOk && vertsOk
     for (const field of ['face_hashes', 'edge_hashes'] as const) {
       const tsHashes = sortHashes((tsBody[field] as string[]) ?? [])
-      const pyHashes = sortHashes((pyBody[field] as string[]) ?? [])
-      if (JSON.stringify(tsHashes) !== JSON.stringify(pyHashes)) {
-        const msg = `${label}/bodies/${bid}/${field}: mismatch (TS=${tsHashes.length} Python=${pyHashes.length})`
+      const baseHashes = sortHashes((baseBody[field] as string[]) ?? [])
+      if (JSON.stringify(tsHashes) !== JSON.stringify(baseHashes)) {
+        const msg = `${label}/bodies/${bid}/${field}: mismatch (TS=${tsHashes.length} baseline=${baseHashes.length})`
         if (bodyGeomOk) {
-          console.warn(`[parity] ${msg} -- accepted curved-face divergence`)
+          console.warn(`[regression] ${msg} -- accepted curved-face divergence`)
         } else {
           issues.push(msg)
         }
@@ -275,7 +306,7 @@ function diffBodies(
   // froze are extra bodies on the TS side (e.g. a boolean that leaves two
   // bodies instead of fusing). Flag them rather than letting them pass unseen.
   for (const bid of Object.keys(tsBodies)) {
-    if (!(bid in pyBodies)) {
+    if (!(bid in baseBodies)) {
       issues.push(`${label}/bodies/${bid}: extra body in TS output`)
     }
   }
@@ -304,14 +335,14 @@ function enrichBodyHashes(
 
 // The forked child returns null when OCC.js fails to load inside the worker or
 // the child OOMs. In this gate that is a real failure, never a skip: without
-// this guard a broken worker would turn every parity entry into a pass.
+// this guard a broken worker would turn every replayed entry into a pass.
 function assertSolveResponse(
   tsResponse: BuildResponse | null,
   label: string,
 ): asserts tsResponse is BuildResponse {
   if (!tsResponse) {
     throw new Error(
-      `[parity] ${label}: solve produced no response ` +
+      `[regression] ${label}: solve produced no response ` +
         `(worker-side OCC.js load failure or forked-child OOM?)`,
     )
   }
@@ -335,18 +366,22 @@ class NullSolveChild {
 
 // ─── Test suite ───
 
-// The real parity work below is wrapped in describe.skipIf(!oc || !solveBytes ||
-// !topologyBytes). That makes a provisioning regression (OCC.js absent, WASM
-// build missing, baseline corrupted) look like a green 0-test run instead of a
-// failure. These always-running guards live outside the skipIf suite so a
-// provisioning or baseline regression fails the parity job loudly. They check
+// The replay below is wrapped in a skipIf on provisioning. That makes a
+// provisioning regression (OCC.js absent, WASM build missing, baseline
+// corrupted) look like a green 0-test run instead of a failure. These guards
+// live outside the skipIf suite so such a regression fails loudly. They check
 // only the module-load results, which are null (never throw) when provisioning
 // is absent, so they do not need OCC/WASM to actually load.
-describe('parity provisioning guard', () => {
-  it('has all provisioning globals (OCC.js + solver + topology WASM)', () => {
-    expect(oc, 'oc: OCC.js absent - run `npm run occ:install`').toBeTruthy()
-    expect(solveBytes, 'solveBytes: Rust solver WASM absent - run `just shadow:wasm`').toBeTruthy()
-    expect(topologyBytes, 'topologyBytes: topology WASM absent - run `just shadow:wasm`').toBeTruthy()
+describe('regression provisioning guard', () => {
+  // CI provisions OCC.js, both WASM builds and a strip-types Node, so a skip
+  // there is a broken job. Locally an unprovisioned checkout skips the replay
+  // like every *Real suite, and `just frontend` stays usable without OCC.js.
+  // The 20.x leg of the CI Node matrix is the one allowed exception: it cannot
+  // run the solve child, so it checks only what it can provide.
+  it.runIf(ci)('has all provisioning globals (OCC.js + solver + topology WASM)', () => {
+    expect(oc, 'oc: OCC.js absent - run `just install-occ`').toBeTruthy()
+    expect(solveBytes, 'solveBytes: Rust solver WASM absent - run `just wasm`').toBeTruthy()
+    expect(topologyBytes, 'topologyBytes: topology WASM absent - run `just wasm`').toBeTruthy()
   })
 
   it('has a non-trivial baseline corpus (not empty/corrupt)', () => {
@@ -354,8 +389,8 @@ describe('parity provisioning guard', () => {
   })
 
   // A valid-JSON baseline of all-failed entries would pass the corpus-count
-  // guard and make every parity test hit the warn-and-return branch, so require
-  // at least one entry the parity suite actually solves.
+  // guard and make every replayed entry hit the warn-and-return branch, so
+  // require at least one entry the replay actually solves.
   it('has at least one baseline entry marked ok', () => {
     expect(entries.some((e) => e.ok), 'baseline corpus has no ok:true entry').toBe(true)
   })
@@ -363,9 +398,7 @@ describe('parity provisioning guard', () => {
 
 // The null-solve guard does not need OCC.js (it uses a fake child), so it lives
 // outside the skipIf suite and still runs when the kernel is not provisioned.
-// The whole file is excluded from the default suite (see vitest.config.ts), so
-// this runs only under the parity config.
-describe('parity null-solve guard', () => {
+describe('regression null-solve guard', () => {
   it('fails loudly when the solve returns null (worker load failure or child OOM)', async () => {
     setSolveChildForTest(() => new NullSolveChild() as unknown as SolveChildLike)
     try {
@@ -381,18 +414,23 @@ describe('parity null-solve guard', () => {
   })
 })
 
-describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kernel vs frozen baseline)', () => {
+const provisioned = oc && !!solveBytes && !!topologyBytes && stripTypes
+
+describe.skipIf(!provisioned)('full-doc regression (TS kernel vs frozen baseline)', () => {
+  // The pooled solve child would otherwise outlive this file in its fork.
+  afterAll(() => disposeWorker())
+
   for (const entry of entries) {
-    it(entry.label, async () => {
+    it(entry.label, { timeout: ENTRY_TIMEOUT_MS }, async () => {
       const spec = entry.spec
       if (!spec || !entry.ok) {
         if (!entry.ok) {
-          // A baseline entry the frozen Python kernel could not build is not a
-          // TS regression, so it must not fail the gate; the provisioning guard
-          // above (`has at least one baseline entry marked ok`) keeps an
+          // A baseline entry the kernel could not build when it was frozen is
+          // not a regression, so it must not fail the gate; the provisioning
+          // guard above (`has at least one baseline entry marked ok`) keeps an
           // all-failed corpus from hiding behind this branch, and the warning
           // is the visible record of the skip.
-          console.warn(`[parity] ${entry.label}: Python build failed, skipping`)
+          console.warn(`[regression] ${entry.label}: frozen build failed, skipping`)
         }
         return
       }
@@ -404,7 +442,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kerne
       const features = (spec.features as Array<{ kind?: unknown }>) ?? []
       const unported = unportedKinds(features)
       if (unported.size > 0) {
-        console.warn(`[parity] ${entry.label}: skipped (unported kinds: ${[...unported].join(', ')})`)
+        console.warn(`[regression] ${entry.label}: skipped (unported kinds: ${[...unported].join(', ')})`)
         return
       }
 
@@ -423,17 +461,17 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('full-doc parity (TS kerne
       ]
 
       if (allIssues.length > 0) {
-        // Hard-fail by default: this is the enforced parity gate. A per-entry
-        // `soft` flag (real-doc anchors) or PARITY_SOFT=1 downgrades to a
+        // Hard-fail by default: this is the enforced regression gate. A per-entry
+        // `soft` flag (real-doc anchors) or REGRESSION_SOFT=1 downgrades to a
         // warn-only inventory -- a best-effort signal that never blocks the gate.
         const msg = `${allIssues.length} issue(s): ${allIssues.join('; ')}`
-        const soft = import.meta.env.PARITY_SOFT === '1' || entry.soft === true
+        const soft = import.meta.env.REGRESSION_SOFT === '1' || entry.soft === true
         if (soft) {
           const tag = entry.soft ? 'REAL-SOFT' : 'SOFT'
           // Warn-only inventory: the console.warn below IS the artifact and the
           // issues are already in `msg`. No assertion here on purpose, so a soft
           // anchor never blocks the gate.
-          console.warn(`[parity] ${entry.label}: ${tag} ${msg}`)
+          console.warn(`[regression] ${entry.label}: ${tag} ${msg}`)
         } else {
           expect(allIssues.length, msg).toBe(0)
         }

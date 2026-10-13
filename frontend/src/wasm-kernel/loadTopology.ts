@@ -3,7 +3,7 @@
  * (Node/vitest) use. Twin of `loadSolver.ts`: thin wrapper over
  * `loadPkgNodeExport`, resolving `detect_topology_bytes` from the same
  * `--target nodejs` package and returning null when that gitignored build
- * artifact is absent so the parity harness skips instead of breaking
+ * artifact is absent so the gated kernel tests skip instead of breaking
  * `just frontend` on a fresh checkout.
  */
 

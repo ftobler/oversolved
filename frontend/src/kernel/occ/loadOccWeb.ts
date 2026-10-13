@@ -16,8 +16,8 @@ import type { OccModule } from './occTypes'
 import { isDevBuild } from '../isDevBuild'
 import { memoizedLoad } from './memoizedLoad'
 
-// Under the deploy base, e.g. /oversolved/ on Pages. Plain Node (the parity
-// gate) has no import.meta.env, hence the optional chain.
+// Under the deploy base, e.g. /oversolved/ on Pages. Plain Node (the
+// solve-timeout runner) has no import.meta.env, hence the optional chain.
 const DEFAULT_BASE = `${import.meta.env?.BASE_URL ?? '/'}occ/`
 
 // Memoized like the other OCC loaders. A null result (artifact absent or a

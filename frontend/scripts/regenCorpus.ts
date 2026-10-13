@@ -1,4 +1,4 @@
-// Regenerate the full-doc parity corpus: solves the projection corpus (plus the
+// Regenerate the full-doc regression corpus: solves the projection corpus (plus the
 // two array specs whose format drifted from the now-deleted Python kernel)
 // through the live TS/WASM kernel and writes the frozen golden entries to
 // scripts/corpus-regen.json. Run scripts/mergeCorpus.py afterwards to merge that
@@ -13,13 +13,13 @@
 //
 // Run from frontend/:
 //   npm run regen:corpus   # node solve step, then the python merge step
-// (OCC.js + the Rust solver must be provisioned; see `just parity`.)
+// (OCC.js + the Rust solver must be provisioned: `just install-occ`, `just wasm`.)
 
 import { renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { solveWithTimeout, disposeWorker } from '../src/kernel/solveTimeout'
-import { buildBaselineBody } from '../src/wasm-kernel/parityBaseline'
+import { buildBaselineBody } from '../src/wasm-kernel/baselineBody'
 import type { EdgeData } from '../src/types/cad'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))

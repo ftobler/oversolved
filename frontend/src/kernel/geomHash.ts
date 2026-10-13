@@ -1,6 +1,6 @@
 // Geometry fingerprints (face/edge attributes rounded to 4 decimals) and the
 // spatial classifier tokens. A fingerprint only compares whole builds as sorted
-// sets (`wasm-kernel/parityBaseline.ts`); it is never an identity or a lookup
+// sets (`wasm-kernel/baselineBody.ts`); it is never an identity or a lookup
 // key for a face or edge: construction names travel by sub-shape identity and
 // history (`occ/bodyNames.ts`). The float formatting below must reproduce
 // CPython's str(round(v, 4)) exactly: geomHash.test.ts pins it against a frozen

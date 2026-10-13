@@ -16,14 +16,13 @@ just dev        # Vite dev server on :5173, this is the whole app
 
 ```bash
 just frontend   # icons + lint + vitest + licenses + build
-just parity     # full-document WASM parity gate (slow, needs OCC.js)
 ```
 
 ## Rebuilding the WASM kernels
 
 ```bash
 just wasm               # both solvers, web + nodejs targets
-npm run regen:corpus    # regenerate the full-doc parity corpus fixtures
+npm run regen:corpus    # regenerate the full-doc regression baseline
 ```
 
 The npm scripts expect this directory as their working directory; the just

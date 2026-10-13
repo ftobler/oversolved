@@ -36,7 +36,6 @@ just rust-test  # cargo test over the solver workspace
 just rust-lint  # cargo clippy over the solver workspace
 just rust-fmt   # cargo fmt --check over the solver workspace
 just licenses   # verify the third-party notice bundles
-just parity     # full-document WASM parity gate (slow, needs OCC.js)
 ```
 
 Gates tee their output to a log under `tmp/` so a slow run can be re-read

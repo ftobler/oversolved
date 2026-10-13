@@ -30,9 +30,9 @@ import { registerSplitBodies, resplitBody, assertOneSolidPerBody, splitSolids } 
 import type { Body } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
-// Nothing excludes a *Real suite from the default run: the CI frontend job
-// installs no opencascade.js (only the parity job does), so an unguarded
-// non-null assertion here turned every case into a null-deref. Assert non-null
+// Nothing excludes a *Real suite from the default run, and a local checkout
+// need not have opencascade.js installed, so an unguarded non-null assertion
+// here turns every case into a null-deref. Assert non-null
 // for the helpers below and gate every describe on `hasOcc`, as the other
 // *Real suites do.
 const loadedOcc = await loadOcc()

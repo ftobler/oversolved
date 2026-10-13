@@ -37,7 +37,7 @@ PAYLOAD = ROOT / "corpus-regen.json"
 def atomic_write(path: pathlib.Path, text: str) -> None:
     # Write to a sibling temp file and atomically rename over the target, so a
     # crash mid-write (Ctrl-C, OOM, disk full) leaves the previous golden
-    # intact instead of a truncated JSON that breaks the parity gate. Same
+    # intact instead of a truncated JSON that breaks the regression test. Same
     # discipline regenCorpus.ts applies to its payload writes.
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(text)

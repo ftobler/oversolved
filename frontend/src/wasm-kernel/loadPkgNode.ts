@@ -6,7 +6,7 @@
  * There are two packages, one per solver crate (see `solverWasm.ts` for why
  * they are split), so the caller names which one it wants. Both are gitignored
  * build artifacts: run `just wasm` first. When the package is absent this
- * returns null so parity harnesses skip instead of breaking `just frontend` on
+ * returns null so the gated kernel tests skip instead of breaking `just frontend` on
  * a fresh checkout.
  */
 

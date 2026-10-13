@@ -8,7 +8,7 @@
  *
  * The browser app instead loads the live `--target web` build through
  * `solverWasm.ts`, on the main thread (`initSketchSolver` in
- * `kernel/features/sketch.ts`). This loader is for parity testing only.
+ * `kernel/features/sketch.ts`). This loader is for headless tests only.
  */
 
 import { loadPkgNodeExport } from './loadPkgNode'

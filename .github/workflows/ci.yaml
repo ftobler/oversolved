@@ -119,9 +119,9 @@ jobs:
       # and build BOTH crates here so `vitest run` actually exercises them
       # (matches the local `just wasm` + `just frontend` flow): sketch-solver
       # backs the sketch/topology tests, mate-solver backs solveAssemblyReal.
-      # fullDocParity.test.ts stays excluded from this default suite and runs in
-      # the parity job instead, so nothing runs twice. The build is identical
-      # across the Node matrix.
+      # fullDocRegression.test.ts (the frozen full-document replay) runs here
+      # too and fails, rather than skips, under CI when any of it is missing.
+      # The build is identical across the Node matrix.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install wasm-pack
@@ -209,53 +209,3 @@ jobs:
           cd ../mate-solver
           wasm-pack build --target web --out-dir pkg --release
           wasm-pack build --target nodejs --out-dir pkg-node --release
-
-  # Full-document parity gate. Runs the TS kernel (OCC.js + Rust sketch solver)
-  # against the frozen regression baseline (a golden snapshot of the now-deleted
-  # Python kernel) and hard-fails on any divergence. The Python kernel was removed
-  # in phase 4d, so this is a post-migration regression gate, not a live
-  # old-vs-new comparison. Heavy: OCC.js ~66 MB download + WASM compile.
-  parity:
-    if: github.server_url != 'https://github.com'  # gitea
-    runs-on: ubuntu-latest
-    env:
-      CI: "true"
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install wasm-pack
-        uses: taiki-e/install-action@v2
-        with:
-          tool: wasm-pack
-      - name: Build WASM solvers (nodejs for vitest)
-        run: |
-          wasm-pack build --target nodejs --out-dir pkg-node --release
-          cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
-        working-directory: sketch-solver
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: npm ci
-        run: npm ci
-        working-directory: frontend
-
-      - name: Install OCC.js (opt-in, not a package.json dep)
-        run: npm run occ:install
-        working-directory: frontend
-
-      # Defense-in-depth: pkg-node is already built above, so run the solver
-      # boundary tests here too. Keeps them covered even if the wasm build is
-      # ever dropped from the `frontend` job. OCC.js is not needed for these.
-      - name: Solver boundary tests (wasm-kernel)
-        run: npx vitest run src/wasm-kernel
-        working-directory: frontend
-
-      - name: Parity gate (hard-fail)
-        run: npx vitest run --config vitest.parity.config.ts
-        working-directory: frontend

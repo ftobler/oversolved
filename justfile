@@ -4,7 +4,7 @@
 #
 #   everyday   dev, build, static
 #   gates      default (python + frontend), python, frontend, rust-test,
-#              rust-lint, rust-fmt, licenses, parity
+#              rust-lint, rust-fmt, licenses
 #   assets     wasm, icons
 #   setup      install
 #   cleanup    clean, deepclean
@@ -116,16 +116,6 @@ frontend-lint:
 frontend-test:
     mkdir -p ../tmp
     npx vitest run 2>&1 | tee ../tmp/npx_test.log
-
-# Full-document WASM parity gate (TS kernel vs frozen baseline). Slow, needs
-# OCC.js provisioned, hard-fails on any divergence. Kept out of `just frontend`.
-
-# Full-document WASM parity gate against the frozen baseline. Slow.
-[working-directory: "frontend"]
-parity:
-    mkdir -p ../tmp
-    just install-occ
-    npm run test:parity 2>&1 | tee ../tmp/parity.log
 
 # Test the Rust solver workspace (solver-core + sketch-solver + mate-solver)
 rust-test:

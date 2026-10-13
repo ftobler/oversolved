@@ -10,7 +10,7 @@
  * slash registry.
  *
  * Deferred follow-on: area re-id (`match_area_reid` + `_apply_area_reid`), which keeps area
- * picks edit-stable across topology-changing edits (line -> arc). The full-doc parity harness
+ * picks edit-stable across topology-changing edits (line -> arc). The full-doc regression test
  * always rebuilds from scratch, so prev surfaces are empty and re-id never fires there; it only
  * matters in the live incremental path.
  */

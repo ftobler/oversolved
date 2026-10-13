@@ -23,7 +23,7 @@
  *     which short-circuits both fetch and fs.
  *
  * The browser/Worker build is a separate loader (the `--target web`-style
- * dynamic import); this one is for parity/leak testing only.
+ * dynamic import); this one is for headless tests only.
  */
 
 import { createRequire } from 'node:module'

@@ -1,9 +1,9 @@
 """Tests for frontend/scripts/mergeCorpus.py.
 
-The script rewrites the frozen parity goldens (regression-baseline.json and
-corpus-manifest.json), so a crash mid-write must never leave a truncated or
-half-updated golden behind: the atomic temp-and-replace discipline is what
-the parity gate's ground truth depends on.
+The script rewrites the frozen regression goldens (regression-baseline.json
+and corpus-manifest.json), so a crash mid-write must never leave a truncated
+or half-updated golden behind: the atomic temp-and-replace discipline is what
+the full-doc regression test's ground truth depends on.
 """
 
 import importlib.util

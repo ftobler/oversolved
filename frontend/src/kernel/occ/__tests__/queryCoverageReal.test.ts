@@ -152,7 +152,7 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
     const entries = baseline as unknown as Array<{ label: string; ok: boolean; spec: Spec }>
     for (const entry of entries) {
       const features = entry.spec?.features ?? []
-      // Same gate as the parity test: a document the frozen kernel could not build,
+      // Same gate as the full-doc regression test: a document the frozen kernel could not build,
       // or one with a kind the TS kernel does not solve, is not a coverage case.
       if (!entry.ok || unportedKinds(features).size > 0 || NO_BODY_TODAY.has(entry.label)) continue
       if (!features.some((f) => f.kind !== 'sketch' && f.kind !== 'plane')) continue  // no body

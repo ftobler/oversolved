@@ -3,7 +3,7 @@
  *
  * The browser Worker client (solverClient.ts) already has a 30 s watchdog that
  * terminates a hung Web Worker, but direct in-process solve calls (e.g.
- * fullDocParity.test.ts) are unprotected: if OCC's
+ * fullDocRegression.test.ts) are unprotected: if OCC's
  * ShapeUpgrade_UnifySameDomain or any other synchronous WASM call spins
  * forever, the event loop is blocked and even vitest's testTimeout cannot fire
  * -- the whole CI job wedges.

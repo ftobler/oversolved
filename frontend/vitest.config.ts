@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'path'
-import { defineConfig, configDefaults, type ViteUserConfig } from 'vitest/config'
+import { defineConfig, type ViteUserConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 // CI runners can run into problems (slow tests, heavy load), so tests are far
@@ -66,10 +66,6 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-    // The full-document parity gate is slow, needs OCC.js provisioned, and
-    // hard-fails on any kernel divergence. It runs via its own config
-    // (`just parity` / vitest.parity.config.ts), not the fast default suite.
-    exclude: [...configDefaults.exclude, 'src/kernel/occ/__tests__/fullDocParity.test.ts'],
     setupFiles: ['src/test-setup.ts'],
     testTimeout: ci ? 180000 : undefined,
     hookTimeout: ci ? 300000 : undefined,

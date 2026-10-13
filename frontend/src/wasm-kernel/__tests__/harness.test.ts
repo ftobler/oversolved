@@ -1,9 +1,9 @@
 /**
  * WASM kernel migration: baseline structure check (Phase 0).
  *
- * Loads the regression baseline (a frozen golden snapshot of the now-removed
- * Python kernel) and validates its structure.  The live TS/WASM-kernel-vs-baseline
- * diff lives in occ/__tests__/fullDocParity.test.ts.
+ * Loads the regression baseline (a frozen golden snapshot of the kernel's own
+ * output) and validates its structure.  The live TS/WASM-kernel-vs-baseline
+ * diff lives in occ/__tests__/fullDocRegression.test.ts.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -142,7 +142,7 @@ describe('WASM kernel regression baseline', () => {
 // path with zero full-doc regression coverage (see feature/projection-corpus).
 // These entries must stay in the manifest and every one must actually carry a
 // `source` query on a sketch entity -- otherwise the tier is cosmetic and the
-// parity gate cannot catch a projection-lowering break (red-green proven).
+// regression replay cannot catch a projection-lowering break (red-green proven).
 describe('WASM kernel projection corpus', () => {
   interface ManifestCase { feature_kind: string; query_tier: string; ok: boolean }
   const manifest = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../corpus-manifest.json'), 'utf-8')) as {
