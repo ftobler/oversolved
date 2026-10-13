@@ -15,6 +15,25 @@ import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 
+// The payload shapes noOpSliceFor knows how to read a mutation's target from,
+// which is exactly the set of variants the no-op guard can see the change of.
+// A variant carrying none of them would compare as `{ rollback }` against itself
+// and have a real edit swallowed with no undo entry, no dirty flag and no
+// re-solve, so the idempotent list below is typed to exclude it: adding such a
+// variant to the list is a compile error, not a silent hole in the guard.
+type SliceReadableMutation =
+  // read as the single feature it names
+  | { featureId: string }
+  // read as the single part_style entry it names
+  | { bodyId: string }
+  // read as the features its own cleanup plan names
+  | { features: Record<string, { entities: string[]; constraints: string[] }> }
+  // carries no target of its own: the mirror writes doc.rollback, which the
+  // slice always carries
+  | { type: 'set_rollback' }
+
+type IdempotentMutationType = Extract<Mutation, SliceReadableMutation>['type']
+
 // Mutations that write a value which may already equal the current one. Only
 // these pay for the deep-compare in handleMutation; every other mutation adds
 // or removes content and can never be a no-op, so comparing would waste O(doc)
@@ -26,7 +45,11 @@ export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocume
 // toggle_*_plane_visibility and a delete_feature on a builtin or absent feature
 // can also no-op, but the UI derives both from the current doc so they are
 // effectively unreachable, and neither narrows to a single feature.
-const IDEMPOTENT_MUTATION_TYPES = new Set<Mutation['type']>([
+//
+// The Set is widened to Mutation['type'] for the `.has(m.type)` lookups; the
+// array literal is still checked against IdempotentMutationType, which is the
+// whole point of deriving it.
+const IDEMPOTENT_MUTATION_TYPES: ReadonlySet<Mutation['type']> = new Set<IdempotentMutationType>([
   'rename_feature',
   'rename_part',
   'reorder_features',
@@ -172,8 +195,12 @@ const GUARD_BYPASS = Symbol('noOpSliceFor.guardBypass')
 // part_style entry. Every idempotent handler stays within these, so a change
 // the handlers made can never be invisible to the slice.
 function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
-  const featureId = (m as { featureId?: string }).featureId
-  const bodyId = (m as { bodyId?: string }).bodyId
+  // `in` narrows the discriminated union, where a cast through
+  // `{ featureId?: string }` could not: a variant that drops or renames either
+  // key stops matching here instead of silently reading back undefined, and the
+  // IdempotentMutationType above refuses to list such a variant at all.
+  const featureId = 'featureId' in m ? m.featureId : undefined
+  const bodyId = 'bodyId' in m ? m.bodyId : undefined
   if (bodyId === undefined && BODY_STYLE_MUTATION_TYPES.has(m.type)) {
     failLoud('[usePartDoc] body-style mutation dispatched without a bodyId')
     return GUARD_BYPASS
@@ -184,8 +211,10 @@ function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
     slice.features = (doc.features ?? []).map(f => f.id)
   } else if (m.type === 'remove_dangling_content') {
     // The cleanup names the features it might touch in its payload; slice those
-    // whole, or the compare would be blind to the content it removes.
-    const touched = Object.keys((m as { features?: Record<string, unknown> }).features ?? {})
+    // whole, or the compare would be blind to the content it removes. Required
+    // by the type, and the handler reads it before this runs, so there is no
+    // absent-plan case left to absorb.
+    const touched = Object.keys(m.features)
     slice.features = touched.map(id => (doc.features ?? []).find(f => f.id === id))
   } else if (featureId !== undefined) {
     slice.features = [(doc.features ?? []).find(f => f.id === featureId)]
