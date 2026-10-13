@@ -51,8 +51,9 @@ export function useUndoRedo(
   const pushUndo = useCallback((mutation: Mutation, currentDoc: PartDoc) => {
     // The entry holds a snapshot, never a reference: handleMutation clones
     // before pushing today, but any path that mutates the current doc in place
-    // would silently rewrite history if the stored object were shared. The
-    // snapshot shares only the immutable import payloads (cloneDocForUndo).
+    // would silently rewrite history if the stored object were shared.
+    // cloneDocForUndo is a full deep clone, so the entry shares nothing with
+    // the live doc.
     pushEntry(mutation, cloneDocForUndo(currentDoc))
   }, [pushEntry])
 
@@ -90,8 +91,8 @@ export function useUndoRedo(
       const nextFrom = from.slice(0, -1)
       // The doc we are leaving becomes the counterpart entry, so the same
       // mutation label round-trips in both directions. The clone mirrors
-      // pushUndo: the departing doc must not be shared with the entry, and the
-      // immutable import payloads stay shared (cloneDocForUndo).
+      // pushUndo: cloneDocForUndo is a full deep clone, so the departing doc
+      // never shares state with the live doc or the entry.
       // The conservation invariant undo.length + redo.length <= MAX_UNDO_DEPTH
       // holds at all times: pushUndo caps the undo stack and clears redo, and a
       // move shifts exactly one entry across, so a non-empty `from` leaves `to`
