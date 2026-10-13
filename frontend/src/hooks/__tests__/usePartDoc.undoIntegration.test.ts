@@ -160,7 +160,7 @@ describe('usePartDoc undo/redo integration', () => {
     expect(result.current.undoStack).toHaveLength(1)
   })
 
-  it('cancelPreview returns the exact pre-preview doc the caller restores from', () => {
+  it('cancelPreview rewinds the live doc to the pre-preview doc and re-solves it', () => {
     docRef.current = {
       version: 1,
       kind: 'part',
@@ -174,13 +174,16 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
     expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
 
+    reSolve.mockClear()
     let returned: PartDoc | null = null
     act(() => { returned = result.current.cancelPreview() })
 
-    // The caller restores the doc from the return value, so it must be the
-    // pre-preview snapshot, never the preview-mutated doc.
+    // The hook owns the rewind: the live doc is the pre-preview snapshot, never
+    // the preview-mutated doc, and the viewport is re-solved against it.
     expect(returned).toEqual(prePreview)
-    expect(JSON.stringify(returned)).not.toBe(JSON.stringify(docRef.current))
+    expect(docRef.current).toBe(returned)
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
+    expect(reSolve).toHaveBeenCalledWith(returned)
   })
 
   it('a new mutation after an undo discards the redo branch', () => {

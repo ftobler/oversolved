@@ -395,10 +395,18 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     if (!editSessionSuppressedRef.current) {
       suppressUndoRef.current = false
     }
-    // The caller rewinds the doc to `original`; the flag goes back with it.
+    // Doc rewind, flag restore and re-solve are one unit owned here, like
+    // cancelEditSession: the doc is a Mutation-only surface of this hook, so the
+    // page that closes the popover never writes it. The returned doc is the
+    // snapshot the live doc was rewound to.
+    if (docRef.current) {
+      docRef.current = original
+      setDoc(original)
+      reSolve(original)
+    }
     useUnsavedChangesStore.getState().restoreDirtyAfterRewind(previewDirtyRef.current)
     return original
-  }, [suppressUndoRef, editSessionSuppressedRef])
+  }, [suppressUndoRef, editSessionSuppressedRef, docRef, setDoc, reSolve])
 
   // Shared "does this mutation earn an undo entry?" branch for the
   // single-mutation funnel and the gesture-group funnel, so a withheld brep

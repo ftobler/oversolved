@@ -155,7 +155,6 @@ export default function Part() {
 
   const {
     doc,
-    setDoc,
     docRef,
     loading,
     error,
@@ -845,14 +844,9 @@ export default function Part() {
 
   const handleColorCancel = useCallback(() => {
     if (!partColorPopoverRef.current) return
-    const originalDoc = cancelPreview()
-    if (originalDoc && docRef.current) {
-      docRef.current = originalDoc
-      setDoc(originalDoc)
-      reSolve(originalDoc)
-    }
+    cancelPreview()  // rewinds the doc itself; null means it had already committed
     setPartColorPopover(null)
-  }, [cancelPreview, docRef, setDoc, reSolve, setPartColorPopover])
+  }, [cancelPreview, setPartColorPopover])
 
   const handleColorApply = useCallback((mutation: Mutation) => {
     commitPreview(mutation)
