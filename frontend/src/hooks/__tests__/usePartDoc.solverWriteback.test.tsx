@@ -153,6 +153,32 @@ function makePartialDeleteDoc(): PartDoc {
 const renameTo = (label: string): Mutation =>
   ({ type: 'rename_feature', featureId: 'sk1', label }) as Mutation
 
+// The solved params arrive as float32 (wasm-kernel/codec.ts), so the wire says
+// 3.1415927410125732 where the mutator's round() persists 3.141593.
+const F32_PI = Math.fround(Math.PI)
+
+// A sketch under the feature whose edit session suppresses per-action entries,
+// which is the shape the aggregate edit_session entry belongs to.
+function makeSketchThenExtrudeDoc(initial: number[]): PartDoc {
+  return {
+    version: 1,
+    kind: 'part',
+    features: [
+      { id: 'sk1', kind: 'sketch', label: 'first', entities: [{ id: 'l1', kind: 'line' }], initial: { l1: initial } },
+      { id: 'ex1', kind: 'extrude', label: 'body' },
+    ],
+  } as unknown as PartDoc
+}
+
+function sketchResponse(): Record<string, unknown> {
+  return {
+    solve_ms: 0,
+    result: { sk1: { status: 'ok', geometry: { l1: [0, 0, F32_PI, 0] } } },
+    bodies: {},
+    _build_state: null,
+  }
+}
+
 const constraintsOf = (doc: PartDoc | null) => doc?.features?.[0]?.constraints ?? []
 
 const entitiesOf = (doc: PartDoc | null) => doc?.features?.[0]?.entities ?? []
@@ -387,5 +413,122 @@ describe('solver write-back undo round-trip', () => {
     await flush()
     expect(docRef.current!.features!.some(f => f.id === 'sk1')).toBe(false)
     expect(result.current.solveResults.sk1).toBeUndefined()
+  })
+})
+
+// ─── Write-back vs the edit-session diff and the unsaved-changes flag ───
+
+describe('solver write-back and a session that edited nothing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    saveDocMock.mockReset()
+    useUnsavedChangesStore.getState().setDirty(false)
+    const store = usePartEditorStore.getState()
+    store.setEditingFeatureId(DEFAULT_PART_EDITOR_DATA.editingFeatureId)
+    store.setPickBoundary(DEFAULT_PART_EDITOR_DATA.pickBoundary)
+    store.setRollbackPosition(DEFAULT_PART_EDITOR_DATA.rollbackPosition)
+    useSolverStore.setState({ isSolving: false, onCancelSolve: null })
+  })
+
+  // The flush reSolve fire-and-forgets; drain the microtask queue so the solve
+  // (mock worker) lands before the next assertion.
+  const flush = async () => { await act(async () => {}) }
+
+  // What useEditFeature does when the editor opens on ex1: the store learns
+  // which feature is open, where the rollback bar sits and how far the pick
+  // boundary reaches, so useSolver's editing invariant holds.
+  const openSessionOnEx1 = (result: { current: { startEditSession: (s: boolean) => void; reSolve: (d: PartDoc) => Promise<void> | void } }) => {
+    const store = usePartEditorStore.getState()
+    store.setEditingFeatureId('ex1')
+    store.setRollbackPosition(2)
+    store.setPickBoundary(1)
+    act(() => { result.current.startEditSession(true) })
+    return act(async () => { await result.current.reSolve(docRef.current!) })
+  }
+
+  // Entering an edit re-solves the whole stack (useEditFeature's tail), and that
+  // solve re-bakes every sketch's solved geometry into `initial`. The session
+  // snapshot was taken just before it, so an unrounded write-back leaves the two
+  // docs differing only in digits the user cannot see -- and the commit then
+  // reads that as the session's work.
+  it('a re-solve during a session that edited nothing leaves no edit_session entry', async () => {
+    docRef.current = makeSketchThenExtrudeDoc([0, 0, 3.141593, 0])
+    mockSolveViaWorker.mockResolvedValue(sketchResponse())
+
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    const before = docRef.current
+
+    await openSessionOnEx1(result)
+
+    // The write-back rounded the f32 params back to what the mutator wrote, so
+    // the solve moved nothing and even the doc object survived it.
+    expect(docRef.current).toBe(before)
+
+    act(() => { result.current.commitEditSession() })
+    // An aggregate here would restore a doc identical to the live one, and undo
+    // would re-solve to re-derive the same geometry: a step that looks dead.
+    expect(result.current.undoStack).toHaveLength(0)
+  })
+
+  // The other half of the same coin: the doc really does change, because the
+  // authored initial carried more precision than the document stores (hand
+  // written YAML, an import, a solve that resolved a projection differently).
+  // That is still a solve fact, not a user edit, so it must not mint a step.
+  it('a solve that re-rounds an over-precise authored initial is not a user edit', async () => {
+    docRef.current = makeSketchThenExtrudeDoc([0, 0, Math.PI, 0])
+    mockSolveViaWorker.mockResolvedValue(sketchResponse())
+
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    await openSessionOnEx1(result)
+
+    const initial = (docRef.current!.features![0] as { initial: Record<string, number[]> }).initial
+    expect(initial.l1).toEqual([0, 0, 3.141593, 0])
+
+    act(() => { result.current.commitEditSession() })
+    expect(result.current.undoStack).toHaveLength(0)
+  })
+
+  // The three-click repro: open the editor, Ctrl+S, Escape. Nothing was edited,
+  // the rewind restored the very doc the save just stored, so the flag must stay
+  // clear -- the pinned save count moving is not enough to call the document
+  // unsaved.
+  it('a save during a session that changed nothing does not leave the document dirty', async () => {
+    docRef.current = makeSketchThenExtrudeDoc([0, 0, 3.141593, 0])
+    mockSolveViaWorker.mockResolvedValue(sketchResponse())
+
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    const before = docRef.current
+
+    await openSessionOnEx1(result)
+    expect(docRef.current).toBe(before)
+
+    useUnsavedChangesStore.getState().markSaved()  // the save landing
+    act(() => { result.current.cancelEditSession() })
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  // The control: the same three clicks around a real edit. The save stored the
+  // edit, the rewind throws it away, so the live doc no longer matches the saved
+  // bytes and the flag has to stay set.
+  it('a save after a real edit still leaves the cancelled document dirty', async () => {
+    docRef.current = makeSketchThenExtrudeDoc([0, 0, 3.141593, 0])
+    mockSolveViaWorker.mockResolvedValue(sketchResponse())
+
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    // The session opens on ex1 as above, with the edit landing inside it; the
+    // re-solve after it is the mutation's own.
+    const store = usePartEditorStore.getState()
+    store.setEditingFeatureId('ex1')
+    store.setRollbackPosition(2)
+    store.setPickBoundary(1)
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation({ type: 'rename_feature', featureId: 'ex1', label: 'edited' } as Mutation) })
+    await flush()
+    useUnsavedChangesStore.getState().markSaved()  // the save landing
+
+    act(() => { result.current.cancelEditSession() })
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 })

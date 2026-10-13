@@ -1,5 +1,5 @@
 import type { PartDoc, PartConstraint } from '@/types/cad'
-import { CONSTRAINT_REF_FIELDS, refMatchesEntity } from './helpers'
+import { CONSTRAINT_REF_FIELDS, refMatchesEntity, round } from './helpers'
 
 function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boolean {
   for (const key of CONSTRAINT_REF_FIELDS) {
@@ -22,6 +22,30 @@ function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boole
   return false
 }
 
+// The write-back has to speak the same numeric dialect as the sketch mutators:
+// they persist round(v, 6) (helpers.ts), while the worker hands back the solved
+// params decoded as float32 (wasm-kernel/codec.ts). Baking the wire values
+// verbatim would leave two spellings of one geometry in the document, and every
+// consumer that compares doc content would then read a solve that moved nothing
+// as a change: useSolver's save identity guard mints a fresh doc object (so a
+// save overlapping it stops clearing dirty), findFirstDirty's checkpoint hash
+// goes stale (rebuilding the feature and everything after it), and
+// docDiffersForSession manufactures a user edit out of a solve. Rounding here,
+// at the one place solved geometry enters the document, keeps the two writers
+// byte-identical.
+//
+// The map is rebuilt with new arrays rather than rounded in place: it belongs to
+// the solve result record, which the caller still renders from
+// (unflattenGeometry) and still compares against the doc in useSolver's identity
+// guard. Rounding a shared array under it would rewrite the solver's own numbers.
+function roundGeometry(geometry: Record<string, number[]>): Record<string, number[]> {
+  const rounded: Record<string, number[]> = {}
+  for (const [key, values] of Object.entries(geometry)) {
+    rounded[key] = values.map(v => round(v))
+  }
+  return rounded
+}
+
 // Solved geometry adoption is the ONLY write-back the generic solve owns. The
 // superfluous/projection_error flags and resolved kinds are solve-time facts and
 // live in solveResults, so undo never fights an invisible re-delete.
@@ -32,7 +56,7 @@ export function applyGeometryToFeature(
 ): void {
   const featureDef = (doc.features ?? []).find(f => f.id === featureId)
   if (!featureDef) return
-  featureDef.initial = geometry
+  featureDef.initial = roundGeometry(geometry)
 }
 
 // The explicit cleanup command's handler: removes the projected entities and
