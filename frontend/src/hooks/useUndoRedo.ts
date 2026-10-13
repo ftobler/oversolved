@@ -8,6 +8,23 @@ import { pushCapped, moveTop } from '@/utils/core/undoStack'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 
+// Per-move knowledge the stack cannot carry. A move is the only place that
+// decides whether the editor comes down, so anything a caller knows that this
+// function cannot read off the stacks travels here rather than being
+// compensated for by the caller.
+export type UndoMoveOptions = {
+  // The caller committed open work (an edit session, a preview, a pending brep
+  // projection) as its own entry just before this move. Such a commit pushes,
+  // and every push clears the redo branch, so the redo this engine is about to
+  // read may be empty BECAUSE of the commit the caller just made. Told that, the
+  // engine still tears the editor down even when its own guard stops the move:
+  // the open work it consumed owns the editor, and an editor left standing turns
+  // its OK inert while a stale popover folds every later slider move into its own
+  // entry. Without the flag the empty-branch keystroke changes nothing and tears
+  // nothing down.
+  openWorkCommitted?: boolean
+}
+
 export function useUndoRedo(
   docRef: React.MutableRefObject<PartDoc | null>,
   setDoc: React.Dispatch<React.SetStateAction<PartDoc | null>>,
@@ -18,7 +35,10 @@ export function useUndoRedo(
   // pick boundary, editing id) because applyUndoRedo tears the editor down
   // BEFORE the swap and then owns and rewrites the rollback position from the
   // restored entry; any such store write during teardown is intentionally
-  // overwritten.
+  // overwritten. The one call that runs where no swap follows (the
+  // open-work-committed early return) has no entry to rewrite that position
+  // from, so a rollback written there is the last word, exactly as it was when
+  // the caller ran it after the engine returned.
   tearDownEditorState?: () => void,
 ) {
   // The refs are the source of truth; the state mirrors them purely so the UI
@@ -68,7 +88,7 @@ export function useUndoRedo(
   }, [pushEntry])
 
   const applyUndoRedo = useCallback(
-    (direction: 'undo' | 'redo') => {
+    (direction: 'undo' | 'redo', opts?: UndoMoveOptions) => {
       const from = direction === 'undo' ? undoRef.current : redoRef.current
       const to = direction === 'undo' ? redoRef.current : undoRef.current
 
@@ -78,7 +98,16 @@ export function useUndoRedo(
       // empty stack is a no-op for the same reason, and the check keeps
       // tearDownEditorState from running for a keystroke that does nothing.
       const preDoc = docRef.current
-      if (from.length === 0 || !preDoc) return
+      if (from.length === 0 || !preDoc) {
+        // The one exception: a caller that committed open work first (see
+        // UndoMoveOptions) had that push clear this very branch, so the move is
+        // a no-op BECAUSE of the work it just resolved, not because the user
+        // pressed a dead key. The editor that work opened has to come down.
+        // Nothing swaps on this path, so running the teardown here rather than
+        // after the engine returns is the same instant, not an earlier one.
+        if (opts?.openWorkCommitted) tearDownEditorState?.()
+        return
+      }
 
       // Exit every open session before the doc swaps. A session that survives
       // would later commit a spurious entry keyed to the pre-undo doc, or cancel
@@ -92,6 +121,10 @@ export function useUndoRedo(
       // pushUndo: cloneDocForUndo is a full deep clone, so the departing doc
       // never shares state with the live doc or the entry.
       const move = moveTop(from, to, entry => ({ doc: cloneDocForUndo(preDoc), mutation: entry.mutation }))
+      // Unreachable while moveTop only rejects an empty `from`, which the guard
+      // above already excluded. It costs nothing as a type narrowing and keeps
+      // the engine honest if that rule ever changes; the teardown has run by
+      // then either way, so there is nothing left to compensate for.
       if (!move) return
       const entry = from[from.length - 1]
 
@@ -122,6 +155,11 @@ export function useUndoRedo(
       reSolve(entry.doc)
     }, [docRef, setDoc, reSolve, commitStacks, tearDownEditorState])
 
+  // The plain legs, for a caller with no open work to resolve first. A caller that
+  // has (usePartDoc) calls applyUndoRedo directly so it can report what its
+  // commit did; these stay as the flag-off shorthand the engine's own suites
+  // drive, and they are the pair the shared undo-contract suite compares against
+  // the assembly engine.
   const handleUndo = useCallback(() => { applyUndoRedo('undo') }, [applyUndoRedo])
 
   const handleRedo = useCallback(() => { applyUndoRedo('redo') }, [applyUndoRedo])
@@ -158,6 +196,10 @@ export function useUndoRedo(
     suppressUndoRef,
     pushUndo,
     pushUndoSnapshot,
+    // Exported so a caller that resolves open work of its own can hand the move
+    // the facts it knows (UndoMoveOptions) instead of working around the
+    // teardown decision this function owns.
+    applyUndoRedo,
     handleUndo,
     handleRedo,
     saveUndoStackSnapshot,

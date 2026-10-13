@@ -326,9 +326,9 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   // world and write it back. The page callback runs FIRST so it can still read
   // which feature was being edited (Part.tsx decides the panel fallback from the
   // id); closing the store's editor fields here keeps this the complete
-  // "abandon the editor" unit even with no page attached, so a redo that commits
-  // open work does not leave the editor standing when applyUndoRedo never
-  // reaches its own reset.
+  // "abandon the editor" unit even with no page attached, so a redo whose
+  // open-work commit empties the redo branch still closes the editor when
+  // applyUndoRedo stops at its own guard.
   const tearDownEditorState = useCallback(() => {
     editSnapshotRef.current = null
     editSessionSuppressedRef.current = false
@@ -342,7 +342,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   }, [])
 
   const {
-    undoStack, redoStack, suppressUndoRef, pushUndo, pushUndoSnapshot, handleUndo, handleRedo,
+    undoStack, redoStack, suppressUndoRef, pushUndo, pushUndoSnapshot, applyUndoRedo,
     saveUndoStackSnapshot, restoreUndoStackSnapshot, clearUndoStackSnapshot,
   } = useUndoRedo(docRef, setDoc, restoreAwareReSolve, tearDownEditorState)
 
@@ -754,14 +754,9 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   // edits along with an unrelated step. Only work that would push is committed:
   // closing a session that changed nothing would leave the editor open with its
   // session gone, and a move on the then-still-empty stack would never tear it
-  // down.
+  // down. Both directions commit, matching the assembly engine.
   //
   // Returns true exactly when it pushed open work, false when it did nothing.
-  // A true return means the push cleared the redo branch, so a redo that follows
-  // cannot move: applyUndoRedo early-returns before its own teardown and the
-  // caller must tear the editor down itself. This is why the two directions
-  // differ (undo's commit leaves a non-empty undo stack, so its teardown still
-  // runs). Both directions commit, matching the assembly engine.
   const commitOpenWorkBeforeHistory = useCallback(() => {
     let committed = false
     // A brep pick's projection is applied without an entry until its dimension
@@ -789,21 +784,21 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     return committed
   }, [sessionWouldPush, previewWouldPush, commitEditSession, commitPreview, pushUndo, docRef])
 
-  const handleUndoWithOpenWork = useCallback(() => {
-    commitOpenWorkBeforeHistory()
-    handleUndo()
-  }, [commitOpenWorkBeforeHistory, handleUndo])
-
-  const handleRedoWithOpenWork = useCallback(() => {
+  // Both directions are the same move: resolve the open work, then let the engine
+  // apply it. The commit may push, and a push clears the redo branch the move is
+  // about to read, so a redo that follows cannot move -- that is the fact the
+  // engine cannot see from the stack alone, and it is passed along as
+  // openWorkCommitted instead of being compensated for here. Undo never needs it
+  // (the commit's entry lands on the undo stack, so the move proceeds and tears
+  // down in its normal place), and saying so costs one boolean.
+  const moveWithOpenWork = useCallback((direction: 'undo' | 'redo') => {
     const committed = commitOpenWorkBeforeHistory()
-    handleRedo()
-    // A committing commit cleared the redo branch, so handleRedo was a no-op
-    // that returned before applyUndoRedo's own teardown. The page state the
-    // commit consumed still has to go: an editor left standing turns its OK
-    // inert and a stale popover folds every later slider move into its own
-    // entry.
-    if (committed) tearDownEditorState()
-  }, [commitOpenWorkBeforeHistory, handleRedo, tearDownEditorState])
+    applyUndoRedo(direction, { openWorkCommitted: committed })
+  }, [commitOpenWorkBeforeHistory, applyUndoRedo])
+
+  const handleUndoWithOpenWork = useCallback(() => { moveWithOpenWork('undo') }, [moveWithOpenWork])
+
+  const handleRedoWithOpenWork = useCallback(() => { moveWithOpenWork('redo') }, [moveWithOpenWork])
 
   const cancelEditSession = useCallback(() => {
     const snapshot = editSnapshotRef.current
