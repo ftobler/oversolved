@@ -4,6 +4,7 @@ import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
+import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { failLoud } from '@/stores/stateInvariants'
@@ -14,68 +15,6 @@ import { isDimensionKind } from '@/registry/constraintRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
-
-// Mutations that write a value which may already equal the current one. Only
-// these pay for the deep-compare in handleMutation; every other mutation adds
-// or removes content and can never be a no-op, so comparing would waste O(doc)
-// work on every sketch drag. The add_* toggle family (add_*_edge, add_*_tool,
-// add_delete_body_ref, add_transform_body, add_*_profile, add_sweep_path) is
-// deliberately absent: re-applying an already-listed entry toggles it back out,
-// a real change, so a guard would swallow it. set_rollback is the bar being
-// dragged to where it already is (or the end, when the key is absent);
-// toggle_*_plane_visibility and a delete_feature on a builtin or absent feature
-// can also no-op, but the UI derives both from the current doc so they are
-// effectively unreachable, and neither narrows to a single feature.
-const IDEMPOTENT_MUTATION_TYPES = new Set<Mutation['type']>([
-  'rename_feature',
-  'rename_part',
-  'reorder_features',
-  'reorder_pick_field',
-  'set_part_color',
-  'set_part_transparency',
-  'set_part_metalness',
-  'set_part_roughness',
-  'set_part_transmission',
-  'set_body_visibility',
-  'set_feature_visibility',
-  'set_feature_suppression',
-  'set_feature_plane',
-  'set_plane_definition_field',
-  'set_extrude_field',
-  'set_revolve_field',
-  'set_sweep_field',
-  'set_fillet_field',
-  'set_chamfer_field',
-  'set_boolean_field',
-  'set_array_field',
-  'set_circular_array_field',
-  'set_hole_field',
-  'set_transform_field',
-  'set_mirror_field',
-  'set_variable_field',
-  'set_constraint_value',
-  'set_constraint_pos',
-  'set_constraint_sign',
-  'set_rollback',
-  // Index/predicate-driven removals can target an entry that is already gone:
-  // a splice past the end and a filter that matches nothing both leave the
-  // feature identical. noOpSliceFor already slices the whole touched feature,
-  // so the compare is O(feature) and covers each of these for free.
-  // remove_dangling_content is the solve-derived cleanup: its targets come from
-  // the last solve, so a stale-targets dispatch leaves a byte-identical doc.
-  // noOpSliceFor reads the features its payload names, so the compare is
-  // O(touched) there too.
-  'remove_dangling_content',
-  'remove_extrude_profile',
-  'remove_revolve_profile',
-  'remove_sweep_profile',
-  'remove_sweep_path',
-  'remove_fillet_edge',
-  'remove_chamfer_edge',
-  'remove_boolean_tool',
-  'remove_delete_body_ref',
-  'remove_transform_body',
-])
 
 // The mutation types the color preview can produce. Suppression is scoped to
 // these: while a preview is open any OTHER mutation is an escape (see
@@ -622,7 +561,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     // mirror-visible rollback change still counts as a real edit. The slice
     // limits the stringify to the touched feature/part_style entry instead of
     // the whole doc, a plain O(touched) optimization for large feature lists.
-    if (IDEMPOTENT_MUTATION_TYPES.has(m.type)) {
+    if (IDEMPOTENT_MUTATION[m.type]) {
       const slice = noOpSliceFor(m, current)
       // GUARD_BYPASS means the slice cannot represent the change (a body-style
       // mutation missing its bodyId), so the compare is skipped entirely and
