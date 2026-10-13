@@ -525,11 +525,30 @@ describe('useAssemblyUndoRedo', () => {
 
     act(() => { result.current.recordSessionEdit(docA, 'Set position') })
     docRef.current = docB
-    useUnsavedChangesStore.getState().setDirty(false)  // the save landing
+    useUnsavedChangesStore.getState().markSaved()  // the save landing
 
     act(() => { result.current.cancelSession() })
 
     expect(docRef.current).toBe(docA)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  it('cancelSession after a save and a later edit still leaves the rewound doc dirty', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docRef = { current: docA }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    act(() => { result.current.recordSessionEdit(docA, 'Set position') })
+    docRef.current = docB
+    useUnsavedChangesStore.getState().markSaved()
+    useUnsavedChangesStore.getState().setDirty(true)  // an edit after the save
+
+    act(() => { result.current.cancelSession() })
+
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 

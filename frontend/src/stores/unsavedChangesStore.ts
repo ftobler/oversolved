@@ -12,8 +12,16 @@ import { subscribeWorkspaceStore } from '@/workspace/storeEvents'
 // the checkpoint; "dirty" is therefore the editor's in-memory edit flag OR the
 // workspace being `ahead` of its checkpoint. The workspace subscription keeps
 // the second half honest whenever the seam mutates.
+export interface PinnedDirty {
+  dirty: boolean
+  saves: number
+}
+
 interface UnsavedChangesState {
   dirty: boolean
+  // Counts saves of the open document. The flag alone cannot say whether a save
+  // landed mid-session: an edit after it sets the flag again.
+  saves: number
   // The workspace the current editor belongs to, or null on pages with nothing
   // to save. The header and the recovery path read it; the dirty refresh uses
   // it to compare the working copy against the checkpoint.
@@ -27,9 +35,14 @@ interface UnsavedChangesState {
   // cleared it on `true` would mark that edit saved.
   saveHandler: (() => boolean | Promise<boolean>) | null
   setDirty: (dirty: boolean) => void
+  // A save landed: the stored bytes now equal the live doc, so the flag clears
+  // and the save count moves, which is what a later cancel compares against.
+  markSaved: () => void
+  // The flag and save count as they stand now, for a session to pin at entry.
+  pinDirty: () => PinnedDirty
   // A cancel rewound the doc to the state pinned when its session opened; puts
-  // back the flag pinned with it.
-  restoreDirtyAfterRewind: (pinned: boolean) => void
+  // back the flag pinned with it, unless a save landed since.
+  restoreDirtyAfterRewind: (pinned: PinnedDirty) => void
   setWorkspace: (workspace: string | null) => void
   setSaveHandler: (handler: (() => boolean | Promise<boolean>) | null) => void
   requestConfirm: (onDiscard: () => void) => void
@@ -44,13 +57,17 @@ let refreshToken = 0
 
 export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => ({
   dirty: false,
+  saves: 0,
   workspace: null,
   pendingCallback: null,
   saveHandler: null,
   setDirty: (dirty) => set({ dirty }),
-  // A clean flag now means a save landed mid-session: it stored the doc being
-  // thrown away, so the rewound doc differs from the saved one and stays dirty.
-  restoreDirtyAfterRewind: (pinned) => set(prev => ({ dirty: prev.dirty ? pinned : true })),
+  markSaved: () => set(prev => ({ dirty: false, saves: prev.saves + 1 })),
+  pinDirty: () => ({ dirty: get().dirty, saves: get().saves }),
+  // A save that landed mid-session stored the doc being thrown away, so the
+  // rewound doc differs from the saved one and stays dirty, even when a later
+  // edit already set the flag again.
+  restoreDirtyAfterRewind: (pinned) => set(prev => ({ dirty: prev.saves !== pinned.saves ? true : pinned.dirty })),
   setWorkspace: (workspace) => {
     set({ workspace, dirty: false })
     if (workspace) void get().refreshWorkspaceDirty()

@@ -60,7 +60,23 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('saved-then-discarded')) })
-    useUnsavedChangesStore.getState().setDirty(false)  // the save landing
+    useUnsavedChangesStore.getState().markSaved()  // the save landing
+
+    act(() => { result.current.cancelEditSession() })
+    expect(dirty()).toBe(true)
+  })
+
+  // The flag alone cannot tell this from "never saved": the edit after the save
+  // set it again, so only the save count says the stored bytes hold the edits.
+  it('a save followed by another edit mid-session still leaves the cancelled doc dirty', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('saved')) })
+    useUnsavedChangesStore.getState().markSaved()
+    act(() => { result.current.handleMutation(renameTo('edited-after-save')) })
+    expect(dirty()).toBe(true)
 
     act(() => { result.current.cancelEditSession() })
     expect(dirty()).toBe(true)

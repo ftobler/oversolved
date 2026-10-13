@@ -65,7 +65,7 @@ export function useDocPersistence<D>({
         // though: its dirty flag must survive, or a reload would silently drop
         // those edits.
         if (docRef.current === savedRef) {
-          useUnsavedChangesStore.getState().setDirty(false)
+          useUnsavedChangesStore.getState().markSaved()
         }
         return true
       } catch (e) {

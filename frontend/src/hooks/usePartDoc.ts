@@ -7,7 +7,7 @@ import { mutationHandlers } from '@/hooks/mutationDispatch'
 import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { failLoud } from '@/stores/stateInvariants'
-import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, type PinnedDirty } from '@/stores/unsavedChangesStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { applySetRollback } from '@/utils/yamlMutations'
 import { isDimensionKind } from '@/registry/constraintRegistry'
@@ -287,8 +287,8 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   // A cancel rewinds the doc to that moment, so it puts the flag back too:
   // otherwise cancelling an edit on a clean doc left it warning about changes
   // that no longer exist.
-  const editDirtyRef = useRef(false)
-  const previewDirtyRef = useRef(false)
+  const editDirtyRef = useRef<PinnedDirty>({ dirty: false, saves: 0 })
+  const previewDirtyRef = useRef<PinnedDirty>({ dirty: false, saves: 0 })
   // Whether the suppressed (feature) edit session swallowed a part_style
   // mutation. The session diff excludes part_style (the solver fabricates
   // entries there), so a genuine user color/visibility change during the
@@ -339,7 +339,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     }
     previewOriginalDoc.current = cloneDocForUndo(originalDoc)
     previewTouchedRef.current = false
-    previewDirtyRef.current = useUnsavedChangesStore.getState().dirty
+    previewDirtyRef.current = useUnsavedChangesStore.getState().pinDirty()
     suppressUndoRef.current = true
   }, [suppressUndoRef])
 
@@ -616,7 +616,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       commitPreview({ type: 'preview_commit', description: 'preview resolved at session start' })
     }
     editSnapshotRef.current = cloneDocForUndo(docRef.current)
-    editDirtyRef.current = useUnsavedChangesStore.getState().dirty
+    editDirtyRef.current = useUnsavedChangesStore.getState().pinDirty()
     // Which kind of session this is decides what commitEditSession does: a
     // suppressed (feature) session folds into one aggregate entry, a sketch
     // session keeps its per-action entries and pushes nothing extra.

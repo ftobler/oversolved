@@ -11,7 +11,7 @@
 import { useCallback, useRef } from 'react'
 import type { AssemblyDoc } from '@/types/cad'
 import { useAssemblyStore } from '@/stores/assemblyStore'
-import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, type PinnedDirty } from '@/stores/unsavedChangesStore'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { assemblyDocEquals } from '@/utils/assemblyMutations'
 import { isSessionOpen } from '@/utils/assemblyEditingSubject'
@@ -44,7 +44,7 @@ export function useAssemblyUndoRedo(
   // pinning it here rather than when the editor opened is what makes it right, as
   // a one-shot landing between the open and the first session edit dirties the doc
   // for a reason the cancel has no business undoing.
-  const pendingSession = useRef<{ doc: AssemblyDoc; label: AssemblyUndoLabel; dirty: boolean } | null>(null)
+  const pendingSession = useRef<{ doc: AssemblyDoc; label: AssemblyUndoLabel; dirty: PinnedDirty } | null>(null)
 
   // Read the stacks from the store so the hook re-renders (and tests can assert)
   // exactly like the part editor's hook does.
@@ -67,7 +67,7 @@ export function useAssemblyUndoRedo(
     // sets the doc dirty, so both the doc and the flag read here are still the
     // pre-session ones cancelSession has to restore.
     if (!pendingSession.current) {
-      pendingSession.current = { doc, label, dirty: useUnsavedChangesStore.getState().dirty }
+      pendingSession.current = { doc, label, dirty: useUnsavedChangesStore.getState().pinDirty() }
     }
   }, [])
 
