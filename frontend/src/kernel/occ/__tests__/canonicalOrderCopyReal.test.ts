@@ -211,6 +211,10 @@ function expectSolidsOk(h: SharedHarness, spec: Spec, r: BuildResponse): void {
 
 // ─── The spike ───
 
+// Each case runs whole solves through the real kernel in WASM, which takes
+// longer than vitest's 5 s default on a loaded machine.
+const REAL_OCC_TIMEOUT_MS = 60_000
+
 describe.skipIf(!oc || !solveBytes)('canonical sub-shape order survives the pipeline copies (real OCC)', () => {
   const h = new SharedHarness(oc!)
   let occ: OccModule
@@ -238,7 +242,7 @@ describe.skipIf(!oc || !solveBytes)('canonical sub-shape order survives the pipe
       } finally {
         scope.dispose()
       }
-    })
+    }, REAL_OCC_TIMEOUT_MS)
 
     it(`${c.name}: checkpoint restore of a clean prefix`, () => {
       const spec = c.spec(h)
@@ -257,6 +261,6 @@ describe.skipIf(!oc || !solveBytes)('canonical sub-shape order survives the pipe
       } finally {
         scope.dispose()
       }
-    })
+    }, REAL_OCC_TIMEOUT_MS)
   }
 })
