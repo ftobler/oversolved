@@ -39,15 +39,32 @@ export function useUndoRedo(
     setRedoStack(redo)
   }, [])
 
+  // The shared tail of both push paths: append, cap, clear the redo branch. Only
+  // the entry's doc differs between them, so the stack bookkeeping stays in one
+  // place and the two callers cannot drift apart.
+  const pushEntry = useCallback((mutation: Mutation, entryDoc: PartDoc) => {
+    const undo = [...undoRef.current, { doc: entryDoc, mutation }]
+    if (undo.length > MAX_UNDO_DEPTH) undo.shift()
+    commitStacks(undo, [])  // a fresh edit invalidates any redo branch
+  }, [commitStacks])
+
   const pushUndo = useCallback((mutation: Mutation, currentDoc: PartDoc) => {
     // The entry holds a snapshot, never a reference: handleMutation clones
     // before pushing today, but any path that mutates the current doc in place
     // would silently rewrite history if the stored object were shared. The
     // snapshot shares only the immutable import payloads (cloneDocForUndo).
-    const undo = [...undoRef.current, { doc: cloneDocForUndo(currentDoc), mutation }]
-    if (undo.length > MAX_UNDO_DEPTH) undo.shift()
-    commitStacks(undo, [])  // a fresh edit invalidates any redo branch
-  }, [commitStacks])
+    pushEntry(mutation, cloneDocForUndo(currentDoc))
+  }, [pushEntry])
+
+  // For callers that already hold an independent snapshot: the preview baseline
+  // (previewOriginalDoc) and the edit-session snapshot (editSnapshotRef) are
+  // produced by cloneDocForUndo and dropped right after the push, so cloning
+  // them again at the boundary would only copy a throwaway. The caller must
+  // pass a doc that is already independent of the live document and will not
+  // be mutated afterwards; a live doc still belongs to pushUndo.
+  const pushUndoSnapshot = useCallback((mutation: Mutation, docSnapshot: PartDoc) => {
+    pushEntry(mutation, docSnapshot)
+  }, [pushEntry])
 
   const applyUndoRedo = useCallback(
     (direction: 'undo' | 'redo') => {
@@ -143,6 +160,7 @@ export function useUndoRedo(
     redoStack,
     suppressUndoRef,
     pushUndo,
+    pushUndoSnapshot,
     handleUndo,
     handleRedo,
     saveUndoStackSnapshot,

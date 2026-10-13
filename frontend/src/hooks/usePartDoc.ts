@@ -324,7 +324,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   }, [])
 
   const {
-    undoStack, redoStack, suppressUndoRef, pushUndo, handleUndo, handleRedo,
+    undoStack, redoStack, suppressUndoRef, pushUndo, pushUndoSnapshot, handleUndo, handleRedo,
     saveUndoStackSnapshot, restoreUndoStackSnapshot, clearUndoStackSnapshot,
   } = useUndoRedo(docRef, setDoc, restoreAwareReSolve, tearDownEditorState)
 
@@ -367,7 +367,10 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       // The popover applies set_part_color no matter what was edited, so the
       // label is composed from the actual part_style diff; a preview whose
       // change was elsewhere keeps the mutation it was handed.
-      pushUndo(previewMutationFor(original, current) ?? mutation, original)
+      // `original` is the preview baseline, already an independent throwaway
+      // clone (startPreviewMode) that commitPreview drops below, so the
+      // snapshot push skips the redundant re-clone.
+      pushUndoSnapshot(previewMutationFor(original, current) ?? mutation, original)
     }
     previewTouchedRef.current = false
     previewOriginalDoc.current = null
@@ -378,7 +381,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     if (!editSessionSuppressedRef.current) {
       suppressUndoRef.current = false
     }
-  }, [suppressUndoRef, pushUndo, docRef, editSessionSuppressedRef, previewWouldPush])
+  }, [suppressUndoRef, pushUndoSnapshot, docRef, editSessionSuppressedRef, previewWouldPush])
 
   const cancelPreview = useCallback(() => {
     if (!previewOriginalDoc.current) {
@@ -670,8 +673,11 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       // The store still holds the edited feature here (commitEditSession runs
       // before the caller's exit cleanup clears it), so the undo label can name
       // the feature instead of rendering an empty one.
+      // `snapshot` is the session baseline, already an independent throwaway
+      // clone (startEditSession) that this commit drops below, so the snapshot
+      // push skips the redundant re-clone.
       const featureId = usePartEditorStore.getState().editingFeatureId ?? ''
-      pushUndo({ type: 'edit_session', featureId }, snapshot)
+      pushUndoSnapshot({ type: 'edit_session', featureId }, snapshot)
     }
     // An open preview left at the session boundary (its own Apply was never
     // clicked) has no other resolver, so it folds in here. This must run AFTER
@@ -686,7 +692,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       commitPreview({ type: 'preview_commit', description: 'preview resolved at session commit' })
     }
     clearUndoStackSnapshot()
-  }, [suppressUndoRef, pushUndo, clearUndoStackSnapshot, commitPreview, sessionWouldPush])
+  }, [suppressUndoRef, pushUndoSnapshot, clearUndoStackSnapshot, commitPreview, sessionWouldPush])
 
   // An undo or redo mid-edit first commits the open work as its own entry, so
   // the history move reverts (undo) or reaches (redo) exactly that work. Without

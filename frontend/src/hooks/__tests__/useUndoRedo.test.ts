@@ -4,6 +4,7 @@ import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 describe('useUndoRedo', () => {
@@ -383,6 +384,37 @@ describe('useUndoRedo', () => {
     // history: the entry holds an independent snapshot.
     sourceDoc.features![0].label = 'corrupted'
     expect((result.current.undoStack[0].doc.features![0] as { label: string }).label).toBe('before')
+  })
+
+  it('pushUndoSnapshot stores the same object, for callers that already snapshotted', () => {
+    // The preview and edit-session commits hand over a baseline that was
+    // already cloned and is dropped immediately, so re-cloning at the boundary
+    // would only copy a throwaway. The reference must survive verbatim.
+    const doc = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+    const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndoSnapshot({ type: 'preview_commit' } as Mutation, doc) })
+
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].doc).toBe(doc)
+  })
+
+  it('pushUndoSnapshot clears the redo branch and respects the cap', () => {
+    const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
+    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+
+    act(() => { result.current.pushUndoSnapshot({ type: 'add_sketch' } as Mutation, { version: 1, kind: 'part' } as PartDoc) })
+    act(() => { result.current.handleUndo() })
+    expect(result.current.redoStack).toHaveLength(1)
+
+    act(() => { result.current.pushUndoSnapshot({ type: 'add_extrude' } as Mutation, { version: 1, kind: 'part' } as PartDoc) })
+    expect(result.current.redoStack).toHaveLength(0)
+
+    for (let i = 0; i < MAX_UNDO_DEPTH + 5; i++) {
+      act(() => { result.current.pushUndoSnapshot({ type: 'add_sketch' } as Mutation, { version: 1, kind: 'part', features: [{ id: `f${i}` }] } as PartDoc) })
+    }
+    expect(result.current.undoStack).toHaveLength(MAX_UNDO_DEPTH)
   })
 
   it('undo pairs a clone of the departing doc onto the redo stack', () => {
