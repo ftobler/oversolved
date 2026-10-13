@@ -286,6 +286,12 @@ describe('usePartDoc undo/redo integration', () => {
     expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
     expect(result.current.redoStack).toHaveLength(0)
 
+    // The commit cleared the redo branch, so the redo could not move and
+    // applyUndoRedo never reached its own teardown. The handler had to run it:
+    // the editor is closed, not left standing with the OK button inert.
+    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(usePartEditorStore.getState().pickBoundary).toBeNull()
+
     // The redo left suppression off: this edit pushes instead of vanishing.
     act(() => { result.current.handleMutation(renameTo('after')) })
     expect(result.current.undoStack).toHaveLength(2)
@@ -398,6 +404,13 @@ describe('usePartDoc undo/redo integration', () => {
     expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
     expect(result.current.undoStack.map(e => e.mutation.type)).toEqual(['preview_commit'])
     expect(result.current.redoStack).toHaveLength(0)
+
+    // The commit closed the preview before the no-op redo, so the popover has
+    // nothing left to cancel and the doc is not rewound a second time.
+    let cancelled: PartDoc | null = null
+    act(() => { cancelled = result.current.cancelPreview() })
+    expect(cancelled).toBeNull()
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
 
     act(() => { result.current.handleUndo() })
     expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')

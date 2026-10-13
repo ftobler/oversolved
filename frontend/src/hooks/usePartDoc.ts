@@ -312,7 +312,12 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
 
   // Dropping the session refs is what makes a nested session unreachable after
   // an undo: without it the next commit/cancel would still hold the pre-undo
-  // world and write it back.
+  // world and write it back. The page callback runs FIRST so it can still read
+  // which feature was being edited (Part.tsx decides the panel fallback from the
+  // id); closing the store's editor fields here keeps this the complete
+  // "abandon the editor" unit even with no page attached, so a redo that commits
+  // open work does not leave the editor standing when applyUndoRedo never
+  // reaches its own reset.
   const tearDownEditorState = useCallback(() => {
     editSnapshotRef.current = null
     editSessionSuppressedRef.current = false
@@ -321,6 +326,8 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     previewTouchedRef.current = false
     sessionStyleTouchedRef.current = false
     undoTeardownRef.current?.()
+    usePartEditorStore.getState().setEditingFeatureId(null)
+    usePartEditorStore.getState().setPickBoundary(null)
   }, [])
 
   const {
@@ -700,11 +707,16 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   // edits along with an unrelated step. Only work that would push is committed:
   // closing a session that changed nothing would leave the editor open with its
   // session gone, and a move on the then-still-empty stack would never tear it
-  // down. Both directions commit, matching the assembly engine: because the
-  // commit's pushUndo clears the redo branch, a redo that committed open work
-  // becomes a no-op (the commit supersedes the redo), the intended and
-  // assembly-consistent result.
+  // down.
+  //
+  // Returns true exactly when it pushed open work, false when it did nothing.
+  // A true return means the push cleared the redo branch, so a redo that follows
+  // cannot move: applyUndoRedo early-returns before its own teardown and the
+  // caller must tear the editor down itself. This is why the two directions
+  // differ (undo's commit leaves a non-empty undo stack, so its teardown still
+  // runs). Both directions commit, matching the assembly engine.
   const commitOpenWorkBeforeHistory = useCallback(() => {
+    let committed = false
     // A brep pick's projection is applied without an entry until its dimension
     // commits. Outside a suppressed session (whose aggregate already covers it)
     // it is open work like any other: give it the entry the commit would have,
@@ -714,14 +726,20 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     if (pendingBrep && !editSessionSuppressedRef.current && docRef.current) {
       pushUndo({ type: 'preview_commit', description: 'brep projection resolved before history move' }, pendingBrep)
       brepWithholdRef.current = { armed: false, doc: null }
+      committed = true
     }
     if (editSessionSuppressedRef.current) {
       // The session owns an open preview and resolves it on top of its own
       // aggregate, so the pair commits as one call.
-      if (sessionWouldPush() || previewWouldPush()) commitEditSession()
+      if (sessionWouldPush() || previewWouldPush()) {
+        commitEditSession()
+        committed = true
+      }
     } else if (previewWouldPush()) {
       commitPreview({ type: 'preview_commit', description: 'preview resolved before history move' })
+      committed = true
     }
+    return committed
   }, [sessionWouldPush, previewWouldPush, commitEditSession, commitPreview, pushUndo, docRef])
 
   const handleUndoWithOpenWork = useCallback(() => {
@@ -730,9 +748,15 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   }, [commitOpenWorkBeforeHistory, handleUndo])
 
   const handleRedoWithOpenWork = useCallback(() => {
-    commitOpenWorkBeforeHistory()
+    const committed = commitOpenWorkBeforeHistory()
     handleRedo()
-  }, [commitOpenWorkBeforeHistory, handleRedo])
+    // A committing commit cleared the redo branch, so handleRedo was a no-op
+    // that returned before applyUndoRedo's own teardown. The page state the
+    // commit consumed still has to go: an editor left standing turns its OK
+    // inert and a stale popover folds every later slider move into its own
+    // entry.
+    if (committed) tearDownEditorState()
+  }, [commitOpenWorkBeforeHistory, handleRedo, tearDownEditorState])
 
   const cancelEditSession = useCallback(() => {
     const snapshot = editSnapshotRef.current

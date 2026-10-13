@@ -407,4 +407,67 @@ describe('usePartDoc undo brep gesture withhold', () => {
     act(() => { result.current.handleMutation({ type: 'add_entity', featureId: 'sk1', kind: 'point', params: [1, 2] } as Mutation) })
     expect(result.current.undoStack).toHaveLength(2)
   })
+
+  // A redo with a live pending projection is the same shape as a mid-session
+  // redo: the commit banks the projection as its own entry (keyed to the
+  // pre-pick doc), whose push clears the redo branch, so the redo itself cannot
+  // move and applyUndoRedo returns before its own teardown. The page teardown
+  // must still run, or the pending pick/scratch state survives a history move
+  // that no longer has any use for it.
+  it('redo mid-gesture commits the pending projection and tears the editor down', () => {
+    docRef.current = makeSketchDoc()
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    const store = useSketchEditorStore.getState()
+    setSketchCallback('onMutation', result.current.handleMutation)
+    setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
+    setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
+    setSketchCallback('getSketch', () => null)
+    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    try {
+      // Seed a redo branch: one entry, then undone. No page teardown is
+      // registered yet, or the seed undo below would wipe activeFeatureId
+      // before the pick runs.
+      act(() => { result.current.handleMutation({ type: 'add_entity', featureId: 'sk1', kind: 'point', params: [1, 2] } as Mutation) })
+      act(() => { result.current.handleUndo() })
+      expect(result.current.redoStack).toHaveLength(1)
+      expect(sketchEntitiesOf()).toHaveLength(0)
+
+      // Stands in for Part.tsx's page teardown from here on, which owns the
+      // sketch store's scratch pick state; the hook's own teardown cannot clear
+      // it.
+      result.current.registerUndoTeardown(() => {
+        const sketchStore = useSketchEditorStore.getState()
+        sketchStore.clearBrepProjectionState()
+        sketchStore.resetTransientState()
+      })
+
+      // A brep pick materialises a projection with no entry yet.
+      act(() => { store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' }) })
+      expect(result.current.undoStack).toHaveLength(0)
+      expect(result.current.redoStack).toHaveLength(1)
+      expect(sketchEntitiesOf()).toHaveLength(1)
+      expect(useSketchEditorStore.getState().dimensionPicks).toHaveLength(1)
+
+      act(() => { result.current.handleRedo() })
+
+      // The projection is its own entry now, so the redo could not move; the
+      // page teardown ran and dropped the pending pick state.
+      expect(result.current.undoStack).toHaveLength(1)
+      expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+      expect(result.current.redoStack).toHaveLength(0)
+      expect(useSketchEditorStore.getState().dimensionPicks).toHaveLength(0)
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toHaveLength(0)
+
+      // The entry reverts exactly the projection.
+      act(() => { result.current.handleUndo() })
+      expect(sketchEntitiesOf()).toHaveLength(0)
+    } finally {
+      result.current.registerUndoTeardown(null)
+      setSketchCallback('onMutation', null)
+      setSketchCallback('beginBrepProjection', null)
+      setSketchCallback('cancelBrepProjection', null)
+      setSketchCallback('getSketch', null)
+      useSketchEditorStore.getState().resetTransientState()
+    }
+  })
 })
