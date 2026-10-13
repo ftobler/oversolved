@@ -262,10 +262,12 @@ describe('usePartDoc undo/redo integration', () => {
     expect(labelOf()).toBe('first')
   })
 
-  // Redo shares applyUndoRedo with undo, so the teardown the undo test above
-  // pins is only half covered: a redo must tear the session down just the same,
-  // or the swallow it left standing would eat every later edit with no undo step.
-  it('redo exits any open edit and clears its suppression', () => {
+  // Redo now routes through the same open-work commit as undo: a redo mid-edit
+  // commits the session as its own entry rather than tearing it down
+  // uncommitted. Because that commit's push clears the redo branch, the redo
+  // itself is a no-op afterwards -- the commit supersedes it -- but the
+  // suppression the session held is gone, so later edits push normally.
+  it('redo mid-session commits the session and re-enables pushing', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
@@ -279,15 +281,43 @@ describe('usePartDoc undo/redo integration', () => {
     expect(result.current.undoStack).toHaveLength(0)  // swallowed by the session
 
     act(() => { result.current.handleRedo() })
-    expect(labelOf()).toBe('a')
-    expect(result.current.undoStack).toHaveLength(1)  // the redo counterpart
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
-    expect(usePartEditorStore.getState().pickBoundary).toBeNull()
+    expect(labelOf()).toBe('in-edit')
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
+    expect(result.current.redoStack).toHaveLength(0)
 
     // The redo left suppression off: this edit pushes instead of vanishing.
     act(() => { result.current.handleMutation(renameTo('after')) })
     expect(result.current.undoStack).toHaveLength(2)
     expect(labelOf()).toBe('after')
+  })
+
+  // Mirrors the assembly engine's `redo mid-session commits the session and
+  // clears the redo branch`: the redo commits the session first, that fresh
+  // entry invalidates the redo branch like any edit, so the redo is a no-op and
+  // the edits stay, reachable by the next undo back to the pre-session doc.
+  it('redo mid-session commits the session and clears the redo branch', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.handleUndo() })
+    expect(labelOf()).toBe('first')
+    expect(result.current.redoStack).toHaveLength(1)
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('in-edit')) })
+
+    act(() => { result.current.handleRedo() })
+
+    expect(labelOf()).toBe('in-edit')
+    expect(result.current.undoStack.map(e => e.mutation.type)).toEqual(['edit_session'])
+    expect(result.current.redoStack).toHaveLength(0)
+
+    // The session's edits were committed, not dropped: one undo reaches the doc
+    // the session started from.
+    act(() => { result.current.handleUndo() })
+    expect(labelOf()).toBe('first')
   })
 
   it('a mutation after undoing mid-preview is still one undo step', () => {
@@ -343,6 +373,36 @@ describe('usePartDoc undo/redo integration', () => {
     expect(result.current.redoStack).toHaveLength(0)
   })
 
+  // The preview arm of the same commit rule: a redo with a live preview commits
+  // the preview as its own entry, which clears the redo branch, so the redo
+  // itself is a no-op and the previewed doc stays reachable by undo.
+  it('redo mid-preview commits the preview and clears the redo branch', () => {
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.handleUndo() })
+    expect(labelOf()).toBe('first')
+    expect(result.current.redoStack).toHaveLength(1)
+
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
+
+    act(() => { result.current.handleRedo() })
+
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
+    expect(result.current.undoStack.map(e => e.mutation.type)).toEqual(['preview_commit'])
+    expect(result.current.redoStack).toHaveLength(0)
+
+    act(() => { result.current.handleUndo() })
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
+  })
+
   it('committing an edit session orphaned by an undo pushes nothing', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
@@ -362,9 +422,10 @@ describe('usePartDoc undo/redo integration', () => {
     expect(labelOf()).toBe('a')
   })
 
-  // Redo shares applyUndoRedo with undo, so this exists to keep the teardown out
-  // of an undo-only branch if that function is ever split.
-  it('committing an edit session orphaned by a redo pushes nothing', () => {
+  // Redo now commits the open session itself, so the editor's later OK has
+  // nothing left to commit: the redo already banked the step and consumed the
+  // redo branch, and the second commit must be inert.
+  it('committing an edit session the redo already committed pushes nothing', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
@@ -376,14 +437,15 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
 
     act(() => { result.current.handleRedo() })
-    expect(labelOf()).toBe('a')
+    expect(labelOf()).toBe('in-edit')
 
     act(() => { result.current.commitEditSession() })
 
-    // Only the counterpart entry the redo itself left behind.
+    // The session was already committed by the redo; the second commit is a
+    // no-op and neither stack nor doc moves.
     expect(result.current.undoStack).toHaveLength(1)
     expect(result.current.redoStack).toHaveLength(0)
-    expect(labelOf()).toBe('a')
+    expect(labelOf()).toBe('in-edit')
   })
 
   it('cancelling an edit session orphaned by an undo does not revert the undo', () => {

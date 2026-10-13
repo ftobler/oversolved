@@ -688,22 +688,25 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     clearUndoStackSnapshot()
   }, [suppressUndoRef, pushUndo, clearUndoStackSnapshot, commitPreview, sessionWouldPush])
 
-  // An undo mid-edit first commits the open work as its own entry, so the undo
-  // reverts exactly that work. Without it the teardown dropped the session or
-  // preview and the restore of the previous entry carried its edits away with
-  // that unrelated step. Only work that would push is committed: closing a
-  // session that changed nothing would leave the editor open with its session
-  // gone, and an undo on the then-still-empty stack would never tear it down.
-  // Redo keeps the plain teardown: its counterpart entry already holds the
-  // departing doc, so the session's edits stay reachable by the next undo.
-  const commitOpenWorkBeforeUndo = useCallback(() => {
+  // An undo or redo mid-edit first commits the open work as its own entry, so
+  // the history move reverts (undo) or reaches (redo) exactly that work. Without
+  // it the teardown dropped the session or preview and the move carried those
+  // edits along with an unrelated step. Only work that would push is committed:
+  // closing a session that changed nothing would leave the editor open with its
+  // session gone, and a move on the then-still-empty stack would never tear it
+  // down. Both directions commit, matching the assembly engine: because the
+  // commit's pushUndo clears the redo branch, a redo that committed open work
+  // becomes a no-op (the commit supersedes the redo), the intended and
+  // assembly-consistent result.
+  const commitOpenWorkBeforeHistory = useCallback(() => {
     // A brep pick's projection is applied without an entry until its dimension
     // commits. Outside a suppressed session (whose aggregate already covers it)
     // it is open work like any other: give it the entry the commit would have,
-    // keyed to the pre-pick doc, so the undo reverts exactly the projection.
+    // keyed to the pre-pick doc, so the history move reverts exactly the
+    // projection.
     const pendingBrep = brepWithholdRef.current.doc
     if (pendingBrep && !editSessionSuppressedRef.current && docRef.current) {
-      pushUndo({ type: 'preview_commit', description: 'brep projection resolved at undo' }, pendingBrep)
+      pushUndo({ type: 'preview_commit', description: 'brep projection resolved before history move' }, pendingBrep)
       brepWithholdRef.current = { armed: false, doc: null }
     }
     if (editSessionSuppressedRef.current) {
@@ -711,14 +714,19 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       // aggregate, so the pair commits as one call.
       if (sessionWouldPush() || previewWouldPush()) commitEditSession()
     } else if (previewWouldPush()) {
-      commitPreview({ type: 'preview_commit', description: 'preview resolved at undo' })
+      commitPreview({ type: 'preview_commit', description: 'preview resolved before history move' })
     }
   }, [sessionWouldPush, previewWouldPush, commitEditSession, commitPreview, pushUndo, docRef])
 
   const handleUndoWithOpenWork = useCallback(() => {
-    commitOpenWorkBeforeUndo()
+    commitOpenWorkBeforeHistory()
     handleUndo()
-  }, [commitOpenWorkBeforeUndo, handleUndo])
+  }, [commitOpenWorkBeforeHistory, handleUndo])
+
+  const handleRedoWithOpenWork = useCallback(() => {
+    commitOpenWorkBeforeHistory()
+    handleRedo()
+  }, [commitOpenWorkBeforeHistory, handleRedo])
 
   const cancelEditSession = useCallback(() => {
     const snapshot = editSnapshotRef.current
@@ -914,7 +922,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     beginBrepProjection,
     cancelBrepProjection,
     handleUndo: handleUndoWithOpenWork,
-    handleRedo,
+    handleRedo: handleRedoWithOpenWork,
     saveDoc,
     renameDoc,
     cloneDoc,
