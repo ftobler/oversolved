@@ -64,6 +64,7 @@ just build          # npm run build
 - Try to keep files shorter than 1k lines. This is not a hard limit.
 - icons are defined in the `oversolved/icons/` package (family modules such as `toolbar.py`); `icons.py` is only the launcher.
 - CAD solver/core is 'blind and deaf'. It communicates via structured-clone postMessage from Web Workers to the main thread.
+- Every change to the document is a command applied through its editor's doc hook (`usePartDoc`, `useAssemblyUndoRedo`), the only path undo/redo records; state not stored in the document (selection, hover, active tool, keybindings) is exempt.
 - Commit style, start the comment as a normal sentence. E.g don't do `fix(solver): split the...` but do: `Fix split in solver...`. Keep it short: a few lines, not a large paragraph.
 
 ## Feature planning / implementing
