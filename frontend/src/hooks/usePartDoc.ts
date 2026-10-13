@@ -283,6 +283,12 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   // entry.
   const previewTouchedRef = useRef(false)
   const editSnapshotRef = useRef<PartDoc | null>(null)
+  // The unsaved-changes flag as it stood when the session or preview opened.
+  // A cancel rewinds the doc to that moment, so it puts the flag back too:
+  // otherwise cancelling an edit on a clean doc left it warning about changes
+  // that no longer exist.
+  const editDirtyRef = useRef(false)
+  const previewDirtyRef = useRef(false)
   // Whether the suppressed (feature) edit session swallowed a part_style
   // mutation. The session diff excludes part_style (the solver fabricates
   // entries there), so a genuine user color/visibility change during the
@@ -333,6 +339,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     }
     previewOriginalDoc.current = cloneDocForUndo(originalDoc)
     previewTouchedRef.current = false
+    previewDirtyRef.current = useUnsavedChangesStore.getState().dirty
     suppressUndoRef.current = true
   }, [suppressUndoRef])
 
@@ -388,6 +395,8 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     if (!editSessionSuppressedRef.current) {
       suppressUndoRef.current = false
     }
+    // The caller rewinds the doc to `original`; the flag goes back with it.
+    useUnsavedChangesStore.getState().restoreDirtyAfterRewind(previewDirtyRef.current)
     return original
   }, [suppressUndoRef, editSessionSuppressedRef])
 
@@ -607,6 +616,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       commitPreview({ type: 'preview_commit', description: 'preview resolved at session start' })
     }
     editSnapshotRef.current = cloneDocForUndo(docRef.current)
+    editDirtyRef.current = useUnsavedChangesStore.getState().dirty
     // Which kind of session this is decides what commitEditSession does: a
     // suppressed (feature) session folds into one aggregate entry, a sketch
     // session keeps its per-action entries and pushes nothing extra.
@@ -723,6 +733,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       docRef.current = snapshot
       setDoc(snapshot)
       restoreUndoStackSnapshot()
+      useUnsavedChangesStore.getState().restoreDirtyAfterRewind(editDirtyRef.current)
     }
     // Rewinding the doc is this function's own doing, so it owns the re-solve
     // too. Leaving it to the caller's exit cleanup meant any other route into

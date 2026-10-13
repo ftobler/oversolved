@@ -27,6 +27,9 @@ interface UnsavedChangesState {
   // cleared it on `true` would mark that edit saved.
   saveHandler: (() => boolean | Promise<boolean>) | null
   setDirty: (dirty: boolean) => void
+  // A cancel rewound the doc to the state pinned when its session opened; puts
+  // back the flag pinned with it.
+  restoreDirtyAfterRewind: (pinned: boolean) => void
   setWorkspace: (workspace: string | null) => void
   setSaveHandler: (handler: (() => boolean | Promise<boolean>) | null) => void
   requestConfirm: (onDiscard: () => void) => void
@@ -45,6 +48,9 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => 
   pendingCallback: null,
   saveHandler: null,
   setDirty: (dirty) => set({ dirty }),
+  // A clean flag now means a save landed mid-session: it stored the doc being
+  // thrown away, so the rewound doc differs from the saved one and stays dirty.
+  restoreDirtyAfterRewind: (pinned) => set(prev => ({ dirty: prev.dirty ? pinned : true })),
   setWorkspace: (workspace) => {
     set({ workspace, dirty: false })
     if (workspace) void get().refreshWorkspaceDirty()
