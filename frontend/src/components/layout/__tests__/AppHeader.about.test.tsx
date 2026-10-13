@@ -20,8 +20,8 @@ describe('AppHeader burger on the workspace overview', () => {
   afterEach(() => { act(() => { useAboutDialogStore.getState().closeAbout() }) })
 
   it('opens the about notice instead of navigating nowhere', () => {
-    wrap('/workspaces')
-    act(() => { fireEvent.click(screen.getByTitle('About Oversolved')) })
+    const { container } = wrap('/workspaces')
+    act(() => { fireEvent.click(container.querySelector('.burger')!) })
     expect(useAboutDialogStore.getState().open).toBe(true)
   })
 
@@ -30,6 +30,12 @@ describe('AppHeader burger on the workspace overview', () => {
     expect(screen.getByTitle('Workspaces')).toBeTruthy()
     act(() => { fireEvent.click(screen.getByTitle('Workspaces')) })
     expect(useAboutDialogStore.getState().open).toBe(false)
+  })
+
+  it('opens the about notice from the octocat button on any page', () => {
+    wrap('/workspaces/ws/entries/abc')
+    act(() => { fireEvent.click(screen.getByRole('button', { name: 'About Oversolved' })) })
+    expect(useAboutDialogStore.getState().open).toBe(true)
   })
 
   it('carries the copyright note on the logo', () => {

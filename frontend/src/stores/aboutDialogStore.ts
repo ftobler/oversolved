@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 
 // The welcome/about dialog opened on demand. It normally greets a visitor off
-// the disclaimer cookie (DisclaimerDialog), but the documents-overview burger
-// -- which has nowhere else to go, being already on the overview -- reopens the
-// same notice as an "about" box. Kept in a store because the dialog is mounted
+// the disclaimer cookie (DisclaimerDialog), but the header's octocat button on
+// every page, and the documents-overview burger -- which has nowhere else to
+// go, being already on the overview -- reopen the same notice as an "about" box. Kept in a store because the dialog is mounted
 // once at the app root while the button lives in the shared header.
 interface AboutDialogState {
   open: boolean
