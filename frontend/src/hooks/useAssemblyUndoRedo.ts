@@ -156,17 +156,20 @@ export function useAssemblyUndoRedo(
   }, [setDoc, docRef, pushUndo, commitSession])
 
   const applyUndoRedo = useCallback((direction: 'undo' | 'redo') => {
-    const store = useAssemblyStore.getState()
-    const from = direction === 'undo' ? store.undoStack : store.redoStack
-    // An undo mid-edit abandons the uncommitted session: its coalesced doc
-    // describes a state the restore is about to replace. The drop runs even for
-    // an empty-stack undo, or a later commit would pin the coalesced edits to a
-    // pre-doc that no longer corresponds to the doc they were made on.
-    pendingSession.current = null
+    // An undo mid-edit first closes the open session as its own entry, so the
+    // undo reverts exactly the editor's edits. Dropping the pin instead left
+    // those edits in the doc with no entry of their own: on an empty stack they
+    // could never be undone, and otherwise they rode along with the previous
+    // step's restore. A redo mid-edit commits too, and the fresh entry clears
+    // the redo branch the way any edit does.
+    commitSession()
     // Undo/redo always exits the open editor, even on an empty stack (where the
     // restore below never runs and would not otherwise reset the subject). The
     // rest of the transient state is reset by resetTransientAssemblyState later.
     useAssemblyStore.getState().closeEditor()
+    // Read after the commit, which may have pushed onto the undo stack.
+    const store = useAssemblyStore.getState()
+    const from = direction === 'undo' ? store.undoStack : store.redoStack
     if (from.length === 0) return
     // A non-empty stack with no current doc means the history describes a doc
     // that does not exist. Popping would orphan the counterpart entry and
@@ -209,7 +212,7 @@ export function useAssemblyUndoRedo(
     // The store still holds the post-drag solved scene, so the viewport would
     // render the dragged pose until this solve re-bakes the restored doc.
     requestSolve()
-  }, [docRef, setDoc, requestSolve])
+  }, [docRef, setDoc, requestSolve, commitSession])
 
   const handleUndo = useCallback(() => { applyUndoRedo('undo') }, [applyUndoRedo])
 

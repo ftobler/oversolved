@@ -340,71 +340,102 @@ describe('useAssemblyUndoRedo', () => {
     expect(after.hoveredEntity).toBeNull()
   })
 
-  it('undo discards a pending coalesced session so a later commit pushes nothing stale', () => {
-    const docA = docWith(['a'])
-    const docRef = { current: docWith(['a', 'b']) }
-    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
-      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
-    ))
-
-    act(() => { result.current.pushUndo(docA, 'Add part') })
-    act(() => {
-      // A mate editor is open and its first keystroke pinned a session entry.
-      result.current.recordSessionEdit(docRef.current!, 'Edit mate')
-    })
-    act(() => { result.current.handleUndo() })
-
-    expect(result.current.undoStack).toHaveLength(0)
-
-    // The stale session must not resurrect itself on a later OK click.
-    act(() => { result.current.commitSession() })
-    expect(result.current.undoStack).toHaveLength(0)
-  })
-
-  // Redo shares the session-drop with undo (applyUndoRedo's first line), but
-  // only the undo leg was pinned: a redo mid-edit must abandon the coalesced
-  // session the same way, or the commit of its stale pre-doc lands on the
-  // doc the redo just restored and duplicates history.
-  it('redo discards a pending coalesced session so a later commit pushes nothing stale', () => {
+  // An undo mid-edit commits the open session as its own entry and then
+  // undoes exactly that: the editor's edits are reverted, the step before them
+  // stays applied, and the counterpart lands on redo.
+  it('undo mid-session reverts only the session edits', () => {
     const docA = docWith(['a'])
     const docB = docWith(['a', 'b'])
-    const docRef = { current: docB }
+    const docC = docWith(['a', 'b', 'c'])
+    const docRef = { current: docB as AssemblyDoc | null }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => { result.current.pushUndo(docA, 'Add part') })
+    act(() => { useAssemblyStore.getState().openInstanceEditor('a') })
+    act(() => { result.current.mutate('Set position', () => docC) })
+    expect(result.current.undoStack).toHaveLength(1)  // folded, not pushed
+
+    act(() => { result.current.handleUndo() })
+
+    expect(docRef.current).toEqual(docB)
+    expect(result.current.undoStack.map(e => e.label)).toEqual(['Add part'])
+    expect(result.current.redoStack.map(e => e.label)).toEqual(['Set position'])
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+
+    // The session is closed: a later OK click pushes nothing more.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack).toHaveLength(1)
+  })
+
+  // The bug this guards: an empty-stack undo used to drop the pin without
+  // rewinding, so the session's edits stayed in the doc with no entry at all.
+  it('undo mid-session on an empty stack still reverts the session edits', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docRef = { current: docA as AssemblyDoc | null }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => { useAssemblyStore.getState().openInstanceEditor('a') })
+    act(() => { result.current.mutate('Set position', () => docB) })
+    expect(result.current.undoStack).toHaveLength(0)
+
+    act(() => { result.current.handleUndo() })
+
+    expect(docRef.current).toEqual(docA)
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(result.current.redoStack.map(e => e.label)).toEqual(['Set position'])
+    act(() => { result.current.handleRedo() })
+    expect(docRef.current).toEqual(docB)
+  })
+
+  // A redo mid-edit commits the session first; that fresh entry invalidates the
+  // redo branch like any edit, so the redo is then a no-op and the edits stay.
+  it('redo mid-session commits the session and clears the redo branch', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docC = docWith(['a', 'c'])
+    const docRef = { current: docB as AssemblyDoc | null }
     const { result } = renderHookStrict(() => useAssemblyUndoRedo(
       docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
     ))
 
     act(() => { result.current.pushUndo(docA, 'Add part') })
     act(() => { result.current.handleUndo() })
+    expect(docRef.current).toEqual(docA)
     expect(result.current.redoStack).toHaveLength(1)
 
-    // A mate editor is open and its first keystroke pinned a session entry.
-    act(() => { result.current.recordSessionEdit(docRef.current!, 'Edit mate') })
+    act(() => { useAssemblyStore.getState().openInstanceEditor('a') })
+    act(() => { result.current.mutate('Set position', () => docC) })
     act(() => { result.current.handleRedo() })
-    expect(result.current.undoStack).toHaveLength(1)
-    expect(result.current.redoStack).toHaveLength(0)
 
-    // The stale session must not resurrect itself on a later OK click.
-    act(() => { result.current.commitSession() })
-    expect(result.current.undoStack).toHaveLength(1)
+    expect(docRef.current).toEqual(docC)
+    expect(result.current.undoStack.map(e => e.label)).toEqual(['Set position'])
     expect(result.current.redoStack).toHaveLength(0)
+    act(() => { result.current.handleUndo() })
+    expect(docRef.current).toEqual(docA)
   })
 
-  it('undo on an empty stack still drops a pinned coalescing session', () => {
-    const docRef = { current: docWith(['a']) }
+  // A session that pinned but left the doc as it found it earns no entry, so
+  // the undo goes straight to the previous step.
+  it('undo mid-session with no net change undoes the previous step', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docRef = { current: docB as AssemblyDoc | null }
     const { result } = renderHookStrict(() => useAssemblyUndoRedo(
       docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
     ))
 
-    // An editor on a fresh document pins a session on its first edit even
-    // though the undo stack is empty.
+    act(() => { result.current.pushUndo(docA, 'Add part') })
     act(() => { result.current.recordSessionEdit(docRef.current!, 'Edit mate') })
     act(() => { result.current.handleUndo() })
 
-    // The empty-stack undo must not leave the session pinned: a later OK would
-    // otherwise push a stale pre-session doc with a label that matches nothing.
-    act(() => { result.current.commitSession() })
+    expect(docRef.current).toEqual(docA)
     expect(result.current.undoStack).toHaveLength(0)
-    expect(result.current.redoStack).toHaveLength(0)
+    expect(result.current.redoStack.map(e => e.label)).toEqual(['Add part'])
   })
 
   // "Undo always exits an open editor" must hold even when the stack is empty:
