@@ -512,6 +512,27 @@ describe('useAssemblyUndoRedo', () => {
     expect(result.current.redoStack).toHaveLength(0)
   })
 
+  // The save stored the session's edits; the rewind throws them away, so the
+  // live doc no longer matches what is saved even though the pin was clean.
+  it('cancelSession after a mid-session save leaves the rewound doc dirty', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docRef = { current: docA }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    act(() => { result.current.recordSessionEdit(docA, 'Set position') })
+    docRef.current = docB
+    useUnsavedChangesStore.getState().setDirty(false)  // the save landing
+
+    act(() => { result.current.cancelSession() })
+
+    expect(docRef.current).toBe(docA)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
   it('cancelSession with no pinned session rewinds nothing', () => {
     const docB = docWith(['a', 'b'])
     const docRef = { current: docB }

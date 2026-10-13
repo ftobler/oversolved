@@ -112,7 +112,9 @@ export function useAssemblyUndoRedo(
     if (!docRef.current) return
     docRef.current = pending.doc
     setDoc(pending.doc)
-    useUnsavedChangesStore.getState().setDirty(pending.dirty)
+    // Not a plain setDirty: a save that landed mid-session stored the edits
+    // being thrown away, so the rewound doc must stay dirty.
+    useUnsavedChangesStore.getState().restoreDirtyAfterRewind(pending.dirty)
   }, [docRef, setDoc])
 
   // Apply a pure AssemblyDoc mutation and flag the doc dirty. The pre-mutation
