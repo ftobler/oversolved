@@ -326,6 +326,27 @@ describe('usePartDoc undo/redo integration', () => {
     expect(labelOf()).toBe('first')
   })
 
+  // Pins that the open-work commit inside a redo is the whole story: the redo
+  // branch is consumed, the doc stays exactly the post-edit doc (no redo entry
+  // is applied on top of it), and nothing is lost to the commit.
+  it('redo with an open session leaves the doc at the post-edit state and the redo branch empty', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.handleUndo() })
+    expect(result.current.redoStack).toHaveLength(1)
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('in-edit')) })
+    const postEdit = structuredClone(docRef.current)
+
+    act(() => { result.current.handleRedo() })
+
+    expect(docRef.current).toEqual(postEdit)
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
   it('a mutation after undoing mid-preview is still one undo step', () => {
     docRef.current = {
       version: 1,
