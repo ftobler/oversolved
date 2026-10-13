@@ -4,6 +4,7 @@
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
+import { modalOwnsEscape } from '@/utils/core/modalEscape'
 
 type CommandHandler = (payload?: unknown) => void
 
@@ -157,6 +158,10 @@ export function isEditableTarget(e: KeyboardEvent): boolean {
  */
 export function dispatchKey(e: KeyboardEvent): boolean {
   if (isEditableTarget(e)) return false
+  // A modal owns the keyboard while it is on screen: focus often sits on a
+  // non-input control (a dialog button), so document-level commands would
+  // otherwise fire behind it. Stand down for every key, not just Escape.
+  if (modalOwnsEscape()) return false
   const key = buildKeyString(e)
   const inAssembly = useEditorModeStore.getState().activeEditor === 'assembly'
   const inSketchEdit = !!useSketchEditorStore.getState().activeFeatureId

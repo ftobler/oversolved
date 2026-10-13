@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import {
   KEYMAP,
   FEATURE_KEYMAP,
@@ -17,9 +17,14 @@ import { ASSEMBLY_COMMAND_NAMES } from '@/pages/assemblyCommandEntries'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { initializeTools } from '@/tools'
+import { acquireModalEscape, resetModalEscape } from '@/utils/core/modalEscape'
 
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })
+
+// A leaked modal claim would silently disable the dispatcher for every later
+// test, so drop any outstanding claim after each test.
+afterEach(() => { resetModalEscape() })
 
 // Helper: build a minimal fake KeyboardEvent
 function fakeKey(
@@ -290,6 +295,36 @@ describe('dispatchKey', () => {
     const e = fakeKey('z', { ctrlKey: true }, { tagName: 'DIV' })
     expect(dispatchKey(e)).toBe(true)
     expect(fn).toHaveBeenCalledOnce()
+  })
+
+  it('stands down for ctrl+z on a plain DIV while a modal owns the keyboard', () => {
+    const fn = vi.fn()
+    registerCommand('undo', fn)
+    acquireModalEscape()
+    const e = fakeKey('z', { ctrlKey: true }, { tagName: 'DIV' })
+    expect(dispatchKey(e)).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
+    expect(e.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('dispatches ctrl+z again once the modal claim is released', () => {
+    const fn = vi.fn()
+    registerCommand('undo', fn)
+    const release = acquireModalEscape()
+    expect(dispatchKey(fakeKey('z', { ctrlKey: true }, { tagName: 'DIV' }))).toBe(false)
+    release()
+    const e = fakeKey('z', { ctrlKey: true }, { tagName: 'DIV' })
+    expect(dispatchKey(e)).toBe(true)
+    expect(fn).toHaveBeenCalledOnce()
+  })
+
+  it('stands down for Delete on a plain DIV while a modal owns the keyboard', () => {
+    const fn = vi.fn()
+    registerCommand('delete_selected', fn)
+    acquireModalEscape()
+    const e = fakeKey('Delete', {}, { tagName: 'DIV' })
+    expect(dispatchKey(e)).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
   })
 
   it('does not dispatch when a keydown is composing on a DIV', () => {
