@@ -8,6 +8,16 @@
  * all commands are re-registered with the new handlers.
  *
  * Violating the length-stability contract logs a console.error in development.
+ * That check runs in an effect, not in the render body. Comparing the length
+ * means storing the previous one, and a ref write during render is impure: a
+ * render React never commits (a suspended or abandoned concurrent render, a
+ * StrictMode double-invoke that is later thrown away) would still advance the
+ * stored length, so the next committed render would compare against a length
+ * that was never real and report a change that never happened. From an effect
+ * the stored length is always the last committed one. StrictMode's initial
+ * mount/unmount/remount re-stores the same length instead of tripping over
+ * itself, and the guard is declared ahead of the registration effect so the
+ * warning still precedes the re-registration it is warning about.
  *
  * Dependency array: we spread the individual handler functions so React only
  * re-runs the effect when a handler identity changes (i.e. when the caller
@@ -32,16 +42,21 @@ export interface CommandEntry {
 
 export function useCommandRegistration(commands: CommandEntry[]): void {
   const prevLengthRef = useRef<number | null>(null)
-  if (import.meta.env.DEV) {
-    if (prevLengthRef.current !== null && prevLengthRef.current !== commands.length) {
-      console.error(
-        `useCommandRegistration: commands.length changed from ${prevLengthRef.current} ` +
-        `to ${commands.length}. The commands array must have a stable length. ` +
-        `Wrap your commands array in useMemo.`
-      )
+  // No dep array on purpose: the guard has to see every commit, not only the
+  // commits the registration effect cares about. `import.meta.env.DEV` is a
+  // build-time constant, so the body is dropped from a production bundle.
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      if (prevLengthRef.current !== null && prevLengthRef.current !== commands.length) {
+        console.error(
+          `useCommandRegistration: commands.length changed from ${prevLengthRef.current} ` +
+          `to ${commands.length}. The commands array must have a stable length. ` +
+          `Wrap your commands array in useMemo.`
+        )
+      }
+      prevLengthRef.current = commands.length
     }
-    prevLengthRef.current = commands.length
-  }
+  })
   useEffect(() => {
     const unregisters = commands.map(({ name, fn }) => registerCommand(name, fn))
     window.addEventListener('keydown', dispatchKey)
