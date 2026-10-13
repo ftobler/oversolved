@@ -28,9 +28,11 @@ vi.mock('@/hooks/useSolver', async () => {
 // move proceeds and tears down on its normal path, exactly once. The flag must
 // not add a second teardown there.
 // Commit, redo (row 7): the commit's push cleared the redo branch the move is
-// about to read, so the move cannot happen and the engine's guard stops it
-// before its own teardown. The editor that commit consumed still has to come
-// down, which is the whole reason the flag exists.
+// about to read, so the move cannot happen and the engine's guard stops it.
+// That is the ONE row where the guard stopping the move is not the end of it,
+// because the move is a no-op because of work the caller just resolved rather
+// than because the user pressed a dead key. The flag is how the engine learns
+// that, and it is the whole reason the flag exists.
 // Nothing pushed, redo (row 8): the flag stays false, so a session that changed
 // nothing is not closed by a dead keystroke.
 //

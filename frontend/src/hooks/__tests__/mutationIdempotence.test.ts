@@ -1,21 +1,29 @@
 // The total classification in mutationIdempotence: which mutations can write a
 // value the doc already holds, so handleMutation pays for the deep compare on
 // the true entries only and never swallows a real edit. The
-// Record<Mutation['type'], boolean> annotation already fails the build on a
+// `satisfies Record<Mutation['type'], boolean>` already fails the build on a
 // missing or extra key; these tests pin the same fact at runtime, so a weakened
 // type (an index signature, a cast to Partial) cannot slip the hole back in.
 //
 // The reference for "every Mutation variant" is the dispatch table, whose own
 // exhaustive test pins its keys against a hand-written copy of the union. This
-// file does not repeat that list: a variant added to cad.ts should have to be
-// classified here and nowhere else.
+// file does not repeat that list, but note the cost: adding a variant to cad.ts
+// takes THREE edits, not one. Classify it here, add a handler in
+// mutationDispatch.ts, and add the name to the list
+// mutationDispatch.exhaustive.test.ts holds. Two of the three are the compiler's
+// problem; that list is the one that is not.
+//
+// The GUARDED array below is the third duplication this file could have avoided,
+// kept on purpose. It is the ONLY record of which names the guard covered before
+// this table existed, so a diff that flips one to false is visibly a change to
+// undo behaviour rather than a reorganisation of the table.
 import { describe, it, expect } from 'vitest'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 
-// The guarded set, exactly as the hand-maintained Set held it. Every name here
-// has been true in every commit since the guard was introduced, so a diff that
-// flips one to false is a change to undo behaviour and has to be argued for.
+// Every name here has been guarded in every commit since the guard was
+// introduced, so flipping one to false changes undo behaviour and has to be
+// argued for, not just done.
 const GUARDED = [
   'rename_feature',
   'rename_part',

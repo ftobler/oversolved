@@ -2,9 +2,11 @@ import type { Mutation } from '@/types/cad'
 
 // Which mutations can write a value the document already holds, so a dispatch of
 // one can leave it byte-identical. usePartDoc's handleMutation pays for the
-// O(touched) deep compare on the true entries only: every other mutation adds,
-// moves or removes content, so comparing it would be O(doc) waste on exactly the
-// sketch drag path the guard exists to keep cheap.
+// O(touched) deep compare on the true entries only: the rest add, move or remove
+// content that was not there, so comparing them would be O(doc) waste on exactly
+// the sketch drag path the guard exists to keep cheap. The false entries are not
+// all "a real edit", though; the families called out below are ones that CAN
+// leave the doc identical and still must not be guarded, and each says why.
 //
 // Total on purpose. The key type is Mutation['type'], so adding a variant to the
 // union does not compile until someone classifies it here. That decision, guard
@@ -18,11 +20,13 @@ import type { Mutation } from '@/types/cad'
 // material entry), or removes by index or key that may already be gone. false
 // for everything else, including the families below that can no-op but must not
 // be guarded.
-// `as const` is load-bearing, not decoration. `satisfies` enforces that every
-// variant is classified, but the annotation it satisfies would also widen each
-// entry to `boolean`, and the SLICE_READABLE_ASSERTION at the bottom reads the
-// per-key LITERAL to work out which names are guarded. With the literals kept,
-// that assertion has something real to check.
+//
+// `satisfies`, not an annotation. An annotation (`: Record<Mutation['type'],
+// boolean> =`) would enforce the same totality and then widen every entry to
+// `boolean`, which silently collapses SLICE_READABLE_ASSERTION below to a check
+// over `never` and voids it. `satisfies` checks the shape without touching the
+// inferred type, so each entry keeps its `true`/`false` literal and the
+// assertion has something real to read.
 export const IDEMPOTENT_MUTATION = {
   // Labels and display flags: the doc may already carry the new value.
   rename_feature: true,
@@ -162,7 +166,7 @@ export const IDEMPOTENT_MUTATION = {
   // point; there is no doc change to compare.
   edit_session: false,
   preview_commit: false,
-} as const satisfies Record<Mutation['type'], boolean>
+} satisfies Record<Mutation['type'], boolean>
 
 // The payload shapes usePartDoc's noOpSliceFor can read a mutation's target
 // from, which is exactly the set of variants the guard is able to SEE a change
@@ -170,11 +174,15 @@ export const IDEMPOTENT_MUTATION = {
 // one holding only doc.rollback, so it compares equal to itself and a real edit
 // is swallowed: no undo entry, no dirty flag, no re-solve. Classifying such a
 // variant as true in the table above has to be a compile error, and the
-// assertion at the bottom of this file is what makes it one. Read together with
-// the table, these two declarations are the guard's whole safety argument:
-// classifying a variant is a decision, and this is the set of answers the guard
-// can actually honour.
-export type SliceReadableMutation =
+// assertion at the bottom of this file is what makes it one.
+//
+// Read together, these two declarations are the guard's safety argument for the
+// CLASSIFICATION: a guarded name must be one the slice can see a change of.
+// They say nothing about whether the slice handles a readable shape correctly,
+// or whether a handler stays inside the slice it is read through. Those are
+// per-shape facts, and usePartDoc.idempotentGuard.test.ts is what pins them, by
+// breaking each slice branch and watching real edits stop being recorded.
+type SliceReadableMutation =
   // read as the single feature it names
   | { featureId: string }
   // read as the single part_style entry it names
@@ -185,7 +193,7 @@ export type SliceReadableMutation =
   // every slice carries
   | { type: 'set_rollback' }
 
-export type SliceReadableMutationType = Extract<Mutation, SliceReadableMutation>['type']
+type SliceReadableMutationType = Extract<Mutation, SliceReadableMutation>['type']
 
 // The names the table above classifies as idempotent, recovered from its VALUES
 // rather than restated, so it cannot fall out of step with the table.
@@ -193,11 +201,20 @@ type GuardedMutationType = {
   [K in Mutation['type']]: (typeof IDEMPOTENT_MUTATION)[K] extends true ? K : never
 }[Mutation['type']]
 
-// Assigning `true` fails to compile if a guarded name is not one the slice can
-// read, which is the exact moment that name would start hiding its own change
-// from the guard it is guarding. Plain union assignability is the check: every
-// member of GuardedMutationType must be a member of SliceReadableMutationType.
-const SLICE_READABLE_ASSERTION: GuardedMutationType extends SliceReadableMutationType ? true : false = true
-// `void` reads the binding so noUnusedLocals accepts a check that exists only
-// to be typed, matching the local precedent in yamlMutations/helpers.ts.
+// The check, stated once: every guarded name must be a name the slice can read.
+// Recovered as the offending NAMES rather than a boolean, because that is what
+// the failure should read like: classifying a variant wrong is the whole error,
+// so the error says which variant and which key it is missing.
+type UnreadableGuardedTypes = {
+  [K in GuardedMutationType]: K extends SliceReadableMutationType ? never : K
+}[GuardedMutationType]
+
+// Three arms, each with a job. The first is load-bearing: `never` is assignable
+// to everything, so a table with nothing guarded at all would otherwise sail
+// through the other two by making them vacuously true, and the one edit that
+// disables the guard outright would be the one edit the assertion could not see.
+const SLICE_READABLE_ASSERTION:
+  [GuardedMutationType] extends [never] ? { guardedNothingAtAll: true }
+    : UnreadableGuardedTypes extends never ? true
+      : { unreadableByNoOpSliceFor: UnreadableGuardedTypes } = true
 void SLICE_READABLE_ASSERTION

@@ -411,9 +411,10 @@ describe('usePartDoc undo brep gesture withhold', () => {
   // A redo with a live pending projection is the same shape as a mid-session
   // redo: the commit banks the projection as its own entry (keyed to the
   // pre-pick doc), whose push clears the redo branch, so the redo itself cannot
-  // move and applyUndoRedo returns before its own teardown. The page teardown
-  // must still run, or the pending pick/scratch state survives a history move
-  // that no longer has any use for it.
+  // move. The engine is told the commit happened (openWorkCommitted), so it runs
+  // the teardown itself instead of leaving the move to the caller, or the
+  // pending pick/scratch state survives a history move that no longer has any
+  // use for it.
   it('redo mid-gesture commits the pending projection and tears the editor down', () => {
     docRef.current = makeSketchDoc()
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
