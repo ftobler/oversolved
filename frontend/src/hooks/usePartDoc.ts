@@ -198,6 +198,17 @@ function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
 
 type ReSolveFn = (d: PartDoc, opts?: { validate?: boolean; bypassCache?: boolean; dragAnchor?: { featureId: string; entityId: string }; _suppressFirstSolve?: boolean; _restoreSolveResults?: Record<string, SketchData> }) => Promise<void> | void
 
+type SolveOptions = NonNullable<Parameters<ReSolveFn>[1]>
+
+// The result of running a mutation set on a clone: the handlers' doc, the solve
+// results the prune leaves behind, and the snapshots a whole-feature removal
+// keeps for a failing re-solve.
+interface AppliedMutations {
+  next: PartDoc
+  restorable: Record<string, SketchData> | null
+  nextSolveResults: Record<string, SketchData>
+}
+
 export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFirstSolve, workspace }: { solveOnLoad?: boolean; onFirstSolve?: () => void; workspace?: string } = {}) {
   const reSolveRef = useRef<ReSolveFn | null>(null)
 
@@ -467,21 +478,42 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     && previewOriginalDoc.current !== null,
   [suppressUndoRef])
 
-  const handleMutation = useCallback((m: Mutation) => {
-    setSolveError(null)
-    const current = docRef.current
-    if (!current) return
+  // Arms-and-consumes the brep withhold for a mutation that applies without an
+  // entry. Consuming it on every such path keeps the arm from outliving the
+  // "next mutation" it covers: left armed, it would swallow the next unrelated
+  // mutation as "the projection". `fallback` is the pre-gesture doc, kept only
+  // when no earlier pick in the gesture already captured one.
+  const consumeBrepArm = useCallback((fallback: PartDoc) => {
+    const brep = brepWithholdRef.current
+    if (brep.armed) {
+      brepWithholdRef.current = { armed: false, doc: brep.doc ?? fallback }
+    }
+  }, [])
 
-    // The handler runs on the clone first so the no-op guard below can compare
-    // the result against the pre-mutation doc before anything is committed. The
-    // clone is a plain deep copy; the document holds references, not bytes.
+  // Runs the mutations in order on one clone of `current`. Pure apart from the
+  // DEV handler warning and failLoud, so the callers decide whether the result
+  // is a no-op before anything is applied. The clone is a plain deep copy; the
+  // document holds references, not bytes.
+  const runMutationsOnClone = useCallback((current: PartDoc, ms: Mutation[]): AppliedMutations => {
     const next: PartDoc = cloneDocForUndo(current)
     type AnyHandler = (doc: PartDoc, m: Mutation) => void
-    const handler = (mutationHandlers as Record<string, AnyHandler | undefined>)[m.type]
-    if (import.meta.env.DEV && !handler) {
-      console.error(`[handleMutation] no handler for mutation type: ${m.type}`)
+    let restorable: Record<string, SketchData> | null = null
+    let nextSolveResults = solveResultsRef.current
+    for (const m of ms) {
+      const handler = (mutationHandlers as Record<string, AnyHandler | undefined>)[m.type]
+      if (import.meta.env.DEV && !handler) {
+        console.error(`[handleMutation] no handler for mutation type: ${m.type}`)
+      }
+      handler?.(next, m)
+      // Content-removing edits invalidate the affected features' last solve;
+      // prune it so stale geometry cannot linger while the re-solve is in flight.
+      // Only whole-feature removals carry a restorable snapshot (a partial
+      // delete's snapshot would redraw deleted entities after a failing solve);
+      // partial deletes stay pruned and the doc-driven fallback renders them.
+      const pruned = pruneSolveResults(m, nextSolveResults)
+      nextSolveResults = pruned.next
+      if (pruned.restorable) restorable = { ...(restorable ?? {}), ...pruned.restorable }
     }
-    handler?.(next, m)
 
     // The rollback bar is document content, but only a user-parked position is:
     // during an edit the bar is pinned just after the edited feature, which is
@@ -496,16 +528,98 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       // would silently no-op while still pushing an entry. During an edit the
       // store legitimately diverges (the bar is pinned transiently), so the
       // guard only runs outside one.
-      if (m.type === 'set_rollback' && editorStore.rollbackPosition !== m.position) {
+      const rollback = ms.find(m => m.type === 'set_rollback') as Extract<Mutation, { type: 'set_rollback' }> | undefined
+      if (rollback && editorStore.rollbackPosition !== rollback.position) {
         failLoud('[usePartDoc] set_rollback dispatched with the rollback store not pre-synced')
       }
       applySetRollback(next, editorStore.rollbackPosition)
     }
 
+    return { next, restorable, nextSolveResults }
+  }, [solveResultsRef])
+
+  // The shared tail of both funnels, run once the mutations are known to change
+  // the doc: the dirty flag, the solve-result prune and its stash, then the undo
+  // branch (swallow, preview escape, or push), then the doc swap and re-solve.
+  const landMutations = useCallback((
+    ms: Mutation[],
+    current: PartDoc,
+    applied: AppliedMutations,
+    solveOptions: SolveOptions,
+  ) => {
+    const { next, restorable, nextSolveResults } = applied
+    // Every doc edit funnels through here (direct mutations, drags, and preview
+    // commits all call handleMutation), so this is the one place that flags the
+    // document as having changes not yet saved to its store.
+    useUnsavedChangesStore.getState().setDirty(true)
+    if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
+    // The restorable snapshot is also retained for the undo boundary (the undo
+    // re-solve has no other source for it), limited to body-producing kinds.
+    if (restorable) {
+      for (const featureId of Object.keys(restorable)) {
+        const kind = featureKindOf(current, featureId)
+        if (kind && NO_FALLBACK_BREP_KINDS.has(kind)) {
+          stashPrunedResult(featureId, restorable[featureId])
+        }
+      }
+    }
+
+    // A mutation the color preview cannot produce while a preview is open is an
+    // escape: the popover is non-modal, so a sketch edit mid-preview folds the
+    // pending color into its own entry (commitPreview) and then pushes normally
+    // below, instead of being swallowed and destroyed by a later cancel. A
+    // suppressed feature session keeps its 'all' scope and swallows everything.
+    // A group made entirely of preview-scope mutations is a preview frame and
+    // stays swallowed.
+    const inPreviewScope = ms.every(m => PREVIEW_SCOPE.has(m.type))
+    let escapedPreview = false
+    if (previewOpenOutsideSession() && !inPreviewScope) {
+      const original = previewOriginalDoc.current!
+      commitPreview(previewMutationFor(original, current) ?? ms[0])
+      escapedPreview = true
+    }
+    if (suppressUndoRef.current && !escapedPreview) {
+      // A suppressed session swallows every mutation; a live preview swallows
+      // only the part_style mutations it produces.
+      if (previewOriginalDoc.current !== null && inPreviewScope) {
+        previewTouchedRef.current = true
+      }
+      // A swallowed part_style mutation is a real user change the session diff
+      // cannot see (it strips part_style); remember it so commit pushes an
+      // entry that can revert the color/visibility, not just the feature spec.
+      if (ms.some(m => BODY_STYLE_MUTATION_TYPES.has(m.type))) {
+        sessionStyleTouchedRef.current = true
+      }
+      // A swallow still fulfils the withhold's "next mutation" contract.
+      consumeBrepArm(current)
+    } else {
+      // The first mutation names the entry so the undo tooltip has a label;
+      // redo round-trips it, so only the doc matters, never the list itself.
+      applyWithholdOrPush(ms[0], current)
+    }
+
+    docRef.current = next
+    setDoc(next)
+    reSolve(next, {
+      ...solveOptions,
+      ...(restorable ? { _restoreSolveResults: restorable } : {}),
+    })
+  }, [docRef, setDoc, reSolve, setSolveResults, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush, previewOpenOutsideSession, stashPrunedResult, consumeBrepArm])
+
+  const handleMutation = useCallback((m: Mutation) => {
+    setSolveError(null)
+    const current = docRef.current
+    if (!current) return
+
+    // The no-op guard compares the result against the pre-mutation doc before
+    // anything is committed, so a dead step never reaches the stack.
+    const applied = runMutationsOnClone(current, [m])
+    const next = applied.next
+
     // A value mutation that leaves the doc byte-identical is a dead undo step,
     // and re-solving for it wastes a build: skip the push, the dirty flag and
-    // the solve together. The rollback write above is part of the compare, so
-    // a mirror-visible rollback change still counts as a real edit. The slice
+    // the solve together. The rollback write is part of the compare, so a
+    // mirror-visible rollback change still counts as a real edit. The slice
     // limits the stringify to the touched feature/part_style entry instead of
     // the whole doc, a plain O(touched) optimization for large feature lists.
     if (IDEMPOTENT_MUTATION_TYPES.has(m.type)) {
@@ -517,78 +631,12 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       if (slice !== GUARD_BYPASS
         && JSON.stringify(slice) === JSON.stringify(noOpSliceFor(m, next))) {
         // A no-op is still "the next mutation" as far as the gesture is
-        // concerned: consuming the arm here mirrors the suppression branch
-        // below, because leaving it armed would swallow the next unrelated
-        // mutation as "the projection".
-        const brep = brepWithholdRef.current
-        if (brep.armed) {
-          brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
-        }
+        // concerned, so the arm is consumed here too.
+        consumeBrepArm(current)
         return
       }
     }
 
-    // Every doc edit funnels through here (direct mutations, drags, and preview
-    // commits all call handleMutation), so this is the one place that flags the
-    // document as having changes not yet saved to its store.
-    useUnsavedChangesStore.getState().setDirty(true)
-
-    // Content-removing edits invalidate the affected features' last solve;
-    // prune it so stale geometry cannot linger while the re-solve is in flight.
-    // Only whole-feature removals carry a restorable snapshot (a partial
-    // delete's snapshot would redraw deleted entities after a failing solve);
-    // partial deletes stay pruned and the doc-driven fallback renders them.
-    // The restorable snapshot is also retained for the undo boundary (the undo
-    // re-solve has no other source for it), limited to body-producing kinds.
-    const { next: nextSolveResults, restorable } = pruneSolveResults(m, solveResultsRef.current)
-    if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
-    if (restorable) {
-      for (const featureId of Object.keys(restorable)) {
-        const kind = featureKindOf(current, featureId)
-        if (kind && NO_FALLBACK_BREP_KINDS.has(kind)) {
-          stashPrunedResult(featureId, restorable[featureId])
-        }
-      }
-    }
-
-    const brep = brepWithholdRef.current
-    // A mutation the color preview cannot produce while a preview is open is an
-    // escape: the popover is non-modal, so a sketch edit mid-preview folds the
-    // pending color into its own entry (commitPreview) and then pushes normally
-    // below, instead of being swallowed and destroyed by a later cancel. A
-    // suppressed feature session keeps its 'all' scope and swallows everything.
-    let escapedPreview = false
-    if (previewOpenOutsideSession() && !PREVIEW_SCOPE.has(m.type)) {
-      const original = previewOriginalDoc.current!
-      commitPreview(previewMutationFor(original, current) ?? m)
-      escapedPreview = true
-    }
-    if (suppressUndoRef.current && !escapedPreview) {
-      // A suppressed session swallows every mutation; a live preview swallows
-      // only the part_style mutations it produces.
-      if (previewOriginalDoc.current !== null && PREVIEW_SCOPE.has(m.type)) {
-        previewTouchedRef.current = true
-      }
-      // A swallowed part_style mutation is a real user change the session diff
-      // cannot see (it strips part_style); remember it so commit pushes an
-      // entry that can revert the color/visibility, not just the feature spec.
-      if (BODY_STYLE_MUTATION_TYPES.has(m.type)) {
-        sessionStyleTouchedRef.current = true
-      }
-      // A swallow still fulfils the withhold's "next mutation" contract: the
-      // mutation applies without an entry, so consume the arm exactly like the
-      // projection branch does. Leaving it armed would leak past the
-      // suppression boundary and swallow the next unrelated mutation as
-      // "the projection".
-      if (brep.armed) {
-        brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
-      }
-    } else {
-      applyWithholdOrPush(m, current)
-    }
-
-    docRef.current = next
-    setDoc(next)
     const dragAnchor =
       m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint' || m.type === 'move_entity' || m.type === 'resize_circle'
         ? { featureId: m.featureId, entityId: m.entityId }
@@ -600,13 +648,12 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     // sees -- and bypassing there rebuilt the whole stack per edit, so deleting
     // one part out of a large STEP import cost a full re-import (28.5s vs 0.5s
     // on a measured 200-part file).
-    reSolve(next, {
+    landMutations([m], current, applied, {
       bypassCache: dragAnchor !== undefined,
       dragAnchor,
       _suppressFirstSolve: true,
-      ...(restorable ? { _restoreSolveResults: restorable } : {}),
     })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush, previewOpenOutsideSession, stashPrunedResult])
+  }, [docRef, setSolveError, runMutationsOnClone, consumeBrepArm, landMutations])
 
   const startEditSession = useCallback((suppressUndo: boolean) => {
     if (!docRef.current) return
@@ -802,110 +849,19 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     const current = docRef.current
     if (!current || ms.length === 0) return
 
-    const next: PartDoc = cloneDocForUndo(current)
-    type AnyHandler = (doc: PartDoc, m: Mutation) => void
-    let restorable: Record<string, SketchData> | null = null
-    let nextSolveResults = solveResultsRef.current
-    for (const m of ms) {
-      const handler = (mutationHandlers as Record<string, AnyHandler | undefined>)[m.type]
-      if (import.meta.env.DEV && !handler) {
-        console.error(`[handleMutation] no handler for mutation type: ${m.type}`)
-      }
-      handler?.(next, m)
-      const pruned = pruneSolveResults(m, nextSolveResults)
-      if (pruned.next !== nextSolveResults) {
-        nextSolveResults = pruned.next
-        if (pruned.restorable) {
-          restorable = { ...(restorable ?? {}), ...pruned.restorable }
-          for (const featureId of Object.keys(pruned.restorable)) {
-            const kind = featureKindOf(current, featureId)
-            if (kind && NO_FALLBACK_BREP_KINDS.has(kind)) {
-              stashPrunedResult(featureId, pruned.restorable[featureId])
-            }
-          }
-        }
-      }
-    }
-
-    const editorStore = usePartEditorStore.getState()
-    if (editorStore.editingFeatureId === null) {
-      // Mirror the single-mutation funnel's guard: a set_rollback whose payload
-      // disagrees with the store was dispatched without pre-syncing it, which
-      // would silently no-op while still pushing a dead entry.
-      const rollback = ms.find(m => m.type === 'set_rollback') as Extract<Mutation, { type: 'set_rollback' }> | undefined
-      if (rollback && editorStore.rollbackPosition !== rollback.position) {
-        failLoud('[usePartDoc] set_rollback dispatched with the rollback store not pre-synced')
-      }
-      applySetRollback(next, editorStore.rollbackPosition)
-    }
+    const applied = runMutationsOnClone(current, ms)
 
     // A group whose handlers all no-opped (e.g. a re-drop of a selection) must
-    // not leave a dead entry or waste a solve, mirroring the single-mutation
-    // guard in handleMutation.
-    if (JSON.stringify(current) === JSON.stringify(next)) {
-      // Same withhold contract as handleMutation's no-op guard: the no-op
-      // group fulfils "the next mutation" and consumes the arm, or a later
-      // real mutation is swallowed as "the projection".
-      const brep = brepWithholdRef.current
-      if (brep.armed) {
-        brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
-      }
+    // not leave a dead entry or waste a solve. Unlike the single-mutation path
+    // this compares the whole doc, since a group can mix kinds the slice does
+    // not cover.
+    if (JSON.stringify(current) === JSON.stringify(applied.next)) {
+      consumeBrepArm(current)
       return
     }
 
-    useUnsavedChangesStore.getState().setDirty(true)
-    if (nextSolveResults !== solveResultsRef.current) setSolveResults(nextSolveResults)
-    // A group lands during a preview the same way a single mutation does: a
-    // snapped line drawn mid-preview is not a preview-scope mutation, so it
-    // escapes (commit the pending color first, then push the group normally).
-    // A group made entirely of preview-scope mutations is a preview frame and
-    // stays swallowed. A suppressed session swallows every group as today.
-    const groupInPreviewScope = previewOpenOutsideSession()
-      && ms.every(m => PREVIEW_SCOPE.has(m.type))
-    const brep = brepWithholdRef.current
-    let escapedPreview = false
-    if (previewOpenOutsideSession() && !groupInPreviewScope) {
-      const original = previewOriginalDoc.current!
-      commitPreview(previewMutationFor(original, current) ?? ms[0])
-      escapedPreview = true
-    } else if (groupInPreviewScope) {
-      previewTouchedRef.current = true
-    }
-    if (suppressUndoRef.current && !escapedPreview) {
-      // A group made entirely of preview-scope mutations is a preview frame
-      // and a suppressed session swallows every group. The swallow must also
-      // consume a pending brep withhold (exactly like handleMutation), or the
-      // arm leaks past the suppression boundary and the next unrelated
-      // mutation is swallowed as "the projection".
-      if (brep.armed) {
-        brepWithholdRef.current = { armed: false, doc: brep.doc ?? current }
-      }
-      // A swallowed preview frame must still mark the preview as touched,
-      // exactly like the single-mutation funnel: without this, an all-preview
-      // group landed by a suppressed session fails both commitPreview's style
-      // gate and the session's own aggregate, so the color change has no entry.
-      if (previewOriginalDoc.current !== null && ms.every(m => PREVIEW_SCOPE.has(m.type))) {
-        previewTouchedRef.current = true
-      }
-      // Mirror the single-mutation funnel: a swallowed part_style mutation must
-      // still earn an undo entry at commit.
-      if (ms.some(m => BODY_STYLE_MUTATION_TYPES.has(m.type))) {
-        sessionStyleTouchedRef.current = true
-      }
-    } else {
-      // The first mutation names the entry so the undo tooltip has a label;
-      // redo round-trips it, so only the doc matters, never the list itself.
-      // A pending brep withhold is honored: the group is the projection, so it
-      // applies without an entry and the pre-gesture doc waits for the commit.
-      applyWithholdOrPush(ms[0], current)
-    }
-    docRef.current = next
-    setDoc(next)
-    reSolve(next, {
-      _suppressFirstSolve: true,
-      ...(restorable ? { _restoreSolveResults: restorable } : {}),
-    })
-  }, [docRef, setDoc, reSolve, setSolveResults, setSolveError, suppressUndoRef, solveResultsRef, commitPreview, applyWithholdOrPush, previewOpenOutsideSession, stashPrunedResult])
+    landMutations(ms, current, applied, { _suppressFirstSolve: true })
+  }, [docRef, setSolveError, runMutationsOnClone, consumeBrepArm, landMutations])
 
   // Arms the brep dimension pick/commit pair: the next mutation (the
   // projection) is applied without an undo entry and the one after it (the
