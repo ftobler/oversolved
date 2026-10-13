@@ -111,8 +111,14 @@ const GUARD_BYPASS = Symbol('noOpSliceFor.guardBypass')
 // part_style entry. Every idempotent handler stays within these, so a change
 // the handlers made can never be invisible to the slice.
 function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
-  const featureId = (m as { featureId?: string }).featureId
-  const bodyId = (m as { bodyId?: string }).bodyId
+  // `in` narrows the discriminated union, where a cast through
+  // `{ featureId?: string }` could not: a variant that drops or renames either
+  // key stops matching here instead of silently reading back undefined.
+  // Narrowing alone is not enough though, since a variant can carry its target
+  // under a key this function never learns to read; the classification is what
+  // is bound to those keys, by SliceReadableMutation in mutationIdempotence.
+  const featureId = 'featureId' in m ? m.featureId : undefined
+  const bodyId = 'bodyId' in m ? m.bodyId : undefined
   if (bodyId === undefined && BODY_STYLE_MUTATION_TYPES.has(m.type)) {
     failLoud('[usePartDoc] body-style mutation dispatched without a bodyId')
     return GUARD_BYPASS
@@ -123,8 +129,10 @@ function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
     slice.features = (doc.features ?? []).map(f => f.id)
   } else if (m.type === 'remove_dangling_content') {
     // The cleanup names the features it might touch in its payload; slice those
-    // whole, or the compare would be blind to the content it removes.
-    const touched = Object.keys((m as { features?: Record<string, unknown> }).features ?? {})
+    // whole, or the compare would be blind to the content it removes. Required
+    // by the type, and the handler reads it before this runs, so there is no
+    // absent-plan case left to absorb.
+    const touched = Object.keys(m.features)
     slice.features = touched.map(id => (doc.features ?? []).find(f => f.id === id))
   } else if (featureId !== undefined) {
     slice.features = [(doc.features ?? []).find(f => f.id === featureId)]

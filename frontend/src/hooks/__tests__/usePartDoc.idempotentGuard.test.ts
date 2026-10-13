@@ -1,10 +1,16 @@
-// The IDEMPOTENT_MUTATION no-op guard in handleMutation: a dispatch that
-// leaves the doc byte-identical must push no undo entry, set no dirty flag and
-// waste no re-solve, but ONLY for a mutation classified idempotent. This pins
-// the guard for set_rollback (a same-position drag) and the remove_* family (a
-// stale out-of-range index), and confirms the excluded families still land: the
-// add_* toggle family (a re-add is a real toggle change), and delete_feature,
-// which can no-op on an absent id yet stays unguarded on purpose.
+// The IDEMPOTENT_MUTATION no-op guard in handleMutation: a dispatch that leaves
+// the doc byte-identical must push no undo entry, set no dirty flag and waste no
+// re-solve, but ONLY for a mutation classified idempotent. This pins the guard
+// per family: the value setters, the rename/visibility/suppression writes, the
+// reorder of a pick list, set_rollback (a same-position drag), reorder_features
+// (a drop that lands where the feature already is), the remove_* family (a stale
+// out-of-range index) and the solve-derived remove_dangling_content cleanup
+// (stale targets that match nothing). It confirms the excluded families still
+// land: the add_* toggle family (a re-add is a real toggle change), and
+// delete_feature, which can no-op on an absent id yet stays unguarded on purpose.
+// Finally it confirms a REAL change is never swallowed, including by the two
+// variants the guard reads through a branch of their own (reorder_features,
+// remove_dangling_content).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
@@ -95,6 +101,45 @@ function makeDoc(rollback?: number): PartDoc {
   }
   if (rollback !== undefined) doc.rollback = rollback
   return doc
+}
+
+// The tree with its builtin block: a reorder clamps a drop to the builtins, so
+// the "already in that position" cases are only reachable with them present.
+function treeDoc(): PartDoc {
+  return {
+    version: 1,
+    kind: 'part',
+    features: [
+      { id: 'Origin', kind: 'origin' },
+      { id: 'Top', kind: 'plane' },
+      { id: 'Front', kind: 'plane' },
+      { id: 'Right', kind: 'plane' },
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'ex1', kind: 'extrude' },
+      { id: 'ex2', kind: 'extrude' },
+    ],
+  } as unknown as PartDoc
+}
+
+// A projected (source-carrying) entity plus a constraint on it and one on the
+// plain line: the two things the dangling cleanup removes, and the one it keeps.
+function danglingDoc(): PartDoc {
+  return {
+    version: 1,
+    kind: 'part',
+    features: [{
+      id: 'sk1',
+      kind: 'sketch',
+      entities: [
+        { id: 'l1', kind: 'line' },
+        { id: 'proj1', kind: 'line', source: '?edge;x' },
+      ],
+      constraints: [
+        { id: 'c_super', kind: 'horizontal', target: '$l1' },
+        { id: 'c_on_proj', kind: 'coincident', target: '$proj1' },
+      ],
+    }],
+  } as unknown as PartDoc
 }
 
 function renderPartDoc() {
@@ -298,6 +343,99 @@ describe('idempotent no-op guard', () => {
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
+
+  it('remove_dangling_content flagging a plain (non-projected) entity is a no-op', () => {
+    // Only source-carrying entities are eligible: a flagged plain sketch line is
+    // kept, so the plan matches nothing removable and must not push.
+    setDoc(danglingDoc())
+    const { result } = renderPartDoc()
+    const before = JSON.stringify(docRef.current)
+
+    act(() => {
+      result.current.handleMutation({
+        type: 'remove_dangling_content',
+        features: { sk1: { entities: ['l1'], constraints: [] } },
+      })
+    })
+
+    expect(JSON.stringify(docRef.current)).toBe(before)
+    expect(pushUndo).not.toHaveBeenCalled()
+    expect(reSolve).not.toHaveBeenCalled()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('remove_dangling_content that really cleans up pushes even beside a ghost target', () => {
+    // The narrowest slice in the guard: it holds only the features the plan
+    // names, and a name that resolves to nothing contributes the same undefined
+    // on both sides. The one real removal still has to make the compare differ,
+    // or the cleanup would silently drop the projection with no undo entry.
+    setDoc(danglingDoc())
+    const { result } = renderPartDoc()
+
+    act(() => {
+      result.current.handleMutation({
+        type: 'remove_dangling_content',
+        features: {
+          ghost: { entities: ['e1'], constraints: [] },
+          sk1: { entities: ['proj1'], constraints: [] },
+        },
+      })
+    })
+
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+    expect(reSolve).toHaveBeenCalledTimes(1)
+    const feature = docRef.current!.features![0] as { entities: { id: string }[]; constraints: { id: string }[] }
+    expect(feature.entities.map(e => e.id)).toEqual(['l1'])
+    // The constraint that referenced the removed projection goes with it, so
+    // the doc is not left holding a dangling ref.
+    expect(feature.constraints.map(c => c.id)).toEqual(['c_super'])
+  })
+
+  // A reorder's slice is the feature ID order alone (it never touches content),
+  // so the guard reads it through a branch of its own. The doc carries the
+  // builtin block because applyReorderFeatures clamps a drop to it, which is what
+  // makes "back where the feature already is" reachable.
+  // ─── reorder_features ───
+  it('dropping a feature back on its own index leaves the order alone and pushes nothing', () => {
+    setDoc(treeDoc())
+    const { result } = renderPartDoc()
+    const before = JSON.stringify(docRef.current)
+
+    act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'ex1', toIndex: 5 }) })
+
+    expect(JSON.stringify(docRef.current)).toBe(before)
+    expect(pushUndo).not.toHaveBeenCalled()
+    expect(reSolve).not.toHaveBeenCalled()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('dropping a feature on its immediate successor leaves the order alone and pushes nothing', () => {
+    setDoc(treeDoc())
+    const { result } = renderPartDoc()
+    const before = JSON.stringify(docRef.current)
+
+    act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'ex1', toIndex: 6 }) })
+
+    expect(JSON.stringify(docRef.current)).toBe(before)
+    expect(pushUndo).not.toHaveBeenCalled()
+    expect(reSolve).not.toHaveBeenCalled()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('a real reorder pushes one entry, marks dirty and moves the feature', () => {
+    setDoc(treeDoc())
+    const { result } = renderPartDoc()
+
+    act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'ex1', toIndex: 2 }) })
+
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+    expect(reSolve).toHaveBeenCalledTimes(1)
+    expect(docRef.current!.features!.map(f => f.id)).toEqual([
+      'Origin', 'Top', 'Front', 'Right', 'ex1', 'sk1', 'ex2',
+    ])
+  })
 })
 
 // ─── No-op pins for the unpinned idempotent field setters ───
@@ -321,6 +459,12 @@ const variableNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{
 const constraintNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch', constraints: [{ id: 'c1', kind: 'horizontal', target: '$l1', value: 5, pos: [1, 2], sign: 1 }] }] }) as unknown as PartDoc
 const partStyleNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', part_style: { b1: { name: 'part 1', color: '#ff0000', transparency: 0.5, metalness: 0.5, roughness: 0.3, transmission: 0.2, visible: false } } }) as unknown as PartDoc
 const treeNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch', plane: 'Front' }, { id: 'Top', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: 15 } }] }) as unknown as PartDoc
+// The featureId path with no sub-def: a rename, the visibility flag (true DELETES
+// the key, so an absent flag is the no-op), the suppression stamp, and a pick
+// list whose out-of-range index is the no-op.
+const renameNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch', label: 'base' }] }) as unknown as PartDoc
+const flagNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch' }] }) as unknown as PartDoc
+const pickListNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'b1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: ['@t1', '@t2'] } }] }) as unknown as PartDoc
 
 interface NoOpPinCase {
   name: string
@@ -354,6 +498,10 @@ const NO_OP_PINS: NoOpPinCase[] = [
   { name: 'set_body_visibility', makeDoc: partStyleNoopDoc, same: { type: 'set_body_visibility', bodyId: 'b1', visible: false }, changed: { type: 'set_body_visibility', bodyId: 'b1', visible: true } },
   { name: 'set_feature_plane', makeDoc: treeNoopDoc, same: { type: 'set_feature_plane', featureId: 'sk1', plane: 'Front' }, changed: { type: 'set_feature_plane', featureId: 'sk1', plane: 'Top' } },
   { name: 'set_plane_definition_field', makeDoc: treeNoopDoc, same: { type: 'set_plane_definition_field', featureId: 'Top', field: 'offset', value: 15 }, changed: { type: 'set_plane_definition_field', featureId: 'Top', field: 'offset', value: 25 } },
+  { name: 'rename_feature', makeDoc: renameNoopDoc, same: { type: 'rename_feature', featureId: 'sk1', label: 'base' }, changed: { type: 'rename_feature', featureId: 'sk1', label: 'renamed' } },
+  { name: 'set_feature_visibility', makeDoc: flagNoopDoc, same: { type: 'set_feature_visibility', featureId: 'sk1', visible: true }, changed: { type: 'set_feature_visibility', featureId: 'sk1', visible: false } },
+  { name: 'set_feature_suppression', makeDoc: flagNoopDoc, same: { type: 'set_feature_suppression', featureId: 'sk1', suppressed: false }, changed: { type: 'set_feature_suppression', featureId: 'sk1', suppressed: true } },
+  { name: 'reorder_pick_field', makeDoc: pickListNoopDoc, same: { type: 'reorder_pick_field', featureId: 'b1', field: 'tools', fromIndex: 9, toIndex: 0 }, changed: { type: 'reorder_pick_field', featureId: 'b1', field: 'tools', fromIndex: 0, toIndex: 1 } },
 ]
 
 describe.each(NO_OP_PINS)('idempotent no-op pin: $name', ({ makeDoc, same, changed }) => {

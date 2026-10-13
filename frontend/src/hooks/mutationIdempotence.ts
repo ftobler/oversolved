@@ -18,7 +18,12 @@ import type { Mutation } from '@/types/cad'
 // material entry), or removes by index or key that may already be gone. false
 // for everything else, including the families below that can no-op but must not
 // be guarded.
-export const IDEMPOTENT_MUTATION: Record<Mutation['type'], boolean> = {
+// `as const` is load-bearing, not decoration. `satisfies` enforces that every
+// variant is classified, but the annotation it satisfies would also widen each
+// entry to `boolean`, and the SLICE_READABLE_ASSERTION at the bottom reads the
+// per-key LITERAL to work out which names are guarded. With the literals kept,
+// that assertion has something real to check.
+export const IDEMPOTENT_MUTATION = {
   // Labels and display flags: the doc may already carry the new value.
   rename_feature: true,
   rename_part: true,
@@ -145,9 +150,10 @@ export const IDEMPOTENT_MUTATION: Record<Mutation['type'], boolean> = {
   // Whole-feature delete and the global plane toggles. These CAN leave the doc
   // byte-identical (a delete of an absent or builtin id, a toggle with no
   // target), but the UI derives all three from the current doc, so a dispatch is
-  // effectively unreachable, and none narrows to a single feature:
-  // delete_feature's id would force the order-wide slice reorder_features already
-  // needs, and the toggles carry no featureId at all.
+  // effectively unreachable and guarding them would buy nothing but the compare
+  // on the hot path. The two toggles could not be guarded even in principle:
+  // they carry no featureId at all, so they are not slice-readable and the
+  // assertion below refuses the classification outright.
   delete_feature: false,
   toggle_plane_visibility: false,
   toggle_sketch_plane_visibility: false,
@@ -156,4 +162,42 @@ export const IDEMPOTENT_MUTATION: Record<Mutation['type'], boolean> = {
   // point; there is no doc change to compare.
   edit_session: false,
   preview_commit: false,
-}
+} as const satisfies Record<Mutation['type'], boolean>
+
+// The payload shapes usePartDoc's noOpSliceFor can read a mutation's target
+// from, which is exactly the set of variants the guard is able to SEE a change
+// of. A variant carrying none of them still produces a slice, but a degenerate
+// one holding only doc.rollback, so it compares equal to itself and a real edit
+// is swallowed: no undo entry, no dirty flag, no re-solve. Classifying such a
+// variant as true in the table above has to be a compile error, and the
+// assertion at the bottom of this file is what makes it one. Read together with
+// the table, these two declarations are the guard's whole safety argument:
+// classifying a variant is a decision, and this is the set of answers the guard
+// can actually honour.
+export type SliceReadableMutation =
+  // read as the single feature it names
+  | { featureId: string }
+  // read as the single part_style entry it names
+  | { bodyId: string }
+  // read as the features its own cleanup plan names
+  | { features: Record<string, { entities: string[]; constraints: string[] }> }
+  // names no target of its own: the rollback mirror writes doc.rollback, which
+  // every slice carries
+  | { type: 'set_rollback' }
+
+export type SliceReadableMutationType = Extract<Mutation, SliceReadableMutation>['type']
+
+// The names the table above classifies as idempotent, recovered from its VALUES
+// rather than restated, so it cannot fall out of step with the table.
+type GuardedMutationType = {
+  [K in Mutation['type']]: (typeof IDEMPOTENT_MUTATION)[K] extends true ? K : never
+}[Mutation['type']]
+
+// Assigning `true` fails to compile if a guarded name is not one the slice can
+// read, which is the exact moment that name would start hiding its own change
+// from the guard it is guarding. Plain union assignability is the check: every
+// member of GuardedMutationType must be a member of SliceReadableMutationType.
+const SLICE_READABLE_ASSERTION: GuardedMutationType extends SliceReadableMutationType ? true : false = true
+// `void` reads the binding so noUnusedLocals accepts a check that exists only
+// to be typed, matching the local precedent in yamlMutations/helpers.ts.
+void SLICE_READABLE_ASSERTION
