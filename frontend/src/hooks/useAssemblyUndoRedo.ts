@@ -170,20 +170,21 @@ export function useAssemblyUndoRedo(
     // step's restore. A redo mid-edit commits too, and the fresh entry clears
     // the redo branch the way any edit does.
     commitSession()
-    // Undo/redo always exits the open editor, even on an empty stack (where the
-    // restore below never runs and would not otherwise reset the subject). The
-    // rest of the transient state is reset by resetTransientAssemblyState later.
-    useAssemblyStore.getState().closeEditor()
     // Read after the commit, which may have pushed onto the undo stack.
     const store = useAssemblyStore.getState()
     const from = direction === 'undo' ? store.undoStack : store.redoStack
     const to = direction === 'undo' ? store.redoStack : store.undoStack
+    // An empty stack is a no-op that leaves the open editor alone, matching the
+    // part engine. A non-empty stack with no current doc is a no-op too: the
+    // history describes a doc that does not exist, and popping would orphan the
+    // counterpart entry and permanently desync the paired stacks.
     if (from.length === 0) return
-    // A non-empty stack with no current doc means the history describes a doc
-    // that does not exist. Popping would orphan the counterpart entry and
-    // permanently desync the paired stacks, so the whole undo is a no-op.
     if (!docRef.current) return
     const preDoc = docRef.current
+    // Undo/redo exits the open editor (the restore below would not reset the
+    // subject otherwise). The rest of the transient state is reset by
+    // resetTransientAssemblyState later.
+    useAssemblyStore.getState().closeEditor()
     // The doc we are leaving becomes the counterpart entry, so the same label
     // round-trips in both directions. The clone mirrors pushUndo's snapshot
     // discipline: the departing doc must not be shared with the entry.
