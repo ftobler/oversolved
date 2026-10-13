@@ -10,7 +10,7 @@ Every user-visible action in the sketch editor is reachable through a central co
 
 Maps string command names to handler functions registered at runtime.
 
-Core API: `registerCommand(name, fn)`, `unregisterCommand(name)`, `executeCommand(name)`, `buildKeyString(e)`, `dispatchKey(e)`.
+Core API: `registerCommand(name, fn)` (returns the unregister function for that handler), `executeCommand(name)`, `buildKeyString(e)`, `dispatchKey(e)`.
 
 `dispatchKey` resolves in order: `ASSEMBLY_KEYMAP` while the assembly editor is active, then `SKETCH_KEYMAP` inside sketch edit, then `FEATURE_KEYMAP` outside it, then `KEYMAP` (assembled from `CORE_KEYBINDINGS`, `CONSTRAINT_SHORTCUTS`, `ENTITY_SHORTCUTS`). `FEATURE_KEYMAP` holds only `e`; `SKETCH_KEYMAP` is currently empty. Both shadow `KEYMAP`, so a key that means the same thing in both modes belongs in `CORE_KEYBINDINGS`. Events from INPUT, TEXTAREA and SELECT elements, contenteditable targets and IME composition are skipped (`isEditableTarget`).
 

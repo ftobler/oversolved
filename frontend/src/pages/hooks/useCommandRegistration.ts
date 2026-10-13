@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { registerCommand, unregisterCommand, dispatchKey } from '@/utils/core/commandRegistry'
+import { registerCommand, dispatchKey } from '@/utils/core/commandRegistry'
 import type { CommandName } from '@/utils/core/commandNames'
 
 export interface CommandEntry {
@@ -43,11 +43,11 @@ export function useCommandRegistration(commands: CommandEntry[]): void {
     prevLengthRef.current = commands.length
   }
   useEffect(() => {
-    for (const { name, fn } of commands) registerCommand(name, fn)
+    const unregisters = commands.map(({ name, fn }) => registerCommand(name, fn))
     window.addEventListener('keydown', dispatchKey)
     return () => {
       window.removeEventListener('keydown', dispatchKey)
-      for (const { name } of commands) unregisterCommand(name)
+      for (const unregister of unregisters) unregister()
     }
   // Depend on individual handler identities. The caller is responsible for
   // wrapping handlers in useCallback so this array is stable across renders.

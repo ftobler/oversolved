@@ -92,15 +92,17 @@ export const ASSEMBLY_KEYMAP: Record<string, CommandName> =
 
 // ─── Registration ───
 
-export function registerCommand(name: CommandName, fn: CommandHandler): void {
+// Returns an unregister function bound to this exact handler. It removes the
+// entry only while the map still holds `fn`, so a stale owner (an older mount
+// whose name a newer one has since overwritten) cannot remove the newer handler.
+export function registerCommand(name: CommandName, fn: CommandHandler): () => void {
   if (import.meta.env.DEV && handlers.has(name)) {
     console.warn(`registerCommand: overwriting existing handler for "${name}"`)
   }
   handlers.set(name, fn)
-}
-
-export function unregisterCommand(name: CommandName): void {
-  handlers.delete(name)
+  return () => {
+    if (handlers.get(name) === fn) handlers.delete(name)
+  }
 }
 
 /**

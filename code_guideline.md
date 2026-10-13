@@ -300,8 +300,8 @@ describe('buildKeyString', () => {
 ```ts
 type CommandHandler = (payload?: unknown) => void
 
-export function registerCommand(name: string, fn: CommandHandler): void
-export function unregisterCommand(name: string): void
+// Returns an unregister that removes the entry only if it still holds `fn`.
+export function registerCommand(name: string, fn: CommandHandler): () => void
 export function clearAllHandlers(): void
 export function executeCommand(name: string, payload?: unknown): void
 export function dispatchKey(e: KeyboardEvent): boolean

@@ -5,7 +5,6 @@ import {
   CORE_KEYBINDINGS,
   ASSEMBLY_KEYBINDINGS,
   registerCommand,
-  unregisterCommand,
   executeCommand,
   clearAllHandlers,
   buildKeyString,
@@ -223,12 +222,30 @@ describe('registerCommand / executeCommand / unregisterCommand', () => {
     expect(fn).toHaveBeenCalledOnce()
   })
 
-  it('after unregisterCommand the handler is not called', () => {
+  it('after the returned unregister runs the handler is not called', () => {
     const fn = vi.fn()
-    registerCommand(fake('__test__'), fn)
-    unregisterCommand(fake('__test__'))
+    const unregister = registerCommand(fake('__test__'), fn)
+    unregister()
     executeCommand(fake('__test__'))
     expect(fn).not.toHaveBeenCalled()
+  })
+
+  // Two owners of one name overlap when a newer mount registers before an older
+  // one unmounts. The older unregister must not remove the newer handler.
+  it('an older owner unregister leaves a newer handler for the same name in place', () => {
+    const older = vi.fn()
+    const newer = vi.fn()
+    const unregisterOlder = registerCommand(fake('__owned__'), older)
+    const unregisterNewer = registerCommand(fake('__owned__'), newer)
+
+    unregisterOlder()
+    executeCommand(fake('__owned__'))
+    expect(older).not.toHaveBeenCalled()
+    expect(newer).toHaveBeenCalledOnce()
+
+    unregisterNewer()
+    executeCommand(fake('__owned__'))
+    expect(newer).toHaveBeenCalledOnce()
   })
 
   it('registering the same name twice replaces the handler (last write wins)', () => {
@@ -563,7 +580,6 @@ describe('clearAllHandlers', () => {
     registerCommand(fake('__clear_test__'), fn)
     executeCommand(fake('__clear_test__'))
     expect(fn).toHaveBeenCalledOnce()
-    unregisterCommand(fake('__clear_test__'))
   })
 })
 
