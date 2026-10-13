@@ -12,7 +12,7 @@ Maps string command names to handler functions registered at runtime.
 
 Core API: `registerCommand(name, fn)`, `unregisterCommand(name)`, `executeCommand(name)`, `buildKeyString(e)`, `dispatchKey(e)`.
 
-`dispatchKey` looks up the event in `KEYMAP` (assembled from `CORE_KEYBINDINGS`, `CONSTRAINT_SHORTCUTS`, `ENTITY_SHORTCUTS`). `FEATURE_KEYMAP` (outside sketch-edit) and `SKETCH_KEYMAP` (inside) hold only genuine mode splits and shadow `KEYMAP`, so a key that means the same thing in both modes belongs in `CORE_KEYBINDINGS`. Keyboard events from INPUT/TEXTAREA elements are skipped.
+`dispatchKey` resolves in order: `ASSEMBLY_KEYMAP` while the assembly editor is active, then `SKETCH_KEYMAP` inside sketch edit, then `FEATURE_KEYMAP` outside it, then `KEYMAP` (assembled from `CORE_KEYBINDINGS`, `CONSTRAINT_SHORTCUTS`, `ENTITY_SHORTCUTS`). `FEATURE_KEYMAP` holds only `e`; `SKETCH_KEYMAP` is currently empty. Both shadow `KEYMAP`, so a key that means the same thing in both modes belongs in `CORE_KEYBINDINGS`. Events from INPUT, TEXTAREA and SELECT elements, contenteditable targets and IME composition are skipped (`isEditableTarget`).
 
 ### Constraint Registry (`constraintRegistry.ts`)
 
@@ -77,13 +77,26 @@ Routes pointer clicks from sketch geometry through the tool registry:
 - Calls `tool.handlers.onClick()` if the active tool has one; otherwise it
   falls back to `state.toggleNormalSelection(id)` (the idle select path).
 
-### Undo/Redo System (`usePartDoc.ts`)
+### Undo/Redo
 
-Document-snapshot-based: deep-clones current doc on each mutation, pushes onto undo stack. `handleUndo()` restores saved snapshot. `handleRedo()` re-applies.
+Two engines, both capped at `MAX_UNDO_DEPTH = 50` (`config/undoConfig.ts`). They do not share a stack implementation: the part editor uses `useUndoRedo.ts`, the assembly editor has its own.
 
-Preview system: `startPreviewMode()` suppresses undo entries; `commitPreview()` creates a single undo entry; `cancelPreview()` restores original doc.
+| | Part editor | Assembly editor |
+|---|---|---|
+| Hook | `usePartDoc.ts` over `useUndoRedo.ts` | `useAssemblyUndoRedo.ts` |
+| Entry | `{ doc, mutation: Mutation }` | `{ doc, label: AssemblyUndoLabel }` |
+| Stacks | paired refs, mirrored to state | `undoStack`/`redoStack` in `assemblyStore` |
+| Clone | `cloneDocForUndo` (`yamlMutations/undoSnapshot.ts`) | inline `structuredClone` |
+| Writes | `Mutation` values through `handleMutation` | labelled closures, `mutate(label, fn)` |
 
-All mutation functions are pure operations in `utils/yamlMutations/`. Labels in `mutationDescriptions.ts`.
+- **Part funnel.** `handleMutation` clones the doc, runs `mutationHandlers[m.type]` on the clone (the appliers in `utils/yamlMutations/` mutate that clone in place), mirrors the rollback bar when no edit is open, drops byte-identical results for `IDEMPOTENT_MUTATION_TYPES`, then either swallows the mutation (suppressed session or preview) or calls `applyWithholdOrPush` -> `pushUndo`. `commitMutationGroup` runs several mutations on one clone as one entry.
+- **Undo/redo.** `applyUndoRedo` is a no-op on an empty stack or missing doc. Otherwise it tears down open work first (`tearDownEditorState`), moves the entry across, clones the departing doc as the counterpart, and re-solves.
+- **Snapshot pairing.** `saveUndoStackSnapshot` runs in `startEditSession`. `cancelEditSession` rewinds the doc, then `restoreUndoStackSnapshot`. `commitEditSession` calls `clearUndoStackSnapshot`.
+- **Preview.** `startPreviewMode` suppresses entries. Only the `PREVIEW_SCOPE` appearance mutations (`set_part_*`) are swallowed; any other mutation commits the preview first. `commitPreview` pushes one entry labelled from the part_style diff. `cancelPreview` returns the original doc and the caller (`Part.tsx`) rewinds.
+- **Edit session.** `startEditSession(suppressUndo)`. A suppressed (feature) session folds into one `edit_session` entry on commit, only when the doc differs. A sketch session keeps one entry per action.
+- **Markers.** `set_rollback`, `edit_session` and `preview_commit` have no-op appliers in `mutationDispatch.ts`. The rollback is written by the mirror; the other two only label the entry.
+- **Assembly.** Edits are not `Mutation` values. `mutate` calls `decideAssemblyMutation` (`noop`, `push` or `fold`). A fold is pinned by `recordSessionEdit`, and `commitSession`/`cancelSession` settle it. `mutateOneShot` commits the open session, then pushes its own entry. `applyUndoRedo` closes the editor and resets transient state before swapping the doc.
+- **Labels.** Part entries are labelled through `describeMutation` (`utils/core/mutationDescriptions.ts`). Assembly labels are `ASSEMBLY_UNDO_LABELS` (`utils/core/assemblyUndoLabels.ts`).
 
 ### Registry Page (`Registry.tsx`)
 
@@ -103,7 +116,9 @@ Main page: uses `usePartDoc()`, builds command entries via `buildCommandEntries(
 
 ## Keybindings
 
-Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `q` (construction toggle), `y` (toggle sketches/planes), `e` (add extrude, feature mode only), `p` (toggle plane visibility), `escape` (cancel).
+Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `shift+m` (mirror), `q` (construction toggle), `y` (toggle sketches/planes), `e` (add extrude, feature mode only), `p` (toggle plane visibility), `escape` (cancel).
+
+Assembly editor keys (`ASSEMBLY_KEYBINDINGS`, active only while the assembly editor is): `ctrl+z`, `ctrl+shift+z`, `delete`, and `escape` (`cancel_edit`, closes the open part or mate editor).
 
 Constraint shortcuts: `h` (horizontal), `v` (vertical), `c` (coincident), `e` (equal length), `n` (normal), `t` (tangent), `m` (midpoint), `f` (fixed). Parallel is toolbar-only: `p` is owned by plane visibility. Inside sketch edit mode `e` is the equal-length constraint; `FEATURE_KEYMAP` restores add-extrude outside a sketch, so `e` is mode dependent.
 
