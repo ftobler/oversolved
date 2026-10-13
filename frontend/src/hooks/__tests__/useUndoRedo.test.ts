@@ -586,4 +586,97 @@ describe('useUndoRedo', () => {
     expect(result.current.undoStack[0].doc).toEqual(docA)
     expect(docRef.current).toEqual(docB)
   })
+
+  // The teardown rule for a move the guard stops. A caller that resolved open
+  // work of its own (usePartDoc's open-work commit) knows the branch it is about
+  // to read may have been emptied by that very commit, which the stack alone
+  // cannot show; the engine owns the decision, so the caller says what it knows
+  // and gets the teardown it is owed instead of having to run one itself.
+  describe('teardown of a move the guard stops', () => {
+    // The probe records the doc live at teardown time, so each case can also
+    // pin that the engine tears down before any swap rather than after it.
+    function engine() {
+      const docRef: { current: PartDoc | null } = {
+        current: { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc,
+      }
+      const docsAtTeardown: (PartDoc | null)[] = []
+      const tearDownEditorState = vi.fn(() => { docsAtTeardown.push(docRef.current) })
+      const view = renderHookStrict(() => useUndoRedo(
+        docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn(), tearDownEditorState,
+      ))
+      return { docRef, tearDownEditorState, docsAtTeardown, view }
+    }
+
+    it('runs the teardown when the caller reports committed open work', () => {
+      const { tearDownEditorState, view } = engine()
+
+      act(() => { view.result.current.applyUndoRedo('redo', { openWorkCommitted: true }) })
+
+      // The commit that cleared the redo branch is why there is nothing to redo;
+      // the editor it opened still has to come down.
+      expect(tearDownEditorState).toHaveBeenCalledTimes(1)
+    })
+
+    it('reports the live doc at teardown time, so the before-the-swap contract still holds', () => {
+      const { docRef, docsAtTeardown, view } = engine()
+      const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+      act(() => { view.result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA) })
+      act(() => { view.result.current.handleUndo() })
+      // The commit's push is what emptied the redo branch: it stands in here for
+      // the caller that resolved open work, which is the only way a redo this
+      // engine reads comes up empty.
+      act(() => { view.result.current.pushUndo({ type: 'edit_session' } as unknown as Mutation, docRef.current!) })
+      const postCommit = docRef.current
+      expect(view.result.current.redoStack).toHaveLength(0)
+      docsAtTeardown.length = 0
+
+      act(() => { view.result.current.applyUndoRedo('redo', { openWorkCommitted: true }) })
+
+      // Nothing swaps on this path, so the teardown reads the live doc and the
+      // doc is the same one afterwards: the guard's teardown is not an earlier
+      // version of the post-swap call, it is the same call in the same tick.
+      expect(docsAtTeardown).toEqual([postCommit])
+      expect(docRef.current).toBe(postCommit)
+    })
+
+    it('stays silent without the flag, so a dead keystroke tears nothing down', () => {
+      const { tearDownEditorState, view } = engine()
+
+      act(() => { view.result.current.applyUndoRedo('redo') })
+
+      expect(tearDownEditorState).not.toHaveBeenCalled()
+    })
+
+    it('honors the flag on the no-live-doc guard too, rather than half-honoring it', () => {
+      const { docRef, tearDownEditorState, view } = engine()
+      const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+      act(() => { view.result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA) })
+      docRef.current = null
+
+      // No live doc is unreachable from the part funnel today (every commit path
+      // needs one), but a flag that only worked on the empty-stack half would be
+      // a trap for the next caller, so both halves honor it.
+      act(() => { view.result.current.applyUndoRedo('undo', { openWorkCommitted: true }) })
+      expect(tearDownEditorState).toHaveBeenCalledTimes(1)
+
+      tearDownEditorState.mockClear()
+      act(() => { view.result.current.applyUndoRedo('undo') })
+      expect(tearDownEditorState).not.toHaveBeenCalled()
+    })
+
+    it('does not tear down twice on a move that actually proceeds', () => {
+      const { docRef, tearDownEditorState, view } = engine()
+      const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+      const docB = { version: 1, kind: 'part', features: [{ id: 'f2' }] } as PartDoc
+      docRef.current = docB
+      act(() => { view.result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA) })
+
+      act(() => { view.result.current.applyUndoRedo('undo', { openWorkCommitted: true }) })
+
+      // The commit's entry was on the undo stack, so this leg moves and takes the
+      // engine's own single teardown.
+      expect(tearDownEditorState).toHaveBeenCalledTimes(1)
+      expect(docRef.current).toEqual(docA)
+    })
+  })
 })
