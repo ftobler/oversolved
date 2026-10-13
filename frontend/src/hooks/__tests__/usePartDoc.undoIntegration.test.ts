@@ -210,12 +210,53 @@ describe('usePartDoc undo/redo integration', () => {
     expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
     expect(usePartEditorStore.getState().pickBoundary).toBeNull()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+    // The undo committed the session as its own entry and reverted just that:
+    // the rename before the session stays applied.
+    expect(labelOf()).toBe('a')
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.redoStack.map(e => e.mutation.type)).toEqual(['edit_session'])
 
     // The session suppressed undo pushes; if the undo left that suppression
     // standing, every later edit would silently drop out of the stack with no
     // way for the user to notice or recover.
     act(() => { result.current.handleMutation(renameTo('after')) })
-    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack).toHaveLength(2)
+  })
+
+  // The bug this guards: with nothing below the session, the undo used to
+  // return early and the session's edits could only be cancelled, never undone.
+  it('undo mid-session on an empty stack reverts the session edits', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('in-edit')) })
+    expect(result.current.undoStack).toHaveLength(0)
+
+    act(() => { result.current.handleUndo() })
+
+    expect(labelOf()).toBe('first')
+    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(result.current.undoStack).toHaveLength(0)
+    act(() => { result.current.handleRedo() })
+    expect(labelOf()).toBe('in-edit')
+  })
+
+  // A session that changed nothing is not committed: closing it would leave the
+  // editor open with its session gone, and the empty-stack undo would never tear
+  // the editor down. The session stays live and keeps suppressing.
+  it('undo mid-session with no change on an empty stack leaves the session open', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleUndo() })
+
+    expect(usePartEditorStore.getState().editingFeatureId).toBe('extrude-1')
+    act(() => { result.current.handleMutation(renameTo('in-edit')) })
+    expect(result.current.undoStack).toHaveLength(0)  // still swallowed
+    act(() => { result.current.cancelEditSession() })
+    expect(labelOf()).toBe('first')
   })
 
   // Redo shares applyUndoRedo with undo, so the teardown the undo test above
@@ -259,15 +300,19 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
 
+    // The undo commits the changed preview as its own entry and reverts only
+    // the color; the rename before it stays applied.
     act(() => { result.current.handleUndo() })
-    expect(result.current.undoStack).toHaveLength(0)
+    expect(labelOf()).toBe('a')
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
+    expect(result.current.undoStack).toHaveLength(1)
 
     act(() => { result.current.handleMutation(renameTo('after')) })
 
-    // Exactly one entry: the abandoned preview must not leave a dead step of
-    // its own behind, and the new edit must not be swallowed.
-    expect(result.current.undoStack).toHaveLength(1)
-    expect((result.current.undoStack[0].doc.features?.[0] as { label?: string }).label).toBe('first')
+    // One new entry: the closed preview must not leave a dead step of its own
+    // behind, and the new edit must not be swallowed.
+    expect(result.current.undoStack).toHaveLength(2)
+    expect((result.current.undoStack[1].doc.features?.[0] as { label?: string }).label).toBe('a')
   })
 
   it('a redo after undoing mid-preview returns to the doc the preview had mutated', () => {
@@ -285,12 +330,13 @@ describe('usePartDoc undo/redo integration', () => {
 
     act(() => { result.current.handleUndo() })
     expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
+    expect(labelOf()).toBe('a')
 
-    // The teardown dropped the preview, so redo must land on the doc the
-    // preview had mutated, not on a stale snapshot the session re-applied.
+    // The undo closed the preview, so redo must land on the doc the preview
+    // had mutated, not on a stale snapshot the session re-applied.
     act(() => { result.current.handleRedo() })
     expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
-    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack).toHaveLength(2)
     expect(result.current.redoStack).toHaveLength(0)
   })
 
@@ -303,14 +349,14 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
 
     act(() => { result.current.handleUndo() })
-    expect(labelOf()).toBe('first')
+    expect(labelOf()).toBe('a')
 
     // The OK button of the edit the undo already closed. The session is gone,
     // so this must be inert instead of pushing a step keyed to the pre-undo doc.
     act(() => { result.current.commitEditSession() })
 
-    expect(result.current.undoStack).toHaveLength(0)
-    expect(labelOf()).toBe('first')
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(labelOf()).toBe('a')
   })
 
   // Redo shares applyUndoRedo with undo, so this exists to keep the teardown out
@@ -346,14 +392,14 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
 
     act(() => { result.current.handleUndo() })
-    expect(labelOf()).toBe('first')
+    expect(labelOf()).toBe('a')
 
     act(() => { result.current.cancelEditSession() })
 
-    // Restoring the session snapshot here would jump the doc back to 'a' and
-    // re-commit the pre-undo stacks, silently undoing the undo.
-    expect(labelOf()).toBe('first')
-    expect(result.current.undoStack).toHaveLength(0)
+    // Restoring the session snapshot here would re-commit the pre-undo stacks
+    // and drop the redo entry the undo just made, silently undoing the undo.
+    expect(labelOf()).toBe('a')
+    expect(result.current.undoStack).toHaveLength(1)
     expect(result.current.redoStack).toHaveLength(1)
   })
 

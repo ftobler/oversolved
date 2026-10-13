@@ -358,9 +358,10 @@ export default function Part() {
     sketchStore.clearBrepProjectionState()
     sketchStore.resetTransientState()
     setContextMenu(null)
-    // The color preview is discarded rather than applied: undo brings its own
-    // doc, and a popover left open would only be able to commit or revert
-    // against a world that no longer exists.
+    // The popover closes: an undo already committed a changed preview as its
+    // own entry (usePartDoc's commitOpenWorkBeforeUndo), and a popover left
+    // open would only be able to commit or revert against a world that no
+    // longer exists.
     setPartColorPopover(null)
     // The sketch toolbar has nothing left to act on once the sketch edit is gone.
     if (wasSketchEdit) setMode('feature')
