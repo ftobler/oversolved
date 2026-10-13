@@ -4,6 +4,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
+import { pushCapped, moveTop } from '@/utils/core/undoStack'
 
 type UndoEntry = { doc: PartDoc; mutation: Mutation }
 
@@ -43,9 +44,8 @@ export function useUndoRedo(
   // the entry's doc differs between them, so the stack bookkeeping stays in one
   // place and the two callers cannot drift apart.
   const pushEntry = useCallback((mutation: Mutation, entryDoc: PartDoc) => {
-    const undo = [...undoRef.current, { doc: entryDoc, mutation }]
-    if (undo.length > MAX_UNDO_DEPTH) undo.shift()
-    commitStacks(undo, [])  // a fresh edit invalidates any redo branch
+    // A fresh edit invalidates any redo branch.
+    commitStacks(pushCapped(undoRef.current, { doc: entryDoc, mutation }, MAX_UNDO_DEPTH), [])
   }, [commitStacks])
 
   const pushUndo = useCallback((mutation: Mutation, currentDoc: PartDoc) => {
@@ -71,37 +71,33 @@ export function useUndoRedo(
     (direction: 'undo' | 'redo') => {
       const from = direction === 'undo' ? undoRef.current : redoRef.current
       const to = direction === 'undo' ? redoRef.current : undoRef.current
-      if (from.length === 0) return
 
       // A non-empty stack with no current doc means the history describes a doc
       // that does not exist. Popping would orphan the counterpart entry and
-      // permanently desync the paired stacks, so the whole undo is a no-op.
-      if (!docRef.current) return
+      // permanently desync the paired stacks, so the whole undo is a no-op. An
+      // empty stack is a no-op for the same reason, and the check keeps
+      // tearDownEditorState from running for a keystroke that does nothing.
       const preDoc = docRef.current
+      if (from.length === 0 || !preDoc) return
 
       // Exit every open session before the doc swaps. A session that survives
       // would later commit a spurious entry keyed to the pre-undo doc, or cancel
-      // straight back to it and silently revert the undo. An empty stack is a
-      // no-op, so nothing is torn down for a keystroke that does nothing.
+      // straight back to it and silently revert the undo.
       suppressUndoRef.current = false
       stackSnapshotRef.current = null
       tearDownEditorState?.()
 
-      const entry = from[from.length - 1]
-      const nextFrom = from.slice(0, -1)
       // The doc we are leaving becomes the counterpart entry, so the same
       // mutation label round-trips in both directions. The clone mirrors
       // pushUndo: cloneDocForUndo is a full deep clone, so the departing doc
       // never shares state with the live doc or the entry.
-      // The conservation invariant undo.length + redo.length <= MAX_UNDO_DEPTH
-      // holds at all times: pushUndo caps the undo stack and clears redo, and a
-      // move shifts exactly one entry across, so a non-empty `from` leaves `to`
-      // at most one below the cap and `nextTo` can never exceed it.
-      const nextTo = [...to, { doc: cloneDocForUndo(preDoc), mutation: entry.mutation }]
+      const move = moveTop(from, to, entry => ({ doc: cloneDocForUndo(preDoc), mutation: entry.mutation }))
+      if (!move) return
+      const entry = from[from.length - 1]
 
       commitStacks(
-        direction === 'undo' ? nextFrom : nextTo,
-        direction === 'undo' ? nextTo : nextFrom,
+        direction === 'undo' ? move.from : move.to,
+        direction === 'undo' ? move.to : move.from,
       )
 
       // Restoring an earlier doc moves it away from the saved content, so it

@@ -438,10 +438,9 @@ describe('useAssemblyUndoRedo', () => {
     expect(result.current.redoStack.map(e => e.label)).toEqual(['Add part'])
   })
 
-  // "Undo always exits an open editor" must hold even when the stack is empty:
-  // the restore path never runs, so the editing subject has to be reset before
-  // the early return or the editor would outlive the undo.
-  it('undo on an empty stack still exits the open editor', () => {
+  // An undo or redo with nothing to step through is a no-op, the same as the
+  // part engine: the open editor stays open and nothing is torn down for it.
+  it('undo on an empty stack leaves the open editor open', () => {
     const docRef = { current: docWith(['a']) }
     const { result } = renderHookStrict(() => useAssemblyUndoRedo(
       docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
@@ -451,11 +450,11 @@ describe('useAssemblyUndoRedo', () => {
 
     act(() => { result.current.handleUndo() })
 
-    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'instance', handle: 'a' })
     expect(result.current.undoStack).toHaveLength(0)
   })
 
-  it('redo on an empty stack still exits the open editor', () => {
+  it('redo on an empty stack leaves the open editor open', () => {
     const docRef = { current: docWith(['a']) }
     const { result } = renderHookStrict(() => useAssemblyUndoRedo(
       docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
@@ -465,7 +464,7 @@ describe('useAssemblyUndoRedo', () => {
 
     act(() => { result.current.handleRedo() })
 
-    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'mate', id: 'm1' })
   })
 
   it('cancelSession drops the pinned session and pushes nothing', () => {
