@@ -505,10 +505,35 @@ describe('useAssemblyUndoRedo', () => {
     act(() => { result.current.cancelSession() })
 
     expect(setDoc).toHaveBeenCalledWith(docA)
-    expect(docRef.current).toBe(docA)
+    expect(docRef.current).toEqual(docA)
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
     expect(result.current.undoStack.map(e => e.label)).toEqual(['Add part'])
     expect(result.current.redoStack).toHaveLength(0)
+  })
+
+  // The pin must be a snapshot, not the live object. A copy-on-write funnel never
+  // touches the pre-session doc, so aliasing it is harmless today; a mutator that
+  // edits the live doc in place would otherwise rewrite the pin, and cancel would
+  // restore that rewritten doc as if it were the pre-session one.
+  it('cancelSession restores the pre-session content even if the live doc was mutated in place', () => {
+    const docA = docWith(['a'])
+    const expected = structuredClone(docA)
+    const docRef = { current: docA as AssemblyDoc | null }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    act(() => { useAssemblyStore.getState().openInstanceEditor('a') })
+    act(() => { result.current.mutate('Set position', () => docWith(['a', 'b'])) })
+    // The session's first edit pinned the pre-session doc object. Mutate that
+    // object in place, the way an unchecked mutator would, before cancelling.
+    const inst = docA.features![0] as { instance: { handle: string } }
+    inst.instance.handle = 'mutated'
+
+    act(() => { result.current.cancelSession() })
+
+    expect(docRef.current).toEqual(expected)
   })
 
   // The save stored the session's edits; the rewind throws them away, so the
@@ -528,7 +553,7 @@ describe('useAssemblyUndoRedo', () => {
 
     act(() => { result.current.cancelSession() })
 
-    expect(docRef.current).toBe(docA)
+    expect(docRef.current).toEqual(docA)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
@@ -593,7 +618,7 @@ describe('useAssemblyUndoRedo', () => {
 
     act(() => { result.current.cancelSession() })
 
-    expect(docRef.current).toBe(docB)  // back to the one-shot's doc, not the saved one
+    expect(docRef.current).toEqual(docB)  // back to the one-shot's doc, not the saved one
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 

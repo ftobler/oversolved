@@ -68,8 +68,12 @@ export function useAssemblyUndoRedo(
     // The page's `mutate` calls this BEFORE it applies the mutation and before it
     // sets the doc dirty, so both the doc and the flag read here are still the
     // pre-session ones cancelSession has to restore.
+    // The pin is a clone, not the live object: the copy-on-write mutators keep the
+    // pre-session doc intact today, but nothing enforces that, and a future in-place
+    // edit of the live doc would rewrite the target cancel restores. Same snapshot
+    // rule as pushUndo.
     if (!pendingSession.current) {
-      pendingSession.current = { doc, label, dirty: useUnsavedChangesStore.getState().pinDirty() }
+      pendingSession.current = { doc: structuredClone(doc), label, dirty: useUnsavedChangesStore.getState().pinDirty() }
     }
   }, [])
 
