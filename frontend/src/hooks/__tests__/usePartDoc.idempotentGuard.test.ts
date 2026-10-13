@@ -1,12 +1,15 @@
-// The IDEMPOTENT_MUTATION_TYPES no-op guard in handleMutation: a dispatch that
+// The IDEMPOTENT_MUTATION no-op guard in handleMutation: a dispatch that
 // leaves the doc byte-identical must push no undo entry, set no dirty flag and
-// waste no re-solve. This pins the guard for set_rollback (a same-position
-// drag) and the remove_* family (a stale out-of-range index), and confirms the
-// add_* toggle family stays unguarded (a re-add is a real toggle change).
+// waste no re-solve, but ONLY for a mutation classified idempotent. This pins
+// the guard for set_rollback (a same-position drag) and the remove_* family (a
+// stale out-of-range index), and confirms the excluded families still land: the
+// add_* toggle family (a re-add is a real toggle change), and delete_feature,
+// which can no-op on an absent id yet stays unguarded on purpose.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
+import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
@@ -377,6 +380,62 @@ describe.each(NO_OP_PINS)('idempotent no-op pin: $name', ({ makeDoc, same, chang
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     expect(reSolve).toHaveBeenCalledTimes(1)
   })
+})
+
+// ─── The excluded families still land ───
+
+// An unclassified mutation must never be swallowed, even when its handler
+// genuinely leaves the doc byte-identical. delete_feature on an absent id is the
+// clean case: applyDeleteFeature filters and matches nothing, so the doc is
+// unchanged, yet the classification says false and the guard must not look, so
+// the dispatch lands. If the guard ever swallowed these, a user action would
+// vanish with no undo entry; the push here is the whole point of the entry.
+const UNGUARDED_NO_OPS: { name: string; makeDoc: () => PartDoc; mutation: Mutation }[] = [
+  {
+    name: 'delete_feature on an absent id',
+    makeDoc: makeDoc,
+    mutation: { type: 'delete_feature', featureId: 'ghost' },
+  },
+  {
+    name: 'delete_feature on a builtin id',
+    makeDoc: makeDoc,
+    mutation: { type: 'delete_feature', featureId: 'Origin' },
+  },
+  {
+    name: 'toggle_plane_visibility with no plane to toggle',
+    makeDoc: () => ({ version: 1, kind: 'part', features: [{ id: 'sk1', kind: 'sketch' }] }) as unknown as PartDoc,
+    mutation: { type: 'toggle_plane_visibility' },
+  },
+  {
+    name: 'toggle_sketch_plane_visibility with no sketch or plane to toggle',
+    makeDoc: () => ({ version: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude' }] }) as unknown as PartDoc,
+    mutation: { type: 'toggle_sketch_plane_visibility' },
+  },
+]
+
+describe.each(UNGUARDED_NO_OPS)('$name', ({ makeDoc: makeUnguardedDoc, mutation }) => {
+  it('is classified false, and lands with its entry instead of being swallowed', () => {
+    expect(IDEMPOTENT_MUTATION[mutation.type]).toBe(false)
+    setDoc(makeUnguardedDoc())
+    const { result } = renderPartDoc()
+    const before = JSON.stringify(docRef.current)
+
+    act(() => { result.current.handleMutation(mutation) })
+
+    // The doc really is byte-identical: this is the no-op the guard declines to
+    // look for, so a push here proves the decision was driven by the
+    // classification rather than by an accidental diff.
+    expect(JSON.stringify(docRef.current)).toBe(before)
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(reSolve).toHaveBeenCalledTimes(1)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+})
+
+it('the add_* toggle families are classified false, so a re-pick is never swallowed', () => {
+  for (const type of ['add_fillet_edge', 'add_chamfer_edge', 'add_boolean_tool', 'add_extrude_profile', 'add_revolve_profile', 'add_sweep_profile', 'add_sweep_path', 'add_delete_body_ref', 'add_transform_body'] as const) {
+    expect(IDEMPOTENT_MUTATION[type], `${type} must stay unguarded`).toBe(false)
+  }
 })
 
 // ─── Body-style mutations with a missing bodyId ───
