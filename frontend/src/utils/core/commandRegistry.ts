@@ -69,8 +69,8 @@ export const FEATURE_KEYMAP: Record<string, CommandName> = {
 // An override here silently shadows KEYMAP, so only add one that really differs.
 export const SKETCH_KEYMAP: Record<string, CommandName> = {}
 
-// Assembly keymap, resolved first while WorkspacePage says the assembly editor
-// is active. It ships the shared keys (undo/redo/delete, including their alt
+// Assembly keymap, the only table consulted while WorkspacePage says the assembly
+// editor is active. It ships the shared keys (undo/redo/delete, including their alt
 // bindings, plus Escape to cancel the open edit); no assembly-specific key is
 // invented here. Every shared key is listed so this table is the single source
 // of what the assembly editor does, rather than a fallthrough to KEYMAP.
@@ -170,9 +170,15 @@ export function dispatchKey(e: KeyboardEvent): boolean {
   const key = buildKeyString(e)
   const inAssembly = useEditorModeStore.getState().activeEditor === 'assembly'
   const inSketchEdit = !!useSketchEditorStore.getState().activeFeatureId
-  // Assembly mode first, then the sketch/feature split as today, then the merged
-  // KEYMAP, so shared keys (Ctrl+Z, Delete) keep working in every mode.
-  const cmd = (inAssembly && ASSEMBLY_KEYMAP[key]) || (inSketchEdit && SKETCH_KEYMAP[key]) || (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]
+  // Assembly mode resolves only through ASSEMBLY_KEYMAP: a key it does not list
+  // is inert there, never a sketch command. Outside assembly, the sketch/feature
+  // split applies, then the merged KEYMAP.
+  let cmd: CommandName | undefined
+  if (inAssembly) {
+    cmd = ASSEMBLY_KEYMAP[key]
+  } else {
+    cmd = (inSketchEdit && SKETCH_KEYMAP[key]) || (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]
+  }
   if (!cmd) return false
   // A keymap entry with no registered handler is a registration gap, i.e. a
   // bug: surface it and let the browser default apply rather than eating the

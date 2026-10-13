@@ -627,6 +627,25 @@ describe('dispatchKey assembly mode', () => {
     expect(cancel).not.toHaveBeenCalled()
   })
 
+  it('does not fall through to the sketch keymap for a key the assembly keymap lacks', () => {
+    const line = vi.fn()
+    const horizontal = vi.fn()
+    registerCommand('set_tool_line', line)
+    registerCommand('apply_horizontal', horizontal)
+    expect(KEYMAP['l']).toBe('set_tool_line')
+    expect(KEYMAP['h']).toBe('apply_horizontal')
+    useEditorModeStore.getState().setActiveEditor('assembly')
+
+    const eL = fakeKey('l')
+    const eH = fakeKey('h')
+    expect(dispatchKey(eL)).toBe(false)
+    expect(dispatchKey(eH)).toBe(false)
+    expect(eL.preventDefault).not.toHaveBeenCalled()
+    expect(eH.preventDefault).not.toHaveBeenCalled()
+    expect(line).not.toHaveBeenCalled()
+    expect(horizontal).not.toHaveBeenCalled()
+  })
+
   it('every assembly keybinding command has a command entry', () => {
     for (const b of ASSEMBLY_KEYBINDINGS) {
       expect(ASSEMBLY_COMMAND_NAMES, `missing command "${b.command}"`).toContain(b.command)
