@@ -174,7 +174,17 @@ export function describeMutation(m: Mutation): string {
       // The label is pre-composed from the doc diff at commit time, so there is
       // no per-type formatting left to do here.
       return m.description ?? 'apply preview'
-    default:
+    default: {
+      // Exhaustiveness guard. Every variant above is handled, so `m` narrows to
+      // never here and the assignment is the whole check: dropping a case, or
+      // adding a variant to Mutation without one, stops this file compiling
+      // instead of shipping "unknown mutation" into a history tooltip. The arm
+      // stays reachable only for a caller that cast past the union, which is
+      // what a stale persisted entry amounts to. `void` reads the binding so
+      // noUnusedLocals accepts an assertion that exists only to be typed.
+      const unhandled: never = m
+      void unhandled
       return 'unknown mutation'
+    }
   }
 }
