@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useWheelStep } from '@/components/editors/widgets/useWheelStep'
+import { acquireModalEscape } from '@/utils/core/modalEscape'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 import '@/components/dialogs/ContextMenuDialog.css'
@@ -56,6 +57,16 @@ export default function ContextMenuDialog() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [dialog, closeDialog])
+
+  // The claim is what stands the document-level commands down, not just Escape.
+  // Focus rests on the number input, which dispatchKey already ignores, so the
+  // hole only showed once Tab or a click moved it to a button: Ctrl+Z then ran
+  // the document undo, which committed the pending work, tore the editor state
+  // down and nulled this dialog, discarding the typed value with no message.
+  useEffect(() => {
+    if (!dialog) return
+    return acquireModalEscape()
+  }, [dialog])
 
   if (!dialog) return null
 

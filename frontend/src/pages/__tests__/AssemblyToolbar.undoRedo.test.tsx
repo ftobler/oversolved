@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, fireEvent, screen } from '@testing-library/react'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
+import { useEditorModeStore } from '@/stores/editorModeStore'
 import { registerCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 
@@ -50,10 +51,14 @@ describe('AssemblyToolbar undo/redo', () => {
     registerCommand('undo', () => stepHistory('undo'))
     registerCommand('redo', () => stepHistory('redo'))
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
+    // The toolbar's undo/redo are gated on the active editor, exactly as
+    // dispatchKey's assembly keymap is, so the suite states its own mode.
+    useEditorModeStore.getState().setActiveEditor('assembly')
   })
 
   afterEach(() => {
     clearAllHandlers()
+    useEditorModeStore.getState().setActiveEditor(null)
   })
 
   it('disables undo and redo when both stacks are empty', () => {
