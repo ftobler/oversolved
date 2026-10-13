@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useCommandRegistration, type CommandEntry } from '../useCommandRegistration'
 import { clearAllHandlers, executeCommand } from '@/utils/core/commandRegistry'
+import { COMMAND_NAMES } from '@/utils/core/commandNames'
 
 // The hook is the only place the page command tables reach the global registry,
 // so these tests pin the registration lifecycle, the re-register-on-new-handler
@@ -19,24 +20,24 @@ afterEach(() => {
 
 describe('useCommandRegistration', () => {
   it('registers every command on mount and unregisters them on unmount', () => {
-    const alpha = vi.fn()
-    const beta = vi.fn()
-    const commands: CommandEntry[] = [{ name: 'alpha', fn: alpha }, { name: 'beta', fn: beta }]
+    const undo = vi.fn()
+    const redo = vi.fn()
+    const commands: CommandEntry[] = [{ name: 'undo', fn: undo }, { name: 'redo', fn: redo }]
 
     const { unmount } = renderHook(() => useCommandRegistration(commands))
 
-    act(() => executeCommand('alpha', 1))
-    act(() => executeCommand('beta'))
-    expect(alpha).toHaveBeenCalledWith(1)
-    expect(beta).toHaveBeenCalledTimes(1)
+    act(() => executeCommand('undo', 1))
+    act(() => executeCommand('redo'))
+    expect(undo).toHaveBeenCalledWith(1)
+    expect(redo).toHaveBeenCalledTimes(1)
 
     unmount()
 
     // After unmount the registry must not answer for either name; the dev-mode
     // warning is the observable side of "no handler".
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    act(() => executeCommand('alpha'))
-    expect(alpha).toHaveBeenCalledTimes(1)
+    act(() => executeCommand('undo'))
+    expect(undo).toHaveBeenCalledTimes(1)
     expect(warn).toHaveBeenCalled()
   })
 
@@ -69,7 +70,7 @@ describe('useCommandRegistration', () => {
   it('logs a development error when the commands length changes between renders', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const commands = (n: number): CommandEntry[] =>
-      Array.from({ length: n }, (_, i) => ({ name: `c${i}`, fn: vi.fn() }))
+      Array.from({ length: n }, (_, i) => ({ name: COMMAND_NAMES[i], fn: vi.fn() }))
 
     const { rerender } = renderHook(
       ({ n }: { n: number }) => useCommandRegistration(commands(n)),

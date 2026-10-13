@@ -3,6 +3,7 @@ import type { ConstraintDef } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
+import { narrowCommandName } from '@/utils/core/commandNames'
 import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
 
 // The four ordered outcomes of the Escape key in the sketch editor. The first
@@ -91,7 +92,7 @@ export function buildCommandEntries(
     // -- the toolbar button dispatches set_tool_<activeTool>, so a missing entry
     // silently makes the tool unclickable.
     ...ENTITIES.filter(e => e.activeTool && e.activeTool !== 'project').map(e => ({
-      name: 'set_tool_' + e.activeTool,
+      name: narrowCommandName('set_tool_' + e.activeTool),
       fn: () => getState().setActiveTool(e.activeTool!),
     })),
     // Project is a selection action first, a pick tool second: with something
@@ -110,7 +111,7 @@ export function buildCommandEntries(
     { name: 'set_tool_dimension',    fn: () => getState().setActiveTool('dimension') },
     { name: 'toggle_construction',   fn: () => getState().toggleConstruction() },
     ...CONSTRAINTS.map(c => ({
-      name: `apply_${c.kind}`,
+      name: narrowCommandName(`apply_${c.kind}`),
       fn: constraintCommandFn(c, getState, showMessage),
     })),
     { name: 'cancel_draw', fn: () => {

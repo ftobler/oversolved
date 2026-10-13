@@ -14,7 +14,11 @@ import { ASSEMBLY_OPERATIONS, type AssemblyOperationId } from '@/utils/assemblyO
 import { executeCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
 
 function spyHandlers(): AssemblyCommandHandlers {
-  return Object.fromEntries(ASSEMBLY_COMMAND_NAMES.map(n => [n, vi.fn()])) as AssemblyCommandHandlers
+  // Partial is a supertype of the full record, so this assertion only narrows
+  // it after every name has been filled.
+  const spies: Partial<AssemblyCommandHandlers> = {}
+  for (const n of ASSEMBLY_COMMAND_NAMES) spies[n] = vi.fn()
+  return spies as AssemblyCommandHandlers
 }
 
 // The page's inputs, with spies for everything but the id mint. Building the

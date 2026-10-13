@@ -1,6 +1,7 @@
 import { TOOLBAR_CONSTRAINTS } from '@/registry'
 import type { ConstraintDef } from '@/registry'
 import { executeCommand } from '@/utils/core/commandRegistry'
+import { narrowCommandName } from '@/utils/core/commandNames'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { iconUrl, shortcutHint } from '@/components/Toolbar/tools/toolUtils'
 
@@ -13,7 +14,7 @@ export default function ConstraintTools() {
           key={def.kind}
           title={`${def.label}${shortcutHint(def)}`}
           icon={iconUrl(def.toolbarIcon!)}
-          onClick={() => executeCommand('apply_' + def.kind)}
+          onClick={() => executeCommand(narrowCommandName('apply_' + def.kind))}
         />
       ))}
     </>

@@ -3,6 +3,7 @@
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import { parseSelectionId } from '@/utils/query/selectionId'
 import { segmentsAreParallel } from '@/utils/geometry/segmentGeometry'
+import { narrowCommandName, type CommandName } from '@/utils/core/commandNames'
 
 // ─── Constraint Registry, single source of truth for all sketch constraints ───
 //
@@ -459,11 +460,11 @@ export const TOOLBAR_CONSTRAINTS: readonly ConstraintDef[] =
   CONSTRAINTS.filter(c => c.showInToolbar)
 
 // Map from keyboard shortcut → command name (for commandRegistry integration).
-export const CONSTRAINT_SHORTCUTS: ReadonlyMap<string, string> =
+export const CONSTRAINT_SHORTCUTS: ReadonlyMap<string, CommandName> =
   new Map(
     CONSTRAINTS
       .filter(c => c.shortcut)
-      .map(c => [c.shortcut!, `apply_${c.kind}`])
+      .map(c => [c.shortcut!, narrowCommandName(`apply_${c.kind}`)])
   )
 
 // ─── Unified dimension resolver ───

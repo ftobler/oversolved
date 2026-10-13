@@ -1,14 +1,15 @@
 import type { ActiveTool } from '@/types/cad'
+import type { CommandName } from '@/utils/core/commandNames'
 
 export interface ToolDef {
   id: string
   label: string
   icon: string
-  command: string
+  command: CommandName
   // The sketch-editor tool this button arms. Typed as ActiveTool so a stale
   // literal (a dead ToolId, a renamed store tool) fails to compile.
   activeTool?: ActiveTool
-  shortcutCommand?: string
+  shortcutCommand?: CommandName
 }
 
 export const TOOL_DEFS: Record<string, ToolDef> = {

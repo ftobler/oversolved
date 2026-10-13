@@ -15,6 +15,7 @@
 //   5. Optionally add an SVG icon in assets/icons/.
 
 import type { ActiveTool } from '@/types/cad'
+import { narrowCommandName, type CommandName } from '@/utils/core/commandNames'
 
 // ─── Entity definition ───
 
@@ -219,11 +220,11 @@ export const TOOLBAR_ENTITIES: readonly EntityDef[] =
   ENTITIES.filter(e => e.showInToolbar)
 
 // Map from keyboard shortcut → command name (for commandRegistry integration).
-export const ENTITY_SHORTCUTS: ReadonlyMap<string, string> =
+export const ENTITY_SHORTCUTS: ReadonlyMap<string, CommandName> =
   new Map(
     ENTITIES
       .filter(e => e.shortcut && e.activeTool)
-      .map(e => [e.shortcut!, 'set_tool_' + e.activeTool])
+      .map(e => [e.shortcut!, narrowCommandName('set_tool_' + e.activeTool)])
   )
 
 // Get default parameters for an entity kind.

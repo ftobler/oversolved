@@ -80,6 +80,8 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { findMate } from '@/utils/assemblyMutations'
 import { MATE_KINDS } from '@/utils/mateKinds'
+import { insertMateCommand } from '@/pages/assemblyCommandEntries'
+import type { MateKind } from '@/types/cad'
 import { tick, renderEditor, installSessionFromList } from './AssemblyEditor.harness'
 
 // Stage 8: mate authoring. The picks are synthetic ID-buffer hits fed straight
@@ -120,11 +122,11 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     })
   }
 
-  async function renderWithMate(kind: string) {
+  async function renderWithMate(kind: MateKind) {
     renderEditor()
     await tick()
     await tick()
-    act(() => { executeCommand(`insert_mate_${kind}`) })
+    act(() => { executeCommand(insertMateCommand(kind)) })
     await tick()
     publishPickLookup()
   }

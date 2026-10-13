@@ -5,10 +5,11 @@ import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
+import type { CommandName } from '@/utils/core/commandNames'
 
 type CommandHandler = (payload?: unknown) => void
 
-const handlers = new Map<string, CommandHandler>()
+const handlers = new Map<CommandName, CommandHandler>()
 
 // ─── Keymap ───
 // Key strings are built from KeyboardEvent: optional modifiers joined with '+',
@@ -17,8 +18,8 @@ const handlers = new Map<string, CommandHandler>()
 type CoreKeybinding = {
   // Canonical key string, e.g. "ctrl+z".
   key: string
-  // Command name, e.g. "undo".
-  command: string
+  // Command name, e.g. "undo". Checked against COMMAND_NAMES.
+  command: CommandName
   // Human-readable label for the Registry page.
   label: string
   // Short description for the Registry page.
@@ -42,12 +43,12 @@ export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
 ]
 
 // Derive the flat key→command record from CORE_KEYBINDINGS.
-const CORE_KEYMAP: Record<string, string> =
+const CORE_KEYMAP: Record<string, CommandName> =
   Object.fromEntries(CORE_KEYBINDINGS.map(b => [b.key, b.command]))
 
 // Merge core bindings with registry-derived shortcuts.
 // Constraint shortcuts take precedence over CORE_KEYBINDINGS (last wins).
-export const KEYMAP: Record<string, string> = {
+export const KEYMAP: Record<string, CommandName> = {
   ...CORE_KEYMAP,
   ...Object.fromEntries(CONSTRAINT_SHORTCUTS),
   ...Object.fromEntries(ENTITY_SHORTCUTS),
@@ -57,7 +58,7 @@ export const KEYMAP: Record<string, string> = {
 // These override KEYMAP entries when no sketch is being edited.
 // `e` is the only genuine mode split: in a sketch it applies the equal
 // constraint, outside one it adds an extrude.
-export const FEATURE_KEYMAP: Record<string, string> = {
+export const FEATURE_KEYMAP: Record<string, CommandName> = {
   'e': 'add_extrude',
 }
 
@@ -66,7 +67,7 @@ export const FEATURE_KEYMAP: Record<string, string> = {
 // Currently empty: every binding that used to live here behaved the same in both
 // modes, so it belongs in CORE_KEYBINDINGS where the Registry page can see it.
 // An override here silently shadows KEYMAP, so only add one that really differs.
-export const SKETCH_KEYMAP: Record<string, string> = {}
+export const SKETCH_KEYMAP: Record<string, CommandName> = {}
 
 // Assembly keymap, resolved first while WorkspacePage says the assembly editor
 // is active. It ships the shared keys (undo/redo/delete, including their alt
@@ -86,19 +87,19 @@ export const ASSEMBLY_KEYBINDINGS: readonly CoreKeybinding[] = [
   { key: 'escape',       command: 'cancel_edit',     label: 'Cancel edit',  description: 'Close the open part or mate editor' },
 ]
 
-export const ASSEMBLY_KEYMAP: Record<string, string> =
+export const ASSEMBLY_KEYMAP: Record<string, CommandName> =
   Object.fromEntries(ASSEMBLY_KEYBINDINGS.map(b => [b.key, b.command]))
 
 // ─── Registration ───
 
-export function registerCommand(name: string, fn: CommandHandler): void {
+export function registerCommand(name: CommandName, fn: CommandHandler): void {
   if (import.meta.env.DEV && handlers.has(name)) {
     console.warn(`registerCommand: overwriting existing handler for "${name}"`)
   }
   handlers.set(name, fn)
 }
 
-export function unregisterCommand(name: string): void {
+export function unregisterCommand(name: CommandName): void {
   handlers.delete(name)
 }
 
@@ -110,7 +111,7 @@ export function clearAllHandlers(): void {
   handlers.clear()
 }
 
-export function executeCommand(name: string, payload?: unknown): void {
+export function executeCommand(name: CommandName, payload?: unknown): void {
   const fn = handlers.get(name)
   if (!fn) {
     // dispatchKey has already preventDefaulted by the time we get here, so an
