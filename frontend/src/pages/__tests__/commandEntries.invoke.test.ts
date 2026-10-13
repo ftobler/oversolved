@@ -33,7 +33,8 @@ describe('command callbacks that drive the sketch editor store', () => {
 
   it('cancel_pick is gone: Escape reaches the pick field through cancel_draw', () => {
     const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, noop)
-    expect(entries.find(e => e.name === 'cancel_pick')).toBeUndefined()
+    const names: string[] = entries.map(e => e.name)
+    expect(names).not.toContain('cancel_pick')
   })
 
   it('set_tool_mirror surfaces a not-implemented notice (showMessage) and does not switch tools', () => {

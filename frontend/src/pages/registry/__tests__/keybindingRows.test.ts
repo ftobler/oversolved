@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildKeybindingRows, rowId, resolveMode, MODE_LABEL } from '@/pages/registry/keybindingRows'
+import { KEYMAP, ASSEMBLY_KEYBINDINGS } from '@/utils/core/commandRegistry'
 
 // The Registry page is the user-facing contract for the keyboard. A row that no
 // dispatch path can produce is an advertised lie (this is how `p` -> Parallel
@@ -60,6 +61,21 @@ describe('buildKeybindingRows', () => {
 })
 
 describe('assembly rows', () => {
+  it('ASSEMBLY_KEYBINDINGS lists every shared key the assembly editor fires', () => {
+    // The assembly editor reaches shared commands through the part KEYMAP
+    // fallthrough. Listing them in ASSEMBLY_KEYBINDINGS makes the table the one
+    // source of what the assembly editor does.
+    const shared = ['undo', 'redo', 'delete_selected']
+    const listed = Object.fromEntries(ASSEMBLY_KEYBINDINGS.map(b => [b.key, b.command]))
+    for (const [key, command] of Object.entries(KEYMAP)) {
+      if (shared.includes(command)) {
+        expect(listed[key], `"${key}" -> "${command}" missing from assembly keybindings`).toBe(command)
+      }
+    }
+    expect(listed['ctrl+y']).toBe('redo')
+    expect(listed['backspace']).toBe('delete_selected')
+  })
+
   it('advertises the assembly-only cancel with an assembly mode and copy', () => {
     const row = rows.find(r => r.key === 'escape' && r.command === 'cancel_edit')!
     expect(row).toBeTruthy()

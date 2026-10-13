@@ -2,6 +2,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { TOOLBAR_ENTITIES } from '@/registry'
 import type { EntityDef } from '@/registry'
 import { executeCommand } from '@/utils/core/commandRegistry'
+import { narrowCommandName } from '@/utils/core/commandNames'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { iconUrl, shortcutHint } from '@/components/Toolbar/tools/toolUtils'
 
@@ -16,7 +17,7 @@ export default function EntityTools() {
           key={def.kind}
           title={`${def.label}${shortcutHint(def)}`}
           icon={iconUrl(def.toolbarIcon!)}
-          onClick={() => executeCommand('set_tool_' + def.activeTool)}
+          onClick={() => executeCommand(narrowCommandName('set_tool_' + def.activeTool))}
           active={activeTool === def.activeTool}
         />
       ))}

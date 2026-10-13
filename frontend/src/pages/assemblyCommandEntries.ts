@@ -4,11 +4,9 @@ import type { AssemblySubject } from '@/utils/assemblySelection'
 import type { AssemblyOperationId } from '@/utils/assemblyOperations'
 import type { CommandEntry } from '@/pages/hooks/useCommandRegistration'
 
-/**
- * The canonical assembly command list. Names are strings so a tree row can
- * carry its subject as a payload through `executeCommand(name, payload)`.
- */
-export const ASSEMBLY_COMMAND_NAMES = [
+// Every assembly command except the per-kind mate inserts. A tree row carries
+// its subject as a payload through `executeCommand(name, payload)`.
+const ASSEMBLY_FIXED_COMMAND_NAMES = [
   'undo',
   'redo',
   'delete_selected',
@@ -29,10 +27,16 @@ export const ASSEMBLY_COMMAND_NAMES = [
   'reorder_part',
   'reorder_mate',
   'rename_mate',
-  ...MATE_KINDS.map(k => `insert_mate_${k}`),
 ] as const
 
-export type AssemblyCommandName = typeof ASSEMBLY_COMMAND_NAMES[number]
+export type MateInsertCommandName = `insert_mate_${MateKind}`
+
+export type AssemblyCommandName = (typeof ASSEMBLY_FIXED_COMMAND_NAMES)[number] | MateInsertCommandName
+
+export const ASSEMBLY_COMMAND_NAMES: readonly AssemblyCommandName[] = [
+  ...ASSEMBLY_FIXED_COMMAND_NAMES,
+  ...MATE_KINDS.map(insertMateCommand),
+]
 
 /**
  * Which assembly operation each mutating command resolves to. UI-only commands
@@ -64,7 +68,7 @@ export function buildAssemblyCommandEntries(handlers: AssemblyCommandHandlers): 
   return ASSEMBLY_COMMAND_NAMES.map(name => ({ name, fn: handlers[name] }))
 }
 
-export function insertMateCommand(kind: MateKind): AssemblyCommandName {
+export function insertMateCommand(kind: MateKind): MateInsertCommandName {
   return `insert_mate_${kind}`
 }
 
@@ -119,11 +123,14 @@ export function buildAssemblyHandlers(deps: AssemblyHandlerDeps): AssemblyComman
     rename_mate: (payload) => deps.runOperation('rename_mate', payload),
     delete_part: (payload) => deps.deleteSubject({ kind: 'part', handle: payload as string }),
     delete_mate: (payload) => deps.deleteSubject({ kind: 'mate', id: payload as string }),
+    // MATE_KINDS is a plain array, so Object.fromEntries widens the keys to
+    // string. Every key is insertMateCommand(kind), which the cast restores to
+    // the MateInsertCommandName keys the handler record requires.
     ...Object.fromEntries(MATE_KINDS.map(kind => [insertMateCommand(kind), () => {
       const id = deps.mintMateId()
       deps.closeOpenEditor()
       deps.runOperation('add_mate', { kind, id })
       deps.onMateInserted(id, kind)
-    }])),
+    }])) as Record<MateInsertCommandName, () => void>,
   }
 }

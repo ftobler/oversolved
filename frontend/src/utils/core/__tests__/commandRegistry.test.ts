@@ -18,6 +18,13 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { initializeTools } from '@/tools'
 import { acquireModalEscape, resetModalEscape } from '@/utils/core/modalEscape'
+import type { CommandName } from '@/utils/core/commandNames'
+
+// These tests exercise the handler map, not the command list, so they register
+// synthetic names that COMMAND_NAMES deliberately does not contain.
+function fake(name: string): CommandName {
+  return name as CommandName
+}
 
 // Ensure clean state before each test
 beforeEach(() => { clearAllHandlers() })
@@ -211,25 +218,25 @@ describe('isEditableTarget', () => {
 describe('registerCommand / executeCommand / unregisterCommand', () => {
   it('registered handler is called by executeCommand', () => {
     const fn = vi.fn()
-    registerCommand('__test__', fn)
-    executeCommand('__test__')
+    registerCommand(fake('__test__'), fn)
+    executeCommand(fake('__test__'))
     expect(fn).toHaveBeenCalledOnce()
   })
 
   it('after unregisterCommand the handler is not called', () => {
     const fn = vi.fn()
-    registerCommand('__test__', fn)
-    unregisterCommand('__test__')
-    executeCommand('__test__')
+    registerCommand(fake('__test__'), fn)
+    unregisterCommand(fake('__test__'))
+    executeCommand(fake('__test__'))
     expect(fn).not.toHaveBeenCalled()
   })
 
   it('registering the same name twice replaces the handler (last write wins)', () => {
     const fn1 = vi.fn()
     const fn2 = vi.fn()
-    registerCommand('__test__', fn1)
-    registerCommand('__test__', fn2)
-    executeCommand('__test__')
+    registerCommand(fake('__test__'), fn1)
+    registerCommand(fake('__test__'), fn2)
+    executeCommand(fake('__test__'))
     expect(fn1).not.toHaveBeenCalled()
     expect(fn2).toHaveBeenCalledOnce()
   })
@@ -237,9 +244,9 @@ describe('registerCommand / executeCommand / unregisterCommand', () => {
   it('multiple independent commands do not interfere', () => {
     const fn1 = vi.fn()
     const fn2 = vi.fn()
-    registerCommand('__test_a__', fn1)
-    registerCommand('__test_b__', fn2)
-    executeCommand('__test_a__')
+    registerCommand(fake('__test_a__'), fn1)
+    registerCommand(fake('__test_b__'), fn2)
+    executeCommand(fake('__test_a__'))
     expect(fn1).toHaveBeenCalledOnce()
     expect(fn2).not.toHaveBeenCalled()
   })
@@ -250,7 +257,7 @@ describe('registerCommand / executeCommand / unregisterCommand', () => {
 describe('dispatchKey', () => {
   it('returns false and does not call handler when target is INPUT', () => {
     const fn = vi.fn()
-    registerCommand('__test__', fn)
+    registerCommand(fake('__test__'), fn)
     const e = fakeKey('a', {}, { tagName: 'INPUT' })
     expect(dispatchKey(e)).toBe(false)
     expect(fn).not.toHaveBeenCalled()
@@ -258,7 +265,7 @@ describe('dispatchKey', () => {
 
   it('returns false and does not call handler when target is TEXTAREA', () => {
     const fn = vi.fn()
-    registerCommand('__test__', fn)
+    registerCommand(fake('__test__'), fn)
     const e = fakeKey('a', {}, { tagName: 'TEXTAREA' })
     expect(dispatchKey(e)).toBe(false)
     expect(fn).not.toHaveBeenCalled()
@@ -508,16 +515,16 @@ describe('tool commands via store', () => {
 describe('registerCommand collision warning', () => {
   it('warns in dev mode when overwriting an existing handler', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    registerCommand('__collision__', vi.fn())
-    registerCommand('__collision__', vi.fn())
+    registerCommand(fake('__collision__'), vi.fn())
+    registerCommand(fake('__collision__'), vi.fn())
     expect(warnSpy).toHaveBeenCalledOnce()
-    expect(warnSpy.mock.calls[0][0]).toContain('__collision__')
+    expect(warnSpy.mock.calls[0][0]).toContain(fake('__collision__'))
     warnSpy.mockRestore()
   })
 
   it('does not warn when registering a new (non-duplicate) handler', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    registerCommand('__unique_a__', vi.fn())
+    registerCommand(fake('__unique_a__'), vi.fn())
     expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
@@ -528,16 +535,16 @@ describe('registerCommand collision warning', () => {
 describe('executeCommand unknown-command warning', () => {
   it('warns in dev mode when no handler is registered for the command', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    executeCommand('__nonexistent__')
+    executeCommand(fake('__nonexistent__'))
     expect(warnSpy).toHaveBeenCalledOnce()
-    expect(warnSpy.mock.calls[0][0]).toContain('__nonexistent__')
+    expect(warnSpy.mock.calls[0][0]).toContain(fake('__nonexistent__'))
     warnSpy.mockRestore()
   })
 
   it('does not warn when a handler is registered', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    registerCommand('__known__', vi.fn())
-    executeCommand('__known__')
+    registerCommand(fake('__known__'), vi.fn())
+    executeCommand(fake('__known__'))
     expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
@@ -547,16 +554,16 @@ describe('executeCommand unknown-command warning', () => {
 
 describe('clearAllHandlers', () => {
   it('removes all registered handlers', () => {
-    registerCommand('__clear_test__', vi.fn())
+    registerCommand(fake('__clear_test__'), vi.fn())
     clearAllHandlers()
     // After clearing, executeCommand must not throw and must do nothing
-    expect(() => executeCommand('__clear_test__')).not.toThrow()
+    expect(() => executeCommand(fake('__clear_test__'))).not.toThrow()
     // Registering again after clear must work
     const fn = vi.fn()
-    registerCommand('__clear_test__', fn)
-    executeCommand('__clear_test__')
+    registerCommand(fake('__clear_test__'), fn)
+    executeCommand(fake('__clear_test__'))
     expect(fn).toHaveBeenCalledOnce()
-    unregisterCommand('__clear_test__')
+    unregisterCommand(fake('__clear_test__'))
   })
 })
 
@@ -565,15 +572,15 @@ describe('clearAllHandlers', () => {
 describe('executeCommand payload', () => {
   it('passes a payload through to the handler', () => {
     const fn = vi.fn()
-    registerCommand('__payload__', fn)
-    executeCommand('__payload__', { handle: 'h1' })
+    registerCommand(fake('__payload__'), fn)
+    executeCommand(fake('__payload__'), { handle: 'h1' })
     expect(fn).toHaveBeenCalledWith({ handle: 'h1' })
   })
 
   it('a zero-arg handler still works with no payload', () => {
     const fn = vi.fn()
-    registerCommand('__zero__', fn)
-    executeCommand('__zero__')
+    registerCommand(fake('__zero__'), fn)
+    executeCommand(fake('__zero__'))
     expect(fn).toHaveBeenCalledOnce()
     expect(fn).toHaveBeenCalledWith(undefined)
   })

@@ -23,9 +23,10 @@
 
 import { useEffect, useRef } from 'react'
 import { registerCommand, unregisterCommand, dispatchKey } from '@/utils/core/commandRegistry'
+import type { CommandName } from '@/utils/core/commandNames'
 
 export interface CommandEntry {
-  name: string
+  name: CommandName
   fn: (payload?: unknown) => void
 }
 
