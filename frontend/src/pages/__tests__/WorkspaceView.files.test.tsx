@@ -138,7 +138,8 @@ describe('WorkspaceView files', () => {
   // rule goes back to `display: none` and puts the control out of reach again.
   // The sheet itself is what has to be asserted.
   it('clips the replace input in the sheet rather than hiding it', () => {
-    const css = readFileSync(resolve(process.cwd(), 'src/pages/WorkspaceView.css'), 'utf8')
+    // Read beside this file, not from the process cwd, so the test runs from any directory.
+    const css = readFileSync(resolve(import.meta.dirname, '../WorkspaceView.css'), 'utf8')
     const rule = css.split('.workspace-entry-replace-input')[1]?.split('}')[0] ?? ''
     expect(rule).toContain('position: absolute')
     expect(rule).not.toContain('display: none')
