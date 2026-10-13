@@ -693,6 +693,50 @@ describe('useAssemblyUndoRedo', () => {
     expect(result.current.redoStack).toHaveLength(0)
   })
 
+  // The stale-pin bug: an external snapshot drops the edited subject and
+  // force-closes the editor without going through cancelSession/commitSession,
+  // so a session already pinned keeps its pin. The next mutate sees no open
+  // session and must commit that orphan pin as its own ordered entry before it
+  // pushes; otherwise the new step is keyed to the stale pre-session doc and a
+  // later OK charges a second, out-of-order entry.
+  it('mutate after a force-closed editor commits the stale pin before its own step', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const docC = docWith(['a', 'b', 'c'])
+    const docRef = { current: docA as AssemblyDoc | null }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    act(() => { useAssemblyStore.getState().openInstanceEditor('a') })
+    act(() => { result.current.mutate('Set position', () => docB) })
+    // Folded behind the session: the pre-session doc is pinned, nothing pushed.
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(useAssemblyStore.getState().editingSubject.kind).toBe('instance')
+
+    // An external doc change no longer contains the edited subject, so the
+    // snapshot's reduceEditingSubject force-closes the editor while the pin
+    // stays set; the hook never sees a close.
+    act(() => {
+      useAssemblyStore.getState().setSnapshot({ ...useAssemblyStore.getState(), doc: docWith([]) })
+    })
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+
+    act(() => { result.current.mutate('Add part', () => docC) })
+
+    // The stale pin is committed first, then the new step: both ordered, with
+    // distinct pre-docs the session entry restores back to.
+    expect(result.current.undoStack.map(e => e.label)).toEqual(['Set position', 'Add part'])
+    expect(result.current.undoStack[0].doc).toEqual(docA)
+    expect(result.current.undoStack[1].doc).toEqual(docB)
+
+    // No orphan pin remains: a later OK click pushes nothing more.
+    act(() => { result.current.commitSession() })
+    expect(result.current.undoStack).toHaveLength(2)
+    expect(result.current.redoStack).toHaveLength(0)
+  })
+
   // The stale-scene regression: undoing a drag restores the pre-drag seed doc
   // while the store still holds the post-drag solved scene, so the viewport
   // renders the dragged pose until a solve runs. Undo MUST ask for that solve.

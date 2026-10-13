@@ -123,21 +123,24 @@ export function useAssemblyUndoRedo(
   // same stale pre-doc. The undo decision is the shared pure one, and the
   // session-open flag comes from the store, so no caller passes it.
   const mutate = useCallback((label: AssemblyUndoLabel, fn: (d: AssemblyDoc) => AssemblyDoc) => {
+    const sessionOpen = isSessionOpen(useAssemblyStore.getState().editingSubject)
+    // A pin can outlive its editor: setSnapshot force-closes one whose subject
+    // vanished from an external doc change without knowing a session was pinned.
+    // Committing it here resolves that pin as an ordered entry instead of letting
+    // the push below key the new step to the stale pre-session doc, which would
+    // later charge a second, out-of-order entry and strand those edits from undo.
+    if (!sessionOpen && pendingSession.current) commitSession()
     const current = docRef.current
     if (!current) return
     const next = fn(current)
-    const decision = decideAssemblyMutation({
-      pre: current,
-      next,
-      sessionOpen: isSessionOpen(useAssemblyStore.getState().editingSubject),
-    })
+    const decision = decideAssemblyMutation({ pre: current, next, sessionOpen })
     if (decision === 'noop') return
     if (decision === 'fold') recordSessionEdit(current, label)
     else pushUndo(current, label)
     docRef.current = next
     setDoc(next)
     useUnsavedChangesStore.getState().setDirty(true)
-  }, [setDoc, docRef, pushUndo, recordSessionEdit])
+  }, [setDoc, docRef, pushUndo, recordSessionEdit, commitSession])
 
   // A structural one-shot op (rename, reorder, delete, duplicate, visibility)
   // pushes its own step even while an editor session is open: the session's
