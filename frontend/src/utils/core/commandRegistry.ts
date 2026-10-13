@@ -69,8 +69,10 @@ export const FEATURE_KEYMAP: Record<string, string> = {
 export const SKETCH_KEYMAP: Record<string, string> = {}
 
 // Assembly keymap, resolved first while WorkspacePage says the assembly editor
-// is active. It ships the shared keys only (undo/redo/delete, plus Escape to cancel
-// the open edit); no assembly-specific key is invented here.
+// is active. It ships the shared keys (undo/redo/delete, including their alt
+// bindings, plus Escape to cancel the open edit); no assembly-specific key is
+// invented here. Every shared key is listed so this table is the single source
+// of what the assembly editor does, rather than a fallthrough to KEYMAP.
 //
 // Policy: the app default IS the user's workflow default. Whenever a shortcut
 // is later requested, it is added here as the new default, and users remain free
@@ -78,7 +80,9 @@ export const SKETCH_KEYMAP: Record<string, string> = {}
 export const ASSEMBLY_KEYBINDINGS: readonly CoreKeybinding[] = [
   { key: 'ctrl+z',       command: 'undo',            label: 'Undo',         description: 'Undo the last assembly change' },
   { key: 'ctrl+shift+z', command: 'redo',            label: 'Redo',         description: 'Redo the last undone assembly change' },
+  { key: 'ctrl+y',       command: 'redo',            label: 'Redo (alt)',   description: 'Redo the last undone assembly change' },
   { key: 'delete',       command: 'delete_selected', label: 'Delete',       description: 'Delete the selected part or mate' },
+  { key: 'backspace',    command: 'delete_selected', label: 'Delete (alt)', description: 'Delete the selected part or mate' },
   { key: 'escape',       command: 'cancel_edit',     label: 'Cancel edit',  description: 'Close the open part or mate editor' },
 ]
 

@@ -9,9 +9,13 @@ import {
   dispatchKey,
 } from '@/utils/core/commandRegistry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorModeStore } from '@/stores/editorModeStore'
 
 beforeEach(() => { clearAllHandlers() })
-afterEach(() => { useSketchEditorStore.getState().setActiveFeatureId(null) })
+afterEach(() => {
+  useSketchEditorStore.getState().setActiveFeatureId(null)
+  useEditorModeStore.getState().setActiveEditor(null)
+})
 
 function fakeKey(key: string, extra: Record<string, boolean> = {}): KeyboardEvent {
   return { key, ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, preventDefault: vi.fn(), ...extra } as unknown as KeyboardEvent
@@ -86,6 +90,18 @@ describe('keyboard command dispatch', () => {
 
   it('SKETCH_KEYMAP holds no p override: the core binding already covers both modes', () => {
     expect(SKETCH_KEYMAP['p']).toBeUndefined()
+  })
+
+  it('in the assembly editor, ctrl+y and backspace reach the assembly redo and delete handlers', () => {
+    useEditorModeStore.getState().setActiveEditor('assembly')
+    const redo = vi.fn()
+    const deleteSelected = vi.fn()
+    registerCommand('redo', redo)
+    registerCommand('delete_selected', deleteSelected)
+    expect(dispatchKey(fakeKey('y', { ctrlKey: true }))).toBe(true)
+    expect(dispatchKey(fakeKey('Backspace'))).toBe(true)
+    expect(redo).toHaveBeenCalledOnce()
+    expect(deleteSelected).toHaveBeenCalledOnce()
   })
 
   it('p key dispatches toggle_plane_visibility in sketch mode', () => {
