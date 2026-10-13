@@ -16,6 +16,7 @@ import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { assemblyDocEquals } from '@/utils/assemblyMutations'
 import { isSessionOpen } from '@/utils/assemblyEditingSubject'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
+import { pushCapped, moveTop } from '@/utils/core/undoStack'
 
 export type AssemblyMutationDecision = 'noop' | 'push' | 'fold'
 
@@ -55,9 +56,10 @@ export function useAssemblyUndoRedo(
     // The entry holds a snapshot, never a reference: every caller passes the
     // live docRef object, and any path that mutates it in place would silently
     // rewrite history if the stored object were shared. Mirrors applyUndoRedo's
-    // counterpart clone below.
-    const undo = [...useAssemblyStore.getState().undoStack, { doc: structuredClone(doc), label }]
-    if (undo.length > MAX_UNDO_DEPTH) undo.shift()
+    // counterpart clone below. AssemblyDoc holds no shared import payloads (the
+    // part doc's are why cloneDocForUndo exists), so a full structuredClone is
+    // the correct snapshot here.
+    const undo = pushCapped(useAssemblyStore.getState().undoStack, { doc: structuredClone(doc), label }, MAX_UNDO_DEPTH)
     // A fresh edit invalidates any redo branch.
     useAssemblyStore.setState({ undoStack: undo, redoStack: [] })
   }, [])
@@ -175,27 +177,23 @@ export function useAssemblyUndoRedo(
     // Read after the commit, which may have pushed onto the undo stack.
     const store = useAssemblyStore.getState()
     const from = direction === 'undo' ? store.undoStack : store.redoStack
+    const to = direction === 'undo' ? store.redoStack : store.undoStack
     if (from.length === 0) return
     // A non-empty stack with no current doc means the history describes a doc
     // that does not exist. Popping would orphan the counterpart entry and
     // permanently desync the paired stacks, so the whole undo is a no-op.
     if (!docRef.current) return
-    const entry = from[from.length - 1]
-    const nextFrom = from.slice(0, -1)
-    const to = direction === 'undo' ? store.redoStack : store.undoStack
+    const preDoc = docRef.current
     // The doc we are leaving becomes the counterpart entry, so the same label
     // round-trips in both directions. The clone mirrors pushUndo's snapshot
     // discipline: the departing doc must not be shared with the entry.
-    const preDoc = docRef.current
-    // The conservation invariant undo.length + redo.length <= MAX_UNDO_DEPTH
-    // holds at all times: pushUndo caps the undo stack and clears redo, and a
-    // move shifts exactly one entry across, so a non-empty `from` leaves `to`
-    // at most one below the cap and `nextTo` can never exceed it.
-    const nextTo = [...to, { doc: structuredClone(preDoc), label: entry.label }]
+    const move = moveTop(from, to, entry => ({ doc: structuredClone(preDoc), label: entry.label }))
+    if (!move) return
+    const entry = from[from.length - 1]
     useAssemblyStore.setState(
       direction === 'undo'
-        ? { undoStack: nextFrom, redoStack: nextTo }
-        : { undoStack: nextTo, redoStack: nextFrom },
+        ? { undoStack: move.from, redoStack: move.to }
+        : { undoStack: move.to, redoStack: move.from },
     )
     // Restoring an earlier doc moves it away from the saved content, so it
     // counts as unsaved until the user saves again.
