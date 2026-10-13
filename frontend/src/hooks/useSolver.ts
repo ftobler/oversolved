@@ -255,6 +255,11 @@ export function useSolver(
     // docRef identity is untouched. A re-solve that bakes identical geometry
     // keeps the prior object, so a save overlapping it still clears dirty
     // instead of being defeated by an unrelated re-solve.
+    //
+    // The compare is exact, so the write-back has to produce the SAME numbers
+    // the mutators wrote: applyGeometryToFeature rounds the solver's float32
+    // params to the 6dp every sketch mutator persists (helpers.ts round).
+    // Unrounded, a re-solve of unchanged geometry would read as a change here.
     if (!(docRef.current !== null && JSON.stringify(cloned) === JSON.stringify(docRef.current))) {
       setDoc(cloned)
       docRef.current = cloned

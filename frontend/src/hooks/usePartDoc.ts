@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type { PartDoc, Mutation, SketchData } from '@/types/cad'
+import type { PartDoc, Mutation, PartFeature, SketchData } from '@/types/cad'
 import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
@@ -50,18 +50,37 @@ function featureKindOf(doc: PartDoc | null, featureId: string): string | undefin
   return (doc?.features ?? []).find(f => f.id === featureId)?.kind
 }
 
-// Whole-doc change test for the edit-session commit. part_style is excluded
-// because reconcilePartStyle fabricates entries there during a solve, which
-// would manufacture an edit out of nothing; rollback is excluded because it is
-// pinned during an edit (the mirror only runs when editingFeatureId is null),
-// so it can never be a user change inside a session. stringify is read-only, so
-// the excluded keys are dropped by destructuring the rest; that keeps the
-// remaining key order and every nested value by reference, and a whole-doc
-// deep clone would only be discarded.
+// Whole-doc change test for the edit-session commit. Three fields are excluded,
+// each written by the solve rather than by the user:
+// - part_style: reconcilePartStyle fabricates entries there during a solve,
+//   which would manufacture an edit out of nothing.
+// - initial: the solver write-back (applyGeometryToFeature) re-bakes the solved
+//   geometry of every sketch on each solve. A suppressed session is only ever
+//   open on a non-sketch feature (a sketch edit runs its own unsuppressed
+//   session and keeps one entry per action), so an `initial` change inside one
+//   can only have come from the write-back. Counting it would push an aggregate
+//   entry that restores a doc with no user change in it, and undo would then
+//   re-solve to re-derive the same geometry, which reads as a dead step.
+// - rollback: it is pinned during an edit (the mirror only runs when
+//   editingFeatureId is null), so it can never be a user change inside a session.
+// stringify is read-only, so the excluded keys are dropped by destructuring the
+// rest; that keeps the remaining key order and every nested value by reference,
+// and a whole-doc deep clone would only be discarded. `initial` lives one level
+// down on the features, which are shared by reference with the doc, so the strip
+// copies each feature object instead of deleting the key off the original.
 function docDiffersForSession(a: PartDoc, b: PartDoc): boolean {
-  const strip = ({ part_style: _partStyle, rollback: _rollback, ...rest }: PartDoc) => rest
-  return JSON.stringify(strip(a)) !== JSON.stringify(strip(b))
+  return JSON.stringify(stripSolveWritten(a)) !== JSON.stringify(stripSolveWritten(b))
 }
+
+function stripSolveWritten(doc: PartDoc): Record<string, unknown> {
+  const { part_style: _partStyle, rollback: _rollback, features, ...rest } = doc
+  return {
+    ...rest,
+    ...(features && { features: features.map(stripSolvedGeometry) }),
+  }
+}
+
+const stripSolvedGeometry = ({ initial: _initial, ...feature }: PartFeature): Record<string, unknown> => feature
 
 // The commit label for a preview apply. The color popover is the only preview
 // producer and it edits per-body material fields, so the diff is against the
@@ -622,7 +641,11 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     // throws in test but is a silent no-op in prod, where the resolution still runs.
     if (previewOriginalDoc.current !== null) {
       failLoud('[usePartDoc] startEditSession called while a preview is active (preview must be resolved before a session starts)')
-      commitPreview({ type: 'preview_commit', description: 'preview resolved at session start' })
+      // Label-only: the entry's job is to revert the colour the preview left in
+      // the doc, and its wording shows in the undo tooltip (PartToolbar), so the
+      // internal reason (the preview was resolved here rather than at the
+      // session boundary) stays in this comment.
+      commitPreview({ type: 'preview_commit', description: 'apply previewed color' })
     }
     editSnapshotRef.current = cloneDocForUndo(docRef.current)
     editDirtyRef.current = useUnsavedChangesStore.getState().pinDirty()
@@ -690,7 +713,11 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     // preview, or a later popover Apply keys its preview_commit to a doc that
     // predates the session.
     if (previewOriginalDoc.current !== null) {
-      commitPreview({ type: 'preview_commit', description: 'preview resolved at session commit' })
+      // Resolved at the session COMMIT rather than at its start: the color was
+      // already in the doc, so the entry reverts it. Same user-facing wording
+      // as the other preview resolutions; the boundary it was resolved on is a
+      // detail for this comment, not for the tooltip.
+      commitPreview({ type: 'preview_commit', description: 'apply previewed color' })
     }
     clearUndoStackSnapshot()
   }, [suppressUndoRef, pushUndoSnapshot, clearUndoStackSnapshot, commitPreview, sessionWouldPush])
@@ -713,7 +740,11 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     // projection.
     const pendingBrep = brepWithholdRef.current.doc
     if (pendingBrep && !editSessionSuppressedRef.current && docRef.current) {
-      pushUndo({ type: 'preview_commit', description: 'brep projection resolved before history move' }, pendingBrep)
+      // The pending projection (an edge projected onto the sketch by a brep
+      // dimension pick) is banked as its own entry because the history move is
+      // about to carry it away. Undo removes the projection, so the label names
+      // what the step added.
+      pushUndo({ type: 'preview_commit', description: 'add projected edge' }, pendingBrep)
       brepWithholdRef.current = { armed: false, doc: null }
       committed = true
     }
@@ -725,7 +756,9 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
         committed = true
       }
     } else if (previewWouldPush()) {
-      commitPreview({ type: 'preview_commit', description: 'preview resolved before history move' })
+      // Resolved here because the history move arrived first, not because the
+      // popover's Apply was clicked; the entry still just reverts the color.
+      commitPreview({ type: 'preview_commit', description: 'apply previewed color' })
       committed = true
     }
     return committed
@@ -771,10 +804,22 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       // once the live doc has been rewound to it. Restoring in the other
       // order, or without the rewind, would leave the stack top naming a doc
       // the live doc is not.
+      //
+      // A session that changed nothing rewound nothing, so there is nothing to
+      // restore. The write-back installs a fresh doc object on every solve, so
+      // object identity says nothing here; the content compare is the only
+      // honest test, and it runs once per cancel. Without it a save inside a
+      // no-edit session moves the pinned save count and restoreDirtyAfterRewind
+      // reads that as "the stored bytes hold what is being thrown away" --
+      // false when nothing was thrown away -- flagging the document dirty
+      // forever even though the live doc is exactly what was saved.
+      const rewound = JSON.stringify(snapshot) !== JSON.stringify(docRef.current)
       docRef.current = snapshot
       setDoc(snapshot)
       restoreUndoStackSnapshot()
-      useUnsavedChangesStore.getState().restoreDirtyAfterRewind(editDirtyRef.current)
+      if (rewound) {
+        useUnsavedChangesStore.getState().restoreDirtyAfterRewind(editDirtyRef.current)
+      }
     }
     // Rewinding the doc is this function's own doing, so it owns the re-solve
     // too. Leaving it to the caller's exit cleanup meant any other route into

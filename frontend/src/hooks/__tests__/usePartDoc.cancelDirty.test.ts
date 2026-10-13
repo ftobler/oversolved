@@ -82,6 +82,36 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
     expect(dirty()).toBe(true)
   })
 
+  // Open the editor, Ctrl+S, Escape. The session changed nothing, so the rewind
+  // put back the very doc the save just stored: there is no unsaved edit left,
+  // and honouring the pinned save count anyway would flag the document dirty
+  // forever with nothing to save.
+  it('a save during a session that changed nothing leaves the document clean', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    useUnsavedChangesStore.getState().markSaved()  // the save landing
+
+    act(() => { result.current.cancelEditSession() })
+    expect(dirty()).toBe(false)
+  })
+
+  // The write-back installs a fresh doc object whenever a solve bakes anything,
+  // so the cancel cannot decide "nothing changed" by object identity: here the
+  // object moved and the content did not.
+  it('a session whose doc was replaced without changing content leaves the flag alone', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.setDoc(structuredClone(docRef.current)) })
+    useUnsavedChangesStore.getState().markSaved()  // the save landing
+
+    act(() => { result.current.cancelEditSession() })
+    expect(dirty()).toBe(false)
+  })
+
   it('cancelling a color preview on a clean doc leaves it clean', () => {
     docRef.current = {
       version: 1,

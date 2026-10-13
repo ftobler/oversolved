@@ -85,6 +85,37 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     expect(doc).toEqual(before)
     expect(doc.features).toBeUndefined()
   })
+
+  // The worker decodes the solved params as float32, so the wire carries
+  // 3.1415927410125732 where every sketch mutator persists 3.141593. Baking the
+  // wire values verbatim leaves two spellings of one geometry in the document,
+  // and every consumer that compares doc content (useSolver's save identity
+  // guard, findFirstDirty's checkpoint hash, docDiffersForSession) then reads a
+  // re-solve that moved nothing as a change.
+  it('bakes the solved geometry rounded to the precision the mutators write', () => {
+    const doc = makeDoc()
+    applyGeometryToFeature(doc, 'sk1', {
+      c1: [0, 0, Math.fround(Math.PI)],
+      p1: [Math.fround(1 / 3), 2],
+    })
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    expect(feat.initial).toEqual({ c1: [0, 0, 3.141593], p1: [0.333333, 2] })
+  })
+
+  // The geometry map is handed over by the solve result record, which keeps
+  // reading it afterwards (unflattenGeometry renders from the same object).
+  // Rounding in place would rewrite the solver's own numbers under it.
+  it('leaves the geometry arrays it was handed untouched', () => {
+    const doc = makeDoc()
+    const geometry = { c1: [Math.fround(Math.PI)], p1: [Math.fround(1 / 3)] }
+    const pristine = structuredClone(geometry)
+    applyGeometryToFeature(doc, 'sk1', geometry)
+    expect(geometry).toEqual(pristine)
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    // New arrays, not aliases of the solve result's.
+    expect(feat.initial!.c1).not.toBe(geometry.c1)
+    expect(feat.initial!.p1).not.toBe(geometry.p1)
+  })
 })
 
 describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
