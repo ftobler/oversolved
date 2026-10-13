@@ -692,6 +692,15 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   // Redo keeps the plain teardown: its counterpart entry already holds the
   // departing doc, so the session's edits stay reachable by the next undo.
   const commitOpenWorkBeforeUndo = useCallback(() => {
+    // A brep pick's projection is applied without an entry until its dimension
+    // commits. Outside a suppressed session (whose aggregate already covers it)
+    // it is open work like any other: give it the entry the commit would have,
+    // keyed to the pre-pick doc, so the undo reverts exactly the projection.
+    const pendingBrep = brepWithholdRef.current.doc
+    if (pendingBrep && !editSessionSuppressedRef.current && docRef.current) {
+      pushUndo({ type: 'preview_commit', description: 'brep projection resolved at undo' }, pendingBrep)
+      brepWithholdRef.current = { armed: false, doc: null }
+    }
     if (editSessionSuppressedRef.current) {
       // The session owns an open preview and resolves it on top of its own
       // aggregate, so the pair commits as one call.
@@ -699,7 +708,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     } else if (previewWouldPush()) {
       commitPreview({ type: 'preview_commit', description: 'preview resolved at undo' })
     }
-  }, [sessionWouldPush, previewWouldPush, commitEditSession, commitPreview])
+  }, [sessionWouldPush, previewWouldPush, commitEditSession, commitPreview, pushUndo, docRef])
 
   const handleUndoWithOpenWork = useCallback(() => {
     commitOpenWorkBeforeUndo()

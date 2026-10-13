@@ -280,6 +280,39 @@ describe('usePartDoc undo brep gesture withhold', () => {
     expect(labelOf()).toBe('second')
   })
 
+  // The projection carries no entry until the dimension commits. An undo in
+  // between used to restore the previous entry, which dropped the projection
+  // together with that unrelated step (and on an empty stack left it stranded).
+  it('undo mid-gesture reverts only the pending projection', () => {
+    docRef.current = makeSketchDoc()
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    const store = useSketchEditorStore.getState()
+    setSketchCallback('onMutation', result.current.handleMutation)
+    setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
+    setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
+    setSketchCallback('getSketch', () => null)
+    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    try {
+      act(() => { result.current.handleMutation({ type: 'add_entity', featureId: 'sk1', kind: 'point', params: [1, 2] } as Mutation) })
+      act(() => { store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' }) })
+      expect(result.current.undoStack).toHaveLength(1)
+      expect(sketchEntitiesOf()).toHaveLength(2)
+
+      act(() => { result.current.handleUndo() })
+
+      expect(sketchEntitiesOf()).toHaveLength(1)  // the earlier step survives
+
+      act(() => { result.current.handleUndo() })
+      expect(sketchEntitiesOf()).toHaveLength(0)
+    } finally {
+      setSketchCallback('onMutation', null)
+      setSketchCallback('beginBrepProjection', null)
+      setSketchCallback('cancelBrepProjection', null)
+      setSketchCallback('getSketch', null)
+      useSketchEditorStore.getState().resetTransientState()
+    }
+  })
+
   it('cancelling a brep dimension pick removes the projection and its entry', () => {
     docRef.current = makeSketchDoc()
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
