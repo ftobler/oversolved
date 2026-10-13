@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
+import { useEditorModeStore } from '@/stores/editorModeStore'
 import AppHeader from '@/components/layout/AppHeader'
 import Breadcrumb from '@/components/layout/Breadcrumb'
 import SaveButton from '@/components/layout/SaveButton'
@@ -21,6 +22,17 @@ interface AssemblyToolbarProps {
 // help) with the save / clone / rename controls, so the assembly editor wears
 // the same titlebar as the part editor. The undo/redo group mirrors the part
 // toolbar, gated on the assembly store's stacks.
+
+// dispatchKey resolves a key through ASSEMBLY_KEYMAP only while the assembly
+// editor is the active one; a button click has no such routing, so the toolbar
+// has to take the same gate or a co-mount (split view, staged navigation) would
+// run whichever engine registered `undo` last while the disabled state below
+// reads the assembly store. The gate is strict here, exactly as dispatchKey's
+// assembly branch is.
+function assemblyEditorOwnsDocument(): boolean {
+  return useEditorModeStore.getState().activeEditor === 'assembly'
+}
+
 export default function AssemblyToolbar({
   docName,
   onRename,
@@ -30,6 +42,9 @@ export default function AssemblyToolbar({
 }: AssemblyToolbarProps) {
   const undoStack = useAssemblyStore(s => s.undoStack) as AssemblyUndoEntry[]
   const redoStack = useAssemblyStore(s => s.redoStack) as AssemblyUndoEntry[]
+  // The disabled state has to agree with the gate: a button that reads enabled
+  // from the assembly store and then refuses to run is worse than a disabled one.
+  const ownsDocument = assemblyEditorOwnsDocument()
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
 
@@ -39,8 +54,8 @@ export default function AssemblyToolbar({
         <button
           className="toolbar-btn"
           aria-label="Undo"
-          onClick={() => executeCommand('undo')}
-          disabled={undoStack.length === 0}
+          onClick={() => { if (ownsDocument) executeCommand('undo') }}
+          disabled={undoStack.length === 0 || !ownsDocument}
           onMouseEnter={() => setUndoHover(true)}
           onMouseLeave={() => setUndoHover(false)}
         >
@@ -57,8 +72,8 @@ export default function AssemblyToolbar({
         <button
           className="toolbar-btn"
           aria-label="Redo"
-          onClick={() => executeCommand('redo')}
-          disabled={redoStack.length === 0}
+          onClick={() => { if (ownsDocument) executeCommand('redo') }}
+          disabled={redoStack.length === 0 || !ownsDocument}
           onMouseEnter={() => setRedoHover(true)}
           onMouseLeave={() => setRedoHover(false)}
         >

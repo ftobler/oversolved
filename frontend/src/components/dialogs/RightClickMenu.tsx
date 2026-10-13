@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import '@/components/dialogs/RightClickMenu.css'
+import { acquireModalEscape } from '@/utils/core/modalEscape'
 
 export interface ContextMenuItem {
   label: string
@@ -38,6 +39,12 @@ export default function RightClickMenu({ items, position, onClose, anchorRef }: 
       if (restore?.isConnected) restore.focus()
     }
   }, [])
+
+  // The items are buttons, so focus is never an editable target and every
+  // document-level command is one keystroke away from running behind the menu.
+  // The claim is what stands them down, the same one Dialog.tsx takes; the
+  // window Escape listener below stays as this menu's own answer.
+  useEffect(() => acquireModalEscape(), [])
 
   useEffect(() => {
     const close = (e: MouseEvent) => {

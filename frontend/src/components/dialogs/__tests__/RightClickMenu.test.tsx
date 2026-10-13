@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
+import { registerCommand, clearAllHandlers, dispatchKey } from '@/utils/core/commandRegistry'
+import { modalOwnsEscape, resetModalEscape } from '@/utils/core/modalEscape'
 
 // The menu is used for the library's import door, so it has to work without a
 // mouse: focus moves in on open, the arrows walk and wrap, Escape closes, and a
@@ -143,5 +145,38 @@ describe('RightClickMenu disabled items', () => {
     expect(one).toHaveFocus()
     fireEvent.keyDown(window, { key: 'ArrowUp' })
     expect(three).toHaveFocus()
+  })
+})
+
+// The menu is a stack of buttons, so focus is never an editable target: every
+// document-level command is one keystroke away from running behind it. Escape was
+// already swallowed by this menu's own listener; the claim is what stands the
+// rest of them down.
+describe('RightClickMenu modal stand-down', () => {
+  afterEach(() => {
+    clearAllHandlers()
+    resetModalEscape()
+  })
+
+  it('holds the claim while it is open and drops it on unmount', () => {
+    const view = render(<RightClickMenu items={items()} position={[0, 0]} onClose={() => {}} />)
+    expect(modalOwnsEscape()).toBe(true)
+    view.unmount()
+    expect(modalOwnsEscape()).toBe(false)
+  })
+
+  it('a ctrl+z from a focused menu item does not run the document undo', () => {
+    resetModalEscape()
+    const undo = vi.fn()
+    registerCommand('undo', undo)
+    window.addEventListener('keydown', dispatchKey)
+
+    render(<RightClickMenu items={items()} position={[0, 0]} onClose={() => {}} />)
+    const one = screen.getByRole('menuitem', { name: 'One' })
+    one.focus()
+    fireEvent.keyDown(one, { key: 'z', ctrlKey: true })
+
+    window.removeEventListener('keydown', dispatchKey)
+    expect(undo).not.toHaveBeenCalled()
   })
 })

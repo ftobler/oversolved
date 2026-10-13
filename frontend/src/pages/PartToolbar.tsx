@@ -4,11 +4,23 @@ import type { Mutation } from '@/types/cad'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useEditorModeStore } from '@/stores/editorModeStore'
 import AppHeader from '@/components/layout/AppHeader'
 import Breadcrumb from '@/components/layout/Breadcrumb'
 import SaveButton from '@/components/layout/SaveButton'
 
 type StackEntry = { mutation: Mutation }
+
+// dispatchKey routes every key on useEditorModeStore; a button click goes
+// straight to executeCommand with no such gate, so the toolbar has to take the
+// same one. WorkspacePage mounts one keyed editor, which is why a co-mount
+// (split view, staged navigation) would run whichever engine registered `undo`
+// last while the disabled state below reads the part store. An unresolved mode
+// is the sketch/part branch of dispatchKey, so only the assembly editor locks
+// this toolbar out.
+function partEditorOwnsDocument(): boolean {
+  return useEditorModeStore.getState().activeEditor !== 'assembly'
+}
 
 interface PartToolbarProps {
   docName: string | null
@@ -31,6 +43,9 @@ export default function PartToolbar({
 }: PartToolbarProps) {
   const undoStack = usePartEditorStore(s => s.undoStack) as StackEntry[]
   const redoStack = usePartEditorStore(s => s.redoStack) as StackEntry[]
+  // The disabled state has to agree with the gate: a button that reads enabled
+  // from the part store and then refuses to run is worse than a disabled one.
+  const ownsDocument = partEditorOwnsDocument()
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
 
@@ -40,8 +55,8 @@ export default function PartToolbar({
         <button
           className="toolbar-btn"
           aria-label="Undo"
-          onClick={() => executeCommand('undo')}
-          disabled={undoStack.length === 0}
+          onClick={() => { if (ownsDocument) executeCommand('undo') }}
+          disabled={undoStack.length === 0 || !ownsDocument}
           onMouseEnter={() => setUndoHover(true)}
           onMouseLeave={() => setUndoHover(false)}
         >
@@ -60,8 +75,8 @@ export default function PartToolbar({
         <button
           className="toolbar-btn"
           aria-label="Redo"
-          onClick={() => executeCommand('redo')}
-          disabled={redoStack.length === 0}
+          onClick={() => { if (ownsDocument) executeCommand('redo') }}
+          disabled={redoStack.length === 0 || !ownsDocument}
           onMouseEnter={() => setRedoHover(true)}
           onMouseLeave={() => setRedoHover(false)}
         >
