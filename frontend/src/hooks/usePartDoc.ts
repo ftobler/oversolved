@@ -115,15 +115,12 @@ function featureKindOf(doc: PartDoc | null, featureId: string): string | undefin
 // because reconcilePartStyle fabricates entries there during a solve, which
 // would manufacture an edit out of nothing; rollback is excluded because it is
 // pinned during an edit (the mirror only runs when editingFeatureId is null),
-// so it can never be a user change inside a session. The docs are throwaway
-// clones, so stripping in place is safe.
+// so it can never be a user change inside a session. stringify is read-only, so
+// the excluded keys are dropped by destructuring the rest; that keeps the
+// remaining key order and every nested value by reference, and a whole-doc
+// deep clone would only be discarded.
 function docDiffersForSession(a: PartDoc, b: PartDoc): boolean {
-  const strip = (d: PartDoc): PartDoc => {
-    const clone = structuredClone(d)
-    delete clone.part_style
-    delete clone.rollback
-    return clone
-  }
+  const strip = ({ part_style: _partStyle, rollback: _rollback, ...rest }: PartDoc) => rest
   return JSON.stringify(strip(a)) !== JSON.stringify(strip(b))
 }
 
