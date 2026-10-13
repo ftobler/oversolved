@@ -154,6 +154,79 @@ describe('Delete key on body and feature selections', () => {
   })
 })
 
+// A mixed selection (one sketch entity under the active sketch plus one 3D
+// target) must delete BOTH halves in ONE undo entry. The store's own
+// deleteSelected only consumes the sketch half and then wipes the whole
+// selection, so before this fix the page handler ran second against an empty
+// selection and silently dropped the 3D targets: no mutation, no undo entry.
+describe('Delete key on a mixed sketch + 3D selection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetSelection()
+  })
+
+  it('folds the sketch delete and the feature delete into ONE commitMutationGroup', async () => {
+    await renderPartInFeatureMode()
+    // Inside the sketch editor the active feature is the sketch, so the entity
+    // target is the half the store consumes and @ex1 is the half it leaves.
+    act(() => {
+      useSketchEditorStore.setState({
+        activeFeatureId: 'sk1',
+        normalSelection: new Set(['entity:sk1:L1', '@ex1']),
+      })
+    })
+    await act(async () => { executeCommand('delete_selected') })
+
+    // One funnel call carries both halves: the sketch delete the store would
+    // have made, and the 3D delete_feature. A separate handleMutation for the
+    // sketch half would split this into two history entries.
+    expect(mockHandleMutation).not.toHaveBeenCalled()
+    expect(mockCommitMutationGroup).toHaveBeenCalledOnce()
+    const group = mockCommitMutationGroup.mock.calls[0][0]
+    expect(group).toContainEqual({ type: 'delete', targets: ['entity:sk1:L1'] })
+    expect(group).toContainEqual({ type: 'delete_feature', featureId: 'ex1' })
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+  })
+
+  it('folds the sketch delete and a body delete_body into ONE commitMutationGroup', async () => {
+    await renderPartInFeatureMode()
+    // ex2 GENERATES body_ex2 and is NOT selected, so the body outlives its
+    // generator here and keeps a real delete_body beside the sketch delete.
+    act(() => {
+      useSketchEditorStore.setState({
+        activeFeatureId: 'sk1',
+        normalSelection: new Set(['entity:sk1:L1', '@body_ex2']),
+      })
+    })
+    await act(async () => { executeCommand('delete_selected') })
+
+    expect(mockHandleMutation).not.toHaveBeenCalled()
+    expect(mockCommitMutationGroup).toHaveBeenCalledOnce()
+    const group = mockCommitMutationGroup.mock.calls[0][0]
+    expect(group).toContainEqual({ type: 'delete', targets: ['entity:sk1:L1'] })
+    expect(group).toContainEqual(expect.objectContaining({ type: 'add_delete_body', bodies: ['@body_ex2'] }))
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+  })
+
+  it('a sketch entity alone still routes through the store delete (one handleMutation, no group)', async () => {
+    await renderPartInFeatureMode()
+    act(() => {
+      useSketchEditorStore.setState({
+        activeFeatureId: 'sk1',
+        normalSelection: new Set(['entity:sk1:L1']),
+      })
+    })
+    await act(async () => { executeCommand('delete_selected') })
+
+    // Sketch-only is unchanged: the store's own deleteSelected dispatches via
+    // onMutation (handleMutation) and the page handler adds no group of its own.
+    expect(mockCommitMutationGroup).not.toHaveBeenCalled()
+    expect(mockHandleMutation).toHaveBeenCalledOnce()
+    expect(mockHandleMutation).toHaveBeenCalledWith({ type: 'delete', targets: ['entity:sk1:L1'] })
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+  })
+})
+
 describe('Add plane on a face selection', () => {
   beforeEach(() => {
     vi.clearAllMocks()

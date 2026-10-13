@@ -32,6 +32,24 @@ export function escapeStage(fields: {
   return 'disarm'
 }
 
+// The cancel half of the `cancel_draw` 'cancel_gesture' arm, shared with the
+// undo command's first stage so the two cannot drift: both drop just the entity
+// in progress and keep the armed tool for the next click. clearDraw first, then
+// the dimension-only scratch cleanup that mirrors what setActiveTool does on a
+// real tool switch (dropping the projections the gesture materialised).
+export function cancelInProgressGesture(st: {
+  clearDraw: () => void
+  dimensionPicks: { length: number }
+  cancelBrepProjectionGesture: () => void
+  clearDimensionPicks: () => void
+}) {
+  st.clearDraw()
+  if (st.dimensionPicks.length > 0) {
+    st.cancelBrepProjectionGesture()
+    st.clearDimensionPicks()
+  }
+}
+
 export interface ShowMessagePayload {
   title: string
   message: string
@@ -75,9 +93,25 @@ export function buildCommandEntries(
 ): CommandEntry[] {
   const getState = useSketchEditorStore.getState
   return [
-    { name: 'undo',                  fn: handleUndo },
+    { name: 'undo',                  fn: () => {
+        const st = getState()
+        // Undo shares Escape's cancel_gesture first stage: a half-placed draw
+        // point or a half-built dimension is thrown away by the first Ctrl+Z
+        // WITHOUT popping a real history entry. Without it, one keystroke both
+        // discards the point and pops the stack -- two changes from one press.
+        // With nothing in progress it falls through to the real undo unchanged.
+        if (st.drawPoints.length > 0 || st.dimensionPicks.length > 0) {
+          cancelInProgressGesture(st)
+          return
+        }
+        handleUndo()
+      } },
     { name: 'redo',                  fn: handleRedo },
-    { name: 'delete_selected',       fn: () => { getState().deleteSelected(); handleDeleteSelectedFeatures() } },
+    // The page handler owns the whole selection: it folds a mixed sketch + 3D
+    // selection into one commitMutationGroup, and otherwise defers the sketch
+    // half to the store's own deleteSelected (which dispatches and wipes). It
+    // must run first so it sees the full selection before any store wipe.
+    { name: 'delete_selected',       fn: handleDeleteSelectedFeatures },
     { name: 'toggle_sketch_plane_visibility', fn: handleToggleSketchPlaneVisibility },
     { name: 'toggle_plane_visibility',        fn: handleTogglePlaneVisibility },
     // The store spells select mode `activeTool: null`, so this disarms rather
@@ -144,11 +178,7 @@ export function buildCommandEntries(
           // dimension branch also drops the scratch projections the gesture
           // materialised, mirroring what setActiveTool does on a real tool switch.
           case 'cancel_gesture':
-            st.clearDraw()
-            if (st.dimensionPicks.length > 0) {
-              st.cancelBrepProjectionGesture()
-              st.clearDimensionPicks()
-            }
+            cancelInProgressGesture(st)
             return
           // Nothing in progress: the historical Escape, clear the draw and
           // disarm. Pick first, tool second: on a desynced stack with 'pick' on
