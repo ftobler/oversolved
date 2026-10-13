@@ -22,7 +22,7 @@ vi.mock('@/kernel/worker/solverClient', () => ({
 }))
 
 vi.mock('../../components/Viewport', async () =>
-  (await import('@/__tests__/test-utils')).viewportMockModule())
+  (await import('@/__tests__/test-utils')).viewportMockModule({ cancelPendingFit: vi.fn() }))
 
 const DOC = `version: 1
 kind: part
@@ -84,5 +84,46 @@ describe('Delete on a body plus its generator feature', () => {
     expect(features.some(f => f.id === 'ex1')).toBe(false)
     expect(features.some(f => f.kind === 'delete_body')).toBe(false)
     expect(features.some(f => f.id === 'sk1')).toBe(true)
+  })
+
+  it('deletes the sketch entity AND the feature in ONE undo entry', async () => {
+    // A mixed selection pressed inside the sketch editor must delete both
+    // halves in a single history step. The store's deleteSelected only consumes
+    // the sketch half then wipes the selection, so before the fix the page
+    // handler ran second against an empty selection and the feature survived.
+    partDocStoreMock({ content: DOC })
+    render(
+      <MemoryRouter initialEntries={['/documents/doc-1']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
+    )
+
+    await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+    fireEvent.click(screen.getByTitle('Feature mode'))
+
+    act(() => {
+      useSketchEditorStore.setState({
+        activeFeatureId: 'sk1',
+        normalSelection: new Set(['entity:sk1:L1', '@ex1']),
+      })
+    })
+    await act(async () => { executeCommand('delete_selected') })
+
+    // One press, one entry: the sketch delete and the feature delete ride the
+    // same commitMutationGroup, so a single undo reverts both.
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+
+    // The 3D half actually landed: ex1 is gone from the solved feature list.
+    const payloads = mockSolveViaWorker.mock.calls.map(c => c[0])
+    const features = payloads[payloads.length - 1].features as { id: string }[]
+    expect(features.some(f => f.id === 'ex1')).toBe(false)
+
+    // And one undo restores it, proving the entry really covers the feature.
+    await act(async () => { executeCommand('undo') })
+    await waitFor(() => expect(usePartEditorStore.getState().features.some(f => f.id === 'ex1')).toBe(true))
   })
 })

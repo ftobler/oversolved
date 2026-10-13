@@ -16,6 +16,22 @@ import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectio
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
 import { activateTool, deactivateTool } from './sketchEditorToolLifecycle'
 
+// The sketch-half of a Delete selection: entity, vertex and constraint targets
+// that belong to the active sketch. deleteSelected consumes exactly these and
+// ignores the rest, so `@feature`/body ids in a mixed selection survive here for
+// another consumer. Exported so the page's Delete handler can compute the same
+// half -- to fold a mixed sketch + 3D delete into a single undo entry -- without
+// re-deriving the prefix/split rules. Keep this and deleteSelected's own use of
+// it as one definition.
+export function sketchOwnedDeleteTargets(selection: Set<string>, activeFeatureId: string | null): string[] {
+  return [...selection].filter(target => {
+    if (target.startsWith('entity:') || target.startsWith('vertex:') || target.startsWith('constraint:')) {
+      return target.split(':')[1] === activeFeatureId
+    }
+    return false
+  })
+}
+
 export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   normalSelection: new Set(),
   selectedPicks: new Map(),
@@ -500,13 +516,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const onMutation = requireMutation('deleteSelected')
     if (!onMutation) return
     if (selection.size === 0) return
-    const targets = [...selection].filter(target => {
-      if (target.startsWith('entity:') || target.startsWith('vertex:') || target.startsWith('constraint:')) {
-        const parts = target.split(':')
-        return parts[1] === activeFeatureId
-      }
-      return false
-    })
+    const targets = sketchOwnedDeleteTargets(selection, activeFeatureId)
     if (targets.length === 0) return
     onMutation({ type: 'delete', targets })
     set({ normalSelection: new Set(), selectedPicks: new Map(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set(), hoveredConstraintEntityIds: new Set() })

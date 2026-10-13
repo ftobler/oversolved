@@ -261,6 +261,76 @@ describe('cancel_draw staged disarm', () => {
   })
 })
 
+// Undo must not destroy an in-progress draw AND pop a real history entry from
+// one keystroke. Its first stage mirrors Escape's cancel_gesture arm: with a
+// half-placed entity (draw points) or a half-built dimension in the store it
+// cancels just that and never reaches handleUndo; with nothing in progress it
+// falls through to the real undo. Driven against the real store so the shared
+// cancelInProgressGesture helper keeps the mode-stack invariants intact.
+describe('undo cancels an in-progress gesture before touching history', () => {
+  beforeAll(() => { initializeTools() })
+
+  beforeEach(() => {
+    resetModalEscape()
+    useSketchEditorStore.setState({ pendingDialog: null, activePickField: null, modeStack: [] })
+    useSketchEditorStore.getState().setActiveTool(null)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    useSketchEditorStore.getState().setActiveTool(null)
+    useSketchEditorStore.setState({ dimensionPicks: [], drawPoints: [] })
+  })
+
+  it('with draw points in progress cancels the gesture and never calls handleUndo', () => {
+    useSketchEditorStore.getState().setActiveTool('line')
+    useSketchEditorStore.setState({ drawPoints: [[0, 0]] })
+    const handleUndo = vi.fn()
+
+    const entries = buildCommandEntries(handleUndo, noop, noop, noop, noop, noop, noop, noop, noop)
+    entries.find(e => e.name === 'undo')!.fn()
+
+    expect(handleUndo).not.toHaveBeenCalled()
+    // The real clearDraw wiped the buffer, so a second press has nothing in progress.
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+    // The tool stays armed, exactly as the Escape cancel_gesture arm keeps it.
+    expect(useSketchEditorStore.getState().activeTool).toBe('line')
+  })
+
+  it('a second undo with an empty gesture calls handleUndo exactly once', () => {
+    useSketchEditorStore.getState().setActiveTool('line')
+    useSketchEditorStore.setState({ drawPoints: [[0, 0]] })
+    const handleUndo = vi.fn()
+
+    const entries = buildCommandEntries(handleUndo, noop, noop, noop, noop, noop, noop, noop, noop)
+    // First press discards the half-placed point without popping history.
+    entries.find(e => e.name === 'undo')!.fn()
+    expect(handleUndo).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().drawPoints).toEqual([])
+
+    // Second press: nothing in progress, so it reaches the real undo.
+    entries.find(e => e.name === 'undo')!.fn()
+    expect(handleUndo).toHaveBeenCalledOnce()
+  })
+
+  it('with dimension picks in progress cancels the gesture and never calls handleUndo', () => {
+    useSketchEditorStore.getState().setActiveTool('dimension')
+    useSketchEditorStore.setState({
+      dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+    })
+    const cancelBrep = vi.spyOn(useSketchEditorStore.getState(), 'cancelBrepProjectionGesture').mockImplementation(noop)
+    const handleUndo = vi.fn()
+
+    const entries = buildCommandEntries(handleUndo, noop, noop, noop, noop, noop, noop, noop, noop)
+    entries.find(e => e.name === 'undo')!.fn()
+
+    expect(handleUndo).not.toHaveBeenCalled()
+    expect(cancelBrep).toHaveBeenCalledOnce()
+    expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
+    expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
+  })
+})
+
 describe('escapeStage pure helper', () => {
   const base = {
     modalOwns: false,

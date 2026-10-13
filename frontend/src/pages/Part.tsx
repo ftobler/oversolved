@@ -8,7 +8,7 @@ import { stripRefSigil } from '@/utils/refSigil'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { visibleFeatureIds } from '@/utils/featureVisibility'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, sketchOwnedDeleteTargets } from '@/stores/sketchEditorStore'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { capturePreview } from '@/stores/previewStore/capture'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
@@ -464,7 +464,8 @@ export default function Part() {
   }, [handleMutation])
 
   const handleDeleteSelectedFeatures = useCallback(() => {
-    const sel = useSketchEditorStore.getState().normalSelection
+    const store = useSketchEditorStore.getState()
+    const sel = store.normalSelection
     const bodyIds = new Set(Object.keys(bodies))
     const bodyDeletes: Mutation[] = []
     const featureDeletes: Mutation[] = []
@@ -499,11 +500,29 @@ export default function Part() {
     // One Delete action on N targets is one undo step, not N. commitMutationGroup
     // applies every handler to one doc clone and solves once at the end, so the
     // array order below only groups the mutations, it does not sequence them.
-    const mutations = [...bodyDeletes, ...featureDeletes]
-    if (mutations.length > 0) {
+    const threeD = [...bodyDeletes, ...featureDeletes]
+
+    if (threeD.length > 0) {
+      // A mixed selection (sketch entity + a 3D target) is ONE press, ONE entry.
+      // Fold the sketch delete the store would make into the same group so a
+      // single undo reverts both halves; the store's own dispatch is bypassed
+      // here because it would push a separate entry first and then wipe the
+      // selection the 3D pass needs, which is what used to strand the 3D half.
+      // A 3D-only selection keeps its group exactly as before (no sketch half).
+      const sketchDelete = sketchOwnedDeleteTargets(sel, store.activeFeatureId)
+      const mutations: Mutation[] = sketchDelete.length > 0
+        ? [{ type: 'delete', targets: sketchDelete }, ...threeD]
+        : threeD
       commitMutationGroup(mutations)
       useSketchEditorStore.getState().clearNormalSelection()
+      return
     }
+
+    // No 3D work: the sketch half keeps the store's own deleteSelected, which
+    // dispatches the delete via onMutation and wipes the selection (a sketch-
+    // only press unchanged). A non-deletable selection (a face primitive, a
+    // builtin) filters to nothing, so the store no-ops and the selection stands.
+    store.deleteSelected()
   }, [commitMutationGroup, bodies, features])
 
   // Adding a feature while another feature's editor is open must close that
@@ -644,6 +663,13 @@ export default function Part() {
           mime: 'application/step',
           bytes,
         })
+        // Import is an add path: close any open editor first, exactly like
+        // extrude/hole/transform/sketch. Otherwise the add lands inside the open
+        // session's suppressed aggregate and the rollback mirror (gated on
+        // editingFeatureId === null) never writes doc.rollback, stranding the
+        // imported feature past the bar. It sits after the registry create so a
+        // failed read/parse never disturbs an unrelated session.
+        closeOpenEditorForAdd()
         setRollbackForNewFeature(features)
         handleMutation({ type: 'add_import_step', featureId, fileId: entry.id, label })
       } catch (e) {
@@ -651,7 +677,7 @@ export default function Part() {
       }
     }
     input.click()
-  }, [handleMutation, features, setError])
+  }, [handleMutation, features, setError, closeOpenEditorForAdd])
 
   const handleExportStep = useCallback(() => {
     exportImportRef.current?.openExport(null, docName || 'export')
