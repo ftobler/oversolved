@@ -63,4 +63,45 @@ describe('commitEditSession undo entry', () => {
     // The entry restores the pre-session doc, not the post-session one.
     expect(pushUndo.mock.calls[0][1]).toEqual({ features: [] })
   })
+
+  // The solver fabricates part_style entries mid-session (reconcilePartStyle),
+  // with no user mutation behind them. The session diff must exclude that key or
+  // every solve would manufacture an edit entry that reverts nothing.
+  it('pushes no undo entry when the doc differs only in a solve-fabricated part_style', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    result.current.startEditSession(true)
+    docRef.current = { features: [], part_style: { b1: { color: '#ff0000' } } } as unknown as PartDoc
+    result.current.commitEditSession()
+
+    expect(pushUndo).not.toHaveBeenCalled()
+  })
+
+  // rollback is pinned during an edit (the mirror only runs outside one), so a
+  // drift there is not a user change and must not leave a dead undo step.
+  it('pushes no undo entry when the doc differs only in rollback', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    result.current.startEditSession(true)
+    docRef.current = { features: [], rollback: 2 } as unknown as PartDoc
+    result.current.commitEditSession()
+
+    expect(pushUndo).not.toHaveBeenCalled()
+  })
+
+  // The complement of the two exclusions: a real feature change still earns the
+  // aggregate, even when a fabricated part_style entry rides alongside it.
+  it('pushes one entry when a feature change rides alongside fabricated part_style', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    result.current.startEditSession(true)
+    docRef.current = {
+      features: [{ id: 'extrude-1' }],
+      part_style: { b1: { color: '#ff0000' } },
+    } as unknown as PartDoc
+    result.current.commitEditSession()
+
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(pushUndo.mock.calls[0][0]).toEqual({ type: 'edit_session', featureId: 'extrude-1' })
+  })
 })
