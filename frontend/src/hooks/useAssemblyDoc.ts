@@ -41,7 +41,9 @@ function installLoadedAssembly(sink: AssemblyLoadSink, parsed: AssemblyDoc, name
   useAssemblyStore.getState().resetTransientAssemblyState()
   sink.setDoc(parsed)
   sink.setDocName(name)
-  useUnsavedChangesStore.getState().setDirty(false)
+  // Clean AND unpinned: the flag, the save count and the stored fingerprint of
+  // the previous document must not describe this one.
+  useUnsavedChangesStore.getState().clearForNewDocument()
   // A fresh document must not inherit the previous document's undo
   // history: Ctrl+Z in the new doc would otherwise restore the old one
   // into it, and a later save could write A's content under B's uuid.

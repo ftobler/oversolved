@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useUnsavedChangesStore, confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, confirmDiscardUnsavedChanges, hashSavedText } from '@/stores/unsavedChangesStore'
 import { IdbWorkspaceStore, getWorkspaceStore, type OpenWorkspace } from '@/workspace/store'
 import { createTree, emptyManifest } from '@/workspace'
 import { resetWorkspaceIdb } from '@/workspace/__tests__/idbHarness'
@@ -56,6 +56,53 @@ describe('confirmDiscardUnsavedChanges', () => {
     cb!()
     expect(fnA).toHaveBeenCalledTimes(1)
     expect(fnB).not.toHaveBeenCalled()
+  })
+})
+
+// The fingerprint a save publishes of the exact bytes it wrote. A cancel that
+// rewinds a doc saved mid-session has to compare against what is really in the
+// store: the save count alone cannot tell a session that changed the stored
+// bytes from one that did not.
+describe('the fingerprint of the bytes a save stored', () => {
+  beforeEach(() => {
+    useUnsavedChangesStore.getState().setDirty(false)
+  })
+
+  it('is stable for the same text and moves when the text moves', () => {
+    expect(hashSavedText('kind: part')).toBe(hashSavedText('kind: part'))
+    expect(hashSavedText('kind: part')).not.toBe(hashSavedText('kind: assembly'))
+  })
+
+  it('records what the save stored, alongside the save count', () => {
+    useUnsavedChangesStore.getState().markSaved(hashSavedText('kind: part'))
+
+    expect(useUnsavedChangesStore.getState().saves).toBe(1)
+    expect(useUnsavedChangesStore.getState().savedHash).toBe(hashSavedText('kind: part'))
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  // A save that publishes nothing must not leave the previous save's
+  // fingerprint behind for a later cancel to trust as current.
+  it('a save that publishes no fingerprint clears the stored one', () => {
+    useUnsavedChangesStore.getState().markSaved(hashSavedText('kind: part'))
+    useUnsavedChangesStore.getState().markSaved()
+
+    expect(useUnsavedChangesStore.getState().savedHash).toBeNull()
+  })
+
+  // A new document inherits none of it: a session pinned in B must not read
+  // A's save count as one of its own, and a cancel must not compare its rewind
+  // against the text A stored.
+  it('opening a document drops the flag, the count and the fingerprint together', () => {
+    useUnsavedChangesStore.getState().setDirty(true)
+    useUnsavedChangesStore.getState().markSaved(hashSavedText('kind: part'))
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    useUnsavedChangesStore.getState().clearForNewDocument()
+
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+    expect(useUnsavedChangesStore.getState().saves).toBe(0)
+    expect(useUnsavedChangesStore.getState().savedHash).toBeNull()
   })
 })
 

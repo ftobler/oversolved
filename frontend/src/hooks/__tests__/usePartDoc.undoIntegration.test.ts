@@ -593,6 +593,127 @@ describe('usePartDoc undo/redo integration', () => {
     expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
   })
 
+  // The add path pins the session against the PRE-add doc and only then moves the
+  // bar to the end of the longer stack, so on Cancel the bar has to travel back
+  // with the doc: the re-solve reads its position off the STORE (useSolver), and
+  // a bar left past the end rebuilds the whole stack while the restored doc
+  // parks it where the user left it. Reloading then reads the parked value out of
+  // the document and every feature past it disappears.
+  it('cancelling a session re-syncs the rollback store from the restored doc', () => {
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      rollback: 2,
+      features: [
+        { id: 'f1', kind: 'sketch' },
+        { id: 'f2', kind: 'extrude' },
+        { id: 'f3', kind: 'fillet' },
+      ],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setRollbackPosition(2)
+    usePartEditorStore.getState().setEditingFeatureId('f1')
+    act(() => { result.current.startEditSession(true) })
+    // The add that landed inside the session moved the bar to the end.
+    usePartEditorStore.getState().setRollbackPosition(4)
+
+    act(() => { result.current.cancelEditSession() })
+
+    expect(docRef.current.rollback).toBe(2)
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+  })
+
+  // Same rewind, no parked position: the restored doc holds none, so the bar
+  // returns to the end of the restored stack rather than to the longer one.
+  it('cancelling a session leaves the bar at the end when the restored doc parks nothing', () => {
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'f1', kind: 'sketch' },
+        { id: 'f2', kind: 'extrude' },
+      ],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setEditingFeatureId('f1')
+    act(() => { result.current.startEditSession(true) })
+    usePartEditorStore.getState().setRollbackPosition(3)
+
+    act(() => { result.current.cancelEditSession() })
+
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+  })
+
+  // A stale hand-edited position must not set the bar past the end of the
+  // restored stack, exactly as applyUndoRedo clamps its restored entry.
+  it('cancelling a session clamps a restored position past the end of the stack', () => {
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      rollback: 99,
+      features: [
+        { id: 'f1', kind: 'sketch' },
+        { id: 'f2', kind: 'extrude' },
+      ],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setRollbackPosition(2)
+    usePartEditorStore.getState().setEditingFeatureId('f1')
+    act(() => { result.current.startEditSession(true) })
+    usePartEditorStore.getState().setRollbackPosition(4)
+
+    act(() => { result.current.cancelEditSession() })
+
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+  })
+
+  // A session on a feature the doc still contains: the cancel rewinds that
+  // feature's edits only, and the bar the doc parks is where it was.
+  it('cancelling a session on a surviving feature leaves the parked bar in place', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    usePartEditorStore.getState().setRollbackPosition(1)
+
+    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.handleMutation(renameTo('discarded')) })
+
+    act(() => { result.current.cancelEditSession() })
+
+    expect(labelOf()).toBe('first')
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
+  })
+
+  // Cancel after the session was already committed (an OK, or a second add that
+  // closed the first editor): there is nothing to rewind, so the bar must stay
+  // where the committed doc left it rather than being dragged along by a rewind
+  // that never happened.
+  it('cancelling a session the commit already cleared leaves the bar where the doc has it', () => {
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      rollback: 2,
+      features: [
+        { id: 'f1', kind: 'sketch' },
+        { id: 'f2', kind: 'extrude' },
+      ],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    usePartEditorStore.getState().setRollbackPosition(2)
+    usePartEditorStore.getState().setEditingFeatureId('f1')
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.commitEditSession() })
+    usePartEditorStore.getState().setRollbackPosition(2)
+
+    act(() => { result.current.cancelEditSession() })
+
+    expect(docRef.current.rollback).toBe(2)
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+  })
+
   it('a no-op rename pushes nothing and neither dirties nor re-solves', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     useUnsavedChangesStore.getState().setDirty(false)

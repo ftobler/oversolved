@@ -53,7 +53,7 @@ vi.mock('@/adapters/backend', () => ({
 }))
 
 import { useDocPersistence } from '@/hooks/useDocPersistence'
-import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, hashSavedText } from '@/stores/unsavedChangesStore'
 
 describe('useDocPersistence', () => {
   beforeEach(() => {
@@ -63,7 +63,10 @@ describe('useDocPersistence', () => {
     h.renameGates = []
     h.renames = []
     h.clones = []
-    useUnsavedChangesStore.getState().setDirty(false)
+    // The whole per-document state, not just the flag: the fingerprint a save
+    // published is module-level too, and a leaked one would let one test's
+    // assertion read another test's save.
+    useUnsavedChangesStore.getState().clearForNewDocument()
   })
 
   const renderPersist = (workspace?: string) => {
@@ -110,6 +113,43 @@ describe('useDocPersistence', () => {
     await act(async () => { h.saveGates[0].resolve(undefined) })
     expect(await savePromise).toBe(true)
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  // The fingerprint of the exact bytes written is what lets a cancel decide
+  // whether the doc it rewinds to is the doc that is stored: the save count says
+  // a save landed, never what it landed.
+  it('publishes the fingerprint of the text it stored', async () => {
+    const { result, docRef } = renderPersist()
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => { savePromise = result.current.saveDoc('S', docRef.current!) })
+    expect(useUnsavedChangesStore.getState().savedHash).toBeNull()
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    expect(await savePromise).toBe(true)
+
+    expect(h.saves).toHaveLength(1)
+    expect(useUnsavedChangesStore.getState().savedHash).toBe(hashSavedText(h.saves[0].content))
+  })
+
+  // An edit that lands while the save is in flight means the published bytes no
+  // longer describe the doc, so the fingerprint must not be published for them:
+  // a later cancel would compare its rewind against content that was never
+  // stored and call the document clean while the store holds the older text.
+  it('publishes no fingerprint when an edit landed during the save', async () => {
+    const { result, docRef } = renderPersist()
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => { savePromise = result.current.saveDoc('S', docRef.current!) })
+    await act(async () => {
+      docRef.current = { ...docRef.current!, version: 2 }
+    })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    expect(await savePromise).toBe(true)
+
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+    expect(useUnsavedChangesStore.getState().savedHash).toBeNull()
   })
 
   it('chains overlapping saves so arrival order is landing order', async () => {
