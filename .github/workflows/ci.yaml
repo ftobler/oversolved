@@ -1,6 +1,6 @@
-# The full gate. Both forges read this file, but every job is gated to Gitea;
-# GitHub runs the lighter main-only main.yaml instead, so anything merged to
-# main has already passed this run.
+# Gitea's full gate. Both forges read this file, but every job is gated to
+# Gitea; GitHub runs its own full suite in ci-github.yaml instead, and keeps
+# main.yaml main-only for the site publish.
 name: CI
 
 on: [push, pull_request]
