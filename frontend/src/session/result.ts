@@ -1,15 +1,17 @@
-// The session's result type. An illegal internal state is an error Result with
-// a recorded diagnostic, not a thrown exception, so a headless driver can
-// observe it; test mode still throws through failLoud so the existing suites
-// keep pinning the guards.
+// The session's result types. An illegal state is an error Result with a
+// recorded diagnostic rather than a thrown exception, so a headless driver can
+// observe it; the UI adapter owns the loud voice and translates the codes into
+// the pinned failLoud messages, keeping this layer framework- and
+// environment-free.
 export type SessionErrorCode =
   | 'no-document'
   | 'unknown-mutation'
-
-export interface SessionSuccess {
-  ok: true
-  createdIds: string[]
-}
+  | 'rollback-unsynced'
+  | 'preview-already-open'
+  | 'preview-over-session'
+  | 'edit-already-open'
+  | 'gesture-already-open'
+  | 'unknown-transaction'
 
 export interface SessionFailure {
   ok: false
@@ -17,10 +19,26 @@ export interface SessionFailure {
   message: string
 }
 
+export interface SessionSuccess {
+  ok: true
+  createdIds: string[]
+}
+
+export interface OpenedSuccess {
+  ok: true
+  id: string
+}
+
 export type Result = SessionSuccess | SessionFailure
 
-export function okResult(createdIds: string[]): SessionSuccess {
+export type OpenedResult = OpenedSuccess | SessionFailure
+
+export function okResult(createdIds: string[] = []): SessionSuccess {
   return { ok: true, createdIds }
+}
+
+export function openedResult(id: string): OpenedSuccess {
+  return { ok: true, id }
 }
 
 export function errorResult(code: SessionErrorCode, message: string): SessionFailure {

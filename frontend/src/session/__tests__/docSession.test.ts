@@ -1,30 +1,22 @@
 // @vitest-environment node
 // The DocSession core, headless: no React, no stores, no workers. The frozen
-// history-behaviour rows the session owns are transcribed here (prefixed with
-// their row id); the transaction rows land with the transactions phase.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+// history-behaviour rows the session owns are transcribed here; the full
+// transcript tables run in sessionTranscript.test.ts and the transaction
+// scopes in transactions.test.ts.
+import { describe, it, expect, vi } from 'vitest'
+import { stringify as stringifyYaml } from 'yaml'
 import {
-  createDocSession,
   clampRollbackPosition,
+  createDocSession,
   type DocSession,
   type DocSessionDeps,
   type EditorFacts,
   type SessionEvent,
 } from '@/session/DocSession'
-import { hashSavedText } from '@/session/dirty'
+import { hashSavedText, type DirtyFacts } from '@/session/dirty'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
-import type { PartDoc, Mutation } from '@/types/cad'
+import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import { createFakeSolveScheduler, type FakeSolveScheduler } from './fakeSolveScheduler'
-
-// The session's failLoud is mocked with a controllable implementation: the
-// default makes the guards throw (the real test-mode behaviour), a no-op
-// emulates production so the error Result paths are observable.
-const { failLoudMock } = vi.hoisted(() => ({ failLoudMock: vi.fn() }))
-
-vi.mock('@/utils/invariants', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/utils/invariants')>()
-  return { ...actual, failLoud: failLoudMock }
-})
 
 const baseDoc = (): PartDoc => ({
   version: 1,
@@ -61,24 +53,37 @@ interface Harness {
   session: DocSession
   solve: FakeSolveScheduler<PartDoc>
   facts: EditorFacts
+  dirty: DirtyFacts
+  doc: { current: PartDoc | null }
+  // Mirrors the adapter's dirty mirror: after a session call, the UI-facing
+  // facts carry the session's resolved flag.
+  mirrorDirty: () => void
 }
 
 function makeSession(doc: PartDoc | null = baseDoc(), overrides: Partial<DocSessionDeps> = {}): Harness {
+  const cell: { current: PartDoc | null } = { current: doc }
   const solve = createFakeSolveScheduler<PartDoc>()
   const facts: EditorFacts = { editingFeatureId: null, rollbackPosition: null }
-  const session = createDocSession(doc, {
+  const dirty: DirtyFacts = { dirty: false, saves: 0, savedHash: null }
+  const solveResults: { current: Record<string, SketchData> } = { current: {} }
+  const session = createDocSession({
     cloneDoc: source => structuredClone(source),
+    doc: { get: () => cell.current, set: next => { cell.current = next } },
     solve,
+    solveResults: { get: () => solveResults.current, set: next => { solveResults.current = next } },
     editorFacts: () => facts,
+    dirtyFacts: () => dirty,
     ...overrides,
   })
-  return { session, solve, facts }
+  return {
+    session,
+    solve,
+    facts,
+    dirty,
+    doc: cell,
+    mirrorDirty: () => { dirty.dirty = session.isDirty() },
+  }
 }
-
-beforeEach(() => {
-  failLoudMock.mockReset()
-  failLoudMock.mockImplementation((message: string) => { throw new Error(message) })
-})
 
 describe('execute', () => {
   it('lands a real mutation as one labelled entry, dirty, with an edit re-solve', () => {
@@ -88,7 +93,7 @@ describe('execute', () => {
     expect(result).toEqual({ ok: true, createdIds: [] })
     expect(labelOf(session.getDoc())).toBe('a')
     expect(session.inspect().history).toEqual({ undo: ['rename extrude-1 to a'], redo: [] })
-    expect(session.inspect().dirty).toBe(true)
+    expect(session.isDirty()).toBe(true)
     expect(solve.calls).toHaveLength(1)
     expect(solve.calls[0].doc).toEqual(session.getDoc())
     expect(solve.calls[0].opts).toEqual({ bypassCache: false, _suppressFirstSolve: true })
@@ -128,36 +133,15 @@ describe('execute', () => {
     expect(result).toEqual({ ok: true, createdIds: ['pt1', minted] })
   })
 
-  it('fails loud and records a diagnostic when there is no document', () => {
-    const { session } = makeSession(null)
-
-    expect(() => session.execute(rename('a'))).toThrow(/no document/)
-    expect(session.diagnostics()).toEqual([
-      { code: 'no-document', message: expect.stringContaining('no document') },
-    ])
-  })
-
-  it('returns the error Result instead of throwing outside test mode', () => {
-    failLoudMock.mockImplementation(() => {})
+  it('returns an error Result and records a diagnostic when there is no document', () => {
     const { session } = makeSession(null)
 
     expect(session.execute(rename('a'))).toEqual({
       ok: false, code: 'no-document', message: expect.any(String),
     })
-    expect(session.diagnostics().map(d => d.code)).toEqual(['no-document'])
-  })
-
-  it('refuses an unknown mutation type as an error Result', () => {
-    failLoudMock.mockImplementation(() => {})
-    const { session, solve } = makeSession()
-
-    const result = session.execute({ type: 'no_such_mutation' } as unknown as Mutation)
-
-    expect(result).toEqual({
-      ok: false, code: 'unknown-mutation', message: expect.any(String),
-    })
-    expect(session.diagnostics().map(d => d.code)).toEqual(['unknown-mutation'])
-    expect(solve.calls).toHaveLength(0)
+    expect(session.diagnostics()).toEqual([
+      { code: 'no-document', message: expect.stringContaining('no document') },
+    ])
   })
 })
 
@@ -167,7 +151,7 @@ describe('the no-op guard', () => {
 
     expect(session.execute(rename('first'))).toEqual({ ok: true, createdIds: [] })
     expect(session.inspect().history.undo).toEqual([])
-    expect(session.inspect().dirty).toBe(false)
+    expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
   })
 
@@ -180,7 +164,7 @@ describe('the no-op guard', () => {
     expect(session.execute({ type: 'set_part_color', bodyId: 'b1', color: '#ff0000' }))
       .toEqual({ ok: true, createdIds: [] })
     expect(session.inspect().history.undo).toEqual([])
-    expect(session.inspect().dirty).toBe(false)
+    expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
   })
 
@@ -191,7 +175,7 @@ describe('the no-op guard', () => {
       type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['dock:sk1:noSuchHost'],
     })).toEqual({ ok: true, createdIds: [] })
     expect(session.inspect().history.undo).toEqual([])
-    expect(session.inspect().dirty).toBe(false)
+    expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
   })
 
@@ -201,7 +185,7 @@ describe('the no-op guard', () => {
     expect(session.execute({ type: 'delete', targets: ['entity:sk1:ghost'] }))
       .toEqual({ ok: true, createdIds: [] })
     expect(session.inspect().history.undo).toEqual([])
-    expect(session.inspect().dirty).toBe(false)
+    expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
   })
 
@@ -211,7 +195,7 @@ describe('the no-op guard', () => {
     session.execute({ type: 'delete_feature', featureId: 'ghost' })
 
     expect(session.inspect().history.undo).toEqual(['delete feature ghost'])
-    expect(session.inspect().dirty).toBe(true)
+    expect(session.isDirty()).toBe(true)
     expect(solve.calls).toHaveLength(1)
   })
 
@@ -246,7 +230,7 @@ describe('executeGroup', () => {
 
     expect(session.executeGroup([rename('first')])).toEqual({ ok: true, createdIds: [] })
     expect(session.inspect().history.undo).toEqual([])
-    expect(session.inspect().dirty).toBe(false)
+    expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
   })
 
@@ -293,7 +277,7 @@ describe('undo and redo', () => {
   it('H09/H11: undo swaps in the entry doc, crosses the label, dirties, emits and re-solves', () => {
     const { session, solve } = makeSession()
     const events: SessionEvent[] = []
-    session.subscribe(event => events.push(event))
+    session.subscribe(event => { if (event.type === 'historyRestored') events.push(event) })
 
     session.execute(rename('a'))
     const afterFirst = structuredClone(session.getDoc())
@@ -307,11 +291,11 @@ describe('undo and redo', () => {
       undo: ['rename extrude-1 to a'],
       redo: ['rename extrude-1 to b'],
     })
-    expect(session.inspect().dirty).toBe(true)
+    expect(session.isDirty()).toBe(true)
     expect(events).toEqual([{
       type: 'historyRestored',
       direction: 'undo',
-      entry: { label: 'rename extrude-1 to b', doc: afterFirst },
+      entry: { label: 'rename extrude-1 to b', doc: afterFirst, meta: rename('b') },
     }])
     // H11: the restored doc is re-solved, with no edit suppression.
     expect(solve.calls.at(-1)?.doc).toEqual(afterFirst)
@@ -322,7 +306,7 @@ describe('undo and redo', () => {
     expect(events[1]).toEqual({
       type: 'historyRestored',
       direction: 'redo',
-      entry: { label: 'rename extrude-1 to b', doc: afterSecond },
+      entry: { label: 'rename extrude-1 to b', doc: afterSecond, meta: rename('b') },
     })
   })
 
@@ -336,7 +320,7 @@ describe('undo and redo', () => {
 
     expect(listener).not.toHaveBeenCalled()
     expect(solve.calls).toHaveLength(0)
-    expect(session.inspect().dirty).toBe(false)
+    expect(session.isDirty()).toBe(false)
   })
 
   it('H01: a push after an undo clears the redo branch', () => {
@@ -351,12 +335,12 @@ describe('undo and redo', () => {
 
   it('execute does not emit a history move', () => {
     const { session } = makeSession()
-    const listener = vi.fn()
-    session.subscribe(listener)
+    const moves = vi.fn()
+    session.subscribe(event => { if (event.type === 'historyRestored') moves() })
 
     session.execute(rename('a'))
 
-    expect(listener).not.toHaveBeenCalled()
+    expect(moves).not.toHaveBeenCalled()
   })
 
   it('unsubscribing stops the events', () => {
@@ -393,110 +377,122 @@ describe('the rollback mirror', () => {
     expect(session.getDoc()?.rollback).toBe(2)
   })
 
-  it('R04: set_rollback without a pre-synced store fails loud in test mode', () => {
+  it('R04: set_rollback without a pre-synced store aborts with an error Result', () => {
     const { session, solve } = makeSession(rollbackDoc())
 
-    expect(() => session.execute({ type: 'set_rollback', position: 2 }))
-      .toThrow(/not pre-synced/)
+    expect(session.execute({ type: 'set_rollback', position: 2 })).toEqual({
+      ok: false, code: 'rollback-unsynced', message: expect.stringContaining('not pre-synced'),
+    })
+    expect(session.getDoc()?.rollback).toBe(2)
     expect(session.inspect().history.undo).toEqual([])
-    expect(session.inspect().dirty).toBe(false)
+    expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
   })
 
-  it('R04 in prod: the unguarded dispatch lands and mirrors the store', () => {
-    failLoudMock.mockImplementation(() => {})
-    const { session } = makeSession(rollbackDoc())
+  it('R04: a pre-synced set_rollback lands and pushes its entry', () => {
+    const { session, facts } = makeSession(rollbackDoc())
+    facts.rollbackPosition = 1
 
-    expect(session.execute({ type: 'set_rollback', position: 2 }).ok).toBe(true)
-    // The store was never pre-synced, so the mirror writes the absent position.
-    expect(session.getDoc()?.rollback).toBeUndefined()
-    expect(session.inspect().history.undo).toEqual(['move rollback to 2'])
+    expect(session.execute({ type: 'set_rollback', position: 1 }).ok).toBe(true)
+    expect(session.getDoc()?.rollback).toBe(1)
+    expect(session.inspect().history.undo).toEqual(['move rollback to 1'])
   })
 })
 
-describe('the dirty pin and restore', () => {
+describe('the dirty pin and restore through a session', () => {
   it('D01: restoring a session that pinned a clean doc clears the flag again', () => {
-    const { session } = makeSession()
-    const pin = session.pinDirty()
+    const h = makeSession()
+    const opened = h.session.begin('edit', { suppressed: true })
+    expect(opened.ok).toBe(true)
+    h.session.execute(rename('a'))
+    h.mirrorDirty()
+    expect(h.session.isDirty()).toBe(true)
 
-    session.execute(rename('a'))
-    expect(session.inspect().dirty).toBe(true)
+    if (opened.ok) h.session.cancel(opened.id)
 
-    session.reconcileDirtyAfterRewind(pin, true, () => 'baseline')
-    expect(session.inspect().dirty).toBe(false)
+    expect(h.session.isDirty()).toBe(false)
   })
 
   it('D02: a session pinned on a dirty doc restores dirty', () => {
-    const { session } = makeSession()
-    session.execute(rename('a'))
-    const pin = session.pinDirty()
+    const h = makeSession()
+    h.session.execute(rename('pre'))
+    h.mirrorDirty()
 
-    session.execute(rename('b'))
-    session.reconcileDirtyAfterRewind(pin, true, () => 'baseline')
+    const opened = h.session.begin('edit', { suppressed: true })
+    h.session.execute(rename('a'))
+    h.mirrorDirty()
+    if (opened.ok) h.session.cancel(opened.id)
 
-    expect(session.inspect().dirty).toBe(true)
+    expect(h.session.isDirty()).toBe(true)
   })
 
   it('D03: a save landing mid-session without a fingerprint leaves the rewind dirty', () => {
-    const { session } = makeSession()
-    const pin = session.pinDirty()
+    const h = makeSession()
+    const opened = h.session.begin('edit', { suppressed: true })
+    h.session.execute(rename('a'))
+    h.mirrorDirty()
 
-    session.execute(rename('a'))
-    session.markSaved()
-    session.reconcileDirtyAfterRewind(pin, true, () => 'baseline')
+    // The store's markSaved with no fingerprint, then the adapter's note.
+    h.dirty.dirty = false
+    h.dirty.saves += 1
+    h.dirty.savedHash = null
+    h.session.noteSaved()
 
-    expect(session.inspect().dirty).toBe(true)
+    if (opened.ok) h.session.cancel(opened.id)
+
+    expect(h.session.isDirty()).toBe(true)
   })
 
   it('D06: a published fingerprint reconciles the rewind by content', () => {
-    const { session } = makeSession()
-    const pin = session.pinDirty()
+    const h = makeSession()
+    const baseline = structuredClone(h.session.getDoc())
+    const opened = h.session.begin('edit', { suppressed: true })
+    h.session.execute(rename('a'))
+    h.mirrorDirty()
 
-    session.execute(rename('a'))
-    session.markSaved(hashSavedText('baseline'))
-    session.reconcileDirtyAfterRewind(pin, true, () => 'baseline')
+    h.dirty.dirty = false
+    h.dirty.saves += 1
+    h.dirty.savedHash = hashSavedText(stringifyYaml(baseline))
+    h.session.noteSaved()
 
-    expect(session.inspect().dirty).toBe(false)
+    if (opened.ok) h.session.cancel(opened.id)
+
+    expect(h.session.getDoc()).toEqual(baseline)
+    expect(h.session.isDirty()).toBe(false)
   })
 
   it('D06: a fingerprint that does not match the restored content leaves it dirty', () => {
-    const { session } = makeSession()
-    const pin = session.pinDirty()
+    const h = makeSession()
+    const opened = h.session.begin('edit', { suppressed: true })
+    h.session.execute(rename('a'))
+    h.mirrorDirty()
 
-    session.execute(rename('a'))
-    session.markSaved(hashSavedText('stored bytes'))
-    session.reconcileDirtyAfterRewind(pin, true, () => 'restored bytes')
+    h.dirty.dirty = false
+    h.dirty.saves += 1
+    h.dirty.savedHash = hashSavedText('stored bytes')
+    h.session.noteSaved()
 
-    expect(session.inspect().dirty).toBe(true)
+    if (opened.ok) h.session.cancel(opened.id)
+
+    expect(h.session.isDirty()).toBe(true)
   })
 
   it('D04: a session that netted to zero commits clean without serializing', () => {
-    const { session } = makeSession()
-    const pin = session.pinDirty()
+    const h = makeSession()
+    const opened = h.session.begin('edit', { suppressed: true })
+    h.session.execute(rename('a'))
+    h.session.execute(rename('first'))
+    h.mirrorDirty()
 
-    session.execute(rename('a'))
-    session.execute(rename('first'))
-    const serialize = vi.fn(() => 'anything')
-    session.reconcileDirtyAfterRewind(pin, false, serialize)
+    if (opened.ok) h.session.commit(opened.id)
 
-    expect(session.inspect().dirty).toBe(false)
-    expect(serialize).not.toHaveBeenCalled()
-  })
-
-  it('a new document drops the flag, the count and the fingerprint', () => {
-    const { session } = makeSession()
-    session.execute(rename('a'))
-    session.markSaved(hashSavedText('stored bytes'))
-
-    session.clearForNewDocument()
-
-    expect(session.inspect().dirty).toBe(false)
-    expect(session.pinDirty()).toEqual({ dirty: false, saves: 0 })
+    expect(h.session.isDirty()).toBe(false)
+    expect(h.session.inspect().history.undo).toEqual([])
   })
 })
 
 describe('inspect', () => {
-  it('returns the L1-owned JSON with an empty transaction list', () => {
+  it('returns the L1-owned JSON with the open transactions', () => {
     const { session } = makeSession()
     session.execute(rename('a'))
 
@@ -513,6 +509,15 @@ describe('inspect', () => {
       solve: { generation: 1, pending: true, running: true, lastError: null },
     })
     expect(JSON.parse(JSON.stringify(inspection))).toEqual(inspection)
+  })
+
+  it('lists open transactions with their kinds', () => {
+    const { session } = makeSession()
+    const opened = session.begin('preview', {})
+
+    expect(session.inspect().transactions).toEqual([
+      { id: opened.ok ? opened.id : '', kind: 'preview' },
+    ])
   })
 
   it('includes docId, validation and bodies when supplied', () => {

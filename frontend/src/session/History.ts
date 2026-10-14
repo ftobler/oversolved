@@ -1,11 +1,14 @@
 import { pushCapped, moveTop } from '@/utils/core/undoStack'
 
-// One entry of the undo/redo history: the label the UI shows and the doc
-// snapshot undo or redo restores. A label rather than a Mutation, so a caller
-// can store a collapsed aggregate ("edit f1") exactly like a single dispatch.
-export interface HistoryEntry<Doc> {
+// One entry of the undo/redo history: the label the UI shows, the doc snapshot
+// undo or redo restores, and an optional caller payload (the DocSession stores
+// the mutation behind the label so the toolbar can render it). A label rather
+// than a Mutation alone, so a caller can store a collapsed aggregate ("edit f1")
+// exactly like a single dispatch.
+export interface HistoryEntry<Doc, Meta = unknown> {
   label: string
   doc: Doc
+  meta?: Meta
 }
 
 export interface HistoryOptions<Doc> {
@@ -20,10 +23,10 @@ export interface HistoryOptions<Doc> {
 // stacks and the one pre-session snapshot slot, never the live document:
 // callers pass the departing doc into undo/redo exactly as the hook engine did,
 // and receive the entry whose doc is now the live one.
-export class History<Doc> {
-  private undoStack: HistoryEntry<Doc>[] = []
-  private redoStack: HistoryEntry<Doc>[] = []
-  private snapshot: { undo: HistoryEntry<Doc>[]; redo: HistoryEntry<Doc>[] } | null = null
+export class History<Doc, Meta = unknown> {
+  private undoStack: HistoryEntry<Doc, Meta>[] = []
+  private redoStack: HistoryEntry<Doc, Meta>[] = []
+  private snapshot: { undo: HistoryEntry<Doc, Meta>[]; redo: HistoryEntry<Doc, Meta>[] } | null = null
   private readonly cloneDoc: (doc: Doc) => Doc
   private readonly cap: number
 
@@ -48,22 +51,32 @@ export class History<Doc> {
     return this.redoStack.length
   }
 
-  push(label: string, doc: Doc): void {
-    this.pushEntry({ label, doc: this.cloneDoc(doc) })
+  // Read-only views for a caller that mirrors the stacks (the toolbar). Do not
+  // mutate the returned arrays; the history is their only owner.
+  undoEntries(): readonly HistoryEntry<Doc, Meta>[] {
+    return this.undoStack
+  }
+
+  redoEntries(): readonly HistoryEntry<Doc, Meta>[] {
+    return this.redoStack
+  }
+
+  push(label: string, doc: Doc, meta?: Meta): void {
+    this.pushEntry({ label, doc: this.cloneDoc(doc), meta })
   }
 
   // For callers that already hold an independent snapshot (a preview or session
   // baseline): cloning it again would only copy a throwaway. The caller
   // guarantees it will not be mutated afterwards; a live doc still belongs to push.
-  pushSnapshot(label: string, doc: Doc): void {
-    this.pushEntry({ label, doc })
+  pushSnapshot(label: string, doc: Doc, meta?: Meta): void {
+    this.pushEntry({ label, doc, meta })
   }
 
-  undo(current: Doc): HistoryEntry<Doc> | null {
+  undo(current: Doc): HistoryEntry<Doc, Meta> | null {
     return this.move('undo', current)
   }
 
-  redo(current: Doc): HistoryEntry<Doc> | null {
+  redo(current: Doc): HistoryEntry<Doc, Meta> | null {
     return this.move('redo', current)
   }
 
@@ -92,20 +105,20 @@ export class History<Doc> {
     this.snapshot = null
   }
 
-  private pushEntry(entry: HistoryEntry<Doc>): void {
+  private pushEntry(entry: HistoryEntry<Doc, Meta>): void {
     this.undoStack = pushCapped(this.undoStack, entry, this.cap)
     // A fresh edit invalidates any redo branch.
     this.redoStack = []
   }
 
-  private move(direction: 'undo' | 'redo', current: Doc): HistoryEntry<Doc> | null {
+  private move(direction: 'undo' | 'redo', current: Doc): HistoryEntry<Doc, Meta> | null {
     const from = direction === 'undo' ? this.undoStack : this.redoStack
     const to = direction === 'undo' ? this.redoStack : this.undoStack
     if (from.length === 0) return null
     const entry = from[from.length - 1]
-    // The counterpart carries the entry's label and a clone of the doc being
-    // left behind, so the same step round-trips in both directions.
-    const move = moveTop(from, to, top => ({ label: top.label, doc: this.cloneDoc(current) }))
+    // The counterpart carries the entry's label and meta plus a clone of the doc
+    // being left behind, so the same step round-trips in both directions.
+    const move = moveTop(from, to, top => ({ label: top.label, doc: this.cloneDoc(current), meta: top.meta }))
     if (!move) return null
     if (direction === 'undo') {
       this.undoStack = move.from

@@ -21,9 +21,12 @@ const BANNED_PREFIXES = [
 
 // The two pure handler tables the session reads until the adapter rewrite
 // moves them into this folder: they import no React, no three and no store.
+// The frozen transcript tables' step/result types are test-only and imported
+// type-only (erased at build), so the shared table has one definition.
 const EXEMPT = new Set([
   '@/hooks/mutationDispatch',
   '@/hooks/mutationIdempotence',
+  '@/hooks/__tests__/historyTranscript',
 ])
 
 // The import forms the repo uses. The pattern needs a specifier in quotes, so
