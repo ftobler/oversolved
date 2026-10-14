@@ -92,6 +92,19 @@ describe('scene probe hitTest ordering', () => {
     expect(hitTest(probe, CURSOR[0], CURSOR[1], { windowSize: 17 })).toHaveLength(1)
   })
 
+  it('ranks a nearer mark above a farther one within a layer (the distance key)', () => {
+    // The far mark is published FIRST, so publication order alone would put it
+    // ahead: only the distance-ascending key can return 'near' first. Flipping
+    // the key to descending, or dropping it, fails here.
+    const probe = probeOf([
+      pointPickable('sketchVertex', 'far', CURSOR[0] + 6, CURSOR[1]),
+      pointPickable('sketchVertex', 'near', CURSOR[0] + 2, CURSOR[1]),
+    ])
+    const hits = hitTest(probe, CURSOR[0], CURSOR[1])
+    expect(hits.map(h => h.pickKey)).toEqual(['near', 'far'])
+    expect(hits.map(h => h.distancePx)).toEqual([2, 6])
+  })
+
   it('breaks a same-layer distance tie by publication order', () => {
     const probe = probeOf([
       pointPickable('sketchVertex', 'first', CURSOR[0] + 2, CURSOR[1]),

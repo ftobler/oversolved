@@ -6,7 +6,7 @@ The frontend 3D viewport is an R3F (React Three Fiber) scene inside a single `Ca
 
 ```
 <Canvas orthographic camera={INITIAL_CAMERA}> (antialias, logarithmicDepthBuffer, background #111)
-                                           (camera: pos [20,20,100], zoom 80, near=-10, far=1000)
+                                           (camera: pos [20,20,100], zoom 80, near=-500, far=500)
   <SceneController />                       (OrbitControls + CubeGizmo per-frame)
   <IdPickingDriver />                       (offscreen ID render target; pick source)
   <SceneProbeDriver />                      (publishes camera + canvas to the scene probe)
@@ -100,11 +100,11 @@ Not every interaction is a registered tool:
 
 A wall separates testable logic from the untestable R3F zone. Only plain TypeScript primitives cross it (`string`, `number`, `boolean`, plain objects, tuples). No `THREE.*`, no refs, no R3F hooks.
 
-**Pure logic files** (header: "PURE LOGIC"): `coordTransform.ts`, `pointerAbstraction.ts`, `snapDetection.ts`, `nearestPoint.ts`, `dragLogic.ts`, `drawLogic.ts`, `bodySnapProjection.ts`, all registries, `sketchEditorStore.ts`, plus the picking pure layer (`IdResolver.ts`, `markPosition.ts`, `IdRegistry.ts`, `layerNames.ts`, `pickKey.ts`, `idEncoding.ts`, `collectEntitiesFromPixels.ts`, `selectionHighlight.ts`, `HoverScheduler.ts`, `screenSpaceScale.ts`, `cameraPose.ts`, `sceneProbe.ts`, `probeMarks.ts`, `domHandles.ts`).
+**Pure logic files**: `coordTransform.ts`, `pointerAbstraction.ts`, `snapDetection.ts`, `nearestPoint.ts`, `dragLogic.ts`, `drawLogic.ts`, `bodySnapProjection.ts`, all registries, `sketchEditorStore.ts`, plus the picking pure (three-free, React-free) layer beside the R3F zone: `IdResolver.ts`, `markPosition.ts`, `IdRegistry.ts`, `layerNames.ts`, `pickKey.ts`, `idEncoding.ts`, `collectEntitiesFromPixels.ts`, `selectionHighlight.ts`, `HoverScheduler.ts`, `screenSpaceScale.ts`, `cameraPose.ts`, `sceneProbe.ts`, `probeMarks.ts`, `domHandles.ts`. `cameraPose.ts` imports three only as a type; `markPosition.ts`, `sceneProbe.ts` and `probeMarks.ts` carry the `PURE LOGIC` header.
 
 **Viewport adapters** (~10 lines, no branching): `coordTransformAdapters.ts`, `pointerAbstractionAdapters.ts`.
 
-**Viewport components**: most of `Geometry3D/*.tsx` and `Viewport/*.tsx` are unit-tested with R3F mocked (38 Viewport and 71+ Geometry3D suites). The genuinely untested layer is NOT "all R3F files" but real-GL rasterization and real browser pointer events: shader output, GPU layering/depth, driver readback, and synthetic pointer sequences through a live canvas. `crossLayerPriority.test.ts` documents the GPU-dependent cases as deferred manual smoke. `CubeGizmo.tsx`, `ContextMenuDialog.tsx` and the drei overlay internals are untested by design.
+**Viewport components**: most of `Geometry3D/*.tsx` and `Viewport/*.tsx` are unit-tested with R3F mocked (38 Viewport and 71+ Geometry3D suites). The genuinely untested layer is NOT "all R3F files" but real-GL rasterization and real browser pointer events: shader output, GPU layering/depth, driver readback, and synthetic pointer sequences through a live canvas. `crossLayerPriority.test.ts` documents the GPU-dependent cases as deferred manual smoke. `CubeGizmo.tsx` and `ContextMenuDialog.tsx` do have focused unit suites (`components/misc/__tests__/CubeGizmo.test.tsx`, `CubeGizmo.utils.test.ts`, `components/dialogs/__tests__/ContextMenuDialog.test.tsx`); what remains untested there is real canvas painting and browser popover behaviour, and the drei overlay internals are untested by design.
 
 Navigation and selection/highlight reading from the store are allowed bypasses (no mutations).
 
@@ -160,7 +160,13 @@ plain, JSON-safe snapshot of the scene, readable without a devtools connection:
   handles (elements carrying `data-oversolved-handle`, e.g.
   `toolbar:set_tool_line`, `tree:feature:<id>`).
 - The browser agreement test (probe `hitTest` vs real `resolveAllSync` per
-  pick class) lands with the drive-surface plan.
+  pick class) lands with the drive-surface plan. Coordinates must be converted:
+  probe `screenPoints` and `hitTest` are CSS pixels while `resolveAllSync`
+  takes device pixels (`IdPipeline.readWindow` applies the DPR). The per-class
+  expectation must also encode the phase-1 gap: the probe is not
+  occlusion-aware and publishes no B-rep, plane or gizmo marks, so a class it
+  does not publish returns nothing where `resolveAllSync` can still answer,
+  and a sketch surface hidden behind a body can disagree with the real pick.
 
 ## Rendering Pipeline
 
