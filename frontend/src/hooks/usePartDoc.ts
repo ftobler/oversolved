@@ -711,7 +711,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       // snapshot push skips the redundant re-clone.
       const featureId = usePartEditorStore.getState().editingFeatureId ?? ''
       pushUndoSnapshot({ type: 'edit_session', featureId }, work.baseline)
-    } else {
+    } else if (work.suppressed) {
       // A suppressed session that netted to zero pushes no entry, but each of
       // its mutations set the dirty flag on the way through. The committed doc
       // equals the baseline modulo the solve-written fields, so reconcile the
@@ -719,6 +719,12 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       // to save, and leaving the flag set would contradict the store's meaning
       // of it. A real committed change keeps the flag set, because dirty is
       // what the pushed entry now represents.
+      // The suppressed gate is what makes this correct: sessionWouldPush is
+      // also false for a sketch session (it pushes one entry per action, and
+      // never the aggregate), but a sketch session carries no "netted to zero"
+      // meaning -- its committed edits ARE the per-action entries and the dirty
+      // flag is exactly what those represent. Reconciling there against the
+      // session baseline would clear a flag the still-unsaved edits earned.
       reconcileDirtyAfterRewind(work.dirty, false, () => stringifyYaml(work.baseline))
     }
     // No preview can be open here: the one slot never holds a session and a

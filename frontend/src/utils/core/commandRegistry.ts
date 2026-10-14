@@ -11,6 +11,16 @@ type CommandHandler = (payload?: unknown) => void
 
 const handlers = new Map<CommandName, CommandHandler>()
 
+// The exact event the last dispatch ran a command for. Two co-mounted command
+// registrations each attach their own window keydown listener and forward the
+// same press here, so the second call must be a no-op rather than replay the
+// command. Keying on the event object is narrower than reading `defaultPrevented`:
+// an unrelated handler that cancels its own key (PartColorPopover handles Escape)
+// also calls preventDefault, and that event was never dispatched through here,
+// so it must still reach the command. Only the object this module actually ran a
+// command for is skipped.
+let lastDispatchedEvent: KeyboardEvent | null = null
+
 // ─── Keymap ───
 // Key strings are built from KeyboardEvent: optional modifiers joined with '+',
 // then the lowercase key name. E.g. Ctrl+Z → "ctrl+z", D → "d".
@@ -167,10 +177,11 @@ export function dispatchKey(e: KeyboardEvent): boolean {
   // Idempotent per event. Each mounted command registration attaches its own
   // window keydown listener and forwards to here, so two co-mounted editors
   // deliver one press twice and both resolve the same last-writer-wins handler.
-  // A command run owns the event by calling e.preventDefault(), so a keydown
-  // that is already cancelled has been dispatched and the second listener bails
-  // instead of replaying the command. No single-listener path changes.
-  if (e.defaultPrevented) return false
+  // The once-per-event guard is the identity of the event this module already
+  // ran a command for, not `defaultPrevented`: any other handler may cancel a
+  // key for its own reasons (a non-modal popover's Escape), and that event must
+  // still reach its command. No single-listener path changes.
+  if (e === lastDispatchedEvent) return false
   if (isEditableTarget(e)) return false
   // A modal owns the keyboard while it is on screen: focus often sits on a
   // non-input control (a dialog button), so document-level commands would
@@ -197,6 +208,7 @@ export function dispatchKey(e: KeyboardEvent): boolean {
     return false
   }
   e.preventDefault()
+  lastDispatchedEvent = e
   executeCommand(cmd)
   return true
 }

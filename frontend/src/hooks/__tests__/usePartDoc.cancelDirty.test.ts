@@ -316,4 +316,25 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
     expect(dirty()).toBe(true)
     expect(expressionOf()).toBe('42')
   })
+
+  // A sketch session is not suppressed: each action pushes its own entry and the
+  // commit pushes no aggregate. sessionWouldPush is false for it, but that is not
+  // "netted to zero": the committed edits ARE the per-action entries, and the
+  // dirty flag is exactly what those still-unsaved edits represent. Reconciling
+  // here against the session baseline would clear a flag the edits earned and
+  // silently drop the unsaved-changes warning.
+  it('(i) committing a sketch session keeps the document dirty', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.startEditSession(false) })  // sketch: not suppressed
+    act(() => { result.current.handleMutation(renameTo('edited')) })
+    expect(dirty()).toBe(true)
+
+    act(() => { result.current.commitEditSession() })
+
+    // The action's own entry is the edit's undo story, so the commit leaves both
+    // the stack and the dirty flag alone.
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(dirty()).toBe(true)
+  })
 })

@@ -712,6 +712,30 @@ describe('useAssemblyUndoRedo', () => {
     expect(result.current.redoStack).toHaveLength(0)
   })
 
+  // A coalescing session the user typed back to its start value nets to zero:
+  // commitSession pushes no entry, but every keystroke (and the flag the page's
+  // mutate set) would leave the frame flagged unsaved with nothing to save. The
+  // committed doc is what the pin held, so reconcile the flag exactly as the
+  // cancel twin does.
+  it('commitSession with no net change leaves the document clean', () => {
+    const docA = docWith(['a'])
+    const docRef = { current: docA }
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, vi.fn(), vi.fn(),
+    ))
+
+    act(() => { result.current.recordSessionEdit(docA, 'Set position') })
+    // The page's mutate applied an edit, then the user typed it back: the live
+    // doc is structurally equal to the pin again but the flag is set.
+    docRef.current = docWith(['a'])
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    act(() => { result.current.commitSession() })
+
+    expect(result.current.undoStack).toHaveLength(0)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
   it('committing one editor then cancelling a later editor keeps both steps separate', () => {
     const docA = docWith(['a'])
     const docB = docWith(['a', 'b'])
