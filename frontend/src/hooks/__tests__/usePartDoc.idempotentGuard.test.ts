@@ -28,8 +28,11 @@ import type { PartDoc, Mutation } from '@/types/cad'
 // prod case makes it a silent no-op.
 const { failLoudMock } = vi.hoisted(() => ({ failLoudMock: vi.fn() }))
 
-vi.mock('@/stores/stateInvariants', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/stores/stateInvariants')>()
+// The guard's bodyId diagnostic lives in the shared session module, which
+// imports failLoud from utils/invariants; the store module re-exports it but
+// is no longer the path the guard reads, so the mock sits on the source.
+vi.mock('@/utils/invariants', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/invariants')>()
   return { ...actual, failLoud: failLoudMock }
 })
 
