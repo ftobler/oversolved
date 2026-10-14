@@ -107,6 +107,21 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
 
   clearNormalSelection: () => set({ normalSelection: new Set(), selectedPicks: new Map(), chipOwnedSelection: new Set(), selectionDomain: 'sketch_2d' }),
 
+  // The post-delete wipe, shared by every path that removes entities so their
+  // post-conditions cannot drift: the store's own deleteSelected and the page's
+  // mixed Delete handler (Part.handleDeleteSelectedFeatures) both land here.
+  // clearNormalSelection covers the selection half only; deleting an entity
+  // also retires the constraint-tile hover that names it, and the mixed branch
+  // used to stop short of that, stranding hoveredConstraintEntityIds on
+  // geometry that had just been deleted.
+  clearSelectionAfterDelete: () => set({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    chipOwnedSelection: new Set(),
+    selectionDomain: 'sketch_2d',
+    hoveredConstraintEntityIds: new Set(),
+  }),
+
   clearSelectionAndHover: () => set({
     normalSelection: new Set(),
     selectedPicks: new Map(),
@@ -277,14 +292,17 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
   setActiveTool: (tool) => {
     const prevTool = get().activeTool
 
-    // Deactivate previous tool (lifecycle hook)
-    deactivateTool(get, set, prevTool)
-
     // Switching tools abandons any in-flight brep dimension gesture: the
-    // projections it materialised were scratch work for that gesture.
+    // projections it materialised were scratch work for that gesture. Cancelled
+    // before the deactivate below, the order setActivePickField already uses, so
+    // the pending bookkeeping is empty by the time the old tool's mode entry
+    // pops and the store revalidates on an empty stack.
     if (get().pendingBrepProjectionIds.length > 0) {
       get().cancelBrepProjectionGesture()
     }
+
+    // Deactivate previous tool (lifecycle hook)
+    deactivateTool(get, set, prevTool)
 
     // Entering a tool that doesn't conflict with an open pick field (currently
     // only the passive select/drag tool) must not steal the field: leave
@@ -519,7 +537,7 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     const targets = sketchOwnedDeleteTargets(selection, activeFeatureId)
     if (targets.length === 0) return
     onMutation({ type: 'delete', targets })
-    set({ normalSelection: new Set(), selectedPicks: new Map(), selectionDomain: 'sketch_2d', chipOwnedSelection: new Set(), hoveredConstraintEntityIds: new Set() })
+    get().clearSelectionAfterDelete()
   },
 
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),
@@ -611,6 +629,18 @@ export const useSketchEditorStore = create<SketchEditorState>((set, get) => ({
     // The gesture is over for real: null the withhold's captured doc too, or a
     // dimension committed later would restore a stale pre-gesture world.
     sketchCallbacks.cancelBrepProjection?.()
+    // The value prompt this gesture opened must not outlive it. This is the one
+    // funnel every abort already goes through -- a tool switch, leaving the
+    // sketch, arming a pick field -- and each of them just deleted the
+    // projections the prompt was measuring, so a prompt that survived would let
+    // Enter commit an add_constraint naming an entity the doc no longer has
+    // (dangling, and flagged unresolved by the solver). Closed without running
+    // its onCancel: this action IS that cancel for the dimension dialog, and
+    // re-entering it from here would dispatch the withheld delete twice. The
+    // other producers (apply_offset, the feature-handle value editor, a dim
+    // label's edit prompt) own no gesture state to unwind, so dropping the
+    // prompt whole is all they need.
+    if (get().pendingDialog !== null) get().closeDialog()
     set({ pendingBrepProjectionIds: [] })
   },
 

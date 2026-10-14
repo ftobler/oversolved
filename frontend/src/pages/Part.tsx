@@ -514,7 +514,10 @@ export default function Part() {
         ? [{ type: 'delete', targets: sketchDelete }, ...threeD]
         : threeD
       commitMutationGroup(mutations)
-      useSketchEditorStore.getState().clearNormalSelection()
+      // The shared post-delete wipe, not a bare clearNormalSelection: a mixed
+      // Delete must leave the same post-condition the sketch-only branch's
+      // deleteSelected leaves, hovered-constraint residue included.
+      useSketchEditorStore.getState().clearSelectionAfterDelete()
       return
     }
 
@@ -668,7 +671,12 @@ export default function Part() {
         // session's suppressed aggregate and the rollback mirror (gated on
         // editingFeatureId === null) never writes doc.rollback, stranding the
         // imported feature past the bar. It sits after the registry create so a
-        // failed read/parse never disturbs an unrelated session.
+        // failed read (the size cap, the arrayBuffer rejection, the empty-file
+        // check) or a failed registry write leaves the open session alone: both
+        // return before this line. A malformed STEP is NOT protected here and
+        // cannot be -- nothing parses the bytes at import time; the parse runs
+        // at solve time (kernel/features/importStep.ts), so a bad file lands as
+        // a feature whose solve errors like any other.
         closeOpenEditorForAdd()
         setRollbackForNewFeature(features)
         handleMutation({ type: 'add_import_step', featureId, fileId: entry.id, label })

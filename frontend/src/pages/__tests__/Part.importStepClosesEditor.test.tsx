@@ -103,6 +103,64 @@ describe('Part - importing a STEP while a feature editor is open', () => {
     expect(usePartEditorStore.getState().undoStack.length).toBe(before + 1)
   })
 
+  // The registry create sits before closeOpenEditorForAdd, so a failed write
+  // (quota, a closed DB) leaves the open editor and its session exactly as they
+  // were: the user is not bounced out of an unrelated edit by an import that
+  // never landed. The read rejection is before even that.
+  it('a rejected registry create leaves the open editor and its session untouched', async () => {
+    render(
+      <MemoryRouter initialEntries={['/documents/doc-1']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
+    )
+    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Feature mode'))
+
+    fireEvent.click(screen.getByTitle('Edit extrude'))
+    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1'))
+    const before = usePartEditorStore.getState().undoStack.length
+    const rollback = usePartEditorStore.getState().rollbackPosition
+
+    mockRegistryCreate.mockRejectedValueOnce(new Error('quota exceeded'))
+    await importStep({ name: 'bracket.step', size: 32, arrayBuffer: async () => new ArrayBuffer(8) })
+
+    await waitFor(() => expect(screen.getByText(/quota exceeded/)).toBeInTheDocument())
+    // The failure never reached closeOpenEditorForAdd: the session, its bar and
+    // its history entry are all still standing, and nothing was imported.
+    expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1')
+    expect(usePartEditorStore.getState().rollbackPosition).toBe(rollback)
+    expect(usePartEditorStore.getState().undoStack.length).toBe(before)
+    expect(userFeatures().some(f => f.kind === 'import_step')).toBe(false)
+  })
+
+  it('a failed read leaves the open editor and its session untouched', async () => {
+    render(
+      <MemoryRouter initialEntries={['/documents/doc-1']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
+    )
+    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Feature mode'))
+
+    fireEvent.click(screen.getByTitle('Edit extrude'))
+    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1'))
+    const before = usePartEditorStore.getState().undoStack.length
+
+    await importStep({ name: 'bracket.step', size: 32, arrayBuffer: async () => { throw new Error('io') } })
+
+    await waitFor(() => expect(screen.getByText(/Failed to read STEP file/)).toBeInTheDocument())
+    expect(mockRegistryCreate).not.toHaveBeenCalled()
+    expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1')
+    expect(usePartEditorStore.getState().undoStack.length).toBe(before)
+    expect(userFeatures().some(f => f.kind === 'import_step')).toBe(false)
+  })
+
   it('with no editor open still records exactly one import step', async () => {
     render(
       <MemoryRouter initialEntries={['/documents/doc-1']}>

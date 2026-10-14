@@ -170,6 +170,62 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', null)
     })
 
+    // The reported bug: the value prompt outlived the gesture abort that
+    // deleted the projection it was measuring. Arm the dimension tool, click a
+    // body edge (the projection is withheld), click empty space (the prompt
+    // opens, the picks drop), then click Line in the sketch toolbar. The tool
+    // switch deletes the projection with no undo entry, so the prompt must die
+    // with it: a later Enter on a surviving prompt commits an add_constraint
+    // naming an entity the doc no longer has, which the solver reports
+    // unresolved.
+    it('a tool switch drops the value dialog whose own gesture abort deleted its projection', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({}))
+      // Arm through the store so the mode stack matches the armed tool.
+      useSketchEditorStore.setState({ activeTool: null, modeStack: [] })
+      const store = useSketchEditorStore.getState()
+      store.setActiveTool('dimension')
+      store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      const eid = handler.mock.calls[0][0].entityId
+      store.finalizeDimensionPlacement([0, 0])
+      expect(useSketchEditorStore.getState().pendingDialog).not.toBeNull()
+
+      useSketchEditorStore.getState().setActiveTool('line')
+
+      // The abort removed the projection, and the prompt did not survive it.
+      expect(handler).toHaveBeenLastCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
+      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+
+      // The whole sequence dispatched the projection and its compensating
+      // delete, and nothing else: no add_constraint naming a removed entity.
+      expect(handler.mock.calls.map(c => c[0].type)).toEqual(['add_projected_entity', 'delete'])
+      setSketchCallback('getSketch', null)
+    })
+
+    // Same defect by a second door: leaving the sketch is also a gesture abort
+    // (setActiveFeatureId cancels the pending projections), and the Viewport
+    // keeps the prompt mounted across the editor switch.
+    it('leaving the sketch drops the value dialog too', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({}))
+      useSketchEditorStore.setState({ activeTool: null, modeStack: [] })
+      const store = useSketchEditorStore.getState()
+      store.setActiveTool('dimension')
+      store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      const eid = handler.mock.calls[0][0].entityId
+      store.finalizeDimensionPlacement([0, 0])
+
+      useSketchEditorStore.getState().setActiveFeatureId(null)
+
+      expect(handler).toHaveBeenLastCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
+      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+      expect(handler.mock.calls.map(c => c[0].type)).toEqual(['add_projected_entity', 'delete'])
+      setSketchCallback('getSketch', null)
+    })
+
     it('committing the dimension clears the pending projections', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
