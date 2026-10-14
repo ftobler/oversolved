@@ -192,8 +192,8 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // edits is useUnsavedChangesGuard and the header/breadcrumb discard prompt,
   // which resolve long before this runs. Callback de-registration is a separate
   // effect below, so a mid-session re-registration can no longer commit (and
-  // split) a session that is still being edited. commitSession is stable (deps
-  // only pushUndo and docRef, both stable), so this effect never re-fires while
+  // split) a session that is still being edited. commitSession is stable (its
+  // only dep is docRef, a stable ref), so this effect never re-fires while
   // mounted.
   useEffect(() => {
     return () => { commitSession() }

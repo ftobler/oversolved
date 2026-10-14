@@ -107,4 +107,65 @@ describe('assembly history mirror', () => {
     expect(result.current.undoStack.map(e => e.label)).toEqual(['Set position'])
     expectMirrorMatchesHistory()
   })
+
+  // The module lifetime is the whole point of the singleton: a drag's pointer-up
+  // commit can outlive the page's mount, so the stacks must survive a remount
+  // and the new engine must be able to pop an entry the old one pushed.
+  it('keeps the pushed entry across a remount, so the new engine still undoes it', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const firstRef = { current: docB as AssemblyDoc | null }
+    const first = renderHookStrict(() => useAssemblyUndoRedo(
+      firstRef as React.MutableRefObject<AssemblyDoc | null>,
+      vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { firstRef.current = d as AssemblyDoc }),
+      vi.fn(),
+    ))
+    act(() => { first.result.current.pushUndo(docA, 'Add part') })
+    first.unmount()
+
+    const secondRef = { current: docB as AssemblyDoc | null }
+    const secondSet = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { secondRef.current = d as AssemblyDoc })
+    const second = renderHookStrict(() => useAssemblyUndoRedo(
+      secondRef as React.MutableRefObject<AssemblyDoc | null>, secondSet, vi.fn(),
+    ))
+    expect(second.result.current.undoStack).toHaveLength(1)
+
+    act(() => { second.result.current.handleUndo() })
+
+    expect(secondRef.current).toEqual(docA)
+    expect(second.result.current.undoStack).toHaveLength(0)
+    expect(second.result.current.redoStack).toHaveLength(1)
+    expectMirrorMatchesHistory()
+  })
+
+  // The pin lives in the unmounted engine, so a remounted engine has nothing to
+  // rewind. Its cancel must be a no-op that leaves the History (and the doc the
+  // edit left behind) alone rather than reaching for a stale pre-session state.
+  it('a cancel on a remounted engine with no pin leaves the stacks alone', () => {
+    const docA = docWith(['a'])
+    const docB = docWith(['a', 'b'])
+    const firstRef = { current: docA as AssemblyDoc | null }
+    const first = renderHookStrict(() => useAssemblyUndoRedo(
+      firstRef as React.MutableRefObject<AssemblyDoc | null>,
+      vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { firstRef.current = d as AssemblyDoc }),
+      vi.fn(),
+    ))
+    act(() => { first.result.current.pushUndo(docA, 'Add part') })
+    act(() => { useAssemblyStore.getState().openInstanceEditor('a') })
+    act(() => { first.result.current.mutate('Set position', () => docB) })
+    first.unmount()
+
+    const secondRef = { current: docB as AssemblyDoc | null }
+    const secondSet = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { secondRef.current = d as AssemblyDoc })
+    const second = renderHookStrict(() => useAssemblyUndoRedo(
+      secondRef as React.MutableRefObject<AssemblyDoc | null>, secondSet, vi.fn(),
+    ))
+    act(() => { second.result.current.cancelSession() })
+
+    expect(secondRef.current).toBe(docB)
+    expect(secondSet).not.toHaveBeenCalled()
+    expect(second.result.current.undoStack.map(e => e.label)).toEqual(['Add part'])
+    expect(second.result.current.redoStack).toHaveLength(0)
+    expectMirrorMatchesHistory()
+  })
 })

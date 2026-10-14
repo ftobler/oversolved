@@ -100,7 +100,9 @@ describe('AssemblyEditor undo/redo', () => {
       payload: { transforms: {}, bodies: {} },
     })
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
-    // The stacks are store-owned, so setSnapshot does not clear them.
+    // The stacks are the History's read mirror, so setSnapshot does not clear
+    // them; the reset writes the mirror directly as a fixture, and the mounted
+    // page's load clears the History itself.
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
     useAssemblyStore.getState().setActiveMateField(null)
     useAssemblyStore.getState().selectMate(null)
