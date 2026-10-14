@@ -1,20 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
-import { useCommandRegistration, type CommandEntry } from '../useCommandRegistration'
+import { useCommandRegistration } from '../useCommandRegistration'
 import { clearAllHandlers, executeCommand } from '@/utils/core/commandRegistry'
-import { COMMAND_NAMES } from '@/utils/core/commandNames'
+import { CommandRegistry, noParams, type CommandSpec, type CommandContext } from '@/utils/core/commandSpec'
+import { okResult } from '@/session/result'
+import { COMMAND_NAMES, type CommandName } from '@/utils/core/commandNames'
+import { initializeTools } from '@/tools'
 
-// The hook is the only place the page command tables reach the global registry,
-// so these tests pin the registration lifecycle, the re-register-on-new-handler
-// path, the shared window keydown listener and the development-only length
-// guard. executeCommand is the public read side of the registry.
+// The hook is the only place the page spec tables reach a registry, so these
+// tests pin the registration lifecycle, the re-register-on-new-registry path,
+// the shared window keydown listener and the development-only length guard.
 //
 // The length guard is gated on `import.meta.env.DEV`, which vitest leaves true,
 // so it runs here without any stubbing. Its StrictMode half is pinned through
 // renderHookStrict because the app itself renders under StrictMode: the guard
-// stores the length it compares against, so where that store happens decides
+// stores the length it compares against, so where that store lands decides
 // whether the double-invoked mount reads as a length change.
+
+beforeAll(() => { initializeTools() })
 
 beforeEach(() => {
   clearAllHandlers()
@@ -25,63 +29,89 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const commands = (n: number): CommandEntry[] =>
-  Array.from({ length: n }, (_, i) => ({ name: COMMAND_NAMES[i], fn: vi.fn() }))
+interface FixtureContext extends CommandContext {
+  editor: 'part'
+  log: string[]
+}
+
+function context(): FixtureContext {
+  return { editor: 'part', log: [] }
+}
+
+function spec(id: CommandName, ctx: FixtureContext, run?: () => void): CommandSpec<FixtureContext, null> {
+  return {
+    id,
+    label: id,
+    params: noParams(),
+    enabled: () => true,
+    undoable: false,
+    run: () => {
+      ctx.log.push(id)
+      run?.()
+      return okResult()
+    },
+  }
+}
+
+function specs(n: number, ctx: FixtureContext): CommandSpec<FixtureContext, null>[] {
+  return Array.from({ length: n }, (_, i) => spec(COMMAND_NAMES[i], ctx))
+}
 
 // Other console.error traffic is irrelevant here; the guard is identified by its
 // message so an unrelated error cannot make a length assertion pass.
 const lengthErrors = (error: { mock: { calls: readonly unknown[][] } }): string[] =>
   error.mock.calls
     .map(call => String(call[0]))
-    .filter(text => text.includes('commands.length changed'))
+    .filter(text => text.includes('specs.length changed'))
 
 describe('useCommandRegistration', () => {
-  it('registers every command on mount and unregisters them on unmount', () => {
+  it('registers every spec on mount and unregisters them on unmount', () => {
+    const ctx = context()
+    const registry = new CommandRegistry<FixtureContext>(() => ctx)
     const undo = vi.fn()
-    const redo = vi.fn()
-    const cmds: CommandEntry[] = [{ name: 'undo', fn: undo }, { name: 'redo', fn: redo }]
+    const list = [spec('undo', ctx, undo), spec('redo', ctx)]
 
-    const { unmount } = renderHook(() => useCommandRegistration(cmds))
+    const { unmount } = renderHook(() => useCommandRegistration('part', registry, list))
 
-    act(() => executeCommand('undo', 1))
-    act(() => executeCommand('redo'))
-    expect(undo).toHaveBeenCalledWith(1)
-    expect(redo).toHaveBeenCalledTimes(1)
+    act(() => { registry.execute('undo') })
+    act(() => { registry.execute('redo') })
+    expect(undo).toHaveBeenCalledTimes(1)
+    expect(ctx.log).toEqual(['undo', 'redo'])
 
     unmount()
 
-    // After unmount the registry must not answer for either name; the dev-mode
-    // warning is the observable side of "no handler".
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    act(() => executeCommand('undo'))
-    expect(undo).toHaveBeenCalledTimes(1)
-    expect(warn).toHaveBeenCalled()
+    expect(registry.execute('undo')).toEqual({ ok: false, code: 'unknown-command', message: 'unknown command "undo"' })
   })
 
-  it('re-registers a command when its handler identity changes across renders', () => {
-    const first = vi.fn()
-    const second = vi.fn()
+  it('re-registers the specs when the registry identity changes across renders', () => {
+    const first = context()
+    const second = context()
+    const firstRegistry = new CommandRegistry<FixtureContext>(() => first)
+    const secondRegistry = new CommandRegistry<FixtureContext>(() => second)
+
     const { rerender } = renderHook(
-      ({ fn }) => useCommandRegistration([{ name: 'undo', fn }]),
-      { initialProps: { fn: first as () => void } },
+      ({ registry, s }: { registry: CommandRegistry<FixtureContext>; s: CommandSpec<FixtureContext, null> }) =>
+        useCommandRegistration('part', registry, [s]),
+      { initialProps: { registry: firstRegistry, s: spec('undo', first) } },
     )
 
-    rerender({ fn: second })
+    rerender({ registry: secondRegistry, s: spec('undo', second) })
 
-    act(() => executeCommand('undo'))
-    expect(second).toHaveBeenCalledTimes(1)
-    expect(first).not.toHaveBeenCalled()
+    expect(secondRegistry.execute('undo').ok).toBe(true)
+    expect(second.log).toEqual(['undo'])
+    expect(first.log).toEqual([])
   })
 
-  it('routes a mapped window keydown to the registered handler', () => {
-    const undo = vi.fn()
-    renderHook(() => useCommandRegistration([{ name: 'undo', fn: undo }]))
+  it('routes a mapped window keydown to the registered spec', () => {
+    const ctx = context()
+    const registry = new CommandRegistry<FixtureContext>(() => ctx)
+    renderHook(() => useCommandRegistration('part', registry, [spec('undo', ctx)]))
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true }))
     })
 
-    expect(undo).toHaveBeenCalledTimes(1)
+    expect(ctx.log).toEqual(['undo'])
   })
 
   // addEventListener dedups on (type, callback, capture), so two mounts that
@@ -90,10 +120,12 @@ describe('useCommandRegistration', () => {
   // still mounted: the keyboard goes dead with no warning. Each registration
   // therefore attaches its own closure, so add and remove pair per instance.
   it('keeps the co-mounted sibling dispatching after the first registration unmounts', () => {
-    const first = vi.fn()
-    const second = vi.fn()
-    const firstMount = renderHook(() => useCommandRegistration([{ name: 'undo', fn: first }]))
-    renderHook(() => useCommandRegistration([{ name: 'undo', fn: second }]))
+    const first = context()
+    const second = context()
+    const firstRegistry = new CommandRegistry<FixtureContext>(() => first)
+    const secondRegistry = new CommandRegistry<FixtureContext>(() => second)
+    const firstMount = renderHook(() => useCommandRegistration('part', firstRegistry, [spec('undo', first)]))
+    renderHook(() => useCommandRegistration('part', secondRegistry, [spec('undo', second)]))
 
     firstMount.unmount()
 
@@ -101,40 +133,45 @@ describe('useCommandRegistration', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true }))
     })
 
-    // The survivor's own listener is still attached: the shared-entry unmount
-    // must not have taken the keyboard with it.
-    expect(second).toHaveBeenCalledTimes(1)
-    expect(first).not.toHaveBeenCalled()
+    // The survivor's own listener is still attached and its registry is still
+    // the installed slot: the shared-entry unmount must not have taken the
+    // keyboard with it.
+    expect(second.log).toEqual(['undo'])
+    expect(first.log).toEqual([])
   })
 
-  // Two co-mounted registrations both forward their keydown to the one dispatcher
-  // and both resolve the same last-writer-wins handler. A command run owns the
-  // event by preventDefault, so one press must run that handler once; without the
-  // once-per-event guard the first call executes the command and the second
-  // replays it, which is two changes from one key.
+  // Two co-mounted registrations both forward their keydown to the one
+  // dispatcher. A command run owns the event by preventDefault, so one press
+  // must run that handler once; without the once-per-event guard the first call
+  // executes the command and the second replays it, which is two changes from
+  // one key.
   it('runs a keydown command once with two registrations still mounted', () => {
-    const first = vi.fn()
-    const second = vi.fn()
-    renderHook(() => useCommandRegistration([{ name: 'undo', fn: first }]))
-    renderHook(() => useCommandRegistration([{ name: 'undo', fn: second }]))
+    const first = context()
+    const second = context()
+    const firstRegistry = new CommandRegistry<FixtureContext>(() => first)
+    const secondRegistry = new CommandRegistry<FixtureContext>(() => second)
+    renderHook(() => useCommandRegistration('part', firstRegistry, [spec('undo', first)]))
+    renderHook(() => useCommandRegistration('part', secondRegistry, [spec('undo', second)]))
 
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true }))
     })
 
-    // `second` is the live handler (last write wins); the sibling's listener must
-    // not replay it into a second undo.
-    expect(second).toHaveBeenCalledTimes(1)
-    expect(first).not.toHaveBeenCalled()
+    // `second` is the installed registry (last write wins); the sibling's
+    // listener must not replay it into a second undo.
+    expect(second.log).toEqual(['undo'])
+    expect(first.log).toEqual([])
   })
 
   // The same pairing under StrictMode, where the initial mount/unmount/remount
   // removes and re-adds its own listener within the same commit.
   it('survives the StrictMode co-mount when the first registration unmounts', () => {
-    const first = vi.fn()
-    const second = vi.fn()
-    const firstMount = renderHookStrict(() => useCommandRegistration([{ name: 'undo', fn: first }]))
-    renderHookStrict(() => useCommandRegistration([{ name: 'undo', fn: second }]))
+    const first = context()
+    const second = context()
+    const firstRegistry = new CommandRegistry<FixtureContext>(() => first)
+    const secondRegistry = new CommandRegistry<FixtureContext>(() => second)
+    const firstMount = renderHookStrict(() => useCommandRegistration('part', firstRegistry, [spec('undo', first)]))
+    renderHookStrict(() => useCommandRegistration('part', secondRegistry, [spec('undo', second)]))
 
     firstMount.unmount()
 
@@ -142,13 +179,15 @@ describe('useCommandRegistration', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true }))
     })
 
-    expect(second).toHaveBeenCalledTimes(1)
+    expect(second.log).toEqual(['undo'])
   })
 
-  it('logs a development error when the commands length changes between renders', () => {
+  it('logs a development error when the specs length changes between renders', () => {
+    const ctx = context()
+    const registry = new CommandRegistry<FixtureContext>(() => ctx)
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { rerender } = renderHook(
-      ({ n }: { n: number }) => useCommandRegistration(commands(n)),
+      ({ n }: { n: number }) => useCommandRegistration('part', registry, specs(n, ctx)),
       { initialProps: { n: 1 } },
     )
     expect(lengthErrors(error)).toEqual([])
@@ -156,14 +195,16 @@ describe('useCommandRegistration', () => {
     rerender({ n: 2 })
 
     expect(lengthErrors(error)).toHaveLength(1)
-    expect(lengthErrors(error)[0]).toContain('commands.length changed from 1 to 2')
+    expect(lengthErrors(error)[0]).toContain('specs.length changed from 1 to 2')
   })
 
   it('does not report a length change for the StrictMode mount, unmount and remount cycle', () => {
+    const ctx = context()
+    const registry = new CommandRegistry<FixtureContext>(() => ctx)
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const addEventListener = vi.spyOn(window, 'addEventListener')
 
-    renderHookStrict(() => useCommandRegistration(commands(2)))
+    renderHookStrict(() => useCommandRegistration('part', registry, specs(2, ctx)))
 
     // Pin that the remount really happened, so the assertion below is not
     // vacuous: StrictMode mounts the effects, tears them down and mounts them
@@ -175,10 +216,12 @@ describe('useCommandRegistration', () => {
     expect(lengthErrors(error)).toEqual([])
   })
 
-  it('logs a development error under StrictMode when the commands length changes between renders', () => {
+  it('logs a development error under StrictMode when the specs length changes between renders', () => {
+    const ctx = context()
+    const registry = new CommandRegistry<FixtureContext>(() => ctx)
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { rerender } = renderHookStrict(
-      ({ n }: { n: number }) => useCommandRegistration(commands(n)),
+      ({ n }: { n: number }) => useCommandRegistration('part', registry, specs(n, ctx)),
       { initialProps: { n: 1 } },
     )
     expect(lengthErrors(error)).toEqual([])
@@ -188,25 +231,26 @@ describe('useCommandRegistration', () => {
     // Exactly one report: an update double-invokes the render but not the
     // effect, and the guard is now a single effect that stores on commit.
     expect(lengthErrors(error)).toHaveLength(1)
-    expect(lengthErrors(error)[0]).toContain('commands.length changed from 1 to 2')
+    expect(lengthErrors(error)[0]).toContain('specs.length changed from 1 to 2')
   })
 
-  it('does not report a length change when a handler identity changes at constant length', () => {
+  it('does not report a length change when a spec identity changes at constant length', () => {
+    const ctx = context()
+    const registry = new CommandRegistry<FixtureContext>(() => ctx)
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const first = vi.fn()
-    const second = vi.fn()
+    const first = spec('undo', ctx)
+    const second = spec('undo', ctx)
     const { rerender } = renderHookStrict(
-      ({ fn }: { fn: () => void }) => useCommandRegistration([{ name: 'undo', fn }]),
-      { initialProps: { fn: first as () => void } },
+      ({ s }: { s: CommandSpec<FixtureContext, null> }) => useCommandRegistration('part', registry, [s]),
+      { initialProps: { s: first } },
     )
 
-    rerender({ fn: second })
+    rerender({ s: second })
 
-    // A new handler is the legitimate re-register path, not a contract break:
-    // the registration effect re-runs while the length guard stays quiet.
+    // A new spec is the legitimate re-register path, not a contract break: the
+    // registration effect re-runs while the length guard stays quiet.
     expect(lengthErrors(error)).toEqual([])
-    act(() => executeCommand('undo'))
-    expect(second).toHaveBeenCalledTimes(1)
-    expect(first).not.toHaveBeenCalled()
+    act(() => { executeCommand('undo') })
+    expect(ctx.log).toEqual(['undo'])
   })
 })

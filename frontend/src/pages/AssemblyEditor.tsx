@@ -14,14 +14,15 @@ import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useOpenEntryInNewTab } from '@/hooks/useOpenEntryInNewTab'
 import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
 import { useAssemblyCommands } from '@/pages/AssemblyKeyboardShortcuts'
-import { buildAssemblyHandlers, insertMateCommand, type AssemblyCommandHandlers } from '@/pages/assemblyCommandEntries'
+import { insertMateCommand, type AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
+import { CommandRegistryProvider, useCommandRegistryWithContext } from '@/contexts/CommandRegistryContext'
 import { editingInstanceHandle as editingInstanceHandleOf, editingMateId as editingMateIdOf } from '@/utils/assemblyEditingSubject'
 import {
   findInstance,
   findMate,
   mintFeatureId,
 } from '@/utils/assemblyMutations'
-import { runAssemblyOperation, type AssemblyOperationId } from '@/utils/assemblyOperations'
+import { runAssemblyOperation, type AssemblyOperationId, type AssemblyOperationInputs } from '@/utils/assemblyOperations'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { interpretEntry } from '@/workspace/kinds'
 import type { AssemblySubject } from '@/utils/assemblySelection'
@@ -294,9 +295,12 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   }, [commitSession])
 
   // Run a table operation against the live doc and the page's effects. The
-  // operation decides bake/undo/solve; the page only supplies the context.
-  const runOperation = useCallback((id: AssemblyOperationId, payload: unknown) => {
-    runAssemblyOperation(id, payload as never, {
+  // operation decides bake/undo/solve; the page only supplies the context. The
+  // generic keeps the payload typed per operation: command specs parse their
+  // params before they get here, so no payload crosses this boundary as
+  // `unknown`.
+  const runOperation = useCallback(<K extends AssemblyOperationId>(id: K, payload: AssemblyOperationInputs[K]) => {
+    runAssemblyOperation(id, payload, {
       doc: docRef.current,
       transforms: useAssemblyStore.getState().settledPoses(),
       // I8: the outward link a part instance authors is refused at the mutation
@@ -311,8 +315,9 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
 
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. The append
-  // itself is wired in buildAssemblyHandlers (mint, close the previous session,
-  // run add_mate); this is only the editor side effect after it lands.
+  // itself is wired in the static insert_mate_* specs (mint the id, close the
+  // previous session, run add_mate); this is only the editor side effect after
+  // it lands.
   const handleMateInserted = useCallback((id: string, _kind: MateKind) => {
     const store = useAssemblyStore.getState()
     store.selectMate(id)
@@ -474,11 +479,12 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     [],
   )
 
-  // The command-to-operation wiring lives in buildAssemblyHandlers so the page
-  // only supplies the live host and the UI side effects; a test can build the
-  // same handlers with spies and observe exactly which operations fire.
-  // eslint-disable-next-line react-hooks/refs -- buildAssemblyHandlers only stores these callbacks; runOperation reads docRef when a command fires, never during render
-  const assemblyHandlers = useMemo<AssemblyCommandHandlers>(() => buildAssemblyHandlers({
+  // The command-to-operation wiring lives in the static ASSEMBLY_COMMAND_SPECS
+  // table; the page only supplies the live context (the operation host, the UI
+  // side effects and the store-backed history depths). A test can run the same
+  // specs against a stub context and observe exactly which operations fire.
+  const commandContext = useMemo<AssemblyCommandContext>(() => ({
+    editor: 'assembly',
     runOperation,
     undo: handleUndo,
     redo: handleRedo,
@@ -492,12 +498,15 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     deleteSubject: handleDeleteSubject,
     manipulationLive,
     cancelManipulation,
+    undoDepth: () => useAssemblyStore.getState().undoStack.length,
+    redoDepth: () => useAssemblyStore.getState().redoStack.length,
   }), [
     runOperation, handleUndo, handleRedo, handleDeleteSelected, handleCancelEdit,
     openPicker, openExport, closeOpenEditor, handleMateInserted,
     handleDeleteSubject, manipulationLive, cancelManipulation,
   ])
-  useAssemblyCommands(assemblyHandlers)
+  const commandRegistry = useCommandRegistryWithContext(commandContext)
+  useAssemblyCommands(commandRegistry)
 
   const handleArmMateField = useCallback((target: MateFieldTarget | null) => {
     useAssemblyStore.getState().setActiveMateField(target)
@@ -597,6 +606,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   }
 
   return (
+    <CommandRegistryProvider value={commandRegistry}>
     <div className="document-viewer">
       <AssemblyToolbar
         docName={docName}
@@ -727,5 +737,6 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       />
       <AssemblyExport ref={exportRef} doc={doc} docName={docName} />
     </div>
+    </CommandRegistryProvider>
   )
 }

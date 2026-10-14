@@ -6,10 +6,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import type { CommandName } from '@/utils/core/commandNames'
-
-type CommandHandler = (payload?: unknown) => void
-
-const handlers = new Map<CommandName, CommandHandler>()
+import { CommandRegistry, type CommandResult, type CommandTableView } from '@/utils/core/commandSpec'
 
 // The exact event the last dispatch ran a command for. Two co-mounted command
 // registrations each attach their own window keydown listener and forward the
@@ -100,39 +97,73 @@ export const ASSEMBLY_KEYBINDINGS: readonly CoreKeybinding[] = [
 export const ASSEMBLY_KEYMAP: Record<string, CommandName> =
   Object.fromEntries(ASSEMBLY_KEYBINDINGS.map(b => [b.key, b.command]))
 
-// ─── Registration ───
+// ─── Registry ownership ───
 
-// Returns an unregister function bound to this exact handler. It removes the
-// entry only while the map still holds `fn`, so a stale owner (an older mount
-// whose name a newer one has since overwritten) cannot remove the newer handler.
-export function registerCommand(name: CommandName, fn: CommandHandler): () => void {
-  if (import.meta.env.DEV && handlers.has(name)) {
-    console.warn(`registerCommand: overwriting existing handler for "${name}"`)
-  }
-  handlers.set(name, fn)
-  return () => {
-    if (handlers.get(name) === fn) handlers.delete(name)
-  }
+export type EditorKind = 'part' | 'assembly'
+
+// The per-editor registries the mounted editors install. Each editor owns its
+// own instance (built by the page from its live CommandContext), so the shared
+// names can no longer overwrite each other across editors; module-level
+// resolution picks the instance the active editor mode names, exactly as the
+// keymap branch below does.
+const editorRegistries = new Map<EditorKind, CommandTableView>()
+
+// The compatibility seam for registerCommand: legacy tests and tooling register
+// bare callbacks here. Editors never use it; it is consulted only when no
+// editor registry is installed, so it cannot shadow a page's specs.
+const fallbackRegistry = new CommandRegistry()
+
+export function setEditorCommandRegistry(kind: EditorKind, registry: CommandTableView): void {
+  editorRegistries.set(kind, registry)
+}
+
+// Identity-guarded, mirroring registerCommand's unregister: an unmount only
+// clears the slot while it still holds that mount's own registry.
+export function clearEditorCommandRegistry(kind: EditorKind, registry: CommandTableView): void {
+  if (editorRegistries.get(kind) === registry) editorRegistries.delete(kind)
+}
+
+// Resolve the registry a call belongs to. The active editor mode decides, as
+// the keymap branch does; when the mode store has not been told (headless tests
+// mount one editor directly) the editor actually mounted is the answer, most
+// recent first. With nothing mounted, the compatibility seam answers. A
+// fallback shim never shadows a mounted editor's specs.
+function resolveRegistry(): CommandTableView {
+  const mode = useEditorModeStore.getState().activeEditor
+  if (mode === 'assembly') return editorRegistries.get('assembly') ?? fallbackRegistry
+  if (mode === 'part') return editorRegistries.get('part') ?? fallbackRegistry
+  const mounted = [...editorRegistries.values()]
+  return mounted.length > 0 ? mounted[mounted.length - 1] : fallbackRegistry
+}
+
+// ─── Compatibility registration ───
+
+// Returns an unregister function bound to this exact callback. It removes the
+// entry only while the registry still holds it, so a stale owner (an older
+// mount whose name a newer one has since overwritten) cannot remove the newer
+// handler. Production editors register specs through CommandRegistry; this
+// entry point survives for tests and small tools.
+export function registerCommand(name: CommandName, fn: (payload?: unknown) => void): () => void {
+  return fallbackRegistry.register(CommandRegistry.legacySpec(name, fn))
 }
 
 /**
- * Removes every registered handler.
+ * Removes every handler registered through registerCommand.
  * Intended for test teardown only, do not call in production code.
  */
 export function clearAllHandlers(): void {
-  handlers.clear()
+  fallbackRegistry.clear()
 }
 
-export function executeCommand(name: CommandName, payload?: unknown): void {
-  const fn = handlers.get(name)
-  if (!fn) {
-    // dispatchKey has already preventDefaulted by the time we get here, so an
-    // unknown command would silently eat the keystroke. Dev-only diagnostic,
-    // mirroring the duplicate-registration warn in registerCommand.
-    if (import.meta.env.DEV) console.warn(`executeCommand: no handler registered for "${name}"`)
-    return
+// Runs a command through the registry the active editor installed and returns
+// its Result; an unknown id is an error Result (and a dev warning, because a
+// keymap entry that resolves to nothing is a registration gap).
+export function executeCommand(name: CommandName, params?: unknown): CommandResult {
+  const registry = resolveRegistry()
+  if (import.meta.env.DEV && !registry.has(name)) {
+    console.warn(`executeCommand: no handler registered for "${name}"`)
   }
-  fn(payload)
+  return registry.execute(name, params)
 }
 
 // ─── Key dispatch ───
@@ -168,25 +199,33 @@ export function isEditableTarget(e: KeyboardEvent): boolean {
   return target?.tagName != null && EDITABLE_TAGS.has(target.tagName)
 }
 
+// What a keydown resolved to: whether the event was consumed, and the Result
+// for callers that want to inspect it.
+export interface DispatchOutcome {
+  handled: boolean
+  result?: CommandResult
+}
+
 /**
  * Attempt to dispatch a keyboard event through the keymap.
- * Returns true if the event was handled (caller should call e.preventDefault()).
+ * Returns the outcome; `handled` true means the caller should consider the
+ * event consumed (dispatchKey below is the boolean wrapper).
  * Skips events that originate from input/textarea/select elements.
  */
-export function dispatchKey(e: KeyboardEvent): boolean {
+export function dispatchKeyOutcome(e: KeyboardEvent): DispatchOutcome {
   // Idempotent per event. Each mounted command registration attaches its own
   // window keydown listener and forwards to here, so two co-mounted editors
-  // deliver one press twice and both resolve the same last-writer-wins handler.
-  // The once-per-event guard is the identity of the event this module already
-  // ran a command for, not `defaultPrevented`: any other handler may cancel a
-  // key for its own reasons (a non-modal popover's Escape), and that event must
-  // still reach its command. No single-listener path changes.
-  if (e === lastDispatchedEvent) return false
-  if (isEditableTarget(e)) return false
+  // deliver one press twice and both resolve the same registry. The
+  // once-per-event guard is the identity of the event this module already ran a
+  // command for, not `defaultPrevented`: any other handler may cancel a key for
+  // its own reasons (a non-modal popover's Escape), and that event must still
+  // reach its command. No single-listener path changes.
+  if (e === lastDispatchedEvent) return { handled: false }
+  if (isEditableTarget(e)) return { handled: false }
   // A modal owns the keyboard while it is on screen: focus often sits on a
   // non-input control (a dialog button), so document-level commands would
   // otherwise fire behind it. Stand down for every key, not just Escape.
-  if (modalOwnsEscape()) return false
+  if (modalOwnsEscape()) return { handled: false }
   const key = buildKeyString(e)
   const inAssembly = useEditorModeStore.getState().activeEditor === 'assembly'
   const inSketchEdit = !!useSketchEditorStore.getState().activeFeatureId
@@ -199,16 +238,24 @@ export function dispatchKey(e: KeyboardEvent): boolean {
   } else {
     cmd = (inSketchEdit && SKETCH_KEYMAP[key]) || (!inSketchEdit && FEATURE_KEYMAP[key]) || KEYMAP[key]
   }
-  if (!cmd) return false
-  // A keymap entry with no registered handler is a registration gap, i.e. a
-  // bug: surface it and let the browser default apply rather than eating the
+  if (!cmd) return { handled: false }
+  // A keymap entry with no registered spec is a registration gap, i.e. a bug:
+  // surface it and let the browser default apply rather than eating the
   // keystroke silently. The registered path is unchanged.
-  if (!handlers.has(cmd)) {
+  const registry = resolveRegistry()
+  if (!registry.has(cmd)) {
     if (import.meta.env.DEV) console.warn(`dispatchKey: no handler registered for "${cmd}"`)
-    return false
+    return { handled: false }
   }
   e.preventDefault()
   lastDispatchedEvent = e
-  executeCommand(cmd)
-  return true
+  return { handled: true, result: registry.execute(cmd) }
+}
+
+/**
+ * Boolean view of dispatchKeyOutcome for the common listener path.
+ * Returns true if the event was handled.
+ */
+export function dispatchKey(e: KeyboardEvent): boolean {
+  return dispatchKeyOutcome(e).handled
 }

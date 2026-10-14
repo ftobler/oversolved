@@ -6,21 +6,24 @@ import { render, fireEvent, screen } from '@testing-library/react'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
-import { registerCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
+import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
+import { assemblyRegistry, storeBackedAssemblyContext } from './commandFixtures'
 
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
-function renderToolbar() {
+function renderToolbar(context = storeBackedAssemblyContext()) {
   return render(
-    <AssemblyToolbar
-      docName="TestDoc"
-      onRename={vi.fn()}
-      handleSave={vi.fn()}
-      handleClone={vi.fn()}
-    />,
+    <CommandRegistryProvider value={assemblyRegistry(context)}>
+      <AssemblyToolbar
+        docName="TestDoc"
+        onRename={vi.fn()}
+        handleSave={vi.fn()}
+        handleClone={vi.fn()}
+      />
+    </CommandRegistryProvider>,
   )
 }
 
@@ -50,9 +53,6 @@ function stepHistory(direction: 'undo' | 'redo') {
 
 describe('AssemblyToolbar undo/redo', () => {
   beforeEach(() => {
-    clearAllHandlers()
-    registerCommand('undo', () => stepHistory('undo'))
-    registerCommand('redo', () => stepHistory('redo'))
     useAssemblyStore.setState({ undoStack: [], redoStack: [] })
     // The toolbar's undo/redo are gated on the active editor, exactly as
     // dispatchKey's assembly keymap is, so the suite states its own mode.
@@ -60,7 +60,6 @@ describe('AssemblyToolbar undo/redo', () => {
   })
 
   afterEach(() => {
-    clearAllHandlers()
     useEditorModeStore.getState().setActiveEditor(null)
   })
 
@@ -79,7 +78,7 @@ describe('AssemblyToolbar undo/redo', () => {
 
   it('clicking undo routes through the registry and moves the entry onto redo', () => {
     useAssemblyStore.setState({ undoStack: [entry('Add part')], redoStack: [] })
-    renderToolbar()
+    renderToolbar(storeBackedAssemblyContext({ undo: () => stepHistory('undo') }))
     fireEvent.click(undoButton())
     expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
     expect(useAssemblyStore.getState().redoStack).toHaveLength(1)
@@ -87,7 +86,7 @@ describe('AssemblyToolbar undo/redo', () => {
 
   it('clicking redo routes through the registry and moves the entry onto undo', () => {
     useAssemblyStore.setState({ undoStack: [], redoStack: [entry('Move part')] })
-    renderToolbar()
+    renderToolbar(storeBackedAssemblyContext({ redo: () => stepHistory('redo') }))
     fireEvent.click(redoButton())
     expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
     expect(useAssemblyStore.getState().redoStack).toHaveLength(0)

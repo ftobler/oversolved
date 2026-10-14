@@ -1,14 +1,14 @@
-import { useMemo } from 'react'
-import { buildAssemblyCommandEntries, type AssemblyCommandHandlers } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
+import type { CommandRegistry } from '@/utils/core/commandSpec'
 
 /**
- * Registers every assembly command and attaches the keydown listener. Mirrors
- * `usePartCommands`: the caller passes stable (useCallback/useMemo wrapped)
- * handlers so the command list is only rebuilt when a handler identity changes.
- * Callers dispatch with the shared `executeCommand` from the registry.
+ * Installs the assembly command table on the page's registry and attaches the
+ * keydown listener. Mirrors `usePartCommands`: the caller builds the registry
+ * around its live context, so this hook only installs it and registers the
+ * static specs. Callers dispatch with the shared `executeCommand` from the
+ * registry.
  */
-export function useAssemblyCommands(handlers: AssemblyCommandHandlers): void {
-  const commands = useMemo(() => buildAssemblyCommandEntries(handlers), [handlers])
-  useCommandRegistration(commands)
+export function useAssemblyCommands(registry: CommandRegistry<AssemblyCommandContext>): void {
+  useCommandRegistration('assembly', registry, ASSEMBLY_COMMAND_SPECS)
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import AppHeader from '@/components/layout/AppHeader'
@@ -40,9 +40,14 @@ export default function AssemblyToolbar({
 }: AssemblyToolbarProps) {
   const undoStack = useAssemblyStore(s => s.undoStack) as AssemblyUndoEntry[]
   const redoStack = useAssemblyStore(s => s.redoStack) as AssemblyUndoEntry[]
+  const registry = useCommandRegistry()
   // The disabled state has to agree with the gate: a button that reads enabled
-  // from the assembly store and then refuses to run is worse than a disabled one.
+  // from the registry and then refuses to run is worse than a disabled one.
+  // The registry's undo/redo predicates read the assembly store's stacks, the
+  // same source the tooltips below read.
   const ownsDocument = useEditorModeStore(s => s.activeEditor) === 'assembly'
+  const undoDisabled = !ownsDocument || registry.enabled('undo') !== true
+  const redoDisabled = !ownsDocument || registry.enabled('redo') !== true
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
 
@@ -52,8 +57,8 @@ export default function AssemblyToolbar({
         <button
           className="toolbar-btn"
           aria-label="Undo"
-          onClick={() => { if (ownsDocument) executeCommand('undo') }}
-          disabled={undoStack.length === 0 || !ownsDocument}
+          onClick={() => { if (ownsDocument) registry.execute('undo') }}
+          disabled={undoDisabled}
           onMouseEnter={() => setUndoHover(true)}
           onMouseLeave={() => setUndoHover(false)}
         >
@@ -70,8 +75,8 @@ export default function AssemblyToolbar({
         <button
           className="toolbar-btn"
           aria-label="Redo"
-          onClick={() => { if (ownsDocument) executeCommand('redo') }}
-          disabled={redoStack.length === 0 || !ownsDocument}
+          onClick={() => { if (ownsDocument) registry.execute('redo') }}
+          disabled={redoDisabled}
           onMouseEnter={() => setRedoHover(true)}
           onMouseLeave={() => setRedoHover(false)}
         >

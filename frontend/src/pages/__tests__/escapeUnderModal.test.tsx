@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import { render, fireEvent, act } from '@testing-library/react'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import Dialog from '@/components/dialogs/Dialog'
-import { buildCommandEntries } from '@/pages/commandEntries'
-import { registerCommand, clearAllHandlers, dispatchKey } from '@/utils/core/commandRegistry'
+import { clearAllHandlers, dispatchKey } from '@/utils/core/commandRegistry'
 import { resetModalEscape } from '@/utils/core/modalEscape'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'
 import { useEditorState } from '@/hooks/useEditorState'
+import { installPartRegistry } from './commandFixtures'
 
 // The over-cancel bug, end to end. Both dispatchKey and the Dialog shell listen
 // for Escape on window, and dispatchKey is attached first (useCommandRegistration
@@ -16,16 +16,16 @@ import { useEditorState } from '@/hooks/useEditorState'
 // Repro from the report: arm the line tool, place two points, raise the mirror
 // tool's "Not Implemented" message box, press Escape.
 
-const noop = () => {}
-
 function attachDispatch(): () => void {
-  for (const e of buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, noop)) {
-    registerCommand(e.name, e.fn)
-  }
+  // The real spec table, installed the way a mounted page does.
+  const { uninstall } = installPartRegistry()
   // Same order as production: the global dispatcher is on window before the
   // dialog mounts, so listener order alone can never protect the draw.
   window.addEventListener('keydown', dispatchKey)
-  return () => window.removeEventListener('keydown', dispatchKey)
+  return () => {
+    window.removeEventListener('keydown', dispatchKey)
+    uninstall()
+  }
 }
 
 function pressEscape() {

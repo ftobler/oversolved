@@ -1,12 +1,12 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { COMMAND_NAMES } from '@/utils/core/commandNames'
 import {
   KEYMAP, SKETCH_KEYMAP, FEATURE_KEYMAP, ASSEMBLY_KEYMAP,
   CORE_KEYBINDINGS, ASSEMBLY_KEYBINDINGS,
 } from '@/utils/core/commandRegistry'
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
-import { buildCommandEntries } from '@/pages/commandEntries'
-import { buildAssemblyHandlers, buildAssemblyCommandEntries, type AssemblyHandlerDeps } from '@/pages/assemblyCommandEntries'
+import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
+import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
 import { TOOL_DEFS } from '@/components/Toolbar/tools/toolsConfig'
 
 // The typed command union is only as good as its list. These tests make the
@@ -17,25 +17,6 @@ const known = new Set<string>(COMMAND_NAMES)
 function expectKnown(names: Iterable<string>, source: string): void {
   for (const name of names) {
     expect(known.has(name), `"${name}" from ${source} is not in COMMAND_NAMES`).toBe(true)
-  }
-}
-
-function stubDeps(): AssemblyHandlerDeps {
-  const fn = vi.fn()
-  return {
-    runOperation: fn,
-    undo: fn,
-    redo: fn,
-    deleteSelected: fn,
-    cancelEdit: fn,
-    openInsertPart: fn,
-    openExport: fn,
-    mintMateId: () => 'id',
-    closeOpenEditor: fn,
-    onMateInserted: fn,
-    deleteSubject: fn,
-    manipulationLive: () => false,
-    cancelManipulation: fn,
   }
 }
 
@@ -67,14 +48,24 @@ describe('COMMAND_NAMES', () => {
     expectKnown(defs.flatMap(d => d.shortcutCommand ? [d.shortcutCommand] : []), 'TOOL_DEFS.shortcutCommand')
   })
 
-  it('covers every name the sketch editor page registers', () => {
-    const fn = vi.fn()
-    const entries = buildCommandEntries(fn, fn, fn, fn, fn, fn, fn, fn, fn)
-    expectKnown(entries.map(e => e.name), 'buildCommandEntries')
+  it('covers every id in the sketch editor spec table', () => {
+    expectKnown(PART_COMMAND_SPECS.map(s => s.id), 'PART_COMMAND_SPECS')
   })
 
-  it('covers every name the assembly editor page registers', () => {
-    const entries = buildAssemblyCommandEntries(buildAssemblyHandlers(stubDeps()))
-    expectKnown(entries.map(e => e.name), 'buildAssemblyCommandEntries')
+  it('covers every id in the assembly editor spec table', () => {
+    expectKnown(ASSEMBLY_COMMAND_SPECS.map(s => s.id), 'ASSEMBLY_COMMAND_SPECS')
+  })
+
+  // The completeness proof: every name in the union is a spec somewhere, the
+  // three shared names are the only ones carried by both editors, and each
+  // editor's own table has no duplicate ids.
+  it('enumerates every COMMAND_NAMES entry against the two editors', () => {
+    const partIds = new Set(PART_COMMAND_SPECS.map(s => s.id))
+    const assemblyIds = new Set(ASSEMBLY_COMMAND_SPECS.map(s => s.id))
+    for (const name of COMMAND_NAMES) {
+      expect(partIds.has(name) || assemblyIds.has(name), `"${name}" has no spec in either editor`).toBe(true)
+    }
+    const shared = [...partIds].filter(id => assemblyIds.has(id))
+    expect(new Set(shared)).toEqual(new Set(['undo', 'redo', 'delete_selected']))
   })
 })

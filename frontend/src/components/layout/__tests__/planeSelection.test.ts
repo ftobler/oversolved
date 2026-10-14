@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { registerCommand, executeCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
-import { buildCommandEntries } from '@/pages/commandEntries'
+import { executeCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
 import { useEditorState } from '@/hooks/useEditorState'
+import { installPartRegistry } from '@/pages/__tests__/commandFixtures'
 
 // Plane selection is no longer a parallel store path. It is just a pick field
 // (`activePickField = { featureId, field: 'plane' }`) consumed by PlaneSelector
@@ -51,13 +51,9 @@ describe('setActivePickField for a plane field', () => {
 // is the superset (draw + pick field + tool). This drives the real entry so a
 // dropped setActivePickField step there strands an armed pick chip.
 describe('cancel_draw command', () => {
-  const noop = () => {}
-
   beforeEach(() => {
     reset()
-    for (const e of buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, noop)) {
-      registerCommand(e.name, e.fn)
-    }
+    installPartRegistry()
   })
 
   it('dispatching cancel_draw clears the active pick field', () => {

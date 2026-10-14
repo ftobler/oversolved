@@ -8,8 +8,11 @@ import { EntitiesTable } from './registry/EntitiesTable'
 import { SnapRulesTable } from './registry/SnapRulesTable'
 import { MeasurementsTable } from './registry/MeasurementsTable'
 import { KeybindingsTable } from './registry/KeybindingsTable'
+import { CommandsTable } from './registry/CommandsTable'
+import { buildCommandRows } from './registry/commandRows'
 
 const SECTIONS = [
+  { id: 'commands',    label: 'Commands' },
   { id: 'constraints', label: 'Constraints' },
   { id: 'dim-rules',   label: 'Dimension Rules' },
   { id: 'entities',    label: 'Entities' },
@@ -40,6 +43,7 @@ export default function Registry() {
             ))}
           </ul>
           <div className="reg-nav-stats">
+            <div>{buildCommandRows().length} commands</div>
             <div>{CONSTRAINTS.length} constraints</div>
             <div>{ENTITIES.length} entity types</div>
             <div>{Object.keys(KEYMAP).length} keybindings</div>
@@ -49,9 +53,21 @@ export default function Registry() {
         <main className="reg-content">
           <h1>Registry</h1>
           <p className="reg-intro">
-            Single source of truth for all constraint types, entity types, and keyboard commands.
-            All toolbar buttons, shortcuts, icon mappings, and dimension-tool detection are derived from these tables.
+            Single source of truth for all commands, constraint types, entity types, and keyboard bindings.
+            Toolbar actions, shortcuts, icon mappings, and dimension-tool detection are derived from these tables.
           </p>
+
+          <section id="commands">
+            <h2>Commands <span className="reg-count">({buildCommandRows().length})</span></h2>
+            <p>
+              Every named user action, derived from the editor command tables. <strong>Undo</strong> marks
+              commands that may push an undo entry; <strong>Editor</strong> names which editor registers
+              the command (<code>any</code> for the shared undo/redo/delete).
+            </p>
+            <div className="reg-table-wrap">
+              <CommandsTable />
+            </div>
+          </section>
 
           <section id="constraints">
             <h2>Constraints <span className="reg-count">({CONSTRAINTS.length})</span></h2>

@@ -9,6 +9,8 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import PartToolbar from '@/pages/PartToolbar'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
+import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
+import { assemblyRegistry, partRegistry, storeBackedAssemblyContext } from './commandFixtures'
 
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -29,8 +31,13 @@ describe('undo/redo button spacing', () => {
   it.each([
     ['PartToolbar', PartToolbar],
     ['AssemblyToolbar', AssemblyToolbar],
-  ])('%s wraps undo and redo in the one group', (_name, Toolbar) => {
-    render(<Toolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} />)
+  ])('%s wraps undo and redo in the one group', (name, Toolbar) => {
+    const registry = name === 'PartToolbar' ? partRegistry() : assemblyRegistry(storeBackedAssemblyContext())
+    render(
+      <CommandRegistryProvider value={registry}>
+        <Toolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} />
+      </CommandRegistryProvider>,
+    )
     const undo = screen.getByRole('button', { name: 'Undo' })
     const redo = screen.getByRole('button', { name: 'Redo' })
     expect(undo.parentElement).toBe(redo.parentElement)

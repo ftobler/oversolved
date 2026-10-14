@@ -32,7 +32,8 @@ import PartDebugPanel from '@/pages/PartDebugPanel'
 import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport, { type PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
-import type { ShowMessagePayload } from '@/pages/commandEntries'
+import { getSketchState, type PartCommandContext, type ShowMessagePayload } from '@/pages/commandEntries'
+import { CommandRegistryProvider, useCommandRegistryWithContext } from '@/contexts/CommandRegistryContext'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import { useEditFeature } from '@/pages/useEditFeature'
 
@@ -155,6 +156,7 @@ export default function Part() {
 
   const {
     doc,
+    session,
     docRef,
     loading,
     error,
@@ -562,7 +564,7 @@ export default function Part() {
     // recomputes the same pick_boundary and the cache hit is free.
     setRollbackForNewFeature(features)
     store.setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
+    const result = handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
     // enterEditFeature would bail because React hasn't re-rendered with the
     // new feature yet (features.findIndex(f => f.id === fid) returns -1), so
     // the id is set eagerly; the session started above already owns commit and
@@ -570,6 +572,9 @@ export default function Part() {
     store.setEditingFeatureId(fid)
     const firstPick = FIRST_PICK_FIELD[kind]
     if (firstPick) setActivePickField({ featureId: fid, ...firstPick })
+    // The Result rides back to the command spec so a programmatic caller sees
+    // the created feature id.
+    return result
   }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, closeOpenEditorForAdd])
 
   const handleAddPlane = useCallback(() => {
@@ -769,15 +774,25 @@ export default function Part() {
     handleRedo()
   }, [handleRedo])
 
-  usePartCommands(
-    handleUndoNoFit,
-    handleRedoNoFit,
-    handleDeleteSelectedFeatures,
-    handleToggleSketchPlaneVisibility,
-    handleTogglePlaneVisibility,
-    handleAddFeature,
+  // The live command context the registry hands every spec: the session and
+  // the page's action callbacks, so the command table itself is static data.
+  const commandContext = useMemo<PartCommandContext>(() => ({
+    editor: 'part',
+    session,
+    state: getSketchState,
+    undo: handleUndoNoFit,
+    redo: handleRedoNoFit,
+    deleteSelectedFeatures: handleDeleteSelectedFeatures,
+    toggleSketchPlaneVisibility: handleToggleSketchPlaneVisibility,
+    togglePlaneVisibility: handleTogglePlaneVisibility,
+    addFeature: (kind, extra) => handleAddFeature(kind, extra) ?? null,
     showMessage,
-  )
+  }), [
+    session, handleUndoNoFit, handleRedoNoFit, handleDeleteSelectedFeatures,
+    handleToggleSketchPlaneVisibility, handleTogglePlaneVisibility, handleAddFeature, showMessage,
+  ])
+  const commandRegistry = useCommandRegistryWithContext(commandContext)
+  usePartCommands(commandRegistry)
 
   const handleSave = async () => {
     if (!uuid || !doc) return false
@@ -1075,6 +1090,7 @@ export default function Part() {
     handleClearCacheAndRebuild])
 
   return (
+    <CommandRegistryProvider value={commandRegistry}>
     <div className="document-viewer">
       <PartToolbar
         docName={docName}
@@ -1174,5 +1190,6 @@ export default function Part() {
         onClose={() => setMessageDialog(null)}
       />
     </div>
+    </CommandRegistryProvider>
   )
 }

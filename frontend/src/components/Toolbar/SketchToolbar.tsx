@@ -1,5 +1,8 @@
+import { useMemo } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { executeCommand, CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
+import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
+import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
+import { openOffsetDialog } from '@/pages/commandEntries'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { iconUrl } from '@/components/Toolbar/tools/toolUtils'
 import EntityTools from '@/components/Toolbar/tools/EntityTools'
@@ -17,20 +20,37 @@ const mirrorKey = CORE_KEYBINDINGS.find(b => b.command === 'set_tool_mirror')?.k
 const constructionKey = CORE_KEYBINDINGS.find(b => b.command === 'toggle_construction')?.key.toUpperCase()
 
 export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
+  const registry = useCommandRegistry()
   const activeTool = useSketchEditorStore(s => s.activeTool)
   const drag = useSketchEditorStore(s => s.drag)
-  const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  const hasEntities = Array.from(normalSelection).some(id => id.startsWith('entity:'))
-
+  // A render token for the selection. The registry's verdicts read the live
+  // store, so the component must re-run them when the selection changes; the
+  // token is their dependency, the ids themselves are not rendered here.
+  const selectionToken = useSketchEditorStore(s => Array.from(s.normalSelection).join('|'))
   const isDragActive = drag !== null
   const isMirrorActive = activeTool === 'mirror'
+  // The disabled verdicts come from the same specs the clicks run through, so
+  // a button can no longer disagree with its command. The token is a
+  // deliberate dependency even though the memo bodies do not read it: the
+  // verdicts read the live store through the registry, and the token is what
+  // re-runs them when the selection changes.
+  const mirrorDisabled = useMemo(
+    () => registry.enabled('set_tool_mirror') !== true,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionToken is the invalidation key for the verdict read
+    [registry, selectionToken, isMirrorActive],
+  )
+  const offsetDisabled = useMemo(
+    () => registry.enabled('apply_offset') !== true,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionToken is the invalidation key for the verdict read
+    [registry, selectionToken],
+  )
 
   return (
     <>
       <ToolbarButton
         title="Drag (G)"
         icon={iconUrl('toolbar-select')}
-        onClick={() => executeCommand('set_tool_drag')}
+        onClick={() => registry.execute('set_tool_drag')}
         active={isDragActive || activeTool === 'drag' || activeTool === null}
         handle="toolbar:set_tool_drag"
       />
@@ -55,7 +75,7 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
       <ToolbarButton
         title={constructionKey ? `Toggle Construction (${constructionKey})` : 'Toggle Construction'}
         icon={iconUrl('constraint-line-swap')}
-        onClick={() => executeCommand('toggle_construction')}
+        onClick={() => registry.execute('toggle_construction')}
         handle="toolbar:toggle_construction"
       />
 
@@ -63,16 +83,16 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
         title={mirrorKey ? `Mirror (${mirrorKey})` : 'Mirror'}
         icon={iconUrl('feature-mirror')}
         active={isMirrorActive}
-        disabled={!hasEntities && !isMirrorActive}
-        onClick={() => executeCommand('set_tool_mirror')}
+        disabled={mirrorDisabled}
+        onClick={() => registry.execute('set_tool_mirror')}
         handle="toolbar:set_tool_mirror"
       />
 
       <ToolbarButton
         title="Offset selected entities"
         icon={iconUrl('toolbar-offset')}
-        disabled={!hasEntities}
-        onClick={() => executeCommand('apply_offset')}
+        disabled={offsetDisabled}
+        onClick={() => openOffsetDialog(distance => { registry.execute('apply_offset', { distance }) })}
         handle="toolbar:apply_offset"
       />
 

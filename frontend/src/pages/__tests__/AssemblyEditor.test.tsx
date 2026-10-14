@@ -78,7 +78,10 @@ vi.mock('@/stores/previewStore', () => ({
   usePreview: () => undefined,
 }))
 
-import { executeCommand, registerCommand } from '@/utils/core/commandRegistry'
+import { executeCommand, setEditorCommandRegistry } from '@/utils/core/commandRegistry'
+import { CommandRegistry } from '@/utils/core/commandSpec'
+import { assemblyContext } from './commandFixtures'
+import type { AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { backendBundle } from '@/adapters/backend'
@@ -446,9 +449,13 @@ describe('AssemblyEditor (Stage 6b)', () => {
     const insertPart = vi.fn()
     const insertMate = vi.fn()
     const exportAssembly = vi.fn()
-    registerCommand('insert_part_instance', insertPart)
-    registerCommand('insert_mate_fixed', insertMate)
-    registerCommand('export_assembly', exportAssembly)
+    // Override the page's registry slot with a shim table, the way a script or
+    // a test can replace handlers; the toolbar button must reach it.
+    const overrides = new CommandRegistry<AssemblyCommandContext>(() => assemblyContext())
+    overrides.register(CommandRegistry.legacySpec('insert_part_instance', insertPart))
+    overrides.register(CommandRegistry.legacySpec('insert_mate_fixed', insertMate))
+    overrides.register(CommandRegistry.legacySpec('export_assembly', exportAssembly))
+    act(() => { setEditorCommandRegistry('assembly', overrides) })
 
     fireEvent.click(screen.getByLabelText('Insert part'))
     expect(insertPart).toHaveBeenCalledOnce()

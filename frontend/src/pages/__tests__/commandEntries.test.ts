@@ -1,10 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildCommandEntries } from '@/pages/commandEntries'
-import { KEYMAP, FEATURE_KEYMAP, SKETCH_KEYMAP, clearAllHandlers } from '@/utils/core/commandRegistry'
+import { describe, it, expect, vi } from 'vitest'
+import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
+import { KEYMAP, FEATURE_KEYMAP, SKETCH_KEYMAP } from '@/utils/core/commandRegistry'
 import { CONSTRAINTS } from '@/registry'
-
-// Ensure clean state before each test
-beforeEach(() => { clearAllHandlers() })
+import { partContext, partRegistry } from './commandFixtures'
 
 // Commands that intentionally have no keyboard shortcut.
 const SHORTCUT_CONSTRAINT_KINDS = new Set(CONSTRAINTS.filter(c => c.shortcut).map(c => c.kind))
@@ -27,35 +25,41 @@ const PROGRAMMATIC_ONLY = new Set([
   ...TOOLBAR_ONLY_CONSTRAINT_COMMANDS,
 ])
 
-describe('buildCommandEntries', () => {
-  const entries = buildCommandEntries(vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
-
-  // A command name is the registry key: an empty one names nothing and a
-  // duplicate silently shadows the earlier handler in registerCommand's Map.
-  // Neither is caught by the CommandEntry type, so this is the one place the
-  // structural contract is pinned. The `fn` shape is enforced by the type and
-  // is not asserted.
-  it('names are non-empty and unique', () => {
-    const names = entries.map(e => e.name)
-    for (const name of names) expect(name.length).toBeGreaterThan(0)
-    expect(new Set(names).size).toBe(names.length)
+describe('PART_COMMAND_SPECS', () => {
+  // A command id is the registry key: an empty one names nothing and a
+  // duplicate silently shadows the earlier spec in the registry's Map. Neither
+  // is caught by the CommandName type, so this is the one place the structural
+  // contract is pinned. The run shape is enforced by the type and is not
+  // asserted.
+  it('ids are non-empty and unique', () => {
+    const ids = PART_COMMAND_SPECS.map(s => s.id)
+    for (const id of ids) expect(id.length).toBeGreaterThan(0)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('every name is in KEYMAP/FEATURE_KEYMAP/SKETCH_KEYMAP values or is a known programmatic-only command', () => {
+  it('every id is in KEYMAP/FEATURE_KEYMAP/SKETCH_KEYMAP values or is a known programmatic-only command', () => {
     const keymapValues = new Set([...Object.values(KEYMAP), ...Object.values(FEATURE_KEYMAP), ...Object.values(SKETCH_KEYMAP)])
-    for (const { name } of entries) {
-      const ok = keymapValues.has(name) || PROGRAMMATIC_ONLY.has(name)
-      expect(ok, `"${name}" not in KEYMAP/FEATURE_KEYMAP and not in PROGRAMMATIC_ONLY`).toBe(true)
+    for (const { id } of PART_COMMAND_SPECS) {
+      const ok = keymapValues.has(id) || PROGRAMMATIC_ONLY.has(id)
+      expect(ok, `"${id}" not in KEYMAP/FEATURE_KEYMAP and not in PROGRAMMATIC_ONLY`).toBe(true)
     }
   })
 
-  it('handleUndo and handleRedo are wired to the undo and redo entries', () => {
-    const handleUndo = vi.fn()
-    const handleRedo = vi.fn()
-    const entries = buildCommandEntries(handleUndo, handleRedo, vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn())
-    entries.find(e => e.name === 'undo')!.fn()
-    expect(handleUndo).toHaveBeenCalledOnce()
-    entries.find(e => e.name === 'redo')!.fn()
-    expect(handleRedo).toHaveBeenCalledOnce()
+  it('every spec carries a label, an enabled predicate and a params schema', () => {
+    for (const spec of PART_COMMAND_SPECS) {
+      expect(spec.label.length, `label missing for "${spec.id}"`).toBeGreaterThan(0)
+      expect(typeof spec.enabled).toBe('function')
+      expect(typeof spec.params.parse).toBe('function')
+    }
+  })
+
+  it('handleUndo and handleRedo are wired to the undo and redo specs', () => {
+    const undo = vi.fn()
+    const redo = vi.fn()
+    const registry = partRegistry(partContext({ undo, redo }))
+    expect(registry.execute('undo')).toEqual({ ok: true, createdIds: [] })
+    expect(undo).toHaveBeenCalledOnce()
+    expect(registry.execute('redo')).toEqual({ ok: true, createdIds: [] })
+    expect(redo).toHaveBeenCalledOnce()
   })
 })

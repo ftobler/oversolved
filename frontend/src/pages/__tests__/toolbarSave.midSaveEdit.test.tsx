@@ -45,6 +45,8 @@ import { useDocumentState } from '@/hooks/useDocumentState'
 import { useAssemblyDoc } from '@/hooks/useAssemblyDoc'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
+import { assemblyRegistry, partRegistry, storeBackedAssemblyContext } from './commandFixtures'
 
 // What an editor mutation does: install a fresh doc object (never an in-place
 // edit, which is what saveDoc's identity check relies on) and flag dirty.
@@ -76,7 +78,12 @@ function makeEditor(useDoc: () => DocHook, Toolbar: typeof PartToolbar) {
       }
     })
     if (!doc) return null
-    return <Toolbar docName="Doc" onRename={async () => true} handleSave={handleSave} handleClone={() => {}} />
+    const registry = Toolbar === PartToolbar ? partRegistry() : assemblyRegistry(storeBackedAssemblyContext())
+    return (
+      <CommandRegistryProvider value={registry}>
+        <Toolbar docName="Doc" onRename={async () => true} handleSave={handleSave} handleClone={() => {}} />
+      </CommandRegistryProvider>
+    )
   }
 }
 

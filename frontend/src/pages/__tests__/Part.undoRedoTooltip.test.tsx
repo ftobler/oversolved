@@ -7,21 +7,25 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, fireEvent, screen } from '@testing-library/react'
 import PartToolbar from '@/pages/PartToolbar'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { registerCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
+import { clearAllHandlers } from '@/utils/core/commandRegistry'
 import type { Mutation } from '@/types/cad'
+import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
+import { partRegistry, sessionBackedPartContext } from './commandFixtures'
 
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
-function renderToolbar() {
+function renderToolbar(context = sessionBackedPartContext()) {
   return render(
-    <PartToolbar
-      docName="TestDoc"
-      onRename={vi.fn()}
-      handleSave={vi.fn()}
-      handleClone={vi.fn()}
-    />,
+    <CommandRegistryProvider value={partRegistry(context)}>
+      <PartToolbar
+        docName="TestDoc"
+        onRename={vi.fn()}
+        handleSave={vi.fn()}
+        handleClone={vi.fn()}
+      />
+    </CommandRegistryProvider>,
   )
 }
 
@@ -49,8 +53,6 @@ function stepHistory(direction: 'undo' | 'redo') {
 describe('PartToolbar undo/redo', () => {
   beforeEach(() => {
     clearAllHandlers()
-    registerCommand('undo', () => stepHistory('undo'))
-    registerCommand('redo', () => stepHistory('redo'))
     usePartEditorStore.setState({ undoStack: [], redoStack: [] })
   })
 
@@ -73,7 +75,7 @@ describe('PartToolbar undo/redo', () => {
 
   it('clicking undo routes through the registry and moves the entry onto redo', () => {
     usePartEditorStore.setState({ undoStack: [entry('a')], redoStack: [] })
-    renderToolbar()
+    renderToolbar(sessionBackedPartContext({ undo: () => stepHistory('undo') }))
     fireEvent.click(undoButton())
     expect(usePartEditorStore.getState().undoStack).toHaveLength(0)
     expect(usePartEditorStore.getState().redoStack).toHaveLength(1)
@@ -81,7 +83,7 @@ describe('PartToolbar undo/redo', () => {
 
   it('clicking redo routes through the registry and moves the entry onto undo', () => {
     usePartEditorStore.setState({ undoStack: [], redoStack: [entry('b')] })
-    renderToolbar()
+    renderToolbar(sessionBackedPartContext({ redo: () => stepHistory('redo') }))
     fireEvent.click(redoButton())
     expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
     expect(usePartEditorStore.getState().redoStack).toHaveLength(0)

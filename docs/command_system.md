@@ -2,17 +2,63 @@
 
 ## Overview
 
-Every user-visible action in the sketch editor is reachable through a central command registry. Toolbar button clicks and keyboard shortcuts go through the same `executeCommand()` code path, enabling headless testing without the DOM.
+Every named user action is a `CommandSpec` with metadata, a runtime-checked
+params schema, an `enabled` predicate and a `run` body that returns a `Result`
+with the ids it created. Both editors register their spec table on a
+`CommandRegistry` instance the page owns; toolbar clicks, keyboard shortcuts
+and programmatic `executeCommand()` calls all resolve through the registry the
+active editor installed, so the whole table is testable headlessly without the
+DOM. Programmatic calls never open dialogs: a command that needs values takes
+them as data, and the dialog is a front end that parses the input and calls
+`execute`.
 
 ## Architecture
 
-### Command Registry (`commandRegistry.ts`)
+### Command Specs (`utils/core/commandSpec.ts`)
 
-Maps string command names to handler functions registered at runtime.
+`CommandSpec<Ctx, P>` carries:
 
-Core API: `registerCommand(name, fn)` (returns the unregister function for that handler), `executeCommand(name)`, `buildKeyString(e)`, `dispatchKey(e)`.
+- `id`: a `CommandName` from the closed union in `utils/core/commandNames.ts`.
+- `label`, `shortcut?`, `undoable`: docs and Registry metadata.
+- `params`: a lightweight runtime schema (`noParams()`, `valueParam(field)`,
+  `objectParams({...})` with `Field.string/number/boolean/nullableString/any/object`).
+  `parse(raw)` returns `{ ok: true, value }` or `{ ok: false, error }`; the
+  registry reports a failed parse as an `invalid-params` Result and never calls
+  the body.
+- `enabled(ctx)`: `true` or the reason it cannot run; toolbars render the
+  reason as the disabled state.
+- `run(ctx, params)`: returns a `Result` (ok plus created ids, or an error).
 
-`dispatchKey` resolves in order: `ASSEMBLY_KEYMAP` while the assembly editor is active, then `SKETCH_KEYMAP` inside sketch edit, then `FEATURE_KEYMAP` outside it, then `KEYMAP` (assembled from `CORE_KEYBINDINGS`, `CONSTRAINT_SHORTCUTS`, `ENTITY_SHORTCUTS`). `FEATURE_KEYMAP` holds only `e`; `SKETCH_KEYMAP` is currently empty. Both shadow `KEYMAP`, so a key that means the same thing in both modes belongs in `CORE_KEYBINDINGS`. Events from INPUT, TEXTAREA and SELECT elements, contenteditable targets and IME composition are skipped (`isEditableTarget`).
+`CommandRegistry<Ctx>` is an instance, not a module-level map. `register(spec)`
+returns an identity-guarded unregister, `execute(id, params?)` returns a
+`CommandResult` (`unknown-command` for an id with no spec, `invalid-params` for
+a payload that misses the schema), and `enabled(id)` reads the live context.
+`CommandTableView` is the context-free view of a registry that module-level
+dispatch and the toolbar React context hold.
+
+### Registries and dispatch (`commandRegistry.ts`)
+
+Each mounted page builds one `CommandContext` (the session plus the page's
+action callbacks for the part editor; the operation host plus UI side effects
+for the assembly editor) and one registry around it, and installs the registry
+for its editor kind. `resolveRegistry()` picks the registry the active editor
+mode names (falling back to the single mounted editor), so the three shared
+names (`undo`, `redo`, `delete_selected`) live in both tables without
+last-mount-wins.
+
+`executeCommand(name, params?)` resolves that registry and returns its Result;
+an unknown id is an error Result and a dev warning. `dispatchKey(e)` resolves
+the keymap exactly as before (`ASSEMBLY_KEYMAP` while the assembly editor is
+active, then `SKETCH_KEYMAP`/`FEATURE_KEYMAP`/`KEYMAP`) and runs the resolved
+command through the same registry; `dispatchKeyOutcome(e)` additionally returns
+the Result. The legacy `registerCommand(name, fn)` entry point still registers
+a bare callback on the fallback registry (tests and small tools only; it never
+shadows a mounted editor's specs).
+
+`buildKeyString`, `isEditableTarget` and the keymaps are unchanged.
+`buildKeyString` normalizes Ctrl/Meta to `ctrl`, lowercases and joins with `+`;
+events from INPUT, TEXTAREA and SELECT elements, contenteditable targets and
+IME composition are skipped (`isEditableTarget`).
 
 ### Constraint Registry (`constraintRegistry.ts`)
 
@@ -38,13 +84,37 @@ Not every interaction is a registered tool:
 
 Snap rules for drag; measurement rules for on-canvas display.
 
-### Command Entries (`commandEntries.ts`)
+### Command Tables (`commandEntries.ts`, `assemblyCommandEntries.ts`)
 
-`buildCommandEntries()` creates the full command entry list - single source of truth for which commands are registered during sketch editing. Includes undo, redo, delete, tool activations, constraint applications, cancel commands, and feature commands.
+`PART_COMMAND_SPECS` (the sketch/part editor, 45 specs) and
+`ASSEMBLY_COMMAND_SPECS` (the assembly editor, 29 specs) are the single source
+of truth for which commands each editor registers. Both are static data: every
+body reads its inputs from the `CommandContext` it is handed, so the table is
+enumerable headlessly. The three shared names (`undo`, `redo`,
+`delete_selected`) appear in both tables and resolve per active editor.
+
+Part specs read the page through `PartCommandContext`: `session` (undo/redo
+availability and created ids), `state()` (the live L2 editor state plus the
+sketch UI store), the page callbacks (`undo`, `redo`, `deleteSelectedFeatures`,
+the two visibility toggles, `addFeature`, `showMessage`). `addFeature` returns
+the session Result, which is how `add_extrude`/`add_hole`/`add_transform`
+report created ids. `apply_offset` takes `{ distance }`; `openOffsetDialog()` is
+the toolbar's front end that collects the number and calls
+`executeCommand('apply_offset', { distance })`.
+
+Assembly specs read `AssemblyCommandContext`: `runOperation` (typed per
+operation), the store's one `deleteSubject`, the UI side effects
+(`openInsertPart`, `openExport`, `onMateInserted`) and the store-backed
+`undoDepth`/`redoDepth`. The former `payload as never` cast in the page is gone:
+each spec parses its params and the operation receives a typed input.
 
 ### Registration Hook (`useCommandRegistration.ts`)
 
-React effect hook that registers all commands on mount, attaches global `keydown` listener, and tears down on unmount.
+React effect hook: installs the page's registry as its editor kind's table (for
+module-level `executeCommand`), registers the spec list on mount, attaches the
+global `keydown` listener and tears all of it down on unmount. Contract: the
+spec list has a stable length (pass a module-level table); a development-only
+effect reports a length change.
 
 ### State Stores (`stores/editorState.ts` + `stores/sketchEditorStore.ts`)
 
@@ -66,7 +136,13 @@ Initialized in `tools/index.ts` via `initializeTools()`.
 
 ### Toolbar Components (`frontend/src/components/Toolbar/tools/`)
 
-All buttons route through `executeCommand(name)` - no direct store calls. Components for entity tools, constraint tools, dimension, drag, rectangles, construction toggle, and reset viewport.
+Tool and constraint buttons route through `executeCommand(name)` - no direct
+store calls. Components for entity tools, constraint tools, dimension, drag,
+rectangles, construction toggle, and reset viewport. Not every toolbar-family
+button is a command: the feature-panel add buttons (`PartEditorPanel`) call the
+page's handlers directly, the reset-viewport button calls the viewport handle,
+and the sketch toolbar's mirror/offset buttons read their disabled state from
+the command registry (via the toolbar React context) and run through it.
 
 ### Click Dispatch (`Viewport/idDispatch/dispatchSketchClick.ts`)
 
@@ -140,11 +216,11 @@ remount.
 
 ### Registry Page (`Registry.tsx`)
 
-Static documentation at `/registry` showing all commands, entities, constraints, dimension rules, snaps, measurements, and keybindings. Not interactive.
+Static documentation at `/registry` showing all commands, entities, constraints, dimension rules, snaps, measurements, and keybindings. Not interactive. The commands table and the generated block below both come from `pages/registry/commandRows.ts`, which derives them from the spec tables, so a spec change is a Registry change (and a docs regeneration).
 
 ### Wiring (`Part.tsx`)
 
-Main page: uses `usePartDoc()`, builds command entries via `buildCommandEntries()`, registers via `useCommandRegistration()`, sets callbacks on the sketch editor store.
+Main page: uses `usePartDoc()`, builds a `PartCommandContext` around the session and its callbacks, creates one `CommandRegistry` via `useCommandRegistryWithContext`, and installs/registers it via `usePartCommands` -> `useCommandRegistration('part', registry, PART_COMMAND_SPECS)`. `AssemblyEditor.tsx` does the same for `ASSEMBLY_COMMAND_SPECS`.
 
 ## Command Families
 
@@ -154,11 +230,97 @@ Main page: uses `usePartDoc()`, builds command entries via `buildCommandEntries(
 
 `cancel_draw` is the sketch editor's Escape handler. It is staged, first matching rule wins: a modal or the sketch value dialog owns Escape and it stands down; an open pick field clears the draw and the field; a partially-placed entity (draw points) or a partially-built dimension cancels just that and keeps the tool armed; and with nothing in progress it clears the draw, the pick field and the tool (the historical behaviour). It is not the only Escape listener on `window` (`Dialog.tsx`, `ContextMenuDialog.tsx`, `useRubberBandSelect.ts` and `FeatureTree.tsx` each bind their own), so it stands down whenever a dialog is on screen: any modal built on the `Dialog` shell claims Escape through `utils/core/modalEscape.ts` while it is open, and the sketch value dialog is detected via `pendingDialog`. Each of those closes itself, so one Escape does exactly one thing. Coordinate through that claim, never through listener registration order.
 
+## Commands
+
+Every command in the closed `COMMAND_NAMES` union, generated from the two spec
+tables (`pages/registry/commandRows.ts`). `Undo` marks commands whose run may
+push an undo entry; `Editor` names which editor registers the spec (`any` for
+the three shared names). Regenerate with `npm run docs:commands`;
+`commandDocs.test.ts` fails with a diff when this block is stale.
+
+<!-- command-table:start -->
+
+| Command | Label | Shortcut | Undo | Editor |
+|---|---|---|---|---|
+| `add_extrude` | Add extrude | `e` | yes | sketch/part |
+| `add_hole` | Add hole | - | yes | sketch/part |
+| `add_part` | Add part | - | yes | assembly |
+| `add_transform` | Add transform | - | yes | sketch/part |
+| `apply_angle` | Apply Angle | - | yes | sketch/part |
+| `apply_coincident` | Apply Coincident | `c` | yes | sketch/part |
+| `apply_colinear` | Apply Colinear | - | yes | sketch/part |
+| `apply_concentric` | Apply Concentric | - | yes | sketch/part |
+| `apply_diameter` | Apply Diameter | - | yes | sketch/part |
+| `apply_equal_length` | Apply Equal | `e` | yes | sketch/part |
+| `apply_fixed` | Apply Fixed | `f` | yes | sketch/part |
+| `apply_horizontal` | Apply Horizontal | `h` | yes | sketch/part |
+| `apply_length` | Apply Length | - | yes | sketch/part |
+| `apply_line_distance` | Apply Line Distance | - | yes | sketch/part |
+| `apply_midpoint` | Apply Midpoint | `m` | yes | sketch/part |
+| `apply_normal` | Apply Normal | `n` | yes | sketch/part |
+| `apply_offset` | Offset selection | - | yes | sketch/part |
+| `apply_parallel` | Apply Parallel | - | yes | sketch/part |
+| `apply_point_distance` | Apply Point Distance | - | yes | sketch/part |
+| `apply_point_distance_x` | Apply Horizontal Point Distance | - | yes | sketch/part |
+| `apply_point_distance_y` | Apply Vertical Point Distance | - | yes | sketch/part |
+| `apply_radius` | Apply Radius | - | yes | sketch/part |
+| `apply_radius_difference` | Apply Radius Difference | - | yes | sketch/part |
+| `apply_tangent` | Apply Tangent | `t` | yes | sketch/part |
+| `apply_vertical` | Apply Vertical | `v` | yes | sketch/part |
+| `cancel_draw` | Cancel | `escape` | no | sketch/part |
+| `cancel_edit` | Cancel edit | `escape` | no | assembly |
+| `delete_mate` | Delete mate | - | yes | assembly |
+| `delete_part` | Delete part | - | yes | assembly |
+| `delete_selected` | Delete selection | `delete` | yes | any |
+| `duplicate_part` | Duplicate part | - | yes | assembly |
+| `export_assembly` | Export assembly | - | no | assembly |
+| `insert_mate_copy_rotation` | Insert Copy rotation mate | - | yes | assembly |
+| `insert_mate_fixed` | Insert Fixed mate | - | yes | assembly |
+| `insert_mate_parallel` | Insert Parallel mate | - | yes | assembly |
+| `insert_mate_parallel_plane_distance` | Insert Parallel at distance mate | - | yes | assembly |
+| `insert_mate_rotating` | Insert Rotating mate | - | yes | assembly |
+| `insert_mate_sliding` | Insert Sliding mate | - | yes | assembly |
+| `insert_mate_sliding_rotating` | Insert Sliding + Rotating mate | - | yes | assembly |
+| `insert_mate_spherical` | Insert Spherical mate | - | yes | assembly |
+| `insert_mate_tangential` | Insert Tangential mate | - | yes | assembly |
+| `insert_part_instance` | Insert part | - | no | assembly |
+| `redo` | Redo | `ctrl+shift+z` | no | any |
+| `rename_mate` | Rename mate | - | yes | assembly |
+| `reorder_mate` | Reorder mate | - | yes | assembly |
+| `reorder_part` | Reorder part | - | yes | assembly |
+| `set_builtin_visible` | Set builtin visibility | - | yes | assembly |
+| `set_part_fixed` | Fix part | - | yes | assembly |
+| `set_part_fixed_oneshot` | Fix part (one-shot) | - | yes | assembly |
+| `set_part_position` | Set part position | - | yes | assembly |
+| `set_part_rotation` | Set part rotation | - | yes | assembly |
+| `set_part_visible` | Set part visibility | - | yes | assembly |
+| `set_tool_arc` | Arc tool | `a` | no | sketch/part |
+| `set_tool_center_rect` | Center rectangle tool | - | no | sketch/part |
+| `set_tool_circle` | Circle tool | `o` | no | sketch/part |
+| `set_tool_dimension` | Dimension tool | `d` | no | sketch/part |
+| `set_tool_drag` | Drag tool | - | no | sketch/part |
+| `set_tool_ellipse` | Ellipse tool | - | no | sketch/part |
+| `set_tool_line` | Line tool | `l` | no | sketch/part |
+| `set_tool_mirror` | Mirror tool | `shift+m` | no | sketch/part |
+| `set_tool_ngon` | N-gon tool | - | no | sketch/part |
+| `set_tool_point` | Point tool | - | no | sketch/part |
+| `set_tool_project` | Project tool | `j` | no | sketch/part |
+| `set_tool_rect` | Rectangle tool | - | no | sketch/part |
+| `set_tool_select` | Select tool | - | no | sketch/part |
+| `set_tool_spline` | Spline tool | `s` | no | sketch/part |
+| `toggle_construction` | Toggle construction | `q` | yes | sketch/part |
+| `toggle_plane_visibility` | Toggle planes | `p` | yes | sketch/part |
+| `toggle_sketch_plane_visibility` | Toggle sketches/planes | `y` | yes | sketch/part |
+| `undo` | Undo | `ctrl+z` | no | any |
+| `update_mate` | Update mate | - | yes | assembly |
+
+<!-- command-table:end -->
+
 ## Keybindings
 
 Active core keys: `ctrl+z` (undo), `ctrl+shift+z`/`ctrl+y` (redo), `delete`/`backspace` (delete), `d` (dimension), `shift+m` (mirror), `q` (construction toggle), `y` (toggle sketches/planes), `e` (add extrude, feature mode only), `p` (toggle plane visibility), `escape` (cancel).
 
-Assembly editor keys (`ASSEMBLY_KEYBINDINGS`, active only while the assembly editor is): `ctrl+z`, `ctrl+shift+z`, `delete`, and `escape` (`cancel_edit`, closes the open part or mate editor).
+Assembly editor keys (`ASSEMBLY_KEYBINDINGS`, active only while the assembly editor is): `ctrl+z`, `ctrl+shift+z`/`ctrl+y` (undo/redo), `delete`/`backspace` (delete the selected part or mate), and `escape` (`cancel_edit`, closes the open part or mate editor).
 
 Constraint shortcuts: `h` (horizontal), `v` (vertical), `c` (coincident), `e` (equal length), `n` (normal), `t` (tangent), `m` (midpoint), `f` (fixed). Parallel is toolbar-only: `p` is owned by plane visibility. Inside sketch edit mode `e` is the equal-length constraint; `FEATURE_KEYMAP` restores add-extrude outside a sketch, so `e` is mode dependent.
 
@@ -167,7 +329,7 @@ Entity shortcuts: `l` (line), `o` (circle), `a` (arc), `s` (spline), `j` (projec
 ## Conventions
 
 - Command names: `verb_noun` (e.g. `set_tool_line`, `delete_selected`, `apply_horizontal`)
-- Toolbar buttons call `executeCommand(name)`, never a store method directly
+- Toolbar buttons execute through the command registry (module-level `executeCommand(name)` or the page's injected registry), never a store method directly
+- Programmatic execution takes values as parsed params; dialogs are front ends that call execute
 - Shortcut hints in tooltips derived from `KEYMAP`, never hardcoded
-- `buildKeyString` normalizes Ctrl/Meta → `ctrl`, lowercases, joins with `+`
 - Constraint/entity shortcuts auto-merged into `KEYMAP` from registries

@@ -8,12 +8,17 @@ import { MemoryRouter } from 'react-router-dom'
 import PartToolbar from '@/pages/PartToolbar'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
+import { assemblyRegistry, partRegistry, storeBackedAssemblyContext } from './commandFixtures'
 
 function renderToolbar(Toolbar: typeof PartToolbar, handleSave: () => Promise<boolean>) {
+  const registry = Toolbar === PartToolbar ? partRegistry() : assemblyRegistry(storeBackedAssemblyContext())
   return render(
-    <MemoryRouter initialEntries={['/workspaces/w/doc']}>
-      <Toolbar docName="Doc" onRename={vi.fn()} handleSave={handleSave} handleClone={vi.fn()} />
-    </MemoryRouter>,
+    <CommandRegistryProvider value={registry}>
+      <MemoryRouter initialEntries={['/workspaces/w/doc']}>
+        <Toolbar docName="Doc" onRename={vi.fn()} handleSave={handleSave} handleClone={vi.fn()} />
+      </MemoryRouter>
+    </CommandRegistryProvider>,
   )
 }
 

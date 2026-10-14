@@ -146,6 +146,9 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       setSolveError: vi.fn(),
       undoStack: [],
       redoStack: [],
+      // The command specs read undo/redo availability and the created ids from
+      // the session; the mock answers with the empty history its stacks show.
+      session: { historyEntries: () => ({ undo: [], redo: [] }) },
       reSolve: vi.fn(),
       handleMutation: vi.fn(),
       handleUndo: vi.fn(),
