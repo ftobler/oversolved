@@ -409,6 +409,19 @@ describe('dispatchKey', () => {
     dispatchKey(e)
     expect(e.preventDefault).not.toHaveBeenCalled()
   })
+
+  // Two mounted command registrations each forward their own keydown to here and
+  // both resolve the same last-writer-wins handler. A command run owns the event
+  // by preventDefault, so the cancelling event is the once-per-event guard that
+  // stops the second listener replaying the command.
+  it('does not replay a command when the event is already defaultPrevented', () => {
+    const fn = vi.fn()
+    registerCommand('undo', fn)
+    const e = { ...fakeKey('z', { ctrlKey: true }), defaultPrevented: true } as unknown as KeyboardEvent
+    expect(dispatchKey(e)).toBe(false)
+    expect(fn).not.toHaveBeenCalled()
+    expect(e.preventDefault).not.toHaveBeenCalled()
+  })
 })
 
 // ─── Tool commands via store (no React) ───

@@ -452,16 +452,25 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     else if (subject.kind === 'mate') handleCancelMate()
   }, [handleCancelInstance, handleCancelMate])
 
-  // Undo's first stage: a live drag is abandoned through the store's own
-  // cancel path, the same teardown the viewport's Escape listener runs, rather
-  // than having the entry above it popped from under the held button. Both
-  // halves read the store so the command table itself stays store-free.
+  // Undo's first stage: a live drag is abandoned through the viewport's own
+  // gesture teardown, the same one Escape runs, rather than having the entry
+  // above it popped from under the held button. The store's cancel is the
+  // fallback for a command table with no viewport: the viewport handle clears
+  // the module-level pointer machine and the published gizmoDrag as well, which
+  // the store's cancel alone cannot reach.
   const manipulationLive = useCallback(
     () => useAssemblyStore.getState().manipulation !== null,
     [],
   )
   const cancelManipulation = useCallback(
-    () => useAssemblyStore.getState().cancelPartManipulation(),
+    () => {
+      const viewport = viewportRef.current
+      if (viewport) {
+        viewport.cancelGesture()
+        return
+      }
+      useAssemblyStore.getState().cancelPartManipulation()
+    },
     [],
   )
 

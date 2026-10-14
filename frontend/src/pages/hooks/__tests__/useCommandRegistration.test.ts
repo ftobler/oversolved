@@ -107,6 +107,27 @@ describe('useCommandRegistration', () => {
     expect(first).not.toHaveBeenCalled()
   })
 
+  // Two co-mounted registrations both forward their keydown to the one dispatcher
+  // and both resolve the same last-writer-wins handler. A command run owns the
+  // event by preventDefault, so one press must run that handler once; without the
+  // once-per-event guard the first call executes the command and the second
+  // replays it, which is two changes from one key.
+  it('runs a keydown command once with two registrations still mounted', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    renderHook(() => useCommandRegistration([{ name: 'undo', fn: first }]))
+    renderHook(() => useCommandRegistration([{ name: 'undo', fn: second }]))
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true }))
+    })
+
+    // `second` is the live handler (last write wins); the sibling's listener must
+    // not replay it into a second undo.
+    expect(second).toHaveBeenCalledTimes(1)
+    expect(first).not.toHaveBeenCalled()
+  })
+
   // The same pairing under StrictMode, where the initial mount/unmount/remount
   // removes and re-adds its own listener within the same commit.
   it('survives the StrictMode co-mount when the first registration unmounts', () => {
