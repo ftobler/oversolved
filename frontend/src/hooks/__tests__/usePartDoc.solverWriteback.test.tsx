@@ -179,6 +179,19 @@ function sketchResponse(): Record<string, unknown> {
   }
 }
 
+// A solve in the band where the f32 quantum flips the mutators' 6dp grid: the
+// wire carries 25.700000762939453 for an authored 25.7, and round() turns that
+// into 25.700001. Every suite below 4 saw no mismatch, which is why the
+// rounding-only write-back looked complete.
+function bandResponse(): Record<string, unknown> {
+  return {
+    solve_ms: 0,
+    result: { sk1: { status: 'ok', geometry: { l1: [0, 0, Math.fround(25.7), 0] } } },
+    bodies: {},
+    _build_state: null,
+  }
+}
+
 const constraintsOf = (doc: PartDoc | null) => doc?.features?.[0]?.constraints ?? []
 
 const entitiesOf = (doc: PartDoc | null) => doc?.features?.[0]?.entities ?? []
@@ -470,22 +483,52 @@ describe('solver write-back and a session that edited nothing', () => {
     expect(result.current.undoStack).toHaveLength(0)
   })
 
-  // The other half of the same coin: the doc really does change, because the
-  // authored initial carried more precision than the document stores (hand
-  // written YAML, an import, a solve that resolved a projection differently).
-  // That is still a solve fact, not a user edit, so it must not mint a step.
-  it('a solve that re-rounds an over-precise authored initial is not a user edit', async () => {
+  // The other half of the same coin: the authored initial carried more
+  // precision than the document stores (hand written YAML, an import, a solve
+  // that resolved a projection differently). It agrees with the solved value
+  // inside the f32 envelope, so the write-back keeps the authored spelling
+  // rather than re-spelling it on the mutators' grid -- and what is left is
+  // still not a user edit, so it must not mint a step.
+  it('a solve over an over-precise authored initial is not a user edit', async () => {
     docRef.current = makeSketchThenExtrudeDoc([0, 0, Math.PI, 0])
     mockSolveViaWorker.mockResolvedValue(sketchResponse())
 
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    const before = docRef.current
 
     await openSessionOnEx1(result)
 
+    // The authored digits survive, so the doc did not even change object.
+    expect(docRef.current).toBe(before)
     const initial = (docRef.current!.features![0] as { initial: Record<string, number[]> }).initial
-    expect(initial.l1).toEqual([0, 0, 3.141593, 0])
+    expect(initial.l1).toEqual([0, 0, Math.PI, 0])
 
     act(() => { result.current.commitEditSession() })
+    expect(result.current.undoStack).toHaveLength(0)
+  })
+
+  // The f32 band the rounding-only write-back missed. Rounding the wire value
+  // does not recover the authored 25.7 (it mints 25.700001), so the re-solve
+  // used to leave a fresh doc object and a live doc that disagreed with the
+  // session snapshot taken just before it.
+  it('a re-solve in the f32 band during a session that edited nothing changes nothing', async () => {
+    docRef.current = makeSketchThenExtrudeDoc([0, 0, 25.7, 0])
+    mockSolveViaWorker.mockResolvedValue(bandResponse())
+
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    const before = docRef.current
+
+    await openSessionOnEx1(result)
+
+    // The write-back kept the authored spelling, so the whole doc survived the
+    // re-solve: same object, same digits.
+    expect(docRef.current).toBe(before)
+    const initial = (docRef.current!.features![0] as { initial: Record<string, number[]> }).initial
+    expect(initial.l1).toEqual([0, 0, 25.7, 0])
+
+    act(() => { result.current.commitEditSession() })
+    // sessionWouldPush diffs the snapshot against the live doc; nothing moved,
+    // so no aggregate entry is minted and undo gains no dead step.
     expect(result.current.undoStack).toHaveLength(0)
   })
 
