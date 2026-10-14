@@ -11,22 +11,30 @@ import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
-import { registerCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
+import { clearAllHandlers } from '@/utils/core/commandRegistry'
 import type { Mutation } from '@/types/cad'
+import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
+import {
+  assemblyRegistry, partRegistry, sessionBackedPartContext, storeBackedAssemblyContext,
+} from './commandFixtures'
 
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
-function renderPart() {
+function renderPart(context = sessionBackedPartContext()) {
   return render(
-    <PartToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} />,
+    <CommandRegistryProvider value={partRegistry(context)}>
+      <PartToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} />
+    </CommandRegistryProvider>,
   )
 }
 
-function renderAssembly() {
+function renderAssembly(context = storeBackedAssemblyContext()) {
   return render(
-    <AssemblyToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} />,
+    <CommandRegistryProvider value={assemblyRegistry(context)}>
+      <AssemblyToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} />
+    </CommandRegistryProvider>,
   )
 }
 
@@ -57,11 +65,9 @@ describe('toolbar undo/redo editor scope', () => {
   it('the part toolbar runs undo and redo while the part editor owns the document', () => {
     const undo = vi.fn()
     const redo = vi.fn()
-    registerCommand('undo', undo)
-    registerCommand('redo', redo)
     useEditorModeStore.getState().setActiveEditor('part')
 
-    renderPart()
+    renderPart(sessionBackedPartContext({ undo, redo }))
     fireEvent.click(undoButton())
     fireEvent.click(redoButton())
 
@@ -72,11 +78,9 @@ describe('toolbar undo/redo editor scope', () => {
   it('the part toolbar stands down while the assembly editor owns the document', () => {
     const undo = vi.fn()
     const redo = vi.fn()
-    registerCommand('undo', undo)
-    registerCommand('redo', redo)
     useEditorModeStore.getState().setActiveEditor('assembly')
 
-    renderPart()
+    renderPart(sessionBackedPartContext({ undo, redo }))
     fireEvent.click(undoButton())
     fireEvent.click(redoButton())
 
@@ -113,11 +117,9 @@ describe('toolbar undo/redo editor scope', () => {
   it('the assembly toolbar runs undo and redo while the assembly editor owns the document', () => {
     const undo = vi.fn()
     const redo = vi.fn()
-    registerCommand('undo', undo)
-    registerCommand('redo', redo)
     useEditorModeStore.getState().setActiveEditor('assembly')
 
-    renderAssembly()
+    renderAssembly(storeBackedAssemblyContext({ undo, redo }))
     fireEvent.click(undoButton())
     fireEvent.click(redoButton())
 
@@ -128,11 +130,9 @@ describe('toolbar undo/redo editor scope', () => {
   it('the assembly toolbar stands down while the part editor owns the document', () => {
     const undo = vi.fn()
     const redo = vi.fn()
-    registerCommand('undo', undo)
-    registerCommand('redo', redo)
     useEditorModeStore.getState().setActiveEditor('part')
 
-    renderAssembly()
+    renderAssembly(storeBackedAssemblyContext({ undo, redo }))
     fireEvent.click(undoButton())
     fireEvent.click(redoButton())
 

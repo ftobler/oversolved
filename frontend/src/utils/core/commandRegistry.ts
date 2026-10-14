@@ -6,7 +6,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import type { CommandName } from '@/utils/core/commandNames'
-import { CommandRegistry, type CommandResult } from '@/utils/core/commandSpec'
+import { CommandRegistry, type CommandResult, type CommandTableView } from '@/utils/core/commandSpec'
 
 // The exact event the last dispatch ran a command for. Two co-mounted command
 // registrations each attach their own window keydown listener and forward the
@@ -106,39 +106,34 @@ export type EditorKind = 'part' | 'assembly'
 // names can no longer overwrite each other across editors; module-level
 // resolution picks the instance the active editor mode names, exactly as the
 // keymap branch below does.
-const editorRegistries = new Map<EditorKind, CommandRegistry>()
+const editorRegistries = new Map<EditorKind, CommandTableView>()
 
 // The compatibility seam for registerCommand: legacy tests and tooling register
 // bare callbacks here. Editors never use it; it is consulted only when no
 // editor registry is installed, so it cannot shadow a page's specs.
 const fallbackRegistry = new CommandRegistry()
 
-export function setEditorCommandRegistry(kind: EditorKind, registry: CommandRegistry): void {
+export function setEditorCommandRegistry(kind: EditorKind, registry: CommandTableView): void {
   editorRegistries.set(kind, registry)
 }
 
 // Identity-guarded, mirroring registerCommand's unregister: an unmount only
 // clears the slot while it still holds that mount's own registry.
-export function clearEditorCommandRegistry(kind: EditorKind, registry: CommandRegistry): void {
+export function clearEditorCommandRegistry(kind: EditorKind, registry: CommandTableView): void {
   if (editorRegistries.get(kind) === registry) editorRegistries.delete(kind)
 }
 
 // Resolve the registry a call belongs to. The active editor mode decides, as
-// the keymap branch does; the editor actually mounted is the fallback for a
-// mode the store has not been told about (headless tests mount one editor
-// directly). With nothing mounted, the compatibility seam answers.
-function resolveRegistry(command?: CommandName): CommandRegistry {
+// the keymap branch does; when the mode store has not been told (headless tests
+// mount one editor directly) the editor actually mounted is the answer, most
+// recent first. With nothing mounted, the compatibility seam answers. A
+// fallback shim never shadows a mounted editor's specs.
+function resolveRegistry(): CommandTableView {
   const mode = useEditorModeStore.getState().activeEditor
-  if (mode === 'assembly') {
-    return editorRegistries.get('assembly')
-      ?? (command !== undefined && fallbackRegistry.has(command) ? fallbackRegistry : null)
-      ?? editorRegistries.get('part')
-      ?? fallbackRegistry
-  }
-  const part = editorRegistries.get('part')
-  if (part) return part
-  if (command !== undefined && fallbackRegistry.has(command)) return fallbackRegistry
-  return editorRegistries.get('assembly') ?? fallbackRegistry
+  if (mode === 'assembly') return editorRegistries.get('assembly') ?? fallbackRegistry
+  if (mode === 'part') return editorRegistries.get('part') ?? fallbackRegistry
+  const mounted = [...editorRegistries.values()]
+  return mounted.length > 0 ? mounted[mounted.length - 1] : fallbackRegistry
 }
 
 // ─── Compatibility registration ───
@@ -164,7 +159,7 @@ export function clearAllHandlers(): void {
 // its Result; an unknown id is an error Result (and a dev warning, because a
 // keymap entry that resolves to nothing is a registration gap).
 export function executeCommand(name: CommandName, params?: unknown): CommandResult {
-  const registry = resolveRegistry(name)
+  const registry = resolveRegistry()
   if (import.meta.env.DEV && !registry.has(name)) {
     console.warn(`executeCommand: no handler registered for "${name}"`)
   }
@@ -174,7 +169,7 @@ export function executeCommand(name: CommandName, params?: unknown): CommandResu
 // The enabled verdict for a command through the same resolution executeCommand
 // uses. Toolbars read this for their disabled state.
 export function commandEnabled(name: CommandName): true | string {
-  return resolveRegistry(name).enabled(name)
+  return resolveRegistry().enabled(name)
 }
 
 // ─── Key dispatch ───
@@ -253,7 +248,7 @@ export function dispatchKeyOutcome(e: KeyboardEvent): DispatchOutcome {
   // A keymap entry with no registered spec is a registration gap, i.e. a bug:
   // surface it and let the browser default apply rather than eating the
   // keystroke silently. The registered path is unchanged.
-  const registry = resolveRegistry(cmd)
+  const registry = resolveRegistry()
   if (!registry.has(cmd)) {
     if (import.meta.env.DEV) console.warn(`dispatchKey: no handler registered for "${cmd}"`)
     return { handled: false }

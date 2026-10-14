@@ -5,6 +5,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, screen, waitFor, act } from '@testing-library/react'
 import PartToolbar from '@/pages/PartToolbar'
 import { deferred } from '@/__tests__/fixtures'
+import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
+import { partRegistry } from './commandFixtures'
 
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -12,12 +14,14 @@ vi.mock('@/components/layout/AppHeader', () => ({
 
 function renderToolbar(handleSave: () => Promise<boolean>) {
   return render(
-    <PartToolbar
-      docName="TestDoc"
-      onRename={vi.fn()}
-      handleSave={handleSave}
-      handleClone={vi.fn()}
-    />,
+    <CommandRegistryProvider value={partRegistry()}>
+      <PartToolbar
+        docName="TestDoc"
+        onRename={vi.fn()}
+        handleSave={handleSave}
+        handleClone={vi.fn()}
+      />
+    </CommandRegistryProvider>,
   )
 }
 

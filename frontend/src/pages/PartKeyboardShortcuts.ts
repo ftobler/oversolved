@@ -1,26 +1,14 @@
-import { useMemo } from 'react'
-import { buildCommandEntries, type ShowMessagePayload } from '@/pages/commandEntries'
+import { PART_COMMAND_SPECS, type PartCommandContext } from '@/pages/commandEntries'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
 import { executeCommand } from '@/utils/core/commandRegistry'
+import type { CommandRegistry } from '@/utils/core/commandSpec'
 
-export function usePartCommands(
-  handleUndo: () => void,
-  handleRedo: () => void,
-  handleDeleteSelectedFeatures: () => void,
-  handleToggleSketchPlaneVisibility: () => void,
-  handleTogglePlaneVisibility: () => void,
-  handleAddFeature: (kind: string, extra?: Record<string, unknown>) => void,
-  showMessage: (payload: ShowMessagePayload) => void,
-) {
-  const commands = useMemo(
-    () => buildCommandEntries(handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleTogglePlaneVisibility,
-      () => handleAddFeature('extrude', { sketchQuery: '', distance: 10 }),
-      () => handleAddFeature('hole'),
-      () => handleAddFeature('transform'),
-      showMessage,
-    ),
-    [handleUndo, handleRedo, handleDeleteSelectedFeatures, handleToggleSketchPlaneVisibility, handleTogglePlaneVisibility, handleAddFeature, showMessage],
-  )
-  useCommandRegistration(commands)
+/**
+ * Installs the sketch/part command table on the page's registry and attaches
+ * the keydown listener. The registry is built by the page around its live
+ * command context; this hook only installs it and registers the static specs.
+ */
+export function usePartCommands(registry: CommandRegistry<PartCommandContext>) {
+  useCommandRegistration('part', registry, PART_COMMAND_SPECS)
   return { executeCommand }
 }

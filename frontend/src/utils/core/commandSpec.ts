@@ -147,6 +147,16 @@ export interface CommandContext {
   editor: 'part' | 'assembly'
 }
 
+// The context-free view of a registry: what module-level dispatch and the
+// toolbar context need. The class satisfies it for every context type, which is
+// what lets a CommandRegistry<PartCommandContext> be handed around as a plain
+// command table without leaking its context parameter.
+export interface CommandTableView {
+  has(id: CommandName): boolean
+  enabled(id: CommandName): true | string
+  execute(id: CommandName, rawParams?: unknown): CommandResult
+}
+
 export interface CommandSpec<Ctx extends CommandContext = CommandContext, P = unknown> {
   id: CommandName
   label: string
@@ -168,8 +178,10 @@ export interface CommandSpec<Ctx extends CommandContext = CommandContext, P = un
 // and dispatch picks the instance the active editor installed.
 // The stored form erases the params type: the registry parses through the
 // spec's own schema, so it never needs the compile-time payload type, and the
-// wrapper keeps the cast in one place.
-interface StoredSpec<Ctx extends CommandContext> {
+// wrapper keeps the cast in one place. Also the element type of a heterogeneous
+// spec list (an editor's command table mixes no-params, value and object
+// payloads, which no single CommandSpec<P> can hold).
+export interface ErasedCommandSpec<Ctx extends CommandContext = CommandContext> {
   id: CommandName
   label: string
   shortcut?: string
@@ -180,7 +192,7 @@ interface StoredSpec<Ctx extends CommandContext> {
 }
 
 export class CommandRegistry<Ctx extends CommandContext = CommandContext> {
-  private readonly specs = new Map<CommandName, StoredSpec<Ctx>>()
+  private readonly specs = new Map<CommandName, ErasedCommandSpec<Ctx>>()
   private readonly contextSource: () => Ctx
 
   constructor(contextSource?: () => Ctx) {
@@ -189,23 +201,16 @@ export class CommandRegistry<Ctx extends CommandContext = CommandContext> {
 
   // Returns an unregister bound to this exact spec. It removes the entry only
   // while the map still holds it, so a stale owner (an older mount whose name a
-  // newer one has since overwritten) cannot remove the newer spec.
-  register<P>(spec: CommandSpec<Ctx, P>): () => void {
-    const entry: StoredSpec<Ctx> = {
-      id: spec.id,
-      label: spec.label,
-      shortcut: spec.shortcut,
-      params: spec.params,
-      enabled: spec.enabled,
-      run: (ctx, params) => spec.run(ctx, params as P),
-      undoable: spec.undoable,
-    }
+  // newer one has since overwritten) cannot remove the newer spec. The
+  // parameter is the erased form, so a fully typed CommandSpec<Ctx, P> is
+  // accepted without a cast (its run is assignable to the never-param form).
+  register(spec: ErasedCommandSpec<Ctx>): () => void {
     if (import.meta.env.DEV && this.specs.has(spec.id)) {
       console.warn(`CommandRegistry: overwriting existing spec for "${spec.id}"`)
     }
-    this.specs.set(spec.id, entry)
+    this.specs.set(spec.id, spec)
     return () => {
-      if (this.specs.get(spec.id) === entry) this.specs.delete(spec.id)
+      if (this.specs.get(spec.id) === spec) this.specs.delete(spec.id)
     }
   }
 

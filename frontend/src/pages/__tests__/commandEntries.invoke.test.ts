@@ -1,28 +1,26 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { buildCommandEntries, constraintCommandFn, escapeStage } from '@/pages/commandEntries'
+import { constraintCommandSpec, escapeStage, openOffsetDialog, PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import type { DialogState } from '@/stores/sketchEditorStore'
 import type { ConstraintDef } from '@/registry'
 import { initializeTools } from '@/tools'
 import { acquireModalEscape, modalOwnsEscape, resetModalEscape } from '@/utils/core/modalEscape'
 import { useEditorState } from '@/hooks/useEditorState'
+import { partContext, partRegistry } from './commandFixtures'
 
-// The structural suites build the entry list but never invoke the store-driven
-// command bodies (cancel_draw / set_tool_mirror / apply_offset). Those `fn`
-// closures were uncovered. This drives each one against the real store with the
-// actions spied, so a renamed store action or a dropped step in a multi-call
-// body (e.g. cancel_draw forgetting to clear the pick field) fails.
+// The structural suites pin the spec table; this one drives the store-driven
+// command bodies (cancel_draw / set_tool_mirror / apply_offset) against the
+// real stores with the context callbacks spied, so a renamed store action or a
+// dropped step in a multi-call body (e.g. cancel_draw forgetting to clear the
+// pick field) fails.
 
 const noop = () => {}
 
-function entry(name: string) {
-  const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, noop)
-  const e = entries.find(x => x.name === name)
-  if (!e) throw new Error(`no command entry ${name}`)
-  return e
+function execute(name: Parameters<ReturnType<typeof partRegistry>['execute']>[0], context = partContext(), params?: unknown) {
+  return partRegistry(context).execute(name, params)
 }
 
-describe('command callbacks that drive the sketch editor store', () => {
+describe('command bodies that drive the sketch editor store', () => {
   // cancel_draw stands down under a dialog, so these only mean anything with no
   // dialog claiming Escape. Do not rely on another suite's teardown for that.
   beforeEach(() => {
@@ -35,8 +33,7 @@ describe('command callbacks that drive the sketch editor store', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
   it('cancel_pick is gone: Escape reaches the pick field through cancel_draw', () => {
-    const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, noop)
-    const names: string[] = entries.map(e => e.name)
+    const names = PART_COMMAND_SPECS.map(s => s.id)
     expect(names).not.toContain('cancel_pick')
   })
 
@@ -45,9 +42,7 @@ describe('command callbacks that drive the sketch editor store', () => {
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
     const showMessage = vi.fn()
 
-    const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, showMessage)
-    const e = entries.find(x => x.name === 'set_tool_mirror')!
-    e.fn()
+    execute('set_tool_mirror', partContext({ showMessage }))
 
     expect(showMessage).toHaveBeenCalledOnce()
     expect(showMessage).toHaveBeenCalledWith({ title: 'Not Implemented', message: 'Mirror tool is not yet implemented.', variant: 'info' })
@@ -58,17 +53,17 @@ describe('command callbacks that drive the sketch editor store', () => {
     const store = useSketchEditorStore.getState()
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
 
-    entry('set_tool_select').fn()
-    entry('set_tool_drag').fn()
+    execute('set_tool_select')
+    execute('set_tool_drag')
 
     expect(setActiveTool).toHaveBeenNthCalledWith(1, null)
     expect(setActiveTool).toHaveBeenNthCalledWith(2, 'drag')
   })
 
   // The compound tools (rect/center_rect/ngon) and dimension have no ENTITIES
-  // entry, so their set_tool_* commands are hardcoded in buildCommandEntries.
+  // entry, so their set_tool_* commands are hardcoded in the spec table.
   // The toolbar button dispatches set_tool_<tool>, so a dropped entry would
-  // make the button silently inert: assert each entry exists AND forwards the
+  // make the button silently inert: assert each spec exists AND forwards the
   // right id. set_tool_project is separate: it only arms the pick tool when the
   // selection-action half (projectSelection) has nothing to do.
   const COMPOUND_TOOL_COMMANDS: [string, string][] = [
@@ -81,7 +76,7 @@ describe('command callbacks that drive the sketch editor store', () => {
     const store = useSketchEditorStore.getState()
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
 
-    entry(name).fn()
+    execute(name as Parameters<typeof execute>[0])
 
     expect(setActiveTool).toHaveBeenCalledWith(id)
   })
@@ -97,7 +92,7 @@ describe('command callbacks that drive the sketch editor store', () => {
     const store = useSketchEditorStore.getState()
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
 
-    entry('set_tool_project').fn()
+    execute('set_tool_project')
 
     expect(setActiveTool).toHaveBeenCalledWith('project')
   })
@@ -106,7 +101,7 @@ describe('command callbacks that drive the sketch editor store', () => {
     const store = useSketchEditorStore.getState()
     const toggleConstruction = vi.spyOn(store, 'toggleConstruction').mockImplementation(noop)
 
-    entry('toggle_construction').fn()
+    execute('toggle_construction')
 
     expect(toggleConstruction).toHaveBeenCalledOnce()
   })
@@ -116,9 +111,7 @@ describe('command callbacks that drive the sketch editor store', () => {
     const applyConstraint = vi.spyOn(store, 'applyConstraint').mockReturnValue(null)
     const showMessage = vi.fn()
 
-    const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, showMessage)
-    const e = entries.find(x => x.name === 'apply_concentric')!
-    e.fn()
+    execute('apply_concentric', partContext({ showMessage }))
 
     expect(applyConstraint).toHaveBeenCalledWith('concentric')
     expect(showMessage).not.toHaveBeenCalled()
@@ -129,8 +122,7 @@ describe('command callbacks that drive the sketch editor store', () => {
     vi.spyOn(store, 'applyConstraint').mockReturnValue('Parallel cannot be applied to those entity kinds (arc, arc).')
     const showMessage = vi.fn()
 
-    const entries = buildCommandEntries(noop, noop, noop, noop, noop, noop, noop, noop, showMessage)
-    entries.find(x => x.name === 'apply_parallel')!.fn()
+    execute('apply_parallel', partContext({ showMessage }))
 
     expect(showMessage).toHaveBeenCalledOnce()
     expect(showMessage).toHaveBeenCalledWith({
@@ -155,7 +147,12 @@ describe('command callbacks that drive the sketch editor store', () => {
       implemented: false,
     }
 
-    constraintCommandFn(fake, () => ({ applyConstraint }), showMessage)()
+    const spec = constraintCommandSpec(fake)
+    const ctx = partContext({
+      showMessage,
+      state: () => ({ ...useSketchEditorStore.getState(), ...useSketchUiStore.getState(), applyConstraint }),
+    })
+    spec.run(ctx, null)
 
     expect(showMessage).toHaveBeenCalledOnce()
     expect(showMessage).toHaveBeenCalledWith({ title: 'Not Implemented', message: 'Constraint "Fake Thing" is not yet implemented.', variant: 'info' })
@@ -196,7 +193,7 @@ describe('cancel_draw staged disarm', () => {
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
     const setActivePickField = vi.spyOn(store, 'setActivePickField').mockImplementation(noop)
 
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
 
     expect(clearDraw).toHaveBeenCalledOnce()
     expect(setActiveTool).toHaveBeenCalledWith(null)
@@ -218,7 +215,7 @@ describe('cancel_draw staged disarm', () => {
     const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
 
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
 
     expect(clearDraw).toHaveBeenCalledOnce()
     expect(setActiveTool).not.toHaveBeenCalled()
@@ -232,13 +229,13 @@ describe('cancel_draw staged disarm', () => {
   })
 
     // First press cancels the in-progress entity but keeps the tool armed.
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activeTool).toBe('line')
     // The real clearDraw wiped the buffer, so the second press has nothing in progress.
     expect(useSketchEditorStore.getState().drawPoints).toEqual([])
 
     // Second press: nothing in progress, so it disarms the tool.
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activeTool).toBeNull()
     expect(useSketchEditorStore.getState().modeStack).toEqual([])
   })
@@ -254,7 +251,7 @@ describe('cancel_draw staged disarm', () => {
     const clearDimensionPicks = vi.spyOn(store, 'clearDimensionPicks').mockImplementation(noop)
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
 
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
 
     expect(cancelBrep).toHaveBeenCalledOnce()
     expect(clearDimensionPicks).toHaveBeenCalledOnce()
@@ -269,7 +266,7 @@ describe('cancel_draw staged disarm', () => {
     const setActivePickField = vi.spyOn(store, 'setActivePickField').mockImplementation(noop)
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
 
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
 
     // Pick before tool, so clearing the field never eats the pick's mode entry:
     // the production comment on the pick branch makes this order the contract.
@@ -283,9 +280,9 @@ describe('cancel_draw staged disarm', () => {
 // Undo must not destroy an in-progress draw AND pop a real history entry from
 // one keystroke. Its first stage mirrors Escape's cancel_gesture arm: with a
 // half-placed entity (draw points) or a half-built dimension in the store it
-// cancels just that and never reaches handleUndo; with nothing in progress it
-// falls through to the real undo. Driven against the real store so the shared
-// cancelInProgressGesture helper keeps the mode-stack invariants intact.
+// cancels just that and never reaches the undo port; with nothing in progress
+// it falls through to the real undo. Driven against the real store so the
+// shared cancelInProgressGesture helper keeps the mode-stack invariants intact.
 describe('undo cancels an in-progress gesture before touching history', () => {
   beforeAll(() => { initializeTools() })
 
@@ -310,53 +307,50 @@ describe('undo cancels an in-progress gesture before touching history', () => {
   })
   })
 
-  it('with draw points in progress cancels the gesture and never calls handleUndo', () => {
+  it('with draw points in progress cancels the gesture and never calls undo', () => {
     useSketchEditorStore.getState().setActiveTool('line')
     useEditorState.setState({
     drawPoints: [[0, 0]],
   })
-    const handleUndo = vi.fn()
+    const undo = vi.fn()
 
-    const entries = buildCommandEntries(handleUndo, noop, noop, noop, noop, noop, noop, noop, noop)
-    entries.find(e => e.name === 'undo')!.fn()
+    execute('undo', partContext({ undo }))
 
-    expect(handleUndo).not.toHaveBeenCalled()
+    expect(undo).not.toHaveBeenCalled()
     // The real clearDraw wiped the buffer, so a second press has nothing in progress.
     expect(useSketchEditorStore.getState().drawPoints).toEqual([])
     // The tool stays armed, exactly as the Escape cancel_gesture arm keeps it.
     expect(useSketchEditorStore.getState().activeTool).toBe('line')
   })
 
-  it('a second undo with an empty gesture calls handleUndo exactly once', () => {
+  it('a second undo with an empty gesture calls undo exactly once', () => {
     useSketchEditorStore.getState().setActiveTool('line')
     useEditorState.setState({
     drawPoints: [[0, 0]],
   })
-    const handleUndo = vi.fn()
+    const undo = vi.fn()
 
-    const entries = buildCommandEntries(handleUndo, noop, noop, noop, noop, noop, noop, noop, noop)
     // First press discards the half-placed point without popping history.
-    entries.find(e => e.name === 'undo')!.fn()
-    expect(handleUndo).not.toHaveBeenCalled()
+    execute('undo', partContext({ undo }))
+    expect(undo).not.toHaveBeenCalled()
     expect(useSketchEditorStore.getState().drawPoints).toEqual([])
 
     // Second press: nothing in progress, so it reaches the real undo.
-    entries.find(e => e.name === 'undo')!.fn()
-    expect(handleUndo).toHaveBeenCalledOnce()
+    execute('undo', partContext({ undo }))
+    expect(undo).toHaveBeenCalledOnce()
   })
 
-  it('with dimension picks in progress cancels the gesture and never calls handleUndo', () => {
+  it('with dimension picks in progress cancels the gesture and never calls undo', () => {
     useSketchEditorStore.getState().setActiveTool('dimension')
     useEditorState.setState({
     dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
   })
     const cancelBrep = vi.spyOn(useSketchEditorStore.getState(), 'cancelBrepProjectionGesture').mockImplementation(noop)
-    const handleUndo = vi.fn()
+    const undo = vi.fn()
 
-    const entries = buildCommandEntries(handleUndo, noop, noop, noop, noop, noop, noop, noop, noop)
-    entries.find(e => e.name === 'undo')!.fn()
+    execute('undo', partContext({ undo }))
 
-    expect(handleUndo).not.toHaveBeenCalled()
+    expect(undo).not.toHaveBeenCalled()
     expect(cancelBrep).toHaveBeenCalledOnce()
     expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
     expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
@@ -423,7 +417,7 @@ describe('cancel_draw stands down while a dialog is open', () => {
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
     const setActivePickField = vi.spyOn(store, 'setActivePickField').mockImplementation(noop)
 
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
 
     expect(clearDraw).not.toHaveBeenCalled()
     expect(setActiveTool).not.toHaveBeenCalled()
@@ -442,7 +436,7 @@ describe('cancel_draw stands down while a dialog is open', () => {
     const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
 
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
 
     expect(clearDraw).not.toHaveBeenCalled()
     expect(setActiveTool).not.toHaveBeenCalled()
@@ -455,13 +449,13 @@ describe('cancel_draw stands down while a dialog is open', () => {
     pendingDialog: openDialog,
   })
 
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activeTool).toBe('line')
 
     useSketchUiStore.setState({
     pendingDialog: null,
   })
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activeTool).toBeNull()
     expect(useSketchEditorStore.getState().modeStack).toEqual([])
   })
@@ -472,13 +466,13 @@ describe('cancel_draw stands down while a dialog is open', () => {
     pendingDialog: openDialog,
   })
 
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
 
     useSketchUiStore.setState({
     pendingDialog: null,
   })
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activePickField).toBeNull()
     expect(useSketchEditorStore.getState().modeStack).toEqual([])
   })
@@ -487,11 +481,11 @@ describe('cancel_draw stands down while a dialog is open', () => {
     useSketchEditorStore.getState().setActiveTool('line')
     const release = acquireModalEscape()
 
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activeTool).toBe('line')
 
     release()
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activeTool).toBeNull()
   })
 
@@ -501,11 +495,11 @@ describe('cancel_draw stands down while a dialog is open', () => {
     const releaseInner = acquireModalEscape()
 
     releaseInner()
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activeTool).toBe('line')
 
     releaseOuter()
-    entry('cancel_draw').fn()
+    execute('cancel_draw')
     expect(useSketchEditorStore.getState().activeTool).toBeNull()
   })
 
@@ -520,48 +514,59 @@ describe('cancel_draw stands down while a dialog is open', () => {
   })
 })
 
-describe('apply_offset command opens a distance dialog', () => {
-  let captured: DialogState | undefined
-
-  beforeEach(() => {
-    captured = undefined
-    const store = useSketchUiStore.getState()
-    vi.spyOn(store, 'openDialog').mockImplementation((opts) => { captured = opts })
-  })
-
+// apply_offset takes its distance as data; the dialog is only the user-facing
+// front end. The programmatic path must never open a dialog.
+describe('apply_offset data command and its dialog front end', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
-  it('opens a dialog with a numeric default and a validator', () => {
-    entry('apply_offset').fn()
+  it('programmatic execution applies the parsed distance and opens no dialog', () => {
+    const store = useSketchEditorStore.getState()
+    const applyOffset = vi.spyOn(store, 'applyOffset').mockImplementation(noop)
+    const openDialog = vi.spyOn(useSketchUiStore.getState(), 'openDialog').mockImplementation(noop)
+
+    const result = execute('apply_offset', partContext(), { distance: 3.5 })
+
+    expect(result).toEqual({ ok: true, createdIds: [] })
+    expect(applyOffset).toHaveBeenCalledWith(3.5)
+    expect(openDialog).not.toHaveBeenCalled()
+  })
+
+  it('rejects a payload that is not a numeric distance', () => {
+    const registry = partRegistry()
+    const result = registry.execute('apply_offset', { distance: 'five' })
+    expect(result.ok).toBe(false)
+  })
+
+  it('the dialog front end collects the distance and hands it to execute', () => {
+    let captured: DialogState | undefined
+    vi.spyOn(useSketchUiStore.getState(), 'openDialog').mockImplementation((opts) => { captured = opts })
+    const closeDialog = vi.spyOn(useSketchUiStore.getState(), 'closeDialog').mockImplementation(noop)
+    const onDistance = vi.fn()
+
+    openOffsetDialog(onDistance)
+
     expect(captured).toBeDefined()
     expect(captured!.label).toMatch(/offset/i)
     expect(captured!.defaultValue).toBe('5')
     // validator rejects non-numbers, accepts numbers
     expect(captured!.validate!('not a number')).toBeTruthy()
     expect(captured!.validate!('2.5')).toBeNull()
-  })
 
-  it('confirm applies the parsed offset and closes the dialog', () => {
-    const store = useSketchEditorStore.getState()
-    const applyOffset = vi.spyOn(store, 'applyOffset').mockImplementation(noop)
-    const closeDialog = vi.spyOn(useSketchUiStore.getState(), 'closeDialog').mockImplementation(noop)
-
-    entry('apply_offset').fn()
     captured!.onConfirm('3.5')
-
-    expect(applyOffset).toHaveBeenCalledWith(3.5)
+    expect(onDistance).toHaveBeenCalledWith(3.5)
     expect(closeDialog).toHaveBeenCalledOnce()
   })
 
-  it('cancel closes the dialog without applying', () => {
-    const store = useSketchEditorStore.getState()
-    const applyOffset = vi.spyOn(store, 'applyOffset').mockImplementation(noop)
+  it('the dialog front end closes without calling back on cancel', () => {
+    let captured: DialogState | undefined
+    vi.spyOn(useSketchUiStore.getState(), 'openDialog').mockImplementation((opts) => { captured = opts })
     const closeDialog = vi.spyOn(useSketchUiStore.getState(), 'closeDialog').mockImplementation(noop)
+    const onDistance = vi.fn()
 
-    entry('apply_offset').fn()
+    openOffsetDialog(onDistance)
     captured!.onCancel!()
 
-    expect(applyOffset).not.toHaveBeenCalled()
+    expect(onDistance).not.toHaveBeenCalled()
     expect(closeDialog).toHaveBeenCalledOnce()
   })
 })

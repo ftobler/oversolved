@@ -3,7 +3,7 @@ import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
 import { createDocSession, type DocSession } from '@/session/DocSession'
-import type { SessionFailure } from '@/session/result'
+import type { Result, SessionFailure } from '@/session/result'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
 import { failLoud } from '@/stores/stateInvariants'
@@ -152,13 +152,16 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     failLoud(LEGACY_FAILURE_MESSAGES[result.code] ?? `[usePartDoc] ${result.message}`)
   }, [])
 
-  const handleMutation = useCallback((m: Mutation) => {
+  // Returns the session Result so a command spec can report the ids its
+  // mutation created; null is the no-document no-op, exactly the old guard.
+  const handleMutation = useCallback((m: Mutation): Result | null => {
     setSolveError(null)
     // No document yet: a silent no-op, exactly as the old funnel's null guard.
-    if (!session.getDoc()) return
+    if (!session.getDoc()) return null
     const result = session.execute(m)
     if (!result.ok) reportFailure(result)
     mirrorDirty()
+    return result
   }, [session, setSolveError, reportFailure, mirrorDirty])
 
   const commitMutationGroup = useCallback((ms: Mutation[]) => {
@@ -273,6 +276,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   return {
     doc,
     setDoc,
+    session,
     docRef,
     docName,
     loading,

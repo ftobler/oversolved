@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Mutation } from '@/types/cad'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
@@ -12,12 +12,11 @@ import SaveButton from '@/components/layout/SaveButton'
 
 type StackEntry = { mutation: Mutation }
 
-// dispatchKey routes every key on useEditorModeStore; a button click goes
-// straight to executeCommand with no such gate, so the toolbar has to take the
-// same one. WorkspacePage mounts one keyed editor, which is why a co-mount
-// (split view, staged navigation) would run whichever engine registered `undo`
-// last while the disabled state below reads the part store. An unresolved mode
-// is the sketch/part branch of dispatchKey, so only the assembly editor locks
+// dispatchKey routes every key on useEditorModeStore; the toolbar's clicks go
+// through the page's own registry (via context), but the mode gate stays for
+// the same co-mount reason: a split view could render both toolbars against
+// one document while only the active editor should act. An unresolved mode is
+// the sketch/part branch of dispatchKey, so only the assembly editor locks
 // this toolbar out. Read through a subscription, not getState: the gate exists
 // for the moment the mode changes, and a render-time sample would not re-run.
 
@@ -42,9 +41,14 @@ export default function PartToolbar({
 }: PartToolbarProps) {
   const undoStack = usePartEditorStore(s => s.undoStack) as StackEntry[]
   const redoStack = usePartEditorStore(s => s.redoStack) as StackEntry[]
+  const registry = useCommandRegistry()
   // The disabled state has to agree with the gate: a button that reads enabled
-  // from the part store and then refuses to run is worse than a disabled one.
+  // from the registry and then refuses to run is worse than a disabled one.
+  // The registry's undo/redo predicates read the session history, the source
+  // the stacks above mirror.
   const ownsDocument = useEditorModeStore(s => s.activeEditor) !== 'assembly'
+  const undoDisabled = !ownsDocument || registry.enabled('undo') !== true
+  const redoDisabled = !ownsDocument || registry.enabled('redo') !== true
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
 
@@ -54,8 +58,8 @@ export default function PartToolbar({
         <button
           className="toolbar-btn"
           aria-label="Undo"
-          onClick={() => { if (ownsDocument) executeCommand('undo') }}
-          disabled={undoStack.length === 0 || !ownsDocument}
+          onClick={() => { if (ownsDocument) registry.execute('undo') }}
+          disabled={undoDisabled}
           onMouseEnter={() => setUndoHover(true)}
           onMouseLeave={() => setUndoHover(false)}
           {...domHandleProps('toolbar:undo')}
@@ -75,8 +79,8 @@ export default function PartToolbar({
         <button
           className="toolbar-btn"
           aria-label="Redo"
-          onClick={() => { if (ownsDocument) executeCommand('redo') }}
-          disabled={redoStack.length === 0 || !ownsDocument}
+          onClick={() => { if (ownsDocument) registry.execute('redo') }}
+          disabled={redoDisabled}
           onMouseEnter={() => setRedoHover(true)}
           onMouseLeave={() => setRedoHover(false)}
           {...domHandleProps('toolbar:redo')}
