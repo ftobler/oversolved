@@ -181,9 +181,9 @@ describe('Part Color Preview', () => {
     expect(mockCommitPreview).not.toHaveBeenCalled()
   })
 
-  // usePartDoc.commitEditSession now resolves a preview left open at a session
-  // boundary itself (before this component ever sees it), so a second
-  // Apply/Cancel gesture on a freshly reopened popover must still work.
+  // Apply and Cancel each close the popover, and reopening it is a fresh
+  // gesture: the second popover's Cancel must reach the hook, not a stale
+  // preview from the first pair.
   it('OK-then-Cancel inside an edit keeps the popover tree working', async () => {
     renderPart()
 
@@ -200,10 +200,9 @@ describe('Part Color Preview', () => {
     expect(screen.queryByText('Apply')).toBeNull()
   })
 
-  // A session commit resolves a still-open preview at the hook boundary
-  // (usePartDoc.commitEditSession), so by the time Cancel fires here
-  // cancelPreview has nothing left to rewind -- same null-no-op contract as
-  // an escaped preview, reached from the other direction (a session exit).
+  // cancelPreview returns null whenever no preview is tracked (already
+  // committed by an escape, refused mid-session, or resolved at a session
+  // start), so the page must close the popover without writing the doc.
   it('cancel after a session exit resolved the preview does not rewind, and the popover still closes', async () => {
     mockCancelPreview.mockReturnValue(null)
     renderPart()

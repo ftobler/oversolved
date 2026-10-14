@@ -152,26 +152,6 @@ describe('useUndoRedo', () => {
     expect(result.current.undoStack[49].doc.features?.[0].id).toBe('f54')
   })
 
-  it('suppressUndoRef does not gate pushUndo (gating happens in the mutation funnel)', () => {
-    const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
-    const setDoc = vi.fn()
-    const reSolve = vi.fn()
-    const { result } = renderHookStrict(() => useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve))
-
-    act(() => {
-      result.current.pushUndo({ type: 'add_sketch' } as Mutation, docRef.current!)
-    })
-    expect(result.current.undoStack).toHaveLength(1)
-
-    result.current.suppressUndoRef.current = true
-
-    act(() => {
-      result.current.pushUndo({ type: 'add_extrude' } as Mutation, docRef.current!)
-    })
-
-    expect(result.current.undoStack).toHaveLength(2)  // pushUndo still pushes, suppressUndoRef is not checked inside pushUndo
-  })
-
   it('handleUndo on empty stack is no-op', () => {
     const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
     const setDoc = vi.fn()

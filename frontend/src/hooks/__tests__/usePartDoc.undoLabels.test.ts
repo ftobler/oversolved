@@ -1,9 +1,10 @@
 // The undo tooltip (PartToolbar) renders describeMutation(entry.mutation) for
 // every step. usePartDoc resolves a preview or a pending brep projection into a
 // label-only preview_commit entry, so the description it pushes IS the text the
-// user reads: an internal sentence about which boundary the resolution happened
-// on shows up verbatim in the tooltip. Each case below reaches one of those push
-// sites and pins the wording it renders.
+// user reads: an internal sentence naming the boundary the resolution happened
+// on would show up verbatim in the tooltip. Each case below reaches one of the
+// push sites and pins the wording it renders. The old session-commit resolution
+// is not among them: a preview can no longer be open when a session commits.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
@@ -22,14 +23,6 @@ vi.mock('@/hooks/useSolver', async () => {
   const { solverMock } = await import('./usePartDoc.undoHarness')
   return solverMock()
 })
-
-// The preview resolution at a session START runs behind the half-open guard,
-// whose failLoud throws in test and would abort before the commit. Prod is the
-// environment where the two diverge (failLoud is a silent no-op there), so it is
-// mocked away here; the guard's own behaviour is pinned elsewhere.
-vi.mock('@/stores/stateInvariants', () => ({
-  failLoud: vi.fn(),
-}))
 
 type PartDocHook = { current: { setDoc: (d: PartDoc) => void } }
 
@@ -83,21 +76,6 @@ describe('undo labels for the label-only resolution entries', () => {
     // the history move would carry exactly that work; the push clears the redo
     // branch, so the entry stays on the undo stack.
     act(() => { result.current.handleRedo() })
-
-    expect(result.current.undoStack).toHaveLength(1)
-    expect(describeMutation(result.current.undoStack[0].mutation)).toBe('apply previewed color')
-  })
-
-  it('a preview resolved when its session commits reads as an applied color', () => {
-    docRef.current = colorDoc()
-    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-
-    // A sketch session, so the commit resolves the preview and pushes nothing of
-    // its own: the entry under test is the only one on the stack.
-    act(() => { result.current.startEditSession(false) })
-    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    installSolvedDoc(result)
-    act(() => { result.current.commitEditSession() })
 
     expect(result.current.undoStack).toHaveLength(1)
     expect(describeMutation(result.current.undoStack[0].mutation)).toBe('apply previewed color')

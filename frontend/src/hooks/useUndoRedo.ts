@@ -50,7 +50,6 @@ export function useUndoRedo(
   const redoRef = useRef<UndoEntry[]>([])
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
   const [redoStack, setRedoStack] = useState<UndoEntry[]>([])
-  const suppressUndoRef = useRef(false)
   const stackSnapshotRef = useRef<{ undo: UndoEntry[]; redo: UndoEntry[] } | null>(null)
 
   const commitStacks = useCallback((undo: UndoEntry[], redo: UndoEntry[]) => {
@@ -78,11 +77,11 @@ export function useUndoRedo(
   }, [pushEntry])
 
   // For callers that already hold an independent snapshot: the preview baseline
-  // (previewOriginalDoc) and the edit-session snapshot (editSnapshotRef) are
-  // produced by cloneDocForUndo and dropped right after the push, so cloning
-  // them again at the boundary would only copy a throwaway. The caller must
-  // pass a doc that is already independent of the live document and will not
-  // be mutated afterwards; a live doc still belongs to pushUndo.
+  // and the edit-session baseline (usePartDoc's open-work slot) are produced by
+  // cloneDocForUndo and dropped right after the push, so cloning them again at
+  // the boundary would only copy a throwaway. The caller must pass a doc that
+  // is already independent of the live document and will not be mutated
+  // afterwards; a live doc still belongs to pushUndo.
   const pushUndoSnapshot = useCallback((mutation: Mutation, docSnapshot: PartDoc) => {
     pushEntry(mutation, docSnapshot)
   }, [pushEntry])
@@ -112,7 +111,6 @@ export function useUndoRedo(
       // Exit every open session before the doc swaps. A session that survives
       // would later commit a spurious entry keyed to the pre-undo doc, or cancel
       // straight back to it and silently revert the undo.
-      suppressUndoRef.current = false
       stackSnapshotRef.current = null
       tearDownEditorState?.()
 
@@ -193,7 +191,6 @@ export function useUndoRedo(
   return {
     undoStack,
     redoStack,
-    suppressUndoRef,
     pushUndo,
     pushUndoSnapshot,
     // Exported so a caller that resolves open work of its own can hand the move

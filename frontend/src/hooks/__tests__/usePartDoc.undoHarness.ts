@@ -61,7 +61,7 @@ export const sketchConstraintsOf = (): { kind: string }[] =>
 
 // The per-test reset every suite opens with: park the doc back at the fixture
 // and clear the transient stores and sketch callbacks, so a leaked callback or
-// suppress flag from one test cannot reach the next.
+// open-work slot from one test cannot reach the next.
 export const resetHarness = (): void => {
   docRef.current = makeDoc()
   reSolve.mockClear()

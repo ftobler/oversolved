@@ -42,8 +42,9 @@ vi.mock('@/hooks/useUndoRedo', () => ({
   useUndoRedo: () => ({
     undoStack: [],
     redoStack: [],
-    suppressUndoRef: { current: false },
     pushUndo: vi.fn(),
+    pushUndoSnapshot: vi.fn(),
+    applyUndoRedo: vi.fn(),
     handleUndo: vi.fn(),
     handleRedo: vi.fn(),
     saveUndoStackSnapshot: vi.fn(),
@@ -79,11 +80,18 @@ describe('usePartDoc edit session guards', () => {
     expect(() => result.current.startPreviewMode({ features: [] } as never)).toThrow('[usePartDoc] startPreviewMode called while a preview is already active')
   })
 
-  it('throws on startEditSession with a live preview (half-open session start)', () => {
+  it('does not throw on startEditSession with a live preview (the preview is resolved first)', () => {
     const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
     result.current.startPreviewMode({ features: [] } as never)
     result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' } as never)
-    expect(() => result.current.startEditSession(true)).toThrow('[usePartDoc] startEditSession called while a preview is active')
+    expect(() => result.current.startEditSession(true)).not.toThrow()
+  })
+
+  it('throws on startPreviewMode while an edit session is active', () => {
+    const { result } = renderHook(() => usePartDoc('test-uuid', { solveOnLoad: false }))
+    result.current.startEditSession(true)
+    expect(() => result.current.startPreviewMode({ features: [] } as never))
+      .toThrow('[usePartDoc] startPreviewMode called while an edit session is active')
   })
 
   it('throws on commitPreview without start', () => {
