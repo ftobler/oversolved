@@ -10,9 +10,19 @@
 // the full sweep, and the smoke keys are a deterministic prefix of it.
 import { describe, it, expect } from 'vitest'
 import baselineFile from './baseline.json'
+import { okResult, type SessionFailure } from '@/session/result'
+import { noParams } from '@/utils/core/commandSpec'
+import type { PartCommandSpec } from '@/pages/commandEntries'
 import { compareMatrix, toBaselineRows, type MatrixBaselineFile, type MatrixRow } from './baseline'
 import { corpusDocs, SMOKE_DOC_LABELS, SMOKE_MAX_TARGETS, type CorpusDoc } from './corpus'
-import { expectedBaselineRows, fakeMatrixSolver, runMatrix, type MatrixSweep } from './runner'
+import {
+  classifyEntry,
+  expectedBaselineRows,
+  fakeMatrixSolver,
+  runMatrix,
+  type MatrixSweep,
+} from './runner'
+import type { MatrixHarness } from './harness'
 
 const baselineRows = toBaselineRows((baselineFile as MatrixBaselineFile).rows)
 
@@ -63,6 +73,55 @@ describe('the action-matrix comparator', () => {
 
   it('subset mode ignores baseline rows outside the replayed slice', () => {
     expect(compareMatrix(rows, rows.slice(0, 1), { subset: true })).toEqual([])
+  })
+})
+
+// The store-driven failure path, which used to be unreachable: a command body
+// can return ok while the mutation it dispatched through the store seam failed
+// (the UI surfaces that through failLoud). The classifier has to record it as
+// failed, and the runner has to reach that classification from an entry.
+describe('the action-matrix entry classification', () => {
+  it('classifies a store-driven mutation failure as failed, over a refusal message', () => {
+    const failure: SessionFailure = { ok: false, code: 'rollback-unsynced', message: 'set_rollback dispatched with the rollback store not pre-synced' }
+    expect(classifyEntry(okResult(), [{ title: 'Cannot apply', message: 'refused by message', variant: 'error' }], [failure]))
+      .toEqual({ status: 'failed', error: 'rollback-unsynced: set_rollback dispatched with the rollback store not pre-synced' })
+  })
+
+  it('records a failing entry and the comparator reports it', { timeout: 60_000 }, async () => {
+    // A synthetic command with a store body's shape: dispatch through the seam,
+    // return ok. The mutation is a set_rollback the harness never pre-synced,
+    // so the session refuses it with rollback-unsynced. Replacing
+    // apply_horizontal keeps this out of the committed corpus baseline.
+    const failingSpec = (harness: MatrixHarness): PartCommandSpec => ({
+      id: 'apply_horizontal',
+      label: 'contract failing command',
+      params: noParams(),
+      enabled: () => true,
+      undoable: true,
+      run: () => {
+        harness.handleMutation({ type: 'set_rollback', position: 3 })
+        return okResult()
+      },
+    })
+    const tiny: CorpusDoc = { label: 'contract:tiny', spec: { version: 1, kind: 'part', features: [] } }
+    const sweep: MatrixSweep = { docs: [tiny], maxTargetsPerDoc: 1 }
+
+    const rows = await runMatrix(sweep, {
+      createSolver: fakeMatrixSolver,
+      extraSpecs: harness => [failingSpec(harness)],
+    })
+
+    const entry = rows.find(row => row.command === 'apply_horizontal')
+    expect(entry).toEqual({
+      doc: 'contract:tiny',
+      target: '<none>',
+      command: 'apply_horizontal',
+      status: 'failed',
+      error: 'rollback-unsynced: set_rollback dispatched with the rollback store not pre-synced',
+    })
+    // A baseline that had the entry as ok now deviates with the failure text.
+    const deviations = compareMatrix([{ ...entry!, status: 'ok', error: null }], rows, { subset: true })
+    expect(deviations.some(deviation => deviation.includes('status ok -> failed'))).toBe(true)
   })
 })
 

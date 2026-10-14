@@ -1,9 +1,17 @@
 # Gitea's full gate. Both forges read this file, but every job is gated to
 # Gitea; GitHub runs its own full suite in ci-github.yaml instead, and keeps
 # main.yaml main-only for the site publish.
+#
+# Push and PR run the regular jobs; the schedule and manual dispatch only add
+# the nightly ratchets job, so PR cost is unchanged.
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 3 * * *'  # nightly, 03:00 UTC
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.run_id }}  # just some name to tell which other jobs to cancel
@@ -211,3 +219,57 @@ jobs:
           cd ../mate-solver
           wasm-pack build --target web --out-dir pkg --release
           wasm-pack build --target nodejs --out-dir pkg-node --release
+
+  # The long ratchets, nightly and on demand: the seeded fuzz and the full
+  # action-matrix sweep are minutes long, so they never join a push or PR run.
+  # The provisioning mirrors the frontend job (nodejs WASM solvers + OCC.js)
+  # because both recipes use the real kernel where it is installed; `just fuzz`
+  # and `just ratchet-matrix` tee their full output to tmp/ and keep their exit
+  # codes, so the job step is the gate. The `if` gates the job to Gitea and to
+  # the two triggers, so the PR runs stay cheap.
+  nightly:
+    if: github.server_url != 'https://github.com' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+        working-directory: frontend
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build WASM solvers (nodejs for vitest)
+        run: |
+          wasm-pack build --target nodejs --out-dir pkg-node --release
+          cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
+        working-directory: sketch-solver
+
+      - name: Install OCC.js (opt-in, not a package.json dep)
+        run: npm run occ:install
+        working-directory: frontend
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Long fuzz (real kernel)
+        run: just fuzz
+
+      - name: Full action matrix (real kernel)
+        run: just ratchet-matrix

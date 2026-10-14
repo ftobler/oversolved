@@ -13,13 +13,14 @@ import type { PartDoc, PartFeature, Mutation, Sketch, SketchData } from '@/types
 import { createDocSession, type DocSession, type EditorFacts } from '@/session/DocSession'
 import type { SolveScheduler } from '@/session/SolveScheduler'
 import type { DirtyFacts } from '@/session/dirty'
-import type { Result } from '@/session/result'
+import type { Result, SessionFailure } from '@/session/result'
 import { CommandRegistry, type CommandResult } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
 import {
   PART_COMMAND_SPECS,
   getSketchState,
   type PartCommandContext,
+  type PartCommandSpec,
   type ShowMessagePayload,
 } from '@/pages/commandEntries'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -75,6 +76,21 @@ export interface MatrixHarness {
   // Every showMessage the run produced, in order: the constraint rejections and
   // not-implemented notices that are the command's observable refusal.
   messages: ShowMessagePayload[]
+  // Session failures observed on the sketch mutation seam. The UI surfaces
+  // these through failLoud (a throw in test mode, a warning in dev), which the
+  // matrix cannot use: the regeneration script runs through vite-node
+  // (MODE=development) while the suites run through vitest (MODE=test), and a
+  // mode-dependent handler would make the committed baseline depend on how it
+  // was generated. Recording the Result keeps both runs identical; the runner
+  // turns the first failure into a failed entry, so a store-driven command
+  // cannot hide a failed mutation behind the ok its body returns.
+  mutationFailures: SessionFailure[]
+  // The exact callbacks the store seam is wired to, exposed so the contract
+  // test can drive the failure path without a corpus row.
+  handleMutation(mutation: Mutation): Result
+  handleMutationBatch(mutations: Mutation[]): Result
+  // Registers a spec after the real table (used by the contract-test seam).
+  register(spec: PartCommandSpec): void
   // Runs one command and settles the session: fake schedulers have to flush,
   // real ones settle on their own, so this is the one await point per entry.
   run(command: CommandName, params?: unknown): Promise<CommandResult>
@@ -127,9 +143,18 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
 
   // The sketch store's mutation seam, the same registration Part.tsx performs
   // on mount; a store-driven command body (constraints, offset, delete) lands
-  // through here.
-  setSketchCallback('onMutation', m => { session.execute(m) })
-  setSketchCallback('onMutationBatch', ms => { session.executeGroup(ms) })
+  // through here. Part.tsx's handleMutation reports a non-ok Result through
+  // failLoud; the harness records it instead (see mutationFailures) so vitest
+  // and the vite-node regeneration script classify a run identically.
+  const mutationFailures: SessionFailure[] = []
+  const record = (result: Result): Result => {
+    if (!result.ok) mutationFailures.push(result)
+    return result
+  }
+  const handleMutation = (mutation: Mutation): Result => record(session.execute(mutation))
+  const handleMutationBatch = (mutations: Mutation[]): Result => record(session.executeGroup(mutations))
+  setSketchCallback('onMutation', m => { handleMutation(m) })
+  setSketchCallback('onMutationBatch', ms => { handleMutationBatch(ms) })
   setSketchCallback('onRebuild', () => {})
   setSketchCallback('onExitSketch', () => {})
   setSketchCallback('getSketch', featureId => {
@@ -200,6 +225,12 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
     session,
     registry,
     messages,
+    mutationFailures,
+    handleMutation,
+    handleMutationBatch,
+    register(spec) {
+      registry.register(spec)
+    },
     async run(command, params) {
       const result = registry.execute(command, params)
       solver.settle()

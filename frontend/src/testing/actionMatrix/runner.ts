@@ -8,10 +8,12 @@
 // the nightly) and a per-document hook (the real kernel resets its cross-solve
 // cache per document there).
 import type { PartDoc } from '@/types/cad'
-import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
+import { PART_COMMAND_SPECS, type PartCommandSpec, type ShowMessagePayload } from '@/pages/commandEntries'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
+import type { SessionFailure } from '@/session/result'
+import type { CommandResult } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
-import { createMatrixHarness, installTarget, type MatrixSolver } from './harness'
+import { createMatrixHarness, installTarget, type MatrixHarness, type MatrixSolver } from './harness'
 
 // Callers of runMatrix construct solvers, so the type is re-exported here
 // rather than making every caller reach into harness.ts.
@@ -45,6 +47,28 @@ export interface MatrixRunOptions {
   // feature the kernel cannot solve is a status inside the response, not an
   // error, and stays the command's concern.
   failOnSolveError?: boolean
+  // Contract-test seam: extra or replacement specs built against the entry's
+  // own harness. They register after the real table, so a spec with an
+  // existing id wins; the corpus sweeps never pass this.
+  extraSpecs?: (harness: MatrixHarness) => readonly PartCommandSpec[]
+}
+
+// The one place a command outcome becomes a baseline status, with failure
+// first: a registry/session failure on the command, then a store-driven
+// mutation that failed on the seam (the UI's failLoud path, recorded instead
+// of swallowed so a store body cannot report ok over a failed mutation), then
+// a showMessage refusal, then ok. Exported for the classifier contract test.
+export function classifyEntry(
+  result: CommandResult,
+  messages: readonly ShowMessagePayload[],
+  mutationFailures: readonly SessionFailure[],
+): { status: MatrixStatus; error: string | null } {
+  if (!result.ok) return { status: 'failed', error: result.message }
+  const mutationFailure = mutationFailures[0]
+  if (mutationFailure) return { status: 'failed', error: `${mutationFailure.code}: ${mutationFailure.message}` }
+  const refusal = messages[0]
+  if (refusal) return { status: 'refused', error: refusal.message }
+  return { status: 'ok', error: null }
 }
 
 export function fakeMatrixSolver(): MatrixSolver {
@@ -84,7 +108,7 @@ export async function runMatrix(sweep: MatrixSweep, options: MatrixRunOptions): 
     const targets = targetsForSweep(doc.spec, sweep.maxTargetsPerDoc)
     for (const target of targets) {
       for (const command of PART_COMMANDS) {
-        rows.push(await runEntry(doc, target, command, options))
+        rows.push(await runMatrixEntry(doc, target, command, options))
         if (rows.length % YIELD_EVERY === 0) await yieldToEventLoop()
       }
     }
@@ -93,7 +117,9 @@ export async function runMatrix(sweep: MatrixSweep, options: MatrixRunOptions): 
   return rows
 }
 
-async function runEntry(
+// Exported for the contract test that proves a failing entry classifies as
+// failed; the corpus sweeps call it through runMatrix only.
+export async function runMatrixEntry(
   doc: CorpusDoc,
   target: MatrixTarget,
   command: CommandName,
@@ -101,24 +127,18 @@ async function runEntry(
 ): Promise<MatrixRow> {
   const solver = options.createSolver()
   const harness = createMatrixHarness(doc.spec, solver)
-  const row = (status: MatrixStatus, error: string | null): MatrixRow =>
-    ({ doc: doc.label, target: target.id, command, status, error })
   try {
+    for (const spec of options.extraSpecs?.(harness) ?? []) harness.register(spec)
     installTarget(doc.spec, target)
     const enabled = harness.registry.enabled(command)
-    if (enabled !== true) return row('refused', enabled)
+    if (enabled !== true) return { doc: doc.label, target: target.id, command, status: 'refused', error: enabled }
     const result = await harness.run(command, MINIMAL_PARAMS[command])
     const solveError = harness.session.inspect().solve.lastError
     if ((options.failOnSolveError ?? true) && solveError !== null) {
       throw new Error(`[action-matrix] solve error at ${doc.label} / ${target.id} / ${command}: ${solveError}`)
     }
-    if (!result.ok) return row('failed', result.message)
-    // A command can succeed and still refuse the action through showMessage
-    // (a constraint that does not fit the selection, a not-implemented tool):
-    // for the matrix that is the command's refusal, not an ok.
-    const refusal = harness.messages[0]
-    if (refusal) return row('refused', refusal.message)
-    return row('ok', null)
+    const classification = classifyEntry(result, harness.messages, harness.mutationFailures)
+    return { doc: doc.label, target: target.id, command, ...classification }
   } finally {
     harness.dispose()
   }

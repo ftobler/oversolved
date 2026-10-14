@@ -3,7 +3,10 @@
 Three ratchets catch regressions the unit suites cannot: the action matrix
 (every command on every element of a document corpus), the fuzz (seeded random
 edit and undo/redo sequences), and the volume oracle (analytic geometry against
-the real kernel). Their baselines are committed and reviewed like code.
+the real kernel). Their baselines are committed and reviewed like code. The
+nightly Gitea job (`nightly` in `.github/workflows/ci-gitea.yaml`, cron plus
+manual dispatch only) provisions the WASM solvers and OCC.js and runs
+`just fuzz` then `just ratchet-matrix`.
 
 ## Action matrix
 
