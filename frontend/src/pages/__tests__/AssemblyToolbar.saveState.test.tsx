@@ -6,6 +6,8 @@ import { render, fireEvent, screen, waitFor, act } from '@testing-library/react'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { deferred } from '@/__tests__/fixtures'
+import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
+import { assemblyRegistry, storeBackedAssemblyContext } from './commandFixtures'
 
 vi.mock('@/components/layout/AppHeader', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -13,12 +15,14 @@ vi.mock('@/components/layout/AppHeader', () => ({
 
 function renderToolbar(handleSave: () => Promise<boolean>) {
   return render(
-    <AssemblyToolbar
-      docName="TestDoc"
-      onRename={vi.fn()}
-      handleSave={handleSave}
-      handleClone={vi.fn()}
-    />,
+    <CommandRegistryProvider value={assemblyRegistry(storeBackedAssemblyContext())}>
+      <AssemblyToolbar
+        docName="TestDoc"
+        onRename={vi.fn()}
+        handleSave={handleSave}
+        handleClone={vi.fn()}
+      />
+    </CommandRegistryProvider>,
   )
 }
 

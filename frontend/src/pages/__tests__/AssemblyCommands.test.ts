@@ -1,90 +1,88 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useAssemblyCommands } from '@/pages/AssemblyKeyboardShortcuts'
 import {
   ASSEMBLY_COMMAND_NAMES,
+  ASSEMBLY_COMMAND_SPECS,
   ASSEMBLY_OPERATION_BY_COMMAND,
-  buildAssemblyCommandEntries,
-  buildAssemblyHandlers,
-  type AssemblyCommandHandlers,
+  type AssemblyCommandContext,
   type AssemblyCommandName,
-  type AssemblyHandlerDeps,
 } from '@/pages/assemblyCommandEntries'
 import { ASSEMBLY_OPERATIONS, type AssemblyOperationId } from '@/utils/assemblyOperations'
-import { executeCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
+import type { CommandRegistry, ErasedCommandSpec } from '@/utils/core/commandSpec'
+import { CommandRegistry as Registry } from '@/utils/core/commandSpec'
+import { assemblyContext, minimalAssemblyParams } from './commandFixtures'
 
-function spyHandlers(): AssemblyCommandHandlers {
-  // Partial is a supertype of the full record, so this assertion only narrows
-  // it after every name has been filled.
-  const spies: Partial<AssemblyCommandHandlers> = {}
-  for (const n of ASSEMBLY_COMMAND_NAMES) spies[n] = vi.fn()
-  return spies as AssemblyCommandHandlers
-}
-
-// The page's inputs, with spies for everything but the id mint. Building the
-// handlers through the same function the page uses is what lets the coverage
+// The page's inputs, with spies for everything but the id mint. Running the
+// specs through the same table the page registers is what lets the coverage
 // test observe the real command-to-operation wiring.
-function handlerDeps(): AssemblyHandlerDeps & {
-  runOperation: ReturnType<typeof vi.fn>
-  deleteSubject: ReturnType<typeof vi.fn>
-  manipulationLive: ReturnType<typeof vi.fn>
-  cancelManipulation: ReturnType<typeof vi.fn>
-  undo: ReturnType<typeof vi.fn>
-} {
-  return {
-    runOperation: vi.fn(),
-    undo: vi.fn(),
-    redo: vi.fn(),
-    deleteSelected: vi.fn(),
-    cancelEdit: vi.fn(),
-    openInsertPart: vi.fn(),
-    openExport: vi.fn(),
-    mintMateId: () => 'mate-new',
-    closeOpenEditor: vi.fn(),
-    onMateInserted: vi.fn(),
-    deleteSubject: vi.fn(),
-    manipulationLive: vi.fn(() => false),
-    cancelManipulation: vi.fn(),
-  }
+function deps() {
+  const runOperation = vi.fn()
+  const deleteSubject = vi.fn()
+  const manipulationLive = vi.fn(() => false)
+  const cancelManipulation = vi.fn()
+  const undo = vi.fn()
+  const cancelEdit = vi.fn()
+  const context = assemblyContext({
+    runOperation: runOperation as unknown as AssemblyCommandContext['runOperation'],
+    deleteSubject,
+    manipulationLive,
+    cancelManipulation,
+    undo,
+    cancelEdit,
+  })
+  const registry = new Registry<AssemblyCommandContext>(() => context)
+  for (const spec of ASSEMBLY_COMMAND_SPECS) registry.register(spec)
+  return { context, registry, runOperation, deleteSubject, manipulationLive, cancelManipulation, undo, cancelEdit }
 }
 
-describe('buildAssemblyCommandEntries', () => {
-  it('has one entry per canonical name, all unique, stable across builds', () => {
-    const handlers = spyHandlers()
-    const first = buildAssemblyCommandEntries(handlers)
-    const second = buildAssemblyCommandEntries(handlers)
-    expect(first.map(e => e.name)).toEqual([...ASSEMBLY_COMMAND_NAMES])
-    expect(new Set(first.map(e => e.name)).size).toBe(first.length)
-    expect(second.map(e => e.name)).toEqual(first.map(e => e.name))
+function execute(name: AssemblyCommandName, registry: CommandRegistry<AssemblyCommandContext>) {
+  return registry.execute(name, minimalAssemblyParams(name))
+}
+
+describe('ASSEMBLY_COMMAND_SPECS', () => {
+  it('has one spec per canonical name, all unique, stable across builds', () => {
+    const ids = ASSEMBLY_COMMAND_SPECS.map(s => s.id)
+    expect(ids).toEqual([...ASSEMBLY_COMMAND_NAMES])
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('every spec carries a label, an enabled predicate and a params schema', () => {
+    for (const spec of ASSEMBLY_COMMAND_SPECS as readonly ErasedCommandSpec<AssemblyCommandContext>[]) {
+      expect(spec.label.length, `label missing for "${spec.id}"`).toBeGreaterThan(0)
+      expect(typeof spec.enabled).toBe('function')
+      expect(typeof spec.params.parse).toBe('function')
+    }
   })
 })
 
 describe('useAssemblyCommands', () => {
-  beforeEach(() => clearAllHandlers())
-
-  it('registers a handler for every command with no executeCommand warning', () => {
+  it('registers a spec for every command with no executeCommand warning', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    renderHookStrict(() => useAssemblyCommands(spyHandlers()))
-    for (const name of ASSEMBLY_COMMAND_NAMES) executeCommand(name)
+    const registry = new Registry<AssemblyCommandContext>(() => assemblyContext())
+    renderHookStrict(() => useAssemblyCommands(registry))
+    for (const name of ASSEMBLY_COMMAND_NAMES) registry.execute(name, minimalAssemblyParams(name))
     expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 })
 
 describe('assembly operation coverage', () => {
-  // Every operation must be reachable from the handlers the page actually
+  // Every operation must be reachable from the specs the page actually
   // registers, not merely present in the documentation map. The delete commands
   // reach their operation through the store's `deleteSubject` (which runs the
   // operation cell), so that hand-off is what this asserts.
-  it('executing the built handlers reaches every operation', () => {
-    const deps = handlerDeps()
-    const handlers = buildAssemblyHandlers(deps)
-    for (const name of ASSEMBLY_COMMAND_NAMES) handlers[name]()
-    const invoked = new Set(deps.runOperation.mock.calls.map(call => call[0] as AssemblyOperationId))
+  it('executing the specs reaches every operation', () => {
+    const d = deps()
+    for (const name of ASSEMBLY_COMMAND_NAMES) {
+      const result = execute(name, d.registry)
+      expect(result.ok, `command "${name}" failed: ${result.ok ? '' : result.message}`).toBe(true)
+    }
+    const invoked = new Set(d.runOperation.mock.calls.map(call => call[0] as AssemblyOperationId))
     // The delete commands hand off to the one store delete action; its spy
     // stands in for the delete_part/delete_mate operation reach.
-    expect(deps.deleteSubject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'part' }))
-    expect(deps.deleteSubject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'mate' }))
+    expect(d.deleteSubject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'part' }))
+    expect(d.deleteSubject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'mate' }))
     invoked.add('delete_part')
     invoked.add('delete_mate')
     for (const id of Object.keys(ASSEMBLY_OPERATIONS) as AssemblyOperationId[]) {
@@ -94,9 +92,9 @@ describe('assembly operation coverage', () => {
 
   it('each mutating command runs the operation the map names', () => {
     for (const [command, operation] of Object.entries(ASSEMBLY_OPERATION_BY_COMMAND)) {
-      const deps = handlerDeps()
-      buildAssemblyHandlers(deps)[command as AssemblyCommandName]()
-      const invoked = deps.runOperation.mock.calls.map(call => call[0])
+      const d = deps()
+      execute(command as AssemblyCommandName, d.registry)
+      const invoked = d.runOperation.mock.calls.map(call => call[0])
       expect(invoked, `command "${command}"`).toContain(operation)
     }
   })
@@ -105,13 +103,12 @@ describe('assembly operation coverage', () => {
   // directly: they must both route through the store's deleteSubject, so the
   // tree row and the [Delete] key share one implementation.
   it('the delete commands delegate to the one deleteSubject action', () => {
-    const deps = handlerDeps()
-    const handlers = buildAssemblyHandlers(deps)
-    handlers.delete_part('p1')
-    handlers.delete_mate('m1')
-    expect(deps.deleteSubject).toHaveBeenNthCalledWith(1, { kind: 'part', handle: 'p1' })
-    expect(deps.deleteSubject).toHaveBeenNthCalledWith(2, { kind: 'mate', id: 'm1' })
-    expect(deps.runOperation).not.toHaveBeenCalled()
+    const d = deps()
+    execute('delete_part', d.registry)
+    execute('delete_mate', d.registry)
+    expect(d.deleteSubject).toHaveBeenNthCalledWith(1, { kind: 'part', handle: 'handle-1' })
+    expect(d.deleteSubject).toHaveBeenNthCalledWith(2, { kind: 'mate', id: 'mate-1' })
+    expect(d.runOperation).not.toHaveBeenCalled()
   })
 
   // Ctrl+Z during a live drag used to pop the entry above it while
@@ -120,27 +117,27 @@ describe('assembly operation coverage', () => {
   // by giving undo a cancel-the-gesture first stage; assembly's takes the same
   // shape, tearing the drag down through the store's own cancel path.
   it('undo cancels a live manipulation instead of popping history', () => {
-    const deps = handlerDeps()
-    deps.manipulationLive.mockReturnValue(true)
-    buildAssemblyHandlers(deps).undo()
-    expect(deps.cancelManipulation).toHaveBeenCalledTimes(1)
-    expect(deps.undo).not.toHaveBeenCalled()
+    const d = deps()
+    d.manipulationLive.mockReturnValue(true)
+    execute('undo', d.registry)
+    expect(d.cancelManipulation).toHaveBeenCalledTimes(1)
+    expect(d.undo).not.toHaveBeenCalled()
   })
 
   it('undo pops history once no manipulation is in flight', () => {
-    const deps = handlerDeps()
-    deps.manipulationLive.mockReturnValue(false)
-    buildAssemblyHandlers(deps).undo()
-    expect(deps.undo).toHaveBeenCalledTimes(1)
-    expect(deps.cancelManipulation).not.toHaveBeenCalled()
+    const d = deps()
+    d.manipulationLive.mockReturnValue(false)
+    execute('undo', d.registry)
+    expect(d.undo).toHaveBeenCalledTimes(1)
+    expect(d.cancelManipulation).not.toHaveBeenCalled()
   })
 
   // Escape keeps its own meaning: it closes the open editor and never touches a
   // drag, which is the viewport's listener's job.
   it('cancel_edit leaves the manipulation cancel path alone', () => {
-    const deps = handlerDeps()
-    buildAssemblyHandlers(deps).cancel_edit()
-    expect(deps.cancelEdit).toHaveBeenCalledTimes(1)
-    expect(deps.cancelManipulation).not.toHaveBeenCalled()
+    const d = deps()
+    execute('cancel_edit', d.registry)
+    expect(d.cancelEdit).toHaveBeenCalledTimes(1)
+    expect(d.cancelManipulation).not.toHaveBeenCalled()
   })
 })
