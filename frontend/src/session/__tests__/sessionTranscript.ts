@@ -50,7 +50,10 @@ export function runSessionTranscript(
     dirtyFacts: () => dirtyFacts,
   })
 
-  const mirrorDirty = () => { dirtyFacts.dirty = session.isDirty() }
+  const mirrorDirty = () => {
+    const decision = session.takeDirtyDecision()
+    if (decision !== null) dirtyFacts.dirty = decision
+  }
   const exitEditCleanup = () => {
     editorFacts.editingFeatureId = null
     editorFacts.pickBoundary = null

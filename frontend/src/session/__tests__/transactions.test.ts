@@ -90,7 +90,10 @@ function makeSession(doc: PartDoc = extrudeDoc(), overrides: Partial<DocSessionD
     dirty,
     doc: cell,
     solveResults,
-    mirrorDirty: () => { dirty.dirty = session.isDirty() },
+    mirrorDirty: () => {
+      const decision = session.takeDirtyDecision()
+      if (decision !== null) dirty.dirty = decision
+    },
   }
 }
 
@@ -278,6 +281,21 @@ describe('edit sessions', () => {
 
     expect(session.inspect().history.undo).toEqual(['rename extrude-1 to before'])
     expect((session.getDoc()?.features?.[0] as { label?: string }).label).toBe('before')
+  })
+
+  it('an edit cancel restores the baseline even when the live doc is null', () => {
+    // The old engine's JSON compare read a null live doc as rewound and then
+    // installed the baseline anyway; a load failure mid-session must still
+    // rewind to the doc the session promised to restore.
+    const h = makeSession()
+    const opened = h.session.begin('edit', { suppressed: true })
+    h.doc.current = null
+
+    if (opened.ok) h.session.cancel(opened.id)
+
+    expect(h.doc.current).toEqual(extrudeDoc())
+    expect(h.session.transactions()).toEqual([])
+    expect(h.solve.calls.at(-1)?.doc).toEqual(extrudeDoc())
   })
 
   it('nested edit sessions are refused with an error Result', () => {

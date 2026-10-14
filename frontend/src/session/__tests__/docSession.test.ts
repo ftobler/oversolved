@@ -81,7 +81,10 @@ function makeSession(doc: PartDoc | null = baseDoc(), overrides: Partial<DocSess
     facts,
     dirty,
     doc: cell,
-    mirrorDirty: () => { dirty.dirty = session.isDirty() },
+    mirrorDirty: () => {
+      const decision = session.takeDirtyDecision()
+      if (decision !== null) dirty.dirty = decision
+    },
   }
 }
 
@@ -488,6 +491,39 @@ describe('the dirty pin and restore through a session', () => {
 
     expect(h.session.isDirty()).toBe(false)
     expect(h.session.inspect().history.undo).toEqual([])
+  })
+})
+
+describe('the dirty mirror decision', () => {
+  it('offers one decision for a landed edit and none for a no-op', () => {
+    const h = makeSession()
+    expect(h.session.takeDirtyDecision()).toBeNull()
+
+    h.session.execute(rename('a'))
+    expect(h.session.takeDirtyDecision()).toBe(true)
+    // Consumed: a second read offers nothing, so a later no-op call cannot
+    // re-assert it over an external set.
+    expect(h.session.takeDirtyDecision()).toBeNull()
+
+    h.session.execute(rename('a'))
+    expect(h.session.takeDirtyDecision()).toBeNull()
+  })
+
+  it('offers no decision when a save landed without a fingerprint and the rewind changed nothing', () => {
+    const h = makeSession()
+    const opened = h.session.begin('edit', { suppressed: true })
+    // A save lands with no fingerprint (the store's markSaved() shape).
+    h.dirty.dirty = false
+    h.dirty.saves += 1
+    h.dirty.savedHash = null
+    h.session.noteSaved()
+
+    if (opened.ok) h.session.cancel(opened.id)
+
+    // The reconcile decided "leave the flag where the save left it", so the
+    // adapter must not write the store at all.
+    expect(h.session.takeDirtyDecision()).toBeNull()
+    expect(h.dirty.dirty).toBe(false)
   })
 })
 

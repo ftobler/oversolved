@@ -376,6 +376,17 @@ export class DocSession {
     return this.dirtyOverride !== null ? this.dirtyOverride : this.deps.dirtyFacts().dirty
   }
 
+  // The dirty decision the last session call produced, if any, handed to the
+  // adapter exactly once for the store mirror. Consuming it is what keeps a
+  // no-op call from re-asserting a stale decision over a newer external set:
+  // the workspace seam can move the live flag between session calls, and the
+  // old funnel left the store untouched on a no-op dispatch.
+  takeDirtyDecision(): boolean | null {
+    const decision = this.dirtyOverride
+    this.dirtyOverride = null
+    return decision
+  }
+
   // The pin reads the live facts, exactly as the hook's store.pinDirty() did:
   // an external clear (a save without the save count moving, a test) must be
   // the pin, not the session's own stale view of its last edit.
@@ -854,15 +865,15 @@ export class DocSession {
 
   private cancelEditTransaction(txn: EditTransaction): Result {
     const current = this.deps.doc.get()
-    if (current) {
-      // Doc rewind and stack restore are ONE unit (the pairing contract): the
-      // stacks only describe the pre-session doc again once the live doc has
-      // been rewound to it.
-      const rewound = JSON.stringify(txn.baseline) !== JSON.stringify(current)
-      this.deps.doc.set(txn.baseline)
-      this.history.restoreSnapshot()
-      this.reconcile(txn.dirty, rewound, txn.baseline)
-    }
+    // Doc rewind and stack restore are ONE unit (the pairing contract): the
+    // stacks only describe the pre-session doc again once the live doc has
+    // been rewound to it. The baseline is restored even from a null live doc,
+    // exactly as the old engine did (its JSON compare read null as rewound):
+    // the session baseline is the doc the cancel promised.
+    const rewound = JSON.stringify(txn.baseline) !== JSON.stringify(current)
+    this.deps.doc.set(txn.baseline)
+    this.history.restoreSnapshot()
+    this.reconcile(txn.dirty, rewound, txn.baseline)
     this.removeTransaction(txn)
     // Rewinding the doc is this path's own doing, so it owns the re-solve too;
     // an exit with no session still refreshes the viewport.

@@ -135,8 +135,12 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     })
   }, [session])
 
+  // Mirror exactly the decision a session call just made, once. A no-op call
+  // makes no decision, so the store is left untouched and an external write
+  // (the workspace seam) cannot be clobbered by a stale override.
   const mirrorDirty = useCallback(() => {
-    useUnsavedChangesStore.getState().setDirty(session.isDirty())
+    const decision = session.takeDirtyDecision()
+    if (decision !== null) useUnsavedChangesStore.getState().setDirty(decision)
   }, [session])
 
   const reportFailure = useCallback((result: SessionFailure) => {
@@ -222,9 +226,16 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     if (id) session.cancel(id)
   }, [session, findTransaction])
 
-  const handleUndo = useCallback(() => { session.undo() }, [session])
+  const handleUndo = useCallback(() => {
+    session.undo()
+    // The move set a dirty decision; consume it so it cannot outlive its move.
+    mirrorDirty()
+  }, [session, mirrorDirty])
 
-  const handleRedo = useCallback(() => { session.redo() }, [session])
+  const handleRedo = useCallback(() => {
+    session.redo()
+    mirrorDirty()
+  }, [session, mirrorDirty])
 
   const registerUndoTeardown = useCallback((fn: (() => void) | null) => {
     undoTeardownRef.current = fn
