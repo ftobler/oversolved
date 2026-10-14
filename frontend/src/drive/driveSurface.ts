@@ -83,6 +83,9 @@ export interface DriveProbeFacts {
   canvas: { width: number; height: number }
   camera: ProbeCamera | null
   pickableCount: number
+  // The full handle set: GL pickables plus DOM controls carrying
+  // data-oversolved-handle. The handles themselves stay behind handles().
+  handleCount: number
 }
 
 export interface DriveInspection {
@@ -282,6 +285,7 @@ export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
           canvas: { width: probe.canvas.width, height: probe.canvas.height },
           camera: probe.camera,
           pickableCount: probe.pickables.length,
+          handleCount: getSceneHandles().length,
         },
       }
     },

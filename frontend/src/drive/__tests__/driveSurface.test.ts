@@ -165,6 +165,9 @@ describe('drive surface', () => {
     expect(inspection.editor.activePickField).toEqual({ featureId: 'F1', field: 'plane' })
     expect(inspection.probe.canvas).toEqual({ width: 800, height: 600 })
     expect(inspection.probe.pickableCount).toBe(1)
+    // Node has no document, so the handle scan contributes nothing; the one
+    // GL pickable above is the whole handle set here.
+    expect(inspection.probe.handleCount).toBe(1)
     // The whole readout round-trips through JSON unchanged.
     expect(JSON.parse(JSON.stringify(inspection))).toEqual(inspection)
   })
