@@ -1,15 +1,15 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation, FeatureHandleData } from '@/types/cad'
+import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, RebuildValidation, FeatureHandleData } from '@/types/cad'
 import { useSolverStore } from '@/stores/solverStore'
 import { editorState } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 
-import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
 import { failLoud } from '@/stores/stateInvariants'
 import { isDocFullyPorted, unportedKinds } from '@/kernel/builder'
+import { reconcilePartStyle } from '@/utils/core/partStyle'
 import { solveViaWorker, cancelSolver } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { SUPERSEDED_ERROR } from '@/kernel/worker/solverProtocol'
@@ -49,42 +49,10 @@ type WorldState =
   | { status: 'full'; bodies: Record<string, BodyResult> }
   | { status: 'editing'; bodies: Record<string, BodyResult>; pickBodies: Readonly<Record<string, BodyResult>> }
 
-export function pickPartColor(partNumber: number): string {
-  return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]
-}
-
-export function reconcilePartStyle(doc: PartDoc, bodies: Record<string, BodyResult> | undefined): void {
-  const bodyIds = Object.keys(bodies ?? {})
-  if (bodyIds.length === 0) return
-
-  const style = doc.part_style ?? {}
-  const usedPartNumbers = new Set<number>()
-  for (const entry of Object.values(style)) {
-    const match = /^part (\d+)$/i.exec(entry?.name ?? '')
-    if (match) usedPartNumbers.add(Number(match[1]))
-  }
-
-  const nextStyle: Record<string, PartStyleEntry> = { ...style }
-  let nextPartNumber = 1
-  const nextFreePartNumber = () => {
-    while (usedPartNumbers.has(nextPartNumber)) nextPartNumber += 1
-    usedPartNumbers.add(nextPartNumber)
-    return nextPartNumber++
-  }
-
-  for (const bodyId of bodyIds) {
-    if (nextStyle[bodyId]) continue
-    const partNumber = nextFreePartNumber()
-    const createdBy = bodies?.[bodyId]?.created_by
-    nextStyle[bodyId] = {
-      name: `part ${partNumber}`,
-      color: pickPartColor(partNumber),
-      created_by: createdBy,
-    }
-  }
-
-  doc.part_style = nextStyle
-}
+// The pure reconcile lives in utils/core/partStyle so the node CLI can apply the
+// same write-back without importing this hook module; re-exported here to keep
+// the hook's existing importers working.
+export { pickPartColor, reconcilePartStyle } from '@/utils/core/partStyle'
 
 export function useSolver(
   uuid: string | undefined,

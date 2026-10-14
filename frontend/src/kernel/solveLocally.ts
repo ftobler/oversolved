@@ -21,6 +21,8 @@ import type { TessMesh } from './occ/tessellation'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
+import { volumeOf } from './occ/volume'
+import { canonicalEdges, canonicalFaces, canonicalVertices } from './occ/bodyNames'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
 import type { Transform3D } from '../types/cad'
@@ -497,6 +499,59 @@ export async function exportLocally(
     const shape = resolveExportShape(oc, scope, table, response._build_state, opts.bodyId ?? null)
     if (!shape) return null
     return serialiseShape(oc, scope, shape, opts)
+  } finally {
+    scope.dispose()
+    table.disposeAll()
+  }
+}
+
+// ─── local measure ───
+
+/** What `measureLocally` reports for a document's final body set. */
+export interface LocalMeasure {
+  bodyCount: number
+  // Summed BRepGProp volume over the closed bodies.
+  volume: number
+  faces: number
+  edges: number
+  vertices: number
+}
+
+/**
+ * Build a document and report its final bodies' volume and B-rep counts. The
+ * body set is the last feature checkpoint's snapshot, exactly the one
+ * `resolveExportShape` reads, so the measurement describes what an export
+ * would contain. Returns null when OCC.js is unavailable.
+ */
+export async function measureLocally(
+  spec: Record<string, unknown>,
+  files?: ReadonlyMap<string, Uint8Array>,
+): Promise<LocalMeasure | null> {
+  const [oc] = await Promise.all([ensureOcc(), initSketchSolver()])
+  if (!oc) return null
+
+  const scope = new DisposeScope()
+  const table = new HandleTable()
+  try {
+    const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, files))
+    const order = response._build_state.feature_order
+    const lastCp = order.length > 0 ? response._build_state.checkpoints[order[order.length - 1]] : undefined
+    const bodies = lastCp?.body_store_snapshot ?? {}
+    let volume = 0
+    let faces = 0
+    let edges = 0
+    let vertices = 0
+    let bodyCount = 0
+    for (const body of Object.values(bodies)) {
+      if (body.shape == null) continue
+      const shape = table.get<OccShape>(body.shape)
+      volume += volumeOf(oc, scope, shape)
+      faces += canonicalFaces(oc, scope, shape).length
+      edges += canonicalEdges(oc, scope, shape).length
+      vertices += canonicalVertices(oc, scope, shape).length
+      bodyCount += 1
+    }
+    return { bodyCount, volume, faces, edges, vertices }
   } finally {
     scope.dispose()
     table.disposeAll()
