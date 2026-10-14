@@ -155,7 +155,7 @@ the store's setters are for the transient fields the store itself owns.
 onClick={() => executeCommand('apply_horizontal')}
 ```
 
-**Location:** `frontend/src/stores/sketchEditorStore.ts`
+**Location:** `frontend/src/stores/editorState.ts` (selection, tool, draw state and the rollback/edit FSM; UI prefs and the value dialog live in `frontend/src/stores/sketchEditorStore.ts`)
 
 ## 5. Query System
 

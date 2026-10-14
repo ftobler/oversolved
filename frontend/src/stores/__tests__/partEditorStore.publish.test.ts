@@ -73,9 +73,12 @@ describe('partEditorStore publication contract', () => {
     expect('setSnapshot' in state).toBe(false)
   })
 
-  it('field list in DEFAULT_PART_EDITOR_DATA matches the live state', () => {
-    const afterReset = Object.keys(usePartEditorStore.getState())
-      .filter(k => !k.startsWith('publish'))
+  it('field list in DEFAULT_PART_EDITOR_DATA matches the live state data fields', () => {
+    // Actions (publish*, resetPublishedState) are not data; every non-function
+    // field must be one the default declares.
+    const afterReset = Object.entries(usePartEditorStore.getState())
+      .filter(([, value]) => typeof value !== 'function')
+      .map(([key]) => key)
       .sort()
     const defaultKeys = Object.keys(DEFAULT_PART_EDITOR_DATA).sort()
     expect(afterReset).toEqual(defaultKeys)

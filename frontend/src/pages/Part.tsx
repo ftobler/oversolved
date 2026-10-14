@@ -443,7 +443,10 @@ export default function Part() {
 
   // The editor-derived viewport fields go to L2: ghost mode is an edit-session
   // read, the colors/styles are the live doc's part_style projection and the
-  // active sketch id is the viewport's sketch-edit read.
+  // active sketch id is the viewport's sketch-edit read. This effect is the
+  // single writer of activeSketchFeatureId: entering a sketch edit only moves
+  // editingFeatureId/rollback/forced visibility, and the memo above turns that
+  // into the id on the next commit (verified by the sketch-edit suites).
   useEffect(() => {
     editorState.getState().setViewportDerived({ ghostMode, partColors, partStyle })
     editorState.getState().setActiveSketchFeatureId(activeSketchFeatureId ?? null)
@@ -739,6 +742,10 @@ export default function Part() {
       // open; a remounted Part must not inherit them (the old mirror's unmount
       // reset, now owned by the store it belonged to).
       editorState.getState().resetEditorState()
+      // Same for the published session/solver facts: until the new session
+      // publishes its own doc and solve, a keyed remount would otherwise read
+      // the previous document's facts from this store.
+      usePartEditorStore.getState().resetPublishedState()
     }
   }, [])
 

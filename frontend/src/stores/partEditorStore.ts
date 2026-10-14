@@ -59,6 +59,11 @@ interface PartEditorState extends PartEditorData {
   // (ghostMode, partColors, partStyle, activeSketchFeatureId) go to the L2
   // store instead.
   publishDerived: (data: Pick<PartEditorData, 'visibleFeatures' | 'visibleBodies' | 'partLabels' | 'otherSketches' | 'isRebuilding'>) => void
+  // The canonical wipe for the whole publication store: the editor's unmount
+  // calls this so a keyed remount cannot paint the previous document's facts
+  // before the new session publishes its own. Delegated to by the call site,
+  // never hand-listed there.
+  resetPublishedState: () => void
 }
 
 export const usePartEditorStore = create<PartEditorState>((set) => ({
@@ -66,4 +71,5 @@ export const usePartEditorStore = create<PartEditorState>((set) => ({
   publishSession: (data) => set(data),
   publishSolve: (data) => set(data),
   publishDerived: (data) => set(data),
+  resetPublishedState: () => set({ ...DEFAULT_PART_EDITOR_DATA }),
 }))

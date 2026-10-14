@@ -106,7 +106,6 @@ export function useEditFeature({
   const enterEditFeature = useCallback((featureId: string, suppressUndo = true) => {
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
-    const feature = features[idx]
     const activeEditingId = editorState.getState().editingFeatureId
     if (activeEditingId !== null && activeEditingId !== featureId) {
       // Switching straight from a sketch edit to another feature's leaves the
@@ -127,9 +126,9 @@ export function useEditFeature({
     startEditSession(suppressUndo)
     const store = editorState.getState()
     const pickBoundary = computePickBoundary(features, featureId, builtInIds)
-    if (feature.kind === 'sketch') {
-      store.setActiveSketchFeatureId(featureId)
-    }
+    // activeSketchFeatureId is not written here: the page's derived effect is
+    // its single writer, and entering this edit already moved the fields that
+    // effect derives from (editingFeatureId, rollback, forced visibility).
     store.setRollbackPosition(idx + 1)
     store.setPickBoundary(pickBoundary)
     store.setEditingFeatureId(featureId)

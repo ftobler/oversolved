@@ -21,11 +21,25 @@ import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
 import { randomId } from '@/utils/yamlMutations/helpers'
-import type { SketchEditorState } from './sketchEditorTypes'
+import type { DialogState, SketchEditorState } from './sketchEditorTypes'
 import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId } from './sketchEditorCallbacks'
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
 import { activateTool, deactivateTool } from './sketchEditorToolLifecycle'
 import { clampRollbackPosition } from '@/session/DocSession'
+
+// The value dialog is UI-store state (sketchEditorStore registers the ports at
+// module scope). A headless consumer of this store that never imported the UI
+// store has no port; a silent `?.()` would drop the prompt with nothing shown.
+// Fail loud instead (dev/test harness tier: throws in test, warns in dev).
+// Closing stays deliberately optional: aborting a gesture is safe when no
+// dialog can have been opened, and a loud close would break headless aborts.
+function openDialogOrFail(dialog: DialogState): void {
+  if (!sketchCallbacks.openDialog) {
+    failLoud('[editorState] openDialog: no dialog port registered, the value dialog cannot open (import stores/sketchEditorStore in the editor build)')
+    return
+  }
+  sketchCallbacks.openDialog(dialog)
+}
 
 // The sketch-half of a Delete selection: entity, vertex and constraint targets
 // that belong to the active sketch. deleteSelected consumes exactly these and
@@ -688,7 +702,8 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // re-entering it from here would dispatch the withheld delete twice. The
     // other producers (apply_offset, the feature-handle value editor, a dim
     // label's edit prompt) own no gesture state to unwind, so dropping the
-    // prompt whole is all they need.
+    // prompt whole is all they need. The port is optional by design: a headless
+    // abort with no dialog open is a no-op, not a fault.
     sketchCallbacks.closeDialog?.()
     set({ pendingBrepProjectionIds: [] })
   },
@@ -779,7 +794,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
     // The value dialog is UI store state; the port is registered by
     // stores/sketchEditorStore.ts, the module that owns it.
-    sketchCallbacks.openDialog?.({
+    openDialogOrFail({
       position: clientPos,
       label: 'Dimension value',
       defaultValue,

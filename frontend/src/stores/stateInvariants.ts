@@ -4,7 +4,7 @@
 //
 // HARNESS TIER (user decision 2026-08-05, Option B): this layer is a dev/test
 // harness by design, NOT a production guard. The only entry points are the four
-// validateWithRepair gates in sketchEditorStore.ts (popMode, setActiveTool,
+// validateWithRepair gates in editorState.ts (popMode, setActiveTool,
 // setActivePickField, clearDraw), all gated `devOnly || testMode`. There is
 // deliberately no production store subscription: a per-mutation validate at the
 // write was considered and rejected, because the store is a single-source

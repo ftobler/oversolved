@@ -5,18 +5,19 @@ import Part from '@/pages/Part'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
 
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { Wrapper } from '@/__tests__/test-utils'
 import { backendBundle } from '@/adapters/backend'
 import type { WorkspaceDocPayload } from '@/adapters/openWorkspace'
 import { useEditorState } from '@/hooks/useEditorState'
 
 // undo-document-reset at the Part-page level: the store-owned fields
-// (rollbackPosition, pickBoundary, editingFeatureId) and the sketch editor's
-// module state only reset on a Part remount, because the resets live in
-// useSyncPartEditorStore's unmount cleanup and Part's own unmount effect. The
-// shared useDocumentState mock is static, so this suite renders the REAL page
-// and simulates document B explicitly: seed A's stale editor state, navigate,
-// and assert B starts fresh.
+// (rollbackPosition, pickBoundary, editingFeatureId), the sketch editor's
+// module state and the published session/solver facts only reset on a Part
+// remount, because all the resets live in Part's unmount effect. The shared
+// useDocumentState mock is static, so this suite renders the REAL page and
+// simulates document B explicitly: seed A's stale editor state, navigate, and
+// assert B starts fresh.
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -94,6 +95,7 @@ describe('Part - document change resets the editor store', () => {
     pendingDialog: null,
     contextMenu: null,
   })
+  usePartEditorStore.getState().resetPublishedState()
   })
 
   it('a keyed remount to another document leaves the editor store fresh and B\'s first solve clean', async () => {
@@ -192,5 +194,35 @@ describe('Part - document change resets the editor store', () => {
       })
     }).not.toThrow()
     expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'ex1', field: 'sketch' })
+  })
+
+  it('an unmount clears the published session facts before a remount can paint them', async () => {
+    stubTwoDocStore()
+
+    const view = render(
+      <MemoryRouter initialEntries={['/documents/A']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
+    )
+
+    // A's load published its session facts: the stale window the unmount closes.
+    await waitFor(() => { expect(usePartEditorStore.getState().doc).not.toBeNull() })
+    expect(usePartEditorStore.getState().features.length).toBeGreaterThan(0)
+
+    act(() => { view.unmount() })
+
+    // The keyed remount that follows must not be able to read A's facts before
+    // its own session publishes; every published field is back to its default.
+    const store = usePartEditorStore.getState()
+    expect(store.doc).toBeNull()
+    expect(store.features).toEqual([])
+    expect(store.solveResults).toEqual({})
+    expect(store.bodies).toEqual({})
+    expect(store.pickBodies).toEqual({})
+    expect(store.undoStack).toEqual([])
+    expect(store.redoStack).toEqual([])
   })
 })
