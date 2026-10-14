@@ -325,6 +325,59 @@ describe('useSolver', () => {
       vi.useRealTimers()
     })
 
+    // A mutation's solve suppresses the camera fit, but it has still SERVED the
+    // first solve, so the flag has to latch on that path: the only thing
+    // suppressed is the fit. Leaving the flag clear there meant the next solve
+    // that passed no options -- an undo's -- fired it.
+    it('latches the first-solve flag on a suppressed solve without firing the fit', async () => {
+      vi.useFakeTimers()
+      const onFirstSolve = vi.fn()
+      const { result } = setupHook({ onFirstSolve })
+
+      await act(async () => { await result.current.reSolve(solvableDoc(), { _suppressFirstSolve: true }) })
+      act(() => { vi.advanceTimersByTime(0) })
+      expect(onFirstSolve).not.toHaveBeenCalled()
+
+      // The undo's re-solve passes no options, so it is the one that used to
+      // jump the camera and drop a stray thumbnail for a keystroke that only
+      // moved history.
+      await act(async () => { await result.current.reSolve(solvableDoc()) })
+      act(() => { vi.advanceTimersByTime(0) })
+      expect(onFirstSolve).not.toHaveBeenCalled()
+      vi.useRealTimers()
+    })
+
+    // The repro in full: a large document's load solve takes seconds, an edit
+    // lands while it runs and its own solve supersedes the stale load solve
+    // before the flag can latch. The undo afterwards walks history, and must
+    // not reframe the camera for it.
+    it('does not fire onFirstSolve from an undo re-solve after a mutation superseded the load solve', async () => {
+      vi.useFakeTimers()
+      const onFirstSolve = vi.fn()
+      const { result } = setupHook({ onFirstSolve })
+
+      let releaseLoad!: (v: unknown) => void
+      mockSolveLocally.mockReturnValueOnce(new Promise<unknown>(r => { releaseLoad = r }))
+      const load = result.current.reSolve(solvableDoc())
+      // The field edit's solve lands first and supersedes the load solve.
+      await act(async () => { await result.current.reSolve(solvableDoc(), { _suppressFirstSolve: true }) })
+      act(() => { vi.advanceTimersByTime(0) })
+      expect(onFirstSolve).not.toHaveBeenCalled()
+
+      await act(async () => { await result.current.reSolve(solvableDoc()) })
+      act(() => { vi.advanceTimersByTime(0) })
+      expect(onFirstSolve).not.toHaveBeenCalled()
+
+      // The stale load solve finally lands: superseded, so it is dropped whole.
+      await act(async () => {
+        releaseLoad({ solve_ms: 0, result: {}, bodies: {}, _build_state: null })
+        await load
+      })
+      act(() => { vi.advanceTimersByTime(0) })
+      expect(onFirstSolve).not.toHaveBeenCalled()
+      vi.useRealTimers()
+    })
+
     it('handles rollbackPosition parameter', async () => {
       const { result } = setupHook()
       const doc = makeDoc({

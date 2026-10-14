@@ -303,6 +303,20 @@ export function useSolver(
     const currentRequestId = ++requestIdRef.current
     const isStale = () => currentRequestId !== requestIdRef.current
     const isCurrent = () => currentRequestId === requestIdRef.current && !cancelledRef.current
+    // The first solve to land claims the first-solve slot whether or not the
+    // caller suppressed the fit: a suppressed solve has still SERVED the first
+    // solve, so the only thing suppressed is the camera fit and the thumbnail.
+    // Latching on the firing path alone left the flag clear while a mutation's
+    // re-solve superseded a slow load solve, and the next solve that passed no
+    // options -- an undo's -- then jumped the camera for a keystroke that only
+    // moved history.
+    const markFirstSolve = (solveOpts?: { _suppressFirstSolve?: boolean }) => {
+      if (firstSolveDone.current) return
+      firstSolveDone.current = true
+      if (!solveOpts?._suppressFirstSolve && onFirstSolve) {
+        setTimeout(onFirstSolve, 0)
+      }
+    }
     // handleMutation prunes solveResults optimistically for content-removing
     // edits; on a failing solve that prune would leave the affected features as
     // ghosts. Restore the pruned entries so the last known geometry stays
@@ -361,10 +375,7 @@ export function useSolver(
         setSolveResults({})
         setWorld({ status: 'full', bodies: {} })
         setSolveError(null)
-        if (!firstSolveDone.current && !opts?._suppressFirstSolve && onFirstSolve) {
-          firstSolveDone.current = true
-          setTimeout(onFirstSolve, 0)
-        }
+        markFirstSolve(opts)
         if (!cancelledRef.current) setSolving(false)
         return
       }
@@ -424,10 +435,7 @@ export function useSolver(
       // kernel tessellates the pick checkpoint's bodies, so pick_bodies carry
       // real mesh/edge geometry to pick against while editing.
       applyBuildResponse(d, local as BuildResponse, solveTimeMs, currentRequestId)
-      if (!firstSolveDone.current && !opts?._suppressFirstSolve && onFirstSolve) {
-        firstSolveDone.current = true
-        setTimeout(onFirstSolve, 0)
-      }
+      markFirstSolve(opts)
       if (!cancelledRef.current) setSolving(false)
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e)

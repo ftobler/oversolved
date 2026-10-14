@@ -196,12 +196,29 @@ export function transformsEqual(a: Transform3D, b: Transform3D, eps = 1e-9): boo
   )
 }
 
-// How many f32 ulps a bake treats as "the same pose". The mate wire is f32 in
-// both directions, so a solve returns a pose that differs from an f64 seed only
+// How many f32 ulps a bake treats as "the same value". The mate wire is f32 in
+// both directions, so a solve returns a value that differs from an f64 seed only
 // by f32 rounding on a free DOF. Persisting that difference every commit makes
 // the free DOF walk by roughly one ulp per commit; a relative epsilon of a few
 // ulps is what lets the bake recognise the rounding it must not write.
 const APPROX_F32_EPS = 1e-6
+
+/**
+ * Whether two scalars agree within the f32 wire quantum.
+ *
+ * Relative to the larger magnitude, floored at an absolute epsilon so a value
+ * near zero is still compared against a real tolerance. The sketch write-back
+ * compares solved params against the authored ones with exactly this predicate,
+ * for exactly the assembly's reason: the wire is f32 (wasm-kernel/codec.ts
+ * decodeOutput), so a value that moved nothing still comes back a few ulps off
+ * the number the mutator persisted, and 6dp rounding on top of that flips the
+ * grid the mutators write on (round(f32(25.7)) is 25.700001). Writing that
+ * difference down each solve turns a re-solve of unchanged geometry into a doc
+ * change.
+ */
+export function approxF32Equal(a: number, b: number, eps = APPROX_F32_EPS): boolean {
+  return Math.abs(a - b) <= eps * Math.max(1, Math.abs(a), Math.abs(b))
+}
 
 // Like transformsEqual but for the bake's "did the solver actually move this
 // part" question: each component is compared relative to its own magnitude, so
@@ -209,8 +226,7 @@ const APPROX_F32_EPS = 1e-6
 // is rotation-aware (q and -q are the same pose). transformsEqual stays the
 // exact-identity test, where an absolute epsilon is what "unchanged" means.
 export function transformApproxEqual(a: Transform3D, b: Transform3D, eps = APPROX_F32_EPS): boolean {
-  const close = (x: number, y: number) => Math.abs(x - y) <= eps * Math.max(1, Math.abs(x), Math.abs(y))
-  if (!close(a.tx, b.tx) || !close(a.ty, b.ty) || !close(a.tz, b.tz)) return false
+  if (!approxF32Equal(a.tx, b.tx, eps) || !approxF32Equal(a.ty, b.ty, eps) || !approxF32Equal(a.tz, b.tz, eps)) return false
   const qa = transformQuat(a)
   const qb = transformQuat(b)
   const dot = qa[0] * qb[0] + qa[1] * qb[1] + qa[2] * qb[2] + qa[3] * qb[3]

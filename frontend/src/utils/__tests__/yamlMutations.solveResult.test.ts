@@ -116,6 +116,95 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     expect(feat.initial!.c1).not.toBe(geometry.c1)
     expect(feat.initial!.p1).not.toBe(geometry.p1)
   })
+
+  // The band the f32 quantum actually bites in: round(f32(25.7)) is 25.700001,
+  // round(f32(47.3)) is 47.299999, round(f32(63.4)) is 63.400002, and
+  // f32(100.000001) is 100 outright. The suites that only ever used values
+  // below 4 saw no mismatch, which is why the rounding-only write-back looked
+  // complete: it still minted a fresh doc object (a stale checkpoint hash, a
+  // phantom session diff, a save that stops clearing dirty) for a solve that
+  // moved nothing. Rounding alone cannot close that, because the wire value
+  // and the authored value are two spellings of one geometry.
+  const F32_BAND = [25.7, 47.3, 63.4, 100.000001]
+
+  it.each(F32_BAND)('keeps the authored spelling of %s when the solve re-derives it as f32', (v) => {
+    const doc = makeDoc()
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    feat.initial = { line1: [0, 0, v, 0] }
+    const before = feat.initial
+    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(v), 0] })
+    // Kept by reference: the pre-solve array survives the write-back, so the
+    // doc still compares equal to its pre-solve self and no downstream reader
+    // sees a change.
+    expect(feat.initial).toBe(before)
+    expect(feat.initial!.line1[2]).toBe(v)
+  })
+
+  it('keeps an over-precise authored value rather than re-spelling it on the 6dp grid', () => {
+    // Hand-written YAML, an import, or an older build's write-back can carry
+    // more digits than the mutators write. Agreeing with the solve inside the
+    // envelope, the authored spelling is the one that stays.
+    const doc = makeDoc()
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    feat.initial = { line1: [0, 0, Math.PI, 0] }
+    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(Math.PI), 0] })
+    expect(feat.initial!.line1[2]).toBe(Math.PI)
+  })
+
+  it('installs the solved geometry when a component moved beyond the envelope', () => {
+    const doc = makeDoc()
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    feat.initial = { line1: [0, 0, 25.7, 0] }
+    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(30), 0] })
+    expect(feat.initial!.line1).toEqual([0, 0, 30, 0])
+  })
+
+  it('installs when any single component of any single entity moved', () => {
+    // The keep is per component AND per entity: one entity outside the envelope
+    // installs the whole map, so a half-matching solve is never half-installed.
+    const doc = makeDoc()
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    feat.initial = { line1: [0, 0, 25, 0], proj1: [1, 1] }
+    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 25, 0], proj1: [5, 1] })
+    expect(feat.initial).toEqual({ line1: [0, 0, 25, 0], proj1: [5, 1] })
+  })
+
+  it('installs when the entity id set changed, even with every shared component matching', () => {
+    // A projected dimension or an added entity changes the map's shape, which
+    // no amount of matching values can stand in for.
+    const doc = makeDoc()
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    feat.initial = { line1: [0, 0, 25.7, 0] }
+    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0], proj1: [1, 1] })
+    expect(Object.keys(feat.initial!)).toEqual(['line1', 'proj1'])
+  })
+
+  it('installs when the solve dropped an entity the doc still carries', () => {
+    const doc = makeDoc()
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    feat.initial = { line1: [0, 0, 25.7, 0], proj1: [1, 1] }
+    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0] })
+    expect(Object.keys(feat.initial!)).toEqual(['line1'])
+  })
+
+  it('installs when an entity came back with a different arity', () => {
+    // A point lowering to a line (2 params to 4) is a different entity, not a
+    // moved one, so a length mismatch can never read as "within tolerance".
+    const doc = makeDoc()
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    feat.initial = { line1: [0, 0] }
+    applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0] })
+    expect(feat.initial!.line1).toEqual([0, 0, 25.700001, 0])
+  })
+
+  it('keeps the existing array when both sides are empty', () => {
+    const doc = makeDoc()
+    const feat = doc.features!.find(f => f.id === 'sk1')!
+    feat.initial = {}
+    const before = feat.initial
+    applyGeometryToFeature(doc, 'sk1', {})
+    expect(feat.initial).toBe(before)
+  })
 })
 
 describe('applyRemoveDanglingContent (explicit cleanup command)', () => {

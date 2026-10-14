@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Transform3D } from '@/types/cad'
 import {
+  approxF32Equal,
   composeTransforms,
   IDENTITY_TRANSFORM,
   invertTransform,
@@ -14,6 +15,7 @@ import {
   relativeTransform,
   rotateTransformAboutPoint,
   rotateVector,
+  transformApproxEqual,
   translateTransform,
   transformsEqual,
   type Quat,
@@ -180,6 +182,49 @@ describe('transformsEqual', () => {
     // ...and so must a moved one with an unchanged orientation.
     expect(transformsEqual(t, { ...t, ty: 4 })).toBe(false)
     expect(transformsEqual(IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM })).toBe(true)
+  })
+})
+
+describe('approxF32Equal (the f32 wire envelope)', () => {
+  // The band where the f32 quantum flips the 6dp grid every sketch mutator
+  // writes on: round(f32(25.7)) is 25.700001, round(f32(47.3)) is 47.299999,
+  // round(f32(63.4)) is 63.400002, and f32(100.000001) is 100 outright. A
+  // fixed-grid compare reads each of those as a real change; the relative
+  // envelope reads them as the rounding they are.
+  it('reads an f32-rounded magnitude as the same magnitude', () => {
+    for (const v of [25.7, 47.3, 63.4, 100.000001]) {
+      expect(approxF32Equal(v, Math.fround(v))).toBe(true)
+    }
+  })
+
+  it('tracks the quantum at the value instead of holding a fixed absolute grid', () => {
+    // One 6dp step (1e-6) is inside the envelope at 25.7 but a whole unit is not.
+    expect(approxF32Equal(25.7, 25.700001)).toBe(true)
+    expect(approxF32Equal(100.000001, 100)).toBe(true)
+    expect(approxF32Equal(25.7, 26)).toBe(false)
+  })
+
+  it('floors at an absolute epsilon so a value near zero compares against a real tolerance', () => {
+    expect(approxF32Equal(0, 1e-7)).toBe(true)
+    expect(approxF32Equal(0, 1e-5)).toBe(false)
+  })
+
+  it('is symmetric and reflexive', () => {
+    expect(approxF32Equal(63.4, Math.fround(63.4))).toBe(approxF32Equal(Math.fround(63.4), 63.4))
+    expect(approxF32Equal(7, 7)).toBe(true)
+  })
+
+  // The assembly bakes through transformApproxEqual and its suites pin the
+  // result, so the scalar extraction must be behavior-preserving: each
+  // translation component is now judged by approxF32Equal, nothing else moved.
+  it('transformApproxEqual still judges every translation by the scalar', () => {
+    const base = makeTransform([25.7, 0, 0], [0, 0, 0, 1])
+    const rounded = makeTransform([Math.fround(25.7), 0, 0], [0, 0, 0, 1])
+    expect(transformApproxEqual(base, rounded)).toBe(true)
+    expect(transformApproxEqual(base, makeTransform([26.7, 0, 0], [0, 0, 0, 1]))).toBe(false)
+    // The orientation half is untouched by the extraction.
+    const turned = makeTransform([25.7, 0, 0], quatFromAxisAngle([0, 0, 1], Math.PI / 2))
+    expect(transformApproxEqual(base, turned)).toBe(false)
   })
 })
 

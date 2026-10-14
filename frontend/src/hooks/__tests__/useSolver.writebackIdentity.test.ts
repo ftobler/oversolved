@@ -135,4 +135,56 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
     expect(initial).toEqual({ l1: [0, 0, 3.141593, 0], l2: [0, 5, 0.333333, 5] })
     expect(initial.l1[2]).not.toBe(F32_PI)
   })
+
+  // The band where the f32 quantum is wider than the mutators' 6dp grid, so
+  // rounding the wire value does NOT recover the authored number: 25.7 solves to
+  // 25.700000762939453, which rounds to 25.700001, and 63.4 to 63.400002.
+  // Rounding alone therefore still minted a fresh doc object here, which is what
+  // defeated a save overlapping the re-solve.
+  const F32_BAND = [[25.7, 25.700001], [47.3, 47.299999], [63.4, 63.400002], [100.000001, 100]] as const
+
+  it.each(F32_BAND)('keeps docRef identity when the solve re-derives %s as f32', async (authored) => {
+    const docRef: { current: PartDoc | null } = {
+      current: makeDoc({ l1: [0, 0, authored, 0], l2: [0, 5, authored, 5] }),
+    }
+    const setDoc = vi.fn()
+    const { result } = renderHook(() =>
+      useSolver(undefined, {}, docRef, setDoc),
+    )
+    const before = docRef.current
+
+    mockSolveViaWorker.mockResolvedValue(response({
+      l1: [0, 0, Math.fround(authored), 0],
+      l2: [0, 5, Math.fround(authored), 5],
+    }))
+    await act(async () => { await result.current.reSolve(docRef.current!) })
+
+    // The write-back keeps the authored spelling, so the clone it compared is
+    // byte-identical to the live doc: no fresh object, docRef untouched.
+    expect(setDoc).not.toHaveBeenCalled()
+    expect(docRef.current).toBe(before)
+    const initial = (docRef.current!.features![0] as { initial: Record<string, number[]> }).initial
+    expect(initial.l1[2]).toBe(authored)
+  })
+
+  it('still swaps identity when the solve moves a band-sized coordinate', async () => {
+    // The control for the keep: within the envelope the doc is preserved, but a
+    // real move at the same magnitude still installs and swaps identity.
+    const docRef: { current: PartDoc | null } = { current: makeDoc({ l1: [0, 0, 25.7, 0] }) }
+    const setDoc = vi.fn((d: PartDoc | null | ((prev: PartDoc | null) => PartDoc | null)) => {
+      docRef.current = typeof d === 'function' ? d(docRef.current) : d
+    })
+    const { result } = renderHook(() =>
+      useSolver(undefined, {}, docRef, setDoc),
+    )
+    const before = docRef.current
+
+    mockSolveViaWorker.mockResolvedValue(response({ l1: [0, 0, 26.4, 0] }))
+    await act(async () => { await result.current.reSolve(docRef.current!) })
+
+    expect(setDoc).toHaveBeenCalledTimes(1)
+    expect(docRef.current).not.toBe(before)
+    const initial = (docRef.current!.features![0] as { initial: Record<string, number[]> }).initial
+    expect(initial.l1).toEqual([0, 0, 26.4, 0])
+  })
 })
