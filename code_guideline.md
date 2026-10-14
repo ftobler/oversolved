@@ -89,8 +89,9 @@ Document mutations, by editor:
 - Assembly: operations dispatch `executeCommand(name)` into
   `ASSEMBLY_OPERATIONS`. A drag commit writes the doc through the `mutateDoc`
   funnel the page registers on the store. Undo/redo restores the doc through the
-  page's own `setDoc` (`useAssemblyUndoRedo.ts`); only the undo/redo stacks are
-  written straight through the store as exempt transient state.
+  page's own `setDoc` (`useAssemblyUndoRedo.ts`); the stacks live in a
+  module-level `History<AssemblyDoc>` (`stores/assemblyHistory.ts`) that
+  republishes them into `assemblyStore` as the UI's read mirror.
 
 ```tsx
 // GOOD - a document mutation through the command path
@@ -101,9 +102,11 @@ Transient state (hover, selection, the active tool, draw points, drag and gizmo
 previews, the rubber band, solver status, an armed pick field, the undo/redo
 stacks) describes the interaction rather than the document. It is not persisted
 and carries no undo entry, so it is exempt and may use the store's setters or
-`useXStore.setState(...)` directly. The part editor's undo/redo stacks are the
-`DocSession` history mirrored into `partEditorStore` by `usePartDoc`; the
-session is the owner and the store fields are the UI view:
+`useXStore.setState(...)` directly. The undo/redo stacks are engine state with a
+store mirror: the part editor's are the `DocSession` history mirrored into
+`partEditorStore` by `usePartDoc`, the assembly editor's are the module-level
+`History` mirrored into `assemblyStore` by `useAssemblyUndoRedo`. In both cases
+the engine is the owner and the store fields are the UI view:
 
 ```ts
 useAssemblyStore.setState({ manipulation: null, gizmoDrag: null })

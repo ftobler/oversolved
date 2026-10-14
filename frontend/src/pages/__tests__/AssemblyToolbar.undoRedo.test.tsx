@@ -32,7 +32,10 @@ const undoButton = () => screen.getByRole('button', { name: 'Undo' })
 const redoButton = () => screen.getByRole('button', { name: 'Redo' })
 
 // The real registry, wired to real stack moves: clicking a toolbar button has
-// to reach a handler and shift the store's history, not just call a spy.
+// to reach a handler and shift the store's history, not just call a spy. The
+// fake moves the mirror arrays directly instead of through the module History
+// production republishes them from (see assemblyHistoryMirror.test.ts), so this
+// suite pins routing and rendering, never stack mechanics.
 function stepHistory(direction: 'undo' | 'redo') {
   const { undoStack, redoStack } = useAssemblyStore.getState()
   const from = direction === 'undo' ? undoStack : redoStack

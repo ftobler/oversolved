@@ -1,7 +1,8 @@
 // Snapshot-based undo/redo for the assembly editor, mirroring the part editor's
-// useUndoRedo but with the stacks held in the module assemblyStore so they are
-// not torn down with the component. Each entry is the pre-mutation AssemblyDoc
-// plus a short label for the toolbar tooltip.
+// useUndoRedo but with the stacks held by the module-level History in
+// stores/assemblyHistory.ts so a page remount cannot tear them down. Each entry
+// is the pre-mutation AssemblyDoc plus a short label for the toolbar tooltip;
+// assemblyStore mirrors the stacks for the toolbar and tree readers.
 //
 // The page's `mutate` funnel decides when a step is recorded. Most operations
 // push immediately. A mate or instance editor is a coalescing session: typing an
@@ -12,12 +13,11 @@ import { useCallback, useRef } from 'react'
 import { stringify as stringifyYaml } from 'yaml'
 import type { AssemblyDoc } from '@/types/cad'
 import { useAssemblyStore } from '@/stores/assemblyStore'
+import { assemblyHistory } from '@/stores/assemblyHistory'
 import { useUnsavedChangesStore, reconcileDirtyAfterRewind, type PinnedDirty } from '@/stores/unsavedChangesStore'
-import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { assemblyDocEquals } from '@/utils/assemblyMutations'
 import { isSessionOpen } from '@/utils/assemblyEditingSubject'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
-import { pushCapped, moveTop } from '@/utils/core/undoStack'
 
 export type AssemblyMutationDecision = 'noop' | 'push' | 'fold'
 
@@ -48,21 +48,18 @@ export function useAssemblyUndoRedo(
   // for a reason the cancel has no business undoing.
   const pendingSession = useRef<{ doc: AssemblyDoc; label: AssemblyUndoLabel; dirty: PinnedDirty } | null>(null)
 
-  // Read the stacks from the store so the hook re-renders (and tests can assert)
-  // exactly like the part editor's hook does.
+  // Read the History's mirror so the hook re-renders (and tests can assert)
+  // exactly like the part editor's hook does; the History stays the only writer.
   const undoStack = useAssemblyStore(s => s.undoStack)
   const redoStack = useAssemblyStore(s => s.redoStack)
 
   const pushUndo = useCallback((doc: AssemblyDoc, label: AssemblyUndoLabel) => {
     // The entry holds a snapshot, never a reference: every caller passes the
-    // live docRef object, and any path that mutates it in place would silently
-    // rewrite history if the stored object were shared. Mirrors applyUndoRedo's
-    // counterpart clone below. AssemblyDoc holds no shared import payloads (the
-    // part doc's are why cloneDocForUndo exists), so a full structuredClone is
-    // the correct snapshot here.
-    const undo = pushCapped(useAssemblyStore.getState().undoStack, { doc: structuredClone(doc), label }, MAX_UNDO_DEPTH)
-    // A fresh edit invalidates any redo branch.
-    useAssemblyStore.setState({ undoStack: undo, redoStack: [] })
+    // live docRef object, and History's cloneDoc (structuredClone) snapshots it
+    // so any path that mutates the live doc in place cannot rewrite history.
+    // AssemblyDoc holds no shared import payloads (the part doc's are why
+    // cloneDocForUndo exists), so the full clone is the correct snapshot here.
+    assemblyHistory.push(label, doc)
   }, [])
 
   const recordSessionEdit = useCallback((doc: AssemblyDoc, label: AssemblyUndoLabel) => {
@@ -100,8 +97,11 @@ export function useAssemblyUndoRedo(
       reconcileDirtyAfterRewind(pending.dirty, false, () => stringifyYaml(pending.doc))
       return
     }
-    pushUndo(pending.doc, pending.label)
-  }, [pushUndo, docRef])
+    // The pin is already an independent clone, so the snapshot push skips the
+    // re-clone History.push would do; the pin is dropped here and nothing else
+    // holds a reference to it.
+    assemblyHistory.pushSnapshot(pending.label, pending.doc)
+  }, [docRef])
 
   // Cancel rewinds the WHOLE doc to the pinned pre-session one. Reverting only
   // the feature whose editor is open under-reverts: the instance editor's
@@ -190,14 +190,12 @@ export function useAssemblyUndoRedo(
     // the redo branch the way any edit does.
     commitSession()
     // Read after the commit, which may have pushed onto the undo stack.
-    const store = useAssemblyStore.getState()
-    const from = direction === 'undo' ? store.undoStack : store.redoStack
-    const to = direction === 'undo' ? store.redoStack : store.undoStack
+    const length = direction === 'undo' ? assemblyHistory.undoLength() : assemblyHistory.redoLength()
     // An empty stack is a no-op that leaves the open editor alone, matching the
     // part engine. A non-empty stack with no current doc is a no-op too: the
     // history describes a doc that does not exist, and popping would orphan the
     // counterpart entry and permanently desync the paired stacks.
-    if (from.length === 0) return
+    if (length === 0) return
     if (!docRef.current) return
     const preDoc = docRef.current
     // Undo/redo exits the open editor (the restore below would not reset the
@@ -205,16 +203,11 @@ export function useAssemblyUndoRedo(
     // resetTransientAssemblyState later.
     useAssemblyStore.getState().closeEditor()
     // The doc we are leaving becomes the counterpart entry, so the same label
-    // round-trips in both directions. The clone mirrors pushUndo's snapshot
-    // discipline: the departing doc must not be shared with the entry.
-    const move = moveTop(from, to, entry => ({ doc: structuredClone(preDoc), label: entry.label }))
-    if (!move) return
-    const entry = from[from.length - 1]
-    useAssemblyStore.setState(
-      direction === 'undo'
-        ? { undoStack: move.from, redoStack: move.to }
-        : { undoStack: move.to, redoStack: move.from },
-    )
+    // round-trips in both directions. History clones the departing doc with the
+    // same cloneDoc that snapshots every push, so the parked entry never aliases
+    // the live document.
+    const entry = direction === 'undo' ? assemblyHistory.undo(preDoc) : assemblyHistory.redo(preDoc)
+    if (!entry) return
     // Restoring an earlier doc moves it away from the saved content, so it
     // counts as unsaved until the user saves again.
     useUnsavedChangesStore.getState().setDirty(true)
@@ -228,7 +221,7 @@ export function useAssemblyUndoRedo(
     // store's own reset (rather than hand-listing the fields here) so this
     // call site can't drift from STORE_OWNED_FIELDS the way it already had
     // (missing showPickDebug); it deliberately skips the two undo stacks,
-    // which this call already set above.
+    // whose mirror the History move above just republished.
     useAssemblyStore.getState().resetTransientAssemblyState()
     docRef.current = entry.doc
     setDoc(entry.doc)

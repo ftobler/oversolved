@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { mergeSnapshot, pickOwnedFields } from '@/stores/storeSnapshot'
+import { assemblyHistory, setAssemblyHistoryMirror } from '@/stores/assemblyHistory'
+import type { HistoryEntry } from '@/session/History'
 import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, BodyResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
@@ -68,11 +70,10 @@ import {
   type ManipulationSession,
 } from '@/utils/partManipulation'
 
-/** One undo step: the pre-mutation document plus a short label for the toolbar tooltip. */
-export interface AssemblyUndoEntry {
-  doc: AssemblyDoc
-  label: AssemblyUndoLabel
-}
+/** One undo step as the UI consumes it: the pre-mutation document plus a short
+ *  label for the toolbar tooltip. The History entry shape, because the stacks
+ *  below are the session History's read mirror (stores/assemblyHistory.ts). */
+export type AssemblyUndoEntry = HistoryEntry<AssemblyDoc>
 
 export interface AssemblyEditorData {
   doc: AssemblyDoc | null
@@ -155,6 +156,9 @@ export interface AssemblyEditorData {
    * the old one. Retired by the solve that re-bakes them.
    */
   settlingOffsets: Record<string, Transform3D>
+  // Read mirror of the assembly History (stores/assemblyHistory.ts): the engine
+  // republishes both stacks after every push, move and clear, and nothing else
+  // writes them. The toolbar and tree tooltips subscribe here.
   undoStack: AssemblyUndoEntry[]
   redoStack: AssemblyUndoEntry[]
 }
@@ -254,9 +258,10 @@ export function sameInstances(a: readonly PartInstance[], b: readonly PartInstan
 // solve lifecycle fields belong here because their writer is the async solve in
 // useAssemblySolve, not page state a snapshot mirrors: a snapshot landing
 // mid-solve must not clear a running flag or resurrect a banner just retired.
-// The undo stacks are mutable store state too: the page spreads the current
-// store into every setSnapshot, so they would survive anyway, but naming them
-// here keeps setSnapshot's "React-mirrored state only" contract intact.
+// The undo stacks are the History's read mirror, written only by the engine's
+// publish; the page spreads the current store into every setSnapshot, so they
+// would survive anyway, but naming them here keeps setSnapshot's
+// "React-mirrored state only" contract intact.
 const STORE_OWNED_FIELDS = [
   'subject', 'manipulation', 'gizmoDrag', 'settlingOffsets',
   'pickGeometryPose',
@@ -418,7 +423,9 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'close' }),
   })),
 
-  clearAssemblyHistory: () => set({ undoStack: [], redoStack: [] }),
+  // The document swapped: the History (and through it the mirror) must not
+  // carry the previous document's entries into the new one.
+  clearAssemblyHistory: () => assemblyHistory.clear(),
 
   resetTransientAssemblyState: () => set(() =>
     // The stacks are omitted: a doc load clears them via clearAssemblyHistory,
@@ -742,3 +749,10 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     }
   },
 }))
+
+// The History's only mirror writer, registered once. Every push, move and clear
+// republishes through this, so the toolbar's disable state and tooltips read the
+// engine's stacks rather than a copy a caller could forget to update.
+setAssemblyHistoryMirror((undo, redo) => {
+  useAssemblyStore.setState({ undoStack: undo, redoStack: redo })
+})

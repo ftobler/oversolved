@@ -5,6 +5,7 @@ import { createDocSession } from '@/session/DocSession'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
+import { assemblyHistory } from '@/stores/assemblyHistory'
 import {
   useAssemblyStore,
   DEFAULT_ASSEMBLY_EDITOR_DATA,
@@ -63,12 +64,12 @@ function assemblyEntryId(doc: AssemblyDoc): string {
   return doc.features?.[0]?.instance?.handle ?? ''
 }
 
-// The assembly stacks live in the module store, so each case starts from an
-// empty one: setSnapshot deliberately preserves the store-owned stacks.
+// The assembly stacks live in the module-level History, so each case starts by
+// clearing it (setSnapshot deliberately preserves the store-owned mirror).
 function resetAssemblyStore() {
   useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+  useAssemblyStore.getState().clearAssemblyHistory()
   useAssemblyStore.setState({
-    undoStack: [], redoStack: [],
     subject: null, activeMateField: null, mateFieldDirty: false,
     pickCandidates: [], pickIndex: -1,
     editingSubject: { kind: 'none' },
@@ -131,8 +132,11 @@ function createAssemblyHarness(): UndoContractHarness {
     },
     undo: () => { act(() => view.result.current.handleUndo()) },
     redo: () => { act(() => view.result.current.handleRedo()) },
-    undoIds: () => view.result.current.undoStack.map(e => assemblyEntryId(e.doc)),
-    redoIds: () => view.result.current.redoStack.map(e => assemblyEntryId(e.doc)),
+    // Reads go through the same History object the hook writes: the store
+    // fields the UI reads are only its mirror, so a parallel stack would be
+    // invisible here. The pushes above still drive the engine's public hook.
+    undoIds: () => assemblyHistory.undoEntries().map(e => assemblyEntryId(e.doc)),
+    redoIds: () => assemblyHistory.redoEntries().map(e => assemblyEntryId(e.doc)),
     live: () => docRef.current,
     corruptFeatureId: (doc) => {
       const instance = (doc as AssemblyDoc).features?.[0]?.instance

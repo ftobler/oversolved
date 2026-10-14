@@ -79,16 +79,18 @@ Routes pointer clicks from sketch geometry through the tool registry:
 
 ### Undo/Redo
 
-Two engines, both capped at `MAX_UNDO_DEPTH = 50` (`config/undoConfig.ts`). The
-part editor's engine is the framework-free `DocSession` history
-(`session/History.ts`); the assembly editor keeps its own.
+One engine, `History` (`session/History.ts`), capped at `MAX_UNDO_DEPTH = 50`
+(`config/undoConfig.ts`). The part editor's `DocSession` owns one; the assembly
+editor runs a module-level one (`stores/assemblyHistory.ts`) because a drag's
+pointer-up commit runs after the gesture's async solve and must outlive a page
+remount.
 
 | | Part editor | Assembly editor |
 |---|---|---|
-| Engine | `DocSession` (`session/DocSession.ts`), wrapped by `usePartDoc.ts` | `useAssemblyUndoRedo.ts` |
-| Entry | `{ doc, meta: Mutation }` in `History` | `{ doc, label: AssemblyUndoLabel }` |
-| Stacks | the `History` class, mirrored through the adapter | `undoStack`/`redoStack` in `assemblyStore` |
-| Clone | `cloneDocForUndo` (`yamlMutations/undoSnapshot.ts`) | inline `structuredClone` |
+| History owner | `DocSession` (`session/DocSession.ts`), wrapped by `usePartDoc.ts` | the module-level `History<AssemblyDoc>` (`stores/assemblyHistory.ts`), driven by `useAssemblyUndoRedo.ts` |
+| Entry | `{ doc, meta: Mutation }` | `{ doc, label: AssemblyUndoLabel }` |
+| UI mirror | `partEditorStore`'s undo/redo labels through the adapter | `assemblyStore.undoStack`/`redoStack`, republished by the History |
+| Clone | `cloneDocForUndo` (`yamlMutations/undoSnapshot.ts`) | `structuredClone` |
 | Writes | `Mutation` values through `session.execute`/`executeGroup` | labelled closures, `mutate(label, fn)` |
 
 - **Part funnel.** `usePartDoc.handleMutation` calls `session.execute(m)`; the
@@ -133,7 +135,7 @@ part editor's engine is the framework-free `DocSession` history
   differs (excluding the solve-written `part_style`/`initial` and the pinned
   rollback). A sketch session keeps one entry per action.
 - **Markers.** `set_rollback`, `edit_session` and `preview_commit` have no-op appliers in `mutationDispatch.ts`. The rollback is written by the mirror; the other two only label the entry.
-- **Assembly.** Edits are not `Mutation` values. `mutate` calls `decideAssemblyMutation` (`noop`, `push` or `fold`). A fold is pinned by `recordSessionEdit`, and `commitSession`/`cancelSession` settle it. `mutateOneShot` commits the open session, then pushes its own entry. `applyUndoRedo` closes the editor and resets transient state before swapping the doc.
+- **Assembly.** Edits are not `Mutation` values. `mutate` calls `decideAssemblyMutation` (`noop`, `push` or `fold`). A fold is pinned by `recordSessionEdit`; `commitSession` pushes the pinned pre-session doc as one entry through `History.pushSnapshot`, and `cancelSession` rewinds the doc and leaves the stacks (a pinned session pushed nothing). `mutateOneShot` commits the open session, then pushes its own entry. `applyUndoRedo` commits the open session, moves one entry in the module History, closes the editor and resets transient state before swapping the doc. `assemblyStore`'s stacks are the History's read mirror.
 - **Labels.** Part entries are labelled through `describeMutation` (`utils/core/mutationDescriptions.ts`). Assembly labels are `ASSEMBLY_UNDO_LABELS` (`utils/core/assemblyUndoLabels.ts`).
 
 ### Registry Page (`Registry.tsx`)
