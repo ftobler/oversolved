@@ -1,16 +1,21 @@
+// The session/solver publication store. Its fields are the live facts the
+// session engine and the solver produce -- doc, features, history stacks,
+// solve results, bodies, timings and validation -- and each one is written by
+// exactly one publisher at the point it is produced (usePartDoc for the
+// session facts, useSolver for the solve facts, the page for doc-derived view
+// data). It is not editor state: rollbackPosition, pickBoundary and
+// editingFeatureId live in stores/editorState.ts, and the viewport's derived
+// non-solve fields (ghostMode, partColors, partStyle, activeSketchFeatureId)
+// live there too. The old useSyncPartEditorStore mirror that copied React state
+// through setSnapshot is gone; nothing here merges snapshots.
 import { create } from 'zustand'
-import type { BodyResult, PartFeature, PartDoc, Sketch, PartStyleEntry, Mutation, RebuildValidation } from '@/types/cad'
-import { mergeSnapshot } from '@/stores/storeSnapshot'
+import type { BodyResult, PartFeature, PartDoc, Sketch, Mutation, RebuildValidation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
 
 export interface PartEditorData {
   features: PartFeature[]
   doc: PartDoc | null
-  rollbackPosition: number | null
-  pickBoundary: number | null
-  editingFeatureId: string | null
-  activeSketchFeatureId: string | null
   visibleFeatures: Set<string>
   visibleBodies: Set<string> | undefined
   partLabels: Record<string, string>
@@ -20,10 +25,7 @@ export interface PartEditorData {
   isRebuilding: boolean
   featureTimings: Record<string, number>
   validation: RebuildValidation | null
-  ghostMode: boolean
   otherSketches: Record<string, Sketch>
-  partColors: Record<string, string>
-  partStyle: Record<string, PartStyleEntry>
   undoStack: UndoEntry[]
   redoStack: UndoEntry[]
 }
@@ -31,10 +33,6 @@ export interface PartEditorData {
 export const DEFAULT_PART_EDITOR_DATA: PartEditorData = {
   features: [],
   doc: null,
-  rollbackPosition: null,
-  pickBoundary: null,
-  editingFeatureId: null,
-  activeSketchFeatureId: null,
   visibleFeatures: new Set(),
   visibleBodies: undefined,
   partLabels: {},
@@ -44,36 +42,28 @@ export const DEFAULT_PART_EDITOR_DATA: PartEditorData = {
   isRebuilding: false,
   featureTimings: {},
   validation: null,
-  ghostMode: false,
   otherSketches: {},
-  partColors: {},
-  partStyle: {},
   undoStack: [],
   redoStack: [],
 }
 
-// Fields owned exclusively by the store (not overwritten by setSnapshot).
-// These are the source of truth for the rollback/edit FSM and are mutated
-// only through their dedicated setters.
-const STORE_OWNED_FIELDS = ['rollbackPosition', 'pickBoundary', 'editingFeatureId'] as const
-
 interface PartEditorState extends PartEditorData {
-  setSnapshot: (data: PartEditorData) => void
-  setActiveSketchFeatureId: (id: string | null) => void
-  setRollbackPosition: (pos: number | null) => void
-  setPickBoundary: (pos: number | null) => void
-  setEditingFeatureId: (id: string | null) => void
+  // The session facts: the adapter publishes them as the session moves, so the
+  // session is the single writer and components read one copy.
+  publishSession: (data: Pick<PartEditorData, 'doc' | 'features' | 'undoStack' | 'redoStack'>) => void
+  // The solve facts: useSolver publishes them where it used to set its own
+  // React state, so the solver remains the writer.
+  publishSolve: (data: Pick<PartEditorData, 'solveResults' | 'bodies' | 'pickBodies' | 'featureTimings' | 'validation'>) => void
+  // The doc-derived view data the page computes (visibility sets, labels,
+  // sibling sketches) plus its own rebuild flag. Editor-derived fields
+  // (ghostMode, partColors, partStyle, activeSketchFeatureId) go to the L2
+  // store instead.
+  publishDerived: (data: Pick<PartEditorData, 'visibleFeatures' | 'visibleBodies' | 'partLabels' | 'otherSketches' | 'isRebuilding'>) => void
 }
 
 export const usePartEditorStore = create<PartEditorState>((set) => ({
   ...DEFAULT_PART_EDITOR_DATA,
-  setSnapshot: (data) => set((prev) => {
-    // Preserve store-owned fields; setSnapshot is for React-mirrored state only.
-    // Callers write owned fields via their dedicated setters.
-    return mergeSnapshot(data, prev, STORE_OWNED_FIELDS)
-  }),
-  setActiveSketchFeatureId: (id) => set({ activeSketchFeatureId: id }),
-  setRollbackPosition: (pos) => set({ rollbackPosition: pos }),
-  setPickBoundary: (pos) => set({ pickBoundary: pos }),
-  setEditingFeatureId: (id) => set({ editingFeatureId: id }),
+  publishSession: (data) => set(data),
+  publishSolve: (data) => set(data),
+  publishDerived: (data) => set(data),
 }))

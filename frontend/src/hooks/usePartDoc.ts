@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
-import { createDocSession, clampRollbackPosition, type DocSession } from '@/session/DocSession'
+import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SessionFailure } from '@/session/result'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
 import { failLoud } from '@/stores/stateInvariants'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { editorState, clampRollback } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/hooks/useDocumentState'
@@ -71,7 +72,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       set: next => setSolveResultsRef.current?.(next),
     },
     editorFacts: () => {
-      const store = usePartEditorStore.getState()
+      const store = editorState.getState()
       return { editingFeatureId: store.editingFeatureId, rollbackPosition: store.rollbackPosition }
     },
     dirtyFacts: () => {
@@ -108,12 +109,16 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       if (event.type === 'transactionsDropped') {
         // The page callback runs FIRST so it can still read which feature was
         // being edited; closing the store's editor fields here keeps this the
-        // complete "abandon the editor" unit.
+        // complete "abandon the editor" unit. (The history-restore half of the
+        // old undo writes moved into the store's restoreHistory below.)
         undoTeardownRef.current?.()
-        usePartEditorStore.getState().setEditingFeatureId(null)
-        usePartEditorStore.getState().setPickBoundary(null)
+        editorState.getState().setEditingFeatureId(null)
+        editorState.getState().setPickBoundary(null)
       } else if (event.type === 'historyRestored') {
-        usePartEditorStore.getState().setRollbackPosition(clampRollbackPosition(event.entry.doc))
+        // The store owns the rollback/edit FSM: it clamps the bar to the
+        // restored doc and brings the consumed editor down, so the adapter does
+        // no UI writes on this path beyond the dirty flag.
+        editorState.getState().restoreHistory(event.entry.doc)
         useUnsavedChangesStore.getState().setDirty(true)
       }
       onStoreChange()
@@ -208,7 +213,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     if (id) {
       session.cancel(id)
       const restored = session.getDoc()
-      if (restored) usePartEditorStore.getState().setRollbackPosition(clampRollbackPosition(restored))
+      if (restored) editorState.getState().setRollbackPosition(clampRollback(restored))
     } else {
       // No session (the add-and-enter pattern sets only editingFeatureId): the
       // exit still re-solves so the viewport is not left on a discarded edit.
@@ -251,6 +256,19 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     return { undoStack: toStack(entries.undo), redoStack: toStack(entries.redo), version }
   }, [session, version])
   const { undoStack, redoStack } = stacks
+
+  // The session facts the viewport and panels read are published here once per
+  // change, so the session stays their single writer and no second hook copies
+  // React state through a snapshot merge. The store's publishSession is the
+  // only writer of these fields.
+  useEffect(() => {
+    usePartEditorStore.getState().publishSession({
+      doc,
+      features: doc?.features ?? [],
+      undoStack,
+      redoStack,
+    })
+  }, [doc, undoStack, redoStack])
 
   return {
     doc,

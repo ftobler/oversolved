@@ -2,7 +2,7 @@ import { useRef, useEffect } from 'react'
 import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
-import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry, isDrawingTool } from '@/registry/toolRegistry'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
 import { projectCursorToSketchPlane } from '@/components/Geometry3D/dragMathPlane'
@@ -16,9 +16,7 @@ import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/components/Geometry3D/drawGeometry'
 import { resolveDrawCursor } from '@/components/Geometry3D/drawLogic'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
-import {
-  shouldClearSelectionOnBackplaneClick, resolvePickAtEvent, PART_EDITOR_CONSUMED_LAYERS,
-} from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
+import { shouldClearSelectionOnBackplaneClick, resolvePickAtEvent, PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 
@@ -40,7 +38,7 @@ export function DrawPreview({ featureId, activeFeatureId, sketch, otherSketches 
   const drawHover = useSketchEditorStore(s => s.drawHover)
   const alignmentSnapPoint = useSketchEditorStore(s => s.alignmentSnapPoint)
   const alignmentSnapKind = useSketchEditorStore(s => s.alignmentSnapKind)
-  const ngonSides = useSketchEditorStore(s => s.ngonSides)
+  const ngonSides = useSketchUiStore(s => s.ngonSides)
   const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const hoveredVertexPosition = useSketchEditorStore(s => s.hoveredVertexPosition)
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
@@ -268,7 +266,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           setActiveTool: (tool) => { useSketchEditorStore.getState().setActiveTool(tool) },
           sketch: sketch as Record<string, import('@/types/cad').Entity> | undefined,
           otherSketches: otherSketches as Record<string, Record<string, import('@/types/cad').Entity>> | undefined,
-          ngonSides: state.ngonSides,
+          ngonSides: useSketchUiStore.getState().ngonSides,
           // The mode stack is store-owned (activate/deactivate); the pointer-down
           // context never pushes or pops, so these are inert here.
           pushMode: () => {},

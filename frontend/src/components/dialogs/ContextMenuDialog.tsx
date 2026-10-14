@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useWheelStep } from '@/components/editors/widgets/useWheelStep'
 import { acquireModalEscape } from '@/utils/core/modalEscape'
 import okIcon from '@/assets/icons/dialog-ok.svg'
@@ -7,8 +7,8 @@ import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 import '@/components/dialogs/ContextMenuDialog.css'
 
 export default function ContextMenuDialog() {
-  const dialog = useSketchEditorStore(s => s.pendingDialog)
-  const closeDialog = useSketchEditorStore(s => s.closeDialog)
+  const dialog = useSketchUiStore(s => s.pendingDialog)
+  const closeDialog = useSketchUiStore(s => s.closeDialog)
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [seenDialog, setSeenDialog] = useState(dialog)

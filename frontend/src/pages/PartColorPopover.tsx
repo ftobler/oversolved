@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import type { Mutation } from '@/types/cad'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 import { DEFAULT_PART_ROUGHNESS, normalizeHexColor, PART_COLOR_PALETTE } from '@/utils/core/partColors'
 
 interface PartColorPopoverProps {
@@ -60,7 +60,7 @@ function PartColorPopoverInner({
   onCancel,
   onApply,
 }: InnerProps) {
-  const partStyle = usePartEditorStore(s => s.partStyle)
+  const partStyle = useEditorState(s => s.partStyle)
   const style = partStyle[popover.bodyId]
 
   const popoverRef = useRef<HTMLDivElement>(null)

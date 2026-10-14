@@ -10,7 +10,8 @@ import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
 import { type Hit, type Pv } from '@/components/misc/CubeGizmo.utils'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Body3D from '@/components/Geometry3D/Body3D'
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
@@ -109,20 +110,22 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   onRightClick,
   hud,
 }: ViewportProps, ref) {
+  // Session/solver facts come from the publication store; the editor FSM and
+  // the derived non-solve fields come from L2.
   const features = usePartEditorStore(s => s.features) as Feature[]
   const doc = usePartEditorStore(s => s.doc)
-  const rollbackPosition = usePartEditorStore(s => s.rollbackPosition) ?? undefined
   const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
   const visibleBodies = usePartEditorStore(s => s.visibleBodies)
   const solveResults = usePartEditorStore(s => s.solveResults) as Record<string, SketchData> | undefined
   const bodies = usePartEditorStore(s => s.bodies)
   const pickBodies = usePartEditorStore(s => s.pickBodies)
-  const ghostMode = usePartEditorStore(s => s.ghostMode)
   const otherSketches = usePartEditorStore(s => s.otherSketches) as Record<string, Sketch>
-  const partColors = usePartEditorStore(s => s.partColors)
-  const partStyle = usePartEditorStore(s => s.partStyle)
-  const activeFeatureId = usePartEditorStore(s => s.activeSketchFeatureId) ?? undefined
-  const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
+  const rollbackPosition = useEditorState(s => s.rollbackPosition) ?? undefined
+  const ghostMode = useEditorState(s => s.ghostMode)
+  const partColors = useEditorState(s => s.partColors)
+  const partStyle = useEditorState(s => s.partStyle)
+  const activeFeatureId = useEditorState(s => s.activeSketchFeatureId) ?? undefined
+  const showDebugHit = useSketchUiStore(s => s.showDebugHit)
 
   const featureDefs = doc?.features as PartFeature[] | undefined
 
@@ -192,7 +195,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     // during edit must not reposition the camera. Stays pending until edit ends.
     // `force` is the explicit Reset Viewport press: a deliberate user request
     // always reframes, even mid-edit.
-    if (!force && usePartEditorStore.getState().activeSketchFeatureId) { traceCamera('fit:skip', 'editing sketch'); return }
+    if (!force && useEditorState.getState().activeSketchFeatureId) { traceCamera('fit:skip', 'editing sketch'); return }
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
     // Geometry (binary) arrives after the JSON solve, so the first attempts may
@@ -263,7 +266,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToPlane, alignCameraToFace],
   )
 
-  const closeContextMenu = useSketchEditorStore(s => s.closeContextMenu)
+  const closeContextMenu = useSketchUiStore(s => s.closeContextMenu)
 
   // Which button opened the gesture and how far it travelled. Shared with the
   // assembly viewport (utils/clickGesture) so the two editors can never disagree

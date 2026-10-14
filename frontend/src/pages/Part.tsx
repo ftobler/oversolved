@@ -8,14 +8,14 @@ import { stripRefSigil } from '@/utils/refSigil'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { visibleFeatureIds } from '@/utils/featureVisibility'
-import { useSketchEditorStore, setSketchCallback, sketchOwnedDeleteTargets } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, setSketchCallback, sketchOwnedDeleteTargets } from '@/stores/sketchEditorStore'
+import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { capturePreview } from '@/stores/previewStore/capture'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { Sidebar } from '@/components/layout/Sidebar'
 import MeasurementDisplay from '@/components/layout/MeasurementDisplay'
-import { useSyncPartEditorStore } from '@/hooks/useSyncPartEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -58,7 +58,7 @@ const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 type PartColorPopoverState = { bodyId: string; position: [number, number]; session: number } | null
 
 function setRollbackForNewFeature(features: PartFeature[]) {
-  usePartEditorStore.getState().setRollbackPosition(features.length + 1)
+  editorState.getState().setRollbackPosition(features.length + 1)
 }
 
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
@@ -71,7 +71,7 @@ function extractFeatures(doc: PartDoc | null): PartFeature[] {
 // the previous doc) falls back to the end.
 function syncRollbackFromDoc(doc: PartDoc) {
   const count = extractFeatures(doc).length
-  usePartEditorStore.getState().setRollbackPosition(Math.min(doc.rollback ?? count, count))
+  editorState.getState().setRollbackPosition(Math.min(doc.rollback ?? count, count))
 }
 
 const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
@@ -98,9 +98,9 @@ export default function Part() {
   const workspaceId = params.workspaceId
   const navigate = useNavigate()
   const [mode, setMode] = useState<'sketch' | 'feature'>('sketch')
-  // rollbackPosition is owned by partEditorStore (single source of truth).
-  // Read here for memos / props; mutate via store setters.
-  const rollbackPosition = usePartEditorStore(s => s.rollbackPosition)
+  // rollbackPosition is owned by the L2 editor-state store (single source of
+  // truth). Read here for memos / props; mutate via its setters.
+  const rollbackPosition = useEditorState(s => s.rollbackPosition)
   const rollbackInitialized = useRef(false)
   const viewportRef = useRef<ViewportHandle>(null)
   const exportImportRef = useRef<PartExportImportHandle>(null)
@@ -145,8 +145,8 @@ export default function Part() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [messageDialog, setMessageDialog] = useState<ShowMessagePayload | null>(null)
   const showMessage = useCallback((payload: ShowMessagePayload) => setMessageDialog(payload), [])
-  const showDebugHit = useSketchEditorStore(s => s.showDebugHit)
-  const setShowDebugHit = useSketchEditorStore(s => s.setShowDebugHit)
+  const showDebugHit = useSketchUiStore(s => s.showDebugHit)
+  const setShowDebugHit = useSketchUiStore(s => s.setShowDebugHit)
 
   const activePickField = useSketchEditorStore(s => s.activePickField)
   const setActivePickField = useSketchEditorStore(s => s.setActivePickField)
@@ -160,14 +160,10 @@ export default function Part() {
     error,
     setError,
     solveResults,
-    featureTimings,
     solving,
     solveError,
     setSolveError,
-    undoStack,
-    redoStack,
     reSolve,
-    validation,
     handleMutation,
     commitMutationGroup,
     beginBrepProjection,
@@ -179,7 +175,6 @@ export default function Part() {
     cloneDoc,
     docName,
     bodies,
-    pickBodies,
     pickStateReady,
     startPreviewMode,
     commitPreview,
@@ -227,7 +222,7 @@ export default function Part() {
     // new document's first solve (reSolve then reads rollback 0 and solves
     // nothing).
     if (doc && rollbackPosition !== null && rollbackPosition > features.length) {
-      usePartEditorStore.getState().setRollbackPosition(features.length)
+      editorState.getState().setRollbackPosition(features.length)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- effect must run only when the feature count changes, not on every features identity
   }, [features.length])
@@ -324,7 +319,7 @@ export default function Part() {
   // is composed here rather than in usePartDoc because half of it (forced
   // visibility, the panel mode, the color popover) only exists on this page.
   const tearDownEditorState = useCallback(() => {
-    const editing = usePartEditorStore.getState().editingFeatureId
+    const editing = editorState.getState().editingFeatureId
     const wasSketchEdit = features.some(f => f.id === editing && f.kind === 'sketch')
     resetEditState()
     const sketchStore = useSketchEditorStore.getState()
@@ -356,6 +351,9 @@ export default function Part() {
     // the undo's own restore.
     sketchStore.clearBrepProjectionState()
     sketchStore.resetTransientState()
+    // The UI store's canonical wipe: the value dialog and the store-owned
+    // context menu are transient editor chrome like the selection above.
+    useSketchUiStore.getState().resetTransientState()
     setContextMenu(null)
     // The popover closes: an undo or redo already committed a changed preview
     // as its own entry (usePartDoc's commitOpenWorkBeforeHistory), and a
@@ -430,26 +428,26 @@ export default function Part() {
     return result
   }, [features, visibleFeaturesWithEdit, activeSketchFeatureId, solveResults])
 
-  useSyncPartEditorStore({
-    features,
-    doc,
-    activeSketchFeatureId: activeSketchFeatureId ?? null,
-    visibleFeatures: visibleFeaturesWithEdit,
-    visibleBodies: effectiveVisibleBodies,
-    partLabels,
-    solveResults: solveResults ?? {},
-    bodies: bodies ?? {},
-    pickBodies: pickBodies ?? {},
-    isRebuilding,
-    featureTimings: featureTimings ?? {},
-    validation: validation ?? null,
-    ghostMode,
-    otherSketches,
-    partColors,
-    partStyle,
-    undoStack,
-    redoStack,
-  })
+  // The page publishes the doc-derived view data it computes; the session and
+  // solver publish their own facts (usePartDoc/useSolver). Each field has one
+  // writer, and the removed mirror hook copied none of them from a snapshot.
+  useEffect(() => {
+    usePartEditorStore.getState().publishDerived({
+      visibleFeatures: visibleFeaturesWithEdit,
+      visibleBodies: effectiveVisibleBodies,
+      partLabels,
+      otherSketches,
+      isRebuilding,
+    })
+  }, [visibleFeaturesWithEdit, effectiveVisibleBodies, partLabels, otherSketches, isRebuilding])
+
+  // The editor-derived viewport fields go to L2: ghost mode is an edit-session
+  // read, the colors/styles are the live doc's part_style projection and the
+  // active sketch id is the viewport's sketch-edit read.
+  useEffect(() => {
+    editorState.getState().setViewportDerived({ ghostMode, partColors, partStyle })
+    editorState.getState().setActiveSketchFeatureId(activeSketchFeatureId ?? null)
+  }, [ghostMode, partColors, partStyle, activeSketchFeatureId])
 
   const handleExitSketch = useCallback(() => {
     exitEditSketch()
@@ -536,7 +534,7 @@ export default function Part() {
   // transient UI. commitEditSession runs before resetEditState because its
   // aggregate label names the store's editingFeatureId, which the reset clears.
   const closeOpenEditorForAdd = useCallback(() => {
-    if (usePartEditorStore.getState().editingFeatureId === null) return
+    if (editorState.getState().editingFeatureId === null) return
     commitEditSession()
     resetEditState()
   }, [commitEditSession, resetEditState])
@@ -546,7 +544,7 @@ export default function Part() {
     closeOpenEditorForAdd()
     const fid = randomId(18)
     const label = `${kind} ${Object.keys(bodies).length + 1}`
-    const store = usePartEditorStore.getState()
+    const store = editorState.getState()
     // Start the edit session against the PRE-add doc and let it suppress the
     // add: OK then folds the add and any in-session field edits into one
     // aggregate step, and Cancel rewinds the add away. Starting the session
@@ -600,7 +598,7 @@ export default function Part() {
     setRollbackForNewFeature(features)
     startEditSession(true)
     handleMutation({ type: 'add_plane', featureId, label, definition })
-    usePartEditorStore.getState().setEditingFeatureId(featureId)
+    editorState.getState().setEditingFeatureId(featureId)
     const firstPick = FIRST_PICK_FIELD['plane']
     if (firstPick) setActivePickField({ featureId, ...firstPick })
   }, [doc, features, handleMutation, selection, setActivePickField, startEditSession, closeOpenEditorForAdd])
@@ -736,6 +734,11 @@ export default function Part() {
   useEffect(() => {
     return () => {
       useSketchEditorStore.getState().resetTransientState()
+      useSketchUiStore.getState().resetTransientState()
+      // The part-side FSM and derived fields describe the document that was
+      // open; a remounted Part must not inherit them (the old mirror's unmount
+      // reset, now owned by the store it belonged to).
+      editorState.getState().resetEditorState()
     }
   }, [])
 
@@ -806,7 +809,7 @@ export default function Part() {
   // into the document. handleMutation writes doc.rollback from the store, marks
   // the doc dirty, and re-solves, so the bar survives a save/reload round trip.
   const handleUserRollbackChange = useCallback((pos: number | null) => {
-    const store = usePartEditorStore.getState()
+    const store = editorState.getState()
     store.setRollbackPosition(pos)
     if (store.editingFeatureId && doc) {
       // An edit is active; keep pickBoundary in sync so the invariant
@@ -998,7 +1001,7 @@ export default function Part() {
       features,
       visibleFeatures: visibleFeaturesWithEdit,
       activeSketchFeatureId: activeSketchFeatureId ?? undefined,
-      showConstraintTiles: useSketchEditorStore.getState().showConstraintTiles,
+      showConstraintTiles: useSketchUiStore.getState().showConstraintTiles,
       partLabels,
       builtInIds: BUILT_IN_IDS,
       hasDanglingContent,
@@ -1016,7 +1019,7 @@ export default function Part() {
       onNormalToPlane: handleNormalToPlane,
       onAlignCameraToSketchPlane: handleAlignCameraToSketchPlane,
       onToggleConstraintTiles: () => {
-        const s = useSketchEditorStore.getState()
+        const s = useSketchUiStore.getState()
         s.setShowConstraintTiles(!s.showConstraintTiles)
       },
       onSetPartColorPopover: handleSetPartColorPopover,

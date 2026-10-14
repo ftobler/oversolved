@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { PartFeature, PartDoc } from '@/types/cad'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+import { editorState } from '@/stores/editorState'
+import { useEditorState } from '@/hooks/useEditorState'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])
@@ -61,7 +62,7 @@ export function useEditFeature({
   setMode,
   clearPlaneSelection,
 }: UseEditFeatureInput): UseEditFeatureReturn {
-  const editingFeatureId = usePartEditorStore(s => s.editingFeatureId)
+  const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const [editForcedVisible, setEditForcedVisible] = useState<Set<string>>(new Set())
 
   // Everything an edit owns in the UI, dropped without touching the doc. Split
@@ -69,7 +70,7 @@ export function useEditFeature({
   // own doc and its own single re-solve.
   const resetEditState = useCallback((opts?: ResetOpts) => {
     if (clearPlaneSelection && !opts?.keepPlaneSelection) clearPlaneSelection()
-    const store = usePartEditorStore.getState()
+    const store = editorState.getState()
     setEditForcedVisible(new Set())
     store.setEditingFeatureId(null)
     store.setPickBoundary(null)
@@ -89,7 +90,7 @@ export function useEditFeature({
   // Keyed on the edit being CLOSED, and skipped when the edit replacing it is
   // itself a sketch -- enterEditSketch already set the mode for that one.
   const leaveSketchMode = useCallback((nextFeatureId: string | null) => {
-    const closing = usePartEditorStore.getState().editingFeatureId
+    const closing = editorState.getState().editingFeatureId
     if (!closing || !features.some(f => f.id === closing && f.kind === 'sketch')) return
     if (nextFeatureId && features.some(f => f.id === nextFeatureId && f.kind === 'sketch')) return
     setMode('feature')
@@ -106,7 +107,7 @@ export function useEditFeature({
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
     const feature = features[idx]
-    const activeEditingId = usePartEditorStore.getState().editingFeatureId
+    const activeEditingId = editorState.getState().editingFeatureId
     if (activeEditingId !== null && activeEditingId !== featureId) {
       // Switching straight from a sketch edit to another feature's leaves the
       // sketch behind just as much as closing it does.
@@ -124,7 +125,7 @@ export function useEditFeature({
       resetEditState({ keepPlaneSelection: pickField?.featureId === featureId })
     }
     startEditSession(suppressUndo)
-    const store = usePartEditorStore.getState()
+    const store = editorState.getState()
     const pickBoundary = computePickBoundary(features, featureId, builtInIds)
     if (feature.kind === 'sketch') {
       store.setActiveSketchFeatureId(featureId)
@@ -172,7 +173,7 @@ export function useEditFeature({
   }, [commitEditFeature])
 
   const clearEditingFeature = useCallback(() => {
-    usePartEditorStore.getState().setEditingFeatureId(null)
+    editorState.getState().setEditingFeatureId(null)
   }, [])
 
   return {

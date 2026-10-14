@@ -1,6 +1,8 @@
 import { CONSTRAINTS, ENTITIES } from '@/registry'
 import type { ConstraintDef } from '@/registry'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
+import type { EditorState } from '@/stores/editorState'
+import { useSketchUiStore, type SketchUiState } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { narrowCommandName } from '@/utils/core/commandNames'
@@ -56,6 +58,15 @@ export interface ShowMessagePayload {
   variant?: 'info' | 'success' | 'error'
 }
 
+// Commands read from both stores: the editor state (selection, tools, draw
+// state) and the sketch UI store (the pending value dialog). This merged
+// getter keeps each command body one `st` away from whatever it needs.
+export type SketchCommandState = EditorState & SketchUiState
+const getSketchState = (): SketchCommandState => ({
+  ...useEditorState.getState(),
+  ...useSketchUiStore.getState(),
+})
+
 /**
  * Maps one constraint definition to its `apply_<kind>` command body. The toast
  * branch is reachable only for a constraint explicitly flagged
@@ -64,7 +75,7 @@ export interface ShowMessagePayload {
  */
 export function constraintCommandFn(
   c: ConstraintDef,
-  getState: () => Pick<ReturnType<typeof useSketchEditorStore.getState>, 'applyConstraint'>,
+  getState: () => Pick<SketchCommandState, 'applyConstraint'>,
   showMessage: (payload: ShowMessagePayload) => void,
 ): () => void {
   return c.implemented === false
@@ -91,7 +102,7 @@ export function buildCommandEntries(
   handleAddTransform: () => void,
   showMessage: (payload: ShowMessagePayload) => void,
 ): CommandEntry[] {
-  const getState = useSketchEditorStore.getState
+  const getState = getSketchState
   return [
     { name: 'undo',                  fn: () => {
         const st = getState()

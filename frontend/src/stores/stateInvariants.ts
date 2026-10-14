@@ -322,7 +322,10 @@ export interface SketchEditorInvariantState extends SelectionInvariantState {
   activePickField: { featureId: string; field: string } | null
   drawPoints: unknown[]
   drawHover: unknown
-  pendingDialog: unknown
+  // The pending value dialog stays in the UI store (sketchEditorStore); the
+  // editor-state store no longer carries it, and no invariant reads it, so the
+  // field is optional and absent on the state the gates now validate.
+  pendingDialog?: unknown
   modeStack: readonly string[]
   // Drag-tool transient state. Only the (effective) drag tool may carry a live
   // or pending drag; a drawing tool arms its own transient state and must never
