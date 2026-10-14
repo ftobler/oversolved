@@ -84,6 +84,46 @@ describe('useCommandRegistration', () => {
     expect(undo).toHaveBeenCalledTimes(1)
   })
 
+  // addEventListener dedups on (type, callback, capture), so two mounts that
+  // attach the SAME module-level function hold ONE DOM entry between them and
+  // the first unmount's removeEventListener drops it for the sibling that is
+  // still mounted: the keyboard goes dead with no warning. Each registration
+  // therefore attaches its own closure, so add and remove pair per instance.
+  it('keeps the co-mounted sibling dispatching after the first registration unmounts', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const firstMount = renderHook(() => useCommandRegistration([{ name: 'undo', fn: first }]))
+    renderHook(() => useCommandRegistration([{ name: 'undo', fn: second }]))
+
+    firstMount.unmount()
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true }))
+    })
+
+    // The survivor's own listener is still attached: the shared-entry unmount
+    // must not have taken the keyboard with it.
+    expect(second).toHaveBeenCalledTimes(1)
+    expect(first).not.toHaveBeenCalled()
+  })
+
+  // The same pairing under StrictMode, where the initial mount/unmount/remount
+  // removes and re-adds its own listener within the same commit.
+  it('survives the StrictMode co-mount when the first registration unmounts', () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const firstMount = renderHookStrict(() => useCommandRegistration([{ name: 'undo', fn: first }]))
+    renderHookStrict(() => useCommandRegistration([{ name: 'undo', fn: second }]))
+
+    firstMount.unmount()
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, cancelable: true }))
+    })
+
+    expect(second).toHaveBeenCalledTimes(1)
+  })
+
   it('logs a development error when the commands length changes between renders', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { rerender } = renderHook(

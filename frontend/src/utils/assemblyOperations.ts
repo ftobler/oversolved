@@ -23,7 +23,7 @@ import {
   removeInstance,
   removeMate,
   setBuiltinVisible,
-  setInstanceFixed,
+  setInstanceFixedFromSolved,
   setInstancePosition,
   setInstanceRotation,
   setInstanceVisible,
@@ -61,22 +61,44 @@ export type AssemblyOperationId = keyof AssemblyOperationInputs
 
 export interface AssemblyOperationDef<I> {
   readonly id: AssemblyOperationId
-  readonly label: AssemblyUndoLabel
+  /**
+   * A constant for every operation but one. The built-in visibility row is
+   * shared by the origin and the planes, so its label is resolved from the
+   * document: the undo tooltip must name the reference geometry that was
+   * hidden, not whatever one of the two the table happened to pick.
+   */
+  readonly label: AssemblyUndoLabel | ((doc: AssemblyDoc, input: I) => AssemblyUndoLabel)
   readonly bake: boolean
   readonly undo: AssemblyUndoPolicy
   readonly solve: AssemblySolvePolicy
-  // Pure. Receives the doc AFTER the bake cell has been applied.
-  readonly apply: (doc: AssemblyDoc, input: I) => AssemblyDoc
+  // Pure. Receives the doc AFTER the bake cell has been applied, plus the
+  // solved poses that bake used, which the fixed-flag write needs for itself.
+  readonly apply: (doc: AssemblyDoc, input: I, transforms: Record<string, Transform3D>) => AssemblyDoc
+}
+
+// The origin and the planes share one operation and one tree eye. The label is
+// therefore the only cell that reads the document, which is where the feature's
+// kind lives; an id naming neither is a stale row whose toggle is a no-op
+// anyway, and gets the generic wording rather than a claim about the wrong
+// reference geometry.
+function builtinVisibilityLabel(doc: AssemblyDoc, id: string): AssemblyUndoLabel {
+  const feature = (doc.features ?? []).find(f => f.id === id)
+  if (feature?.kind === 'origin') return ASSEMBLY_UNDO_LABELS.toggleOriginVisibility
+  if (feature?.kind === 'plane') return ASSEMBLY_UNDO_LABELS.togglePlaneVisibility
+  return ASSEMBLY_UNDO_LABELS.toggleBuiltinVisibility
 }
 
 // The one place the three policy cells are stated. `set_part_fixed` and
 // `set_part_fixed_oneshot` share their body and differ only in `undo`: that is
 // exactly the difference the tree's options menu used to encode by hand.
 //
-// The fixed cells bake and then set the flag. Baking refreshes every non-fixed
-// seed and `setInstanceFixed` writes the flag; together they are the old
-// setInstanceFixedFromSolved(doc, handle, fixed, transforms), which is why the
-// apply here is the flag-only setter rather than the solved-pose one.
+// The fixed cells bake, then route the flag through setInstanceFixedFromSolved.
+// The plan's bake refreshes every non-fixed seed and the setter carries the
+// guard the flag-only setter lost: an absent `fixed` means false, so re-setting
+// false must neither charge a dead undo entry nor materialize a permanent
+// `fixed: false` key in the document. It also owns the one bake the plan cannot
+// do -- freezing the toggled instance's own solved pose into its seed, which is
+// the point of the call and the reason it stays the write path here.
 export const ASSEMBLY_OPERATIONS: {
   readonly [K in AssemblyOperationId]: AssemblyOperationDef<AssemblyOperationInputs[K]>
 } = {
@@ -99,7 +121,9 @@ export const ASSEMBLY_OPERATIONS: {
   },
   set_builtin_visible: {
     // A reference plane is a pure render change: no bake, no solve.
-    id: 'set_builtin_visible', label: ASSEMBLY_UNDO_LABELS.togglePlaneVisibility, bake: false, undo: 'one-shot', solve: 'skip',
+    id: 'set_builtin_visible',
+    label: (doc, input) => builtinVisibilityLabel(doc, input.id),
+    bake: false, undo: 'one-shot', solve: 'skip',
     apply: (doc, input) => setBuiltinVisible(doc, input.id, input.visible),
   },
   set_part_fixed: {
@@ -107,13 +131,13 @@ export const ASSEMBLY_OPERATIONS: {
     // current view is already correct; baking keeps the seeds in step for the
     // next real solve. The editor checkbox folds into the session's step.
     id: 'set_part_fixed', label: ASSEMBLY_UNDO_LABELS.fixUnfixPart, bake: true, undo: 'fold', solve: 'skip',
-    apply: (doc, input) => setInstanceFixed(doc, input.handle, input.fixed),
+    apply: (doc, input, transforms) => setInstanceFixedFromSolved(doc, input.handle, input.fixed, transforms),
   },
   set_part_fixed_oneshot: {
     // The options-menu toggle is a structural op: its own step even while an
     // editor session is open.
     id: 'set_part_fixed_oneshot', label: ASSEMBLY_UNDO_LABELS.fixUnfixPart, bake: true, undo: 'one-shot', solve: 'skip',
-    apply: (doc, input) => setInstanceFixed(doc, input.handle, input.fixed),
+    apply: (doc, input, transforms) => setInstanceFixedFromSolved(doc, input.handle, input.fixed, transforms),
   },
   set_part_position: {
     id: 'set_part_position', label: ASSEMBLY_UNDO_LABELS.setPosition, bake: true, undo: 'fold', solve: 'solve',
@@ -187,14 +211,15 @@ export function planAssemblyOperation<K extends AssemblyOperationId>(
     }
   }
   const pre = ctx.doc
+  const label = typeof def.label === 'function' ? def.label(pre, input) : def.label
   const baked = def.bake ? bakeSolvedTransforms(pre, ctx.transforms) : pre
-  const doc = def.apply(baked, input)
+  const doc = def.apply(baked, input, ctx.transforms)
   // Measure the change against the BAKED doc, not the pre-op one: a bake:true
   // operation whose value is already what it sets only differs in the seeds, so
   // comparing against `pre` would push an undo step whose whole diff is the
   // bake. Undoing that restores the stale seeds the bake was meant to refresh.
   const changed = !(doc === baked || assemblyDocEquals(baked, doc))
-  return { id, label: def.label, doc, changed, undo: def.undo, solve: def.solve }
+  return { id, label, doc, changed, undo: def.undo, solve: def.solve }
 }
 
 // The context and effects an operation runs against. `doc` and `transforms` are

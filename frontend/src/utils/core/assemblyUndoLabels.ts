@@ -9,6 +9,8 @@ export const ASSEMBLY_UNDO_LABELS = {
   deletePart: 'Delete part',
   toggleVisibility: 'Toggle visibility',
   togglePlaneVisibility: 'Toggle plane visibility',
+  toggleOriginVisibility: 'Toggle origin visibility',
+  toggleBuiltinVisibility: 'Toggle built-in visibility',
   fixUnfixPart: 'Fix/unfix part',
   setPosition: 'Set position',
   setRotation: 'Set rotation',

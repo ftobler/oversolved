@@ -24,7 +24,13 @@ function spyHandlers(): AssemblyCommandHandlers {
 // The page's inputs, with spies for everything but the id mint. Building the
 // handlers through the same function the page uses is what lets the coverage
 // test observe the real command-to-operation wiring.
-function handlerDeps(): AssemblyHandlerDeps & { runOperation: ReturnType<typeof vi.fn>; deleteSubject: ReturnType<typeof vi.fn> } {
+function handlerDeps(): AssemblyHandlerDeps & {
+  runOperation: ReturnType<typeof vi.fn>
+  deleteSubject: ReturnType<typeof vi.fn>
+  manipulationLive: ReturnType<typeof vi.fn>
+  cancelManipulation: ReturnType<typeof vi.fn>
+  undo: ReturnType<typeof vi.fn>
+} {
   return {
     runOperation: vi.fn(),
     undo: vi.fn(),
@@ -37,6 +43,8 @@ function handlerDeps(): AssemblyHandlerDeps & { runOperation: ReturnType<typeof 
     closeOpenEditor: vi.fn(),
     onMateInserted: vi.fn(),
     deleteSubject: vi.fn(),
+    manipulationLive: vi.fn(() => false),
+    cancelManipulation: vi.fn(),
   }
 }
 
@@ -104,5 +112,35 @@ describe('assembly operation coverage', () => {
     expect(deps.deleteSubject).toHaveBeenNthCalledWith(1, { kind: 'part', handle: 'p1' })
     expect(deps.deleteSubject).toHaveBeenNthCalledWith(2, { kind: 'mate', id: 'm1' })
     expect(deps.runOperation).not.toHaveBeenCalled()
+  })
+
+  // Ctrl+Z during a live drag used to pop the entry above it while
+  // resetTransientAssemblyState silently abandoned the gesture behind the
+  // user's back: two changes from one press. The part editor fixed this class
+  // by giving undo a cancel-the-gesture first stage; assembly's takes the same
+  // shape, tearing the drag down through the store's own cancel path.
+  it('undo cancels a live manipulation instead of popping history', () => {
+    const deps = handlerDeps()
+    deps.manipulationLive.mockReturnValue(true)
+    buildAssemblyHandlers(deps).undo()
+    expect(deps.cancelManipulation).toHaveBeenCalledTimes(1)
+    expect(deps.undo).not.toHaveBeenCalled()
+  })
+
+  it('undo pops history once no manipulation is in flight', () => {
+    const deps = handlerDeps()
+    deps.manipulationLive.mockReturnValue(false)
+    buildAssemblyHandlers(deps).undo()
+    expect(deps.undo).toHaveBeenCalledTimes(1)
+    expect(deps.cancelManipulation).not.toHaveBeenCalled()
+  })
+
+  // Escape keeps its own meaning: it closes the open editor and never touches a
+  // drag, which is the viewport's listener's job.
+  it('cancel_edit leaves the manipulation cancel path alone', () => {
+    const deps = handlerDeps()
+    buildAssemblyHandlers(deps).cancel_edit()
+    expect(deps.cancelEdit).toHaveBeenCalledTimes(1)
+    expect(deps.cancelManipulation).not.toHaveBeenCalled()
   })
 })

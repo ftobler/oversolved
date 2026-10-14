@@ -22,7 +22,7 @@ const EXPECTED: Array<Pick<
   { id: 'duplicate_part', label: 'Duplicate part', bake: true, undo: 'one-shot', solve: 'solve' },
   { id: 'delete_part', label: 'Delete part', bake: true, undo: 'one-shot', solve: 'solve' },
   { id: 'set_part_visible', label: 'Toggle visibility', bake: false, undo: 'one-shot', solve: 'skip' },
-  { id: 'set_builtin_visible', label: 'Toggle plane visibility', bake: false, undo: 'one-shot', solve: 'skip' },
+  { id: 'set_builtin_visible', label: 'Toggle origin visibility', bake: false, undo: 'one-shot', solve: 'skip' },
   { id: 'set_part_fixed', label: 'Fix/unfix part', bake: true, undo: 'fold', solve: 'skip' },
   { id: 'set_part_fixed_oneshot', label: 'Fix/unfix part', bake: true, undo: 'one-shot', solve: 'skip' },
   { id: 'set_part_position', label: 'Set position', bake: true, undo: 'fold', solve: 'solve' },
@@ -92,19 +92,32 @@ const IDS = Object.keys(ASSEMBLY_OPERATIONS) as AssemblyOperationId[]
 
 describe('ASSEMBLY_OPERATIONS table', () => {
   it('pins every bake/undo/solve cell', () => {
-    const actual = IDS.map(id => {
-      const d = ASSEMBLY_OPERATIONS[id]
-      return { id: d.id, label: d.label, bake: d.bake, undo: d.undo, solve: d.solve }
-    })
+    const actual = IDS.map(id => ({
+      id,
+      // Resolved through the plan builder rather than read off the table: the
+      // built-in visibility label is the one cell that consults the document,
+      // so the pin asserts the wording the toolbar tooltip will actually show
+      // for the feature the input names.
+      label: planAssemblyOperation(id, INPUTS[id], { doc: operationDoc(), transforms: {} })!.label,
+      bake: ASSEMBLY_OPERATIONS[id].bake,
+      undo: ASSEMBLY_OPERATIONS[id].undo,
+      solve: ASSEMBLY_OPERATIONS[id].solve,
+    }))
     expect(actual).toEqual(EXPECTED)
   })
 
   it('every entry is schema-valid', () => {
-    for (const def of Object.values(ASSEMBLY_OPERATIONS)) {
+    for (const id of IDS) {
+      const def = ASSEMBLY_OPERATIONS[id]
       expect(typeof def.id).toBe('string')
       expect(def.id.length).toBeGreaterThan(0)
-      expect(typeof def.label).toBe('string')
-      expect(def.label.length).toBeGreaterThan(0)
+      // The built-in visibility label is the one resolver rather than a
+      // constant, so the wording it must produce is read through the plan.
+      const label = typeof def.label === 'string'
+        ? def.label
+        : planAssemblyOperation(id, INPUTS[id], { doc: operationDoc(), transforms: {} })!.label
+      expect(typeof label).toBe('string')
+      expect(label.length).toBeGreaterThan(0)
       expect(typeof def.bake).toBe('boolean')
       expect(['one-shot', 'fold']).toContain(def.undo)
       expect(['solve', 'defer', 'skip']).toContain(def.solve)
@@ -158,25 +171,94 @@ describe('planAssemblyOperation', () => {
     expect(plan.doc).toEqual(doc)
   })
 
+  // The origin row and the plane rows share one operation and one tree eye, so
+  // the undo tooltip is the only place the user learns WHICH reference geometry
+  // they just hid. The old single label read "Toggle plane visibility" next to
+  // "Origin", and the table test pinned that wording, so nothing caught it.
+  it('labels the built-in visibility toggle after the feature the id names', () => {
+    const doc: AssemblyDoc = {
+      kind: 'assembly',
+      features: [
+        { id: 'Origin', kind: 'origin' },
+        { id: 'Plane XY', kind: 'plane' },
+        instanceFeature('p1', 0),
+      ],
+    }
+    const origin = planAssemblyOperation(
+      'set_builtin_visible', { id: 'Origin', visible: true }, { doc, transforms: {} },
+    )!
+    const plane = planAssemblyOperation(
+      'set_builtin_visible', { id: 'Plane XY', visible: true }, { doc, transforms: {} },
+    )!
+    expect(origin.label).toBe('Toggle origin visibility')
+    expect(plane.label).toBe('Toggle plane visibility')
+  })
+
   it('reports a bake-only change on a value no-op as unchanged', () => {
-    // p1 is already fixed, so the flag-only apply is a value no-op for it. p2 is
+    // p1 is already fixed, so the flag apply is a value no-op for it. p2 is
     // free and its stored seed (tx 0) differs from its solved transform (tx 7),
     // so the bake DOES change the document. That incidental bake must not read
     // as an operation change, or the undo step it earns would restore p2's stale
     // seed that the bake just refreshed. Under the old pre-op comparison
     // (assemblyDocEquals(pre, doc)) this reports changed=true.
+    //
+    // p1's own solved pose agrees with its seed, which is what the solver
+    // guarantees for a fixed part: it echoes that seed verbatim. A divergence
+    // would be a real write, not a value no-op, because the toggle freezes the
+    // toggled instance's solved pose into its seed whichever way the flag goes.
     const doc: AssemblyDoc = {
       kind: 'assembly',
       features: [instanceFeature('p1', 0, true), instanceFeature('p2', 0)],
     }
     const transforms = {
-      p1: { ...IDENTITY_TRANSFORM, tx: 5 },
+      p1: { ...IDENTITY_TRANSFORM },
       p2: { ...IDENTITY_TRANSFORM, tx: 7 },
     }
     const plan = planAssemblyOperation(
       'set_part_fixed_oneshot', { handle: 'p1', fixed: true }, { doc, transforms },
     )!
     expect(plan.changed).toBe(false)
+  })
+
+  // The flag-only setter wrote `{ fixed: false }` over an instance that never
+  // carried the key, and the funnel's no-op guard read the materialized key as
+  // a real change: one dead undo entry plus a `fixed: false` that survives into
+  // the YAML forever. setInstanceFixedFromSolved reads an absent flag as false,
+  // so both fixed cells route through it.
+  describe('the fixed-flag guard', () => {
+    // Every other fixture here writes `fixed` explicitly (instanceFeature
+    // does), so the "never carried the key" shape is built by hand.
+    function unfixedFeature(handle: string) {
+      const instance = {
+        handle, doc_id: `d-${handle}`, doc_rev: 1,
+        transform: { ...IDENTITY_TRANSFORM }, visible: true,
+      }
+      return { id: `fp-${handle}`, kind: 'part_instance' as const, instance }
+    }
+
+    const noKeyDoc = (): AssemblyDoc => ({ kind: 'assembly', features: [unfixedFeature('p1')] })
+
+    it('charges no undo entry for a no-op unfix over an instance that carries no fixed key', () => {
+      const plan = planAssemblyOperation(
+        'set_part_fixed_oneshot', { handle: 'p1', fixed: false }, { doc: noKeyDoc(), transforms: {} },
+      )!
+      expect(plan.changed).toBe(false)
+      // The key must not appear at all, which is what made the old entry dead
+      // AND left the key in the saved document.
+      expect('fixed' in findInstance(plan.doc, 'p1')!).toBe(false)
+    })
+
+    // The instance already carries `fixed: false`, so re-setting it is a no-op
+    // that must neither write the key again nor charge an entry.
+    it('charges no undo entry for re-setting the flag an instance already carries', () => {
+      const doc = docWithInstances(['p1'])
+      expect(findInstance(doc, 'p1')!.fixed).toBe(false)
+      const plan = planAssemblyOperation(
+        'set_part_fixed', { handle: 'p1', fixed: false }, { doc, transforms: {} },
+      )!
+      expect(plan.changed).toBe(false)
+      expect(findInstance(plan.doc, 'p1')!.fixed).toBe(false)
+    })
   })
 })
 
@@ -227,16 +309,35 @@ describe('runAssemblyOperation effect dispatch', () => {
   })
 
   it('a bake-only value no-op touches no effect', () => {
-    // The free p2 makes the bake a real document diff; the flag-only apply on
-    // the already-fixed p1 is still a value no-op, so no effect may fire.
+    // The free p2 makes the bake a real document diff; the flag apply on the
+    // already-fixed p1 is still a value no-op, so no effect may fire. p1's
+    // solved pose matches its seed, as the solver guarantees for a fixed part.
     const host = fakeHost()
     host.doc = { kind: 'assembly', features: [instanceFeature('p1', 0, true), instanceFeature('p2', 0)] }
     host.transforms = {
-      p1: { ...IDENTITY_TRANSFORM, tx: 5 },
+      p1: { ...IDENTITY_TRANSFORM },
       p2: { ...IDENTITY_TRANSFORM, tx: 7 },
     }
     runAssemblyOperation('set_part_fixed_oneshot', { handle: 'p1', fixed: true }, host)
     expect(host.mutateOneShot).not.toHaveBeenCalled()
     expect(host.mutateSession).not.toHaveBeenCalled()
+  })
+
+  // Both fixed cells now write the flag through the guarded setter, so a toggle
+  // that changes nothing must fire no effect from either of them.
+  it('a no-op fixed toggle touches no effect from either fixed cell', () => {
+    for (const id of ['set_part_fixed', 'set_part_fixed_oneshot'] as const) {
+      const host = fakeHost()
+      host.doc = { kind: 'assembly', features: [{
+        id: 'fp-p1',
+        kind: 'part_instance' as const,
+        // No `fixed` key at all: the shape the flag-only setter used to write
+        // `{ fixed: false }` over.
+        instance: { handle: 'p1', doc_id: 'd-p1', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true },
+      }] }
+      runAssemblyOperation(id, { handle: 'p1', fixed: false }, host)
+      expect(host.mutateOneShot, id).not.toHaveBeenCalled()
+      expect(host.mutateSession, id).not.toHaveBeenCalled()
+    }
   })
 })
