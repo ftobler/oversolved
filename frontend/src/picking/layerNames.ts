@@ -19,6 +19,50 @@ export const FEATURE_HANDLE_LAYER_NAME = 'featureHandle'
 // dispatch switch must never see an assembly gizmo id.
 export const GIZMO_HANDLE_LAYER_NAME = 'gizmoHandle'
 
+export interface PickLayerRung {
+  readonly name: string
+  readonly priority: number
+}
+
+/**
+ * The pick precedence ladder as data.
+ *
+ * Two readers depend on this one list: `IdPipeline` mounts each layer at its
+ * rung priority (so the render order and the resolver's layer ranking follow
+ * it), and the scene probe ranks its hit candidates by the same numbers.
+ * Keeping it here, next to the names, is what stops the probe from restating
+ * the ladder as a second literal table that can drift.
+ *
+ * Within a layer, later-rendered primitives win their pixels; across layers the
+ * resolver orders by priority descending first, distance second (see
+ * IdResolver.resolvePixelWindowAll). The one intentional inversion is the
+ * origin marker at 45, below the sketch vertex at 50: see the construction
+ * note in IdPipeline.
+ */
+export const PICK_LADDER: readonly PickLayerRung[] = [
+  { name: PLANE_LAYER_NAME, priority: -10 },
+  { name: FACE_LAYER_NAME, priority: 0 },
+  { name: EDGE_LAYER_NAME, priority: 10 },
+  { name: VERTEX_LAYER_NAME, priority: 20 },
+  { name: SKETCH_SURFACE_LAYER_NAME, priority: 30 },
+  { name: SKETCH_ENTITY_LAYER_NAME, priority: 40 },
+  { name: ORIGIN_LAYER_NAME, priority: 45 },
+  { name: SKETCH_VERTEX_LAYER_NAME, priority: 50 },
+  { name: DIMENSION_LABEL_LAYER_NAME, priority: 70 },
+  { name: FEATURE_HANDLE_LAYER_NAME, priority: 80 },
+  { name: GIZMO_HANDLE_LAYER_NAME, priority: 90 },
+]
+
+/** Layer name -> priority, derived from PICK_LADDER so the two cannot drift. */
+export const PICK_LAYER_PRIORITIES: Readonly<Record<string, number>> = Object.freeze(
+  Object.fromEntries(PICK_LADDER.map(rung => [rung.name, rung.priority])),
+)
+
+/** Priority of `layer`, defaulting to 0 like the resolver's own fallback. */
+export function pickPriorityOf(layer: string): number {
+  return PICK_LAYER_PRIORITIES[layer] ?? 0
+}
+
 /**
  * Every ID layer the part editor picks from, in one place so the tool presets
  * (toolPickConfig.ts) and the dispatcher's consumed set

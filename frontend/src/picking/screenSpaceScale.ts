@@ -8,6 +8,41 @@
  */
 
 /**
+ * Edge of the square pick window, in CSS pixels; the reach it stands for is the
+ * radius of the disc inscribed in it, 8 px around the cursor.
+ *
+ * CSS and not device pixels, because the two diverge on every HiDPI display and
+ * only one of them is the affordance. The ID target is allocated at
+ * drawing-buffer resolution (`IdPickingDriver`'s `getDrawingBufferSize`) and the
+ * cursor is converted into those same device pixels, so a window taken
+ * literally as device pixels shrinks to 8/DPR CSS pixels. That matters most for
+ * the helper vertex layers -- sketch vertices, the origin marker, dimension
+ * labels -- which each mark a single point (`VertexIdLayer`'s points path), so
+ * the window is not a tolerance around their footprint, it IS their whole catch
+ * radius. At DPR 2 that radius lands at 4 CSS px, inside the 5 px radius of the
+ * dot a sketch point draws, so the user aims at a dot whose own rim is out of
+ * range. A sketch entity nearby keeps answering not because it is drawn fat --
+ * `EdgeIdLayer` rasterises 1 px lines too -- but because a curve marks a
+ * contiguous RUN of pixels, so it is far likelier than an isolated dot to have
+ * one of them inside a shrunken window. `getEffectiveWindowSize` scales this
+ * back into device pixels at read time.
+ *
+ * Lives here rather than on IdPipeline so the pure scene probe can read the
+ * same radius without importing the three.js pipeline; IdPipeline re-exports it
+ * for the existing import sites.
+ */
+export const DEFAULT_WINDOW_SIZE = 17
+
+/**
+ * Pick reach in pixels: the radius of the disc inscribed in the square window.
+ * The one derivation of "how far a pick reaches", shared by the pipeline's
+ * read window and the probe's candidate filter.
+ */
+export function pickRadiusPx(windowSize: number = DEFAULT_WINDOW_SIZE): number {
+  return (windowSize - 1) / 2
+}
+
+/**
  * World units spanned by one screen pixel, at the depth whose clip-space `w`
  * is `clipW`.
  *

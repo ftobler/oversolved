@@ -8,41 +8,24 @@ import { EdgeIdLayer } from './EdgeIdLayer'
 import { VertexIdLayer } from './VertexIdLayer'
 import type { IdLayer } from './IdLayer'
 import {
+  FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME,
   PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
-  FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
+  FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME, pickPriorityOf,
 } from './layerNames'
+import { DEFAULT_WINDOW_SIZE, pickRadiusPx } from './screenSpaceScale'
 
 // Layer name constants now live in the pure ./layerNames module (no three.js)
 // so tool/selection policy can import them headlessly. Re-export here so the
 // @/picking barrel and existing import sites keep resolving them unchanged.
+// DEFAULT_WINDOW_SIZE moved to ./screenSpaceScale for the same reason: the
+// probe needs it without the three.js pipeline; re-exported for old importers.
 export {
   PLANE_LAYER_NAME, SKETCH_SURFACE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME,
   SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME, DIMENSION_LABEL_LAYER_NAME,
   FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
 }
-
-/**
- * Edge of the square pick window, in CSS pixels; the reach it stands for is the
- * radius of the disc inscribed in it, 8 px around the cursor.
- *
- * CSS and not device pixels, because the two diverge on every HiDPI display and
- * only one of them is the affordance. The ID target is allocated at
- * drawing-buffer resolution (`IdPickingDriver`'s `getDrawingBufferSize`) and the
- * cursor is converted into those same device pixels, so a window taken
- * literally as device pixels shrinks to 8/DPR CSS pixels. That matters most for
- * the helper vertex layers -- sketch vertices, the origin marker, dimension
- * labels -- which each mark a single point (`VertexIdLayer`'s points path), so
- * the window is not a tolerance around their footprint, it IS their whole catch
- * radius. At DPR 2 that radius lands at 4 CSS px, inside the 5 px radius of the
- * dot a sketch point draws, so the user aims at a dot whose own rim is out of
- * range. A sketch entity nearby keeps answering not because it is drawn fat --
- * `EdgeIdLayer` rasterises 1 px lines too -- but because a curve marks a
- * contiguous RUN of pixels, so it is far likelier than an isolated dot to have
- * one of them inside a shrunken window. `getEffectiveWindowSize` scales this
- * back into device pixels at read time.
- */
-export const DEFAULT_WINDOW_SIZE = 17
+export { DEFAULT_WINDOW_SIZE }
 
 /**
  * Bounds on the device-pixel ratio the pick window is scaled by.
@@ -85,7 +68,7 @@ function scaledWindowSize(cssSize: number, ratio: number): number {
   // check (`NaN <= 0` and `length < NaN` are both false), so the resolver would
   // answer an empty window instead of failing.
   const css = Number.isFinite(cssSize) ? Math.max(1, Math.round(cssSize)) : DEFAULT_WINDOW_SIZE
-  const cssRadius = (css - 1) / 2
+  const cssRadius = pickRadiusPx(css)
   return 2 * Math.round(cssRadius * ratio) + 1
 }
 
@@ -185,13 +168,18 @@ export class IdPipeline {
     this.registry = new IdRegistry()
     this.target = new IdRenderTarget(opts.width, opts.height)
     this.resolver = new IdResolver(this.registry)
-    // B-rep layers (face/edge/vertex) at priorities 0/10/20.
-    this.faceLayer = new FaceIdLayer(this.registry)
-    this.edgeLayer = new EdgeIdLayer(this.registry)
+    // B-rep layers (face/edge/vertex) at the ladder's 0/10/20 rungs.
+    this.faceLayer = new FaceIdLayer(this.registry, {
+      name: FACE_LAYER_NAME, priority: pickPriorityOf(FACE_LAYER_NAME),
+    })
+    this.edgeLayer = new EdgeIdLayer(this.registry, {
+      name: EDGE_LAYER_NAME, priority: pickPriorityOf(EDGE_LAYER_NAME),
+    })
     // depth-test-against-prev keeps B-rep face depth alive for the sketch surface
     // layer. The vertex cubes have real depth extent, so ordinary depth testing
     // ranks vertex over edge over face without any always-win escape hatch.
     this.vertexLayer = new VertexIdLayer(this.registry, {
+      name: VERTEX_LAYER_NAME, priority: pickPriorityOf(VERTEX_LAYER_NAME),
       zPolicy: 'depth-test-against-prev', cubePixels: VERTEX_PICK_CUBE_PIXELS,
     })
 
@@ -199,18 +187,21 @@ export class IdPipeline {
     // behind the B-rep stack -- bodies occlude the plane in the ID buffer.
     // Order: planeFace (-10) -> B-rep (0/10/20) -> sketchSurface (30) ->
     // sketchEntity (40) -> originMarker (45) -> sketchVertex (50) -> ...
+    // Priorities come from PICK_LADDER, the one data table the probe reads too.
     this.planeLayer = new FaceIdLayer(this.registry, {
-      name: PLANE_LAYER_NAME, priority: -10, zPolicy: 'clear-then-fresh',
+      name: PLANE_LAYER_NAME, priority: pickPriorityOf(PLANE_LAYER_NAME), zPolicy: 'clear-then-fresh',
     })
     this.sketchSurfaceLayer = new FaceIdLayer(this.registry, {
-      name: SKETCH_SURFACE_LAYER_NAME, priority: 30, zPolicy: 'depth-test-against-prev',
+      name: SKETCH_SURFACE_LAYER_NAME, priority: pickPriorityOf(SKETCH_SURFACE_LAYER_NAME),
+      zPolicy: 'depth-test-against-prev',
     })
     this.sketchEntityLayer = new EdgeIdLayer(this.registry, {
-      name: SKETCH_ENTITY_LAYER_NAME, priority: 40, zPolicy: 'clear-then-fresh',
-      depthTest: false, depthWrite: false,
+      name: SKETCH_ENTITY_LAYER_NAME, priority: pickPriorityOf(SKETCH_ENTITY_LAYER_NAME),
+      zPolicy: 'clear-then-fresh', depthTest: false, depthWrite: false,
     })
     this.sketchVertexLayer = new VertexIdLayer(this.registry, {
-      name: SKETCH_VERTEX_LAYER_NAME, priority: 50, zPolicy: 'no-depth',
+      name: SKETCH_VERTEX_LAYER_NAME, priority: pickPriorityOf(SKETCH_VERTEX_LAYER_NAME),
+      zPolicy: 'no-depth',
     })
     // Below the sketch vertex rather than above it, which is the one place the
     // ladder is not simply "later layers win". The origin has to beat the plane,
@@ -224,10 +215,11 @@ export class IdPipeline {
     // the more specific of two things at one spot, which is the rule the rest
     // of the ladder already expresses.
     this.originLayer = new VertexIdLayer(this.registry, {
-      name: ORIGIN_LAYER_NAME, priority: 45, zPolicy: 'no-depth',
+      name: ORIGIN_LAYER_NAME, priority: pickPriorityOf(ORIGIN_LAYER_NAME), zPolicy: 'no-depth',
     })
     this.dimensionLabelLayer = new VertexIdLayer(this.registry, {
-      name: DIMENSION_LABEL_LAYER_NAME, priority: 70, zPolicy: 'no-depth',
+      name: DIMENSION_LABEL_LAYER_NAME, priority: pickPriorityOf(DIMENSION_LABEL_LAYER_NAME),
+      zPolicy: 'no-depth',
     })
     // Feature editing handles (draggable extrude/fillet/revolve arrows) sit on
     // top of everything: while a handle is shown the user is mid-edit and the
@@ -235,8 +227,8 @@ export class IdPipeline {
     // layer, not a vertex layer: the whole arrow line is the grab target, so
     // the pick region matches the visible arrow instead of one snap point.
     this.featureHandleLayer = new EdgeIdLayer(this.registry, {
-      name: FEATURE_HANDLE_LAYER_NAME, priority: 80, zPolicy: 'no-depth',
-      depthTest: false, depthWrite: false,
+      name: FEATURE_HANDLE_LAYER_NAME, priority: pickPriorityOf(FEATURE_HANDLE_LAYER_NAME),
+      zPolicy: 'no-depth', depthTest: false, depthWrite: false,
     })
     // The assembly triad, one step above even the feature handles: while a
     // triad is shown the part under it is already selected, so a pixel the
@@ -245,7 +237,8 @@ export class IdPipeline {
     // the depth buffer first, so the handles win against the body they sit
     // inside while still occluding each other correctly.
     this.gizmoHandleLayer = new FaceIdLayer(this.registry, {
-      name: GIZMO_HANDLE_LAYER_NAME, priority: 90, zPolicy: 'no-depth',
+      name: GIZMO_HANDLE_LAYER_NAME, priority: pickPriorityOf(GIZMO_HANDLE_LAYER_NAME),
+      zPolicy: 'no-depth',
     })
 
     this.layers = []
@@ -533,7 +526,7 @@ export class IdPipeline {
     // opts.windowSize, like the pipeline default, is CSS pixels; the read below
     // is in device pixels, so it goes through the same DPR scale.
     const reachSize = this.getEffectiveWindowSize(opts?.windowSize)
-    const radius = (reachSize - 1) / 2
+    const radius = pickRadiusPx(reachSize)
     // Read one pixel wider on every side than the reach. The cursor sits
     // anywhere inside its own pixel, so the disc of radius `radius` around it
     // extends up to a pixel past the window that would be centred on that pixel
