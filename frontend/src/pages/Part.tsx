@@ -32,8 +32,10 @@ import PartDebugPanel from '@/pages/PartDebugPanel'
 import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport, { type PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
-import { getSketchState, type PartCommandContext, type ShowMessagePayload } from '@/pages/commandEntries'
+import { getSketchState, PART_COMMAND_SPECS, type PartCommandContext, type ShowMessagePayload } from '@/pages/commandEntries'
 import { CommandRegistryProvider, useCommandRegistryWithContext } from '@/contexts/CommandRegistryContext'
+import { installDriveSurface } from '@/drive/driveSurface'
+import { DRIVE_ENABLED } from '@/drive/gate'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import { useEditFeature } from '@/pages/useEditFeature'
 
@@ -793,6 +795,22 @@ export default function Part() {
   ])
   const commandRegistry = useCommandRegistryWithContext(commandContext)
   usePartCommands(commandRegistry)
+
+  // Q6: the drive surface is a dev/test affordance. The gate constant is folded
+  // by the bundler, so in a production build this effect body is dead code and
+  // the bridge module is never referenced.
+  useEffect(() => {
+    if (!DRIVE_ENABLED) return
+    return installDriveSurface({
+      registry: commandRegistry,
+      specs: PART_COMMAND_SPECS,
+      inspectSession: () => session.inspect(),
+      editorState: getSketchState,
+      idle: () => session.idle(),
+      executeMutation: mutation => session.execute(mutation),
+      screenshot: () => viewportRef.current?.captureScreenshotForSaving() ?? Promise.resolve(null),
+    })
+  }, [commandRegistry, session])
 
   const handleSave = async () => {
     if (!uuid || !doc) return false
