@@ -1,5 +1,5 @@
 # GitHub's half of the full gate, for contributors on the mirror: every job is
-# gated to GitHub and runs on push and PR. Gitea's copy is ci.yaml; the two are
+# gated to GitHub and runs on push and PR. Gitea's copy is ci-gitea.yaml; the two are
 # kept in step by hand, so a change to one usually wants the same edit in the
 # other. main.yaml stays separate: main-only, and the only workflow that
 # publishes the site.

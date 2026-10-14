@@ -37,7 +37,7 @@ DOC_AND_TOOLING_SURFACE = (
     "docs/setup.md",
     "justfile",
     "pyproject.toml",
-    ".github/workflows/ci.yaml",
+    ".github/workflows/ci-gitea.yaml",
     ".github/workflows/ci-github.yaml",
     ".github/workflows/main.yaml",
 )

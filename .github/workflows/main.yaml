@@ -1,5 +1,5 @@
 # GitHub side: a sanity check plus the Pages deploy, on main only. Gitea runs
-# the full matrix from ci.yaml on every push and PR, so main arrives here
+# the full matrix from ci-gitea.yaml on every push and PR, so main arrives here
 # pre-checked and this need not repeat that gate. The kernel tests self-skip
 # without OCC.js and the pkg-node solver builds, which is accepted here.
 name: Main
