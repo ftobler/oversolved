@@ -243,6 +243,13 @@ draw_all()  # Required at end
 
 ## 7. Command Families
 
+The full list is `COMMAND_NAMES` (`frontend/src/utils/core/commandNames.ts`);
+the tables here name the families. Sketch/part families live in
+`PART_COMMAND_SPECS` (`pages/commandEntries.ts`), assembly families in
+`ASSEMBLY_COMMAND_SPECS` (`pages/assemblyCommandEntries.ts`). Every command has
+a spec with an enabled predicate and a params schema; a command whose values
+are user-entered takes them as data and the dialog is only a front end.
+
 ### Tool Activation
 
 | Command | Action |
@@ -271,6 +278,16 @@ draw_all()  # Required at end
 | `delete_selected` | Delete selected entities |
 | `toggle_construction` | Toggle construction mode |
 | `cancel_draw` | Cancel active draw operation |
+
+### Assembly Commands
+
+| Command | Action |
+|---------|--------|
+| `insert_part_instance` / `add_part` | Open the picker and append a part instance |
+| `duplicate_part` / `delete_part` | Duplicate or delete a part instance |
+| `set_part_visible` / `set_part_fixed*` | Toggle visibility or the fixed flag |
+| `insert_mate_<kind>` / `update_mate` / `delete_mate` | Mate authoring |
+| `export_assembly` / `cancel_edit` | Assembly-level actions |
 
 ## 8. Test Requirements
 
@@ -301,18 +318,39 @@ describe('buildKeyString', () => {
 
 ### Command Registry
 
-**Location:** `frontend/src/utils/core/commandRegistry.ts`
+**Location:** `frontend/src/utils/core/commandSpec.ts` (specs + registry),
+`frontend/src/utils/core/commandRegistry.ts` (keymaps + module-level dispatch)
 
 **Core API:**
 ```ts
-type CommandHandler = (payload?: unknown) => void
+interface CommandSpec<Ctx, P> {
+  id: CommandName
+  label: string
+  shortcut?: string
+  params: ParamsSpec<P>                       // noParams | valueParam | objectParams
+  enabled(ctx: Ctx): true | string            // string is the disabled reason
+  run(ctx: Ctx, params: P): CommandResult     // ok (+ createdIds) or an error
+  undoable: boolean
+}
 
-// Returns an unregister that removes the entry only if it still holds `fn`.
-export function registerCommand(name: string, fn: CommandHandler): () => void
-export function clearAllHandlers(): void
-export function executeCommand(name: string, payload?: unknown): void
+class CommandRegistry<Ctx> {
+  register(spec): () => void                  // identity-guarded unregister
+  execute(id, params?): CommandResult         // unknown-command / invalid-params
+  enabled(id): true | string
+}
+
+// Module level: resolves the active editor's registry (by editor mode).
+export function executeCommand(name: CommandName, params?: unknown): CommandResult
 export function dispatchKey(e: KeyboardEvent): boolean
+export function dispatchKeyOutcome(e: KeyboardEvent): DispatchOutcome
 ```
+
+Spec tables live in `frontend/src/pages/commandEntries.ts`
+(`PART_COMMAND_SPECS`) and `frontend/src/pages/assemblyCommandEntries.ts`
+(`ASSEMBLY_COMMAND_SPECS`); pages install them through
+`useCommandRegistration(kind, registry, specs)` with a page-built
+`CommandContext`. The legacy `registerCommand`/`clearAllHandlers` pair remains
+as a fallback seam for tests only.
 
 ### Geometry Mapping
 
@@ -331,7 +369,7 @@ export function dispatchKey(e: KeyboardEvent): boolean
 | Run frontend tests | `npx vitest run` | `frontend/` |
 | Run linter | `npm run lint` | `frontend/` |
 | Run type checker | `mypy tests/ oversolved/` | root |
-| Add new command | `registerCommand()` | `frontend/src/utils/core/commandRegistry.ts` |
+| Add new command | add a `CommandSpec` to the editor's table | `frontend/src/pages/commandEntries.ts` / `assemblyCommandEntries.ts` |
 | Add new tool | `frontend/src/registry/entityRegistry.ts` | `frontend/src/registry/` |
 | Add new constraint | `frontend/src/registry/constraintRegistry.ts` | `frontend/src/registry/` |
 | Add new measurement | `frontend/src/registry/measurementRegistry.ts` | `frontend/src/registry/` |
