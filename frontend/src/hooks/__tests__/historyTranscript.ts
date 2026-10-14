@@ -13,7 +13,7 @@ import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
-import { docRef, reSolve, resetHarness } from './usePartDoc.undoHarness'
+import { docRef, resetHarness } from './usePartDoc.undoHarness'
 import type { PartDoc, Mutation } from '@/types/cad'
 
 export type TranscriptStep =
@@ -131,7 +131,3 @@ export function runPartTranscript(
     },
   }
 }
-
-// Re-exported so a transcript suite reaches the same solve spy the driver's
-// composition uses, for the rows that observe solve options rather than docs.
-export { reSolve }
