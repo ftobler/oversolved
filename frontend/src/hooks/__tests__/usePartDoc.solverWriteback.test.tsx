@@ -4,7 +4,7 @@
  * The regression this pins: the old solve path deleted superfluous constraints
  * and projection_error entities out of the doc with no undo entry, so Ctrl+Z
  * restored them only for the immediate re-solve to delete them again. This
- * harness wires usePartDoc + useUndoRedo with the REAL useSolver and the worker
+ * harness wires usePartDoc (the DocSession adapter) with the REAL useSolver and the worker
  * mocked, so it drives the actual flow a user walks.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'

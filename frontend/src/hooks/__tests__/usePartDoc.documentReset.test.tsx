@@ -8,7 +8,7 @@ import type { PartDoc, Mutation } from '@/types/cad'
 
 // undo-document-reset: the undo stacks must not survive a document change.
 // DocumentPage keys Part by uuid, so a route change is a full Part remount and
-// a fresh useUndoRedo instance. These tests mount usePartDoc with a changing key
+// a fresh session history. These tests mount usePartDoc with a changing key
 // to prove a remounted instance starts with empty stacks and no session state
 // inherited from the previous document.
 

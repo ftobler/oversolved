@@ -80,10 +80,12 @@ Document mutations, by editor:
   are built by `buildCommandEntries()` in
   `frontend/src/pages/commandEntries.ts`. Tool and constraint commands reach the
   document through the sketch store's `onMutation` callback.
-- Part: feature and style edits call `handleMutation` (the `usePartDoc` funnel),
-  both directly and from the command entries; it is the one path that records
-  undo history and triggers a re-solve. `PartEditorContext` exposes the same
-  callbacks to the tree.
+- Part: feature and style edits call `handleMutation` (the `usePartDoc`
+  adapter), both directly and from the command entries; the adapter forwards
+  them to the `DocSession` (`frontend/src/session/`), the framework-free engine
+  that owns the doc, history, transactions, dirty policy and solve scheduling.
+  The session is the one path that records undo history and triggers a
+  re-solve. `PartEditorContext` exposes the same callbacks to the tree.
 - Assembly: operations dispatch `executeCommand(name)` into
   `ASSEMBLY_OPERATIONS`. A drag commit writes the doc through the `mutateDoc`
   funnel the page registers on the store. Undo/redo restores the doc through the
@@ -99,7 +101,9 @@ Transient state (hover, selection, the active tool, draw points, drag and gizmo
 previews, the rubber band, solver status, an armed pick field, the undo/redo
 stacks) describes the interaction rather than the document. It is not persisted
 and carries no undo entry, so it is exempt and may use the store's setters or
-`useXStore.setState(...)` directly:
+`useXStore.setState(...)` directly. The part editor's undo/redo stacks are the
+`DocSession` history mirrored into `partEditorStore` by `usePartDoc`; the
+session is the owner and the store fields are the UI view:
 
 ```ts
 useAssemblyStore.setState({ manipulation: null, gizmoDrag: null })
@@ -319,6 +323,7 @@ export function dispatchKey(e: KeyboardEvent): boolean
 
 | Task | Command | Location |
 |------|---------|----------|
+| Session engine rules | `session/DocSession.ts`, `session/History.ts` | `frontend/src/session/` |
 | Run Python tooling tests | `pytest tests/` | `tests/` |
 | Run frontend tests | `npx vitest run` | `frontend/` |
 | Run linter | `npm run lint` | `frontend/` |

@@ -38,21 +38,6 @@ vi.mock('@/hooks/useSolver', () => ({
   }),
 }))
 
-vi.mock('@/hooks/useUndoRedo', () => ({
-  useUndoRedo: () => ({
-    undoStack: [],
-    redoStack: [],
-    pushUndo: vi.fn(),
-    pushUndoSnapshot: vi.fn(),
-    applyUndoRedo: vi.fn(),
-    handleUndo: vi.fn(),
-    handleRedo: vi.fn(),
-    saveUndoStackSnapshot: vi.fn(),
-    restoreUndoStackSnapshot: vi.fn(),
-    clearUndoStackSnapshot: vi.fn(),
-  }),
-}))
-
 vi.mock('@/hooks/mutationDispatch', () => ({
   mutationHandlers: {},
 }))

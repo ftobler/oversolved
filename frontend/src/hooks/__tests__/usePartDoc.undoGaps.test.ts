@@ -2,7 +2,7 @@
 // main undoIntegration suite does not cover: commitMutationGroup no-op / empty
 // / suppressed groups, the null-docRef early return, the preview label
 // fallback and redo's dirty flag.
-// Mirrors the undoIntegration harness: real useUndoRedo, real handlers.
+// Mirrors the undoIntegration harness: the real session, real handlers.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'

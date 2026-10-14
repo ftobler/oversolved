@@ -1,6 +1,6 @@
 // The commitMutationGroup prune/restore path and the preview/group escape and
 // suppression branches of usePartDoc that the roundtrip and undoGaps suites do
-// not reach. Real useUndoRedo and real mutation handlers; only the document and
+// not reach. The real DocSession and real mutation handlers; only the document and
 // solver seams are mocked.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'

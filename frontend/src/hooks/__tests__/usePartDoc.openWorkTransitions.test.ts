@@ -1,6 +1,6 @@
 // The transition table of the open-work slot, row by row: idle, preview and
 // session (suppressed or sketch), and what each machine action does to the
-// successor state. Real useUndoRedo and real mutation handlers; only the
+// successor state. The real DocSession and real mutation handlers; only the
 // document and solver seams are mocked, like the other undo suites. The point
 // of the union is that a colour preview and an edit session can never be open
 // at once, so every row either refuses, resolves or swallows, and the

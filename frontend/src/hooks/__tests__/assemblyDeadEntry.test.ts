@@ -12,7 +12,7 @@ import type { AssemblyDoc } from '@/types/cad'
 
 // The conservation invariant is observable only when the cap is small; at 50 a
 // `<= MAX_UNDO_DEPTH` assertion is vacuous, exactly as in the part hook's
-// useUndoRedo.undoCap.test.ts.
+// the session undoEngine.test.ts.
 vi.mock('@/config/undoConfig', () => ({ MAX_UNDO_DEPTH: 3 }))
 
 function resetStore() {

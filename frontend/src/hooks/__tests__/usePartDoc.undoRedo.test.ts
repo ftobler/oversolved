@@ -1,104 +1,75 @@
 import { describe, it, expect, vi } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
-import { useUndoRedo } from '@/hooks/useUndoRedo'
-import type { PartDoc, Mutation } from '@/types/cad'
+import { usePartDoc } from '@/hooks/usePartDoc'
+import { docRef, renameTo, resetHarness } from './usePartDoc.undoHarness'
 
-function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
-  return { version: 1, kind: 'part', features: [], ...overrides }
-}
+vi.mock('@/hooks/useDocumentState', async () => {
+  const { documentStateMock } = await import('./usePartDoc.undoHarness')
+  return documentStateMock()
+})
 
-describe('useUndoRedo integration', () => {
+vi.mock('@/hooks/useSolver', async () => {
+  const { solverMock } = await import('./usePartDoc.undoHarness')
+  return solverMock()
+})
+
+// The adapter end-to-end over the session's history: the same three claims the
+// deleted useUndoRedo integration suite pinned (one move per keystroke, no
+// duplicated redo entries, the cap), observed through the hook's public stacks.
+describe('usePartDoc undo/redo integration', () => {
   it('undo then redo does not duplicate redo stack entries', () => {
-    const docA = makeDoc({ features: [{ id: 'f1', kind: 'sketch' }] })
-    const docB = makeDoc({ features: [{ id: 'f2', kind: 'extrude' }] })
-    const docC = makeDoc({ features: [{ id: 'f3', kind: 'fillet' }] })
-    const docRef = { current: docC as PartDoc }
-    const setDoc = vi.fn()
-    const reSolve = vi.fn()
-    const { result } = renderHookStrict(() =>
-      useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve),
-    )
+    resetHarness()
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    // Push three undo entries
-    act(() => {
-      result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA as PartDoc)
-      result.current.pushUndo({ type: 'add_extrude' } as Mutation, docB as PartDoc)
-    })
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.handleMutation(renameTo('b')) })
 
-    // Undo once: goes to docB, redo has docC
     act(() => { result.current.handleUndo() })
     expect(result.current.redoStack).toHaveLength(1)
-    // The counterpart is a snapshot of the departing doc, not a shared reference.
-    expect(result.current.redoStack[0].doc).toEqual(docC)
+    expect(result.current.redoStack[0].mutation).toEqual(renameTo('b'))
 
-    // Redo: goes back to docC, undo restored
     act(() => { result.current.handleRedo() })
     expect(result.current.redoStack).toHaveLength(0)
     expect(result.current.undoStack).toHaveLength(2)
   })
 
-  it('multi-step undo and redo restores original state', () => {
-    const docs = ['A', 'B', 'C', 'D'].map(label =>
-      makeDoc({ features: [{ id: `f_${label}`, kind: 'sketch' }] }),
-    )
-    const docRef = { current: docs[3] as PartDoc }
-    const setDoc = vi.fn()
-    const reSolve = vi.fn()
-    const { result } = renderHookStrict(() =>
-      useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve),
-    )
+  it('multi-step undo and redo restores the original state', () => {
+    resetHarness()
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    // Build undo stack: A, B, C (current is D)
-    act(() => {
-      result.current.pushUndo({ type: 'delete_feature', featureId: 'm1' } as Mutation, docs[0] as PartDoc)
-      result.current.pushUndo({ type: 'delete_feature', featureId: 'm2' } as Mutation, docs[1] as PartDoc)
-      result.current.pushUndo({ type: 'delete_feature', featureId: 'm3' } as Mutation, docs[2] as PartDoc)
-    })
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    act(() => { result.current.handleMutation(renameTo('b')) })
+    act(() => { result.current.handleMutation(renameTo('c')) })
 
-    // Undo three times: D→C→B→A
-    act(() => { result.current.handleUndo() })
-    expect(setDoc).toHaveBeenLastCalledWith(docs[2])
-    act(() => { result.current.handleUndo() })
-    expect(setDoc).toHaveBeenLastCalledWith(docs[1])
-    act(() => { result.current.handleUndo() })
-    expect(setDoc).toHaveBeenLastCalledWith(docs[0])
+    for (const label of ['b', 'a', 'first']) {
+      act(() => { result.current.handleUndo() })
+      expect((docRef.current?.features?.[0] as { label?: string }).label).toBe(label)
+    }
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(3)
 
-    // Redo three times: A→B→C→D
-    act(() => { result.current.handleRedo() })
-    expect(setDoc).toHaveBeenLastCalledWith(docs[1])
-    act(() => { result.current.handleRedo() })
-    expect(setDoc).toHaveBeenLastCalledWith(docs[2])
-    act(() => { result.current.handleRedo() })
-    expect(setDoc).toHaveBeenLastCalledWith(docs[3])
+    for (const label of ['a', 'b', 'c']) {
+      act(() => { result.current.handleRedo() })
+      expect((docRef.current?.features?.[0] as { label?: string }).label).toBe(label)
+    }
     expect(result.current.undoStack).toHaveLength(3)
     expect(result.current.redoStack).toHaveLength(0)
   })
 
-  it('stack limit drops oldest entries when exceeding max size', () => {
-    const docRef = { current: makeDoc() as PartDoc }
-    const setDoc = vi.fn()
-    const reSolve = vi.fn()
-    const { result } = renderHookStrict(() =>
-      useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, reSolve),
-    )
+  it('the stack limit drops the oldest entries when exceeding max size', () => {
+    resetHarness()
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    // Push 55 entries (max is 50)
     for (let i = 0; i < 55; i++) {
-      act(() => {
-        result.current.pushUndo(
-          { type: 'add_sketch' } as Mutation,
-          makeDoc({ features: [{ id: `f${i}`, kind: 'sketch' }] }) as PartDoc,
-        )
-      })
+      act(() => { result.current.handleMutation(renameTo(`f${i}`)) })
     }
 
-    // Assert the exact depth and which end was discarded: a <= 50 bound also
-    // holds for an empty stack, so it would pass even if nothing was pushed.
+    // Exact depth plus which end was discarded: a <= 50 bound also holds for an
+    // empty stack, so it would pass even if nothing was ever pushed.
     expect(result.current.undoStack).toHaveLength(50)
-    expect(result.current.undoStack[0].doc.features?.[0].id).toBe('f5')
-    expect(result.current.undoStack[49].doc.features?.[0].id).toBe('f54')
+    expect(result.current.undoStack[0].mutation).toEqual(renameTo('f5'))
+    expect(result.current.undoStack[49].mutation).toEqual(renameTo('f54'))
   })
+
 })

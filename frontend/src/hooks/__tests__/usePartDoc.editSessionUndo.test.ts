@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -6,7 +7,6 @@ import type { PartDoc } from '@/types/cad'
 
 // A live docRef the tests mutate to stand in for edits made during a session.
 const docRef = { current: { features: [] } as unknown as PartDoc }
-const pushUndoSnapshot = vi.fn()
 
 vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
@@ -26,42 +26,32 @@ vi.mock('@/hooks/useSolver', () => ({
   }),
 }))
 
-vi.mock('@/hooks/useUndoRedo', () => ({
-  useUndoRedo: () => ({
-    undoStack: [], redoStack: [],
-    pushUndo: vi.fn(), pushUndoSnapshot, handleUndo: vi.fn(), handleRedo: vi.fn(),
-    saveUndoStackSnapshot: vi.fn(), restoreUndoStackSnapshot: vi.fn(),
-    clearUndoStackSnapshot: vi.fn(),
-  }),
-}))
-
 vi.mock('@/hooks/mutationDispatch', () => ({ mutationHandlers: {} }))
 
 describe('commitEditSession undo entry', () => {
   beforeEach(() => {
-    pushUndoSnapshot.mockClear()
     docRef.current = { features: [] } as unknown as PartDoc
     usePartEditorStore.getState().setEditingFeatureId(null)
   })
 
   it('pushes no undo entry when the session changed nothing', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-    result.current.startEditSession(true)
-    result.current.commitEditSession()
-    expect(pushUndoSnapshot).not.toHaveBeenCalled()
+    act(() => { result.current.startEditSession(true) })
+    act(() => { result.current.commitEditSession() })
+    expect(result.current.undoStack).toHaveLength(0)
   })
 
   it('pushes one undo entry naming the edited feature when the doc changed', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
-    result.current.startEditSession(true)
+    act(() => { result.current.startEditSession(true) })
     docRef.current = { features: [{ id: 'extrude-1' }] } as unknown as PartDoc
-    result.current.commitEditSession()
+    act(() => { result.current.commitEditSession() })
 
-    expect(pushUndoSnapshot).toHaveBeenCalledTimes(1)
-    expect(pushUndoSnapshot.mock.calls[0][0]).toEqual({ type: 'edit_session', featureId: 'extrude-1' })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation).toEqual({ type: 'edit_session', featureId: 'extrude-1' })
     // The entry restores the pre-session doc, not the post-session one.
-    expect(pushUndoSnapshot.mock.calls[0][1]).toEqual({ features: [] })
+    expect(result.current.undoStack[0].doc).toEqual({ features: [] })
   })
 
   // The solver fabricates part_style entries mid-session (reconcilePartStyle),
@@ -70,11 +60,11 @@ describe('commitEditSession undo entry', () => {
   it('pushes no undo entry when the doc differs only in a solve-fabricated part_style', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
-    result.current.startEditSession(true)
+    act(() => { result.current.startEditSession(true) })
     docRef.current = { features: [], part_style: { b1: { color: '#ff0000' } } } as unknown as PartDoc
-    result.current.commitEditSession()
+    act(() => { result.current.commitEditSession() })
 
-    expect(pushUndoSnapshot).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
   })
 
   // rollback is pinned during an edit (the mirror only runs outside one), so a
@@ -82,11 +72,11 @@ describe('commitEditSession undo entry', () => {
   it('pushes no undo entry when the doc differs only in rollback', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
-    result.current.startEditSession(true)
+    act(() => { result.current.startEditSession(true) })
     docRef.current = { features: [], rollback: 2 } as unknown as PartDoc
-    result.current.commitEditSession()
+    act(() => { result.current.commitEditSession() })
 
-    expect(pushUndoSnapshot).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
   })
 
   // The complement of the two exclusions: a real feature change still earns the
@@ -94,14 +84,14 @@ describe('commitEditSession undo entry', () => {
   it('pushes one entry when a feature change rides alongside fabricated part_style', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
-    result.current.startEditSession(true)
+    act(() => { result.current.startEditSession(true) })
     docRef.current = {
       features: [{ id: 'extrude-1' }],
       part_style: { b1: { color: '#ff0000' } },
     } as unknown as PartDoc
-    result.current.commitEditSession()
+    act(() => { result.current.commitEditSession() })
 
-    expect(pushUndoSnapshot).toHaveBeenCalledTimes(1)
-    expect(pushUndoSnapshot.mock.calls[0][0]).toEqual({ type: 'edit_session', featureId: 'extrude-1' })
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation).toEqual({ type: 'edit_session', featureId: 'extrude-1' })
   })
 })

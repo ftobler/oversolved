@@ -338,3 +338,58 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
     expect(dirty()).toBe(true)
   })
 })
+
+// The dirty mirror writes exactly the decision a session call made, once. The
+// old funnel left the store untouched on a no-op dispatch, and the workspace
+// seam (refreshWorkspaceDirty) can move the live flag between calls, so a
+// no-op must never re-assert the session's last decision over that newer set.
+describe('usePartDoc dirty mirror does not clobber external sets', () => {
+  beforeEach(() => {
+    resetHarness()
+    useUnsavedChangesStore.getState().setDirty(false)
+  })
+
+  it('an external clear survives a no-op mutation dispatch', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    expect(dirty()).toBe(true)
+
+    // The workspace seam clears the flag; the session's last decision is stale.
+    useUnsavedChangesStore.getState().setDirty(false)
+
+    // A same-value dispatch is a no-op and must leave the store alone.
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    expect(dirty()).toBe(false)
+  })
+
+  it('an external clear survives a no-op group dispatch', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    useUnsavedChangesStore.getState().setDirty(false)
+
+    act(() => { result.current.commitMutationGroup([renameTo('a')]) })
+    expect(dirty()).toBe(false)
+  })
+
+  it('an external set survives a no-op dispatch', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    // The seam flags the workspace ahead with no edit of our own.
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    act(() => { result.current.handleMutation(renameTo('first')) })
+    expect(dirty()).toBe(true)
+  })
+
+  it('a real edit after an external clear still mirrors dirty', () => {
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.handleMutation(renameTo('a')) })
+    useUnsavedChangesStore.getState().setDirty(false)
+
+    act(() => { result.current.handleMutation(renameTo('b')) })
+    expect(dirty()).toBe(true)
+  })
+})

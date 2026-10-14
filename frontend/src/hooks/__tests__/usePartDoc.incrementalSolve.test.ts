@@ -48,19 +48,6 @@ vi.mock('@/hooks/useSolver', () => ({
   }),
 }))
 
-vi.mock('@/hooks/useUndoRedo', () => ({
-  useUndoRedo: () => ({
-    undoStack: [],
-    redoStack: [],
-    pushUndo: vi.fn(),
-    handleUndo: vi.fn(),
-    handleRedo: vi.fn(),
-    saveUndoStackSnapshot: vi.fn(),
-    restoreUndoStackSnapshot: vi.fn(),
-    clearUndoStackSnapshot: vi.fn(),
-  }),
-}))
-
 // A STEP import plus a sketch to drag in, mirroring the shape of the document
 // this whole change exists for.
 function makeDoc(): PartDoc {

@@ -1,6 +1,12 @@
 import { create } from 'zustand'
+import { hashSavedText, reconcileDirty, type DirtyPin } from '@/session/dirty'
 import { getWorkspaceStore } from '@/workspace/store'
 import { subscribeWorkspaceStore } from '@/workspace/storeEvents'
+
+// The fingerprint and the reconcile decision moved to the session's dirty
+// policy when the session layer claimed them; the store stays the UI-facing
+// mirror and re-exports the hash for its existing importers.
+export { hashSavedText }
 
 // Tracks whether the open workspace has edits not yet written to its
 // checkpoint. Navigating away does NOT auto-save (that is by design), so this
@@ -12,24 +18,7 @@ import { subscribeWorkspaceStore } from '@/workspace/storeEvents'
 // the checkpoint; "dirty" is therefore the editor's in-memory edit flag OR the
 // workspace being `ahead` of its checkpoint. The workspace subscription keeps
 // the second half honest whenever the seam mutates.
-export interface PinnedDirty {
-  dirty: boolean
-  saves: number
-}
-
-// A content fingerprint of the serialized bytes a save wrote. FNV-1a over the
-// text: the save path already serializes the document for the store, so this
-// only re-reads that string, needs no dependency and no WebCrypto. It exists
-// because a cancel has to know WHICH content a mid-session save stored, and the
-// save count alone can only say that one landed.
-export function hashSavedText(text: string): number {
-  let hash = 0x811c9dc5
-  for (let i = 0; i < text.length; i++) {
-    hash ^= text.charCodeAt(i)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return hash >>> 0
-}
+export type PinnedDirty = DirtyPin
 
 interface UnsavedChangesState {
   dirty: boolean
@@ -132,40 +121,23 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => 
   },
 }))
 
-// The unsaved-changes flag after a session cancel or commit rewound the doc to
-// the state its session pinned. The flag has to mean one thing: the stored bytes
-// no longer match the doc that just became live. So the decision is made against
-// what a save REALLY stored -- the fingerprint it published of the exact text it
-// wrote -- rather than against the save count, which only proves that one landed.
-// A session whose edits netted to zero, or that changed nothing at all, stored
-// the very text the rewind restores: nothing is unsaved, and reading the moved
-// save count as "an edit was stored" would flag the document dirty forever.
-// `serializeRestored` is a thunk because only a session a save landed in has
-// anything to compare, so the serialization is paid on that path alone. A caller
-// that rewound nothing (a net-zero commit) passes `rewound` false; a caller that
-// did passes whether the content actually changed.
+// The shared decision every cancel and commit uses to re-derive the flag from
+// the bytes a mid-session save actually stored, so the call sites cannot drift
+// apart. The decision itself lives in the session's dirty policy
+// (`@/session/dirty`); this wrapper reads and writes the UI-facing store.
 export function reconcileDirtyAfterRewind(
   pinned: PinnedDirty,
   rewound: boolean,
   serializeRestored: () => string,
 ): void {
   const store = useUnsavedChangesStore.getState()
-  const savesMoved = store.saves !== pinned.saves
-  if (savesMoved && store.savedHash !== null) {
-    store.setDirty(store.savedHash !== hashSavedText(serializeRestored()))
-    return
-  }
-  // Nothing published what it stored. Either no save landed at all, so the
-  // pinned flag is the whole story and the rewind restores the very doc it
-  // described -- including a session whose edits netted to zero, where every
-  // mutation set the flag and nothing was thrown away. Or one landed without
-  // saying what it wrote, in which case only the rewind says whether that save's
-  // bytes were discarded.
-  if (!savesMoved || rewound) {
-    store.restoreDirtyAfterRewind(pinned)
-  }
-  // A save landed without a fingerprint and the rewind threw nothing away: the
-  // flag stands wherever that save left it.
+  const next = reconcileDirty(
+    { dirty: store.dirty, saves: store.saves, savedHash: store.savedHash },
+    pinned,
+    rewound,
+    serializeRestored,
+  )
+  if (next !== null) store.setDirty(next)
 }
 
 // The seam emits on open, close and every mutating verb, so a save or a

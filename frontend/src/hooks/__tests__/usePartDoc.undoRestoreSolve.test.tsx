@@ -6,10 +6,10 @@
  * not doc content), so the undo re-solve has nothing to fall back on when it
  * fails. A deleted BREP/import feature then renders blank forever. usePartDoc
  * now retains the pruned snapshot (the stash) and the reSolve handed to
- * useUndoRedo hands it back as _restoreSolveResults, so a failing undo re-solve
+ * the session hands it back as _restoreSolveResults, so a failing undo re-solve
  * re-renders the feature via restorePrunedResults.
  *
- * The harness drives usePartDoc + useUndoRedo with the REAL useSolver and the
+ * The harness drives usePartDoc (the DocSession adapter) with the REAL useSolver and the
  * worker mocked, exactly like usePartDoc.solverWriteback.test.tsx.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'

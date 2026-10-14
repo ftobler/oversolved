@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
-import { useUndoRedo } from '@/hooks/useUndoRedo'
+import { createDocSession } from '@/session/DocSession'
+import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
+import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import {
   useAssemblyStore,
@@ -12,14 +14,14 @@ import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEdito
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
-import type { AssemblyDoc, Mutation, PartDoc } from '@/types/cad'
+import type { AssemblyDoc, Mutation, PartDoc, SketchData } from '@/types/cad'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 
-// The part engine (useUndoRedo) and the assembly engine (useAssemblyUndoRedo)
-// expose different APIs over different document types, but they promise the
-// same undo semantics. This file asserts that shared contract through a thin
-// per-engine adapter, so a future change to one engine that breaks parity with
-// the other fails here rather than shipping silently.
+// The part engine (the DocSession history) and the assembly engine
+// (useAssemblyUndoRedo) expose different APIs over different document types,
+// but they promise the same undo semantics. This file asserts that shared
+// contract through a thin per-engine adapter, so a future change to one engine
+// that breaks parity with the other fails here rather than shipping silently.
 type AnyDoc = PartDoc | AssemblyDoc
 
 interface UndoContractHarness {
@@ -83,20 +85,28 @@ function createPartHarness(): UndoContractHarness {
   store.setPickBoundary(null)
   useUnsavedChangesStore.getState().setDirty(false)
 
-  const docRef: { current: PartDoc | null } = { current: null }
-  const setDoc = vi.fn((d: React.SetStateAction<PartDoc | null>) => { docRef.current = d as PartDoc | null })
-  const view = renderHookStrict(() => useUndoRedo(
-    docRef as React.MutableRefObject<PartDoc | null>, setDoc, vi.fn(),
-  ))
+  const cell: { current: PartDoc | null } = { current: null }
+  const solve = createFakeSolveScheduler<PartDoc>()
+  const facts = { editingFeatureId: null as string | null, rollbackPosition: null as number | null }
+  const dirty = { dirty: false, saves: 0, savedHash: null as number | null }
+  const solveResults: { current: Record<string, SketchData> } = { current: {} }
+  const session = createDocSession({
+    cloneDoc: cloneDocForUndo,
+    doc: { get: () => cell.current, set: next => { cell.current = next } },
+    solve,
+    solveResults: { get: () => solveResults.current, set: next => { solveResults.current = next } },
+    editorFacts: () => facts,
+    dirtyFacts: () => dirty,
+  })
 
   return {
-    setLive: (doc) => { docRef.current = doc as PartDoc | null },
-    push: (doc) => { act(() => view.result.current.pushUndo({ type: 'add_sketch' } as Mutation, doc as PartDoc)) },
-    undo: () => { act(() => view.result.current.handleUndo()) },
-    redo: () => { act(() => view.result.current.handleRedo()) },
-    undoIds: () => view.result.current.undoStack.map(e => partEntryId(e.doc)),
-    redoIds: () => view.result.current.redoStack.map(e => partEntryId(e.doc)),
-    live: () => docRef.current,
+    setLive: (doc) => { cell.current = doc as PartDoc | null },
+    push: (doc) => { session.pushUndo('push', doc as PartDoc, { type: 'add_sketch' } as Mutation) },
+    undo: () => { session.undo() },
+    redo: () => { session.redo() },
+    undoIds: () => session.historyEntries().undo.map(e => partEntryId(e.doc)),
+    redoIds: () => session.historyEntries().redo.map(e => partEntryId(e.doc)),
+    live: () => cell.current,
     corruptFeatureId: (doc) => {
       const feature = (doc as PartDoc).features?.[0]
       if (feature) feature.id = 'corrupted'
@@ -132,7 +142,7 @@ function createAssemblyHarness(): UndoContractHarness {
 }
 
 const engines = [
-  { name: 'useUndoRedo (part)', makeDoc: makePartDoc, createHarness: createPartHarness },
+  { name: 'DocSession history (part)', makeDoc: makePartDoc, createHarness: createPartHarness },
   { name: 'useAssemblyUndoRedo (assembly)', makeDoc: makeAssemblyDoc, createHarness: createAssemblyHarness },
 ]
 

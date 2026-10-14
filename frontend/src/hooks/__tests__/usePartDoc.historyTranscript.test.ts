@@ -28,6 +28,14 @@ vi.mock('@/stores/stateInvariants', async (importOriginal) => {
   return { ...actual, failLoud: failLoudMock }
 })
 
+// The no-op guard's bodyId diagnostic moved into the shared session module,
+// which reads failLoud from its source in utils/invariants; the hook keeps the
+// store re-export for its own guards, so both paths point at the mock here.
+vi.mock('@/utils/invariants', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/invariants')>()
+  return { ...actual, failLoud: failLoudMock }
+})
+
 vi.mock('@/hooks/useDocumentState', async () => {
   const { documentStateMock } = await import('./usePartDoc.undoHarness')
   return documentStateMock()

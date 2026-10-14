@@ -2,9 +2,9 @@
 //
 // A transcript is a list of the calls a user session makes: mutations, groups,
 // preview/session/brep boundaries, a save landing, a rollback drag and history
-// moves. The driver runs the steps in order through the REAL usePartDoc,
-// useUndoRedo and mutationHandlers over the mocked document/solver seams
-// (usePartDoc.undoHarness), then reads the observable end state once. The step
+// moves. The driver runs the steps in order through the REAL usePartDoc (the
+// DocSession adapter) and mutationHandlers over the mocked document/solver
+// seams (usePartDoc.undoHarness), then reads the observable end state once. The step
 // and result types are plain data on purpose: a future DocSession driver
 // reuses them unchanged, so nothing here may leak the part hook's shape.
 import { act } from '@testing-library/react'

@@ -39,19 +39,6 @@ vi.mock('@/hooks/useSolver', () => ({
   }),
 }))
 
-vi.mock('@/hooks/useUndoRedo', () => ({
-  useUndoRedo: () => ({
-    undoStack: [],
-    redoStack: [],
-    pushUndo: vi.fn(),
-    handleUndo: vi.fn(),
-    handleRedo: vi.fn(),
-    saveUndoStackSnapshot: vi.fn(),
-    restoreUndoStackSnapshot: vi.fn(),
-    clearUndoStackSnapshot: vi.fn(),
-  }),
-}))
-
 function setDoc(doc: PartDoc) {
   docRef.current = doc
 }
