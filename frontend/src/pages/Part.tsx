@@ -33,9 +33,11 @@ import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport, { type PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartCommands } from '@/pages/PartKeyboardShortcuts'
 import { getSketchState, PART_COMMAND_SPECS, type PartCommandContext, type ShowMessagePayload } from '@/pages/commandEntries'
-import { CommandRegistryProvider, useCommandRegistryWithContext } from '@/contexts/CommandRegistryContext'
+import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
 import { installDriveSurface } from '@/drive/driveSurface'
 import { DRIVE_ENABLED } from '@/drive/gate'
+import { getCommandJournal } from '@/drive/journal'
+import { useDriveCommandRegistry } from '@/drive/useDriveCommandRegistry'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import { useEditFeature } from '@/pages/useEditFeature'
 
@@ -793,7 +795,11 @@ export default function Part() {
     session, handleUndoNoFit, handleRedoNoFit, handleDeleteSelectedFeatures,
     handleToggleSketchPlaneVisibility, handleTogglePlaneVisibility, handleAddFeature, showMessage,
   ])
-  const commandRegistry = useCommandRegistryWithContext(commandContext)
+  // The registry is journaling in dev/test builds (see useDriveCommandRegistry);
+  // its doc getter reads the live ref so the journal hashes what a command
+  // actually saw without re-creating the registry on every edit.
+  const registryDeps = useMemo(() => ({ getDoc: () => docRef.current as unknown }), [docRef])
+  const commandRegistry = useDriveCommandRegistry(commandContext, registryDeps)
   usePartCommands(commandRegistry)
 
   // Q6: the drive surface is a dev/test affordance. The gate constant is folded
@@ -809,6 +815,7 @@ export default function Part() {
       idle: () => session.idle(),
       executeMutation: mutation => session.execute(mutation),
       screenshot: () => viewportRef.current?.captureScreenshotForSaving() ?? Promise.resolve(null),
+      journal: { repro: () => getCommandJournal().repro() },
     })
   }, [commandRegistry, session])
 

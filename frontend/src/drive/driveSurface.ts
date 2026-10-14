@@ -13,6 +13,7 @@ import {
   type ProbeCamera, type ProbeHandle, type ProbeHit,
 } from '@/picking'
 import { runScript, type ScriptFailure, type ScriptRunOutcome, type ScriptStep } from './scriptRunner'
+import type { JournalEntry, ReproPayload } from './journal'
 
 // The registry failures plus the bridge's own guard for an executor that
 // throws: a bug in a command body must still come back as a Result.
@@ -113,6 +114,15 @@ export interface DriveSessionInspectionLike {
   bodies?: unknown
 }
 
+// The journal side of the bridge: reading the ring and writing a repro file.
+// Absent in a caller that only wants the command/probe surface.
+export interface DriveJournalDeps {
+  repro(): ReproPayload | null
+  // Overridable so tests (and a future non-DOM host) can capture the text
+  // instead of triggering a browser download.
+  download?: (filename: string, text: string) => void
+}
+
 export interface DriveSurfaceDeps {
   registry: DriveCommandTable
   // The registered spec table; the registry itself cannot enumerate labels.
@@ -124,7 +134,12 @@ export interface DriveSurfaceDeps {
   // steps fail as bridge errors rather than throwing.
   executeMutation?: (mutation: Mutation) => Result | null
   screenshot?: () => Promise<string | null>
+  journal?: DriveJournalDeps
 }
+
+export type DriveDownloadResult =
+  | { ok: true; filename: string; bytes: number }
+  | ScriptFailure
 
 export interface DriveSurface {
   commands(): DriveCommandInfo[]
@@ -136,6 +151,9 @@ export interface DriveSurface {
   handles(prefix?: string): ProbeHandle[]
   worldToScreen(points: ReadonlyArray<readonly [number, number, number]>): ([number, number] | null)[]
   screenshot(): Promise<string | null>
+  journal(): JournalEntry[]
+  repro(): ReproPayload | null
+  downloadRepro(filename?: string): DriveDownloadResult
 }
 
 declare global {
@@ -196,6 +214,18 @@ export function summarizeInspection(inspection: DriveSessionInspectionLike): Dri
       ? { count: Object.keys(bodies).length, ids: Object.keys(bodies).sort() }
       : null,
   }
+}
+
+/** The browser download the repro path defaults to. */
+function defaultDownload(filename: string, text: string): void {
+  if (typeof document === 'undefined') throw new Error('no document available for a download')
+  const blob = new Blob([text], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
@@ -265,6 +295,20 @@ export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
     handles: prefix => getSceneHandles(prefix),
     worldToScreen: points => worldToScreen(getSceneProbe(), points),
     screenshot: () => deps.screenshot?.() ?? Promise.resolve(null),
+    journal: () => deps.journal?.repro()?.journal ?? [],
+    repro: () => deps.journal?.repro() ?? null,
+    downloadRepro: (filename = 'oversolved-repro.json') => {
+      const repro = deps.journal?.repro() ?? null
+      if (!repro) return { ok: false, code: 'bridge-error', message: 'the journal is empty; nothing to reproduce' }
+      const text = JSON.stringify(repro, null, 1) + '\n'
+      const download = deps.journal?.download ?? defaultDownload
+      try {
+        download(filename, text)
+      } catch (e) {
+        return { ok: false, code: 'bridge-error', message: e instanceof Error ? e.message : String(e) }
+      }
+      return { ok: true, filename, bytes: text.length }
+    },
   }
 }
 

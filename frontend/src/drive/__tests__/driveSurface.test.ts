@@ -189,6 +189,33 @@ describe('drive surface', () => {
     expect(handles[0]).toMatchObject({ kind: 'gl', handle: 'vertex:F1:e1:start' })
   })
 
+  it('exposes the journal and writes a repro through the download seam', () => {
+    const entry = { commandId: 'bump', params: null, docHashBefore: 'a', docHashAfter: 'b', at: 7 }
+    const repro = { kind: 'oversolved-repro' as const, version: 1 as const, docHash: 'a', doc: { n: 0 }, journal: [entry] }
+    const downloads: Array<{ filename: string; text: string }> = []
+    const surface = createDriveSurface(deps({
+      journal: {
+        repro: () => repro,
+        download: (filename, text) => downloads.push({ filename, text }),
+      },
+    }))
+    expect(surface.journal()).toEqual([entry])
+    expect(surface.repro()).toEqual(repro)
+    const result = surface.downloadRepro('my-repro.json')
+    expect(result).toEqual({ ok: true, filename: 'my-repro.json', bytes: downloads[0].text.length })
+    expect(downloads).toHaveLength(1)
+    expect(JSON.parse(downloads[0].text)).toEqual(repro)
+  })
+
+  it('reports an empty journal instead of downloading nothing', () => {
+    const surface = createDriveSurface(deps({ journal: { repro: () => null } }))
+    expect(surface.journal()).toEqual([])
+    expect(surface.repro()).toBeNull()
+    const result = surface.downloadRepro()
+    expect(result.ok).toBe(false)
+    expect(result).toMatchObject({ code: 'bridge-error' })
+  })
+
   it('installs and uninstalls without stealing a successor surface', () => {
     const target: { __oversolved?: ReturnType<typeof createDriveSurface> } = {}
     const uninstall = installDriveSurface(deps(), target)

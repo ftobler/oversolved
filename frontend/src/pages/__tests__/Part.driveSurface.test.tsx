@@ -9,6 +9,7 @@ import Part from '@/pages/Part'
 
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { useEditorState } from '@/hooks/useEditorState'
+import { resetCommandJournal } from '@/drive/journal'
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -32,6 +33,7 @@ describe('Part drive surface installation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     partDocStoreMock()
+    resetCommandJournal()
     useEditorState.setState({ activeTool: null, editingFeatureId: null, normalSelection: new Set() })
   })
 
@@ -60,6 +62,16 @@ describe('Part drive surface installation', () => {
     expect(inspection.session.dirty).toBe(true)
     // The whole readout is JSON-safe.
     expect(JSON.parse(JSON.stringify(inspection)).session.docId).toBe('doc-1')
+
+    // The journaling registry recorded the doc-changing command at the page's
+    // own seam, and the repro carries the baseline the command started from.
+    const journal = surface!.journal()
+    expect(journal.map(e => e.commandId)).toEqual(['toggle_plane_visibility'])
+    expect(journal[0].docHashBefore).not.toBe(journal[0].docHashAfter)
+    const repro = surface!.repro()
+    expect(repro).not.toBeNull()
+    expect(repro!.docHash).toMatch(/^[0-9a-f]{64}$/)
+    expect((repro!.doc as { kind?: string }).kind).toBe('part')
 
     act(() => { unmount() })
     expect(window.__oversolved).toBeUndefined()
