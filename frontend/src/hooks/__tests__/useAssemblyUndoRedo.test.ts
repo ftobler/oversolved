@@ -11,12 +11,13 @@ import { IDENTITY_TRANSFORM, rotateVector } from '@/utils/transform3d'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import type { AssemblyDoc } from '@/types/cad'
 
-// The module store holds the stacks, so every test must start from an empty
-// one: setSnapshot preserves the stacks (they are store-owned).
+// The module-level History holds the stacks, so every test must start from an
+// empty one: setSnapshot preserves the store-owned mirror, and only the
+// History clear republishes it.
 function resetStore() {
   useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+  useAssemblyStore.getState().clearAssemblyHistory()
   useAssemblyStore.setState({
-    undoStack: [], redoStack: [],
     subject: null, activeMateField: null, mateFieldDirty: false,
     pickCandidates: [], pickIndex: -1,
     editingSubject: { kind: 'none' },

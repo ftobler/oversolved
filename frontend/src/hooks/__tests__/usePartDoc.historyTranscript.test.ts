@@ -921,8 +921,10 @@ const assemblyDocWith = (featureIds: string[]): AssemblyDoc => ({
 describe('assembly engine rows', () => {
   beforeEach(() => {
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
+    // The stacks live in the module-level History; clearing it is the only
+    // reset that reaches them (setSnapshot preserves the store-owned mirror).
+    useAssemblyStore.getState().clearAssemblyHistory()
     useAssemblyStore.setState({
-      undoStack: [], redoStack: [],
       subject: null, activeMateField: null, mateFieldDirty: false,
       pickCandidates: [], pickIndex: -1,
       editingSubject: { kind: 'none' },
