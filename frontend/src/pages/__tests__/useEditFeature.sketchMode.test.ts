@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useEditFeature } from '@/pages/useEditFeature'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, PartFeature } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The panel mode follows the sketch edit: entering one switches to Sketch mode
 // and leaving one switches back to Feature mode, so the user never has to find
@@ -30,7 +31,11 @@ function setup() {
 
 describe('useEditFeature sketch-mode automation', () => {
   beforeEach(() => {
-    usePartEditorStore.setState({ editingFeatureId: null, rollbackPosition: null, pickBoundary: null })
+    useEditorState.setState({
+    editingFeatureId: null,
+    rollbackPosition: null,
+    pickBoundary: null,
+  })
   })
 
   it('entering a sketch edit switches to sketch mode', () => {

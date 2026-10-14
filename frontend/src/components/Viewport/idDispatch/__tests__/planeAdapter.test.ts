@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { planeAdapter } from '../planeAdapter'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     hoveredSelectionId: null,
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
 })
 

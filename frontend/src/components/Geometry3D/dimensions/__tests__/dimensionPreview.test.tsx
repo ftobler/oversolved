@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import type { Sketch } from '@/types/cad'
 
 /**
@@ -49,6 +49,7 @@ vi.mock('../Angle', () => ({
 }))
 
 import { DimensionPreview } from '../Preview'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const SKETCH = {} as Sketch
 const PICKS = [
@@ -69,19 +70,27 @@ beforeEach(() => {
   spies.computeNaturalDimensionValue.mockReturnValue(42)
   spies.computeAnchorRelativePos.mockReturnValue(null)
   spies.computeConstraintRender.mockReturnValue({ kind: 'dim_radius', p1: [0, 0], p2: [5, 0], value: 5 })
-  useSketchEditorStore.setState({ activeTool: 'dimension', dimensionPicks: PICKS, dimensionCursorWorld: null })
+  useEditorState.setState({
+    activeTool: 'dimension',
+    dimensionPicks: PICKS,
+    dimensionCursorWorld: null,
+  })
 })
 
 describe('DimensionPreview gates', () => {
   it('renders nothing when the dimension tool is not active', () => {
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
     const { container } = renderPreview()
 
     expect(container.firstChild).toBeNull()
   })
 
   it('renders nothing without any picks', () => {
-    useSketchEditorStore.setState({ dimensionPicks: [] })
+    useEditorState.setState({
+    dimensionPicks: [],
+  })
     const { container } = renderPreview()
 
     expect(container.firstChild).toBeNull()
@@ -159,7 +168,9 @@ describe('DimensionPreview kind dispatch', () => {
     spies.resolveDimPoints.mockReturnValue([[0, 0], [10, 0]])
     spies.computeAnchorRelativePos.mockReturnValue([3, 4])
     spies.computeConstraintRender.mockReturnValue({ kind: 'dim_linear', p1: [0, 0], p2: [10, 0], normal: [0, 1], value: 10 })
-    useSketchEditorStore.setState({ dimensionCursorWorld: [5, 5] })
+    useEditorState.setState({
+    dimensionCursorWorld: [5, 5],
+  })
     renderPreview()
 
     const constraint = spies.computeConstraintRender.mock.calls[0][0] as { pos?: [number, number] }
@@ -173,7 +184,9 @@ describe('DimensionPreview point_distance mode switching', () => {
     spies.dimensionTargets.mockReturnValue(['entity:S1:L1', 'entity:S1:L2'])
     spies.resolveDimPoints.mockReturnValue([[0, 0], [10, 0]])
     spies.computeConstraintRender.mockReturnValue({ kind: 'dim_linear', p1: [0, 0], p2: [10, 0], normal: [0, 1], value: 10 })
-    useSketchEditorStore.setState({ dimensionCursorWorld: cursor })
+    useEditorState.setState({
+    dimensionCursorWorld: cursor,
+  })
     renderPreview()
     const call = spies.computeConstraintRender.mock.calls.at(-1)![0] as { kind: string }
     return call

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import type { PartDoc, Mutation } from '@/types/cad'
@@ -10,6 +10,7 @@ import {
   docRef, reSolve, makeSketchDoc, renameTo, labelOf,
   sketchEntitiesOf, sketchConstraintsOf, resetHarness,
 } from './usePartDoc.undoHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/hooks/useDocumentState', async () => {
   const { documentStateMock } = await import('./usePartDoc.undoHarness')
@@ -45,7 +46,7 @@ describe('usePartDoc undo/redo integration', () => {
   it('an edit session collapses its mutations into one undo step', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => {
       result.current.handleMutation(renameTo('a'))
@@ -70,7 +71,7 @@ describe('usePartDoc undo/redo integration', () => {
   it('an edit session that changed nothing leaves no undo step', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.commitEditSession() })
 
@@ -83,7 +84,7 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleMutation(renameTo('kept')) })
     expect(result.current.undoStack).toHaveLength(1)
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('discarded')) })
     act(() => { result.current.cancelEditSession() })
@@ -202,16 +203,16 @@ describe('usePartDoc undo/redo integration', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
-    usePartEditorStore.getState().setPickBoundary(1)
+    useEditorState.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setPickBoundary(1)
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
     useUnsavedChangesStore.getState().setDirty(false)
 
     act(() => { result.current.handleUndo() })
 
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
-    expect(usePartEditorStore.getState().pickBoundary).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().pickBoundary).toBeNull()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     // The undo committed the session as its own entry and reverted just that:
     // the rename before the session stays applied.
@@ -231,7 +232,7 @@ describe('usePartDoc undo/redo integration', () => {
   it('undo mid-session on an empty stack reverts the session edits', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
     expect(result.current.undoStack).toHaveLength(0)
@@ -239,7 +240,7 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleUndo() })
 
     expect(labelOf()).toBe('first')
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
     expect(result.current.undoStack).toHaveLength(0)
     act(() => { result.current.handleRedo() })
     expect(labelOf()).toBe('in-edit')
@@ -251,11 +252,11 @@ describe('usePartDoc undo/redo integration', () => {
   it('undo mid-session with no change on an empty stack leaves the session open', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleUndo() })
 
-    expect(usePartEditorStore.getState().editingFeatureId).toBe('extrude-1')
+    expect(useEditorState.getState().editingFeatureId).toBe('extrude-1')
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
     expect(result.current.undoStack).toHaveLength(0)  // still swallowed
     act(() => { result.current.cancelEditSession() })
@@ -274,8 +275,8 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleUndo() })
     expect(result.current.redoStack).toHaveLength(1)
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
-    usePartEditorStore.getState().setPickBoundary(1)
+    useEditorState.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setPickBoundary(1)
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
     expect(result.current.undoStack).toHaveLength(0)  // swallowed by the session
@@ -289,8 +290,8 @@ describe('usePartDoc undo/redo integration', () => {
     // The commit cleared the redo branch, so the redo could not move and
     // applyUndoRedo never reached its own teardown. The handler had to run it:
     // the editor is closed, not left standing with the OK button inert.
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
-    expect(usePartEditorStore.getState().pickBoundary).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().pickBoundary).toBeNull()
 
     // The redo left suppression off: this edit pushes instead of vanishing.
     act(() => { result.current.handleMutation(renameTo('after')) })
@@ -310,7 +311,7 @@ describe('usePartDoc undo/redo integration', () => {
     expect(labelOf()).toBe('first')
     expect(result.current.redoStack).toHaveLength(1)
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
 
@@ -336,7 +337,7 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleUndo() })
     expect(result.current.redoStack).toHaveLength(1)
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
     const postEdit = structuredClone(docRef.current)
@@ -441,7 +442,7 @@ describe('usePartDoc undo/redo integration', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
 
@@ -466,7 +467,7 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.handleUndo() })
     expect(result.current.redoStack).toHaveLength(1)
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
 
@@ -486,7 +487,7 @@ describe('usePartDoc undo/redo integration', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
 
@@ -506,18 +507,18 @@ describe('usePartDoc undo/redo integration', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
-    usePartEditorStore.getState().setRollbackPosition(0)
+    useEditorState.getState().setRollbackPosition(0)
 
     act(() => { result.current.handleUndo() })
 
     // The restored doc parks the bar at the end of its own feature list.
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
+    expect(useEditorState.getState().rollbackPosition).toBe(1)
   })
 
   it('a sketch session leaves one entry per action and no aggregate edit_session', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })  // sketch: not suppressed
     act(() => {
       result.current.handleMutation(renameTo('a'))
@@ -553,7 +554,7 @@ describe('usePartDoc undo/redo integration', () => {
     expect(result.current.redoStack).toHaveLength(1)
     expect(labelOf()).toBe('first')
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })  // sketch: not suppressed
     act(() => {
       result.current.handleMutation(renameTo('b'))
@@ -581,7 +582,7 @@ describe('usePartDoc undo/redo integration', () => {
   it('a suppressed feature session folds N actions into exactly one entry', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => {
       result.current.handleMutation(renameTo('a'))
@@ -612,16 +613,16 @@ describe('usePartDoc undo/redo integration', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setRollbackPosition(2)
-    usePartEditorStore.getState().setEditingFeatureId('f1')
+    useEditorState.getState().setRollbackPosition(2)
+    useEditorState.getState().setEditingFeatureId('f1')
     act(() => { result.current.startEditSession(true) })
     // The add that landed inside the session moved the bar to the end.
-    usePartEditorStore.getState().setRollbackPosition(4)
+    useEditorState.getState().setRollbackPosition(4)
 
     act(() => { result.current.cancelEditSession() })
 
     expect(docRef.current.rollback).toBe(2)
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+    expect(useEditorState.getState().rollbackPosition).toBe(2)
   })
 
   // Same rewind, no parked position: the restored doc holds none, so the bar
@@ -637,13 +638,13 @@ describe('usePartDoc undo/redo integration', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('f1')
+    useEditorState.getState().setEditingFeatureId('f1')
     act(() => { result.current.startEditSession(true) })
-    usePartEditorStore.getState().setRollbackPosition(3)
+    useEditorState.getState().setRollbackPosition(3)
 
     act(() => { result.current.cancelEditSession() })
 
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+    expect(useEditorState.getState().rollbackPosition).toBe(2)
   })
 
   // A stale hand-edited position must not set the bar past the end of the
@@ -660,30 +661,30 @@ describe('usePartDoc undo/redo integration', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setRollbackPosition(2)
-    usePartEditorStore.getState().setEditingFeatureId('f1')
+    useEditorState.getState().setRollbackPosition(2)
+    useEditorState.getState().setEditingFeatureId('f1')
     act(() => { result.current.startEditSession(true) })
-    usePartEditorStore.getState().setRollbackPosition(4)
+    useEditorState.getState().setRollbackPosition(4)
 
     act(() => { result.current.cancelEditSession() })
 
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+    expect(useEditorState.getState().rollbackPosition).toBe(2)
   })
 
   // A session on a feature the doc still contains: the cancel rewinds that
   // feature's edits only, and the bar the doc parks is where it was.
   it('cancelling a session on a surviving feature leaves the parked bar in place', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-    usePartEditorStore.getState().setRollbackPosition(1)
+    useEditorState.getState().setRollbackPosition(1)
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('discarded')) })
 
     act(() => { result.current.cancelEditSession() })
 
     expect(labelOf()).toBe('first')
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
+    expect(useEditorState.getState().rollbackPosition).toBe(1)
   })
 
   // Cancel after the session was already committed (an OK, or a second add that
@@ -702,16 +703,16 @@ describe('usePartDoc undo/redo integration', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setRollbackPosition(2)
-    usePartEditorStore.getState().setEditingFeatureId('f1')
+    useEditorState.getState().setRollbackPosition(2)
+    useEditorState.getState().setEditingFeatureId('f1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.commitEditSession() })
-    usePartEditorStore.getState().setRollbackPosition(2)
+    useEditorState.getState().setRollbackPosition(2)
 
     act(() => { result.current.cancelEditSession() })
 
     expect(docRef.current.rollback).toBe(2)
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+    expect(useEditorState.getState().rollbackPosition).toBe(2)
   })
 
   it('a no-op rename pushes nothing and neither dirties nor re-solves', () => {

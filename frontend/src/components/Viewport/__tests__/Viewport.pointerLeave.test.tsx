@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Spy the rubber-band hook so the test can observe whether the hasHover gate
 // lets a pointer-down reach the box-drag start. The real hook needs a live
@@ -78,24 +79,28 @@ beforeEach(() => {
     features: [],
     bodies: {},
     pickBodies: {},
-    ghostMode: false,
-    rollbackPosition: null,
     visibleFeatures: new Set(),
     visibleBodies: new Set(),
     solveResults: {},
     otherSketches: {},
+    doc: null,
+  })
+  useEditorState.setState({
+    ghostMode: false,
+    rollbackPosition: null,
     partColors: {},
     partStyle: {},
     activeSketchFeatureId: null,
-    doc: null,
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     activeTool: null,
     normalSelection: new Set(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
     hoveredVertexId: null,
     hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
     contextMenu: null,
   })
 })
@@ -221,11 +226,11 @@ describe('Viewport pointer capture for box drags', () => {
     const { container } = render(<Viewport />)
     const el = container.firstChild as Element
     captureStubs(el)
-    useSketchEditorStore.setState({
-      activeTool: 'dimension',
-      activeFeatureId: 'feat1',
-      dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
+  })
 
     // A pending dimension pick means the next empty-space click finalises the
     // dimension; the pane must not pre-empt it with a box sweep.
@@ -237,11 +242,11 @@ describe('Viewport pointer capture for box drags', () => {
     const { container } = render(<Viewport />)
     const el = container.firstChild as Element
     captureStubs(el)
-    useSketchEditorStore.setState({
-      activeTool: 'dimension',
-      activeFeatureId: 'feat1',
-      dimensionPicks: [],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    dimensionPicks: [],
+  })
 
     // Zero picks: the placement has not started, so a box sweep is still allowed
     // (conservative reading of the band-eligible set). Change B must not over-reach.

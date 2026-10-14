@@ -5,8 +5,9 @@ import * as THREE from 'three'
 import SceneController from '@/components/Viewport/SceneController'
 import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import type { Pv, Hit } from '@/components/misc/CubeGizmo.utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useThree: vi.fn(),
@@ -46,7 +47,7 @@ vi.mock('@react-three/drei', async () => {
 })
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     setIsRotating: () => {},
   })
 })

@@ -15,11 +15,12 @@ vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: mockUnfl
 
 import { pickPartColor, reconcilePartStyle, useSolver } from '@/hooks/useSolver'
 import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
-import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import type { WorkspaceSession } from '@/workspace/session'
 import type { PartDoc, BodyResult } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
+import { editorState } from '@/stores/editorState'
 
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
   return { version: 1, kind: 'part', features: [], ...overrides }
@@ -161,10 +162,7 @@ describe('useSolver', () => {
     mockUnflattenGeometry.mockReturnValue({})
     // Reset the store's owned fields between tests so rollback/pickBoundary
     // from a previous test don't leak into the next.
-    const store = usePartEditorStore.getState()
-    store.setRollbackPosition(DEFAULT_PART_EDITOR_DATA.rollbackPosition)
-    store.setPickBoundary(DEFAULT_PART_EDITOR_DATA.pickBoundary)
-    store.setEditingFeatureId(DEFAULT_PART_EDITOR_DATA.editingFeatureId)
+    editorState.getState().resetEditorState()
     // The real solver store holds the cancel callback; clear it so a pending
     // solve from one test cannot be cancelled by the next.
     useSolverStore.setState({ isSolving: false, onCancelSolve: null })
@@ -386,7 +384,7 @@ describe('useSolver', () => {
           { id: 'feat2', kind: 'extrude' },
         ],
       })
-      usePartEditorStore.getState().setRollbackPosition(1)
+      useEditorState.getState().setRollbackPosition(1)
       await act(async () => { await result.current.reSolve(doc) })
       const payload = mockSolveLocally.mock.calls[0][0]
       expect(payload.rollback_position).toBe(1)
@@ -408,8 +406,8 @@ describe('useSolver', () => {
           { id: 'f3', kind: 'extrude' },
         ],
       })
-      usePartEditorStore.getState().setRollbackPosition(1)
-      usePartEditorStore.getState().setRollbackPosition(2)
+      useEditorState.getState().setRollbackPosition(1)
+      useEditorState.getState().setRollbackPosition(2)
       await act(async () => { await result.current.reSolve(doc) })
       const payload = mockSolveLocally.mock.calls[0][0]
       expect(payload.rollback_position).toBe(2)
@@ -419,7 +417,7 @@ describe('useSolver', () => {
 
     it('handles pickBoundary for preview solves', async () => {
       const { result } = setupHook()
-      usePartEditorStore.getState().setPickBoundary(5)
+      useEditorState.getState().setPickBoundary(5)
       await act(async () => { await result.current.reSolve(solvableDoc()) })
       const payload = mockSolveLocally.mock.calls[0][0]
       expect(payload.is_preview).toBe(true)
@@ -520,7 +518,7 @@ describe('useSolver', () => {
       const doc = makeDoc({ features })
       await act(async () => { await result.current.reSolve(doc) })
       expect(mockSolveLocally.mock.calls[0][0].features).toHaveLength(15)
-      usePartEditorStore.getState().setRollbackPosition(10)
+      useEditorState.getState().setRollbackPosition(10)
       mockSolveLocally.mockClear()
       await act(async () => { await result.current.reSolve(doc) })
       expect(mockSolveLocally.mock.calls[0][0].features).toHaveLength(10)
@@ -530,8 +528,8 @@ describe('useSolver', () => {
       const { result } = setupHook()
       // Move pickBoundary to non-null, then back to null. The subscription
       // inside useSolver wipes pickBodies on the falling edge.
-      act(() => { usePartEditorStore.getState().setPickBoundary(5) })
-      act(() => { usePartEditorStore.getState().setPickBoundary(null) })
+      act(() => { useEditorState.getState().setPickBoundary(5) })
+      act(() => { useEditorState.getState().setPickBoundary(null) })
       expect(result.current.pickBodies).toEqual({})
     })
   })

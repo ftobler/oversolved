@@ -1,16 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import {
-  useIdBufferPointerDispatch,
-  shouldClearSelectionOnBackplaneClick,
-  setLastClickStationaryPrimary,
-  setLastClickBandDragging,
-} from '../useIdBufferPointerDispatch'
+import { useIdBufferPointerDispatch, shouldClearSelectionOnBackplaneClick, setLastClickStationaryPrimary, setLastClickBandDragging } from '../useIdBufferPointerDispatch'
 import { IdPipeline, SKETCH_VERTEX_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { takeDrawToolClickConsumed } from '../drawToolClickGuard'
 import { StubRenderer, makeCanvas } from './pickCanvasFixture'
+import { useEditorState } from '@/hooks/useEditorState'
 
 /**
  * Regression: the DrawPlane backplane used to clear the selection on every
@@ -36,7 +32,10 @@ describe('shouldClearSelectionOnBackplaneClick (backplane clear guard)', () => {
     pipeline.isDirty = () => false
     setLivePipeline(pipeline)
     glRef = { current: new StubRenderer(canvas) }
-    useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+    useEditorState.setState({
+    activeTool: null,
+    normalSelection: new Set(),
+  })
     takeDrawToolClickConsumed()  // clear any flag leaked from a prior test
     // The two halves of the miss-clear predicate the Viewport publishes at
     // gesture end; no Viewport is rendered here, so pin them between cases.

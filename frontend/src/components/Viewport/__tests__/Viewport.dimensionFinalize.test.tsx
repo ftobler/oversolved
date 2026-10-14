@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent, act } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
 import { clearStaleBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
 import { getLivePipeline } from '@/picking/IdPipelineContext'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // A real (jsdom) canvas so the id-buffer dispatcher attaches its click listener
 // to a live element. The Canvas mock hands this to the Viewport via onCreated.
@@ -67,18 +68,34 @@ function captureStubs(el: Element): void {
 beforeEach(() => {
   clearStaleBandClickConsumed()
   usePartEditorStore.setState({
-    features: [], bodies: {}, pickBodies: {}, ghostMode: false,
-    rollbackPosition: null, visibleFeatures: new Set(), visibleBodies: new Set(),
-    solveResults: {}, otherSketches: {}, partColors: {}, partStyle: {},
-    activeSketchFeatureId: null, doc: null,
+    features: [],
+    bodies: {},
+    pickBodies: {},
+    visibleFeatures: new Set(),
+    visibleBodies: new Set(),
+    solveResults: {},
+    otherSketches: {},
+    doc: null,
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    ghostMode: false,
+    rollbackPosition: null,
+    partColors: {},
+    partStyle: {},
+    activeSketchFeatureId: null,
+  })
+  useEditorState.setState({
     activeTool: 'dimension',
     activeFeatureId: 'feat1',
     dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }, { isVertex: false, target: 'entity:feat1:l2' }],
     normalSelection: new Set(),
-    hoveredSelectionId: null, hoveredPickKey: null, hoveredVertexId: null,
-    hoveredConstraintEntityIds: new Set(), contextMenu: null,
+    hoveredSelectionId: null,
+    hoveredPickKey: null,
+    hoveredVertexId: null,
+    hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
+    contextMenu: null,
   })
 })
 

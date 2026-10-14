@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { DragSnapIndicator } from '@/components/Geometry3D/Dragging'
 import { COLOR_SNAP } from '@/components/Geometry3D/constants'
+import { useEditorState } from '@/hooks/useEditorState'
 
 /**
  * The snap overlay is a pure store projection: a dot exactly when a snap is live.
@@ -19,7 +20,10 @@ vi.mock('@/components/Geometry3D/VertexDots', () => ({
 
 beforeEach(() => {
   MockDot.mockClear()
-  useSketchEditorStore.setState({ drag: null, dragSnap: null })
+  useEditorState.setState({
+    drag: null,
+    dragSnap: null,
+  })
 })
 
 describe('DragSnapIndicator', () => {
@@ -28,9 +32,9 @@ describe('DragSnapIndicator', () => {
   })
 
   it('renders a snap dot at the target position', () => {
-    useSketchEditorStore.setState({
-      dragSnap: { kind: 'vertex', position: [3, 4], constraintKind: 'coincident' },
-    })
+    useEditorState.setState({
+    dragSnap: { kind: 'vertex', position: [3, 4], constraintKind: 'coincident' },
+  })
     render(<DragSnapIndicator />)
     expect(MockDot).toHaveBeenCalledWith(expect.objectContaining({ x: 3, y: 4, px: 6, color: COLOR_SNAP }))
   })

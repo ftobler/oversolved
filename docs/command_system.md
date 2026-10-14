@@ -46,9 +46,9 @@ Snap rules for drag; measurement rules for on-canvas display.
 
 React effect hook that registers all commands on mount, attaches global `keydown` listener, and tears down on unmount.
 
-### State Store (`sketchEditorStore.ts`)
+### State Stores (`stores/editorState.ts` + `stores/sketchEditorStore.ts`)
 
-Zustand store managing selection state (normal, dynamic, hover), drag state, draw state, tool state (`activeTool`, `activeFeatureId`), dialogs, and `onMutation` callback.
+`stores/editorState.ts` is the L2 editor-state store (vanilla zustand, no React; its React binding is `hooks/useEditorState.ts`). It owns selection (normal, dynamic, hover), drag/draw state, tool state (`activeTool`, `activeFeatureId`, `activePickField`), the part rollback/edit FSM (`rollbackPosition`, `pickBoundary`, `editingFeatureId`) and the derived non-solve viewport fields (`ghostMode`, `partColors`, `partStyle`, `activeSketchFeatureId`). `sketchEditorStore.ts` keeps the UI-facing remainder (prefs, the pending value dialog, the context menu) as `useSketchUiStore` and re-exports the editor-state hook under its historical name `useSketchEditorStore`. Solve results, bodies, timings and validation are session/solver facts and live in `stores/partEditorStore.ts`.
 
 ### Tool Implementations (`frontend/src/tools/`)
 

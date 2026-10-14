@@ -9,11 +9,17 @@ import type { PartFeature, Mutation } from '@/types/cad'
 import { useState } from 'react'
 import { initializeTools } from '@/tools'
 import { toolRegistry } from '@/registry/toolRegistry'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
   toolRegistry.reset()
   initializeTools()
-  useSketchEditorStore.setState({ normalSelection: new Set(), activePickField: null, modeStack: [], chipOwnedSelection: new Set() })
+  useEditorState.setState({
+    normalSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+    chipOwnedSelection: new Set(),
+  })
   usePartEditorStore.setState({ solveResults: {} })
 })
 
@@ -293,7 +299,9 @@ describe('FeatureEditor extrude profile pick survives canvas tool switch', () =>
     expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
 
     // A face click toggles a selection id into normalSelection.
-    act(() => { useSketchEditorStore.setState({ normalSelection: new Set(['@ex1/face/0']) }) })
+    act(() => { useEditorState.setState({
+    normalSelection: new Set(['@ex1/face/0']),
+  }) })
 
     // The pick field is still active, so onPick fired and the chip grew.
     expect(mutations).toContainEqual({ type: 'add_extrude_profile', featureId: 'ex1', sketchQuery: '@ex1/face/0' })

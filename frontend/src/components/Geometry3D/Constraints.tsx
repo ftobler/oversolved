@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity, PlaneTransform } from '@/types/cad'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl, groupConstraintsByEntity } from '@/utils/geometry/sketchHelpers'
 import { renderDimension } from '@/components/Geometry3D/dimensions/renderDimension'
 import { COLOR_SELECTED, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
@@ -72,7 +72,7 @@ interface ConstraintOverlaysProps {
 export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform }: ConstraintOverlaysProps) {
   const drag = useSketchEditorStore(s => s.drag)
   const isDragging = drag !== null
-  const showConstraintTiles = useSketchEditorStore(s => s.showConstraintTiles)
+  const showConstraintTiles = useSketchUiStore(s => s.showConstraintTiles)
   const dimOffset = extent * 0.1
 
   const byEntity = groupConstraintsByEntity(constraints)

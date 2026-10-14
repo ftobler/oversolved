@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const MockDot = vi.fn((_props: Record<string, unknown>) => null)
 
@@ -21,7 +22,7 @@ vi.mock('@/utils/geometry/sketchHelpers', () => ({
 
 beforeEach(() => {
   MockDot.mockClear()
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     hoveredSelectionId: null,
     activeFeatureId: null,
@@ -29,7 +30,7 @@ beforeEach(() => {
     isRotating: false,
     setHoveredSelectionId: vi.fn(),
     setHoveredVertex: vi.fn(),
-  } as never)
+  })
 })
 
 describe('OriginMarker render order', () => {
@@ -50,7 +51,9 @@ describe('OriginMarker render order', () => {
   })
 
   it('uses the hover colour and grows the dot while hovered', async () => {
-    useSketchEditorStore.setState({ hoveredSelectionId: '@builtin_origin' })
+    useEditorState.setState({
+    hoveredSelectionId: '@builtin_origin',
+  })
     const { default: OriginMarker } = await import('@/components/Viewport/OriginMarker')
     render(<OriginMarker />)
     const props = MockDot.mock.calls[0]?.[0] as Record<string, unknown>
@@ -59,7 +62,9 @@ describe('OriginMarker render order', () => {
   })
 
   it('uses the selected colour at the resting size when only selected', async () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@builtin_origin']) })
+    useEditorState.setState({
+    normalSelection: new Set(['@builtin_origin']),
+  })
     const { default: OriginMarker } = await import('@/components/Viewport/OriginMarker')
     render(<OriginMarker />)
     const props = MockDot.mock.calls[0]?.[0] as Record<string, unknown>

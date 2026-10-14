@@ -10,6 +10,7 @@ import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { CIRCULAR_ARRAY_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURES: PartFeature[] = [
   { id: 'ex1', kind: 'extrude' },
@@ -46,8 +47,11 @@ function pick(selectionId: string) {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
-    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
+  useEditorState.setState({
+    normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
   })
 })
 

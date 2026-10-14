@@ -21,6 +21,7 @@ import { FEATURE_HANDLE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME } from '@/picking/l
 import { PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { takeBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
 import { useRubberBandSelect } from '../useRubberBandSelect'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const PIPELINE_W = 100
 const PIPELINE_H = 100
@@ -96,7 +97,7 @@ function pointerEvent(
 }
 
 function resetStore(): void {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     activeTool: null,
     isRotating: false,
     normalSelection: new Set(),
@@ -149,7 +150,9 @@ describe('useRubberBandSelect band start gates', () => {
     const { gl } = glForEntityId(0)
     const glRef = { current: gl } as React.RefObject<THREE.WebGLRenderer | null>
     const { result } = renderHook(() => useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS))
-    useSketchEditorStore.setState({ isRotating: true })
+    useEditorState.setState({
+    isRotating: true,
+  })
     expect(result.current.onPointerDown(pointerEvent(10, 10))).toBe(false)
   })
 

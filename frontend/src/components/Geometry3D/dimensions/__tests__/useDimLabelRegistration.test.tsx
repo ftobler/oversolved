@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import type { DragState } from '@/stores/sketchEditorStore'
 import {
   useDimInteraction, useDimLabelRegistration, useActiveLabelDrag,
   type DimInteraction,
 } from '../useDimInteraction'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The registration hooks are seams: this test asserts the arguments the shared
 // wrapper derives (enabled gate, label z-offset, handler wiring), not that the
@@ -44,10 +45,12 @@ function dimDrag(constraintId: string, currentWorld: [number, number]): DragStat
 beforeEach(() => {
   seams.regLabel.mockClear()
   seams.regDispatch.mockClear()
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     drag: null,
     dragPending: null,
     normalSelection: new Set(),
+  })
+  useSketchUiStore.setState({
     pendingDialog: null,
   })
 })
@@ -150,18 +153,22 @@ describe('useDimLabelRegistration', () => {
 
 describe('useDimInteraction without an interaction', () => {
   it('click and double-click are inert', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['entity:S1:L1']),
+  })
     const { result } = renderHook(() => useDimInteraction('c1', 10, undefined))
 
     expect(() => result.current.onClick({ stopPropagation: vi.fn() })).not.toThrow()
     expect(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 })).not.toThrow()
 
     expect(useSketchEditorStore.getState().normalSelection).toEqual(new Set(['entity:S1:L1']))
-    expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).toBeNull()
   })
 
   it('exposes a null selection key so it is never marked selected', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['constraint:S1:c1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['constraint:S1:c1']),
+  })
     const { result } = renderHook(() => useDimInteraction('c1', 10, undefined))
     expect(result.current.selected).toBe(false)
   })

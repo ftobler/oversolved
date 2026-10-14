@@ -8,6 +8,7 @@ import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
 import { runPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Pv, Hit } from '@/components/misc/CubeGizmo.utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // ─── Part-editor navigation cube: clicking a face snaps the camera ───
 // Regression guard for "gizmo click broken / viewport no longer turns". The
@@ -144,22 +145,27 @@ describe('SceneController consumes the gizmo snap each frame', () => {
 describe('Orbit is enabled at rest after a pointer gesture ends', () => {
   beforeEach(() => {
     vi.useRealTimers()
-    useSketchEditorStore.setState({
-      isPointerDown: false,
-      drag: null,
-      dragPending: null,
-      setDrag: () => {},
-      setDragPending: () => {},
-      setDragStartClient: () => {},
-      setDragSnap: () => {},
-      setIsPointerDown: (v: boolean) => useSketchEditorStore.setState({ isPointerDown: v }),
-    })
+    useEditorState.setState({
+    isPointerDown: false,
+    drag: null,
+    dragPending: null,
+    setDrag: () => {},
+    setDragPending: () => {},
+    setDragStartClient: () => {},
+    setDragSnap: () => {},
+    setIsPointerDown: (v: boolean) => useSketchEditorStore.setState({ isPointerDown: v }),
+  })
   })
 
   it('clears isPointerDown on pointerup so orbit re-enables after a drag', () => {
     // Simulate a sketch drag that began and left drag state stuck.
-    useSketchEditorStore.setState({ isPointerDown: true })
-    useSketchEditorStore.setState({ drag: { featureId: 'S1' } as never, dragPending: { featureId: 'S1' } as never })
+    useEditorState.setState({
+    isPointerDown: true,
+  })
+    useEditorState.setState({
+    drag: { featureId: 'S1' } as never,
+    dragPending: { featureId: 'S1' } as never,
+  })
 
     // The Viewport mounts useSelectionPointerUpCleanup, which binds this to the
     // window pointerup/cancel/lostcapture events. Calling it directly mirrors
@@ -179,9 +185,16 @@ describe('Orbit is enabled at rest after a pointer gesture ends', () => {
     const setDragSnap = vi.fn()
     // A gesture was active (isPointerDown true) and left drag state stuck.
     useSketchEditorStore.setState({
-      isPointerDown: true, drag: { featureId: 'S1' } as never, dragPending: { featureId: 'S1' } as never,
-      setDrag, setDragPending, setDragStartClient, setDragSnap,
-    })
+    setDrag,
+    setDragPending,
+    setDragStartClient,
+    setDragSnap,
+  })
+  useEditorState.setState({
+    isPointerDown: true,
+    drag: { featureId: 'S1' } as never,
+    dragPending: { featureId: 'S1' } as never,
+  })
 
     runPointerUpCleanup()
     // Synchronous clear happened for the isPointerDown gate; the drag net is

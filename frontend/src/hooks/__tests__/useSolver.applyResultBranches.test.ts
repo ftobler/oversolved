@@ -18,9 +18,10 @@ vi.mock('@/kernel/worker/solverClient', () => ({
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: mockUnflattenGeometry }))
 
 import { useSolver, reconcilePartStyle } from '@/hooks/useSolver'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useSolverStore } from '@/stores/solverStore'
 import type { PartDoc, BodyResult } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
   return { version: 1, kind: 'part', features: [], ...overrides }
@@ -40,7 +41,11 @@ function response(result: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks()
   mockUnflattenGeometry.mockReturnValue({})
-  usePartEditorStore.setState({ editingFeatureId: null, rollbackPosition: null, pickBoundary: null })
+  useEditorState.setState({
+    editingFeatureId: null,
+    rollbackPosition: null,
+    pickBoundary: null,
+  })
   useSolverStore.setState({ isSolving: false, onCancelSolve: null })
 })
 
@@ -151,7 +156,11 @@ describe('reSolve drag anchor and doc shape', () => {
 
   it('does not fail the edit invariant for a phantom editing feature the doc lacks', async () => {
     const { result } = setupHook()
-    usePartEditorStore.setState({ editingFeatureId: 'ghost', rollbackPosition: 1, pickBoundary: 0 })
+    useEditorState.setState({
+    editingFeatureId: 'ghost',
+    rollbackPosition: 1,
+    pickBoundary: 0,
+  })
     mockSolveLocally.mockResolvedValue(response({}))
     const doc = makeDoc({ features: [{ id: 'sk1', kind: 'sketch', entities: [] }] })
 
@@ -163,7 +172,11 @@ describe('reSolve drag anchor and doc shape', () => {
 
   it('does not fail the edit invariant for a featureless doc while editing', async () => {
     const { result } = setupHook()
-    usePartEditorStore.setState({ editingFeatureId: 'ghost', rollbackPosition: null, pickBoundary: 0 })
+    useEditorState.setState({
+    editingFeatureId: 'ghost',
+    rollbackPosition: null,
+    pickBoundary: 0,
+  })
 
     await act(async () => { await result.current.reSolve({ version: 1, kind: 'part' } as PartDoc) })
 

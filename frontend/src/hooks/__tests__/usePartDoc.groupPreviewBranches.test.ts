@@ -6,9 +6,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const solver = vi.hoisted(() => ({ solveResults: {} as Record<string, SketchData> }))
 const docRef: { current: PartDoc | null } = { current: null }
@@ -63,7 +64,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   solver.solveResults = {}
   docRef.current = null
-  usePartEditorStore.setState({ editingFeatureId: null, rollbackPosition: null, pickBoundary: null })
+  useEditorState.setState({
+    editingFeatureId: null,
+    rollbackPosition: null,
+    pickBoundary: null,
+  })
   useUnsavedChangesStore.getState().setDirty(false)
 })
 
@@ -282,7 +287,9 @@ describe('session and featureless-doc edges', () => {
 
     act(() => { result.current.startEditSession(true) })
     act(() => {
-      usePartEditorStore.setState({ editingFeatureId: null })
+      useEditorState.setState({
+    editingFeatureId: null,
+  })
       result.current.handleMutation({
         type: 'add_entity', featureId: 'sk1', kind: 'line', params: [0, 0, 5, 5], entityId: 'l2',
       } as Mutation)

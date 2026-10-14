@@ -3,6 +3,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { initializeTools } from '@/tools'
 import { sketchVertexAdapter } from '../sketchVertexAdapter'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
   toolRegistry.reset()
@@ -10,7 +11,7 @@ beforeEach(() => {
 })
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     activeTool: null,
     activeFeatureId: null,
     hoveredVertexId: null,
@@ -32,7 +33,9 @@ describe('sketchVertexAdapter', () => {
   })
 
   it('onPointerDown starts drag for a valid vertex key when activeTool is null', () => {
-    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    useEditorState.setState({
+    activeFeatureId: 'feat1',
+  })
     sketchVertexAdapter.onPointerDown('vertex:feat1:line1:start', 100, 200)
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(true)
@@ -52,7 +55,9 @@ describe('sketchVertexAdapter', () => {
   })
 
   it('onPointerDown is a no-op for non-vertex entity keys', () => {
-    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    useEditorState.setState({
+    activeFeatureId: 'feat1',
+  })
     sketchVertexAdapter.onPointerDown('entity:feat1:line1', 100, 200)
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(false)
@@ -60,7 +65,9 @@ describe('sketchVertexAdapter', () => {
   })
 
   it('onPointerDown does not start a drag for a dock handle (inferred contacts are select-only)', () => {
-    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    useEditorState.setState({
+    activeFeatureId: 'feat1',
+  })
     sketchVertexAdapter.onPointerDown('dock:feat1:tan', 100, 200)
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(false)
@@ -68,7 +75,9 @@ describe('sketchVertexAdapter', () => {
   })
 
   it('onPointerDown is a no-op for a vertex key missing its vertex key', () => {
-    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    useEditorState.setState({
+    activeFeatureId: 'feat1',
+  })
     sketchVertexAdapter.onPointerDown('vertex:feat1:line1', 100, 200)
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(false)

@@ -3,10 +3,8 @@ import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import {
-  useSketchEditorStore, getSketchCallback,
-  type FeatureHandleDrag,
-} from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
+import { useSketchEditorStore, useSketchUiStore, getSketchCallback, type FeatureHandleDrag } from '@/stores/sketchEditorStore'
 import { useFeatureHandleIdRegistration, featureHandleKey } from '@/picking'
 import { registerFeatureHandleCallbacks } from '@/components/Viewport/idDispatch/featureHandleCallbacks'
 import { handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '@/components/Geometry3D/featureHandleMath'
@@ -83,7 +81,7 @@ function emitFieldMutation(
  * other feature edit).
  */
 export default function FeatureHandles() {
-  const editingFeatureId = usePartEditorStore(s => s.editingFeatureId)
+  const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const doc = usePartEditorStore(s => s.doc)
   const solveResults = usePartEditorStore(s => s.solveResults) as Record<string, SketchData> | undefined
 
@@ -179,7 +177,7 @@ function HandleArrow({ featureId, feature, handle }: {
         })
       },
       onDoubleClick: (clientX, clientY) => {
-        useSketchEditorStore.getState().openDialog({
+        useSketchUiStore.getState().openDialog({
           position: [clientX, clientY],
           label: `${feature.label || feature.kind} ${handle.field}`,
           defaultValue: String(rawStored ?? handle.value),

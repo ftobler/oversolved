@@ -4,8 +4,9 @@ import { MemoryRouter } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // J4: the editor has no workspace layer. The workspace tree, the files and
 // origins panels and the rail that switched between them left with the
@@ -36,9 +37,7 @@ const features: PartFeature[] = [
 beforeEach(() => {
   usePartEditorStore.setState({
     features,
-    rollbackPosition: null,
     visibleFeatures: new Set(features.map(f => f.id)),
-    editingFeatureId: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -47,7 +46,15 @@ beforeEach(() => {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({ normalSelection: new Set(), activePickField: null, modeStack: [] })
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+  })
+  useEditorState.setState({
+    normalSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+  })
 })
 
 describe('Sidebar hosts the document navigator alone', () => {

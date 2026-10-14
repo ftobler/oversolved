@@ -10,11 +10,13 @@
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { docRef, resetHarness } from './usePartDoc.undoHarness'
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
+import { editorState } from '@/stores/editorState'
 
 export type TranscriptStep =
   | { kind: 'mutation'; mutation: Mutation }
@@ -63,7 +65,7 @@ export interface TranscriptOptions {
 // the parked position), so the driver keeps that order and a row appended after
 // a session boundary reads the transient state the app would.
 function exitEditCleanup(): void {
-  const store = usePartEditorStore.getState()
+  const store = editorState.getState()
   store.setEditingFeatureId(null)
   store.setPickBoundary(null)
   store.setRollbackPosition(docRef.current?.rollback ?? null)
@@ -91,7 +93,7 @@ function applyStep(hook: ReturnType<typeof usePartDoc>, step: TranscriptStep): v
       // afterwards (useEditFeature's enterEditFeature), so the id is set after
       // the session baseline exists, exactly as the page does it.
       hook.startEditSession(step.suppressed)
-      if (step.featureId !== undefined) usePartEditorStore.getState().setEditingFeatureId(step.featureId)
+      if (step.featureId !== undefined) useEditorState.getState().setEditingFeatureId(step.featureId)
       return
     case 'sessionCommit':
       hook.commitEditSession()
@@ -117,7 +119,7 @@ function applyStep(hook: ReturnType<typeof usePartDoc>, step: TranscriptStep): v
       hook.handleRedo()
       return
     case 'rollback':
-      usePartEditorStore.getState().setRollbackPosition(step.position)
+      useEditorState.getState().setRollbackPosition(step.position)
       hook.handleMutation({ type: 'set_rollback', position: step.position })
       return
   }
@@ -130,7 +132,7 @@ export function runPartTranscript(
 ): TranscriptResult {
   resetHarness()
   docRef.current = structuredClone(startDoc)
-  usePartEditorStore.getState().setPickBoundary(null)
+  useEditorState.getState().setPickBoundary(null)
   useUnsavedChangesStore.getState().setDirty(false)
   const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
   for (let i = 0; i < steps.length; i++) {
@@ -143,9 +145,9 @@ export function runPartTranscript(
     redoLabels: result.current.redoStack.map(e => describeMutation(e.mutation)),
     dirty: useUnsavedChangesStore.getState().dirty,
     editorState: {
-      editingFeatureId: usePartEditorStore.getState().editingFeatureId,
-      rollbackPosition: usePartEditorStore.getState().rollbackPosition,
-      pickBoundary: usePartEditorStore.getState().pickBoundary,
+      editingFeatureId: useEditorState.getState().editingFeatureId,
+      rollbackPosition: useEditorState.getState().rollbackPosition,
+      pickBoundary: useEditorState.getState().pickBoundary,
     },
   }
 }

@@ -16,10 +16,11 @@ import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The no-op guard's failLoud for a body-style mutation missing its bodyId
 // throws in test mode, warns in dev and is a silent no-op in prod, and one test
@@ -189,14 +190,18 @@ beforeEach(() => {
   reSolve.mockClear()
   failLoudMock.mockReset()
   failLoudMock.mockImplementation((msg: string) => { throw new Error(msg) })
-  usePartEditorStore.setState({ rollbackPosition: null, editingFeatureId: null, pickBoundary: null })
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+    pickBoundary: null,
+  })
   useUnsavedChangesStore.getState().setDirty(false)
 })
 
 describe('idempotent no-op guard', () => {
   it('set_rollback to the doc position already parked pushes nothing and stays clean', () => {
     setDoc(makeDoc(2))
-    usePartEditorStore.getState().setRollbackPosition(2)
+    useEditorState.getState().setRollbackPosition(2)
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 2 }) })
@@ -209,7 +214,7 @@ describe('idempotent no-op guard', () => {
 
   it('set_rollback to the end when the key is absent is a no-op', () => {
     setDoc(makeDoc())
-    usePartEditorStore.getState().setRollbackPosition(3)
+    useEditorState.getState().setRollbackPosition(3)
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 3 }) })
@@ -222,7 +227,7 @@ describe('idempotent no-op guard', () => {
 
   it('set_rollback to a NEW position pushes an entry, updates the doc and re-solves', () => {
     setDoc(makeDoc(2))
-    usePartEditorStore.getState().setRollbackPosition(1)
+    useEditorState.getState().setRollbackPosition(1)
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 1 }) })

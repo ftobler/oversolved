@@ -6,13 +6,14 @@
 // disagree about how many faces there are.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { resolveFaceQueries, faceCount } from '@/components/Geometry3D/bodyGeometry'
 import { HighlightIndex } from '@/picking/selectionHighlight'
 import { FACE_LAYER_NAME } from '@/picking/layerNames'
 import { faceRuns, HighlightColorPainter, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
 import { COLOR_SELECTED } from '@/components/Geometry3D/constants'
 import type { Mesh3D } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -53,12 +54,12 @@ const mesh: Mesh3D = {
 
 beforeEach(() => {
   facePaintRuns.length = 0
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
-  } as never)
+  })
 })
 
 /** The triangles each B-rep face owns, in the painter's runs' terms. */
@@ -135,7 +136,9 @@ describe('face HighlightIndex and painter agree on one primitive count', () => {
 
 describe('Body3D renders a tail-face highlight through the fallback', () => {
   it('highlights face 2 when its topo fallback query is selected', async () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1/face/2']) } as never)
+    useEditorState.setState({
+    normalSelection: new Set(['@body_ex1/face/2']),
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     const { container } = render(
       <Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} />
@@ -154,7 +157,9 @@ describe('Body3D renders a tail-face highlight through the fallback', () => {
   })
 
   it('hands the painter face runs counting the resolved list, not raw queries', async () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1/face/2']) } as never)
+    useEditorState.setState({
+    normalSelection: new Set(['@body_ex1/face/2']),
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} />)
     // The face paint is the first useHighlightColors call; its runs must count

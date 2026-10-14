@@ -1,8 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, PartStyleEntry, RebuildValidation, FeatureHandleData } from '@/types/cad'
 import { useSolverStore } from '@/stores/solverStore'
+import { editorState } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 
@@ -232,10 +232,10 @@ export function useSolver(
     // mechanism. hoveredFaceNormal/hoveredFaceCenter are left alone -- they are
     // recomputed on the next hover resolve, and clearing them here would flicker
     // the "Normal to" readout on every solve.
-    const sketchStore = useSketchEditorStore.getState()
-    sketchStore.clearSelectedPicks()
-    sketchStore.setHoveredSelectionId(null)
-    sketchStore.setHoveredPickKey(null)
+    const editorStore = editorState.getState()
+    editorStore.clearSelectedPicks()
+    editorStore.setHoveredSelectionId(null)
+    editorStore.setHoveredPickKey(null)
     // A fresh result for a feature supersedes any retained pre-delete snapshot
     // of it (usePartDoc's undo stash). Only an APPLIED solve reaches this point
     // (the request-id staleness guard runs before applyBuildResponse calls us),
@@ -284,8 +284,7 @@ export function useSolver(
     // boundaries (only possible via direct build() calls) still omit the key.
     // Otherwise it goes to 'full' and pickBodies is structurally absent from
     // the type.
-    const store = usePartEditorStore.getState()
-    const wasEditing = store.pickBoundary !== null
+    const wasEditing = editorState.getState().pickBoundary !== null
     if (wasEditing && data.pick_bodies !== undefined) {
       setWorld({ status: 'editing', bodies: data.bodies ?? {}, pickBodies: data.pick_bodies })
     } else {
@@ -332,7 +331,9 @@ export function useSolver(
     try {
       const allFeatures = d.features ?? []
 
-      const store = usePartEditorStore.getState()
+      // Read the editor FSM live: a solve may run across a tool switch or an
+      // edit entry, and the payload must describe the state at request time.
+      const store = editorState.getState()
       const storeRollback = store.rollbackPosition
       const pickBoundary = store.pickBoundary
       const editingFeatureId = store.editingFeatureId
@@ -482,12 +483,26 @@ export function useSolver(
   const worldRef = useRef(world)
   worldRef.current = world
   useEffect(() => {
-    return usePartEditorStore.subscribe((state, prev) => {
+    return editorState.subscribe((state, prev) => {
       if (prev.pickBoundary !== null && state.pickBoundary === null) {
         setWorld({ status: 'full', bodies: worldRef.current.bodies })
       }
     })
   }, [])
+
+  // The solver is the single writer of the solve facts the viewport, the
+  // feature tree and the pick fields read. Published here once per applied
+  // result, where the old mirror copied them out of this hook through
+  // setSnapshot.
+  useEffect(() => {
+    usePartEditorStore.getState().publishSolve({
+      solveResults,
+      bodies: world.bodies,
+      pickBodies: world.status === 'editing' ? { ...world.pickBodies } : {},
+      featureTimings,
+      validation,
+    })
+  }, [solveResults, world, featureTimings, validation])
 
   return {
     solveResults,

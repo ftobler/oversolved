@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { evalExpr } from '@/kernel/evalExpr'
 import { COLOR_CONSTRAINT } from '@/utils/geometry/sketchHelpers'
 import { COLOR_SELECTED, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
@@ -80,7 +80,7 @@ export function useDimInteraction(
     if (consumeClick()) return
     if (!interaction) return
     ev.stopPropagation()
-    useSketchEditorStore.getState().openDialog({
+    useSketchUiStore.getState().openDialog({
       position: [ev.clientX, ev.clientY],
       label: interaction.promptLabel,
       defaultValue: String(value),

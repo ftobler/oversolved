@@ -4,8 +4,9 @@ import { useIdBufferPointerDispatch } from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
 import { IdPipeline, DIMENSION_LABEL_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { StubRenderer, makeCanvas } from './pickCanvasFixture'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('useIdBufferPointerDispatch: dimension label drag start', () => {
   let canvas: HTMLCanvasElement
@@ -17,7 +18,9 @@ describe('useIdBufferPointerDispatch: dimension label drag start', () => {
     pipeline = new IdPipeline({ width: 800, height: 600 })
     setLivePipeline(pipeline)
     glRef = { current: new StubRenderer(canvas) }
-    useSketchEditorStore.setState({ activeTool: null })  // idle select is activeTool null
+    useEditorState.setState({
+    activeTool: null,
+  })  // idle select is activeTool null
   })
   afterEach(() => {
     setLivePipeline(null)

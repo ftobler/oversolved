@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import type { Sketch, Constraints } from '@/types/cad'
 
 // Reproduces the "hover a vertex dot, nothing highlights" report. A tile
@@ -38,6 +38,7 @@ vi.mock('@/components/Geometry3D/drawGeometry', () => ({
 }))
 
 import { ConstraintOverlays } from '@/components/Geometry3D/Constraints'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const sketch: Sketch = {
   line1: { kind: 'lineSegment', start: [0, 0], end: [10, 0] } as never,
@@ -50,7 +51,13 @@ const constraints: Constraints = {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({ showConstraintTiles: true, drag: null, hoveredConstraintEntityIds: new Set() })
+  useEditorState.setState({
+    drag: null,
+    hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
+    showConstraintTiles: true,
+  })
 })
 
 function renderCorner() {

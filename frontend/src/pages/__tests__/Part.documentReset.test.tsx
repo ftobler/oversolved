@@ -3,19 +3,21 @@ import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
+
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { Wrapper } from '@/__tests__/test-utils'
 import { backendBundle } from '@/adapters/backend'
 import type { WorkspaceDocPayload } from '@/adapters/openWorkspace'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // undo-document-reset at the Part-page level: the store-owned fields
-// (rollbackPosition, pickBoundary, editingFeatureId) and the sketch editor's
-// module state only reset on a Part remount, because the resets live in
-// useSyncPartEditorStore's unmount cleanup and Part's own unmount effect. The
-// shared useDocumentState mock is static, so this suite renders the REAL page
-// and simulates document B explicitly: seed A's stale editor state, navigate,
-// and assert B starts fresh.
+// (rollbackPosition, pickBoundary, editingFeatureId), the sketch editor's
+// module state and the published session/solver facts only reset on a Part
+// remount, because all the resets live in Part's unmount effect. The shared
+// useDocumentState mock is static, so this suite renders the REAL page and
+// simulates document B explicitly: seed A's stale editor state, navigate, and
+// assert B starts fresh.
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -77,20 +79,23 @@ describe('Part - document change resets the editor store', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
-    usePartEditorStore.setState({
-      editingFeatureId: null,
-      pickBoundary: null,
-      rollbackPosition: null,
-    })
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      selectedPicks: new Map(),
-      chipOwnedSelection: new Set(),
-      activePickField: null,
-      modeStack: [],
-      pendingDialog: null,
-      contextMenu: null,
-    })
+    useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+  })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
+    contextMenu: null,
+  })
+  usePartEditorStore.getState().resetPublishedState()
   })
 
   it('a keyed remount to another document leaves the editor store fresh and B\'s first solve clean', async () => {
@@ -113,16 +118,16 @@ describe('Part - document change resets the editor store', () => {
     // exact state a clone navigation would carry into B without a remount. The
     // direct setState wakes the page's store subscribers, hence act().
     act(() => {
-      usePartEditorStore.setState({
-        editingFeatureId: 'ex1',
-        pickBoundary: 1,
-        rollbackPosition: 0,
-      })
-      useSketchEditorStore.setState({
-        normalSelection: new Set(['?01;deadbeef:face']),
-        activePickField: { featureId: 'ex1', field: 'bodies' },
-        modeStack: ['pick'],
-      })
+      useEditorState.setState({
+    editingFeatureId: 'ex1',
+    pickBoundary: 1,
+    rollbackPosition: 0,
+  })
+      useEditorState.setState({
+    normalSelection: new Set(['?01;deadbeef:face']),
+    activePickField: { featureId: 'ex1', field: 'bodies' },
+    modeStack: ['pick'],
+  })
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'to B' }))
@@ -135,10 +140,10 @@ describe('Part - document change resets the editor store', () => {
     // The store-owned fields are B's own again: bar parked at B's feature count,
     // no edit in flight.
     await waitFor(() => {
-      expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
+      expect(useEditorState.getState().rollbackPosition).toBe(1)
     })
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
-    expect(usePartEditorStore.getState().pickBoundary).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().pickBoundary).toBeNull()
 
     // The sketch editor module state did not survive the remount either.
     const sketchStore = useSketchEditorStore.getState()
@@ -166,12 +171,12 @@ describe('Part - document change resets the editor store', () => {
     // A is mid dimension gesture: one entity picked, cursor parked, tool armed.
     // The exact state a navigation would leak into B without the full reset.
     act(() => {
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:ex1:l1' }],
-        dimensionCursorWorld: [5, 5],
-        activeTool: 'dimension',
-        drawPoints: [[0, 0]],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:ex1:l1' }],
+    dimensionCursorWorld: [5, 5],
+    activeTool: 'dimension',
+    drawPoints: [[0, 0]],
+  })
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'to B' }))
@@ -189,5 +194,35 @@ describe('Part - document change resets the editor store', () => {
       })
     }).not.toThrow()
     expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'ex1', field: 'sketch' })
+  })
+
+  it('an unmount clears the published session facts before a remount can paint them', async () => {
+    stubTwoDocStore()
+
+    const view = render(
+      <MemoryRouter initialEntries={['/documents/A']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
+    )
+
+    // A's load published its session facts: the stale window the unmount closes.
+    await waitFor(() => { expect(usePartEditorStore.getState().doc).not.toBeNull() })
+    expect(usePartEditorStore.getState().features.length).toBeGreaterThan(0)
+
+    act(() => { view.unmount() })
+
+    // The keyed remount that follows must not be able to read A's facts before
+    // its own session publishes; every published field is back to its default.
+    const store = usePartEditorStore.getState()
+    expect(store.doc).toBeNull()
+    expect(store.features).toEqual([])
+    expect(store.solveResults).toEqual({})
+    expect(store.bodies).toEqual({})
+    expect(store.pickBodies).toEqual({})
+    expect(store.undoStack).toEqual([])
+    expect(store.redoStack).toEqual([])
   })
 })

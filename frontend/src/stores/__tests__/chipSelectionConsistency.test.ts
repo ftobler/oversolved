@@ -12,6 +12,7 @@ import { describe, it, expect, beforeAll, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { deriveSelectionDomain, validateSelectionState } from '@/stores/stateInvariants'
 import { initializeTools } from '@/tools'
+import { useEditorState } from '@/hooks/useEditorState'
 
 let toolsInitialized = false
 
@@ -23,7 +24,7 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),
@@ -65,10 +66,10 @@ describe('syncChipSelection keeps the selection bookkeeping consistent', () => {
   })
 
   it('mixes with a pre-existing sketch selection', () => {
-    useSketchEditorStore.setState({
-      normalSelection: new Set(['entity:sk1:line1']),
-      selectionDomain: 'sketch_2d',
-    })
+    useEditorState.setState({
+    normalSelection: new Set(['entity:sk1:line1']),
+    selectionDomain: 'sketch_2d',
+  })
     useSketchEditorStore.getState().syncChipSelection(['@body_ex1/edge/2'])
     expect(useSketchEditorStore.getState().selectionDomain).toBe('mixed')
     expectConsistent()
@@ -76,12 +77,12 @@ describe('syncChipSelection keeps the selection bookkeeping consistent', () => {
 
   it('drops the pick claims of a query the chip diff evicted', () => {
     useSketchEditorStore.getState().syncChipSelection(['@body_ex1/face/0', '@body_ex1/face/1'])
-    useSketchEditorStore.setState({
-      selectedPicks: new Map([
+    useEditorState.setState({
+    selectedPicks: new Map([
         ['@body_ex1/face/0', new Set(['ex1/b0#face#0'])],
         ['@body_ex1/face/1', new Set(['ex1/b0#face#1'])],
       ]),
-    })
+  })
 
     useSketchEditorStore.getState().syncChipSelection(['@body_ex1/face/1'])
 
@@ -124,10 +125,10 @@ describe('clearChipSelection keeps the selection bookkeeping consistent', () => 
   })
 
   it('re-derives the domain down to what survives the clear', () => {
-    useSketchEditorStore.setState({
-      normalSelection: new Set(['entity:sk1:line1']),
-      selectionDomain: 'sketch_2d',
-    })
+    useEditorState.setState({
+    normalSelection: new Set(['entity:sk1:line1']),
+    selectionDomain: 'sketch_2d',
+  })
     useSketchEditorStore.getState().syncChipSelection(['@body_ex1/edge/2'])
     useSketchEditorStore.getState().clearChipSelection()
     expect(useSketchEditorStore.getState().selectionDomain).toBe('sketch_2d')
@@ -136,9 +137,9 @@ describe('clearChipSelection keeps the selection bookkeeping consistent', () => 
 
   it('drops the claims of every query it evicts', () => {
     useSketchEditorStore.getState().syncChipSelection(['@body_ex1/face/0'])
-    useSketchEditorStore.setState({
-      selectedPicks: new Map([['@body_ex1/face/0', new Set(['ex1/b0#face#0'])]]),
-    })
+    useEditorState.setState({
+    selectedPicks: new Map([['@body_ex1/face/0', new Set(['ex1/b0#face#0'])]]),
+  })
 
     useSketchEditorStore.getState().clearChipSelection()
 

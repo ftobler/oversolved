@@ -5,6 +5,7 @@ import { registerDimCallbacks } from '../dimensionLabelCallbacks'
 import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, EDGE_LAYER_NAME } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { newIdBufferDispatchFixture, disposeIdBufferDispatchFixture, flushHoverFrame } from './idBufferDispatchHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('useIdBufferPointerDispatch', () => {
   let canvas: HTMLCanvasElement
@@ -25,11 +26,11 @@ describe('useIdBufferPointerDispatch', () => {
     const PICK = { isVertex: false, target: 'entity:feat1:l1' }
 
     function setupDimensionGesture() {
-      useSketchEditorStore.setState({
-        activeTool: 'dimension',
-        activeFeatureId: 'feat1',
-        dimensionPicks: [PICK],
-      })
+      useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    dimensionPicks: [PICK],
+  })
       pipeline.resolveSync = vi.fn().mockReturnValue(null)
       return vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement')
     }

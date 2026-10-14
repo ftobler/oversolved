@@ -1,8 +1,8 @@
 // The undo/redo buttons and tooltips against the PRODUCTION PartToolbar. The
 // old suite tested a local copy of the slice(-5).reverse() item selection, so a
 // regression in PartToolbar's real stacking logic could pass every test. The
-// stacks are seeded straight into partEditorStore (the mirror that populates
-// it is covered separately in useSyncPartEditorStore.test.ts).
+// stacks are seeded straight into partEditorStore (its publication contract is
+// covered separately in partEditorStore.publish.test.ts).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, fireEvent, screen } from '@testing-library/react'
 import PartToolbar from '@/pages/PartToolbar'

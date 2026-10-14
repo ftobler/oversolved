@@ -13,6 +13,7 @@ import Part from '@/pages/Part'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/usePartDoc'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -69,7 +70,11 @@ describe('Part - cancelling an added feature keeps the rollback bar and the docu
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
-    usePartEditorStore.setState({ editingFeatureId: null, pickBoundary: null, rollbackPosition: null })
+    useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+  })
     partDocStoreMock()
   })
 
@@ -78,7 +83,7 @@ describe('Part - cancelling an added feature keeps the rollback bar and the docu
     const view = renderPart()
     await waitFor(() => expect(userFeatures().map(f => f.kind))
       .toEqual(['sketch', 'extrude', 'fillet', 'chamfer']))
-    await waitFor(() => expect(usePartEditorStore.getState().rollbackPosition).toBe(2))
+    await waitFor(() => expect(useEditorState.getState().rollbackPosition).toBe(2))
     expect(usePartEditorStore.getState().doc?.rollback).toBe(2)
 
     fireEvent.click(screen.getByTitle('Feature mode'))
@@ -92,7 +97,7 @@ describe('Part - cancelling an added feature keeps the rollback bar and the docu
     // The store and the document name the same position after the rewind, so the
     // re-solve rebuilds exactly the stack the document describes.
     expect(docRollback()).toBe(2)
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+    expect(useEditorState.getState().rollbackPosition).toBe(2)
 
     // Reload from the bytes the document now holds: the parked position is what
     // the bar comes back to, so the two cannot drift apart across a save.
@@ -101,7 +106,7 @@ describe('Part - cancelling an added feature keeps the rollback bar and the docu
     partDocStoreMock({ content: stringifyYaml(saved) })
     renderPart()
     await waitFor(() => expect(userFeatures()).toHaveLength(4))
-    await waitFor(() => expect(usePartEditorStore.getState().rollbackPosition).toBe(2))
+    await waitFor(() => expect(useEditorState.getState().rollbackPosition).toBe(2))
     expect(docRollback()).toBe(2)
   })
 })

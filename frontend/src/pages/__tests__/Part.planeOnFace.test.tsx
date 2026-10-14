@@ -18,6 +18,7 @@ import Part from '@/pages/Part'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
@@ -56,13 +57,13 @@ describe('plane-on-face and the nested edit session guard', () => {
 
     await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
     fireEvent.click(screen.getByTitle('Edit extrude'))
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('ex1'))
 
     // Plane-on-face fires here: adding a sketch while ex1's session is open.
     await act(async () => { fireEvent.click(screen.getByTitle('Sketch')) })
 
     const editingId = await waitFor(() => {
-      const id = usePartEditorStore.getState().editingFeatureId
+      const id = useEditorState.getState().editingFeatureId
       expect(id).not.toBeNull()
       expect(id).not.toBe('ex1')
       return id!
@@ -113,7 +114,7 @@ describe('plane-on-face and the nested edit session guard', () => {
     await act(async () => { fireEvent.click(screen.getByTitle('Sketch')) })
 
     const newSketchId = await waitFor(() => {
-      const id = usePartEditorStore.getState().editingFeatureId
+      const id = useEditorState.getState().editingFeatureId
       expect(id).not.toBeNull()
       return id!
     })
@@ -125,7 +126,7 @@ describe('plane-on-face and the nested edit session guard', () => {
     await act(async () => { fireEvent.click(chip!) })
 
     await waitFor(() => {
-      expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+      expect(useEditorState.getState().editingFeatureId).toBeNull()
     })
 
     // The sketch itself is not deleted, only its edit session resolved -- the

@@ -16,9 +16,10 @@ vi.mock('@/kernel/worker/solverClient', () => ({
 vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: vi.fn().mockReturnValue({}) }))
 
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useSolverStore } from '@/stores/solverStore'
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const docRef: { current: PartDoc | null } = { current: null }
 
@@ -45,9 +46,9 @@ describe('usePartDoc undo vs an in-flight solve', () => {
       version: 1, kind: 'part',
       features: [{ id: 'f1', kind: 'sketch', label: 'first' }],
     } as unknown as PartDoc
-    usePartEditorStore.getState().setEditingFeatureId(null)
-    usePartEditorStore.getState().setRollbackPosition(null)
-    usePartEditorStore.getState().setPickBoundary(null)
+    useEditorState.getState().setEditingFeatureId(null)
+    useEditorState.getState().setRollbackPosition(null)
+    useEditorState.getState().setPickBoundary(null)
     useSolverStore.setState({ isSolving: false, onCancelSolve: null })
   })
 

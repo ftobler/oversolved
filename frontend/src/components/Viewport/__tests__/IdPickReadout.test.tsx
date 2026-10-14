@@ -4,7 +4,8 @@ import type * as THREE from 'three'
 import IdPickReadout from '../IdPickReadout'
 import { PART_EDITOR_CONSUMED_LAYERS } from '../idDispatch/useIdBufferPointerDispatch'
 import { DIMENSION_LABEL_LAYER_NAME } from '@/picking/layerNames'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
+import { useEditorState } from '@/hooks/useEditorState'
 
 /**
  * The pick readout exists to make a "cannot select this" report decidable: it
@@ -111,7 +112,9 @@ describe('IdPickReadout', () => {
   it('passes the active tool to the note and filters layers through the tool policy', () => {
     live.pipeline = makePipeline(false, [{ id: 1, entityKey: 'entity:S1:l1', layer: 'sketchEntity', distancePx: 2 }])
     const { getByText } = render(<IdPickReadout glRef={{ current: gl as unknown as THREE.WebGLRenderer }} />)
-    act(() => { useSketchEditorStore.setState({ activeTool: 'rect' }) })
+    act(() => { useEditorState.setState({
+    activeTool: 'rect',
+  }) })
     move(10, 10)
 
     expect(getByText(/tool=rect/)).toBeInTheDocument()

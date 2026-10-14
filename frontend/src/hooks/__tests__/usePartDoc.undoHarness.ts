@@ -1,7 +1,8 @@
 import { vi } from 'vitest'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Exercises usePartDoc against the REAL useUndoRedo and the REAL mutation
 // handlers. The other usePartDoc undo tests mock the stack out, so they only
@@ -65,8 +66,8 @@ export const sketchConstraintsOf = (): { kind: string }[] =>
 export const resetHarness = (): void => {
   docRef.current = makeDoc()
   reSolve.mockClear()
-  usePartEditorStore.getState().setEditingFeatureId(null)
-  usePartEditorStore.getState().setRollbackPosition(null)
+  useEditorState.getState().setEditingFeatureId(null)
+  useEditorState.getState().setRollbackPosition(null)
   useSketchEditorStore.getState().resetTransientState()
   setSketchCallback('onMutation', null)
   setSketchCallback('onMutationBatch', null)

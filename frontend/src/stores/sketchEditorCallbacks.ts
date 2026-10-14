@@ -10,6 +10,7 @@
 // `_sketchCbs` const before the store was split; the contract is unchanged.
 import type { Mutation, Sketch } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
+import type { DialogState } from './sketchEditorTypes'
 import { devOnly } from './stateInvariants'
 
 export const sketchCallbacks: {
@@ -20,6 +21,11 @@ export const sketchCallbacks: {
   getSketch: ((featureId: string) => Sketch | null) | null
   beginBrepProjection: (() => void) | null
   cancelBrepProjection: (() => void) | null
+  // The value dialog lives in the UI store (sketchEditorStore). The editor
+  // state store reaches it through these ports instead of importing the UI
+  // store, which would close an import cycle between the two stores.
+  openDialog: ((dialog: DialogState) => void) | null
+  closeDialog: (() => void) | null
 } = {
   onMutation: null,
   onMutationBatch: null,
@@ -28,6 +34,8 @@ export const sketchCallbacks: {
   getSketch: null,
   beginBrepProjection: null,
   cancelBrepProjection: null,
+  openDialog: null,
+  closeDialog: null,
 }
 
 export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void) | null): void
@@ -35,6 +43,8 @@ export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) 
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
 export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
+export function setSketchCallback(key: 'openDialog', cb: ((dialog: DialogState) => void) | null): void
+export function setSketchCallback(key: 'closeDialog', cb: (() => void) | null): void
 export function setSketchCallback(key: keyof typeof sketchCallbacks, cb: unknown): void {
   (sketchCallbacks as Record<string, unknown>)[key] = cb
 }

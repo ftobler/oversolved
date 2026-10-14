@@ -2,12 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import type { PartDoc, Mutation } from '@/types/cad'
-import {
-  docRef, reSolve, renameTo, resetHarness,
-} from './usePartDoc.undoHarness'
+import { docRef, reSolve, renameTo, resetHarness } from './usePartDoc.undoHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/hooks/useDocumentState', async () => {
   const { documentStateMock } = await import('./usePartDoc.undoHarness')
@@ -99,7 +98,7 @@ describe('usePartDoc funnel parity: single mutation vs one-element group', () =>
   it('a mutation swallowed by a suppressed session leaves the same state on either path', () => {
     const runInSession = (inSession: (hook: ReturnType<typeof usePartDoc>) => void) => {
       resetHarness()
-      usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+      useEditorState.getState().setEditingFeatureId('extrude-1')
       useUnsavedChangesStore.getState().setDirty(false)
       reSolve.mockClear()
       const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))

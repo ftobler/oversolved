@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import type { Sketch, Entity } from '@/types/cad'
 import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_SELECTED } from '@/components/Geometry3D/constants'
 // Static imports on purpose: a cold dynamic import of the EntityLines module
@@ -8,6 +8,7 @@ import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_SELECTED } from '@/
 // when other forks load the machine (seen in full-suite runs).
 import { entityCenter } from '@/utils/geometry/sketchHelpers'
 import { ProjectedEntities } from '@/components/Geometry3D/EntityLines'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/drei', () => ({
   Line: () => null,
@@ -25,7 +26,7 @@ const PROJECTED_LINE = { start: [0, 0], end: [1, 0], projected: true, source: '?
 const PROJECTED_SPLINE = { p1: [0, 0], p2: [1, 1], p3: [2, 1], p4: [3, 0], projected: true, source: '?s' }
 
 function resetStore(overrides: Record<string, unknown> = {}) {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     hoveredConstraintEntityIds: new Set(),
     hoveredSelectionId: null,

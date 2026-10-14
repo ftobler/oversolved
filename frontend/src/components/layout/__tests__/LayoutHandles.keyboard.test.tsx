@@ -9,10 +9,11 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import type { PartFeature, PartInstance } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
@@ -52,11 +53,10 @@ const extraFeatures: PartFeature[] = [
 ]
 
 function setupStore(features: PartFeature[], rollbackPosition: number | null) {
+  useEditorState.setState({ rollbackPosition, editingFeatureId: null })
   usePartEditorStore.setState({
     features,
-    rollbackPosition,
     visibleFeatures: new Set(features.map(f => f.id)),
-    editingFeatureId: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -65,12 +65,21 @@ function setupStore(features: PartFeature[], rollbackPosition: number | null) {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({ normalSelection: new Set(), activePickField: null, modeStack: [] })
+  useEditorState.setState({
+    editingFeatureId: null,
+  })
+  useEditorState.setState({
+    normalSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+  })
 }
 
 beforeEach(() => {
   setupStore([], null)
-  usePartEditorStore.setState({ editingFeatureId: null })
+  useEditorState.setState({
+    editingFeatureId: null,
+  })
 })
 
 describe('rollback bar keyboard slider', () => {
@@ -111,7 +120,9 @@ describe('rollback bar keyboard slider', () => {
   it('does not step while a feature edit pins the rollback', () => {
     const onSetRollbackPosition = vi.fn()
     setupStore([...builtInFeatures, ...extraFeatures], 5)
-    usePartEditorStore.setState({ editingFeatureId: 'ex1' })
+    useEditorState.setState({
+    editingFeatureId: 'ex1',
+  })
     renderSidebar(makeCallbacks({ onSetRollbackPosition }))
     const bar = screen.getByTitle('Rollback')
 

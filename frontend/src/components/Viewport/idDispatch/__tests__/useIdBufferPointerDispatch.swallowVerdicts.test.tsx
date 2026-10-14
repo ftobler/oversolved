@@ -5,6 +5,7 @@ import { registerDimCallbacks } from '../dimensionLabelCallbacks'
 import { IdPipeline, DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { newIdBufferDispatchFixture, disposeIdBufferDispatchFixture } from './idBufferDispatchHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('useIdBufferPointerDispatch', () => {
   let canvas: HTMLCanvasElement
@@ -29,7 +30,10 @@ describe('useIdBufferPointerDispatch', () => {
 
     it('an unhandled dimension-label click falls through unconsumed', async () => {
       stubHit(DIMENSION_LABEL_LAYER_NAME, 'dim:ghost')
-      useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set(['sk1/keep']) })
+      useEditorState.setState({
+    activeTool: null,
+    normalSelection: new Set(['sk1/keep']),
+  })
 
       renderHook(() => useIdBufferPointerDispatch({
         glRef: glRef as { current: import('three').WebGLRenderer | null },
@@ -65,7 +69,10 @@ describe('useIdBufferPointerDispatch', () => {
 
     it('a feature-handle click stays consumed with no adapter verdict to honor', async () => {
       stubHit(FEATURE_HANDLE_LAYER_NAME, 'fhandle:extrude1')
-      useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+      useEditorState.setState({
+    activeTool: null,
+    normalSelection: new Set(),
+  })
 
       renderHook(() => useIdBufferPointerDispatch({
         glRef: glRef as { current: import('three').WebGLRenderer | null },

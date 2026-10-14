@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import type { DragState } from '@/stores/sketchEditorStore'
 
 /**
@@ -39,6 +39,7 @@ vi.mock('@/picking/useDimensionLabelIdRegistration', () => ({
 }))
 
 import { LinearDimension } from '../Linear'
+import { useEditorState } from '@/hooks/useEditorState'
 
 type Dim = React.ComponentProps<typeof LinearDimension>['dim']
 type Interaction = NonNullable<React.ComponentProps<typeof LinearDimension>['interaction']>
@@ -74,13 +75,15 @@ function normDir(dir: number[]): number[] {
 
 beforeEach(() => {
   for (const s of Object.values(spies)) s.mockClear()
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     drag: null,
     dragPending: null,
     dragStartClient: null,
     isPointerDown: false,
     normalSelection: new Set(),
     hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
     pendingDialog: null,
   })
   setSketchCallback('onMutation', null)
@@ -200,7 +203,7 @@ describe('LinearDimension Flip side', () => {
     renderDim({ dimKind: 'point_distance_x' }, { interaction: INTERACTION })
     const labelProps = spies.Label.mock.calls[0][0] as { onDoubleClick: (e: unknown) => void }
     act(() => labelProps.onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
-    return useSketchEditorStore.getState().pendingDialog
+    return useSketchUiStore.getState().pendingDialog
   }
 
   it('offers Flip side for a directional dim and negates the current sign', () => {
@@ -226,7 +229,7 @@ describe('LinearDimension Flip side', () => {
     const labelProps = spies.Label.mock.calls[0][0] as { onDoubleClick: (e: unknown) => void }
     act(() => labelProps.onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
 
-    const dialog = useSketchEditorStore.getState().pendingDialog!
+    const dialog = useSketchUiStore.getState().pendingDialog!
     act(() => dialog.extraAction!.onClick())
 
     expect(onMutation).toHaveBeenCalledWith({
@@ -239,6 +242,6 @@ describe('LinearDimension Flip side', () => {
     const labelProps = spies.Label.mock.calls[0][0] as { onDoubleClick: (e: unknown) => void }
     act(() => labelProps.onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
 
-    expect(useSketchEditorStore.getState().pendingDialog?.extraAction).toBeUndefined()
+    expect(useSketchUiStore.getState().pendingDialog?.extraAction).toBeUndefined()
   })
 })

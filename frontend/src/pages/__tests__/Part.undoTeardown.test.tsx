@@ -3,9 +3,10 @@ import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { executeCommand } from '@/utils/core/commandRegistry'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Undo swaps in a document the open editor session knows nothing about. These
 // tests walk the page the way a user does, because the teardown is composed
@@ -39,22 +40,24 @@ function renderPart() {
 describe('Part - undo tears down transient editor state', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      selectedPicks: new Map(),
-      chipOwnedSelection: new Set(),
-      activePickField: null,
-      modeStack: [],
-      pendingDialog: null,
-      drag: null,
-      dragPending: null,
-      dragStartClient: null,
-      dragSnap: null,
-      isPointerDown: false,
-      isRotating: false,
-      alignmentSnapPoint: null,
-      alignmentSnapKind: null,
-    })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+    drag: null,
+    dragPending: null,
+    dragStartClient: null,
+    dragSnap: null,
+    isPointerDown: false,
+    isRotating: false,
+    alignmentSnapPoint: null,
+    alignmentSnapKind: null,
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
+  })
   })
 
   it('clears selection, the pick field and the edit while undoing an added feature', async () => {
@@ -72,22 +75,24 @@ describe('Part - undo tears down transient editor state', () => {
     // Adding a feature enters it and arms its first pick field, so the page is
     // now in exactly the half-open state undo has to unwind.
     await waitFor(() => {
-      expect(usePartEditorStore.getState().editingFeatureId).not.toBeNull()
+      expect(useEditorState.getState().editingFeatureId).not.toBeNull()
       expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
     })
     act(() => {
-      useSketchEditorStore.setState({ normalSelection: new Set(['?01;deadbeef:face']) })
-      useSketchEditorStore.getState().openDialog({ position: [0, 0], label: 'Length', onConfirm: () => {} })
+      useEditorState.setState({
+    normalSelection: new Set(['?01;deadbeef:face']),
+  })
+      useSketchUiStore.getState().openDialog({ position: [0, 0], label: 'Length', onConfirm: () => {} })
     })
 
     await act(async () => { executeCommand('undo') })
 
     const sketchStore = useSketchEditorStore.getState()
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
     expect(sketchStore.activePickField).toBeNull()
     expect(sketchStore.modeStack).not.toContain('pick')
     expect(sketchStore.normalSelection.size).toBe(0)
-    expect(sketchStore.pendingDialog).toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).toBeNull()
   })
 
   it('leaves sketch mode when the undo closes the sketch edit behind it', async () => {
@@ -111,7 +116,7 @@ describe('Part - undo tears down transient editor state', () => {
     // The sketch toolbar has no sketch left to act on, so the panel falls back
     // to the feature tab.
     expect(screen.getByTitle('Feature mode').className).toContain('active')
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
   })
 
   // Deliberate, not incidental: the selection is dropped even when the undone
@@ -125,10 +130,12 @@ describe('Part - undo tears down transient editor state', () => {
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
     await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
 
     act(() => {
-      useSketchEditorStore.setState({ normalSelection: new Set(['?01;deadbeef:face', '?01;cafef00d:face']) })
+      useEditorState.setState({
+    normalSelection: new Set(['?01;deadbeef:face', '?01;cafef00d:face']),
+  })
     })
 
     await act(async () => { executeCommand('undo') })
@@ -151,8 +158,8 @@ describe('Part - undo tears down transient editor state', () => {
     await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
 
     act(() => {
-      useSketchEditorStore.setState({
-        drag: {
+      useEditorState.setState({
+    drag: {
           type: 'vertex',
           vertexId: 'v1',
           featureId: 'sk1',
@@ -162,12 +169,12 @@ describe('Part - undo tears down transient editor state', () => {
           currentWorld: [1, 1],
           startClient: [0, 0],
         },
-        isPointerDown: true,
-        dragStartClient: [0, 0],
-        isRotating: true,
-        alignmentSnapPoint: [1, 1],
-        alignmentSnapKind: 'kinda_horizontal',
-      })
+    isPointerDown: true,
+    dragStartClient: [0, 0],
+    isRotating: true,
+    alignmentSnapPoint: [1, 1],
+    alignmentSnapKind: 'kinda_horizontal',
+  })
     })
 
     await act(async () => { executeCommand('undo') })
@@ -198,16 +205,16 @@ describe('Part - undo tears down transient editor state', () => {
     await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
 
     act(() => {
-      useSketchEditorStore.setState({
-        hoveredSelectionId: '?01;deadbeef:face',
-        hoveredPickKey: 'p1',
-        hoveredVertexId: 'v1',
-        hoveredVertexPosition: [1, 2],
-        hoveredSnapKind: 'vertex',
-        hoveredConstraintEntityIds: new Set(['c1']),
-        hoveredFaceNormal: [0, 0, 1],
-        hoveredFaceCenter: [0.5, 0.5, 0],
-      })
+      useEditorState.setState({
+    hoveredSelectionId: '?01;deadbeef:face',
+    hoveredPickKey: 'p1',
+    hoveredVertexId: 'v1',
+    hoveredVertexPosition: [1, 2],
+    hoveredSnapKind: 'vertex',
+    hoveredConstraintEntityIds: new Set(['c1']),
+    hoveredFaceNormal: [0, 0, 1],
+    hoveredFaceCenter: [0.5, 0.5, 0],
+  })
     })
 
     await act(async () => { executeCommand('undo') })
@@ -229,7 +236,9 @@ describe('Part - undo tears down transient editor state', () => {
     await screen.findByTitle('Feature mode')
 
     act(() => {
-      useSketchEditorStore.setState({ normalSelection: new Set(['?01;deadbeef:face']) })
+      useEditorState.setState({
+    normalSelection: new Set(['?01;deadbeef:face']),
+  })
     })
 
     // A keystroke that changes nothing must not clear the user's selection as a

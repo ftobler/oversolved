@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import type { LineSegment, Sketch } from '@/types/cad'
 import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, RENDER_ORDER_EDITING, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const MockLine = vi.fn((_props: Record<string, unknown>) => null)
 const MockDashedLine = vi.fn((_props: Record<string, unknown>) => null)
@@ -38,7 +39,7 @@ const LINE_ENTITY: LineSegment = { start: [0, 0], end: [1, 0] }
 const LINE_ENTITY_CONSTRUCTION: LineSegment = { start: [0, 0], end: [1, 0], construction: true }
 
 function resetStore(overrides: Record<string, unknown> = {}) {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     activeFeatureId: null,
     drag: null,

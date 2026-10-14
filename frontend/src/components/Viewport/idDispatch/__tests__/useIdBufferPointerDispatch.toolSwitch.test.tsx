@@ -4,6 +4,7 @@ import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch } from '..
 import { IdPipeline, EDGE_LAYER_NAME, FACE_LAYER_NAME, PLANE_LAYER_NAME } from '@/picking'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { newIdBufferDispatchFixture, disposeIdBufferDispatchFixture, flushHoverFrame } from './idBufferDispatchHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('useIdBufferPointerDispatch', () => {
   let canvas: HTMLCanvasElement
@@ -43,7 +44,9 @@ describe('useIdBufferPointerDispatch', () => {
     await act(async () => {
       // A sketch draw tool allows no B-rep layer, so the edge layer this
       // dispatcher consumes intersects to nothing.
-      useSketchEditorStore.setState({ activeTool: 'line' })
+      useEditorState.setState({
+    activeTool: 'line',
+  })
       canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: 30, clientY: 50 }))
       await Promise.resolve()
     })
@@ -78,7 +81,9 @@ describe('useIdBufferPointerDispatch', () => {
 
     await act(async () => {
       // Tool switch within the frame: 'line' forbids the face layer entirely.
-      useSketchEditorStore.setState({ activeTool: 'line' })
+      useEditorState.setState({
+    activeTool: 'line',
+  })
     })
 
     await flushHoverFrame()
@@ -91,7 +96,10 @@ describe('useIdBufferPointerDispatch', () => {
   // L5a: the effective allowed set is cached keyed on activeTool; a tool switch
   // must invalidate that cache so the next event re-derives the filter.
   it('re-derives the allowed layer set on the next event after a tool change', async () => {
-    useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+    useEditorState.setState({
+    activeTool: null,
+    normalSelection: new Set(),
+  })
     pipeline.resolveSync = vi.fn().mockImplementation(
       (_gl: unknown, _cursor: unknown, opts?: { allowedLayers?: ReadonlySet<string> }) => {
         if (opts?.allowedLayers && !opts.allowedLayers.has(EDGE_LAYER_NAME)) return null
@@ -109,7 +117,9 @@ describe('useIdBufferPointerDispatch', () => {
     })
     expect(wasLastClickConsumedByIdDispatch()).toBe(true)
 
-    act(() => { useSketchEditorStore.setState({ activeTool: 'line' }) })  // line forbids EDGE
+    act(() => { useEditorState.setState({
+    activeTool: 'line',
+  }) })  // line forbids EDGE
 
     await act(async () => {
       canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 10, clientY: 10 }))
@@ -120,7 +130,9 @@ describe('useIdBufferPointerDispatch', () => {
   // L6: a hover applied under one tool's filter must not survive a keyboard tool
   // switch that forbids the layer until the next pointer move.
   it('drops a B-rep hover the instant a keyboard tool switch forbids the layer', async () => {
-    useSketchEditorStore.setState({ activeTool: null })
+    useEditorState.setState({
+    activeTool: null,
+  })
     pipeline.target.markClean()
     pipeline.resolveAsync = vi.fn().mockImplementation(async () => ({
       id: 1, layer: EDGE_LAYER_NAME, entityKey: 'edgeQ', pickKey: 'b#edge#0', distancePx: 0,
@@ -138,14 +150,18 @@ describe('useIdBufferPointerDispatch', () => {
     await flushHoverFrame()
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('edgeQ')
 
-    act(() => { useSketchEditorStore.setState({ activeTool: 'line' }) })  // line forbids EDGE
+    act(() => { useEditorState.setState({
+    activeTool: 'line',
+  }) })  // line forbids EDGE
 
     // No further pointer event.
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
   })
 
   it('keeps a still-allowed hover across a tool switch that does not forbid the layer', async () => {
-    useSketchEditorStore.setState({ activeTool: null })
+    useEditorState.setState({
+    activeTool: null,
+  })
     pipeline.target.markClean()
     pipeline.resolveAsync = vi.fn().mockImplementation(async () => ({
       id: 1, layer: PLANE_LAYER_NAME, entityKey: '@builtin_front', pickKey: '@builtin_front', distancePx: 0,
@@ -163,7 +179,9 @@ describe('useIdBufferPointerDispatch', () => {
     await flushHoverFrame()
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('@builtin_front')
 
-    act(() => { useSketchEditorStore.setState({ activeTool: 'drag' }) })  // drag applies no filter
+    act(() => { useEditorState.setState({
+    activeTool: 'drag',
+  }) })  // drag applies no filter
 
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('@builtin_front')
   })
@@ -172,7 +190,9 @@ describe('useIdBufferPointerDispatch', () => {
   // and its promise resolving, with nothing hovered yet, must still invalidate
   // that readback so it cannot paint a highlight the new tool forbids.
   it('invalidates an in-flight hover readback on a tool switch even with nothing hovered', async () => {
-    useSketchEditorStore.setState({ activeTool: null })
+    useEditorState.setState({
+    activeTool: null,
+  })
     let landReadback: (hit: unknown) => void = () => {}
     pipeline.resolveAsync = vi.fn().mockImplementation(
       () => new Promise(resolve => { landReadback = resolve }),
@@ -188,7 +208,9 @@ describe('useIdBufferPointerDispatch', () => {
     })
 
     // Tool switch before the readback resolves; no hover was ever applied.
-    act(() => { useSketchEditorStore.setState({ activeTool: 'line' }) })
+    act(() => { useEditorState.setState({
+    activeTool: 'line',
+  }) })
 
     await act(async () => {
       landReadback({ id: 1, layer: EDGE_LAYER_NAME, entityKey: 'edgeQ', pickKey: 'b#edge#0', distancePx: 0 })

@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { act } from '@testing-library/react'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, Mutation } from '@/types/cad'
 import { docRef, renameTo, labelOf, resetHarness } from './usePartDoc.undoHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/hooks/useDocumentState', async () => {
   const { documentStateMock } = await import('./usePartDoc.undoHarness')
@@ -59,7 +60,7 @@ const labelIn = (doc: PartDoc | undefined) => (doc?.features?.[0] as { label?: s
 // An open suppressed session holding one real edit: the commit the open-work
 // funnel resolves before a move.
 function openSessionWithEdit(result: { current: ReturnType<typeof usePartDoc> }) {
-  usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+  useEditorState.getState().setEditingFeatureId('extrude-1')
   act(() => { result.current.startEditSession(true) })
   act(() => { result.current.handleMutation(renameTo('in-edit')) })
 }
@@ -125,7 +126,7 @@ describe('usePartDoc undo teardown truth table', () => {
     expect(result.current.undoStack).toHaveLength(0)
     expect(labelOf()).toBe('first')
     expect(labelIn(docsAtTeardown[0])).toBe('in-edit')
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
   })
 
   it('row 6: an undo whose commit sits on top of older entries moves and tears down once', () => {
@@ -161,8 +162,8 @@ describe('usePartDoc undo teardown truth table', () => {
     // swallowing later edits.
     expect(result.current.redoStack).toHaveLength(0)
     expect(teardown).toHaveBeenCalledTimes(1)
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
-    expect(usePartEditorStore.getState().pickBoundary).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().pickBoundary).toBeNull()
     // Nothing swapped on this path, so the teardown and the doc agree: the
     // commit's doc is still the live one.
     expect(docRef.current).toBe(postEdit)
@@ -204,12 +205,12 @@ describe('usePartDoc undo teardown truth table', () => {
 
     // Enter the edit without touching the doc: there is no open work to commit,
     // so the flag stays false and the dead keystroke is inert.
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleRedo() })
 
     expect(teardown).not.toHaveBeenCalled()
-    expect(usePartEditorStore.getState().editingFeatureId).toBe('extrude-1')
+    expect(useEditorState.getState().editingFeatureId).toBe('extrude-1')
 
     // The session is still live, so its next edit is swallowed as before.
     act(() => { result.current.handleMutation(renameTo('in-edit')) })

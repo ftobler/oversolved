@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useSketchEditorStore, setSketchCallback, prunePickClaims } from '@/stores/sketchEditorStore'
 import { installSketchStoreSetup, resetSketchEditorStore } from './helpers/sketchEditorStoreTestSetup'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
@@ -78,10 +79,10 @@ describe('sketchEditorStore', () => {
       // An orphan: another writer cleared normalSelection but left a pick claim
       // behind. The sibling click must re-assert the query into normalSelection
       // instead of growing the claim set under a query nobody selected.
-      useSketchEditorStore.setState({
-        normalSelection: new Set(),
-        selectedPicks: new Map([['Q', new Set(['ex1/b0#edge#0'])]]),
-      })
+      useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map([['Q', new Set(['ex1/b0#edge#0'])]]),
+  })
       useSketchEditorStore.getState().toggleNormalSelection('Q', 'ex1/b0#edge#1')
       const s = useSketchEditorStore.getState()
       expect(s.normalSelection.has('Q')).toBe(true)
@@ -92,10 +93,10 @@ describe('sketchEditorStore', () => {
       // Orphan: another writer cleared normalSelection but left a 2-key claim under Q.
       // Clicking one of those keys removes it AND must heal Q back into
       // normalSelection, exactly as the colliding-sibling branch does for a 1-key orphan.
-      useSketchEditorStore.setState({
-        normalSelection: new Set(),
-        selectedPicks: new Map([['Q', new Set(['ex1/b0#edge#0', 'ex1/b0#edge#1'])]]),
-      })
+      useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map([['Q', new Set(['ex1/b0#edge#0', 'ex1/b0#edge#1'])]]),
+  })
       useSketchEditorStore.getState().toggleNormalSelection('Q', 'ex1/b0#edge#0')
       const s = useSketchEditorStore.getState()
       expect(s.normalSelection.has('Q')).toBe(true)
@@ -105,10 +106,10 @@ describe('sketchEditorStore', () => {
     it('a claim-shrink click that empties a single-key orphan removes the query entirely', () => {
       // The full-deselect outcome must still fully remove: the re-assert belongs
       // only to the path that leaves keys behind.
-      useSketchEditorStore.setState({
-        normalSelection: new Set(),
-        selectedPicks: new Map([['Q', new Set(['ex1/b0#edge#0'])]]),
-      })
+      useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map([['Q', new Set(['ex1/b0#edge#0'])]]),
+  })
       useSketchEditorStore.getState().toggleNormalSelection('Q', 'ex1/b0#edge#0')
       const s = useSketchEditorStore.getState()
       expect(s.normalSelection.has('Q')).toBe(false)
@@ -224,7 +225,9 @@ describe('sketchEditorStore', () => {
     it('still clears a lingering claim even when the boxed set matches the selection', () => {
       const { setNormalSelection } = useSketchEditorStore.getState()
       setNormalSelection(new Set(['edge@q']))
-      useSketchEditorStore.setState({ selectedPicks: new Map([['edge@q', new Set(['ex1/b0#3'])]]) })
+      useEditorState.setState({
+    selectedPicks: new Map([['edge@q', new Set(['ex1/b0#3'])]]),
+  })
       setNormalSelection(new Set(['edge@q']))
       const s = useSketchEditorStore.getState()
       expect(s.normalSelection.has('edge@q')).toBe(true)
@@ -387,10 +390,10 @@ describe('sketchEditorStore', () => {
 
     it('setActivePickField(null) clears chipOwnedSelection', () => {
       useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'plane' })
-      useSketchEditorStore.setState({
-        chipOwnedSelection: new Set(['?body_ex1/face/0']),
-        normalSelection: new Set(['?body_ex1/face/0']),
-      })
+      useEditorState.setState({
+    chipOwnedSelection: new Set(['?body_ex1/face/0']),
+    normalSelection: new Set(['?body_ex1/face/0']),
+  })
       useSketchEditorStore.getState().setActivePickField(null)
       expect(useSketchEditorStore.getState().chipOwnedSelection.size).toBe(0)
     })
@@ -401,11 +404,11 @@ describe('sketchEditorStore', () => {
       // that popMode runs on an emptied stack would otherwise prune the orphan
       // itself with a spurious set() (nit 18).
       useSketchEditorStore.getState().setActivePickField({ featureId: 'sk1', field: 'plane' })
-      useSketchEditorStore.setState({
-        normalSelection: new Set(['entity:S1:L1']),
-        chipOwnedSelection: new Set(['@edge_0']),
-        selectedPicks: new Map([['@edge_0', new Set(['ex1/b0#3'])]]),
-      })
+      useEditorState.setState({
+    normalSelection: new Set(['entity:S1:L1']),
+    chipOwnedSelection: new Set(['@edge_0']),
+    selectedPicks: new Map([['@edge_0', new Set(['ex1/b0#3'])]]),
+  })
       let chipClearOrder = -1
       let popOrder = -1
       let notify = 0

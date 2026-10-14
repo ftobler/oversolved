@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import type { Entity, Sketch, Arc, LineSegment, PointEntity, Ellipse, Spline, Circle } from '@/types/cad'
 
 /**
@@ -32,6 +32,7 @@ vi.mock('@react-three/fiber', () => ({
 }))
 
 import { EntityItem, EntityLines } from '@/components/Geometry3D/EntityLines'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const ARC: Arc = { start: [1, 0], end: [0, 1], center: [0, 0], radius: 1, angle_start: 0, angle_end: 90 }
 const LINE: LineSegment = { start: [0, 0], end: [1, 1] }
@@ -57,7 +58,7 @@ beforeEach(() => {
   MockDashedLine.mockClear()
   MockVertexDot.mockClear()
   MockOriginPoint.mockClear()
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     hoveredSelectionId: null,
     hoveredConstraintEntityIds: new Set(),

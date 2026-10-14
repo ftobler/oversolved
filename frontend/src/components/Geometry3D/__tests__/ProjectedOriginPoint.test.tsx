@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { COLOR_PROJECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER } from '@/components/Geometry3D/constants'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const MockLine = vi.fn((_props: Record<string, unknown>) => null)
 
@@ -15,7 +16,7 @@ vi.mock('@react-three/fiber', () => ({
 }))
 
 function resetStore(overrides: Record<string, unknown> = {}) {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     hoveredConstraintEntityIds: new Set(),
     hoveredSelectionId: null,

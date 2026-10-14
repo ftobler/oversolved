@@ -13,6 +13,7 @@ import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorSt
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import type { PartDoc, Mutation } from '@/types/cad'
 import { docRef, resetHarness, makeSketchDoc } from './usePartDoc.undoHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/hooks/useDocumentState', async () => {
   const { documentStateMock } = await import('./usePartDoc.undoHarness')
@@ -91,7 +92,9 @@ describe('undo labels for the label-only resolution entries', () => {
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
     setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
     setSketchCallback('getSketch', () => null)
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+  })
     try {
       // Seed a redo branch: one entry, then undone.
       act(() => { result.current.handleMutation({ type: 'add_entity', featureId: 'sk1', kind: 'point', params: [1, 2] } as Mutation) })

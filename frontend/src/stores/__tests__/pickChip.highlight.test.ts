@@ -11,9 +11,10 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     chipOwnedSelection: new Set(),
   })
@@ -38,7 +39,9 @@ describe('pick chip highlight === selection highlight', () => {
   })
 
   it('chip values join existing normal selection -- both contribute to highlight', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['@body_ex1']),
+  })
     useSketchEditorStore.getState().syncChipSelection(['@ex1/face/0', 'entity:sk1:line1'])
     expect(isSelected('@body_ex1')).toBe(true)
     expect(isSelected('@ex1/face/0')).toBe(true)

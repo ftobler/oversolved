@@ -4,8 +4,9 @@
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PartColorPopover from '@/pages/PartColorPopover'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const STYLED = {
   b1: {
@@ -43,7 +44,9 @@ const popoverEl = () => document.querySelector('.part-color-popover') as HTMLEle
 
 describe('PartColorPopover', () => {
   beforeEach(() => {
-    usePartEditorStore.setState({ partStyle: STYLED })
+    useEditorState.setState({
+    partStyle: STYLED,
+  })
   })
 
   afterEach(cleanup)

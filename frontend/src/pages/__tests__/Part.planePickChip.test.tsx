@@ -12,9 +12,10 @@ import { render } from '@testing-library/react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
@@ -38,9 +39,7 @@ const sketchFeature: PartFeature = { id: 'sk1', kind: 'sketch', label: 'sketch 1
 beforeEach(() => {
   usePartEditorStore.setState({
     features: [],
-    rollbackPosition: null,
     visibleFeatures: new Set(),
-    editingFeatureId: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -49,22 +48,32 @@ beforeEach(() => {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
 })
 
 describe('plane pick-chip on new sketch', () => {
   it('renders pick-chip in picking state when editingFeatureId and activePickField both match the sketch', () => {
     usePartEditorStore.setState({
-      features: [sketchFeature],
-      visibleFeatures: new Set(['sk1']),
-      editingFeatureId: 'sk1',
-    })
+    features: [sketchFeature],
+    visibleFeatures: new Set(['sk1']),
+  })
+  useEditorState.setState({
+    editingFeatureId: 'sk1',
+  })
     // An armed pick field owns the top of the mode stack, so seeding one by hand
     // has to seed its entry too.
-    useSketchEditorStore.setState({ activePickField: { featureId: 'sk1', field: 'plane' }, modeStack: ['pick'] })
+    useEditorState.setState({
+    activePickField: { featureId: 'sk1', field: 'plane' },
+    modeStack: ['pick'],
+  })
 
     render(
       <PartEditorProvider value={makeCallbacks()}>
@@ -79,11 +88,16 @@ describe('plane pick-chip on new sketch', () => {
 
   it('pick-chip is NOT in picking state when activePickField is null', () => {
     usePartEditorStore.setState({
-      features: [sketchFeature],
-      visibleFeatures: new Set(['sk1']),
-      editingFeatureId: 'sk1',
-    })
-    useSketchEditorStore.setState({ activePickField: null, modeStack: [] })
+    features: [sketchFeature],
+    visibleFeatures: new Set(['sk1']),
+  })
+  useEditorState.setState({
+    editingFeatureId: 'sk1',
+  })
+    useEditorState.setState({
+    activePickField: null,
+    modeStack: [],
+  })
 
     render(
       <PartEditorProvider value={makeCallbacks()}>

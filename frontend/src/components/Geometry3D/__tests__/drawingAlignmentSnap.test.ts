@@ -2,14 +2,15 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { suggestConstraint, ALIGNMENT_TOLERANCE_DEG, ALIGNMENT_TOLERANCE_DIST } from '@/registry'
 import { detectDrawAlignment, isAlignmentSnap, toolTakesAlignmentSnap } from '@/components/interaction/useAlignmentSnapEffect'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('alignment snap for draw tool', () => {
   beforeEach(() => {
-    useSketchEditorStore.setState({
-      alignmentSnapPoint: null,
-      alignmentSnapKind: null,
-      drawPoints: [],
-    })
+    useEditorState.setState({
+    alignmentSnapPoint: null,
+    alignmentSnapKind: null,
+    drawPoints: [],
+  })
   })
 
   describe('suggestConstraint for alignment snap', () => {

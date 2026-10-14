@@ -21,6 +21,7 @@ import { IdPipeline } from '@/picking/IdPipeline'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { EDGE_LAYER_NAME } from '@/picking/layerNames'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const W = 800
 const H = 600
@@ -99,17 +100,17 @@ describe('band release vs the trailing native click (VP-M1)', () => {
 
   beforeEach(() => {
     takeBandClickConsumed()  // clear any flag leaked from a prior test
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: null,
-      isRotating: false,
-      normalSelection: new Set(),
-      selectedPicks: new Map(),
-      dimensionPicks: [],
-      hoveredSelectionId: null,
-      hoveredVertexId: null,
-      hoveredConstraintEntityIds: new Set(),
-    })
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: null,
+    isRotating: false,
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    dimensionPicks: [],
+    hoveredSelectionId: null,
+    hoveredVertexId: null,
+    hoveredConstraintEntityIds: new Set(),
+  })
   })
 
   afterEach(() => {
@@ -151,11 +152,11 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     // trailing click must still be swallowed rather than finalizing the dim.
     const h = await setup('sk1/painted')
     pipeline = h.pipeline
-    useSketchEditorStore.setState({
-      activeTool: 'dimension',
-      activeFeatureId: 'feat1',
-      dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
+  })
     const spy = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement')
 
     await act(async () => {
@@ -266,11 +267,11 @@ describe('band release vs the trailing native click (VP-M1)', () => {
     // click resolves empty and finalizes. This is the regression's pinned seam.
     const h = await setup('sk1/painted')
     pipeline = h.pipeline
-    useSketchEditorStore.setState({
-      activeTool: 'dimension',
-      activeFeatureId: 'feat1',
-      dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
+  })
     const spy = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement')
 
     await act(async () => {

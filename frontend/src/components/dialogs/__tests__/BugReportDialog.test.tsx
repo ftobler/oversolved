@@ -3,7 +3,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import BugReportDialog from '@/components/dialogs/BugReportDialog'
 import { backendBundle } from '@/adapters/backend'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
+import { useEditorState } from '@/hooks/useEditorState'
 
 function fillTitle(text: string) {
   fireEvent.change(screen.getByPlaceholderText('Title'), { target: { value: text } })
@@ -13,7 +14,9 @@ describe('BugReportDialog', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     usePartEditorStore.setState({ undoStack: [], redoStack: [], doc: null })
-    useSketchEditorStore.setState({ normalSelection: new Set<string>() })
+    useEditorState.setState({
+    normalSelection: new Set<string>(),
+  })
   })
 
   it('renders nothing when closed', () => {
@@ -49,7 +52,9 @@ describe('BugReportDialog', () => {
     const send = vi.spyOn(backendBundle.telemetry, 'send').mockResolvedValue()
     const onClose = vi.fn()
     usePartEditorStore.setState({ doc: { features: [] } })
-    useSketchEditorStore.setState({ normalSelection: new Set(['edge-1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['edge-1']),
+  })
 
     render(<BugReportDialog isOpen onClose={onClose} />)
     fillTitle('It broke')

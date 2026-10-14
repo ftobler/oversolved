@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The preview/session boundary has one direction left: a preview open before a
 // session starts is resolved at session start with its own preview_commit, and
@@ -52,8 +53,8 @@ describe('usePartDoc startEditSession with an open preview (resolved at session 
   beforeEach(() => {
     docRef.current = makeDoc()
     reSolve.mockClear()
-    usePartEditorStore.getState().setEditingFeatureId(null)
-    usePartEditorStore.getState().setRollbackPosition(null)
+    useEditorState.getState().setEditingFeatureId(null)
+    useEditorState.getState().setRollbackPosition(null)
   })
 
   // Open a preview and swallow one color frame, the exact repro from the
@@ -68,7 +69,7 @@ describe('usePartDoc startEditSession with an open preview (resolved at session 
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     openAndSwallowPreview(result)
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
 
     // The preview was resolved at session START, not left dangling for the
@@ -100,7 +101,7 @@ describe('usePartDoc startEditSession with an open preview (resolved at session 
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
     openAndSwallowPreview(result)
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('discarded')) })
     act(() => { result.current.cancelEditSession() })

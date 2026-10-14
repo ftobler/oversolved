@@ -13,6 +13,7 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const mockSolveViaWorker = vi.hoisted(() => vi.fn())
 
@@ -39,7 +40,7 @@ features:
 const BODIES = { body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] } }
 
 function resetSelection() {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),
@@ -105,10 +106,10 @@ describe('Delete on a body plus its generator feature', () => {
     fireEvent.click(screen.getByTitle('Feature mode'))
 
     act(() => {
-      useSketchEditorStore.setState({
-        activeFeatureId: 'sk1',
-        normalSelection: new Set(['entity:sk1:L1', '@ex1']),
-      })
+      useEditorState.setState({
+    activeFeatureId: 'sk1',
+    normalSelection: new Set(['entity:sk1:L1', '@ex1']),
+  })
     })
     await act(async () => { executeCommand('delete_selected') })
 
@@ -148,12 +149,12 @@ describe('Delete on a body plus its generator feature', () => {
 
     // Mixed: a sketch entity plus a 3D feature target, with tile hover set.
     act(() => {
-      useSketchEditorStore.setState({
-        activeFeatureId: 'sk1',
-        normalSelection: new Set(['entity:sk1:L1', '@ex1']),
-        chipOwnedSelection: new Set(['@ex1']),
-        hoveredConstraintEntityIds: new Set(['c_hover']),
-      })
+      useEditorState.setState({
+    activeFeatureId: 'sk1',
+    normalSelection: new Set(['entity:sk1:L1', '@ex1']),
+    chipOwnedSelection: new Set(['@ex1']),
+    hoveredConstraintEntityIds: new Set(['c_hover']),
+  })
     })
     await act(async () => { executeCommand('delete_selected') })
 
@@ -166,12 +167,12 @@ describe('Delete on a body plus its generator feature', () => {
 
     // And the sketch-only branch still lands on the identical post-condition.
     act(() => {
-      useSketchEditorStore.setState({
-        activeFeatureId: 'sk1',
-        normalSelection: new Set(['entity:sk1:L2']),
-        chipOwnedSelection: new Set(['entity:sk1:L2']),
-        hoveredConstraintEntityIds: new Set(['c_hover2']),
-      })
+      useEditorState.setState({
+    activeFeatureId: 'sk1',
+    normalSelection: new Set(['entity:sk1:L2']),
+    chipOwnedSelection: new Set(['entity:sk1:L2']),
+    hoveredConstraintEntityIds: new Set(['c_hover2']),
+  })
     })
     await act(async () => { executeCommand('delete_selected') })
 

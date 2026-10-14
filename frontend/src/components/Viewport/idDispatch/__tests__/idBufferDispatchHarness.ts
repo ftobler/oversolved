@@ -1,9 +1,10 @@
 import { IdPipeline } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { act } from '@testing-library/react'
 import { resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
 import { StubRenderer, makeCanvas } from './pickCanvasFixture'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Shared per-test scaffolding for the split useIdBufferPointerDispatch suites.
 // This is the setup the single pre-split file ran once: a fresh canvas, pipeline
@@ -22,7 +23,9 @@ export function newIdBufferDispatchFixture(): IdBufferDispatchFixture {
   const pipeline = new IdPipeline({ width: 800, height: 600 })
   setLivePipeline(pipeline)
   const glRef = { current: new StubRenderer(canvas) }
-  useSketchEditorStore.setState({ activeTool: null })  // idle select is activeTool null
+  useEditorState.setState({
+    activeTool: null,
+  })  // idle select is activeTool null
   return { canvas, pipeline, glRef }
 }
 

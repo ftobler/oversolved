@@ -9,10 +9,11 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
-import { useSketchEditorStore, getSketchCallback } from '@/stores/sketchEditorStore'
+import { getSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const F = vi.hoisted(() => {
   const doc = {
@@ -170,28 +171,32 @@ describe('Part page actions', () => {
     h.saveDoc.mockResolvedValue(true)
     h.renameDoc.mockResolvedValue(true)
     usePartEditorStore.setState({
-      ...DEFAULT_PART_EDITOR_DATA,
-      features: F.doc.features,
-      doc: F.doc,
-      bodies: F.bodies,
-      solveResults: F.solve,
-      partStyle: F.doc.part_style,
-      editingFeatureId: null,
-      rollbackPosition: null,
-      pickBoundary: null,
-    })
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      hoveredSelectionId: null,
-      hoveredVertexId: null,
-      hoveredFaceNormal: null,
-      hoveredFaceCenter: null,
-      activeTool: null,
-      activePickField: null,
-      modeStack: [],
-      showDebugHit: false,
-      showConstraintTiles: false,
-    })
+    ...DEFAULT_PART_EDITOR_DATA,
+    features: F.doc.features,
+    doc: F.doc,
+    bodies: F.bodies,
+    solveResults: F.solve,
+  })
+  useEditorState.setState({
+    partStyle: F.doc.part_style,
+    editingFeatureId: null,
+    rollbackPosition: null,
+    pickBoundary: null,
+  })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    hoveredSelectionId: null,
+    hoveredVertexId: null,
+    hoveredFaceNormal: null,
+    hoveredFaceCenter: null,
+    activeTool: null,
+    activePickField: null,
+    modeStack: [],
+  })
+  useSketchUiStore.setState({
+    showDebugHit: false,
+    showConstraintTiles: false,
+  })
     useDevSettingsStore.setState({ validateOnRebuild: false })
   })
 
@@ -222,9 +227,9 @@ describe('Part page actions', () => {
     fireEvent.click(screen.getByTitle('Toggle debug panel (F2)'))
     expect(document.querySelector('.debug-drawer')).not.toBeNull()
 
-    expect(useSketchEditorStore.getState().showDebugHit).toBe(false)
+    expect(useSketchUiStore.getState().showDebugHit).toBe(false)
     fireEvent.click(screen.getByTitle('Show debug collision rendering'))
-    expect(useSketchEditorStore.getState().showDebugHit).toBe(true)
+    expect(useSketchUiStore.getState().showDebugHit).toBe(true)
   })
 
   it('the tree Rebuild re-solves the current document with the cache bypassed', async () => {
@@ -240,7 +245,7 @@ describe('Part page actions', () => {
 
     fireEvent.click(screen.getByTestId('sidebar-rollback'))
 
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(2)
+    expect(useEditorState.getState().rollbackPosition).toBe(2)
     expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_rollback', position: 2 })
   })
 
@@ -300,7 +305,10 @@ describe('Part page actions', () => {
   })
 
   it('the active sketch menu aligns the camera to its plane and toggles the constraint tiles', () => {
-    usePartEditorStore.setState({ editingFeatureId: 'sketch1', rollbackPosition: F.doc.features.length })
+    useEditorState.setState({
+    editingFeatureId: 'sketch1',
+    rollbackPosition: F.doc.features.length,
+  })
     renderPart()
 
     fireEvent.click(screen.getByTestId('feature-ctx-sketch1'))
@@ -308,13 +316,16 @@ describe('Part page actions', () => {
     // The stored plane query is stripped of its @ before it reaches the camera.
     expect(h.alignPlane).toHaveBeenCalledWith('builtin_plane_front')
 
-    expect(useSketchEditorStore.getState().showConstraintTiles).toBe(false)
+    expect(useSketchUiStore.getState().showConstraintTiles).toBe(false)
     fireEvent.click(menuItem('Show Constraints'))
-    expect(useSketchEditorStore.getState().showConstraintTiles).toBe(true)
+    expect(useSketchUiStore.getState().showConstraintTiles).toBe(true)
   })
 
   it('a viewport right-click in sketch edit offers Normal to sketch', () => {
-    usePartEditorStore.setState({ editingFeatureId: 'sketch1', rollbackPosition: F.doc.features.length })
+    useEditorState.setState({
+    editingFeatureId: 'sketch1',
+    rollbackPosition: F.doc.features.length,
+  })
     renderPart()
 
     fireEvent.click(screen.getByTestId('viewport-ctx'))
@@ -324,7 +335,9 @@ describe('Part page actions', () => {
   })
 
   it('a viewport right-click aims Normal to at the one selected plane', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@plane1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['@plane1']),
+  })
     renderPart()
 
     fireEvent.click(screen.getByTestId('viewport-ctx'))
@@ -334,7 +347,10 @@ describe('Part page actions', () => {
   })
 
   it('the active sketch menu Exit Sketch closes the menu', () => {
-    usePartEditorStore.setState({ editingFeatureId: 'sketch1', rollbackPosition: F.doc.features.length })
+    useEditorState.setState({
+    editingFeatureId: 'sketch1',
+    rollbackPosition: F.doc.features.length,
+  })
     renderPart()
 
     fireEvent.click(screen.getByTestId('feature-ctx-sketch1'))
@@ -344,11 +360,11 @@ describe('Part page actions', () => {
   })
 
   it('a viewport face right-click aligns the camera to the hovered face', () => {
-    useSketchEditorStore.setState({
-      hoveredSelectionId: '?face',
-      hoveredFaceNormal: [0, 0, 1],
-      hoveredFaceCenter: [0, 0, 5],
-    })
+    useEditorState.setState({
+    hoveredSelectionId: '?face',
+    hoveredFaceNormal: [0, 0, 1],
+    hoveredFaceCenter: [0, 0, 5],
+  })
     renderPart()
 
     fireEvent.click(screen.getByTestId('viewport-ctx'))
@@ -413,13 +429,15 @@ describe('Part page actions', () => {
   // A rollback while a session is open has to re-point the pick boundary at the
   // edited feature, or the solve-side editing invariant fires on the next solve.
   it('a rollback during an edit re-points the pick boundary at that feature', () => {
-    usePartEditorStore.setState({ editingFeatureId: 'extrude1' })
+    useEditorState.setState({
+    editingFeatureId: 'extrude1',
+  })
     renderPart()
 
     fireEvent.click(screen.getByTestId('sidebar-rollback'))
 
     // extrude1 is the second non-builtin feature, so its index is 1.
-    expect(usePartEditorStore.getState().pickBoundary).toBe(1)
+    expect(useEditorState.getState().pickBoundary).toBe(1)
     expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_rollback', position: 2 })
   })
 
@@ -452,11 +470,11 @@ describe('Part page actions', () => {
   it('a refused constraint surfaces a dismissible message dialog', async () => {
     renderPart()
     act(() => {
-      useSketchEditorStore.setState({
-        activeFeatureId: 'sketch1',
-        normalSelection: new Set(['entity:sketch1:e1', 'entity:sketch1:e2']),
-        entityKindMap: { 'entity:sketch1:e1': 'line', 'entity:sketch1:e2': 'circle' },
-      })
+      useEditorState.setState({
+    activeFeatureId: 'sketch1',
+    normalSelection: new Set(['entity:sketch1:e1', 'entity:sketch1:e2']),
+    entityKindMap: { 'entity:sketch1:e1': 'line', 'entity:sketch1:e2': 'circle' },
+  })
     })
 
     await act(async () => { executeCommand('apply_parallel') })

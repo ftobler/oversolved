@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { installSketchStoreSetup } from './helpers/sketchEditorStoreTestSetup'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
@@ -470,11 +471,11 @@ describe('sketchEditorStore', () => {
     it('clears hoveredConstraintEntityIds after dispatch', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        activeFeatureId: 'S1',
-        normalSelection: new Set(['constraint:S1:C1']),
-        hoveredConstraintEntityIds: new Set(['entity:S1:L1']),
-      })
+      useEditorState.setState({
+    activeFeatureId: 'S1',
+    normalSelection: new Set(['constraint:S1:C1']),
+    hoveredConstraintEntityIds: new Set(['entity:S1:L1']),
+  })
       useSketchEditorStore.getState().deleteSelected()
       expect(useSketchEditorStore.getState().hoveredConstraintEntityIds.size).toBe(0)
     })
@@ -509,10 +510,10 @@ describe('sketchEditorStore', () => {
     it('deleteSelected removes dimension constraint when selected', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        activeFeatureId: 'S1',
-        normalSelection: new Set(['constraint:S1:c_dim_linear_abc']),
-      })
+      useEditorState.setState({
+    activeFeatureId: 'S1',
+    normalSelection: new Set(['constraint:S1:c_dim_linear_abc']),
+  })
 
       useSketchEditorStore.getState().deleteSelected()
 
@@ -527,10 +528,10 @@ describe('sketchEditorStore', () => {
     it('deleteSelected does not clear non-matching selection', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        activeFeatureId: 'S1',
-        normalSelection: new Set(['entity:S1:L1', 'constraint:S1:C1']),
-      })
+      useEditorState.setState({
+    activeFeatureId: 'S1',
+    normalSelection: new Set(['entity:S1:L1', 'constraint:S1:C1']),
+  })
       useSketchEditorStore.getState().deleteSelected()
       expect(handler).toHaveBeenCalledWith({
         type: 'delete',

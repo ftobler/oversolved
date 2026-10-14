@@ -2,12 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import type { Mutation } from '@/types/cad'
-import {
-  docRef, makeSketchDoc, renameTo, labelOf, sketchEntitiesOf, sketchConstraintsOf, resetHarness,
-} from './usePartDoc.undoHarness'
+import { docRef, makeSketchDoc, renameTo, labelOf, sketchEntitiesOf, sketchConstraintsOf, resetHarness } from './usePartDoc.undoHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/hooks/useDocumentState', async () => {
   const { documentStateMock } = await import('./usePartDoc.undoHarness')
@@ -33,7 +32,9 @@ describe('usePartDoc undo brep gesture withhold', () => {
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
     setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
     setSketchCallback('getSketch', () => null)
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+  })
     try {
       act(() => { store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' }) })
       act(() => { store.addBrepDimensionPick('?b1/edge:2', { isVertexPick: false, sourceKind: 'line' }) })
@@ -41,7 +42,7 @@ describe('usePartDoc undo brep gesture withhold', () => {
       expect(sketchEntitiesOf()).toHaveLength(2)
 
       act(() => { store.finalizeDimensionPlacement([0, 0]) })
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       act(() => { dialog.onConfirm('10') })
 
       expect(result.current.undoStack).toHaveLength(1)
@@ -70,7 +71,9 @@ describe('usePartDoc undo brep gesture withhold', () => {
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
     setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
     setSketchCallback('getSketch', () => null)
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+  })
     try {
       act(() => { store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' }) })
       expect(result.current.undoStack).toHaveLength(0)
@@ -87,7 +90,7 @@ describe('usePartDoc undo brep gesture withhold', () => {
       // The commit keys to the current doc: its entry restores the projection
       // and the steal, so undo removes only the dimension.
       act(() => { store.finalizeDimensionPlacement([0, 0]) })
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       act(() => { dialog.onConfirm('10') })
       expect(result.current.undoStack).toHaveLength(2)
       expect((result.current.undoStack[1].doc.features?.[0] as { entities?: unknown[] }).entities ?? []).toHaveLength(2)
@@ -120,7 +123,9 @@ describe('usePartDoc undo brep gesture withhold', () => {
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
     setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
     setSketchCallback('getSketch', () => null)
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+  })
     try {
       act(() => { store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' }) })
       expect(result.current.undoStack).toHaveLength(0)
@@ -139,7 +144,7 @@ describe('usePartDoc undo brep gesture withhold', () => {
       // The dimension commit now keys to the current doc: undo removes only the
       // dimension, leaving the projection and the geometric constraint.
       act(() => { store.finalizeDimensionPlacement([0, 0]) })
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       act(() => { dialog.onConfirm('10') })
       expect(result.current.undoStack).toHaveLength(2)
       expect(sketchConstraintsOf().map(c => c.kind).sort()).toEqual(['coincident', 'length'])
@@ -169,7 +174,9 @@ describe('usePartDoc undo brep gesture withhold', () => {
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
     setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
     setSketchCallback('getSketch', () => null)
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+  })
     try {
       act(() => { store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' }) })
       expect(result.current.undoStack).toHaveLength(0)
@@ -183,7 +190,7 @@ describe('usePartDoc undo brep gesture withhold', () => {
       expect(labelOf()).toBe('renamed')
 
       act(() => { store.finalizeDimensionPlacement([0, 0]) })
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       act(() => { dialog.onConfirm('10') })
       expect(result.current.undoStack).toHaveLength(2)
       expect(sketchConstraintsOf()).toHaveLength(1)
@@ -218,7 +225,9 @@ describe('usePartDoc undo brep gesture withhold', () => {
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
     setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
     setSketchCallback('getSketch', () => null)
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+  })
     try {
       act(() => { store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' }) })
 
@@ -228,7 +237,7 @@ describe('usePartDoc undo brep gesture withhold', () => {
       expect(sketchEntitiesOf()).toHaveLength(1)
 
       act(() => { store.finalizeDimensionPlacement([0, 0]) })
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       act(() => { dialog.onConfirm('10') })
 
       expect(result.current.undoStack).toHaveLength(1)
@@ -291,7 +300,9 @@ describe('usePartDoc undo brep gesture withhold', () => {
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
     setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
     setSketchCallback('getSketch', () => null)
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+  })
     try {
       act(() => { result.current.handleMutation({ type: 'add_entity', featureId: 'sk1', kind: 'point', params: [1, 2] } as Mutation) })
       act(() => { store.addBrepDimensionPick('?b1/edge:1', { isVertexPick: false, sourceKind: 'line' }) })
@@ -321,13 +332,15 @@ describe('usePartDoc undo brep gesture withhold', () => {
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
     setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
     setSketchCallback('getSketch', () => null)
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+  })
     try {
       act(() => { store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' }) })
       expect(result.current.undoStack).toHaveLength(0)
 
       act(() => { store.finalizeDimensionPlacement([0, 0]) })
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       act(() => { dialog.onCancel!() })
 
       // The projection is gone and nothing was pushed: no orphan, no stale step.
@@ -387,7 +400,7 @@ describe('usePartDoc undo brep gesture withhold', () => {
   it('a brep arm made while suppression is on does not leak past the suppression boundary', () => {
     docRef.current = makeSketchDoc()
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-    usePartEditorStore.getState().setEditingFeatureId('sk1')
+    useEditorState.getState().setEditingFeatureId('sk1')
 
     // A suppressed feature session is the undo owner; a brep pick armed inside
     // it has its projection swallowed without an entry.
@@ -423,7 +436,9 @@ describe('usePartDoc undo brep gesture withhold', () => {
     setSketchCallback('beginBrepProjection', result.current.beginBrepProjection)
     setSketchCallback('cancelBrepProjection', result.current.cancelBrepProjection)
     setSketchCallback('getSketch', () => null)
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1' })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+  })
     try {
       // Seed a redo branch: one entry, then undone. No page teardown is
       // registered yet, or the seed undo below would wipe activeFeatureId

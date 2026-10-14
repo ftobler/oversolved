@@ -6,6 +6,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const sketchFeature: PartFeature = { id: 'sk1', kind: 'sketch' }
 
@@ -34,8 +35,6 @@ function renderSidebar(
   usePartEditorStore.setState({
     features,
     visibleFeatures: new Set(features.map(f => f.id)),
-    editingFeatureId,
-    rollbackPosition: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -44,9 +43,14 @@ function renderSidebar(
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
   return render(
     <PartEditorProvider value={makeCallbacks(callbacks)}>
@@ -58,9 +62,7 @@ function renderSidebar(
 beforeEach(() => {
   usePartEditorStore.setState({
     features: [],
-    rollbackPosition: null,
     visibleFeatures: new Set(),
-    editingFeatureId: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -69,9 +71,14 @@ beforeEach(() => {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
 })
 
@@ -86,11 +93,13 @@ describe('sketch enter without viewport', () => {
   it('partEditorStore reflects editingFeatureId after sketch enter', () => {
     const onEnterEditSketch = vi.fn((id: string) => {
       // Simulate what Part.tsx does when enterEditSketch fires
-      usePartEditorStore.setState({ editingFeatureId: id })
+      useEditorState.setState({
+    editingFeatureId: id,
+  })
     })
     renderSidebar([sketchFeature], null, { onEnterEditSketch })
     fireEvent.click(screen.getByTitle('Edit sketch'))
-    expect(usePartEditorStore.getState().editingFeatureId).toBe('sk1')
+    expect(useEditorState.getState().editingFeatureId).toBe('sk1')
   })
 })
 
@@ -105,11 +114,13 @@ describe('sketch exit without viewport', () => {
   it('partEditorStore editingFeatureId is cleared after sketch exit', () => {
     const onEditCommit = vi.fn(() => {
       // Simulate what Part.tsx does when exitEditSketch fires
-      usePartEditorStore.setState({ editingFeatureId: null })
+      useEditorState.setState({
+    editingFeatureId: null,
+  })
     })
     renderSidebar([sketchFeature], 'sk1', { onEditCommit })
     fireEvent.click(screen.getByTitle('OK'))
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
   })
 })
 
@@ -120,7 +131,9 @@ describe('entity selection without viewport', () => {
   })
 
   it('toggleNormalSelection removes an already-selected entity id', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['entity:sk1:e1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['entity:sk1:e1']),
+  })
     useSketchEditorStore.getState().toggleNormalSelection('entity:sk1:e1')
     expect(useSketchEditorStore.getState().normalSelection.has('entity:sk1:e1')).toBe(false)
   })

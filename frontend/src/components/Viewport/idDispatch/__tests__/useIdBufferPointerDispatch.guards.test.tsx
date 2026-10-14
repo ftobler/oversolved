@@ -9,6 +9,7 @@ import { sketchEntityAdapter } from '../sketchEntityAdapter'
 import { markDrawToolClickConsumed, takeDrawToolClickConsumed } from '../drawToolClickGuard'
 import type { ActiveTool } from '@/types/cad'
 import { newIdBufferDispatchFixture, disposeIdBufferDispatchFixture } from './idBufferDispatchHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('useIdBufferPointerDispatch', () => {
   let canvas: HTMLCanvasElement
@@ -36,7 +37,9 @@ describe('useIdBufferPointerDispatch', () => {
 
     it('calls sketchVertexAdapter.onPointerDown when activeTool is null (default mode)', async () => {
       stubVertexHit()
-      useSketchEditorStore.setState({ activeTool: null })
+      useEditorState.setState({
+    activeTool: null,
+  })
       const spy = vi.spyOn(sketchVertexAdapter, 'onPointerDown')
 
       renderHook(() => useIdBufferPointerDispatch({
@@ -51,7 +54,9 @@ describe('useIdBufferPointerDispatch', () => {
 
     it('calls sketchVertexAdapter.onPointerDown when activeTool is drag', async () => {
       stubVertexHit()
-      useSketchEditorStore.setState({ activeTool: 'drag' })
+      useEditorState.setState({
+    activeTool: 'drag',
+  })
       const spy = vi.spyOn(sketchVertexAdapter, 'onPointerDown')
 
       renderHook(() => useIdBufferPointerDispatch({
@@ -66,7 +71,9 @@ describe('useIdBufferPointerDispatch', () => {
 
     it('calls sketchVertexAdapter.onPointerDown when no tool is active', async () => {
       stubVertexHit()
-      useSketchEditorStore.setState({ activeTool: null })
+      useEditorState.setState({
+    activeTool: null,
+  })
       const spy = vi.spyOn(sketchVertexAdapter, 'onPointerDown')
 
       renderHook(() => useIdBufferPointerDispatch({
@@ -81,7 +88,9 @@ describe('useIdBufferPointerDispatch', () => {
 
     it('does NOT call sketchVertexAdapter.onPointerDown when a drawing tool is active', async () => {
       stubVertexHit()
-      useSketchEditorStore.setState({ activeTool: 'line' })
+      useEditorState.setState({
+    activeTool: 'line',
+  })
       const spy = vi.spyOn(sketchVertexAdapter, 'onPointerDown')
 
       renderHook(() => useIdBufferPointerDispatch({
@@ -107,7 +116,10 @@ describe('useIdBufferPointerDispatch', () => {
     beforeEach(() => {
       // The project tool resets the tool to null after committing on pointer-down,
       // so by click time the tool reads as null (all layers allowed).
-      useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+      useEditorState.setState({
+    activeTool: null,
+    normalSelection: new Set(),
+  })
       takeDrawToolClickConsumed()  // clear any leaked flag from prior tests
     })
 
@@ -155,7 +167,11 @@ describe('useIdBufferPointerDispatch', () => {
     beforeEach(() => {
       // A drawing tool is active: DrawPlane commits on pointer-down and claims
       // the click, so the trailing canvas click must not toggle selection.
-      useSketchEditorStore.setState({ activeTool: 'line', activeFeatureId: 'feat1', normalSelection: new Set() })
+      useEditorState.setState({
+    activeTool: 'line',
+    activeFeatureId: 'feat1',
+    normalSelection: new Set(),
+  })
       takeDrawToolClickConsumed()  // clear any leaked flag from prior tests
     })
 
@@ -199,7 +215,11 @@ describe('useIdBufferPointerDispatch', () => {
     it.each(DRAWING_TOOLS)(
       'skips normal selection for the %s tool after its draw pointer-down consumed the click',
       async (tool) => {
-        useSketchEditorStore.setState({ activeTool: tool, activeFeatureId: 'feat1', normalSelection: new Set() })
+        useEditorState.setState({
+    activeTool: tool,
+    activeFeatureId: 'feat1',
+    normalSelection: new Set(),
+  })
         stubVertexHit()
         renderHook(() => useIdBufferPointerDispatch({
           glRef: glRef as { current: import('three').WebGLRenderer | null },
@@ -245,7 +265,9 @@ describe('useIdBufferPointerDispatch', () => {
     })
     const spy = vi.spyOn(sketchEntityAdapter, 'onPointerDown')
 
-    useSketchEditorStore.setState({ activeTool: null })
+    useEditorState.setState({
+    activeTool: null,
+  })
     renderHook(() => useIdBufferPointerDispatch({
       glRef: glRef as { current: import('three').WebGLRenderer | null },
       consumedLayers: new Set([SKETCH_ENTITY_LAYER_NAME]),
@@ -256,7 +278,9 @@ describe('useIdBufferPointerDispatch', () => {
     expect(spy).toHaveBeenCalledWith(KEY, 10, 10)
 
     spy.mockClear()
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
     await act(async () => {
       canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 10, clientY: 10 }))
     })

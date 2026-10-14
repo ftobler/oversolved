@@ -12,6 +12,7 @@ import Part from '@/pages/Part'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn(),
@@ -43,7 +44,12 @@ describe('delete_body ghost preview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
-    usePartEditorStore.setState({ editingFeatureId: null, pickBoundary: null, rollbackPosition: null, ghostMode: false })
+    useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+    ghostMode: false,
+  })
   })
 
   it('turns ghost mode on only once the pick bodies land', async () => {
@@ -71,11 +77,11 @@ describe('delete_body ghost preview', () => {
     const editBtn = await screen.findByTitle('Edit delete body')
     fireEvent.click(editBtn)
 
-    await waitFor(() => expect(usePartEditorStore.getState().pickBoundary).not.toBeNull())
-    expect(usePartEditorStore.getState().ghostMode).toBe(false)
+    await waitFor(() => expect(useEditorState.getState().pickBoundary).not.toBeNull())
+    expect(useEditorState.getState().ghostMode).toBe(false)
 
     releaseEditSolve({ result: {}, bodies: {}, pick_bodies: BODIES, _build_state: null })
-    await waitFor(() => expect(usePartEditorStore.getState().ghostMode).toBe(true))
+    await waitFor(() => expect(useEditorState.getState().ghostMode).toBe(true))
     expect(usePartEditorStore.getState().pickBodies).toEqual(BODIES)
     // The delete emptied the body store, so the ghosts are all that is left.
     expect(usePartEditorStore.getState().bodies).toEqual({})

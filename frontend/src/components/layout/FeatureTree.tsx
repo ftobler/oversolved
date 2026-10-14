@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent 
 import { featureFailure } from '@/utils/core/featureFailure'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { RebuildButton } from '@/components/rebuild/RebuildButton'
 import { FeatureItemActions } from '@/components/layout/FeatureItemActions'
@@ -20,8 +21,8 @@ interface FeatureTreeProps {
 export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   const features = usePartEditorStore(s => s.features)
   const doc = usePartEditorStore(s => s.doc)
-  const rollbackPosition = usePartEditorStore(s => s.rollbackPosition)
-  const editingFeatureId = usePartEditorStore(s => s.editingFeatureId)
+  const rollbackPosition = useEditorState(s => s.rollbackPosition)
+  const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
   const partLabels = usePartEditorStore(s => s.partLabels)
   const solveResults = usePartEditorStore(s => s.solveResults)

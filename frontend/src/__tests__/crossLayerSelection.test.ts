@@ -18,16 +18,18 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { parseTarget } from '@/utils/yamlMutations'
 import { parseSelectionId } from '@/utils/query/selectionId'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // ─── helpers ───
 
 function resetStore() {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     chipOwnedSelection: new Set(),
     hoveredSelectionId: null,
     activeFeatureId: null,
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
 }
 

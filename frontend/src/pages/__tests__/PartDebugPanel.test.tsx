@@ -4,16 +4,21 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import PartDebugPanel from '@/pages/PartDebugPanel'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import type { Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const MOVE: Mutation = { type: 'move_entity', featureId: 'sk1', entityId: 'e1', delta: [1, 0] }
 
 describe('PartDebugPanel', () => {
   beforeEach(() => {
-    useSketchEditorStore.setState({ hoveredSelectionId: null, hoveredVertexId: null, normalSelection: new Set() })
+    useEditorState.setState({
+    hoveredSelectionId: null,
+    hoveredVertexId: null,
+    normalSelection: new Set(),
+  })
     usePartEditorStore.setState({ undoStack: [], redoStack: [] })
     useDevSettingsStore.setState({ validateOnRebuild: false })
   })
@@ -24,10 +29,10 @@ describe('PartDebugPanel', () => {
   })
 
   it('shows the hovered id and the normal selection on the selection tab', () => {
-    useSketchEditorStore.setState({
-      hoveredSelectionId: '@ex1/face/0',
-      normalSelection: new Set(['@body_ex1']),
-    })
+    useEditorState.setState({
+    hoveredSelectionId: '@ex1/face/0',
+    normalSelection: new Set(['@body_ex1']),
+  })
     render(<PartDebugPanel debugOpen />)
 
     expect(screen.getByText('@ex1/face/0')).toBeInTheDocument()
@@ -36,7 +41,10 @@ describe('PartDebugPanel', () => {
   })
 
   it('falls back to the hovered vertex when nothing else is hovered', () => {
-    useSketchEditorStore.setState({ hoveredSelectionId: null, hoveredVertexId: 'vertex:sk1:e1:start' })
+    useEditorState.setState({
+    hoveredSelectionId: null,
+    hoveredVertexId: 'vertex:sk1:e1:start',
+  })
     render(<PartDebugPanel debugOpen />)
     expect(screen.getByText('vertex:sk1:e1:start')).toBeInTheDocument()
   })

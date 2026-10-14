@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // A callback installed by one test must not leak into the next (the "normal
 // mode" case relies on no onMutation being set).
@@ -58,7 +59,10 @@ describe('store toggleNormalSelection with @-prefixed IDs', () => {
 describe('builtin click in normal mode (activePickField=null)', () => {
   beforeEach(() => {
     useSketchEditorStore.getState().clearNormalSelection()
-    useSketchEditorStore.setState({ activePickField: null, modeStack: [] })
+    useEditorState.setState({
+    activePickField: null,
+    modeStack: [],
+  })
   })
 
   it('toggleNormalSelection emits no mutation when onMutation is null (normal mode)', () => {

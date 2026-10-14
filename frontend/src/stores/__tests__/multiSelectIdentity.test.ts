@@ -22,11 +22,12 @@ import { computeHighlight } from '@/picking/selectionHighlight'
 import { selectActiveFrom } from '@/picking/highlightActive'
 import { primitivePickKey, bodyKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const BODY = bodyKeyFor('extrude1', 'body0')
 
 function reset() {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),

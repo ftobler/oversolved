@@ -11,6 +11,7 @@ import { bodyKeyFor } from '@/picking/pickKey'
 import { buildContextMenu } from '@/pages/buildContextMenu'
 import type { BuildContextMenuCallbacks } from '@/pages/buildContextMenu'
 import type { Mesh3D } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -66,7 +67,10 @@ const bodyKey = bodyKeyFor('ex1', 'body_ex1')
 beforeEach(async () => {
   resetBodyCallbacksForTest()
   clearAllHover()
-  useSketchEditorStore.setState({ normalSelection: new Set(), selectedPicks: new Map() } as never)
+  useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+  })
   const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
   render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} />)
 })

@@ -3,9 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
@@ -25,11 +26,10 @@ function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditor
 }
 
 function renderSidebar(storeFeatures: PartFeature[], editingFeatureId: string | null, callbacks: Partial<PartEditorCallbacks> = {}) {
+  useEditorState.setState({ editingFeatureId })
   usePartEditorStore.setState({
     features: storeFeatures,
     visibleFeatures: new Set(storeFeatures.map(f => f.id)),
-    editingFeatureId,
-    rollbackPosition: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -38,9 +38,13 @@ function renderSidebar(storeFeatures: PartFeature[], editingFeatureId: string | 
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    rollbackPosition: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
   return render(
     <PartEditorProvider value={makeCallbacks(callbacks)}>
@@ -52,9 +56,7 @@ function renderSidebar(storeFeatures: PartFeature[], editingFeatureId: string | 
 beforeEach(() => {
   usePartEditorStore.setState({
     features: [],
-    rollbackPosition: null,
     visibleFeatures: new Set(),
-    editingFeatureId: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -63,9 +65,14 @@ beforeEach(() => {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
 })
 

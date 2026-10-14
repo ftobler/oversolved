@@ -85,8 +85,8 @@ describe('Part - undo/redo never move the camera', () => {
     mockAutoZoomToFit.mockClear()
 
     // Push one real undo entry: add an extrude and accept the dialog. The stack
-    // (mirrored into the store by useSyncPartEditorStore) must actually carry an
-    // entry, or the undo below pops nothing and the test proves no more than the
+    // (published into the store by usePartDoc) must actually carry an entry, or
+    // the undo below pops nothing and the test proves no more than the
     // unconditional disarm already does.
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })

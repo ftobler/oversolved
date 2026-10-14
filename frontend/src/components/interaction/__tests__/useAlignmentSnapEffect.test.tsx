@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react'
 import * as THREE from 'three'
 import { useAlignmentSnapEffect } from '../useAlignmentSnapEffect'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The hook reads the camera from R3F to turn the screen-pixel tolerance into
 // world units. The holder lets the mocked factory see a camera the test swaps
@@ -20,7 +21,10 @@ function orthoCamera(zoom: number): THREE.OrthographicCamera {
 describe('useAlignmentSnapEffect', () => {
   beforeEach(() => {
     r3f.camera = orthoCamera(1)
-    useSketchEditorStore.setState({ alignmentSnapPoint: null, alignmentSnapKind: null })
+    useEditorState.setState({
+    alignmentSnapPoint: null,
+    alignmentSnapKind: null,
+  })
   })
 
   it('records the segment start as the snap reference when the cursor is axis-aligned', () => {
@@ -34,7 +38,10 @@ describe('useAlignmentSnapEffect', () => {
   })
 
   it('clears a prior snap when the cursor is not axis-aligned', () => {
-    useSketchEditorStore.setState({ alignmentSnapPoint: [9, 9], alignmentSnapKind: 'kinda_vertical' })
+    useEditorState.setState({
+    alignmentSnapPoint: [9, 9],
+    alignmentSnapKind: 'kinda_vertical',
+  })
 
     renderHook(() => useAlignmentSnapEffect([10, 10], [0, 0]))
 
@@ -44,7 +51,10 @@ describe('useAlignmentSnapEffect', () => {
   })
 
   it('clears the snap when the current position or the last draw point is missing', () => {
-    useSketchEditorStore.setState({ alignmentSnapPoint: [1, 1], alignmentSnapKind: 'kinda_horizontal' })
+    useEditorState.setState({
+    alignmentSnapPoint: [1, 1],
+    alignmentSnapKind: 'kinda_horizontal',
+  })
 
     const { rerender } = renderHook(
       ({ p, last }: { p: [number, number] | null; last: [number, number] | null }) =>
@@ -53,7 +63,10 @@ describe('useAlignmentSnapEffect', () => {
     )
     expect(useSketchEditorStore.getState().alignmentSnapKind).toBeNull()
 
-    useSketchEditorStore.setState({ alignmentSnapPoint: [1, 1], alignmentSnapKind: 'kinda_horizontal' })
+    useEditorState.setState({
+    alignmentSnapPoint: [1, 1],
+    alignmentSnapKind: 'kinda_horizontal',
+  })
     rerender({ p: [5, 0], last: null })
     expect(useSketchEditorStore.getState().alignmentSnapKind).toBeNull()
   })
@@ -66,7 +79,10 @@ describe('useAlignmentSnapEffect', () => {
     renderHook(() => useAlignmentSnapEffect([1000, 30], [0, 0]))
     expect(useSketchEditorStore.getState().alignmentSnapKind).toBe('kinda_horizontal')
 
-    useSketchEditorStore.setState({ alignmentSnapPoint: null, alignmentSnapKind: null })
+    useEditorState.setState({
+    alignmentSnapPoint: null,
+    alignmentSnapKind: null,
+  })
     r3f.camera = orthoCamera(1)  // 20 world tolerance: the same 30 is now out of reach
     renderHook(() => useAlignmentSnapEffect([1000, 30], [0, 0]))
     expect(useSketchEditorStore.getState().alignmentSnapKind).toBeNull()

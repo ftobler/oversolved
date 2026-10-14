@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Mirror the dispatcher's store sequence so the contract is captured here.
 // If the path ever re-introduces the @bodyId auto-add, this mirror must NOT be
@@ -28,9 +29,10 @@ function simulateFaceClick(hoverQuery: string) {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
     hoveredSelectionId: null,
   })
 })

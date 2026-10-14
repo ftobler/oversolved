@@ -23,6 +23,7 @@ vi.mock('@/stores/solverStore', () => ({
 import { useSolver } from '@/hooks/useSolver'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartDoc } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeDoc(): PartDoc {
   return {
@@ -42,20 +43,20 @@ function setupHook() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     hoveredSelectionId: null,
     hoveredPickKey: null,
     selectedPicks: new Map(),
-  } as never)
+  })
 })
 
 describe('useSolver clears the hovered pick identity at the solve seam', () => {
   it('an applied solve clears the hovered pick identity', async () => {
     const result = setupHook()
-    useSketchEditorStore.setState({
-      hoveredSelectionId: '?edge_q',
-      hoveredPickKey: 'ex1/body_ex1#edge#3',
-    } as never)
+    useEditorState.setState({
+    hoveredSelectionId: '?edge_q',
+    hoveredPickKey: 'ex1/body_ex1#edge#3',
+  })
     mockSolveViaWorker.mockResolvedValueOnce({ solve_ms: 0, result: {}, bodies: {}, _build_state: null })
     await act(async () => { await result.current.reSolve(makeDoc()) })
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
@@ -64,11 +65,11 @@ describe('useSolver clears the hovered pick identity at the solve seam', () => {
 
   it('clears the hover identity on the same solve it clears selectedPicks', async () => {
     const result = setupHook()
-    useSketchEditorStore.setState({
-      hoveredSelectionId: '?edge_q',
-      hoveredPickKey: 'ex1/body_ex1#edge#3',
-      selectedPicks: new Map([['?edge_q', new Set(['ex1/body_ex1#edge#3'])]]),
-    } as never)
+    useEditorState.setState({
+    hoveredSelectionId: '?edge_q',
+    hoveredPickKey: 'ex1/body_ex1#edge#3',
+    selectedPicks: new Map([['?edge_q', new Set(['ex1/body_ex1#edge#3'])]]),
+  })
     mockSolveViaWorker.mockResolvedValueOnce({ solve_ms: 0, result: {}, bodies: {}, _build_state: null })
     await act(async () => { await result.current.reSolve(makeDoc()) })
     const s = useSketchEditorStore.getState()
@@ -79,10 +80,10 @@ describe('useSolver clears the hovered pick identity at the solve seam', () => {
 
   it('leaves the hovered face normal readout alone', async () => {
     const result = setupHook()
-    useSketchEditorStore.setState({
-      hoveredFaceNormal: [0, 0, 1],
-      hoveredFaceCenter: [1, 2, 3],
-    } as never)
+    useEditorState.setState({
+    hoveredFaceNormal: [0, 0, 1],
+    hoveredFaceCenter: [1, 2, 3],
+  })
     mockSolveViaWorker.mockResolvedValueOnce({ solve_ms: 0, result: {}, bodies: {}, _build_state: null })
     await act(async () => { await result.current.reSolve(makeDoc()) })
     const s = useSketchEditorStore.getState()

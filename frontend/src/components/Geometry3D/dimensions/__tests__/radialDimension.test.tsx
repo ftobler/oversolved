@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import type { DragState } from '@/stores/sketchEditorStore'
 
 /**
@@ -36,6 +36,7 @@ vi.mock('@/picking/useDimensionLabelIdRegistration', () => ({
 }))
 
 import { RadiusDimension, DiameterDimension } from '../Radial'
+import { useEditorState } from '@/hooks/useEditorState'
 
 type RadiusDim = React.ComponentProps<typeof RadiusDimension>['dim']
 type DiameterDim = React.ComponentProps<typeof DiameterDimension>['dim']
@@ -51,9 +52,16 @@ function lastLinePoints(): unknown {
 
 beforeEach(() => {
   for (const s of Object.values(spies)) s.mockClear()
-  useSketchEditorStore.setState({
-    drag: null, dragPending: null, dragStartClient: null, isPointerDown: false,
-    normalSelection: new Set(), hoveredConstraintEntityIds: new Set(), pendingDialog: null,
+  useEditorState.setState({
+    drag: null,
+    dragPending: null,
+    dragStartClient: null,
+    isPointerDown: false,
+    normalSelection: new Set(),
+    hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
   })
 })
 

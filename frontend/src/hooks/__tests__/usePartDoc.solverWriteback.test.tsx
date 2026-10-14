@@ -11,10 +11,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import type { PartDoc, Mutation } from '@/types/cad'
+import { editorState } from '@/stores/editorState'
 
 const { mockSolveViaWorker } = vi.hoisted(() => ({ mockSolveViaWorker: vi.fn() }))
 
@@ -201,10 +201,7 @@ describe('solver write-back undo round-trip', () => {
     vi.clearAllMocks()
     saveDocMock.mockReset()
     useUnsavedChangesStore.getState().setDirty(false)
-    const store = usePartEditorStore.getState()
-    store.setEditingFeatureId(DEFAULT_PART_EDITOR_DATA.editingFeatureId)
-    store.setPickBoundary(DEFAULT_PART_EDITOR_DATA.pickBoundary)
-    store.setRollbackPosition(DEFAULT_PART_EDITOR_DATA.rollbackPosition)
+    editorState.getState().resetEditorState()
     useSolverStore.setState({ isSolving: false, onCancelSolve: null })
   })
 
@@ -436,10 +433,7 @@ describe('solver write-back and a session that edited nothing', () => {
     vi.clearAllMocks()
     saveDocMock.mockReset()
     useUnsavedChangesStore.getState().setDirty(false)
-    const store = usePartEditorStore.getState()
-    store.setEditingFeatureId(DEFAULT_PART_EDITOR_DATA.editingFeatureId)
-    store.setPickBoundary(DEFAULT_PART_EDITOR_DATA.pickBoundary)
-    store.setRollbackPosition(DEFAULT_PART_EDITOR_DATA.rollbackPosition)
+    editorState.getState().resetEditorState()
     useSolverStore.setState({ isSolving: false, onCancelSolve: null })
   })
 
@@ -451,7 +445,7 @@ describe('solver write-back and a session that edited nothing', () => {
   // which feature is open, where the rollback bar sits and how far the pick
   // boundary reaches, so useSolver's editing invariant holds.
   const openSessionOnEx1 = (result: { current: { startEditSession: (s: boolean) => void; reSolve: (d: PartDoc) => Promise<void> | void } }) => {
-    const store = usePartEditorStore.getState()
+    const store = editorState.getState()
     store.setEditingFeatureId('ex1')
     store.setRollbackPosition(2)
     store.setPickBoundary(1)
@@ -562,7 +556,7 @@ describe('solver write-back and a session that edited nothing', () => {
 
     // The session opens on ex1 as above, with the edit landing inside it; the
     // re-solve after it is the mutation's own.
-    const store = usePartEditorStore.getState()
+    const store = editorState.getState()
     store.setEditingFeatureId('ex1')
     store.setRollbackPosition(2)
     store.setPickBoundary(1)

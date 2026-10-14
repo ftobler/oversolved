@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import NgonTool from '@/components/Toolbar/tools/NgonTool'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The side-count field used to write every keystroke straight into the store,
 // whose 3..64 clamp then fed back into the controlled value: typing "12"
@@ -10,11 +11,16 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 // held in component state while focused, and only Enter or blur commits.
 describe('NgonTool side-count input', () => {
   beforeEach(() => {
-    useSketchEditorStore.setState({ activeTool: 'ngon', ngonSides: 6 })
+    useEditorState.setState({
+    activeTool: 'ngon',
+  })
+  useSketchUiStore.setState({
+    ngonSides: 6,
+  })
   })
 
   const input = () => screen.getByTitle('Number of sides') as HTMLInputElement
-  const storeSides = () => useSketchEditorStore.getState().ngonSides
+  const storeSides = () => useSketchUiStore.getState().ngonSides
 
   it('holds the draft while focused and commits 12 on Enter', () => {
     render(<NgonTool />)
@@ -38,7 +44,9 @@ describe('NgonTool side-count input', () => {
   })
 
   it('falls back to the clamp default when cleared and blurred', () => {
-    useSketchEditorStore.setState({ ngonSides: 12 })
+    useSketchUiStore.setState({
+    ngonSides: 12,
+  })
     render(<NgonTool />)
     fireEvent.change(input(), { target: { value: '' } })
     // Clearing alone must not rewrite the store mid-edit.

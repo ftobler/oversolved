@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import type { DragState } from '@/stores/sketchEditorStore'
 
 /**
@@ -37,6 +37,7 @@ vi.mock('@/picking/useDimensionLabelIdRegistration', () => ({
 }))
 
 import { AngleDimension } from '../Angle'
+import { useEditorState } from '@/hooks/useEditorState'
 
 type Dim = React.ComponentProps<typeof AngleDimension>['dim']
 type Interaction = NonNullable<React.ComponentProps<typeof AngleDimension>['interaction']>
@@ -56,9 +57,16 @@ function lastLabel() {
 
 beforeEach(() => {
   for (const s of Object.values(spies)) s.mockClear()
-  useSketchEditorStore.setState({
-    drag: null, dragPending: null, dragStartClient: null, isPointerDown: false,
-    normalSelection: new Set(), hoveredConstraintEntityIds: new Set(), pendingDialog: null,
+  useEditorState.setState({
+    drag: null,
+    dragPending: null,
+    dragStartClient: null,
+    isPointerDown: false,
+    normalSelection: new Set(),
+    hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
   })
   setSketchCallback('onMutation', null)
 })
@@ -131,7 +139,7 @@ describe('AngleDimension supplement label', () => {
     render(<AngleDimension cid="c1" dim={SUPPLEMENT} interaction={INTERACTION} />)
 
     act(() => lastLabel().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
-    const dialog = useSketchEditorStore.getState().pendingDialog
+    const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog?.defaultValue).toBe('60')
 
     act(() => dialog!.onConfirm('60'))
@@ -148,7 +156,7 @@ describe('AngleDimension Flip side', () => {
     render(<AngleDimension cid="c1" dim={RIGHT_ANGLE} interaction={INTERACTION} />)
 
     act(() => lastLabel().onDoubleClick({ stopPropagation: () => {}, clientX: 0, clientY: 0 }))
-    const dialog = useSketchEditorStore.getState().pendingDialog
+    const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog?.extraAction?.label).toBe('Flip side')
 
     act(() => dialog!.extraAction!.onClick())

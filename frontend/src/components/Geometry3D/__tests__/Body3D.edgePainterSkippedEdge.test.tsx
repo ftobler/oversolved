@@ -7,8 +7,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import * as THREE from 'three'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import type { EdgeData, Mesh3D } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -57,17 +58,19 @@ const edges: EdgeData[] = [
 
 beforeEach(() => {
   paints.length = 0
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
-  } as never)
+  })
 })
 
 describe('the edge painter runs count from the built buffer', () => {
   it('a degenerate edge does not push run offsets past the colour buffer', async () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['?e2']) } as never)
+    useEditorState.setState({
+    normalSelection: new Set(['?e2']),
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(
       <Body3D

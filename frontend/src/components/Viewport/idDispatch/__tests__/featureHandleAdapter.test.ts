@@ -6,6 +6,7 @@ import {
 } from '../featureHandleCallbacks'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => resetFeatureHandleCallbacksForTest())
 
@@ -40,7 +41,12 @@ describe('featureHandleAdapter', () => {
 
 describe('feature_handle drag state', () => {
   beforeEach(() => {
-    useSketchEditorStore.setState({ drag: null, dragPending: null, dragStartClient: null, isPointerDown: false })
+    useEditorState.setState({
+    drag: null,
+    dragPending: null,
+    dragStartClient: null,
+    isPointerDown: false,
+  })
   })
 
   it('flows through setDragPending/setDrag and blocks orbit while pointer is down', () => {

@@ -3,6 +3,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { initializeTools } from '@/tools'
 import { sketchEntityAdapter } from '../sketchEntityAdapter'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
   toolRegistry.reset()
@@ -10,7 +11,7 @@ beforeEach(() => {
 })
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     activeTool: null,
     activeFeatureId: null,
     hoveredSelectionId: null,
@@ -36,7 +37,9 @@ describe('sketchEntityAdapter', () => {
   })
 
   it('onPointerDown starts entity drag for valid entity key', () => {
-    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    useEditorState.setState({
+    activeFeatureId: 'feat1',
+  })
     sketchEntityAdapter.onPointerDown('entity:feat1:line1', 100, 200)
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(true)
@@ -58,7 +61,9 @@ describe('sketchEntityAdapter', () => {
   })
 
   it('onPointerDown is a no-op for non-entity keys', () => {
-    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    useEditorState.setState({
+    activeFeatureId: 'feat1',
+  })
     sketchEntityAdapter.onPointerDown('vertex:feat1:line1:start', 100, 200)
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(false)
@@ -66,7 +71,9 @@ describe('sketchEntityAdapter', () => {
   })
 
   it('onPointerDown is a no-op for an entity key missing its entity id', () => {
-    useSketchEditorStore.setState({ activeFeatureId: 'feat1' })
+    useEditorState.setState({
+    activeFeatureId: 'feat1',
+  })
     sketchEntityAdapter.onPointerDown('entity:feat1', 100, 200)
     const s = useSketchEditorStore.getState()
     expect(s.isPointerDown).toBe(false)
@@ -74,7 +81,10 @@ describe('sketchEntityAdapter', () => {
   })
 
   it('onClick under the idle tool toggles the entity into normalSelection', () => {
-    useSketchEditorStore.setState({ entityKindMap: { 'entity:feat1:circle1': 'circle' }, normalSelection: new Set() })
+    useEditorState.setState({
+    entityKindMap: { 'entity:feat1:circle1': 'circle' },
+    normalSelection: new Set(),
+  })
     sketchEntityAdapter.onClick('entity:feat1:circle1', 100, 100)
     const s = useSketchEditorStore.getState()
     expect(s.normalSelection.has('entity:feat1:circle1')).toBe(true)
@@ -82,12 +92,12 @@ describe('sketchEntityAdapter', () => {
   })
 
   it('onClick under the dimension tool lands a pick carrying the entityKind from entityKindMap', () => {
-    useSketchEditorStore.setState({
-      entityKindMap: { 'entity:feat1:circle1': 'circle' },
-      activeTool: 'dimension',
-      activeFeatureId: 'feat1',
-      dimensionPicks: [],
-    })
+    useEditorState.setState({
+    entityKindMap: { 'entity:feat1:circle1': 'circle' },
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    dimensionPicks: [],
+  })
     sketchEntityAdapter.onClick('entity:feat1:circle1', 100, 100)
     const s = useSketchEditorStore.getState()
     expect(s.dimensionPicks).toEqual([

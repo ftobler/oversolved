@@ -240,10 +240,11 @@ export interface SketchEditorState {
   // 3D point on a face-based plane). See wasm-kernel/partDocToSketches.ts.
   activeOriginLocal: [number, number]
   setActiveOriginLocal: (p: [number, number]) => void
-  showDebugHit: boolean
-  showConstraintTiles: boolean
-  ngonSides: number  // side count for the two-click n-gon draw tool
+  // Kinds of the active sketch's entities, published by Geometry3D while the
+  // sketch is edited. Editor state, not a preference: applyConstraint's operand
+  // validation reads it, so it lives with the state it gates.
   entityKindMap: Record<string, string>
+  setEntityKindMap: (map: Record<string, string>) => void
   // Sticky-placement state: the picks the user has made inside the active
   // dimension-tool gesture. Empty until the first click, cleared on tool exit
   // or after the placement dialog closes.
@@ -264,18 +265,12 @@ export interface SketchEditorState {
   // finalizeDimensionPlacement to fill `pos` on the new constraint so the
   // dim lands at the click point instead of the renderer's default offset.
   dimensionCursorWorld: [number, number] | null
-  pendingDialog: DialogState | null
-  contextMenu: [number, number] | null
   activePickField: ActivePickField | null
   chipOwnedSelection: Set<string>
   syncChipSelection: (values: string[]) => void
   clearChipSelection: () => void
   setActiveTool: (tool: ActiveTool) => void
-  setNgonSides: (n: number) => void
   setActiveFeatureId: (id: string | null) => void
-  setShowDebugHit: (enabled: boolean) => void
-  setShowConstraintTiles: (show: boolean) => void
-  setEntityKindMap: (map: Record<string, string>) => void
   // Returns a human-readable rejection when the selection cannot carry the
   // constraint (incompatible operand kinds), or null when the constraint was
   // authored or there was simply nothing to act on. The caller surfaces the
@@ -284,10 +279,6 @@ export interface SketchEditorState {
   applyOffset: (distance: number) => void
   toggleConstruction: () => void
   deleteSelected: () => void
-  openDialog: (opts: DialogState) => void
-  closeDialog: () => void
-  openContextMenu: (pos: [number, number]) => void
-  closeContextMenu: () => void
   addDimensionPick: (pick: DimensionPick) => void
   addBrepDimensionPick: (query: string, opts: { isVertexPick: boolean; sourceKind?: string | null }) => void
   clearDimensionPicks: () => void

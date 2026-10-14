@@ -3,12 +3,13 @@
 // store reset that also drops the callback registry so a prior test's handler
 // cannot leak into the next one.
 import { beforeEach } from 'vitest'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'
 import { toolRegistry } from '@/registry/toolRegistry'
+import { useEditorState } from '@/hooks/useEditorState'
 
 export function resetSketchEditorStore(): void {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),
@@ -21,7 +22,6 @@ export function resetSketchEditorStore(): void {
     activeFeatureId: null,
     dimensionPicks: [],
     pendingBrepProjectionIds: [],
-    pendingDialog: null,
     activePickField: null,
     hoveredVertexId: null,
     hoveredVertexPosition: null,
@@ -29,6 +29,9 @@ export function resetSketchEditorStore(): void {
     hoveredConstraintEntityIds: new Set(),
     modeStack: [],
     entityKindMap: {},
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
   })
   setSketchCallback('onMutation', null)
   setSketchCallback('onMutationBatch', null)
