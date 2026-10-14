@@ -31,6 +31,13 @@ const h = vi.hoisted(() => ({
   buildBundleViaWorker: vi.fn(),
   exportAssemblyViaWorker: vi.fn(),
   downloadBlob: vi.fn(),
+  cancelGesture: vi.fn(),
+  // The handle the mocked viewport publishes. Null models a command table with
+  // no viewport, which must still tear the drag down through the store.
+  viewportHandle: null as null | {
+    captureScreenshotForSaving: () => Promise<string | null>
+    cancelGesture: () => void
+  },
 }))
 
 vi.mock('@/adapters/backend', () => ({
@@ -57,7 +64,7 @@ vi.mock('@/adapters/backend', () => ({
 // asserted end to end without a GL context.
 vi.mock('@/components/Viewport/AssemblyViewport', () => ({
   default: forwardRef((_props, ref) => {
-    useImperativeHandle(ref, () => ({ captureScreenshotForSaving: h.captureScreenshotForSaving }))
+    useImperativeHandle(ref, () => h.viewportHandle)
     return <div data-testid="assembly-viewport" />
   }),
 }))
@@ -98,6 +105,15 @@ describe('AssemblyEditor undo/redo', () => {
     useAssemblyStore.getState().setActiveMateField(null)
     useAssemblyStore.getState().selectMate(null)
     installSessionFromList(h)
+    // The real handle's cancelGesture is adapter.cancel(): the module-level
+    // gesture machine plus the store's manipulation and gizmoDrag. The double
+    // reproduces the store half so a page that prefers the handle still ends up
+    // with a clean store, exactly as the live adapter does.
+    h.cancelGesture.mockImplementation(() => useAssemblyStore.getState().cancelPartManipulation())
+    h.viewportHandle = {
+      captureScreenshotForSaving: h.captureScreenshotForSaving,
+      cancelGesture: h.cancelGesture,
+    }
   })
 
   const undoStack = () => useAssemblyStore.getState().undoStack
@@ -225,6 +241,59 @@ describe('AssemblyEditor undo/redo', () => {
     expect(useAssemblyStore.getState().instances).toHaveLength(0)
     expect(undoStack()).toHaveLength(0)
     expect(redoStack()).toHaveLength(1)
+  })
+
+  // The drag-cancel must be the viewport's own teardown, not just the store's:
+  // adapter.cancel() clears the module-level gesture machine and the published
+  // gizmoDrag as well, so a later pointermove cannot route through a gesture the
+  // store already forgot. The page prefers the viewport handle's cancelGesture.
+  it('undo during a live drag cancels through the viewport handle, not the store directly', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    const handle = useAssemblyStore.getState().instances[0].handle
+
+    act(() => {
+      const s = useAssemblyStore.getState()
+      s.beginPartManipulation(handle)
+      s.dragPartTranslate([3, 0, 0])
+    })
+    expect(useAssemblyStore.getState().manipulation).not.toBeNull()
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+
+    expect(h.cancelGesture).toHaveBeenCalledTimes(1)
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+  })
+
+  // A command table that runs without the viewport has a null ref: the store's
+  // own cancel is the fallback, so the drag is still torn down cleanly.
+  it('undo during a live drag falls back to the store cancel with no viewport handle', async () => {
+    h.viewportHandle = null
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    const handle = useAssemblyStore.getState().instances[0].handle
+
+    act(() => {
+      const s = useAssemblyStore.getState()
+      s.beginPartManipulation(handle)
+      s.dragPartTranslate([3, 0, 0])
+    })
+    expect(useAssemblyStore.getState().manipulation).not.toBeNull()
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+
+    expect(h.cancelGesture).not.toHaveBeenCalled()
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+    // The fallback still leaves history alone, same as the handled path.
+    expect(undoStack()).toHaveLength(1)
   })
 
   it('a fix toggle from the options menu records one undo step and undo reverts it', async () => {

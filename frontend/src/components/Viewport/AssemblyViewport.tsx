@@ -97,10 +97,14 @@ const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
 // overlay added here cannot escape over the app's dialogs.
 const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, touchAction: 'none', isolation: 'isolate' }
 
-// The assembly editor grabs a preview of the solved scene on save, exactly as
-// the part editor does; that is the whole of what it needs from the viewport.
+// What the assembly editor reaches back for. It grabs a preview of the solved
+// scene on save, and it ends a live drag through the one gesture teardown here:
+// the editor's undo commands the cancel, but the module-level pointer machine
+// and the published gizmoDrag live in this component, so the store's own cancel
+// alone would leave a gesture the adapter still believes is live.
 export interface AssemblyViewportHandle {
   captureScreenshotForSaving: () => Promise<string | null>
+  cancelGesture: () => void
 }
 
 export interface AssemblyViewportProps {
@@ -197,7 +201,11 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
   useImperativeHandle(ref, () => ({
     captureScreenshotForSaving: () => captureThumbnail(glRef.current, sceneRef.current, cameraRef.current),
-  }), [])
+    // The same teardown the Escape and unmount effects run: adapter.cancel()
+    // clears the pointer machine and the store's manipulation and gizmoDrag, so
+    // a drag abandoned from outside the viewport cannot linger as a live gesture.
+    cancelGesture: () => adapter.cancel(),
+  }), [adapter])
 
   // The subject's part half as a set, which is what the render groups take so a
   // future multi-part subject widens in the one accessor rather than here. It

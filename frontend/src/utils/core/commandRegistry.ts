@@ -164,6 +164,13 @@ export function isEditableTarget(e: KeyboardEvent): boolean {
  * Skips events that originate from input/textarea/select elements.
  */
 export function dispatchKey(e: KeyboardEvent): boolean {
+  // Idempotent per event. Each mounted command registration attaches its own
+  // window keydown listener and forwards to here, so two co-mounted editors
+  // deliver one press twice and both resolve the same last-writer-wins handler.
+  // A command run owns the event by calling e.preventDefault(), so a keydown
+  // that is already cancelled has been dispatched and the second listener bails
+  // instead of replaying the command. No single-listener path changes.
+  if (e.defaultPrevented) return false
   if (isEditableTarget(e)) return false
   // A modal owns the keyboard while it is on screen: focus often sits on a
   // non-input control (a dialog button), so document-level commands would
