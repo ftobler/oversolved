@@ -822,6 +822,23 @@ describe('teardown, guard and solve-option rows', () => {
     expect((result.doc?.part_style as Record<string, unknown> | undefined)?.['undefined']).toBeDefined()
   })
 
+  it('D07: a raw append after an undo mirrors the restored store position, not the end', () => {
+    // The mirror writes whatever position the store holds. Production append
+    // paths pre-sync the store to the end (Part.tsx setRollbackForNewFeature),
+    // but the hook alone does not: after an undo of the only feature the store
+    // is parked at 0, and the next raw append bakes rollback: 0 into the doc
+    // holding the new feature. Pinned as the current behaviour; the behaviour
+    // table records the caller obligation as ambiguous.
+    const result = runPartTranscript(makeDoc(), [
+      { kind: 'mutation', mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10 } },
+      { kind: 'undo' },
+      { kind: 'mutation', mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10 } },
+    ])
+
+    expect(result.doc?.features).toHaveLength(1)
+    expect(result.doc?.rollback).toBe(0)
+  })
+
   it('D06: only the drag family bypasses the solve cache; the group funnel never does', () => {
     const dragDoc = pointSketchDoc()
     runPartTranscript(dragDoc, [{
@@ -918,5 +935,36 @@ describe('assembly engine rows', () => {
 
     expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'instance', handle: 'a' })
     expect(result.current.undoStack).toHaveLength(0)
+  })
+
+  // The part engine's redo-mid-session row (T04) tears the editor down when the
+  // commit that resolved the session cleared the redo branch (openWorkCommitted).
+  // The assembly engine commits the session and returns at the empty-branch
+  // guard WITHOUT closing the editor, so the same keystroke leaves it standing.
+  // Pinned here as the current behaviour; the behaviour table records the
+  // disagreement as ambiguous rather than fixing either engine.
+  it('A04: a redo mid-session whose commit cleared the branch leaves the editor open', () => {
+    const docA = assemblyDocWith(['a'])
+    const docB = assemblyDocWith(['a', 'b'])
+    const docC = assemblyDocWith(['a', 'c'])
+    const docRef = { current: docB as AssemblyDoc | null }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    act(() => { result.current.pushUndo(docA, 'Add part') })
+    act(() => { result.current.handleUndo() })
+    expect(result.current.redoStack).toHaveLength(1)
+
+    act(() => { useAssemblyStore.getState().openInstanceEditor('a') })
+    act(() => { result.current.mutate('Set position', () => docC) })
+    act(() => { result.current.handleRedo() })
+
+    // The commit pushed and cleared the redo branch, so no move happened and
+    // the editor is still open on 'a'; a later OK would push nothing.
+    expect(result.current.undoStack.map(e => e.label)).toEqual(['Set position'])
+    expect(result.current.redoStack).toHaveLength(0)
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'instance', handle: 'a' })
   })
 })
