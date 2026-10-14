@@ -166,12 +166,6 @@ export function executeCommand(name: CommandName, params?: unknown): CommandResu
   return registry.execute(name, params)
 }
 
-// The enabled verdict for a command through the same resolution executeCommand
-// uses. Toolbars read this for their disabled state.
-export function commandEnabled(name: CommandName): true | string {
-  return resolveRegistry().enabled(name)
-}
-
 // ─── Key dispatch ───
 
 // Build a canonical key string from a KeyboardEvent, e.g. "ctrl+shift+z" or "delete".
