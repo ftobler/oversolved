@@ -57,7 +57,10 @@ const topologyBytes = loadTopology()
 const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
 const stripTypes = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 6)
 
-const ci = !!process.env.CI
+// Set only by the CI jobs that provision OCC.js and both WASM builds. Keying on
+// plain CI would also fire in the GitHub main check, which skips provisioning
+// on purpose and accepts the self-skip.
+const provisionedJob = !!process.env.KERNEL_PROVISIONED
 
 // The first entry pays the child's cold start (fork, load OCC.js, compile the
 // WASM) on top of its solve, which solveWithTimeout caps at 30 s. The default
@@ -373,12 +376,12 @@ class NullSolveChild {
 // only the module-load results, which are null (never throw) when provisioning
 // is absent, so they do not need OCC/WASM to actually load.
 describe('regression provisioning guard', () => {
-  // CI provisions OCC.js, both WASM builds and a strip-types Node, so a skip
-  // there is a broken job. Locally an unprovisioned checkout skips the replay
+  // A KERNEL_PROVISIONED job installs OCC.js, both WASM builds and a
+  // strip-types Node, so a skip there is a broken job. Locally an unprovisioned checkout skips the replay
   // like every *Real suite, and `just frontend` stays usable without OCC.js.
   // The 20.x leg of the CI Node matrix is the one allowed exception: it cannot
   // run the solve child, so it checks only what it can provide.
-  it.runIf(ci)('has all provisioning globals (OCC.js + solver + topology WASM)', () => {
+  it.runIf(provisionedJob)('has all provisioning globals (OCC.js + solver + topology WASM)', () => {
     expect(oc, 'oc: OCC.js absent - run `just install-occ`').toBeTruthy()
     expect(solveBytes, 'solveBytes: Rust solver WASM absent - run `just wasm`').toBeTruthy()
     expect(topologyBytes, 'topologyBytes: topology WASM absent - run `just wasm`').toBeTruthy()
