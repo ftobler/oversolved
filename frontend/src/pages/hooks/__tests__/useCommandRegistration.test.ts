@@ -15,7 +15,7 @@ import { initializeTools } from '@/tools'
 // The length guard is gated on `import.meta.env.DEV`, which vitest leaves true,
 // so it runs here without any stubbing. Its StrictMode half is pinned through
 // renderHookStrict because the app itself renders under StrictMode: the guard
-// stores the length it compares against, so where that store decides decides
+// stores the length it compares against, so where that store lands decides
 // whether the double-invoked mount reads as a length change.
 
 beforeAll(() => { initializeTools() })

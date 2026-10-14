@@ -315,8 +315,9 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
 
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. The append
-  // itself is wired in buildAssemblyHandlers (mint, close the previous session,
-  // run add_mate); this is only the editor side effect after it lands.
+  // itself is wired in the static insert_mate_* specs (mint the id, close the
+  // previous session, run add_mate); this is only the editor side effect after
+  // it lands.
   const handleMateInserted = useCallback((id: string, _kind: MateKind) => {
     const store = useAssemblyStore.getState()
     store.selectMate(id)

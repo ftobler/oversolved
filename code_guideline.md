@@ -76,17 +76,18 @@ interaction state may call the store's own setters directly.
 Document mutations, by editor:
 
 - Sketch: toolbar buttons and shortcuts dispatch `executeCommand(name)` into the
-  command registry (`frontend/src/utils/core/commandRegistry.ts`), whose entries
-  are built by `buildCommandEntries()` in
+  command registry (`frontend/src/utils/core/commandRegistry.ts`), whose specs
+  are the static `PART_COMMAND_SPECS` table in
   `frontend/src/pages/commandEntries.ts`. Tool and constraint commands reach the
   document through the sketch store's `onMutation` callback.
 - Part: feature and style edits call `handleMutation` (the `usePartDoc`
-  adapter), both directly and from the command entries; the adapter forwards
+  adapter), both directly and from the command specs; the adapter forwards
   them to the `DocSession` (`frontend/src/session/`), the framework-free engine
   that owns the doc, history, transactions, dirty policy and solve scheduling.
   The session is the one path that records undo history and triggers a
   re-solve. `PartEditorContext` exposes the same callbacks to the tree.
-- Assembly: operations dispatch `executeCommand(name)` into
+- Assembly: operations dispatch `executeCommand(name)` through
+  `ASSEMBLY_COMMAND_SPECS`, whose specs call `runOperation` into
   `ASSEMBLY_OPERATIONS`. A drag commit writes the doc through the `mutateDoc`
   funnel the page registers on the store. Undo/redo restores the doc through the
   page's own `setDoc` (`useAssemblyUndoRedo.ts`); the stacks live in a

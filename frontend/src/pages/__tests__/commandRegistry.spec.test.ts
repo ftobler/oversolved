@@ -53,7 +53,15 @@ describe('command completeness', () => {
     }
   })
 
-  it('programmatic runs never open a dialog', () => {
+  // Only the sketch value dialog is pinned here, and only for the part table:
+  // `openDialog` is the sketch UI store's prompt (the one `apply_offset`'s
+  // front end would raise), so a part run that took its value as params must
+  // never touch it. This is not a claim about every command: the assembly
+  // specs legitimately open UI through their context callbacks
+  // (`insert_part_instance` opens the part picker, `export_assembly` opens the
+  // export dialog, `insert_mate_*` opens the fresh mate's editor), which are
+  // page side effects a registry-level run does not exercise.
+  it('part commands take their values as params instead of opening the sketch value dialog', () => {
     const openDialog = vi.spyOn(useSketchUiStore.getState(), 'openDialog').mockImplementation(() => {})
     for (const name of COMMAND_NAMES) {
       if (!partIds.has(name)) continue
