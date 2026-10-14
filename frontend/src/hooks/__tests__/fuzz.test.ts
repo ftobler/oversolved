@@ -8,15 +8,17 @@
 // only sizes the runs and pins the regression seeds.
 //
 // The default suite is bounded (a handful of seeds); FUZZ_SEEDS and FUZZ_STEPS
-// size the long run the `just fuzz` recipe and the nightly carry. The real
-// kernel runs where installed, exactly like the other Real suites; the fake
-// scheduler covers the history mechanics everywhere.
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+// size the long run the `just fuzz` recipe carries (its nightly wiring is still
+// with the orchestrator). The real kernel runs where installed, exactly like
+// the other Real suites; the fake scheduler covers the history mechanics
+// everywhere.
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { setSolveLocalsForTest } from '@/kernel/solveLocally'
+import { setSolveLocalsForTest, persistentTableForTest } from '@/kernel/solveLocally'
 import { setSketchSolver, resetSketchSolver } from '@/kernel/features/sketch'
+import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { createRealSolveScheduler } from './realSolveScheduler'
 import {
@@ -41,6 +43,13 @@ const FUZZ_STEPS = envInt('FUZZ_STEPS', 6)
 const FAKE_SEEDS = envInt('FUZZ_FAKE_SEEDS', 24)
 const FAKE_STEPS = envInt('FUZZ_FAKE_STEPS', 16)
 
+// The real suite loops its seeds inside one test, so its timeout scales with
+// the sweep instead of sitting at a fixed wall: 250 ms per (seed, step) over a
+// 60 s floor, capped at 30 minutes. The bounded default (4 x 6) allows 66 s
+// for a run measured in about a second; a manual sweep grows its own budget.
+const REAL_STEP_BUDGET_MS = 250
+const REAL_TIMEOUT_MS = Math.min(30 * 60_000, 60_000 + FUZZ_SEEDS * FUZZ_STEPS * REAL_STEP_BUDGET_MS)
+
 function seeds(count: number): number[] {
   return Array.from({ length: count }, (_, i) => i)
 }
@@ -61,12 +70,13 @@ describe('the seeded fuzz ratchet (fake scheduler)', () => {
     expect(result.landedSteps).toBeGreaterThan(0)
   })
 
-  // Document isolation is proven inside every run: undo-all lands on the
-  // start doc and redo-all on the newest snapshot, both by deep equality, so
-  // no history entry can alias a doc that a later step mutated. This test
-  // covers the other direction: a run leaves no state behind for the next one.
-  // Minted ids (randomId) differ per run, so docs cannot be compared across
-  // runs; a leaked session or history global would move the landed/move counts.
+  // Document isolation is proven inside every run: undo-all lands on the undo
+  // stack floor (the start doc when the run never dropped an entry) and
+  // redo-all on the newest snapshot, both by deep equality, so no history
+  // entry can alias a doc that a later step mutated. This test covers the
+  // other direction: a run leaves no state behind for the next one. Minted
+  // ids (randomId) differ per run, so docs cannot be compared across runs; a
+  // leaked session or history global would move the landed/move counts.
   it('a repeated run lands the same steps and moves on a fresh session', async () => {
     const steps = generateSequence(7, FAKE_STEPS)
     const first = await runFuzzSequence(steps, fakeSolver())
@@ -80,10 +90,12 @@ describe('the seeded fuzz ratchet (fake scheduler)', () => {
 })
 
 // Seeds the ratchet keeps pinned under the PR gate, each to its exact length:
-// the minimiser's known fault seed and a sequence long enough to cross the
-// 50-entry cap, so the dropped-prefix floor stays exercised by default. A
-// fuzz run that finds a genuine failure adds its seed here (with the failing
-// message in the note) before the fix, so the fix has a regression test.
+// the minimiser's known fault seed and a long mixed sequence. They pin replay
+// stability, not the cap: the dedicated cap case below is what proves entries
+// are dropped, and seed 8 was measured to reach the cap without ever dropping
+// one. A fuzz run that finds a genuine failure adds its seed here (with the
+// failing message in the note) before the fix, so the fix has a regression
+// test.
 const REGRESSION_SEEDS: readonly { seed: number; steps: number; note: string }[] = [
   {
     seed: 15,
@@ -93,7 +105,7 @@ const REGRESSION_SEEDS: readonly { seed: number; steps: number; note: string }[]
   {
     seed: 8,
     steps: 100,
-    note: 'crosses the 50-entry cap, so undo-all lands on the dropped-prefix boundary',
+    note: 'long mixed sequence; measured to reach the 50-entry cap without dropping an entry',
   },
 ]
 
@@ -104,16 +116,35 @@ describe('the pinned fuzz regressions (fake scheduler)', () => {
   })
 })
 
+// The cap itself has to bite: sixty always-landing pushes with no undo between
+// them overflow a fifty-entry stack by ten. Asserting the drop directly (the
+// stack at the cap, ten entries dropped, undo-all landing short of the start
+// doc) means removing pushCapped's slice fails here as well as in the per-step
+// "undo stack exceeds the cap" guard. The random sweep cannot pin this: with
+// undos mixed in, its stack can reach the cap and then shrink without ever
+// pushing onto a full stack.
+describe('the history cap', () => {
+  it('drops the oldest entries once a run pushes past the cap', async () => {
+    // delete_feature is the deliberately unguarded no-op (N04): the first step
+    // removes ex1 from the union doc, every later step changes nothing and
+    // still pushes an entry.
+    const steps: FuzzStep[] = Array.from({ length: MAX_UNDO_DEPTH + 10 }, () =>
+      ({ kind: 'mutation', type: 'delete_feature' }) as const)
+
+    const result = await runFuzzSequence(steps, fakeSolver())
+
+    expect(result.violations).toEqual([])
+    expect(result.landedSteps).toBe(MAX_UNDO_DEPTH + 10)
+    expect(result.maxUndoDepth).toBe(MAX_UNDO_DEPTH)
+    expect(result.droppedEntries).toBe(10)
+    expect(result.undoAllReachedStart).toBe(false)
+  })
+})
+
 describe.skipIf(!oc || !solveBytes)('the seeded fuzz ratchet (real kernel)', () => {
   beforeAll(() => {
     resetSketchSolver()
     setSketchSolver(solveBytes)
-  })
-
-  beforeEach(() => {
-    // Each seed gets a fresh cross-solve cache and loader, so no checkpoint
-    // from a prior seed can be reused under a doc that merely looks similar.
-    setSolveLocalsForTest(async () => oc)
   })
 
   afterAll(() => {
@@ -121,13 +152,27 @@ describe.skipIf(!oc || !solveBytes)('the seeded fuzz ratchet (real kernel)', () 
     resetSketchSolver()
   })
 
-  it('replays the bounded seeds through solveLocally', { timeout: 300_000 }, async () => {
+  it('replays the bounded seeds through solveLocally', { timeout: REAL_TIMEOUT_MS }, async () => {
+    let previousTable: ReturnType<typeof persistentTableForTest> = null
     for (const seed of seeds(FUZZ_SEEDS)) {
+      // solveLocally's own doc-switch reset is inert here (a fuzz doc carries
+      // no id, so every seed is the same cache key), so the fresh cache per
+      // seed has to come from this explicit reset. The two assertions are its
+      // teeth: drop the reset and the second seed starts on the first seed's
+      // live table instead of a null one, and then reuses its object.
+      setSolveLocalsForTest(async () => oc)
+      expect(persistentTableForTest(), `seed ${seed} cache not reset`).toBeNull()
+
       const result = await runFuzzSequence(generateSequence(seed, FUZZ_STEPS), {
         scheduler: createRealSolveScheduler(),
         settle: () => undefined,
       })
       expect(result.violations, `seed ${seed}`).toEqual([])
+
+      const table = persistentTableForTest()
+      expect(table, `seed ${seed} solved nothing`).not.toBeNull()
+      expect(table, `seed ${seed} reused the prior seed's solve table`).not.toBe(previousTable)
+      previousTable = table
     }
   })
 })

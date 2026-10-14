@@ -182,6 +182,17 @@ export interface FuzzRunResult {
   landedSteps: number
   undoMoves: number
   redoMoves: number
+  // The deepest the undo stack ever got, and how many pushes landed on a full
+  // stack and therefore dropped the oldest entry. A cap test asserts both so
+  // that removing pushCapped's slice fails here, not just in the per-step
+  // "exceeds the cap" guard.
+  maxUndoDepth: number
+  droppedEntries: number
+  // Whether undo-all landed back on the start doc. Only a cap drop breaks
+  // that: history entries are clones, so with no drops the floor entry is the
+  // start doc by construction. This is what makes a capped run observably
+  // different from a bounded one.
+  undoAllReachedStart: boolean
 }
 
 export async function runFuzzSequence(
@@ -219,6 +230,8 @@ export async function runFuzzSequence(
   let landedSteps = 0
   let undoMoves = 0
   let redoMoves = 0
+  let maxUndoDepth = 0
+  let droppedEntries = 0
 
   const settle = async (): Promise<void> => {
     solver.settle()
@@ -233,10 +246,15 @@ export async function runFuzzSequence(
         // The caller-side pre-sync Part.tsx performs before dispatching.
         facts.rollbackPosition = mutation.position
       }
+      // pushCapped drops the oldest entry exactly when a landed push arrives
+      // on a full undo stack, and one landed mutation pushes exactly one entry,
+      // so the depth read before the execute says whether this push dropped.
+      const undoDepthBefore = session.historyEntries().undo.length
       const result = session.execute(mutation)
       if (!result.ok) push(stepIndex, `execute(${step.type}) refused: ${result.code}`)
       if (mirrorDirty() === true) {
         landedSteps++
+        if (undoDepthBefore >= MAX_UNDO_DEPTH) droppedEntries++
         // The newest landed entry, not the newest step: a guarded no-op after
         // an undo leaves the timeline top where the last push put it.
         timelineTop = structuredClone(cell.current as PartDoc)
@@ -256,12 +274,17 @@ export async function runFuzzSequence(
       const serialization = serializationProblem(doc)
       if (serialization !== null) push(stepIndex, serialization)
     }
+    // settle() above already awaited idle(), so a truthful real scheduler can
+    // never be pending here. This guards the scheduler contract (an idle() that
+    // resolves while the scheduler still reports work pending, or a future
+    // settle() that stops awaiting) against passing silently.
     const solveState = session.inspect().solve
     if (solveState.pending) push(stepIndex, 'session did not reach idle')
     if (options.failOnSolveError !== false && solveState.lastError !== null) {
       push(stepIndex, `solve error: ${solveState.lastError}`)
     }
     const history = session.historyEntries()
+    if (history.undo.length > maxUndoDepth) maxUndoDepth = history.undo.length
     if (history.undo.length > MAX_UNDO_DEPTH) push(stepIndex, `undo stack ${history.undo.length} exceeds the cap`)
     if (history.redo.length > MAX_UNDO_DEPTH) push(stepIndex, `redo stack ${history.redo.length} exceeds the cap`)
   }
@@ -277,10 +300,11 @@ export async function runFuzzSequence(
     await settle()
     if (!moved) break
   }
+  const undoAllReachedStart = isDeepStrictEqual(cell.current, startDoc)
   if (!isDeepStrictEqual(cell.current, undoFloor)) {
     push(steps.length, 'undo-all did not return the undo floor document')
   }
-  if (landedSteps <= MAX_UNDO_DEPTH && !isDeepStrictEqual(cell.current, startDoc)) {
+  if (landedSteps <= MAX_UNDO_DEPTH && !undoAllReachedStart) {
     push(steps.length, 'undo-all did not return the initial document')
   }
   while (true) {
@@ -292,5 +316,13 @@ export async function runFuzzSequence(
     push(steps.length, 'redo-all did not return the post-history document')
   }
 
-  return { violations, landedSteps, undoMoves, redoMoves }
+  return {
+    violations,
+    landedSteps,
+    undoMoves,
+    redoMoves,
+    maxUndoDepth,
+    droppedEntries,
+    undoAllReachedStart,
+  }
 }

@@ -1,8 +1,12 @@
-// A SolveScheduler over the production headless solve entry solveLocally,
-// mirroring createWorkerSolveScheduler's supersession contract without the
-// worker (and without importing the hooks layer): generation bumps on every
-// request, a request a newer one overtook resolves 'superseded', and a throw
-// out of the kernel is reported as an 'error' outcome rather than rejection.
+// A fuzz-only SolveScheduler over the production headless solve entry
+// solveLocally, mirroring createWorkerSolveScheduler's supersession contract
+// without the worker: generation bumps on every request, a request a newer one
+// overtook resolves 'superseded', and a throw out of the kernel is reported as
+// an 'error' outcome rather than rejection. It forwards only the SolveOptions
+// solveLocally actually takes (bypassCache, validate); the session's
+// drag-family hints (_suppressFirstSolve, dragAnchor) and _restoreSolveResults
+// are worker-adapter concerns with no headless equivalent, so they are
+// deliberately dropped rather than mapped to something with other semantics.
 // The caller must install the node OCC loader and Rust solver before use
 // (setSolveLocalsForTest + setSketchSolver), exactly as the other real suites.
 import type { PartDoc } from '@/types/cad'
