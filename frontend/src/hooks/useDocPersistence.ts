@@ -64,15 +64,13 @@ export function useDocPersistence<D>({
           if (dataUrl) await getPreviewStore().put(workspace ?? uuid, uuid, dataUrl.split(',')[1])
         }
         await store.save(uuid, { content: text })
-        // The store now holds the latest edits, so there is nothing to warn
-        // about. An edit during the save window postdates the stored bytes
-        // though: its dirty flag must survive, or a reload would silently drop
-        // those edits. The same identity test gates the fingerprint of the text
-        // just written, which is the only thing that can tell a later cancel
-        // which content is actually stored.
-        if (docRef.current === savedRef) {
-          useUnsavedChangesStore.getState().markSaved(hashSavedText(text))
-        }
+        // The bytes are on disk, so the fingerprint of this exact text is
+        // published whenever the write succeeded: it describes what the store
+        // now holds, and a later cancel compares a rewound doc against it. Only
+        // the dirty flag and the save count are gated on identity: an edit that
+        // landed during the save window postdates these bytes, so its flag must
+        // survive, or a reload would silently drop those edits.
+        useUnsavedChangesStore.getState().markSaved(hashSavedText(text), docRef.current === savedRef)
         return true
       } catch (e) {
         setError(errorMessage(e, 'Failed to save document'))

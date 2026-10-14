@@ -9,9 +9,10 @@
 // pre-session doc and the close commits exactly one entry.
 
 import { useCallback, useRef } from 'react'
+import { stringify as stringifyYaml } from 'yaml'
 import type { AssemblyDoc } from '@/types/cad'
 import { useAssemblyStore } from '@/stores/assemblyStore'
-import { useUnsavedChangesStore, type PinnedDirty } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, reconcileDirtyAfterRewind, type PinnedDirty } from '@/stores/unsavedChangesStore'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { assemblyDocEquals } from '@/utils/assemblyMutations'
 import { isSessionOpen } from '@/utils/assemblyEditingSubject'
@@ -116,11 +117,17 @@ export function useAssemblyUndoRedo(
     // Same null-doc guard as commitSession: the live doc is gone (a teardown
     // after a failed load), so there is nothing left to rewind.
     if (!docRef.current) return
+    // The write-back and the copy-on-write mutators install fresh doc objects,
+    // so the rewind is judged on content, not identity. The same test drives the
+    // dirty reconcile: a session the save actually stored, and the rewind throws
+    // nothing away, must not be left flagged dirty forever.
+    const rewound = !assemblyDocEquals(pending.doc, docRef.current)
     docRef.current = pending.doc
     setDoc(pending.doc)
-    // Not a plain setDirty: a save that landed mid-session stored the edits
-    // being thrown away, so the rewound doc must stay dirty.
-    useUnsavedChangesStore.getState().restoreDirtyAfterRewind(pending.dirty)
+    // Doc rewind and flag reconcile are one unit, mirroring usePartDoc's
+    // cancelEditSession: a save that published its fingerprint decides the flag,
+    // and only a caller with no fingerprint falls back to the pinned save count.
+    reconcileDirtyAfterRewind(pending.dirty, rewound, () => stringifyYaml(pending.doc))
   }, [docRef, setDoc])
 
   // Apply a pure AssemblyDoc mutation and flag the doc dirty. The pre-mutation

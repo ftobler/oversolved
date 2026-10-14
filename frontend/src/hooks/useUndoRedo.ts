@@ -104,7 +104,14 @@ export function useUndoRedo(
         // pressed a dead key. The editor that work opened has to come down.
         // Nothing swaps on this path, so running the teardown here rather than
         // after the engine returns is the same instant, not an earlier one.
-        if (opts?.openWorkCommitted) tearDownEditorState?.()
+        if (opts?.openWorkCommitted) {
+          // The normal move path nulls the snapshot slot before its teardown; this
+          // guard path is the other teardown, so it owns the same invariant. Left
+          // set, the pre-session restore point would survive an editor teardown
+          // and a later restore would resurrect stacks the live doc no longer is.
+          stackSnapshotRef.current = null
+          tearDownEditorState?.()
+        }
         return
       }
 

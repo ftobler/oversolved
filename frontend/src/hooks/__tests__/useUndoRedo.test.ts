@@ -644,6 +644,25 @@ describe('useUndoRedo', () => {
       expect(tearDownEditorState).not.toHaveBeenCalled()
     })
 
+    it('clears the stack snapshot on this teardown too, so a later restore cannot resurrect it', () => {
+      const { view } = engine()
+      const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc
+      const docB = { version: 1, kind: 'part', features: [{ id: 'f2' }] } as PartDoc
+      act(() => { view.result.current.pushUndo({ type: 'add_extrude' } as Mutation, docA) })
+      act(() => { view.result.current.saveUndoStackSnapshot() })  // snapshot = [A]
+      act(() => { view.result.current.pushUndo({ type: 'add_extrude' } as Mutation, docB) })
+      expect(view.result.current.undoStack).toHaveLength(2)
+
+      // A redo this engine reads comes up empty, so the guard stops the move and
+      // the caller's committed-open-work teardown runs. That teardown must null
+      // the snapshot slot, exactly like the normal move path does.
+      act(() => { view.result.current.applyUndoRedo('redo', { openWorkCommitted: true }) })
+
+      // A live snapshot would set the stacks back to [A]; cleared, this is a no-op.
+      act(() => { view.result.current.restoreUndoStackSnapshot() })
+      expect(view.result.current.undoStack).toHaveLength(2)
+    })
+
     it('does not tear down twice on a move that actually proceeds', () => {
       const { docRef, tearDownEditorState, view } = engine()
       const docA = { version: 1, kind: 'part', features: [{ id: 'f1' }] } as PartDoc

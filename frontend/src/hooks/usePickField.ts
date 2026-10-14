@@ -30,8 +30,10 @@ import { useNotifySafe } from '@/contexts/ToastContext'
  * `transform`, or `emitAbsoluteSelectionQuery`, which turns `vertex:sk1:l1:start`
  * into `@sk1/l1/start`) mirrors a value no click can ever match, so a re-click
  * takes the onPick branch instead and re-dispatches the value it already holds.
- * Harmless but useless: a redundant mutation and a no-op undo entry. It bites
- * sketch vertex/edge picks; plane, face and body values round-trip unchanged.
+ * Harmless but useless: a redundant mutation, which the no-op guard swallows
+ * as a value-identical write, so no dead undo entry lands and no solve runs. It
+ * bites sketch vertex/edge picks; plane, face and body values round-trip
+ * unchanged.
  * Closing it means normalizing the clicked id the same way before comparing,
  * which belongs with the transform, not here.
  *

@@ -625,3 +625,77 @@ describe.each(BODYLESS_MUTATIONS)('$name dispatched with no bodyId', ({ mutation
     expect((docRef.current!.part_style as Record<string, unknown>)['undefined']).toBeDefined()
   })
 })
+
+// ─── add_constraint and delete: guarded by whole-doc compare, not the slice ───
+
+// Both are classified false because their targets can span features, so the
+// O(touched) slice cannot represent them. handleMutation still catches a
+// dispatch that leaves the WHOLE doc identical, which is what stops a
+// live-but-dead dispatch from pushing a dead entry, dirtying the doc and running
+// a solve.
+const sketchWithLine = (): PartDoc => ({
+  version: 1, kind: 'part',
+  features: [{ id: 'sk1', kind: 'sketch', entities: [{ id: 'l1', kind: 'line' }], constraints: [], initial: {} }],
+}) as unknown as PartDoc
+
+describe('add_constraint whole-doc no-op guard', () => {
+  it('add_constraint with an unresolvable inferred target pushes nothing', () => {
+    setDoc(sketchWithLine())
+    const { result } = renderPartDoc()
+    const before = JSON.stringify(docRef.current)
+
+    act(() => {
+      result.current.handleMutation({
+        type: 'add_constraint', featureId: 'sk1', kind: 'coincident',
+        targets: ['dock:sk1:noSuchHost'],
+      })
+    })
+
+    expect(JSON.stringify(docRef.current)).toBe(before)
+    expect(pushUndo).not.toHaveBeenCalled()
+    expect(reSolve).not.toHaveBeenCalled()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('a real add_constraint still pushes and re-solves', () => {
+    setDoc(sketchWithLine())
+    const { result } = renderPartDoc()
+
+    act(() => {
+      result.current.handleMutation({
+        type: 'add_constraint', featureId: 'sk1', kind: 'horizontal',
+        targets: ['entity:sk1:l1'],
+      })
+    })
+
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(reSolve).toHaveBeenCalledTimes(1)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+})
+
+describe('delete whole-doc no-op guard', () => {
+  it('delete naming an absent entity pushes nothing', () => {
+    setDoc(makeDoc())
+    const { result } = renderPartDoc()
+    const before = JSON.stringify(docRef.current)
+
+    act(() => { result.current.handleMutation({ type: 'delete', targets: ['entity:sk1:ghost'] }) })
+
+    expect(JSON.stringify(docRef.current)).toBe(before)
+    expect(pushUndo).not.toHaveBeenCalled()
+    expect(reSolve).not.toHaveBeenCalled()
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('a real delete still pushes and re-solves', () => {
+    setDoc(sketchWithLine())
+    const { result } = renderPartDoc()
+
+    act(() => { result.current.handleMutation({ type: 'delete', targets: ['entity:sk1:l1'] }) })
+
+    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(reSolve).toHaveBeenCalledTimes(1)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+})

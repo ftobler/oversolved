@@ -156,6 +156,26 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
     expect(dirty()).toBe(false)
   })
 
+  // A save during an open preview that changed nothing stored the very text the
+  // cancel restores, so nothing is unsaved. The count-based restore flagged the
+  // document dirty forever because the save count moved even though the preview
+  // threw nothing away.
+  it('a save during an open preview that changed nothing leaves the document clean', () => {
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      part_style: { b1: { color: '#ff0000' } },
+      features: [],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+
+    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    saveTheLiveDoc()  // the save stores the baseline: no edit landed in between
+
+    act(() => { result.current.cancelPreview() })
+    expect(dirty()).toBe(false)
+  })
+
   // The five cases the cancel decides by comparing the doc it restores against
   // the bytes the last save actually stored. A save during a session is the
   // whole difficulty: the session's doc-under-edit IS the live doc, so the stored
@@ -264,5 +284,36 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
     act(() => { result.current.cancelEditSession() })
 
     expect(dirty()).toBe(false)
+  })
+
+  // Committing a suppressed session that netted to zero pushes no entry, but
+  // every one of its mutations set the dirty flag on the way through. The
+  // committed doc equals the session baseline, so the flag has to come back
+  // down, or the document would warn about edits that are not there.
+  it('(g) committing a net-zero session leaves the document clean', () => {
+    const { result } = renderVariableDoc()
+    openSessionOnVariable(result)
+    act(() => { result.current.handleMutation(setExpression('20')) })
+    act(() => { result.current.handleMutation(setExpression('10')) })
+    expect(expressionOf()).toBe('10')
+    expect(dirty()).toBe(true)
+
+    act(() => { result.current.commitEditSession() })
+
+    expect(dirty()).toBe(false)
+    expect(expressionOf()).toBe('10')
+  })
+
+  // The control: a session with a real change pushes its aggregate entry, and
+  // the dirty flag is exactly what that entry represents, so it stays set.
+  it('(h) committing a real change leaves the document dirty', () => {
+    const { result } = renderVariableDoc()
+    openSessionOnVariable(result)
+    act(() => { result.current.handleMutation(setExpression('42')) })
+
+    act(() => { result.current.commitEditSession() })
+
+    expect(dirty()).toBe(true)
+    expect(expressionOf()).toBe('42')
   })
 })

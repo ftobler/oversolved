@@ -256,10 +256,12 @@ export function useSolver(
     // keeps the prior object, so a save overlapping it still clears dirty
     // instead of being defeated by an unrelated re-solve.
     //
-    // The compare is exact, so the write-back has to produce the SAME numbers
-    // the mutators wrote: applyGeometryToFeature rounds the solver's float32
-    // params to the 6dp every sketch mutator persists (helpers.ts round).
-    // Unrounded, a re-solve of unchanged geometry would read as a change here.
+    // The compare is exact, so the write-back must not manufacture a change out
+    // of an unchanged re-solve. applyGeometryToFeature keeps the authored
+    // `initial` arrays by reference whenever the solved values agree within the
+    // f32 envelope, and rounds a fresh map to the mutators' precision only when
+    // the solve really moved the geometry. So identity swaps here exactly when
+    // there was a real change.
     if (!(docRef.current !== null && JSON.stringify(cloned) === JSON.stringify(docRef.current))) {
       setDoc(cloned)
       docRef.current = cloned
