@@ -51,8 +51,9 @@ export function useDocumentState(
         setDoc(parsed)
         setDocName(data.name)
         // Freshly loaded content matches its store; any self-heal above predates
-        // user intent, so the document starts clean.
-        useUnsavedChangesStore.getState().setDirty(false)
+        // user intent, so the document starts clean, with nothing pinned from
+        // the document it replaces.
+        useUnsavedChangesStore.getState().clearForNewDocument()
         setLoading(false)
         if (solveOnLoad && reSolveRef.current) {
           reSolveRef.current(parsed)

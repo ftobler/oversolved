@@ -3,7 +3,7 @@ import { stringify as stringifyYaml } from 'yaml'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
 import { getPreviewStore } from '@/stores/previewStore'
-import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, hashSavedText } from '@/stores/unsavedChangesStore'
 
 // The persistence seam both editors share. saveDoc, renameDoc and cloneDoc plus
 // the single-flight save chain were duplicated verbatim between
@@ -51,6 +51,10 @@ export function useDocPersistence<D>({
         // edits in place), so identity still holding after the awaits below
         // proves no edit landed while the save was in flight.
         const savedRef = docRef.current
+        // Serialized once: the same text goes to the store and produces the
+        // fingerprint the unsaved-changes store carries, so a later cancel can
+        // compare a rewound doc against the bytes that are really stored.
+        const text = stringifyYaml(document)
         // Previews live in their own store keyed by (workspace, entry). The
         // workspace is the route's id and the entry is the document uuid; the
         // reader (tiles, pickers) uses the same pair, so a multi-document
@@ -59,13 +63,15 @@ export function useDocPersistence<D>({
           const dataUrl = await screenshot()
           if (dataUrl) await getPreviewStore().put(workspace ?? uuid, uuid, dataUrl.split(',')[1])
         }
-        await store.save(uuid, { content: stringifyYaml(document) })
+        await store.save(uuid, { content: text })
         // The store now holds the latest edits, so there is nothing to warn
-        // about. An edit during the save windows postdates the stored bytes
+        // about. An edit during the save window postdates the stored bytes
         // though: its dirty flag must survive, or a reload would silently drop
-        // those edits.
+        // those edits. The same identity test gates the fingerprint of the text
+        // just written, which is the only thing that can tell a later cancel
+        // which content is actually stored.
         if (docRef.current === savedRef) {
-          useUnsavedChangesStore.getState().markSaved()
+          useUnsavedChangesStore.getState().markSaved(hashSavedText(text))
         }
         return true
       } catch (e) {

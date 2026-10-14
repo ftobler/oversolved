@@ -17,11 +17,30 @@ export interface PinnedDirty {
   saves: number
 }
 
+// A content fingerprint of the serialized bytes a save wrote. FNV-1a over the
+// text: the save path already serializes the document for the store, so this
+// only re-reads that string, needs no dependency and no WebCrypto. It exists
+// because a cancel has to know WHICH content a mid-session save stored, and the
+// save count alone can only say that one landed.
+export function hashSavedText(text: string): number {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
+
 interface UnsavedChangesState {
   dirty: boolean
   // Counts saves of the open document. The flag alone cannot say whether a save
   // landed mid-session: an edit after it sets the flag again.
   saves: number
+  // The fingerprint of the text the last save stored, or null when nothing
+  // published one. A cancel that rewinds a doc saved mid-session compares the
+  // doc it restores against this: equal means the rewind threw nothing away,
+  // unequal means the stored bytes hold an edit that no longer exists.
+  savedHash: number | null
   // The workspace the current editor belongs to, or null on pages with nothing
   // to save. The header and the recovery path read it; the dirty refresh uses
   // it to compare the working copy against the checkpoint.
@@ -37,7 +56,15 @@ interface UnsavedChangesState {
   setDirty: (dirty: boolean) => void
   // A save landed: the stored bytes now equal the live doc, so the flag clears
   // and the save count moves, which is what a later cancel compares against.
-  markSaved: () => void
+  // `savedHash` is the fingerprint of the bytes written; a caller that cannot
+  // say what it wrote omits it, which clears the previous one rather than
+  // leaving a stale fingerprint a later cancel would trust.
+  markSaved: (savedHash?: number) => void
+  // A different document is now open: the flag, the save count and the
+  // fingerprint of what was stored all describe the previous one. A session
+  // pinned against them would read another document's saves as its own, and a
+  // cancel would compare its rewind against bytes that document stored.
+  clearForNewDocument: () => void
   // The flag and save count as they stand now, for a session to pin at entry.
   pinDirty: () => PinnedDirty
   // A cancel rewound the doc to the state pinned when its session opened; puts
@@ -58,11 +85,13 @@ let refreshToken = 0
 export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => ({
   dirty: false,
   saves: 0,
+  savedHash: null,
   workspace: null,
   pendingCallback: null,
   saveHandler: null,
   setDirty: (dirty) => set({ dirty }),
-  markSaved: () => set(prev => ({ dirty: false, saves: prev.saves + 1 })),
+  markSaved: (savedHash) => set(prev => ({ dirty: false, saves: prev.saves + 1, savedHash: savedHash ?? null })),
+  clearForNewDocument: () => set({ dirty: false, saves: 0, savedHash: null }),
   pinDirty: () => ({ dirty: get().dirty, saves: get().saves }),
   // A save that landed mid-session stored the doc being thrown away, so the
   // rewound doc differs from the saved one and stays dirty, even when a later

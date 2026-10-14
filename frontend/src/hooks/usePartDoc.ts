@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, Mutation, PartFeature, SketchData } from '@/types/cad'
 import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
@@ -8,7 +9,7 @@ import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { failLoud } from '@/stores/stateInvariants'
-import { useUnsavedChangesStore, type PinnedDirty } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, hashSavedText, type PinnedDirty } from '@/stores/unsavedChangesStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { applySetRollback } from '@/utils/yamlMutations'
 import { isDimensionKind } from '@/registry/constraintRegistry'
@@ -81,6 +82,35 @@ function stripSolveWritten(doc: PartDoc): Record<string, unknown> {
 }
 
 const stripSolvedGeometry = ({ initial: _initial, ...feature }: PartFeature): Record<string, unknown> => feature
+
+// The unsaved-changes flag after a session cancel rewound the doc to `snapshot`.
+// The flag has to mean one thing: the stored bytes no longer match the doc that
+// just became live. So the decision is made against what a save REALLY stored --
+// the fingerprint it published of the exact text it wrote -- rather than against
+// the save count, which only proves that one landed. A session whose edits netted
+// to zero, or that changed nothing at all, stored the very text the rewind
+// restores: nothing is unsaved, and reading the moved save count as "an edit was
+// stored" would flag the document dirty forever. Only a session a save actually
+// landed in pays the serialization here, because that is the only one with
+// anything to compare.
+function restoreDirtyAfterSessionRewind(pinned: PinnedDirty, snapshot: PartDoc, rewound: boolean): void {
+  const store = useUnsavedChangesStore.getState()
+  const savesMoved = store.saves !== pinned.saves
+  if (savesMoved && store.savedHash !== null) {
+    store.setDirty(store.savedHash !== hashSavedText(stringifyYaml(snapshot)))
+    return
+  }
+  // Nothing published what it stored. Either no save landed at all, so the pinned
+  // flag is the whole story and the rewind restores the very doc it described --
+  // including a session whose edits netted to zero, where every mutation set the
+  // flag and nothing was thrown away. Or one landed without saying what it wrote,
+  // in which case only the rewind says whether that save's bytes were discarded.
+  if (!savesMoved || rewound) {
+    store.restoreDirtyAfterRewind(pinned)
+  }
+  // A save landed without a fingerprint and the rewind threw nothing away: the
+  // flag stands wherever that save left it.
+}
 
 // The commit label for a preview apply. The color popover is the only preview
 // producer and it edits per-body material fields, so the diff is against the
@@ -805,21 +835,23 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       // order, or without the rewind, would leave the stack top naming a doc
       // the live doc is not.
       //
-      // A session that changed nothing rewound nothing, so there is nothing to
-      // restore. The write-back installs a fresh doc object on every solve, so
-      // object identity says nothing here; the content compare is the only
-      // honest test, and it runs once per cancel. Without it a save inside a
-      // no-edit session moves the pinned save count and restoreDirtyAfterRewind
-      // reads that as "the stored bytes hold what is being thrown away" --
-      // false when nothing was thrown away -- flagging the document dirty
-      // forever even though the live doc is exactly what was saved.
+      // The write-back installs a fresh doc object on every solve, so object
+      // identity says nothing here and the rewind has to be judged on content.
       const rewound = JSON.stringify(snapshot) !== JSON.stringify(docRef.current)
       docRef.current = snapshot
       setDoc(snapshot)
       restoreUndoStackSnapshot()
-      if (rewound) {
-        useUnsavedChangesStore.getState().restoreDirtyAfterRewind(editDirtyRef.current)
-      }
+      // The bar travels back with the doc it belongs to. The re-solve below reads
+      // its position off the STORE (useSolver), not off the doc, so a bar left
+      // where some other path parked it would rebuild a stack the restored doc
+      // says is rolled back -- and since doc.rollback is what a reload reads, the
+      // two would then disagree about what is visible. Re-derived from the
+      // restored doc exactly as applyUndoRedo does, clamp included.
+      const restoredCount = snapshot.features?.length ?? 0
+      usePartEditorStore.getState().setRollbackPosition(
+        Math.min(Math.max(snapshot.rollback ?? restoredCount, 0), restoredCount),
+      )
+      restoreDirtyAfterSessionRewind(editDirtyRef.current, snapshot, rewound)
     }
     // Rewinding the doc is this function's own doing, so it owns the re-solve
     // too. Leaving it to the caller's exit cleanup meant any other route into
