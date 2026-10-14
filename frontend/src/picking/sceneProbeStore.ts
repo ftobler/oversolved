@@ -38,8 +38,8 @@ export const probeSourceKeys = {
   sketch: (featureId: string) => `sketch:${featureId}`,
   surface: (featureId: string) => `surface:${featureId}`,
   origin: (selectionId: string) => `origin:${selectionId}`,
-  dimensionLabel: (entityKey: string) => `dim:${entityKey}`,
-  featureHandle: (entityKey: string) => `fhandle:${entityKey}`,
+  dimensionLabel: (entityKey: string) => `label:${entityKey}`,
+  featureHandle: (entityKey: string) => `handle:${entityKey}`,
 }
 
 function arraysEqual(a: readonly number[], b: readonly number[]): boolean {

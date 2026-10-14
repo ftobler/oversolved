@@ -149,7 +149,10 @@ plain, JSON-safe snapshot of the scene, readable without a devtools connection:
   outlines and gizmo handles are phase 2.
 - `hitTest(probe, x, y, opts?)` / `probeHitTest(x, y, opts?)` return ordered
   candidates with the same priority/distance ranking as a real resolve, using
-  the shared pick radius.
+  the shared pick radius. The probe measures exact screen geometry while the
+  resolver measures rasterized pixel centres, so within about a pixel of the
+  reach boundary the two can disagree; the browser agreement test pins the
+  actual tolerance per pick class.
 - `worldToScreen(probe, points)` and `sketchToScreen(probe, points)` project
   through the probe camera (orthographic viewport); `sketchToScreen` uses the
   published active sketch plane.
@@ -177,12 +180,13 @@ User interaction → Tool logic → Mutation object → onMutation
 
 The Zustand store never directly modifies sketch data - it dispatches through the solver.
 
-## Collision Hiding During Interaction
+## Pick Layers During Interaction
 
-| Condition | Hidden Geometry |
-|-----------|-----------------|
-| Entity/vertex being dragged | That entity's HitPolylines + hit spheres |
-| Any drag active | Reference and user-defined plane collision meshes |
+The ID layers are not rebuilt from the live drag preview. While a drag runs,
+`Geometry3D` registers the held/solved sketch (not the per-frame preview), and
+topology areas are suppressed while `topologyStale` is true, so a pick can
+never resolve to a position the preview has left behind. The commit solve
+re-registers the moved geometry and the buffer rebuilds.
 
 ## Snap System
 
