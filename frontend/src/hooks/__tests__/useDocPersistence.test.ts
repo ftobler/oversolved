@@ -132,11 +132,10 @@ describe('useDocPersistence', () => {
     expect(useUnsavedChangesStore.getState().savedHash).toBe(hashSavedText(h.saves[0].content))
   })
 
-  // An edit that lands while the save is in flight means the published bytes no
-  // longer describe the doc, so the fingerprint must not be published for them:
-  // a later cancel would compare its rewind against content that was never
-  // stored and call the document clean while the store holds the older text.
-  it('publishes no fingerprint when an edit landed during the save', async () => {
+  // The write succeeded, so the bytes are on disk and the fingerprint must
+  // describe them even though an edit landed while the save was in flight. The
+  // dirty flag still survives, because that edit postdates the stored text.
+  it('publishes the stored fingerprint and keeps dirty when an edit landed during the save', async () => {
     const { result, docRef } = renderPersist()
     useUnsavedChangesStore.getState().setDirty(true)
 
@@ -149,7 +148,29 @@ describe('useDocPersistence', () => {
     expect(await savePromise).toBe(true)
 
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
-    expect(useUnsavedChangesStore.getState().savedHash).toBeNull()
+    expect(useUnsavedChangesStore.getState().savedHash).toBe(hashSavedText(h.saves[0].content))
+  })
+
+  // An older save's fingerprint must not survive a later save: the store now
+  // holds this call's bytes, and a cancel compares against those. Without
+  // publishing on the edit-during-save path, a stale fingerprint would make a
+  // later cancel read the wrong bytes.
+  it('replaces an older fingerprint with the bytes this save wrote', async () => {
+    const { result, docRef } = renderPersist()
+    useUnsavedChangesStore.getState().markSaved(hashSavedText('older bytes'))
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => { savePromise = result.current.saveDoc('S', docRef.current!) })
+    await act(async () => {
+      docRef.current = { ...docRef.current!, version: 2 }
+    })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    expect(await savePromise).toBe(true)
+
+    expect(useUnsavedChangesStore.getState().savedHash).toBe(hashSavedText(h.saves[0].content))
+    expect(useUnsavedChangesStore.getState().savedHash).not.toBe(hashSavedText('older bytes'))
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
   it('chains overlapping saves so arrival order is landing order', async () => {

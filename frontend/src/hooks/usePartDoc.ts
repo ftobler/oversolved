@@ -9,7 +9,7 @@ import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { failLoud } from '@/stores/stateInvariants'
-import { useUnsavedChangesStore, hashSavedText, type PinnedDirty } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, reconcileDirtyAfterRewind, type PinnedDirty } from '@/stores/unsavedChangesStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { applySetRollback } from '@/utils/yamlMutations'
 import { isDimensionKind } from '@/registry/constraintRegistry'
@@ -83,35 +83,6 @@ function stripSolveWritten(doc: PartDoc): Record<string, unknown> {
 }
 
 const stripSolvedGeometry = ({ initial: _initial, ...feature }: PartFeature): Record<string, unknown> => feature
-
-// The unsaved-changes flag after a session cancel rewound the doc to `snapshot`.
-// The flag has to mean one thing: the stored bytes no longer match the doc that
-// just became live. So the decision is made against what a save REALLY stored --
-// the fingerprint it published of the exact text it wrote -- rather than against
-// the save count, which only proves that one landed. A session whose edits netted
-// to zero, or that changed nothing at all, stored the very text the rewind
-// restores: nothing is unsaved, and reading the moved save count as "an edit was
-// stored" would flag the document dirty forever. Only a session a save actually
-// landed in pays the serialization here, because that is the only one with
-// anything to compare.
-function restoreDirtyAfterSessionRewind(pinned: PinnedDirty, snapshot: PartDoc, rewound: boolean): void {
-  const store = useUnsavedChangesStore.getState()
-  const savesMoved = store.saves !== pinned.saves
-  if (savesMoved && store.savedHash !== null) {
-    store.setDirty(store.savedHash !== hashSavedText(stringifyYaml(snapshot)))
-    return
-  }
-  // Nothing published what it stored. Either no save landed at all, so the pinned
-  // flag is the whole story and the rewind restores the very doc it described --
-  // including a session whose edits netted to zero, where every mutation set the
-  // flag and nothing was thrown away. Or one landed without saying what it wrote,
-  // in which case only the rewind says whether that save's bytes were discarded.
-  if (!savesMoved || rewound) {
-    store.restoreDirtyAfterRewind(pinned)
-  }
-  // A save landed without a fingerprint and the rewind threw nothing away: the
-  // flag stands wherever that save left it.
-}
 
 // The commit label for a preview apply. The color popover is the only preview
 // producer and it edits per-body material fields, so the diff is against the
@@ -422,12 +393,15 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     // cancelEditSession: the doc is a Mutation-only surface of this hook, so the
     // page that closes the popover never writes it. The returned doc is the
     // snapshot the live doc was rewound to.
+    // The write-back installs a fresh doc object on every solve, so the rewind
+    // is judged on content, exactly as cancelEditSession does.
+    const rewound = JSON.stringify(work.baseline) !== JSON.stringify(docRef.current)
     if (docRef.current) {
       docRef.current = work.baseline
       setDoc(work.baseline)
       reSolve(work.baseline)
     }
-    useUnsavedChangesStore.getState().restoreDirtyAfterRewind(work.dirty)
+    reconcileDirtyAfterRewind(work.dirty, rewound, () => stringifyYaml(work.baseline))
     return work.baseline
   }, [docRef, setDoc, reSolve])
 
@@ -634,6 +608,19 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
         consumeBrepArm(current)
         return
       }
+    } else if (m.type === 'add_constraint' || m.type === 'delete') {
+      // These two are classified false because their real targets can span
+      // features, so the O(touched) slice cannot represent them. Their handlers
+      // can still leave the doc byte-identical: an inferred-target resolver that
+      // names a contact the doc no longer holds drops the whole constraint, and
+      // a delete naming an absent entity removes nothing. A live-but-dead
+      // dispatch would otherwise push a dead undo entry, set dirty and run a
+      // solve, so compare the whole doc, the same compare commitMutationGroup
+      // uses for a mixed group.
+      if (JSON.stringify(current) === JSON.stringify(next)) {
+        consumeBrepArm(current)
+        return
+      }
     }
 
     const dragAnchor =
@@ -724,6 +711,15 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       // snapshot push skips the redundant re-clone.
       const featureId = usePartEditorStore.getState().editingFeatureId ?? ''
       pushUndoSnapshot({ type: 'edit_session', featureId }, work.baseline)
+    } else {
+      // A suppressed session that netted to zero pushes no entry, but each of
+      // its mutations set the dirty flag on the way through. The committed doc
+      // equals the baseline modulo the solve-written fields, so reconcile the
+      // flag with the same helper the cancel twin uses: there is nothing left
+      // to save, and leaving the flag set would contradict the store's meaning
+      // of it. A real committed change keeps the flag set, because dirty is
+      // what the pushed entry now represents.
+      reconcileDirtyAfterRewind(work.dirty, false, () => stringifyYaml(work.baseline))
     }
     // No preview can be open here: the one slot never holds a session and a
     // preview together, so there is no second entry to fold in after the
@@ -823,7 +819,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
       usePartEditorStore.getState().setRollbackPosition(
         Math.min(Math.max(work.baseline.rollback ?? restoredCount, 0), restoredCount),
       )
-      restoreDirtyAfterSessionRewind(work.dirty, work.baseline, rewound)
+      reconcileDirtyAfterRewind(work.dirty, rewound, () => stringifyYaml(work.baseline))
     }
     // Rewinding the doc is this function's own doing, so it owns the re-solve
     // too. Leaving it to the caller's exit cleanup meant any other route into

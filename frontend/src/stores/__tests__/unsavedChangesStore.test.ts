@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useUnsavedChangesStore, confirmDiscardUnsavedChanges, hashSavedText } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, confirmDiscardUnsavedChanges, hashSavedText, reconcileDirtyAfterRewind } from '@/stores/unsavedChangesStore'
 import { IdbWorkspaceStore, getWorkspaceStore, type OpenWorkspace } from '@/workspace/store'
 import { createTree, emptyManifest } from '@/workspace'
 import { resetWorkspaceIdb } from '@/workspace/__tests__/idbHarness'
@@ -65,7 +65,9 @@ describe('confirmDiscardUnsavedChanges', () => {
 // bytes from one that did not.
 describe('the fingerprint of the bytes a save stored', () => {
   beforeEach(() => {
-    useUnsavedChangesStore.getState().setDirty(false)
+    // The count and the fingerprint are module-level, so a leaked one would let
+    // one test read another test's save.
+    useUnsavedChangesStore.getState().clearForNewDocument()
   })
 
   it('is stable for the same text and moves when the text moves', () => {
@@ -90,6 +92,17 @@ describe('the fingerprint of the bytes a save stored', () => {
     expect(useUnsavedChangesStore.getState().savedHash).toBeNull()
   })
 
+  // An edit that landed during the write postdates the stored bytes, so the
+  // save publishes the fingerprint but leaves the flag set.
+  it('keeps the flag when the save reports an edit landed during it, while still recording the bytes', () => {
+    useUnsavedChangesStore.getState().setDirty(true)
+    useUnsavedChangesStore.getState().markSaved(hashSavedText('kind: part'), false)
+
+    expect(useUnsavedChangesStore.getState().saves).toBe(1)
+    expect(useUnsavedChangesStore.getState().savedHash).toBe(hashSavedText('kind: part'))
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
   // A new document inherits none of it: a session pinned in B must not read
   // A's save count as one of its own, and a cancel must not compare its rewind
   // against the text A stored.
@@ -103,6 +116,63 @@ describe('the fingerprint of the bytes a save stored', () => {
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
     expect(useUnsavedChangesStore.getState().saves).toBe(0)
     expect(useUnsavedChangesStore.getState().savedHash).toBeNull()
+  })
+})
+
+// The shared decision every cancel and commit uses to re-derive the flag from
+// the bytes a mid-session save actually stored, so the three call sites cannot
+// drift apart.
+describe('reconcileDirtyAfterRewind', () => {
+  beforeEach(() => {
+    useUnsavedChangesStore.getState().clearForNewDocument()
+  })
+
+  const dirty = () => useUnsavedChangesStore.getState().dirty
+
+  it('compares the restored text against the published fingerprint when a save landed', () => {
+    useUnsavedChangesStore.getState().markSaved(hashSavedText('A'))
+    const pinned = { dirty: true, saves: 0 }
+
+    reconcileDirtyAfterRewind(pinned, false, () => 'A')
+    expect(dirty()).toBe(false)
+
+    reconcileDirtyAfterRewind(pinned, true, () => 'B')
+    expect(dirty()).toBe(true)
+  })
+
+  it('falls back to the pinned flag when the save published no fingerprint', () => {
+    useUnsavedChangesStore.getState().markSaved()  // saves 1, no fingerprint
+    // A dirty pin makes the two branches distinguishable: the rewind-changed
+    // case restores it (and a moved save count forces dirty anyway), while the
+    // rewind-changed-nothing case must leave the flag where the save left it.
+    const pinned = { dirty: true, saves: 0 }
+
+    reconcileDirtyAfterRewind(pinned, false, () => 'A')
+    expect(dirty()).toBe(false)
+
+    // The rewind changed content, so the stored bytes are not the ones restored.
+    reconcileDirtyAfterRewind(pinned, true, () => 'A')
+    expect(dirty()).toBe(true)
+  })
+
+  it('restores the pinned flag when no save landed, whatever the rewind did', () => {
+    useUnsavedChangesStore.getState().setDirty(true)
+    const pinned = { dirty: false, saves: 0 }
+
+    reconcileDirtyAfterRewind(pinned, false, () => 'A')
+    expect(dirty()).toBe(false)
+
+    useUnsavedChangesStore.getState().setDirty(true)
+    reconcileDirtyAfterRewind(pinned, true, () => 'A')
+    expect(dirty()).toBe(false)
+  })
+
+  // The thunk is only paid when a save landed: a no-save reconcile must not
+  // serialize the restored doc.
+  it('does not serialize the restored doc when no save landed', () => {
+    const serialize = vi.fn(() => 'A')
+    reconcileDirtyAfterRewind({ dirty: false, saves: 0 }, true, serialize)
+    expect(serialize).not.toHaveBeenCalled()
   })
 })
 

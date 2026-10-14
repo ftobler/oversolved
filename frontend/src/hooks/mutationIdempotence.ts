@@ -5,8 +5,8 @@ import type { Mutation } from '@/types/cad'
 // O(touched) deep compare on the true entries only: the rest add, move or remove
 // content that was not there, so comparing them would be O(doc) waste on exactly
 // the sketch drag path the guard exists to keep cheap. The false entries are not
-// all "a real edit", though; the families called out below are ones that CAN
-// leave the doc identical and still must not be guarded, and each says why.
+// all "a real edit", though; the families called out below can leave the doc
+// identical, and each says why the slice is not the guard for them.
 //
 // Total on purpose. The key type is Mutation['type'], so adding a variant to the
 // union does not compile until someone classifies it here. That decision, guard
@@ -112,7 +112,10 @@ export const IDEMPOTENT_MUTATION = {
   // toggle_construction flips the flag so re-dispatching it is a real change
   // (the same trap as the add_* family). delete names `kind:feature:entity`
   // targets across features, so its slice would have to cover every feature it
-  // touches rather than the one field a setter narrows to.
+  // touches rather than the one field a setter narrows to. Both add_constraint
+  // and delete can still no-op (an unresolvable inferred target, an absent
+  // entity), but handleMutation catches a whole-doc-identical dispatch of either
+  // before it pushes, so neither is left as a dead-entry gap.
   add_constraint: false,
   toggle_construction: false,
   delete: false,

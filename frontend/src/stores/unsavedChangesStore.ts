@@ -54,12 +54,14 @@ interface UnsavedChangesState {
   // cleared it on `true` would mark that edit saved.
   saveHandler: (() => boolean | Promise<boolean>) | null
   setDirty: (dirty: boolean) => void
-  // A save landed: the stored bytes now equal the live doc, so the flag clears
-  // and the save count moves, which is what a later cancel compares against.
-  // `savedHash` is the fingerprint of the bytes written; a caller that cannot
-  // say what it wrote omits it, which clears the previous one rather than
-  // leaving a stale fingerprint a later cancel would trust.
-  markSaved: (savedHash?: number) => void
+  // A save landed: the fingerprint describes the bytes now on disk, so it is
+  // always published, and the save count moves. The flag clears only for a
+  // `clean` save: an edit that landed during the write postdates the stored
+  // bytes, so its flag has to survive. The fingerprint is what a later cancel
+  // compares a rewound doc against; a caller that cannot say what it wrote
+  // omits it, which clears the previous one rather than leaving a stale
+  // fingerprint a later cancel would trust.
+  markSaved: (savedHash?: number, clean?: boolean) => void
   // A different document is now open: the flag, the save count and the
   // fingerprint of what was stored all describe the previous one. A session
   // pinned against them would read another document's saves as its own, and a
@@ -68,7 +70,10 @@ interface UnsavedChangesState {
   // The flag and save count as they stand now, for a session to pin at entry.
   pinDirty: () => PinnedDirty
   // A cancel rewound the doc to the state pinned when its session opened; puts
-  // back the flag pinned with it, unless a save landed since.
+  // back the flag pinned with it, unless a save landed since. This is the
+  // fallback for a caller that published no fingerprint: with no record of
+  // whether the mid-session save stored the rewound content, a moved save count
+  // means the stored bytes are not the doc being restored.
   restoreDirtyAfterRewind: (pinned: PinnedDirty) => void
   setWorkspace: (workspace: string | null) => void
   setSaveHandler: (handler: (() => boolean | Promise<boolean>) | null) => void
@@ -90,12 +95,18 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => 
   pendingCallback: null,
   saveHandler: null,
   setDirty: (dirty) => set({ dirty }),
-  markSaved: (savedHash) => set(prev => ({ dirty: false, saves: prev.saves + 1, savedHash: savedHash ?? null })),
+  markSaved: (savedHash, clean = true) => set(prev => ({
+    dirty: clean ? false : prev.dirty,
+    saves: prev.saves + 1,
+    savedHash: savedHash ?? null,
+  })),
   clearForNewDocument: () => set({ dirty: false, saves: 0, savedHash: null }),
   pinDirty: () => ({ dirty: get().dirty, saves: get().saves }),
-  // A save that landed mid-session stored the doc being thrown away, so the
-  // rewound doc differs from the saved one and stays dirty, even when a later
-  // edit already set the flag again.
+  // The fallback for a caller that publishes no fingerprint: without knowing
+  // what bytes a mid-session save stored, a moved save count is read as "the
+  // stored doc is not the one being restored", even when a later edit already
+  // set the flag again. A caller that knows the stored fingerprint uses
+  // reconcileDirtyAfterRewind instead, which compares content rather than count.
   restoreDirtyAfterRewind: (pinned) => set(prev => ({ dirty: prev.saves !== pinned.saves ? true : pinned.dirty })),
   setWorkspace: (workspace) => {
     set({ workspace, dirty: false })
@@ -120,6 +131,42 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => 
     }
   },
 }))
+
+// The unsaved-changes flag after a session cancel or commit rewound the doc to
+// the state its session pinned. The flag has to mean one thing: the stored bytes
+// no longer match the doc that just became live. So the decision is made against
+// what a save REALLY stored -- the fingerprint it published of the exact text it
+// wrote -- rather than against the save count, which only proves that one landed.
+// A session whose edits netted to zero, or that changed nothing at all, stored
+// the very text the rewind restores: nothing is unsaved, and reading the moved
+// save count as "an edit was stored" would flag the document dirty forever.
+// `serializeRestored` is a thunk because only a session a save landed in has
+// anything to compare, so the serialization is paid on that path alone. A caller
+// that rewound nothing (a net-zero commit) passes `rewound` false; a caller that
+// did passes whether the content actually changed.
+export function reconcileDirtyAfterRewind(
+  pinned: PinnedDirty,
+  rewound: boolean,
+  serializeRestored: () => string,
+): void {
+  const store = useUnsavedChangesStore.getState()
+  const savesMoved = store.saves !== pinned.saves
+  if (savesMoved && store.savedHash !== null) {
+    store.setDirty(store.savedHash !== hashSavedText(serializeRestored()))
+    return
+  }
+  // Nothing published what it stored. Either no save landed at all, so the
+  // pinned flag is the whole story and the rewind restores the very doc it
+  // described -- including a session whose edits netted to zero, where every
+  // mutation set the flag and nothing was thrown away. Or one landed without
+  // saying what it wrote, in which case only the rewind says whether that save's
+  // bytes were discarded.
+  if (!savesMoved || rewound) {
+    store.restoreDirtyAfterRewind(pinned)
+  }
+  // A save landed without a fingerprint and the rewind threw nothing away: the
+  // flag stands wherever that save left it.
+}
 
 // The seam emits on open, close and every mutating verb, so a save or a
 // recovery reset re-derives dirty from the record rather than from React.

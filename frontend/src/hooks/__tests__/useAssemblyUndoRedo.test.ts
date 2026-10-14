@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
+import { stringify as stringifyYaml } from 'yaml'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { useAssemblyUndoRedo, decideAssemblyMutation } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
-import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useUnsavedChangesStore, hashSavedText } from '@/stores/unsavedChangesStore'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { findInstance, findMate } from '@/utils/assemblyMutations'
 import { IDENTITY_TRANSFORM, rotateVector } from '@/utils/transform3d'
@@ -534,6 +535,28 @@ describe('useAssemblyUndoRedo', () => {
     act(() => { result.current.cancelSession() })
 
     expect(docRef.current).toEqual(expected)
+  })
+
+  // A save during an open session that changed nothing stored the very doc the
+  // rewind restores, so the document is not unsaved. The count-based restore
+  // flagged it dirty forever because the save count moved even though the cancel
+  // threw nothing away.
+  it('cancelSession after a save with no edit leaves the rewound doc clean', () => {
+    const docA = docWith(['a'])
+    const docRef = { current: docA }
+    const setDoc = vi.fn((d: React.SetStateAction<AssemblyDoc | null>) => { docRef.current = d as AssemblyDoc })
+    const { result } = renderHookStrict(() => useAssemblyUndoRedo(
+      docRef as React.MutableRefObject<AssemblyDoc | null>, setDoc, vi.fn(),
+    ))
+
+    act(() => { result.current.recordSessionEdit(docA, 'Set position') })
+    // The save stored the doc exactly as pinned: the session applied no edit.
+    useUnsavedChangesStore.getState().markSaved(hashSavedText(stringifyYaml(docA)))
+
+    act(() => { result.current.cancelSession() })
+
+    expect(docRef.current).toEqual(docA)
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 
   // The save stored the session's edits; the rewind throws them away, so the
