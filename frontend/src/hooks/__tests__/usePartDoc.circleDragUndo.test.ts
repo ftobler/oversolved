@@ -13,7 +13,6 @@ import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 
 const docRef: { current: PartDoc | null } = { current: null }
 const reSolve = vi.fn()
-const pushUndo = vi.fn()
 
 vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
@@ -45,19 +44,6 @@ vi.mock('@/hooks/useSolver', () => ({
     featureTimings: {},
     reSolve,
     validation: null,
-  }),
-}))
-
-vi.mock('@/hooks/useUndoRedo', () => ({
-  useUndoRedo: () => ({
-    undoStack: [],
-    redoStack: [],
-    pushUndo,
-    handleUndo: vi.fn(),
-    handleRedo: vi.fn(),
-    saveUndoStackSnapshot: vi.fn(),
-    restoreUndoStackSnapshot: vi.fn(),
-    clearUndoStackSnapshot: vi.fn(),
   }),
 }))
 
@@ -107,24 +93,24 @@ describe('circle-rim drag commit accounting', () => {
   })
 
   it('one radius drag produces exactly one undo entry', () => {
-    const { m } = commitDrag(edgeDrag([3, 4]), {
+    const { m, result } = commitDrag(edgeDrag([3, 4]), {
       featureId: 'sk1',
       geometry: { circ1: [5, 5, 7.5] },
       mode: 'radius',
     })
     expect(m?.type).toBe('resize_circle')
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
   })
 
   it('undo after a radius drag restores the pre-drag radius', () => {
-    const { m } = commitDrag(edgeDrag([3, 4]), {
+    const { m, result } = commitDrag(edgeDrag([3, 4]), {
       featureId: 'sk1',
       geometry: { circ1: [5, 5, 7.5] },
       mode: 'radius',
     })
     expect(m?.type).toBe('resize_circle')
     // The undo entry snapshots the pre-drag doc, which still carries radius 3.
-    const preDoc = pushUndo.mock.calls[0][1] as PartDoc
+    const preDoc = result.current.undoStack[0].doc
     const preCirc = (preDoc.features as PartDoc['features'])![0].initial!.circ1!
     expect(preCirc[2]).toBe(3)
   })
@@ -133,9 +119,9 @@ describe('circle-rim drag commit accounting', () => {
     // A fully constrained circle: computeDragMutation returns null, so the store
     // is never asked to commit and no junk undo entry is recorded (the bug this
     // feature closes).
-    const { m } = commitDrag(edgeDrag([3, 4]), { featureId: 'sk1', mode: 'locked' })
+    const { m, result } = commitDrag(edgeDrag([3, 4]), { featureId: 'sk1', mode: 'locked' })
     expect(m).toBeNull()
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     // The doc is untouched (no mutation reached it).
     if (docRef.current) {
       const circ = (docRef.current.features as PartDoc['features'])![0].initial!.circ1!

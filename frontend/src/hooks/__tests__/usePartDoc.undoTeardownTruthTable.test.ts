@@ -16,7 +16,7 @@ vi.mock('@/hooks/useSolver', async () => {
   return solverMock()
 })
 
-// Whether the editor comes down is the engine's decision (useUndoRedo's
+// Whether the editor comes down is the engine's decision (the DocSession's
 // applyUndoRedo); the open-work commit only reports what it did. These tests
 // pin that rule row by row so it stays a stated contract instead of an emergent
 // property of two call sites.

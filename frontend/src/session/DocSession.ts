@@ -376,8 +376,12 @@ export class DocSession {
     return this.dirtyOverride !== null ? this.dirtyOverride : this.deps.dirtyFacts().dirty
   }
 
+  // The pin reads the live facts, exactly as the hook's store.pinDirty() did:
+  // an external clear (a save without the save count moving, a test) must be
+  // the pin, not the session's own stale view of its last edit.
   pinDirty(): DirtyPin {
-    return { dirty: this.isDirty(), saves: this.deps.dirtyFacts().saves }
+    const facts = this.deps.dirtyFacts()
+    return { dirty: facts.dirty, saves: facts.saves }
   }
 
   // A save landed: the facts now describe the stored bytes, so the session's

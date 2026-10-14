@@ -38,7 +38,6 @@ vi.mock('@/utils/invariants', async (importOriginal) => {
 
 const docRef: { current: PartDoc | null } = { current: null }
 const reSolve = vi.fn()
-const pushUndo = vi.fn()
 
 vi.mock('@/hooks/useDocumentState', () => ({
   useDocumentState: () => ({
@@ -71,19 +70,6 @@ vi.mock('@/hooks/useSolver', () => ({
     featureTimings: {},
     reSolve,
     validation: null,
-  }),
-}))
-
-vi.mock('@/hooks/useUndoRedo', () => ({
-  useUndoRedo: () => ({
-    undoStack: [],
-    redoStack: [],
-    pushUndo,
-    handleUndo: vi.fn(),
-    handleRedo: vi.fn(),
-    saveUndoStackSnapshot: vi.fn(),
-    restoreUndoStackSnapshot: vi.fn(),
-    clearUndoStackSnapshot: vi.fn(),
   }),
 }))
 
@@ -201,7 +187,6 @@ const REMOVE_CASES: { name: string; makeDoc: () => PartDoc; mutation: Mutation }
 beforeEach(() => {
   docRef.current = null
   reSolve.mockClear()
-  pushUndo.mockClear()
   failLoudMock.mockReset()
   failLoudMock.mockImplementation((msg: string) => { throw new Error(msg) })
   usePartEditorStore.setState({ rollbackPosition: null, editingFeatureId: null, pickBoundary: null })
@@ -216,7 +201,7 @@ describe('idempotent no-op guard', () => {
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 2 }) })
 
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
     expect(docRef.current!.rollback).toBe(2)
@@ -229,7 +214,7 @@ describe('idempotent no-op guard', () => {
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 3 }) })
 
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
     expect('rollback' in docRef.current!).toBe(false)
@@ -242,7 +227,7 @@ describe('idempotent no-op guard', () => {
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 1 }) })
 
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(docRef.current!.rollback).toBe(1)
     expect(reSolve).toHaveBeenCalledTimes(1)
   })
@@ -256,7 +241,7 @@ describe('idempotent no-op guard', () => {
       act(() => { result.current.handleMutation(mutation) })
 
       expect(JSON.stringify(docRef.current)).toBe(before)
-      expect(pushUndo).not.toHaveBeenCalled()
+      expect(result.current.undoStack).toHaveLength(0)
       expect(reSolve).not.toHaveBeenCalled()
       expect(useUnsavedChangesStore.getState().dirty).toBe(false)
     })
@@ -268,7 +253,7 @@ describe('idempotent no-op guard', () => {
 
     act(() => { result.current.handleMutation({ type: 'remove_extrude_profile', featureId: 'ex1', index: 0 }) })
 
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(reSolve).toHaveBeenCalledTimes(1)
     expect((docRef.current!.features![0] as { extrude: { sketch: string[] } }).extrude.sketch).toEqual(['@sk2'])
   })
@@ -279,7 +264,7 @@ describe('idempotent no-op guard', () => {
 
     act(() => { result.current.handleMutation({ type: 'add_fillet_edge', featureId: 'f1', edgeQuery: '?e1' }) })
 
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(reSolve).toHaveBeenCalledTimes(1)
     expect((docRef.current!.features![0] as { fillet: { edges: string[] } }).fillet.edges).toEqual(['?e2'])
   })
@@ -297,7 +282,7 @@ describe('idempotent no-op guard', () => {
 
     act(() => { result.current.handleMutation({ type: 'add_transform_body', featureId: 't1', bodyQuery: '@b1' }) })
 
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(reSolve).toHaveBeenCalledTimes(1)
     expect((docRef.current!.features![0] as { transform: { bodies: string[] } }).transform.bodies).toEqual([])
   })
@@ -317,7 +302,7 @@ describe('idempotent no-op guard', () => {
     act(() => { result.current.handleMutation({ type: 'remove_transform_body', featureId: 't1', index: 9 }) })
 
     expect(JSON.stringify(docRef.current)).toBe(before)
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
@@ -341,7 +326,7 @@ describe('idempotent no-op guard', () => {
     })
 
     expect(JSON.stringify(docRef.current)).toBe(before)
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
@@ -361,7 +346,7 @@ describe('idempotent no-op guard', () => {
     })
 
     expect(JSON.stringify(docRef.current)).toBe(before)
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
@@ -384,7 +369,7 @@ describe('idempotent no-op guard', () => {
       })
     })
 
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     expect(reSolve).toHaveBeenCalledTimes(1)
     const feature = docRef.current!.features![0] as { entities: { id: string }[]; constraints: { id: string }[] }
@@ -407,7 +392,7 @@ describe('idempotent no-op guard', () => {
     act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'ex1', toIndex: 5 }) })
 
     expect(JSON.stringify(docRef.current)).toBe(before)
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
@@ -420,7 +405,7 @@ describe('idempotent no-op guard', () => {
     act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'ex1', toIndex: 6 }) })
 
     expect(JSON.stringify(docRef.current)).toBe(before)
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
@@ -431,7 +416,7 @@ describe('idempotent no-op guard', () => {
 
     act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'ex1', toIndex: 2 }) })
 
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     expect(reSolve).toHaveBeenCalledTimes(1)
     expect(docRef.current!.features!.map(f => f.id)).toEqual([
@@ -515,7 +500,7 @@ describe.each(NO_OP_PINS)('idempotent no-op pin: $name', ({ makeDoc, same, chang
     act(() => { result.current.handleMutation(same) })
 
     expect(JSON.stringify(docRef.current)).toBe(before)
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
@@ -526,7 +511,7 @@ describe.each(NO_OP_PINS)('idempotent no-op pin: $name', ({ makeDoc, same, chang
 
     act(() => { result.current.handleMutation(changed) })
 
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     expect(reSolve).toHaveBeenCalledTimes(1)
   })
@@ -576,7 +561,7 @@ describe.each(UNGUARDED_NO_OPS)('$name', ({ makeDoc: makeUnguardedDoc, mutation 
     // look for, so a push here proves the decision was driven by the
     // classification rather than by an accidental diff.
     expect(JSON.stringify(docRef.current)).toBe(before)
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(reSolve).toHaveBeenCalledTimes(1)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
@@ -610,7 +595,7 @@ describe.each(BODYLESS_MUTATIONS)('$name dispatched with no bodyId', ({ mutation
     }).toThrow(/bodyId/)
 
     expect(failLoudMock).toHaveBeenCalledTimes(1)
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
   })
 
@@ -622,7 +607,7 @@ describe.each(BODYLESS_MUTATIONS)('$name dispatched with no bodyId', ({ mutation
     act(() => { result.current.handleMutation(mutation) })
 
     expect(failLoudMock).toHaveBeenCalledTimes(1)
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
     expect(reSolve).toHaveBeenCalledTimes(1)
     expect((docRef.current!.part_style as Record<string, unknown>)['undefined']).toBeDefined()
@@ -655,7 +640,7 @@ describe('add_constraint whole-doc no-op guard', () => {
     })
 
     expect(JSON.stringify(docRef.current)).toBe(before)
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
@@ -671,7 +656,7 @@ describe('add_constraint whole-doc no-op guard', () => {
       })
     })
 
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(reSolve).toHaveBeenCalledTimes(1)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
@@ -686,7 +671,7 @@ describe('delete whole-doc no-op guard', () => {
     act(() => { result.current.handleMutation({ type: 'delete', targets: ['entity:sk1:ghost'] }) })
 
     expect(JSON.stringify(docRef.current)).toBe(before)
-    expect(pushUndo).not.toHaveBeenCalled()
+    expect(result.current.undoStack).toHaveLength(0)
     expect(reSolve).not.toHaveBeenCalled()
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
@@ -697,7 +682,7 @@ describe('delete whole-doc no-op guard', () => {
 
     act(() => { result.current.handleMutation({ type: 'delete', targets: ['entity:sk1:l1'] }) })
 
-    expect(pushUndo).toHaveBeenCalledTimes(1)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(reSolve).toHaveBeenCalledTimes(1)
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })

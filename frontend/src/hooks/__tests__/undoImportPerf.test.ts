@@ -12,13 +12,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
-import { useUndoRedo } from '@/hooks/useUndoRedo'
+import { createDocSession } from '@/session/DocSession'
+import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { MemoryFileRegistry } from '@/stores/fileRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import type { PartDoc, Mutation, PartFeature } from '@/types/cad'
+import type { PartDoc, PartFeature, SketchData } from '@/types/cad'
 
 const MB = 1024 * 1024
 
@@ -49,22 +50,31 @@ describe('measurement gate: the undo stack does not duplicate the import payload
     let minRetained = Infinity
     let depth = 0
     for (let run = 0; run < 5; run++) {
-      const docRef = { current: { version: 1, kind: 'part' } as PartDoc }
-      const { result, unmount } = renderHookStrict(() =>
-        useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, vi.fn(), vi.fn()))
+      const cell = { current: { version: 1, kind: 'part' } as PartDoc | null }
+      const facts = { editingFeatureId: null, rollbackPosition: null }
+      const dirty = { dirty: false, saves: 0, savedHash: null }
+      const solveResults: { current: Record<string, SketchData> } = { current: {} }
+      const session = createDocSession({
+        cloneDoc: cloneDocForUndo,
+        doc: { get: () => cell.current, set: next => { cell.current = next } },
+        solve: createFakeSolveScheduler<PartDoc>(),
+        solveResults: { get: () => solveResults.current, set: next => { solveResults.current = next } },
+        editorFacts: () => facts,
+        dirtyFacts: () => dirty,
+      })
 
       gc?.()
-      act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, makeDoc(0)))
+      session.pushUndo('push', makeDoc(0))
       gc?.()
       const baseline = process.memoryUsage().heapUsed
       for (let i = 1; i < MAX_UNDO_DEPTH + 6; i++) {
-        act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, makeDoc(i)))
+        session.pushUndo('push', makeDoc(i))
       }
       minRetained = Math.min(minRetained, process.memoryUsage().heapUsed - baseline)
-      depth = result.current.undoStack.length
-      // Release this run's retained entries so the next run measures against a
+      depth = session.historyEntries().undo.length
+      // Each run allocates its own session, so the next run measures against a
       // clean heap instead of stacking another 50 clones on top of the last.
-      act(() => unmount())
+      cell.current = null
     }
 
     expect(depth).toBe(MAX_UNDO_DEPTH)
@@ -151,45 +161,55 @@ describe('undo/redo round-trip keeps the import reference', () => {
     ],
   })
 
+  function makeSession(doc: PartDoc | null) {
+    const cell = { current: doc }
+    const facts = { editingFeatureId: null, rollbackPosition: null }
+    const dirty = { dirty: false, saves: 0, savedHash: null }
+    const solveResults: { current: Record<string, SketchData> } = { current: {} }
+    const session = createDocSession({
+      cloneDoc: cloneDocForUndo,
+      doc: { get: () => cell.current, set: next => { cell.current = next } },
+      solve: createFakeSolveScheduler<PartDoc>(),
+      solveResults: { get: () => solveResults.current, set: next => { solveResults.current = next } },
+      editorFacts: () => facts,
+      dirtyFacts: () => dirty,
+    })
+    return { session, cell }
+  }
+
   it('restores the file_id after undo and redo', () => {
     const docA = docWith()
     const docB = docWith(['sk1'])
-    const docRef = { current: docB }
-    const setDoc = vi.fn((d: React.SetStateAction<PartDoc | null>) => { docRef.current = d as PartDoc })
-    const { result } = renderHookStrict(() =>
-      useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, vi.fn()))
+    const { session, cell } = makeSession(docB)
 
-    act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA))
-    act(() => result.current.handleUndo())
+    session.pushUndo('add sketch', docA)
+    session.undo()
 
-    expect(docRef.current).toEqual(docA)
-    expect(docRef.current!.features![0].file_id).toBe('file-1')
-    expect(docRef.current!.features).toHaveLength(1)
+    expect(cell.current).toEqual(docA)
+    expect(cell.current!.features![0].file_id).toBe('file-1')
+    expect(cell.current!.features).toHaveLength(1)
 
-    act(() => result.current.handleRedo())
-    expect(docRef.current).toEqual(docB)
-    expect(docRef.current!.features![0].file_id).toBe('file-1')
-    expect(docRef.current!.features).toHaveLength(2)
+    session.redo()
+    expect(cell.current).toEqual(docB)
+    expect(cell.current!.features![0].file_id).toBe('file-1')
+    expect(cell.current!.features).toHaveLength(2)
   })
 
   it('mutating the restored doc other fields cannot corrupt the reference', () => {
     const docA = docWith()
     const docB = docWith(['sk1'])
-    const docRef = { current: docB }
-    const setDoc = vi.fn((d: React.SetStateAction<PartDoc | null>) => { docRef.current = d as PartDoc })
-    const { result } = renderHookStrict(() =>
-      useUndoRedo(docRef as React.MutableRefObject<PartDoc | null>, setDoc, vi.fn()))
+    const { session, cell } = makeSession(docB)
 
-    act(() => result.current.pushUndo({ type: 'add_sketch' } as Mutation, docA))
-    act(() => result.current.handleUndo())
+    session.pushUndo('add sketch', docA)
+    session.undo()
 
-    const restored = docRef.current!
+    const restored = cell.current!
     restored.features![0].label = 'renamed'
     expect(restored.features![0].file_id).toBe('file-1')
 
-    act(() => result.current.handleRedo())
-    expect(docRef.current).toEqual(docB)
-    expect(docRef.current!.features![0].file_id).toBe('file-1')
+    session.redo()
+    expect(cell.current).toEqual(docB)
+    expect(cell.current!.features![0].file_id).toBe('file-1')
   })
 })
 
