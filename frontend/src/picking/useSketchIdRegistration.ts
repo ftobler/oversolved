@@ -7,6 +7,9 @@ import { suppressedCoincidentVertexIds } from '@/components/Geometry3D/dragLogic
 import { inferredContactCandidates } from '@/components/Geometry3D/snapDetection'
 import { buildPlaneMatrix } from './idRegistrationUtils'
 import { buildSketchSegments, buildSketchVertices } from './sketchIdBuilders'
+import { SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME } from './layerNames'
+import { pointPickables, polylinePickables } from './probeMarks'
+import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 
@@ -54,7 +57,6 @@ export function useSketchIdRegistration(params: {
 
   useEffect(() => {
     if (!enabled) return
-    if (!pipeline) return
     if (!sketch || Object.keys(sketch).length === 0) return
 
     const m = buildPlaneMatrix(planeTransform)
@@ -80,6 +82,22 @@ export function useSketchIdRegistration(params: {
         vtx.vertices.push([dv.x, dv.y, dv.z])
         vtx.vertexQueries.push(dc.id)
       }
+    }
+
+    // The probe publishes the same builder output the layers register, so its
+    // polylines and points are the geometry the ID pixels were drawn from.
+    // Built from the base lists the layers are handed, not a second pass.
+    const probeKey = probeSourceKeys.sketch(featureId)
+    replaceProbeSource(probeKey, [
+      ...polylinePickables(SKETCH_ENTITY_LAYER_NAME, seg.edgeQueries, seg.segmentPositions, seg.segmentToEdge),
+      ...pointPickables(SKETCH_VERTEX_LAYER_NAME, vtx.vertices, vtx.vertexQueries),
+    ])
+
+    // A missing pipeline still leaves the probe published: inspection is
+    // independent of the GL pick path. Only the layer registration below is
+    // pipeline-gated.
+    if (!pipeline) {
+      return () => clearProbeSource(probeKey)
     }
 
     // Wrapped so a registerBody throw (24-bit ID exhaustion) does not escape the
@@ -112,6 +130,7 @@ export function useSketchIdRegistration(params: {
     pipeline.markDirty()
 
     return () => {
+      clearProbeSource(probeKey)
       pipeline.sketchEntityLayer.unregisterBody(featureId)
       pipeline.sketchVertexLayer.unregisterBody(featureId)
       pipeline.markDirty()

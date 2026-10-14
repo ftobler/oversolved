@@ -8,6 +8,8 @@ The frontend 3D viewport is an R3F (React Three Fiber) scene inside a single `Ca
 <Canvas orthographic camera={INITIAL_CAMERA}> (antialias, logarithmicDepthBuffer, background #111)
                                            (camera: pos [20,20,100], zoom 80, near=-10, far=1000)
   <SceneController />                       (OrbitControls + CubeGizmo per-frame)
+  <IdPickingDriver />                       (offscreen ID render target; pick source)
+  <SceneProbeDriver />                      (publishes camera + canvas to the scene probe)
   <Environment /> + <EnvLight />           (IBL env map; EnvLight rotates the env to follow the camera)
   <OriginMarker />                          (builtin origin dot)
   <ReferencePlane /> x3                     (Front, Top, Right)
@@ -23,7 +25,7 @@ The frontend 3D viewport is an R3F (React Three Fiber) scene inside a single `Ca
 
 ### Root: `Viewport/index.tsx`
 
-Top-level `forwardRef` component exposing `ViewportHandle`: `captureScreenshot`, `captureScreenshotForSaving`, `autoZoomToFit`, `alignCameraToPlane`, `alignCameraToFace`.
+Top-level `forwardRef` component exposing `ViewportHandle`: `captureScreenshotForSaving`, `autoZoomToFit`, `cancelPendingFit`, `alignCameraToPlane`, `alignCameraToFace`.
 
 ### Geometry3D Package (`src/components/Geometry3D/`)
 
@@ -39,14 +41,21 @@ Composes: sketch topology surfaces/edges, entity lines, projected entities, vert
   | Subsystem |  | Subsystem |
   +-----------+  +-----------+
         |              |
-  Pointer Event Abstraction Layer (coord transform, raycast, click-vs-drag)
+  Pointer Event Abstraction Layer (coord transform, plane intersection, click-vs-drag)
         |
   Raw Pointer Events (canvas pointerdown/move/up)
 ```
 
 ### Layer 1: Raw Pointer Events
 
-Three.js R3F intercepts canvas events and raycasts against the scene. Canvas handles right-click and `onPointerMissed` for deselection. DragPlane/DrawPlane use window-level listeners with manual raycasting to bypass R3F event bubbling.
+Selection and hover are NOT raycasts against the scene. The offscreen ID
+buffer is the sole pick source: `IdPickingDriver` renders the ID layers into
+an RGBA render target and `useIdBufferPointerDispatch` resolves the cursor's
+window from it (see Pick Precedence below). R3F canvas events remain only for
+the backplane/deselect paths (`onPointerMissed`), surfaces' own guarded click,
+and drag/draw plane math. DragPlane/DrawPlane use window-level listeners and a
+ray-plane intersection (`dragMathPlane.ts`) to bypass R3F event bubbling when
+mapping the cursor onto the sketch plane.
 
 ### Layer 2: Pointer Event Abstraction
 
@@ -91,26 +100,64 @@ Not every interaction is a registered tool:
 
 A wall separates testable logic from the untestable R3F zone. Only plain TypeScript primitives cross it (`string`, `number`, `boolean`, plain objects, tuples). No `THREE.*`, no refs, no R3F hooks.
 
-**Pure logic files** (header: "PURE LOGIC"): `coordTransform.ts`, `pointerAbstraction.ts`, `snapDetection.ts`, `nearestPoint.ts`, `dragLogic.ts`, `drawLogic.ts`, `bodySnapProjection.ts`, all registries, `sketchEditorStore.ts`.
+**Pure logic files** (header: "PURE LOGIC"): `coordTransform.ts`, `pointerAbstraction.ts`, `snapDetection.ts`, `nearestPoint.ts`, `dragLogic.ts`, `drawLogic.ts`, `bodySnapProjection.ts`, all registries, `sketchEditorStore.ts`, plus the picking pure layer (`IdResolver.ts`, `markPosition.ts`, `IdRegistry.ts`, `layerNames.ts`, `pickKey.ts`, `idEncoding.ts`, `collectEntitiesFromPixels.ts`, `selectionHighlight.ts`, `HoverScheduler.ts`, `screenSpaceScale.ts`, `cameraPose.ts`, `sceneProbe.ts`, `probeMarks.ts`, `domHandles.ts`).
 
 **Viewport adapters** (~10 lines, no branching): `coordTransformAdapters.ts`, `pointerAbstractionAdapters.ts`.
 
-**Viewport components** (Three.js allowed, not directly tested): all files in `Geometry3D/*.tsx`, `Viewport/*.tsx`, `CubeGizmo.tsx`, `ContextMenuDialog.tsx`.
+**Viewport components**: most of `Geometry3D/*.tsx` and `Viewport/*.tsx` are unit-tested with R3F mocked (38 Viewport and 71+ Geometry3D suites). The genuinely untested layer is NOT "all R3F files" but real-GL rasterization and real browser pointer events: shader output, GPU layering/depth, driver readback, and synthetic pointer sequences through a live canvas. `crossLayerPriority.test.ts` documents the GPU-dependent cases as deferred manual smoke. `CubeGizmo.tsx`, `ContextMenuDialog.tsx` and the drei overlay internals are untested by design.
 
 Navigation and selection/highlight reading from the store are allowed bypasses (no mutations).
 
-## Pointer Event Priority (raycast z-depth)
+## Pick Precedence (ID buffer)
 
-1. Vertex hit spheres (z=0)
-2. Entity HitPolylines (z=-0.001, hidden during drag)
-3. Sketch topology surfaces (z=-0.003 in sketch-plane space)
-4. DragPlane mesh (z=0, drag active)
-5. DrawPlane mesh (z=-0.002, drawing active)
-6. B-rep faces/edges (scene z)
-7. Deselect plane (z=-1000)
-8. OrbitControls (canvas div level, orbitEnabled=true)
+The pick ladder is exported as data in `layerNames.ts` (`PICK_LADDER`), and
+`IdPipeline` mounts each layer at its rung priority. Within a layer a later
+rendered primitive owns its pixels (depth policy); across layers the resolver
+orders candidates by **layer priority descending, pixel distance ascending,
+pixel scan order, mark order** (`IdResolver.resolvePixelWindowAll`).
 
-Hit geometry: entities via cylinder per segment (8px radius), vertices via sphere (20px), drag snap entity 8px, drag snap vertex 20px. Pixel-to-world-radius = `1 / camera.zoom`.
+| Priority | Layer | Content |
+|----------|-------|---------|
+| -10 | `planeFace` | reference/user/sketch plane quads |
+| 0 | `face` | B-rep faces (assembly reuses it with positional keys) |
+| 10 | `edge` | B-rep edges |
+| 20 | `vertex` | B-rep vertices (3 px pick cubes) |
+| 30 | `sketchSurface` | sketch topology area fill |
+| 40 | `sketchEntity` | sketch entity lines |
+| 45 | `originMarker` | builtin origin dot (deliberately below sketch vertices) |
+| 50 | `sketchVertex` | sketch vertices and inferred contacts |
+| 70 | `dimensionLabel` | dimension label hit circles |
+| 80 | `featureHandle` | feature editing arrows |
+| 90 | `gizmoHandle` | assembly triad grab regions |
+
+The pick window is `DEFAULT_WINDOW_SIZE` = 17 CSS px, scaled by the
+device-pixel ratio at read time; the reach is the inscribed radius, 8 px in
+every direction (`pickRadiusPx`). Hit geometry constants:
+`POINT_HIT_PIXELS` 20 and `ENTITY_HIT_PIXELS` 8 are the drag/snap zones, not
+the ID reach; `VERTEX_PICK_CUBE_PIXELS` 3 is the B-rep vertex cube size.
+
+## Scene Probe
+
+`SceneProbeDriver` (inside the Canvas) and the ID registration hooks publish a
+plain, JSON-safe snapshot of the scene, readable without a devtools connection:
+
+- `getSceneProbe()` (`@/picking`) returns `{ revision, camera, canvas,
+  sketchPlane, pickables }`. Camera pose and canvas size are published on
+  change, never per frame; pickables are published from the same builder data
+  the ID layers register (sketch entity segments, sketch vertices, sketch
+  surfaces, origin, dimension labels, feature handles). B-rep face/edge
+  outlines and gizmo handles are phase 2.
+- `hitTest(probe, x, y, opts?)` / `probeHitTest(x, y, opts?)` return ordered
+  candidates with the same priority/distance ranking as a real resolve, using
+  the shared pick radius.
+- `worldToScreen(probe, points)` and `sketchToScreen(probe, points)` project
+  through the probe camera (orthographic viewport); `sketchToScreen` uses the
+  published active sketch plane.
+- `getSceneHandles(prefix?)` lists GL handles (probe pickables) and DOM
+  handles (elements carrying `data-oversolved-handle`, e.g.
+  `toolbar:set_tool_line`, `tree:feature:<id>`).
+- The browser agreement test (probe `hitTest` vs real `resolveAllSync` per
+  pick class) lands with the drive-surface plan.
 
 ## Rendering Pipeline
 
@@ -149,7 +196,10 @@ Body snap projection (`bodySnapProjection.ts`): projects 3D body vertices/edges 
 |----------|-------|
 | `POINT_HIT_PIXELS` | 20 |
 | `POINT_VIS_PIXELS` | 4 |
+| `ENTITY_HIT_PIXELS` | 8 |
 | `DRAG_SNAP_VERTEX_RADIUS_PX` | 20 |
 | `DRAG_SNAP_ENTITY_RADIUS_PX` | 8 |
+| `DEFAULT_WINDOW_SIZE` (ID pick window, CSS px; reach 8) | 17 |
+| `VERTEX_PICK_CUBE_PIXELS` | 3 |
 | `CLICK_THRESHOLD_PX` | 4 |
 | `ALIGNMENT_TOLERANCE_DEG` | 10 |

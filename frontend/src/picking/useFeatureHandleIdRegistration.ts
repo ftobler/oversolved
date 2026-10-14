@@ -1,5 +1,9 @@
+import { useEffect } from 'react'
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
+import { FEATURE_HANDLE_LAYER_NAME } from './layerNames'
+import { polylinePickable } from './probeMarks'
+import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /** Selection-id key for a feature editing handle. */
@@ -29,6 +33,16 @@ export function useFeatureHandleIdRegistration(params: {
   const [ex, ey, ez] = params.end
 
   const entityKey = featureHandleKey(featureId, field)
+
+  // The probe publishes the same arrow segment the layer registers.
+  useEffect(() => {
+    if (!enabled) return
+    const probeKey = probeSourceKeys.featureHandle(entityKey)
+    replaceProbeSource(probeKey, [
+      polylinePickable(FEATURE_HANDLE_LAYER_NAME, entityKey, [[sx, sy, sz], [ex, ey, ez]]),
+    ])
+    return () => clearProbeSource(probeKey)
+  }, [enabled, entityKey, sx, sy, sz, ex, ey, ez])
 
   useRegisteredBody(
     pipeline,

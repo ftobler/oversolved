@@ -1,9 +1,12 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import type { PlaneTransform } from '@/types/cad'
 import { buildPlaneMatrix, useRegisteredBody } from './idRegistrationUtils'
 import { planeTransformKey } from './planeTransformKey'
+import { DIMENSION_LABEL_LAYER_NAME } from './layerNames'
+import { pointPickable } from './probeMarks'
+import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
@@ -41,6 +44,18 @@ export function useDimensionLabelIdRegistration(params: {
   const matrix = useMemo(() => buildPlaneMatrix(planeTransform), [planeKey])
 
   const entityKey = sub ? `dim:${constraintId}:${sub}` : `dim:${constraintId}`
+
+  // The probe publishes the label's hit point in world space, transformed by
+  // the same plane matrix the layer registers with.
+  useEffect(() => {
+    if (!enabled) return
+    const world = new THREE.Vector3(px, py, pz).applyMatrix4(matrix)
+    const probeKey = probeSourceKeys.dimensionLabel(entityKey)
+    replaceProbeSource(probeKey, [
+      pointPickable(DIMENSION_LABEL_LAYER_NAME, entityKey, [world.x, world.y, world.z]),
+    ])
+    return () => clearProbeSource(probeKey)
+  }, [enabled, entityKey, px, py, pz, matrix])
 
   useRegisteredBody(
     pipeline,

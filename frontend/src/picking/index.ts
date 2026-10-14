@@ -6,12 +6,13 @@ export { EdgeIdLayer, EDGE_LAYER_NAME, EDGE_DEPTH_BIAS, type EdgeBodyRegistratio
 export { VertexIdLayer, VERTEX_LAYER_NAME, type VertexBodyRegistration, type VertexIdLayerConfig } from './VertexIdLayer'
 export {
   worldUnitsPerPixel, pixelCubeHalfExtent, CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES,
+  DEFAULT_WINDOW_SIZE, pickRadiusPx,
 } from './screenSpaceScale'
 export {
-  IdPipeline, DEFAULT_WINDOW_SIZE,
+  IdPipeline, VERTEX_PICK_CUBE_PIXELS,
   PLANE_LAYER_NAME, SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME, ORIGIN_LAYER_NAME,
   DIMENSION_LABEL_LAYER_NAME, FEATURE_HANDLE_LAYER_NAME, GIZMO_HANDLE_LAYER_NAME,
-  SKETCH_SURFACE_LAYER_NAME, VERTEX_PICK_CUBE_PIXELS,
+  SKETCH_SURFACE_LAYER_NAME,
   type IdPipelineOptions,
 } from './IdPipeline'
 export { getPixelRatio, MIN_PLAUSIBLE_CANVAS_CSS_WIDTH } from './pickPixelRatio'
@@ -28,5 +29,31 @@ export { useDimensionLabelIdRegistration } from './useDimensionLabelIdRegistrati
 export { useFeatureHandleIdRegistration, featureHandleKey } from './useFeatureHandleIdRegistration'
 export { getLivePipeline } from './IdPipelineContext'
 export { idToRGB, rgbToId, idToRGBNormalized, EMPTY_ID, MAX_ID } from './idEncoding'
-export { PART_EDITOR_PICK_LAYER_NAMES } from './layerNames'
+export {
+  PART_EDITOR_PICK_LAYER_NAMES,
+  PICK_LADDER, PICK_LAYER_PRIORITIES, pickPriorityOf,
+  type PickLayerRung,
+} from './layerNames'
 export type { IdLayer, LayerZPolicy } from './IdLayer'
+export {
+  hitTest, buildSceneProbe, worldToScreen, sketchToScreen, sketchPointToWorld,
+  nearestMarkDistance, pointToSegmentDistance, pointInPolygon,
+  probeCameraFrom, probeCamerasEqual,
+  type ProbeCamera, type ProbePlane, type ProbeMarkKind,
+  type ProbePickableSource, type SceneProbePickable, type SceneProbe,
+  type ProbeHit, type ProbeHitOptions, type ProbeBuildInput,
+} from './sceneProbe'
+export {
+  publishProbeCamera, publishProbeCanvas, publishProbeSketchPlane,
+  replaceProbeSource, clearProbeSource, probeSourceKeys,
+  getSceneProbe, probeHitTest, getSceneProbeRevision, getSceneHandles,
+  resetSceneProbeStore,
+  type ProbeHandle,
+} from './sceneProbeStore'
+export {
+  DOM_HANDLE_ATTRIBUTE, domHandleProps, scanDomHandles, type DomHandleInfo,
+} from './domHandles'
+export {
+  pointPickable, polylinePickable, pointPickables, polylinePickables, polygonPickables,
+  type ProbeSurfaceOutline,
+} from './probeMarks'

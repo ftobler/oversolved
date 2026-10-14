@@ -5,6 +5,9 @@ import type { Topology, PlaneTransform } from '@/types/cad'
 import { buildPlaneMatrix } from './idRegistrationUtils'
 import { planeTransformKey } from './planeTransformKey'
 import { tessellateBoundary } from '@/kernel/topologyBoundary'
+import { SKETCH_SURFACE_LAYER_NAME } from './layerNames'
+import { polygonPickables } from './probeMarks'
+import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
@@ -25,8 +28,10 @@ import { isDevBuild } from '@/kernel/isDevBuild'
  * the surface for whatever consumes the pick.
  */
 
-function buildSurfaceShapes(topology: Topology): { shape: THREE.Shape; query: string }[] {
-  const results: { shape: THREE.Shape; query: string }[] = []
+function buildSurfaceShapes(
+  topology: Topology,
+): { shape: THREE.Shape; query: string; outline: [number, number][] }[] {
+  const results: { shape: THREE.Shape; query: string; outline: [number, number][] }[] = []
   for (const surface of topology.surfaces) {
     const pts = tessellateBoundary(surface.boundary, 32)
     if (pts.length < 3) continue
@@ -44,7 +49,9 @@ function buildSurfaceShapes(topology: Topology): { shape: THREE.Shape; query: st
       path.closePath()
       shape.holes.push(path)
     }
-    results.push({ shape, query: surface.query })
+    // The probe publishes this same outer ring, so its area polygon and the
+    // drawn fill are tessellated from one boundary walk.
+    results.push({ shape, query: surface.query, outline: pts })
   }
   return results
 }
@@ -62,12 +69,21 @@ export function useSketchSurfaceIdRegistration(params: {
 
   useEffect(() => {
     if (!enabled) return
-    if (!pipeline) return
     if (!topology || topology.surfaces.length === 0) return
 
     const m = buildPlaneMatrix(planeTransform)
     const v = new THREE.Vector3()
     const surfaces = buildSurfaceShapes(topology)
+
+    // The probe's area pickables carry the outline in the same plane frame the
+    // triangles are registered in.
+    const probeKey = probeSourceKeys.surface(featureId)
+    replaceProbeSource(probeKey, polygonPickables(
+      SKETCH_SURFACE_LAYER_NAME, surfaces, planeTransform ?? null))
+
+    // Inspection is independent of the GL pick path: without a pipeline the
+    // probe stays published and only the layer registration is skipped.
+    if (!pipeline) return () => clearProbeSource(probeKey)
 
     // Register as one body per surface, each carrying its triangles.
     for (const { shape, query } of surfaces) {
@@ -116,6 +132,7 @@ export function useSketchSurfaceIdRegistration(params: {
     pipeline.markDirty()
 
     return () => {
+      clearProbeSource(probeKey)
       for (const { query } of surfaces) {
         pipeline.sketchSurfaceLayer.unregisterBody(`${featureId}/${query}`)
       }

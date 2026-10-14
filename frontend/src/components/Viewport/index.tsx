@@ -29,6 +29,7 @@ import { calculatePlaneSize, getActiveSketchPlane } from '@/components/Viewport/
 import { SketchPlaneDisplay } from '@/components/Viewport/SketchPlaneDisplay'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
 import { IdPickingDriver } from '@/picking'
+import SceneProbeDriver from '@/components/Viewport/SceneProbeDriver'
 import IdDebugOverlay from '@/components/Viewport/IdDebugOverlay'
 import IdPickReadout from '@/components/Viewport/IdPickReadout'
 import type { IdPipeline } from '@/picking'
@@ -517,6 +518,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         />
 
         <IdPickingDriver onReady={onIdPipelineReady} />
+        <SceneProbeDriver />
         {showDebugHit && <IdDebugOverlay />}
 
         {/* Local boundary so the 1.47 MB HDR no longer hides and re-shows the

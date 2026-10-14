@@ -1,5 +1,9 @@
+import { useEffect } from 'react'
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredBody } from './idRegistrationUtils'
+import { ORIGIN_LAYER_NAME } from './layerNames'
+import { pointPickable } from './probeMarks'
+import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
@@ -17,6 +21,15 @@ export function useOriginMarkerIdRegistration(params: {
 }): void {
   const pipeline = useIdPipeline()
   const { selectionId, enabled = true } = params
+
+  // The probe publishes the origin at world zero, the same point the layer
+  // registers. Independent of the pipeline so a probe read never needs GL.
+  useEffect(() => {
+    if (!enabled) return
+    const probeKey = probeSourceKeys.origin(selectionId)
+    replaceProbeSource(probeKey, [pointPickable(ORIGIN_LAYER_NAME, selectionId, [0, 0, 0])])
+    return () => clearProbeSource(probeKey)
+  }, [selectionId, enabled])
 
   useRegisteredBody(pipeline, enabled, selectionId,
     (p) => {

@@ -51,7 +51,7 @@ import { resolvePlaneTransform } from '@/components/Geometry3D/bodySnapProjectio
 import { COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_ERROR, COLOR_INACTIVE } from '@/components/Geometry3D/constants'
 
 // ID-buffer registration
-import { useSketchIdRegistration, useSketchSurfaceIdRegistration } from '@/picking'
+import { useSketchIdRegistration, useSketchSurfaceIdRegistration, publishProbeSketchPlane } from '@/picking'
 
 export interface Geometry3DProps {
   featureId: string
@@ -189,6 +189,16 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
 
   const isEditing = featureId === activeFeatureId
 
+  // The scene probe's sketchToScreen needs the active sketch frame; publish it
+  // while this feature is the edit target and clear it on exit. One sketch is
+  // active at a time (isEditing follows activeFeatureId), so the publish and
+  // clear pair cannot race a sibling.
+  useEffect(() => {
+    if (!isEditing) return
+    publishProbeSketchPlane(resolvedPlaneTransform ?? null)
+    return () => publishProbeSketchPlane(null)
+  }, [isEditing, resolvedPlaneTransform])
+
   const setEntityKindMap = useSketchEditorStore(s => s.setEntityKindMap)
   const setActiveOriginLocal = useSketchEditorStore(s => s.setActiveOriginLocal)
   // Publish the document origin in this sketch's local frame while it is the
@@ -266,20 +276,20 @@ export default function Geometry3D({ featureId, solved, entities, constraints, t
       : COLOR_SOLVED)
     : COLOR_INACTIVE
 
-  // POINTER EVENT PRIORITY STACK (highest to lowest, enforced by Three.js raycast z-depth):
-  //   1. Vertex hit spheres      (z=0, sphere geometry wins at endpoints)
-  //   2. Entity lines           (z=0, depthTest false)
-  //   3. Sketch topology surfaces (z=0; no world offset - fill is decoration, picking is via the ID buffer)
-  //   4. DragPlane mesh          (z=0, mounted only when drag != null - owns all move/up events during drag)
-  //   5. DrawPlane mesh          (z=-0.002, mounted only when activeTool is a drawing tool)
-  //   6. B-rep faces/edges       (always interactive)
-  //   7. Deselect plane          (z=-1000, catch-all for click-on-empty)
-  //   8. OrbitControls           (canvas div level, suppressed during drag)
+  // R3F EVENT OWNERSHIP STACK (highest to lowest, by raycast z-depth). This is
+  // event ownership only: selection and hover resolve through the ID buffer
+  // (docs/viewport.md), so entity lines, vertex dots and body meshes carry no
+  // R3F handlers at all.
+  //   1. DragPlane mesh          (z=0, mounted only when drag != null - owns all move/up events during drag)
+  //   2. Sketch topology surfaces (z=0 in plane space; onClick is stopPropagation only, so a surface click never reaches the DrawPlane backplane while the fill is drawn)
+  //   3. DrawPlane mesh          (z=-0.002, mounted for select/drag/dimension - the click-on-empty backplane)
+  //   4. Reference/user planes   (no handlers; picked via the ID buffer)
+  //   5. B-rep faces/edges       (no handlers; picked via the ID buffer)
+  //   6. OrbitControls           (canvas div level, suppressed during drag)
   //
-  // New interaction consumers must fit into this stack via z-positioning.
-  // Do not change z-offsets without understanding this ordering.
+  // New R3F event consumers must fit into this stack via z-positioning.
   // Drag-time snap uses findSnapTarget() in Dragging.tsx (full scan, dragged element hidden).
-  // Draw-time snap reads hoveredVertexPosition from the store (VertexDots does the raycast hover).
+  // Draw-time snap reads hoveredVertexPosition from the store (hover comes from the ID buffer).
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && !stale && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
