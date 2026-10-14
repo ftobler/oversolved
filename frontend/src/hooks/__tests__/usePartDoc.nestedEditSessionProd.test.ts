@@ -66,7 +66,7 @@ describe('usePartDoc nested edit session guard (prod: failLoud is silent, does n
     // This is the real trigger from the plan: the plane-on-face effect firing
     // enterEditFeature again while the outer session is still open. Without
     // the guard's `return`, this call would clone the CURRENT (already-'a')
-    // doc over editSnapshotRef.
+    // doc over the open session's baseline.
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('b')) })
 

@@ -93,12 +93,12 @@ describe('usePartDoc document reset via keyed remount', () => {
     expect(harness.latest!.redoStack).toHaveLength(0)
   })
 
-  it('a clone of a document with an active edit session does not inherit suppressUndoRef', () => {
+  it('a clone of a document with an active edit session does not inherit the open session', () => {
     const view = mountDoc('A', 'A')
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { harness.latest!.startEditSession(true) })
     act(() => { harness.latest!.handleMutation(renameTo('in-edit')) })
-    // The edit session suppresses pushes: while it is open, the mutation leaves
+    // The edit session swallows pushes: while it is open, the mutation leaves
     // no entry (the "clone with an active edit session" premise).
     expect(harness.latest!.undoStack).toHaveLength(0)
 

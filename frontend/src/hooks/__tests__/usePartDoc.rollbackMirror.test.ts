@@ -43,7 +43,6 @@ vi.mock('@/hooks/useUndoRedo', () => ({
   useUndoRedo: () => ({
     undoStack: [],
     redoStack: [],
-    suppressUndoRef: { current: false },
     pushUndo: vi.fn(),
     handleUndo: vi.fn(),
     handleRedo: vi.fn(),

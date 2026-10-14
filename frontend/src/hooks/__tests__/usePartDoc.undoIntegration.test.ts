@@ -155,7 +155,7 @@ describe('usePartDoc undo/redo integration', () => {
     act(() => { result.current.cancelPreview() })
     expect(result.current.undoStack).toHaveLength(0)
 
-    // suppressUndoRef must have been cleared, or every later edit is lost.
+    // The open preview must have been closed, or every later edit is swallowed.
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#0000ff' }) })
     expect(result.current.undoStack).toHaveLength(1)
   })

@@ -879,7 +879,9 @@ export default function Part() {
     setPartColorPopover(null)
   }, [commitPreview, setPartColorPopover])
 
-  // Opening the popover puts the document into preview mode, and only a commit
+  // Opening the popover puts the document into preview mode (unless an edit
+  // session owns the doc: startPreviewMode refuses then, so there is no preview
+  // to strand and the popover's edits land as session edits), and only a commit
   // or a cancel takes it out again. So the closing side must go through
   // handleColorCancel rather than just dropping the popover state: a bare
   // setPartColorPopover(null) leaves the preview live behind a closed popover,

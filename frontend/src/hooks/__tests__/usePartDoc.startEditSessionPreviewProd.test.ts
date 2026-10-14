@@ -5,15 +5,12 @@ import { usePartDoc } from '@/hooks/usePartDoc'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PartDoc, Mutation } from '@/types/cad'
 
-// failLoud throws in test mode, so startEditSession's half-open guard would
-// abort at the throw and never reach the preview resolution the fix is about.
-// Production is the one environment where the two diverge (failLoud is a
-// silent no-op there), so this file mocks it to a no-op to exercise the resolve
-// path directly -- see usePartDoc.editSessionGuard.test.ts for the dev/test
-// throwing behavior, which is unaffected by this change.
-vi.mock('@/stores/stateInvariants', () => ({
-  failLoud: vi.fn(),
-}))
+// The preview/session boundary has one direction left: a preview open before a
+// session starts is resolved at session start with its own preview_commit, and
+// a preview can never open mid-session. startEditSession therefore never
+// reaches failLoud on this path, so the guard is not mocked here; see
+// usePartDoc.editSessionGuard.test.ts for the refusals that replaced the old
+// half-open guard.
 
 const makeDoc = (): PartDoc => ({
   version: 1,
@@ -51,7 +48,7 @@ const labelOf = () => (docRef.current.features?.[0] as { label?: string }).label
 
 const colorOf = () => (docRef.current.part_style?.b1 as { color?: string }).color
 
-describe('usePartDoc startEditSession with an open preview (prod: failLoud is silent, resolution still runs)', () => {
+describe('usePartDoc startEditSession with an open preview (resolved at session start)', () => {
   beforeEach(() => {
     docRef.current = makeDoc()
     reSolve.mockClear()

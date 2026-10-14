@@ -18,13 +18,15 @@ vi.mock('@/hooks/useSolver', async () => {
   return solverMock()
 })
 
-// The preview lifecycle at the session boundary: opening or applying a preview
-// while an edit session is live, committing a session with a preview still open,
-// and the escape hatch for edits that fall outside the preview's scope.
+// The preview and session lifecycle at their boundary: a preview opened BEFORE
+// a session is resolved at session start, and the session then owns the
+// document until commit or cancel (startPreviewMode mid-session is refused).
+// The escape hatch for edits that fall outside the preview's scope is covered
+// too.
 describe('usePartDoc undo preview and session boundary', () => {
   beforeEach(resetHarness)
 
-  it('a preview inside a suppressed feature session keeps suppression on and commits beside the aggregate', () => {
+  it('a colour change inside a suppressed feature session folds into the one edit_session aggregate', () => {
     docRef.current = {
       version: 1,
       kind: 'part',
@@ -36,33 +38,29 @@ describe('usePartDoc undo preview and session boundary', () => {
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('session-edit')) })
+    // The colour popover cannot open mid-session, so its mutation lands as an
+    // ordinary session edit and is swallowed with the rest.
+    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
     expect(result.current.undoStack).toHaveLength(0)
 
-    // A color preview opened and applied mid-session.
-    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
-    act(() => { result.current.commitPreview({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
-
-    // Apply must NOT have reset suppression: the session is still the undo
-    // owner, so a later session edit stays swallowed.
-    act(() => { result.current.handleMutation(renameTo('still-swallowed')) })
-    expect(result.current.undoStack).toHaveLength(1)
-    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
-
     act(() => { result.current.commitEditSession() })
-    // The session aggregate lands on top of the preview_commit: two real
-    // steps, and the session's own edits were never double-recorded.
-    expect(result.current.undoStack).toHaveLength(2)
-    expect(result.current.undoStack[1].mutation.type).toBe('edit_session')
+    // One aggregate: styleTouched is what forces the entry for the part_style
+    // change the session diff cannot see.
+    expect(result.current.undoStack).toHaveLength(1)
+    expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
+
+    // A single undo reverts the whole session, colour included.
+    act(() => { result.current.handleUndo() })
+    expect(labelOf()).toBe('first')
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
   })
 
-  // The only ordering the tests above cover is Apply-before-commit (the
-  // popover resolves itself, then the session closes). The other ordering --
-  // the session commits FIRST, with the popover still open and never Applied
-  // -- used to leave previewOriginalDoc pointing at a doc the session had
-  // already moved past, so a later Cancel rewound to it and desynced the live
-  // doc from the undo stack (undo-preview-session-exit.md repro).
-  it('a preview left open when the session commits is resolved at the boundary, not orphaned', () => {
+  // The session owns the doc until it commits or cancels: startPreviewMode is
+  // refused mid-session (pinned in editSessionGuard), so a colour edit made
+  // while the popover is "open" is a plain session edit. A session commit
+  // therefore folds exactly one aggregate, and the popover's own Cancel has
+  // nothing left to rewind.
+  it('a suppressed session owns every mid-session edit and folds them into one aggregate at commit', () => {
     docRef.current = {
       version: 1,
       kind: 'part',
@@ -73,58 +71,38 @@ describe('usePartDoc undo preview and session boundary', () => {
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
-    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    // A real, non-style session edit lands while the popover is open. It is
-    // not a preview-scope mutation, but the session's own 'all' scope still
-    // swallows it whole (the escape gate requires the session itself to not
-    // be active), so it earns no entry of its own here either.
+    // The session owns the doc until commit or cancel, so the popover cannot
+    // open over it; its would-be baseline is never tracked.
+    expect(() => {
+      act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    }).toThrow(/startPreviewMode called while an edit session is active/)
     act(() => { result.current.handleMutation(renameTo('mid-session')) })
     act(() => { result.current.handleMutation({ type: 'set_part_transparency', bodyId: 'b1', transparency: 0.5 }) })
     expect(result.current.undoStack).toHaveLength(0)
 
-    // OK on the feature edit fires with the color popover still open (no
-    // Apply was ever clicked): the session boundary must resolve the preview
-    // itself. The aggregate edit_session is pushed first so the preview_commit
-    // sits on top -- the preview was the last interaction, so its undo must
-    // come first and not resurrect the swallowed edits on the second undo.
     act(() => { result.current.commitEditSession() })
-    expect(result.current.undoStack).toHaveLength(2)
+    // Exactly one aggregate for the whole session, no preview_commit beside it.
+    expect(result.current.undoStack).toHaveLength(1)
     expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
-    expect(result.current.undoStack[1].mutation.type).toBe('preview_commit')
-    const afterCommit = structuredClone(docRef.current)
+    expect((docRef.current.part_style?.b1 as { transparency?: number }).transparency).toBe(0.5)
 
-    // The popover is still visually open; dragging it again is now a plain
-    // live edit (no preview is tracking it anymore), pushed as its own entry.
-    act(() => { result.current.handleMutation({ type: 'set_part_transparency', bodyId: 'b1', transparency: 0.9 }) })
-    expect(result.current.undoStack).toHaveLength(3)
-
-    // Cancel finds no active preview -- it was already resolved at the
-    // session boundary -- so it must not silently rewind to some other, stale
-    // doc. That desync (live doc pointing past what the stack's top entry
-    // expects) is exactly what let a cancelled colour resurrect on undo.
+    // The popover's Cancel finds no preview to rewind and is inert.
     let cancelled: PartDoc | null = null
     act(() => { cancelled = result.current.cancelPreview() })
     expect(cancelled).toBeNull()
-    expect((docRef.current.part_style?.b1 as { transparency?: number }).transparency).toBe(0.9)
+    expect((docRef.current.part_style?.b1 as { transparency?: number }).transparency).toBe(0.5)
 
-    // Undo walks back cleanly through all three real entries; the swallowed
-    // 0.5 frame never resurfaces as an out-of-band state.
-    act(() => { result.current.handleUndo() })
-    expect(docRef.current).toEqual(afterCommit)
-    act(() => { result.current.handleUndo() })
+    // One undo returns to the pre-session doc: rename and colour both reverted.
     act(() => { result.current.handleUndo() })
     expect(labelOf()).toBe('first')
-    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
     expect((docRef.current.part_style?.b1 as { transparency?: number }).transparency).toBe(0)
+    expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
   })
 
-  it('a preview left open when the session commits collapses to the single preview_commit when nothing else in the session changed', () => {
-    // Closes the previously-documented gap in the "part_style-only" test
-    // below: that test never opens
-    // a preview, so a bare set_part_color mutation is swallowed with no
-    // resolver at all. Here a preview WAS opened, so the session boundary
-    // must resolve it into exactly one preview_commit, not an empty
-    // edit_session (part_style is excluded from the aggregate's own diff).
+  it('a colour-only suppressed session still folds to one aggregate, not a preview_commit', () => {
+    // The popover cannot open mid-session, so a bare colour mutation is
+    // swallowed with styleTouched set; the session commit must resolve it as
+    // the aggregate entry rather than manufacturing a preview_commit.
     docRef.current = {
       version: 1,
       kind: 'part',
@@ -135,14 +113,13 @@ describe('usePartDoc undo preview and session boundary', () => {
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
-    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
     expect(result.current.undoStack).toHaveLength(0)
 
     act(() => { result.current.commitEditSession() })
 
     expect(result.current.undoStack).toHaveLength(1)
-    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+    expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
     expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
 
     // The popover's own Cancel afterward finds nothing left to resolve.
@@ -151,7 +128,7 @@ describe('usePartDoc undo preview and session boundary', () => {
     expect(cancelled).toBeNull()
   })
 
-  it('a preview opened but never touched leaves nothing behind when the session commits', () => {
+  it('a preview cannot open mid-session: startPreviewMode is refused and leaves the session baseline intact', () => {
     docRef.current = {
       version: 1,
       kind: 'part',
@@ -162,22 +139,24 @@ describe('usePartDoc undo preview and session boundary', () => {
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
-    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
-    act(() => { result.current.commitEditSession() })
+    expect(() => {
+      act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
+    }).toThrow(/startPreviewMode called while an edit session is active/)
 
+    // The refused call did not track a preview or overwrite the session: a
+    // commit with no changes leaves no entry, and Cancel has nothing to rewind.
+    act(() => { result.current.commitEditSession() })
     expect(result.current.undoStack).toHaveLength(0)
     let cancelled: PartDoc | null = null
     act(() => { cancelled = result.current.cancelPreview() })
     expect(cancelled).toBeNull()
   })
 
-  it('a non-preview edit swallowed while the popover stays open is discarded cleanly by session cancel', () => {
+  it('a non-preview edit swallowed by a suppressed session is discarded cleanly by session cancel', () => {
     // The cancel-leg repro: a feature-field edit landing inside a suppressed
-    // session while the popover is open used to be swallowed with no entry
-    // (the escape gate required the session itself to not be active), and a
-    // later Cancel rewinding past the session snapshot dropped it silently.
-    // Confirms it is discarded together with the whole session, no dead entry
-    // left behind either way.
+    // session used to be swallowed with no entry, and a later Cancel rewinding
+    // past the session baseline dropped it silently. Confirms it is discarded
+    // together with the whole session, no dead entry left behind either way.
     docRef.current = {
       version: 1,
       kind: 'part',
@@ -188,10 +167,9 @@ describe('usePartDoc undo preview and session boundary', () => {
 
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
-    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
 
-    act(() => { result.current.handleMutation(renameTo('mid-popover')) })
-    expect(labelOf()).toBe('mid-popover')
+    act(() => { result.current.handleMutation(renameTo('mid-session')) })
+    expect(labelOf()).toBe('mid-session')
     expect(result.current.undoStack).toHaveLength(0)
 
     act(() => { result.current.cancelEditSession() })
@@ -200,9 +178,9 @@ describe('usePartDoc undo preview and session boundary', () => {
     expect(result.current.undoStack).toHaveLength(0)
     expect(result.current.redoStack).toHaveLength(0)
 
-    // previewOriginalDoc was dropped WITH the session rather than rewound
-    // through, so the popover's own Cancel afterward is an inert no-op instead
-    // of a second, stale rewind.
+    // The session rewind dropped the swallowed edit; the popover's own Cancel
+    // afterward finds no preview and is an inert no-op instead of a second,
+    // stale rewind.
     let cancelled: PartDoc | null = null
     act(() => { cancelled = result.current.cancelPreview() })
     expect(cancelled).toBeNull()
@@ -305,11 +283,10 @@ describe('usePartDoc undo preview and session boundary', () => {
     expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
   })
 
-  it('a preview opened mid suppressed session commits preview_commit on top so two undos return to the pre-session doc', () => {
-    // The popover is opened AFTER the session already has edits (so its baseline
-    // is the edited doc, not the pre-session one). The color is the last thing
-    // the user touched, so undo must revert the color first and the edits
-    // second -- never resurrect the swallowed edits on the second undo.
+  it('a colour change in a suppressed session is one aggregate: a single undo returns to the pre-session doc', () => {
+    // The popover cannot open mid-session, so the colour mutation is swallowed
+    // by the session and folded in by styleTouched. No preview_commit sits on
+    // top, and one undo -- not two -- returns to the pre-session doc.
     docRef.current = {
       version: 1,
       kind: 'part',
@@ -321,25 +298,17 @@ describe('usePartDoc undo preview and session boundary', () => {
     usePartEditorStore.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('edited')) })
-    // Open the color preview now, while the session already holds the rename.
-    act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
     act(() => { result.current.commitEditSession() })
 
-    // Top entry is the preview_commit (last interaction); beneath it the
-    // aggregate edit_session that restores the pre-session doc.
-    expect(result.current.undoStack).toHaveLength(2)
+    expect(result.current.undoStack).toHaveLength(1)
     expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
-    expect(result.current.undoStack[1].mutation.type).toBe('preview_commit')
     expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#00ff00')
 
-    // Undo 1: revert the color only, the rename stays.
+    // One undo reverts the colour and the rename together, back to the
+    // pre-session doc.
     act(() => { result.current.handleUndo() })
     expect((docRef.current.part_style?.b1 as { color?: string }).color).toBe('#ff0000')
-    expect((docRef.current.features?.[0] as { label?: string }).label).toBe('edited')
-
-    // Undo 2: revert the edits, back to the pre-session doc.
-    act(() => { result.current.handleUndo() })
     expect((docRef.current.features?.[0] as { label?: string }).label).toBe('first')
   })
 })

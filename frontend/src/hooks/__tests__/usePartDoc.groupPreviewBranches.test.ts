@@ -232,7 +232,7 @@ describe('group preview scope and suppression', () => {
     expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
   })
 
-  it('an all-preview group swallowed by a suppressed session with an open preview still earns its entry', () => {
+  it('an all-preview group swallowed by a suppressed session folds into the aggregate', () => {
     docRef.current = {
       version: 1, kind: 'part',
       part_style: { b1: { color: '#ff0000' } },
@@ -241,9 +241,11 @@ describe('group preview scope and suppression', () => {
     const { result } = renderPartDoc()
 
     act(() => { result.current.startEditSession(true) })
-    // A color preview opened inside the session: the session's 'all' scope
-    // swallows the group, but the preview still owns the undo entry for it.
-    act(() => { result.current.startPreviewMode(structuredClone(docRef.current!)) })
+    // A colour popover cannot open over the session; the group lands as an
+    // ordinary session edit.
+    expect(() => {
+      act(() => { result.current.startPreviewMode(structuredClone(docRef.current!)) })
+    }).toThrow(/startPreviewMode called while an edit session is active/)
     act(() => {
       result.current.commitMutationGroup([
         { type: 'set_part_color', bodyId: 'b1', color: '#00ff00' },
@@ -251,13 +253,13 @@ describe('group preview scope and suppression', () => {
       ] as Mutation[])
     })
 
-    // Swallowed as a preview frame: no per-frame entry while the session is open.
+    // Swallowed by the session: no per-frame entry while it is open.
     expect(result.current.undoStack).toHaveLength(0)
     act(() => { result.current.commitEditSession() })
-    // The preview_commit pushes the entry that can revert the color; without it
-    // the change lands in the doc with no way back.
+    // styleTouched folds the body-style change into the one aggregate; there is
+    // no preview_commit to push.
     expect(result.current.undoStack).toHaveLength(1)
-    expect(result.current.undoStack[0].mutation.type).toBe('preview_commit')
+    expect(result.current.undoStack[0].mutation.type).toBe('edit_session')
   })
 })
 
