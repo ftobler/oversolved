@@ -411,16 +411,28 @@ describe('dispatchKey', () => {
   })
 
   // Two mounted command registrations each forward their own keydown to here and
-  // both resolve the same last-writer-wins handler. A command run owns the event
-  // by preventDefault, so the cancelling event is the once-per-event guard that
-  // stops the second listener replaying the command.
-  it('does not replay a command when the event is already defaultPrevented', () => {
+  // both resolve the same last-writer-wins handler. The once-per-event guard is
+  // the identity of the event a command already ran for, so the second call with
+  // the same object is the one that bails.
+  it('does not replay a command for the same event object', () => {
     const fn = vi.fn()
     registerCommand('undo', fn)
-    const e = { ...fakeKey('z', { ctrlKey: true }), defaultPrevented: true } as unknown as KeyboardEvent
+    const e = fakeKey('z', { ctrlKey: true })
+    expect(dispatchKey(e)).toBe(true)
     expect(dispatchKey(e)).toBe(false)
-    expect(fn).not.toHaveBeenCalled()
-    expect(e.preventDefault).not.toHaveBeenCalled()
+    expect(fn).toHaveBeenCalledOnce()
+    expect(e.preventDefault).toHaveBeenCalledOnce()
+  })
+
+  // The guard is narrower than defaultPrevented: a non-modal handler that cancels
+  // a key for its own reasons (PartColorPopover calls preventDefault for Escape)
+  // never ran a command through here, so the event must still be dispatched.
+  it('dispatches an event another handler already defaultPrevented', () => {
+    const fn = vi.fn()
+    registerCommand('cancel_draw', fn)
+    const e = { ...fakeKey('Escape'), defaultPrevented: true } as unknown as KeyboardEvent
+    expect(dispatchKey(e)).toBe(true)
+    expect(fn).toHaveBeenCalledOnce()
   })
 })
 

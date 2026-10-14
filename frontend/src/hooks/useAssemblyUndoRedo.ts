@@ -91,7 +91,15 @@ export function useAssemblyUndoRedo(
     // start value) must not charge an entry: the pre-session doc and the
     // current doc are structurally equal, so undoing it would restore an
     // identical document. Mirrors docDiffersForSession's whole-doc guard.
-    if (assemblyDocEquals(pending.doc, docRef.current)) return
+    if (assemblyDocEquals(pending.doc, docRef.current)) {
+      // No entry lands, so nothing in the history represents the session's
+      // edits; but each of them set the dirty flag on the way through, so the
+      // frame would stay flagged unsaved with nothing to save. Reconcile the
+      // flag exactly as the cancel twin does, with `rewound` false because the
+      // session netted to zero and threw nothing away.
+      reconcileDirtyAfterRewind(pending.dirty, false, () => stringifyYaml(pending.doc))
+      return
+    }
     pushUndo(pending.doc, pending.label)
   }, [pushUndo, docRef])
 
