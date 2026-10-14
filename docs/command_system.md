@@ -79,21 +79,59 @@ Routes pointer clicks from sketch geometry through the tool registry:
 
 ### Undo/Redo
 
-Two engines, both capped at `MAX_UNDO_DEPTH = 50` (`config/undoConfig.ts`). They do not share a stack implementation: the part editor uses `useUndoRedo.ts`, the assembly editor has its own.
+Two engines, both capped at `MAX_UNDO_DEPTH = 50` (`config/undoConfig.ts`). The
+part editor's engine is the framework-free `DocSession` history
+(`session/History.ts`); the assembly editor keeps its own.
 
 | | Part editor | Assembly editor |
 |---|---|---|
-| Hook | `usePartDoc.ts` over `useUndoRedo.ts` | `useAssemblyUndoRedo.ts` |
-| Entry | `{ doc, mutation: Mutation }` | `{ doc, label: AssemblyUndoLabel }` |
-| Stacks | paired refs, mirrored to state | `undoStack`/`redoStack` in `assemblyStore` |
+| Engine | `DocSession` (`session/DocSession.ts`), wrapped by `usePartDoc.ts` | `useAssemblyUndoRedo.ts` |
+| Entry | `{ doc, meta: Mutation }` in `History` | `{ doc, label: AssemblyUndoLabel }` |
+| Stacks | the `History` class, mirrored through the adapter | `undoStack`/`redoStack` in `assemblyStore` |
 | Clone | `cloneDocForUndo` (`yamlMutations/undoSnapshot.ts`) | inline `structuredClone` |
-| Writes | `Mutation` values through `handleMutation` | labelled closures, `mutate(label, fn)` |
+| Writes | `Mutation` values through `session.execute`/`executeGroup` | labelled closures, `mutate(label, fn)` |
 
-- **Part funnel.** `handleMutation` clones the doc, runs `mutationHandlers[m.type]` on the clone (the appliers in `utils/yamlMutations/` mutate that clone in place), mirrors the rollback bar when no edit is open, drops byte-identical results for the variants `IDEMPOTENT_MUTATION` classifies as idempotent (`hooks/mutationIdempotence.ts`, total over the union so a new variant cannot be added unclassified), then either swallows the mutation (suppressed session or preview) or calls `applyWithholdOrPush` -> `pushUndo`. `commitMutationGroup` runs several mutations on one clone as one entry.
-- **Undo/redo.** `applyUndoRedo` does nothing on an empty stack or missing doc, except that a caller which passed `openWorkCommitted` still tears the editor down: its own commit cleared that branch, so the move is a no-op because of work just resolved, not a dead keystroke. Otherwise it tears down open work first (`tearDownEditorState`), moves the entry across, clones the departing doc as the counterpart, and re-solves. The engine owns that decision, so `usePartDoc` passes the fact along rather than compensating for it.
-- **Snapshot pairing.** `saveUndoStackSnapshot` runs in `startEditSession`. `cancelEditSession` rewinds the doc, then `restoreUndoStackSnapshot`. `commitEditSession` calls `clearUndoStackSnapshot`.
-- **Preview.** `startPreviewMode` suppresses entries while no edit session owns the doc; mid-session it refuses, so the popover's mutations land as session edits (swallowed by a suppressed session, per-action in a sketch session). Only the `PREVIEW_SCOPE` appearance mutations (`set_part_*`) are swallowed; any other mutation commits the preview first. A preview open at session start is resolved with its own entry before the session opens. `commitPreview` pushes one entry labelled from the part_style diff. `cancelPreview` rewinds the live doc to the original and returns it; the caller (`Part.tsx`) only closes the popover.
-- **Edit session.** `startEditSession(suppressUndo)`. A suppressed (feature) session folds into one `edit_session` entry on commit, only when the doc differs. A sketch session keeps one entry per action.
+- **Part funnel.** `usePartDoc.handleMutation` calls `session.execute(m)`; the
+  session clones the doc, runs `mutationHandlers[m.type]` on the clone (the
+  appliers in `utils/yamlMutations/` mutate that clone in place), mirrors the
+  rollback bar through its injected editor facts when no edit is open, drops
+  byte-identical results for the variants `IDEMPOTENT_MUTATION` classifies as
+  idempotent (`hooks/mutationIdempotence.ts`, total over the union so a new
+  variant cannot be added unclassified), then routes the change through the
+  open transactions: a suppressed session swallows it, a live preview swallows
+  only its `PREVIEW_SCOPE`, everything else becomes one entry (a pending brep
+  projection banks under its dimension commit). `executeGroup` runs several
+  mutations on one clone as one entry. Refused transitions are error Results in
+  the session; the adapter is the one that voices the pinned `failLoud` text.
+- **Transactions.** `session.begin(kind)` opens `preview`/`edit`/`gesture`/`brep`
+  work and returns an id; `commit(id)`/`cancel(id)` settle it. Nested or invalid
+  transitions return an error Result and record a diagnostic in every
+  environment. Cancel restores the doc and the parked history stacks as one
+  unit and reconciles the unsaved flag from the pinned `{dirty, saves}` plus the
+  save fingerprint. The brep arm/consume/steal and the preview escape live in
+  the session's mutation funnel.
+- **Undo/redo.** `session.undo()`/`redo()` resolve open work first (bank a
+  pending projection, commit a would-push session or preview), move one entry
+  across, swap the doc, emit `transactionsDropped` + `historyRestored`, and
+  re-solve with any retained pre-delete snapshot. A move whose own commit
+  emptied the branch still tears the editor down, because the session knows
+  what it just committed. The adapter applies the editor writes on
+  `historyRestored` (editing id, pick boundary, clamped rollback, dirty).
+- **Snapshot pairing.** `begin('edit')` saves the history snapshot. `cancel`
+  rewinds the doc, then restores the snapshot. `commit` clears it.
+- **Preview.** `begin('preview')`; mid-session it is refused, so the popover's
+  mutations land as session edits (swallowed by a suppressed session,
+  per-action in a sketch session). Only the `PREVIEW_SCOPE` appearance
+  mutations (`set_part_*`) are swallowed; any other mutation commits the
+  preview first. A preview open at session start is resolved with its own entry
+  before the session opens. `commit` pushes one entry labelled from the
+  part_style diff (an unchanged preview pushes nothing); `cancel` rewinds and
+  the adapter returns the restored doc; the caller (`Part.tsx`) closes the
+  popover.
+- **Edit session.** `begin('edit', { suppressed })`. A suppressed (feature)
+  session folds into one `edit_session` entry on commit, only when the doc
+  differs (excluding the solve-written `part_style`/`initial` and the pinned
+  rollback). A sketch session keeps one entry per action.
 - **Markers.** `set_rollback`, `edit_session` and `preview_commit` have no-op appliers in `mutationDispatch.ts`. The rollback is written by the mirror; the other two only label the entry.
 - **Assembly.** Edits are not `Mutation` values. `mutate` calls `decideAssemblyMutation` (`noop`, `push` or `fold`). A fold is pinned by `recordSessionEdit`, and `commitSession`/`cancelSession` settle it. `mutateOneShot` commits the open session, then pushes its own entry. `applyUndoRedo` closes the editor and resets transient state before swapping the doc.
 - **Labels.** Part entries are labelled through `describeMutation` (`utils/core/mutationDescriptions.ts`). Assembly labels are `ASSEMBLY_UNDO_LABELS` (`utils/core/assemblyUndoLabels.ts`).
