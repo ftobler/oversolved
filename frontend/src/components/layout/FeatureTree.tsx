@@ -11,6 +11,7 @@ import { RollbackSlider } from '@/components/layout/RollbackSlider'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
 import { BUILTIN_FEATURE_IDS } from '@/components/layout/builtinFeatureIds'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
+import { domHandleProps } from '@/picking'
 
 interface FeatureTreeProps {
   splitPercent: number
@@ -202,6 +203,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 }
               }}
               style={{ flexWrap: 'wrap' }}
+              {...domHandleProps(`tree:feature:${feature.id}`)}
             >
               <div className="feature-item-title">
                 <img

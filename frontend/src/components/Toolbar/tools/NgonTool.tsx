@@ -29,6 +29,7 @@ export default function NgonTool() {
         icon={toolbarNgonIcon}
         onClick={() => executeCommand('set_tool_ngon')}
         active={isActive}
+        handle="toolbar:set_tool_ngon"
       />
       {/* Side-count control: only while the n-gon tool is active. Changing it
           updates the live preview and the next polygon drawn. The store clamps

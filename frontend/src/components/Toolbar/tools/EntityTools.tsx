@@ -19,6 +19,7 @@ export default function EntityTools() {
           icon={iconUrl(def.toolbarIcon!)}
           onClick={() => executeCommand(narrowCommandName('set_tool_' + def.activeTool))}
           active={activeTool === def.activeTool}
+          handle={`toolbar:set_tool_${def.activeTool}`}
         />
       ))}
     </>

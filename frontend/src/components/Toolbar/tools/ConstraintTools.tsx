@@ -15,6 +15,7 @@ export default function ConstraintTools() {
           title={`${def.label}${shortcutHint(def)}`}
           icon={iconUrl(def.toolbarIcon!)}
           onClick={() => executeCommand(narrowCommandName('apply_' + def.kind))}
+          handle={`toolbar:apply_${def.kind}`}
         />
       ))}
     </>

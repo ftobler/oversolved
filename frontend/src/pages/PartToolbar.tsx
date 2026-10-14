@@ -5,6 +5,7 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
+import { domHandleProps } from '@/picking'
 import AppHeader from '@/components/layout/AppHeader'
 import Breadcrumb from '@/components/layout/Breadcrumb'
 import SaveButton from '@/components/layout/SaveButton'
@@ -57,6 +58,7 @@ export default function PartToolbar({
           disabled={undoStack.length === 0 || !ownsDocument}
           onMouseEnter={() => setUndoHover(true)}
           onMouseLeave={() => setUndoHover(false)}
+          {...domHandleProps('toolbar:undo')}
         >
           <span className="material-icons-outlined">undo</span>
         </button>
@@ -77,6 +79,7 @@ export default function PartToolbar({
           disabled={redoStack.length === 0 || !ownsDocument}
           onMouseEnter={() => setRedoHover(true)}
           onMouseLeave={() => setRedoHover(false)}
+          {...domHandleProps('toolbar:redo')}
         >
           <span className="material-icons-outlined">redo</span>
         </button>
@@ -92,7 +95,13 @@ export default function PartToolbar({
         )}
       </div>
       <SaveButton save={handleSave} />
-      <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
+      <button
+        className="toolbar-btn"
+        aria-label="Clone document"
+        title="Clone document"
+        onClick={handleClone}
+        {...domHandleProps('toolbar:clone_document')}
+      >
         <span className="material-icons-outlined">file_copy</span>
       </button>
     </AppHeader>

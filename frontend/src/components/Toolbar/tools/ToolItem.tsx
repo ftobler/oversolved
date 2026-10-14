@@ -30,6 +30,7 @@ export function ToolItem({ def, isActive, isDisabled, children }: {
         onClick={() => executeCommand(def.command)}
         active={isActive ?? (def.activeTool !== undefined && activeTool === def.activeTool)}
         disabled={isDisabled ?? false}
+        handle={`toolbar:${def.command}`}
       />
       {children}
     </>

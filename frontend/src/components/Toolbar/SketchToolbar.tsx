@@ -32,12 +32,14 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
         icon={iconUrl('toolbar-select')}
         onClick={() => executeCommand('set_tool_drag')}
         active={isDragActive || activeTool === 'drag' || activeTool === null}
+        handle="toolbar:set_tool_drag"
       />
 
       <ToolbarButton
         title="Reset Viewport"
         icon={viewportResetIcon}
         onClick={onResetViewport}
+        handle="toolbar:reset_viewport"
       />
 
       <div className="toolbar-separator" />
@@ -54,6 +56,7 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
         title={constructionKey ? `Toggle Construction (${constructionKey})` : 'Toggle Construction'}
         icon={iconUrl('constraint-line-swap')}
         onClick={() => executeCommand('toggle_construction')}
+        handle="toolbar:toggle_construction"
       />
 
       <ToolbarButton
@@ -62,6 +65,7 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
         active={isMirrorActive}
         disabled={!hasEntities && !isMirrorActive}
         onClick={() => executeCommand('set_tool_mirror')}
+        handle="toolbar:set_tool_mirror"
       />
 
       <ToolbarButton
@@ -69,6 +73,7 @@ export default function SketchToolbar({ onResetViewport }: SketchToolbarProps) {
         icon={iconUrl('toolbar-offset')}
         disabled={!hasEntities}
         onClick={() => executeCommand('apply_offset')}
+        handle="toolbar:apply_offset"
       />
 
       <ToolItem def={TOOL_DEFS.project} />
