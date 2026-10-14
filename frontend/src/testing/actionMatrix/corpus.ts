@@ -1,0 +1,117 @@
+// The action-matrix corpus: the documents the matrix sweeps, plus the target
+// enumerator that turns a document into the selection ids the command table
+// reads. The corpus is the frozen 70-spec regression baseline (the same specs
+// fullDocRegression replays through the kernel) plus the doc-shaped feature
+// fixtures under kernel/features/__fixtures__; the occ fixture tables are case
+// inputs for the kernel suites, not documents, so they are not part of the
+// matrix.
+import baseline from '@/wasm-kernel/regression-baseline.json'
+import faceExtrudeAfterArrayCut from '@/kernel/features/__fixtures__/faceExtrudeAfterArrayCut.json'
+import filletInvalidResultDoc from '@/kernel/features/__fixtures__/filletInvalidResultDoc.json'
+import type { PartDoc, PartFeature } from '@/types/cad'
+
+export interface CorpusDoc {
+  label: string
+  spec: PartDoc
+}
+
+// The PR-gate slice: the doc-shaped fixtures (real bug-report documents) plus
+// corpus labels chosen for target coverage (a sketch with entities and
+// constraints, a feature modifier, a real document). The full sweep widens to
+// every corpus document; the target caps must keep SMOKE <= FULL so the smoke
+// keys are always a prefix of the baseline.
+export const SMOKE_DOC_LABELS: readonly string[] = [
+  'fixture:faceExtrudeAfterArrayCut',
+  'fixture:filletInvalidResultDoc',
+  'rect_sketch_10x10',
+  'box_with_fillet',
+  'real_two_objects_1',
+]
+export const SMOKE_MAX_TARGETS = 6
+export const FULL_MAX_TARGETS = 12
+
+// The real-kernel PR-gate slice: the two bug-report fixtures solve at ~60-150
+// ms per mutating entry (every entry rebuilds from its own mutation), which
+// would add minutes to the default suite. They stay covered by the fake smoke
+// gate (statuses are scheduler-independent) and by the full real sweep behind
+// ACTION_MATRIX_FULL=1; these three replay in a few seconds.
+export const REAL_SMOKE_DOC_LABELS: readonly string[] = [
+  'rect_sketch_10x10',
+  'box_with_fillet',
+  'real_two_objects_1',
+]
+
+interface BaselineEntry {
+  label: string
+  spec?: PartDoc
+}
+
+// A deterministic doc order: baseline order first, fixtures appended. Frozen
+// because the baseline rows are keyed by (doc, target, command).
+export function corpusDocs(): CorpusDoc[] {
+  const docs: CorpusDoc[] = []
+  for (const entry of baseline as unknown as BaselineEntry[]) {
+    if (entry.spec) docs.push({ label: entry.label, spec: entry.spec })
+  }
+  docs.push({ label: 'fixture:faceExtrudeAfterArrayCut', spec: faceExtrudeAfterArrayCut as PartDoc })
+  docs.push({
+    label: 'fixture:filletInvalidResultDoc',
+    spec: { version: 1, kind: 'part', features: filletInvalidResultDoc as unknown as PartFeature[] },
+  })
+  return docs
+}
+
+export type MatrixTargetKind = 'none' | 'feature' | 'entity' | 'vertex' | 'constraint'
+
+export interface MatrixTarget {
+  // The exact string the UI writes into normalSelection; '<none>' stands for
+  // an empty selection.
+  id: string
+  kind: MatrixTargetKind
+  // The feature an element target belongs to, installed as activeFeatureId:
+  // an entity/vertex/constraint selection only exists while its sketch (or
+  // feature) editor is open, and the store methods gate on that id.
+  featureId: string | null
+}
+
+// Round-robin across kinds so a capped sweep still covers every target class
+// early (features, entities, vertices, constraints), not just the first
+// feature's first entity. The full list is the whole document.
+function interleave(groups: MatrixTarget[][]): MatrixTarget[] {
+  const out: MatrixTarget[] = []
+  const longest = Math.max(0, ...groups.map(g => g.length))
+  for (let i = 0; i < longest; i++) {
+    for (const group of groups) {
+      if (i < group.length) out.push(group[i])
+    }
+  }
+  return out
+}
+
+export function enumerateTargets(doc: PartDoc): MatrixTarget[] {
+  const features: MatrixTarget[] = []
+  const entities: MatrixTarget[] = []
+  const vertices: MatrixTarget[] = []
+  const constraints: MatrixTarget[] = []
+  for (const feature of doc.features ?? []) {
+    features.push({ id: `@${feature.id}`, kind: 'feature', featureId: null })
+    for (const entity of feature.entities ?? []) {
+      entities.push({ id: `entity:${feature.id}:${entity.id}`, kind: 'entity', featureId: feature.id })
+      if (entity.kind === 'line') {
+        vertices.push({ id: `vertex:${feature.id}:${entity.id}:start`, kind: 'vertex', featureId: feature.id })
+        vertices.push({ id: `vertex:${feature.id}:${entity.id}:end`, kind: 'vertex', featureId: feature.id })
+      }
+    }
+    for (const constraint of feature.constraints ?? []) {
+      constraints.push({ id: `constraint:${feature.id}:${constraint.id}`, kind: 'constraint', featureId: feature.id })
+    }
+  }
+  return [{ id: '<none>', kind: 'none', featureId: null }, ...interleave([features, entities, vertices, constraints])]
+}
+
+// The hidden "none" target is always swept: it pins every command's behavior
+// on an empty selection. maxTargets === null sweeps the whole document.
+export function targetsForSweep(doc: PartDoc, maxTargets: number | null): MatrixTarget[] {
+  const targets = enumerateTargets(doc)
+  return maxTargets === null ? targets : targets.slice(0, maxTargets)
+}
