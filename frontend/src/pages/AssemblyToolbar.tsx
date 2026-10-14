@@ -28,10 +28,8 @@ interface AssemblyToolbarProps {
 // has to take the same gate or a co-mount (split view, staged navigation) would
 // run whichever engine registered `undo` last while the disabled state below
 // reads the assembly store. The gate is strict here, exactly as dispatchKey's
-// assembly branch is.
-function assemblyEditorOwnsDocument(): boolean {
-  return useEditorModeStore.getState().activeEditor === 'assembly'
-}
+// assembly branch is. Read through a subscription so a mode change re-renders
+// the gate, which is the whole point of it.
 
 export default function AssemblyToolbar({
   docName,
@@ -44,7 +42,7 @@ export default function AssemblyToolbar({
   const redoStack = useAssemblyStore(s => s.redoStack) as AssemblyUndoEntry[]
   // The disabled state has to agree with the gate: a button that reads enabled
   // from the assembly store and then refuses to run is worse than a disabled one.
-  const ownsDocument = assemblyEditorOwnsDocument()
+  const ownsDocument = useEditorModeStore(s => s.activeEditor) === 'assembly'
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
 

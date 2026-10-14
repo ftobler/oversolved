@@ -17,10 +17,8 @@ type StackEntry = { mutation: Mutation }
 // (split view, staged navigation) would run whichever engine registered `undo`
 // last while the disabled state below reads the part store. An unresolved mode
 // is the sketch/part branch of dispatchKey, so only the assembly editor locks
-// this toolbar out.
-function partEditorOwnsDocument(): boolean {
-  return useEditorModeStore.getState().activeEditor !== 'assembly'
-}
+// this toolbar out. Read through a subscription, not getState: the gate exists
+// for the moment the mode changes, and a render-time sample would not re-run.
 
 interface PartToolbarProps {
   docName: string | null
@@ -45,7 +43,7 @@ export default function PartToolbar({
   const redoStack = usePartEditorStore(s => s.redoStack) as StackEntry[]
   // The disabled state has to agree with the gate: a button that reads enabled
   // from the part store and then refuses to run is worse than a disabled one.
-  const ownsDocument = partEditorOwnsDocument()
+  const ownsDocument = useEditorModeStore(s => s.activeEditor) !== 'assembly'
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
 

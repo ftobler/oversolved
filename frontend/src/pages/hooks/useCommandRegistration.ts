@@ -59,9 +59,18 @@ export function useCommandRegistration(commands: CommandEntry[]): void {
   })
   useEffect(() => {
     const unregisters = commands.map(({ name, fn }) => registerCommand(name, fn))
-    window.addEventListener('keydown', dispatchKey)
+    // A per-mount closure, never the module-level dispatchKey itself:
+    // addEventListener dedups on (type, callback, capture), so two mounted
+    // registrations sharing the one function hold a SINGLE DOM entry between
+    // them, and the first unmount's removeEventListener drops it for the sibling
+    // that is still mounted. The keyboard then goes dead with no warning, and
+    // a co-mounted editor pair is exactly the shape that gets there. A fresh
+    // function per effect run makes add and remove pair per instance, so one
+    // unmount can only ever remove its own listener.
+    const onKeyDown = (e: KeyboardEvent) => { dispatchKey(e) }
+    window.addEventListener('keydown', onKeyDown)
     return () => {
-      window.removeEventListener('keydown', dispatchKey)
+      window.removeEventListener('keydown', onKeyDown)
       for (const unregister of unregisters) unregister()
     }
   // Depend on individual handler identities. The caller is responsible for

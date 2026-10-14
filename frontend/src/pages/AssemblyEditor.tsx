@@ -186,11 +186,15 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   }, [doc, instances, mates])
 
   // Unmount-only: the editor is going away with a pinned coalescing session.
-  // Commit so navigation leaves exactly one entry instead of dropping the edits
-  // from undo forever. Callback de-registration is a separate effect below, so
-  // a mid-session re-registration can no longer commit (and split) a session
-  // that is still being edited. commitSession is stable (deps only pushUndo and
-  // docRef, both stable), so this effect never re-fires while mounted.
+  // Commit so the session's edits are not stranded mid-teardown, not so they
+  // stay undoable: the next mount's load calls clearAssemblyHistory, which
+  // wipes this very entry before any editor can consume it. What keeps the
+  // edits is useUnsavedChangesGuard and the header/breadcrumb discard prompt,
+  // which resolve long before this runs. Callback de-registration is a separate
+  // effect below, so a mid-session re-registration can no longer commit (and
+  // split) a session that is still being edited. commitSession is stable (deps
+  // only pushUndo and docRef, both stable), so this effect never re-fires while
+  // mounted.
   useEffect(() => {
     return () => { commitSession() }
   }, [commitSession])
@@ -448,6 +452,19 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     else if (subject.kind === 'mate') handleCancelMate()
   }, [handleCancelInstance, handleCancelMate])
 
+  // Undo's first stage: a live drag is abandoned through the store's own
+  // cancel path, the same teardown the viewport's Escape listener runs, rather
+  // than having the entry above it popped from under the held button. Both
+  // halves read the store so the command table itself stays store-free.
+  const manipulationLive = useCallback(
+    () => useAssemblyStore.getState().manipulation !== null,
+    [],
+  )
+  const cancelManipulation = useCallback(
+    () => useAssemblyStore.getState().cancelPartManipulation(),
+    [],
+  )
+
   // The command-to-operation wiring lives in buildAssemblyHandlers so the page
   // only supplies the live host and the UI side effects; a test can build the
   // same handlers with spies and observe exactly which operations fire.
@@ -464,10 +481,12 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     closeOpenEditor,
     onMateInserted: handleMateInserted,
     deleteSubject: handleDeleteSubject,
+    manipulationLive,
+    cancelManipulation,
   }), [
     runOperation, handleUndo, handleRedo, handleDeleteSelected, handleCancelEdit,
     openPicker, openExport, closeOpenEditor, handleMateInserted,
-    handleDeleteSubject,
+    handleDeleteSubject, manipulationLive, cancelManipulation,
   ])
   useAssemblyCommands(assemblyHandlers)
 

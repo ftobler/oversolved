@@ -34,6 +34,8 @@ function stubDeps(): AssemblyHandlerDeps {
     closeOpenEditor: fn,
     onMateInserted: fn,
     deleteSubject: fn,
+    manipulationLive: () => false,
+    cancelManipulation: fn,
   }
 }
 

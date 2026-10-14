@@ -186,6 +186,47 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(0)
   })
 
+  // Undo mid-drag used to do two things at once: applyUndoRedo popped the entry
+  // and restored the older doc, and its resetTransientAssemblyState silently
+  // abandoned the drag still under the held button. The undo command now takes
+  // the part editor's first stage: a live manipulation is torn down through the
+  // store's own cancel path (exactly what Escape runs) and history stays put,
+  // so one press is one change.
+  it('undo during a live drag cancels the drag without popping, and the next press pops', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    expect(undoStack()).toHaveLength(1)
+    const handle = useAssemblyStore.getState().instances[0].handle
+
+    // A body drag in flight: pointer down on the part, held and moved.
+    act(() => {
+      const s = useAssemblyStore.getState()
+      s.beginPartManipulation(handle)
+      s.dragPartTranslate([3, 0, 0])
+    })
+    expect(useAssemblyStore.getState().manipulation).not.toBeNull()
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+
+    // The drag is gone, the doc is untouched and no history moved.
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+    expect(useAssemblyStore.getState().instances).toHaveLength(1)
+    expect(undoStack()).toHaveLength(1)
+    expect(redoStack()).toHaveLength(0)
+
+    // Second press: nothing in flight, so it pops the entry as before.
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
+    expect(useAssemblyStore.getState().instances).toHaveLength(0)
+    expect(undoStack()).toHaveLength(0)
+    expect(redoStack()).toHaveLength(1)
+  })
+
   it('a fix toggle from the options menu records one undo step and undo reverts it', async () => {
     renderEditor()
     await tick()

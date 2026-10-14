@@ -5,7 +5,7 @@
 // `undo` last while the button's disabled state read the other store. Each
 // toolbar therefore stands down unless it owns the active editor.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, fireEvent, screen } from '@testing-library/react'
+import { render, fireEvent, screen, act } from '@testing-library/react'
 import PartToolbar from '@/pages/PartToolbar'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -91,6 +91,23 @@ describe('toolbar undo/redo editor scope', () => {
     renderPart()
     expect((undoButton() as HTMLButtonElement).disabled).toBe(true)
     expect((redoButton() as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  // The gate exists for the moment the mode CHANGES (a co-mounted pair taking
+  // over). Sampled at render time it would not re-run, so the button would keep
+  // advertising an undo it refuses to run until something else re-rendered it.
+  it('the part toolbar re-evaluates its gate when the active editor changes after mount', () => {
+    useEditorModeStore.getState().setActiveEditor('part')
+    renderPart()
+    expect((undoButton() as HTMLButtonElement).disabled).toBe(false)
+
+    act(() => { useEditorModeStore.getState().setActiveEditor('assembly') })
+
+    expect((undoButton() as HTMLButtonElement).disabled).toBe(true)
+
+    act(() => { useEditorModeStore.getState().setActiveEditor('part') })
+
+    expect((undoButton() as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('the assembly toolbar runs undo and redo while the assembly editor owns the document', () => {

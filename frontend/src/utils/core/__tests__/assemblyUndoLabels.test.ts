@@ -20,6 +20,8 @@ const ALL_ASSEMBLY_UNDO_LABELS = [
   'Reorder part',
   'Set position',
   'Set rotation',
+  'Toggle built-in visibility',
+  'Toggle origin visibility',
   'Toggle plane visibility',
   'Toggle visibility',
 ].sort()

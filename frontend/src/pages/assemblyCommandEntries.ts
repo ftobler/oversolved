@@ -95,6 +95,15 @@ export interface AssemblyHandlerDeps {
   onMateInserted: (id: string, kind: MateKind) => void
   // The store's one delete path, shared with the [Delete] key.
   deleteSubject: (subject: AssemblySubject) => void
+  /**
+   * The undo first stage, the part editor's stage for a half-placed draw
+   * point. Both halves are page-supplied so this wiring stays store-free, the
+   * same as every other dep here: `manipulationLive` asks whether a drag is
+   * under the held button, and `cancelManipulation` retires it through the
+   * store's own cancel path, which is exactly the teardown Escape runs.
+   */
+  manipulationLive: () => boolean
+  cancelManipulation: () => void
 }
 
 // The single wiring from command name to mutation. `delete_*` hand off to the
@@ -103,7 +112,19 @@ export interface AssemblyHandlerDeps {
 // command is a direct runOperation call.
 export function buildAssemblyHandlers(deps: AssemblyHandlerDeps): AssemblyCommandHandlers {
   return {
-    undo: deps.undo,
+    // A live drag owns the first press, mirroring the part editor's undo stage:
+    // it is abandoned through the store's cancel path, which retires the
+    // session and asks for the restoring solve, and history is left untouched.
+    // Falling through to the pop instead made one keystroke both drop the drag
+    // (applyUndoRedo's transient reset did that silently) and restore an older
+    // doc, which is two changes from one press.
+    undo: () => {
+      if (deps.manipulationLive()) {
+        deps.cancelManipulation()
+        return
+      }
+      deps.undo()
+    },
     redo: deps.redo,
     delete_selected: deps.deleteSelected,
     cancel_edit: deps.cancelEdit,
