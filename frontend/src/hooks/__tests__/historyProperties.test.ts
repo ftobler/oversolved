@@ -59,7 +59,10 @@ describe.each(entries)('history properties: %s', (type, example) => {
 
     expect(result.undoLabels).toHaveLength(1)
     expect(result.redoLabels).toHaveLength(0)
-    expect(result.undoLabels.length + result.redoLabels.length).toBeLessThanOrEqual(MAX_UNDO_DEPTH)
+    // The pair holds exactly the one entry the sequence produced, so a push
+    // that duplicated or lost an entry fails here. The cap itself is exercised
+    // non-vacuously by the dedicated test below.
+    expect(result.undoLabels.length + result.redoLabels.length).toBe(1)
   })
 
   it('a second dispatch obeys the no-op guard contract', () => {

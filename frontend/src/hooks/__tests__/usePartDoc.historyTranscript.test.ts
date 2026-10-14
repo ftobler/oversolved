@@ -837,6 +837,40 @@ describe('teardown, guard and solve-option rows', () => {
 
     expect(result.doc?.features).toHaveLength(1)
     expect(result.doc?.rollback).toBe(0)
+    // The store itself never moved off the position the undo restored, which
+    // is why the append mirrored 0 in the first place.
+    expect(result.editorState.rollbackPosition).toBe(0)
+  })
+
+  it('D08: a mutation after a session boundary reads the cleaned-up editor state', () => {
+    // The driver mirrors the page's exit cleanup, so a transcript that keeps
+    // going after commit or cancel sees the store the app would: no editing id,
+    // no pick boundary, and the bar re-derived from the doc.
+    const withSession = (end: TranscriptStep): TranscriptResult => runPartTranscript(rollbackDoc(), [
+      { kind: 'sessionStart', suppressed: true, featureId: 'f1' },
+      { kind: 'mutation', mutation: { type: 'rename_feature', featureId: 'f1', label: 'in-session' } },
+      end,
+      { kind: 'mutation', mutation: { type: 'rename_feature', featureId: 'f1', label: 'after' } },
+    ])
+
+    const committed = withSession({ kind: 'sessionCommit' })
+    expect(committed.editorState).toEqual({
+      editingFeatureId: null,
+      rollbackPosition: 2,
+      pickBoundary: null,
+    })
+    expect(committed.undoLabels).toEqual(['edit f1', 'rename f1 to after'])
+
+    const cancelled = withSession({ kind: 'sessionCancel' })
+    // The cleanup runs before the cancel (production's reset-before-cancel), so
+    // the rewind's own bar re-derivation is the last word on the position.
+    expect(cancelled.editorState).toEqual({
+      editingFeatureId: null,
+      rollbackPosition: 2,
+      pickBoundary: null,
+    })
+    expect(cancelled.doc?.rollback).toBe(2)
+    expect(cancelled.undoLabels).toEqual(['rename f1 to after'])
   })
 
   it('D06: only the drag family bypasses the solve cache; the group funnel never does', () => {

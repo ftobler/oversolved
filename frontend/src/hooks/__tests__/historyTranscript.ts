@@ -56,6 +56,19 @@ export interface TranscriptOptions {
   onStep?: (doc: PartDoc | null, stepIndex: number) => void
 }
 
+// The page's resetEditState on the way out of an editor (useEditFeature): it
+// clears the editing id and pick boundary and re-derives the bar from the live
+// doc. Production runs it AFTER a commit (commitEditFeature) and BEFORE a
+// cancel (cancelEditFeature, so the cancel's own replay and re-derivation read
+// the parked position), so the driver keeps that order and a row appended after
+// a session boundary reads the transient state the app would.
+function exitEditCleanup(): void {
+  const store = usePartEditorStore.getState()
+  store.setEditingFeatureId(null)
+  store.setPickBoundary(null)
+  store.setRollbackPosition(docRef.current?.rollback ?? null)
+}
+
 function applyStep(hook: ReturnType<typeof usePartDoc>, step: TranscriptStep): void {
   switch (step.kind) {
     case 'mutation':
@@ -74,13 +87,18 @@ function applyStep(hook: ReturnType<typeof usePartDoc>, step: TranscriptStep): v
       hook.cancelPreview()
       return
     case 'sessionStart':
-      if (step.featureId !== undefined) usePartEditorStore.getState().setEditingFeatureId(step.featureId)
+      // Production enters the session first and stamps the edited feature
+      // afterwards (useEditFeature's enterEditFeature), so the id is set after
+      // the session baseline exists, exactly as the page does it.
       hook.startEditSession(step.suppressed)
+      if (step.featureId !== undefined) usePartEditorStore.getState().setEditingFeatureId(step.featureId)
       return
     case 'sessionCommit':
       hook.commitEditSession()
+      exitEditCleanup()
       return
     case 'sessionCancel':
+      exitEditCleanup()
       hook.cancelEditSession()
       return
     case 'brepArm':
