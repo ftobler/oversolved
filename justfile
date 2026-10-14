@@ -128,6 +128,17 @@ fuzz seeds="200" steps="40":
     mkdir -p ../tmp
     FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts 2>&1 | tee ../tmp/fuzz.log
 
+# The full action-matrix sweep: every part command on every target of all 72
+# corpus documents, compared exactly against the committed baseline. The real
+# kernel runs where provisioned (the fake scheduler otherwise; a command's
+# status cannot depend on the scheduler), and the run takes minutes, so it is a
+# nightly, not a PR-gate, cost. The PR gate keeps the bounded smoke slices.
+# Regenerate the baseline with `npm run regen:action-matrix` from frontend/.
+[working-directory: "frontend"]
+ratchet-matrix:
+    mkdir -p ../tmp
+    ACTION_MATRIX_FULL=1 npx vitest run src/testing/actionMatrix/actionMatrixReal.test.ts 2>&1 | tee ../tmp/action_matrix.log
+
 # Test the Rust solver workspace (solver-core + sketch-solver + mate-solver)
 rust-test:
     mkdir -p tmp
