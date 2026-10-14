@@ -159,8 +159,12 @@ plain, JSON-safe snapshot of the scene, readable without a devtools connection:
 - `getSceneHandles(prefix?)` lists GL handles (probe pickables) and DOM
   handles (elements carrying `data-oversolved-handle`, e.g.
   `toolbar:set_tool_line`, `tree:feature:<id>`).
+- The dev bridge exposes the probe: `window.__oversolved.hitTest`,
+  `handles`, `worldToScreen` and the `probe` section of `inspect()` read these
+  same functions (see `docs/drive.md`).
 - The browser agreement test (probe `hitTest` vs real `resolveAllSync` per
-  pick class) lands with the drive-surface plan. Coordinates must be converted:
+  pick class) is still open, carried with the deferred browser tier (see
+  `docs/drive.md`). Coordinates must be converted:
   probe `screenPoints` and `hitTest` are CSS pixels while `resolveAllSync`
   takes device pixels (`IdPipeline.readWindow` applies the DPR). The per-class
   expectation must also encode the phase-1 gap: the probe is not

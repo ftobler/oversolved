@@ -60,6 +60,19 @@ shadows a mounted editor's specs).
 events from INPUT, TEXTAREA and SELECT elements, contenteditable targets and
 IME composition are skipped (`isEditableTarget`).
 
+### The Execution Seam Outside the UI
+
+The registry instance is the one seam every user action passes (toolbar,
+keymap, module-level `executeCommand`), so two external surfaces hang off the
+same instance in development and test builds:
+
+- A journaling subclass records every doc-changing command for repro replay.
+- The page installs `window.__oversolved` over the same instance, exposing
+  `commands()`/`execute()`/`script()` plus `inspect()`.
+
+The headless CLI drives the same spec table through a `DocSession` in node.
+All three are documented in `docs/drive.md`.
+
 ### Constraint Registry (`constraintRegistry.ts`)
 
 Defines all constraint kinds with their `shortcut`, `toolbarIcon`, `refPattern`, `renderKind`, and `category`. Auto-derives `CONSTRAINT_SHORTCUTS` map → `apply_<kind>` command names. Defines dimension rules and helpers.

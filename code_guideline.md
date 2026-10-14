@@ -315,6 +315,15 @@ describe('buildKeyString', () => {
 - No new `// eslint-disable` suppressions without explanation
 - TypeScript strict mode - no new `any` casts
 
+### Drive Surface and CLI
+
+- `window.__oversolved` exists in dev/test builds only; it is a test and
+  debugging surface, not a product API.
+- A document can be driven headlessly with one `DocSession` per process:
+  `npm run drive -- run|measure|export|replay ...` from `frontend/`.
+- Scripts, the inspect shape, the journal format and the CLI usage are
+  documented in `docs/drive.md`.
+
 ## 9. Architecture Patterns
 
 ### Command Registry
@@ -368,6 +377,7 @@ as a fallback seam for tests only.
 | Session engine rules | `session/DocSession.ts`, `session/History.ts` | `frontend/src/session/` |
 | Run Python tooling tests | `pytest tests/` | `tests/` |
 | Run frontend tests | `npx vitest run` | `frontend/` |
+| Drive a doc headlessly | `npm run drive -- run <script.json>` | `frontend/scripts/driveCli.ts` |
 | Run linter | `npm run lint` | `frontend/` |
 | Run type checker | `mypy tests/ oversolved/` | root |
 | Add new command | add a `CommandSpec` to the editor's table | `frontend/src/pages/commandEntries.ts` / `assemblyCommandEntries.ts` |
