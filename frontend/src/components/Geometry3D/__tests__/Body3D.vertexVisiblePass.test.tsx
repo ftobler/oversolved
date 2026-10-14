@@ -6,9 +6,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { useFrame } from '@react-three/fiber'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { POINT_HIT_PIXELS, POINT_VIS_PIXELS } from '@/components/Geometry3D/constants'
 import type { Mesh3D } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -39,12 +40,12 @@ const vertexQueries = ['@ex1/vertex/0', '@ex1/vertex/1', '@ex1/vertex/2']
 beforeEach(() => {
   syncSpy.mockClear()
   vi.mocked(useFrame).mockClear()
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
-  } as never)
+  })
 })
 
 async function renderBody(visible = true) {

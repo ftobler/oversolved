@@ -16,13 +16,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
 import { resetDbConnection } from '@/stores/documentStore/idb'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import type { PartDoc, Mutation } from '@/types/cad'
+import { editorState } from '@/stores/editorState'
 
 const { mockSolveViaWorker } = vi.hoisted(() => ({ mockSolveViaWorker: vi.fn() }))
 
@@ -92,10 +92,7 @@ describe('undo restore of pruned solve results', () => {
     resetDbConnection()
     await getFileRegistry().list()
     useUnsavedChangesStore.getState().setDirty(false)
-    const store = usePartEditorStore.getState()
-    store.setEditingFeatureId(DEFAULT_PART_EDITOR_DATA.editingFeatureId)
-    store.setPickBoundary(DEFAULT_PART_EDITOR_DATA.pickBoundary)
-    store.setRollbackPosition(DEFAULT_PART_EDITOR_DATA.rollbackPosition)
+    editorState.getState().resetEditorState()
     useSolverStore.setState({ isSolving: false, onCancelSolve: null })
   })
 

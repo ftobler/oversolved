@@ -8,6 +8,7 @@ import { useFaceIdRegistration } from '@/picking/useFaceIdRegistration'
 import { useIdBufferPointerDispatch } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The cold-load fix (e947f35c) minted a fresh IdPipeline per Suspense reveal so
 // click selection resolves against a live pipeline. Hover rides the SAME
@@ -64,7 +65,11 @@ describe('hover highlight after a cold-load / Suspense reveal', () => {
     resetBodyCallbacksForTest()
     canvas = makeCanvas()
     glRef = { current: { domElement: canvas } as unknown as import('three').WebGLRenderer }
-    useSketchEditorStore.setState({ activeTool: null, hoveredSelectionId: null, hoveredPickKey: null })
+    useEditorState.setState({
+    activeTool: null,
+    hoveredSelectionId: null,
+    hoveredPickKey: null,
+  })
   })
 
   afterEach(() => {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { registerCommand, executeCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
 import { buildCommandEntries } from '@/pages/commandEntries'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Plane selection is no longer a parallel store path. It is just a pick field
 // (`activePickField = { featureId, field: 'plane' }`) consumed by PlaneSelector
@@ -12,7 +13,7 @@ import { buildCommandEntries } from '@/pages/commandEntries'
 beforeEach(() => { clearAllHandlers() })
 
 function reset() {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     hoveredSelectionId: null,
     isPointerDown: false,

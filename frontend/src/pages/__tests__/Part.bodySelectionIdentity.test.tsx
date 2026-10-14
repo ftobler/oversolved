@@ -14,6 +14,7 @@ import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // `vi.hoisted`, because the usePartDoc factory below is hoisted above this line
 // and reads the spies while building the module.
@@ -61,7 +62,7 @@ vi.mock('../../components/layout/Sidebar', async () =>
   (await import('@/__tests__/test-utils')).sidebarMockModule())
 
 function resetSelection() {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),
@@ -170,10 +171,10 @@ describe('Delete key on a mixed sketch + 3D selection', () => {
     // Inside the sketch editor the active feature is the sketch, so the entity
     // target is the half the store consumes and @ex1 is the half it leaves.
     act(() => {
-      useSketchEditorStore.setState({
-        activeFeatureId: 'sk1',
-        normalSelection: new Set(['entity:sk1:L1', '@ex1']),
-      })
+      useEditorState.setState({
+    activeFeatureId: 'sk1',
+    normalSelection: new Set(['entity:sk1:L1', '@ex1']),
+  })
     })
     await act(async () => { executeCommand('delete_selected') })
 
@@ -193,10 +194,10 @@ describe('Delete key on a mixed sketch + 3D selection', () => {
     // ex2 GENERATES body_ex2 and is NOT selected, so the body outlives its
     // generator here and keeps a real delete_body beside the sketch delete.
     act(() => {
-      useSketchEditorStore.setState({
-        activeFeatureId: 'sk1',
-        normalSelection: new Set(['entity:sk1:L1', '@body_ex2']),
-      })
+      useEditorState.setState({
+    activeFeatureId: 'sk1',
+    normalSelection: new Set(['entity:sk1:L1', '@body_ex2']),
+  })
     })
     await act(async () => { executeCommand('delete_selected') })
 
@@ -211,10 +212,10 @@ describe('Delete key on a mixed sketch + 3D selection', () => {
   it('a sketch entity alone still routes through the store delete (one handleMutation, no group)', async () => {
     await renderPartInFeatureMode()
     act(() => {
-      useSketchEditorStore.setState({
-        activeFeatureId: 'sk1',
-        normalSelection: new Set(['entity:sk1:L1']),
-      })
+      useEditorState.setState({
+    activeFeatureId: 'sk1',
+    normalSelection: new Set(['entity:sk1:L1']),
+  })
     })
     await act(async () => { executeCommand('delete_selected') })
 

@@ -120,11 +120,17 @@ export function viewportMockModule(handle: Record<string, unknown> = {}) {
  */
 export async function partDocMockModule(overrides: Record<string, unknown> = {}) {
   const { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } = await import('@/utils/builtins')
+  const { usePartEditorStore } = await import('@/stores/partEditorStore')
+  const { useEffect, useMemo } = await import('react')
   const emptyDoc = () => ({ version: 1, kind: 'part', features: [], part_style: {} })
   return {
     BUILTIN_FEATURE_DEFAULTS,
     BUILTIN_FEATURE_IDS,
-    usePartDoc: () => ({
+    // The real usePartDoc/useSolver publish their session and solve facts into
+    // partEditorStore; the mock must emulate that side effect or a mocked page
+    // sees an empty store (the Sidebar mock reads bodies from it).
+    usePartDoc: () => {
+      const value = useMemo(() => ({
       doc: emptyDoc(),
       setDoc: vi.fn(),
       docRef: { current: emptyDoc() },
@@ -160,8 +166,29 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       beginBrepProjection: vi.fn(),
       cancelBrepProjection: vi.fn(),
       registerUndoTeardown: vi.fn(),
+      featureTimings: {},
+      validation: null,
+      pickStateReady: false,
       ...overrides,
-    }),
+      }), [])
+      useEffect(() => {
+        const doc = value.doc as { features?: unknown[] } | null
+        usePartEditorStore.getState().publishSession({
+          doc: value.doc as never,
+          features: (doc?.features ?? []) as never,
+          undoStack: value.undoStack as never,
+          redoStack: value.redoStack as never,
+        })
+        usePartEditorStore.getState().publishSolve({
+          solveResults: value.solveResults as never,
+          bodies: value.bodies as never,
+          pickBodies: value.pickBodies as never,
+          featureTimings: value.featureTimings as never,
+          validation: value.validation as never,
+        })
+      }, [value])
+      return value
+    },
   }
 }
 

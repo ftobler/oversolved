@@ -3,11 +3,12 @@ import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
-import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { Wrapper } from '@/__tests__/test-utils'
 import { backendBundle } from '@/adapters/backend'
 import type { WorkspaceDocPayload } from '@/adapters/openWorkspace'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // undo-document-reset at the Part-page level: the store-owned fields
 // (rollbackPosition, pickBoundary, editingFeatureId) and the sketch editor's
@@ -77,20 +78,22 @@ describe('Part - document change resets the editor store', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
-    usePartEditorStore.setState({
-      editingFeatureId: null,
-      pickBoundary: null,
-      rollbackPosition: null,
-    })
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      selectedPicks: new Map(),
-      chipOwnedSelection: new Set(),
-      activePickField: null,
-      modeStack: [],
-      pendingDialog: null,
-      contextMenu: null,
-    })
+    useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+  })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
+    contextMenu: null,
+  })
   })
 
   it('a keyed remount to another document leaves the editor store fresh and B\'s first solve clean', async () => {
@@ -113,16 +116,16 @@ describe('Part - document change resets the editor store', () => {
     // exact state a clone navigation would carry into B without a remount. The
     // direct setState wakes the page's store subscribers, hence act().
     act(() => {
-      usePartEditorStore.setState({
-        editingFeatureId: 'ex1',
-        pickBoundary: 1,
-        rollbackPosition: 0,
-      })
-      useSketchEditorStore.setState({
-        normalSelection: new Set(['?01;deadbeef:face']),
-        activePickField: { featureId: 'ex1', field: 'bodies' },
-        modeStack: ['pick'],
-      })
+      useEditorState.setState({
+    editingFeatureId: 'ex1',
+    pickBoundary: 1,
+    rollbackPosition: 0,
+  })
+      useEditorState.setState({
+    normalSelection: new Set(['?01;deadbeef:face']),
+    activePickField: { featureId: 'ex1', field: 'bodies' },
+    modeStack: ['pick'],
+  })
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'to B' }))
@@ -135,10 +138,10 @@ describe('Part - document change resets the editor store', () => {
     // The store-owned fields are B's own again: bar parked at B's feature count,
     // no edit in flight.
     await waitFor(() => {
-      expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
+      expect(useEditorState.getState().rollbackPosition).toBe(1)
     })
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
-    expect(usePartEditorStore.getState().pickBoundary).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().pickBoundary).toBeNull()
 
     // The sketch editor module state did not survive the remount either.
     const sketchStore = useSketchEditorStore.getState()
@@ -166,12 +169,12 @@ describe('Part - document change resets the editor store', () => {
     // A is mid dimension gesture: one entity picked, cursor parked, tool armed.
     // The exact state a navigation would leak into B without the full reset.
     act(() => {
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:ex1:l1' }],
-        dimensionCursorWorld: [5, 5],
-        activeTool: 'dimension',
-        drawPoints: [[0, 0]],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:ex1:l1' }],
+    dimensionCursorWorld: [5, 5],
+    activeTool: 'dimension',
+    drawPoints: [[0, 0]],
+  })
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'to B' }))

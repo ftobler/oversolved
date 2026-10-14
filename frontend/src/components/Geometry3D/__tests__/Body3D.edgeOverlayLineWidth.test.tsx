@@ -4,9 +4,10 @@
 // matching test).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { EDGE_HIGHLIGHT_LINE_WIDTH } from '@/components/Geometry3D/constants'
 import type { Mesh3D, EdgeData } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -22,17 +23,19 @@ const mesh: Mesh3D = {
 const edges: EdgeData[] = [{ kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }]
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
-  } as never)
+  })
 })
 
 describe('Body3D edge overlay linewidth', () => {
   it('renders the selected edge overlay at EDGE_HIGHLIGHT_LINE_WIDTH', async () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@ex1/edge/0']) } as never)
+    useEditorState.setState({
+    normalSelection: new Set(['@ex1/edge/0']),
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     const { container } = render(
       <Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} edges={edges} edgeQueries={['@ex1/edge/0']} />
@@ -42,7 +45,9 @@ describe('Body3D edge overlay linewidth', () => {
   })
 
   it('renders the hovered edge overlay at EDGE_HIGHLIGHT_LINE_WIDTH', async () => {
-    useSketchEditorStore.setState({ hoveredSelectionId: '@ex1/edge/0' } as never)
+    useEditorState.setState({
+    hoveredSelectionId: '@ex1/edge/0',
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     const { container } = render(
       <Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} edges={edges} edgeQueries={['@ex1/edge/0']} />

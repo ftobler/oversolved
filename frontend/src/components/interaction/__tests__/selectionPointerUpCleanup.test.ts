@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { runPointerUpCleanup, runPointerUpDragSafetyNet, useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import type { DragPendingState, DragState } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const pending: DragPendingState = {
   type: 'vertex',
@@ -25,7 +26,7 @@ const drag: DragState = {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     isPointerDown: false,
     drag: null,
     dragPending: null,
@@ -37,9 +38,9 @@ beforeEach(() => {
 
 describe('runPointerUpCleanup', () => {
   it('does nothing when isPointerDown is false', () => {
-    useSketchEditorStore.setState({
-      isPointerDown: false,
-    })
+    useEditorState.setState({
+    isPointerDown: false,
+  })
 
     runPointerUpCleanup()
 
@@ -48,9 +49,9 @@ describe('runPointerUpCleanup', () => {
   })
 
   it('clears isPointerDown when true', () => {
-    useSketchEditorStore.setState({
-      isPointerDown: true,
-    })
+    useEditorState.setState({
+    isPointerDown: true,
+  })
 
     runPointerUpCleanup()
 
@@ -59,9 +60,9 @@ describe('runPointerUpCleanup', () => {
   })
 
   it('called twice in a row: second call is a no-op (isPointerDown already false)', () => {
-    useSketchEditorStore.setState({
-      isPointerDown: true,
-    })
+    useEditorState.setState({
+    isPointerDown: true,
+  })
 
     runPointerUpCleanup()
     runPointerUpCleanup()
@@ -75,7 +76,11 @@ describe('runPointerUpCleanup', () => {
     try {
       // Simulate a lost gesture: dragPending was set on pointerdown but the
       // DragPlane that would clear it was unmounted by a load race.
-      useSketchEditorStore.setState({ isPointerDown: true, dragPending: pending, dragStartClient: [10, 10] })
+      useEditorState.setState({
+    isPointerDown: true,
+    dragPending: pending,
+    dragStartClient: [10, 10],
+  })
 
       runPointerUpCleanup()
 
@@ -96,7 +101,14 @@ describe('runPointerUpCleanup', () => {
   it('deferred net does not clobber a drag committed by another pointerup handler', () => {
     vi.useFakeTimers()
     try {
-      useSketchEditorStore.setState({ isPointerDown: true, drag, dragPending: pending, dragStartClient: [10, 10] })
+      useSketchEditorStore.setState({
+    drag,
+  })
+  useEditorState.setState({
+    isPointerDown: true,
+    dragPending: pending,
+    dragStartClient: [10, 10],
+  })
 
       // runPointerUpCleanup runs first (registered at Viewport mount) and only
       // clears isPointerDown synchronously, leaving the drag intact for the
@@ -106,7 +118,12 @@ describe('runPointerUpCleanup', () => {
       expect(useSketchEditorStore.getState().dragPending).toBe(pending)
 
       // The real commit handler clears the gesture synchronously...
-      useSketchEditorStore.setState({ drag: null, dragPending: null, dragStartClient: null, dragSnap: null })
+      useEditorState.setState({
+    drag: null,
+    dragPending: null,
+    dragStartClient: null,
+    dragSnap: null,
+  })
 
       // ...so by the time the deferred net runs there is nothing left to do.
       vi.runAllTimers()
@@ -121,7 +138,15 @@ describe('runPointerUpCleanup', () => {
 
 describe('runPointerUpDragSafetyNet', () => {
   it('clears stuck drag and dragPending', () => {
-    useSketchEditorStore.setState({ isPointerDown: false, drag, dragPending: pending, dragStartClient: [10, 10], dragSnap: null })
+    useSketchEditorStore.setState({
+    drag,
+  })
+  useEditorState.setState({
+    isPointerDown: false,
+    dragPending: pending,
+    dragStartClient: [10, 10],
+    dragSnap: null,
+  })
 
     runPointerUpDragSafetyNet()
 
@@ -132,7 +157,11 @@ describe('runPointerUpDragSafetyNet', () => {
   })
 
   it('leaves an in-flight gesture alone when isPointerDown is true', () => {
-    useSketchEditorStore.setState({ isPointerDown: true, dragPending: pending, dragStartClient: [10, 10] })
+    useEditorState.setState({
+    isPointerDown: true,
+    dragPending: pending,
+    dragStartClient: [10, 10],
+  })
 
     runPointerUpDragSafetyNet()
 
@@ -142,7 +171,11 @@ describe('runPointerUpDragSafetyNet', () => {
   })
 
   it('is a no-op when there is no drag state', () => {
-    useSketchEditorStore.setState({ isPointerDown: false, drag: null, dragPending: null })
+    useEditorState.setState({
+    isPointerDown: false,
+    drag: null,
+    dragPending: null,
+  })
 
     runPointerUpDragSafetyNet()
 
@@ -158,8 +191,14 @@ describe('useSelectionPointerUpCleanup', () => {
     // pointercancel. The blur fallback must route through the same cleanup or
     // isPointerDown and the drag stay pinned.
     useSketchEditorStore.setState({
-      isPointerDown: true, drag, dragPending: pending, dragStartClient: [10, 10], dragSnap: null,
-    })
+    drag,
+  })
+  useEditorState.setState({
+    isPointerDown: true,
+    dragPending: pending,
+    dragStartClient: [10, 10],
+    dragSnap: null,
+  })
     renderHook(() => useSelectionPointerUpCleanup())
 
     act(() => { window.dispatchEvent(new Event('blur')) })

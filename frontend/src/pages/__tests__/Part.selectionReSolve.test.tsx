@@ -4,8 +4,9 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { solveViaWorker } from '@/kernel/worker/solverClient'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -41,15 +42,17 @@ describe('selection across a re-solve (clearSelectedPicks contract)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      selectedPicks: new Map(),
-      chipOwnedSelection: new Set(),
-      activePickField: null,
-      modeStack: [],
-      activeFeatureId: null,
-    })
-    usePartEditorStore.setState({ editingFeatureId: null })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+    activeFeatureId: null,
+  })
+    useEditorState.setState({
+    editingFeatureId: null,
+  })
   })
 
   it('clears the pick claims but keeps the query across an edit-enter re-solve', async () => {
@@ -76,7 +79,7 @@ describe('selection across a re-solve (clearSelectedPicks contract)', () => {
     // solve counts must advance so the assertions really straddle a re-solve.
     const solvesBeforeEnter = solveMock.mock.calls.length
     fireEvent.click(screen.getByTitle('Edit sketch'))
-    await waitFor(() => { expect(usePartEditorStore.getState().editingFeatureId).toBe('sk1') })
+    await waitFor(() => { expect(useEditorState.getState().editingFeatureId).toBe('sk1') })
     await act(async () => { await new Promise(r => setTimeout(r, 0)) })  // flush the enter's solve
     expect(solveMock.mock.calls.length).toBeGreaterThan(solvesBeforeEnter)
 
@@ -86,7 +89,7 @@ describe('selection across a re-solve (clearSelectedPicks contract)', () => {
 
     const solvesBeforeExit = solveMock.mock.calls.length
     fireEvent.click(screen.getByTitle('OK'))
-    await waitFor(() => { expect(usePartEditorStore.getState().editingFeatureId).toBeNull() })
+    await waitFor(() => { expect(useEditorState.getState().editingFeatureId).toBeNull() })
     await waitFor(() => { expect(solveMock.mock.calls.length).toBeGreaterThan(solvesBeforeExit) })
 
     // Leaving the sketch is not a re-solve question: setActiveFeatureId retires

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { PickChip } from '@/components/sketch/PickChip'
 import dragHandleIcon from '@/assets/icons/toolbar-menu.svg'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Count queryLabel calls so the memoization (L4) is observable: the label
 // computation must not rerun when values/features/partLabels are unchanged.
@@ -14,7 +15,7 @@ vi.mock('@/utils/query/queryLabel', () => ({ queryLabel: queryLabelSpy }))
 const SRC = join(__dirname, '..', '..', '..')
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     chipOwnedSelection: new Set(),
     normalSelection: new Set(),
   })

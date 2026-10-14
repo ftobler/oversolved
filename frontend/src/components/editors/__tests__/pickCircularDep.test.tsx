@@ -11,6 +11,7 @@ import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { ToastProvider } from '@/contexts/ToastContext'
 import type { PartFeature } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURES: PartFeature[] = [
   { id: 'sk1', kind: 'sketch' },
@@ -35,8 +36,11 @@ function pick(selectionId: string) {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
-    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
+  useEditorState.setState({
+    normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
   })
 })
 

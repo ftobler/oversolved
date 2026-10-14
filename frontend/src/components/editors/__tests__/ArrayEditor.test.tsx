@@ -12,6 +12,7 @@ import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { ARRAY_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURES: PartFeature[] = [
   { id: 'ex1', kind: 'extrude' },
@@ -44,10 +45,13 @@ function pick(selectionId: string) {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     // modeStack rides with activePickField: clearing the field alone would leave
     // the previous test's 'pick' entry for the next one to stack onto.
-    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
+    normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
   })
 })
 

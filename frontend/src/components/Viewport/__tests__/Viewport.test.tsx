@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { Feature, BodyResult } from '@/types/cad'
 import Viewport from '@/components/Viewport'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="canvas">{children}</div>,
@@ -129,26 +130,30 @@ function makeBody(): Record<string, BodyResult> {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
-    closeContextMenu: () => {},
+  useEditorState.setState({
     clearNormalSelection: () => {},
     setHoveredSelectionId: () => {},
+  })
+  useSketchUiStore.setState({
+    closeContextMenu: () => {},
     showDebugHit: false,
   })
   usePartEditorStore.setState({
     features: [],
     bodies: {},
     pickBodies: {},
-    ghostMode: false,
-    rollbackPosition: null,
     visibleFeatures: new Set(),
     visibleBodies: new Set(),
     solveResults: {},
     otherSketches: {},
+    doc: null,
+  })
+  useEditorState.setState({
+    ghostMode: false,
+    rollbackPosition: null,
     partColors: {},
     partStyle: {},
     activeSketchFeatureId: null,
-    doc: null,
   })
 })
 
@@ -171,10 +176,12 @@ describe('Viewport body interactivity', () => {
     // takes precedence over bodies via ID-buffer layer priority (z-index), not
     // by making bodies inert -- so Body3D must NOT be forced interactive=false.
     usePartEditorStore.setState({
-      features: [sketch, extrude],
-      bodies: makeBody(),
-      activeSketchFeatureId: 'sk1',
-    })
+    features: [sketch, extrude],
+    bodies: makeBody(),
+  })
+  useEditorState.setState({
+    activeSketchFeatureId: 'sk1',
+  })
     const { container } = render(<Viewport />)
     const items = container.querySelectorAll('[data-testid="body-3d"]')
     expect(items.length).toBeGreaterThan(0)
@@ -185,12 +192,14 @@ describe('Viewport body interactivity', () => {
 
   it('ghostMode renders pickBodies and shows a preview edge overlay', () => {
     usePartEditorStore.setState({
-      features: [sketch, extrude],
-      bodies: makeBody(),
-      pickBodies: makeBody(),
-      ghostMode: true,
-      rollbackPosition: 1,
-    })
+    features: [sketch, extrude],
+    bodies: makeBody(),
+    pickBodies: makeBody(),
+  })
+  useEditorState.setState({
+    ghostMode: true,
+    rollbackPosition: 1,
+  })
     const { getAllByTestId, getByTestId } = render(<Viewport />)
     // Only pickBodyItems rendered as Body3D, no duplicate for preview
     const items = getAllByTestId('body-3d')
@@ -208,12 +217,14 @@ describe('Viewport body interactivity', () => {
     // the edited feature).
     previewEdgeOverlayProps.mockClear()
     usePartEditorStore.setState({
-      features: [sketch, extrude],
-      bodies: makeBody(),
-      pickBodies: makeBody(),
-      ghostMode: true,
-      rollbackPosition: 1,
-    })
+    features: [sketch, extrude],
+    bodies: makeBody(),
+    pickBodies: makeBody(),
+  })
+  useEditorState.setState({
+    ghostMode: true,
+    rollbackPosition: 1,
+  })
     const { getByTestId } = render(<Viewport />)
     const overlay = getByTestId('preview-edge-overlay')
     expect(overlay.getAttribute('data-has-pick-items')).toBe('true')
@@ -242,13 +253,15 @@ describe('Viewport delete_body ghost preview', () => {
   const renderDeleteOfEx2 = () => {
     const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
     usePartEditorStore.setState({
-      features: [sketch, extrude, ex2, del],
-      bodies: preview,
-      pickBodies: twoBodies(),
-      visibleBodies: visibleOf(preview),
-      ghostMode: true,
-      rollbackPosition: 4,
-    })
+    features: [sketch, extrude, ex2, del],
+    bodies: preview,
+    pickBodies: twoBodies(),
+    visibleBodies: visibleOf(preview),
+  })
+  useEditorState.setState({
+    ghostMode: true,
+    rollbackPosition: 4,
+  })
     return render(<Viewport />).container
   }
 
@@ -262,15 +275,17 @@ describe('Viewport delete_body ghost preview', () => {
     // The removal look must override exactly one body, never the whole layer.
     const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
     usePartEditorStore.setState({
-      features: [sketch, extrude, ex2, del],
-      bodies: preview,
-      pickBodies: twoBodies(),
-      visibleBodies: visibleOf(preview),
-      ghostMode: true,
-      rollbackPosition: 4,
-      partColors: { body_ex1: '#123456', body_ex2: '#654321' },
-      partStyle: { body_ex1: { transparency: 0.25 } },
-    })
+    features: [sketch, extrude, ex2, del],
+    bodies: preview,
+    pickBodies: twoBodies(),
+    visibleBodies: visibleOf(preview),
+  })
+  useEditorState.setState({
+    ghostMode: true,
+    rollbackPosition: 4,
+    partColors: { body_ex1: '#123456', body_ex2: '#654321' },
+    partStyle: { body_ex1: { transparency: 0.25 } },
+  })
     const { container } = render(<Viewport />)
     expect(ghostAttr(container, 'data-color')).toEqual({ body_ex1: '#123456', body_ex2: '#654321' })
     expect(ghostAttr(container, 'data-transparency')).toEqual({ body_ex1: '0.25', body_ex2: '0' })
@@ -281,14 +296,16 @@ describe('Viewport delete_body ghost preview', () => {
   it('does not resurrect a doomed body the user hid', () => {
     const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
     usePartEditorStore.setState({
-      features: [sketch, extrude, ex2, del],
-      bodies: preview,
-      pickBodies: twoBodies(),
-      visibleBodies: visibleOf(preview),
-      ghostMode: true,
-      rollbackPosition: 4,
-      partStyle: { body_ex2: { visible: false } },
-    })
+    features: [sketch, extrude, ex2, del],
+    bodies: preview,
+    pickBodies: twoBodies(),
+    visibleBodies: visibleOf(preview),
+  })
+  useEditorState.setState({
+    ghostMode: true,
+    rollbackPosition: 4,
+    partStyle: { body_ex2: { visible: false } },
+  })
     const { container } = render(<Viewport />)
     expect(ghostAttr(container, 'data-visible')).toEqual({ body_ex1: 'true', body_ex2: 'false' })
     expect(ghostAttr(container, 'data-doomed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
@@ -299,13 +316,15 @@ describe('Viewport delete_body ghost preview', () => {
     // preview holds no body at all, so the removal cannot ride on visibleBodies
     // and the mark has to carry it.
     usePartEditorStore.setState({
-      features: [sketch, extrude, ex2, del],
-      bodies: {},
-      pickBodies: twoBodies(),
-      visibleBodies: undefined,
-      ghostMode: true,
-      rollbackPosition: 4,
-    })
+    features: [sketch, extrude, ex2, del],
+    bodies: {},
+    pickBodies: twoBodies(),
+    visibleBodies: undefined,
+  })
+  useEditorState.setState({
+    ghostMode: true,
+    rollbackPosition: 4,
+  })
     const { container } = render(<Viewport />)
     expect(ghostAttr(container, 'data-doomed')).toEqual({ body_ex1: 'true', body_ex2: 'true' })
   })
@@ -328,12 +347,16 @@ describe('Viewport collision debug gate', () => {
   it('mounts IdDebugOverlay only while showDebugHit is on', () => {
     usePartEditorStore.setState({ features: [sketch], bodies: makeBody() })
 
-    useSketchEditorStore.setState({ showDebugHit: false })
+    useSketchUiStore.setState({
+    showDebugHit: false,
+  })
     const off = render(<Viewport />)
     expect(off.queryByTestId('id-debug-overlay')).toBeNull()
     off.unmount()
 
-    useSketchEditorStore.setState({ showDebugHit: true })
+    useSketchUiStore.setState({
+    showDebugHit: true,
+  })
     const on = render(<Viewport />)
     expect(on.getByTestId('id-debug-overlay')).not.toBeNull()
     on.unmount()

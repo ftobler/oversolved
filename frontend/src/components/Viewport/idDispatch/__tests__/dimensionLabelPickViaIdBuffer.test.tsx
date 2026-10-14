@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import {
-  useIdBufferPointerDispatch,
-  wasLastClickConsumedByIdDispatch,
-} from '../useIdBufferPointerDispatch'
+import { useIdBufferPointerDispatch, wasLastClickConsumedByIdDispatch } from '../useIdBufferPointerDispatch'
 import { registerDimCallbacks, resetDimCallbacksForTest } from '../dimensionLabelCallbacks'
 import { IdPipeline, DIMENSION_LABEL_LAYER_NAME } from '@/picking'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { StubRenderer, makeCanvas } from './pickCanvasFixture'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('dimensionLabel pick goes through the id buffer (267.3 cutover)', () => {
   let canvas: HTMLCanvasElement
@@ -20,7 +18,9 @@ describe('dimensionLabel pick goes through the id buffer (267.3 cutover)', () =>
     pipeline = new IdPipeline({ width: 800, height: 600 })
     setLivePipeline(pipeline)
     glRef = { current: new StubRenderer(canvas) }
-    useSketchEditorStore.setState({ activeTool: null })  // idle select is activeTool null
+    useEditorState.setState({
+    activeTool: null,
+  })  // idle select is activeTool null
   })
   afterEach(() => {
     setLivePipeline(null)

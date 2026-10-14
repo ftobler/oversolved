@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // A live docRef the tests mutate to stand in for edits made during a session.
 const docRef = { current: { features: [] } as unknown as PartDoc }
@@ -31,7 +32,7 @@ vi.mock('@/hooks/mutationDispatch', () => ({ mutationHandlers: {} }))
 describe('commitEditSession undo entry', () => {
   beforeEach(() => {
     docRef.current = { features: [] } as unknown as PartDoc
-    usePartEditorStore.getState().setEditingFeatureId(null)
+    useEditorState.getState().setEditingFeatureId(null)
   })
 
   it('pushes no undo entry when the session changed nothing', () => {
@@ -43,7 +44,7 @@ describe('commitEditSession undo entry', () => {
 
   it('pushes one undo entry naming the edited feature when the doc changed', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     docRef.current = { features: [{ id: 'extrude-1' }] } as unknown as PartDoc
     act(() => { result.current.commitEditSession() })
@@ -59,7 +60,7 @@ describe('commitEditSession undo entry', () => {
   // every solve would manufacture an edit entry that reverts nothing.
   it('pushes no undo entry when the doc differs only in a solve-fabricated part_style', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     docRef.current = { features: [], part_style: { b1: { color: '#ff0000' } } } as unknown as PartDoc
     act(() => { result.current.commitEditSession() })
@@ -71,7 +72,7 @@ describe('commitEditSession undo entry', () => {
   // drift there is not a user change and must not leave a dead undo step.
   it('pushes no undo entry when the doc differs only in rollback', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     docRef.current = { features: [], rollback: 2 } as unknown as PartDoc
     act(() => { result.current.commitEditSession() })
@@ -83,7 +84,7 @@ describe('commitEditSession undo entry', () => {
   // aggregate, even when a fabricated part_style entry rides alongside it.
   it('pushes one entry when a feature change rides alongside fabricated part_style', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     docRef.current = {
       features: [{ id: 'extrude-1' }],

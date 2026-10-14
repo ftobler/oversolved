@@ -1,21 +1,24 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import type { Mutation } from '@/types/cad'
 import { installSketchStoreSetup } from './helpers/sketchEditorStoreTestSetup'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
 
   describe('dimension sticky placement', () => {
     beforeEach(() => {
-      useSketchEditorStore.setState({
-        activeTool: 'dimension',
-        activeFeatureId: 'S1',
-        dimensionPicks: [],
-        pendingBrepProjectionIds: [],
-        pendingDialog: null,
-        normalSelection: new Set(),
-      })
+      useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'S1',
+    dimensionPicks: [],
+    pendingBrepProjectionIds: [],
+    normalSelection: new Set(),
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
+  })
     })
 
     it('addDimensionPick appends', () => {
@@ -93,7 +96,9 @@ describe('sketchEditorStore', () => {
     it('addBrepDimensionPick does nothing outside a sketch', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({ activeFeatureId: null })
+      useEditorState.setState({
+    activeFeatureId: null,
+  })
       useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false })
       expect(handler).not.toHaveBeenCalled()
       expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
@@ -160,7 +165,7 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
       const eid = handler.mock.calls[0][0].entityId
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       handler.mockClear()
 
       dialog.onCancel!()
@@ -183,20 +188,23 @@ describe('sketchEditorStore', () => {
       setSketchCallback('onMutation', handler)
       setSketchCallback('getSketch', () => ({}))
       // Arm through the store so the mode stack matches the armed tool.
-      useSketchEditorStore.setState({ activeTool: null, modeStack: [] })
+      useEditorState.setState({
+    activeTool: null,
+    modeStack: [],
+  })
       const store = useSketchEditorStore.getState()
       store.setActiveTool('dimension')
       store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
       const eid = handler.mock.calls[0][0].entityId
       store.finalizeDimensionPlacement([0, 0])
-      expect(useSketchEditorStore.getState().pendingDialog).not.toBeNull()
+      expect(useSketchUiStore.getState().pendingDialog).not.toBeNull()
 
       useSketchEditorStore.getState().setActiveTool('line')
 
       // The abort removed the projection, and the prompt did not survive it.
       expect(handler).toHaveBeenLastCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
       expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
-      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
 
       // The whole sequence dispatched the projection and its compensating
       // delete, and nothing else: no add_constraint naming a removed entity.
@@ -211,7 +219,10 @@ describe('sketchEditorStore', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('getSketch', () => ({}))
-      useSketchEditorStore.setState({ activeTool: null, modeStack: [] })
+      useEditorState.setState({
+    activeTool: null,
+    modeStack: [],
+  })
       const store = useSketchEditorStore.getState()
       store.setActiveTool('dimension')
       store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
@@ -221,7 +232,7 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().setActiveFeatureId(null)
 
       expect(handler).toHaveBeenLastCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
-      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
       expect(handler.mock.calls.map(c => c[0].type)).toEqual(['add_projected_entity', 'delete'])
       setSketchCallback('getSketch', null)
     })
@@ -232,7 +243,7 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({}))
       useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       handler.mockClear()
 
       dialog.onConfirm('10')
@@ -256,7 +267,7 @@ describe('sketchEditorStore', () => {
       store.addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
 
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       expect(dialog.defaultValue).toBe('7')
       dialog.onConfirm('7')
       expect(handler).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -274,18 +285,20 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         P1: { center: [0, 0], a: 2, b: 1, theta: 0, projected: true, source: '?b1/edge:3' },
       } as never))
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:P1', entityKind: 'circle' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:P1', entityKind: 'circle' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
       setSketchCallback('getSketch', null)
     })
 
     it('clearDimensionPicks resets to empty', () => {
-      useSketchEditorStore.setState({ dimensionPicks: [
+      useEditorState.setState({
+    dimensionPicks: [
         { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
-      ] })
+      ],
+  })
       useSketchEditorStore.getState().clearDimensionPicks()
       expect(useSketchEditorStore.getState().dimensionPicks).toEqual([])
     })
@@ -293,12 +306,12 @@ describe('sketchEditorStore', () => {
     it('finalizeDimensionPlacement: single line → dialog opens; OK dispatches add_constraint(length)', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([200, 300])
 
-      const dialog = useSketchEditorStore.getState().pendingDialog
+      const dialog = useSketchUiStore.getState().pendingDialog
       expect(dialog).not.toBeNull()
       expect(dialog!.label).toBe('Dimension value')
       expect(dialog!.position).toEqual([200, 300])
@@ -314,14 +327,14 @@ describe('sketchEditorStore', () => {
     it('finalizeDimensionPlacement: two lines → angle on OK', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        dimensionPicks: [
+      useEditorState.setState({
+    dimensionPicks: [
           { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
           { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
         ],
-      })
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       dialog.onConfirm('45')
       expect(handler).toHaveBeenCalledWith({
         type: 'add_constraint', featureId: 'S1', kind: 'angle',
@@ -333,9 +346,11 @@ describe('sketchEditorStore', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       const pick = { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }
-      useSketchEditorStore.setState({ dimensionPicks: [pick, pick] })
+      useEditorState.setState({
+    dimensionPicks: [pick, pick],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       dialog.onConfirm('10')
       expect(handler).toHaveBeenCalledWith({
         type: 'add_constraint', featureId: 'S1', kind: 'length',
@@ -346,11 +361,11 @@ describe('sketchEditorStore', () => {
     it('finalizeDimensionPlacement: vertex alone is undimensionable, no dialog opens', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: true, target: 'vertex:S1:L1:start' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: true, target: 'vertex:S1:L1:start' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
       // Picks are preserved so the user can keep adding without restarting.
       expect(useSketchEditorStore.getState().dimensionPicks).toHaveLength(1)
       expect(handler).not.toHaveBeenCalled()
@@ -359,31 +374,33 @@ describe('sketchEditorStore', () => {
     it('finalizeDimensionPlacement: empty picks is a no-op', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({ dimensionPicks: [] })
+      useEditorState.setState({
+    dimensionPicks: [],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
       expect(handler).not.toHaveBeenCalled()
     })
 
     it('finalizeDimensionPlacement: Cancel (dialog onConfirm not called) dispatches nothing', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      useSketchEditorStore.getState().closeDialog()
+      useSketchUiStore.getState().closeDialog()
       expect(handler).not.toHaveBeenCalled()
     })
 
     it('finalizeDimensionPlacement: OK keeps the tool armed for the next dim', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       dialog.onConfirm('5')
       expect(useSketchEditorStore.getState().activeTool).toBe('dimension')
     })
@@ -394,11 +411,11 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      expect(useSketchEditorStore.getState().pendingDialog!.defaultValue).toBe('10')
+      expect(useSketchUiStore.getState().pendingDialog!.defaultValue).toBe('10')
       setSketchCallback('getSketch', null)
     })
 
@@ -409,11 +426,11 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [12.3456, 0] },
       } as never))
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       expect(dialog.defaultValue).toBe('12.35')
       // Submitting the default unchanged commits the full-precision value, not 12.35.
       dialog.onConfirm(dialog.defaultValue!)
@@ -427,22 +444,22 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [12.3456, 0] },
       } as never))
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      useSketchEditorStore.getState().pendingDialog!.onConfirm('20')
+      useSketchUiStore.getState().pendingDialog!.onConfirm('20')
       expect(handler).toHaveBeenCalledWith(expect.objectContaining({ value: 20 }))
       setSketchCallback('getSketch', null)
     })
 
     it('finalizeDimensionPlacement: dialog.validate rejects non-numeric and non-positive input', () => {
       setSketchCallback('onMutation', vi.fn())
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const validate = useSketchEditorStore.getState().pendingDialog!.validate!
+      const validate = useSketchUiStore.getState().pendingDialog!.validate!
       expect(validate('abc')).toBeTruthy()
       expect(validate('0')).toBeTruthy()
       expect(validate('-3')).toBeTruthy()
@@ -453,11 +470,11 @@ describe('sketchEditorStore', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
       setSketchCallback('getSketch', null)
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      expect(useSketchEditorStore.getState().pendingDialog!.defaultValue).toBeUndefined()
+      expect(useSketchUiStore.getState().pendingDialog!.defaultValue).toBeUndefined()
     })
 
     it('finalizeDimensionPlacement: writes pos relative to the dim anchor when cursorWorld is set', () => {
@@ -467,11 +484,14 @@ describe('sketchEditorStore', () => {
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
       useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-        dimensionCursorWorld: [5, 7],  // 5 along the line, 7 above it
-      })
+    // 5 along the line, 7 above it,
+  })
+  useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+    dimensionCursorWorld: [5, 7],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      useSketchEditorStore.getState().pendingDialog!.onConfirm('10')
+      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
       // Length anchor = midpoint(L1) = (5, 0). Pos = world - anchor = (0, 7).
       expect(handler).toHaveBeenCalledWith({
         type: 'add_constraint',
@@ -487,12 +507,12 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-        dimensionCursorWorld: null,
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+    dimensionCursorWorld: null,
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      useSketchEditorStore.getState().pendingDialog!.onConfirm('10')
+      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
       expect(handler).toHaveBeenCalledWith({
         type: 'add_constraint',
         featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
@@ -503,10 +523,10 @@ describe('sketchEditorStore', () => {
     it('finalizeDimensionPlacement: clears cursorWorld together with picks', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
-        dimensionCursorWorld: [1, 2],
-      })
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' }],
+    dimensionCursorWorld: [1, 2],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
       expect(useSketchEditorStore.getState().dimensionCursorWorld).toBeNull()
     })
@@ -521,15 +541,15 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
-      useSketchEditorStore.setState({
-        dimensionPicks: [
+      useEditorState.setState({
+    dimensionPicks: [
           { isVertex: true, target: 'vertex:S1:L1:start' },
           { isVertex: true, target: 'vertex:S1:L1:end' },
         ],
-        dimensionCursorWorld: [5, 7],
-      })
+    dimensionCursorWorld: [5, 7],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       dialog.onConfirm('10')
       // Vertical drag (y offset > x offset) → point_distance_x
       expect(handler).toHaveBeenCalledWith(expect.objectContaining({
@@ -545,15 +565,15 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
-      useSketchEditorStore.setState({
-        dimensionPicks: [
+      useEditorState.setState({
+    dimensionPicks: [
           { isVertex: true, target: 'vertex:S1:L1:start' },
           { isVertex: true, target: 'vertex:S1:L1:end' },
         ],
-        dimensionCursorWorld: [12, 0],
-      })
+    dimensionCursorWorld: [12, 0],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       dialog.onConfirm('10')
       // Horizontal drag (x offset > y offset) → point_distance_y
       expect(handler).toHaveBeenCalledWith(expect.objectContaining({
@@ -569,16 +589,16 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
-      useSketchEditorStore.setState({
-        dimensionPicks: [
+      useEditorState.setState({
+    dimensionPicks: [
           { isVertex: true, target: 'vertex:S1:L1:start' },
           { isVertex: true, target: 'vertex:S1:L1:end' },
         ],
-        // cursor exactly at midpoint: no clear direction
+    // cursor exactly at midpoint: no clear direction
         dimensionCursorWorld: [5, 0],
-      })
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       dialog.onConfirm('10')
       expect(handler).toHaveBeenCalledWith(expect.objectContaining({
         featureId: 'S1', kind: 'point_distance',
@@ -589,15 +609,15 @@ describe('sketchEditorStore', () => {
     it('finalizeDimensionPlacement: two vertices without getSketch stays point_distance', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
-      useSketchEditorStore.setState({
-        dimensionPicks: [
+      useEditorState.setState({
+    dimensionPicks: [
           { isVertex: true, target: 'vertex:S1:L1:start' },
           { isVertex: true, target: 'vertex:S1:L1:end' },
         ],
-        dimensionCursorWorld: [5, 7],
-      })
+    dimensionCursorWorld: [5, 7],
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       dialog.onConfirm('10')
       // No getSketch → no point resolution → stays point_distance
       expect(handler).toHaveBeenCalledWith(expect.objectContaining({
@@ -611,15 +631,15 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', () => ({
         L1: { start: [0, 0], end: [10, 0] },
       } as never))
-      useSketchEditorStore.setState({
-        dimensionPicks: [
+      useEditorState.setState({
+    dimensionPicks: [
           { isVertex: true, target: 'vertex:S1:L1:start' },
           { isVertex: true, target: 'vertex:S1:L1:end' },
         ],
-        dimensionCursorWorld: null,
-      })
+    dimensionCursorWorld: null,
+  })
       useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
-      const dialog = useSketchEditorStore.getState().pendingDialog!
+      const dialog = useSketchUiStore.getState().pendingDialog!
       dialog.onConfirm('10')
       expect(handler).toHaveBeenCalledWith(expect.objectContaining({
         featureId: 'S1', kind: 'point_distance',

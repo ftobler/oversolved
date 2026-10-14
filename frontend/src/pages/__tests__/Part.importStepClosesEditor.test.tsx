@@ -15,6 +15,7 @@ import Part from '@/pages/Part'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/usePartDoc'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const mockSolveViaWorker = vi.hoisted(() => vi.fn())
 const mockRegistryCreate = vi.hoisted(() => vi.fn(async () => ({ id: 'file-1' })))
@@ -70,7 +71,11 @@ async function importStep(file: { name: string; size: number; arrayBuffer: () =>
 describe('Part - importing a STEP while a feature editor is open', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    usePartEditorStore.setState({ editingFeatureId: null, pickBoundary: null, rollbackPosition: null })
+    useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+  })
     mockSolveViaWorker.mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null })
     mockRegistryCreate.mockResolvedValue({ id: 'file-1' })
     partDocStoreMock({ content: DOC })
@@ -90,7 +95,7 @@ describe('Part - importing a STEP while a feature editor is open', () => {
 
     // Open the extrude editor: a suppressed session with the bar pinned after it.
     fireEvent.click(screen.getByTitle('Edit extrude'))
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('ex1'))
     const before = usePartEditorStore.getState().undoStack.length
 
     await importStep({ name: 'bracket.step', size: 32, arrayBuffer: async () => new ArrayBuffer(8) })
@@ -99,7 +104,7 @@ describe('Part - importing a STEP while a feature editor is open', () => {
     // than being swallowed into the session: editingFeatureId is null and the
     // undo stack grew by exactly one entry.
     await waitFor(() => expect(userFeatures().some(f => f.kind === 'import_step')).toBe(true))
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
     expect(usePartEditorStore.getState().undoStack.length).toBe(before + 1)
   })
 
@@ -120,9 +125,9 @@ describe('Part - importing a STEP while a feature editor is open', () => {
     fireEvent.click(screen.getByTitle('Feature mode'))
 
     fireEvent.click(screen.getByTitle('Edit extrude'))
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('ex1'))
     const before = usePartEditorStore.getState().undoStack.length
-    const rollback = usePartEditorStore.getState().rollbackPosition
+    const rollback = useEditorState.getState().rollbackPosition
 
     mockRegistryCreate.mockRejectedValueOnce(new Error('quota exceeded'))
     await importStep({ name: 'bracket.step', size: 32, arrayBuffer: async () => new ArrayBuffer(8) })
@@ -130,8 +135,8 @@ describe('Part - importing a STEP while a feature editor is open', () => {
     await waitFor(() => expect(screen.getByText(/quota exceeded/)).toBeInTheDocument())
     // The failure never reached closeOpenEditorForAdd: the session, its bar and
     // its history entry are all still standing, and nothing was imported.
-    expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1')
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(rollback)
+    expect(useEditorState.getState().editingFeatureId).toBe('ex1')
+    expect(useEditorState.getState().rollbackPosition).toBe(rollback)
     expect(usePartEditorStore.getState().undoStack.length).toBe(before)
     expect(userFeatures().some(f => f.kind === 'import_step')).toBe(false)
   })
@@ -149,14 +154,14 @@ describe('Part - importing a STEP while a feature editor is open', () => {
     fireEvent.click(screen.getByTitle('Feature mode'))
 
     fireEvent.click(screen.getByTitle('Edit extrude'))
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('ex1'))
     const before = usePartEditorStore.getState().undoStack.length
 
     await importStep({ name: 'bracket.step', size: 32, arrayBuffer: async () => { throw new Error('io') } })
 
     await waitFor(() => expect(screen.getByText(/Failed to read STEP file/)).toBeInTheDocument())
     expect(mockRegistryCreate).not.toHaveBeenCalled()
-    expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1')
+    expect(useEditorState.getState().editingFeatureId).toBe('ex1')
     expect(usePartEditorStore.getState().undoStack.length).toBe(before)
     expect(userFeatures().some(f => f.kind === 'import_step')).toBe(false)
   })

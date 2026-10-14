@@ -3,8 +3,9 @@ import { act } from '@testing-library/react'
 import { StrictMode, useEffect } from 'react'
 import { render } from '@testing-library/react'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // undo-document-reset: the undo stacks must not survive a document change.
 // DocumentPage keys Part by uuid, so a route change is a full Part remount and
@@ -68,9 +69,9 @@ describe('usePartDoc document reset via keyed remount', () => {
   beforeEach(() => {
     docRef.current = makeDoc('first')
     reSolve.mockClear()
-    usePartEditorStore.getState().setEditingFeatureId(null)
-    usePartEditorStore.getState().setRollbackPosition(null)
-    usePartEditorStore.getState().setPickBoundary(null)
+    useEditorState.getState().setEditingFeatureId(null)
+    useEditorState.getState().setRollbackPosition(null)
+    useEditorState.getState().setPickBoundary(null)
   })
 
   it('navigating to another document gives an empty undo stack and a no-op undo', () => {
@@ -95,7 +96,7 @@ describe('usePartDoc document reset via keyed remount', () => {
 
   it('a clone of a document with an active edit session does not inherit the open session', () => {
     const view = mountDoc('A', 'A')
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { harness.latest!.startEditSession(true) })
     act(() => { harness.latest!.handleMutation(renameTo('in-edit')) })
     // The edit session swallows pushes: while it is open, the mutation leaves

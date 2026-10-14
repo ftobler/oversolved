@@ -9,6 +9,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { makeAncestryQuery } from '@/kernel/query'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -36,13 +37,17 @@ function renderPart(content: string) {
 describe('Part - consumed sketch visibility', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      chipOwnedSelection: new Set(),
-      activePickField: null,
-      modeStack: [],
-    })
-    usePartEditorStore.setState({ editingFeatureId: null, pickBoundary: null, rollbackPosition: null })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+  })
+    useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+  })
   })
 
   it('does not draw a sketch a loaded extrude consumes, even with no visible flag', async () => {
@@ -87,7 +92,7 @@ features:
     expect(shown('sk1')).toBe(true)
 
     await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBeNull())
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBeNull())
     expect(shown('sk1')).toBe(false)
   })
 

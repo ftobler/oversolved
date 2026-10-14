@@ -16,6 +16,7 @@ import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import type { AssemblyDoc, Mutation, PartDoc, SketchData } from '@/types/cad'
 import type { AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
+import { editorState } from '@/stores/editorState'
 
 // The part engine (the DocSession history) and the assembly engine
 // (useAssemblyUndoRedo) expose different APIs over different document types,
@@ -78,11 +79,8 @@ function resetAssemblyStore() {
 }
 
 function createPartHarness(): UndoContractHarness {
-  const store = usePartEditorStore.getState()
-  store.setSnapshot(DEFAULT_PART_EDITOR_DATA)
-  store.setRollbackPosition(null)
-  store.setEditingFeatureId(null)
-  store.setPickBoundary(null)
+  usePartEditorStore.setState(DEFAULT_PART_EDITOR_DATA)
+  editorState.getState().resetEditorState()
   useUnsavedChangesStore.getState().setDirty(false)
 
   const cell: { current: PartDoc | null } = { current: null }

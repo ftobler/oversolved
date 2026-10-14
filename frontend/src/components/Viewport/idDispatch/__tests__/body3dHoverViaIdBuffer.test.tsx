@@ -4,6 +4,7 @@ import { registerBodyCallbacks, resetBodyCallbacksForTest } from '../bodyDispatc
 import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearAllHover } from '../brepAdapters'
 
 import type { Mesh3D } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function stubMesh(faceQueries?: string[]): Mesh3D {
   return {
@@ -15,9 +16,10 @@ function stubMesh(faceQueries?: string[]): Mesh3D {
 
 beforeEach(() => {
   resetBodyCallbacksForTest()
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
     hoveredSelectionId: null,
     hoveredPickKey: null,
     hoveredFaceNormal: null,
@@ -27,7 +29,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetBodyCallbacksForTest()
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     hoveredSelectionId: null,
     hoveredFaceNormal: null,
     hoveredFaceCenter: null,

@@ -61,6 +61,7 @@ vi.mock('@/components/interaction/useAlignmentSnapEffect', async (importOriginal
 })
 
 import { DrawPlane } from '@/components/Geometry3D/Drawing'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeCanvas(): HTMLCanvasElement {
   const c = document.createElement('canvas')
@@ -102,11 +103,19 @@ beforeEach(() => {
   align.cursors.length = 0
   r3f.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, -100, 100)
   r3f.canvas = makeCanvas()
-  useSketchEditorStore.setState({
-    activeTool: null, activeFeatureId: 'S1', drawPoints: [], drawHover: null,
-    dimensionPicks: [], dimensionCursorWorld: null, hoveredSelectionId: null,
-    hoveredVertexId: null, hoveredVertexPosition: null, hoveredSnapKind: null,
-    normalSelection: new Set(), isPointerDown: false,
+  useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: 'S1',
+    drawPoints: [],
+    drawHover: null,
+    dimensionPicks: [],
+    dimensionCursorWorld: null,
+    hoveredSelectionId: null,
+    hoveredVertexId: null,
+    hoveredVertexPosition: null,
+    hoveredSnapKind: null,
+    normalSelection: new Set(),
+    isPointerDown: false,
   })
 })
 
@@ -115,7 +124,11 @@ describe('DrawPlane alignment guide', () => {
   // would be a false promise: the effect gets no cursor and shows nothing.
   it.each(['rect', 'center_rect', 'ngon'])('%s hands the alignment effect no cursor', (tool) => {
     toolRegistry.register(stubTool(tool))
-    useSketchEditorStore.setState({ activeTool: tool as Tool['id'], drawPoints: [[0, 0]], drawHover: [4, 1] })
+    useEditorState.setState({
+    activeTool: tool as Tool['id'],
+    drawPoints: [[0, 0]],
+    drawHover: [4, 1],
+  })
     render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
 
     expect(align.cursors.length).toBeGreaterThan(0)
@@ -124,7 +137,11 @@ describe('DrawPlane alignment guide', () => {
 
   it('line hands the alignment effect the draw hover', () => {
     toolRegistry.register(stubTool('line'))
-    useSketchEditorStore.setState({ activeTool: 'line', drawPoints: [[0, 0]], drawHover: [4, 1] })
+    useEditorState.setState({
+    activeTool: 'line',
+    drawPoints: [[0, 0]],
+    drawHover: [4, 1],
+  })
     render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
 
     expect(align.cursors.at(-1)).toEqual([4, 1])
@@ -134,7 +151,9 @@ describe('DrawPlane alignment guide', () => {
 describe('DrawPlane hover projection', () => {
   it('stores the projected local point while a drawing tool is armed', () => {
     toolRegistry.register(stubTool('line'))
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
     proj.point = { x: 2, y: 3, z: 0 }
     render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
 
@@ -148,7 +167,9 @@ describe('DrawPlane hover projection', () => {
     // An inactive sketch projects the cursor onto ITS plane, so it must not
     // overwrite the hover the active sketch's plane owns.
     toolRegistry.register(stubTool('line'))
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
     proj.point = { x: 2, y: 3, z: 0 }
     render(<DrawPlane featureId="S1" activeFeatureId="S2" sketchGroupRef={groupRef} />)
 
@@ -159,7 +180,10 @@ describe('DrawPlane hover projection', () => {
 
   it('clears the hover while a non-primary button is held', () => {
     toolRegistry.register(stubTool('line'))
-    useSketchEditorStore.setState({ activeTool: 'line', drawHover: [9, 9] })
+    useEditorState.setState({
+    activeTool: 'line',
+    drawHover: [9, 9],
+  })
     render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
 
     move(100, 100, 2)
@@ -169,10 +193,12 @@ describe('DrawPlane hover projection', () => {
 
   it('clears the hover and the dimension cursor when the ray misses the plane', () => {
     toolRegistry.register(stubTool('dimension'))
-    useSketchEditorStore.setState({
-      activeTool: 'dimension', drawHover: [9, 9],
-      dimensionPicks: [{ kind: 'vertex' } as never], dimensionCursorWorld: [1, 1],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    drawHover: [9, 9],
+    dimensionPicks: [{ kind: 'vertex' } as never],
+    dimensionCursorWorld: [1, 1],
+  })
     proj.point = null
     render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
 
@@ -185,9 +211,10 @@ describe('DrawPlane hover projection', () => {
 
   it('mirrors the cursor for an open dimension placement gesture', () => {
     toolRegistry.register(stubTool('dimension'))
-    useSketchEditorStore.setState({
-      activeTool: 'dimension', dimensionPicks: [{ kind: 'vertex' } as never],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    dimensionPicks: [{ kind: 'vertex' } as never],
+  })
     proj.point = { x: 7, y: 8, z: 0 }
     render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
 
@@ -201,7 +228,10 @@ describe('DrawPlane commit click', () => {
   it('resolves the project pick at the click pixel instead of the stale hover', () => {
     const onPointerDown = vi.fn()
     toolRegistry.register(stubTool('project', onPointerDown))
-    useSketchEditorStore.setState({ activeTool: 'project', hoveredSelectionId: 'stale-hover' })
+    useEditorState.setState({
+    activeTool: 'project',
+    hoveredSelectionId: 'stale-hover',
+  })
     pick.hit = { entityKey: 'edge@fresh' }
     proj.point = { x: 4, y: 5, z: 0 }
     const { container } = render(
@@ -223,7 +253,10 @@ describe('DrawPlane commit click', () => {
   it('passes the store hover for a non-project drawing tool without resolving a pick', () => {
     const onPointerDown = vi.fn()
     toolRegistry.register(stubTool('line', onPointerDown))
-    useSketchEditorStore.setState({ activeTool: 'line', hoveredSelectionId: 'entity:S1:L1' })
+    useEditorState.setState({
+    activeTool: 'line',
+    hoveredSelectionId: 'entity:S1:L1',
+  })
     proj.point = { x: 4, y: 5, z: 0 }
     const { container } = render(
       <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
@@ -247,7 +280,9 @@ describe('DrawPlane commit click', () => {
       c.setDrawPoints([...c.drawPoints, [pt[0], pt[1]]])
       return null
     }))
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
     const { container } = render(
       <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
     )
@@ -256,7 +291,9 @@ describe('DrawPlane commit click', () => {
     act(() => {
       proj.point = { x: 1, y: 0, z: 0 }
       mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
-      useSketchEditorStore.setState({ hoveredVertexId: 'vertex:S1:V1:end' })
+      useEditorState.setState({
+    hoveredVertexId: 'vertex:S1:V1:end',
+  })
       proj.point = { x: 6, y: 0, z: 0 }
       mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
     })
@@ -270,7 +307,9 @@ describe('DrawPlane commit click', () => {
   it('fails loud and drops the click when the ray misses the plane', () => {
     const onPointerDown = vi.fn()
     toolRegistry.register(stubTool('line', onPointerDown))
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
     proj.point = null
     const { container } = render(
       <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
@@ -288,7 +327,9 @@ describe('DrawPlane commit click', () => {
   it('fails loud and drops the click when the hit is off the sketch plane', () => {
     const onPointerDown = vi.fn()
     toolRegistry.register(stubTool('line', onPointerDown))
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
     proj.point = { x: 4, y: 5, z: 5 }  // sanitize rejects |z| > 1
     const { container } = render(
       <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
@@ -304,7 +345,9 @@ describe('DrawPlane commit click', () => {
 
   it('renders no draw plane for a non-active sketch', () => {
     toolRegistry.register(stubTool('line'))
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
     const { container } = render(
       <DrawPlane featureId="S1" activeFeatureId="S2" sketchGroupRef={groupRef} />,
     )
@@ -315,7 +358,9 @@ describe('DrawPlane commit click', () => {
 describe('DrawPlane window listener registration', () => {
   it('attaches the window pointermove listener only for the active sketch', () => {
     toolRegistry.register(stubTool('line'))
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
     const addSpy = vi.spyOn(window, 'addEventListener')
     render(
       <>

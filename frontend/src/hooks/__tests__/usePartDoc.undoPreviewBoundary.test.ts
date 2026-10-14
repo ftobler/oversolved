@@ -2,11 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, Mutation } from '@/types/cad'
-import {
-  docRef, renameTo, labelOf, sketchEntitiesOf, sketchConstraintsOf, resetHarness,
-} from './usePartDoc.undoHarness'
+import { docRef, renameTo, labelOf, sketchEntitiesOf, sketchConstraintsOf, resetHarness } from './usePartDoc.undoHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/hooks/useDocumentState', async () => {
   const { documentStateMock } = await import('./usePartDoc.undoHarness')
@@ -35,7 +34,7 @@ describe('usePartDoc undo preview and session boundary', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('session-edit')) })
     // The colour popover cannot open mid-session, so its mutation lands as an
@@ -69,7 +68,7 @@ describe('usePartDoc undo preview and session boundary', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     // The session owns the doc until commit or cancel, so the popover cannot
     // open over it; its would-be baseline is never tracked.
@@ -111,7 +110,7 @@ describe('usePartDoc undo preview and session boundary', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
     expect(result.current.undoStack).toHaveLength(0)
@@ -137,7 +136,7 @@ describe('usePartDoc undo preview and session boundary', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     expect(() => {
       act(() => { result.current.startPreviewMode(structuredClone(docRef.current)) })
@@ -165,7 +164,7 @@ describe('usePartDoc undo preview and session boundary', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
 
     act(() => { result.current.handleMutation(renameTo('mid-session')) })
@@ -269,7 +268,7 @@ describe('usePartDoc undo preview and session boundary', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })
     act(() => { result.current.commitEditSession() })
@@ -295,7 +294,7 @@ describe('usePartDoc undo preview and session boundary', () => {
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('edited')) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })

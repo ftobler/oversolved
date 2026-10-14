@@ -3,10 +3,11 @@ import { act } from '@testing-library/react'
 import { stringify as stringifyYaml } from 'yaml'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useUnsavedChangesStore, hashSavedText } from '@/stores/unsavedChangesStore'
 import type { PartDoc, Mutation } from '@/types/cad'
 import { docRef, renameTo, resetHarness } from './usePartDoc.undoHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/hooks/useDocumentState', async () => {
   const { documentStateMock } = await import('./usePartDoc.undoHarness')
@@ -58,7 +59,7 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
   it('cancelling an edit session on a clean doc leaves it clean', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('discarded')) })
     expect(dirty()).toBe(true)
@@ -71,7 +72,7 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('kept')) })
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('discarded')) })
 
@@ -84,7 +85,7 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
   it('a save mid-session leaves the cancelled doc dirty', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('saved-then-discarded')) })
     useUnsavedChangesStore.getState().markSaved()  // the save landing
@@ -98,7 +99,7 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
   it('a save followed by another edit mid-session still leaves the cancelled doc dirty', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('saved')) })
     useUnsavedChangesStore.getState().markSaved()
@@ -116,7 +117,7 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
   it('a save during a session that changed nothing leaves the document clean', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     useUnsavedChangesStore.getState().markSaved()  // the save landing
 
@@ -130,7 +131,7 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
   it('a session whose doc was replaced without changing content leaves the flag alone', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.setDoc(structuredClone(docRef.current)) })
     useUnsavedChangesStore.getState().markSaved()  // the save landing
@@ -183,7 +184,7 @@ describe('usePartDoc cancel restores the unsaved-changes flag', () => {
   // edit it throws away (unsaved), and only the stored fingerprint tells the two
   // apart.
   const openSessionOnVariable = (result: { current: ReturnType<typeof usePartDoc> }) => {
-    usePartEditorStore.getState().setEditingFeatureId('v1')
+    useEditorState.getState().setEditingFeatureId('v1')
     act(() => { result.current.startEditSession(true) })
   }
 

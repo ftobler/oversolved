@@ -20,8 +20,9 @@ vi.mock('@/stores/solverStore', () => ({
 }))
 
 import { useSolver } from '@/hooks/useSolver'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeDoc(): PartDoc {
   return {
@@ -44,18 +45,30 @@ function setupHook() {
 
 /** The editor store as enterEditFeature leaves it for the delete_body feature. */
 function enterEditOfDeleteBody() {
-  usePartEditorStore.setState({ editingFeatureId: null, rollbackPosition: 2, pickBoundary: 1 })
+  useEditorState.setState({
+    editingFeatureId: null,
+    rollbackPosition: 2,
+    pickBoundary: 1,
+  })
 }
 
 /** The editor store as enterEditFeature leaves it for the FIRST non-sketch feature. */
 function enterEditOfFirstFeature() {
-  usePartEditorStore.setState({ editingFeatureId: 'ex1', rollbackPosition: 1, pickBoundary: 0 })
+  useEditorState.setState({
+    editingFeatureId: 'ex1',
+    rollbackPosition: 1,
+    pickBoundary: 0,
+  })
 }
 
 describe('useSolver pick state readiness', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    usePartEditorStore.setState({ editingFeatureId: null, rollbackPosition: null, pickBoundary: null })
+    useEditorState.setState({
+    editingFeatureId: null,
+    rollbackPosition: null,
+    pickBoundary: null,
+  })
   })
 
   it('is false before any solve', () => {
@@ -90,7 +103,10 @@ describe('useSolver pick state readiness', () => {
     await act(async () => { await result.current.reSolve(makeDoc()) })
     expect(result.current.pickStateReady).toBe(true)
 
-    act(() => { usePartEditorStore.setState({ pickBoundary: null, rollbackPosition: null }) })
+    act(() => { useEditorState.setState({
+    pickBoundary: null,
+    rollbackPosition: null,
+  }) })
     expect(result.current.pickStateReady).toBe(false)
   })
 

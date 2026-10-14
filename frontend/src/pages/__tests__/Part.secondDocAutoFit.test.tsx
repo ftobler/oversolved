@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import Part from '@/pages/Part'
-import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
+
 import { Wrapper } from '@/__tests__/test-utils'
 import { backendBundle } from '@/adapters/backend'
 import type { WorkspaceDocPayload } from '@/adapters/openWorkspace'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const mockAutoZoomToFit = vi.hoisted(() => vi.fn())
 
@@ -59,8 +60,15 @@ describe('Part - auto-fit arms on every document first solve', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
-    usePartEditorStore.setState({ editingFeatureId: null, pickBoundary: null, rollbackPosition: null })
-    useSketchEditorStore.setState({ activePickField: null, modeStack: [] })
+    useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+  })
+    useEditorState.setState({
+    activePickField: null,
+    modeStack: [],
+  })
   })
 
   it('arms auto-fit on the second document too, after a keyed remount', async () => {

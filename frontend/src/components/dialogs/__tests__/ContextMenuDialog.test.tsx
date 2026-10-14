@@ -1,25 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import ContextMenuDialog from '@/components/dialogs/ContextMenuDialog'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { registerCommand, clearAllHandlers, dispatchKey } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape, resetModalEscape } from '@/utils/core/modalEscape'
 
 describe('ContextMenuDialog validation', () => {
   beforeEach(() => {
-    useSketchEditorStore.setState({ pendingDialog: null })
+    useSketchUiStore.setState({
+    pendingDialog: null,
+  })
   })
 
   function openWith(onConfirm: (v: string) => void) {
-    useSketchEditorStore.setState({
-      pendingDialog: {
+    useSketchUiStore.setState({
+    pendingDialog: {
         position: [0, 0],
         label: 'Dimension value',
         defaultValue: '10',
         validate: (v) => (parseFloat(v) > 0 ? null : 'Must be greater than 0'),
         onConfirm,
       },
-    })
+  })
   }
 
   it('rejects invalid input: keeps dialog open, shows error, does not confirm', () => {
@@ -32,7 +34,7 @@ describe('ContextMenuDialog validation', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
 
     expect(onConfirm).not.toHaveBeenCalled()
-    expect(useSketchEditorStore.getState().pendingDialog).not.toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).not.toBeNull()
     expect(screen.getByRole('alert')).toHaveTextContent('Must be greater than 0')
   })
 
@@ -46,7 +48,7 @@ describe('ContextMenuDialog validation', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
 
     expect(onConfirm).toHaveBeenCalledWith('25')
-    expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).toBeNull()
   })
 
   it('clears the error once the user edits the input', () => {
@@ -65,8 +67,8 @@ describe('ContextMenuDialog validation', () => {
   it('renders the extra action (Flip side) and runs it without validation, then closes', () => {
     const onConfirm = vi.fn()
     const onFlip = vi.fn()
-    useSketchEditorStore.setState({
-      pendingDialog: {
+    useSketchUiStore.setState({
+    pendingDialog: {
         position: [0, 0],
         label: 'Dimension value',
         defaultValue: '10',
@@ -74,14 +76,14 @@ describe('ContextMenuDialog validation', () => {
         onConfirm,
         extraAction: { label: 'Flip side', onClick: onFlip },
       },
-    })
+  })
     render(<ContextMenuDialog />)
 
     fireEvent.click(screen.getByText('Flip side'))
 
     expect(onFlip).toHaveBeenCalledTimes(1)
     expect(onConfirm).not.toHaveBeenCalled()
-    expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).toBeNull()
   })
 
   it('omits the extra action button when none is provided', () => {
@@ -104,26 +106,30 @@ describe('ContextMenuDialog claims the modal stand-down', () => {
     resetModalEscape()
     // A still-mounted dialog from the previous test subscribes to the store, so
     // the reset has to land inside act.
-    act(() => { useSketchEditorStore.setState({ pendingDialog: null }) })
+    act(() => { useSketchUiStore.setState({
+    pendingDialog: null,
+  }) })
   })
 
   afterEach(() => {
     clearAllHandlers()
     resetModalEscape()
-    act(() => { useSketchEditorStore.setState({ pendingDialog: null }) })
+    act(() => { useSketchUiStore.setState({
+    pendingDialog: null,
+  }) })
   })
 
   function openDialog(onConfirm: (v: string) => void = vi.fn(), onCancel: () => void = vi.fn()) {
     act(() => {
-      useSketchEditorStore.setState({
-        pendingDialog: {
+      useSketchUiStore.setState({
+    pendingDialog: {
           position: [0, 0],
           label: 'Dimension value',
           defaultValue: '10',
           onConfirm,
           onCancel,
         },
-      })
+  })
     })
   }
 
@@ -160,7 +166,7 @@ describe('ContextMenuDialog claims the modal stand-down', () => {
     expect(undo).not.toHaveBeenCalled()
     expect(onCancel).not.toHaveBeenCalled()
     expect(onConfirm).not.toHaveBeenCalled()
-    expect(useSketchEditorStore.getState().pendingDialog).not.toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).not.toBeNull()
   })
 
   it('a Delete from a dialog button stands down as well', () => {
@@ -178,7 +184,7 @@ describe('ContextMenuDialog claims the modal stand-down', () => {
 
     expect(del).not.toHaveBeenCalled()
     expect(onCancel).not.toHaveBeenCalled()
-    expect(useSketchEditorStore.getState().pendingDialog).not.toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).not.toBeNull()
   })
 
   it('Escape still cancels the dialog through its own listener, not the dispatcher', () => {
@@ -191,7 +197,7 @@ describe('ContextMenuDialog claims the modal stand-down', () => {
     detach()
 
     expect(onCancel).toHaveBeenCalledOnce()
-    expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).toBeNull()
   })
 
   // The negative control: without the dialog on screen the very same keystroke

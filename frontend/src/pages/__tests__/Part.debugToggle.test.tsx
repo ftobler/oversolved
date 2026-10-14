@@ -7,9 +7,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('../../hooks/usePartDoc', async () =>
   (await import('@/__tests__/test-utils')).partDocMockModule())
@@ -55,14 +56,17 @@ const headerButton = () => document.querySelector('button[title="Toggle debug pa
 describe('Part F2 debug toggle (static build)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      hoveredSelectionId: null,
-      hoveredVertexId: null,
-      activeTool: null,
-      activePickField: null, modeStack: [],
-      showDebugHit: false,
-    })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    hoveredSelectionId: null,
+    hoveredVertexId: null,
+    activeTool: null,
+    activePickField: null,
+    modeStack: [],
+  })
+  useSketchUiStore.setState({
+    showDebugHit: false,
+  })
   })
 
   afterEach(() => {

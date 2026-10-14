@@ -10,9 +10,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const docRef: { current: PartDoc | null } = { current: null }
 const reSolve = vi.fn()
@@ -421,9 +422,9 @@ describe('round-trip side effects', () => {
     docRef.current = null
     solveResults = {}
     reSolve.mockReset()
-    usePartEditorStore.getState().setEditingFeatureId(null)
-    usePartEditorStore.getState().setRollbackPosition(null)
-    usePartEditorStore.getState().setPickBoundary(null)
+    useEditorState.getState().setEditingFeatureId(null)
+    useEditorState.getState().setRollbackPosition(null)
+    useEditorState.getState().setPickBoundary(null)
   })
 
   it('delete_feature prunes solveResults forward and the undo restores the record for the doc', () => {
@@ -560,7 +561,7 @@ describe('round-trip side effects', () => {
         { id: 'ex2', kind: 'extrude' },
       ],
     } as unknown as PartDoc
-    usePartEditorStore.getState().setRollbackPosition(1)
+    useEditorState.getState().setRollbackPosition(1)
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 1 }) })
@@ -570,12 +571,12 @@ describe('round-trip side effects', () => {
     // The pre doc carried no rollback, so the undo parks the bar at the end of
     // the feature list it restored.
     expect('rollback' in docRef.current!).toBe(false)
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(3)
+    expect(useEditorState.getState().rollbackPosition).toBe(3)
     expect(result.current.redoStack).toHaveLength(1)
 
     act(() => { result.current.handleRedo() })
     expect(docRef.current!.rollback).toBe(1)
-    expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
+    expect(useEditorState.getState().rollbackPosition).toBe(1)
   })
 })
 
@@ -586,9 +587,9 @@ describe('undo/redo restore of the pruned-solve-result stash', () => {
     docRef.current = null
     solveResults = {}
     reSolve.mockReset()
-    usePartEditorStore.getState().setEditingFeatureId(null)
-    usePartEditorStore.getState().setRollbackPosition(null)
-    usePartEditorStore.getState().setPickBoundary(null)
+    useEditorState.getState().setEditingFeatureId(null)
+    useEditorState.getState().setRollbackPosition(null)
+    useEditorState.getState().setPickBoundary(null)
   })
 
   it('the undo re-solve receives the retained snapshot as _restoreSolveResults', () => {

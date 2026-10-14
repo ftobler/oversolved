@@ -15,8 +15,9 @@ vi.mock('@/stores/solverStore', () => ({
 }))
 
 import { useSolver } from '@/hooks/useSolver'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const DOC = {
   version: 1,
@@ -25,7 +26,11 @@ const DOC = {
 } as unknown as PartDoc
 
 function resetStore(): void {
-  usePartEditorStore.setState({ editingFeatureId: null, pickBoundary: null, rollbackPosition: null })
+  useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+  })
 }
 
 async function solveWithStore(doc: PartDoc): Promise<ReturnType<typeof useSolver>> {
@@ -40,13 +45,21 @@ describe('assertEditingInvariant', () => {
   afterEach(() => act(resetStore))
 
   it('reports a rollback that does not sit just past the edited feature', async () => {
-    usePartEditorStore.setState({ editingFeatureId: 'ex1', rollbackPosition: 0, pickBoundary: 0 })
+    useEditorState.setState({
+    editingFeatureId: 'ex1',
+    rollbackPosition: 0,
+    pickBoundary: 0,
+  })
     const current = await solveWithStore(DOC)
     expect(current.solveError).toMatch(/invariant.*rollback/)
   })
 
   it('reports a pick boundary that does not name the edited feature', async () => {
-    usePartEditorStore.setState({ editingFeatureId: 'ex1', rollbackPosition: 1, pickBoundary: 5 })
+    useEditorState.setState({
+    editingFeatureId: 'ex1',
+    rollbackPosition: 1,
+    pickBoundary: 5,
+  })
     const current = await solveWithStore(DOC)
     expect(current.solveError).toMatch(/invariant.*pick_boundary/)
   })

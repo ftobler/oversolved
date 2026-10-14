@@ -23,8 +23,9 @@ import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
 import { shouldOpenRubberBand } from '@/components/Viewport/bandStartPolicy'
 import { IdPipeline } from '@/picking/IdPipeline'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { setSketchCallback } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const W = 800
 const H = 600
@@ -76,14 +77,18 @@ async function setup(dimensionPicks: { isVertex: boolean; target: string; entity
     return useRubberBandSelect(glRef, PART_EDITOR_CONSUMED_LAYERS)
   })
   useSketchEditorStore.setState({
+    dimensionPicks,
+  })
+  useEditorState.setState({
     activeTool: 'dimension',
     activeFeatureId: 'feat1',
-    dimensionPicks,
     normalSelection: new Set(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
     hoveredVertexId: null,
     hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
     contextMenu: null,
   })
   return {

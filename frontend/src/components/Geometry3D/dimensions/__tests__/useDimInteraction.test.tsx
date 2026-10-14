@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useDimInteraction, useDimLabelPointerDown, type DimInteraction } from '../useDimInteraction'
 import type { DragState } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const INTERACTION: DimInteraction = {
   featureId: 'S1',
@@ -23,13 +24,15 @@ function dimDrag(constraintId: string, startWorld: [number, number], currentWorl
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     drag: null,
     dragPending: null,
     dragStartClient: null,
     isPointerDown: false,
     normalSelection: new Set(),
     hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
     pendingDialog: null,
   })
   setSketchCallback('onMutation', null)
@@ -37,7 +40,9 @@ beforeEach(() => {
 
 describe('useDimInteraction click / double-click', () => {
   it('a clean click selects this constraint and replaces the old selection', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['entity:S1:L1']),
+  })
     const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION))
 
     act(() => result.current.onClick({ stopPropagation: vi.fn() }))
@@ -47,7 +52,9 @@ describe('useDimInteraction click / double-click', () => {
   })
 
   it('suppresses the single click that follows a moved dim_label drag', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['entity:S1:L1']),
+  })
     const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION))
 
     act(() => {
@@ -68,11 +75,13 @@ describe('useDimInteraction click / double-click', () => {
     })
     act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 5, clientY: 6 }))
 
-    expect(useSketchEditorStore.getState().pendingDialog).toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).toBeNull()
   })
 
   it('does not suppress a drag that ended where it started', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['entity:S1:L1']),
+  })
     const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION))
 
     act(() => {
@@ -88,7 +97,7 @@ describe('useDimInteraction click / double-click', () => {
 
     act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 5, clientY: 6 }))
 
-    const dialog = useSketchEditorStore.getState().pendingDialog
+    const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog).not.toBeNull()
     expect(dialog?.label).toBe('Length')
     expect(dialog?.defaultValue).toBe('42')
@@ -98,7 +107,7 @@ describe('useDimInteraction click / double-click', () => {
   it('validate rejects non-numeric input and non-positive values when validatePositive', () => {
     const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION, true))
     act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
-    const validate = useSketchEditorStore.getState().pendingDialog!.validate!
+    const validate = useSketchUiStore.getState().pendingDialog!.validate!
 
     expect(validate('abc')).toBe('Enter a number or expression')
     expect(validate('0')).toBe('Must be greater than 0')
@@ -109,7 +118,7 @@ describe('useDimInteraction click / double-click', () => {
   it('validate accepts zero and negatives when validatePositive is false', () => {
     const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION, false))
     act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
-    const validate = useSketchEditorStore.getState().pendingDialog!.validate!
+    const validate = useSketchUiStore.getState().pendingDialog!.validate!
 
     expect(validate('0')).toBeNull()
     expect(validate('-5')).toBeNull()
@@ -121,7 +130,7 @@ describe('useDimInteraction click / double-click', () => {
     const { result } = renderHook(() => useDimInteraction('c1', 10, INTERACTION))
     act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
 
-    act(() => useSketchEditorStore.getState().pendingDialog!.onConfirm('30'))
+    act(() => useSketchUiStore.getState().pendingDialog!.onConfirm('30'))
 
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_constraint_value',
@@ -138,7 +147,7 @@ describe('useDimInteraction click / double-click', () => {
       useDimInteraction('c1', 10, INTERACTION, true, undefined, (displayed) => 180 - displayed))
     act(() => result.current.onDoubleClick({ stopPropagation: vi.fn(), clientX: 0, clientY: 0 }))
 
-    act(() => useSketchEditorStore.getState().pendingDialog!.onConfirm('30'))
+    act(() => useSketchUiStore.getState().pendingDialog!.onConfirm('30'))
 
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_constraint_value',

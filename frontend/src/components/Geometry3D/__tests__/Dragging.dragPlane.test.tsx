@@ -42,6 +42,7 @@ vi.mock('@/components/Geometry3D/VertexDots', () => ({ Dot: () => null }))
 vi.mock('@/components/Geometry3D/dimensions', () => ({ DashedLine: () => null }))
 
 import { DragPlane } from '@/components/Geometry3D/Dragging'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeCanvas(): HTMLCanvasElement {
   const c = document.createElement('canvas')
@@ -95,11 +96,20 @@ beforeEach(() => {
   r3f.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, -100, 100)
   r3f.canvas = makeCanvas()
   setSketchCallback('onMutation', null)
-  useSketchEditorStore.setState({
-    drag: null, dragPending: null, dragStartClient: null, dragSnap: null,
-    alignmentSnapPoint: null, alignmentSnapKind: null, isPointerDown: false,
-    activeTool: null, activeFeatureId: 'S1', normalSelection: new Set(),
-    hoveredVertexId: null, hoveredVertexPosition: null, hoveredSnapKind: null,
+  useEditorState.setState({
+    drag: null,
+    dragPending: null,
+    dragStartClient: null,
+    dragSnap: null,
+    alignmentSnapPoint: null,
+    alignmentSnapKind: null,
+    isPointerDown: false,
+    activeTool: null,
+    activeFeatureId: 'S1',
+    normalSelection: new Set(),
+    hoveredVertexId: null,
+    hoveredVertexPosition: null,
+    hoveredSnapKind: null,
     hoveredSelectionId: null,
   })
 })
@@ -110,7 +120,9 @@ afterEach(() => {
 
 describe('DragPlane move routing', () => {
   it('ignores a move whose drag belongs to another sketch', () => {
-    useSketchEditorStore.setState({ drag: vertexDrag('S2') })
+    useEditorState.setState({
+    drag: vertexDrag('S2'),
+  })
     render(<DragPlane featureId="S1" sketchGroupRef={groupRef} />)
 
     move(100, 100)
@@ -120,7 +132,9 @@ describe('DragPlane move routing', () => {
   })
 
   it('applies the move for the owning sketch at the projected local point', () => {
-    useSketchEditorStore.setState({ drag: vertexDrag('S1') })
+    useEditorState.setState({
+    drag: vertexDrag('S1'),
+  })
     proj.point = { x: 3, y: 4, z: 0 }
     render(<DragPlane featureId="S1" sketchGroupRef={groupRef} />)
 
@@ -130,12 +144,12 @@ describe('DragPlane move routing', () => {
   })
 
   it('ignores a feature-handle drag (owned by FeatureHandles, not a sketch plane)', () => {
-    useSketchEditorStore.setState({
-      drag: {
+    useEditorState.setState({
+    drag: {
         type: 'feature_handle', featureId: 'S1', field: 'depth', startValue: 1, currentValue: 1,
         axisOrigin: [0, 0, 0], axisDir: [0, 0, 1], unitScale: 1, min: 0,
       },
-    })
+  })
     render(<DragPlane featureId="S1" sketchGroupRef={groupRef} />)
 
     move(100, 100)
@@ -144,9 +158,11 @@ describe('DragPlane move routing', () => {
   })
 
   it('leaves a pending press un-dragged until the click threshold is crossed', () => {
-    useSketchEditorStore.setState({
-      dragPending: vertexPending('S1'), dragStartClient: [100, 100], isPointerDown: true,
-    })
+    useEditorState.setState({
+    dragPending: vertexPending('S1'),
+    dragStartClient: [100, 100],
+    isPointerDown: true,
+  })
     proj.point = { x: 5, y: 5, z: 0 }
     render(<DragPlane featureId="S1" sketchGroupRef={groupRef} />)
 
@@ -168,7 +184,9 @@ describe('DragPlane vertex snap candidates', () => {
   }
 
   it('snaps the dragged vertex to another vertex under the cursor', () => {
-    useSketchEditorStore.setState({ drag: vertexDrag('S1') })
+    useEditorState.setState({
+    drag: vertexDrag('S1'),
+  })
     proj.point = { x: 10, y: 0, z: 0 }
     render(<DragPlane featureId="S1" sketch={sketch} sketchGroupRef={groupRef} />)
 
@@ -184,7 +202,9 @@ describe('DragPlane vertex snap candidates', () => {
     // lineA:end sits under the cursor; it must be excluded by the dragged
     // entity's skip id or the indicator latches onto the point being moved.
     const lone: Sketch = { lineA: { start: [0, 0], end: [1, 0] } }
-    useSketchEditorStore.setState({ drag: vertexDrag('S1') })
+    useEditorState.setState({
+    drag: vertexDrag('S1'),
+  })
     proj.point = { x: 1, y: 0, z: 0 }
     render(<DragPlane featureId="S1" sketch={lone} sketchGroupRef={groupRef} />)
 
@@ -202,7 +222,9 @@ describe('DragPlane vertex snap candidates', () => {
       lineB: { start: [1, 0], end: [-100, -100] },
     }
     const constraints = [{ kind: 'coincident', a: '$lineAend', b: '$lineBstart' }]
-    useSketchEditorStore.setState({ drag: vertexDrag('S1', { vertexKey: 'end' }) })
+    useEditorState.setState({
+    drag: vertexDrag('S1', { vertexKey: 'end' }),
+  })
     proj.point = { x: 1, y: 0, z: 0 }
     render(
       <DragPlane featureId="S1" sketch={bonded} constraints={constraints as never} sketchGroupRef={groupRef} />,
@@ -222,7 +244,10 @@ describe('DragPlane pointer-up commit', () => {
   it('commits a dimension label drag as the anchor-relative offset', () => {
     const onMutation = vi.fn()
     setSketchCallback('onMutation', onMutation)
-    useSketchEditorStore.setState({ drag: dimDrag('S1'), isPointerDown: true })
+    useEditorState.setState({
+    drag: dimDrag('S1'),
+    isPointerDown: true,
+  })
     render(<DragPlane featureId="S1" sketchGroupRef={groupRef} />)
 
     up(100, 100)
@@ -238,9 +263,10 @@ describe('DragPlane pointer-up commit', () => {
   it('does not commit a dimension label drag that never left the anchor', () => {
     const onMutation = vi.fn()
     setSketchCallback('onMutation', onMutation)
-    useSketchEditorStore.setState({
-      drag: dimDrag('S1', { currentWorld: [0.00001, 0] }), isPointerDown: true,
-    })
+    useEditorState.setState({
+    drag: dimDrag('S1', { currentWorld: [0.00001, 0] }),
+    isPointerDown: true,
+  })
     render(<DragPlane featureId="S1" sketchGroupRef={groupRef} />)
 
     up(100, 100)
@@ -250,9 +276,11 @@ describe('DragPlane pointer-up commit', () => {
   })
 
   it('clears a pending press that never became a drag', () => {
-    useSketchEditorStore.setState({
-      dragPending: vertexPending('S1'), dragStartClient: [100, 100], isPointerDown: true,
-    })
+    useEditorState.setState({
+    dragPending: vertexPending('S1'),
+    dragStartClient: [100, 100],
+    isPointerDown: true,
+  })
     render(<DragPlane featureId="S1" sketchGroupRef={groupRef} />)
 
     up(100, 100)
@@ -264,7 +292,10 @@ describe('DragPlane pointer-up commit', () => {
   })
 
   it('leaves another sketch\'s drag intact on release', () => {
-    useSketchEditorStore.setState({ drag: vertexDrag('S2'), isPointerDown: true })
+    useEditorState.setState({
+    drag: vertexDrag('S2'),
+    isPointerDown: true,
+  })
     render(<DragPlane featureId="S1" sketchGroupRef={groupRef} />)
 
     up(100, 100)
@@ -276,12 +307,12 @@ describe('DragPlane pointer-up commit', () => {
   it('commits an activated vertex drag through the drag tool as a move_vertex', () => {
     const onMutation = vi.fn()
     setSketchCallback('onMutation', onMutation)
-    useSketchEditorStore.setState({
-      drag: vertexDrag('S1', { startClient: [100, 100], currentWorld: [5, 6] }),
-      dragPending: vertexPending('S1'),
-      dragStartClient: [100, 100],
-      isPointerDown: true,
-    })
+    useEditorState.setState({
+    drag: vertexDrag('S1', { startClient: [100, 100], currentWorld: [5, 6] }),
+    dragPending: vertexPending('S1'),
+    dragStartClient: [100, 100],
+    isPointerDown: true,
+  })
     render(<DragPlane featureId="S1" sketchGroupRef={groupRef} />)
 
     up(120, 120)

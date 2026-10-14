@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // A preview cannot open mid-session: startPreviewMode is refused. In prod that
 // refusal is a silent no-op, so this file mocks failLoud to a no-op to exercise
@@ -53,14 +54,14 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   beforeEach(() => {
     docRef.current = makeDoc()
     reSolve.mockClear()
-    usePartEditorStore.getState().setEditingFeatureId(null)
-    usePartEditorStore.getState().setRollbackPosition(null)
+    useEditorState.getState().setEditingFeatureId(null)
+    useEditorState.getState().setRollbackPosition(null)
   })
 
   it('colour edits mid sketch session are per-action entries and a later Apply is inert', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })  // sketch: not suppressed
     act(() => { result.current.handleMutation(renameTo('a')) })  // per-action entry
     // The popover's open is refused mid-session (silent in prod), so the slider
@@ -90,7 +91,7 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   it('a refused mid-session preview leaves no cancel target and later edits push normally', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })
     // The refused open is a silent no-op in prod; the colour lands as an
     // ordinary per-action sketch edit.
@@ -114,7 +115,7 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   it('a sketch session commit with no preview open pushes nothing extra', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })
     act(() => { result.current.handleMutation(renameTo('a')) })
     act(() => { result.current.commitEditSession() })
@@ -127,7 +128,7 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   it('a suppressed session owns mid-session colour edits as one aggregate', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('a')) })
     // The popover cannot open over the session; its mutation is swallowed and
@@ -150,7 +151,7 @@ describe('usePartDoc preview at the sketch-session commit boundary', () => {
   it('cancelling a sketch session with colour edits rewinds them and leaves Cancel inert', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(false) })
     act(() => { result.current.startPreviewMode(structuredClone(docRef.current!)) })
     act(() => { result.current.handleMutation({ type: 'set_part_color', bodyId: 'b1', color: '#00ff00' }) })

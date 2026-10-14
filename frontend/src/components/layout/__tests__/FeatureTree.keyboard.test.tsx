@@ -7,10 +7,11 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
@@ -51,9 +52,7 @@ const extrudeFeature: PartFeature = {
 function setupStore(features: PartFeature[]) {
   usePartEditorStore.setState({
     features,
-    rollbackPosition: null,
     visibleFeatures: new Set(features.map(f => f.id)),
-    editingFeatureId: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -62,7 +61,11 @@ function setupStore(features: PartFeature[]) {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
     activePickField: null,
     modeStack: [],
@@ -99,7 +102,9 @@ describe('FeatureTree keyboard reachability', () => {
 
   it('reflects aria-selected from the store selection', () => {
     setupStore([...builtInFeatures, extrudeFeature])
-    useSketchEditorStore.setState({ normalSelection: new Set(['@ex1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['@ex1']),
+  })
     renderSidebar()
     const row = screen.getByText('ex1').closest('.feature-item') as HTMLElement
     expect(row.getAttribute('aria-selected')).toBe('true')

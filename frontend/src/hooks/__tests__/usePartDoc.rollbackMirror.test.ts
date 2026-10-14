@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
+import { editorState } from '@/stores/editorState'
 
 const docRef: { current: PartDoc | null } = { current: null }
 
@@ -63,12 +65,16 @@ function renderPartDoc() {
 
 describe('doc.rollback mirrors the rollback bar', () => {
   beforeEach(() => {
-    usePartEditorStore.setState({ rollbackPosition: null, editingFeatureId: null, pickBoundary: null })
+    useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+    pickBoundary: null,
+  })
   })
 
   it('writes the parked position into the doc on a set_rollback mutation', () => {
     setDoc(makeDoc())
-    usePartEditorStore.getState().setRollbackPosition(2)
+    useEditorState.getState().setRollbackPosition(2)
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 2 }) })
@@ -78,7 +84,7 @@ describe('doc.rollback mirrors the rollback bar', () => {
 
   it('clears the doc position when the bar returns to the end of the stack', () => {
     setDoc(makeDoc(2))
-    usePartEditorStore.getState().setRollbackPosition(3)
+    useEditorState.getState().setRollbackPosition(3)
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'set_rollback', position: 3 }) })
@@ -88,7 +94,7 @@ describe('doc.rollback mirrors the rollback bar', () => {
 
   it('carries the parked position through an unrelated mutation', () => {
     setDoc(makeDoc(2))
-    usePartEditorStore.getState().setRollbackPosition(2)
+    useEditorState.getState().setRollbackPosition(2)
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'rename_feature', featureId: 'sk1', label: 'renamed' }) })
@@ -100,7 +106,7 @@ describe('doc.rollback mirrors the rollback bar', () => {
     // Adding a feature moves the bar to the end of the (longer) stack. Were the
     // old position left in the doc, reopening it would hide the new feature.
     setDoc(makeDoc(2))
-    usePartEditorStore.getState().setRollbackPosition(4)  // setRollbackForNewFeature: features.length + 1
+    useEditorState.getState().setRollbackPosition(4)  // setRollbackForNewFeature: features.length + 1
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'add_sketch', featureId: 'sk2' }) })
@@ -113,7 +119,7 @@ describe('doc.rollback mirrors the rollback bar', () => {
     // Entering an edit pins the bar just after the edited feature; that position
     // is transient UI state and must not overwrite what the user parked.
     setDoc(makeDoc(2))
-    const store = usePartEditorStore.getState()
+    const store = editorState.getState()
     store.setRollbackPosition(1)
     store.setEditingFeatureId('sk1')
     const { result } = renderPartDoc()
@@ -128,7 +134,7 @@ describe('doc.rollback mirrors the rollback bar', () => {
     // The store keeps its default position while the payload claims 2: the only
     // writer of doc.rollback is the mirror, so the mutation would silently no-op
     // while still pushing an entry. The guard trips instead of swallowing it.
-    usePartEditorStore.getState().setRollbackPosition(null)
+    useEditorState.getState().setRollbackPosition(null)
     const { result } = renderPartDoc()
 
     expect(() => {
@@ -141,7 +147,7 @@ describe('doc.rollback mirrors the rollback bar', () => {
     // funnel does, or a set_rollback smuggled inside a group would silently
     // no-op while still pushing an entry (the single path's exact failure mode).
     setDoc(makeDoc())
-    usePartEditorStore.getState().setRollbackPosition(null)
+    useEditorState.getState().setRollbackPosition(null)
     const { result } = renderPartDoc()
 
     expect(() => {
@@ -168,7 +174,7 @@ describe('doc.rollback mirrors the rollback bar', () => {
         { id: 'C', kind: 'extrude' },
       ],
     } as PartDoc)
-    usePartEditorStore.getState().setRollbackPosition(5)
+    useEditorState.getState().setRollbackPosition(5)
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'C', toIndex: 4 }) })

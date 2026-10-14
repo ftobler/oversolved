@@ -13,8 +13,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
@@ -87,9 +88,9 @@ describe('feature edit rollback restore', () => {
     fireEvent.click(editBtn)
 
     await waitFor(() => {
-      expect(usePartEditorStore.getState().editingFeatureId).toBe('ex1')
-      expect(usePartEditorStore.getState().pickBoundary).toBe(0)
-      expect(usePartEditorStore.getState().rollbackPosition).toBe(1)
+      expect(useEditorState.getState().editingFeatureId).toBe('ex1')
+      expect(useEditorState.getState().pickBoundary).toBe(0)
+      expect(useEditorState.getState().rollbackPosition).toBe(1)
     })
 
     // Fillet 1 is now rolled back (grayed out)

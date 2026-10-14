@@ -2,9 +2,10 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // `vi.hoisted`, because the usePartDoc factory below is hoisted above this line
 // and reads the spies while building the module.
@@ -60,14 +61,17 @@ vi.mock('../../components/layout/Sidebar', async () =>
 describe('Part Color Preview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      hoveredSelectionId: null,
-      hoveredVertexId: null,
-      activeTool: null,
-      activePickField: null, modeStack: [],
-      showDebugHit: false,
-    })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    hoveredSelectionId: null,
+    hoveredVertexId: null,
+    activeTool: null,
+    activePickField: null,
+    modeStack: [],
+  })
+  useSketchUiStore.setState({
+    showDebugHit: false,
+  })
   })
 
   function renderPart() {

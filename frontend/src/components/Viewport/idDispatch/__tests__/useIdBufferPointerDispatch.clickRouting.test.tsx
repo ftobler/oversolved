@@ -10,6 +10,7 @@ import {
 import { initializeTools } from '@/tools'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { newIdBufferDispatchFixture, disposeIdBufferDispatchFixture } from './idBufferDispatchHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('useIdBufferPointerDispatch', () => {
   let canvas: HTMLCanvasElement
@@ -49,7 +50,9 @@ describe('useIdBufferPointerDispatch', () => {
     registerDimCallbacks('c1', { onOver: () => {}, onOut: () => {}, onClick, onDoubleClick: () => {}, onPointerDown: () => {} })
 
     // Switch to a drawing tool that excludes dimensionLabel.
-    useSketchEditorStore.setState({ activeTool: 'line' })
+    useEditorState.setState({
+    activeTool: 'line',
+  })
 
     const resolveSpy = vi.fn().mockReturnValue({
       id: 1, layer: DIMENSION_LABEL_LAYER_NAME, entityKey: 'dim:c1', distancePx: 0,
@@ -123,11 +126,11 @@ describe('useIdBufferPointerDispatch', () => {
   // behaviour) no matter how precise the ID buffer was.
   describe('pickKey pass-through on B-rep clicks', () => {
     beforeEach(() => {
-      useSketchEditorStore.setState({
-        normalSelection: new Set(),
-        selectedPicks: new Map(),
-        activeTool: null,
-      })
+      useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    activeTool: null,
+  })
     })
 
     it('toggles the query and mints the hit pickKey claim', async () => {
@@ -183,11 +186,11 @@ describe('useIdBufferPointerDispatch', () => {
   // the claim-minting seam (the B-rep else branch above).
   describe('sketch-layer click toggles without a claim', () => {
     beforeEach(() => {
-      useSketchEditorStore.setState({
-        normalSelection: new Set(),
-        selectedPicks: new Map(),
-        activeTool: null,
-      })
+      useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    activeTool: null,
+  })
     })
 
     it('lands the query in normalSelection with no selectedPicks claim', async () => {
@@ -214,7 +217,10 @@ describe('useIdBufferPointerDispatch', () => {
     // Middle/right clicks belong to orbit/context-menu; a primary-button pick
     // must not run for them (the browser also fires `click` for button 1).
     pipeline.resolveSync = vi.fn()
-    useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+    useEditorState.setState({
+    activeTool: null,
+    normalSelection: new Set(),
+  })
 
     renderHook(() => useIdBufferPointerDispatch({
       glRef: glRef as { current: import('three').WebGLRenderer | null },
@@ -298,7 +304,10 @@ describe('useIdBufferPointerDispatch', () => {
     pipeline.resolveSync = vi.fn().mockReturnValue({
       id: 7, layer: EDGE_LAYER_NAME, entityKey: '?03;abc:edge', pickKey: 'b#edge#0', distancePx: 0,
     })
-    useSketchEditorStore.setState({ activeTool: 'dimension', activeFeatureId: 'feat1' })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+  })
     const spy = vi.spyOn(useSketchEditorStore.getState(), 'addBrepDimensionPick')
 
     renderHook(() => useIdBufferPointerDispatch({
@@ -324,10 +333,12 @@ describe('useIdBufferPointerDispatch', () => {
     pipeline.resolveSync = vi.fn().mockReturnValue({
       id: 8, layer: FACE_LAYER_NAME, entityKey: '@feat1/face/0', pickKey: '@feat1/face/0', distancePx: 0,
     })
-    useSketchEditorStore.setState({
-      activeTool: 'dimension', activeFeatureId: 'feat1',
-      normalSelection: new Set(), dimensionPicks: [],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    normalSelection: new Set(),
+    dimensionPicks: [],
+  })
     const dimSpy = vi.spyOn(useSketchEditorStore.getState(), 'addBrepDimensionPick')
 
     renderHook(() => useIdBufferPointerDispatch({
@@ -354,10 +365,12 @@ describe('useIdBufferPointerDispatch', () => {
     pipeline.resolveSync = vi.fn().mockReturnValue({
       id: 13, layer: ORIGIN_LAYER_NAME, entityKey: '@builtin_origin', pickKey: '@builtin_origin', distancePx: 0,
     })
-    useSketchEditorStore.setState({
-      activeTool: 'dimension', activeFeatureId: 'feat1',
-      normalSelection: new Set(), dimensionPicks: [],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    normalSelection: new Set(),
+    dimensionPicks: [],
+  })
     const spy = vi.spyOn(useSketchEditorStore.getState(), 'addDimensionPick')
 
     renderHook(() => useIdBufferPointerDispatch({
@@ -386,10 +399,12 @@ describe('useIdBufferPointerDispatch', () => {
         : null
     )) as unknown as IdPipeline['resolveSync']
     pipeline.target.markClean()
-    useSketchEditorStore.setState({
-      activeTool: 'dimension', activeFeatureId: 'feat1',
-      normalSelection: new Set(), dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    normalSelection: new Set(),
+    dimensionPicks: [{ isVertex: false, target: 'entity:feat1:l1' }],
+  })
     const finalize = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement').mockImplementation(() => {})
 
     renderHook(() => useIdBufferPointerDispatch({
@@ -414,10 +429,12 @@ describe('useIdBufferPointerDispatch', () => {
     // means no curve or point was within reach: the label of a circle's
     // diameter lands inside the region it measures.
     pipeline.resolveSync = vi.fn().mockReturnValue({ id: 4, layer, entityKey: key, pickKey: key, distancePx: 0 })
-    useSketchEditorStore.setState({
-      activeTool: 'dimension', activeFeatureId: 'feat1',
-      normalSelection: new Set(), dimensionPicks: [{ isVertex: false, target: 'entity:feat1:c1' }],
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'feat1',
+    normalSelection: new Set(),
+    dimensionPicks: [{ isVertex: false, target: 'entity:feat1:c1' }],
+  })
     const finalize = vi.spyOn(useSketchEditorStore.getState(), 'finalizeDimensionPlacement').mockImplementation(() => {})
 
     renderHook(() => useIdBufferPointerDispatch({
@@ -438,7 +455,10 @@ describe('useIdBufferPointerDispatch', () => {
     pipeline.resolveSync = vi.fn().mockReturnValue({
       id: 13, layer: ORIGIN_LAYER_NAME, entityKey: '@builtin_origin', pickKey: '@builtin_origin', distancePx: 0,
     })
-    useSketchEditorStore.setState({ activeTool: null, normalSelection: new Set() })
+    useEditorState.setState({
+    activeTool: null,
+    normalSelection: new Set(),
+  })
 
     renderHook(() => useIdBufferPointerDispatch({
       glRef: glRef as { current: import('three').WebGLRenderer | null },

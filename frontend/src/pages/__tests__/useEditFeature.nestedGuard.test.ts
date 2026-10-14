@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useEditFeature } from '@/pages/useEditFeature'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, PartFeature } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Small unit-level companion to Part.nestedEditSessionGuard.test.tsx (which
 // drives the guard through a full page render). Pins the guard's condition
@@ -13,7 +14,11 @@ import type { PartDoc, PartFeature } from '@/types/cad'
 // catch it.
 describe('useEditFeature nested-session guard (unit)', () => {
   beforeEach(() => {
-    usePartEditorStore.setState({ editingFeatureId: null, rollbackPosition: null, pickBoundary: null })
+    useEditorState.setState({
+    editingFeatureId: null,
+    rollbackPosition: null,
+    pickBoundary: null,
+  })
   })
 
   it('re-entering the currently-open feature does not close and reopen it', () => {

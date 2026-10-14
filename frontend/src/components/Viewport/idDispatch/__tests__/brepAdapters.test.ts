@@ -8,9 +8,13 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { setSelectionIdOnHover } from '@/components/Viewport/idDispatch/brepAdapters'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { hoverActiveFrom, EMPTY_CLAIM_MAP } from '@/picking/highlightActive'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
-  useSketchEditorStore.setState({ hoveredSelectionId: null, hoveredPickKey: null } as never)
+  useEditorState.setState({
+    hoveredSelectionId: null,
+    hoveredPickKey: null,
+  })
 })
 
 describe('setSelectionIdOnHover pickKey guard', () => {

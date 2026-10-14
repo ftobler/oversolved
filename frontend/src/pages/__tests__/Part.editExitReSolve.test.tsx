@@ -17,9 +17,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { solveViaWorker } from '@/kernel/worker/solverClient'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn(),
@@ -71,7 +72,12 @@ describe('edit exit reSolve', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
-    usePartEditorStore.setState({ editingFeatureId: null, pickBoundary: null, rollbackPosition: null, ghostMode: false })
+    useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+    ghostMode: false,
+  })
     solveMock.mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null })
   })
 

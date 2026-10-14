@@ -5,9 +5,10 @@ import { render, fireEvent } from '@testing-library/react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
+import { useEditorState } from '@/hooks/useEditorState'
 
 export function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
@@ -56,9 +57,7 @@ export const sketchFeature: PartFeature = {
 export function resetStores() {
   usePartEditorStore.setState({
     features: [],
-    rollbackPosition: null,
     visibleFeatures: new Set(),
-    editingFeatureId: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -67,9 +66,14 @@ export function resetStores() {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
 }
 
@@ -85,20 +89,21 @@ function seedFeatures(features: PartFeature[]) {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
 }
 
 export function setupRollbackStore(features: PartFeature[], rollbackPosition: number | null) {
   seedFeatures(features)
-  usePartEditorStore.setState({ rollbackPosition, editingFeatureId: null })
+  useEditorState.setState({ rollbackPosition, editingFeatureId: null })
 }
 
 export function setupEditingStore(features: PartFeature[], editingFeatureId: string | null = null) {
   seedFeatures(features)
-  usePartEditorStore.setState({ rollbackPosition: null, editingFeatureId })
+  useEditorState.setState({ rollbackPosition: null, editingFeatureId })
 }
 
 export function createDragEvent(type: string, overrides: Record<string, unknown> = {}) {

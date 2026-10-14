@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent, act } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
 import { clearStaleBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
 import { shouldClearSelectionOnBackplaneClick } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { getLivePipeline, setLivePipeline } from '@/picking/IdPipelineContext'
 import { IdPipeline, FACE_LAYER_NAME } from '@/picking'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Capture the miss handler the way R3F would call it after a click that hit no
 // geometry, so the test can drive the real deselect path.
@@ -73,26 +74,44 @@ function captureStubs(el: Element): { set: ReturnType<typeof vi.fn> } {
 }
 
 function seedSelection(key: string): void {
-  useSketchEditorStore.setState({ normalSelection: new Set([key]) })
+  useEditorState.setState({
+    normalSelection: new Set([key]),
+  })
 }
 
 describe('part editor empty-space click clears the selection', () => {
   beforeEach(() => {
     clearStaleBandClickConsumed()
     usePartEditorStore.setState({
-      features: [], bodies: {}, pickBodies: {}, ghostMode: false,
-      rollbackPosition: null, visibleFeatures: new Set(), visibleBodies: new Set(),
-      solveResults: {}, otherSketches: {}, partColors: {}, partStyle: {},
-      activeSketchFeatureId: null, doc: null,
-    })
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: null,
-      dimensionPicks: [],
-      normalSelection: new Set(),
-      hoveredSelectionId: null, hoveredPickKey: null, hoveredVertexId: null,
-      hoveredConstraintEntityIds: new Set(), contextMenu: null,
-    })
+    features: [],
+    bodies: {},
+    pickBodies: {},
+    visibleFeatures: new Set(),
+    visibleBodies: new Set(),
+    solveResults: {},
+    otherSketches: {},
+    doc: null,
+  })
+  useEditorState.setState({
+    ghostMode: false,
+    rollbackPosition: null,
+    partColors: {},
+    partStyle: {},
+    activeSketchFeatureId: null,
+  })
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: null,
+    dimensionPicks: [],
+    normalSelection: new Set(),
+    hoveredSelectionId: null,
+    hoveredPickKey: null,
+    hoveredVertexId: null,
+    hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
+    contextMenu: null,
+  })
     setLivePipeline(null)
     missedFn.current = null
   })
@@ -177,7 +196,10 @@ describe('part editor empty-space click clears the selection', () => {
   // box; publishing that as "a sweep owns this click" made the backplane refuse
   // every clear, and background deselection was dead in sketch edit mode only.
   it('a stationary left click inside a sketch clears through the backplane path', () => {
-    useSketchEditorStore.setState({ activeFeatureId: 'sk1', activeTool: null })
+    useEditorState.setState({
+    activeFeatureId: 'sk1',
+    activeTool: null,
+  })
     seedSelection('entity:sk1:e0')
     const { container } = render(<Viewport />)
     const el = container.firstChild as Element

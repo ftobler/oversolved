@@ -9,7 +9,7 @@
 // so the edge palette is the observable mark, not the face palette.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { paletteRGB } from '@/components/Geometry3D/useHighlightColors'
 import type { HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
 import {
@@ -20,6 +20,7 @@ import {
   DEFAULT_PART_ROUGHNESS,
 } from '@/components/Geometry3D/constants'
 import type { Mesh3D } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -69,12 +70,12 @@ const mesh: Mesh3D = {
 beforeEach(() => {
   palettes.length = 0
   registrations.length = 0
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
-  } as never)
+  })
 })
 
 async function renderBody(props: Record<string, unknown>) {
@@ -112,7 +113,9 @@ describe('Body3D draws a doomed body marked', () => {
   })
 
   it('brightens the doomed wireframe when selected, keeping the face transparent', async () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']) } as never)
+    useEditorState.setState({
+    normalSelection: new Set(['@body_ex1']),
+  })
     const { container } = await renderBody({ doomed: true })
     expect(edgeBase()).toEqual(paletteRGB(COLOR_BODY_EDGE_SEL))
     expect(Number(material(container)?.getAttribute('opacity'))).toBe(0)

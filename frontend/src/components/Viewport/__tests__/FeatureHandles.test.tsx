@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
 import type { FeatureHandleData, PartDoc, PartFeature } from '@/types/cad'
 
@@ -63,6 +63,7 @@ vi.mock('@/utils/gizmoMath', async (importOriginal) => ({
 }))
 
 import FeatureHandles from '@/components/Viewport/FeatureHandles'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const HANDLE: FeatureHandleData = {
   kind: 'linear',
@@ -86,9 +87,11 @@ function extrudeFeature(overrides: Partial<PartFeature['extrude']> = {}): PartFe
 function installFeature(feature: PartFeature) {
   usePartEditorStore.setState({
     ...DEFAULT_PART_EDITOR_DATA,
-    editingFeatureId: 'F1',
     doc: { features: [feature] } as unknown as PartDoc,
     solveResults: { F1: { handle: HANDLE } },
+  })
+  useEditorState.setState({
+    editingFeatureId: 'F1',
   })
 }
 
@@ -97,9 +100,15 @@ beforeEach(() => {
   seams.registration = null
   seams.closestParam.mockReset()
   setSketchCallback('onMutation', null)
-  useSketchEditorStore.setState({
-    drag: null, dragPending: null, dragStartClient: null, isPointerDown: false,
-    hoveredSelectionId: null, pendingDialog: null,
+  useEditorState.setState({
+    drag: null,
+    dragPending: null,
+    dragStartClient: null,
+    isPointerDown: false,
+    hoveredSelectionId: null,
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
   })
   installFeature(extrudeFeature())
 })
@@ -110,15 +119,28 @@ afterEach(() => {
 
 describe('FeatureHandles container', () => {
   it('renders nothing without an editing feature or a handle', () => {
-    usePartEditorStore.setState({ editingFeatureId: null })
+    useEditorState.setState({
+    editingFeatureId: null,
+  })
     expect(render(<FeatureHandles />).container.firstChild).toBeNull()
 
-    usePartEditorStore.setState({ editingFeatureId: 'F1', solveResults: {} })
+    usePartEditorStore.setState({
+    solveResults: {},
+  })
+  useEditorState.setState({
+    editingFeatureId: 'F1',
+  })
     expect(render(<FeatureHandles />).container.firstChild).toBeNull()
   })
 
   it('renders nothing when the feature is missing from the doc', () => {
-    usePartEditorStore.setState({ editingFeatureId: 'F1', doc: { features: [] } as unknown as PartDoc, solveResults: { F1: { handle: HANDLE } } })
+    usePartEditorStore.setState({
+    doc: { features: [] } as unknown as PartDoc,
+    solveResults: { F1: { handle: HANDLE } },
+  })
+  useEditorState.setState({
+    editingFeatureId: 'F1',
+  })
     expect(render(<FeatureHandles />).container.firstChild).toBeNull()
   })
 
@@ -169,7 +191,7 @@ describe('FeatureHandles double-click edit', () => {
     render(<FeatureHandles />)
     act(() => seams.callbacks!.onDoubleClick(30, 40))
 
-    const dialog = useSketchEditorStore.getState().pendingDialog
+    const dialog = useSketchUiStore.getState().pendingDialog
     expect(dialog).not.toBeNull()
     expect(dialog!.label).toBe('Extrude distance')
     expect(dialog!.defaultValue).toBe('5')
@@ -179,7 +201,7 @@ describe('FeatureHandles double-click edit', () => {
   it('validates numbers and expressions, rejecting non-positive values', () => {
     render(<FeatureHandles />)
     act(() => seams.callbacks!.onDoubleClick(0, 0))
-    const validate = useSketchEditorStore.getState().pendingDialog!.validate!
+    const validate = useSketchUiStore.getState().pendingDialog!.validate!
 
     expect(validate('abc')).toBe('Enter a number or expression')
     expect(validate('0')).toBe('Must be greater than 0')
@@ -193,7 +215,7 @@ describe('FeatureHandles double-click edit', () => {
     render(<FeatureHandles />)
     act(() => seams.callbacks!.onDoubleClick(0, 0))
 
-    const confirm = useSketchEditorStore.getState().pendingDialog!.onConfirm
+    const confirm = useSketchUiStore.getState().pendingDialog!.onConfirm
     act(() => confirm('12'))
     expect(onMutation).toHaveBeenLastCalledWith({
       type: 'set_extrude_field', featureId: 'F1', field: 'distance', value: 12,

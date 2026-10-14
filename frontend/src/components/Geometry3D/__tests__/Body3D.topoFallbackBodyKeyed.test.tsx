@@ -7,8 +7,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import type { Mesh3D, EdgeData } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -40,12 +41,12 @@ const vertices: [number, number, number][] = [[0, 0, 0]]
 
 beforeEach(() => {
   minted.length = 0
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
-  } as never)
+  })
 })
 
 // Both bodies belong to feature `ex1`; only their body ids separate them.

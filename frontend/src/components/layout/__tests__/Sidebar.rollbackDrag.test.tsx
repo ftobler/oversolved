@@ -6,6 +6,7 @@ import {
   createDragEvent, grabRollback, movePointer, releasePointer, layoutFeatureRows,
   builtInFeatures, extrudeFeature, sketchFeature,
 } from './sidebarTestHarness'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
   resetStores()
@@ -178,7 +179,9 @@ describe('rollback bar drag convergence', () => {
     const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, extrudeFeature]
     setupStore(features, 5)
-    usePartEditorStore.setState({ editingFeatureId: 'ex1' })
+    useEditorState.setState({
+    editingFeatureId: 'ex1',
+  })
     renderSidebar(makeCallbacks({ onSetRollbackPosition }))
     layoutFeatureRows()
 
@@ -194,7 +197,9 @@ describe('rollback bar drag convergence', () => {
     const onSetRollbackPosition = vi.fn()
     const features = [...builtInFeatures, sketchFeature, extrudeFeature]
     setupStore(features, 5)
-    usePartEditorStore.setState({ editingFeatureId: 'sk1' })
+    useEditorState.setState({
+    editingFeatureId: 'sk1',
+  })
     renderSidebar(makeCallbacks({ onSetRollbackPosition }))
     layoutFeatureRows()
 

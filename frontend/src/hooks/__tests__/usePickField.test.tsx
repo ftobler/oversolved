@@ -9,9 +9,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render, fireEvent } from '@testing-library/react'
 import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     chipOwnedSelection: new Set(),
     activePickField: null,

@@ -5,8 +5,9 @@ import Dialog from '@/components/dialogs/Dialog'
 import { buildCommandEntries } from '@/pages/commandEntries'
 import { registerCommand, clearAllHandlers, dispatchKey } from '@/utils/core/commandRegistry'
 import { resetModalEscape } from '@/utils/core/modalEscape'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The over-cancel bug, end to end. Both dispatchKey and the Dialog shell listen
 // for Escape on window, and dispatchKey is attached first (useCommandRegistration
@@ -39,7 +40,9 @@ describe('Escape under a modal does not cancel the sketch gesture', () => {
   beforeEach(() => {
     clearAllHandlers()
     resetModalEscape()
-    useSketchEditorStore.setState({ pendingDialog: null })
+    useSketchUiStore.setState({
+    pendingDialog: null,
+  })
     detach = attachDispatch()
   })
 
@@ -53,7 +56,9 @@ describe('Escape under a modal does not cancel the sketch gesture', () => {
   it('keeps the armed tool and its draw points while a message box is open', () => {
     const onClose = vi.fn()
     useSketchEditorStore.getState().setActiveTool('line')
-    useSketchEditorStore.setState({ drawPoints: [[0, 0], [10, 10]] })
+    useEditorState.setState({
+    drawPoints: [[0, 0], [10, 10]],
+  })
 
     const view = render(
       <MessageDialog isOpen title="Not Implemented" message="Mirror tool is not yet implemented." onClose={onClose} />
@@ -81,7 +86,9 @@ describe('Escape under a modal does not cancel the sketch gesture', () => {
   it('a busy dialog still holds Escape even though it refuses to close', () => {
     const onClose = vi.fn()
     useSketchEditorStore.getState().setActiveTool('line')
-    useSketchEditorStore.setState({ drawPoints: [[0, 0]] })
+    useEditorState.setState({
+    drawPoints: [[0, 0]],
+  })
 
     // `busy` seals the shell's own exits, so it will not close on Escape. The
     // claim is keyed on isOpen precisely so the global handler cannot reach past
@@ -97,7 +104,9 @@ describe('Escape under a modal does not cancel the sketch gesture', () => {
 
   it('with no dialog mounted, Escape cancels the in-progress entity but keeps the tool armed', () => {
     useSketchEditorStore.getState().setActiveTool('line')
-    useSketchEditorStore.setState({ drawPoints: [[0, 0], [10, 10]] })
+    useEditorState.setState({
+    drawPoints: [[0, 0], [10, 10]],
+  })
 
     pressEscape()
 

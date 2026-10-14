@@ -13,8 +13,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { useSketchEditorStore } from '../sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
-const STORE = join(__dirname, '../sketchEditorStore.ts')
+// The gated transition actions live with the state they own: selection, tool
+// and draw state moved to the L2 editor-state store, so the harness gates and
+// this scan moved with them.
+const STORE = join(__dirname, '../editorState.ts')
 
 const gate = vi.hoisted(() => ({ on: true }))
 
@@ -36,7 +40,7 @@ function liveText(): string {
 // An id no declared prefix recognizes: repairSelectionState filters it out
 // whenever a gate runs, so its survival proves no gate ran on this write.
 function seedUnrecognizedSelection(): void {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(['not-a-known-prefix']),
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),
@@ -47,7 +51,7 @@ function seedUnrecognizedSelection(): void {
   })
 }
 
-const hasUnrecognized = () => useSketchEditorStore.getState().normalSelection.has('not-a-known-prefix')
+const hasUnrecognized = () => useEditorState.getState().normalSelection.has('not-a-known-prefix')
 
 describe('invariant layer stays a dev/test-only harness', () => {
   beforeEach(() => { gate.on = true })
@@ -74,14 +78,14 @@ describe('invariant layer stays a dev/test-only harness', () => {
 
   it('an ordinary write is carried untouched, so no subscription validates it', () => {
     seedUnrecognizedSelection()
-    useSketchEditorStore.getState().setIsPointerDown(true)
+    useEditorState.getState().setIsPointerDown(true)
     expect(hasUnrecognized()).toBe(true)
   })
 
   it('a gated transition does not validate while the dev/test gate is off', () => {
     gate.on = false
     seedUnrecognizedSelection()
-    useSketchEditorStore.getState().clearDraw()
+    useEditorState.getState().clearDraw()
     expect(hasUnrecognized()).toBe(true)
   })
 

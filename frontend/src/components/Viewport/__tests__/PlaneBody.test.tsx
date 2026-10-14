@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { useSketchEditorStore, type VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
+import { type VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 import PlaneBody from '../PlaneBody'
+import { useEditorState } from '@/hooks/useEditorState'
 
 /**
  * PlaneBody is the shared visual/behaviour body for reference and user-defined
@@ -31,7 +32,11 @@ beforeEach(() => {
   seams.regPlane.mockClear()
   seams.surfaceProps.mockClear()
   seams.labelProps.mockClear()
-  useSketchEditorStore.setState({ normalSelection: new Set(), hoveredSelectionId: null, drag: null })
+  useEditorState.setState({
+    normalSelection: new Set(),
+    hoveredSelectionId: null,
+    drag: null,
+  })
 })
 
 describe('PlaneBody', () => {
@@ -53,19 +58,26 @@ describe('PlaneBody', () => {
   })
 
   it('is selected when the selection set holds this id', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['p']) })
+    useEditorState.setState({
+    normalSelection: new Set(['p']),
+  })
     render(<PlaneBody selId="p" size={10} rotation={ROT} label="L" />)
     expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ state: 'selected' })
   })
 
   it('hover wins over selection', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['p']), hoveredSelectionId: 'p' })
+    useEditorState.setState({
+    normalSelection: new Set(['p']),
+    hoveredSelectionId: 'p',
+  })
     render(<PlaneBody selId="p" size={10} rotation={ROT} label="L" />)
     expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ state: 'hovered' })
   })
 
   it('hides the fill mesh while any drag is live, so the plane cannot occlude the grab', () => {
-    useSketchEditorStore.setState({ drag: makeDrag([1, 1]) })
+    useEditorState.setState({
+    drag: makeDrag([1, 1]),
+  })
     render(<PlaneBody selId="p" size={10} rotation={ROT} label="L" />)
     expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ hideMesh: true })
   })
@@ -73,11 +85,15 @@ describe('PlaneBody', () => {
   it('does not re-render on a drag tick that leaves the drag non-null', () => {
     // The selector narrows DragState to a boolean, so the per-pointermove
     // replacement of the drag object must not wake every plane.
-    useSketchEditorStore.setState({ drag: makeDrag([1, 1]) })
+    useEditorState.setState({
+    drag: makeDrag([1, 1]),
+  })
     render(<PlaneBody selId="p" size={10} rotation={ROT} label="L" />)
     const rendersAfterMount = seams.surfaceProps.mock.calls.length
 
-    act(() => { useSketchEditorStore.setState({ drag: makeDrag([2, 2]) }) })
+    act(() => { useEditorState.setState({
+    drag: makeDrag([2, 2]),
+  }) })
 
     expect(seams.surfaceProps.mock.calls.length).toBe(rendersAfterMount)
   })
@@ -88,12 +104,16 @@ describe('PlaneBody', () => {
     render(<PlaneBody selId="p" size={10} rotation={ROT} label="L" />)
     const rendersBeforeDrag = seams.surfaceProps.mock.calls.length
 
-    act(() => { useSketchEditorStore.setState({ drag: makeDrag([1, 1]) }) })
+    act(() => { useEditorState.setState({
+    drag: makeDrag([1, 1]),
+  }) })
     expect(seams.surfaceProps.mock.calls.length).toBeGreaterThan(rendersBeforeDrag)
     expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ hideMesh: true })
 
     const rendersWhileDragging = seams.surfaceProps.mock.calls.length
-    act(() => { useSketchEditorStore.setState({ drag: null }) })
+    act(() => { useEditorState.setState({
+    drag: null,
+  }) })
     expect(seams.surfaceProps.mock.calls.length).toBeGreaterThan(rendersWhileDragging)
     expect(seams.surfaceProps.mock.calls.at(-1)![0]).toMatchObject({ hideMesh: false })
   })

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { dispatchSketchClick, dispatchDragInitiation } from '../dispatchSketchClick'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { initializeTools } from '@/tools'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
   toolRegistry.reset()
@@ -10,7 +11,7 @@ beforeEach(() => {
 })
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     activeTool: null,
     activeFeatureId: null,
     drag: null,
@@ -31,10 +32,10 @@ beforeEach(() => {
 
 describe('dispatchDragInitiation guard logic', () => {
   it('unified vertex dispatch proceeds when activeTool is null', () => {
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: 'feat1',
-    })
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: 'feat1',
+  })
 
     dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
@@ -52,10 +53,10 @@ describe('dispatchDragInitiation guard logic', () => {
   })
 
   it('unified edge dispatch passes vertexKey=edge', () => {
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: 'feat1',
-    })
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: 'feat1',
+  })
 
     dispatchDragInitiation(
       'entity:feat1:line1', 'feat1', 'line1', 'edge',
@@ -70,10 +71,10 @@ describe('dispatchDragInitiation guard logic', () => {
   })
 
   it('proceeds when activeTool is drag', () => {
-    useSketchEditorStore.setState({
-      activeTool: 'drag',
-      activeFeatureId: 'feat1',
-    })
+    useEditorState.setState({
+    activeTool: 'drag',
+    activeFeatureId: 'feat1',
+  })
 
     dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
@@ -86,10 +87,10 @@ describe('dispatchDragInitiation guard logic', () => {
   })
 
   it('blocks when activeTool is a drawing tool (line)', () => {
-    useSketchEditorStore.setState({
-      activeTool: 'line',
-      activeFeatureId: 'feat1',
-    })
+    useEditorState.setState({
+    activeTool: 'line',
+    activeFeatureId: 'feat1',
+  })
 
     dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
@@ -102,10 +103,10 @@ describe('dispatchDragInitiation guard logic', () => {
   })
 
   it('blocks when activeFeatureId is null', () => {
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: null,
-    })
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: null,
+  })
 
     dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
@@ -118,10 +119,10 @@ describe('dispatchDragInitiation guard logic', () => {
   })
 
   it('blocks when activeFeatureId does not match featureId param', () => {
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: 'feat2',
-    })
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: 'feat2',
+  })
 
     dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',
@@ -137,18 +138,18 @@ describe('dispatchDragInitiation guard logic', () => {
     // A second finger pressing a vertex on another sketch mid-drag used to
     // overwrite dragPending, which the first finger's release then cleared,
     // killing gesture B and unlocking the camera while finger B was still down.
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: 'feat1',
-      drag: {
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: 'feat1',
+    drag: {
         type: 'vertex', vertexId: 'vertex:feat1:line1:start', featureId: 'feat1',
         entityId: 'line1', vertexKey: 'start', startWorld: [0, 0],
         currentWorld: [1, 1], startClient: [0, 0],
       },
-      dragPending: null,
-      dragStartClient: [0, 0],
-      isPointerDown: true,
-    })
+    dragPending: null,
+    dragStartClient: [0, 0],
+    isPointerDown: true,
+  })
 
     dispatchDragInitiation(
       'vertex:feat1:line2:start', 'feat1', 'line2', 'start',
@@ -170,13 +171,13 @@ describe('dispatchSketchClick null-tool fallback (idle select contract)', () => 
   // backplaneClearGuard.test.tsx). These tests pin the toggle half, which the
   // fallback itself owns.
   beforeEach(() => {
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: 'S1',
-      hoveredSelectionId: null,
-      hoveredVertexId: null,
-      normalSelection: new Set(),
-    })
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: 'S1',
+    hoveredSelectionId: null,
+    hoveredVertexId: null,
+    normalSelection: new Set(),
+  })
   })
 
   it('idle click on a sketch entity toggles it into normal selection', () => {
@@ -186,7 +187,9 @@ describe('dispatchSketchClick null-tool fallback (idle select contract)', () => 
   })
 
   it('idle click on an already-selected entity toggles it back out', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['entity:S1:L1']),
+  })
     dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
     const s = useSketchEditorStore.getState()
     expect(s.normalSelection.has('entity:S1:L1')).toBe(false)
@@ -204,32 +207,38 @@ describe('dispatchSketchClick null-tool fallback (idle select contract)', () => 
 
 describe('dispatchSketchClick with entityKind (sticky placement)', () => {
   beforeEach(() => {
-    useSketchEditorStore.setState({
-      activeTool: 'dimension',
-      activeFeatureId: 'S1',
-      hoveredSelectionId: null,
-      hoveredVertexId: null,
-      dimensionPicks: [],
-      pendingDialog: null,
-      normalSelection: new Set(),
-    })
+    useEditorState.setState({
+    activeTool: 'dimension',
+    activeFeatureId: 'S1',
+    hoveredSelectionId: null,
+    hoveredVertexId: null,
+    dimensionPicks: [],
+    normalSelection: new Set(),
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
+  })
   })
 
   it('circle entityKind appends to dimensionPicks (no dialog yet)', () => {
-    useSketchEditorStore.setState({ hoveredSelectionId: 'entity:S1:C1' })
+    useEditorState.setState({
+    hoveredSelectionId: 'entity:S1:C1',
+  })
     dispatchSketchClick('entity:S1:C1', 'circle', 100, 100)
-    const s = useSketchEditorStore.getState()
-    expect(s.pendingDialog).toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).toBeNull()
+    const s = useEditorState.getState()
     expect(s.dimensionPicks).toEqual([
       { isVertex: false, target: 'entity:S1:C1', entityKind: 'circle' },
     ])
   })
 
   it('line entityKind appends to dimensionPicks (no dialog yet)', () => {
-    useSketchEditorStore.setState({ hoveredSelectionId: 'entity:S1:L1' })
+    useEditorState.setState({
+    hoveredSelectionId: 'entity:S1:L1',
+  })
     dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
-    const s = useSketchEditorStore.getState()
-    expect(s.pendingDialog).toBeNull()
+    expect(useSketchUiStore.getState().pendingDialog).toBeNull()
+    const s = useEditorState.getState()
     expect(s.dimensionPicks).toEqual([
       { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
     ])
@@ -251,7 +260,9 @@ describe('dispatchSketchClick with entityKind (sticky placement)', () => {
   // `!context.activeFeatureId` guard, so neither a pick nor a selection toggle
   // may happen for a click the tool cannot act on even if one guard regresses.
   it('dimension click outside a sketch does not pick or toggle', () => {
-    useSketchEditorStore.setState({ activeFeatureId: null })
+    useEditorState.setState({
+    activeFeatureId: null,
+  })
     dispatchSketchClick('entity:S1:L1', 'line', 100, 100)
     const s = useSketchEditorStore.getState()
     expect(s.dimensionPicks).toHaveLength(0)

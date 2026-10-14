@@ -21,6 +21,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { bodyKeyFor, primitivePickKey } from '@/picking/pickKey'
 import { FACE_LAYER_NAME } from '@/picking/layerNames'
 import type { Mesh3D } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -124,12 +125,12 @@ beforeEach(async () => {
   facePaints.length = 0
   faceMints.n = 0
   await act(async () => {
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      selectedPicks: new Map(),
-      hoveredSelectionId: null,
-      hoveredPickKey: null,
-    } as never)
+    useEditorState.setState({
+    normalSelection: new Set(),
+    selectedPicks: new Map(),
+    hoveredSelectionId: null,
+    hoveredPickKey: null,
+  })
   })
 })
 
@@ -208,7 +209,9 @@ describe('legacy triangle highlight shares the HighlightIndex cache', () => {
 
 describe('legacy fallback still paints the hovered/selected triangles exactly as before', () => {
   it('marks exactly the selected triangle, not the whole mesh', async () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1/tri/1']) } as never)
+    useEditorState.setState({
+    normalSelection: new Set(['@body_ex1/tri/1']),
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacyMesh()} />)
 
@@ -217,7 +220,9 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
   })
 
   it('marks exactly the hovered triangle', async () => {
-    useSketchEditorStore.setState({ hoveredSelectionId: '@body_ex1/tri/0' } as never)
+    useEditorState.setState({
+    hoveredSelectionId: '@body_ex1/tri/0',
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacyMesh()} />)
 
@@ -226,10 +231,10 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
   })
 
   it('paints selection and hover through the same per-triangle runs as before', async () => {
-    useSketchEditorStore.setState({
-      normalSelection: new Set(['@body_ex1/tri/0']),
-      hoveredSelectionId: '@body_ex1/tri/1',
-    } as never)
+    useEditorState.setState({
+    normalSelection: new Set(['@body_ex1/tri/0']),
+    hoveredSelectionId: '@body_ex1/tri/1',
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacyMesh()} />)
 
@@ -245,10 +250,10 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
   // membership alone decides, exactly like the pre-index fallback.
   it('a live per-face pickKey on a mapped-but-short mesh still highlights the whole face', async () => {
     const bodyKey = bodyKeyFor('ex1', 'body_ex1')
-    useSketchEditorStore.setState({
-      hoveredSelectionId: 'f0',
-      hoveredPickKey: primitivePickKey(bodyKey, 0, FACE_LAYER_NAME),
-    } as never)
+    useEditorState.setState({
+    hoveredSelectionId: 'f0',
+    hoveredPickKey: primitivePickKey(bodyKey, 0, FACE_LAYER_NAME),
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mappedButShortMesh()} />)
 
@@ -258,10 +263,10 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
 
   it('a per-face selectedPicks claim on a mapped-but-short mesh still selects the whole face', async () => {
     const bodyKey = bodyKeyFor('ex1', 'body_ex1')
-    useSketchEditorStore.setState({
-      normalSelection: new Set(['f0']),
-      selectedPicks: new Map([['f0', new Set([primitivePickKey(bodyKey, 0, FACE_LAYER_NAME)])]]),
-    } as never)
+    useEditorState.setState({
+    normalSelection: new Set(['f0']),
+    selectedPicks: new Map([['f0', new Set([primitivePickKey(bodyKey, 0, FACE_LAYER_NAME)])]]),
+  })
     const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
     render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mappedButShortMesh()} />)
 

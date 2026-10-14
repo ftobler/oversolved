@@ -18,8 +18,9 @@ import { usePartDoc } from '@/hooks/usePartDoc'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { MemoryFileRegistry } from '@/stores/fileRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, PartFeature, SketchData } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const MB = 1024 * 1024
 
@@ -242,9 +243,9 @@ describe('re-import through the real funnel', () => {
   beforeEach(() => {
     docRef.current = null
     reSolve.mockReset()
-    usePartEditorStore.getState().setEditingFeatureId(null)
-    usePartEditorStore.getState().setRollbackPosition(null)
-    usePartEditorStore.getState().setPickBoundary(null)
+    useEditorState.getState().setEditingFeatureId(null)
+    useEditorState.getState().setRollbackPosition(null)
+    useEditorState.getState().setPickBoundary(null)
   })
 
   it('a new import references a NEW file while the old entry still references the old one', () => {

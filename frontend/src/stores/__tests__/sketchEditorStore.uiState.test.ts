@@ -1,24 +1,25 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { installSketchStoreSetup, resetSketchEditorStore } from './helpers/sketchEditorStoreTestSetup'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
 
   describe('contextMenu', () => {
     it('starts as null', () => {
-      expect(useSketchEditorStore.getState().contextMenu).toBeNull()
+      expect(useSketchUiStore.getState().contextMenu).toBeNull()
     })
 
     it('openContextMenu stores position', () => {
-      useSketchEditorStore.getState().openContextMenu([100, 200])
-      expect(useSketchEditorStore.getState().contextMenu).toEqual([100, 200])
+      useSketchUiStore.getState().openContextMenu([100, 200])
+      expect(useSketchUiStore.getState().contextMenu).toEqual([100, 200])
     })
 
     it('closeContextMenu clears position', () => {
-      useSketchEditorStore.getState().openContextMenu([100, 200])
-      useSketchEditorStore.getState().closeContextMenu()
-      expect(useSketchEditorStore.getState().contextMenu).toBeNull()
+      useSketchUiStore.getState().openContextMenu([100, 200])
+      useSketchUiStore.getState().closeContextMenu()
+      expect(useSketchUiStore.getState().contextMenu).toBeNull()
     })
   })
 
@@ -82,17 +83,19 @@ describe('sketchEditorStore', () => {
     })
 
     it('manual activate clears existing normal selection', () => {
-      useSketchEditorStore.setState({ normalSelection: new Set(['@something']) })
+      useEditorState.setState({
+    normalSelection: new Set(['@something']),
+  })
       useSketchEditorStore.getState().setActivePickField({ featureId: 'Sketch1', field: 'plane' })
       expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     })
 
     it('activating a pick field wipes a stray selection and its claims', () => {
-      useSketchEditorStore.setState({
-        normalSelection: new Set(['@ex1/edge/0']),
-        selectedPicks: new Map([['@ex1/edge/0', new Set(['ex1#b0#3'])]]),
-        selectionDomain: 'body_3d',
-      })
+      useEditorState.setState({
+    normalSelection: new Set(['@ex1/edge/0']),
+    selectedPicks: new Map([['@ex1/edge/0', new Set(['ex1#b0#3'])]]),
+    selectionDomain: 'body_3d',
+  })
       useSketchEditorStore.getState().setActivePickField({ featureId: 'S1', field: 'plane' })
       const s = useSketchEditorStore.getState()
       expect(s.normalSelection.size).toBe(0)
@@ -122,14 +125,14 @@ describe('sketchEditorStore', () => {
 
   describe('showConstraintTiles', () => {
     it('defaults to true', () => {
-      expect(useSketchEditorStore.getState().showConstraintTiles).toBe(true)
+      expect(useSketchUiStore.getState().showConstraintTiles).toBe(true)
     })
 
     it('setShowConstraintTiles flips the flag', () => {
-      useSketchEditorStore.getState().setShowConstraintTiles(false)
-      expect(useSketchEditorStore.getState().showConstraintTiles).toBe(false)
-      useSketchEditorStore.getState().setShowConstraintTiles(true)
-      expect(useSketchEditorStore.getState().showConstraintTiles).toBe(true)
+      useSketchUiStore.getState().setShowConstraintTiles(false)
+      expect(useSketchUiStore.getState().showConstraintTiles).toBe(false)
+      useSketchUiStore.getState().setShowConstraintTiles(true)
+      expect(useSketchUiStore.getState().showConstraintTiles).toBe(true)
     })
   })
 

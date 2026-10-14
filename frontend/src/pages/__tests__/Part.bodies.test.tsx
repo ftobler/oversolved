@@ -4,9 +4,10 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
 import type { PartFeature, BodyResult, Mesh3D } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const TEST_CUBE_MESH: Mesh3D = {
   vertices: [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]],
@@ -43,19 +44,23 @@ function renderSidebar(features: PartFeature[], solveResults?: Record<string, un
   usePartEditorStore.setState({
     features,
     visibleFeatures: new Set(features.map(f => f.id)),
-    editingFeatureId: null,
-    rollbackPosition: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
     solveResults: solveResults ?? {},
-    bodies: (bodies ?? {}) as Record<string, BodyResult>,
+    bodies: (bodies ?? {}) as Record<string,
+    BodyResult>,
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    editingFeatureId: null,
+    rollbackPosition: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
   return render(
     <PartEditorProvider value={makeCallbacks()}>
@@ -67,9 +72,7 @@ function renderSidebar(features: PartFeature[], solveResults?: Record<string, un
 beforeEach(() => {
   usePartEditorStore.setState({
     features: [],
-    rollbackPosition: null,
     visibleFeatures: new Set(),
-    editingFeatureId: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -78,9 +81,14 @@ beforeEach(() => {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
 })
 

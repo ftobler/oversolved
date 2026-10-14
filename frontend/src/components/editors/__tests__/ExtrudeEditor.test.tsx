@@ -3,9 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
@@ -36,8 +37,6 @@ function renderSidebar(storeState: StoreState = {}, callbacks: Partial<PartEdito
   usePartEditorStore.setState({
     features: storeState.features ?? [],
     visibleFeatures: storeState.visibleFeatures ?? new Set(),
-    editingFeatureId: storeState.editingFeatureId ?? null,
-    rollbackPosition: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -46,9 +45,14 @@ function renderSidebar(storeState: StoreState = {}, callbacks: Partial<PartEdito
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    editingFeatureId: storeState.editingFeatureId ?? null,
+    rollbackPosition: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
   return render(
     <PartEditorProvider value={makeCallbacks(callbacks)}>
@@ -60,9 +64,7 @@ function renderSidebar(storeState: StoreState = {}, callbacks: Partial<PartEdito
 beforeEach(() => {
   usePartEditorStore.setState({
     features: [],
-    rollbackPosition: null,
     visibleFeatures: new Set(),
-    editingFeatureId: null,
     doc: null,
     visibleBodies: new Set(),
     partLabels: {},
@@ -71,9 +73,14 @@ beforeEach(() => {
     isRebuilding: false,
     featureTimings: {},
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
+    rollbackPosition: null,
+    editingFeatureId: null,
+  })
+  useEditorState.setState({
     normalSelection: new Set(),
-    activePickField: null, modeStack: [],
+    activePickField: null,
+    modeStack: [],
   })
 })
 

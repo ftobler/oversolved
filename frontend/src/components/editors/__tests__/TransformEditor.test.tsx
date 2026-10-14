@@ -8,6 +8,7 @@ import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { TRANSFORM_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeFeature(bodies: string[] = []): PartFeature {
   return {
@@ -29,8 +30,11 @@ function bodiesChip(): Element {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
-    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
+  useEditorState.setState({
+    normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
   })
 })
 
@@ -123,7 +127,12 @@ describe('TransformEditor (via FeatureEditor)', () => {
         type: 'add_transform_body', featureId: 'tr1', bodyQuery: picked,
       })
       unmount()
-      act(() => { useSketchEditorStore.setState({ normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [] }) })
+      act(() => { useEditorState.setState({
+    normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+  }) })
     }
   })
 

@@ -7,6 +7,7 @@ import { dispatchDragInitiation } from '@/components/Viewport/idDispatch/dispatc
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { toolRegistry } from '@/registry/toolRegistry'
 import { initializeTools } from '@/tools'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
   toolRegistry.reset()
@@ -109,30 +110,30 @@ describe('Window listener vs R3F path -- coordinate equivalence', () => {
 
 describe('dispatchDragInitiation integration', () => {
   beforeEach(() => {
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: null,
-      drag: null,
-      dragPending: null,
-      dragStartClient: null,
-      isPointerDown: false,
-      hoveredVertexId: null,
-      hoveredVertexPosition: null,
-      hoveredSnapKind: null,
-      normalSelection: new Set(),
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: null,
+    drag: null,
+    dragPending: null,
+    dragStartClient: null,
+    isPointerDown: false,
+    hoveredVertexId: null,
+    hoveredVertexPosition: null,
+    hoveredSnapKind: null,
+    normalSelection: new Set(),
     hoveredSelectionId: null,
     dragSnap: null,
-    })
+  })
     setSketchCallback('onMutation', null)
     setSketchCallback('onRebuild', null)
     setSketchCallback('onExitSketch', null)
   })
 
   it('full drag flow via dispatchDragInitiation with activeTool=null', () => {
-    useSketchEditorStore.setState({
-      activeTool: null,
-      activeFeatureId: 'feat1',
-    })
+    useEditorState.setState({
+    activeTool: null,
+    activeFeatureId: 'feat1',
+  })
 
     dispatchDragInitiation(
       'vertex:feat1:line1:start', 'feat1', 'line1', 'start',

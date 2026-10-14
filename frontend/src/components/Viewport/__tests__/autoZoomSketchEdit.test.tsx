@@ -1,11 +1,12 @@
 import React, { createRef } from 'react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { Feature, BodyResult } from '@/types/cad'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
 import * as THREE from 'three'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // Provide a real THREE.OrthographicCamera so autoZoomToFitNow can succeed.
 const testCamera = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
@@ -68,26 +69,30 @@ beforeEach(() => {
   testCamera.zoom = 200
   testCamera.updateProjectionMatrix()
 
-  useSketchEditorStore.setState({
-    closeContextMenu: () => {},
+  useEditorState.setState({
     clearNormalSelection: () => {},
     setHoveredSelectionId: () => {},
+  })
+  useSketchUiStore.setState({
+    closeContextMenu: () => {},
     showDebugHit: false,
   })
   usePartEditorStore.setState({
     features: [] as Feature[],
     bodies: {},
     pickBodies: {},
-    ghostMode: false,
-    rollbackPosition: null,
     visibleFeatures: new Set(),
     visibleBodies: new Set(),
     solveResults: {},
     otherSketches: {},
+    doc: null,
+  })
+  useEditorState.setState({
+    ghostMode: false,
+    rollbackPosition: null,
     partColors: {},
     partStyle: {},
     activeSketchFeatureId: null,
-    doc: null,
   })
 })
 
@@ -123,7 +128,9 @@ describe('auto-zoom does not fire while editing a sketch', () => {
 
     await act(async () => {
       // Enter sketch edit mode.
-      usePartEditorStore.setState({ activeSketchFeatureId: 'sk1' })
+      useEditorState.setState({
+    activeSketchFeatureId: 'sk1',
+  })
       // Bodies change as rollback takes effect (e.g. extrude disappears).
       usePartEditorStore.setState({ bodies: {} })
       // Bodies come back for the sketch solve.
@@ -150,7 +157,9 @@ describe('auto-zoom does not fire while editing a sketch', () => {
       usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
     })
     await act(async () => {
-      usePartEditorStore.setState({ activeSketchFeatureId: 'sk1' })
+      useEditorState.setState({
+    activeSketchFeatureId: 'sk1',
+  })
     })
 
     expect(testCamera.zoom).toBe(999)
@@ -191,7 +200,12 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     // Set both activeFeatureId and bodies in one update, simulating user entering
     // sketch edit before onFirstSolve's setTimeout fires.
     await act(async () => {
-      usePartEditorStore.setState({ activeSketchFeatureId: 'sk1', bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({
+    bodies: makeBodyWithVertices(),
+  })
+  useEditorState.setState({
+    activeSketchFeatureId: 'sk1',
+  })
     })
 
     // The deferred onFirstSolve fires directly: zoomDoneRef is still false because
@@ -211,7 +225,12 @@ describe('auto-zoom does not fire while editing a sketch', () => {
 
     // Enter sketch edit with geometry present. An unforced fit is suppressed here.
     await act(async () => {
-      usePartEditorStore.setState({ activeSketchFeatureId: 'sk1', bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({
+    bodies: makeBodyWithVertices(),
+  })
+  useEditorState.setState({
+    activeSketchFeatureId: 'sk1',
+  })
     })
     testCamera.zoom = 999
     testCamera.updateProjectionMatrix()

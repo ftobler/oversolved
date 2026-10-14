@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // failLoud throws in test mode, so a throwing assertion alone cannot tell the
 // pre-fix code from the fix: both stop at the throw before ever reaching the
@@ -52,14 +53,14 @@ describe('usePartDoc nested edit session guard (prod: failLoud is silent, does n
   beforeEach(() => {
     docRef.current = makeDoc()
     reSolve.mockClear()
-    usePartEditorStore.getState().setEditingFeatureId(null)
-    usePartEditorStore.getState().setRollbackPosition(null)
+    useEditorState.getState().setEditingFeatureId(null)
+    useEditorState.getState().setRollbackPosition(null)
   })
 
   it('a nested startEditSession call does not overwrite the outer snapshot', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setEditingFeatureId('extrude-1')
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleMutation(renameTo('a')) })
 

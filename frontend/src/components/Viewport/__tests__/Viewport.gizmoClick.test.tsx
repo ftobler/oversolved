@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The direct regression pin for "gizmo click broken / viewport no longer turns".
 // Same harness as Viewport.pointerLeave.test.tsx but with the real CubeGizmo in
@@ -75,24 +76,28 @@ beforeEach(() => {
     features: [],
     bodies: {},
     pickBodies: {},
-    ghostMode: false,
-    rollbackPosition: null,
     visibleFeatures: new Set(),
     visibleBodies: new Set(),
     solveResults: {},
     otherSketches: {},
+    doc: null,
+  })
+  useEditorState.setState({
+    ghostMode: false,
+    rollbackPosition: null,
     partColors: {},
     partStyle: {},
     activeSketchFeatureId: null,
-    doc: null,
   })
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     activeTool: null,
     normalSelection: new Set(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
     hoveredVertexId: null,
     hoveredConstraintEntityIds: new Set(),
+  })
+  useSketchUiStore.setState({
     contextMenu: null,
   })
 })

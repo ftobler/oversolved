@@ -13,13 +13,14 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
 import type { BuildContextMenuCallbacks } from '@/pages/buildContextMenu'
 import type { PartDoc } from '@/types/cad'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const makeDoc = (): PartDoc => ({
   version: 1,
@@ -135,14 +136,17 @@ describe('Part color popover close path', () => {
     vi.clearAllMocks()
     docRef.current = makeDoc()
     menuCallbacks.current = null
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      hoveredSelectionId: null,
-      hoveredVertexId: null,
-      activeTool: null,
-      activePickField: null, modeStack: [],
-      showDebugHit: false,
-    })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    hoveredSelectionId: null,
+    hoveredVertexId: null,
+    activeTool: null,
+    activePickField: null,
+    modeStack: [],
+  })
+  useSketchUiStore.setState({
+    showDebugHit: false,
+  })
   })
 
   function renderPart() {

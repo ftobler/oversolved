@@ -7,9 +7,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import type { PartDoc, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const makeDoc = (): PartDoc => ({
   version: 1,
@@ -57,8 +58,8 @@ describe('usePartDoc undo edge cases', () => {
   beforeEach(() => {
     docRef.current = makeDoc()
     reSolve.mockClear()
-    usePartEditorStore.getState().setEditingFeatureId(null)
-    usePartEditorStore.getState().setRollbackPosition(null)
+    useEditorState.getState().setEditingFeatureId(null)
+    useEditorState.getState().setRollbackPosition(null)
     useUnsavedChangesStore.getState().setDirty(false)
   })
 
@@ -92,7 +93,7 @@ describe('usePartDoc undo edge cases', () => {
   it('a mutation group inside a suppressed session pushes no dead entry', () => {
     docRef.current = makeSketchDoc()
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-    usePartEditorStore.getState().setEditingFeatureId('sk1')
+    useEditorState.getState().setEditingFeatureId('sk1')
     act(() => { result.current.startEditSession(true) })
 
     act(() => {

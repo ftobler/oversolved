@@ -5,6 +5,7 @@ import { IdPipeline, FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from 
 import { setLivePipeline } from '@/picking/IdPipelineContext'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { StubRenderer, makeCanvas } from './pickCanvasFixture'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // B-rep click routing through the id-buffer dispatcher: a face/edge/vertex hit
 // toggles normalSelection with exactly the clicked query (no @bodyId added),
@@ -25,12 +26,12 @@ describe('body3dPickViaIdBuffer', () => {
     pipeline.isDirty = () => false
     setLivePipeline(pipeline)
     glRef = { current: new StubRenderer(canvas) }
-    useSketchEditorStore.setState({
-      activeTool: null,
-      normalSelection: new Set(),
-      activePickField: null,
-      modeStack: [],
-    })
+    useEditorState.setState({
+    activeTool: null,
+    normalSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+  })
   })
 
   afterEach(() => {

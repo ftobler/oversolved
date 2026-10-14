@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { installSketchStoreSetup } from './helpers/sketchEditorStoreTestSetup'
+import { useEditorState } from '@/hooks/useEditorState'
 
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
@@ -176,13 +177,13 @@ describe('sketchEditorStore', () => {
       s.setActiveFeatureId('S1')
       s.toggleNormalSelection('entity:S1:l1')
       s.syncChipSelection(['@builtin_plane_front'])
-      useSketchEditorStore.setState({
-        hoveredSelectionId: 'entity:S1:l1',
-        hoveredPickKey: 'ex1#b0#3',
-        hoveredConstraintEntityIds: new Set(['entity:S1:l1']),
-        hoveredFaceNormal: [0, 0, 1],
-        hoveredFaceCenter: [1, 2, 3],
-      })
+      useEditorState.setState({
+    hoveredSelectionId: 'entity:S1:l1',
+    hoveredPickKey: 'ex1#b0#3',
+    hoveredConstraintEntityIds: new Set(['entity:S1:l1']),
+    hoveredFaceNormal: [0, 0, 1],
+    hoveredFaceCenter: [1, 2, 3],
+  })
 
       s.setActiveFeatureId(null)
 
@@ -224,20 +225,20 @@ describe('sketchEditorStore', () => {
 
   describe('resetTransientState', () => {
     it('still clears every selection and hover field (delegates to clearSelectionAndHover)', () => {
-      useSketchEditorStore.setState({
-        normalSelection: new Set(['entity:S1:l1']),
-        selectedPicks: new Map([['@ex1/edge/0', new Set(['ex1#b0#3'])]]),
-        chipOwnedSelection: new Set(['entity:S1:l1']),
-        selectionDomain: 'mixed',
-        hoveredSelectionId: 'x',
-        hoveredPickKey: 'y',
-        hoveredConstraintEntityIds: new Set(['z']),
-        hoveredVertexId: 'v',
-        hoveredVertexPosition: [1, 1],
-        hoveredSnapKind: 'path',
-        hoveredFaceNormal: [0, 0, 1],
-        hoveredFaceCenter: [0, 0, 0],
-      })
+      useEditorState.setState({
+    normalSelection: new Set(['entity:S1:l1']),
+    selectedPicks: new Map([['@ex1/edge/0', new Set(['ex1#b0#3'])]]),
+    chipOwnedSelection: new Set(['entity:S1:l1']),
+    selectionDomain: 'mixed',
+    hoveredSelectionId: 'x',
+    hoveredPickKey: 'y',
+    hoveredConstraintEntityIds: new Set(['z']),
+    hoveredVertexId: 'v',
+    hoveredVertexPosition: [1, 1],
+    hoveredSnapKind: 'path',
+    hoveredFaceNormal: [0, 0, 1],
+    hoveredFaceCenter: [0, 0, 0],
+  })
       useSketchEditorStore.getState().resetTransientState()
       const s = useSketchEditorStore.getState()
       for (const v of [s.hoveredSelectionId, s.hoveredPickKey, s.hoveredVertexId, s.hoveredVertexPosition, s.hoveredSnapKind, s.hoveredFaceNormal, s.hoveredFaceCenter]) {
@@ -301,12 +302,16 @@ describe('sketchEditorStore', () => {
 
   describe('sticky draw tools', () => {
     beforeEach(() => {
-      useSketchEditorStore.setState({ activeFeatureId: 'S1' })
+      useEditorState.setState({
+    activeFeatureId: 'S1',
+  })
     })
 
     it('committing an entity leaves activeTool set and the mode stack intact', () => {
       useSketchEditorStore.getState().setActiveTool('line')
-      useSketchEditorStore.setState({ drawPoints: [[0, 0], [10, 0]] })
+      useEditorState.setState({
+    drawPoints: [[0, 0], [10, 0]],
+  })
 
       // clearDraw is what DrawingTool calls after a committed gesture; the tool's
       // arming policy lives in the adapter, so clearing the buffer must not touch
@@ -335,7 +340,9 @@ describe('sketchEditorStore', () => {
 
     it('leaving the sketch while armed disarms the tool', () => {
       useSketchEditorStore.getState().setActiveTool('line')
-      useSketchEditorStore.setState({ activeFeatureId: 'S1' })
+      useEditorState.setState({
+    activeFeatureId: 'S1',
+  })
       useSketchEditorStore.getState().setActiveFeatureId(null)
 
       expect(useSketchEditorStore.getState().activeTool).toBeNull()
@@ -356,7 +363,9 @@ describe('sketchEditorStore', () => {
   describe('self-cleaning state transitions', () => {
     describe('setActiveTool', () => {
       it('clears normalSelection when entering the dimension tool', () => {
-        useSketchEditorStore.setState({ normalSelection: new Set(['entity:S1:L1', 'vertex:S1:L2:start']) })
+        useEditorState.setState({
+    normalSelection: new Set(['entity:S1:L1', 'vertex:S1:L2:start']),
+  })
         useSketchEditorStore.getState().setActiveTool('dimension')
         expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
       })
@@ -365,13 +374,13 @@ describe('sketchEditorStore', () => {
         // Regression: the pick-field cleanup branch rebuilt normalSelection from
         // the pre-update state, silently undoing the clearsSelectionOnEnter
         // wipe when both branches fired in one setActiveTool call.
-        useSketchEditorStore.setState({
-          normalSelection: new Set(['entity:S1:L1', '@edge_0']),
-          chipOwnedSelection: new Set(['@edge_0']),
-          selectionDomain: 'mixed',
-          activePickField: { featureId: 'F1', field: 'profile' },
-          modeStack: ['pick'],
-        })
+        useEditorState.setState({
+    normalSelection: new Set(['entity:S1:L1', '@edge_0']),
+    chipOwnedSelection: new Set(['@edge_0']),
+    selectionDomain: 'mixed',
+    activePickField: { featureId: 'F1', field: 'profile' },
+    modeStack: ['pick'],
+  })
         useSketchEditorStore.getState().setActiveTool('dimension')
         const s = useSketchEditorStore.getState()
         expect(s.activePickField).toBeNull()
@@ -382,12 +391,12 @@ describe('sketchEditorStore', () => {
       it('keeps the pick field when entering the passive drag tool', () => {
         // Regression: clicking empty canvas activates drag (select), which used
         // to wipe activePickField and silently kill face picks afterwards.
-        useSketchEditorStore.setState({
-          normalSelection: new Set(['@edge_0']),
-          chipOwnedSelection: new Set(['@edge_0']),
-          activePickField: { featureId: 'F1', field: 'profile' },
-          modeStack: ['pick'],
-        })
+        useEditorState.setState({
+    normalSelection: new Set(['@edge_0']),
+    chipOwnedSelection: new Set(['@edge_0']),
+    activePickField: { featureId: 'F1', field: 'profile' },
+    modeStack: ['pick'],
+  })
         useSketchEditorStore.getState().setActiveTool('drag')
         const s = useSketchEditorStore.getState()
         expect(s.activePickField).toEqual({ featureId: 'F1', field: 'profile' })
@@ -399,11 +408,11 @@ describe('sketchEditorStore', () => {
         s.setActivePickField({ featureId: 'ex1', field: 'edges', multi: true })
         // A non-chip entry that survives the switch (box-select does not gate on
         // the open field). Its claim must ride along with its still-selected query.
-        useSketchEditorStore.setState({
-          normalSelection: new Set(['@ex1/edge/0']),
-          selectedPicks: new Map([['@ex1/edge/0', new Set(['ex1#b0#3'])]]),
-          selectionDomain: 'body_3d',
-        })
+        useEditorState.setState({
+    normalSelection: new Set(['@ex1/edge/0']),
+    selectedPicks: new Map([['@ex1/edge/0', new Set(['ex1#b0#3'])]]),
+    selectionDomain: 'body_3d',
+  })
 
         s.setActiveTool('line')
 
@@ -414,12 +423,12 @@ describe('sketchEditorStore', () => {
       })
 
       it('clears the pick field and chip selection when entering a drawing tool', () => {
-        useSketchEditorStore.setState({
-          normalSelection: new Set(['@edge_0', '@edge_1']),
-          chipOwnedSelection: new Set(['@edge_0']),
-          activePickField: { featureId: 'F1', field: 'profile' },
-          modeStack: ['pick'],
-        })
+        useEditorState.setState({
+    normalSelection: new Set(['@edge_0', '@edge_1']),
+    chipOwnedSelection: new Set(['@edge_0']),
+    activePickField: { featureId: 'F1', field: 'profile' },
+    modeStack: ['pick'],
+  })
         useSketchEditorStore.getState().setActiveTool('line')
         const s = useSketchEditorStore.getState()
         expect(s.activePickField).toBeNull()
@@ -454,13 +463,13 @@ describe('sketchEditorStore', () => {
       })
 
       it('keeps activePickField and chip-owned selection when entering the passive drag tool', () => {
-        useSketchEditorStore.setState({
-          activePickField: { featureId: 'Sketch1', field: 'plane' },
-          activeTool: null,
-          chipOwnedSelection: new Set(['?body_ex1/face/0']),
-          normalSelection: new Set(['?body_ex1/face/0', '@other_item']),
-          modeStack: ['pick'],
-        })
+        useEditorState.setState({
+    activePickField: { featureId: 'Sketch1', field: 'plane' },
+    activeTool: null,
+    chipOwnedSelection: new Set(['?body_ex1/face/0']),
+    normalSelection: new Set(['?body_ex1/face/0', '@other_item']),
+    modeStack: ['pick'],
+  })
         // drag is the real idle/select entry (getEffectiveTool(null) === 'drag').
         // Entering it must NOT steal an open pick field, so a later face click
         // still routes through usePickField (the extrude Profile bug).
@@ -474,7 +483,11 @@ describe('sketchEditorStore', () => {
       })
 
       it('does not clear activePickField when setting tool to null', () => {
-        useSketchEditorStore.setState({ activePickField: { featureId: 'Sketch1', field: 'plane' }, activeTool: null, modeStack: ['pick'] })
+        useEditorState.setState({
+    activePickField: { featureId: 'Sketch1', field: 'plane' },
+    activeTool: null,
+    modeStack: ['pick'],
+  })
         useSketchEditorStore.getState().setActiveTool(null)
         // tool=null means we are NOT entering a tool mode, so the pick field persists
         expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'Sketch1', field: 'plane' })
@@ -513,7 +526,9 @@ describe('sketchEditorStore', () => {
         const handler = vi.fn()
         setSketchCallback('onMutation', handler)
         setSketchCallback('getSketch', () => ({}))
-        useSketchEditorStore.setState({ activeFeatureId: 'S1' })
+        useEditorState.setState({
+    activeFeatureId: 'S1',
+  })
         useSketchEditorStore.getState().setActiveTool('dimension')
         useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
         const eid = handler.mock.calls[0][0].entityId
@@ -591,7 +606,10 @@ describe('sketchEditorStore', () => {
     })
 
     it('failLouds when deactivating an unregistered tool id', () => {
-      useSketchEditorStore.setState({ activeTool: 'mirror', modeStack: ['tool:mirror'] })
+      useEditorState.setState({
+    activeTool: 'mirror',
+    modeStack: ['tool:mirror'],
+  })
       expect(() => useSketchEditorStore.getState().setActiveTool('line'))
         .toThrow(/no registered tool/)
     })

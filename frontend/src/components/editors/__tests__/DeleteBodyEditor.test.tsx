@@ -4,6 +4,7 @@ import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { DELETE_BODY_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 function makeFeature(bodies: string[] = []): PartFeature {
   return {
@@ -20,8 +21,11 @@ function pick(selectionId: string) {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
-    normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
+  useEditorState.setState({
+    normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
   })
 })
 
@@ -122,7 +126,12 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
         type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: picked,
       })
       unmount()
-      act(() => { useSketchEditorStore.setState({ normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [] }) })
+      act(() => { useEditorState.setState({
+    normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    activePickField: null,
+    modeStack: [],
+  }) })
     }
   })
 

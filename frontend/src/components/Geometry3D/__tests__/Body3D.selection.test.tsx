@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useEditorState } from '@/hooks/useEditorState'
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     hoveredSelectionId: null,
     normalSelection: new Set(),
     chipOwnedSelection: new Set(),
@@ -36,14 +37,18 @@ describe('Body3D selection - store behavior', () => {
   })
 
   it('isSelected derived correctly from normalSelection using bodyId', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['@body_ex1']),
+  })
     const bodyId = 'body_ex1'
     const isSelected = useSketchEditorStore.getState().normalSelection.has('@' + bodyId)
     expect(isSelected).toBe(true)
   })
 
   it('isHovered derived correctly from hoveredSelectionId', () => {
-    useSketchEditorStore.setState({ hoveredSelectionId: 'ex1' })
+    useEditorState.setState({
+    hoveredSelectionId: 'ex1',
+  })
     const featureId = 'ex1'
     const isHovered = useSketchEditorStore.getState().hoveredSelectionId === featureId
     expect(isHovered).toBe(true)
@@ -154,7 +159,9 @@ describe('Body3D selection - chip highlights ride normalSelection', () => {
   })
 
   it('pre-existing normalSelection survives a chip sync that does not overlap', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']) })
+    useEditorState.setState({
+    normalSelection: new Set(['@body_ex1']),
+  })
     useSketchEditorStore.getState().syncChipSelection(['@ex1/edge/0', '@ex1/edge/1'])
     const sel = useSketchEditorStore.getState().normalSelection
     expect(sel.has('@body_ex1')).toBe(true)

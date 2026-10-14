@@ -11,6 +11,7 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { BUILTIN_FEATURE_IDS } from '@/hooks/usePartDoc'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@/kernel/worker/solverClient', () => ({
   solveViaWorker: vi.fn().mockResolvedValue({ result: {}, bodies: {}, pick_bodies: {}, _build_state: null }),
@@ -39,7 +40,11 @@ describe('Part - Cancel on a just-added feature reverts the add', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
-    usePartEditorStore.setState({ editingFeatureId: null, pickBoundary: null, rollbackPosition: null })
+    useEditorState.setState({
+    editingFeatureId: null,
+    pickBoundary: null,
+    rollbackPosition: null,
+  })
     partDocStoreMock()
   })
 
@@ -138,6 +143,6 @@ describe('Part - Cancel on a just-added feature reverts the add', () => {
     // The undo restored the pre-add doc and tore the session down: the feature
     // is gone, not just its editor.
     await waitFor(() => expect(userFeatures().filter(f => f.kind === 'extrude')).toHaveLength(0))
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
   })
 })

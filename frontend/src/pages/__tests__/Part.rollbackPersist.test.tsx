@@ -4,6 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Part from '@/pages/Part'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
@@ -69,7 +70,7 @@ function renderPart() {
 describe('rollback bar position round trips through the document', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    usePartEditorStore.getState().setRollbackPosition(null)
+    useEditorState.getState().setRollbackPosition(null)
   })
 
   it('reopens the document with the bar where it was saved', async () => {
@@ -81,7 +82,7 @@ describe('rollback bar position round trips through the document', () => {
     })
 
     await waitFor(() => {
-      expect(usePartEditorStore.getState().rollbackPosition).toBe(5)
+      expect(useEditorState.getState().rollbackPosition).toBe(5)
     })
     // The feature past the bar is drawn as rolled back.
     expect(screen.getByText('extrude 1').closest('.feature-item')!.classList.contains('rolled-back')).toBe(true)
@@ -97,7 +98,7 @@ describe('rollback bar position round trips through the document', () => {
     })
 
     await waitFor(() => {
-      expect(usePartEditorStore.getState().rollbackPosition).toBe(6)
+      expect(useEditorState.getState().rollbackPosition).toBe(6)
     })
     expect(screen.getByText('extrude 1').closest('.feature-item')!.classList.contains('rolled-back')).toBe(false)
   })
@@ -111,7 +112,7 @@ describe('rollback bar position round trips through the document', () => {
     })
 
     await waitFor(() => {
-      expect(usePartEditorStore.getState().rollbackPosition).toBe(6)
+      expect(useEditorState.getState().rollbackPosition).toBe(6)
     })
   })
 
@@ -129,7 +130,7 @@ describe('rollback bar position round trips through the document', () => {
     releasePointer(210)  // top half of ex1 (row 5 spans 200..240) -> before ex1
 
     await waitFor(() => {
-      expect(usePartEditorStore.getState().rollbackPosition).toBe(5)
+      expect(useEditorState.getState().rollbackPosition).toBe(5)
     })
     expect(usePartEditorStore.getState().doc?.rollback).toBe(5)
   })
@@ -142,7 +143,7 @@ describe('rollback bar position round trips through the document', () => {
       expect(screen.getByText('extrude 1')).toBeInTheDocument()
     })
     await waitFor(() => {
-      expect(usePartEditorStore.getState().rollbackPosition).toBe(5)
+      expect(useEditorState.getState().rollbackPosition).toBe(5)
     })
 
     layoutFeatureRows()
@@ -150,7 +151,7 @@ describe('rollback bar position round trips through the document', () => {
     releasePointer(230)  // bottom half of ex1 -> after ex1, i.e. the end
 
     await waitFor(() => {
-      expect(usePartEditorStore.getState().rollbackPosition).toBe(6)
+      expect(useEditorState.getState().rollbackPosition).toBe(6)
     })
     expect(usePartEditorStore.getState().doc).not.toHaveProperty('rollback')
   })

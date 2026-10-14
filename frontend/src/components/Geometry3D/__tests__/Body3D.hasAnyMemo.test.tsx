@@ -6,9 +6,10 @@
 // miss, which is what lets the memo skip.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+
 import { HighlightIndex } from '@/picking/selectionHighlight'
 import type { Mesh3D } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('@react-three/fiber', () => ({
   useFrame: vi.fn(),
@@ -26,12 +27,12 @@ const vertices: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
 const vertexQueries = ['@body_ex1/vertex/0', '@body_ex1/vertex/1', '@body_ex1/vertex/2']
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
-  } as never)
+  })
 })
 
 async function renderBody() {
@@ -51,7 +52,9 @@ describe('vertex hasAny is memoized on the pick set', () => {
     // returns the shared all-false array, so the flags identity is unchanged and
     // neither hasAny memo may recompute.
     await act(async () => {
-      useSketchEditorStore.setState({ hoveredSelectionId: '@nomatch/vertex/9' } as never)
+      useEditorState.setState({
+    hoveredSelectionId: '@nomatch/vertex/9',
+  })
     })
     expect(spy.mock.calls.length).toBe(afterMount)
     spy.mockRestore()
@@ -63,7 +66,9 @@ describe('vertex hasAny is memoized on the pick set', () => {
     const afterMount = spy.mock.calls.length
 
     await act(async () => {
-      useSketchEditorStore.setState({ hoveredSelectionId: vertexQueries[0] } as never)
+      useEditorState.setState({
+    hoveredSelectionId: vertexQueries[0],
+  })
     })
     expect(spy.mock.calls.length).toBeGreaterThan(afterMount)
     spy.mockRestore()

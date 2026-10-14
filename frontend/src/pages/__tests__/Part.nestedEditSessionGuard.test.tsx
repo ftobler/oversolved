@@ -18,6 +18,7 @@ import Part from '@/pages/Part'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
+import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('../../components/Viewport', () => ({
   default: vi.fn(() => null),
@@ -89,7 +90,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     // Open D (Fillet 1) and make an in-session edit that would otherwise be
     // swallowed by its suppressed aggregate session.
     fireEvent.click(screen.getAllByTitle('Edit fillet')[0])
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('fil1'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('fil1'))
 
     const radiusInput = screen.getByLabelText('Radius') as HTMLInputElement
     fireEvent.change(radiusInput, { target: { value: '5' } })
@@ -103,7 +104,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     fireEvent.click(screen.getByTitle('Edit fillet'))
 
     // C opens: D closed cleanly instead of silently no-opping or clobbering.
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('fil2'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('fil2'))
     const fil1Item = screen.getByText('Fillet 1').closest('.feature-item') as HTMLElement
     expect(within(fil1Item).queryByTitle('OK')).toBeNull()
     expect(within(fil1Item).queryByTitle('Cancel')).toBeNull()
@@ -132,7 +133,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     await waitFor(() => expect(screen.getByText('Fillet 1')).toBeInTheDocument())
 
     fireEvent.click(screen.getByTitle('Edit fillet'))
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('fil1'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('fil1'))
 
     const radiusInput = screen.getByLabelText('Radius') as HTMLInputElement
     fireEvent.change(radiusInput, { target: { value: '9' } })
@@ -141,7 +142,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
 
     fireEvent.click(screen.getByTitle('Edit sketch'))
 
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('sk1'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('sk1'))
     const fil1Item = screen.getByText('Fillet 1').closest('.feature-item') as HTMLElement
     expect(within(fil1Item).queryByTitle('OK')).toBeNull()
     expect(radiusOf('fil1')).toBe(9)
@@ -164,11 +165,11 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     await waitFor(() => expect(screen.getByText('Sketch 1')).toBeInTheDocument())
 
     fireEvent.click(screen.getByTitle('Edit sketch'))
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('sk1'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('sk1'))
 
     fireEvent.click(screen.getByTitle('Edit fillet'))
 
-    await waitFor(() => expect(usePartEditorStore.getState().editingFeatureId).toBe('fil1'))
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('fil1'))
     const sk1Item = screen.getByText('Sketch 1').closest('.feature-item') as HTMLElement
     expect(within(sk1Item).queryByTitle('OK')).toBeNull()
 

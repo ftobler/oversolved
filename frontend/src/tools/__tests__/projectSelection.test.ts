@@ -4,6 +4,7 @@ import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorSt
 import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 import { projectionMutationsForId, projectionMutationsForSelection, type ProjectionResolvers } from '@/tools/projectionMutations'
 import { projectSelection, liveProjectionResolvers } from '@/tools/projectSelectionCommand'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURE = 'S1'
 const EDGE_Q = '?4,4;@bxx@fyy:edge'
@@ -135,18 +136,21 @@ describe('projectSelection', () => {
 
   beforeEach(() => {
     batches = []
-    useSketchEditorStore.setState({
-      normalSelection: new Set(),
-      chipOwnedSelection: new Set(),
-      selectionDomain: 'sketch_2d',
-      activeFeatureId: FEATURE,
-      activeTool: null,
-    })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
+    selectionDomain: 'sketch_2d',
+    activeFeatureId: FEATURE,
+    activeTool: null,
+  })
     setSketchCallback('onMutationBatch', (ms: Mutation[]) => { batches.push(ms) })
   })
 
   it('projects the whole selection as one batch and consumes it', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set([STRAIGHT_Q, VERTEX_Q]), selectionDomain: 'body_3d' })
+    useEditorState.setState({
+    normalSelection: new Set([STRAIGHT_Q, VERTEX_Q]),
+    selectionDomain: 'body_3d',
+  })
     expect(projectSelection(noResolvers)).toBe(true)
     expect(batches).toHaveLength(1)
     expect(batches[0]).toHaveLength(2)
@@ -154,7 +158,9 @@ describe('projectSelection', () => {
   })
 
   it('leaves the selection alone and reports failure when nothing is projectable', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set([`entity:${FEATURE}:L1`]) })
+    useEditorState.setState({
+    normalSelection: new Set([`entity:${FEATURE}:L1`]),
+  })
     expect(projectSelection(noResolvers)).toBe(false)
     expect(batches).toHaveLength(0)
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(1)
@@ -166,21 +172,31 @@ describe('projectSelection', () => {
   })
 
   it('reports failure and leaves the selection when it holds only whole-body picks', () => {
-    useSketchEditorStore.setState({ normalSelection: new Set(['@body_ex1']), selectionDomain: 'body_3d' })
+    useEditorState.setState({
+    normalSelection: new Set(['@body_ex1']),
+    selectionDomain: 'body_3d',
+  })
     expect(projectSelection(noResolvers)).toBe(false)
     expect(batches).toHaveLength(0)
     expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1')).toBe(true)
   })
 
   it('reports failure when no sketch is being edited', () => {
-    useSketchEditorStore.setState({ activeFeatureId: null, normalSelection: new Set([STRAIGHT_Q]), selectionDomain: 'body_3d' })
+    useEditorState.setState({
+    activeFeatureId: null,
+    normalSelection: new Set([STRAIGHT_Q]),
+    selectionDomain: 'body_3d',
+  })
     expect(projectSelection(noResolvers)).toBe(false)
     expect(batches).toHaveLength(0)
   })
 
   it('resolves kinds through the injected resolvers', () => {
     const edgeKind = vi.fn(() => 'circle')
-    useSketchEditorStore.setState({ normalSelection: new Set([EDGE_Q]), selectionDomain: 'body_3d' })
+    useEditorState.setState({
+    normalSelection: new Set([EDGE_Q]),
+    selectionDomain: 'body_3d',
+  })
     expect(projectSelection(resolvers({ edgeKind }))).toBe(true)
     expect(edgeKind).toHaveBeenCalledWith(EDGE_Q)
     expect(batches[0][0]).toMatchObject({ type: 'add_projected_entity', kind: 'circle', source: EDGE_Q })

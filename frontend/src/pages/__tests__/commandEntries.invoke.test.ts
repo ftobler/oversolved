@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { buildCommandEntries, constraintCommandFn, escapeStage } from '@/pages/commandEntries'
-import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import type { DialogState } from '@/stores/sketchEditorStore'
 import type { ConstraintDef } from '@/registry'
 import { initializeTools } from '@/tools'
 import { acquireModalEscape, modalOwnsEscape, resetModalEscape } from '@/utils/core/modalEscape'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The structural suites build the entry list but never invoke the store-driven
 // command bodies (cancel_draw / set_tool_mirror / apply_offset). Those `fn`
@@ -26,7 +27,9 @@ describe('command callbacks that drive the sketch editor store', () => {
   // dialog claiming Escape. Do not rely on another suite's teardown for that.
   beforeEach(() => {
     resetModalEscape()
-    useSketchEditorStore.setState({ pendingDialog: null })
+    useSketchUiStore.setState({
+    pendingDialog: null,
+  })
   })
 
   afterEach(() => { vi.restoreAllMocks() })
@@ -86,7 +89,10 @@ describe('command callbacks that drive the sketch editor store', () => {
   it('set_tool_project arms the pick tool when the selection has nothing to project', () => {
     // Empty selection alone forces the false path; the callback reset is
     // belt-and-suspenders in case a prior test left a mutation seam registered.
-    useSketchEditorStore.setState({ normalSelection: new Set(), activeFeatureId: null })
+    useEditorState.setState({
+    normalSelection: new Set(),
+    activeFeatureId: null,
+  })
     setSketchCallback('onMutationBatch', null)
     const store = useSketchEditorStore.getState()
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
@@ -165,14 +171,23 @@ describe('cancel_draw staged disarm', () => {
 
   beforeEach(() => {
     resetModalEscape()
-    useSketchEditorStore.setState({ pendingDialog: null, activePickField: null, modeStack: [] })
+    useEditorState.setState({
+    activePickField: null,
+    modeStack: [],
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
+  })
     useSketchEditorStore.getState().setActiveTool(null)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
     useSketchEditorStore.getState().setActiveTool(null)
-    useSketchEditorStore.setState({ dimensionPicks: [], drawPoints: [] })
+    useEditorState.setState({
+    dimensionPicks: [],
+    drawPoints: [],
+  })
   })
 
   it('with nothing in progress clears the draw, the pick field and disarms the tool', () => {
@@ -195,7 +210,9 @@ describe('cancel_draw staged disarm', () => {
 
   it('with draw points in progress clears the draw and keeps the tool', () => {
     useSketchEditorStore.getState().setActiveTool('line')
-    useSketchEditorStore.setState({ drawPoints: [[0, 0], [10, 0]] })
+    useEditorState.setState({
+    drawPoints: [[0, 0], [10, 0]],
+  })
 
     const store = useSketchEditorStore.getState()
     const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
@@ -210,7 +227,9 @@ describe('cancel_draw staged disarm', () => {
 
   it('a second cancel_draw with nothing in progress then disarms the tool', () => {
     useSketchEditorStore.getState().setActiveTool('line')
-    useSketchEditorStore.setState({ drawPoints: [[0, 0], [10, 0]] })
+    useEditorState.setState({
+    drawPoints: [[0, 0], [10, 0]],
+  })
 
     // First press cancels the in-progress entity but keeps the tool armed.
     entry('cancel_draw').fn()
@@ -226,9 +245,9 @@ describe('cancel_draw staged disarm', () => {
 
   it('with dimension picks clears the picks and keeps the dimension tool', () => {
     useSketchEditorStore.getState().setActiveTool('dimension')
-    useSketchEditorStore.setState({
-      dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-    })
+    useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
 
     const store = useSketchEditorStore.getState()
     const cancelBrep = vi.spyOn(store, 'cancelBrepProjectionGesture').mockImplementation(noop)
@@ -272,19 +291,30 @@ describe('undo cancels an in-progress gesture before touching history', () => {
 
   beforeEach(() => {
     resetModalEscape()
-    useSketchEditorStore.setState({ pendingDialog: null, activePickField: null, modeStack: [] })
+    useEditorState.setState({
+    activePickField: null,
+    modeStack: [],
+  })
+  useSketchUiStore.setState({
+    pendingDialog: null,
+  })
     useSketchEditorStore.getState().setActiveTool(null)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
     useSketchEditorStore.getState().setActiveTool(null)
-    useSketchEditorStore.setState({ dimensionPicks: [], drawPoints: [] })
+    useEditorState.setState({
+    dimensionPicks: [],
+    drawPoints: [],
+  })
   })
 
   it('with draw points in progress cancels the gesture and never calls handleUndo', () => {
     useSketchEditorStore.getState().setActiveTool('line')
-    useSketchEditorStore.setState({ drawPoints: [[0, 0]] })
+    useEditorState.setState({
+    drawPoints: [[0, 0]],
+  })
     const handleUndo = vi.fn()
 
     const entries = buildCommandEntries(handleUndo, noop, noop, noop, noop, noop, noop, noop, noop)
@@ -299,7 +329,9 @@ describe('undo cancels an in-progress gesture before touching history', () => {
 
   it('a second undo with an empty gesture calls handleUndo exactly once', () => {
     useSketchEditorStore.getState().setActiveTool('line')
-    useSketchEditorStore.setState({ drawPoints: [[0, 0]] })
+    useEditorState.setState({
+    drawPoints: [[0, 0]],
+  })
     const handleUndo = vi.fn()
 
     const entries = buildCommandEntries(handleUndo, noop, noop, noop, noop, noop, noop, noop, noop)
@@ -315,9 +347,9 @@ describe('undo cancels an in-progress gesture before touching history', () => {
 
   it('with dimension picks in progress cancels the gesture and never calls handleUndo', () => {
     useSketchEditorStore.getState().setActiveTool('dimension')
-    useSketchEditorStore.setState({
-      dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
-    })
+    useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
     const cancelBrep = vi.spyOn(useSketchEditorStore.getState(), 'cancelBrepProjectionGesture').mockImplementation(noop)
     const handleUndo = vi.fn()
 
@@ -375,13 +407,17 @@ describe('cancel_draw stands down while a dialog is open', () => {
 
   afterEach(() => {
     resetModalEscape()
-    useSketchEditorStore.setState({ pendingDialog: null })
+    useSketchUiStore.setState({
+    pendingDialog: null,
+  })
     useSketchEditorStore.getState().setActiveTool(null)
     vi.restoreAllMocks()
   })
 
   it('leaves the store untouched when pendingDialog is set', () => {
-    useSketchEditorStore.setState({ pendingDialog: openDialog })
+    useSketchUiStore.setState({
+    pendingDialog: openDialog,
+  })
     const store = useSketchEditorStore.getState()
     const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
@@ -396,7 +432,12 @@ describe('cancel_draw stands down while a dialog is open', () => {
 
   it('does not clear an in-progress draw while a dialog owns Escape', () => {
     useSketchEditorStore.getState().setActiveTool('line')
-    useSketchEditorStore.setState({ pendingDialog: openDialog, drawPoints: [[0, 0], [10, 0]] })
+    useEditorState.setState({
+    drawPoints: [[0, 0], [10, 0]],
+  })
+  useSketchUiStore.setState({
+    pendingDialog: openDialog,
+  })
     const store = useSketchEditorStore.getState()
     const clearDraw = vi.spyOn(store, 'clearDraw').mockImplementation(noop)
     const setActiveTool = vi.spyOn(store, 'setActiveTool').mockImplementation(noop)
@@ -410,12 +451,16 @@ describe('cancel_draw stands down while a dialog is open', () => {
 
   it('keeps the armed tool armed with a dialog open, and disarms it once closed', () => {
     useSketchEditorStore.getState().setActiveTool('line')
-    useSketchEditorStore.setState({ pendingDialog: openDialog })
+    useSketchUiStore.setState({
+    pendingDialog: openDialog,
+  })
 
     entry('cancel_draw').fn()
     expect(useSketchEditorStore.getState().activeTool).toBe('line')
 
-    useSketchEditorStore.setState({ pendingDialog: null })
+    useSketchUiStore.setState({
+    pendingDialog: null,
+  })
     entry('cancel_draw').fn()
     expect(useSketchEditorStore.getState().activeTool).toBeNull()
     expect(useSketchEditorStore.getState().modeStack).toEqual([])
@@ -423,12 +468,16 @@ describe('cancel_draw stands down while a dialog is open', () => {
 
   it('still clears an armed pick field once the dialog is closed', () => {
     useSketchEditorStore.getState().setActivePickField({ featureId: 'sketch1', field: 'plane' })
-    useSketchEditorStore.setState({ pendingDialog: openDialog })
+    useSketchUiStore.setState({
+    pendingDialog: openDialog,
+  })
 
     entry('cancel_draw').fn()
     expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
 
-    useSketchEditorStore.setState({ pendingDialog: null })
+    useSketchUiStore.setState({
+    pendingDialog: null,
+  })
     entry('cancel_draw').fn()
     expect(useSketchEditorStore.getState().activePickField).toBeNull()
     expect(useSketchEditorStore.getState().modeStack).toEqual([])
@@ -476,7 +525,7 @@ describe('apply_offset command opens a distance dialog', () => {
 
   beforeEach(() => {
     captured = undefined
-    const store = useSketchEditorStore.getState()
+    const store = useSketchUiStore.getState()
     vi.spyOn(store, 'openDialog').mockImplementation((opts) => { captured = opts })
   })
 
@@ -495,7 +544,7 @@ describe('apply_offset command opens a distance dialog', () => {
   it('confirm applies the parsed offset and closes the dialog', () => {
     const store = useSketchEditorStore.getState()
     const applyOffset = vi.spyOn(store, 'applyOffset').mockImplementation(noop)
-    const closeDialog = vi.spyOn(store, 'closeDialog').mockImplementation(noop)
+    const closeDialog = vi.spyOn(useSketchUiStore.getState(), 'closeDialog').mockImplementation(noop)
 
     entry('apply_offset').fn()
     captured!.onConfirm('3.5')
@@ -507,7 +556,7 @@ describe('apply_offset command opens a distance dialog', () => {
   it('cancel closes the dialog without applying', () => {
     const store = useSketchEditorStore.getState()
     const applyOffset = vi.spyOn(store, 'applyOffset').mockImplementation(noop)
-    const closeDialog = vi.spyOn(store, 'closeDialog').mockImplementation(noop)
+    const closeDialog = vi.spyOn(useSketchUiStore.getState(), 'closeDialog').mockImplementation(noop)
 
     entry('apply_offset').fn()
     captured!.onCancel!()

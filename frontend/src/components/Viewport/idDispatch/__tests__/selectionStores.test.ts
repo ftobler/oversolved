@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { hitToSelectionKey } from '../useIdBufferPointerDispatch'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { ResolvedHit } from '@/picking'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The two selection stores (hover + normal) are fed from the same ground-truth
 // resolve via the same key-derivation function, so they can never diverge about
@@ -12,7 +13,10 @@ function hit(layer: string, entityKey: string): ResolvedHit {
 }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({ normalSelection: new Set(), hoveredSelectionId: null })
+  useEditorState.setState({
+    normalSelection: new Set(),
+    hoveredSelectionId: null,
+  })
 })
 
 describe('hover/normal never diverge', () => {

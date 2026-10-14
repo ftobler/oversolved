@@ -11,12 +11,13 @@ import { act, render } from '@testing-library/react'
 import { PlaneEditor } from '@/components/editors/PlaneEditor'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature, PlaneDef, Mutation } from '@/types/cad'
+import { useEditorState } from '@/hooks/useEditorState'
 
 const sketch: PartFeature = { id: 'sk1', kind: 'sketch', label: 'sketch 1' }
 const plane: PartFeature = { id: 'pl1', kind: 'plane', label: 'plane 1' }
 
 beforeEach(() => {
-  useSketchEditorStore.setState({
+  useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),

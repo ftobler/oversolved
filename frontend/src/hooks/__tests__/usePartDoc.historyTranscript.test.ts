@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAssemblyUndoRedo, decideAssemblyMutation } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
@@ -17,6 +17,7 @@ import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 import type { AssemblyDoc, PartDoc, Mutation } from '@/types/cad'
 import { docRef, reSolve, renameTo, resetHarness } from './usePartDoc.undoHarness'
 import { runPartTranscript, type TranscriptResult, type TranscriptStep } from './historyTranscript'
+import { useEditorState } from '@/hooks/useEditorState'
 
 // The fail-loud guard is mocked with a controllable implementation: the
 // dev/test rows make it throw (the real test-mode behaviour), the prod row
@@ -762,7 +763,7 @@ describe('teardown, guard and solve-option rows', () => {
     resetHarness()
     failLoudMock.mockReset()
     failLoudMock.mockImplementation((msg: string) => { throw new Error(msg) })
-    usePartEditorStore.getState().setPickBoundary(null)
+    useEditorState.getState().setPickBoundary(null)
     useUnsavedChangesStore.getState().setDirty(false)
   })
 
@@ -771,25 +772,25 @@ describe('teardown, guard and solve-option rows', () => {
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     act(() => { result.current.handleMutation(renameTo('a')) })
-    usePartEditorStore.getState().setEditingFeatureId('extrude-1')
-    usePartEditorStore.getState().setPickBoundary(1)
+    useEditorState.getState().setEditingFeatureId('extrude-1')
+    useEditorState.getState().setPickBoundary(1)
     act(() => { result.current.startEditSession(true) })
     act(() => { result.current.handleUndo() })
 
-    expect(usePartEditorStore.getState().editingFeatureId).toBeNull()
-    expect(usePartEditorStore.getState().pickBoundary).toBeNull()
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
+    expect(useEditorState.getState().pickBoundary).toBeNull()
   })
 
   it('D02: the rollback mirror is skipped while a feature editor is open', () => {
     docRef.current = rollbackDoc()
-    usePartEditorStore.getState().setRollbackPosition(2)
+    useEditorState.getState().setRollbackPosition(2)
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
-    usePartEditorStore.getState().setEditingFeatureId('f1')
+    useEditorState.getState().setEditingFeatureId('f1')
     act(() => { result.current.startEditSession(true) })
     // The bar moves transiently while the editor is open; the mirror must not
     // rewrite the doc position with it.
-    usePartEditorStore.getState().setRollbackPosition(3)
+    useEditorState.getState().setRollbackPosition(3)
     act(() => { result.current.handleMutation(renameTo('in-edit')) })
 
     expect(docRef.current?.rollback).toBe(2)
@@ -797,7 +798,7 @@ describe('teardown, guard and solve-option rows', () => {
 
   it('D03: set_rollback dispatched without a pre-synced store fails loud', () => {
     docRef.current = rollbackDoc()
-    usePartEditorStore.getState().setRollbackPosition(null)
+    useEditorState.getState().setRollbackPosition(null)
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
 
     expect(() => {
