@@ -100,6 +100,13 @@ export function buildCommandEntries(
         // WITHOUT popping a real history entry. Without it, one keystroke both
         // discards the point and pops the stack -- two changes from one press.
         // With nothing in progress it falls through to the real undo unchanged.
+        //
+        // Deliberately NOT the 'pick' stage: an armed pick field is not a
+        // half-placed gesture, it is part of the edit session that owns the
+        // document (a just-added feature's editor arms one), and undo's contract
+        // there is "commit the open work, then pop" -- Part.addFeatureCancel
+        // pins Ctrl+Z removing the feature that armed the field. Escape's 'pick'
+        // arm is about abandoning a gesture, so it stays with cancel_draw only.
         if (st.drawPoints.length > 0 || st.dimensionPicks.length > 0) {
           cancelInProgressGesture(st)
           return
@@ -165,14 +172,14 @@ export function buildCommandEntries(
           // A modal or the sketch value dialog owns Escape: leave everything as is.
           case 'modal':
             return
-          // A pick field is open (invariant: activeTool is null here, so there is
-          // no tool to keep). Clear both, pick before tool to satisfy the mode
-          // stack ordering invariant.
-          case 'pick':
-            st.clearDraw()
-            st.setActivePickField(null)
-            st.setActiveTool(null)
-            return
+           // A pick field is open (invariant: activeTool is null here, so there is
+           // no tool to keep). Clear both, pick before tool to satisfy the mode
+           // stack ordering invariant.
+           case 'pick':
+             st.clearDraw()
+             st.setActivePickField(null)
+             st.setActiveTool(null)
+             return
           // Something is mid-gesture under the armed tool: cancel just that,
           // leaving the tool armed so the next click starts a fresh entity. The
           // dimension branch also drops the scratch projections the gesture

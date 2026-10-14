@@ -126,4 +126,60 @@ describe('Delete on a body plus its generator feature', () => {
     await act(async () => { executeCommand('undo') })
     await waitFor(() => expect(usePartEditorStore.getState().features.some(f => f.id === 'ex1')).toBe(true))
   })
+
+  // The mixed branch used to end on clearNormalSelection, which clears the
+  // selection, the claims, the chip-owned mirror and the domain but not
+  // hoveredConstraintEntityIds -- which the store's own deleteSelected wipe
+  // clears. A mixed Delete therefore left constraint-tile hover pointing at
+  // deleted geometry, and the two branches disagreed on the post-condition.
+  it('wipes the hovered-constraint residue on a mixed Delete, exactly like a sketch-only one', async () => {
+    partDocStoreMock({ content: DOC })
+    render(
+      <MemoryRouter initialEntries={['/documents/doc-1']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper }
+    )
+
+    await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+    fireEvent.click(screen.getByTitle('Feature mode'))
+
+    // Mixed: a sketch entity plus a 3D feature target, with tile hover set.
+    act(() => {
+      useSketchEditorStore.setState({
+        activeFeatureId: 'sk1',
+        normalSelection: new Set(['entity:sk1:L1', '@ex1']),
+        chipOwnedSelection: new Set(['@ex1']),
+        hoveredConstraintEntityIds: new Set(['c_hover']),
+      })
+    })
+    await act(async () => { executeCommand('delete_selected') })
+
+    const afterMixed = useSketchEditorStore.getState()
+    expect(afterMixed.normalSelection.size).toBe(0)
+    expect(afterMixed.selectedPicks.size).toBe(0)
+    expect(afterMixed.chipOwnedSelection.size).toBe(0)
+    expect(afterMixed.selectionDomain).toBe('sketch_2d')
+    expect(afterMixed.hoveredConstraintEntityIds.size).toBe(0)
+
+    // And the sketch-only branch still lands on the identical post-condition.
+    act(() => {
+      useSketchEditorStore.setState({
+        activeFeatureId: 'sk1',
+        normalSelection: new Set(['entity:sk1:L2']),
+        chipOwnedSelection: new Set(['entity:sk1:L2']),
+        hoveredConstraintEntityIds: new Set(['c_hover2']),
+      })
+    })
+    await act(async () => { executeCommand('delete_selected') })
+
+    const afterSketchOnly = useSketchEditorStore.getState()
+    expect(afterSketchOnly.normalSelection.size).toBe(0)
+    expect(afterSketchOnly.selectedPicks.size).toBe(0)
+    expect(afterSketchOnly.chipOwnedSelection.size).toBe(0)
+    expect(afterSketchOnly.selectionDomain).toBe('sketch_2d')
+    expect(afterSketchOnly.hoveredConstraintEntityIds.size).toBe(0)
+  })
 })

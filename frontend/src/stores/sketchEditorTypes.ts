@@ -138,6 +138,11 @@ export interface SketchEditorState {
   setHoveredPickKey: (key: string | null) => void
   setIsPointerDown: (down: boolean) => void
   clearNormalSelection: () => void
+  // The post-delete wipe: normalSelection plus the per-primitive claims, the
+  // chip-owned mirror, the derived domain and the constraint-tile hover. Shared
+  // by deleteSelected and Part's mixed Delete handler so both branches leave
+  // the same post-condition (clearNormalSelection stops at the selection half).
+  clearSelectionAfterDelete: () => void
   // Retires the whole selection subsystem AND every hover field at once, for a
   // context change that invalidates both (leaving a sketch).
   // clearNormalSelection covers selection but not hover; resetTransientState
