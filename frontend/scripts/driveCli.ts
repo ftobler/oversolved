@@ -116,7 +116,10 @@ function readSteps(file: string): ScriptStep[] {
   for (const [index, step] of steps.entries()) {
     if (typeof step !== 'object' || step === null) throw new Error(`${file}: step ${index} is not an object`)
     const record = step as Record<string, unknown>
-    if (typeof record.command !== 'string' && typeof record.mutation !== 'object') {
+    // typeof null is 'object', so the mutation arm needs the explicit check:
+    // a null mutation must fail here with the step named, not as a TypeError
+    // deep inside the runner (where the catch block reads mutation.type).
+    if (typeof record.command !== 'string' && (typeof record.mutation !== 'object' || record.mutation === null)) {
       throw new Error(`${file}: step ${index} needs a command or a mutation`)
     }
   }

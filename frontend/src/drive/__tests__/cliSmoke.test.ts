@@ -237,6 +237,18 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(run.payload).toMatchSnapshot()
   }, 60_000)
 
+  it('rejects a malformed script step with the step named', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const badScript = path.join(TMP_DIR, 'bad-script.json')
+    writeFileSync(badScript, JSON.stringify({ steps: [{ mutation: null }] }, null, 1))
+
+    const run = await drive('run', badScript)
+    expect(run.status).toBe(1)
+    expect(run.payload.ok).toBe(false)
+    expect(run.payload.error).toContain('step 0')
+    expect(run.payload.error).toContain('needs a command or a mutation')
+  }, 60_000)
+
   it('re-imports an exported STEP file and matches the measures', async () => {
     mkdirSync(TMP_DIR, { recursive: true })
     const boxScript = path.join(TMP_DIR, 'box3-script.json')
