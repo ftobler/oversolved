@@ -48,6 +48,10 @@ export interface JournalEntry {
   // to it before applying, so handler-minted ids resume where the recording
   // left off even when the UI minted ids between applies.
   mintIndex: number
+  // True when a solve was pending as this apply landed (the live doc was still
+  // authored). Replay settles each step, so it may diverge at this entry; the
+  // repro names such entries in `warnings`. Absent on a settled entry.
+  unsettled?: true
   // Epoch milliseconds; recorded for the repro reader, never for replay.
   at: number
 }
@@ -61,6 +65,9 @@ export interface ReproPayload {
   doc: unknown
   // The generation's id-source seed; replay installs it before applying.
   seed: number
+  // One line per unsettled entry, naming its index and label/mutation type, so
+  // a reader knows replay is not guaranteed before running it.
+  warnings: string[]
   journal: JournalEntry[]
 }
 
@@ -76,6 +83,14 @@ export function snapshotJson<T>(value: T): T {
       return value
     }
   }
+}
+
+// The human name of an entry: its label, or the mutation type when the entry
+// carries none.
+function entryName(entry: JournalEntry): string {
+  if (entry.label) return entry.label
+  const first = Array.isArray(entry.payload) ? entry.payload[0] : entry.payload
+  return first?.type ?? 'unknown mutation'
 }
 
 export class CommandJournal {
@@ -174,6 +189,7 @@ export class CommandJournal {
       docHashBefore: beforeHash,
       docHashAfter: afterHash,
       mintIndex,
+      ...(change.unsettled && { unsettled: true as const }),
       at: this.clock(),
     }))
   }
@@ -203,8 +219,17 @@ export class CommandJournal {
       docHash: docHashOf(this.baselineDoc),
       doc: snapshotJson(this.baselineDoc),
       seed: this.generationSeed,
+      warnings: this.warnings(),
       journal: this.entries(),
     }
+  }
+
+  // The unsettled entries, named for the repro reader. A settled recording (the
+  // CLI, any script run, any edit that waited for its solve) yields none.
+  private warnings(): string[] {
+    return this.ring.flatMap((entry, index) => entry.unsettled
+      ? [`entry ${index} (${entryName(entry)}): applied while a solve was pending; replay settles each step and diverges at the first unsettled boundary`]
+      : [])
   }
 
   private openGeneration(seed: number): SeededIdSource {

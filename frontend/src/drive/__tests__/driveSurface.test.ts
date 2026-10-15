@@ -202,7 +202,7 @@ describe('drive surface', () => {
       mintIndex: 0,
       at: 7,
     }
-    const repro = { kind: 'oversolved-repro' as const, version: 1 as const, docHash: 'a', doc: { n: 0 }, seed: 1234, journal: [entry] }
+    const repro = { kind: 'oversolved-repro' as const, version: 1 as const, docHash: 'a', doc: { n: 0 }, seed: 1234, warnings: [], journal: [entry] }
     const downloads: Array<{ filename: string; text: string }> = []
     const surface = createDriveSurface(deps({
       journal: {

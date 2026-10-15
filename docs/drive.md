@@ -19,19 +19,20 @@ replay, seeded ids, headless session) and `frontend/scripts/driveCli.ts` (CLI).
 `DRIVE_ENABLED` is true (`frontend/src/drive/gate.ts`):
 
 ```ts
-declare const process: { env: { NODE_ENV?: string } }
-export const DRIVE_ENABLED = process.env.NODE_ENV !== 'production'
+export const DRIVE_ENABLED = import.meta.env.DEV || import.meta.env.MODE === 'test'
 ```
 
-Vite statically replaces `process.env.NODE_ENV` with `"production"` in a
-production build, the initializer folds to `false`, and the guarded branches
-(the installer, the journal sink, the per-document reset) are dropped with the
-bridge and journal modules. Verified on `frontend/dist`: neither
-`__oversolved` nor `oversolved-repro` appears in the bundle. The earlier
-`import.meta.env.DEV` form was only evaluated at run time in this toolchain,
-so those modules stayed in `dist`. The install returns an uninstall that
-clears the global only while it still holds that same surface, so a remount
-cannot delete a newer bridge.
+The expression is evaluated once at module scope and every guarded site
+references the constant directly. In a production build Vite folds
+`import.meta.env.DEV` to `false` and `import.meta.env.MODE` to `"production"`,
+so the initializer becomes `false || "production" === "test"`, which the
+minifier folds to `false`; the guarded branches (the installer, the journal
+sink, the per-document reset) then drop with the bridge and journal modules.
+Verified on `frontend/dist`: neither `__oversolved` nor `oversolved-repro`
+appears in the bundle. Routing the check through a function defeats the fold (a
+call is not a constant), which is why the guarded sites read the constant. The
+install returns an uninstall that clears the global only while it still holds
+that same surface, so a remount cannot delete a newer bridge.
 
 The bridge is installed by the part editor (the assembly editor has none in
 v1). The journal is not wired to the registry: recording sits at the
@@ -144,7 +145,8 @@ builds only):
 
 ```ts
 { kind: 'mutation' | 'batch', payload: Mutation | Mutation[], label?: string,
-  docHashBefore: string, docHashAfter: string, mintIndex: number, at: number }
+  docHashBefore: string, docHashAfter: string, mintIndex: number,
+  unsettled?: true, at: number }
 ```
 
 - The session reports each apply it lands with the docs as they stood before
@@ -153,6 +155,10 @@ builds only):
   (which dispatch mutations without a command) journaled, and what keeps the
   solver write-back out (it never goes through the session). A no-op apply
   (hashes equal) records nothing.
+- An apply that lands while a solve is pending or running is marked
+  `unsettled: true`: the live doc is still authored at that moment, so a
+  replay (which settles each step) reaches a baked state this entry cannot
+  chain onto.
 - A doc change no mutation can replay restarts the journal: undo/redo and a
   cancelled preview, gesture or edit session clear the ring, and the next
   entry captures its own baseline. A document switch clears it too, and each
@@ -174,9 +180,13 @@ builds only):
   "docHash": "sha256 of doc",
   "doc": { /* the baseline document */ },
   "seed": 1875250360,
+  "warnings": [ "entry 1 (add extrude ex1): applied while a solve was pending; ..." ],
   "journal": [ /* entries */ ]
 }
 ```
+
+`warnings` names every unsettled entry (index plus label or mutation type).
+It is empty for a settled recording.
 
 `replayJournal` (`frontend/src/drive/replay.ts`) reproduces a repro on a fresh
 session: it checks the baseline hash first, then for every entry checks the
@@ -185,10 +195,21 @@ applies the mutation (a batch through `executeGroup`), hashes synchronously
 right after the apply and compares with `docHashAfter`, and only then settles
 the step's solve. Hashing before the settle is what makes record and replay
 compare the same authored pre-write-back state. A failed apply or a diverged
-hash stops the replay and reports both hashes.
+hash stops the replay and reports both hashes; a `mintIndex` that is not a
+finite in-range integer is rejected with an `invalid-mint-index` step failure
+rather than seeking forever.
 
-Every journaled generation replays, and the seed travels in the payload
-(`frontend/src/drive/seededIds.ts`):
+Replay is guaranteed when every entry was settled:
+
+- Every CLI and script recording is settled by construction (each step waits
+  for its solve before the next), and so is any edit that waited for its
+  solve.
+- A repro containing unsettled entries fails loudly at the first divergence:
+  the before-hash check reports the expected and actual hashes and stops. That
+  boundary is the documented limit, not silent corruption, and the payload's
+  `warnings` names the entries before replay is attempted.
+
+The seed travels in the payload (`frontend/src/drive/seededIds.ts`):
 
 - Each generation opens an id source under a recorded seed: the browser draws
   the seed from crypto once per generation (and per document reset), the CLI

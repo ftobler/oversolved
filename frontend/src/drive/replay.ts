@@ -26,6 +26,13 @@ import { DRIVE_ID_SEED, seededIdSource } from './seededIds'
 import { docHashOf } from './docHash'
 import type { ReproPayload } from './journal'
 
+// The largest source position a payload may seek to. A session's journal holds
+// at most JOURNAL_CAPACITY entries and one apply mints a few hundred steps at
+// most, so a million is orders above any real recording; anything past it (or
+// non-finite) is hostile input, and seeking there would spin the generator
+// loop instead of failing.
+const MAX_REPLAY_MINT_INDEX = 1_000_000
+
 export interface ReplayStepResult {
   index: number
   kind: 'mutation' | 'batch'
@@ -75,6 +82,27 @@ export async function replayJournal(
     if (ok) {
       for (let index = 0; index < repro.journal.length; index++) {
         const entry = repro.journal[index]
+        // A payload read from disk is external input. A non-finite or absurd
+        // mintIndex would hang the seek loop, so it is a loud step failure
+        // rather than a clamp: a payload that lies about its position cannot
+        // replay, and saying so beats stalling.
+        const mintIndex = entry.mintIndex
+        if (mintIndex !== undefined
+          && (!Number.isInteger(mintIndex) || mintIndex < 0 || mintIndex > MAX_REPLAY_MINT_INDEX)) {
+          steps.push({
+            index,
+            kind: entry.kind,
+            ...(entry.label !== undefined && { label: entry.label }),
+            ok: false,
+            expectedBeforeHash: entry.docHashBefore,
+            actualBeforeHash: hashDoc(),
+            expectedHash: entry.docHashAfter,
+            actualHash: null,
+            error: { code: 'invalid-mint-index', message: `entry ${index} mintIndex ${String(mintIndex)} is out of range` },
+          })
+          ok = false
+          break
+        }
         const actualBeforeHash = hashDoc()
         if (actualBeforeHash !== entry.docHashBefore) {
           steps.push({
@@ -93,7 +121,7 @@ export async function replayJournal(
         // Resume the generation's id sequence where the recording started this
         // apply; ids minted outside the session since the last entry are not
         // replayed and the seek steps over them.
-        if (typeof entry.mintIndex === 'number') source.seek(entry.mintIndex)
+        if (mintIndex !== undefined) source.seek(mintIndex)
         let result: Result
         try {
           result = Array.isArray(entry.payload)

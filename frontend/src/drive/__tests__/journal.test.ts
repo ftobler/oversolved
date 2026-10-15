@@ -25,22 +25,24 @@ afterEach(() => {
 interface SessionHarness {
   session: DocSession
   cell: { current: PartDoc | null }
+  solve: ReturnType<typeof createFakeSolveScheduler<PartDoc>>
 }
 
 function makeSession(doc: PartDoc, journal?: CommandJournal, docId = 'doc-1'): SessionHarness {
   const cell: { current: PartDoc | null } = { current: doc }
   const solveResults: { current: Record<string, SketchData> } = { current: {} }
+  const solve = createFakeSolveScheduler<PartDoc>()
   const session = createDocSession({
     cloneDoc: source => structuredClone(source),
     doc: { get: () => cell.current, set: next => { cell.current = next } },
-    solve: createFakeSolveScheduler<PartDoc>(),
+    solve,
     solveResults: { get: () => solveResults.current, set: next => { solveResults.current = next } },
     editorFacts: () => ({ editingFeatureId: null, rollbackPosition: null }),
     dirtyFacts: () => ({ dirty: false, saves: 0, savedHash: null }),
     docId,
     ...(journal && { journal: journalSink(journal) }),
   })
-  return { session, cell }
+  return { session, cell, solve }
 }
 
 const sketchDoc = (): PartDoc => makeDoc(makeSketch('sk1'))
@@ -60,6 +62,7 @@ function change(overrides: Partial<SessionJournalChange> = {}): SessionJournalCh
     label: 'toggle plane visibility',
     beforeDoc,
     afterDoc,
+    unsettled: false,
     ...overrides,
   }
 }
@@ -233,6 +236,27 @@ describe('the session seam', () => {
     session.execute({ type: 'delete_feature', featureId: 'missing' })
     expect(journal.repro()).toBeNull()
   })
+
+  it('marks entries applied while a solve was pending and warns in the repro', () => {
+    const journal = new CommandJournal()
+    const { session, solve } = makeSession(sketchDoc(), journal)
+    session.execute(addExtrude('ex1', 1))
+    session.execute(addExtrude('ex2', 2))
+    const repro = journal.repro()!
+    expect(repro.journal[0].unsettled).toBeUndefined()
+    expect(repro.journal[1].unsettled).toBe(true)
+    expect(repro.warnings).toHaveLength(1)
+    expect(repro.warnings[0]).toContain('entry 1')
+    expect(repro.warnings[0]).toContain('add extrude ex2')
+    // A recording that waits for its solve is settled and carries no warning.
+    solve.flush()
+    journal.reset('doc-1')
+    session.execute(addExtrude('ex3', 3))
+    const settled = journal.repro()!
+    expect(settled.journal).toHaveLength(1)
+    expect(settled.journal[0].unsettled).toBeUndefined()
+    expect(settled.warnings).toEqual([])
+  })
 })
 
 describe('replayJournal', () => {
@@ -305,6 +329,26 @@ describe('replayJournal', () => {
     expect(outcome.ok).toBe(true)
     expect(outcome.steps[0].kind).toBe('batch')
     expect(fresh.cell.current?.features?.map(f => f.id)).toEqual(['sk1', 'ex1', 'ex2'])
+  })
+
+  it('rejects a hostile mintIndex instead of seeking forever', async () => {
+    const journal = new CommandJournal()
+    const recorded = makeSession(sketchDoc(), journal)
+    recorded.session.execute({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] })
+    const repro = journal.repro()!
+
+    const infinite: ReproPayload = structuredClone(repro)
+    infinite.journal[0].mintIndex = Infinity
+    const first = await replayJournal(infinite, makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1').session)
+    expect(first.ok).toBe(false)
+    expect(first.steps[0].error?.code).toBe('invalid-mint-index')
+    expect(first.steps[0].actualHash).toBeNull()
+
+    const absurd: ReproPayload = structuredClone(repro)
+    absurd.journal[0].mintIndex = Number.MAX_SAFE_INTEGER
+    const second = await replayJournal(absurd, makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1').session)
+    expect(second.ok).toBe(false)
+    expect(second.steps[0].error?.code).toBe('invalid-mint-index')
   })
 
   it('stops with both hashes when a step lands elsewhere than the journal recorded', async () => {

@@ -49,6 +49,11 @@ export interface SessionJournalChange {
   label: string
   beforeDoc: PartDoc
   afterDoc: PartDoc
+  // True when a solve was pending or running as this apply landed: the before
+  // doc is authored (pre-write-back), and a replay that settles each step will
+  // reach a baked state this entry cannot chain onto. False for every apply of
+  // a script or CLI run, which settles each step before the next.
+  unsettled: boolean
 }
 
 // The journal's view of the session. The sink is optional, so a session
@@ -473,6 +478,9 @@ export class DocSession {
       // environment; the adapter voices the pinned failLoud message.
       return this.fault('rollback-unsynced', 'set_rollback dispatched with the rollback store not pre-synced')
     }
+    // Read the solve state before this apply requests its own solve: a busy
+    // solve means the live doc is still authored, which the journal marks.
+    const unsettled = this.solveBusy()
     // The journal opens its generation (and installs its id source) before the
     // handlers run, so an id a handler mints internally is a function of the
     // recorded seed.
@@ -490,18 +498,18 @@ export class DocSession {
       // entry keyed to the baseline.
       if (!gesture.firstMutation) gesture.firstMutation = mutations[0]
       this.landApplied(current, mutations, applied)
-      this.reportDocChange(mutations, group, current, applied.next)
+      this.reportDocChange(mutations, group, current, applied.next, unsettled)
       return okResult(this.createdIdsFor(mutations, current, applied.next))
     }
     const result = this.landMutations(mutations, current, applied)
-    this.reportDocChange(mutations, group, current, applied.next)
+    this.reportDocChange(mutations, group, current, applied.next, unsettled)
     return result
   }
 
   // Hand one durable apply to the journal sink with the docs as they stood
   // around it. Synchronous by construction: no solve can write back between
   // the apply and the sink's hash, which is the state a replay hashes too.
-  private reportDocChange(mutations: Mutation[], group: boolean, before: PartDoc, after: PartDoc): void {
+  private reportDocChange(mutations: Mutation[], group: boolean, before: PartDoc, after: PartDoc, unsettled: boolean): void {
     const journal = this.deps.journal
     if (!journal) return
     journal.onDocChange({
@@ -511,7 +519,16 @@ export class DocSession {
       label: describeMutation(mutations[0]),
       beforeDoc: before,
       afterDoc: after,
+      unsettled,
     })
+  }
+
+  // Whether a solve is still in flight as an apply lands. One worker, so
+  // pending and running are the same slot; either means the live doc has not
+  // received its write-back yet.
+  private solveBusy(): boolean {
+    const state = this.deps.solve.state()
+    return state.pending || state.running
   }
 
   // The shared tail of both funnels, run once the mutations are known to
