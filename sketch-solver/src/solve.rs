@@ -24,7 +24,7 @@ const RANK_TOL: f64 = 1e-6;
 /// floor sat above that noise. Rev 3 carries f64, and the crate's own solve
 /// tests measure satisfiable systems at 2.5e-8 relative residual at worst (the
 /// sparse drag fast path on a two-point sketch; the cold path's worst is
-/// 9.4e-9, the deliberately hard eight-line parallel chain at scale 100).
+/// 9.4e-9, the deliberately hard eight-line parallel chain at scale 0.01).
 /// The nearest deliberately unsatisfiable case measures 2.8e-2 (a 4 percent
 /// conflict). 1e-7 sits between them: 4x above the worst satisfiable reading,
 /// five orders below the unsatisfiable one, and 100x tighter than the
