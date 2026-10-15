@@ -1,18 +1,36 @@
-// Journal replay: execute a repro's commands in order against the same
-// baseline document and verify every step landed on the recorded hash. The
-// caller owns the session and the baseline load (the CLI and the gated test
-// share this loop); this module owns the verification contract: a step whose
-// Result failed or whose resulting doc hash differs from the journal stops the
-// replay and is reported with both hashes, so a non-reproduction is a precise
-// fact, not a silent divergence.
+// Journal replay: apply a repro's recorded mutations in order to a fresh
+// session and verify every step landed on the recorded hashes. The caller owns
+// the session and the baseline load (the CLI and the gated suites share this
+// loop); this module owns the verification contract: each step's before-hash
+// must chain onto the running doc, its apply must succeed, and its after-hash
+// must match the recorded one, all measured synchronously right after the
+// apply and BEFORE the step's solve settles. Hashing before the settle is what
+// makes record and replay compare the same authored, pre-write-back state;
+// settling after the hash lets the next step start from the same baked state
+// the recording saw. A divergence stops the replay and is reported with both
+// hashes, so a non-reproduction is a precise fact, not a silent failure.
+//
+// Replay installs a fresh seeded id source for its duration (restoring the
+// previous one afterwards), because a recorded mutation may not embed every id
+// it needs: the sugar handlers (add_rect, add_ngon) mint entities and
+// constraints internally. A journal recorded under the crypto default replays
+// exactly only when its mutations embed their ids; one recorded under the
+// seeded source (the CLI) replays exactly always.
 
-import type { CommandResult } from '@/utils/core/commandSpec'
+import type { PartDoc, Mutation } from '@/types/cad'
+import type { Result } from '@/session/result'
+import { setIdSource, getIdSource } from '@/utils/yamlMutations'
+import { seededIdSource } from './seededIds'
+import { docHashOf } from './docHash'
 import type { ReproPayload } from './journal'
 
 export interface ReplayStepResult {
   index: number
-  commandId: string
+  kind: 'mutation' | 'batch'
+  label?: string
   ok: boolean
+  expectedBeforeHash: string
+  actualBeforeHash: string | null
   expectedHash: string
   actualHash: string | null
   error?: { code: string; message: string }
@@ -20,7 +38,7 @@ export interface ReplayStepResult {
 
 export interface ReplayOutcome {
   ok: boolean
-  // The hash of the doc before the first replayed command; compared against
+  // The hash of the doc before the first replayed mutation; compared against
   // the repro's own baseline hash.
   baselineHash: string | null
   expectedBaselineHash: string
@@ -28,63 +46,94 @@ export interface ReplayOutcome {
   finalHash: string | null
 }
 
-// The registry-shaped executor, with string ids: the closed CommandName union
-// lives at the spec table, while a repro read from disk is external input. A
-// method declaration (not a function property) so CommandRegistry satisfies it
-// structurally without a cast.
-export interface ReplayExecutor {
-  execute(commandId: string, params: unknown): CommandResult
+// The session-shaped executor. Structural, so the CLI's DocSession satisfies it
+// without a cast and a test can pass a minimal double.
+export interface ReplaySession {
+  getDoc(): PartDoc | null
+  execute(mutation: Mutation): Result
+  executeGroup(mutations: Mutation[]): Result
 }
 
 export async function replayJournal(
   repro: ReproPayload,
-  executor: ReplayExecutor,
-  hashDoc: () => string | null,
+  session: ReplaySession,
   settle?: () => Promise<void> | void,
 ): Promise<ReplayOutcome> {
-  const baselineHash = hashDoc()
-  const steps: ReplayStepResult[] = []
-  let ok = baselineHash === repro.docHash
-  if (ok) {
-    for (let index = 0; index < repro.journal.length; index++) {
-      const entry = repro.journal[index]
-      let result: CommandResult
-      try {
-        result = executor.execute(entry.commandId, entry.params ?? undefined)
-      } catch (e) {
+  const hashDoc = (): string | null => (session.getDoc() ? docHashOf(session.getDoc()) : null)
+  const previousSource = getIdSource()
+  setIdSource(seededIdSource())
+  try {
+    const baselineHash = hashDoc()
+    const steps: ReplayStepResult[] = []
+    let ok = baselineHash === repro.docHash
+    if (ok) {
+      for (let index = 0; index < repro.journal.length; index++) {
+        const entry = repro.journal[index]
+        const actualBeforeHash = hashDoc()
+        if (actualBeforeHash !== entry.docHashBefore) {
+          steps.push({
+            index,
+            kind: entry.kind,
+            ...(entry.label !== undefined && { label: entry.label }),
+            ok: false,
+            expectedBeforeHash: entry.docHashBefore,
+            actualBeforeHash,
+            expectedHash: entry.docHashAfter,
+            actualHash: null,
+          })
+          ok = false
+          break
+        }
+        let result: Result
+        try {
+          result = Array.isArray(entry.payload)
+            ? session.executeGroup(entry.payload)
+            : session.execute(entry.payload)
+        } catch (e) {
+          steps.push({
+            index,
+            kind: entry.kind,
+            ...(entry.label !== undefined && { label: entry.label }),
+            ok: false,
+            expectedBeforeHash: entry.docHashBefore,
+            actualBeforeHash,
+            expectedHash: entry.docHashAfter,
+            actualHash: hashDoc(),
+            error: { code: 'thrown', message: e instanceof Error ? e.message : String(e) },
+          })
+          ok = false
+          break
+        }
+        // Hash before settling: the recorded hash is the authored state, and
+        // the settle below bakes solved geometry for the next step.
+        const actualHash = hashDoc()
+        const stepOk = result.ok && actualHash === entry.docHashAfter
         steps.push({
           index,
-          commandId: entry.commandId,
-          ok: false,
+          kind: entry.kind,
+          ...(entry.label !== undefined && { label: entry.label }),
+          ok: stepOk,
+          expectedBeforeHash: entry.docHashBefore,
+          actualBeforeHash,
           expectedHash: entry.docHashAfter,
-          actualHash: hashDoc(),
-          error: { code: 'thrown', message: e instanceof Error ? e.message : String(e) },
+          actualHash,
+          ...(result.ok ? {} : { error: { code: result.code, message: result.message } }),
         })
-        ok = false
-        break
-      }
-      if (settle) await settle()
-      const actualHash = hashDoc()
-      const stepOk = result.ok && actualHash === entry.docHashAfter
-      steps.push({
-        index,
-        commandId: entry.commandId,
-        ok: stepOk,
-        expectedHash: entry.docHashAfter,
-        actualHash,
-        ...(result.ok ? {} : { error: { code: result.code, message: result.message } }),
-      })
-      if (!stepOk) {
-        ok = false
-        break
+        if (!stepOk) {
+          ok = false
+          break
+        }
+        if (settle) await settle()
       }
     }
-  }
-  return {
-    ok,
-    baselineHash,
-    expectedBaselineHash: repro.docHash,
-    steps,
-    finalHash: hashDoc(),
+    return {
+      ok,
+      baselineHash: baselineHash,
+      expectedBaselineHash: repro.docHash,
+      steps,
+      finalHash: hashDoc(),
+    }
+  } finally {
+    setIdSource(previousSource)
   }
 }

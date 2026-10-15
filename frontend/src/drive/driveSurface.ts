@@ -311,7 +311,9 @@ export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
       } catch (e) {
         return { ok: false, code: 'bridge-error', message: e instanceof Error ? e.message : String(e) }
       }
-      return { ok: true, filename, bytes: text.length }
+      // UTF-8 byte length, not code units: a repro carries user labels, so the
+      // count must match the bytes actually written.
+      return { ok: true, filename, bytes: new TextEncoder().encode(text).byteLength }
     },
   }
 }

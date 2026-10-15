@@ -87,10 +87,30 @@ export const parseTarget = (t: string, hostFeatureId: string): PartTarget => {
 }
 
 // Generate a random base64url ID.  bytes=12 for elements, bytes=18 for features.
-export function randomId(bytes: number): string {
+function cryptoRandomId(bytes: number): string {
   const arr = new Uint8Array(bytes)
   crypto.getRandomValues(arr)
   return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+
+/** The minted-id source. The app leaves this at the crypto default; the drive
+ *  CLI and journal replay install a seeded source so the ids a mutation handler
+ *  mints internally (add_rect, add_ngon, uniqueConstraintId) come out the same
+ *  on every run. A null source restores the crypto default. */
+export type IdSource = (bytes: number) => string
+
+let idSource: IdSource | null = null
+
+export function setIdSource(source: IdSource | null): void {
+  idSource = source
+}
+
+export function getIdSource(): IdSource | null {
+  return idSource
+}
+
+export function randomId(bytes: number): string {
+  return (idSource ?? cryptoRandomId)(bytes)
 }
 
 export function uniqueConstraintId(constraints: PartConstraint[], kind: string): string {

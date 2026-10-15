@@ -38,6 +38,7 @@ describe('Part drive surface installation', () => {
   })
 
   afterEach(() => {
+    vi.unstubAllEnvs()
     delete (window as { __oversolved?: unknown }).__oversolved
   })
 
@@ -63,10 +64,13 @@ describe('Part drive surface installation', () => {
     // The whole readout is JSON-safe.
     expect(JSON.parse(JSON.stringify(inspection)).session.docId).toBe('doc-1')
 
-    // The journaling registry recorded the doc-changing command at the page's
-    // own seam, and the repro carries the baseline the command started from.
+    // The session mutation seam recorded the change the command produced (not
+    // the command itself), and the repro carries the baseline it started from.
     const journal = surface!.journal()
-    expect(journal.map(e => e.commandId)).toEqual(['toggle_plane_visibility'])
+    expect(journal).toHaveLength(1)
+    expect(journal[0].kind).toBe('mutation')
+    expect(journal[0].payload).toEqual({ type: 'toggle_plane_visibility' })
+    expect(journal[0].label).toBe('toggle plane visibility')
     expect(journal[0].docHashBefore).not.toBe(journal[0].docHashAfter)
     const repro = surface!.repro()
     expect(repro).not.toBeNull()
@@ -75,5 +79,34 @@ describe('Part drive surface installation', () => {
 
     act(() => { unmount() })
     expect(window.__oversolved).toBeUndefined()
+  })
+
+  it('leaves the bridge uninstalled in a production-mode module graph', async () => {
+    // The regular suite runs in test mode, so the gate const is true for every
+    // other test. Stubbing the env and reloading the graph is the only way to
+    // exercise the folded-off build: the page module must come up with the
+    // gate false and install nothing. (The production bundler folds the same
+    // const to `false` and drops the installer and journal entirely.)
+    vi.stubEnv('DEV', false)
+    vi.stubEnv('MODE', 'production')
+    vi.resetModules()
+    try {
+      const testUtils = await import('@/__tests__/test-utils')
+      testUtils.partDocStoreMock()
+      const { default: FreshPart } = await import('@/pages/Part')
+      render(
+        <MemoryRouter initialEntries={['/documents/doc-1']}>
+          <Routes>
+            <Route path="/documents/:uuid" element={<FreshPart />} />
+          </Routes>
+        </MemoryRouter>,
+        { wrapper: testUtils.Wrapper },
+      )
+      await screen.findByTitle('Feature mode')
+      expect(window.__oversolved).toBeUndefined()
+    } finally {
+      vi.unstubAllEnvs()
+      vi.resetModules()
+    }
   })
 })

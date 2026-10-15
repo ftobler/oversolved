@@ -12,7 +12,7 @@ import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
 import { narrowCommandName } from '@/utils/core/commandNames'
 import type { CommandName } from '@/utils/core/commandNames'
-import { noParams, objectParams, Field, type ErasedCommandSpec, type CommandSpec } from '@/utils/core/commandSpec'
+import { noParams, objectParams, Field, type CommandResult, type ErasedCommandSpec, type CommandSpec } from '@/utils/core/commandSpec'
 
 // The four ordered outcomes of the Escape key in the sketch editor. The first
 // matching rule wins, so this is the single source of truth the `cancel_draw`
@@ -88,7 +88,10 @@ export interface PartCommandContext {
   state(): SketchCommandState
   undo(): void
   redo(): void
-  deleteSelectedFeatures(): void
+  // The page folds a mixed sketch and 3D selection through several stores and
+  // returns nothing; a headless context that cannot perform the delete returns
+  // a failure Result so the command never reads as an ok that did nothing.
+  deleteSelectedFeatures(): CommandResult | void
   toggleSketchPlaneVisibility(): void
   togglePlaneVisibility(): void
   // A feature add: the session Result when the mutation ran, null when there
@@ -192,11 +195,10 @@ const deleteSelectedSpec: PartCommandSpec = {
   // The page handler owns the whole selection: it folds a mixed sketch + 3D
   // selection into one commitMutationGroup, and otherwise defers the sketch
   // half to the store's own deleteSelected (which dispatches and wipes). It
-  // must run first so it sees the full selection before any store wipe.
-  run: ctx => {
-    ctx.deleteSelectedFeatures()
-    return okResult()
-  },
+  // must run first so it sees the full selection before any store wipe. A
+  // context that cannot perform the delete (headless) returns a failure, which
+  // is propagated instead of being flattened into an ok.
+  run: ctx => ctx.deleteSelectedFeatures() ?? okResult(),
 }
 
 const toggleSketchPlaneVisibilitySpec: PartCommandSpec = {

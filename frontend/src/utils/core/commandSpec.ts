@@ -11,8 +11,10 @@ import { okResult, type Result } from '@/session/result'
 import type { CommandName } from '@/utils/core/commandNames'
 
 // The registry's own failures, distinct from the session's: an unknown id or a
-// payload that does not match the spec's params never reaches a run body.
-export type CommandErrorCode = 'unknown-command' | 'invalid-params'
+// payload that does not match the spec's params never reaches a run body. A
+// context that cannot carry out a known command (delete_selected headlessly)
+// returns `unsupported` rather than reporting an ok it did not perform.
+export type CommandErrorCode = 'unknown-command' | 'invalid-params' | 'unsupported'
 
 export interface CommandFailure {
   ok: false

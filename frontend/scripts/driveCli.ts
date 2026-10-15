@@ -31,6 +31,8 @@ import { createHeadlessPart, partSolvePayload } from '@/drive/headlessPart'
 import { CommandJournal, type ReproPayload } from '@/drive/journal'
 import { docHashOf } from '@/drive/docHash'
 import { replayJournal } from '@/drive/replay'
+import { seededIdSource } from '@/drive/seededIds'
+import { setIdSource } from '@/utils/yamlMutations'
 import type { ScriptStep } from '@/drive/scriptRunner'
 
 // ─── kernel bootstrap ───
@@ -123,6 +125,11 @@ function printJson(value: unknown): void {
 async function runCommand(args: Args): Promise<number> {
   const scriptFile = args.positional[0]
   if (!scriptFile) throw new UsageError('run needs a script file')
+  // Seeded before the first step: every id a mutation handler mints internally
+  // (add_rect, add_ngon, constraint ids) is a pure function of the step
+  // sequence, so two runs of one script build byte-identical documents and the
+  // recorded repro replays exactly.
+  setIdSource(seededIdSource())
   const steps = readSteps(scriptFile)
   const doc = args.flags.doc
     ? readDoc(args.flags.doc)
@@ -194,13 +201,10 @@ async function replayCommand(args: Args): Promise<number> {
   if (repro?.kind !== 'oversolved-repro' || !Array.isArray(repro.journal)) {
     throw new Error(`${file}: not an oversolved repro payload`)
   }
+  // The replay installs its own fresh seeded source and applies the recorded
+  // mutations to a session, hashing synchronously around each apply.
   const part = createHeadlessPart({ doc: repro.doc as PartDoc, docId: 'replay' })
-  const outcome = await replayJournal(
-    repro,
-    part.registry,
-    () => (part.getDoc() ? docHashOf(part.getDoc()) : null),
-    () => part.idle(),
-  )
+  const outcome = await replayJournal(repro, part.session, () => part.idle())
   printJson(outcome)
   return outcome.ok ? 0 : 1
 }

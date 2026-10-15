@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
-import { createDocSession, type DocSession } from '@/session/DocSession'
+import { createDocSession, type DocSession, type SessionJournalSink } from '@/session/DocSession'
 import type { Result, SessionFailure } from '@/session/result'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
@@ -30,7 +30,7 @@ const labelCarrier = (label: string): Mutation => ({ type: 'preview_commit', des
 
 type StackEntry = { doc: PartDoc; mutation: Mutation }
 
-export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFirstSolve, workspace }: { solveOnLoad?: boolean; onFirstSolve?: () => void; workspace?: string } = {}) {
+export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFirstSolve, workspace, journal }: { solveOnLoad?: boolean; onFirstSolve?: () => void; workspace?: string; journal?: SessionJournalSink } = {}) {
   const reSolveRef = useRef<ReSolveFn | null>(null)
   // Set by the page: the transient editor state that does not live in the
   // session (forced visibility, sketch-editor selection/pick, popovers, panel
@@ -82,6 +82,10 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     docId: uuid ?? null,
     getValidation: () => validationRef.current,
     getBodies: () => bodiesRef.current,
+    // The sink is captured once: it only exists in dev/test builds and the page
+    // builds it with an empty dependency list, so it is stable for this mount
+    // (a document switch remounts the editor and this session with it).
+    ...(journal && { journal }),
   }))
 
   const clearStashForSolved = useCallback((featureIds: string[]) => {

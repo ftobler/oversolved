@@ -193,7 +193,14 @@ describe('drive surface', () => {
   })
 
   it('exposes the journal and writes a repro through the download seam', () => {
-    const entry = { commandId: 'bump', params: null, docHashBefore: 'a', docHashAfter: 'b', at: 7 }
+    const entry = {
+      kind: 'mutation' as const,
+      payload: { type: 'toggle_plane_visibility' as const },
+      label: 'toggle plane visibility \u00e9',
+      docHashBefore: 'a',
+      docHashAfter: 'b',
+      at: 7,
+    }
     const repro = { kind: 'oversolved-repro' as const, version: 1 as const, docHash: 'a', doc: { n: 0 }, journal: [entry] }
     const downloads: Array<{ filename: string; text: string }> = []
     const surface = createDriveSurface(deps({
@@ -205,7 +212,11 @@ describe('drive surface', () => {
     expect(surface.journal()).toEqual([entry])
     expect(surface.repro()).toEqual(repro)
     const result = surface.downloadRepro('my-repro.json')
-    expect(result).toEqual({ ok: true, filename: 'my-repro.json', bytes: downloads[0].text.length })
+    // The label carries a two-byte character, so the reported count is the
+    // UTF-8 byte length, not the code-unit length.
+    const byteLength = new TextEncoder().encode(downloads[0].text).byteLength
+    expect(result).toEqual({ ok: true, filename: 'my-repro.json', bytes: byteLength })
+    expect(byteLength).toBeGreaterThan(downloads[0].text.length)
     expect(downloads).toHaveLength(1)
     expect(JSON.parse(downloads[0].text)).toEqual(repro)
   })

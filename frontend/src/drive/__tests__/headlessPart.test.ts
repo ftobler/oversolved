@@ -2,28 +2,35 @@
 //
 // The headless session wiring: the part command table runs against a real
 // DocSession, command-driven adds mint deterministic feature ids, and the
-// journaling registry records the commands. The solves fail benignly here
-// (OCC is not injected in this suite), which is exactly the "solve failed"
-// path the CLI tolerates; the CLI smoke suite covers the real kernel.
+// journal records the session mutations. The solves fail benignly here (OCC is
+// not injected in this suite), which is exactly the "solve failed" path the CLI
+// tolerates; the CLI smoke suite covers the real kernel.
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHeadlessPart } from '../headlessPart'
-import { CommandJournal, resetCommandJournal } from '../journal'
+import { CommandJournal } from '../journal'
+import { docHashOf } from '../docHash'
+import { seededIdSource } from '../seededIds'
+import { setIdSource } from '@/utils/yamlMutations'
 import type { PartDoc } from '@/types/cad'
 import type { CommandName } from '@/utils/core/commandNames'
+import type { ScriptStep } from '../scriptRunner'
 
 function emptyDoc(): PartDoc {
   return { version: 1, kind: 'part', features: [] } as PartDoc
 }
 
 beforeEach(() => {
-  resetCommandJournal()
+  setIdSource(null)
+})
+
+afterEach(() => {
+  setIdSource(null)
 })
 
 describe('createHeadlessPart', () => {
   it('runs command steps through the registry and mints deterministic feature ids', async () => {
-    const journal = new CommandJournal()
-    const part = createHeadlessPart({ doc: emptyDoc(), journal })
+    const part = createHeadlessPart({ doc: emptyDoc() })
     const result = part.registry.execute('add_extrude' as CommandName)
     expect(result.ok).toBe(true)
     expect(result).toMatchObject({ createdIds: ['extrude_1'] })
@@ -31,17 +38,29 @@ describe('createHeadlessPart', () => {
     expect(part.getDoc()?.features?.map(f => f.id)).toEqual(['extrude_1'])
   })
 
-  it('records journaled commands and replays undo/redo state through the session', async () => {
+  it('records session mutations, and an undo restarts the journal suffix', async () => {
     const journal = new CommandJournal()
     const part = createHeadlessPart({ doc: emptyDoc(), journal })
     part.registry.execute('add_extrude' as CommandName)
     await part.idle()
+    expect(journal.entries().map(e => e.payload)).toMatchObject([{ type: 'add_extrude' }])
+    expect(journal.entries()[0].kind).toBe('mutation')
+    // An undo installs a doc no mutation chain produced, so the suffix is
+    // dropped rather than left as a torn history.
     part.registry.execute('undo' as CommandName)
     await part.idle()
+    expect(journal.repro()).toBeNull()
     part.registry.execute('redo' as CommandName)
     await part.idle()
-    expect(journal.entries().map(e => e.commandId)).toEqual(['add_extrude', 'undo', 'redo'])
+    expect(journal.repro()).toBeNull()
     expect(part.getDoc()?.features?.map(f => f.id)).toEqual(['extrude_1'])
+  })
+
+  it('refuses delete_selected instead of reporting an ok that did nothing', () => {
+    const part = createHeadlessPart({ doc: emptyDoc() })
+    const result = part.registry.execute('delete_selected' as CommandName)
+    expect(result.ok).toBe(false)
+    expect(result).toMatchObject({ code: 'unsupported' })
   })
 
   it('runs mutation steps through the session and command steps through the registry', async () => {
@@ -62,5 +81,26 @@ describe('createHeadlessPart', () => {
     const outcome = await part.run([{ command: 'not_a_command' }])
     expect(outcome.ok).toBe(false)
     expect(outcome.steps[0].error?.code).toBe('unknown-command')
+  })
+
+  it('builds the canonical script byte-identically across two seeded runs', async () => {
+    // The box script mints its rect entities inside the handler, so the doc
+    // hash can only repeat when the id source is seeded. A fresh source per
+    // run makes this the same guarantee the CLI gives two processes.
+    const canonical: ScriptStep[] = [
+      { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_front' } },
+      { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude', sketchQuery: '$sk1', distance: 5 } },
+    ]
+    const runOnce = async (): Promise<string> => {
+      setIdSource(seededIdSource())
+      const part = createHeadlessPart({ doc: emptyDoc() })
+      const outcome = await part.run(canonical)
+      expect(outcome.ok).toBe(true)
+      return docHashOf(part.getDoc())
+    }
+    const first = await runOnce()
+    const second = await runOnce()
+    expect(second).toBe(first)
   })
 })

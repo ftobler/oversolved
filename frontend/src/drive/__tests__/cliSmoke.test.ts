@@ -72,8 +72,7 @@ const BOX_SCRIPT = {
 const COMMAND_SCRIPT = {
   steps: [
     { command: 'toggle_plane_visibility' },
-    { command: 'undo' },
-    { command: 'redo' },
+    { command: 'toggle_sketch_plane_visibility' },
   ],
 }
 
@@ -94,6 +93,13 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(run.payload.steps).toHaveLength(3)
     expect((run.payload.solve as { lastError: string | null }).lastError).toBeNull()
 
+    // The canonical script executed a second time in a fresh process must
+    // build the byte-identical document: the seeded id source is what makes
+    // the rect's internally minted entities repeat.
+    const second = drive('run', boxScript)
+    expect(second.status).toBe(0)
+    expect(second.payload.docHash).toBe(run.payload.docHash)
+
     // 10 x 10 x 5 box: 6 faces, 12 edges, 8 vertices, volume 500.
     const measure = drive('measure', boxDoc)
     expect(measure.status).toBe(0)
@@ -106,13 +112,18 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
 
     // Record a command-level journal on top of the built doc, then replay it
-    // in a fresh process: every recorded hash must reproduce.
+    // in a fresh process: every recorded hash must reproduce. The journal
+    // stores the mutations the commands produced, not the commands.
     const recorded = drive('run', commandScript, '--doc', boxDoc, '--repro', reproFile)
     expect(recorded.status).toBe(0)
     expect(recorded.payload.ok).toBe(true)
-    const repro = JSON.parse(readFileSync(reproFile, 'utf8')) as { kind: string; journal: unknown[] }
+    const repro = JSON.parse(readFileSync(reproFile, 'utf8')) as {
+      kind: string
+      journal: Array<{ kind: string; payload: { type?: string } }>
+    }
     expect(repro.kind).toBe('oversolved-repro')
-    expect(repro.journal).toHaveLength(3)
+    expect(repro.journal).toHaveLength(2)
+    expect(repro.journal.map(e => e.payload.type)).toEqual(['toggle_plane_visibility', 'toggle_sketch_plane_visibility'])
 
     const replayed = drive('replay', reproFile)
     expect(replayed.status).toBe(0)

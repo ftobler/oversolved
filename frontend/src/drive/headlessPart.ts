@@ -1,5 +1,5 @@
 // The headless part session: one DocSession wired to the real in-process
-// kernel, the part command table and (optionally) the command journal. The
+// kernel, the part command table and (optionally) the mutation journal. The
 // node CLI runs scripts and replays journals through this; one session per
 // process is the v1 contract, because solveLocally's cross-solve checkpoint
 // cache is single-writer module state (see the reentrancy guard there). Two
@@ -17,17 +17,15 @@ import type { CommandName } from '@/utils/core/commandNames'
 import { PART_COMMAND_SPECS, getSketchState, type PartCommandContext } from '@/pages/commandEntries'
 import { editorState } from '@/stores/editorState'
 import { partSolvePayload, applySolveToDoc } from '@/drive/solveWriteBack'
-import type { CommandJournal } from '@/drive/journal'
-import { JournalingCommandRegistry } from '@/drive/journalingRegistry'
-import { docHashOf } from '@/drive/docHash'
+import { journalSink, type CommandJournal } from '@/drive/journal'
 import { runScript, type ScriptRunOutcome, type ScriptStep } from '@/drive/scriptRunner'
 
 export interface HeadlessPartOptions {
   doc: PartDoc
   // The solve cache key; stable per document so incremental rebuilds apply.
   docId?: string
-  // When given, commands are journaled into it (and `run` can hand back a
-  // repro); otherwise a plain registry is used.
+  // When given, every session mutation is journaled into it (and `run` can
+  // hand back a repro); otherwise the session runs without a sink.
   journal?: CommandJournal
 }
 
@@ -55,8 +53,8 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     })
     if (!response) throw new Error('Local solver unavailable (OCC.js failed to load)')
     // The same doc write-back the browser adapter applies: bake solved geometry
-    // and reconcile part_style. The journal hashes read the box, so a replayed
-    // command sequence sees exactly what the recorded one saw.
+    // and reconcile part_style. The journal ignores it: its hashes were taken
+    // synchronously around the apply, before this write-back landed.
     docBox.current = applySolveToDoc(doc, response)
   }
 
@@ -79,6 +77,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     },
     dirtyFacts: () => dirtyFacts,
     docId,
+    ...(opts.journal && { journal: journalSink(opts.journal) }),
   })
 
   // Deterministic feature ids for command-driven adds; scripts that need exact
@@ -94,9 +93,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     redo: () => { session.redo() },
     deleteSelectedFeatures: () => {
       // The page handler folds a mixed sketch and 3D selection through several
-      // stores; v1 has no headless equivalent, so it says so rather than
-      // silently succeeding.
-      console.error('[drive] delete_selected is not supported headlessly yet; use mutation steps')
+      // stores; v1 has no headless equivalent, so it refuses rather than
+      // silently reporting an ok that deleted nothing.
+      return { ok: false, code: 'unsupported', message: 'delete_selected is not supported headlessly yet; use mutation steps' }
     },
     toggleSketchPlaneVisibility: () => { session.execute({ type: 'toggle_sketch_plane_visibility' }) },
     togglePlaneVisibility: () => { session.execute({ type: 'toggle_plane_visibility' }) },
@@ -111,13 +110,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     },
   }
 
-  const registry = opts.journal
-    ? new JournalingCommandRegistry<PartCommandContext>(() => context, {
-        journal: opts.journal,
-        hashDoc: () => (docBox.current ? docHashOf(docBox.current) : null),
-        getDoc: () => docBox.current,
-      })
-    : new CommandRegistry<PartCommandContext>(() => context)
+  const registry = new CommandRegistry<PartCommandContext>(() => context)
   for (const spec of PART_COMMAND_SPECS) registry.register(spec)
 
   const run = (steps: readonly ScriptStep[]): Promise<ScriptRunOutcome> =>

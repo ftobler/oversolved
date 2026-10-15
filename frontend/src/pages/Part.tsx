@@ -36,8 +36,9 @@ import { getSketchState, PART_COMMAND_SPECS, type PartCommandContext, type ShowM
 import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
 import { installDriveSurface } from '@/drive/driveSurface'
 import { DRIVE_ENABLED } from '@/drive/gate'
-import { getCommandJournal } from '@/drive/journal'
-import { useDriveCommandRegistry } from '@/drive/useDriveCommandRegistry'
+import { getCommandJournal, journalSink } from '@/drive/journal'
+import { CommandRegistry } from '@/utils/core/commandSpec'
+import type { SessionJournalSink } from '@/session/DocSession'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import { useEditFeature } from '@/pages/useEditFeature'
 
@@ -158,6 +159,22 @@ export default function Part() {
   const selection = useSketchEditorStore(s => s.normalSelection)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
+  // The journal sink the session records through, dev/test builds only. The
+  // session seam (not the command registry) is what makes drawing and gestures
+  // journaled; the session's docId check is the hard lock against a journal
+  // spanning two documents.
+  const driveJournal = useMemo<SessionJournalSink | undefined>(() => {
+    if (!DRIVE_ENABLED) return undefined
+    return journalSink(getCommandJournal())
+  }, [])
+  // A switch loads a new document into this editor (WorkspacePage keys Part per
+  // entry), so the previous document's replayable suffix must go with it: the
+  // next entry's baseline is the document just opened.
+  useEffect(() => {
+    if (!DRIVE_ENABLED) return
+    getCommandJournal().reset(uuid ?? null)
+  }, [uuid])
+
   const {
     doc,
     session,
@@ -189,7 +206,7 @@ export default function Part() {
     commitEditSession,
     cancelEditSession,
     registerUndoTeardown,
-  } = usePartDoc(uuid, { onFirstSolve: handleFirstSolve, workspace: workspaceId })
+  } = usePartDoc(uuid, { onFirstSolve: handleFirstSolve, workspace: workspaceId, journal: driveJournal })
 
   const features = useMemo(() => extractFeatures(doc), [doc])
   // The sketch-on-face FSM only cares about a sketch's plane field being picked.
@@ -795,11 +812,13 @@ export default function Part() {
     session, handleUndoNoFit, handleRedoNoFit, handleDeleteSelectedFeatures,
     handleToggleSketchPlaneVisibility, handleTogglePlaneVisibility, handleAddFeature, showMessage,
   ])
-  // The registry is journaling in dev/test builds (see useDriveCommandRegistry);
-  // its doc getter reads the live ref so the journal hashes what a command
-  // actually saw without re-creating the registry on every edit.
-  const registryDeps = useMemo(() => ({ getDoc: () => docRef.current as unknown }), [docRef])
-  const commandRegistry = useDriveCommandRegistry(commandContext, registryDeps)
+  // One registry per live context. The journal no longer wraps the registry:
+  // recording moved to the session mutation seam, which also sees drawing and
+  // gestures (they never pass a command) and keeps the solver write-back out.
+  const commandRegistry = useMemo(
+    () => new CommandRegistry<PartCommandContext>(() => commandContext),
+    [commandContext],
+  )
   usePartCommands(commandRegistry)
 
   // Q6: the drive surface is a dev/test affordance. The gate constant is folded

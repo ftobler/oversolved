@@ -36,6 +36,31 @@ export interface EditorFacts {
   rollbackPosition: number | null
 }
 
+// One durable, replayable doc change: the mutations that produced it and the
+// docs on either side, handed to the journal sink synchronously inside the
+// apply, before any solve can write back. The sink hashes the docs there, so a
+// replay hashing right after its own apply sees the same pre-write-back state.
+export interface SessionJournalChange {
+  // The document the session was opened on; the sink restarts its generation
+  // when this changes, so a journal can never span two documents.
+  docId: string | null
+  kind: 'mutation' | 'batch'
+  payload: Mutation | Mutation[]
+  label: string
+  beforeDoc: PartDoc
+  afterDoc: PartDoc
+}
+
+// The journal's view of the session. Both callbacks are optional so a session
+// without a sink does no journal bookkeeping at all.
+export interface SessionJournalSink {
+  onDocChange(change: SessionJournalChange): void
+  // The doc moved through a path no mutation can replay (undo/redo, a
+  // transaction rewind). The journal restarts its generation from the doc the
+  // next change starts from.
+  onDocReset(): void
+}
+
 // The live document, owned by the adapter until editor-state-one-owner folds it
 // in: the session reads and writes through this port, so the loader and the
 // solver write-back (the one doc write outside the mutation path) stay visible
@@ -68,6 +93,9 @@ export interface DocSessionDeps {
   // means the inspection simply omits the field.
   getValidation?: () => unknown
   getBodies?: () => unknown
+  // The journal sink (drive surface, headless CLI). Absent in production and
+  // in the unit suites: no sink, no bookkeeping.
+  journal?: SessionJournalSink
 }
 
 export interface SessionDiagnostic {
@@ -454,9 +482,28 @@ export class DocSession {
       // entry keyed to the baseline.
       if (!gesture.firstMutation) gesture.firstMutation = mutations[0]
       this.landApplied(current, mutations, applied)
+      this.reportDocChange(mutations, group, current, applied.next)
       return okResult(this.createdIdsFor(mutations, current, applied.next))
     }
-    return this.landMutations(mutations, current, applied)
+    const result = this.landMutations(mutations, current, applied)
+    this.reportDocChange(mutations, group, current, applied.next)
+    return result
+  }
+
+  // Hand one durable apply to the journal sink with the docs as they stood
+  // around it. Synchronous by construction: no solve can write back between
+  // the apply and the sink's hash, which is the state a replay hashes too.
+  private reportDocChange(mutations: Mutation[], group: boolean, before: PartDoc, after: PartDoc): void {
+    const journal = this.deps.journal
+    if (!journal) return
+    journal.onDocChange({
+      docId: this.deps.docId ?? null,
+      kind: group ? 'batch' : 'mutation',
+      payload: group ? mutations : mutations[0],
+      label: describeMutation(mutations[0]),
+      beforeDoc: before,
+      afterDoc: after,
+    })
   }
 
   // The shared tail of both funnels, run once the mutations are known to
@@ -630,6 +677,9 @@ export class DocSession {
     // until the user saves again.
     this.dirtyOverride = true
     this.deps.doc.set(entry.doc)
+    // A history move installs a whole doc no mutation chain produced, so the
+    // journal's recorded suffix no longer leads to the live doc: restart it.
+    this.deps.journal?.onDocReset()
     this.emit({ type: 'historyRestored', direction, entry })
     this.emit({ type: 'changed' })
     this.restoreAwareSolve(entry.doc)
@@ -855,6 +905,9 @@ export class DocSession {
       // identity says nothing here and the rewind is judged on content.
       const rewound = JSON.stringify(txn.baseline) !== JSON.stringify(current)
       this.deps.doc.set(txn.baseline)
+      // A rewind discards the mutations recorded since the transaction opened;
+      // the journal restarts from the doc the user is left with.
+      if (rewound) this.deps.journal?.onDocReset()
       this.reconcile(txn.dirty, rewound, txn.baseline)
       void this.deps.solve.request(txn.baseline)
     }
@@ -873,6 +926,9 @@ export class DocSession {
     const rewound = JSON.stringify(txn.baseline) !== JSON.stringify(current)
     this.deps.doc.set(txn.baseline)
     this.history.restoreSnapshot()
+    // The session's mutations are gone with the rewind, so the journal's
+    // recorded suffix no longer leads here: restart it from the baseline.
+    if (rewound) this.deps.journal?.onDocReset()
     this.reconcile(txn.dirty, rewound, txn.baseline)
     this.removeTransaction(txn)
     // Rewinding the doc is this path's own doing, so it owns the re-solve too;
