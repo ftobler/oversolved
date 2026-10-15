@@ -37,11 +37,18 @@
 // which stops a listing from materializing every workspace's payload bytes. The
 // same upgrade also backfills each mirror row's contentHash, so a payload-free
 // listing still reports the bundle cache key.
+//
+// v8 adds the recovery pair, kept apart from the working copy on purpose:
+// `recovery_journal` is the autosave's per-document shadow copy of unsaved
+// edits (one row per document uuid), and `crash_reports` holds the local crash
+// records the error paths write. Neither is read by the save path: the journal
+// is cleared by an explicit save, and losing it costs at most the debounce
+// window, so it must never be able to corrupt the working copy.
 import { entrySizeOf } from '@/utils/entrySize'
 import { sha256Hex, sha256HexBytes } from '@/kernel/sha256'
 
 export const DB_NAME = 'oversolved'
-export const DB_VERSION = 7
+export const DB_VERSION = 8
 export const STORE_DOCUMENTS = 'documents'
 export const STORE_HANDLES = 'handles'
 export const STORE_FILES = 'files'
@@ -49,6 +56,8 @@ export const STORE_WORKSPACE_META = 'workspace_meta'
 export const STORE_WORKSPACE_ENTRIES = 'workspace_entries'
 export const STORE_WORKSPACE_ENTRY_META = 'workspace_entry_meta'
 export const STORE_WORKSPACE_SAVED = 'workspace_saved'
+export const STORE_RECOVERY_JOURNAL = 'recovery_journal'
+export const STORE_CRASH_REPORTS = 'crash_reports'
 
 let dbPromise: Promise<IDBDatabase> | null = null
 
@@ -137,6 +146,16 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_WORKSPACE_SAVED)) {
         db.createObjectStore(STORE_WORKSPACE_SAVED, { keyPath: ['workspace', 'id'] })
+      }
+      // The autosave shadow copy, keyed by document uuid: one row per open
+      // document, replaced wholesale on every debounced flush.
+      if (!db.objectStoreNames.contains(STORE_RECOVERY_JOURNAL)) {
+        db.createObjectStore(STORE_RECOVERY_JOURNAL, { keyPath: 'docId' })
+      }
+      // The local crash reports, keyed by a random id so two crashes at the
+      // same millisecond cannot overwrite each other.
+      if (!db.objectStoreNames.contains(STORE_CRASH_REPORTS)) {
+        db.createObjectStore(STORE_CRASH_REPORTS, { keyPath: 'id' })
       }
       // Per-workspace indexes so a scoped read never opens another workspace's
       // rows. The compound (workspace, kind) one lets open() pull a workspace's
