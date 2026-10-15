@@ -33,6 +33,7 @@ import { remapTree } from './import'
 import { EntryReferencedError, type EntryReferrer } from './errors'
 import { hashRecord } from './contentHash'
 import { randomUuid } from '@/utils/randomUuid'
+import { docLoadErrorMessage, loadDocText } from '@/persistence/docSchema'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { fileIdsInSpec } from '@/stores/fileRegistry/resolve'
 import { getPreviewStore } from '@/stores/previewStore'
@@ -387,6 +388,15 @@ export class IdbWorkspaceStore implements WorkspaceStore {
   // and do not need remapping: the cloned part still names the same STEP file.
   async cloneEntry(workspace: string, entry: string, name?: string): Promise<string> {
     const carrier = this.carrier(workspace)
+    // A clone reads its source document, so it crosses the same boundary as an
+    // open: a document the loader refuses is refused here by field, instead of
+    // being duplicated into a second copy that cannot open either. The source
+    // row itself stays untouched and recoverable.
+    const source = await this.readEntry(workspace, entry)
+    if (source.kind === 'document') {
+      const loaded = loadDocText(source.text ?? '', source.docKind, { name: source.name })
+      if (!loaded.ok) throw new Error(docLoadErrorMessage(loaded.error))
+    }
     const references = await carrier.referencesOf(entry)
     const cloneId = await carrier.clone(entry, name)
     for (const to of references) await carrier.addReference(cloneId, to)

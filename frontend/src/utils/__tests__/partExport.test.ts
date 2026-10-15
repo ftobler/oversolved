@@ -40,6 +40,18 @@ describe('partSpecFromText', () => {
     expect(partSpecFromText('kind: part\nfeatures: []\n')).toMatchObject({ kind: 'part', features: [] })
     expect(partSpecFromText('')).toEqual({})
   })
+
+  it('heals a legacy singular body pick before the worker sees it', () => {
+    const doc = partSpecFromText('kind: part\nfeatures:\n  - id: t1\n    kind: transform\n    transform:\n      body: "@b1"\n')
+    const transform = ((doc.features as Array<Record<string, unknown>>)[0]).transform as Record<string, unknown>
+    expect(transform.bodies).toEqual(['@b1'])
+    expect('body' in transform).toBe(false)
+  })
+
+  it('refuses a document the loader refuses, naming the field', () => {
+    expect(() => partSpecFromText('kind: part\nfeatures:\n  - id: ex1\n    kind: extrude\n    extrude:\n      distance: .nan\n'))
+      .toThrow(/features\[0\]\.extrude\.distance/)
+  })
 })
 
 describe('exportPartBytes', () => {

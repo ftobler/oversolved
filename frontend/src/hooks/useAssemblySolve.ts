@@ -9,9 +9,8 @@
 // pile of redundant OCC-free solves.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { parse as parseYaml } from 'yaml'
-import type { AssemblyDoc, AssemblyFeature, PartDoc } from '@/types/cad'
-import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
+import type { AssemblyDoc, AssemblyFeature } from '@/types/cad'
+import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { buildEntityMateRefs, toBodyResults, toEdgeCurves } from '@/utils/assemblyBodies'
@@ -216,11 +215,13 @@ export function useAssemblySolve(
         if (!session) throw new Error('No workspace is open')
         const entry = await session.readEntry(doc_id)
         if (entry.kind !== 'document') throw new Error(`Not a part document: ${doc_id}`)
-        const doc = (parseYaml(entry.text ?? '') ?? {}) as PartDoc
-        // Same self-heal as the part load seam: a legacy singular transform
-        // `body` must reach the OCC worker as the plural `bodies` it reads.
-        migrateLegacyBodyPicks(doc)
-        return doc as unknown as Record<string, unknown>
+        // The same loader the part editor reads through, so a legacy singular
+        // transform `body` reaches the OCC worker as the plural `bodies` it
+        // reads and a broken bundle part fails by field instead of solving
+        // against a half-parsed spec.
+        const loaded = loadPartDocText(entry.text ?? '', { name: entry.name })
+        if (!loaded.ok) throw new Error(docLoadErrorMessage(loaded.error))
+        return loaded.doc
       },
       // Stamp the doc id onto the bundle spec: the raw PartDoc YAML carries no
       // id, and solveLocally's cache-reset guard keys on spec.id. Without it,

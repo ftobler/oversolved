@@ -2,14 +2,12 @@
 // the workspace list's row action both land here, so the two cannot drift on
 // which features reach the kernel or where referenced STEP bytes come from.
 
-import { parse as parseYaml } from 'yaml'
 import { exportViaWorker } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { fileIdsInSpec, resolveFilesSessionFirst } from '@/stores/fileRegistry/resolve'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
-import { migrateLegacyBodyPicks } from '@/utils/yamlMigrations'
-import type { PartDoc } from '@/types/cad'
+import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
 
 export type GeometryFormat = 'step' | 'stl'
 
@@ -48,13 +46,16 @@ export function partExportSpec(doc: Record<string, unknown>, id?: string): Recor
   return { ...doc, ...(id ? { id } : {}), features }
 }
 
-// A stored part's text as a document, with the same legacy self-heal the part
-// load seam applies: the worker reads only `bodies`, never a singular `body`.
-// An empty text is a part that was created and never edited.
+// A stored part's text as a document, through the one loader: the same legacy
+// heals the editor's load seam applies run here, so the worker reads only
+// `bodies`, never a singular `body`. An empty text is a part that was created
+// and never edited. A document the loader refuses throws by field: the export
+// callers surface that in their busy banner instead of exporting a half-parsed
+// spec.
 export function partSpecFromText(text: string): Record<string, unknown> {
-  const doc = (parseYaml(text) ?? {}) as PartDoc
-  migrateLegacyBodyPicks(doc)
-  return doc as Record<string, unknown>
+  const loaded = loadPartDocText(text)
+  if (!loaded.ok) throw new Error(docLoadErrorMessage(loaded.error))
+  return loaded.doc
 }
 
 // Rebuild the part on the worker and serialise it. Only the referenced files

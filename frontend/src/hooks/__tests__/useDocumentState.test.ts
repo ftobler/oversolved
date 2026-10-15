@@ -270,6 +270,22 @@ describe('useDocumentState load and operation failures', () => {
     expect(reSolveRef.current).not.toHaveBeenCalled()
   })
 
+  it('reports a validation failure by field and keeps the raw text for the raw view', async () => {
+    const content = 'version: 1\nkind: part\nfeatures:\n  - id: ex1\n    kind: extrude\n    extrude:\n      distance: .nan\n'
+    h.loadMock.mockResolvedValue({ content, name: 'Bracket' })
+    const reSolveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('V', reSolveRef, { solveOnLoad: true }))
+    await tick()
+
+    expect(result.current.doc).toBeNull()
+    expect(result.current.error).toContain('features[0].extrude.distance')
+    expect(result.current.loadFailure?.docName).toBe('Bracket')
+    expect(result.current.loadFailure?.rawText).toBe(content)
+    expect(result.current.loading).toBe(false)
+    // A refused document is never handed to the solver.
+    expect(reSolveRef.current).not.toHaveBeenCalled()
+  })
+
   it('clears a previous load error when a later load succeeds', async () => {
     h.loadMock.mockRejectedValueOnce(new Error('first load failed'))
     const reSolveRef = { current: null }

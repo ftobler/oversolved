@@ -34,6 +34,7 @@ import { MateEditor } from '@/components/layout/MateEditor'
 import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import RenameDialog from '@/components/dialogs/RenameDialog'
+import RawDocumentDialog from '@/components/dialogs/RawDocumentDialog'
 import AssemblyExport, { type AssemblyExportHandle } from '@/pages/AssemblyExport'
 import { getAssemblyBuiltins } from '@/utils/assemblyRender'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
@@ -77,6 +78,8 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     loading,
     error,
     setError,
+    loadFailure,
+    setLoadFailure,
     docName,
     instances,
     mates,
@@ -601,6 +604,9 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
             Back to documents
           </button>
         </div>
+        {/* A document the loader refused keeps its bytes reachable: the dialog
+            is the read-only view plus the raw export. */}
+        <RawDocumentDialog failure={loadFailure} onClose={() => setLoadFailure(null)} />
       </div>
     )
   }

@@ -776,7 +776,8 @@ export class DocSession {
   }
 
   private beginEdit(opts: BeginOptions): OpenedResult {
-    if (!this.deps.doc.get()) {
+    const current = this.deps.doc.get()
+    if (!current) {
       return this.fault('no-document', 'edit session refused: no document')
     }
     if (this.findTransaction('edit')) {
@@ -792,7 +793,7 @@ export class DocSession {
     const txn: EditTransaction = {
       id: this.freshId(),
       kind: 'edit',
-      baseline: this.deps.cloneDoc(this.deps.doc.get() as PartDoc),
+      baseline: this.deps.cloneDoc(current),
       suppressed: opts.suppressed ?? false,
       styleTouched: false,
       dirty: this.pinDirty(),

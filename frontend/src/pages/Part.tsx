@@ -49,6 +49,7 @@ import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } f
 import { resolveSelectionNormalTarget } from './selectionNormalTarget'
 import { findFaceFrame } from '@/components/Viewport/idDispatch/bodyDispatchCallbacks'
 import RenameDialog from '@/components/dialogs/RenameDialog'
+import RawDocumentDialog from '@/components/dialogs/RawDocumentDialog'
 import { suggestedCloneName, stepImportLimitError } from '@/stores/documentStore'
 import { getFileRegistry } from '@/stores/fileRegistry'
 
@@ -182,6 +183,8 @@ export default function Part() {
     loading,
     error,
     setError,
+    loadFailure,
+    setLoadFailure,
     solveResults,
     solving,
     solveError,
@@ -1215,6 +1218,7 @@ export default function Part() {
         onRename={handleCloneConfirm}
         onCancel={() => setCloneName(null)}
       />
+      <RawDocumentDialog failure={loadFailure} onClose={() => setLoadFailure(null)} />
       <PartColorPopover
         popover={partColorPopover}
         onColorSet={handleBodyColor}

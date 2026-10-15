@@ -12,6 +12,11 @@ import { resetWorkspaceIdb } from './idbHarness'
 const importText = (fileId: string) =>
   `kind: assembly\nfeatures:\n  - kind: import_step\n    file_id: ${fileId}\n`
 
+// A valid part document naming the STEP file, for the gestures (clone) that
+// cross the loader in front of the store.
+const importPartText = (fileId: string) =>
+  `kind: part\nfeatures:\n  - id: is1\n    kind: import_step\n    file_id: ${fileId}\n`
+
 describe('IdbWorkspaceStore (degenerate workspace)', () => {
   beforeEach(async () => {
     resetWorkspaceIdb()
@@ -106,8 +111,8 @@ describe('IdbWorkspaceStore (degenerate workspace)', () => {
   it('writeEntry adopts a referenced file id into the workspace under the same id', async () => {
     const store = new IdbWorkspaceStore()
     const file = await getFileRegistry().create({ name: 'b.step', kind: 'step', mime: 'application/step', bytes: bytesOf([1, 2, 3]) })
-    const { workspace } = await store.create('Asm', { docKind: 'assembly' })
-    await store.writeEntry(workspace, { id: workspace, kind: 'document', name: 'Asm', docKind: 'assembly', text: importText(file.id) })
+    const { workspace } = await store.create('Part', { docKind: 'part' })
+    await store.writeEntry(workspace, { id: workspace, kind: 'document', name: 'Part', docKind: 'part', text: importPartText(file.id) })
 
     const adopted = (await store.listEntries(workspace)).find(entry => entry.id === file.id)
     expect(adopted).toMatchObject({ kind: 'file', name: 'b.step', fileKind: 'step', mime: 'application/step' })
@@ -118,6 +123,24 @@ describe('IdbWorkspaceStore (degenerate workspace)', () => {
     const cloneId = await store.cloneEntry(workspace, workspace)
     expect(cloneId).not.toBe(workspace)
     expect(await carrier.referencesOf(cloneId)).toEqual([file.id])
+  })
+
+  // A clone reads its source, so an invalid document is refused by field here
+  // rather than duplicated into a second copy that cannot open either.
+  it('cloneEntry refuses a document the loader cannot read and names the field', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Broken', { docKind: 'part' })
+    await store.writeEntry(workspace, {
+      id: workspace,
+      kind: 'document',
+      name: 'Broken',
+      docKind: 'part',
+      text: 'kind: part\nfeatures:\n  - id: ex1\n    kind: extrude\n    extrude:\n      distance: .nan\n',
+    })
+
+    await expect(store.cloneEntry(workspace, workspace)).rejects.toThrow(/features\[0\]\.extrude\.distance/)
+    // The source row itself is untouched and still the only document.
+    expect(await store.listEntries(workspace)).toHaveLength(1)
   })
 
   // The file id resolves in neither the workspace nor the registry, so there is

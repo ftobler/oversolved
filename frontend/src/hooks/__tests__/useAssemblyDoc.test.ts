@@ -118,6 +118,48 @@ describe('useAssemblyDoc', () => {
     expect(result.current.loading).toBe(true)
   })
 
+  it('reports a validation failure by field and keeps the raw text for the raw view', async () => {
+    const content = [
+      'kind: assembly',
+      'features:',
+      '  - id: f1',
+      '    kind: part_instance',
+      '    instance:',
+      '      handle: h1',
+      '      doc_id: p1',
+      '      doc_rev: 1',
+      '      transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0 }',
+      '',
+    ].join('\n')
+    const { result } = renderHookStrict(() => useAssemblyDoc('V'))
+    await tick()
+    await act(async () => { h.loads.V.resolve({ content, name: 'Broken Asm' }) })
+    await tick()
+
+    expect(result.current.doc).toBeNull()
+    expect(result.current.error).toContain('features[0].instance.transform.qw')
+    expect(result.current.loadFailure?.docName).toBe('Broken Asm')
+    expect(result.current.loadFailure?.rawText).toBe(content)
+    expect(result.current.loading).toBe(false)
+  })
+
+  it('clears a previous validation failure when a later load succeeds', async () => {
+    const { result, rerender } = renderHookStrict(({ id }: { id: string }) => useAssemblyDoc(id), {
+      initialProps: { id: 'BV1' },
+    })
+    await tick()
+    await act(async () => { h.loads.BV1.resolve({ content: 'kind: part\nfeatures: []', name: 'Wrong kind' }) })
+    await tick()
+    expect(result.current.loadFailure).not.toBeNull()
+
+    rerender({ id: 'BV2' })
+    await tick()
+    await act(async () => { h.loads.BV2.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Asm' }) })
+    await tick()
+    expect(result.current.loadFailure).toBeNull()
+    expect(result.current.doc).not.toBeNull()
+  })
+
   // A failed load must not leave a previous document's history in the module
   // store: Ctrl+Z after the error would otherwise restore the old document's
   // content into the one that failed to load.

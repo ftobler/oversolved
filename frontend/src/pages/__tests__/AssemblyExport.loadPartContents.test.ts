@@ -37,4 +37,16 @@ describe('AssemblyExport loadPartContents', () => {
     expect(out['doc-a']).toEqual({ kind: 'part', features: [] })
     expect(out['doc-b']).toEqual({ kind: 'part', features: [] })
   })
+
+  // The export rehydrates the part's B-rep on the OCC worker, so a part the
+  // loader refuses must reject the whole export by field rather than export a
+  // silently truncated compound.
+  it('rejects the export when a referenced part fails validation', async () => {
+    loadMock.mockResolvedValue({
+      content: 'kind: part\nfeatures:\n  - id: ex1\n    kind: extrude\n    extrude:\n      distance: .nan\n',
+      name: 'Broken',
+    })
+    await expect(loadPartContents([instance('h1', 'doc-a')]))
+      .rejects.toThrow(/doc-a.*features\[0\]\.extrude\.distance/)
+  })
 })

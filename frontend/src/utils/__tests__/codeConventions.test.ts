@@ -100,6 +100,53 @@ describe('code conventions', () => {
   })
 })
 
+// Every loaded document crosses persistence/docSchema.ts, and that loader is
+// the only file allowed to narrow a parsed payload to PartDoc/AssemblyDoc. A
+// cast anywhere else is the old failure mode coming back: raw YAML asserted
+// into a document type and surfacing later as an obscure builder error. The
+// scan is source text on purpose: it answers "did we write a cast down", which
+// is the thing that rots, and names the file and line when it did.
+describe('loaded documents enter through the loader', () => {
+  const ALLOWLIST = new Set(['persistence/docSchema.ts'])
+  // Both spellings: the bare cast and the checked one the loader writes.
+  const CAST = /\bas\s+(?:unknown\s+as\s+)?(PartDoc|AssemblyDoc)\b/
+  const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
+
+  it('no PartDoc/AssemblyDoc cast outside the loader module', () => {
+    const violations: string[] = []
+    let loaderHits = 0
+    for (const file of srcOnlyFiles) {
+      const rel = file.replace(SRC, 'src/')
+      let text = readFileSync(file, 'utf8')
+      for (const pattern of COMMENTS) text = text.replace(pattern, '')
+      text.split('\n').forEach((line, i) => {
+        if (!CAST.test(line)) return
+        if (ALLOWLIST.has(rel.slice('src/'.length))) loaderHits++
+        else violations.push(`${rel}:${i + 1}`)
+      })
+    }
+    expect(violations).toEqual([])
+    // Guards the guard: the loader's own narrowing must keep matching, or the
+    // scan silently stopped seeing document casts anywhere.
+    expect(loaderHits).toBeGreaterThan(0)
+  })
+
+  it('the read seams all import the loader', () => {
+    const seams = [
+      'hooks/useDocumentState.ts',
+      'hooks/useAssemblyDoc.ts',
+      'hooks/useAssemblySolve.ts',
+      'utils/partExport.ts',
+      'utils/assemblyExport.ts',
+      'workspace/store.ts',
+    ]
+    for (const seam of seams) {
+      const text = readFileSync(join(SRC, seam), 'utf8')
+      expect(text, `${seam} must read documents through persistence/docSchema`).toContain("from '@/persistence/docSchema'")
+    }
+  })
+})
+
 // The assembly's pose is composed by the store accessor (settledPose /
 // settledPoses) and the pure helpers (poseOffsetFor / drawnPose). A file that
 // reaches into the raw `transforms` / `settlingOffsets` fields re-derives that
