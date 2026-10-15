@@ -127,8 +127,9 @@ jobs:
       # and build BOTH crates here so `vitest run` actually exercises them
       # (matches the local `just wasm` + `just frontend` flow): sketch-solver
       # backs the sketch/topology tests, mate-solver backs solveAssemblyReal.
-      # fullDocRegression.test.ts (the frozen full-document replay) runs here
-      # too and fails, rather than skips, under CI when any of it is missing.
+      # fullDocRegression.test.ts (the frozen full-document replay) and the
+      # reference-oracle corpus (frontend/oracle, docs/oracle.md drift) run here
+      # too and fail, rather than skip, under CI when any of it is missing.
       # The build is identical across the Node matrix.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -164,7 +165,7 @@ jobs:
         run: npx vitest run
         working-directory: frontend
         env:
-          KERNEL_PROVISIONED: "1"  # arms the fullDocRegression provisioning guard
+          KERNEL_PROVISIONED: "1"  # arms the fullDocRegression + oracle provisioning guards
 
       - name: Upload frontend build
         uses: actions/upload-artifact@v4
