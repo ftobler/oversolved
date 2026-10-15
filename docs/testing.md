@@ -91,9 +91,26 @@ resolves.
 
 ## Volume oracle
 
-`frontend/src/kernel/occ/__tests__/volumeOracleReal.test.ts` compares
-`volumeOf` on the real kernel against closed forms re-derived in the file: box,
-cylinder, a Pappus revolve (full and partial turn), and a rounded box by the
-Steiner parallel-body formula. The comparator's tolerance is proportional to
-the solid's size, unit-tested to reject a shifted value, and the suite skips
-cleanly without OCC.js. Extend it case by case, naming the formula in the case.
+The ratchet is a corpus: `frontend/oracle/<NN-name>/` holds one directory per
+case with a `recipe.yaml` (a normal Oversolved part document, built through
+the real loader and kernel) and an `expected.json` whose `method` states the
+closed-form formula for the measures it lists (volume, area, centroid, bbox,
+and optional face/edge counts). A case may carry an `edit` block: an upstream
+dimension is changed, the document is rebuilt, and the downstream
+fillet/chamfer must still resolve its stored picks (counts and measures).
+
+`frontend/src/oracle/__tests__/oracleReal.test.ts` (node, real OCC) measures
+every case with GProp and Bnd_Box, round-trips the part through STEP and
+re-measures, and compares against `expected.json` with the tolerance
+comparator in `frontend/src/kernel/occ/measureTolerance.ts` (also used by the
+original seed, `volumeOracleReal.test.ts`, which keeps its own unit tests).
+`docs/oracle.md` is generated from the run and drift-checked; regenerate with
+`cd frontend && npm run docs:oracle`.
+
+- Provisioning: the suites self-skip without OCC.js, but both CI workflows set
+  `KERNEL_PROVISIONED` on their provisioned vitest jobs, arming a guard that
+  fails rather than skips there when OCC.js or the solver WASM is missing.
+- Meta test: `corpusMeta.test.ts` enforces the corpus contract (both files, a
+  non-empty `method`, every case in the report) with no kernel, so a stale
+  report fails even on the unprovisioned legs.
+- Add cases one at a time, naming the formula in the case's `method`.
