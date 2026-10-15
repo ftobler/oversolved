@@ -9,6 +9,7 @@ import { useAssemblyStore, setAssemblyCallbacks, DEFAULT_ASSEMBLY_EDITOR_DATA, t
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { LoadingState } from '@/components/shared/LoadingState'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
+import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { useOpenEntryInNewTab } from '@/hooks/useOpenEntryInNewTab'
@@ -698,10 +699,12 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
             </button>
           </div>
           <div className="assembly-viewport-host">
-            <AssemblyViewport
-              ref={viewportRef}
-              hud={<AssemblyMeasurementDisplay measurementIcon={measurementIcon} />}
-            />
+            <EditorErrorBoundary label="assembly viewport">
+              <AssemblyViewport
+                ref={viewportRef}
+                hud={<AssemblyMeasurementDisplay measurementIcon={measurementIcon} />}
+              />
+            </EditorErrorBoundary>
             {/* The assembly solve mirrors useSolverStore.isSolving and claims its
                 onCancelSolve slot, so the shared overlay renders the spinner and
                 cancel for a full (non-live) solve; it is opacity-0 when idle. */}

@@ -9,6 +9,7 @@ import { useEditorModeStore } from '@/stores/editorModeStore'
 import { useRecoveryStore } from '@/stores/recoveryStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import RecoveryDialog from '@/components/dialogs/RecoveryDialog'
+import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
 import { LoadingState } from '@/components/shared/LoadingState'
 import WorkspaceView from '@/pages/WorkspaceView'
 import Part from '@/pages/Part'
@@ -144,13 +145,24 @@ export default function WorkspacePage() {
   if (entryId) {
     if (kindError) return chrome(<p className="status">Error: {kindError}</p>)
     if (!kind) return chrome(<LoadingState />)
+    // The boundary is keyed with the editor so a crash on one document cannot
+    // leave the recovery screen standing over the next one. What it renders on
+    // a catch is the recovery screen: reload, or download the flushed doc.
     if (kind === 'assembly') {
       // Keying by entry forces a full remount per document, the same contract
       // the part editor keeps below: a route change must not leak the previous
       // document's undo history, open edit sessions or stale refs into the new one.
-      return <AssemblyEditor key={entryId} uuid={entryId} workspaceId={workspaceId} />
+      return (
+        <EditorErrorBoundary key={entryId} variant="page" label="assembly editor">
+          <AssemblyEditor key={entryId} uuid={entryId} workspaceId={workspaceId} />
+        </EditorErrorBoundary>
+      )
     }
-    return <Part key={entryId} />
+    return (
+      <EditorErrorBoundary key={entryId} variant="page" label="part editor">
+        <Part key={entryId} />
+      </EditorErrorBoundary>
+    )
   }
 
   return chrome(<WorkspaceView />)

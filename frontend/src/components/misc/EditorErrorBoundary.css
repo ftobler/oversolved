@@ -1,0 +1,49 @@
+.editor-error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px 24px;
+  text-align: center;
+  color: #ddd;
+  min-height: 240px;
+}
+
+.editor-error-boundary-page {
+  min-height: 100vh;
+}
+
+.editor-error-boundary-icon {
+  font-size: 42px;
+  color: #ef5350;
+}
+
+.editor-error-boundary-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.editor-error-boundary-message {
+  margin: 0;
+  max-width: 640px;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 13px;
+  color: #ef9a9a;
+  word-break: break-word;
+}
+
+.editor-error-boundary-hint {
+  margin: 0;
+  max-width: 560px;
+  font-size: 13px;
+  color: #999;
+  line-height: 1.5;
+}
+
+.editor-error-boundary-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}

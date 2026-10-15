@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
+import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
 import SketchToolbar from '@/components/Toolbar/SketchToolbar'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
@@ -119,7 +120,9 @@ export default function PartEditorPanel({
           />
         )}
         <div style={{ position: 'relative', width: '100%', flex: 1 }}>
-          <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} />
+          <EditorErrorBoundary label="viewport">
+            <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} />
+          </EditorErrorBoundary>
           <LoadingOverlay isDocumentLoading={loading} />
         </div>
       </div>
