@@ -51,9 +51,13 @@ export interface SessionJournalChange {
   afterDoc: PartDoc
 }
 
-// The journal's view of the session. Both callbacks are optional so a session
-// without a sink does no journal bookkeeping at all.
+// The journal's view of the session. The sink is optional, so a session
+// without one does no journal bookkeeping at all.
 export interface SessionJournalSink {
+  // Called synchronously before a mutation set runs, so the journal can open a
+  // generation (draw its seed and install its id source) before any handler
+  // mints an id, and note the source position the entry will start from.
+  onBeforeApply(docId: string | null): void
   onDocChange(change: SessionJournalChange): void
   // The doc moved through a path no mutation can replay (undo/redo, a
   // transaction rewind). The journal restarts its generation from the doc the
@@ -469,6 +473,10 @@ export class DocSession {
       // environment; the adapter voices the pinned failLoud message.
       return this.fault('rollback-unsynced', 'set_rollback dispatched with the rollback store not pre-synced')
     }
+    // The journal opens its generation (and installs its id source) before the
+    // handlers run, so an id a handler mints internally is a function of the
+    // recorded seed.
+    this.deps.journal?.onBeforeApply(this.deps.docId ?? null)
     const applied = this.runMutations(current, mutations)
     if (this.isNoOp(mutations, current, applied.next, group)) {
       // A no-op is still "the next mutation" as far as the brep arm is

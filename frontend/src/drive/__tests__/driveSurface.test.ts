@@ -199,9 +199,10 @@ describe('drive surface', () => {
       label: 'toggle plane visibility \u00e9',
       docHashBefore: 'a',
       docHashAfter: 'b',
+      mintIndex: 0,
       at: 7,
     }
-    const repro = { kind: 'oversolved-repro' as const, version: 1 as const, docHash: 'a', doc: { n: 0 }, journal: [entry] }
+    const repro = { kind: 'oversolved-repro' as const, version: 1 as const, docHash: 'a', doc: { n: 0 }, seed: 1234, journal: [entry] }
     const downloads: Array<{ filename: string; text: string }> = []
     const surface = createDriveSurface(deps({
       journal: {

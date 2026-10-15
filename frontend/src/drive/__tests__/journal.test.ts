@@ -2,18 +2,19 @@
 //
 // The journal records at the session mutation seam, so these suites drive a
 // real DocSession (fake scheduler, no kernel) and read the ring the module
-// sink fills. Replay is exercised end to end: a seeded recording of drawing
-// and feature-add mutations replays on a fresh session to the same hash.
+// sink fills. Replay is exercised end to end: a browser-context recording of
+// drawing and feature-add mutations (internally minted ids included) replays
+// on a fresh session from the payload alone to the same hash.
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { CommandJournal, JOURNAL_CAPACITY, journalSink, type ReproPayload } from '../journal'
 import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
-import { seededIdSource } from '../seededIds'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
-import { setIdSource } from '@/utils/yamlMutations'
+import { setIdSource, randomId } from '@/utils/yamlMutations'
+import { freshEntityIds, mintEntityId, uniqueConstraintId } from '@/utils/yamlMutations/helpers'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import type { SessionJournalChange } from '@/session/DocSession'
 
@@ -150,6 +151,42 @@ describe('CommandJournal', () => {
     expect(journal.size()).toBe(1)
     expect(journal.repro()!.doc).toEqual(beforeB)
   })
+
+  it('draws a different seed for each generation', () => {
+    // An injected source makes the assertion deterministic; the default draws
+    // the same way from crypto.
+    let drawn = 0
+    const journal = new CommandJournal(JOURNAL_CAPACITY, Date.now, () => ++drawn)
+    const first = sketchDoc()
+    const firstAfter = structuredClone(first)
+    firstAfter.features![0].label = 'first'
+    journal.recordApplied(change({ beforeDoc: first, afterDoc: firstAfter }))
+    const firstSeed = journal.repro()!.seed
+    journal.reset('doc-1')
+    const second = sketchDoc()
+    const secondAfter = structuredClone(second)
+    secondAfter.features![0].label = 'second'
+    journal.recordApplied(change({ beforeDoc: second, afterDoc: secondAfter }))
+    const secondSeed = journal.repro()!.seed
+    expect(firstSeed).toBe(1)
+    expect(secondSeed).toBe(2)
+    expect(secondSeed).not.toBe(firstSeed)
+    // The default source draws an integer seed from crypto.
+    const cryptoJournal = new CommandJournal()
+    cryptoJournal.recordApplied(change())
+    expect(Number.isInteger(cryptoJournal.repro()!.seed)).toBe(true)
+  })
+
+  it('routes every mint helper through the installed source', () => {
+    let n = 0
+    setIdSource(() => `id-${++n}`)
+    expect(randomId(12)).toBe('id-1')
+    expect(freshEntityIds([], 2)).toEqual(['id-2', 'id-3'])
+    expect(mintEntityId([])).toBe('id-4')
+    // A supplied id is taken verbatim, never re-rolled.
+    expect(mintEntityId([], 'given')).toBe('given')
+    expect(uniqueConstraintId([], 'length')).toBe('c_length_id-5')
+  })
 })
 
 describe('the session seam', () => {
@@ -199,16 +236,18 @@ describe('the session seam', () => {
 })
 
 describe('replayJournal', () => {
-  it('replays seeded drawing and feature-add mutations to the same document hash', async () => {
-    // Recording under the seeded source is what makes the internally minted
-    // ids (add_rect) reproducible; replay installs a fresh one of its own.
-    setIdSource(seededIdSource())
+  it('replays a browser-context drawing and feature-add journal from the payload alone', async () => {
+    // No source is installed: this is the browser's context. The journal draws
+    // a crypto seed when its generation opens, installs a seeded source before
+    // the handlers run, and puts the seed in the payload, so add_rect's
+    // internally minted entities and constraints reproduce on replay.
     const journal = new CommandJournal()
     const recorded = makeSession(sketchDoc(), journal)
     recorded.session.execute({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] })
     recorded.session.execute(addExtrude('ex1', 5))
     const repro = journal.repro()
     expect(repro).not.toBeNull()
+    expect(typeof repro!.seed).toBe('number')
     const expectedFinal = docHashOf(recorded.cell.current!)
 
     const fresh = makeSession(structuredClone(repro!.doc) as PartDoc, undefined, 'doc-1')
@@ -221,6 +260,37 @@ describe('replayJournal', () => {
     expect(outcome.steps[0].kind).toBe('mutation')
     expect(outcome.finalHash).toBe(expectedFinal)
     expect(fresh.cell.current?.features?.some(f => f.id === 'ex1')).toBe(true)
+  })
+
+  it('replays the same payload twice to the same hash', async () => {
+    const journal = new CommandJournal()
+    const recorded = makeSession(sketchDoc(), journal)
+    recorded.session.execute({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] })
+    const repro = journal.repro()!
+
+    const first = await replayJournal(repro, makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1').session)
+    const second = await replayJournal(repro, makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1').session)
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    expect(second.finalHash).toBe(first.finalHash)
+  })
+
+  it('seeks past ids the recording minted outside the session', async () => {
+    // The UI mints feature ids between applies (Part.tsx does); replay never
+    // runs that code, so the recorded source position is what keeps the next
+    // handler's internally minted ids aligned.
+    const journal = new CommandJournal()
+    const recorded = makeSession(sketchDoc(), journal)
+    recorded.session.execute(addExtrude('ex0', 1))
+    randomId(18)
+    recorded.session.execute({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] })
+    const repro = journal.repro()!
+    expect(repro.journal[1].mintIndex).toBeGreaterThan(repro.journal[0].mintIndex)
+
+    const fresh = makeSession(structuredClone(repro.doc) as PartDoc, undefined, 'doc-1')
+    const outcome = await replayJournal(repro, fresh.session)
+    expect(outcome.ok).toBe(true)
+    expect(docHashOf(fresh.cell.current)).toBe(docHashOf(recorded.cell.current))
   })
 
   it('replays a batch entry through the group funnel', async () => {

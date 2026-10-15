@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { createHeadlessPart } from '../headlessPart'
 import { CommandJournal } from '../journal'
+import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
 import { seededIdSource } from '../seededIds'
 import { setIdSource } from '@/utils/yamlMutations'
@@ -81,6 +82,31 @@ describe('createHeadlessPart', () => {
     const outcome = await part.run([{ command: 'not_a_command' }])
     expect(outcome.ok).toBe(false)
     expect(outcome.steps[0].error?.code).toBe('unknown-command')
+  })
+
+  it('records a browser-context journal and replays it from the payload alone', async () => {
+    // The journal is the browser's kind: no source installed, the generation
+    // seed drawn from crypto. The script mints the rect's entities and
+    // constraints inside the handler, so only the recorded seed can reproduce
+    // them on replay.
+    const journal = new CommandJournal()
+    const part = createHeadlessPart({ doc: emptyDoc(), journal })
+    const outcome = await part.run([
+      { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_front' } },
+      { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10] } },
+      { mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Extrude', sketchQuery: '$sk1', distance: 5 } },
+    ])
+    expect(outcome.ok).toBe(true)
+    const repro = journal.repro()
+    expect(repro).not.toBeNull()
+    expect(Number.isInteger(repro!.seed)).toBe(true)
+    const recordedHash = docHashOf(part.getDoc())
+
+    const fresh = createHeadlessPart({ doc: repro!.doc as PartDoc, docId: 'replay' })
+    const replay = await replayJournal(repro!, fresh.session, () => fresh.idle())
+    expect(replay.ok).toBe(true)
+    expect(replay.finalHash).toBe(recordedHash)
+    expect(fresh.getDoc()?.features?.map(f => f.id)).toEqual(['sk1', 'ex1'])
   })
 
   it('builds the canonical script byte-identically across two seeded runs', async () => {

@@ -10,17 +10,19 @@
 // the recording saw. A divergence stops the replay and is reported with both
 // hashes, so a non-reproduction is a precise fact, not a silent failure.
 //
-// Replay installs a fresh seeded id source for its duration (restoring the
-// previous one afterwards), because a recorded mutation may not embed every id
-// it needs: the sugar handlers (add_rect, add_ngon) mint entities and
-// constraints internally. A journal recorded under the crypto default replays
-// exactly only when its mutations embed their ids; one recorded under the
-// seeded source (the CLI) replays exactly always.
+// Replay installs the recorded generation seed for its duration (restoring the
+// previous source afterwards), because a recorded mutation may not embed every
+// id it needs: the sugar handlers (add_rect, add_ngon) mint entities and
+// constraints internally. The seed is what the recording minted under, and each
+// entry carries the source position it started from, so replay seeks there
+// before applying; ids the recording minted outside the session (UI feature
+// ids) advanced that position without being replayed, and the seek steps over
+// them.
 
 import type { PartDoc, Mutation } from '@/types/cad'
 import type { Result } from '@/session/result'
 import { setIdSource, getIdSource } from '@/utils/yamlMutations'
-import { seededIdSource } from './seededIds'
+import { DRIVE_ID_SEED, seededIdSource } from './seededIds'
 import { docHashOf } from './docHash'
 import type { ReproPayload } from './journal'
 
@@ -61,7 +63,11 @@ export async function replayJournal(
 ): Promise<ReplayOutcome> {
   const hashDoc = (): string | null => (session.getDoc() ? docHashOf(session.getDoc()) : null)
   const previousSource = getIdSource()
-  setIdSource(seededIdSource())
+  // A payload read from disk is external input: a missing seed falls back to
+  // the constant, the best a hand-written payload can do.
+  const seed = typeof repro.seed === 'number' && Number.isFinite(repro.seed) ? repro.seed : DRIVE_ID_SEED
+  const source = seededIdSource(seed)
+  setIdSource(source)
   try {
     const baselineHash = hashDoc()
     const steps: ReplayStepResult[] = []
@@ -84,6 +90,10 @@ export async function replayJournal(
           ok = false
           break
         }
+        // Resume the generation's id sequence where the recording started this
+        // apply; ids minted outside the session since the last entry are not
+        // replayed and the seek steps over them.
+        if (typeof entry.mintIndex === 'number') source.seek(entry.mintIndex)
         let result: Result
         try {
           result = Array.isArray(entry.payload)

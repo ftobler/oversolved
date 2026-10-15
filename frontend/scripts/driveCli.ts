@@ -28,11 +28,9 @@ import { measureLocally, exportLocally } from '@/kernel/solveLocally'
 import type { PartDoc } from '@/types/cad'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { createHeadlessPart, partSolvePayload } from '@/drive/headlessPart'
-import { CommandJournal, type ReproPayload } from '@/drive/journal'
+import { createCliJournal, type ReproPayload } from '@/drive/journal'
 import { docHashOf } from '@/drive/docHash'
 import { replayJournal } from '@/drive/replay'
-import { seededIdSource } from '@/drive/seededIds'
-import { setIdSource } from '@/utils/yamlMutations'
 import type { ScriptStep } from '@/drive/scriptRunner'
 
 // ─── kernel bootstrap ───
@@ -125,16 +123,11 @@ function printJson(value: unknown): void {
 async function runCommand(args: Args): Promise<number> {
   const scriptFile = args.positional[0]
   if (!scriptFile) throw new UsageError('run needs a script file')
-  // Seeded before the first step: every id a mutation handler mints internally
-  // (add_rect, add_ngon, constraint ids) is a pure function of the step
-  // sequence, so two runs of one script build byte-identical documents and the
-  // recorded repro replays exactly.
-  setIdSource(seededIdSource())
   const steps = readSteps(scriptFile)
   const doc = args.flags.doc
     ? readDoc(args.flags.doc)
     : seedBuiltins({ version: 1, kind: 'part', features: [] } as PartDoc)
-  const journal = new CommandJournal()
+  const journal = createCliJournal()
   const part = createHeadlessPart({ doc, docId: args.flags['doc-id'] ?? 'cli', journal })
   const outcome = await part.run(steps)
   const finalDoc = part.getDoc()

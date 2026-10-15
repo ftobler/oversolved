@@ -144,7 +144,7 @@ builds only):
 
 ```ts
 { kind: 'mutation' | 'batch', payload: Mutation | Mutation[], label?: string,
-  docHashBefore: string, docHashAfter: string, at: number }
+  docHashBefore: string, docHashAfter: string, mintIndex: number, at: number }
 ```
 
 - The session reports each apply it lands with the docs as they stood before
@@ -173,32 +173,35 @@ builds only):
   "version": 1,
   "docHash": "sha256 of doc",
   "doc": { /* the baseline document */ },
+  "seed": 1875250360,
   "journal": [ /* entries */ ]
 }
 ```
 
 `replayJournal` (`frontend/src/drive/replay.ts`) reproduces a repro on a fresh
 session: it checks the baseline hash first, then for every entry checks the
-running doc against `docHashBefore`, applies the mutation (a batch through
-`executeGroup`), hashes synchronously right after the apply and compares with
-`docHashAfter`, and only then settles the step's solve. Hashing before the
-settle is what makes record and replay compare the same authored
-pre-write-back state. A failed apply or a diverged hash stops the replay and
-reports both hashes.
+running doc against `docHashBefore`, seeks the id source to `mintIndex`,
+applies the mutation (a batch through `executeGroup`), hashes synchronously
+right after the apply and compares with `docHashAfter`, and only then settles
+the step's solve. Hashing before the settle is what makes record and replay
+compare the same authored pre-write-back state. A failed apply or a diverged
+hash stops the replay and reports both hashes.
 
-Replay installs a fresh seeded id source for its duration
-(`frontend/src/drive/seededIds.ts`) and restores the previous one after. The
-id guarantee is precise:
+Every journaled generation replays, and the seed travels in the payload
+(`frontend/src/drive/seededIds.ts`):
 
-- Mutations with embedded ids (feature adds, entity adds from the drawing
-  tools, any `--doc`-loaded replay) reproduce exactly, because replay applies
-  the recorded ids verbatim.
-- Mutations whose handler mints ids internally (`add_rect`, `add_ngon`, fresh
-  constraint ids) reproduce exactly only when the recording also ran under the
-  seeded source. The CLI always does; a browser-recorded repro under the
-  crypto default does not for those mutations. `randomId` and every mint site
-  that routes through it (`frontend/src/utils/yamlMutations/helpers.ts`) use
-  the injected source, which defaults to crypto for the app.
+- Each generation opens an id source under a recorded seed: the browser draws
+  the seed from crypto once per generation (and per document reset), the CLI
+  pins the constant `DRIVE_ID_SEED`, so different sessions differ and a CLI
+  script is byte-identical across runs. `randomId` and every mint site that
+  routes through it (`uniqueConstraintId`, `freshEntityIds`, `mintEntityId` in
+  `frontend/src/utils/yamlMutations/helpers.ts`) mint under that source, so an
+  id a handler mints internally (`add_rect`, `add_ngon`, a fresh constraint
+  id) is a function of the seed and the source position.
+- Replay installs the recorded seed and seeks each entry's `mintIndex`, the
+  source position the apply started from. That covers ids minted outside the
+  session (UI feature ids) that advanced the source without being replayed,
+  and mutations with embedded ids, which replay applies verbatim.
 
 ### Journal versus crash recovery
 
@@ -230,16 +233,17 @@ npm run drive -- replay repro.json
 - `run` builds a document from mutation steps and/or command steps through one
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
   and the journal (`--repro`), and prints steps, document hash and solve state.
-  It installs a fresh seeded id source before the first step, so two runs of
-  one script produce byte-identical documents (the `cliSmoke` suite runs the
-  box script twice in two processes and compares the printed `docHash`).
+  Its journal pins every generation seed to the constant `DRIVE_ID_SEED`, so
+  two runs of one script produce byte-identical documents and the recorded
+  repro replays exactly (the `cliSmoke` suite runs the box script twice in two
+  processes and compares the printed `docHash`).
 - `measure` reports `bodyCount`, `volume` (`volumeOf` from
   `frontend/src/kernel/occ/volume.ts`) and face/edge/vertex counts from the
   final checkpoint's bodies.
 - `export` writes STEP or STL bytes.
-- `replay` applies the recorded mutations to a fresh session under the seeded
-  source, verifies each step's before and after hash and exits nonzero on
-  divergence.
+- `replay` applies the recorded mutations to a fresh session under the
+  payload's seed, verifies each step's before and after hash and exits nonzero
+  on divergence.
 
 One session per process is the v1 contract: `solveLocally` keeps its
 cross-solve checkpoint cache as single-writer module state, so two sessions in
