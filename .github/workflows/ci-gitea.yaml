@@ -80,10 +80,10 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        node-version: [20, 22, 24]
+        node-version: [22, 24, 26]
         include:
           - os: ubuntu-latest-arm64  # self-hosted runner label
-            node-version: 24
+            node-version: 26
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

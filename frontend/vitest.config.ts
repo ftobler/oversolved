@@ -56,6 +56,14 @@ const memForks = Math.floor((os.totalmem() / GIB - RESERVE_GIB) / FORK_BUDGET_GI
 // runner where that is the case.
 const maxForks = Number(process.env.VITEST_MAX_FORKS) || Math.max(1, Math.min(6, cpuForks, memForks))
 
+// Node 25 turned Web Storage on by default. Without --localstorage-file its
+// global `localStorage` is undefined, and that own global shadows the one the
+// jsdom environment would install, so every `localStorage.clear()` throws.
+// Switching Node's off in the forks hands the global back to jsdom. Older
+// majors have it off already (and 22 before 22.4 rejects the flag).
+const nodeMajor = Number(process.versions.node.split('.')[0])
+const execArgv = nodeMajor >= 25 ? ['--no-experimental-webstorage'] : []
+
 // @vitejs/plugin-react is typed against the app's own vite install while
 // vitest/config resolves a nested one, so the identical plugin object fails
 // structural assignability across the two installs. Every test run exercises
@@ -80,6 +88,6 @@ export default defineConfig({
     // kernel down with its module registry. Running with `isolate: false` lets
     // those heaps accumulate per worker without limit until the host OOMs, so
     // the flag is not an option here however tempting the saved WASM compiles.
-    poolOptions: { forks: { maxForks } },
+    poolOptions: { forks: { maxForks, execArgv } },
   },
 })
