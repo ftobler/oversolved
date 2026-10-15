@@ -52,10 +52,10 @@ const MINIMIZE_TIMEOUT_MS = 10_000
 
 // Known kernel hangs, pinned by seed. A seed here is reported as known; any
 // hang NOT on this list fails the sweep with the seed and hung step. All three
-// are the same OCC 7.5 hazard: ShapeUpgrade_UnifySameDomain spins inside the
-// fuse clean when the welded shapes have exactly coincident faces. The browser
-// worker survives a spin by killing the worker (solverClient's watchdog); the
-// fuzz child is its test-side equivalent. Triage (2026-10-15):
+// are the same OCCT 7.4.0p1 hazard: ShapeUpgrade_UnifySameDomain spins inside
+// the fuse clean when the welded shapes have exactly coincident faces. The
+// browser worker survives a spin by killing the worker (solverClient's
+// watchdog); the fuzz child is its test-side equivalent. Triage (2026-10-15):
 //   47  the second circular-array instance fuse of a chamfered, ball-cut body.
 //   76  mirror-merge of a 270 degree revolve about a plane holding its seam.
 //   149 mirror-merge of a 270 degree revolve about the seam's symmetry plane.

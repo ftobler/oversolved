@@ -7,10 +7,11 @@ import {
   type SolverWorkerLike,
 } from '../solverClient'
 import { fileIdsMissingFromWorker, dropWorkerFileId } from '../workerFiles'
-import type { SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from '../solverProtocol'
+import type { SolverWorkerMessage, WorkerRequest } from '../solverProtocol'
+import { getOccLoadProgress, resetOccLoadProgress } from '../../occ/loadProgress'
 import type { BuildState } from '../../types3d'
 
-type AnyResponse = SolveResponse | ExportResponse | BundleResponse
+type AnyResponse = SolverWorkerMessage
 
 // A controllable fake Worker: records posted requests and lets the test push
 // responses (or an error) back on demand.
@@ -45,6 +46,7 @@ let created: FakeWorker[]
 
 beforeEach(() => {
   created = []
+  resetOccLoadProgress()
   setSolverWorkerForTest(() => {
     fake = new FakeWorker()
     created.push(fake)
@@ -92,6 +94,29 @@ describe('solveViaWorker', () => {
     const p = solveViaWorker({ id: 'd' })
     fake.reply({ id: fake.posted[0].id, ok: true, payload: null })
     await expect(p).resolves.toBeNull()
+  })
+
+  it('applies occProgress broadcasts without settling the in-flight request', async () => {
+    const p = solveViaWorker({ id: 'd' })
+    fake.onmessage?.({
+      data: { kind: 'occProgress', progress: { phase: 'downloading', loadedBytes: 1, totalBytes: 2 } },
+    })
+    expect(getOccLoadProgress()).toEqual({ phase: 'downloading', loadedBytes: 1, totalBytes: 2 })
+    expect(getPendingCount()).toBe(1)
+
+    // The broadcast settled nothing: the solve still resolves on its own reply.
+    fake.reply({ id: fake.posted[0].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+    await expect(p).resolves.not.toBeNull()
+  })
+
+  it('clears stale load progress when the worker is dropped', async () => {
+    const p = solveViaWorker({ id: 'd' })
+    fake.onmessage?.({
+      data: { kind: 'occProgress', progress: { phase: 'downloading', loadedBytes: 5, totalBytes: 9 } },
+    })
+    cancelSolver()
+    expect(getOccLoadProgress().phase).toBe('idle')
+    await expect(p).rejects.toThrow('solve cancelled')
   })
 
   it('rejects when the worker returns an error response', async () => {

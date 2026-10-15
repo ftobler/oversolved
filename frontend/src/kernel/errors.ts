@@ -20,7 +20,7 @@ function describeThrownPointer(e: number): string {
  * The emscripten glue members the type-name decode needs, as a structural type
  * so this module stays free of any OCC import.
  *
- * Probed against the installed opencascade.js@1.1.1 (OCC 7.5): the module
+ * Probed against the installed opencascade.js@1.1.1 (OCCT 7.4.0p1): the module
  * exports `HEAP32`, `___getTypeName` and `UTF8ToString`. It does NOT export
  * `getExceptionMessage` -- emscripten only emits that helper under ASSERTIONS,
  * and this build ships without it -- so the mangled type name is the most that

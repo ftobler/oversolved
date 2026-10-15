@@ -1,5 +1,5 @@
 /**
- * The opencascade.js (Donalffons fork, OCC 7.5) embind surface the kernel
+ * The opencascade.js (Donalffons fork, OCCT 7.4.0p1) embind surface the kernel
  * actually touches. Member names mirror the real module exactly, so the live
  * module satisfies this interface with a single structural cast.
  *
@@ -557,7 +557,7 @@ export interface OccModule extends OccBaseModule {
   // The embind suffix is `_1` (the plain `Bnd_Box` name is bound without a
   // constructor), and `Get` takes six out-params emscripten does not marshal,
   // so the per-corner accessors are the working read. Verified against
-  // opencascade.js@1.1.1 (OCC 7.5).
+  // opencascade.js@1.1.1 (OCCT 7.4.0p1).
   Bnd_Box_1: new () => OccDisposable & {
     GetXmin(): number
     GetYmin(): number

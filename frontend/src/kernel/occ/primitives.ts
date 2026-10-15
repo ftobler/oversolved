@@ -7,7 +7,7 @@
  * tracking it, so the caller decides its lifetime (typically `HandleTable.register`); the scope
  * still owns the builder that made it. This is the ownership pattern the handle table relies on.
  *
- * Overload suffixes and arities were verified against opencascade.js@1.1.1 (OCC 7.5).
+ * Overload suffixes and arities were verified against opencascade.js@1.1.1 (OCCT 7.4.0p1).
  * Out-parameter APIs (BRepTools.UVBounds, BRepGProp_Face.Normal) do not
  * marshal in emscripten, so UV bounds come from BRepAdaptor_Surface's First/Last parameter
  * accessors and the normal from BRepLProp_SLProps, both direct-return.

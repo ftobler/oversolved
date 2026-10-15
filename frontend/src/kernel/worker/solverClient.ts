@@ -41,18 +41,21 @@
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
 import type {
-  SolveRequestOptions, SolveResponse, SolveOkResponse,
-  ExportRequestOptions, ExportResponse, ExportOkResponse, WorkerRequest,
-  BundleResponse, BundleOkResponse,
+  SolveRequestOptions, SolveOkResponse,
+  ExportRequestOptions, ExportOkResponse, WorkerRequest,
+  BundleOkResponse,
+  SolverWorkerMessage,
+  OccProgressMessage,
   AssemblyExportPartSpec,
   FileBytes,
 } from './solverProtocol'
 import type { PartBundle } from '../partBundle'
+import { applyOccLoadProgress, resetOccLoadProgress } from '../occ/loadProgress'
 
 /** Minimal Worker surface used here; lets tests inject a fake. */
 export interface SolverWorkerLike {
   postMessage(msg: WorkerRequest): void
-  onmessage: ((e: { data: SolveResponse | ExportResponse | BundleResponse }) => void) | null
+  onmessage: ((e: { data: SolverWorkerMessage }) => void) | null
   onerror: ((e: unknown) => void) | null
   terminate(): void
 }
@@ -121,8 +124,20 @@ const pending = new Map<number, Pending>()
 // storage read do not have to import this module.
 import { clearWorkerFileIds, fileDelta, markFilesSent } from './workerFiles'
 
-function onMessage(e: { data: SolveResponse | ExportResponse | BundleResponse }): void {
+// A predicate rather than an inline check, so the negative branch narrows to
+// the response union (a compound condition does not narrow on its own).
+function isOccProgress(res: SolverWorkerMessage): res is OccProgressMessage {
+  return 'kind' in res && res.kind === 'occProgress'
+}
+
+function onMessage(e: { data: SolverWorkerMessage }): void {
   const res = e.data
+  // Progress broadcasts are not replies: they carry no id and settle nothing.
+  // Apply the snapshot and return before the pending lookup.
+  if (isOccProgress(res)) {
+    applyOccLoadProgress(res.progress)
+    return
+  }
   const p = pending.get(res.id)
   if (!p) return  // stale or already-settled (e.g. after a crash drained pending)
   if (p.timer) clearTimeout(p.timer)
@@ -148,6 +163,9 @@ function dropWorker(err: Error): void {
   // A respawned worker has no cached bytes, so the next request must resend
   // everything it needs.
   clearWorkerFileIds()
+  // The dropped Worker took its OCC load state with it; a new one restarts the
+  // load and reports from zero.
+  resetOccLoadProgress()
 }
 
 function onError(): void {
