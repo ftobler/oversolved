@@ -2,7 +2,7 @@
 
 export { parseTarget, randomId, normalizeRefList, setIdSource, getIdSource, type IdSource } from './helpers'
 
-export { migrateLegacyBodyPicks } from '../yamlMigrations'
+export { migrateLegacyBodyPicks, dropDeadAxisConstraints } from '../yamlMigrations'
 
 export {
   applyMoveVertex,
@@ -24,7 +24,6 @@ export {
   applyAddNgon,
   applyAddOffset,
   applySetFeaturePlane,
-  dropDeadAxisConstraints,
 } from './sketch'
 
 export {
