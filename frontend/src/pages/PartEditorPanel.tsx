@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
+import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
 import SketchToolbar from '@/components/Toolbar/SketchToolbar'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
@@ -32,6 +33,10 @@ interface PartEditorPanelProps {
   setSolveError: (v: string | null) => void
   error: string | null
   setError: (v: string | null) => void
+  // The autosave's journal-write failure, if any. A banner, not a blocker: the
+  // doc is untouched in memory and the next debounce retries.
+  autosaveError?: string | null
+  onDismissAutosaveError?: () => void
   loading: boolean
   planeSelectionFeatureId: string | null
   handleAddFeature: (kind: string, extra?: Record<string, unknown>) => void
@@ -51,6 +56,7 @@ export default function PartEditorPanel({
   mode, setMode,
   solveError, setSolveError,
   error, setError,
+  autosaveError, onDismissAutosaveError,
   loading,
   planeSelectionFeatureId,
   handleAddFeature,
@@ -107,14 +113,16 @@ export default function PartEditorPanel({
           )}
         </div>
 
-        {(solveError || error) && (
+        {(solveError || error || autosaveError) && (
           <ErrorBanner
-            message={solveError ? `Solver error: ${solveError}` : `Error: ${error}`}
-            onDismiss={() => { setSolveError(null); setError(null) }}
+            message={solveError ? `Solver error: ${solveError}` : error ? `Error: ${error}` : `Autosave failed: ${autosaveError}`}
+            onDismiss={() => { setSolveError(null); setError(null); onDismissAutosaveError?.() }}
           />
         )}
         <div style={{ position: 'relative', width: '100%', flex: 1 }}>
-          <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} />
+          <EditorErrorBoundary label="viewport">
+            <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} />
+          </EditorErrorBoundary>
           <LoadingOverlay isDocumentLoading={loading} />
         </div>
       </div>

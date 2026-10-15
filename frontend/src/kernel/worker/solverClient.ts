@@ -38,6 +38,7 @@
  * else has to change to bring it back.
  */
 
+import { noteWorkerError } from '@/recovery/crashReports'
 import type { BuildResponse } from '../builder'
 import type { BuildState } from '../types3d'
 import type {
@@ -168,11 +169,14 @@ function dropWorker(err: Error): void {
   resetOccLoadProgress()
 }
 
-function onError(): void {
+function onError(event: unknown): void {
   // A hard Worker trap loses the checkpoint cache. Arm the respawn cooldown so
   // a burst of reSolves over the same trapping doc does not spawn one Worker
   // per request (see the header).
   workerCrashAt = Date.now()
+  // A worker trap never reaches window.onerror, so the crash report is written
+  // here, carrying the live editor's doc and mutation tail when one is open.
+  noteWorkerError('solver worker', event)
   dropWorker(new Error('solver worker crashed'))
 }
 

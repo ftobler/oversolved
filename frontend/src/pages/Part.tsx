@@ -37,6 +37,7 @@ import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
 import { installDriveSurface } from '@/drive/driveSurface'
 import { DRIVE_ENABLED } from '@/drive/gate'
 import { getCommandJournal, journalSink } from '@/drive/journal'
+import { attachAutosave, registerRecoveryEditor, useAutosaveStore } from '@/recovery/autosave'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { SessionJournalSink } from '@/session/DocSession'
 import MessageDialog from '@/components/dialogs/MessageDialog'
@@ -160,19 +161,16 @@ export default function Part() {
   const selection = useSketchEditorStore(s => s.normalSelection)
   const toggleNormalSelection = useSketchEditorStore(s => s.toggleNormalSelection)
 
-  // The journal sink the session records through, dev/test builds only. The
-  // session seam (not the command registry) is what makes drawing and gestures
-  // journaled; the session's docId check is the hard lock against a journal
-  // spanning two documents.
-  const driveJournal = useMemo<SessionJournalSink | undefined>(() => {
-    if (!DRIVE_ENABLED) return undefined
-    return journalSink(getCommandJournal())
-  }, [])
+  // The journal sink the session records through. Always on, not gated with the
+  // drive surface: the recovery autosave borrows this replayable tail, so the
+  // seam must record in production too. The session seam (not the command
+  // registry) is what makes drawing and gestures journaled; the session's docId
+  // check is the hard lock against a journal spanning two documents.
+  const driveJournal = useMemo<SessionJournalSink>(() => journalSink(getCommandJournal()), [])
   // A switch loads a new document into this editor (WorkspacePage keys Part per
   // entry), so the previous document's replayable suffix must go with it: the
   // next entry's baseline is the document just opened.
   useEffect(() => {
-    if (!DRIVE_ENABLED) return
     getCommandJournal().reset(uuid ?? null)
   }, [uuid])
 
@@ -210,6 +208,30 @@ export default function Part() {
     cancelEditSession,
     registerUndoTeardown,
   } = usePartDoc(uuid, { onFirstSolve: handleFirstSolve, workspace: workspaceId, journal: driveJournal })
+
+  // The autosave shadow copy of this document's unsaved edits. It reads the
+  // session directly (never React state), so the crash flush and the error
+  // boundary always see the live doc, and it borrows the command journal's
+  // replayable tail rather than recording one of its own.
+  const docNameLive = useRef(docName)
+  useEffect(() => { docNameLive.current = docName }, [docName])
+  useEffect(() => {
+    if (!uuid) return
+    const handle = attachAutosave({
+      session,
+      docId: uuid,
+      workspace: workspaceId ?? null,
+      getRepro: () => getCommandJournal().repro(),
+      getName: () => docNameLive.current,
+    })
+    registerRecoveryEditor(handle)
+    return () => {
+      registerRecoveryEditor(null)
+      handle.dispose()
+    }
+  }, [session, uuid, workspaceId])
+  const autosaveStatus = useAutosaveStore(s => s.status)
+  const autosaveError = useAutosaveStore(s => s.error)
 
   const features = useMemo(() => extractFeatures(doc), [doc])
   // The sketch-on-face FSM only cares about a sketch's plane field being picked.
@@ -1173,6 +1195,8 @@ export default function Part() {
         setSolveError={setSolveError}
         error={error}
         setError={setError}
+        autosaveError={autosaveStatus === 'error' ? autosaveError : null}
+        onDismissAutosaveError={() => useAutosaveStore.setState({ status: 'idle', error: null })}
         loading={loading}
         planeSelectionFeatureId={planeSelectionFeatureId}
         handleAddFeature={handleAddFeature}

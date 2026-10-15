@@ -86,7 +86,8 @@ describe('Part drive surface installation', () => {
     // other test. Stubbing the env and reloading the graph is the only way to
     // exercise the folded-off build: the page module must come up with the
     // gate false and install nothing. (The production bundler folds the same
-    // const to `false` and drops the installer and journal entirely.)
+    // const to `false` and drops the bridge installer; the session journal
+    // sink stays in every build, because the recovery autosave reads it.)
     vi.stubEnv('DEV', false)
     vi.stubEnv('MODE', 'production')
     vi.resetModules()

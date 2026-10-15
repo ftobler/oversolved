@@ -21,11 +21,16 @@ const h = vi.hoisted(() => {
     renames: [] as Array<{ uuid: string; name: string }>,
     clones: [] as Array<[uuid: string, name?: string]>,
     previewPut: vi.fn(async () => {}),
+    clearJournal: vi.fn(async () => {}),
   }
 })
 
 vi.mock('@/stores/previewStore', () => ({
   getPreviewStore: () => ({ put: h.previewPut }),
+}))
+
+vi.mock('@/recovery/journal', () => ({
+  clearRecoveryJournal: h.clearJournal,
 }))
 
 vi.mock('@/adapters/backend', () => ({
@@ -63,6 +68,7 @@ describe('useDocPersistence', () => {
     h.renameGates = []
     h.renames = []
     h.clones = []
+    h.clearJournal.mockClear()
     // The whole per-document state, not just the flag: the fingerprint a save
     // published is module-level too, and a leaked one would let one test's
     // assertion read another test's save.
@@ -171,6 +177,39 @@ describe('useDocPersistence', () => {
     expect(useUnsavedChangesStore.getState().savedHash).toBe(hashSavedText(h.saves[0].content))
     expect(useUnsavedChangesStore.getState().savedHash).not.toBe(hashSavedText('older bytes'))
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+  })
+
+  // The recovery journal is the shadow copy of unsaved edits; once the bytes
+  // are stored it has done its job, and a surviving copy would offer a restore
+  // of content the store already holds.
+  it('clears the recovery journal when the stored bytes match the doc', async () => {
+    const { result, docRef } = renderPersist()
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => { savePromise = result.current.saveDoc('S', docRef.current!) })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    expect(await savePromise).toBe(true)
+
+    expect(h.clearJournal).toHaveBeenCalledWith('S')
+  })
+
+  // An edit landed while the save was in flight, so the stored bytes are older
+  // than the shadow copy: clearing it would throw away the only durable copy
+  // of that edit.
+  it('keeps the recovery journal when an edit landed during the save', async () => {
+    const { result, docRef } = renderPersist()
+    useUnsavedChangesStore.getState().setDirty(true)
+
+    let savePromise!: Promise<boolean>
+    await act(async () => { savePromise = result.current.saveDoc('S', docRef.current!) })
+    await act(async () => {
+      docRef.current = { ...docRef.current!, version: 2 }
+    })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+    expect(await savePromise).toBe(true)
+
+    expect(h.clearJournal).not.toHaveBeenCalled()
   })
 
   it('chains overlapping saves so arrival order is landing order', async () => {

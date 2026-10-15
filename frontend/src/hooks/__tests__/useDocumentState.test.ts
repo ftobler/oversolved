@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS, useDocumentState } from '@/hooks/useDocumentState'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import {
+  requestRecoveryRestore,
+  resetRecoveryRestore,
+  takeRecoveryRestore,
+} from '@/recovery/restore'
+import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 
 // Deferred store save: a manual save spends multiple awaits (screenshot, then
 // the network), so tests need to hold the save open while an edit lands.
@@ -247,6 +253,67 @@ describe('useDocumentState saveDoc vs concurrent edits', () => {
     expect(h.bodies).toHaveLength(2)
     expect(h.bodies[1]).toContain('V2')
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+})
+
+// The open-time offer's accept path: the parked journal snapshot replaces the
+// store's bytes in memory, starts dirty (it is unsaved by definition) and is
+// solved like any other load. Nothing is written, so a reload still offers it.
+describe('useDocumentState recovery restore at load', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetRecoveryRestore()
+    useUnsavedChangesStore.getState().clearForNewDocument()
+  })
+
+  it('adopts the parked snapshot, marks it dirty and solves it', async () => {
+    h.loadMock.mockResolvedValue({ content: 'version: 1\nkind: part\nfeatures: []\n', name: 'Stored' })
+    const restored = makeDoc(makeSketch('restored'))
+    requestRecoveryRestore({ docId: 'R', doc: restored })
+    const reSolveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('R', reSolveRef, { solveOnLoad: true }))
+    await tick()
+
+    expect(result.current.doc).toEqual(restored)
+    expect(result.current.docRef.current).toEqual(restored)
+    expect(result.current.docName).toBe('Stored')
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+    expect(reSolveRef.current).toHaveBeenCalledWith(restored)
+    // Single use: the handoff is consumed, so a remount reads stored bytes.
+    expect(takeRecoveryRestore('R')).toBeNull()
+  })
+
+  it('ignores a snapshot parked for another document', async () => {
+    h.loadMock.mockResolvedValue({ content: 'version: 1\nkind: part\nfeatures: []\n', name: 'Stored' })
+    requestRecoveryRestore({ docId: 'other', doc: makeDoc(makeSketch('other')) })
+    const reSolveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('R', reSolveRef, { solveOnLoad: false }))
+    await tick()
+
+    // The stored text had no features, so the load added the built-ins: proof
+    // the store's bytes were adopted, not the parked snapshot.
+    expect(result.current.doc?.features?.map(f => f.id)).toEqual(['Origin', 'Top', 'Front', 'Right'])
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+
+  it('does not adopt a parked snapshot when the stored document fails validation', async () => {
+    // The restore sits behind the loader, so the loader's refusal stays
+    // authoritative: the failure keeps its structured report and the snapshot
+    // is not adopted over it. The handoff stays parked for a later successful
+    // load of the same document.
+    const content = 'version: 1\nkind: part\nfeatures:\n  - id: ex1\n    kind: extrude\n    extrude:\n      distance: .nan\n'
+    h.loadMock.mockResolvedValue({ content, name: 'Bracket' })
+    const restored = makeDoc(makeSketch('restored'))
+    requestRecoveryRestore({ docId: 'V', doc: restored })
+    const reSolveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('V', reSolveRef, { solveOnLoad: true }))
+    await tick()
+
+    expect(result.current.doc).toBeNull()
+    expect(result.current.error).toContain('features[0].extrude.distance')
+    expect(result.current.loadFailure).not.toBeNull()
+    expect(reSolveRef.current).not.toHaveBeenCalled()
+    expect(takeRecoveryRestore('V')).toEqual(restored)
   })
 })
 
