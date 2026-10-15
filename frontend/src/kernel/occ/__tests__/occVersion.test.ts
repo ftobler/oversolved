@@ -31,6 +31,7 @@ const REQUIRED_STATEMENT = [
 ]
 const SCANNED = [
   ...REQUIRED_STATEMENT,
+  'docs/setup.md',
   'frontend/src/kernel/occ/booleans.ts',
   'frontend/src/kernel/occ/occTypes.ts',
   'frontend/src/kernel/occ/primitives.ts',
