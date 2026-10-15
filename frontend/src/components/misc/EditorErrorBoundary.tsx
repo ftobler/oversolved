@@ -89,8 +89,9 @@ export default class EditorErrorBoundary extends Component<EditorErrorBoundaryPr
         <h2 className="editor-error-boundary-title">The {label} hit an error</h2>
         <p className="editor-error-boundary-message">{error.message || String(error)}</p>
         <p className="editor-error-boundary-hint">
-          The unsaved edits were written to the recovery journal and are offered when the document
-          reopens. A crash report was recorded locally.
+          {download
+            ? 'The unsaved edits were written to the recovery journal and are offered when the document reopens. A crash report was recorded locally.'
+            : 'A crash report was recorded locally.'}
         </p>
         <div className="editor-error-boundary-actions">
           <button className="btn btn-primary" type="button" onClick={this.handleReload}>

@@ -3,7 +3,7 @@
 // The open-time offer decision: the journal is offered only when its snapshot
 // differs from the stored text, and no failure on the way there may throw out
 // of it (the editor must open regardless).
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { stringify as stringifyYaml } from 'yaml'
@@ -20,6 +20,7 @@ function freshDb(): void {
 }
 
 beforeEach(freshDb)
+afterEach(() => { vi.restoreAllMocks() })
 
 async function park(doc: PartDoc, docId = 'doc-1'): Promise<void> {
   await idbRecoveryJournal.write({
@@ -63,6 +64,12 @@ describe('findRecoveryOffer', () => {
   it('declines a record parked for another document', async () => {
     const doc = makeDoc(makeSketch('sk1', { label: 'other' }))
     await park(doc, 'doc-other')
+    expect(await findRecoveryOffer('ws-1', 'doc-1', stringifyYaml(makeDoc()))).toBeNull()
+  })
+
+  it('declines rather than throwing when the journal read itself fails', async () => {
+    await park(makeDoc(makeSketch('sk1')))
+    vi.spyOn(idbRecoveryJournal, 'read').mockRejectedValueOnce(new Error('database closed'))
     expect(await findRecoveryOffer('ws-1', 'doc-1', stringifyYaml(makeDoc()))).toBeNull()
   })
 })

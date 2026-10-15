@@ -30,7 +30,14 @@ export async function findRecoveryOffer(
   docId: string,
   storedText: string,
 ): Promise<RecoveryOffer | null> {
-  const record = await readRecoveryJournal(docId)
+  let record: RecoveryJournalRecord | undefined
+  try {
+    record = await readRecoveryJournal(docId)
+  } catch {
+    // The documented contract, made real: a journal that cannot be read is
+    // exactly the state the hash re-check below would call "not ahead".
+    return null
+  }
   if (!record) return null
   let stored: PartDoc | null = null
   try {

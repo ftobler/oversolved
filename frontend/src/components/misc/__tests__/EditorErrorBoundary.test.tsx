@@ -119,6 +119,9 @@ describe('EditorErrorBoundary', () => {
     expect(screen.getByText('The editor hit an error')).toBeInTheDocument()
     expect(screen.getByText('render exploded')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reload editor' })).toBeInTheDocument()
+    // With a live session the screen promises the journal; the download button
+    // is the evidence a snapshot was captured.
+    expect(screen.getByText(/written to the recovery journal/)).toBeInTheDocument()
 
     // The flush read the live doc straight from the session and wrote it.
     await vi.waitFor(async () => {
@@ -186,6 +189,10 @@ describe('EditorErrorBoundary', () => {
       </EditorErrorBoundary>,
     )
     expect(screen.getByRole('button', { name: 'Download document' })).toBeDisabled()
+    // No session was captured, so the screen must not claim a journal write
+    // that never happened.
+    expect(screen.queryByText(/recovery journal and are offered/)).toBeNull()
+    expect(screen.getByText('A crash report was recorded locally.')).toBeInTheDocument()
   })
 
   it('renders children untouched while nothing throws', () => {
