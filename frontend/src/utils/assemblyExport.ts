@@ -15,14 +15,13 @@
 // A hidden part is absent from both. The export mirrors the scene the user is
 // looking at, which is the only reading of "hide" that does not surprise.
 
-import { parse as parseYaml } from 'yaml'
-import type { AssemblyDoc, BodyResult, PartDoc, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import type { AssemblyExportPartSpec } from '@/kernel/worker/solverProtocol'
 import type { StlMesh } from '@/kernel/stl'
 import { encodeBinaryStl } from '@/kernel/stl'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { backendBundle } from '@/adapters/backend'
-import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
+import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
 import { fileIdsInParts } from '@/stores/fileRegistry/resolve'
 
 /** Visible part instances, in document order. */
@@ -32,20 +31,19 @@ export function exportableInstances(doc: AssemblyDoc): PartInstance[] {
     .map(f => f.instance!)
 }
 
-/** Load and parse each referenced PartDoc once, keyed by doc id. A missing part
- * rejects the whole export rather than silently omitting a body: a STEP file
- * quietly short a component is worse than no file. */
+/** Load and validate each referenced PartDoc once, keyed by doc id, through the
+ *  same loader the editors read through. A missing or invalid part rejects the
+ *  whole export rather than silently omitting a body: a STEP file quietly short
+ *  a component is worse than no file, and a spec that fails validation would
+ *  otherwise rehydrate a half-parsed B-rep. */
 export async function loadPartContents(instances: PartInstance[]): Promise<Record<string, Record<string, unknown>>> {
   const ids = [...new Set(instances.map(i => i.doc_id))]
   const loaded = await Promise.all(ids.map(id => backendBundle.documents.load(id)))
   const out: Record<string, Record<string, unknown>> = {}
   ids.forEach((id, i) => {
-    const doc = (parseYaml(loaded[i].content) ?? {}) as PartDoc
-    // Same self-heal as the part load seam: the OCC worker that rehydrates the
-    // part's B-rep reads only `bodies`, so a legacy singular `body` must be
-    // migrated before export.
-    migrateLegacyBodyPicks(doc)
-    out[id] = doc as Record<string, unknown>
+    const parsed = loadPartDocText(loaded[i].content, { name: loaded[i].name })
+    if (!parsed.ok) throw new Error(`Part ${id}: ${docLoadErrorMessage(parsed.error)}`)
+    out[id] = parsed.doc
   })
   return out
 }

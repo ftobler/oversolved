@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
-import { parse as parseYaml } from 'yaml'
 import type { PartDoc } from '@/types/cad'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
-import { dropDeadAxisConstraints, migrateLegacyBodyPicks } from '@/utils/yamlMutations'
+import { docLoadErrorMessage, loadPartDocText, type DocLoadError } from '@/persistence/docSchema'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { useDocPersistence } from '@/hooks/useDocPersistence'
@@ -20,6 +19,11 @@ export function useDocumentState(
   const docRef = useRef<PartDoc | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // A validation failure keeps its structured report (field, raw text) so the
+  // page can offer a read-only view or a raw export instead of dropping the
+  // document. Only the loader's own failures set it; a store failure has no
+  // document to show.
+  const [loadFailure, setLoadFailure] = useState<DocLoadError | null>(null)
   const store = backendBundle.documents
 
   useEffect(() => {
@@ -36,19 +40,28 @@ export function useDocumentState(
     store.load(uuid)
       .then(data => {
         if (cancelled) return
-        const parsed = (parseYaml(data.content) ?? {}) as PartDoc
-        if ((!parsed.kind || parsed.kind === 'part') && (!parsed.features || parsed.features.length === 0)) {
+        // One gate for every stored document: parse, migrate and validate. A
+        // legacy doc is healed by the ladder before the checks see it, and a
+        // document the checks refuse never reaches the tree or the solver.
+        const loaded = loadPartDocText(data.content, { name: data.name })
+        if (!loaded.ok) {
+          setError(docLoadErrorMessage(loaded.error))
+          setLoadFailure(loaded.error)
+          docRef.current = null
+          setDoc(null)
+          setDocName('')
+          setLoading(false)
+          return
+        }
+        const parsed = loaded.doc
+        // An empty document gets its own coordinate frame; the loader does not
+        // seed policy, so an editor still opens every fresh part the same way.
+        if (!parsed.features || parsed.features.length === 0) {
           parsed.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
         }
-        // Self-heal stale documents authored before whole-entity axis constraints
-        // were rejected at creation time. See dropDeadAxisConstraints.
-        dropDeadAxisConstraints(parsed)
-        // Self-heal docs authored before the transform/delete_body body pick was
-        // pluralized: the singular `body` becomes a one-element `bodies` list so
-        // the plural kernel read and the list mutators see the ref.
-        migrateLegacyBodyPicks(parsed)
         docRef.current = parsed
         setDoc(parsed)
+        setLoadFailure(null)
         setDocName(data.name)
         // Freshly loaded content matches its store; any self-heal above predates
         // user intent, so the document starts clean, with nothing pinned from
@@ -86,6 +99,8 @@ export function useDocumentState(
     loading,
     error,
     setError,
+    loadFailure,
+    setLoadFailure,
     saveDoc,
     renameDoc,
     cloneDoc,

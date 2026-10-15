@@ -8,6 +8,7 @@
 import baseline from '@/wasm-kernel/regression-baseline.json'
 import faceExtrudeAfterArrayCut from '@/kernel/features/__fixtures__/faceExtrudeAfterArrayCut.json'
 import filletInvalidResultDoc from '@/kernel/features/__fixtures__/filletInvalidResultDoc.json'
+import { loadPartDoc } from '@/persistence/docSchema'
 import type { PartDoc, PartFeature } from '@/types/cad'
 
 export interface CorpusDoc {
@@ -53,7 +54,11 @@ export function corpusDocs(): CorpusDoc[] {
   for (const entry of baseline as unknown as BaselineEntry[]) {
     if (entry.spec) docs.push({ label: entry.label, spec: entry.spec })
   }
-  docs.push({ label: 'fixture:faceExtrudeAfterArrayCut', spec: faceExtrudeAfterArrayCut as PartDoc })
+  // The bug-report fixture is a document like any other, so it goes through
+  // the loader: the matrix must sweep docs the app would actually accept.
+  const fixture = loadPartDoc(faceExtrudeAfterArrayCut, { name: 'fixture:faceExtrudeAfterArrayCut' })
+  if (!fixture.ok) throw new Error(`action-matrix fixture failed to load: ${fixture.error.field} ${fixture.error.message}`)
+  docs.push({ label: 'fixture:faceExtrudeAfterArrayCut', spec: fixture.doc })
   docs.push({
     label: 'fixture:filletInvalidResultDoc',
     spec: { version: 1, kind: 'part', features: filletInvalidResultDoc as unknown as PartFeature[] },

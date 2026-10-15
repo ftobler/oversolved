@@ -40,6 +40,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   const {
     doc, setDoc, docRef, docName,
     loading, error, setError,
+    loadFailure, setLoadFailure,
     saveDoc, renameDoc, cloneDoc,
   } = useDocumentState(uuid, reSolveRef, { solveOnLoad, workspace })
 
@@ -286,6 +287,8 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     loading,
     error,
     setError,
+    loadFailure,
+    setLoadFailure,
     solveResults,
     setSolveResults,
     featureTimings,

@@ -52,14 +52,17 @@ describe('useDocumentState builtin scoping', () => {
     expect(ids).toEqual(['Origin', 'Top', 'Front', 'Right'])
   })
 
-  it('does NOT prepend built-ins for kind: "assembly" with empty features', async () => {
+  it('refuses an assembly payload at the part loader instead of seating it', async () => {
     const reSolveRef = { current: null }
     const { result } = renderHook(() => useDocumentState('C', reSolveRef, { solveOnLoad: false }))
     await tick()
     await act(async () => { h.loads.C.resolve({ content: 'kind: assembly\nfeatures: []', name: 'Assembly' }) })
     await tick()
-    const features = result.current.doc?.features
-    expect(features).toEqual([])
+    // The loader owns the content/editor mismatch now: the part editor never
+    // sees an assembly, and the failure names the offending field.
+    expect(result.current.doc).toBeNull()
+    expect(result.current.error).toContain('"Assembly" at kind')
+    expect(result.current.loadFailure?.field).toBe('kind')
   })
 
   it('does not alter features when already present on a part doc', async () => {
