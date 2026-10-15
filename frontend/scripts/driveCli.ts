@@ -37,6 +37,7 @@ import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createCliJournal, type ReproPayload } from '@/drive/journal'
 import { replayJournal } from '@/drive/replay'
 import type { ScriptStep } from '@/drive/scriptRunner'
+import { routeKernelStdoutToStderr } from './kernelStdout'
 
 // ─── kernel bootstrap ───
 
@@ -45,6 +46,11 @@ import type { ScriptStep } from '@/drive/scriptRunner'
 setOccLoader(loadOcc)
 setSketchSolver(loadSolver())
 setSketchTopology(loadTopology())
+
+// The kernel's own prints (the OCC STEP writer's transfer banner) must not
+// land on stdout: printJson writes through the saved writer, and everything
+// else is forwarded to stderr.
+const writeStdout = routeKernelStdoutToStderr()
 
 // ─── argument parsing ───
 
@@ -127,7 +133,7 @@ function readSteps(file: string): ScriptStep[] {
 }
 
 function printJson(value: unknown): void {
-  process.stdout.write(JSON.stringify(value) + '\n')
+  writeStdout(JSON.stringify(value) + '\n')
 }
 
 // The solve file map from repeated `--file <id>=<path>` flags: the bytes for

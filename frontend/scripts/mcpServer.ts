@@ -26,6 +26,7 @@ import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createCliJournal } from '@/drive/journal'
 import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
 import type { ScriptStep } from '@/drive/scriptRunner'
+import { routeKernelStdoutToStderr } from './kernelStdout'
 
 // The headless OCC loader and the nodejs solver builds; without them the solve
 // reports the kernel unavailable instead of a document.
@@ -37,17 +38,7 @@ setSketchTopology(loadTopology())
 // there: the OCC STEP writer prints a transfer banner on stdout (Module.print
 // goes to console.log), which would corrupt the stream. Responses go through
 // the saved writer; every other stdout write is forwarded to stderr.
-const writeProtocol = process.stdout.write.bind(process.stdout)
-
-function redirectKernelOutput(): void {
-  const toStderr = (
-    chunk: string | Uint8Array,
-    encoding?: BufferEncoding,
-    callback?: (err?: Error | null) => void,
-  ): boolean => process.stderr.write(chunk as never, encoding as never, callback as never)
-  process.stdout.write = toStderr as typeof process.stdout.write
-  console.log = (...args: unknown[]) => { console.error(...args) }
-}
+const writeProtocol = routeKernelStdoutToStderr()
 
 function emptyPartDoc(): PartDoc {
   return seedBuiltins({ version: 1, kind: 'part', features: [] } as PartDoc)
@@ -117,7 +108,6 @@ const ops: McpCadOps = {
 }
 
 async function main(): Promise<void> {
-  redirectKernelOutput()
   const server = createMcpServer(ops)
   const lines = readline.createInterface({ input: process.stdin, crlfDelay: Infinity })
   for await (const line of lines) {

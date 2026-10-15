@@ -261,7 +261,10 @@ function parseExportArgs(raw: unknown): McpExportRequest {
 
 async function callTool(ops: McpCadOps, name: string, args: unknown): Promise<McpToolPayload> {
   switch (name) {
-    case 'commands': return ops.commands()
+    case 'commands':
+      // The schema takes no arguments; a typo must still be rejected by name.
+      rejectUnknown(asObject(args ?? {}, 'arguments'), [])
+      return ops.commands()
     case 'run': return ops.run(parseRunArgs(args))
     case 'measure': return ops.measure(parseMeasureArgs(args))
     case 'export': return ops.export(parseExportArgs(args))

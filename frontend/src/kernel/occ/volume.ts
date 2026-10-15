@@ -21,8 +21,8 @@ export function volumeOf(oc: OccModule, scope: DisposeScope, shape: OccShape): n
 
 /**
  * Surface area of a shape: the sum over its faces (open shells included).
- * Skips shared faces and triangulation, so it is the exact B-rep integral the
- * per-face `faceArea` readers agree with.
+ * Shared faces included, triangulation not used, so it is the exact B-rep
+ * integral the per-face `faceArea` readers agree with.
  */
 export function surfaceAreaOf(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
   const props = scope.track(new oc.GProp_GProps_1())
