@@ -78,8 +78,8 @@ brotli quality 11 at zlib's default 22-bit window):
 | `opencascade.wasm.wasm` | 65,864,037 B (62.8 MiB) | 13,834,575 B (13.2 MiB) | 9,465,008 B (9.0 MiB) |
 | `opencascade.wasm.js` | 330,809 B (323 KiB) | 52,371 B (51 KiB) | 44,927 B (44 KiB) |
 
-A first visit therefore transfers about 9.5 MB with brotli (13.3 MB with gzip)
-instead of 63 MB. A 24-bit brotli window (`brotli -w 24`, `BROTLI_PARAM_LGWIN`
+A first visit therefore transfers about 9.5 MB with brotli (13.9 MB with gzip)
+instead of 66 MB. A 24-bit brotli window (`brotli -w 24`, `BROTLI_PARAM_LGWIN`
 24 in the API) shrinks the wasm further, to 9,150,579 B (8.7 MiB), at the price
 of precompressing once with a window many defaults do not use. Nothing in this
 repository configures a server, but the deploy is expected to:
@@ -88,7 +88,7 @@ repository configures a server, but the deploy is expected to:
   loader checks the type before streaming the file into
   `WebAssembly.compileStreaming`; a wrong type silently drops to the buffered
   compile (still correct, just without streaming).
-- compress it: brotli (`Content-Encoding: br`) saves another ~28% over gzip.
+- compress it: brotli (`Content-Encoding: br`) saves another ~32% over gzip.
   Precompress once at deploy time; the bytes never change within a pinned
   version.
 - cache `/occ/*` immutably (`Cache-Control: public, max-age=31536000`). The
@@ -157,7 +157,7 @@ against the old and the new artifact, and a regression in either blocks the new
 one.
 
 This is not buildable here for the same reasons as the slim build (no reachable
-Docker daemon, no emscripten SDK, no network), and it has extra prerequisites:
+Docker daemon, no emscripten SDK), and it has extra prerequisites:
 the opencascade.js `patches/` are cut against V7_4_0p1 and need rework for the
 new release, and the LGPL obligations follow the artifact. The wasm must stay a
 separate, replaceable file (it already is: a static asset under `/occ/`, never
