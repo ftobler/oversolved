@@ -149,6 +149,18 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(exported.payload).toMatchObject({ ok: true, format: 'step' })
     expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
 
+    // The other offered format: pin the binary STL container from the bytes
+    // the CLI wrote (80B header, uint32 triangle count, 50B per triangle).
+    const stlFile = path.join(TMP_DIR, 'box.stl')
+    const stl = await drive('export', boxDoc, '--format', 'stl', '--out', stlFile)
+    expect(stl.status).toBe(0)
+    expect(stl.payload).toMatchObject({ ok: true, format: 'stl' })
+    const stlBytes = readFileSync(stlFile)
+    expect(stlBytes.byteLength).toBeGreaterThan(84)
+    const triangleCount = new DataView(stlBytes.buffer, stlBytes.byteOffset, stlBytes.byteLength).getUint32(80, true)
+    expect(triangleCount).toBeGreaterThan(0)
+    expect(stlBytes.byteLength).toBe(84 + triangleCount * 50)
+
     // Record a command-level journal on top of the built doc, then replay it
     // in a fresh process: every recorded hash must reproduce. The journal
     // stores the mutations the commands produced, not the commands.
@@ -380,6 +392,14 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }))
       expect(exported).toMatchObject({ ok: true, format: 'step' })
       expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
+
+      const stlFile = path.join(TMP_DIR, 'mcp-box.stl')
+      const stl = toolPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { doc: edited.doc, format: 'stl', out: stlFile },
+      }))
+      expect(stl).toMatchObject({ ok: true, format: 'stl' })
+      expect(readFileSync(stlFile).byteLength).toBe(stl.bytes)
 
       const commands = toolPayload(await client.request('tools/call', { name: 'commands', arguments: {} }))
       expect((commands.commands as unknown[]).length).toBeGreaterThan(0)
