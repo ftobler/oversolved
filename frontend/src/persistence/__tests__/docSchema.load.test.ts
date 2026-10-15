@@ -235,6 +235,62 @@ describe('shape failures name the document and the field', () => {
   })
 })
 
+describe('constraint operands carry the real wire and dict forms', () => {
+  const partWithConstraints = (constraints: Array<Record<string, unknown>>) =>
+    loadPartDoc({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        entities: [{ id: 'bottom', kind: 'line' }, { id: 'right', kind: 'line' }],
+        constraints,
+      }],
+    }, { name: 'Operands' })
+
+  it('accepts the dict operands the oracle recipes write', () => {
+    const result = partWithConstraints([
+      { id: 'c1', kind: 'coincident', a: { entity: 'bottom', point: 'end' }, b: { entity: 'right', point: 'start' } },
+      { id: 'c2', kind: 'horizontal', target: { entity: 'bottom' } },
+    ])
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts string operands and the external_xy origin form', () => {
+    const result = partWithConstraints([
+      { id: 'c1', kind: 'coincident', a: '$bottomend', b: '@builtin_origin' },
+      { id: 'c2', kind: 'coincident', a: '$bottomstart', b: { external_xy: [0, 0] } },
+    ])
+    expect(result.ok).toBe(true)
+  })
+
+  it('accepts an ngon member list of operands and the lowered role/ref list', () => {
+    const result = partWithConstraints([
+      { id: 'c1', kind: 'ngon', refs: ['$bottom', { entity: 'right' }], circle: '$bottom' },
+      { id: 'c2', kind: 'ngon', refs: [{ role: 'a', ref: { entity: 'bottom' } }] },
+    ])
+    expect(result.ok).toBe(true)
+  })
+
+  it('refuses malformed operands by field', () => {
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ id: 'c1', kind: 'coincident', a: { entity: 5 } }, 'features[0].constraints[0].a.entity'],
+      [{ id: 'c1', kind: 'coincident', a: { point: 'start' } }, 'features[0].constraints[0].a.entity'],
+      [{ id: 'c1', kind: 'coincident', a: { external_xy: [0] } }, 'features[0].constraints[0].a.external_xy'],
+      [{ id: 'c1', kind: 'coincident', a: { entity: 'bottom', point: 'middle' } }, 'features[0].constraints[0].a.point'],
+      [{ id: 'c1', kind: 'dock', point: '$bottomstart', host: 5 }, 'features[0].constraints[0].host'],
+      [{ id: 'c1', kind: 'fixed', target: { entity: 'bottom' }, axis: 5 }, 'features[0].constraints[0].axis'],
+      [{ id: 'c1', kind: 'ngon', refs: [{ role: 'a' }] }, 'features[0].constraints[0].refs[0].ref'],
+      [{ id: 'c1', kind: 'ngon', refs: [{ ref: '$bottom' }] }, 'features[0].constraints[0].refs[0].role'],
+    ]
+    for (const [constraint, field] of cases) {
+      const result = partWithConstraints([constraint])
+      expect(result.ok, `${field} should be refused`).toBe(false)
+      if (!result.ok) expect(result.error.field).toBe(field)
+    }
+  })
+})
+
 describe('hostile sizes are capped before the builder', () => {
   it('rejects an array count of 1e9 before it can expand', () => {
     const result = loadPartDoc({
