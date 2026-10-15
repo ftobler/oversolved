@@ -40,8 +40,10 @@ function envInt(name: string, fallback: number): number {
 const CHAIN_SEEDS = envInt('ROBUSTNESS_FUZZ_SEEDS', 24)
 // The floor is 32, not a quarter of the chain range: the first 32 seeds are the
 // smallest range measured to draw all nine primitive pairings, and the
-// coverage assertion below needs them.
-const SEEDS = envInt('ROBUSTNESS_FUZZ_IDENTITIES', Math.max(32, Math.ceil(CHAIN_SEEDS / 4)))
+// coverage assertion below needs them. The floor applies to an explicit
+// override too, so a small value cannot fail the pairing assertion for a
+// reason unrelated to the kernel.
+const SEEDS = Math.max(32, envInt('ROBUSTNESS_FUZZ_IDENTITIES', Math.ceil(CHAIN_SEEDS / 4)))
 
 function drawInt(rnd: () => number, lo: number, hi: number): number {
   return lo + Math.floor(rnd() * (hi - lo + 1))
@@ -203,10 +205,11 @@ describe.skipIf(!oc)('boolean identities on primitive pairs (real OCC)', () => {
   })
 })
 
-// The exact pairs behind the gate. Seed 3's sphere surface touches the
-// cylinder's lateral surface along a circle while the bodies overlap: the
-// first boolean over the fresh pair drops an operand (its result integrates to
-// 2.3e-13), so this is the retry the soundness gate must recover. The rest are
+// The exact pairs behind the gate. Seed 3's sphere centre lies exactly on the
+// cylinder's lateral surface (the cylinder axis is tangent to the sphere)
+// while the bodies overlap: the first boolean over the fresh pair drops an
+// operand (its result integrates to 2.3e-13), so this is the retry the
+// soundness gate must recover. The rest are
 // a cylinder lateral surface exactly on a box face plane: the kernel's fuse
 // comes back as the target minus the tool with the wrong sign, no retry
 // repairs it, and the gate must refuse rather than ship it. The seeds come

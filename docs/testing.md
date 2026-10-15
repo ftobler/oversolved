@@ -73,21 +73,32 @@ cut never adds volume while a join never removes it. `booleanIdentityReal`
 checks V(A u B) + V(A n B) = V(A) + V(B) within 0.2% on primitive pairs, and
 the persistence half of `chain.ts` rebuilds every chain under a one-grid-step
 upstream dimension change and reports every recorded pick that no longer
-resolves.
+resolves; a chain that already refused only reports picks the rebuilt range
+reached again, a completed one also reports references it never reached.
 
 - Every replay runs in a forked child under a SIGKILL watchdog
   (`chainTimeout.ts`, mirroring `kernel/solveTimeout.ts`): an OCC clean can
   spin forever in synchronous WASM, and the killed seed is reported with the
-  step that hung. `KNOWN_HANGS` and `KNOWN_STALE_PICKS` in
-  `chainReal.test.ts` pin the triaged findings; anything else fails the sweep.
-- PR gate: bounded 24 chain seeds and 32 identity seeds.
-- Long run: `just robustness-fuzz <seeds>` (chain default 200, the plan's
-  acceptance range; identity a quarter of it), 1500 in the nightly and 5000
-  for a dedicated full-scale run; the tee'd log is the report.
+  step that hung. Children are pooled: `ROBUSTNESS_FUZZ_WORKERS` (default 2)
+  recipes replay concurrently, a kill drops only its own child, and the seed
+  range is slotted by seed and aggregated in seed order, so the findings do not
+  depend on the pool width. Each child holds its own ~0.75 GB OCC kernel, which
+  is why the recipe pins the pool and `VITEST_MAX_FORKS=1` together; raise
+  workers only on a wide, memory-rich box. `KNOWN_HANGS` and `KNOWN_STALE_PICKS`
+  in `chainReal.test.ts` pin the triaged findings; anything else fails the
+  sweep.
+- PR gate: bounded 24 chain seeds and 32 identity seeds. On a Node older than
+  22.6 the watchdog child cannot start (--experimental-strip-types), so the
+  chain sweep skips there rather than fail; the CI matrix runs one such leg.
+- Long run: `just robustness-fuzz <seeds> <workers>` (chain default 200, the
+  plan's acceptance range; identity a quarter of it, floored at 32), 1500 in
+  the nightly and 5000 for a dedicated full-scale run; the tee'd log is the
+  report.
 - Failure: the violations are minimised by dropping steps and the minimal
-  recipe is written under `src/testing/robustnessFuzz/regressions/` (the
-  oracle corpus takes part documents with closed-form expectations, a different
-  shape, so fuzz recipes do not go there).
+  recipe is written under `src/testing/robustnessFuzz/regressions/` as a triage
+  artifact for a human (nothing replays the directory yet); the oracle corpus
+  takes part documents with closed-form expectations, a different shape, so
+  fuzz recipes do not go there.
 
 ## Volume oracle
 

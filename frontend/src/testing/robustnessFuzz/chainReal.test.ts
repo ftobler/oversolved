@@ -14,21 +14,39 @@
 // worker's own watchdog handles them in production), and any other hang fails
 // the sweep like a violation.
 //
+// The seed range is scheduled through a bounded pool of watchdog children
+// (ROBUSTNESS_FUZZ_WORKERS, default 2) with the results slotted by seed, then
+// aggregated, ordered and minimised in one ascending-seed pass: the findings
+// and their order do not depend on the pool width (sweep.ts).
+//
 // The default sweep is bounded for the PR gate; ROBUSTNESS_FUZZ_SEEDS widens it
 // for `just robustness-fuzz` and the nightly. The suite skips where OCC.js is
-// not installed, like every *Real suite.
+// not installed, like every *Real suite, and on a Node too old to run the
+// watchdog child (--experimental-strip-types needs 22.6).
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it, expect, afterAll } from 'vitest'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { minimizeSequence } from '@/hooks/__tests__/fuzzMinimizer'
 import { generateRecipe, type RecipeStep } from './recipe'
 import { runChain } from './chain'
-import { disposeChainChild, runChainWithTimeout } from './chainTimeout'
+import { chainWorkerCount, configureChainWorkers, disposeChainChild, runChainWithTimeout } from './chainTimeout'
+import { runSeedsBounded } from './sweep'
 import { writeMinimalRecipe, defaultRegressionsDir } from './regressions'
 
-const oc = await loadOcc()
+// The watchdog child runs the sources through --experimental-strip-types,
+// which Node only has from 22.6. package.json still allows 20.19 and the CI
+// matrix runs 20, so on an older Node the child cannot start at all: skip
+// rather than report every seed as a crash. Same guard as fullDocRegression.
+const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
+const stripTypes = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 6)
+
+// Resolving the package is enough to gate: the sweep's kernel work runs in the
+// forked children, and the parent's own OCC (needed only by the minimiser's
+// in-process fault injection) is loaded lazily in that test so the sweep fork
+// holds one kernel, not two.
+const occAvailable = occInstalled()
 
 function envInt(name: string, fallback: number): number {
   const raw = Number.parseInt(process.env[name] ?? '', 10)
@@ -40,8 +58,16 @@ function envInt(name: string, fallback: number): number {
 // seed covers the base replay, the persistence replay and an amortised share of
 // the watchdog kills (a hanging seed costs the full 30 s).
 const SEEDS = envInt('ROBUSTNESS_FUZZ_SEEDS', 24)
+// The pool bound lives in the test (the source module cannot read process.env
+// by convention): 2 keeps the forked OCC kernels inside the runner's memory,
+// and the justfile pins VITEST_MAX_FORKS beside it.
+configureChainWorkers(envInt('ROBUSTNESS_FUZZ_WORKERS', 2))
+const WORKERS = chainWorkerCount()
 const BUDGET_MS = 2_500
-const TIMEOUT_MS = Math.min(90 * 60_000, 120_000 + SEEDS * BUDGET_MS)
+// The wall budget covers SEEDS worth of recipes spread over WORKERS children:
+// the pool turns the per-seed cost into a per-worker cost, so the cap divides
+// with it or a wide run would fail a sweep the job budget still allows.
+const TIMEOUT_MS = Math.min(90 * 60_000, 120_000 + Math.ceil(SEEDS / WORKERS) * BUDGET_MS)
 // The watchdog ceiling per replay, the same 30 s the browser worker gives a
 // solve; a healthy chain step is well under a second.
 const REPLAY_TIMEOUT_MS = 30_000
@@ -66,16 +92,39 @@ const KNOWN_HANGS: readonly { seed: number; step: number; kind: string }[] = [
 ]
 
 // Known red picks, pinned by seed and step. The naming check reaches the step
-// and the recorded face UUID is dead in the perturbed body, which production's
-// resolver would also report as a miss: the sibling faces carry DIFFERENT
-// construction UUIDs, and the foreign-uuid exclusion (queryRepository) forbids
-// handing one back in place of the named face. Triaged as a real naming
-// fragility awaiting its own fix, not silenced: the message stays in the log.
+// and the recorded construction UUID is dead in the perturbed body, which
+// production's resolver would also report as a miss: the sibling elements
+// carry DIFFERENT construction UUIDs, and the foreign-uuid exclusion
+// (queryRepository) forbids handing one back in place of the named element.
+// Triaged as a real naming fragility awaiting its own fix, not silenced: the
+// message stays in the log. The first four were found by the widened
+// persistence gate (picks from steps that built are checked even when a later
+// step or the perturbed replay refused); seed 142 predates it.
 const KNOWN_STALE_PICKS: readonly { seed: number; step: number; note: string }[] = [
   {
     seed: 142,
     step: 4,
     note: 'hole face @sk_s3/p1 re-mints under a +2.5 mm box growth: the base uuid included a two-classifier name, the rebuild a one-classifier sibling, and neither is recoverable from the other',
+  },
+  {
+    seed: 145,
+    step: 3,
+    note: 'revolve-start edge @u|e_9310... re-mints under a +2.5 mm growth; the built step reference goes dead while the chain later refuses',
+  },
+  {
+    seed: 186,
+    step: 3,
+    note: 'revolve-start face @u|u_245e... re-mints under a +2.5 mm growth on an otherwise completed chain',
+  },
+  {
+    seed: 186,
+    step: 4,
+    note: 'the same re-mint makes the perturbed chain refuse before step 4, so its recorded reference can never be tested',
+  },
+  {
+    seed: 187,
+    step: 4,
+    note: 'revolve-start face @u|u_9403... re-mints under a +2.5 mm growth; the built step reference goes dead while the chain later refuses',
   },
 ]
 
@@ -83,7 +132,7 @@ afterAll(() => {
   disposeChainChild()
 })
 
-describe.skipIf(!oc)('the seeded geometry fuzz (real kernel)', () => {
+describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real kernel)', () => {
   it('replays the bounded seed range: no violation, no stale pick', { timeout: TIMEOUT_MS }, async () => {
     const problems: string[] = []
     const hangs: string[] = []
@@ -92,15 +141,24 @@ describe.skipIf(!oc)('the seeded geometry fuzz (real kernel)', () => {
     let refusals = 0
     let modifierBuilds = 0
     let untrackedBuilds = 0
-    let checkedPicks = 0
+    let recordedPicks = 0
 
+    const outcomes = await runSeedsBounded(SEEDS, WORKERS, (seed) =>
+      runChainWithTimeout(generateRecipe(seed), { timeoutMs: REPLAY_TIMEOUT_MS })
+        .catch((err: unknown) => {
+          throw new Error(`seed ${seed}: the watchdog child failed: ${err instanceof Error ? err.message : String(err)}`)
+        }))
+
+    // The aggregation is a single ascending-seed pass, exactly like the old
+    // serial loop, so the report text, the minimisation order and the fixture
+    // writes are identical at any pool width.
     for (let seed = 0; seed < SEEDS; seed++) {
-      const recipe = generateRecipe(seed)
-      const guarded = await runChainWithTimeout(recipe, { timeoutMs: REPLAY_TIMEOUT_MS })
+      const guarded = outcomes[seed]
       if (guarded.status === 'hang') {
-        // The pin names the step too: a hang that MOVES to another step is a
-        // changed finding and needs its own triage, not the old note.
-        const known = KNOWN_HANGS.some((h) => h.seed === seed && h.step === guarded.hang.step)
+        // The pin names the step and kind: a hang that MOVES to another step
+        // (or kind) is a changed finding and needs its own triage, not the
+        // old note.
+        const known = KNOWN_HANGS.some((h) => h.seed === seed && h.step === guarded.hang.step && h.kind === guarded.hang.kind)
         const text = `seed ${seed}: HANG at step ${guarded.hang.step} (${guarded.hang.kind})`
         if (known) hangs.push(text)
         else problems.push(`${text}; not in KNOWN_HANGS (add it with the triage note if accepted)`)
@@ -114,11 +172,12 @@ describe.skipIf(!oc)('the seeded geometry fuzz (real kernel)', () => {
       }
       refusals += run.refusals.length
       if (run.completed) completed++
-      checkedPicks += run.picks.length
+      recordedPicks += run.picks.length
 
       if (run.violations.length > 0) {
         // Reduce while the failure persists, then write the minimal recipe so
         // the seed replay does not depend on the generator drawing it again.
+        const recipe = generateRecipe(seed)
         const minimal = await minimizeSequence(
           recipe.steps,
           async (candidate) => {
@@ -137,7 +196,10 @@ describe.skipIf(!oc)('the seeded geometry fuzz (real kernel)', () => {
         problems.push(`seed ${seed}: ${run.violations.map((v) => `step ${v.step}: ${v.message}`).join('; ')} (minimal: ${file})`)
         continue
       }
-      if (run.refusals.length > 0) continue
+      // Stale picks are checked for refused chains too: the runner replays the
+      // perturbation whenever a pick was recorded, and a reference that was
+      // reached again but no longer resolves is a finding regardless of where
+      // the base chain stopped.
       for (const violation of stale) {
         const known = KNOWN_STALE_PICKS.find((p) => p.seed === seed && p.step === violation.step)
         const text = `seed ${seed} step ${violation.step}: ${violation.message}`
@@ -148,6 +210,7 @@ describe.skipIf(!oc)('the seeded geometry fuzz (real kernel)', () => {
 
     // Known findings are not silent: a green run prints them, and the wide
     // range (the nightly) is what keeps both lists honest.
+    console.log(`[robustness-fuzz] chain sweep: ${SEEDS} seeds, ${completed} completed, ${refusals} refused, ${recordedPicks} picks, ${hangs.length} known hangs, ${redPicks.length} known red picks`)
     for (const hang of hangs) console.log(`[robustness-fuzz] known hang: ${hang}`)
     for (const red of redPicks) console.log(`[robustness-fuzz] known red pick: ${red}`)
     expect(problems).toEqual([])
@@ -155,12 +218,13 @@ describe.skipIf(!oc)('the seeded geometry fuzz (real kernel)', () => {
     // start-only chains. The floors are a fraction of the observed coverage so
     // a bounded range that legitimately refuses stays green while a generator
     // that stops drawing edits (or a runner that stops reaching the kernel)
-    // fails.
+    // fails. The refusal cap is the measured rate with headroom (the sweep
+    // tolerates a refuelled kernel refusing many seeds, not nearly all).
     expect(completed).toBeGreaterThan(0)
     expect(modifierBuilds).toBeGreaterThanOrEqual(Math.ceil(SEEDS / 2))
     expect(untrackedBuilds).toBe(0)
-    expect(checkedPicks).toBeGreaterThan(0)
-    expect(refusals).toBeLessThanOrEqual(SEEDS)
+    expect(recordedPicks).toBeGreaterThan(0)
+    expect(refusals).toBeLessThanOrEqual(Math.ceil(SEEDS * 0.6))
   })
 
   it('same seed replays the identical chain and the identical reports', { timeout: 60_000 }, async () => {
@@ -179,12 +243,14 @@ describe.skipIf(!oc)('the seeded geometry fuzz (real kernel)', () => {
   })
 })
 
-describe.skipIf(!oc)('the recipe minimiser', () => {
+describe.skipIf(!occAvailable || !stripTypes)('the recipe minimiser', () => {
   // A recipe long enough to have steps to drop AND one that builds end to end
   // through the watchdog: the injected fault only lands on a step that builds,
   // so a recipe the generator drew with a refused start (seed 1's revolve is
   // the pinned case) could never carry it. The generator's length is
-  // seed-dependent, so scan for one instead of pinning a fragile seed.
+  // seed-dependent, so scan for one instead of pinning a fragile seed. The
+  // scan is sequential and stops at the first hit: it replays full chains and
+  // must not walk the whole bounded range.
   async function multiStepRecipe(): Promise<{ seed: number; steps: RecipeStep[] }> {
     for (let seed = 0; seed < 200; seed++) {
       const recipe = generateRecipe(seed)
@@ -200,8 +266,11 @@ describe.skipIf(!oc)('the recipe minimiser', () => {
   it('reduces a failing chain to the step that carries the failure and writes it out', { timeout: 120_000 }, async () => {
     const { seed, steps } = await multiStepRecipe()
     const fault = steps[2]
-    // The fault seam is in-process only (runChain's faultAtId), so the guard
-    // here is the recipe scan above; the injected run itself is cheap.
+    // The fault seam is in-process only (runChain's faultAtId), so the parent
+    // loads OCC here; the watchdog children are disposed first so the two
+    // kernels never coexist in this fork.
+    disposeChainChild()
+    const oc = await loadOcc()
     if (!oc) throw new Error('unreachable: skipIf guards this')
     const fails = async (candidate: readonly RecipeStep[]): Promise<boolean> =>
       runChain(oc, { seed, steps: [...candidate] }, { faultAtId: fault.id }).violations.length > 0
@@ -216,10 +285,14 @@ describe.skipIf(!oc)('the recipe minimiser', () => {
     const tmpRoot = join(process.cwd(), '..', 'tmp')
     mkdirSync(tmpRoot, { recursive: true })
     const dir = mkdtempSync(join(tmpRoot, 'robustness-fuzz-test-'))
-    const file = writeMinimalRecipe(dir, { seed, violations: ['injected fault'], steps: minimal })
-    const written = JSON.parse(readFileSync(file, 'utf8')) as { seed: number; steps: RecipeStep[] }
-    expect(written.seed).toBe(seed)
-    expect(written.steps).toEqual(minimal)
-    rmSync(dir, { recursive: true, force: true })
+    try {
+      const file = writeMinimalRecipe(dir, { seed, violations: ['injected fault'], steps: minimal })
+      const written = JSON.parse(readFileSync(file, 'utf8')) as { seed: number; steps: RecipeStep[] }
+      expect(written.seed).toBe(seed)
+      expect(written.steps).toEqual(minimal)
+    } finally {
+      // A failing assertion above must not leave the scratch recipe behind.
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

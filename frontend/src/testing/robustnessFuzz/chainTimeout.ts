@@ -9,9 +9,17 @@
 // kill can.
 //
 // The child reports the step it is about to run before every step, so a killed
-// run is reported with the step that hung, not just a timeout. The child is
-// pooled across recipes (OCC loads once); a kill drops the pool and the next
-// recipe forks a fresh child, exactly like solveTimeout.
+// run is reported with the step that hung, not just a timeout. Children are
+// pooled across recipes (OCC loads once per child) and the pool is bounded:
+// ROBUSTNESS_FUZZ_WORKERS recipes replay concurrently, one per child. A kill
+// drops that child alone; sibling children and their in-flight recipes are
+// untouched. The default pool is small because each child holds its own OCC
+// kernel (~0.75 GB measured), which the vitest memory budget counts once per
+// fork, not once per child.
+//
+// Requests beyond the pool size wait in a FIFO queue, and a queued recipe's
+// timeout clock starts when a child picks it up: queueing can never burn the
+// recipe's budget, and a full pool looks like latency, not a hang.
 
 import { fork, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -29,6 +37,24 @@ export interface ChainChildLike {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000
+
+// The pool size: more than one child for throughput, few enough that the
+// kernels stay inside the runner's memory. The sweep reads the knob
+// (ROBUSTNESS_FUZZ_WORKERS) in its test file and configures the pool here; the
+// justfile pins both the pool and the vitest forks on the memory bounded CI
+// runners, and a wide x86 box can raise the pool.
+const DEFAULT_WORKERS = 2
+let maxWorkers = DEFAULT_WORKERS
+
+/** Bound the pool; call before the first replay. */
+export function configureChainWorkers(workers: number): void {
+  maxWorkers = Number.isFinite(workers) ? Math.max(1, Math.floor(workers)) : DEFAULT_WORKERS
+}
+
+/** The pool size; the sweep scales its own timeout budget by it. */
+export function chainWorkerCount(): number {
+  return maxWorkers
+}
 
 export interface HangReport {
   // The step the child was running when it was killed, or null when it hung
@@ -48,11 +74,29 @@ export type GuardedChainRun =
   | { status: 'done'; replay: ChainReplay }
   | { status: 'hang'; hang: HangReport }
 
-interface Pending {
-  lastStep: { step: number; kind: string } | null
+// One queued or in-flight recipe. The watchdog timer is created at dispatch,
+// not at enqueue, so waiting for a free child cannot expire it.
+interface Job {
+  recipe: Recipe
+  timeoutMs: number
   resolve: (result: GuardedChainRun) => void
   reject: (err: unknown) => void
+}
+
+interface Pending {
+  id: number
+  job: Job
+  lastStep: { step: number; kind: string } | null
   timer: ReturnType<typeof setTimeout>
+}
+
+// A forked child and the one recipe it is running. `dead` is set the moment
+// the slot leaves the pool, so late messages, errors or exits from a killed
+// child are ignored instead of being attributed to a replacement.
+interface Slot {
+  child: ChainChildLike
+  pending: Pending | null
+  dead: boolean
 }
 
 interface ChildMsg {
@@ -90,63 +134,128 @@ function defaultFactory(): ChainChildLike {
 }
 
 let childFactory: () => ChainChildLike = defaultFactory
-let child: ChainChildLike | null = null
+const slots: Slot[] = []
+const idle: Slot[] = []
+const queue: Job[] = []
 let nextId = 0
-const pending = new Map<number, Pending>()
 
-function onMessage(msg: unknown): void {
-  const m = msg as ChildMsg
-  const p = pending.get(m.id)
+function onMessage(slot: Slot, msg: unknown): void {
+  if (slot.dead) return
+  const p = slot.pending
   if (!p) return
+  const m = msg as ChildMsg
+  if (m.id !== p.id) return
   if (m.progress !== undefined) {
     p.lastStep = m.progress
     return
   }
   clearTimeout(p.timer)
-  pending.delete(m.id)
+  slot.pending = null
   if (m.ok && m.run) {
-    p.resolve({ status: 'done', replay: { run: m.run, stale: m.stale ?? [] } })
+    p.job.resolve({ status: 'done', replay: { run: m.run, stale: m.stale ?? [] } })
   } else {
-    p.reject(new Error(m.error ?? 'chain replay failed'))
+    p.job.reject(new Error(m.error ?? 'chain replay failed'))
   }
+  release(slot)
 }
 
-/** Reject every pending recipe and drop the (possibly wedged) child. */
-function dropChild(err: Error): void {
-  for (const p of pending.values()) {
+/** Take the slot out of the pool, kill it, and reject whatever it was running. */
+function removeSlot(slot: Slot, err: Error): void {
+  if (slot.dead) return
+  slot.dead = true
+  const at = slots.indexOf(slot)
+  if (at >= 0) slots.splice(at, 1)
+  const idleAt = idle.indexOf(slot)
+  if (idleAt >= 0) idle.splice(idleAt, 1)
+  const p = slot.pending
+  if (p) {
     clearTimeout(p.timer)
-    p.reject(err)
+    slot.pending = null
+    p.job.reject(err)
   }
-  pending.clear()
-  if (child) {
-    child.kill('SIGKILL')
-    child = null
-  }
+  slot.child.kill('SIGKILL')
 }
 
-function ensureChild(): ChainChildLike {
-  if (child) return child
-  const c = childFactory()
-  c.on('message', onMessage)
-  // A killed child can deliver a late error or exit after its replacement is
-  // pooled; only the current child may act on it (mirrors solveTimeout).
-  c.on('error', () => {
-    if (child !== c) return
-    dropChild(new Error('chain child process crashed'))
+/** A finished slot: hand it the next queued recipe, or park it idle. */
+function release(slot: Slot): void {
+  if (slot.dead) return
+  const next = queue.shift()
+  if (next !== undefined) {
+    dispatch(slot, next)
+    return
+  }
+  idle.push(slot)
+}
+
+function dispatch(slot: Slot, job: Job): void {
+  const id = nextId++
+  const p: Pending = {
+    id,
+    job,
+    lastStep: null,
+    timer: setTimeout(() => onTimeout(slot), job.timeoutMs),
+  }
+  slot.pending = p
+  slot.child.send({ id, recipe: job.recipe })
+}
+
+function onTimeout(slot: Slot): void {
+  const p = slot.pending
+  if (p === null) return
+  const hang: HangReport = {
+    step: p.lastStep?.step ?? null,
+    kind: p.lastStep?.kind ?? null,
+  }
+  // The recipe is settled as a hang, not an error: detach it before the slot
+  // is removed so the removal does not reject it, then kill the child (it
+  // cannot be trusted to answer again) and settle.
+  slot.pending = null
+  removeSlot(slot, new Error('chain child replaced after a hang'))
+  p.job.resolve({ status: 'hang', hang })
+  pump()
+}
+
+function spawnSlot(): Slot {
+  const child = childFactory()
+  const slot: Slot = { child, pending: null, dead: false }
+  child.on('message', (msg) => onMessage(slot, msg))
+  // A killed child can deliver a late error or exit; the guards in `onMessage`
+  // and here keep it from touching the replacement that took its place. A
+  // crash also frees the slot's capacity, so a queued recipe must be picked up
+  // by a fresh child (the timeout path pumps for the same reason); the dead
+  // check keeps a kill this module performed from re-pumping.
+  child.on('error', () => {
+    if (slot.dead) return
+    removeSlot(slot, new Error('chain child process crashed'))
+    pump()
   })
-  c.on('exit', (code: number) => {
-    if (child !== c) return
-    if (code !== 0) dropChild(new Error(`chain child exited with code ${code}`))
+  child.on('exit', (code: number) => {
+    if (slot.dead) return
+    removeSlot(slot, new Error(`chain child exited with code ${code}`))
+    pump()
   })
-  child = c
-  return child
+  slots.push(slot)
+  return slot
+}
+
+/** Start queued recipes on idle or freshly spawned slots, up to the bound. */
+function pump(): void {
+  while (queue.length > 0) {
+    if (idle.length > 0) {
+      dispatch(idle.pop() as Slot, queue.shift() as Job)
+    } else if (slots.length < maxWorkers) {
+      dispatch(spawnSlot(), queue.shift() as Job)
+    } else {
+      return
+    }
+  }
 }
 
 /**
- * Replay one recipe through the real kernel in a forked child. Resolves with
- * the child's ChainRun, or with a HangReport when the child was killed after
- * `timeoutMs`. The timeout resolves (rather than rejects) so the sweep can
- * record the hang and keep going; the caller decides whether it is known.
+ * Replay one recipe through the real kernel in a pooled forked child. Resolves
+ * with the child's ChainRun, or with a HangReport when the child was killed
+ * after `timeoutMs`. The timeout resolves (rather than rejects) so the sweep
+ * can record the hang and keep going; the caller decides whether it is known.
  */
 export function runChainWithTimeout(
   recipe: Recipe,
@@ -154,40 +263,21 @@ export function runChainWithTimeout(
 ): Promise<GuardedChainRun> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   return new Promise<GuardedChainRun>((resolve, reject) => {
-    const c = ensureChild()
-    const id = nextId++
-    const p: Pending = {
-      lastStep: null,
-      resolve,
-      reject,
-      timer: setTimeout(() => {
-        pending.delete(id)
-        const hang: HangReport = {
-          step: p.lastStep?.step ?? null,
-          kind: p.lastStep?.kind ?? null,
-        }
-        dropChild(new Error('chain child replaced after a hang'))
-        resolve({ status: 'hang', hang })
-      }, timeoutMs),
-    }
-    pending.set(id, p)
-    c.send({ id, recipe })
+    queue.push({ recipe, timeoutMs, resolve, reject })
+    pump()
   })
 }
 
-/** Terminate the pooled child. Call between suites so a hang cannot leak across. */
+/** Terminate every pooled child. Call between suites so a hang cannot leak across. */
 export function disposeChainChild(): void {
-  dropChild(new Error('disposed'))
+  for (const slot of [...slots]) removeSlot(slot, new Error('disposed'))
+  for (const job of queue.splice(0)) job.reject(new Error('disposed'))
 }
 
 /** @internal test-only: inject a fake child factory and reset client state. */
 export function setChainChildForTest(factory: (() => ChainChildLike) | null): void {
-  if (child) {
-    child.kill('SIGKILL')
-    child = null
-  }
-  for (const p of pending.values()) clearTimeout(p.timer)
-  pending.clear()
+  for (const slot of [...slots]) removeSlot(slot, new Error('reset'))
+  for (const job of queue.splice(0)) job.reject(new Error('reset'))
   nextId = 0
   if (factory) childFactory = factory
 }
@@ -196,4 +286,5 @@ export function setChainChildForTest(factory: (() => ChainChildLike) | null): vo
 export function resetChainChildForTest(): void {
   setChainChildForTest(null)
   childFactory = defaultFactory
+  maxWorkers = DEFAULT_WORKERS
 }

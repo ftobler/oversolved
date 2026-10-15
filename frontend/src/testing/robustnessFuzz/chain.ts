@@ -98,28 +98,37 @@ class ChainRepo {
 }
 
 // ─── profiles and primitives the recipe names ───
+//
+// Every extrude and revolve profile loop carries a sketch entity id, exactly
+// like a production profile loop: the lineage walk (entityForEdges) matches
+// edges back to their entities by id, and a body whose profile edges carry
+// none mints no construction UUIDs, which makes every later edge pick
+// unresolvable. The ids are stable strings, not drawn, so the naming the fuzz
+// exercises is a pure function of the seed like the rest of the recipe. The
+// sphere build below is the exception: it never goes through a lineage
+// producer and is only ever a boolean tool, never a pick target.
 
 /** A rounded rectangle boundary (four lines closed by four corner arcs). */
 function roundedRectLoop(dx: number, dy: number, r: number): LoopEdge[] {
   return [
-    { kind: 'line', start: [r, 0], end: [dx - r, 0] },
-    { kind: 'arc', center: [dx - r, r], radius: r, angle_start_deg: 270, angle_end_deg: 360, ccw: true, start: [dx - r, 0], end: [dx, r] },
-    { kind: 'line', start: [dx, r], end: [dx, dy - r] },
-    { kind: 'arc', center: [dx - r, dy - r], radius: r, angle_start_deg: 0, angle_end_deg: 90, ccw: true, start: [dx, dy - r], end: [dx - r, dy] },
-    { kind: 'line', start: [dx - r, dy], end: [r, dy] },
-    { kind: 'arc', center: [r, dy - r], radius: r, angle_start_deg: 90, angle_end_deg: 180, ccw: true, start: [r, dy], end: [0, dy - r] },
-    { kind: 'line', start: [0, dy - r], end: [0, r] },
-    { kind: 'arc', center: [r, r], radius: r, angle_start_deg: 180, angle_end_deg: 270, ccw: true, start: [0, r], end: [r, 0] },
+    { id: 'e1', kind: 'line', start: [r, 0], end: [dx - r, 0] },
+    { id: 'e2', kind: 'arc', center: [dx - r, r], radius: r, angle_start_deg: 270, angle_end_deg: 360, ccw: true, start: [dx - r, 0], end: [dx, r] },
+    { id: 'e3', kind: 'line', start: [dx, r], end: [dx, dy - r] },
+    { id: 'e4', kind: 'arc', center: [dx - r, dy - r], radius: r, angle_start_deg: 0, angle_end_deg: 90, ccw: true, start: [dx, dy - r], end: [dx - r, dy] },
+    { id: 'e5', kind: 'line', start: [dx - r, dy], end: [r, dy] },
+    { id: 'e6', kind: 'arc', center: [r, dy - r], radius: r, angle_start_deg: 90, angle_end_deg: 180, ccw: true, start: [r, dy], end: [0, dy - r] },
+    { id: 'e7', kind: 'line', start: [0, dy - r], end: [0, r] },
+    { id: 'e8', kind: 'arc', center: [r, r], radius: r, angle_start_deg: 180, angle_end_deg: 270, ccw: true, start: [0, r], end: [r, 0] },
   ]
 }
 
 /** A rectangular ring's cross-section in the sketch's uv space. */
 function rectLoop(u0: number, u1: number, v0: number, v1: number): LoopEdge[] {
   return [
-    { kind: 'line', start: [u0, v0], end: [u1, v0] },
-    { kind: 'line', start: [u1, v0], end: [u1, v1] },
-    { kind: 'line', start: [u1, v1], end: [u0, v1] },
-    { kind: 'line', start: [u0, v1], end: [u0, v0] },
+    { id: 'e1', kind: 'line', start: [u0, v0], end: [u1, v0] },
+    { id: 'e2', kind: 'line', start: [u1, v0], end: [u1, v1] },
+    { id: 'e3', kind: 'line', start: [u1, v1], end: [u0, v1] },
+    { id: 'e4', kind: 'line', start: [u0, v1], end: [u0, v0] },
   ]
 }
 
@@ -250,6 +259,11 @@ function bodyMetaOpts(body: Body): Dict {
     faceAncestry: body.face_ancestry ?? null,
     faceUuids: body.face_uuids ?? null,
     edgeAncestry: body.edge_ancestry ?? null,
+    // Without the edge UUIDs the display queries come back tie-tagged and
+    // uuid-less, and the leaf resolver (built from the production query stream
+    // that always carries them) cannot match any of them; solveLocally and the
+    // shared harness pass the same pair.
+    edgeUuids: body.edge_uuids ?? null,
     profileQueries: body.profile_queries,
     modifiedBy: body.modified_by,
   }
@@ -451,7 +465,16 @@ function applyTool(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyS
   return step.toolBody
 }
 
-/** Resolve one edge pick off the body's display-sorted edge list. */
+/**
+ * Resolve one edge pick off the body's display-sorted edge list.
+ *
+ * On an unnamed body (the synthetic box start carries no lineage) colliding
+ * display queries get a positional tie tag (emitWithTiesTagged) that the
+ * leaf's edge index does not mint, so a drawn pick can be one the leaf cannot
+ * resolve; the step then refuses and the sweep's refusal cap keeps the class
+ * visible without failing on it. Production's own unnamed bodies (imports)
+ * meet the same seam through the pick repository, not this runner.
+ */
 function pickEdge(oc: OccModule, table: HandleTable, body: Body, edgeIndex: number): { query: string; kind: string } {
   const result = solidToEdges(oc, table, body.shape as OccHandle, bodyMetaOpts(body))
   if (result.edges.length === 0) throw new Error(`body '${body.id}' has no edges to pick`)
@@ -753,23 +776,33 @@ export function runChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions
  * modifier step resolve the pick recorded on the unperturbed run instead of a
  * freshly drawn one. A recorded pick that no longer resolves, or that now names
  * another element class, is the persistent-naming failure the plan wants
- * caught: the dimension moved and the stored reference went red. Picks the
- * perturbed chain never reached (an earlier step refused) are reported too,
- * because a reference that cannot even be tested is not a green reference.
+ * caught: the dimension moved and the stored reference went red.
+ *
+ * `reportUnreached` additionally reports picks the perturbed chain never
+ * reached because an earlier step refused. The caller sets it for base runs
+ * that completed, where a reference that cannot even be tested is not a green
+ * reference; on a base run that already refused, the refusal is the reported
+ * finding and only resolution failures at reached steps are new information.
  */
-export function runPersistenceCheck(oc: OccModule, recipe: Recipe, picks: readonly PickRecord[]): StalePick[] {
+export function runPersistenceCheck(
+  oc: OccModule,
+  recipe: Recipe,
+  picks: readonly PickRecord[],
+  options: { reportUnreached?: boolean } = {},
+): StalePick[] {
   if (picks.length === 0) return []
   const overrides = new Map<number, PickRecord>()
   for (const pick of picks) overrides.set(pick.step, pick)
   const live = executeChain(oc, perturbStart(recipe), { overridePicks: overrides })
   try {
     const stale = [...live.run.stalePicks]
+    const reportUnreached = options.reportUnreached ?? false
     const reached = new Set(live.run.reports.filter((report) => report.status !== 'refused').map((report) => report.step))
     for (const pick of picks) {
       // A step that already reported its stale pick above needs no second
       // entry: the resolution failure is the finding, and the refusal is its
       // consequence, not a separate one.
-      if (!reached.has(pick.step) && !stale.some((s) => s.step === pick.step)) {
+      if (reportUnreached && !reached.has(pick.step) && !stale.some((s) => s.step === pick.step)) {
         stale.push({ step: pick.step, message: `the perturbed chain did not reach the pick step (${live.run.refusals[0]?.message ?? 'refused earlier'})` })
       }
     }
