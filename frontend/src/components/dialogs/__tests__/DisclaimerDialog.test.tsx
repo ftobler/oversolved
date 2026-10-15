@@ -87,6 +87,16 @@ describe('DisclaimerDialog', () => {
     expect(screen.getByText(/Redistribution of the source code is not\s+allowed/)).toBeInTheDocument()
   })
 
+  // The about box is where a visitor looks for the project home; the link must
+  // open in a new tab so following it does not navigate away from the open doc.
+  it('links to the GitHub repository', () => {
+    render(<DisclaimerDialog />)
+    const link = screen.getByRole('link', { name: 'https://github.com/ftobler/oversolved' })
+    expect(link).toHaveAttribute('href', 'https://github.com/ftobler/oversolved')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
+  })
+
   it('does not show when already acknowledged', () => {
     acknowledgeDisclaimer()
     render(<DisclaimerDialog />)

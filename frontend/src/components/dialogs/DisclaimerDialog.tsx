@@ -6,6 +6,10 @@ import { durabilityNotice } from '@/adapters/storagePersistence'
 import { hasAcknowledgedDisclaimer, acknowledgeDisclaimer } from './disclaimerConsent'
 import './DisclaimerDialog.css'
 
+// Shown as the full URL rather than a "GitHub" label so it can be read off the
+// dialog and typed elsewhere, not only clicked.
+const GITHUB_URL = 'https://github.com/ftobler/oversolved'
+
 // Plain-language notice, not a formal license text. The storage paragraph is
 // part of it rather than tucked into a help page because "where does my work
 // live" is the one thing a server-less CAD app owes a first-time visitor, and
@@ -28,6 +32,9 @@ function disclaimerMessage(durability: string | null) {
         As this is an early development version, use is permitted for private
         and commercial purposes. Redistribution of the source code is not
         allowed.
+      </p>
+      <p>
+        Sourcecode: <a href={GITHUB_URL} target="_blank" rel="noreferrer">{GITHUB_URL}</a>
       </p>
       <p>This app uses cookies.</p>
     </>
