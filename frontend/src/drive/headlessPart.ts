@@ -27,6 +27,10 @@ export interface HeadlessPartOptions {
   // When given, every session mutation is journaled into it (and `run` can
   // hand back a repro); otherwise the session runs without a sink.
   journal?: CommandJournal
+  // The solve file map for documents with import_step: file_id -> STEP bytes.
+  // Read-only for the session's lifetime, like the browser's file registry
+  // snapshot is for one solve.
+  files?: ReadonlyMap<string, Uint8Array>
 }
 
 export interface HeadlessPart {
@@ -48,6 +52,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     const payload = partSolvePayload(doc, docId)
     const response = await solveLocally(payload, {
       rollbackPosition: payload.rollback_position,
+      ...(opts.files ? { files: opts.files } : {}),
       ...(solveOpts?.bypassCache ? { bypassCache: true } : {}),
       ...(solveOpts?.validate ? { validate: true } : {}),
     })
