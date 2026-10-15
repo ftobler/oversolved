@@ -19,12 +19,17 @@ import { initializeTools } from '@/tools'
 import { preloadViewportLabelFont } from '@/components/Viewport/labelFont'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { useStoragePersistenceStore } from '@/stores/storagePersistenceStore'
+import { installGlobalErrorHandlers } from '@/recovery/globalErrors'
 
 const theme = createTheme({
   palette: { mode: 'dark', background: { default: '#111' } },
 })
 
 initializeTools()
+// Uncaught throws and unhandled rejections become local crash reports (stack,
+// build, doc snapshot, mutation tail); the worker clients report their own
+// traps the same way. Never removed: the app installs this for its lifetime.
+installGlobalErrorHandlers()
 // Read the storage grant, do not ask for it. Until it is granted the browser
 // may evict the whole library under disk pressure, which is what the
 // disclaimer's storage paragraph reports; asking can prompt, so that waits for

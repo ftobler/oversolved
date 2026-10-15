@@ -29,6 +29,7 @@
  * normally.
  */
 
+import { noteWorkerError } from '@/recovery/crashReports'
 import type {
   SolveAssemblyRequest,
   AssemblySolveOkResponse,
@@ -285,10 +286,13 @@ function dropWorker(err: Error): void {
   worker = null
 }
 
-function onError(): void {
+function onError(event: unknown): void {
   // A trap loses the worker's WASM state. Arm the respawn cooldown so a drag
   // burst over the same trapping doc does not spawn one worker per tick.
   workerCrashAt = Date.now()
+  // Like the part solver's trap, a worker error never reaches window.onerror,
+  // so the crash report is written here.
+  noteWorkerError('anchor solver worker', event)
   dropWorker(new Error('anchor solver worker crashed'))
 }
 
