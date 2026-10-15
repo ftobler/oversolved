@@ -42,10 +42,21 @@ export interface RecoveryJournalStore {
   clear(docId: string): Promise<void>
 }
 
+// A platform with no IndexedDB at all (a bare test environment) has nowhere to
+// journal: the calls read as no-ops rather than reject, so the save path does
+// not log a bogus failure for a document layer that already cannot work there.
+const hasIndexedDb = (): boolean => typeof indexedDB !== 'undefined'
+
 export const idbRecoveryJournal: RecoveryJournalStore = {
-  read: docId => idbGetFrom<RecoveryJournalRecord>(STORE_RECOVERY_JOURNAL, docId),
-  write: record => idbPutTo(STORE_RECOVERY_JOURNAL, record),
-  clear: docId => idbDeleteFrom(STORE_RECOVERY_JOURNAL, docId),
+  read: docId => hasIndexedDb()
+    ? idbGetFrom<RecoveryJournalRecord>(STORE_RECOVERY_JOURNAL, docId)
+    : Promise.resolve(undefined),
+  write: record => hasIndexedDb()
+    ? idbPutTo(STORE_RECOVERY_JOURNAL, record)
+    : Promise.resolve(),
+  clear: docId => hasIndexedDb()
+    ? idbDeleteFrom(STORE_RECOVERY_JOURNAL, docId)
+    : Promise.resolve(),
 }
 
 export function readRecoveryJournal(docId: string): Promise<RecoveryJournalRecord | undefined> {

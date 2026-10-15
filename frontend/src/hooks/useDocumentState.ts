@@ -6,6 +6,7 @@ import { docLoadErrorMessage, loadPartDocText, type DocLoadError } from '@/persi
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { useDocPersistence } from '@/hooks/useDocPersistence'
+import { takeRecoveryRestore } from '@/recovery/restore'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 
@@ -51,6 +52,26 @@ export function useDocumentState(
           setDoc(null)
           setDocName('')
           setLoading(false)
+          return
+        }
+        // The open-time offer was answered with Restore: this load adopts the
+        // recovery journal's snapshot instead of the store's bytes. It sits
+        // AFTER the loader on purpose: the stored bytes are validated first, so
+        // a document the checks refuse keeps its report and the offer never
+        // bypasses the load gate. Nothing was written, so the edits are unsaved
+        // by definition and the doc starts dirty; a save stores them and clears
+        // the journal.
+        const restored = takeRecoveryRestore(uuid)
+        if (restored) {
+          docRef.current = restored
+          setDoc(restored)
+          setLoadFailure(null)
+          setDocName(data.name)
+          useUnsavedChangesStore.getState().setDirty(true)
+          setLoading(false)
+          if (solveOnLoad && reSolveRef.current) {
+            reSolveRef.current(restored)
+          }
           return
         }
         const parsed = loaded.doc

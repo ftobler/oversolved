@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS, useDocumentState } from '@/hooks/useDocumentState'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import {
+  requestRecoveryRestore,
+  resetRecoveryRestore,
+  takeRecoveryRestore,
+} from '@/recovery/restore'
+import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 
 // Deferred store save: a manual save spends multiple awaits (screenshot, then
 // the network), so tests need to hold the save open while an edit lands.
@@ -246,6 +252,47 @@ describe('useDocumentState saveDoc vs concurrent edits', () => {
     // exactly at this point may dirty end false.
     expect(h.bodies).toHaveLength(2)
     expect(h.bodies[1]).toContain('V2')
+    expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+})
+
+// The open-time offer's accept path: the parked journal snapshot replaces the
+// store's bytes in memory, starts dirty (it is unsaved by definition) and is
+// solved like any other load. Nothing is written, so a reload still offers it.
+describe('useDocumentState recovery restore at load', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetRecoveryRestore()
+    useUnsavedChangesStore.getState().clearForNewDocument()
+  })
+
+  it('adopts the parked snapshot, marks it dirty and solves it', async () => {
+    h.loadMock.mockResolvedValue({ content: 'version: 1\nkind: part\nfeatures: []\n', name: 'Stored' })
+    const restored = makeDoc(makeSketch('restored'))
+    requestRecoveryRestore({ docId: 'R', doc: restored })
+    const reSolveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('R', reSolveRef, { solveOnLoad: true }))
+    await tick()
+
+    expect(result.current.doc).toEqual(restored)
+    expect(result.current.docRef.current).toEqual(restored)
+    expect(result.current.docName).toBe('Stored')
+    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
+    expect(reSolveRef.current).toHaveBeenCalledWith(restored)
+    // Single use: the handoff is consumed, so a remount reads stored bytes.
+    expect(takeRecoveryRestore('R')).toBeNull()
+  })
+
+  it('ignores a snapshot parked for another document', async () => {
+    h.loadMock.mockResolvedValue({ content: 'version: 1\nkind: part\nfeatures: []\n', name: 'Stored' })
+    requestRecoveryRestore({ docId: 'other', doc: makeDoc(makeSketch('other')) })
+    const reSolveRef = { current: null }
+    const { result } = renderHook(() => useDocumentState('R', reSolveRef, { solveOnLoad: false }))
+    await tick()
+
+    // The stored text had no features, so the load added the built-ins: proof
+    // the store's bytes were adopted, not the parked snapshot.
+    expect(result.current.doc?.features?.map(f => f.id)).toEqual(['Origin', 'Top', 'Front', 'Right'])
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 })

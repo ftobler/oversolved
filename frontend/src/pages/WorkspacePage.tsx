@@ -9,7 +9,11 @@ import { useEditorModeStore } from '@/stores/editorModeStore'
 import { useRecoveryStore } from '@/stores/recoveryStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import RecoveryDialog from '@/components/dialogs/RecoveryDialog'
+import RecoveryRestoreDialog from '@/components/dialogs/RecoveryRestoreDialog'
 import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
+import { findRecoveryOffer, type RecoveryOffer } from '@/recovery/offer'
+import { clearRecoveryJournal } from '@/recovery/journal'
+import { requestRecoveryRestore } from '@/recovery/restore'
 import { LoadingState } from '@/components/shared/LoadingState'
 import WorkspaceView from '@/pages/WorkspaceView'
 import Part from '@/pages/Part'
@@ -29,6 +33,12 @@ export default function WorkspacePage() {
   const { workspaceId, entryId } = useParams<{ workspaceId: string; entryId?: string }>()
   const [kind, setKind] = useState<'part' | 'assembly' | null>(null)
   const [kindError, setKindError] = useState<string | null>(null)
+  // The recovery journal's open-time offer, held while the user answers. The
+  // editor stays unmounted until then: an accepted snapshot must reach the
+  // loader before it reads the store's bytes.
+  const [recoveryOffer, setRecoveryOffer] = useState<RecoveryOffer | null>(null)
+  const [recoveryBusy, setRecoveryBusy] = useState(false)
+  const [recoveryError, setRecoveryError] = useState<string | null>(null)
   const notify = useNotifySafe()
   const recoveryStatus = useRecoveryStore(s => s.status)
   const recoveryWorkspace = useRecoveryStore(s => s.workspace)
@@ -44,6 +54,10 @@ export default function WorkspacePage() {
     setLastEntry(entryId)
     if (kind !== null) setKind(null)
     if (kindError !== null) setKindError(null)
+    // The offer describes the entry being left, so it cannot follow the user.
+    if (recoveryOffer !== null) setRecoveryOffer(null)
+    if (recoveryBusy) setRecoveryBusy(false)
+    if (recoveryError !== null) setRecoveryError(null)
   }
 
   useEffect(() => {
@@ -94,6 +108,22 @@ export default function WorkspacePage() {
             setKindError(refusalMessage(view, interpreted))
             return
           }
+          // U7's workspace prompt and the journal's entry prompt are different
+          // questions about different bytes; the workspace one has precedence
+          // because it is already gating this branch, and the offer computed
+          // here waits until that is resolved.
+          let offer: RecoveryOffer | null = null
+          if (interpreted.docKind === 'part') {
+            try {
+              offer = await findRecoveryOffer(workspaceId, entryId, data.content)
+            } catch (e) {
+              // A journal read failure must never block opening the document:
+              // recovery is an opportunity, not a gate.
+              console.error('Recovery journal check failed:', e)
+            }
+          }
+          if (cancelled) return
+          setRecoveryOffer(offer)
           setKind(interpreted.docKind)
         } catch (e) {
           if (cancelled) return
@@ -140,6 +170,46 @@ export default function WorkspacePage() {
   // the one the editor would otherwise mount and start editing.
   if (askingRecovery) {
     return chrome(<><LoadingState /><RecoveryDialog /></>)
+  }
+
+  // The journal's offer holds the editor back the same way: an accepted
+  // snapshot is parked for the loader, so it must reach it before the editor
+  // mounts and reads the stored bytes.
+  const handleRestoreRecovery = () => {
+    if (!entryId || !recoveryOffer) return
+    // In-memory adoption only. Nothing is written to the store, so a reload
+    // still offers the same snapshot and the edits stay unsaved until the user
+    // saves them explicitly.
+    requestRecoveryRestore({ docId: entryId, doc: recoveryOffer.record.doc })
+    setRecoveryOffer(null)
+  }
+
+  const handleDiscardRecovery = async () => {
+    if (!entryId || recoveryBusy) return
+    setRecoveryBusy(true)
+    try {
+      await clearRecoveryJournal(entryId)
+      setRecoveryOffer(null)
+      setRecoveryError(null)
+    } catch (e) {
+      // Nothing was deleted, so the question is still open: keep the prompt up
+      // with the reason on it and both choices live.
+      setRecoveryError(errorMessage(e, 'Could not discard the unsaved changes'))
+    } finally {
+      setRecoveryBusy(false)
+    }
+  }
+
+  if (recoveryOffer) {
+    return chrome(
+      <RecoveryRestoreDialog
+        offer={recoveryOffer}
+        busy={recoveryBusy}
+        error={recoveryError}
+        onRestore={handleRestoreRecovery}
+        onDiscard={() => { void handleDiscardRecovery() }}
+      />,
+    )
   }
 
   if (entryId) {
