@@ -20,10 +20,11 @@ import { drainList, DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
 import { canonicalizeCylinderFaces } from './canonicalSurfaces'
 import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex } from './primitives'
+import { volumeOf } from './volume'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
-// Re-exported from volume.ts for the callers that read a body's volume.
-export { volumeOf } from './volume'
+// Re-exported for the callers that read a body's volume.
+export { volumeOf }
 
 export type BooleanOp = 'cut' | 'fuse' | 'common'
 
@@ -477,6 +478,148 @@ export function composeOriginThroughClean(
   return out
 }
 
+/** The raw boolean + cylinder canonicalization, shared by the adopt and fallback paths. */
+function rawBooleanWithDiff(
+  oc: OccModule,
+  scope: DisposeScope,
+  target: OccShape,
+  tool: OccShape,
+  op: BooleanOp,
+): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
+  const { shape: raw, diff: rawDiff, faceOrigin: rawOrigin } = booleanWithHistory(oc, scope, target, tool, op)
+  scope.track(raw)
+  const canonical = canonicalizeCylinderFaces(oc, scope, raw)
+  const preClean = canonical.shape
+  if (canonical.changed) scope.track(preClean)
+  const preDiff = canonical.changed ? mapDiffThroughCanonical(rawDiff, canonical.rebase) : rawDiff
+  const preOrigin = canonical.changed ? mapOriginThroughCanonical(rawOrigin, canonical.rebase) : rawOrigin
+  return { shape: preClean, diff: preDiff, faceOrigin: preOrigin }
+}
+
+/**
+ * A closed body has a non-zero volume under volumeOf's OnlyClosed read; an open
+ * shell (an imported body, L5) integrates to 0. That read is what decides
+ * whether closedness may be demanded of a boolean result, so no extra
+ * BRepCheck is paid on the operands.
+ */
+function isClosedByVolume(volume: number): boolean {
+  return Math.abs(volume) > 1e-12
+}
+
+function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
+  return scope.track(new oc.BRepCheck_Analyzer(shape, true)).IsValid_2()
+}
+
+/**
+ * Adopt a UnifySameDomain result only when it validates and preserved the
+ * volume, the same guard canonicalSurfaces.ts runs before adopting its heal.
+ * The robustness fuzz found a fuse whose tool cap welded into a coincident
+ * target face where the clean pass silently returned a self-intersecting solid
+ * whose volume GREW (the fuse of a box body with a cylinder cap coplanar to
+ * its top face, after a cut and a blind hole); adopting it shipped a
+ * BRepCheck-invalid body under an ok status. The pre-clean result is a sound
+ * solid, so a rejected clean falls back exactly like a throwing one.
+ */
+function cleanShapeIsSound(oc: OccModule, scope: DisposeScope, before: OccShape, after: OccShape): boolean {
+  try {
+    const v0 = volumeOf(oc, scope, before)
+    const v1 = volumeOf(oc, scope, after)
+    // BRepCheck flags an open shell invalid for its very openness, and an open
+    // shell is a supported body (L5), so only a closed input's result has to
+    // validate; a shell is judged by the preserved volume alone.
+    if (isClosedByVolume(v0) && !shapeIsValid(oc, scope, after)) return false
+    return Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0))
+  } catch {
+    // A guard that cannot run must not adopt the shape it cannot check.
+    return false
+  }
+}
+
+/** A boolean the kernel completed with a result that cannot be shipped. */
+export class BooleanSoundnessError extends Error {}
+
+/**
+ * The last line of defence against a corrupt boolean: OCC 7.5 can report IsDone
+ * with a shape that validates yet is geometrically impossible. The robustness
+ * fuzz found two such families on exact surface tangencies. When a cylinder's
+ * lateral surface touches a face plane exactly, the fuse comes back as the
+ * target MINUS the tool (right magnitude, wrong sign: V=-768.25 where 1750 was
+ * the floor), and when a sphere touches a cylinder wall exactly while
+ * overlapping it, the first boolean over the pair drops one operand and returns
+ * it twice with one shell inverted (net volume 2.3e-13). Both ship as an ok
+ * feature today, so the result has to be bounded before adoption: absolute
+ * volumes, so an inverted solid is judged by its material rather than its
+ * orientation, and the op's own material law (a union cannot be smaller than
+ * either operand, a cut cannot grow, an intersection cannot exceed the smaller
+ * one). Returns the problem description, or null when the result is sound.
+ */
+function booleanResultProblem(
+  oc: OccModule,
+  scope: DisposeScope,
+  target: OccShape,
+  tool: OccShape,
+  op: BooleanOp,
+  result: OccShape,
+): string | null {
+  try {
+    const vr = Math.abs(volumeOf(oc, scope, result))
+    const vt = Math.abs(volumeOf(oc, scope, target))
+    const vu = Math.abs(volumeOf(oc, scope, tool))
+    if (!Number.isFinite(vr)) return `the result volume is not finite (${vr})`
+    // As in cleanShapeIsSound: a closed target's result has to validate, an
+    // open-shell target (L5) has no closedness contract to enforce.
+    if (isClosedByVolume(vt) && !shapeIsValid(oc, scope, result)) {
+      return 'the result is not a valid solid (BRepCheck_Analyzer)'
+    }
+    const tol = 1e-6 * Math.max(vt, vu, 1)
+    const bound = op === 'fuse' ? Math.max(vt, vu) : op === 'common' ? Math.min(vt, vu) : vt
+    const relation = op === 'fuse' ? 'below' : 'above'
+    if (op === 'fuse' ? vr < bound - tol : vr > bound + tol) {
+      return `volume ${vr} is ${relation} the ${op} bound ${bound}`
+    }
+    if (op === 'fuse' && vr > vt + vu + tol) {
+      return `volume ${vr} exceeds the operand sum ${vt + vu}`
+    }
+    return null
+  } catch (e) {
+    // The same rule as cleanShapeIsSound: a guard that cannot run must not let
+    // the shape it cannot check through.
+    return `the soundness check could not run: ${e instanceof Error ? e.message : String(e)}`
+  }
+}
+
+/** One full boolean pipeline: raw boolean, cylinder canonicalization, clean. */
+function composeBooleanAttempt(
+  oc: OccModule,
+  scope: DisposeScope,
+  target: OccShape,
+  tool: OccShape,
+  op: BooleanOp,
+  unifyFaces: boolean,
+): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
+  const pre = rawBooleanWithDiff(oc, scope, target, tool, op)
+  try {
+    const r = cleanWithHistory(oc, scope, pre.shape, unifyFaces)
+    if (cleanShapeIsSound(oc, scope, pre.shape, r.shape)) {
+      return {
+        shape: r.shape,
+        diff: composeDiffThroughClean(oc, scope, pre.diff, r.history, r.shape),
+        faceOrigin: composeOriginThroughClean(oc, scope, pre.faceOrigin, r.history, r.shape),
+      }
+    }
+  } catch {
+    // ShapeUpgrade_UnifySameDomain (the coplanar-face merge) can throw on a valid
+    // boolean result whose coincident faces it cannot fold. The reproducer is an
+    // extrude of a body face that has a hole, added back onto that same body: the
+    // shared coincident face plus the hole's inner wall defeat the merge. Fall
+    // through to the raw rebuild.
+  }
+  // The fallback cannot reuse `pre.shape`: the merge works in place, so a
+  // rejected or half-applied clean may have left it -- and the pre-clean result
+  // is only safely readable from the untouched operands. Rebuild it.
+  return rawBooleanWithDiff(oc, scope, target, tool, op)
+}
+
 /**
  * Boolean (cut|fuse|common) then clean, composing history through the clean step
  * (mirrors cadquery_ops `_boolean_with_diff`). Returns (cleaned shape, BrepDiff
@@ -503,29 +646,23 @@ export function booleanWithDiff(
   // decides by provenance and passes `unifyFaces: false` for imported targets;
   // the edge merge (always safe) still runs, at the cost of an extra seam face.
   const unifyFaces = opts.unifyFaces ?? true
-  const { shape: raw, diff: rawDiff, faceOrigin: rawOrigin } = booleanWithHistory(oc, scope, target, tool, op)
-  scope.track(raw)
-  const canonical = canonicalizeCylinderFaces(oc, scope, raw)
-  const preClean = canonical.shape
-  if (canonical.changed) scope.track(preClean)
-  const preDiff = canonical.changed ? mapDiffThroughCanonical(rawDiff, canonical.rebase) : rawDiff
-  const preOrigin = canonical.changed ? mapOriginThroughCanonical(rawOrigin, canonical.rebase) : rawOrigin
-  let cleaned: OccShape
-  let history: OccHistory
-  try {
-    const r = cleanWithHistory(oc, scope, preClean, unifyFaces)
-    cleaned = r.shape
-    history = r.history
-  } catch {
-    // ShapeUpgrade_UnifySameDomain (the coplanar-face merge) can throw on a valid
-    // boolean result whose coincident faces it cannot fold. The reproducer is an
-    // extrude of a body face that has a hole, added back onto that same body: the
-    // shared coincident face plus the hole's inner wall defeat the merge. The raw
-    // fuse output is a sound solid, so fall back to it un-merged (an extra seam
-    // edge where the parts meet) rather than failing the whole feature.
-    return { shape: preClean, diff: preDiff, faceOrigin: preOrigin }
-  }
-  const diff = composeDiffThroughClean(oc, scope, preDiff, history, cleaned)
-  const faceOrigin = composeOriginThroughClean(oc, scope, preOrigin, history, cleaned)
-  return { shape: cleaned, diff, faceOrigin }
+  const attempt = composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces)
+  const problem = booleanResultProblem(oc, scope, target, tool, op, attempt.shape)
+  if (problem === null) return attempt
+  // The first boolean over a pair whose surfaces touch in an exact tangency can
+  // take an OCC 7.5 branch that drops or inverts an operand. A bare Common over
+  // the same operands makes the kernel settle the shared geometry, and the
+  // rerun of the pipeline then comes out sound (the identity fuzz pins the
+  // sphere-touching-a-wall case this recovers). The probe is the same call the
+  // cut path already runs through shapesIntersect (M18), and it is only paid
+  // here, after a result already failed the check.
+  shapesIntersect(oc, target, tool)
+  const retry = composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces)
+  const retryProblem = booleanResultProblem(oc, scope, target, tool, op, retry.shape)
+  if (retryProblem === null) return retry
+  throw new BooleanSoundnessError(
+    `boolean ${op}: the kernel returned an unsound result (${retryProblem}). ` +
+    'The two shapes probably touch in an exact tangency the kernel cannot resolve; ' +
+    'nudge one of them off the coincident radius or plane and rebuild.',
+  )
 }

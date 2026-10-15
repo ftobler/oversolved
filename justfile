@@ -139,6 +139,21 @@ ratchet-matrix:
     mkdir -p ../tmp
     ACTION_MATRIX_FULL=1 npx vitest run src/testing/actionMatrix/actionMatrixReal.test.ts 2>&1 | tee ../tmp/action_matrix.log
 
+# The geometry robustness fuzz: random realistic feature chains and primitive
+# boolean pairs against the real kernel, checked after every step (validity,
+# volume, cut/join monotonicity), plus pick persistence under a small upstream
+# dimension change. Every replay runs under a SIGKILL watchdog, so a hung OCC
+# clean is reported with its seed and step instead of wedging the run (the
+# browser worker keeps the same 30 s kill for the same reason: see
+# frontend/src/testing/robustnessFuzz/chainTimeout.ts). The PR suite runs a
+# bounded 24-chain-seed range and its identity sweep derives a quarter of this
+# one (the default 200 is the plan's acceptance range; the nightly runs 1500
+# and `just robustness-fuzz 5000` is the plan's full scale).
+[working-directory: "frontend"]
+robustness-fuzz seeds="200":
+    mkdir -p ../tmp
+    ROBUSTNESS_FUZZ_SEEDS={{seeds}} npx vitest run src/testing/robustnessFuzz 2>&1 | tee ../tmp/robustness_fuzz.log
+
 # Test the Rust solver workspace (solver-core + sketch-solver + mate-solver)
 rust-test:
     mkdir -p tmp

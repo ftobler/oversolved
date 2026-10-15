@@ -3,7 +3,10 @@ import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { selectionToQuery, parseSelectionId, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
 
-export const warn = import.meta.env.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined
+// The optional chain is the repo-wide rule for import.meta.env (see
+// deployBase.test.ts): this module loads under plain Node through the fuzz
+// child and the document test fixtures, where import.meta.env is undefined.
+export const warn = import.meta.env?.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined
 
 export const round = (v: number) => Math.round(v * 1e6) / 1e6
 
