@@ -97,6 +97,7 @@ describe('createMcpServer', () => {
     expectError(await request(server, 7, 'tools/call', { name: 'run', arguments: { steps: [], typo: 1 } }), -32602)
     expectError(await request(server, 8, 'tools/call', { name: 'export', arguments: { doc: {}, format: 'iges', out: 'x' } }), -32602)
     expectError(await request(server, 9, 'tools/call', { name: 'measure', arguments: { doc: {}, files: [{ id: 'f1' }] } }), -32602)
+    expectError(await request(server, 16, 'tools/call', { name: 'commands', arguments: { typo: 1 } }), -32602)
   })
 
   it('reports unknown methods, parse errors and ops bugs without dying', async () => {

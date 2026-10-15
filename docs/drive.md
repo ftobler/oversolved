@@ -254,6 +254,8 @@ npm run drive -- export doc.yaml --format step|stl [--out out.step] [--body body
 npm run drive -- replay repro.json
 ```
 
+- Every command prints one JSON object on stdout; the kernel's own prints
+  (OCC's STEP transfer banner) go to stderr, so stdout parses whole.
 - `run` builds a document from mutation steps and/or command steps through one
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
   and the journal (`--repro`), and prints steps, document hash and solve state.
@@ -265,6 +267,8 @@ npm run drive -- replay repro.json
   `undoable` flag, its param fields (`spec.params.fields`, the same schema the
   registry parses a call against) and the live `enabled` verdict from a fresh
   seeded session. Reading the catalog runs no spec body and starts no solve.
+  The catalog is the part editor's table (`PART_COMMAND_SPECS`); the assembly
+  editor's commands are not on this surface in v1.
 - `measure` reports `bodyCount`, `volume`, `area`, `centroid` (volume-weighted)
   and `bbox` (the union of the bodies' edge-sampled frames), plus face, edge
   and vertex counts from the final checkpoint's bodies.
