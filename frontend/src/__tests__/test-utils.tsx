@@ -148,7 +148,15 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
       redoStack: [],
       // The command specs read undo/redo availability and the created ids from
       // the session; the mock answers with the empty history its stacks show.
-      session: { historyEntries: () => ({ undo: [], redo: [] }) },
+      // The recovery autosave attaches through subscribe (a no-op: a mocked
+      // page never emits session events) and reads getDoc/isDirty from the
+      // crash paths only.
+      session: {
+        historyEntries: () => ({ undo: [], redo: [] }),
+        subscribe: () => () => {},
+        getDoc: () => null,
+        isDirty: () => false,
+      },
       reSolve: vi.fn(),
       handleMutation: vi.fn(),
       handleUndo: vi.fn(),
