@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest } from '../solverWorker'
+import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest, relayOccLoadProgress } from '../solverWorker'
+import { reportOccCompiling, reportOccDownload, reportOccReady, resetOccLoadProgress } from '../../occ/loadProgress'
 import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from '../solverProtocol'
 import { SUPERSEDED_ERROR } from '../solverProtocol'
 import { solveLocally, exportLocally, exportAssemblyLocally } from '../../solveLocally'
@@ -575,5 +576,31 @@ describe('per-generation import file cache', () => {
     expect(fileCacheForTest().get('f1')).toEqual(FILES.f1)
     expect(submitSpy).toHaveBeenCalledTimes(1)
     submitSpy.mockRestore()
+  })
+})
+
+describe('relayOccLoadProgress', () => {
+  beforeEach(resetOccLoadProgress)
+
+  it('posts every load update as an id-less broadcast with no transferables', () => {
+    const post = vi.fn()
+    const unsubscribe = relayOccLoadProgress(post)
+
+    reportOccDownload(1, 2)
+    expect(post).toHaveBeenLastCalledWith(
+      { kind: 'occProgress', progress: { phase: 'downloading', loadedBytes: 1, totalBytes: 2 } },
+      [],
+    )
+    reportOccCompiling()
+    expect(post).toHaveBeenLastCalledWith(
+      { kind: 'occProgress', progress: { phase: 'compiling', loadedBytes: 1, totalBytes: 2 } },
+      [],
+    )
+    reportOccReady()
+    expect(post).toHaveBeenCalledTimes(3)
+
+    unsubscribe()
+    reportOccDownload(2, 2)
+    expect(post).toHaveBeenCalledTimes(3)
   })
 })

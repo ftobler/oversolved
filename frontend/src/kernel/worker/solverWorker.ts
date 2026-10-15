@@ -20,12 +20,14 @@ import { isDevBuild } from '../isDevBuild'
 import { extractErrorMessage } from '../errors'
 import { inWorker } from '../inWorker'
 import { loadOccWorker } from '../occ/loadOccWorker'
+import { subscribeOccLoadProgress } from '../occ/loadProgress'
 import type {
   SolveRequest, SolveResponse, SolvePayload,
   ExportRequest, ExportResponse, WorkerRequest,
   BundleRequest, BundleResponse,
   ExportAssemblyRequest,
   FileBytes,
+  OccProgressMessage,
 } from './solverProtocol'
 import { SUPERSEDED_ERROR } from './solverProtocol'
 import { toPartBundle } from '../partBundle'
@@ -382,7 +384,7 @@ function oneShot<T>(job: () => Promise<T>, respond: (res: T) => void): ActorJob 
 // ─── Worker bootstrap (skipped on the main thread / in tests) ───
 
 interface WorkerCtx {
-  postMessage(message: SolveResponse | ExportResponse | BundleResponse, transfer: Transferable[]): void
+  postMessage(message: SolveResponse | ExportResponse | BundleResponse | OccProgressMessage, transfer: Transferable[]): void
   onmessage: ((e: MessageEvent<WorkerRequest>) => void) | null
 }
 
@@ -444,12 +446,28 @@ export function handleWorkerMessage(
   }
 }
 
+/**
+ * Relay this thread's OCC load progress to the main thread. The load happens
+ * in the Worker, so the overlay learns about it by postMessage: a state
+ * broadcast, independent of the id-keyed request/reply traffic the actor
+ * serializes, and carrying no transferables. Exported so tests can drive the
+ * relay without a real Worker (the bootstrap below only runs in one).
+ */
+export function relayOccLoadProgress(
+  post: (message: OccProgressMessage, transfer: Transferable[]) => void,
+): () => void {
+  return subscribeOccLoadProgress((progress) => {
+    post({ kind: 'occProgress', progress }, [])
+  })
+}
+
 if (inWorker()) {
   // Install the DOM-free OCC loader: the main-thread loadOccWeb uses
   // document/window, which do not exist here.
   setOccLoader(loadOccWorker)
   const ctx = globalThis as unknown as WorkerCtx
   const actor = new WorkerActor()
+  relayOccLoadProgress((message, transfer) => { ctx.postMessage(message, transfer) })
   ctx.onmessage = (e) => {
     handleWorkerMessage(e.data, (res, transfer) => { ctx.postMessage(res, transfer) }, actor)
   }

@@ -79,6 +79,7 @@ const RULES: Rule[] = [
     exempt: [
       'kernel/occ/loadOccWeb.ts',
       'kernel/occ/loadOccWorker.ts',
+      'kernel/occ/wasmCompile.ts',
       'pages/hooks/useNotices.ts',
     ],
   },

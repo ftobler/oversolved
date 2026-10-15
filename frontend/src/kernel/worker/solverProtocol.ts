@@ -14,6 +14,7 @@ import type { RebuildValidation } from '../builder'
 import type { PartBundle } from '../partBundle'
 import type { Transform3D, MateAnchorDescriptor } from '../../types/cad'
 import type { MateSpec, AssemblySolveStatus, MeshPayload, AnchorPose } from '../solveAssembly'
+import type { OccLoadProgress } from '../occ/loadProgress'
 
 /**
  * Import file bytes by registry id. The main thread resolves ids to bytes; the
@@ -141,6 +142,19 @@ export interface SolveOkResponse {
 }
 
 export type SolveResponse = SolveOkResponse | WorkerErrResponse
+
+/**
+ * An OCC load progress update from the Worker. Carries no request id: it is
+ * not a reply, it is a state broadcast, and the main thread applies it to the
+ * same [[OccLoadProgress]] store the loaders write.
+ */
+export interface OccProgressMessage {
+  kind: 'occProgress'
+  progress: OccLoadProgress
+}
+
+/** Every message the solver Worker sends to the main thread. */
+export type SolverWorkerMessage = SolveResponse | ExportResponse | BundleResponse | OccProgressMessage
 
 // ─── assembly protocol ───
 // Messages between the main thread and the Rust-only anchor solver worker.

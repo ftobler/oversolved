@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useSolverStore } from '@/stores/solverStore'
 import { Spinner } from '@/components/shared/Spinner'
+import { getOccLoadProgress, occLoadPercent, subscribeOccLoadProgress } from '@/kernel/occ/loadProgress'
 import '@/components/dialogs/LoadingOverlay.css'
 
 interface LoadingOverlayProps {
@@ -13,6 +14,7 @@ export default function LoadingOverlay({ isDocumentLoading = false }: LoadingOve
   const isSolving = useSolverStore(s => s.isSolving)
   const onCancelSolve = useSolverStore(s => s.onCancelSolve)
   const isVisible = isDocumentLoading || isSolving
+  const occLoad = useSyncExternalStore(subscribeOccLoadProgress, getOccLoadProgress)
   const [showCancel, setShowCancel] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -30,6 +32,17 @@ export default function LoadingOverlay({ isDocumentLoading = false }: LoadingOve
     onCancelSolve?.()
   }
 
+  // The kernel load is the long pole of the first solve; a plain spinner says
+  // nothing while ~10 MB compressed crosses the wire.
+  const kernelStatus =
+    occLoad.phase === 'downloading'
+      ? occLoadPercent(occLoad) === null
+        ? 'Loading geometry kernel'
+        : `Loading geometry kernel ${occLoadPercent(occLoad)}%`
+      : occLoad.phase === 'compiling'
+        ? 'Compiling geometry kernel'
+        : null
+
   return (
     <div className={`loading-overlay${isVisible ? ' visible' : ''}`}>
       <div className="loading-overlay-content">
@@ -38,6 +51,9 @@ export default function LoadingOverlay({ isDocumentLoading = false }: LoadingOve
             <Spinner className="md3-spinner-svg" circleClassName="md3-spinner-path" />
           </div>
         </div>
+        {isVisible && kernelStatus !== null && (
+          <p className="loading-message">{kernelStatus}</p>
+        )}
         {showCancel && (
           <button className="loading-cancel-btn" onClick={handleCancel} type="button">
             Cancel

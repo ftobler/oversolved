@@ -2,9 +2,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, act } from '@testing-library/react'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import { useSolverStore } from '@/stores/solverStore'
+import {
+  beginOccLoad,
+  reportOccCompiling,
+  reportOccDownload,
+  resetOccLoadProgress,
+} from '@/kernel/occ/loadProgress'
 
 function resetStore() {
   useSolverStore.setState({ isSolving: false, onCancelSolve: null })
+  resetOccLoadProgress()
 }
 
 describe('LoadingOverlay', () => {
@@ -50,6 +57,63 @@ describe('LoadingOverlay', () => {
     const spinner = container.querySelector('.md3-spinner-container')!
     const content = container.querySelector('.loading-overlay-content')!
     expect(spinner.parentElement).toBe(content)
+  })
+
+  describe('kernel load progress', () => {
+    it('shows a percentage while the wasm downloads', () => {
+      useSolverStore.getState().setIsSolving(true)
+      beginOccLoad()
+      reportOccDownload(30, 120)
+      const { container } = render(<LoadingOverlay />)
+      expect(container.querySelector('.loading-message')!.textContent)
+        .toBe('Loading geometry kernel 25%')
+    })
+
+    it('shows an indeterminate message when the server sent no Content-Length', () => {
+      useSolverStore.getState().setIsSolving(true)
+      beginOccLoad()
+      reportOccDownload(1024, 0)
+      const { container } = render(<LoadingOverlay />)
+      expect(container.querySelector('.loading-message')!.textContent)
+        .toBe('Loading geometry kernel')
+    })
+
+    it('switches to the compiling message once the bytes are in', () => {
+      useSolverStore.getState().setIsSolving(true)
+      beginOccLoad()
+      reportOccDownload(120, 120)
+      reportOccCompiling()
+      const { container } = render(<LoadingOverlay />)
+      expect(container.querySelector('.loading-message')!.textContent)
+        .toBe('Compiling geometry kernel')
+    })
+
+    it('follows the store live', () => {
+      useSolverStore.getState().setIsSolving(true)
+      beginOccLoad()
+      reportOccDownload(10, 100)
+      const { container } = render(<LoadingOverlay />)
+      expect(container.querySelector('.loading-message')!.textContent)
+        .toBe('Loading geometry kernel 10%')
+
+      act(() => { reportOccDownload(50, 100) })
+      expect(container.querySelector('.loading-message')!.textContent)
+        .toBe('Loading geometry kernel 50%')
+    })
+
+    it('hides the message while idle and when not visible', () => {
+      const idle = render(<LoadingOverlay isDocumentLoading />)
+      expect(idle.container.querySelector('.loading-message')).toBeNull()
+      idle.unmount()
+
+      // Progress arriving outside a solve must not paint anything.
+      useSolverStore.getState().setIsSolving(false)
+      beginOccLoad()
+      reportOccDownload(1, 2)
+      const hidden = render(<LoadingOverlay />)
+      expect(hidden.container.querySelector('.loading-message')).toBeNull()
+      expect(hidden.container.querySelector('.loading-overlay')!.classList.contains('visible')).toBe(false)
+    })
   })
 
   describe('cancel button', () => {

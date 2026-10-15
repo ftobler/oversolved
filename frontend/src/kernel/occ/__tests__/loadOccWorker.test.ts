@@ -3,11 +3,39 @@
 // export stripping), and calls its default factory. Any failure -- a bad HTTP
 // response, a module without the factory, a factory throw -- resolves to null
 // so the caller reports "local solver unavailable" rather than crashing.
-import { describe, it, expect, vi, afterEach } from 'vitest'
+//
+// wasmCompile is mocked: its streaming/progress behaviour is covered by
+// wasmCompile.test.ts; here the focus is the loader's wiring and the progress
+// store the Worker bootstrap relays to the main thread.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+interface FakeWasmReport {
+  download(loadedBytes: number, totalBytes: number): void
+  compiling(): void
+}
+
+const wasm = vi.hoisted(() => ({
+  compiles: [] as Array<{ url: string; report: FakeWasmReport }>,
+  onCompile: null as null | ((report: FakeWasmReport) => void),
+}))
+
+vi.mock('../wasmCompile', () => ({
+  compileOccWasm: async (url: string, report: FakeWasmReport) => {
+    wasm.compiles.push({ url, report })
+    wasm.onCompile?.(report)
+    return { fake: 'module' }
+  },
+  makeInstantiateWasm: () => 'instantiate-hook',
+}))
 
 async function freshLoadOccWorker() {
   vi.resetModules()
-  return (await import('../loadOccWorker')).loadOccWorker
+  const [progress, loader] = await Promise.all([
+    import('../loadProgress'),
+    import('../loadOccWorker'),
+  ])
+  progress.resetOccLoadProgress()
+  return { loadOccWorker: loader.loadOccWorker, progress }
 }
 
 // jsdom does not implement object URLs; point createObjectURL at a data URL so
@@ -20,6 +48,11 @@ function stubObjectUrl(dataUrl: string) {
 }
 
 describe('loadOccWorker', () => {
+  beforeEach(() => {
+    wasm.compiles.length = 0
+    wasm.onCompile = null
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -29,7 +62,7 @@ describe('loadOccWorker', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500 })))
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    const loadOccWorker = await freshLoadOccWorker()
+    const { loadOccWorker } = await freshLoadOccWorker()
     expect(await loadOccWorker('/occ/')).toBeNull()
     // Pin the HTTP message so the !resp.ok guard stays load-bearing; otherwise
     // the missing text() would throw and log a different error just the same.
@@ -41,7 +74,7 @@ describe('loadOccWorker', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => js })))
     stubObjectUrl(`data:text/javascript,${encodeURIComponent(js)}`)
 
-    const loadOccWorker = await freshLoadOccWorker()
+    const { loadOccWorker } = await freshLoadOccWorker()
     expect(await loadOccWorker()).toBeNull()
   })
 
@@ -50,8 +83,43 @@ describe('loadOccWorker', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => js })))
     stubObjectUrl(`data:text/javascript,${encodeURIComponent(js)}`)
 
-    const loadOccWorker = await freshLoadOccWorker()
+    const { loadOccWorker } = await freshLoadOccWorker()
     expect(await loadOccWorker('/occ/')).toEqual({ occt: 'ready' })
+  })
+
+  it('compiles the wasm under the base and reports progress into the worker store', async () => {
+    const js = 'export default async () => ({ occt: "ready" });'
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => js })))
+    stubObjectUrl(`data:text/javascript,${encodeURIComponent(js)}`)
+    wasm.onCompile = (report) => {
+      report.download(3, 6)
+      report.compiling()
+    }
+
+    const { loadOccWorker, progress } = await freshLoadOccWorker()
+    const seen: string[] = []
+    const unsubscribe = progress.subscribeOccLoadProgress((p) => seen.push(p.phase))
+
+    expect(await loadOccWorker('/base/')).toEqual({ occt: 'ready' })
+    unsubscribe()
+
+    expect(wasm.compiles).toHaveLength(1)
+    expect(wasm.compiles[0].url).toBe('/base/opencascade.wasm.wasm')
+    expect(seen[0]).toBe('downloading')
+    expect(seen).toContain('compiling')
+    expect(seen.at(-1)).toBe('ready')
+    expect(progress.getOccLoadProgress()).toEqual({ phase: 'ready', loadedBytes: 3, totalBytes: 6 })
+  })
+
+  it('reports the failed phase when the imported module has no factory', async () => {
+    const js = 'export const notTheFactory = 1;'
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => js })))
+    stubObjectUrl(`data:text/javascript,${encodeURIComponent(js)}`)
+
+    const { loadOccWorker, progress } = await freshLoadOccWorker()
+    expect(await loadOccWorker()).toBeNull()
+    expect(progress.getOccLoadProgress().phase).toBe('failed')
+    expect(wasm.compiles).toHaveLength(0)
   })
 
   it('retries after a failed load instead of pinning the null', async () => {
@@ -63,7 +131,7 @@ describe('loadOccWorker', () => {
     stubObjectUrl(`data:text/javascript,${encodeURIComponent(js)}`)
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    const loadOccWorker = await freshLoadOccWorker()
+    const { loadOccWorker } = await freshLoadOccWorker()
     expect(await loadOccWorker('/occ/')).toBeNull()
     // The failed (null) load was evicted, so the retry runs the loader again and
     // installs the now-available module instead of returning the pinned null.

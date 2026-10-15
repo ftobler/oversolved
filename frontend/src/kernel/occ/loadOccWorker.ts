@@ -7,19 +7,30 @@
  * `import()` of its text gives us the factory as `.default` with no DOM and no
  * export-stripping.
  *
- * The factory's `locateFile` resolves the `.wasm` to an absolute origin path;
- * the emscripten runtime `fetch`es it (available in Workers). Same heavy,
- * opt-in, gitignored artifact served under `/occ/` as the main-thread path.
+ * The wasm is compiled before the factory runs, exactly as in [[loadOccWeb]]:
+ * [[compileOccWasm]] streams it with progress, and the compiled module goes to
+ * the factory's `instantiateWasm` hook. Progress lands in this thread's
+ * [[loadProgress]] store, which the Worker bootstrap relays to the main thread.
  */
 
 import type { OccModule } from './occTypes'
 import { memoizedLoad } from './memoizedLoad'
+import { compileOccWasm, makeInstantiateWasm } from './wasmCompile'
+import {
+  beginOccLoad,
+  reportOccCompiling,
+  reportOccDownload,
+  reportOccFailed,
+  reportOccReady,
+} from './loadProgress'
 
 // Under the deploy base, e.g. /oversolved/ on Pages. Plain Node (the
 // solve-timeout runner) has no import.meta.env, hence the optional chain.
 const DEFAULT_BASE = `${import.meta.env?.BASE_URL ?? '/'}occ/`
 
 const occWorker = memoizedLoad(async (base: string): Promise<OccModule | null> => {
+  const wasmUrl = `${base}opencascade.wasm.wasm`
+  beginOccLoad()
   try {
     const resp = await fetch(`${base}opencascade.wasm.js`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${base}opencascade.wasm.js`)
@@ -38,14 +49,25 @@ const occWorker = memoizedLoad(async (base: string): Promise<OccModule | null> =
     } finally {
       URL.revokeObjectURL(blobUrl)
     }
-    if (!factory) return null
+    if (!factory) {
+      reportOccFailed()
+      return null
+    }
 
-    return await factory({
-      locateFile: (p: string) => (p.endsWith('.wasm') ? `${base}opencascade.wasm.wasm` : p),
+    const module = await compileOccWasm(wasmUrl, {
+      download: reportOccDownload,
+      compiling: reportOccCompiling,
     })
+    const occ = await factory({
+      locateFile: (p: string) => (p.endsWith('.wasm') ? wasmUrl : p),
+      instantiateWasm: makeInstantiateWasm(module),
+    })
+    reportOccReady()
+    return occ
   } catch (e) {
     // Non-fatal: the caller falls back to "local solver unavailable".
     console.error('[loadOccWorker] error:', e)
+    reportOccFailed()
     return null
   }
 })
