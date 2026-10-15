@@ -1,0 +1,141 @@
+// @vitest-environment node
+//
+// The MCP server protocol: initialize, tools/list, tools/call and the framing
+// around them (parse errors, notifications, unknown methods), driven through
+// fake ops so no kernel is needed. The real tools are pinned by the MCP e2e
+// suite in cliSmoke.test.ts.
+
+import { describe, it, expect } from 'vitest'
+import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
+
+type FakeOps = {
+  calls: Array<{ tool: string; args: unknown }>
+  ops: McpCadOps
+}
+
+function fakeOps(answer: (tool: string, args: unknown) => McpToolPayload = () => ({ ok: true })): FakeOps {
+  const calls: Array<{ tool: string; args: unknown }> = []
+  const record = (tool: string) => async (args: unknown): Promise<McpToolPayload> => {
+    calls.push({ tool, args })
+    return answer(tool, args)
+  }
+  return {
+    calls,
+    ops: {
+      commands: async () => { calls.push({ tool: 'commands', args: undefined }); return answer('commands', undefined) },
+      run: record('run') as McpCadOps['run'],
+      measure: record('measure') as McpCadOps['measure'],
+      export: record('export') as McpCadOps['export'],
+    },
+  }
+}
+
+function request(server: ReturnType<typeof createMcpServer>, id: number, method: string, params?: unknown) {
+  return server.handle({ jsonrpc: '2.0', id, method, ...(params !== undefined && { params }) })
+}
+
+function expectError(response: Awaited<ReturnType<ReturnType<typeof createMcpServer>['handle']>>, code: number) {
+  expect(response).toMatchObject({ jsonrpc: '2.0', error: { code } })
+}
+
+describe('createMcpServer', () => {
+  it('answers initialize with the negotiated version, capabilities and server info', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const response = await request(server, 1, 'initialize', {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'test', version: '0' },
+    })
+    expect(response).toMatchObject({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        protocolVersion: '2025-03-26',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'oversolved-mcp' },
+      },
+    })
+  })
+
+  it('falls back to the oldest known version for an unknown one', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const response = await request(server, 1, 'initialize', { protocolVersion: '1999-01-01' })
+    expect((response as { result: { protocolVersion: string } }).result.protocolVersion).toBe('2024-11-05')
+  })
+
+  it('lists the tools with their schemas, and nothing else', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const response = await request(server, 2, 'tools/list', {})
+    const tools = (response as { result: { tools: typeof MCP_TOOLS } }).result.tools
+    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run'])
+    for (const tool of tools) expect(tool.inputSchema).toMatchObject({ type: 'object' })
+  })
+
+  it('calls a tool and returns its payload as text content', async () => {
+    const { ops, calls } = fakeOps(() => ({ ok: true, value: 7 }))
+    const server = createMcpServer(ops)
+    const response = await request(server, 3, 'tools/call', { name: 'measure', arguments: { doc: { features: [] } } })
+    expect(response).toMatchObject({ jsonrpc: '2.0', id: 3 })
+    const result = (response as { result: { content: Array<{ type: string; text: string }>; isError?: boolean } }).result
+    expect(result.isError).toBeUndefined()
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ ok: true, value: 7 })
+    expect(calls).toEqual([{ tool: 'measure', args: { doc: { features: [] }, files: [] } }])
+  })
+
+  it('marks a tool payload with ok false as an error result', async () => {
+    const server = createMcpServer(fakeOps(() => ({ ok: false, error: 'no solid' })).ops)
+    const response = await request(server, 4, 'tools/call', { name: 'export', arguments: { doc: {}, format: 'step', out: 'x.step' } })
+    const result = (response as { result: { isError?: boolean; content: Array<{ text: string }> } }).result
+    expect(result.isError).toBe(true)
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ ok: false, error: 'no solid' })
+  })
+
+  it('rejects unknown tools and malformed arguments as invalid params', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    expectError(await request(server, 5, 'tools/call', { name: 'nope', arguments: {} }), -32602)
+    expectError(await request(server, 6, 'tools/call', { name: 'run', arguments: {} }), -32602)
+    expectError(await request(server, 7, 'tools/call', { name: 'run', arguments: { steps: [], typo: 1 } }), -32602)
+    expectError(await request(server, 8, 'tools/call', { name: 'export', arguments: { doc: {}, format: 'iges', out: 'x' } }), -32602)
+    expectError(await request(server, 9, 'tools/call', { name: 'measure', arguments: { doc: {}, files: [{ id: 'f1' }] } }), -32602)
+  })
+
+  it('reports unknown methods, parse errors and ops bugs without dying', async () => {
+    const { ops } = fakeOps()
+    const server = createMcpServer({
+      ...ops,
+      measure: async () => { throw new Error('kernel exploded') },
+    })
+    expectError(await request(server, 10, 'resources/list'), -32601)
+    const parseError = await server.handleLine('not json')
+    expect(JSON.parse(parseError!)).toMatchObject({ id: null, error: { code: -32700 } })
+    expectError(await request(server, 11, 'tools/call', { name: 'measure', arguments: { doc: {} } }), -32603)
+    // Still serving after the bug.
+    const ok = await request(server, 12, 'tools/call', { name: 'run', arguments: { steps: [] } })
+    expect(ok).toMatchObject({ id: 12 })
+  })
+
+  it('answers nothing to notifications and to messages that are not requests', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    expect(await server.handle({ jsonrpc: '2.0', method: 'notifications/initialized' })).toBeNull()
+    expect(await server.handle({ jsonrpc: '2.0', method: 'tools/list' })).toBeNull()
+    expect(await server.handle({ jsonrpc: '2.0', id: 1, result: {} })).toBeNull()
+    expect(await server.handleLine(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }))).toBeNull()
+  })
+
+  it('answers ping and rejects a method-less request that carries an id', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    expect(await request(server, 13, 'ping')).toMatchObject({ id: 13, result: {} })
+    expectError(await server.handle({ jsonrpc: '2.0', id: 14 }), -32600)
+  })
+
+  it('validates file entries before they reach the ops', async () => {
+    const { ops, calls } = fakeOps()
+    const server = createMcpServer(ops)
+    const response = await request(server, 15, 'tools/call', {
+      name: 'measure',
+      arguments: { doc: {}, files: [{ id: 'f1', path: 'box.step' }] },
+    })
+    expect(response).toMatchObject({ id: 15 })
+    expect(calls[0].args).toMatchObject({ files: [{ id: 'f1', path: 'box.step' }] })
+  })
+})
