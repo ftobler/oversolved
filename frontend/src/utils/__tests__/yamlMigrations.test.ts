@@ -103,6 +103,27 @@ describe('migrateLegacyBodyPicks', () => {
     expect(sub.mirror.body).toBe('@body_ex1')
   })
 
+  it('skips a row that names the kind without carrying its def', () => {
+    // The document loader accepts a payload-less row, and the pre-union pass
+    // skipped it; throwing here would abandon the heal for every later row
+    // (docSchema catches the step's throw, so the rest of the document would
+    // silently keep its singular body picks).
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'x1', kind: 'delete_body' },
+        { id: 't1', kind: 'transform', transform: { body: '@body_ex1', operation: 'new' } },
+        { id: 'db1', kind: 'delete_body', delete_body: { body: '@body_ex2' } },
+      ],
+    } as unknown as PartDoc
+    expect(migrateLegacyBodyPicks(doc)).toBe(2)
+    const t = doc.features![1] as unknown as { transform: { bodies: string[] } }
+    const d = doc.features![2] as unknown as { delete_body: { bodies: string[] } }
+    expect(t.transform.bodies).toEqual(['@body_ex1'])
+    expect(d.delete_body.bodies).toEqual(['@body_ex2'])
+  })
+
   it('returns the count of features rewritten, not the number of keys touched', () => {
     const doc: PartDoc = {
       version: 1,

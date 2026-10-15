@@ -43,9 +43,14 @@ export function migrateLegacyBodyPicks(doc: PartDoc): number {
   for (const feature of doc.features ?? []) {
     if (feature.kind !== 'transform' && feature.kind !== 'delete_body') continue
     // The pre-migration shape is a lie about the typed def (that is the whole
-    // point of this pass), so the fields are read through a widened view.
-    const sub: { bodies?: unknown; body?: string } =
+    // point of this pass), so the fields are read through a widened view. A raw
+    // record can also name the kind without carrying the def at all (the loader
+    // validates a payload when present, it does not require one); that row is
+    // skipped like the pre-union pass did, so one malformed feature cannot
+    // abort the heal for every row after it.
+    const sub: { bodies?: unknown; body?: string } | undefined =
       feature.kind === 'transform' ? feature.transform : feature.delete_body
+    if (!sub) continue
     if (!Array.isArray(sub.bodies) && typeof sub.body === 'string') {
       sub.bodies = sub.body ? [sub.body] : []
       rewritten += 1

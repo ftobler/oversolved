@@ -50,9 +50,11 @@ type DispatchedKind = Exclude<FeatureKind, 'origin' | 'import_step'>
 type FeatureOf<K extends FeatureKind> = Extract<PartFeature, { kind: K }>
 
 /**
- * The dispatch signature with the feature parameter pinned to its variant, so a
- * solver registered under the wrong kind fails to compile instead of silently
- * reading absent fields.
+ * The dispatch signature with the feature parameter pinned to its variant, so
+ * the table must carry one entry per kind and every call through it is typed to
+ * that kind's variant. A solver swapped in for another kind evades the check
+ * while the leaf solvers still accept a raw record; that typing is the
+ * ratchet's work, not this table's.
  */
 type LeafSolver<K extends DispatchedKind> = (
   oc: OccModule,

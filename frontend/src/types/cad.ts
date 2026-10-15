@@ -458,14 +458,6 @@ export type PartFeature =
 
 export type FeatureKind = PartFeature['kind']
 
-/** Narrow a feature to the variant with the given literal kind. */
-export function isFeatureKind<K extends FeatureKind>(
-  feature: PartFeature,
-  kind: K,
-): feature is Extract<PartFeature, { kind: K }> {
-  return feature.kind === kind
-}
-
 export type Feature = PartFeature
 
 export interface PartStyleEntry {
