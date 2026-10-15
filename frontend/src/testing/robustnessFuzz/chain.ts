@@ -510,7 +510,6 @@ function resolveRecordedFace(oc: OccModule, scope: DisposeScope, shape: OccShape
 }
 
 interface AnyFace {
-  index: number
   centroid: Vec3
   normal: Vec3
   query: string
@@ -521,7 +520,6 @@ interface AnyFace {
 function facesOf(oc: OccModule, scope: DisposeScope, shape: OccShape, body: Body): AnyFace[] {
   const meta = readShapeFaceMetadata(oc, scope, shape, bodyMetaOpts(body))
   return meta.face_data.map((datum, index) => ({
-    index,
     centroid: datum.centroid as Vec3,
     normal: datum.normal as Vec3,
     query: meta.face_queries[index],

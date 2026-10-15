@@ -98,7 +98,9 @@ describe.skipIf(!oc)('the seeded geometry fuzz (real kernel)', () => {
       const recipe = generateRecipe(seed)
       const guarded = await runChainWithTimeout(recipe, { timeoutMs: REPLAY_TIMEOUT_MS })
       if (guarded.status === 'hang') {
-        const known = KNOWN_HANGS.some((h) => h.seed === seed)
+        // The pin names the step too: a hang that MOVES to another step is a
+        // changed finding and needs its own triage, not the old note.
+        const known = KNOWN_HANGS.some((h) => h.seed === seed && h.step === guarded.hang.step)
         const text = `seed ${seed}: HANG at step ${guarded.hang.step} (${guarded.hang.kind})`
         if (known) hangs.push(text)
         else problems.push(`${text}; not in KNOWN_HANGS (add it with the triage note if accepted)`)
