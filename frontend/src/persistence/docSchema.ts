@@ -12,6 +12,7 @@
 
 import { parse as parseYaml } from 'yaml'
 import type { AssemblyDoc, PartDoc } from '@/types/cad'
+import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
 import { dropDeadAxisConstraints, migrateLegacyBodyPicks } from '@/utils/yamlMigrations'
@@ -287,6 +288,56 @@ function checkRefOrRefList(value: unknown, field: string): void {
   else checkRef(value, field)
 }
 
+// A constraint operand names the locus or vertex a constraint points at. The
+// app writes the wire spelling (`$entityId[vertexKey]`, `@builtin_origin`)
+// from parseTarget, and the readers accept the resolved dict forms too:
+// types/vertexRef's `{entity, point?}` and the solver's
+// `{external_xy: [x, y]}` projected-origin form. A hand-authored or foreign
+// document may carry either, so both are accepted here. Anything else is
+// refused by field rather than dropped silently when the sketch lowers.
+function checkReferenceOperand(value: unknown, field: string): void {
+  if (typeof value === 'string') {
+    if (value === '') fail(field, 'must not be an empty reference string')
+    return
+  }
+  const operand = checkRecord(value, field)
+  if (operand.external_xy !== undefined) {
+    const xy = checkList(operand.external_xy, `${field}.external_xy`, 2)
+    if (xy.length !== 2) fail(`${field}.external_xy`, `must have 2 components, got ${xy.length}`)
+    eachEntry(xy, `${field}.external_xy`, checkFiniteNumber)
+    return
+  }
+  checkId(operand.entity, `${field}.entity`)
+  // The selector vocabulary is vertexKeys' VERTEX_POINT_KEYS, which is what
+  // resolveVertexRef matches a dict point against; an unknown name makes the
+  // constraint unresolvable, and the lowerer would drop it without a word.
+  if (operand.point !== undefined && operand.point !== null) {
+    checkEnum(operand.point, `${field}.point`, VERTEX_POINT_KEYS)
+  }
+}
+
+// The n-ary `refs` on a sugar constraint. The `ngon` sugar writes bare member
+// operands (parseTarget strings) into PartConstraint.refs, and the lowering
+// reads them as operands; the lowered solver wire carries `{role, ref}`
+// records under the same key (lowerSketch builds them, codec.ts encodes
+// them), and a foreign writer may persist that form, so both are accepted.
+function checkReferenceOperandList(value: unknown, field: string): void {
+  const list = checkList(value, field, MAX_FEATURE_LIST)
+  for (let i = 0; i < list.length; i++) {
+    const entryField = `${field}[${i}]`
+    const entry = list[i]
+    if (isRecord(entry) && (entry.role !== undefined || entry.ref !== undefined)) {
+      if (typeof entry.role !== 'string' && typeof entry.role !== 'number') {
+        fail(`${entryField}.role`, `must be a role name or code, got ${kindOf(entry.role)}`)
+      }
+      if (entry.ref === undefined) fail(`${entryField}.ref`, 'is required')
+      checkReferenceOperand(entry.ref, `${entryField}.ref`)
+      continue
+    }
+    checkReferenceOperand(entry, entryField)
+  }
+}
+
 // A count that expands in the builder: a positive integer within the cap, or an
 // expression string. An expression is evaluated here with no variable context
 // as a best-effort guard; a string whose value cannot be known yet (it names a
@@ -339,6 +390,13 @@ function checkEntity(value: unknown, field: string): void {
   checkOptional(entity, 'source', field, checkString)
 }
 
+// The keys a constraint carries an operand under: the eight lowerSketch's
+// REF_KEYS resolve, plus `circle`, the `ngon` sugar's construction circle
+// (PartConstraint.circle, read by the ngon lowering and the renderer).
+const CONSTRAINT_OPERAND_KEYS = [
+  'target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b', 'circle',
+] as const
+
 function checkConstraint(value: unknown, field: string): void {
   const constraint = checkRecord(value, field)
   checkId(constraint.id, `${field}.id`)
@@ -346,10 +404,16 @@ function checkConstraint(value: unknown, field: string): void {
   for (const key of ['value', 'x', 'y', 'sign']) {
     checkOptional(constraint, key, field, checkFiniteNumber)
   }
-  for (const key of ['target', 'a', 'b', 'line', 'arc', 'point', 'point_a', 'point_b', 'circle', 'host', 'axis']) {
-    checkOptional(constraint, key, field, checkRef)
+  for (const key of CONSTRAINT_OPERAND_KEYS) {
+    checkOptional(constraint, key, field, checkReferenceOperand)
   }
-  checkOptional(constraint, 'refs', field, checkRefList)
+  // `host` names another constraint by id (PartConstraint.host), not an entity
+  // ref: the dock lowering looks it up among the feature's constraints.
+  checkOptional(constraint, 'host', field, checkId)
+  // An axis selector name, not a ref: lowerSketch maps it through its own
+  // AxisCode table and refuses an unknown one there by name.
+  checkOptional(constraint, 'axis', field, checkString)
+  checkOptional(constraint, 'refs', field, checkReferenceOperandList)
   checkOptional(constraint, 'pos', field, (v, f) => {
     const list = checkList(v, f, 2)
     if (list.length !== 2) fail(f, `must have 2 components, got ${list.length}`)
