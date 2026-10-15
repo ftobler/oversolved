@@ -1,5 +1,5 @@
 {
-  "method": "V = 1200 - 4/3 pi r^3 = 1200 - 36 pi (the cavity face integrates with opposite orientation); A = box + 4 pi r^2 (the cavity wall is surface)",
+  "method": "V = 1200 - 4/3 pi r^3 = 1200 - 36 pi (the cavity face integrates with opposite orientation); A = box + 4 pi r^2 (the cavity wall is surface); 7 faces (6 + cavity); the cavity face adds its seam and a degenerate edge at each pole: 15 edges (12 + 3)",
   "bodies": 1,
   "volume": 1086.9026644707674,
   "area": 793.0973355292325,

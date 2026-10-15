@@ -9,8 +9,8 @@
  * builds and measures the cases is `src/oracle/__tests__/oracleReal.test.ts`;
  * `corpusMeta.test.ts` guards the corpus and the generated report without a
  * kernel. A sibling feature (minimised fuzz recipes) can drop new case
- * directories in beside these; the loader picks up every directory that has
- * both files, so the layout is the whole contract.
+ * directories in beside these; every directory is a case and must carry both
+ * files, so the layout is the whole contract.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'

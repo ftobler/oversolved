@@ -452,7 +452,7 @@ STEP round trip:
   - counts faces 6, edges 12 -> faces 6, edges 12
 ### 23-boolean-cut-cavity
 
-`V = 1200 - 4/3 pi r^3 = 1200 - 36 pi (the cavity face integrates with opposite orientation); A = box + 4 pi r^2 (the cavity wall is surface)`
+`V = 1200 - 4/3 pi r^3 = 1200 - 36 pi (the cavity face integrates with opposite orientation); A = box + 4 pi r^2 (the cavity wall is surface); 7 faces (6 + cavity); the cavity face adds its seam and a degenerate edge at each pole: 15 edges (12 + 3)`
 
 Live build (expected -> measured):
   - volume 1086.90266 -> 1086.90266 (rel dev -2.09e-16)
@@ -469,7 +469,7 @@ STEP round trip:
   - counts faces 7, edges 15 -> faces 7, edges 15
 ### 24-boolean-intersect-octant
 
-`r=7 sphere centred at the box corner: V = (1/8)(4/3) pi r^3; A = 4 pi r^2 / 8 + 3 (pi r^2 / 4) = 1.25 pi r^2; centroid of a sphere octant is (3r/8)(1,1,1)`
+`r=7 sphere centred at the box corner: V = (1/8)(4/3) pi r^3; A = 4 pi r^2 / 8 + 3 (pi r^2 / 4) = 1.25 pi r^2; centroid of a sphere octant is (3r/8)(1,1,1); 4 faces (3 flat quarters + the sphere patch); 7 edges (3 arcs + 3 lines + the pole's degenerate edge)`
 
 Live build (expected -> measured):
   - volume 179.594380 -> 179.594380 (rel dev 1.58e-16)
