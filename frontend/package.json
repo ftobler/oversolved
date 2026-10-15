@@ -26,6 +26,8 @@
     "licenses:mirror": "node scripts/fetchOccSource.mjs",
     "occ:install": "npm i --no-save opencascade.js@1.1.1 && node scripts/occProvision.mjs verify",
     "occ:provision": "node scripts/occProvision.mjs provision",
+    "occ:usage": "node scripts/occUsage.mjs",
+    "occ:usage:check": "node scripts/occUsage.mjs --check",
     "drive": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/driveCli.ts",
     "mcp": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/mcpServer.ts"
   },
