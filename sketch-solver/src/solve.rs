@@ -17,10 +17,20 @@ const RANK_TOL: f64 = 1e-6;
 /// A residual norm above this fraction of the sketch's size (see
 /// `Problem::scale`) means the system is unsatisfiable. Every row is a length
 /// now, so the verdict can be relative: the old absolute 1e-4 on the squared
-/// norm accepted a 1e-2 miss on any sketch, 4% of a 0.25-wide one, while a
-/// huge sketch could not even be represented that finely in f32. The floor
-/// stays an order of magnitude above f32 rounding of the wire params.
-const LOSS_REL: f64 = 1e-5;
+/// norm accepted a 1e-2 miss on any sketch, 4% of a 0.25-wide one.
+///
+/// Sized from measurement, not from the wire: rev 2's f32 params put a
+/// quantized ~6e-8 of the size into every decoded coordinate, so the old 1e-5
+/// floor sat above that noise. Rev 3 carries f64, and the crate's own solve
+/// tests measure satisfiable systems at 2.5e-8 relative residual at worst (the
+/// sparse drag fast path on a two-point sketch; the cold path's worst is
+/// 9.4e-9, the deliberately hard eight-line parallel chain at scale 100).
+/// The nearest deliberately unsatisfiable case measures 2.8e-2 (a 4 percent
+/// conflict). 1e-7 sits between them: 4x above the worst satisfiable reading,
+/// five orders below the unsatisfiable one, and 100x tighter than the
+/// f32-sized floor. The frontend sketch suites, which solve through the real
+/// wasm, all hold under it.
+const LOSS_REL: f64 = 1e-7;
 
 /// True when a solve's final residual reads as a satisfied system. A
 /// non-finite norm (malformed residual, singular blow-up) never does.
@@ -33,10 +43,6 @@ fn satisfied(residual_norm: f64, scale: f64) -> bool {
 /// constraints (weight 1) so real constraints always dominate.
 const REG_WEIGHT_BASE: f64 = 1e-3;
 const REG_WEIGHT_DRAG: f64 = 5e-2;
-
-fn to_f32(x: &[f64]) -> Vec<f32> {
-    x.iter().map(|&v| v as f32).collect()
-}
 
 pub fn solve_sketch(input: &Input) -> Output {
     let problem = Problem::new(input);
@@ -90,7 +96,7 @@ pub fn solve_sketch(input: &Input) -> Output {
             clean.x
         };
 
-        let params_solved = to_f32(&x_final);
+        let params_solved = x_final;
 
         return Output {
             params_solved,
@@ -137,9 +143,7 @@ pub fn solve_sketch(input: &Input) -> Output {
     };
 
     // `result.x` is not read again, so move it instead of cloning.
-    let x_final = result.x;
-
-    let params_solved = to_f32(&x_final);
+    let params_solved = result.x;
 
     let (entity_status, vertex_freedom) = if input.options.skip_status_pass {
         (Vec::new(), Vec::new())
@@ -308,8 +312,8 @@ fn entity_status(input: &Input, spectrum: &Spectrum, overall: Status) -> Vec<u8>
 /// written) will consume to project a cursor delta onto allowed directions; the
 /// exact reduction across multiple null directions is refined when drag is
 /// wired (phase 5). Emitted as `entity_count` pairs flattened.
-fn vertex_freedom(input: &Input, spectrum: &Spectrum) -> Vec<f32> {
-    let mut out = vec![0.0f32; input.entities.len() * 2];
+fn vertex_freedom(input: &Input, spectrum: &Spectrum) -> Vec<f64> {
+    let mut out = vec![0.0f64; input.entities.len() * 2];
 
     // The freest direction is the null vector with the smallest singular
     // value. It comes out of the status pass's SVD; a separate JᵀJ eigen
@@ -336,8 +340,8 @@ fn vertex_freedom(input: &Input, spectrum: &Spectrum) -> Vec<f32> {
         let dy = v[off + 1];
         let mag = (dx * dx + dy * dy).sqrt();
         if mag > 1e-9 {
-            out[ei * 2] = (dx / mag) as f32;
-            out[ei * 2 + 1] = (dy / mag) as f32;
+            out[ei * 2] = dx / mag;
+            out[ei * 2 + 1] = dy / mag;
         }
     }
     out
@@ -474,12 +478,12 @@ mod tests {
     /// Eight lines, each parallel to the previous one, of length `10 s` and
     /// with its start `s` from the previous start; line 0 fixed. Satisfiable
     /// at every scale `s`.
-    fn parallel_chain(s: f32) -> Input {
+    fn parallel_chain(s: f64) -> Input {
         let mut entities = vec![];
         let mut params = vec![];
         let mut constraints = vec![c_target(ConstraintKind::Fixed, 0, PointSelector::Absent)];
         for k in 0..8u32 {
-            let (kf, y) = (k as f32, k as f32 * 1.1);
+            let (kf, y) = (k as f64, k as f64 * 1.1);
             entities.push(line(4 * k as usize));
             params.extend([0.1 * kf * s, y * s, (10.0 + 0.3 * kf) * s, (y + 0.5) * s]);
             if k > 0 {
@@ -489,13 +493,13 @@ mod tests {
                 );
                 constraints.push(cons(ConstraintKind::Parallel, pair));
                 let mut len = c_target(ConstraintKind::Length, k, PointSelector::Absent);
-                len.value = Some(10.0 * s as f64);
+                len.value = Some(10.0 * s);
                 constraints.push(len);
                 let starts = ab(
                     e_ref(k - 1, PointSelector::Start),
                     e_ref(k, PointSelector::Start),
                 );
-                constraints.push(cons_v(ConstraintKind::PointDistance, starts, s as f64));
+                constraints.push(cons_v(ConstraintKind::PointDistance, starts, s));
             }
         }
         input(entities, params, constraints)
@@ -506,7 +510,7 @@ mod tests {
         // The raw cross-product parallel row weighed length squared against
         // the length rows: this chain solved at s=0.01 and read
         // Overconstrained after 200 iterations at s=1 and s=100.
-        for s in [0.01f32, 1.0, 100.0] {
+        for s in [0.01f64, 1.0, 100.0] {
             let out = solve_sketch(&parallel_chain(s));
             assert_eq!(
                 out.overall_status,
@@ -516,7 +520,7 @@ mod tests {
                 out.diagnostics.iters
             );
             assert!(
-                out.diagnostics.residual_norm < 1e-6 * s as f64,
+                out.diagnostics.residual_norm < 1e-6 * s,
                 "s={s}: norm {}",
                 out.diagnostics.residual_norm
             );
@@ -773,7 +777,7 @@ mod tests {
         let p = &out.params_solved;
         assert!((p[5] - 3.0).abs() < 1e-4, "x pinned: {}", p[5]);
         assert!(
-            (p[6] - 1.75_f32.sqrt()).abs() < 1e-3,
+            (p[6] - 1.75_f64.sqrt()).abs() < 1e-3,
             "y on ellipse: {}",
             p[6]
         );
@@ -823,7 +827,7 @@ mod tests {
         let p = &out.params_solved;
         assert!((p[5] - 1.0).abs() < 1e-4, "x pinned: {}", p[5]);
         assert!(
-            (p[6] - 2.0 * 3.0_f32.sqrt()).abs() < 1e-3,
+            (p[6] - 2.0 * 3.0_f64.sqrt()).abs() < 1e-3,
             "y on rotated ellipse: {}",
             p[6]
         );
@@ -1035,7 +1039,7 @@ mod tests {
                 drag_mode: drag,
                 ..Default::default()
             },
-            ..input(vec![line(0)], vec![0.0, 0.0, f32::NAN, 0.0], vec![length])
+            ..input(vec![line(0)], vec![0.0, 0.0, f64::NAN, 0.0], vec![length])
         }
     }
 

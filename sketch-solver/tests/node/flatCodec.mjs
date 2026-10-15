@@ -5,8 +5,8 @@
 // constraints.rs/codec.rs: the vitest wasm-kernel suite owns boundary
 // coverage, so drift here only affects the ungated Node scripts.
 
-export const MAGIC_IN = 0x3247_4b53 // "SKG2": rev 2, mirrors sketch-solver/src/codec.rs
-export const MAGIC_OUT = 0x3252_4b53 // "SKR2"
+export const MAGIC_IN = 0x3347_4b53 // "SKG3": rev 3 (f64 scalars), mirrors sketch-solver/src/codec.rs
+export const MAGIC_OUT = 0x3352_4b53 // "SKR3"
 
 export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5 }
 export const CKind = {
@@ -56,9 +56,9 @@ class Writer {
   u32(v) {
     this.bytes.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
   }
-  f32(v) {
-    const b = new Uint8Array(4)
-    new DataView(b.buffer).setFloat32(0, v, true)
+  f64(v) {
+    const b = new Uint8Array(8)
+    new DataView(b.buffer).setFloat64(0, v, true)
     this.bytes.push(...b)
   }
   done() {
@@ -80,12 +80,12 @@ export function encodeInput(input) {
     w.u8(e.kind)
     w.u32(e.offset)
   }
-  for (const p of input.params) w.f32(p)
+  for (const p of input.params) w.f64(p)
   const maskLen = Math.ceil(input.params.length / 8)
   for (let i = 0; i < maskLen; i++) w.u8((input.pinnedMask && input.pinnedMask[i]) || 0)
   for (const pin of input.equalityPins ?? []) {
     w.u32(pin.index)
-    w.f32(pin.target)
+    w.f64(pin.target)
   }
   for (const c of input.constraints) {
     w.u8(c.kind)
@@ -94,8 +94,8 @@ export function encodeInput(input) {
       w.u8(r.role)
       if (r.external) {
         w.u8(1)
-        w.f32(r.external[0])
-        w.f32(r.external[1])
+        w.f64(r.external[0])
+        w.f64(r.external[1])
       } else {
         w.u8(0)
         w.u8(r.point ?? Sel.Absent)
@@ -108,13 +108,13 @@ export function encodeInput(input) {
     if (c.axis !== undefined) flags |= 0b100
     if (c.sign !== undefined) flags |= 0b1000
     w.u8(flags)
-    if (c.value !== undefined) w.f32(c.value)
+    if (c.value !== undefined) w.f64(c.value)
     if (c.xy !== undefined) {
-      w.f32(c.xy[0])
-      w.f32(c.xy[1])
+      w.f64(c.xy[0])
+      w.f64(c.xy[1])
     }
     if (c.axis !== undefined) w.u8(c.axis)
-    if (c.sign !== undefined) w.f32(c.sign)
+    if (c.sign !== undefined) w.f64(c.sign)
   }
   return w.done()
 }
@@ -128,11 +128,6 @@ export function decodeOutput(buf) {
     return v
   }
   const u8 = () => dv.getUint8(o++)
-  const f32 = () => {
-    const v = dv.getFloat32(o, true)
-    o += 4
-    return v
-  }
   const f64 = () => {
     const v = dv.getFloat64(o, true)
     o += 8
@@ -144,12 +139,12 @@ export function decodeOutput(buf) {
   const vfLen = u32()
   const overallStatus = u8()
   const params = []
-  for (let i = 0; i < nParams; i++) params.push(f32())
+  for (let i = 0; i < nParams; i++) params.push(f64())
   const entityStatus = []
   for (let i = 0; i < nStatus; i++) entityStatus.push(u8())
   // vertexFreedom rides the wire but no harness script consumes it: read past
   // it to keep the cursor aligned.
-  for (let i = 0; i < vfLen; i++) f32()
+  for (let i = 0; i < vfLen; i++) f64()
   const residualNorm = f64()
   const rank = u32()
   const dof = u32()

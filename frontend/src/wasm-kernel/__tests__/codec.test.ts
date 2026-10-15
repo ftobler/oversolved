@@ -2,9 +2,9 @@
 //
 // Guards for the wire handshake itself. The magic is the only version marker
 // on the sketch solver's flat buffers (see codec.ts and sketch-solver/src/codec.rs),
-// so these pin that the current revision is written and accepted and that a
-// buffer stamped with superseded rev 1 is refused instead of decoded with
-// shifted offsets.
+// so these pin that the current revision is written and accepted and that
+// buffers stamped with superseded revisions (1: pre-sign, 2: f32 scalars) are
+// refused instead of decoded with shifted offsets.
 
 import { describe, it, expect } from 'vitest'
 import {
@@ -15,8 +15,9 @@ import { loadSolver } from '../loadSolver'
 
 const solveBytes = loadSolver()
 
-const MAGIC_IN_REV2 = 0x32474b53  // "SKG2"
-const MAGIC_OUT_REV2 = 0x32524b53  // "SKR2"
+const MAGIC_IN = 0x33474b53  // "SKG3"
+const MAGIC_OUT = 0x33524b53  // "SKR3"
+const MAGIC_OUT_REV2 = 0x32524b53  // "SKR2" (f32 layout)
 const MAGIC_OUT_REV1 = 0x53474b52
 
 function emptyInput(): FlatInput {
@@ -41,23 +42,22 @@ function outputBytes(magic: number): Uint8Array {
   const entityStatus = [0, 1]
   const vertexFreedom = [0, 1, 1, 0]
   const size = 4 + 4 + 4 + 4 + 1
-    + params.length * 4 + entityStatus.length + vertexFreedom.length * 4
+    + params.length * 8 + entityStatus.length + vertexFreedom.length * 8
     + 8 + 4 + 4 + 4 + 8
   const buf = new ArrayBuffer(size)
   const dv = new DataView(buf)
   let pos = 0
   const u32 = (v: number) => { dv.setUint32(pos, v, true); pos += 4 }
   const u8 = (v: number) => { dv.setUint8(pos, v); pos += 1 }
-  const f32 = (v: number) => { dv.setFloat32(pos, v, true); pos += 4 }
   const f64 = (v: number) => { dv.setFloat64(pos, v, true); pos += 8 }
   u32(magic)
   u32(params.length)  // nParams
   u32(entityStatus.length)  // nStatus
   u32(vertexFreedom.length)  // vertexFreedom length
   u8(1)  // overallStatus: underconstrained
-  for (const p of params) f32(p)
+  for (const p of params) f64(p)
   for (const s of entityStatus) u8(s)
-  for (const v of vertexFreedom) f32(v)
+  for (const v of vertexFreedom) f64(v)
   f64(1.25)  // residualNorm
   u32(5)  // rank
   u32(1)  // dof
@@ -69,17 +69,17 @@ function outputBytes(magic: number): Uint8Array {
 describe('sketch wire magic', () => {
   it('encodeInput stamps the current input magic', () => {
     const bytes = encodeInput(emptyInput())
-    expect(bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)).toBe(MAGIC_IN_REV2)
+    expect(bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24)).toBe(MAGIC_IN)
   })
 
   it('decodeOutput accepts the current output magic', () => {
-    expect(() => decodeOutput(outputBytes(MAGIC_OUT_REV2))).not.toThrow()
+    expect(() => decodeOutput(outputBytes(MAGIC_OUT))).not.toThrow()
   })
 
   it('decodes each field from a distinct, correctly ordered layout', () => {
     // Every field carries a value no other field shares, so a reordered or
     // wrong-width read cannot pass by decoding to the same result.
-    const out = decodeOutput(outputBytes(MAGIC_OUT_REV2))
+    const out = decodeOutput(outputBytes(MAGIC_OUT))
     expect(out.paramsSolved).toEqual([1.5, 2.25])
     expect(out.entityStatus).toEqual([0, 1])
     expect(out.overallStatus).toBe(1)
@@ -88,6 +88,10 @@ describe('sketch wire magic', () => {
     expect(out.diagnostics.dof).toBe(1)
     expect(out.diagnostics.iters).toBe(7)
     expect(out.diagnostics.ms).toBe(0.5)
+  })
+
+  it('decodeOutput rejects the rev 2 (f32) output magic', () => {
+    expect(() => decodeOutput(outputBytes(MAGIC_OUT_REV2))).toThrow('bad output magic')
   })
 
   it('decodeOutput rejects the rev 1 output magic', () => {

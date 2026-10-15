@@ -11,7 +11,7 @@ use crate::mate_residuals::*;
 fn jacobian_vs_fd_spherical() {
     let input = two_body_input();
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -72,7 +72,7 @@ fn jacobian_vs_fd_spherical_weighted() {
     let mut input = two_body_input();
     input.mates[0].weight = 1e-4;
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -95,7 +95,7 @@ fn jacobian_vs_fd_spherical_self_mate() {
             0.1,
             0.2,
             0.3,
-            f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
+            f64::sqrt(1.0 - 0.01 - 0.04 - 0.09),
         ],
         fixed_mask: vec![0],
         mates: vec![mate(
@@ -109,7 +109,7 @@ fn jacobian_vs_fd_spherical_self_mate() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -133,7 +133,7 @@ fn jacobian_vs_fd_fixed() {
             0.1,
             0.2,
             0.3,
-            f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
+            f64::sqrt(1.0 - 0.01 - 0.04 - 0.09),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -147,7 +147,7 @@ fn jacobian_vs_fd_fixed() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -167,14 +167,14 @@ fn jacobian_vs_fd_fixed_with_offset_vector() {
             0.1,
             -0.2,
             0.3,
-            f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
+            f64::sqrt(1.0 - 0.01 - 0.04 - 0.09),
             3.0,
             4.0,
             5.0,
             0.1,
             0.2,
             0.3,
-            f64::sqrt(1.0 - 0.01 - 0.04 - 0.09) as f32,
+            f64::sqrt(1.0 - 0.01 - 0.04 - 0.09),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate_with_offset_vec(
@@ -188,7 +188,7 @@ fn jacobian_vs_fd_fixed_with_offset_vector() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -212,7 +212,7 @@ fn jacobian_vs_fd_parallel() {
             -0.5,
             0.1,
             0.2,
-            f64::sqrt(1.0 - 0.25 - 0.01 - 0.04) as f32,
+            f64::sqrt(1.0 - 0.25 - 0.01 - 0.04),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -226,7 +226,7 @@ fn jacobian_vs_fd_parallel() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -250,7 +250,7 @@ fn jacobian_vs_fd_sliding() {
             -0.3,
             0.1,
             0.4,
-            f64::sqrt(1.0 - 0.09 - 0.01 - 0.16) as f32,
+            f64::sqrt(1.0 - 0.09 - 0.01 - 0.16),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -264,7 +264,7 @@ fn jacobian_vs_fd_sliding() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -288,7 +288,7 @@ fn jacobian_vs_fd_rotating() {
             0.2,
             -0.1,
             0.5,
-            f64::sqrt(1.0 - 0.04 - 0.01 - 0.25) as f32,
+            f64::sqrt(1.0 - 0.04 - 0.01 - 0.25),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -302,7 +302,7 @@ fn jacobian_vs_fd_rotating() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -326,7 +326,7 @@ fn jacobian_vs_fd_sliding_rotating() {
             -0.5,
             0.2,
             0.1,
-            f64::sqrt(1.0 - 0.25 - 0.04 - 0.01) as f32,
+            f64::sqrt(1.0 - 0.25 - 0.04 - 0.01),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -340,7 +340,7 @@ fn jacobian_vs_fd_sliding_rotating() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -364,7 +364,7 @@ fn jacobian_vs_fd_parallel_plane_distance() {
             0.1,
             0.3,
             0.2,
-            f64::sqrt(1.0 - 0.01 - 0.09 - 0.04) as f32,
+            f64::sqrt(1.0 - 0.01 - 0.09 - 0.04),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -378,7 +378,7 @@ fn jacobian_vs_fd_parallel_plane_distance() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -404,7 +404,7 @@ fn jacobian_vs_fd_copy_rotation() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     let j_analytic = p.jacobian(&x);
     let j_fd = lm::fd_jacobian(&|xx| p.residuals(xx), &x, p.m);
     compare_jacobians(&j_analytic, &j_fd, 1e-3);
@@ -436,7 +436,7 @@ fn jacobian_vs_fd_copy_rotation_away_from_seed() {
         )],
     };
     let p = MateProblem::new(&input);
-    let mut x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let mut x: Vec<f64> = input.params_initial.clone();
     // Rotate body 1 an extra 40 degrees about Z away from its seed roll.
     let extra = 40.0_f64.to_radians();
     let old_angle = 2.0 * x[12].atan2(x[13]);
@@ -464,15 +464,15 @@ fn copy_rotation_ratio_one_leaves_bodies_seeded_at_different_rolls_untouched() {
             0.0,
             0.0,
             0.0,
-            half_a.sin() as f32,
-            half_a.cos() as f32,
+            half_a.sin(),
+            half_a.cos(),
             0.0,
             0.0,
             0.0,
             0.0,
             0.0,
-            half_b.sin() as f32,
-            half_b.cos() as f32,
+            half_b.sin(),
+            half_b.cos(),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -515,15 +515,15 @@ fn copy_rotation_ratio_two_links_future_rotation_not_absolute_value() {
             0.0,
             0.0,
             0.0,
-            half_seed_a.sin() as f32,
-            half_seed_a.cos() as f32,
+            half_seed_a.sin(),
+            half_seed_a.cos(),
             0.0,
             0.0,
             0.0,
             0.0,
             0.0,
-            half_seed_b.sin() as f32,
-            half_seed_b.cos() as f32,
+            half_seed_b.sin(),
+            half_seed_b.cos(),
         ],
         fixed_mask: vec![0],
         mates: vec![mate(

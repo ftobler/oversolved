@@ -25,19 +25,19 @@ function constraintReferencesAny(c: PartConstraint, removed: Set<string>): boole
 
 // The write-back has to keep the authored geometry recognisable to every
 // consumer that compares doc content. The worker hands back the solved params
-// decoded as float32 (wasm-kernel/codec.ts decodeOutput), while the sketch
-// mutators persist round(v, 6) (helpers.ts), so two writers describe one
-// geometry with different digits -- and in the band above ~4 the f32 quantum is
-// wide enough that even 6dp rounding lands on the wrong side of it:
-// round(f32(25.7)) is 25.700001, round(f32(63.4)) is 63.400002 and
-// f32(100.000001) is 100 outright. A re-solve that moved nothing would then read
-// as a change everywhere content is compared: useSolver's save identity guard
-// mints a fresh doc object (so a save overlapping it stops clearing dirty),
-// findFirstDirty's checkpoint hash goes stale (rebuilding the feature and
-// everything after it), and docDiffersForSession manufactures a user edit out
-// of a solve. So when the solved geometry agrees with what the feature already
-// carries within the f32 envelope, the authored spelling is KEPT -- the digits
-// the user's mutator wrote, not a fresh spelling of the same geometry.
+// decoded as f64 (wasm-kernel/codec.ts decodeOutput, rev 3), while the sketch
+// mutators persist round(v, 6) (helpers.ts), so the two writers still differ in
+// digits -- and a document authored under the rev 2 f32 wire carries values in
+// the f32 band above ~4: round(f32(25.7)) is 25.700001, round(f32(63.4)) is
+// 63.400002 and f32(100.000001) is 100 outright. A re-solve that moved nothing
+// would then read as a change everywhere content is compared: useSolver's save
+// identity guard mints a fresh doc object (so a save overlapping it stops
+// clearing dirty), findFirstDirty's checkpoint hash goes stale (rebuilding the
+// feature and everything after it), and docDiffersForSession manufactures a
+// user edit out of a solve. So when the solved geometry agrees with what the
+// feature already carries within the legacy f32 envelope, the authored spelling
+// is KEPT -- the digits the user's mutator wrote, not a fresh spelling of the
+// same geometry.
 //
 // The map is rebuilt with new arrays rather than rounded in place: it belongs to
 // the solve result record, which the caller still renders from
@@ -53,10 +53,11 @@ function roundGeometry(geometry: Record<string, number[]>): Record<string, numbe
 
 // Whether the freshly solved geometry says the same thing as the one already in
 // the document: same entity ids, same arity per entity, every component inside
-// the f32 envelope of the matching component. The compare is per component and
-// per entity, because a solve that moved one entity of ten moved something --
-// and a different id set (a projected dimension, an added entity, one the solve
-// dropped) is a shape change no amount of matching values can stand in for.
+// the legacy f32 envelope of the matching component. The compare is per
+// component and per entity, because a solve that moved one entity of ten moved
+// something -- and a different id set (a projected dimension, an added entity,
+// one the solve dropped) is a shape change no amount of matching values can
+// stand in for.
 function sameGeometryWithinF32(
   existing: Record<string, number[]>,
   solved: Record<string, number[]>,
@@ -88,8 +89,8 @@ export function applyGeometryToFeature(
   // Keep the arrays the doc already holds, by reference: they may be shared with
   // the pre-solve doc the caller compares this clone against, so they must not
   // be rebuilt or rounded in place here. Only a solve that moved the geometry
-  // outside the f32 envelope -- or changed which entities exist -- installs a
-  // fresh map, rounded to the precision the mutators write.
+  // outside the legacy f32 envelope -- or changed which entities exist --
+  // installs a fresh map, rounded to the precision the mutators write.
   if (existing && sameGeometryWithinF32(existing, geometry)) return
   featureDef.initial = roundGeometry(geometry)
 }

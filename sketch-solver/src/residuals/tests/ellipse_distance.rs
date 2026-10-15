@@ -364,7 +364,7 @@ fn point_distance_y_signed_picks_the_side() {
 fn line_distance_signed_selects_side_and_defaults_to_legacy() {
     // Line A along +x through origin; point b 5 above it. Normal is (0,1),
     // so the signed perpendicular offset is +5.
-    let mk = |by: f32, sign: Option<f64>| {
+    let mk = |by: f64, sign: Option<f64>| {
         let c = Constraint {
             kind_code: ConstraintKind::LineDistance.to_u8(),
             refs: ab(e_ref(0, PointSelector::Absent), e_ref(1, PointSelector::Xy)),
@@ -402,7 +402,7 @@ fn line_distance_signed_selects_side_and_defaults_to_legacy() {
 fn angle_signed_pins_handedness_legacy_is_side_agnostic() {
     // Line A along +x (dir 0). Line B is either +y (dir +90, cross>0) or
     // -y (dir -90, cross<0). value 90 in all cases.
-    let mk = |by_end: f32, sign: Option<f64>| {
+    let mk = |by_end: f64, sign: Option<f64>| {
         let c = Constraint {
             kind_code: ConstraintKind::Angle.to_u8(),
             refs: ab(
@@ -461,7 +461,7 @@ fn signed_angle_residual_takes_the_short_way_across_the_branch_cut() {
     };
     let inp = input(
         vec![ent(Kind::Line, 0), ent(Kind::Line, 4)],
-        vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, b.cos() as f32, b.sin() as f32],
+        vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0, b.cos(), b.sin()],
         vec![c],
     );
     let p = Problem::new(&inp);

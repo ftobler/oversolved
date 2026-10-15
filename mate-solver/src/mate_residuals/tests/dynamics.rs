@@ -54,20 +54,7 @@ fn sliding_reports_dof_one_and_holds_authored_roll() {
     let input = MateInput {
         bodies: (0..2).map(|_| RigidBody).collect(),
         params_initial: vec![
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            0.0,
-            3.0,
-            0.0,
-            0.0,
-            seed_qz as f32,
-            seed_qw as f32,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 3.0, 0.0, 0.0, seed_qz, seed_qw,
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate_with_angle(
@@ -210,7 +197,7 @@ fn mate_residual_count_matches_actual_residuals_pushed() {
             )],
         };
         let p = MateProblem::new(&input);
-        let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        let x: Vec<f64> = input.params_initial.clone();
         let pushed = p.residuals(&x).len();
         // Total = per-mate residuals + n_bodies (unit-norm) + 0 grounded.
         assert_eq!(
@@ -250,7 +237,7 @@ fn mate_naming_a_body_outside_the_assembly_is_dropped() {
         )],
     };
     let p = MateProblem::new(&input);
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     // Only the two quaternion-norm rows and the grounded body's 7 pins remain.
     assert_eq!(p.residuals(&x).len(), 9);
     assert_eq!(p.m, 9);
@@ -322,7 +309,7 @@ fn mate_whose_body_block_overruns_the_params_is_dropped() {
     // body contributes no rows and m tracks exactly what survives (one
     // row for body 0), so residuals, Jacobian and a full solve all stay
     // panic-free.
-    let x: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+    let x: Vec<f64> = input.params_initial.clone();
     assert_eq!(p.m, 1);
     assert_eq!(p.residuals(&x).len(), p.m);
     let j = p.jacobian(&x);
@@ -477,7 +464,7 @@ fn fixed_mate_locks_roll_when_axes_not_prealigned() {
         bodies: (0..2).map(|_| RigidBody).collect(),
         params_initial: vec![
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, Z axis
-            0.0, 0.0, 0.0, 0.0, h as f32, 0.0, h as f32, // body 1: 90 deg about Y
+            0.0, 0.0, 0.0, 0.0, h, 0.0, h, // body 1: 90 deg about Y
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -508,7 +495,7 @@ fn fixed_mate_locks_roll_and_applies_angle_not_prealigned() {
     let input = MateInput {
         bodies: (0..2).map(|_| RigidBody).collect(),
         params_initial: vec![
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, h as f32, 0.0, h as f32,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, h, 0.0, h,
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate_with_angle(
@@ -551,7 +538,7 @@ fn fixed_mate_flip_true_holds_anti_parallel_weld() {
         bodies: (0..2).map(|_| RigidBody).collect(),
         params_initial: vec![
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0 grounded, +Z axis
-            0.0, 0.0, 0.0, h as f32, 0.0, 0.0, 0.0, // body 1: 180 deg about X -> axis -Z
+            0.0, 0.0, 0.0, h, 0.0, 0.0, 0.0, // body 1: 180 deg about X -> axis -Z
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate_with_angle(
@@ -607,10 +594,10 @@ fn fixed_mate_authored_side_beats_seed_side() {
             0.0,
             0.0,
             0.0,
-            h.sin() as f32,
+            h.sin(),
             0.0,
             0.0,
-            h.cos() as f32,
+            h.cos(),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -648,7 +635,7 @@ fn rotating_flip_true_holds_anti_parallel_axis() {
     let input = MateInput {
         bodies: (0..2).map(|_| RigidBody).collect(),
         params_initial: vec![
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, h as f32, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, h, 0.0, 0.0,
             0.0, // 180 deg about X -> axis -Z
         ],
         fixed_mask: vec![0b0000_0001],
@@ -730,7 +717,7 @@ fn nan_seed_reports_the_failing_status_never_fully_constrained() {
     // hung in nalgebra's SVD or classified NaN as FullyConstrained and
     // locked the UI on garbage.
     let mut input = two_body_input();
-    input.params_initial[7] = f32::NAN;
+    input.params_initial[7] = f64::NAN;
     let out = solve_mate(&input);
     assert_ne!(
         out.overall_status,

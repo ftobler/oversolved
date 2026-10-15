@@ -3,25 +3,29 @@
 //! Locks the byte layout the TS builder will produce. Everything is
 //! little-endian (WASM linear memory and JS `DataView` with `littleEndian=true`
 //! agree). Phase 1.0 decodes into owned `Vec`s via explicit reads; a zero-copy
-//! `Float32Array` view over linear memory is a later optimization and does not
+//! `Float64Array` view over linear memory is a later optimization and does not
 //! change the layout below.
+//!
+//! Every scalar on the wire is f64. Rev 2 carried f32 and quantized the params
+//! at ~6e-8 relative, which is 1e-5 to 1e-4 mm on typical part sizes, far above
+//! OCCT's confusion tolerance.
 //!
 //! ## Input buffer layout
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC ("SKG2", little-endian on the wire)
+//!   u32  magic = MAGIC ("SKG3", little-endian on the wire)
 //!   u32  n_entities
-//!   u32  n_params            // f32 count of params_initial
+//!   u32  n_params            // f64 count of params_initial
 //!   u32  n_constraints
 //!   u32  n_equality_pins
 //!   u8   drag_mode (0/1)
 //!   u8   skip_status_pass (0/1)
 //!   u32  drag_anchor_id
 //! entities:       n_entities x { u8 kind, u32 param_offset }
-//! params_initial: n_params x f32
+//! params_initial: n_params x f64
 //! pinned_mask:    ceil(n_params / 8) bytes (LSB-first within each byte)
-//! equality_pins:  n_equality_pins x { u32 param_index, f32 target }
+//! equality_pins:  n_equality_pins x { u32 param_index, f64 target }
 //! constraints:    n_constraints x constraint-record (see below)
 //! ```
 //!
@@ -34,26 +38,26 @@
 //!     u8  role
 //!     u8  ref_type            // 0 = entity, 1 = external_xy
 //!     entity (ref_type 0):  u8 point_selector, u32 entity_index
-//!     external (ref_type 1): f32 x, f32 y
+//!     external (ref_type 1): f64 x, f64 y
 //!   u8  scalar_flags          // bit0 has_value, bit1 has_xy, bit2 has_axis, bit3 has_sign
-//!   has_value: f32 value
-//!   has_xy:    f32 x, f32 y
+//!   has_value: f64 value
+//!   has_xy:    f64 x, f64 y
 //!   has_axis:  u8 axis
-//!   has_sign:  f32 sign       // orientation selector for directional dims (+1/-1)
+//!   has_sign:  f64 sign       // orientation selector for directional dims (+1/-1)
 //! ```
 //!
 //! ## Output buffer layout
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC_OUT ("SKR2", little-endian on the wire)
+//!   u32  magic = MAGIC_OUT ("SKR3", little-endian on the wire)
 //!   u32  n_params
 //!   u32  n_entities_status   // 0 on the drag fast path or when skip_status_pass
-//!   u32  vertex_freedom_len  // f32 count; also 0 on the drag fast path
+//!   u32  vertex_freedom_len  // f64 count; also 0 on the drag fast path
 //!   u8   overall_status
-//! params_solved:  n_params x f32
+//! params_solved:  n_params x f64
 //! entity_status:  n_entities_status x u8
-//! vertex_freedom: vertex_freedom_len x f32
+//! vertex_freedom: vertex_freedom_len x f64
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 
@@ -62,23 +66,29 @@ use solver_core::bytes::{Eof, Reader, Writer};
 use crate::constraints::{Axis, Constraint, PointSelector, Ref, RefRole};
 use crate::{Diagnostics, Entity, EqualityPin, Input, Kind, Options, Output};
 
-// Rev 2 of the wire layout. The layout had already evolved once (the has_sign
-// flag bit + trailing sign f32 per constraint record, commit 9f81d31f) without
-// moving these values, so a stale js/wasm pairing decoded shifted offsets
-// instead of failing loudly. The magic IS the version handshake for a buffer
-// that is built and consumed within one process: bump BOTH sides of the
-// boundary (this file and frontend/src/wasm-kernel/codec.ts) on any layout
-// change. Invalidating old cached payloads is acceptable and safe post-wave-1:
-// bundle-cache reads of stale buffers degrade to cold rebuilds.
-pub const MAGIC: u32 = 0x3247_4B53; // "SKG2" in LE memory order
-pub const MAGIC_OUT: u32 = 0x3252_4B53; // "SKR2" in LE memory order
+// Rev 3 of the wire layout. Every scalar switched from f32 to f64: the layout
+// had already evolved once (the has_sign flag bit + trailing sign f32 per
+// constraint record, commit 9f81d31f) without moving these values, so a stale
+// js/wasm pairing decoded shifted offsets instead of failing loudly. The magic
+// IS the version handshake for a buffer that is built and consumed within one
+// process: bump BOTH sides of the boundary (this file and
+// frontend/src/wasm-kernel/codec.ts) on any layout change. Invalidating old
+// cached payloads is acceptable and safe post-wave-1: bundle-cache reads of
+// stale buffers degrade to cold rebuilds.
+pub const MAGIC: u32 = 0x3347_4B53; // "SKG3" in LE memory order
+pub const MAGIC_OUT: u32 = 0x3352_4B53; // "SKR3" in LE memory order
 
-/// The rev 1 values. Kept only so tests can assert a stale pairing is
-/// rejected rather than silently misdecoded.
+/// The rev 1 and rev 2 values. Kept only so tests can assert a stale pairing
+/// (either the f32 layout or the pre-sign one) is rejected rather than
+/// silently misdecoded.
 #[cfg(test)]
 pub const MAGIC_REV1: u32 = 0x5347_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_REV1: u32 = 0x5347_4B52;
+#[cfg(test)]
+pub const MAGIC_REV2: u32 = 0x3247_4B53;
+#[cfg(test)]
+pub const MAGIC_OUT_REV2: u32 = 0x3252_4B53;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CodecError {
@@ -113,7 +123,7 @@ fn pinned_mask_bytes(n_params: usize) -> usize {
 /// sketch Fully/Underconstrained with no error anywhere. The JSON topology
 /// path already rejects non-finite literals via serde; the byte path has no
 /// such gate, so every decoded float is checked here instead.
-fn finite(v: f32) -> Result<f32, CodecError> {
+fn finite(v: f64) -> Result<f64, CodecError> {
     if v.is_finite() {
         Ok(v)
     } else {
@@ -135,7 +145,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     let drag_anchor_id = r.u32()?;
 
     // Record widths for the pre-allocation caps below: entity = kind + offset,
-    // param = f32, pin = index + target, constraint = kind + n_refs + flags at
+    // param = f64, pin = index + target, constraint = kind + n_refs + flags at
     // its shortest. See `Reader::capacity_for` for why the counts are capped.
     let mut entities = Vec::with_capacity(r.capacity_for(n_entities, 5));
     for _ in 0..n_entities {
@@ -145,18 +155,18 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
         entities.push(Entity { kind, param_offset });
     }
 
-    let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 4));
+    let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 8));
     for _ in 0..n_params {
-        params_initial.push(finite(r.f32()?)?);
+        params_initial.push(finite(r.f64()?)?);
     }
 
     let mask_len = pinned_mask_bytes(n_params);
     let pinned_mask = r.take(mask_len)?.to_vec();
 
-    let mut equality_pins = Vec::with_capacity(r.capacity_for(n_equality_pins, 8));
+    let mut equality_pins = Vec::with_capacity(r.capacity_for(n_equality_pins, 12));
     for _ in 0..n_equality_pins {
         let param_index = r.u32()?;
-        let target = finite(r.f32()?)?;
+        let target = finite(r.f64()?)?;
         equality_pins.push(EqualityPin {
             param_index,
             target,
@@ -199,8 +209,8 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
                 Ref::Entity { index, point }
             }
             1 => {
-                let x = finite(r.f32()?)? as f64;
-                let y = finite(r.f32()?)? as f64;
+                let x = finite(r.f64()?)?;
+                let y = finite(r.f64()?)?;
                 Ref::External { x, y }
             }
             other => return Err(CodecError::BadRefType(other)),
@@ -209,13 +219,13 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
     }
     let flags = r.u8()?;
     let value = if flags & 0b001 != 0 {
-        Some(finite(r.f32()?)? as f64)
+        Some(finite(r.f64()?)?)
     } else {
         None
     };
     let xy = if flags & 0b010 != 0 {
-        let x = finite(r.f32()?)? as f64;
-        let y = finite(r.f32()?)? as f64;
+        let x = finite(r.f64()?)?;
+        let y = finite(r.f64()?)?;
         Some((x, y))
     } else {
         None
@@ -227,7 +237,7 @@ fn decode_constraint(r: &mut Reader) -> Result<Constraint, CodecError> {
         None
     };
     let sign = if flags & 0b1000 != 0 {
-        Some(finite(r.f32()?)? as f64)
+        Some(finite(r.f64()?)?)
     } else {
         None
     };
@@ -258,7 +268,7 @@ pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
         w.u32(e.param_offset as u32);
     }
     for &p in &input.params_initial {
-        w.f32(p);
+        w.f64(p);
     }
     // Pad the mask to the canonical length so decode round-trips exactly.
     let mask_len = pinned_mask_bytes(input.params_initial.len());
@@ -267,7 +277,7 @@ pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
     }
     for pin in &input.equality_pins {
         w.u32(pin.param_index);
-        w.f32(pin.target);
+        w.f64(pin.target);
     }
     for c in &input.constraints {
         encode_constraint(&mut w, c);
@@ -289,8 +299,8 @@ fn encode_constraint(w: &mut Writer, c: &Constraint) {
             }
             Ref::External { x, y } => {
                 w.u8(1);
-                w.f32(*x as f32);
-                w.f32(*y as f32);
+                w.f64(*x);
+                w.f64(*y);
             }
         }
     }
@@ -309,17 +319,17 @@ fn encode_constraint(w: &mut Writer, c: &Constraint) {
     }
     w.u8(flags);
     if let Some(v) = c.value {
-        w.f32(v as f32);
+        w.f64(v);
     }
     if let Some((x, y)) = c.xy {
-        w.f32(x as f32);
-        w.f32(y as f32);
+        w.f64(x);
+        w.f64(y);
     }
     if let Some(a) = c.axis {
         w.u8(a.to_u8());
     }
     if let Some(s) = c.sign {
-        w.f32(s as f32);
+        w.f64(s);
     }
 }
 
@@ -333,13 +343,13 @@ pub fn encode_output(out: &Output) -> Vec<u8> {
     w.u32(out.vertex_freedom.len() as u32);
     w.u8(out.overall_status);
     for &p in &out.params_solved {
-        w.f32(p);
+        w.f64(p);
     }
     for &s in &out.entity_status {
         w.u8(s);
     }
     for &v in &out.vertex_freedom {
-        w.f32(v);
+        w.f64(v);
     }
     w.f64(out.diagnostics.residual_norm);
     w.u32(out.diagnostics.rank);
@@ -358,17 +368,17 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     let n_status = r.u32()? as usize;
     let vf_len = r.u32()? as usize;
     let overall_status = r.u8()?;
-    let mut params_solved = Vec::with_capacity(r.capacity_for(n_params, 4));
+    let mut params_solved = Vec::with_capacity(r.capacity_for(n_params, 8));
     for _ in 0..n_params {
-        params_solved.push(r.f32()?);
+        params_solved.push(r.f64()?);
     }
     let mut entity_status = Vec::with_capacity(r.capacity_for(n_status, 1));
     for _ in 0..n_status {
         entity_status.push(r.u8()?);
     }
-    let mut vertex_freedom = Vec::with_capacity(r.capacity_for(vf_len, 4));
+    let mut vertex_freedom = Vec::with_capacity(r.capacity_for(vf_len, 8));
     for _ in 0..vf_len {
-        vertex_freedom.push(r.f32()?);
+        vertex_freedom.push(r.f64()?);
     }
     let residual_norm = r.f64()?;
     let rank = r.u32()?;
@@ -490,6 +500,87 @@ mod tests {
 
         // Re-encoding the decode is byte-identical: the layout is canonical.
         assert_eq!(encode_input(&decoded), bytes);
+    }
+
+    #[test]
+    fn f64_scalars_round_trip_bit_exact() {
+        // The values the f32 wire could not carry: 1234.567 (rounds to
+        // 1234.567017 in f32) and 1e6 (no sub-integer resolution at all in
+        // f32). Every float field class is exercised and compared by bit
+        // pattern, so -0.0 cannot pass as +0.0 and no silent narrowing hides.
+        let values = [25.4, 1234.567, 1e-9, -0.0, 1e6];
+        let input = Input {
+            entities: vec![Entity {
+                kind: Kind::Point,
+                param_offset: 0,
+            }],
+            params_initial: values.to_vec(),
+            pinned_mask: vec![0],
+            equality_pins: vec![EqualityPin {
+                param_index: 0,
+                target: 1234.567,
+            }],
+            constraints: vec![
+                Constraint {
+                    kind_code: crate::ConstraintKind::Length.to_u8(),
+                    refs: Vec::new(),
+                    value: Some(25.4),
+                    xy: Some((1e-9, -0.0)),
+                    sign: Some(1e6),
+                    ..Default::default()
+                },
+                Constraint {
+                    kind_code: crate::ConstraintKind::Coincident.to_u8(),
+                    refs: vec![(
+                        RefRole::A,
+                        Ref::External {
+                            x: 1234.567,
+                            y: 1e6,
+                        },
+                    )],
+                    ..Default::default()
+                },
+            ],
+            options: Options::default(),
+        };
+        let decoded = decode_input(&encode_input(&input)).expect("decode");
+        for (got, want) in decoded.params_initial.iter().zip(&input.params_initial) {
+            assert_eq!(got.to_bits(), want.to_bits(), "{got} != {want}");
+        }
+        assert_eq!(
+            decoded.equality_pins[0].target.to_bits(),
+            1234.567_f64.to_bits()
+        );
+        let c = &decoded.constraints[0];
+        assert_eq!(c.value.unwrap().to_bits(), 25.4f64.to_bits());
+        assert_eq!(c.xy.unwrap().0.to_bits(), 1e-9f64.to_bits());
+        assert_eq!(c.xy.unwrap().1.to_bits(), (-0.0f64).to_bits());
+        assert_eq!(c.sign.unwrap().to_bits(), 1e6f64.to_bits());
+        match &decoded.constraints[1].refs[0].1 {
+            Ref::External { x, y } => {
+                assert_eq!(x.to_bits(), 1234.567f64.to_bits());
+                assert_eq!(y.to_bits(), 1e6f64.to_bits());
+            }
+            other => panic!("expected external ref, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn output_floats_round_trip_bit_exact() {
+        let out = Output {
+            params_solved: vec![25.4, 1234.567, 1e-9, -0.0, 1e6],
+            entity_status: Vec::new(),
+            overall_status: 0,
+            vertex_freedom: vec![-0.0, 1e6],
+            diagnostics: Diagnostics::default(),
+        };
+        let decoded = decode_output(&encode_output(&out)).unwrap();
+        for (got, want) in decoded.params_solved.iter().zip(&out.params_solved) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
+        for (got, want) in decoded.vertex_freedom.iter().zip(&out.vertex_freedom) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
     }
 
     #[test]
@@ -692,6 +783,16 @@ mod tests {
     }
 
     #[test]
+    fn rev2_input_magic_rejected() {
+        // Rev 2 is the f32 layout: the float widths moved, so a rev 2 payload
+        // fed to the rev 3 decoder must fail at the magic, never decode
+        // shifted values.
+        let mut bytes = encode_input(&sample_input());
+        bytes[..4].copy_from_slice(&MAGIC_REV2.to_le_bytes());
+        assert!(matches!(decode_input(&bytes), Err(CodecError::BadMagic)));
+    }
+
+    #[test]
     fn current_input_magic_accepted() {
         let bytes = encode_input(&sample_input());
         assert_eq!(&bytes[..4], &MAGIC.to_le_bytes());
@@ -709,6 +810,20 @@ mod tests {
         };
         let mut bytes = encode_output(&out);
         bytes[..4].copy_from_slice(&MAGIC_OUT_REV1.to_le_bytes());
+        assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
+    }
+
+    #[test]
+    fn rev2_output_magic_rejected() {
+        let out = Output {
+            params_solved: vec![1.0],
+            entity_status: vec![0],
+            overall_status: 0,
+            vertex_freedom: Vec::new(),
+            diagnostics: Diagnostics::default(),
+        };
+        let mut bytes = encode_output(&out);
+        bytes[..4].copy_from_slice(&MAGIC_OUT_REV2.to_le_bytes());
         assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
     }
 
@@ -856,8 +971,8 @@ mod tests {
     // Each float field class on the input wire is gated individually: one NaN
     // row reaching the residuals silently poisons a whole solve into a wrong
     // status, so there is no "harmless" slot for a non-finite to hide in.
-    fn assert_nonfinite_rejected(field: &str, apply: impl Fn(&mut Input, f32)) {
-        for v in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+    fn assert_nonfinite_rejected(field: &str, apply: impl Fn(&mut Input, f64)) {
+        for v in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             let mut input = sample_input();
             apply(&mut input, v);
             assert!(
@@ -884,17 +999,17 @@ mod tests {
     fn nonfinite_constraint_scalar_value_rejected() {
         // The Length constraint is the canonical scalar value carrier.
         assert_nonfinite_rejected("value", |input, v| {
-            input.constraints[1].value = Some(v as f64);
+            input.constraints[1].value = Some(v);
         });
     }
 
     #[test]
     fn nonfinite_constraint_xy_field_rejected() {
         assert_nonfinite_rejected("xy.x", |input, v| {
-            input.constraints[0].xy = Some((v as f64, 0.5));
+            input.constraints[0].xy = Some((v, 0.5));
         });
         assert_nonfinite_rejected("xy.y", |input, v| {
-            input.constraints[0].xy = Some((0.5, v as f64));
+            input.constraints[0].xy = Some((0.5, v));
         });
     }
 
@@ -904,7 +1019,7 @@ mod tests {
         // own flag bit, independent of has_value.
         assert_nonfinite_rejected("sign", |input, v| {
             input.constraints[1].value = None;
-            input.constraints[1].sign = Some(v as f64);
+            input.constraints[1].sign = Some(v);
         });
     }
 
@@ -913,14 +1028,14 @@ mod tests {
         assert_nonfinite_rejected("external x", |input, v| {
             let (_, rf) = &mut input.constraints[2].refs[1];
             match rf {
-                Ref::External { x, .. } => *x = v as f64,
+                Ref::External { x, .. } => *x = v,
                 _ => panic!("expected the external ref"),
             }
         });
         assert_nonfinite_rejected("external y", |input, v| {
             let (_, rf) = &mut input.constraints[2].refs[1];
             match rf {
-                Ref::External { y, .. } => *y = v as f64,
+                Ref::External { y, .. } => *y = v,
                 _ => panic!("expected the external ref"),
             }
         });

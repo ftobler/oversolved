@@ -112,10 +112,10 @@ pub(super) fn mate_with_offset_vec(
 }
 
 /// (qz, qw) for a pure roll of `deg` degrees about world Z, qx = qy = 0.
-pub(super) fn quat_roll_z(deg: f64) -> (f32, f32) {
+pub(super) fn quat_roll_z(deg: f64) -> (f64, f64) {
     let half = (deg.to_radians() / 2.0).sin();
     let cos_half = (deg.to_radians() / 2.0).cos();
-    (half as f32, cos_half as f32)
+    (half, cos_half)
 }
 
 /// Two bodies: body 0 at origin (grounded), body 1 at (5, 0, 0).
@@ -184,9 +184,9 @@ pub(super) fn three_spherical_weld_input(scale: f64) -> MateInput {
             0.0,
             0.0,
             1.0,
-            (5.0 * scale) as f32,
-            scale as f32,
-            (2.0 * scale) as f32,
+            (5.0 * scale),
+            scale,
+            (2.0 * scale),
             0.0,
             0.0,
             0.0,
@@ -229,7 +229,7 @@ pub(super) fn three_spherical_weld_input(scale: f64) -> MateInput {
 pub(super) fn copy_rotation_input(ratio: f64, seed_a_deg: f64, seed_b_deg: f64) -> MateInput {
     let q = |deg: f64| {
         let half = deg.to_radians() / 2.0;
-        (half.sin() as f32, half.cos() as f32)
+        (half.sin(), half.cos())
     };
     let (qza, qwa) = q(seed_a_deg);
     let (qzb, qwb) = q(seed_b_deg);

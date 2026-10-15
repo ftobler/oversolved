@@ -28,8 +28,8 @@ pub enum CodecError {
 /// nalgebra's SVD (the rank pass in `solve_mate`) never satisfies its
 /// convergence test on NaN: it loops forever inside the serialized worker
 /// actor, wedging every later solve with it. There is no other gate between
-/// the wire and the residuals, so every decoded f32 is checked here.
-pub(crate) fn finite(v: f32) -> Result<f32, CodecError> {
+/// the wire and the residuals, so every decoded f64 is checked here.
+pub(crate) fn finite(v: f64) -> Result<f64, CodecError> {
     if v.is_finite() {
         Ok(v)
     } else {

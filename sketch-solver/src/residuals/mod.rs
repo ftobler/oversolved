@@ -3,8 +3,8 @@
 //! `Problem` precomputes the per-solve invariants (entity kinds/offsets, the
 //! initial param vector `x0`, the line-circle coincident map) once, then
 //! `residuals(x)` evaluates the stacked residual vector for a candidate `x`.
-//! Computation is in `f64`; the wire format's `f32` is widened on decode and
-//! narrowed only at output.
+//! Computation is in `f64`, and so is the wire format (rev 3): no conversion
+//! happens on decode or encode.
 //!
 //! `pinned_mask` and `equality_pins` are lowered to extra residual rows here
 //! (one `x[i] - target` row each), the same rows `r_fixed` produces for a
@@ -34,8 +34,8 @@ type P2 = [f64; 2];
 
 pub struct Problem<'a> {
     entities: &'a [Entity],
-    /// Initial param vector (widened from the wire `f32`), the `x0` of the
-    /// `fixed` fallback and the pin rows.
+    /// Initial param vector (the wire's f64 params, verbatim), the `x0` of
+    /// the `fixed` fallback and the pin rows.
     pub x0: Vec<f64>,
     /// Only the constraints whose every entity reference is addressable (see
     /// `Input::entity_params_in_range`) and whose operand kinds supply the
@@ -58,7 +58,7 @@ pub struct Problem<'a> {
 
 impl<'a> Problem<'a> {
     pub fn new(input: &'a Input) -> Self {
-        let x0: Vec<f64> = input.params_initial.iter().map(|&v| v as f64).collect();
+        let x0: Vec<f64> = input.params_initial.clone();
 
         let pinned_indices: Vec<usize> = (0..x0.len()).filter(|&i| input.is_pinned(i)).collect();
         // A pin naming a param the buffer does not have is stale in exactly the
@@ -66,7 +66,7 @@ impl<'a> Problem<'a> {
         let equality_pins: Vec<(usize, f64)> = input
             .equality_pins
             .iter()
-            .map(|p| (p.param_index as usize, p.target as f64))
+            .map(|p| (p.param_index as usize, p.target))
             .filter(|&(i, _)| i < x0.len())
             .collect();
 

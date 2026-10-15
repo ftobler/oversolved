@@ -275,8 +275,8 @@ describe('solveAssembly', () => {
     ]
     // A solver that returns an output for only one body when two were sent.
     const shortSolver = (): Uint8Array => {
-      const w = new DataView(new ArrayBuffer(20 + 7 * 4 + 24))
-      w.setUint32(0, 0x3252_544D, true)  // MATE_MAGIC_OUT
+      const w = new DataView(new ArrayBuffer(20 + 7 * 8 + 24))
+      w.setUint32(0, 0x3352_544D, true)  // MATE_MAGIC_OUT
       w.setUint32(4, 7, true)  // nParams = 7, but the caller expects 14
       w.setUint8(8, 0)
       return new Uint8Array(w.buffer)
@@ -382,13 +382,13 @@ describe('solveAssembly', () => {
       const nBodies = view.getUint32(4, true)
       const nParams = nBodies * 7
       const paramsOffset = 20 + nBodies * 4
-      const outSize = 4 + 4 + 1 + nParams * 4 + 4 + 28  // +4 for the n_mates header
+      const outSize = 4 + 4 + 1 + nParams * 8 + 4 + 28  // +4 for the n_mates header
       const out = new DataView(new ArrayBuffer(outSize))
       let pos = 0
-      out.setUint32(pos, 0x3252544D, true); pos += 4
+      out.setUint32(pos, 0x3352544D, true); pos += 4
       out.setUint32(pos, nParams, true); pos += 4
       out.setUint8(pos, 2); pos += 1
-      for (let i = 0; i < nParams; i++) { out.setFloat32(pos, view.getFloat32(paramsOffset + i * 4, true), true); pos += 4 }
+      for (let i = 0; i < nParams; i++) { out.setFloat64(pos, view.getFloat64(paramsOffset + i * 8, true), true); pos += 8 }
       out.setUint32(pos, 0, true); pos += 4  // n_mates
       out.setFloat64(pos, 0.5, true); pos += 8
       out.setUint32(pos, 13, true); pos += 4
