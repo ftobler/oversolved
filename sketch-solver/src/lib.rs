@@ -129,7 +129,7 @@ pub struct Entity {
 #[derive(Debug, Clone, Copy)]
 pub struct EqualityPin {
     pub param_index: u32,
-    pub target: f32,
+    pub target: f64,
 }
 
 /// Solve-time options. `drag_mode` + `skip_status_pass` drive the 60 Hz path.
@@ -144,7 +144,7 @@ pub struct Options {
 #[derive(Debug, Clone, Default)]
 pub struct Input {
     pub entities: Vec<Entity>,
-    pub params_initial: Vec<f32>,
+    pub params_initial: Vec<f64>,
     /// One bit per param (LSB-first within each byte); 1 = pinned to its
     /// `params_initial` value.
     pub pinned_mask: Vec<u8>,
@@ -209,7 +209,7 @@ pub struct Diagnostics {
 
 #[derive(Debug, Clone, Default)]
 pub struct Output {
-    pub params_solved: Vec<f32>,
+    pub params_solved: Vec<f64>,
     /// Per-entity status code (`Status::to_u8`); empty on the drag fast path and
     /// when `skip_status_pass` is set, since both skip the per-entity SVD.
     pub entity_status: Vec<u8>,
@@ -217,7 +217,7 @@ pub struct Output {
     /// Per-entity null-space directions for drag (Jacobian SVD), flattened as
     /// `[entity_count][dir_x, dir_y, ...]`. Empty on the drag fast path and
     /// when `skip_status_pass` is set.
-    pub vertex_freedom: Vec<f32>,
+    pub vertex_freedom: Vec<f64>,
     pub diagnostics: Diagnostics,
 }
 

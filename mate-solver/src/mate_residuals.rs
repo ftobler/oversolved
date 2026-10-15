@@ -140,11 +140,14 @@ fn mate_residual_count(kind: MateKind) -> usize {
 /// Characteristic drawing length for the relative `mate_status` threshold.
 ///
 /// Built from the AABB diagonal over the seed body translations and the mate
-/// anchors' local points. The wire carries anchor points as f32, so the f32
-/// quantum is proportional to the drawing size; scaling the threshold with the
-/// geometry keeps a correctly solved 1e4 mm assembly from reading as
-/// overconstrained purely from rounding. The floor at 1.0 preserves the
-/// historical absolute 1e-4 behaviour for models under one unit.
+/// anchors' local points. The threshold is relative on purpose: a modelling
+/// conflict is a fraction of the drawing, so a 1e4-unit assembly with a
+/// one-unit conflict reads like a 1-unit assembly with a 1e-4 conflict, and
+/// the verdict does not flip when the same assembly is redrawn in different
+/// units. (The rev 2 f32 wire's size-proportional quantum was the original
+/// motivation; the rev 3 f64 wire removes that noise but not the design.) The
+/// floor at 1.0 preserves the historical absolute 1e-4 behaviour for models
+/// under one unit.
 fn geometry_scale(x0: &[f64], mates: &[Mate]) -> f64 {
     let mut min = [f64::INFINITY; 3];
     let mut max = [f64::NEG_INFINITY; 3];
@@ -180,7 +183,7 @@ impl MateProblem {
         let n_bodies = input.bodies.len();
         let grounded: Vec<bool> = (0..n_bodies).map(|i| input.is_fixed(i)).collect();
 
-        let x0: Vec<f64> = input.params_initial.iter().map(|&p| p as f64).collect();
+        let x0: Vec<f64> = input.params_initial.clone();
         // The param dimension the solver optimizes IS the seed buffer: every
         // LM-side slice (step vector, J^T J diagonal, damping scale) is sized
         // from x0's length, so reporting bodies*7 here would desync the
@@ -791,7 +794,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
         };
     }
 
-    let x0_f64: Vec<f64> = input.params_initial.iter().map(|&p| p as f64).collect();
+    let x0_f64: Vec<f64> = input.params_initial.clone();
 
     let residuals_fn = problem.residuals_fn();
     let jacobian_fn = problem.jacobian_fn();
@@ -839,7 +842,7 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
         problem.geometry_scale(),
     );
 
-    let params_solved: Vec<f32> = lm_result.x.iter().map(|&v| v as f32).collect();
+    let params_solved: Vec<f64> = lm_result.x.clone();
 
     // Per-mate residual norms at the solved pose, one per INPUT mate. Kept
     // mates are sliced by the per-kind counts `residuals()` pushed them in; a

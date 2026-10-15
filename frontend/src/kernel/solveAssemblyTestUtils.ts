@@ -131,26 +131,26 @@ export function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
   return (input: Uint8Array): Uint8Array => {
     // Decode the input to get the initial params.
     // The input header is: magic(4) + n_bodies(4) + n_params(4) + n_mates(4) + n_fixed(4)
-    // Then n_bodies * 4 bytes of body indices, then paramsInitial.
+    // Then n_bodies * 4 bytes of body indices, then paramsInitial (f64 each).
     const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
     const nBodies = view.getUint32(4, true)
     const nParams = nBodies * 7
     const paramsOffset = 20 + nBodies * 4
     const params: number[] = []
     for (let i = 0; i < nParams; i++) {
-      params.push(view.getFloat32(paramsOffset + i * 4, true))
+      params.push(view.getFloat64(paramsOffset + i * 8, true))
     }
 
-    // Build output: magic(4) + n_params(4) + status(1) + params(nParams*4) + diagnostics(28)
-    const outSize = 4 + 4 + 1 + nParams * 4 + 4 + 28  // +4 for the n_mates header
+    // Build output: magic(4) + n_params(4) + status(1) + params(nParams*8) + diagnostics(28)
+    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + 28  // +4 for the n_mates header
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x3252544D, true); pos += 4  // MATE_MAGIC_OUT
+    out.setUint32(pos, 0x3352544D, true); pos += 4  // MATE_MAGIC_OUT
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1  // fully constrained
     for (let i = 0; i < nParams; i++) {
-      out.setFloat32(pos, params[i], true); pos += 4
+      out.setFloat64(pos, params[i], true); pos += 8
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
     out.setFloat64(pos, 0.0, true); pos += 8  // residual_norm
@@ -171,22 +171,22 @@ export function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Arr
     const paramsOffset = 20 + nBodies * 4
     const params: number[] = []
     for (let i = 0; i < nParams; i++) {
-      params.push(view.getFloat32(paramsOffset + i * 4, true))
+      params.push(view.getFloat64(paramsOffset + i * 8, true))
     }
     // Translate the second body (indices 7-13)
     if (nBodies >= 2) {
       params[7] += dx
     }
 
-    const outSize = 4 + 4 + 1 + nParams * 4 + 4 + 28  // +4 for the n_mates header
+    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + 28  // +4 for the n_mates header
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x3252544D, true); pos += 4
+    out.setUint32(pos, 0x3352544D, true); pos += 4
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1
     for (let i = 0; i < nParams; i++) {
-      out.setFloat32(pos, params[i], true); pos += 4
+      out.setFloat64(pos, params[i], true); pos += 8
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
     out.setFloat64(pos, 0.0, true); pos += 8
@@ -211,19 +211,19 @@ export function makeScaledQwSolver(bodyIndex: number, scale: number): (input: Ui
     const paramsOffset = 20 + nBodies * 4
     const params: number[] = []
     for (let i = 0; i < nParams; i++) {
-      params.push(view.getFloat32(paramsOffset + i * 4, true))
+      params.push(view.getFloat64(paramsOffset + i * 8, true))
     }
     for (let c = 3; c < 7; c++) params[bodyIndex * 7 + c] *= scale
 
-    const outSize = 4 + 4 + 1 + nParams * 4 + 4 + 28  // +4 for the n_mates header
+    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + 28  // +4 for the n_mates header
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
-    out.setUint32(pos, 0x3252544D, true); pos += 4
+    out.setUint32(pos, 0x3352544D, true); pos += 4
     out.setUint32(pos, nParams, true); pos += 4
     out.setUint8(pos, 0); pos += 1
     for (let i = 0; i < nParams; i++) {
-      out.setFloat32(pos, params[i], true); pos += 4
+      out.setFloat64(pos, params[i], true); pos += 8
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
     out.setFloat64(pos, 0.0, true); pos += 8
@@ -262,16 +262,16 @@ export function decodeInput(input: Uint8Array): DecodedInput {
   const nBodies = v.getUint32(4, true)
   const nParams = v.getUint32(8, true)
   const nMates = v.getUint32(12, true)
-  let pos = 20 + nBodies * 4 + nParams * 4
+  let pos = 20 + nBodies * 4 + nParams * 8
   const maskLen = Math.ceil(nBodies / 8)
   const fixedMask: number[] = []
   for (let i = 0; i < maskLen; i++) fixedMask.push(v.getUint8(pos + i))
   pos += maskLen
   const readVec = (): [number, number, number] => {
     const out: [number, number, number] = [
-      v.getFloat32(pos, true), v.getFloat32(pos + 4, true), v.getFloat32(pos + 8, true),
+      v.getFloat64(pos, true), v.getFloat64(pos + 8, true), v.getFloat64(pos + 16, true),
     ]
-    pos += 12
+    pos += 24
     return out
   }
   const mates: DecodedMateRecord[] = []
@@ -287,10 +287,10 @@ export function decodeInput(input: Uint8Array): DecodedInput {
     const axisB = readVec()
     pos += 1  // flags
     const offset = readVec()
-    pos += 4 + 4  // ratio + radius
-    const angle = v.getFloat32(pos, true); pos += 4
-    pos += 24  // perp_a (3 f32) + perp_b (3 f32)
-    const weight = v.getFloat32(pos, true); pos += 4
+    pos += 8 + 8  // ratio + radius
+    const angle = v.getFloat64(pos, true); pos += 8
+    pos += 48  // perp_a (3 f64) + perp_b (3 f64)
+    const weight = v.getFloat64(pos, true); pos += 8
     mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB, offset, angle, weight })
   }
   return { nBodies, fixedMask, mates }

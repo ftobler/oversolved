@@ -39,7 +39,7 @@ fn mate_geom(ax: f64, ay: f64, az: f64) -> MateGeometry {
 }
 
 fn sample_input() -> MateInput {
-    let params: Vec<f32> = vec![
+    let params: Vec<f64> = vec![
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 0: identity
         5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: translated +x
     ];
@@ -94,9 +94,48 @@ fn mate_input_round_trips() {
 }
 
 #[test]
+fn mate_record_f64_fields_round_trip_bit_exact() {
+    // The values the f32 wire could not carry (see the sketch codec's twin
+    // test). A narrowing anywhere in the record would show as a bit-pattern
+    // difference here, -0.0 included.
+    let mut input = sample_input();
+    let m = &mut input.mates[0];
+    m.a.geometry.point = [25.4, 1234.567, 1e-9];
+    m.a.geometry.axis = [-0.0, 1e6, 25.4];
+    m.b.geometry.point = [1234.567, -0.0, 1e-9];
+    m.b.geometry.axis = [1e6, 0.0, 1.0];
+    m.a.geometry.perp = [1234.567, 25.4, 1e-9];
+    m.b.geometry.perp = [-0.0, 1e6, 0.0];
+    m.offset = [25.4, 1234.567, -0.0];
+    m.ratio = 1e6;
+    m.radius = 1e-9;
+    m.angle = 1234.567;
+    m.weight = 25.4;
+    input.params_initial[0] = 1234.567;
+    input.params_initial[7] = -0.0;
+
+    let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
+    let d = &decoded.mates[0];
+    let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    assert_eq!(bits(&d.a.geometry.point), bits(&[25.4, 1234.567, 1e-9]));
+    assert_eq!(bits(&d.a.geometry.axis), bits(&[-0.0, 1e6, 25.4]));
+    assert_eq!(bits(&d.b.geometry.point), bits(&[1234.567, -0.0, 1e-9]));
+    assert_eq!(bits(&d.b.geometry.axis), bits(&[1e6, 0.0, 1.0]));
+    assert_eq!(bits(&d.a.geometry.perp), bits(&[1234.567, 25.4, 1e-9]));
+    assert_eq!(bits(&d.b.geometry.perp), bits(&[-0.0, 1e6, 0.0]));
+    assert_eq!(bits(&d.offset), bits(&[25.4, 1234.567, -0.0]));
+    assert_eq!(d.ratio.to_bits(), 1e6f64.to_bits());
+    assert_eq!(d.radius.to_bits(), 1e-9f64.to_bits());
+    assert_eq!(d.angle.to_bits(), 1234.567f64.to_bits());
+    assert_eq!(d.weight.to_bits(), 25.4f64.to_bits());
+    assert_eq!(decoded.params_initial[0].to_bits(), 1234.567f64.to_bits());
+    assert_eq!(decoded.params_initial[7].to_bits(), (-0.0f64).to_bits());
+}
+
+#[test]
 fn body_index_past_the_body_table_decodes_verbatim() {
     // Referential validity is not a wire property: a mate naming body 9 in a
-    // two-body assembly is a well-formed 112-byte record, so decode keeps it
+    // two-body assembly is a well-formed 212-byte record, so decode keeps it
     // and `MateProblem::new` is what drops it.
     let mut input = sample_input();
     input.mates[0].b.body_index = 9;
@@ -154,26 +193,25 @@ fn mate_output_bad_magic_rejected() {
 #[test]
 fn mate_input_bad_kind_rejected() {
     let mut bytes = encode_mate_input(&sample_input());
-    // In the 112-byte record, kind_code is at offset:
-    // header(20) + bodies(8) + params_initial(56) + fixed_mask(1) = 85
+    // In the 212-byte record, kind_code is at offset:
+    // header(20) + bodies(8) + params_initial(14 * 8 = 112) + fixed_mask(1) = 141
     // + kind_code is first byte of mate record
-    bytes[85] = 0xff; // kind_code in first mate record
+    bytes[141] = 0xff; // kind_code in first mate record
     assert!(matches!(
         decode_mate_input(&bytes),
         Err(CodecError::BadKind(_))
     ));
 }
 
-// A buffer built to the pre-offset-vector 104-byte stride (a scalar offset
-// f32 where the current record carries a 3-component vector, 8 bytes
-// shorter) must fail loudly rather than silently reading ratio/radius/angle
-// out of the shifted positions -- there is only one mate here, so the
-// missing bytes run the reader off the end of the buffer. The encoder and
-// the TS side move in lockstep or not at all.
+// A buffer built to the superseded rev 3 stride (112 bytes, f32 floats) must
+// fail loudly rather than silently reading f64 fields out of shifted
+// positions -- there is only one mate here, so the short record runs the
+// reader off the end of the buffer. The encoder and the TS side move in
+// lockstep or not at all.
 #[test]
-fn mate_input_old_104_byte_stride_rejected() {
+fn mate_input_old_112_byte_stride_rejected() {
     let bytes = encode_mate_input(&sample_input());
-    let truncated = &bytes[..bytes.len() - 8];
+    let truncated = &bytes[..bytes.len() - 100];
     assert!(matches!(
         decode_mate_input(truncated),
         Err(CodecError::UnexpectedEof)
@@ -341,19 +379,19 @@ fn offset_ratio_radius_round_trip() {
 /// the offset's tail and mis-solve, which is why the stride is pinned
 /// against the shared fixture rather than a bare literal.
 #[test]
-fn mate_record_is_112_bytes() {
+fn mate_record_stride_matches_the_fixture() {
     let one = encode_mate_input(&sample_input()).len();
     let mut two_mates = sample_input();
     let extra = two_mates.mates[0].clone();
     two_mates.mates.push(extra);
     let stride = encode_mate_input(&two_mates).len() - one;
     assert_eq!(stride as u64, fixture_u64("record_bytes"));
-    assert_eq!(stride, 112);
+    assert_eq!(stride, 212);
 }
 
 // A record built to the pre-weight 108-byte stride must fail loudly instead
 // of silently reading the missing weight back as surplus. With one mate the
-// missing four bytes run the reader off the end of the buffer.
+// missing bytes run the reader off the end of the buffer.
 #[test]
 fn mate_input_short_weight_record_rejected() {
     let bytes = encode_mate_input(&sample_input());
@@ -369,7 +407,7 @@ fn mate_weight_round_trips() {
     let mut input = sample_input();
     input.mates[0].weight = 1e-4;
     let decoded = decode_mate_input(&encode_mate_input(&input)).expect("decode");
-    assert_eq!(decoded.mates[0].weight, 1e-4_f32 as f64);
+    assert_eq!(decoded.mates[0].weight, 1e-4);
 }
 
 /// The Rust half of the cross-language wire lock: the constants and stride
@@ -377,18 +415,18 @@ fn mate_weight_round_trips() {
 /// reads too. The fixture puts the magic-bump rule in front of the editor.
 #[test]
 fn mate_wire_fixture_matches_the_constants() {
-    assert_eq!(fixture_u64("rev"), 3);
+    assert_eq!(fixture_u64("rev"), 4);
     assert_eq!(MATE_MAGIC as u64, fixture_u64("magic"));
     assert_eq!(MATE_MAGIC_OUT as u64, fixture_u64("magic_out"));
 }
 
 // A stale decoder can meet a fresh encoder (the WASM is served from a fixed,
-// unhashed URL). The prior rev's magic (MTS2) must be rejected, not decoded
-// with the new weight field running off the old record.
+// unhashed URL). The prior rev's magic (MTS3, the f32 layout) must be
+// rejected, not decoded with the widened floats running past the old record.
 #[test]
 fn stale_magic_is_rejected() {
     let mut bytes = encode_mate_input(&sample_input());
-    bytes[0..4].copy_from_slice(&0x3253_544Du32.to_le_bytes());
+    bytes[0..4].copy_from_slice(&0x3353_544Du32.to_le_bytes());
     assert!(matches!(
         decode_mate_input(&bytes),
         Err(CodecError::BadMagic)
@@ -459,8 +497,8 @@ fn all_mate_kinds_decode() {
 // row reaching the residuals poisons the Jacobian, and nalgebra's SVD (the
 // rank pass) never converges on NaN -- it hangs the serialized worker for
 // good -- so there is no "harmless" slot for a non-finite to hide in.
-fn assert_nonfinite_rejected(field: &str, apply: impl Fn(&mut MateInput, f32)) {
-    for v in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+fn assert_nonfinite_rejected(field: &str, apply: impl Fn(&mut MateInput, f64)) {
+    for v in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         let mut input = sample_input();
         apply(&mut input, v);
         assert!(
@@ -482,10 +520,10 @@ fn nonfinite_param_seed_rejected() {
 fn nonfinite_anchor_point_rejected() {
     for comp in 0..3 {
         assert_nonfinite_rejected("point_a", move |input, v| {
-            input.mates[0].a.geometry.point[comp] = v as f64;
+            input.mates[0].a.geometry.point[comp] = v;
         });
         assert_nonfinite_rejected("point_b", move |input, v| {
-            input.mates[0].b.geometry.point[comp] = v as f64;
+            input.mates[0].b.geometry.point[comp] = v;
         });
     }
 }
@@ -494,10 +532,10 @@ fn nonfinite_anchor_point_rejected() {
 fn nonfinite_anchor_axis_rejected() {
     for comp in 0..3 {
         assert_nonfinite_rejected("axis_a", move |input, v| {
-            input.mates[0].a.geometry.axis[comp] = v as f64;
+            input.mates[0].a.geometry.axis[comp] = v;
         });
         assert_nonfinite_rejected("axis_b", move |input, v| {
-            input.mates[0].b.geometry.axis[comp] = v as f64;
+            input.mates[0].b.geometry.axis[comp] = v;
         });
     }
 }
@@ -505,14 +543,14 @@ fn nonfinite_anchor_axis_rejected() {
 #[test]
 fn nonfinite_offset_component_rejected() {
     // The offset is a full 3-vector on the wire; every component gates.
-    assert_nonfinite_rejected("offset.x", |input, v| input.mates[0].offset[0] = v as f64);
-    assert_nonfinite_rejected("offset.y", |input, v| input.mates[0].offset[1] = v as f64);
-    assert_nonfinite_rejected("offset.z", |input, v| input.mates[0].offset[2] = v as f64);
+    assert_nonfinite_rejected("offset.x", |input, v| input.mates[0].offset[0] = v);
+    assert_nonfinite_rejected("offset.y", |input, v| input.mates[0].offset[1] = v);
+    assert_nonfinite_rejected("offset.z", |input, v| input.mates[0].offset[2] = v);
 }
 
 #[test]
 fn nonfinite_ratio_radius_angle_rejected() {
-    assert_nonfinite_rejected("ratio", |input, v| input.mates[0].ratio = v as f64);
-    assert_nonfinite_rejected("radius", |input, v| input.mates[0].radius = v as f64);
-    assert_nonfinite_rejected("angle", |input, v| input.mates[0].angle = v as f64);
+    assert_nonfinite_rejected("ratio", |input, v| input.mates[0].ratio = v);
+    assert_nonfinite_rejected("radius", |input, v| input.mates[0].radius = v);
+    assert_nonfinite_rejected("angle", |input, v| input.mates[0].angle = v);
 }

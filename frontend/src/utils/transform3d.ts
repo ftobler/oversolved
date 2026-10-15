@@ -196,11 +196,11 @@ export function transformsEqual(a: Transform3D, b: Transform3D, eps = 1e-9): boo
   )
 }
 
-// How many f32 ulps a bake treats as "the same value". The mate wire is f32 in
-// both directions, so a solve returns a value that differs from an f64 seed only
-// by f32 rounding on a free DOF. Persisting that difference every commit makes
-// the free DOF walk by roughly one ulp per commit; a relative epsilon of a few
-// ulps is what lets the bake recognise the rounding it must not write.
+// How many f32 ulps a bake treats as "the same value". The wire carries f64
+// now (rev 3), but documents authored under the rev 2 f32 wire still hold
+// f32-quantized geometry: a bake must recognise a legacy seed's value as the
+// same number, or persisting the solved one walks the entry by an f32 ulp
+// every commit. A relative epsilon of a few ulps is that recognition.
 const APPROX_F32_EPS = 1e-6
 
 /**
@@ -208,13 +208,14 @@ const APPROX_F32_EPS = 1e-6
  *
  * Relative to the larger magnitude, floored at an absolute epsilon so a value
  * near zero is still compared against a real tolerance. The sketch write-back
- * compares solved params against the authored ones with exactly this predicate,
- * for exactly the assembly's reason: the wire is f32 (wasm-kernel/codec.ts
- * decodeOutput), so a value that moved nothing still comes back a few ulps off
- * the number the mutator persisted, and 6dp rounding on top of that flips the
- * grid the mutators write on (round(f32(25.7)) is 25.700001). Writing that
- * difference down each solve turns a re-solve of unchanged geometry into a doc
- * change.
+ * compares solved params against the authored ones with exactly this predicate:
+ * a document authored while the wire was f32 (wasm-kernel/codec.ts decodeOutput,
+ * rev 2) carries values a few ulps off what a fresh solve returns, and 6dp
+ * rounding on top of that flips the grid the mutators write on
+ * (round(f32(25.7)) is 25.700001). Writing that difference down each solve
+ * turns a re-solve of unchanged geometry into a doc change. Kept after the
+ * rev 3 f64 switch precisely so those legacy documents keep re-solving to the
+ * same spelling.
  */
 export function approxF32Equal(a: number, b: number, eps = APPROX_F32_EPS): boolean {
   return Math.abs(a - b) <= eps * Math.max(1, Math.abs(a), Math.abs(b))
@@ -222,9 +223,10 @@ export function approxF32Equal(a: number, b: number, eps = APPROX_F32_EPS): bool
 
 // Like transformsEqual but for the bake's "did the solver actually move this
 // part" question: each component is compared relative to its own magnitude, so
-// the tolerance tracks the f32 quantum at the value, and the quaternion compare
-// is rotation-aware (q and -q are the same pose). transformsEqual stays the
-// exact-identity test, where an absolute epsilon is what "unchanged" means.
+// the tolerance rides the legacy f32 quantum at the value (see
+// `approxF32Equal`), and the quaternion compare is rotation-aware (q and -q are
+// the same pose). transformsEqual stays the exact-identity test, where an
+// absolute epsilon is what "unchanged" means.
 export function transformApproxEqual(a: Transform3D, b: Transform3D, eps = APPROX_F32_EPS): boolean {
   if (!approxF32Equal(a.tx, b.tx, eps) || !approxF32Equal(a.ty, b.ty, eps) || !approxF32Equal(a.tz, b.tz, eps)) return false
   const qa = transformQuat(a)

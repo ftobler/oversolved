@@ -130,10 +130,10 @@ fn parallel_flip_aligns_axes_anti_parallel() {
             0.0,
             0.0,
             0.0,
-            half.sin() as f32,
+            half.sin(),
             0.0,
             0.0,
-            half.cos() as f32,
+            half.cos(),
         ],
         fixed_mask: vec![0b0000_0001],
         mates: vec![mate(
@@ -311,10 +311,10 @@ fn overconstrained_threshold_scales_with_drawing_scale_not_absolute_residual() {
     // large enough that the residual is small against the geometry.
     assert_eq!(mate_status(9.9, 1, 0, 1.0), MateStatus::Overconstrained);
     assert_eq!(mate_status(9.9, 1, 0, 1e6), MateStatus::FullyConstrained);
-    // The concrete wire case: the f32 quantum at a 1e4-unit layout is
-    // about 6e-4, so the old absolute 1e-4 threshold flagged a correctly
-    // solved assembly as Overconstrained. Relative to the drawing it
-    // passes.
+    // The wire case that motivated the relative form: a 6e-4 miss at a
+    // 1e4-unit layout (the old absolute 1e-4 threshold flagged a correctly
+    // solved assembly as Overconstrained). Relative to the drawing it
+    // passes, whatever its source.
     assert_eq!(mate_status(6e-4, 1, 0, 1.0), MateStatus::Overconstrained);
     assert_eq!(mate_status(6e-4, 1, 0, 1e4), MateStatus::FullyConstrained);
 }
@@ -469,9 +469,9 @@ fn quaternion_stays_near_unit_in_mate_solve() {
 fn spherical_mate_accuracy_with_settled_body() {
     let input = two_body_input();
     let out = solve_mate(&input);
-    let tx = out.params_solved[7] as f64;
-    let ty = out.params_solved[8] as f64;
-    let tz = out.params_solved[9] as f64;
+    let tx = out.params_solved[7];
+    let ty = out.params_solved[8];
+    let tz = out.params_solved[9];
     assert!(tx.abs() < 1e-4, "tx={}", tx);
     assert!(ty.abs() < 1e-4, "ty={}", ty);
     assert!(tz.abs() < 1e-4, "tz={}", tz);
@@ -657,7 +657,7 @@ fn tangential_plane_plane_coincidence() {
     let out = solve_mate(&input);
     // Body 1 should move to Z=0 (onto body 0's plane, with axes kept parallel).
     assert!(
-        (out.params_solved[9] as f64).abs() < 5e-2,
+        (out.params_solved[9]).abs() < 5e-2,
         "tz should be ~0, got {}",
         out.params_solved[9]
     );
@@ -718,7 +718,7 @@ fn tangential_cylinder_cylinder_distance() {
     };
     let out = solve_mate(&input);
     // Axis distance should be 2*radius = 6.0. Body 0 at x=0, body 1 should be at x=6.
-    let tx = out.params_solved[7] as f64;
+    let tx = out.params_solved[7];
     assert!((tx - 6.0).abs() < 0.1, "tx should be ~6, got {}", tx);
     assert!(out.diagnostics.residual_norm < 1e-2);
 }

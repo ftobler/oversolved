@@ -136,7 +136,7 @@ fn line_ellipse_tangent_measures_the_support_distance() {
     // aligned the minor axis is vertical, so the line touches: residual 0.
     // Rotated 90 deg the major axis is vertical: |3| - 5 = -2. Rotated 45 deg
     // the support distance is sqrt((25 + 9) / 2).
-    let mk = |theta: f32| {
+    let mk = |theta: f64| {
         input(
             vec![ent(Kind::Line, 0), ent(Kind::Ellipse, 4)],
             vec![-10.0, 3.0, 10.0, 3.0, 0.0, 0.0, 5.0, 3.0, theta],
@@ -293,17 +293,7 @@ fn normal_to_an_ellipse_follows_its_conic_gradient() {
     let start = [3.0 - 2.0 * g[0] / gn, 2.4 - 2.0 * g[1] / gn];
     let inp = input(
         vec![ent(Kind::Line, 0), ent(Kind::Ellipse, 4)],
-        vec![
-            start[0] as f32,
-            start[1] as f32,
-            3.0,
-            2.4,
-            0.0,
-            0.0,
-            5.0,
-            3.0,
-            0.0,
-        ],
+        vec![start[0], start[1], 3.0, 2.4, 0.0, 0.0, 5.0, 3.0, 0.0],
         vec![cons(
             ConstraintKind::Normal,
             ab(
@@ -554,17 +544,7 @@ fn line_arc_tangent_honors_the_pinned_contact_mid_sweep() {
     let start = [end[0] + 3.0 * s45, end[1] - 3.0 * c45];
     let inp = input(
         vec![ent(Kind::Line, 0), ent(Kind::Arc, 4)],
-        vec![
-            start[0] as f32,
-            start[1] as f32,
-            end[0] as f32,
-            end[1] as f32,
-            0.0,
-            0.0,
-            5.0,
-            0.0,
-            90.0,
-        ],
+        vec![start[0], start[1], end[0], end[1], 0.0, 0.0, 5.0, 0.0, 90.0],
         vec![
             cons(
                 ConstraintKind::Coincident,
@@ -582,9 +562,10 @@ fn line_arc_tangent_honors_the_pinned_contact_mid_sweep() {
     let p = Problem::new(&inp);
     let r = p.residuals(&p.x0);
     assert_eq!(r.len(), 2);
-    // The 45 deg contact only survives the f32 param buffer to ~1e-9.
-    assert!(r[0].abs() < 1e-7, "coincident: {}", r[0]);
-    assert!(r[1].abs() < 1e-7, "tangent at mid-sweep contact: {}", r[1]);
+    // The 45 deg contact survives the param buffer exactly now that the wire
+    // carries f64; the residual only carries the solver's own round-off.
+    assert!(r[0].abs() < 1e-9, "coincident: {}", r[0]);
+    assert!(r[1].abs() < 1e-9, "tangent at mid-sweep contact: {}", r[1]);
 }
 
 /// End-to-end shape of the bug: a sketch already satisfying its pinned
@@ -593,7 +574,7 @@ fn line_arc_tangent_honors_the_pinned_contact_mid_sweep() {
 #[test]
 fn solve_from_a_pinned_tangent_seed_stays_put() {
     let absent = PointSelector::Absent;
-    let mk = |line_params: [f32; 4], curve_params: Vec<f32>, curve: Kind| {
+    let mk = |line_params: [f64; 4], curve_params: Vec<f64>, curve: Kind| {
         input(
             vec![ent(Kind::Line, 0), ent(curve, 4)],
             [line_params.as_slice(), &curve_params].concat(),
@@ -615,10 +596,10 @@ fn solve_from_a_pinned_tangent_seed_stays_put() {
     let circle_case = mk([5.0, -3.0, 5.0, 0.0], vec![0.0, 0.0, 5.0], Kind::Circle);
     let arc_case = mk(
         [
-            (5.0 * 45.0_f64.to_radians().cos() + 3.0 * 45.0_f64.to_radians().sin()) as f32,
-            (5.0 * 45.0_f64.to_radians().sin() - 3.0 * 45.0_f64.to_radians().cos()) as f32,
-            (5.0 * 45.0_f64.to_radians().cos()) as f32,
-            (5.0 * 45.0_f64.to_radians().sin()) as f32,
+            5.0 * 45.0_f64.to_radians().cos() + 3.0 * 45.0_f64.to_radians().sin(),
+            5.0 * 45.0_f64.to_radians().sin() - 3.0 * 45.0_f64.to_radians().cos(),
+            5.0 * 45.0_f64.to_radians().cos(),
+            5.0 * 45.0_f64.to_radians().sin(),
         ],
         vec![0.0, 0.0, 5.0, 0.0, 90.0],
         Kind::Arc,
@@ -642,7 +623,7 @@ fn solve_from_a_pinned_tangent_seed_stays_put() {
             .enumerate()
         {
             assert!(
-                (*got as f64 - *want as f64).abs() < 1e-3,
+                (*got - *want).abs() < 1e-3,
                 "{name}: param {i} moved from {want} to {got}"
             );
         }

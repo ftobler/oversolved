@@ -246,7 +246,7 @@ fn spline_jacobian_matches_finite_difference() {
         .params_initial
         .iter()
         .enumerate()
-        .map(|(i, &v)| v as f64 + 0.21 * ((i as f64) * 1.7).sin())
+        .map(|(i, &v)| v + 0.21 * ((i as f64) * 1.7).sin())
         .collect();
     let n = x.len();
 
@@ -406,7 +406,7 @@ fn radius_difference_dimension() {
 /// PointDistanceX/Y) stays manageable.
 fn check_big_jac_problem(
     entities: Vec<Entity>,
-    params: Vec<f32>,
+    params: Vec<f64>,
     constraints: Vec<Constraint>,
     pinned_mask: Vec<u8>,
     equality_pins: Vec<EqualityPin>,
@@ -425,7 +425,7 @@ fn check_big_jac_problem(
         .params_initial
         .iter()
         .enumerate()
-        .map(|(i, &v)| v as f64 + 0.37 * ((i as f64) * 1.3).sin())
+        .map(|(i, &v)| v + 0.37 * ((i as f64) * 1.3).sin())
         .collect();
     let n = x.len();
     let analytic = p.jacobian(&x, n);
@@ -702,7 +702,7 @@ fn jacobian_sparse_matches_dense_jacobian() {
         .params_initial
         .iter()
         .enumerate()
-        .map(|(i, &v)| v as f64 + 0.13 * ((i as f64) * 0.9).cos())
+        .map(|(i, &v)| v + 0.13 * ((i as f64) * 0.9).cos())
         .collect();
     let n = x.len();
 

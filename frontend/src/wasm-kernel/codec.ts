@@ -57,14 +57,16 @@ export const Status = { fully_constrained: 0, underconstrained: 1, overconstrain
 /** Index -> status string, the inverse of the Rust `Status::to_u8`. */
 export const STATUS_NAME = ['fully_constrained', 'underconstrained', 'overconstrained'] as const
 
-// Rev 2 of the wire layout. The magic IS the version handshake: the layout
-// evolved once (has_sign flag + trailing sign f32) without moving these, so a
-// stale js/wasm pairing decoded shifted offsets instead of failing. Bump BOTH
-// sides (these two and sketch-solver/src/codec.rs) on any layout change.
-// Invalidating stale cached payloads is acceptable and safe post-wave-1:
-// bundle-cache reads degrade to cold rebuilds.
-const MAGIC_IN = 0x32474b53  // "SKG2", little-endian on the wire
-const MAGIC_OUT = 0x32524b53  // "SKR2"
+// Rev 3 of the wire layout. Every scalar is f64; rev 2 carried f32, which
+// quantized solved coordinates at ~6e-8 relative (1e-5 to 1e-4 mm on typical
+// parts, far above OCCT's 1e-7 confusion). The magic IS the version handshake:
+// the layout evolved before (has_sign flag + trailing sign f32) without moving
+// these, so a stale js/wasm pairing decoded shifted offsets instead of failing.
+// Bump BOTH sides (these two and sketch-solver/src/codec.rs) on any layout
+// change. Invalidating stale cached payloads is acceptable and safe
+// post-wave-1: bundle-cache reads degrade to cold rebuilds.
+const MAGIC_IN = 0x33474b53  // "SKG3", little-endian on the wire
+const MAGIC_OUT = 0x33524b53  // "SKR3"
 
 export interface FlatEntity {
   kind: number
@@ -120,9 +122,9 @@ class ByteWriter {
     this.bytes.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
   }
 
-  f32(v: number): void {
-    scratch.setFloat32(0, v, true)
-    for (let i = 0; i < 4; i++) this.bytes.push(scratch.getUint8(i))
+  f64(v: number): void {
+    scratch.setFloat64(0, v, true)
+    for (let i = 0; i < 8; i++) this.bytes.push(scratch.getUint8(i))
   }
 
   done(): Uint8Array {
@@ -144,12 +146,6 @@ class ByteReader {
 
   u32(): number {
     const v = this.view.getUint32(this.pos, true)
-    this.pos += 4
-    return v
-  }
-
-  f32(): number {
-    const v = this.view.getFloat32(this.pos, true)
     this.pos += 4
     return v
   }
@@ -176,14 +172,14 @@ export function encodeInput(input: FlatInput): Uint8Array {
     w.u8(e.kind)
     w.u32(e.offset)
   }
-  for (const p of input.params) w.f32(p)
+  for (const p of input.params) w.f64(p)
 
   const maskLen = Math.ceil(input.params.length / 8)
   for (let i = 0; i < maskLen; i++) w.u8(input.pinnedMask[i] ?? 0)
 
   for (const pin of input.equalityPins) {
     w.u32(pin.index)
-    w.f32(pin.target)
+    w.f64(pin.target)
   }
 
   for (const c of input.constraints) {
@@ -193,8 +189,8 @@ export function encodeInput(input: FlatInput): Uint8Array {
       w.u8(role)
       if (ref.kind === 'external') {
         w.u8(1)
-        w.f32(ref.x)
-        w.f32(ref.y)
+        w.f64(ref.x)
+        w.f64(ref.y)
       } else {
         w.u8(0)
         w.u8(ref.point)
@@ -207,13 +203,13 @@ export function encodeInput(input: FlatInput): Uint8Array {
     if (c.axis !== undefined) flags |= 0b100
     if (c.sign !== undefined) flags |= 0b1000
     w.u8(flags)
-    if (c.value !== undefined) w.f32(c.value)
+    if (c.value !== undefined) w.f64(c.value)
     if (c.xy !== undefined) {
-      w.f32(c.xy[0])
-      w.f32(c.xy[1])
+      w.f64(c.xy[0])
+      w.f64(c.xy[1])
     }
     if (c.axis !== undefined) w.u8(c.axis)
-    if (c.sign !== undefined) w.f32(c.sign)
+    if (c.sign !== undefined) w.f64(c.sign)
   }
   return w.done()
 }
@@ -227,13 +223,13 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   const overallStatus = r.u8()
 
   const paramsSolved: number[] = []
-  for (let i = 0; i < nParams; i++) paramsSolved.push(r.f32())
+  for (let i = 0; i < nParams; i++) paramsSolved.push(r.f64())
   const entityStatus: number[] = []
   for (let i = 0; i < nStatus; i++) entityStatus.push(r.u8())
   // vertexFreedom rides the wire (the Rust side emits it) but nothing consumes
   // it yet, so it is read past to keep the cursor aligned rather than decoded
   // into a field nobody reads.
-  for (let i = 0; i < vfLen; i++) r.f32()
+  for (let i = 0; i < vfLen; i++) r.f64()
 
   const residualNorm = r.f64()
   const rank = r.u32()

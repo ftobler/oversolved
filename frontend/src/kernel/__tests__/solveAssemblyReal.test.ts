@@ -766,11 +766,38 @@ describeReal('every mate kind solves as itself against the real mate solver', ()
     expect(control.status.mates['good'].residual!).toBeCloseTo(goodResidual!, 10)
   })
 
+  // The f64 wire's reason to exist, at assembly scale: a part placed at
+  // (2000, 2000, 2000) with a coincident (spherical) mate. Under the rev 2 f32
+  // wire the solved translation came back quantized to ~1.2e-4 at this
+  // magnitude, so the mate residual and the placement could never both sit
+  // below OCCT's confusion. Rev 3 carries the solved pose as f64.
+  it('solves a coincident mate at (2000, 2000, 2000) with a sub-nanometre residual', async () => {
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', transform: at(2000, 2000, 2000), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: identity() },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'spherical' as const,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }]
+
+    const result = await solveAssembly(parts, revs, mates, relay, solveMate!)
+
+    expect(result.status.mates['m1'].error).toBeUndefined()
+    expect(result.status.mates['m1'].residual!).toBeLessThan(1e-9)
+    // pb's anchor (its local origin) lands on pa's anchor at (2000, 2000, 2000).
+    const pb = result.transforms['pb']
+    expect(Math.abs(pb.tx - 2000)).toBeLessThan(1e-9)
+    expect(Math.abs(pb.ty - 2000)).toBeLessThan(1e-9)
+    expect(Math.abs(pb.tz - 2000)).toBeLessThan(1e-9)
+  })
+
   // The wire-version handshake, not routed through solveAssembly: its zero-mate
   // fast path skips the WASM call. A one-mate buffer built by the TS encoder
   // must decode in Rust; a drifted MATE_MAGIC makes solve_mate_bytes throw.
   it('the TS input magic agrees with the real Rust decoder', () => {
-    const params = new Float32Array(14)
+    const params = new Float64Array(14)
     params[6] = 1
     params[13] = 1
     const fixedMask = new Uint8Array([0])

@@ -145,20 +145,8 @@ fn copy_rotation_links_roll() {
     let input = MateInput {
         bodies: (0..2).map(|_| RigidBody).collect(),
         params_initial: vec![
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            half as f32,
-            cos_half as f32, // body 0: ~1 rad about Z
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0, // body 1: no roll (identity)
+            0.0, 0.0, 0.0, 0.0, 0.0, half, cos_half, // body 0: ~1 rad about Z
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, // body 1: no roll (identity)
         ],
         fixed_mask: vec![0b0000_0001], // body 0 grounded
         mates: vec![mate(

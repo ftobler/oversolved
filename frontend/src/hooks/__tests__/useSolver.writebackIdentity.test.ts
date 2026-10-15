@@ -36,11 +36,12 @@ function makeDoc(initial?: Record<string, number[]>): PartDoc {
   }
 }
 
-// The solved params reach the main thread as float32 (wasm-kernel/codec.ts
-// decodeOutput), so the coordinates come back as 3.1415927410125732 where the
-// sketch mutator that ran just before it persisted round(3.1415927...) =
-// 3.141593. Same geometry, different digits, and a doc compare that reads the
-// difference as a change.
+// Solved params reach the main thread as f64 now (wasm-kernel/codec.ts
+// decodeOutput, rev 3), but documents authored under the rev 2 f32 wire carry
+// spellings like 3.1415927410125732 where the sketch mutator persisted
+// round(3.1415927...) = 3.141593. Same geometry, different digits, and a doc
+// compare that reads the difference as a change. The suite keeps exercising
+// that legacy band.
 const F32_PI = Math.fround(Math.PI)
 const F32_THIRD = Math.fround(1 / 3)
 
@@ -118,7 +119,7 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
     expect(docRef.current).toBe(before)
   })
 
-  it('bakes the rounded value rather than the f32 wire value', async () => {
+  it('bakes the rounded value rather than the raw wire value', async () => {
     const docRef: { current: PartDoc | null } = { current: makeDoc() }
     const setDoc = vi.fn((d: PartDoc | null | ((prev: PartDoc | null) => PartDoc | null)) => {
       docRef.current = typeof d === 'function' ? d(docRef.current) : d
@@ -136,11 +137,11 @@ describe('solver write-back preserves doc identity on unchanged geometry', () =>
     expect(initial.l1[2]).not.toBe(F32_PI)
   })
 
-  // The band where the f32 quantum is wider than the mutators' 6dp grid, so
-  // rounding the wire value does NOT recover the authored number: 25.7 solves to
-  // 25.700000762939453, which rounds to 25.700001, and 63.4 to 63.400002.
-  // Rounding alone therefore still minted a fresh doc object here, which is what
-  // defeated a save overlapping the re-solve.
+  // The legacy band where the f32 quantum is wider than the mutators' 6dp grid,
+  // so rounding a rev 2 wire value does NOT recover the authored number: 25.7
+  // solved to 25.700000762939453, which rounds to 25.700001, and 63.4 to
+  // 63.400002. Rounding alone therefore still minted a fresh doc object here,
+  // which is what defeated a save overlapping the re-solve.
   const F32_BAND = [[25.7, 25.700001], [47.3, 47.299999], [63.4, 63.400002], [100.000001, 100]] as const
 
   it.each(F32_BAND)('keeps docRef identity when the solve re-derives %s as f32', async (authored) => {

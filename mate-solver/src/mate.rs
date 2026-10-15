@@ -9,18 +9,18 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MATE_MAGIC ("MTS3")
+//!   u32  magic = MATE_MAGIC ("MTS4")
 //!   u32  n_bodies
 //!   u32  n_params            // n_bodies * 7
 //!   u32  n_mates
 //!   u32  n_fixed_bodies      // informational count
 //! bodies:         n_bodies x { body_index u32 (informational) }
-//! params_initial: n_params x f32
+//! params_initial: n_params x f64
 //! fixed_mask:     ceil(n_bodies / 8) bytes (LSB-first, 1 = body is grounded)
 //! mates:          n_mates x mate-record (see below)
 //! ```
 //!
-//! ## Mate record (fixed length, 112 bytes)
+//! ## Mate record (fixed length, 212 bytes)
 //!
 //! ```text
 //!   u8   kind_code
@@ -28,18 +28,18 @@
 //!   u32  body_b_index
 //!   u8   anchor_kind_a       // AnchorKind to_u8
 //!   u8   anchor_kind_b
-//!   f32  point_a_x, point_a_y, point_a_z  // anchor point in body A local frame
-//!   f32  axis_a_x, axis_a_y, axis_a_z     // anchor axis in body A local frame
-//!   f32  point_b_x, point_b_y, point_b_z  // anchor point in body B local frame
-//!   f32  axis_b_x, axis_b_y, axis_b_z     // anchor axis in body B local frame
+//!   f64  point_a_x, point_a_y, point_a_z  // anchor point in body A local frame
+//!   f64  axis_a_x, axis_a_y, axis_a_z     // anchor axis in body A local frame
+//!   f64  point_b_x, point_b_y, point_b_z  // anchor point in body B local frame
+//!   f64  axis_b_x, axis_b_y, axis_b_z     // anchor axis in body B local frame
 //!   u8   flags               // bit 0 = flip
-//!   f32  offset_x, offset_y, offset_z  // offset vector in body A's LOCAL frame
-//!   f32  ratio               // for CopyRotation (gear-like ratio)
-//!   f32  radius              // for Tangential (mate-side radius fallback)
-//!   f32  angle               // radians, Fixed/Sliding's absolute roll target (TS encodes degrees -> radians)
-//!   f32  perp_a_x, perp_a_y, perp_a_z  // canonical in-plane frame of A's LOCAL axis
-//!   f32  perp_b_x, perp_b_y, perp_b_z  // canonical in-plane frame of B's LOCAL axis
-//!   f32  weight              // row scale on this mate's residuals/Jacobian (1 for real mates, small for the drag objective)
+//!   f64  offset_x, offset_y, offset_z  // offset vector in body A's LOCAL frame
+//!   f64  ratio               // for CopyRotation (gear-like ratio)
+//!   f64  radius              // for Tangential (mate-side radius fallback)
+//!   f64  angle               // radians, Fixed/Sliding's absolute roll target (TS encodes degrees -> radians)
+//!   f64  perp_a_x, perp_a_y, perp_a_z  // canonical in-plane frame of A's LOCAL axis
+//!   f64  perp_b_x, perp_b_y, perp_b_z  // canonical in-plane frame of B's LOCAL axis
+//!   f64  weight              // row scale on this mate's residuals/Jacobian (1 for real mates, small for the drag objective)
 //! ```
 //!
 //! There is no per-record version field: the header magic is the version
@@ -55,10 +55,10 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MATE_MAGIC_OUT ("MTR2")
+//!   u32  magic = MATE_MAGIC_OUT ("MTR3")
 //!   u32  n_params
 //!   u8   overall_status
-//! params_solved: n_params x f32
+//! params_solved: n_params x f64
 //! mate_residuals: u32 n_mates, then n_mates x f64 (L2 norm of each mate's
 //!                 weighted residual block, in input mate order)
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
@@ -70,8 +70,8 @@ use crate::codec::{finite, CodecError, Reader, Writer};
 // plain `MAGIC` in sketch-solver/src/codec.rs): the two crates version their
 // buffers separately and never read each other's bytes, so the naming
 // asymmetry is deliberate and not a rename target.
-pub const MATE_MAGIC: u32 = 0x3353_544D; // "MTS3" in LE
-pub const MATE_MAGIC_OUT: u32 = 0x3252_544D; // "MTR2" in LE
+pub const MATE_MAGIC: u32 = 0x3453_544D; // "MTS4" in LE
+pub const MATE_MAGIC_OUT: u32 = 0x3352_544D; // "MTR3" in LE
 
 /// All mate kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -265,8 +265,8 @@ pub struct RigidBody;
 #[derive(Debug, Clone)]
 pub struct MateInput {
     pub bodies: Vec<RigidBody>,
-    /// Flat f32 params: n_bodies * 7 entries (tx, ty, tz, qx, qy, qz, qw).
-    pub params_initial: Vec<f32>,
+    /// Flat f64 params: n_bodies * 7 entries (tx, ty, tz, qx, qy, qz, qw).
+    pub params_initial: Vec<f64>,
     /// Bitmask: 1 = body is grounded/fixed (its transform is pinned to x0).
     pub fixed_mask: Vec<u8>,
     pub mates: Vec<Mate>,
@@ -314,7 +314,7 @@ pub struct MateDiagnostics {
 /// Output of the mate solver.
 #[derive(Debug, Clone)]
 pub struct MateOutput {
-    pub params_solved: Vec<f32>,
+    pub params_solved: Vec<f64>,
     pub overall_status: u8,
     /// L2 norm of each solved mate's weighted residual block, in input mate
     /// order. Carried on the wire so the host can mark a mate whose rigid
@@ -362,19 +362,18 @@ fn read_header(r: &mut Reader<'_>) -> Result<(usize, usize, usize), CodecError> 
     Ok((n_bodies, n_params, n_mates))
 }
 
-/// Read one wire f32, gate it against non-finite, and widen to f64. The mate
-/// record's float fields are f32 on the wire (see the layout docs) but f64 in
-/// the solver structs.
+/// Read one wire f64, gated against non-finite. The mate record's float
+/// fields are f64 end to end (see the layout docs).
 fn read_f64(r: &mut Reader<'_>) -> Result<f64, CodecError> {
-    Ok(finite(r.f32()?)? as f64)
+    finite(r.f64()?)
 }
 
-/// Read a point/axis/perp/offset triple: three consecutive wire f32s as f64.
+/// Read a point/axis/perp/offset triple: three consecutive wire f64s.
 fn read_vec3(r: &mut Reader<'_>) -> Result<[f64; 3], CodecError> {
     Ok([read_f64(r)?, read_f64(r)?, read_f64(r)?])
 }
 
-/// Read one fixed-length (112-byte) mate record in wire order: kind byte, body
+/// Read one fixed-length (212-byte) mate record in wire order: kind byte, body
 /// indices, anchor kinds, point/axis triplets, flags/flip, offset/ratio/radius/
 /// angle, perp triplets, weight.
 fn read_mate_record(r: &mut Reader<'_>) -> Result<Mate, CodecError> {
@@ -441,22 +440,22 @@ pub fn decode_mate_input(buf: &[u8]) -> Result<MateInput, CodecError> {
     let (n_bodies, n_params, n_mates) = read_header(&mut r)?;
 
     // Header counts are untrusted; see `Reader::capacity_for`. A mate record is
-    // a fixed 112 bytes, a param a single f32.
-    let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 4));
+    // a fixed 212 bytes, a param a single f64.
+    let mut params_initial = Vec::with_capacity(r.capacity_for(n_params, 8));
     for _ in 0..n_params {
-        params_initial.push(finite(r.f32()?)?);
+        params_initial.push(finite(r.f64()?)?);
     }
 
     let mask_len = pinned_mask_bytes(n_bodies);
     let fixed_mask = r.take(mask_len)?.to_vec();
 
-    let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 112));
+    let mut mates = Vec::with_capacity(r.capacity_for(n_mates, 212));
     for _ in 0..n_mates {
         mates.push(read_mate_record(&mut r)?);
     }
 
     // `n_bodies` needs no cap of its own: the param-count check above ties it to
-    // `n_params`, whose f32s have already been read out of the buffer.
+    // `n_params`, whose f64s have already been read out of the buffer.
     let bodies = vec![RigidBody; n_bodies];
 
     Ok(MateInput {
@@ -482,7 +481,7 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
     }
 
     for &p in &input.params_initial {
-        w.f32(p);
+        w.f64(p);
     }
 
     let mask_len = pinned_mask_bytes(input.bodies.len());
@@ -498,19 +497,19 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
         w.u8(m.a.anchor_kind.to_u8());
         w.u8(m.b.anchor_kind.to_u8());
 
-        w.f32(m.a.geometry.point[0] as f32);
-        w.f32(m.a.geometry.point[1] as f32);
-        w.f32(m.a.geometry.point[2] as f32);
-        w.f32(m.a.geometry.axis[0] as f32);
-        w.f32(m.a.geometry.axis[1] as f32);
-        w.f32(m.a.geometry.axis[2] as f32);
+        w.f64(m.a.geometry.point[0]);
+        w.f64(m.a.geometry.point[1]);
+        w.f64(m.a.geometry.point[2]);
+        w.f64(m.a.geometry.axis[0]);
+        w.f64(m.a.geometry.axis[1]);
+        w.f64(m.a.geometry.axis[2]);
 
-        w.f32(m.b.geometry.point[0] as f32);
-        w.f32(m.b.geometry.point[1] as f32);
-        w.f32(m.b.geometry.point[2] as f32);
-        w.f32(m.b.geometry.axis[0] as f32);
-        w.f32(m.b.geometry.axis[1] as f32);
-        w.f32(m.b.geometry.axis[2] as f32);
+        w.f64(m.b.geometry.point[0]);
+        w.f64(m.b.geometry.point[1]);
+        w.f64(m.b.geometry.point[2]);
+        w.f64(m.b.geometry.axis[0]);
+        w.f64(m.b.geometry.axis[1]);
+        w.f64(m.b.geometry.axis[2]);
 
         let mut flags = 0u8;
         if m.flip {
@@ -518,21 +517,21 @@ pub(crate) fn encode_mate_input(input: &MateInput) -> Vec<u8> {
         }
         w.u8(flags);
 
-        w.f32(m.offset[0] as f32);
-        w.f32(m.offset[1] as f32);
-        w.f32(m.offset[2] as f32);
-        w.f32(m.ratio as f32);
-        w.f32(m.radius as f32);
-        w.f32(m.angle as f32);
+        w.f64(m.offset[0]);
+        w.f64(m.offset[1]);
+        w.f64(m.offset[2]);
+        w.f64(m.ratio);
+        w.f64(m.radius);
+        w.f64(m.angle);
 
-        w.f32(m.a.geometry.perp[0] as f32);
-        w.f32(m.a.geometry.perp[1] as f32);
-        w.f32(m.a.geometry.perp[2] as f32);
-        w.f32(m.b.geometry.perp[0] as f32);
-        w.f32(m.b.geometry.perp[1] as f32);
-        w.f32(m.b.geometry.perp[2] as f32);
+        w.f64(m.a.geometry.perp[0]);
+        w.f64(m.a.geometry.perp[1]);
+        w.f64(m.a.geometry.perp[2]);
+        w.f64(m.b.geometry.perp[0]);
+        w.f64(m.b.geometry.perp[1]);
+        w.f64(m.b.geometry.perp[2]);
 
-        w.f32(m.weight as f32);
+        w.f64(m.weight);
     }
     w.into_bytes()
 }
@@ -544,7 +543,7 @@ pub fn encode_mate_output(out: &MateOutput) -> Vec<u8> {
     w.u32(out.params_solved.len() as u32);
     w.u8(out.overall_status);
     for &p in &out.params_solved {
-        w.f32(p);
+        w.f64(p);
     }
     w.u32(out.mate_residuals.len() as u32);
     for &r in &out.mate_residuals {
@@ -569,9 +568,9 @@ pub(crate) fn decode_mate_output(buf: &[u8]) -> Result<MateOutput, CodecError> {
     }
     let n_params = r.u32()? as usize;
     let overall_status = r.u8()?;
-    let mut params_solved = Vec::with_capacity(r.capacity_for(n_params, 4));
+    let mut params_solved = Vec::with_capacity(r.capacity_for(n_params, 8));
     for _ in 0..n_params {
-        params_solved.push(r.f32()?);
+        params_solved.push(r.f64()?);
     }
     let n_mates = r.u32()? as usize;
     let mut mate_residuals = Vec::with_capacity(r.capacity_for(n_mates, 8));

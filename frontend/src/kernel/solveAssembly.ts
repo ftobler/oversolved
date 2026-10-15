@@ -160,11 +160,11 @@ const ANCHOR_KIND_TO_U8: Record<string, number> = {
 // Input wire magic. The header magic is the version handshake: any change to the
 // mate record's shape, field meaning or stride MUST bump this (or MATE_MAGIC_OUT
 // for the output layout) in the same commit as the mirror on the Rust side.
-// Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS3"); the
-// record gained a trailing weight f32 and the magic bumped with it.
-const MATE_MAGIC = 0x3353_544D  // "MTS3" in LE
-const MATE_MAGIC_OUT = 0x3252_544D  // "MTR2" in LE
-const BPB = 7  // bytes per body (tx,ty,tz,qx,qy,qz,qw) = 7 f32s = 28 bytes
+// Spelled in little-endian bytes (`MATE_MAGIC.to_le_bytes()` reads "MTS4"); the
+// record widened every scalar to f64 (stride 212) and the magic bumped with it.
+const MATE_MAGIC = 0x3453_544D  // "MTS4" in LE
+const MATE_MAGIC_OUT = 0x3352_544D  // "MTR3" in LE
+const BPB = 7  // params per body (tx,ty,tz,qx,qy,qz,qw) = 7 f64s = 56 bytes
 
 // ─── Quaternion math for transform application ───
 //
@@ -273,25 +273,25 @@ function pinnedMaskBytes(nBodies: number): number {
 
 export function encodeMateInput(
   bodyCount: number,
-  params: Float32Array,  // 7 * bodyCount
+  params: Float64Array,  // 7 * bodyCount
   fixedMask: Uint8Array,  // ceil(bodyCount/8) bytes
   mates: MateWireRecord[],
 ): Uint8Array {
   const maskLen = pinnedMaskBytes(bodyCount)
   // header: magic(4) + n_bodies(4) + n_params(4) + n_mates(4) + n_fixed(4) = 20
   // bodies: n_bodies * 4
-  // params: bodyCount * 7 * 4
+  // params: bodyCount * 7 * 8
   // fixedMask: maskLen
-  // mates: n_mates * 112
+  // mates: n_mates * 212
   const headerSize = 20
   const bodiesSize = bodyCount * 4
-  const paramsSize = params.length * 4
+  const paramsSize = params.length * 8
   const maskSize = maskLen
-  // 112, not 108: the weight f32 rides after the two canonical perp triples.
-  // This stride and mate.rs's decode move together or the solver reads the
-  // wrong field -- see the shared tests/fixtures/mate_wire.txt that both sides
-  // pin against.
-  const matesSize = mates.length * 112
+  // 212, not 112: every scalar in the record widened from f32 to f64. This
+  // stride and mate.rs's decode move together or the solver reads the wrong
+  // field -- see the shared tests/fixtures/mate_wire.txt that both sides pin
+  // against.
+  const matesSize = mates.length * 212
   const total = headerSize + bodiesSize + paramsSize + maskSize + matesSize
 
   const buf = new ArrayBuffer(total)
@@ -309,7 +309,7 @@ export function encodeMateInput(
   }
 
   for (let i = 0; i < params.length; i++) {
-    w.setFloat32(pos, params[i], true); pos += 4
+    w.setFloat64(pos, params[i], true); pos += 8
   }
 
   for (let i = 0; i < maskLen; i++) {
@@ -322,40 +322,40 @@ export function encodeMateInput(
     w.setUint32(pos, m.bodyB, true); pos += 4
     w.setUint8(pos, m.anchorKindA); pos += 1
     w.setUint8(pos, m.anchorKindB); pos += 1
-    w.setFloat32(pos, m.pointA[0], true); pos += 4
-    w.setFloat32(pos, m.pointA[1], true); pos += 4
-    w.setFloat32(pos, m.pointA[2], true); pos += 4
-    w.setFloat32(pos, m.axisA[0], true); pos += 4
-    w.setFloat32(pos, m.axisA[1], true); pos += 4
-    w.setFloat32(pos, m.axisA[2], true); pos += 4
-    w.setFloat32(pos, m.pointB[0], true); pos += 4
-    w.setFloat32(pos, m.pointB[1], true); pos += 4
-    w.setFloat32(pos, m.pointB[2], true); pos += 4
-    w.setFloat32(pos, m.axisB[0], true); pos += 4
-    w.setFloat32(pos, m.axisB[1], true); pos += 4
-    w.setFloat32(pos, m.axisB[2], true); pos += 4
+    w.setFloat64(pos, m.pointA[0], true); pos += 8
+    w.setFloat64(pos, m.pointA[1], true); pos += 8
+    w.setFloat64(pos, m.pointA[2], true); pos += 8
+    w.setFloat64(pos, m.axisA[0], true); pos += 8
+    w.setFloat64(pos, m.axisA[1], true); pos += 8
+    w.setFloat64(pos, m.axisA[2], true); pos += 8
+    w.setFloat64(pos, m.pointB[0], true); pos += 8
+    w.setFloat64(pos, m.pointB[1], true); pos += 8
+    w.setFloat64(pos, m.pointB[2], true); pos += 8
+    w.setFloat64(pos, m.axisB[0], true); pos += 8
+    w.setFloat64(pos, m.axisB[1], true); pos += 8
+    w.setFloat64(pos, m.axisB[2], true); pos += 8
     const flags = m.flip ? 1 : 0
     w.setUint8(pos, flags); pos += 1
-    w.setFloat32(pos, m.offset[0], true); pos += 4
-    w.setFloat32(pos, m.offset[1], true); pos += 4
-    w.setFloat32(pos, m.offset[2], true); pos += 4
-    w.setFloat32(pos, m.ratio, true); pos += 4
-    w.setFloat32(pos, m.radius, true); pos += 4
-    w.setFloat32(pos, m.angle, true); pos += 4
-    w.setFloat32(pos, m.perpA[0], true); pos += 4
-    w.setFloat32(pos, m.perpA[1], true); pos += 4
-    w.setFloat32(pos, m.perpA[2], true); pos += 4
-    w.setFloat32(pos, m.perpB[0], true); pos += 4
-    w.setFloat32(pos, m.perpB[1], true); pos += 4
-    w.setFloat32(pos, m.perpB[2], true); pos += 4
-    w.setFloat32(pos, m.weight, true); pos += 4
+    w.setFloat64(pos, m.offset[0], true); pos += 8
+    w.setFloat64(pos, m.offset[1], true); pos += 8
+    w.setFloat64(pos, m.offset[2], true); pos += 8
+    w.setFloat64(pos, m.ratio, true); pos += 8
+    w.setFloat64(pos, m.radius, true); pos += 8
+    w.setFloat64(pos, m.angle, true); pos += 8
+    w.setFloat64(pos, m.perpA[0], true); pos += 8
+    w.setFloat64(pos, m.perpA[1], true); pos += 8
+    w.setFloat64(pos, m.perpA[2], true); pos += 8
+    w.setFloat64(pos, m.perpB[0], true); pos += 8
+    w.setFloat64(pos, m.perpB[1], true); pos += 8
+    w.setFloat64(pos, m.perpB[2], true); pos += 8
+    w.setFloat64(pos, m.weight, true); pos += 8
   }
 
   return new Uint8Array(buf)
 }
 
 interface DecodedMateOutput {
-  paramsSolved: Float32Array
+  paramsSolved: Float64Array
   overallStatus: number
   mateResiduals: Float64Array
   residualNorm: number
@@ -381,9 +381,9 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
     throw new Error(`mate output has ${nParams} params, expected ${expectedParams}`)
   }
   const overallStatus = r.getUint8(pos); pos += 1
-  const paramsSolved = new Float32Array(nParams)
+  const paramsSolved = new Float64Array(nParams)
   for (let i = 0; i < nParams; i++) {
-    paramsSolved[i] = r.getFloat32(pos, true); pos += 4
+    paramsSolved[i] = r.getFloat64(pos, true); pos += 8
   }
   // Per-mate residual block, aligned one slot per input mate, between the
   // params and the diagnostics. A dropped mate keeps its slot as a non-finite
@@ -678,7 +678,7 @@ export async function solveAssembly(
   // ─── Call the Rust mate solver ───
 
   const paramCount = bodyCount * BPB
-  const paramsInitial = new Float32Array(paramCount)
+  const paramsInitial = new Float64Array(paramCount)
   const fixedMaskLen = pinnedMaskBytes(bodyCount)
   const fixedMask = new Uint8Array(fixedMaskLen)
 
@@ -704,7 +704,7 @@ export async function solveAssembly(
   }
 
   // The assembly frame sits at identity and is pinned: its quaternion
-  // is the identity (qw = 1; the rest stay zero from Float32Array init) and its
+  // is the identity (qw = 1; the rest stay zero from Float64Array init) and its
   // fixed-mask bit is set so the solver excludes it from the moving DOF.
   if (usesAssemblyFrame) {
     paramsInitial[assemblyBodyIndex * BPB + 6] = 1

@@ -81,7 +81,7 @@ pub fn c_target(kind: ConstraintKind, index: u32, point: PointSelector) -> Const
     }
 }
 
-pub fn input(entities: Vec<Entity>, params: Vec<f32>, constraints: Vec<Constraint>) -> Input {
+pub fn input(entities: Vec<Entity>, params: Vec<f64>, constraints: Vec<Constraint>) -> Input {
     Input {
         entities,
         params_initial: params,

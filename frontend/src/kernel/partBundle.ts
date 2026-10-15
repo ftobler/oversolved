@@ -108,7 +108,11 @@ export const BUNDLE_SCHEMA = 1
 // code. Forgetting to bump it serves stale geometry at unchanged revs; the
 // drift guard test in partBundle.test.ts proves the fingerprint folds this id
 // in, it cannot catch the forget.
-export const BUNDLE_BUILD_ID = 1
+//
+// 2: the solver wire moved to f64 (rev 3). Solved geometry is no longer
+// f32-quantized, so a bundle cached under the f32 wire carries positions this
+// code would not reproduce and must read back as a miss.
+export const BUNDLE_BUILD_ID = 2
 
 // Deterministic fingerprint of the code that produced a bundle. Stamped on the
 // cached record and compared at the cache's single call site (bundleCacheGet):
