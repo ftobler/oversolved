@@ -1,12 +1,14 @@
 # Regression ratchets
 
-Three ratchets catch regressions the unit suites cannot: the action matrix
+Four ratchets catch regressions the unit suites cannot: the action matrix
 (every command on every element of a document corpus), the fuzz (seeded random
-edit and undo/redo sequences), and the volume oracle (analytic geometry against
-the real kernel). Their baselines are committed and reviewed like code. The
-nightly Gitea job (`nightly` in `.github/workflows/ci-gitea.yaml`, cron plus
-manual dispatch only) provisions the WASM solvers and OCC.js and runs
-`just fuzz` then `just ratchet-matrix`.
+edit and undo/redo sequences), the geometry robustness fuzz (seeded feature
+chains against the real kernel) and the volume oracle (analytic geometry
+against the real kernel). Their baselines are committed and reviewed like code.
+The nightly Gitea job (`nightly` in `.github/workflows/ci-gitea.yaml`, cron
+plus manual dispatch only) provisions the WASM solvers and OCC.js and runs
+`just fuzz`, `just ratchet-matrix` then `just robustness-fuzz 1500`, teeing
+every recipe to tmp/ and uploading the logs as its report artifact.
 
 ## Action matrix
 
@@ -53,6 +55,39 @@ document, by deep equality.
   fake and real sweeps.
 - Failure: a failing seed becomes a pinned regression entry with the seed kept;
   `minimizeSequence` reduces the sequence while a replay still fails.
+
+## Geometry robustness fuzz
+
+`frontend/src/testing/robustnessFuzz/` is the geometry side of the fuzz, built
+on the same seeded PRNG (`makePrng` from `hooks/__tests__/fuzzHarness.ts`) and
+the same minimiser (`fuzzMinimizer.ts`). `recipe.ts` draws a recipe per seed: a
+start body (box, rounded-arc extrusion or revolve) plus up to eight edits (fuse
+and cut of boxes, cylinders and spheres, fillet, chamfer, hole, linear and
+circular array, mirror), all on a 2.5 mm grid and anchored to the running
+body's bounding box, so flush faces and tangencies are drawn often. `chain.ts`
+replays a recipe through the leaf feature solvers and after every step asserts
+the feature contract: the step built or refused with a message (a throw is
+classified, never aborts the run), the handle table and disposal counters match
+the store, every body is one valid solid with a positive finite volume, and a
+cut never adds volume while a join never removes it. `booleanIdentityReal`
+checks V(A u B) + V(A n B) = V(A) + V(B) within 0.2% on primitive pairs, and
+the persistence half of `chain.ts` rebuilds every chain under a one-grid-step
+upstream dimension change and reports every recorded pick that no longer
+resolves.
+
+- Every replay runs in a forked child under a SIGKILL watchdog
+  (`chainTimeout.ts`, mirroring `kernel/solveTimeout.ts`): an OCC clean can
+  spin forever in synchronous WASM, and the killed seed is reported with the
+  step that hung. `KNOWN_HANGS` and `KNOWN_STALE_PICKS` in
+  `chainReal.test.ts` pin the triaged findings; anything else fails the sweep.
+- PR gate: bounded 24 chain seeds and 32 identity seeds.
+- Long run: `just robustness-fuzz <seeds>` (chain default 200, the plan's
+  acceptance range; identity a quarter of it), 1500 in the nightly and 5000
+  for a dedicated full-scale run; the tee'd log is the report.
+- Failure: the violations are minimised by dropping steps and the minimal
+  recipe is written under `src/testing/robustnessFuzz/regressions/` (the
+  oracle corpus takes part documents with closed-form expectations, a different
+  shape, so fuzz recipes do not go there).
 
 ## Volume oracle
 

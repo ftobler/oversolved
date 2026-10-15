@@ -220,13 +220,14 @@ jobs:
           wasm-pack build --target web --out-dir pkg --release
           wasm-pack build --target nodejs --out-dir pkg-node --release
 
-  # The long ratchets, nightly and on demand: the seeded fuzz and the full
-  # action-matrix sweep are minutes long, so they never join a push or PR run.
-  # The provisioning mirrors the frontend job (nodejs WASM solvers + OCC.js)
-  # because both recipes use the real kernel where it is installed; `just fuzz`
-  # and `just ratchet-matrix` tee their full output to tmp/ and keep their exit
-  # codes, so the job step is the gate. The `if` gates the job to Gitea and to
-  # the two triggers, so the PR runs stay cheap.
+  # The long ratchets, nightly and on demand: the seeded fuzz, the full
+  # action-matrix sweep and the geometry robustness fuzz are minutes long, so
+  # they never join a push or PR run. The provisioning mirrors the frontend job
+  # (nodejs WASM solvers + OCC.js) because all three recipes use the real kernel
+  # where it is installed; the recipes tee their full output to tmp/ and keep
+  # their exit codes, so the job step is the gate, and the logs upload as the
+  # ratchet report artifact. The `if` gates the job to Gitea and to the two
+  # triggers, so the PR runs stay cheap.
   nightly:
     if: github.server_url != 'https://github.com' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
@@ -273,3 +274,20 @@ jobs:
 
       - name: Full action matrix (real kernel)
         run: just ratchet-matrix
+
+      # 1500 chain seeds (about 25 minutes at the measured per-seed cost,
+      # including the watchdog kills) keeps the nightly inside its 180 minute
+      # job budget alongside the other two ratchets; `just robustness-fuzz
+      # 5000` is the plan's full-scale range for a dedicated run.
+      - name: Geometry robustness fuzz (real kernel)
+        run: just robustness-fuzz 1500
+
+      # The ratchet logs are the nightly report: a failing sweep leaves the
+      # seed, step and refusal lines in its log even when the step aborts.
+      - name: Upload ratchet logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ratchet-logs
+          path: tmp/*.log
+          if-no-files-found: ignore
