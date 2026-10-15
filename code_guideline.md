@@ -319,10 +319,13 @@ describe('buildKeyString', () => {
 
 - `window.__oversolved` exists in dev/test builds only; it is a test and
   debugging surface, not a product API.
-- A document can be driven headlessly with one `DocSession` per process:
-  `npm run drive -- run|measure|export|replay ...` from `frontend/`.
-- Scripts, the inspect shape, the journal format and the CLI usage are
-  documented in `docs/drive.md`.
+- A document can be driven headlessly with one `DocSession` per operation:
+  `npm run drive -- run|commands|measure|export|replay ...` from `frontend/`.
+- The same surface (plus `measure` and `export`) is served over MCP stdio by
+  `npm run mcp`, a hand-rolled JSON-RPC loop with no SDK dependency; the tool
+  ops and the CLI share `src/drive/headlessOps.ts`.
+- Scripts, the inspect shape, the journal format, the CLI usage and the MCP
+  tools are documented in `docs/drive.md`.
 
 ## 9. Architecture Patterns
 
@@ -378,6 +381,7 @@ as a fallback seam for tests only.
 | Run Python tooling tests | `pytest tests/` | `tests/` |
 | Run frontend tests | `npx vitest run` | `frontend/` |
 | Drive a doc headlessly | `npm run drive -- run <script.json>` | `frontend/scripts/driveCli.ts` |
+| Serve the drive surface over MCP | `npm run mcp` | `frontend/scripts/mcpServer.ts` |
 | Run linter | `npm run lint` | `frontend/` |
 | Run type checker | `mypy tests/ oversolved/` | root |
 | Add new command | add a `CommandSpec` to the editor's table | `frontend/src/pages/commandEntries.ts` / `assemblyCommandEntries.ts` |

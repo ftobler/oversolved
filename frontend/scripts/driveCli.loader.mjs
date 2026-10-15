@@ -1,12 +1,12 @@
 /**
- * Node loader for the drive CLI: the regen:corpus recipe's alias resolver plus
- * an import.meta.env shim.
+ * Node loader for the headless entries (the drive CLI and the MCP server):
+ * the regen:corpus recipe's alias resolver plus an import.meta.env shim.
  *
  * The app's source reads `import.meta.env` (Vite's define target) in a few hot
- * paths, and plain Node has no such property: the expression throws. The CLI
- * is not a Vite build, so this loader rewrites the expression to a literal
- * production-shaped env before Node strips the types. Only the app's own .ts
- * sources are rewritten; node_modules are untouched.
+ * paths, and plain Node has no such property: the expression throws. The
+ * entries are not Vite builds, so this loader rewrites the expression to a
+ * literal production-shaped env before Node strips the types. Only the app's
+ * own .ts sources are rewritten; node_modules are untouched.
  */
 
 export * from '../resolve-alias.loader.mjs'

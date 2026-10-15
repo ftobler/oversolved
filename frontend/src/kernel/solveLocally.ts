@@ -16,12 +16,13 @@ import { postRegister } from './features/postRegister'
 import { loadOccWeb } from './occ/loadOccWeb'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, readShapeFaceMetadata } from './occ/tessellation'
+import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, readShapeFaceMetadata, bodyFrame } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
-import { volumeOf } from './occ/volume'
+import { surfaceAreaOf, volumeOf } from './occ/volume'
+import { solidCentroid } from './occ/primitives'
 import { canonicalEdges, canonicalFaces, canonicalVertices } from './occ/bodyNames'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
@@ -507,21 +508,30 @@ export async function exportLocally(
 
 // ─── local measure ───
 
+export type MeasurePoint = [number, number, number]
+
 /** What `measureLocally` reports for a document's final body set. */
 export interface LocalMeasure {
   bodyCount: number
   // Summed BRepGProp volume over the closed bodies.
   volume: number
+  // Summed surface area over the bodies, open shells included.
+  area: number
+  // Volume-weighted centre of mass over the bodies; null when there are none.
+  centroid: MeasurePoint | null
+  // Union of the bodies' edge-sampled AABBs (bodyFrame, the same box the
+  // classifiers read); null when there are none.
+  bbox: { min: MeasurePoint; max: MeasurePoint } | null
   faces: number
   edges: number
   vertices: number
 }
 
 /**
- * Build a document and report its final bodies' volume and B-rep counts. The
- * body set is the last feature checkpoint's snapshot, exactly the one
- * `resolveExportShape` reads, so the measurement describes what an export
- * would contain. Returns null when OCC.js is unavailable.
+ * Build a document and report its final bodies' volume, area, centroid, AABB
+ * and B-rep counts. The body set is the last feature checkpoint's snapshot,
+ * exactly the one `resolveExportShape` reads, so the measurement describes
+ * what an export would contain. Returns null when OCC.js is unavailable.
  */
 export async function measureLocally(
   spec: Record<string, unknown>,
@@ -538,20 +548,58 @@ export async function measureLocally(
     const lastCp = order.length > 0 ? response._build_state.checkpoints[order[order.length - 1]] : undefined
     const bodies = lastCp?.body_store_snapshot ?? {}
     let volume = 0
+    let area = 0
     let faces = 0
     let edges = 0
     let vertices = 0
     let bodyCount = 0
+    let weight = 0
+    const weightedCentroid: MeasurePoint = [0, 0, 0]
+    const centroidSum: MeasurePoint = [0, 0, 0]
+    const min: MeasurePoint = [Infinity, Infinity, Infinity]
+    const max: MeasurePoint = [-Infinity, -Infinity, -Infinity]
     for (const body of Object.values(bodies)) {
       if (body.shape == null) continue
       const shape = table.get<OccShape>(body.shape)
-      volume += volumeOf(oc, scope, shape)
+      const bodyVolume = volumeOf(oc, scope, shape)
+      volume += bodyVolume
+      area += surfaceAreaOf(oc, scope, shape)
+      const centroid = solidCentroid(oc, scope, shape)
+      weight += bodyVolume
+      for (let axis = 0; axis < 3; axis++) {
+        weightedCentroid[axis] += centroid[axis] * bodyVolume
+        centroidSum[axis] += centroid[axis]
+      }
+      // bodyFrame is edge-sampled (BRepBndLib is absent from the OCC build),
+      // so a fully edgeless bulging surface is the one shape it can undersize,
+      // the same tolerance the classifier frames carry.
+      const frame = bodyFrame(oc, scope, shape)
+      for (let axis = 0; axis < 3; axis++) {
+        min[axis] = Math.min(min[axis], frame.center[axis] - frame.half[axis])
+        max[axis] = Math.max(max[axis], frame.center[axis] + frame.half[axis])
+      }
       faces += canonicalFaces(oc, scope, shape).length
       edges += canonicalEdges(oc, scope, shape).length
       vertices += canonicalVertices(oc, scope, shape).length
       bodyCount += 1
     }
-    return { bodyCount, volume, faces, edges, vertices }
+    // An open shell (onlyClosed VolumeProperties integrates to ~0) has no
+    // volume to weight by, so its centroid is the plain body average.
+    const centroid: MeasurePoint | null = bodyCount === 0
+      ? null
+      : Math.abs(weight) > 1e-12
+        ? [weightedCentroid[0] / weight, weightedCentroid[1] / weight, weightedCentroid[2] / weight]
+        : [centroidSum[0] / bodyCount, centroidSum[1] / bodyCount, centroidSum[2] / bodyCount]
+    return {
+      bodyCount,
+      volume,
+      area,
+      centroid,
+      bbox: bodyCount === 0 ? null : { min, max },
+      faces,
+      edges,
+      vertices,
+    }
   } finally {
     scope.dispose()
     table.disposeAll()

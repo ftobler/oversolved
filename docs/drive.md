@@ -241,13 +241,16 @@ The two share no state and never feed each other.
 ## Headless CLI
 
 The CLI runs beside `frontend/scripts/regenCorpus.ts` with the same
-`--experimental-strip-types` recipe, plus a loader shim for `import.meta.env`:
+`--experimental-strip-types` recipe, plus a loader shim for `import.meta.env`.
+Its operations (run, measure, export) live in `frontend/src/drive/headlessOps.ts`
+and are shared with the MCP server, so the two external surfaces cannot drift:
 
 ```bash
 cd frontend
-npm run drive -- run script.json [--doc doc.yaml] [--out out.yaml] [--repro repro.json] [--doc-id id]
-npm run drive -- measure doc.yaml
-npm run drive -- export doc.yaml --format step|stl [--out out.step] [--body bodyId]
+npm run drive -- run script.json [--doc doc.yaml] [--out out.yaml] [--repro repro.json] [--file id=path] [--doc-id id]
+npm run drive -- commands
+npm run drive -- measure doc.yaml [--file id=path]
+npm run drive -- export doc.yaml --format step|stl [--out out.step] [--body bodyId] [--file id=path]
 npm run drive -- replay repro.json
 ```
 
@@ -258,13 +261,23 @@ npm run drive -- replay repro.json
   two runs of one script produce byte-identical documents and the recorded
   repro replays exactly (the `cliSmoke` suite runs the box script twice in two
   processes and compares the printed `docHash`).
-- `measure` reports `bodyCount`, `volume` (`volumeOf` from
-  `frontend/src/kernel/occ/volume.ts`) and face/edge/vertex counts from the
-  final checkpoint's bodies.
+- `commands` prints the command catalog: every spec id, label, shortcut,
+  `undoable` flag, its param fields (`spec.params.fields`, the same schema the
+  registry parses a call against) and the live `enabled` verdict from a fresh
+  seeded session. Reading the catalog runs no spec body and starts no solve.
+- `measure` reports `bodyCount`, `volume`, `area`, `centroid` (volume-weighted)
+  and `bbox` (the union of the bodies' edge-sampled frames), plus face, edge
+  and vertex counts from the final checkpoint's bodies.
 - `export` writes STEP or STL bytes.
 - `replay` applies the recorded mutations to a fresh session under the
   payload's seed, verifies each step's before and after hash and exits nonzero
   on divergence.
+- `--file <id>=<path>` (repeatable) supplies the bytes for an `import_step`
+  feature's `file_id`, the same map the browser's file registry hands the
+  worker. A STEP file exported by `export` can therefore be re-imported and
+  measured, which the `cliSmoke` suite does end to end. The byte map does not
+  travel in the repro payload, so a journal containing an import replays only
+  with `--file` supplied.
 
 One session per process is the v1 contract: `solveLocally` keeps its
 cross-solve checkpoint cache as single-writer module state, so two sessions in
@@ -278,6 +291,72 @@ use mutation steps instead.
 
 When OCC.js or the nodejs Rust solver build is absent, the CLI reports the
 solver as unavailable and exits nonzero rather than guessing.
+
+## MCP Server
+
+`frontend/scripts/mcpServer.ts` serves the same headless surface over the MCP
+stdio transport (newline-delimited JSON-RPC 2.0), hand-rolled with no SDK
+dependency. `initialize`, `tools/list` and `tools/call` live in
+`frontend/src/drive/mcpServer.ts`; the tool ops call the same `headlessOps.ts`
+functions the CLI does. Point an MCP client at it directly (`cwd` is
+`frontend/`):
+
+```json
+{
+  "command": "node",
+  "args": ["--experimental-strip-types", "--loader=./scripts/driveCli.loader.mjs", "scripts/mcpServer.ts"],
+  "cwd": "frontend"
+}
+```
+
+`npm run mcp` runs the same entry for manual poking, but npm prints its own
+banner on stdout, so a client config must use the direct node invocation.
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `commands` | none | the command catalog, the same shape as the CLI's `commands` |
+| `run` | `steps`, optional `doc`, `docId`, `files` | `{ ok, steps, docHash, solve, doc }`; pass `doc` back in to chain edits |
+| `measure` | `doc`, optional `docId`, `files` | `{ ok, bodyCount, volume, area, centroid, bbox, faces, edges, vertices }` |
+| `export` | `doc`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, file, format, bytes }` |
+
+- `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
+  resolve against the server's cwd.
+- A payload with `ok: false` comes back with the MCP `isError` flag. The
+  JSON-RPC error channel is reserved for malformed requests and invalid
+  arguments; unknown fields are rejected by name, so a typo never fails
+  silently.
+- stdout carries protocol messages only: the entry redirects every other
+  stdout write (the OCC STEP writer prints a transfer banner) to stderr.
+- The readline loop processes one call at a time, and every `run` is a fresh
+  `DocSession` over the real kernel with the CLI journal installed, so the same
+  script mints the same ids and hashes the same document on every call. The
+  loop's serialization is what keeps the kernel's single-writer cross-solve
+  cache honest.
+
+An agent session, entirely over MCP (the `doc` values are the payload of the
+previous call):
+
+```jsonc
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":{"steps":[
+  {"mutation":{"type":"add_sketch","featureId":"sk1","label":"Rectangle","plane":"@builtin_plane_front"}},
+  {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[10,10]}},
+  {"mutation":{"type":"add_extrude","featureId":"ex1","label":"Extrude","sketchQuery":"$sk1","distance":5}}
+]}}}
+// result.doc is the built document; edit one dimension and rebuild:
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"run","arguments":{
+  "doc":"<doc from call 1>",
+  "steps":[{"mutation":{"type":"set_extrude_field","featureId":"ex1","field":"distance","value":8}}]
+}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"measure","arguments":{"doc":"<doc from call 2>"}}}
+// {"ok":true,"bodyCount":1,"volume":800,...}
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"export","arguments":{
+  "doc":"<doc from call 2>","format":"step","out":"box.step"
+}}}
+```
+
+`render_png` is deliberately not offered: the browser's raster path is the
+three.js viewport (WebGL, DOM-bound) and the node tier has no offscreen
+renderer, so a render tool would mean a new rasterizer rather than a reuse.
 
 ## What is still open
 

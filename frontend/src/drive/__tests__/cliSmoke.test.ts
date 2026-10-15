@@ -1,21 +1,29 @@
 // @vitest-environment node
 //
-// End-to-end smoke for the drive CLI: build a box from a mutation script
-// through the real kernel, measure it, record a command journal into a repro
-// and replay it. Gated like the other Real suites: skips when OCC.js or the
-// Rust node build is absent, or on a Node too old for --experimental-strip-types.
+// End-to-end tests for the drive CLI and the MCP server: build a box from a
+// mutation script through the real kernel, measure it, record a command
+// journal into a repro and replay it; build a filleted box and measure it;
+// edit one dimension and rebuild; snapshot the `commands` registry listing;
+// export STEP and re-import it, matching the measures; and drive the same
+// surface over the MCP stdio protocol (build, edit, measure, export). Gated
+// like the other Real suites: skips when OCC.js or the Rust node build is
+// absent, or on a Node too old for --experimental-strip-types.
 //
 // The CLI is spawned as its own process (one session per process is the v1
 // contract) and prints one JSON object per command; the last stdout line is
-// the payload (the OCC STEP writer prints its own banner ahead of it).
+// the payload (the OCC STEP writer prints its own banner ahead of it). The MCP
+// server is spawned once and spoken to over newline-delimited JSON-RPC.
 
-import { execFileSync } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+
+const execFileAsync = promisify(execFile)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const FRONTEND_DIR = path.resolve(__dirname, '../../..')
@@ -42,16 +50,19 @@ interface CliResult {
   stdout: string
 }
 
-function drive(...args: string[]): CliResult {
+// Asynchronous so the vitest worker's event loop stays free while the child
+// solves; a synchronous spawn for a minute of OCC work starves the worker RPC.
+async function drive(...args: string[]): Promise<CliResult> {
   let stdout = ''
   let status = 0
   try {
-    stdout = execFileSync('node', [
+    const result = await execFileAsync('node', [
       '--experimental-strip-types',
       '--loader=./scripts/driveCli.loader.mjs',
       'scripts/driveCli.ts',
       ...args,
-    ], { cwd: FRONTEND_DIR, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    ], { cwd: FRONTEND_DIR, encoding: 'utf8' })
+    stdout = result.stdout
   } catch (e) {
     const error = e as { status?: number; stdout?: string }
     stdout = error.stdout ?? ''
@@ -76,8 +87,35 @@ const COMMAND_SCRIPT = {
   ],
 }
 
+// The 10 x 10 x 5 box with one edge filleted (radius 1). The edge alias
+// `?body_ex1:edge:0` is the deterministic index the builder registers, so the
+// script selects the same edge on every run.
+const FILLET_SCRIPT = {
+  steps: [
+    ...BOX_SCRIPT.steps,
+    { mutation: { type: 'add_fillet', featureId: 'f1', label: 'Fillet' } },
+    { mutation: { type: 'add_fillet_edge', featureId: 'f1', edgeQuery: '?body_ex1:edge:0' } },
+  ],
+}
+
+// One typed dimension change: extrude 5 -> 8, the "edit a dimension and
+// rebuild" path.
+const EDIT_SCRIPT = {
+  steps: [
+    { mutation: { type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: 8 } },
+  ],
+}
+
+// Adopt a STEP file as the document's only solid; the bytes arrive through
+// --file as f1.
+const IMPORT_SCRIPT = {
+  steps: [
+    { mutation: { type: 'add_import_step', featureId: 'imp1', fileId: 'f1' } },
+  ],
+}
+
 describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust solver)', () => {
-  it('runs a script, measures the box, exports it, records a repro and replays it', () => {
+  it('runs a script, measures the box, exports it, records a repro and replays it', async () => {
     mkdirSync(TMP_DIR, { recursive: true })
     const boxScript = path.join(TMP_DIR, 'box-script.json')
     const boxDoc = path.join(TMP_DIR, 'box.yaml')
@@ -87,7 +125,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
     writeFileSync(commandScript, JSON.stringify(COMMAND_SCRIPT, null, 1))
 
-    const run = drive('run', boxScript, '--out', boxDoc)
+    const run = await drive('run', boxScript, '--out', boxDoc)
     expect(run.status).toBe(0)
     expect(run.payload.ok).toBe(true)
     expect(run.payload.steps).toHaveLength(3)
@@ -96,25 +134,37 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     // The canonical script executed a second time in a fresh process must
     // build the byte-identical document: the seeded id source is what makes
     // the rect's internally minted entities repeat.
-    const second = drive('run', boxScript)
+    const second = await drive('run', boxScript)
     expect(second.status).toBe(0)
     expect(second.payload.docHash).toBe(run.payload.docHash)
 
     // 10 x 10 x 5 box: 6 faces, 12 edges, 8 vertices, volume 500.
-    const measure = drive('measure', boxDoc)
+    const measure = await drive('measure', boxDoc)
     expect(measure.status).toBe(0)
     expect(measure.payload).toMatchObject({ ok: true, bodyCount: 1, faces: 6, edges: 12, vertices: 8 })
     expect(measure.payload.volume as number).toBeCloseTo(500, 6)
 
-    const exported = drive('export', boxDoc, '--format', 'step', '--out', stepFile)
+    const exported = await drive('export', boxDoc, '--format', 'step', '--out', stepFile)
     expect(exported.status).toBe(0)
     expect(exported.payload).toMatchObject({ ok: true, format: 'step' })
     expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
 
+    // The other offered format: pin the binary STL container from the bytes
+    // the CLI wrote (80B header, uint32 triangle count, 50B per triangle).
+    const stlFile = path.join(TMP_DIR, 'box.stl')
+    const stl = await drive('export', boxDoc, '--format', 'stl', '--out', stlFile)
+    expect(stl.status).toBe(0)
+    expect(stl.payload).toMatchObject({ ok: true, format: 'stl' })
+    const stlBytes = readFileSync(stlFile)
+    expect(stlBytes.byteLength).toBeGreaterThan(84)
+    const triangleCount = new DataView(stlBytes.buffer, stlBytes.byteOffset, stlBytes.byteLength).getUint32(80, true)
+    expect(triangleCount).toBeGreaterThan(0)
+    expect(stlBytes.byteLength).toBe(84 + triangleCount * 50)
+
     // Record a command-level journal on top of the built doc, then replay it
     // in a fresh process: every recorded hash must reproduce. The journal
     // stores the mutations the commands produced, not the commands.
-    const recorded = drive('run', commandScript, '--doc', boxDoc, '--repro', reproFile)
+    const recorded = await drive('run', commandScript, '--doc', boxDoc, '--repro', reproFile)
     expect(recorded.status).toBe(0)
     expect(recorded.payload.ok).toBe(true)
     const repro = JSON.parse(readFileSync(reproFile, 'utf8')) as {
@@ -125,9 +175,248 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(repro.journal).toHaveLength(2)
     expect(repro.journal.map(e => e.payload.type)).toEqual(['toggle_plane_visibility', 'toggle_sketch_plane_visibility'])
 
-    const replayed = drive('replay', reproFile)
+    const replayed = await drive('replay', reproFile)
     expect(replayed.status).toBe(0)
     expect(replayed.payload.ok).toBe(true)
     expect(replayed.payload.finalHash).toBe(recorded.payload.docHash)
   }, 180_000)
+
+  it('builds a filleted box and measures it, then edits the extrude distance and rebuilds', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const filletScript = path.join(TMP_DIR, 'fillet-script.json')
+    const filletDoc = path.join(TMP_DIR, 'fillet.yaml')
+    const boxScript = path.join(TMP_DIR, 'box2-script.json')
+    const boxDoc = path.join(TMP_DIR, 'box2.yaml')
+    const boxTall = path.join(TMP_DIR, 'box2-tall.yaml')
+    const editScript = path.join(TMP_DIR, 'edit-script.json')
+    writeFileSync(filletScript, JSON.stringify(FILLET_SCRIPT, null, 1))
+    writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
+    writeFileSync(editScript, JSON.stringify(EDIT_SCRIPT, null, 1))
+
+    const built = await drive('run', filletScript, '--out', filletDoc)
+    expect(built.status).toBe(0)
+    expect(built.payload.ok).toBe(true)
+    expect((built.payload.solve as { lastError: string | null }).lastError).toBeNull()
+
+    // Radius-1 fillet on one edge of the 10 x 10 x 5 box: the edge is 5 long,
+    // so the volume drops by (1 - pi/4) * 5, the two removed strips outweigh
+    // the added quarter cylinder in area, a seventh face appears, and the AABB
+    // is unchanged.
+    const fillet = await drive('measure', filletDoc)
+    expect(fillet.status).toBe(0)
+    expect(fillet.payload).toMatchObject({ ok: true, bodyCount: 1, faces: 7 })
+    expect(fillet.payload.volume as number).toBeCloseTo(500 - (1 - Math.PI / 4) * 5, 6)
+    expect(fillet.payload.area as number).toBeCloseTo(397.42477796076935, 6)
+    expect(fillet.payload.centroid as number[]).toHaveLength(3)
+    expect(fillet.payload.bbox).toMatchObject({ min: [0, 0, 0], max: [10, 10, 5] })
+
+    const builtBox = await drive('run', boxScript, '--out', boxDoc)
+    expect(builtBox.status).toBe(0)
+    expect((await drive('measure', boxDoc)).payload.volume as number).toBeCloseTo(500, 6)
+
+    // Edit one dimension against the saved document and rebuild: the same
+    // document (same feature ids) with the extrude distance set to 8.
+    const edited = await drive('run', editScript, '--doc', boxDoc, '--out', boxTall)
+    expect(edited.status).toBe(0)
+    expect(edited.payload.ok).toBe(true)
+    const measure = await drive('measure', boxTall)
+    expect(measure.payload.volume as number).toBeCloseTo(800, 6)
+    expect(measure.payload.bbox).toMatchObject({ min: [0, 0, 0], max: [10, 10, 8] })
+    expect(measure.payload.centroid as number[]).toHaveLength(3)
+  }, 180_000)
+
+  it('lists the command registry with its params', async () => {
+    const run = await drive('commands')
+    expect(run.status).toBe(0)
+    expect(run.payload.ok).toBe(true)
+    const commands = run.payload.commands as Array<{ id: string; params: unknown[] }>
+    expect(commands.length).toBeGreaterThan(0)
+    expect(commands.every(c => Array.isArray(c.params))).toBe(true)
+    // The snapshot pins every id, label, shortcut, param field and enabled
+    // verdict: the registry is the public surface, so drift must be visible.
+    expect(run.payload).toMatchSnapshot()
+  }, 60_000)
+
+  it('rejects a malformed script step with the step named', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const badScript = path.join(TMP_DIR, 'bad-script.json')
+    writeFileSync(badScript, JSON.stringify({ steps: [{ mutation: null }] }, null, 1))
+
+    const run = await drive('run', badScript)
+    expect(run.status).toBe(1)
+    expect(run.payload.ok).toBe(false)
+    expect(run.payload.error).toContain('step 0')
+    expect(run.payload.error).toContain('needs a command or a mutation')
+  }, 60_000)
+
+  it('re-imports an exported STEP file and matches the measures', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const boxScript = path.join(TMP_DIR, 'box3-script.json')
+    const boxDoc = path.join(TMP_DIR, 'box3.yaml')
+    const stepFile = path.join(TMP_DIR, 'box3.step')
+    const importScript = path.join(TMP_DIR, 'import-script.json')
+    const importDoc = path.join(TMP_DIR, 'imported.yaml')
+    writeFileSync(boxScript, JSON.stringify(BOX_SCRIPT, null, 1))
+    writeFileSync(importScript, JSON.stringify(IMPORT_SCRIPT, null, 1))
+
+    expect((await drive('run', boxScript, '--out', boxDoc)).payload.ok).toBe(true)
+    const before = await drive('measure', boxDoc)
+    expect((await drive('export', boxDoc, '--format', 'step', '--out', stepFile)).status).toBe(0)
+
+    // The import step needs the file bytes under the feature's file_id, both
+    // to build the document and to measure it later.
+    const fileFlag = `f1=${stepFile}`
+    const built = await drive('run', importScript, '--file', fileFlag, '--out', importDoc)
+    expect(built.status).toBe(0)
+    expect(built.payload.ok).toBe(true)
+
+    const after = await drive('measure', importDoc, '--file', fileFlag)
+    expect(after.status).toBe(0)
+    expect(after.payload.bodyCount).toBe(before.payload.bodyCount)
+    expect(after.payload.faces).toBe(before.payload.faces)
+    expect(after.payload.edges).toBe(before.payload.edges)
+    expect(after.payload.vertices).toBe(before.payload.vertices)
+    expect(after.payload.volume as number).toBeCloseTo(before.payload.volume as number, 6)
+    expect(after.payload.area as number).toBeCloseTo(before.payload.area as number, 6)
+    const beforeCentroid = before.payload.centroid as number[]
+    const afterCentroid = after.payload.centroid as number[]
+    for (let axis = 0; axis < 3; axis++) {
+      expect(afterCentroid[axis]).toBeCloseTo(beforeCentroid[axis], 6)
+    }
+    expect(after.payload.bbox).toMatchObject({ min: [0, 0, 0], max: [10, 10, 5] })
+  }, 180_000)
+})
+
+// ─── MCP server ───
+
+interface McpResponse {
+  jsonrpc: string
+  id?: number
+  result?: unknown
+  error?: { code: number; message: string }
+}
+
+interface McpClient {
+  request(method: string, params?: unknown): Promise<McpResponse>
+  close(): Promise<void>
+}
+
+// One interactive child process: line-buffered stdout demuxed by response id.
+function spawnMcp(): McpClient {
+  const child = spawn('node', [
+    '--experimental-strip-types',
+    '--loader=./scripts/driveCli.loader.mjs',
+    'scripts/mcpServer.ts',
+  ], { cwd: FRONTEND_DIR, stdio: ['pipe', 'pipe', 'pipe'] })
+
+  const pending = new Map<number, (response: McpResponse) => void>()
+  let buffer = ''
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', (chunk: string) => {
+    buffer += chunk
+    let newline = buffer.indexOf('\n')
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline)
+      buffer = buffer.slice(newline + 1)
+      newline = buffer.indexOf('\n')
+      if (!line.trim()) continue
+      const message = JSON.parse(line) as McpResponse
+      if (typeof message.id === 'number') {
+        const resolve = pending.get(message.id)
+        if (resolve) {
+          pending.delete(message.id)
+          resolve(message)
+        }
+      }
+    }
+  })
+
+  let nextId = 1
+  return {
+    request: (method, params) => new Promise((resolve, reject) => {
+      const id = nextId++
+      const timer = setTimeout(() => {
+        pending.delete(id)
+        reject(new Error(`MCP ${method} timed out`))
+      }, 120_000)
+      pending.set(id, response => { clearTimeout(timer); resolve(response) })
+      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, ...(params !== undefined && { params }) }) + '\n')
+    }),
+    close: () => new Promise(resolve => {
+      child.once('exit', () => resolve())
+      child.stdin.end()
+    }),
+  }
+}
+
+// The JSON payload a tools/call result carries as its single text content.
+function toolPayload(response: McpResponse): Record<string, unknown> {
+  expect(response.error).toBeUndefined()
+  const result = response.result as { content: Array<{ type: string; text: string }>; isError?: boolean }
+  expect(result.isError).toBeUndefined()
+  return JSON.parse(result.content[0].text) as Record<string, unknown>
+}
+
+describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust solver)', () => {
+  it('builds, edits a dimension, measures and exports over stdio', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const stepFile = path.join(TMP_DIR, 'mcp-box.step')
+    const client = spawnMcp()
+    try {
+      const init = await client.request('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'cliSmoke', version: '0' },
+      })
+      expect(init.result).toMatchObject({
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'oversolved-mcp' },
+      })
+
+      const list = await client.request('tools/list', {})
+      const tools = (list.result as { tools: Array<{ name: string; inputSchema: unknown }> }).tools
+      expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run'])
+
+      const built = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
+      expect(built.ok).toBe(true)
+      expect((built.solve as { lastError: string | null }).lastError).toBeNull()
+
+      // The same script twice through one server process mints the same ids
+      // and hashes the same document: the CLI journal seed pins them.
+      const again = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
+      expect(again.docHash).toBe(built.docHash)
+
+      // Edit the extrude distance on the returned document and rebuild.
+      const edited = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { doc: built.doc, steps: EDIT_SCRIPT.steps },
+      }))
+      expect(edited.ok).toBe(true)
+
+      const measure = toolPayload(await client.request('tools/call', { name: 'measure', arguments: { doc: edited.doc } }))
+      expect(measure.volume as number).toBeCloseTo(800, 6)
+      expect(measure.bbox).toMatchObject({ min: [0, 0, 0], max: [10, 10, 8] })
+
+      const exported = toolPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { doc: edited.doc, format: 'step', out: stepFile },
+      }))
+      expect(exported).toMatchObject({ ok: true, format: 'step' })
+      expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
+
+      const stlFile = path.join(TMP_DIR, 'mcp-box.stl')
+      const stl = toolPayload(await client.request('tools/call', {
+        name: 'export',
+        arguments: { doc: edited.doc, format: 'stl', out: stlFile },
+      }))
+      expect(stl).toMatchObject({ ok: true, format: 'stl' })
+      expect(readFileSync(stlFile).byteLength).toBe(stl.bytes)
+
+      const commands = toolPayload(await client.request('tools/call', { name: 'commands', arguments: {} }))
+      expect((commands.commands as unknown[]).length).toBeGreaterThan(0)
+    } finally {
+      await client.close()
+    }
+  }, 240_000)
 })
