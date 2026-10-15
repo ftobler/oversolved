@@ -59,3 +59,18 @@ const occ = memoizedLoad(async (): Promise<OccModule | null> => {
 })
 
 export const loadOcc = occ.load
+
+/**
+ * Cheap "is OCC.js installed" probe: resolving the package only, no WASM
+ * instantiation. Suites whose kernel work runs in a forked child (which loads
+ * its own kernel) gate on this instead of `loadOcc()` so the parent fork does
+ * not hold a second ~0.5 GB heap the vitest memory model does not count.
+ */
+export function occInstalled(): boolean {
+  try {
+    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
+    return true
+  } catch {
+    return false
+  }
+}

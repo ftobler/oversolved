@@ -544,8 +544,9 @@ export class BooleanSoundnessError extends Error {}
  * robustness fuzz found two such families on exact surface tangencies. When a
  * cylinder's lateral surface touches a face plane exactly, the fuse comes back
  * as the target MINUS the tool (right magnitude, wrong sign: V=-768.25 where
- * 1750 was the floor), and when a sphere touches a cylinder wall exactly while
- * overlapping it, the first boolean over the pair drops one operand and returns
+ * 1750 was the floor), and when a sphere's centre lies exactly on a cylinder's
+ * lateral surface while the bodies overlap (the cylinder axis tangent to the
+ * sphere), the first boolean over the pair drops one operand and returns
  * it twice with one shell inverted (net volume 2.3e-13). Both ship as an ok
  * feature today, so the result has to be bounded before adoption: absolute
  * volumes, so an inverted solid is judged by its material rather than its
@@ -566,6 +567,11 @@ function booleanResultProblem(
     const vt = Math.abs(volumeOf(oc, scope, target))
     const vu = Math.abs(volumeOf(oc, scope, tool))
     if (!Number.isFinite(vr)) return `the result volume is not finite (${vr})`
+    // A non-finite operand would make every bound below NaN, i.e. every
+    // comparison false: the guard must not adopt a result it cannot judge.
+    if (!Number.isFinite(vt) || !Number.isFinite(vu)) {
+      return `an operand volume is not finite (target ${vt}, tool ${vu})`
+    }
     // As in cleanShapeIsSound: a closed target's result has to validate, an
     // open-shell target (L5) has no closedness contract to enforce.
     if (isClosedByVolume(vt) && !shapeIsValid(oc, scope, result)) {
@@ -598,6 +604,7 @@ function composeBooleanAttempt(
   unifyFaces: boolean,
 ): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
   const pre = rawBooleanWithDiff(oc, scope, target, tool, op)
+  let rejected: OccShape | null = null
   try {
     const r = cleanWithHistory(oc, scope, pre.shape, unifyFaces)
     if (cleanShapeIsSound(oc, scope, pre.shape, r.shape)) {
@@ -607,6 +614,7 @@ function composeBooleanAttempt(
         faceOrigin: composeOriginThroughClean(oc, scope, pre.faceOrigin, r.history, r.shape),
       }
     }
+    rejected = r.shape
   } catch {
     // ShapeUpgrade_UnifySameDomain (the coplanar-face merge) can throw on a valid
     // boolean result whose coincident faces it cannot fold. The reproducer is an
@@ -614,6 +622,9 @@ function composeBooleanAttempt(
     // shared coincident face plus the hole's inner wall defeat the merge. Fall
     // through to the raw rebuild.
   }
+  // The rejected clean result has no owner (the caller gets the fallback
+  // below), so hand it to the scope or it strands on the WASM heap.
+  if (rejected !== null) scope.track(rejected)
   // The fallback cannot reuse `pre.shape`: the merge works in place, so a
   // rejected or half-applied clean may have left it -- and the pre-clean result
   // is only safely readable from the untouched operands. Rebuild it.
@@ -649,6 +660,9 @@ export function booleanWithDiff(
   const attempt = composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces)
   const problem = booleanResultProblem(oc, scope, target, tool, op, attempt.shape)
   if (problem === null) return attempt
+  // A replaced attempt has no owner, so it joins the scope: the fallback result
+  // composeBooleanAttempt returns may already be tracked, hence the check.
+  if (!scope.isTracked(attempt.shape)) scope.track(attempt.shape)
   // The first boolean over a pair whose surfaces touch in an exact tangency can
   // take an OCCT 7.4.0p1 branch that drops or inverts an operand. A bare Common
   // over the same operands makes the kernel settle the shared geometry, and the
@@ -660,6 +674,7 @@ export function booleanWithDiff(
   const retry = composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces)
   const retryProblem = booleanResultProblem(oc, scope, target, tool, op, retry.shape)
   if (retryProblem === null) return retry
+  if (!scope.isTracked(retry.shape)) scope.track(retry.shape)
   throw new BooleanSoundnessError(
     `boolean ${op}: the kernel returned an unsound result (${retryProblem}). ` +
     'The two shapes probably touch in an exact tangency the kernel cannot resolve; ' +

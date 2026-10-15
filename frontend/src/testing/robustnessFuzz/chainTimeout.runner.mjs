@@ -28,11 +28,22 @@ process.on('message', async ({ id, recipe }) => {
       onStep: (step, kind) => process.send?.({ id, progress: { step, kind } }),
     })
     // The perturbed replay is a second full chain run, so it gets its own
-    // progress mark: a hang there is reported as the persistence phase.
+    // progress mark: a hang there is reported as the persistence phase. It runs
+    // whenever the chain BUILT a step that left a recorded pick, even when a
+    // later step refused: those references live in a document a user could have
+    // and a naming regression could break. A pick whose own step refused is
+    // dropped first: its feature never built, so the reference is not part of
+    // any document, and replaying it would only echo the refusal (some such
+    // picks resolved in the base body and the solver then refused, others never
+    // resolved at all). Unreached picks are only reported for completed base
+    // runs; on a refused base run the refusal is already reported (see
+    // runPersistenceCheck).
+    const builtSteps = new Set(run.reports.filter((report) => report.status === 'built').map((report) => report.step))
+    const persistentPicks = run.picks.filter((pick) => builtSteps.has(pick.step))
     let stale = []
-    if (run.completed && run.violations.length === 0 && run.picks.length > 0) {
+    if (run.violations.length === 0 && persistentPicks.length > 0) {
       process.send?.({ id, progress: { step: -1, kind: 'persistence' } })
-      stale = runPersistenceCheck(oc, recipe, run.picks)
+      stale = runPersistenceCheck(oc, recipe, persistentPicks, { reportUnreached: run.completed })
     }
     process.send?.({ id, ok: true, run, stale })
   } catch (e) {

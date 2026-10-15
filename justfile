@@ -142,17 +142,21 @@ ratchet-matrix:
 # The geometry robustness fuzz: random realistic feature chains and primitive
 # boolean pairs against the real kernel, checked after every step (validity,
 # volume, cut/join monotonicity), plus pick persistence under a small upstream
-# dimension change. Every replay runs under a SIGKILL watchdog, so a hung OCC
-# clean is reported with its seed and step instead of wedging the run (the
-# browser worker keeps the same 30 s kill for the same reason: see
-# frontend/src/testing/robustnessFuzz/chainTimeout.ts). The PR suite runs a
-# bounded 24-chain-seed range and its identity sweep derives a quarter of this
-# one (the default 200 is the plan's acceptance range; the nightly runs 1500
-# and `just robustness-fuzz 5000` is the plan's full scale).
+# dimension change. Every replay runs in a forked child under a SIGKILL
+# watchdog, scheduled through a bounded pool (ROBUSTNESS_FUZZ_WORKERS, default
+# 2), so a hung OCC clean is reported with its seed and step instead of wedging
+# the run (the browser worker keeps the same 30 s kill for the same reason: see
+# frontend/src/testing/robustnessFuzz/chainTimeout.ts). Each chain child holds
+# its own ~0.75 GB OCC kernel, so this recipe pins the pool to 2 and the vitest
+# forks to 1: the two suites run in sequence instead of two extra kernels deep
+# (raise workers on a wide, memory-rich box, not on the nightly runner). The PR
+# suite runs a bounded 24-chain-seed range and its identity sweep derives a
+# quarter of this one (the default 200 is the plan's acceptance range; the
+# nightly runs 1500 and `just robustness-fuzz 5000` is the plan's full scale).
 [working-directory: "frontend"]
-robustness-fuzz seeds="200":
+robustness-fuzz seeds="200" workers="2":
     mkdir -p ../tmp
-    ROBUSTNESS_FUZZ_SEEDS={{seeds}} npx vitest run src/testing/robustnessFuzz 2>&1 | tee ../tmp/robustness_fuzz.log
+    VITEST_MAX_FORKS=1 ROBUSTNESS_FUZZ_WORKERS={{workers}} ROBUSTNESS_FUZZ_SEEDS={{seeds}} npx vitest run src/testing/robustnessFuzz 2>&1 | tee ../tmp/robustness_fuzz.log
 
 # Test the Rust solver workspace (solver-core + sketch-solver + mate-solver)
 rust-test:
