@@ -295,6 +295,26 @@ describe('useDocumentState recovery restore at load', () => {
     expect(result.current.doc?.features?.map(f => f.id)).toEqual(['Origin', 'Top', 'Front', 'Right'])
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
+
+  it('does not adopt a parked snapshot when the stored document fails validation', async () => {
+    // The restore sits behind the loader, so the loader's refusal stays
+    // authoritative: the failure keeps its structured report and the snapshot
+    // is not adopted over it. The handoff stays parked for a later successful
+    // load of the same document.
+    const content = 'version: 1\nkind: part\nfeatures:\n  - id: ex1\n    kind: extrude\n    extrude:\n      distance: .nan\n'
+    h.loadMock.mockResolvedValue({ content, name: 'Bracket' })
+    const restored = makeDoc(makeSketch('restored'))
+    requestRecoveryRestore({ docId: 'V', doc: restored })
+    const reSolveRef = { current: vi.fn() }
+    const { result } = renderHook(() => useDocumentState('V', reSolveRef, { solveOnLoad: true }))
+    await tick()
+
+    expect(result.current.doc).toBeNull()
+    expect(result.current.error).toContain('features[0].extrude.distance')
+    expect(result.current.loadFailure).not.toBeNull()
+    expect(reSolveRef.current).not.toHaveBeenCalled()
+    expect(takeRecoveryRestore('V')).toEqual(restored)
+  })
 })
 
 describe('useDocumentState load and operation failures', () => {
