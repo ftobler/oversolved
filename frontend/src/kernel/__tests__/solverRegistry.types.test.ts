@@ -2,10 +2,12 @@
  * Type-level contract of the solver dispatch table.
  *
  * "Illegal features are unrepresentable" has two halves: the document union is
- * closed with literal kinds, and every dispatch entry is keyed to exactly its
- * variant. Both are compile-level facts; `expectTypeOf` pins them so a later
- * widening (a `kind: string`, a mistyped table entry) fails here with a focused
- * message instead of surfacing as a runtime read of an absent payload.
+ * closed with literal kinds, and every dispatch entry's signature is keyed to
+ * exactly its variant. Both are compile-level facts; `expectTypeOf` pins them
+ * so a later widening (a `kind: string`, a dropped table key) fails here with a
+ * focused message instead of surfacing as a runtime read of an absent payload.
+ * The registered function itself is only typed as far as its own parameter is;
+ * a same-shape swap stays invisible until the leaf solvers narrow.
  *
  * The assertions are erased at runtime, so this suite is pure build-time
  * checking.
