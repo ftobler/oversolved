@@ -18,10 +18,15 @@
 // be: rel * expected covers the integrator's convergence, and an absolute
 // floor covers a shape near zero volume. Measured deviations on these cases
 // are ~1e-16 relative, six orders inside the 1e-6 budget.
+//
+// The comparator itself now lives in `occ/measureTolerance.ts` because the
+// reference-oracle corpus (`src/oracle/`) applies the same budget to volume,
+// area, centroid and bbox; this file keeps the comparator's own unit tests.
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import { volumeOf } from '../volume'
+import { valueWithinTolerance } from '../measureTolerance'
 import {
   makeBox,
   makeCylinder,
@@ -36,23 +41,6 @@ import { applyFilletWithDiff } from '../edgeModifier'
 import type { OccModule, OccShape } from '../occTypes'
 
 const oc = await loadOcc()
-
-export interface VolumeTolerance {
-  rel: number
-  abs: number
-}
-
-const DEFAULT_VOLUME_TOLERANCE: VolumeTolerance = { rel: 1e-6, abs: 1e-6 }
-
-// The comparator is exported for its own unit tests below (which run whether or
-// not OCC is installed) and for the deliberately perturbed real case.
-export function volumeWithinTolerance(
-  actual: number,
-  expected: number,
-  tolerance: VolumeTolerance = DEFAULT_VOLUME_TOLERANCE,
-): boolean {
-  return Math.abs(actual - expected) <= tolerance.rel * Math.abs(expected) + tolerance.abs
-}
 
 // Box: a rectangular prism of side lengths dx, dy, dz is dx layered unit
 // squares, so V = dx * dy * dz.
@@ -101,20 +89,20 @@ function filletVolume(dx: number, dy: number, dz: number, radius: number): numbe
 
 describe('the volume tolerance comparator', () => {
   it('accepts an exact match', () => {
-    expect(volumeWithinTolerance(240, 240)).toBe(true)
+    expect(valueWithinTolerance(240, 240)).toBe(true)
   })
 
   it('accepts a shift inside the relative tolerance', () => {
-    expect(volumeWithinTolerance(240 * (1 + 1e-8), 240)).toBe(true)
+    expect(valueWithinTolerance(240 * (1 + 1e-8), 240)).toBe(true)
   })
 
   it('rejects a 0.1% shift, far outside the tolerance', () => {
-    expect(volumeWithinTolerance(240 * 1.001, 240)).toBe(false)
+    expect(valueWithinTolerance(240 * 1.001, 240)).toBe(false)
   })
 
   it('uses the absolute floor for an expected volume near zero', () => {
-    expect(volumeWithinTolerance(1e-7, 0)).toBe(true)
-    expect(volumeWithinTolerance(1e-3, 0)).toBe(false)
+    expect(valueWithinTolerance(1e-7, 0)).toBe(true)
+    expect(valueWithinTolerance(1e-3, 0)).toBe(false)
   })
 })
 
@@ -130,7 +118,7 @@ describe.skipIf(!oc)('analytic volumes (real OCC)', () => {
     try {
       const box = scope.track(makeBox(occ, scope, 20, 10, 6))
       const expected = boxVolume(20, 10, 6)
-      expect(volumeWithinTolerance(volumeOf(occ, scope, box), expected)).toBe(true)
+      expect(valueWithinTolerance(volumeOf(occ, scope, box), expected)).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -141,7 +129,7 @@ describe.skipIf(!oc)('analytic volumes (real OCC)', () => {
     try {
       const cylinder = scope.track(makeCylinder(occ, scope, [1, 2, 3], [0, 0, 1], 3, 7))
       const expected = cylinderVolume(3, 7)
-      expect(volumeWithinTolerance(volumeOf(occ, scope, cylinder), expected)).toBe(true)
+      expect(valueWithinTolerance(volumeOf(occ, scope, cylinder), expected)).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -155,7 +143,7 @@ describe.skipIf(!oc)('analytic volumes (real OCC)', () => {
       const profile = rectangularProfile(occ, scope, 2, 5, 0, 4)
       const solid = scope.track(revolveFace(occ, scope, profile, [0, 0, 0], [0, 0, 1], 360))
       const expected = pappusVolume(2 * Math.PI, 3.5, 12)
-      expect(volumeWithinTolerance(volumeOf(occ, scope, solid), expected)).toBe(true)
+      expect(valueWithinTolerance(volumeOf(occ, scope, solid), expected)).toBe(true)
       // The washer form of the same number, as a second derivation.
       expect(expected).toBeCloseTo(Math.PI * (5 ** 2 - 2 ** 2) * 4, 12)
     } finally {
@@ -170,7 +158,7 @@ describe.skipIf(!oc)('analytic volumes (real OCC)', () => {
       const degrees = 135
       const solid = scope.track(revolveFace(occ, scope, profile, [0, 0, 0], [0, 0, 1], degrees))
       const expected = pappusVolume((degrees * Math.PI) / 180, 3.5, 12)
-      expect(volumeWithinTolerance(volumeOf(occ, scope, solid), expected)).toBe(true)
+      expect(valueWithinTolerance(volumeOf(occ, scope, solid), expected)).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -186,7 +174,7 @@ describe.skipIf(!oc)('analytic volumes (real OCC)', () => {
       expect(filleted.success).toBe(true)
       const rounded = scope.track(filleted.shape)
       const expected = filletVolume(20, 10, 6, 1.5)
-      expect(volumeWithinTolerance(volumeOf(occ, scope, rounded), expected)).toBe(true)
+      expect(valueWithinTolerance(volumeOf(occ, scope, rounded), expected)).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -197,7 +185,7 @@ describe.skipIf(!oc)('analytic volumes (real OCC)', () => {
     try {
       const box = scope.track(makeBox(occ, scope, 20, 10, 6))
       const shifted = volumeOf(occ, scope, box) * 1.001
-      expect(volumeWithinTolerance(shifted, boxVolume(20, 10, 6))).toBe(false)
+      expect(valueWithinTolerance(shifted, boxVolume(20, 10, 6))).toBe(false)
     } finally {
       scope.dispose()
     }

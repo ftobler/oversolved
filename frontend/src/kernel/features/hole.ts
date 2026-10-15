@@ -8,12 +8,11 @@
 // names no drill site is refused there by name.
 //
 // through_all sizes the cylinder from the target's edge-sampled AABB (bodyFrame).
-// The stock OCC build has no Bnd_Box, and a vertex-only box is NOT a safe
-// stand-in for one: an OCCT cylinder carries just two seam vertices, so its
-// vertex box collapses radially and a radial through-hole sized from it
-// under-penetrates by roughly the full diameter, leaving the far wall intact.
-// Sampling the edges (the cap circles) recovers the true extent, matching
-// Python's Bnd_Box-sized cylinder.
+// A vertex-only box is NOT a safe stand-in for one: an OCCT cylinder carries
+// just two seam vertices, so its vertex box collapses radially and a radial
+// through-hole sized from it under-penetrates by roughly the full diameter,
+// leaving the far wall intact. Sampling the edges (the cap circles) recovers
+// the true extent, matching Python's Bnd_Box-sized cylinder.
 
 import { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'

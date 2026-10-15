@@ -553,12 +553,21 @@ export interface OccModule extends OccBaseModule {
     TopAbs_REVERSED: OccEnumValue
   }
 
-  // ─── bounding box (classifier frame) ───
-  Bnd_Box: new () => OccDisposable & {
-    Get(): [number, number, number, number, number, number]
+  // ─── bounding box (the oracle's exact bbox read) ───
+  // The embind suffix is `_1` (the plain `Bnd_Box` name is bound without a
+  // constructor), and `Get` takes six out-params emscripten does not marshal,
+  // so the per-corner accessors are the working read. Verified against
+  // opencascade.js@1.1.1 (OCC 7.5).
+  Bnd_Box_1: new () => OccDisposable & {
+    GetXmin(): number
+    GetYmin(): number
+    GetZmin(): number
+    GetXmax(): number
+    GetYmax(): number
+    GetZmax(): number
   }
   BRepBndLib: {
-    Add_s(shape: OccShape, box: OccDisposable, useTriangulation: boolean): void
+    Add(shape: OccShape, box: OccDisposable, useTriangulation: boolean): void
   }
 
   // ─── boolean ops + history + clean ───
