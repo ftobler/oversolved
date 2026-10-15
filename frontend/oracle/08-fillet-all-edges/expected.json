@@ -1,0 +1,20 @@
+{
+  "method": "Steiner: V(K + B_r) = abc + 2(ab+bc+ca)r + pi(a+b+c)r^2 + 4/3 pi r^3 with a=dx-2r etc; S(K+B_r) = S(K) + 2M r + 4 pi r^2, M = pi(a+b+c); 26 faces (6 planes + 12 cylinders + 8 spheres)",
+  "bodies": 1,
+  "volume": 1134.988920646734,
+  "area": 664.7433388230813,
+  "centroid": [
+    10,
+    5,
+    3
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    20,
+    10,
+    6
+  ],
+  "faces": 26
+}

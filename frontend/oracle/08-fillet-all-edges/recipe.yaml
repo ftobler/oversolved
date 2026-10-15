@@ -1,0 +1,118 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom:
+        - 0
+        - 0
+        - 20
+        - 0
+      right:
+        - 20
+        - 0
+        - 20
+        - 10
+      top:
+        - 20
+        - 10
+        - 0
+        - 10
+      left:
+        - 0
+        - 10
+        - 0
+        - 0
+    constraints:
+      - id: c1
+        kind: coincident
+        a:
+          entity: bottom
+          point: end
+        b:
+          entity: right
+          point: start
+      - id: c2
+        kind: coincident
+        a:
+          entity: right
+          point: end
+        b:
+          entity: top
+          point: start
+      - id: c3
+        kind: coincident
+        a:
+          entity: top
+          point: end
+        b:
+          entity: left
+          point: start
+      - id: c4
+        kind: coincident
+        a:
+          entity: left
+          point: end
+        b:
+          entity: bottom
+          point: start
+      - id: c5
+        kind: horizontal
+        target:
+          entity: bottom
+      - id: c6
+        kind: horizontal
+        target:
+          entity: top
+      - id: c7
+        kind: vertical
+        target:
+          entity: right
+      - id: c8
+        kind: vertical
+        target:
+          entity: left
+      - id: c9
+        kind: length
+        target:
+          entity: bottom
+        value: 20
+      - id: c10
+        kind: length
+        target:
+          entity: left
+        value: 10
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 6
+      direction: normal
+      operation: new
+  - id: fi1
+    kind: fillet
+    fillet:
+      edges:
+        - ?15,4,9,b,9,7,7;@u|e_9cc5e0e181099253@ex1@body_ex1@sk1/bottom@sk1/left@cls_xn@cls_yn:straightedge
+        - ?15,4,9,b,7,7;@u|e_f153490a3410e893@ex1@body_ex1@sk1/bottom@cls_yn@cls_zn:straightedge
+        - ?15,4,9,b,7,7;@u|e_6ad6abc6cf72ca1d@ex1@body_ex1@sk1/bottom@cls_yn@cls_zp:straightedge
+        - ?15,4,9,9,7,7;@u|e_f9b2d8d0c27580a1@ex1@body_ex1@sk1/left@cls_xn@cls_zn:straightedge
+        - ?15,4,9,8,9,7,7;@u|e_2a45636be3f3c69d@ex1@body_ex1@sk1/top@sk1/left@cls_xn@cls_yp:straightedge
+        - ?15,4,9,9,7,7;@u|e_fb4a03e9d9409eb2@ex1@body_ex1@sk1/left@cls_xn@cls_zp:straightedge
+        - ?15,4,9,b,a,7,7;@u|e_de451d9580d77ce3@ex1@body_ex1@sk1/bottom@sk1/right@cls_xp@cls_yn:straightedge
+        - ?15,4,9,a,7,7;@u|e_dee538ece92b3eb2@ex1@body_ex1@sk1/right@cls_xp@cls_zn:straightedge
+        - ?15,4,9,a,7,7;@u|e_e7f92426cc3aa698@ex1@body_ex1@sk1/right@cls_xp@cls_zp:straightedge
+        - ?15,4,9,8,7,7;@u|e_f7089ca4c7229b50@ex1@body_ex1@sk1/top@cls_yp@cls_zn:straightedge
+        - ?15,4,9,a,8,7,7;@u|e_581912f80769e2fd@ex1@body_ex1@sk1/right@sk1/top@cls_xp@cls_yp:straightedge
+        - ?15,4,9,8,7,7;@u|e_0d02e2f4bb3eaed0@ex1@body_ex1@sk1/top@cls_yp@cls_zp:straightedge
+      radius: 1.5

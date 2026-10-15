@@ -1,0 +1,21 @@
+{
+  "method": "Subtracting the x in [5,15] box from x in [0,10] leaves x in [0,5]: V = 500, A = box 5x10x10",
+  "bodies": 1,
+  "volume": 500,
+  "area": 400,
+  "centroid": [
+    2.5,
+    5,
+    5
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    5,
+    10,
+    10
+  ],
+  "faces": 6,
+  "edges": 12
+}

@@ -1,0 +1,21 @@
+{
+  "method": "The add fuses into the first body: the 15x10x10 box",
+  "bodies": 1,
+  "volume": 1500,
+  "area": 800,
+  "centroid": [
+    7.5,
+    5,
+    5
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    15,
+    10,
+    10
+  ],
+  "faces": 6,
+  "edges": 12
+}

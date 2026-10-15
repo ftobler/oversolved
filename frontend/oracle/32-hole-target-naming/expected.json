@@ -1,0 +1,21 @@
+{
+  "method": "A through hole follows the body span: V = 1200 - pi r^2 h with h = 6; the bore adds a rim pair and its own seam edge",
+  "bodies": 1,
+  "volume": 1124.601776313845,
+  "area": 810.2654824574366,
+  "centroid": [
+    10,
+    5,
+    3
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    20,
+    10,
+    6
+  ],
+  "faces": 7,
+  "edges": 15
+}

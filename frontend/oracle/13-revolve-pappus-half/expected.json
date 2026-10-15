@@ -1,0 +1,19 @@
+{
+  "method": "Pappus: V = pi d A = pi * 3.5 * 12 = 42 pi. Centroid z = -integral(r^2 sin phi dr dphi dy)/V = -312/(42 pi) for a sweep about +y into -z; A = pi(5+2)4 + 2(pi/2)(25-4) + 2*12 (two cut cross-sections)",
+  "bodies": 1,
+  "volume": 131.94689145077132,
+  "area": 177.93804002589985,
+  "centroid": [
+    0,
+    2,
+    -2.3645877259367305
+  ],
+  "bbox": [
+    -5,
+    0,
+    -5,
+    5,
+    4,
+    0
+  ]
+}

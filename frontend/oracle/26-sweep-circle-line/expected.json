@@ -1,0 +1,21 @@
+{
+  "method": "A circle of radius 2 swept 30 along x: V = pi r^2 L; A = 2 pi r^2 + 2 pi r L (a cylinder)",
+  "bodies": 1,
+  "volume": 376.99111843077515,
+  "area": 402.1238596594935,
+  "centroid": [
+    15,
+    0,
+    0
+  ],
+  "bbox": [
+    0,
+    -2,
+    -2,
+    30,
+    2,
+    2
+  ],
+  "faces": 3,
+  "edges": 3
+}

@@ -1,0 +1,21 @@
+{
+  "method": "Union of two 10*10*5 boxes sharing the x = 0 face, coplanar side faces unify: one 20*10*5 box",
+  "bodies": 1,
+  "volume": 1000,
+  "area": 700,
+  "centroid": [
+    0,
+    5,
+    2.5
+  ],
+  "bbox": [
+    -10,
+    0,
+    0,
+    10,
+    10,
+    5
+  ],
+  "faces": 6,
+  "edges": 12
+}

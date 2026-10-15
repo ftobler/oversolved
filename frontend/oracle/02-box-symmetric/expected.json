@@ -1,0 +1,21 @@
+{
+  "method": "Symmetric extrude: the solid straddles the plane, z in [-3, 3]; V and A as the box",
+  "bodies": 1,
+  "volume": 1200,
+  "area": 760,
+  "centroid": [
+    10,
+    5,
+    0
+  ],
+  "bbox": [
+    0,
+    0,
+    -3,
+    20,
+    10,
+    3
+  ],
+  "faces": 6,
+  "edges": 12
+}

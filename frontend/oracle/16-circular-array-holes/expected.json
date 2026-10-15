@@ -1,0 +1,21 @@
+{
+  "method": "Four holes on a radius-10 circle about (20, 20): V = 40*40*5 - 4 pi r^2 h; A = plate + 4(2 pi r h - 2 pi r^2)",
+  "bodies": 1,
+  "volume": 7434.513322353837,
+  "area": 4150.7964473723105,
+  "centroid": [
+    20,
+    20,
+    2.5
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    40,
+    40,
+    5
+  ],
+  "faces": 10,
+  "edges": 24
+}

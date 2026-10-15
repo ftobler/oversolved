@@ -1,0 +1,21 @@
+{
+  "method": "Up-to the plane z = 16: the 10x10 profile becomes a 10x10x16 box; the plate stays a second body (operation new), so totals sum with the plate centred at (10, 10, 5)",
+  "bodies": 2,
+  "volume": 5600,
+  "area": 2440,
+  "centroid": [
+    8.571428571428571,
+    8.571428571428571,
+    5.857142857142857
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    20,
+    20,
+    16
+  ],
+  "faces": 12,
+  "edges": 24
+}

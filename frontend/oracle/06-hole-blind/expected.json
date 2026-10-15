@@ -1,0 +1,21 @@
+{
+  "method": "V = 20*10*6 - pi r^2 d = 1200 - pi*4*4; centroid z = (1200*3 - 16pi*2)/(1200 - 16pi); A = box + 2 pi r d (bore wall + floor disc - mouth disc cancel); the bore has a seam edge",
+  "bodies": 1,
+  "volume": 1149.7345175425633,
+  "area": 810.2654824574367,
+  "centroid": [
+    10,
+    5,
+    3.043719207948
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    20,
+    10,
+    6
+  ],
+  "faces": 8,
+  "edges": 15
+}

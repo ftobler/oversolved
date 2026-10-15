@@ -1,0 +1,21 @@
+{
+  "method": "The r=3 sphere at (5,5,0) is entirely inside the 10x10x12 box, so the union is the box: V = 1200, A = box",
+  "bodies": 1,
+  "volume": 1200,
+  "area": 680,
+  "centroid": [
+    5,
+    5,
+    0
+  ],
+  "bbox": [
+    0,
+    0,
+    -6,
+    10,
+    10,
+    6
+  ],
+  "faces": 6,
+  "edges": 12
+}

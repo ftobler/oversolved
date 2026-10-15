@@ -1,0 +1,21 @@
+{
+  "method": "V = 1200 - 4/3 pi r^3 = 1200 - 36 pi (the cavity face integrates with opposite orientation); A = box + 4 pi r^2 (the cavity wall is surface)",
+  "bodies": 1,
+  "volume": 1086.9026644707674,
+  "area": 793.0973355292325,
+  "centroid": [
+    5,
+    5,
+    0
+  ],
+  "bbox": [
+    0,
+    0,
+    -6,
+    10,
+    10,
+    6
+  ],
+  "faces": 7,
+  "edges": 15
+}

@@ -1,0 +1,20 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: c
+        kind: circle
+    initial:
+      c:
+        - 10
+        - 10
+        - 4
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 12
+      direction: normal
+      operation: new

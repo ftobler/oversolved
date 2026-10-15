@@ -1,0 +1,31 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: l1
+        kind: line
+    initial:
+      l1:
+        - 0
+        - 0
+        - 30
+        - 0
+  - id: sk2
+    kind: sketch
+    plane: "@builtin_plane_right"
+    entities:
+      - id: c
+        kind: circle
+    initial:
+      c:
+        - 0
+        - 0
+        - 2
+  - id: sw1
+    kind: sweep
+    sweep:
+      sketch: $sk2
+      path: $sk1
+      operation: new

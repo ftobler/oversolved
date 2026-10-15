@@ -1,0 +1,120 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom:
+        - 0
+        - 0
+        - 24
+        - 0
+      right:
+        - 24
+        - 0
+        - 24
+        - 24
+      top:
+        - 24
+        - 24
+        - 0
+        - 24
+      left:
+        - 0
+        - 24
+        - 0
+        - 0
+    constraints:
+      - id: c1
+        kind: coincident
+        a:
+          entity: bottom
+          point: end
+        b:
+          entity: right
+          point: start
+      - id: c2
+        kind: coincident
+        a:
+          entity: right
+          point: end
+        b:
+          entity: top
+          point: start
+      - id: c3
+        kind: coincident
+        a:
+          entity: top
+          point: end
+        b:
+          entity: left
+          point: start
+      - id: c4
+        kind: coincident
+        a:
+          entity: left
+          point: end
+        b:
+          entity: bottom
+          point: start
+      - id: c5
+        kind: horizontal
+        target:
+          entity: bottom
+      - id: c6
+        kind: horizontal
+        target:
+          entity: top
+      - id: c7
+        kind: vertical
+        target:
+          entity: right
+      - id: c8
+        kind: vertical
+        target:
+          entity: left
+      - id: c9
+        kind: length
+        target:
+          entity: bottom
+        value: 24
+      - id: c10
+        kind: length
+        target:
+          entity: left
+        value: 24
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 8
+      direction: normal
+      operation: new
+  - id: sk2
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: p1
+        kind: point
+    initial:
+      p1:
+        - 12
+        - 12
+  - id: h1
+    kind: hole
+    hole:
+      sketch: "@sk2"
+      diameter: 10
+      depth_mode: through_all
+      depth: 1
+      target: "@body_ex1"
+      direction: normal

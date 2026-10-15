@@ -1,0 +1,48 @@
+{
+  "method": "V = dx dy h - 4 (1 - pi/4) r^2 h (one corner prism per vertical edge); A = box - 4(2 r h + 2(r^2 - pi r^2/4) - pi r h/2); 10 faces",
+  "bodies": 1,
+  "volume": 1179.398223686155,
+  "area": 732.5309649148734,
+  "centroid": [
+    10,
+    5,
+    3
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    20,
+    10,
+    6
+  ],
+  "faces": 10,
+  "edges": 24,
+  "edit": {
+    "what": "edit ex1.extrude.distance 6 -> 10",
+    "method": "Same formulas with h = 10; the fillet edge queries are stored picks and must still resolve",
+    "feature": "ex1",
+    "field": "distance",
+    "value": 10,
+    "expect": {
+      "bodies": 1,
+      "volume": 1965.6637061435918,
+      "area": 958.79644737231,
+      "centroid": [
+        10,
+        5,
+        5
+      ],
+      "bbox": [
+        0,
+        0,
+        0,
+        20,
+        10,
+        10
+      ],
+      "faces": 10,
+      "edges": 24
+    }
+  }
+}

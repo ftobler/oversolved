@@ -1,0 +1,21 @@
+{
+  "method": "V = dx dy dz = 20 * 10 * 6; A = 2(dx dy + dy dz + dz dx)",
+  "bodies": 1,
+  "volume": 1200,
+  "area": 760,
+  "centroid": [
+    10,
+    5,
+    3
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    20,
+    10,
+    6
+  ],
+  "faces": 6,
+  "edges": 12
+}

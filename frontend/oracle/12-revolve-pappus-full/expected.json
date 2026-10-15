@@ -1,0 +1,19 @@
+{
+  "method": "Pappus: V = theta d A = 2 pi * 3.5 * 12 (annulus: pi(5^2 - 2^2) * 4). A = 2 pi (5+2) * 4 + 2 pi (25-4); axis is the y direction",
+  "bodies": 1,
+  "volume": 263.89378290154264,
+  "area": 307.8760800517997,
+  "centroid": [
+    0,
+    2,
+    0
+  ],
+  "bbox": [
+    -5,
+    0,
+    -5,
+    5,
+    4,
+    5
+  ]
+}

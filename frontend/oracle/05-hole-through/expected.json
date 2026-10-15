@@ -1,0 +1,21 @@
+{
+  "method": "V = dx dy dz - pi r^2 h = 24*24*8 - pi*25*8; A = box + 2 pi r h - 2 pi r^2 (bore added, two discs removed); each bore adds a rim pair and its own seam edge",
+  "bodies": 1,
+  "volume": 3979.6814692820412,
+  "area": 2014.247779607694,
+  "centroid": [
+    12,
+    12,
+    4
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    24,
+    24,
+    8
+  ],
+  "faces": 7,
+  "edges": 15
+}

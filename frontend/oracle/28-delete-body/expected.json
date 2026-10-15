@@ -1,0 +1,21 @@
+{
+  "method": "Delete the second body: what remains is the first 10x10x5 box",
+  "bodies": 1,
+  "volume": 500,
+  "area": 400,
+  "centroid": [
+    5,
+    5,
+    2.5
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    10,
+    10,
+    5
+  ],
+  "faces": 6,
+  "edges": 12
+}

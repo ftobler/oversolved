@@ -1,0 +1,21 @@
+{
+  "method": "Union of x in [0,10] and [5,15] is the box x in [0,15]: V = 1500, A = 2(15*10) + 2(10*10) + 2(15*10)... full box 15x10x10",
+  "bodies": 1,
+  "volume": 1500,
+  "area": 800,
+  "centroid": [
+    7.5,
+    5,
+    5
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    15,
+    10,
+    10
+  ],
+  "faces": 6,
+  "edges": 12
+}

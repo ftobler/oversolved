@@ -1,0 +1,21 @@
+{
+  "method": "Three disjoint holey plates: each V = 10*10*5 - pi r^2 h; pitch 30 > 10 so the fuse splits into 3 bodies; totals are 3x, centroid at the middle plate",
+  "bodies": 3,
+  "volume": 1311.5044407846124,
+  "area": 1313.0973355292326,
+  "centroid": [
+    35,
+    5,
+    2.5
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    70,
+    10,
+    5
+  ],
+  "faces": 21,
+  "edges": 45
+}

@@ -1,0 +1,21 @@
+{
+  "method": "One edge chamfered: V = a^3 - (d^2/2) a; A = 6a^2 - 2 d a - d^2 + sqrt2 d a (two strips off, two end triangles off, chamfer face on); the removed prism centroid is d/3 in from each face; 7 faces, 15 edges",
+  "bodies": 1,
+  "volume": 980,
+  "area": 584.2842712474619,
+  "centroid": [
+    5,
+    5.08843537414966,
+    5.08843537414966
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    10,
+    10,
+    10
+  ],
+  "faces": 7,
+  "edges": 15
+}

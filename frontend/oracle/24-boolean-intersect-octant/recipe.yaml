@@ -1,0 +1,148 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom:
+        - 0
+        - 0
+        - 20
+        - 0
+      right:
+        - 20
+        - 0
+        - 20
+        - 20
+      top:
+        - 20
+        - 20
+        - 0
+        - 20
+      left:
+        - 0
+        - 20
+        - 0
+        - 0
+    constraints:
+      - id: c1
+        kind: coincident
+        a:
+          entity: bottom
+          point: end
+        b:
+          entity: right
+          point: start
+      - id: c2
+        kind: coincident
+        a:
+          entity: right
+          point: end
+        b:
+          entity: top
+          point: start
+      - id: c3
+        kind: coincident
+        a:
+          entity: top
+          point: end
+        b:
+          entity: left
+          point: start
+      - id: c4
+        kind: coincident
+        a:
+          entity: left
+          point: end
+        b:
+          entity: bottom
+          point: start
+      - id: c5
+        kind: horizontal
+        target:
+          entity: bottom
+      - id: c6
+        kind: horizontal
+        target:
+          entity: top
+      - id: c7
+        kind: vertical
+        target:
+          entity: right
+      - id: c8
+        kind: vertical
+        target:
+          entity: left
+      - id: c9
+        kind: length
+        target:
+          entity: bottom
+        value: 20
+      - id: c10
+        kind: length
+        target:
+          entity: left
+        value: 20
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 20
+      direction: normal
+      operation: new
+  - id: sk2
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: a
+        kind: arc
+      - id: d
+        kind: line
+    initial:
+      a:
+        - 0
+        - 0
+        - 7
+        - 90
+        - 270
+      d:
+        - 0
+        - -7
+        - 0
+        - 7
+  - id: sk3
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: l1
+        kind: line
+        construction: true
+    initial:
+      l1:
+        - 0
+        - -10
+        - 0
+        - 10
+  - id: rv1
+    kind: revolve
+    revolve:
+      sketch: $sk2
+      angle: 360
+      axis: "@sk3/l1"
+      operation: new
+  - id: bo1
+    kind: boolean
+    boolean:
+      operation: intersect
+      target: "@body_ex1"
+      tools:
+        - "@body_rv1"

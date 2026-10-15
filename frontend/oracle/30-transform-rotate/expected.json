@@ -1,0 +1,21 @@
+{
+  "method": "CCW 90 deg about +z: (x, y) -> (-y, x), so x in [-10, 0], y in [0, 20]",
+  "bodies": 1,
+  "volume": 1200,
+  "area": 760,
+  "centroid": [
+    -5,
+    10,
+    3
+  ],
+  "bbox": [
+    -10,
+    0,
+    0,
+    0,
+    20,
+    6
+  ],
+  "faces": 6,
+  "edges": 12
+}

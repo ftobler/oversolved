@@ -1,0 +1,21 @@
+{
+  "method": "The overlap is x in [5,10]: box 5x10x10",
+  "bodies": 1,
+  "volume": 500,
+  "area": 400,
+  "centroid": [
+    7.5,
+    5,
+    5
+  ],
+  "bbox": [
+    5,
+    0,
+    0,
+    10,
+    10,
+    10
+  ],
+  "faces": 6,
+  "edges": 12
+}

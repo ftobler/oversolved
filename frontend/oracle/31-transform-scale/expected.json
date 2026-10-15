@@ -1,0 +1,21 @@
+{
+  "method": "Uniform scale 2: V scales by 8, A by 4, the box doubles every way",
+  "bodies": 1,
+  "volume": 9600,
+  "area": 3040,
+  "centroid": [
+    20,
+    10,
+    6
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    40,
+    20,
+    12
+  ],
+  "faces": 6,
+  "edges": 12
+}

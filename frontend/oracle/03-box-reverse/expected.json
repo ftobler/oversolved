@@ -1,0 +1,21 @@
+{
+  "method": "Reverse extrude: z in [-6, 0]; V and A as the box",
+  "bodies": 1,
+  "volume": 1200,
+  "area": 760,
+  "centroid": [
+    10,
+    5,
+    -3
+  ],
+  "bbox": [
+    0,
+    0,
+    -6,
+    20,
+    10,
+    0
+  ],
+  "faces": 6,
+  "edges": 12
+}

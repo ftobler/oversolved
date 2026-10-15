@@ -1,0 +1,21 @@
+{
+  "method": "V = 30*10*6 - 2 pi r^2 h; A = box + 2 (2 pi r h - 2 pi r^2); each bore adds a rim pair and its own seam edge",
+  "bodies": 1,
+  "volume": 1649.20355262769,
+  "area": 1180.5309649148735,
+  "centroid": [
+    15,
+    5,
+    3
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    30,
+    10,
+    6
+  ],
+  "faces": 8,
+  "edges": 18
+}

@@ -1,0 +1,21 @@
+{
+  "method": "Two 10*10*5 boxes touching at x = 0: totals are 2x, V and A sum; 12 faces, 24 edges",
+  "bodies": 2,
+  "volume": 1000,
+  "area": 800,
+  "centroid": [
+    0,
+    5,
+    2.5
+  ],
+  "bbox": [
+    -10,
+    0,
+    0,
+    10,
+    10,
+    5
+  ],
+  "faces": 12,
+  "edges": 24
+}

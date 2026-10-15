@@ -1,0 +1,21 @@
+{
+  "method": "A rigid translate: V and A unchanged, the box shifts 30 in x",
+  "bodies": 1,
+  "volume": 1200,
+  "area": 760,
+  "centroid": [
+    40,
+    5,
+    3
+  ],
+  "bbox": [
+    30,
+    0,
+    0,
+    50,
+    10,
+    6
+  ],
+  "faces": 6,
+  "edges": 12
+}

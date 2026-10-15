@@ -15,6 +15,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "docs:commands": "UPDATE_COMMAND_DOCS=1 vitest run src/pages/registry/__tests__/commandDocs.test.ts",
+    "docs:oracle": "UPDATE_ORACLE_DOCS=1 vitest run src/oracle/__tests__/oracleReal.test.ts",
     "regen:corpus": "node --experimental-strip-types --loader=./resolve-alias.loader.mjs scripts/regenCorpus.ts && ../.venv/bin/python scripts/mergeCorpus.py",
     "regen:action-matrix": "vite-node scripts/regenActionMatrix.ts",
     "shadow:wasm": "cd ../sketch-solver && wasm-pack build --target web --out-dir pkg --release && cd ../mate-solver && wasm-pack build --target web --out-dir pkg --release && cd ../frontend && node scripts/copyWasm.mjs",

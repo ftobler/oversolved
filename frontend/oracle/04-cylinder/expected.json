@@ -1,0 +1,21 @@
+{
+  "method": "V = pi r^2 h = pi * 16 * 12; A = 2 pi r^2 + 2 pi r h; a full circle extrudes to 3 faces (2 caps + lateral) and 3 edges (2 rims + seam)",
+  "bodies": 1,
+  "volume": 603.1857894892403,
+  "area": 402.1238596594935,
+  "centroid": [
+    10,
+    10,
+    6
+  ],
+  "bbox": [
+    6,
+    6,
+    0,
+    14,
+    14,
+    12
+  ],
+  "faces": 3,
+  "edges": 3
+}

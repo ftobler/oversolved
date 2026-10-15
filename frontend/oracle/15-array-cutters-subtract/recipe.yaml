@@ -1,0 +1,138 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom:
+        - 0
+        - 0
+        - 60
+        - 0
+      right:
+        - 60
+        - 0
+        - 60
+        - 20
+      top:
+        - 60
+        - 20
+        - 0
+        - 20
+      left:
+        - 0
+        - 20
+        - 0
+        - 0
+    constraints:
+      - id: c1
+        kind: coincident
+        a:
+          entity: bottom
+          point: end
+        b:
+          entity: right
+          point: start
+      - id: c2
+        kind: coincident
+        a:
+          entity: right
+          point: end
+        b:
+          entity: top
+          point: start
+      - id: c3
+        kind: coincident
+        a:
+          entity: top
+          point: end
+        b:
+          entity: left
+          point: start
+      - id: c4
+        kind: coincident
+        a:
+          entity: left
+          point: end
+        b:
+          entity: bottom
+          point: start
+      - id: c5
+        kind: horizontal
+        target:
+          entity: bottom
+      - id: c6
+        kind: horizontal
+        target:
+          entity: top
+      - id: c7
+        kind: vertical
+        target:
+          entity: right
+      - id: c8
+        kind: vertical
+        target:
+          entity: left
+      - id: c9
+        kind: length
+        target:
+          entity: bottom
+        value: 60
+      - id: c10
+        kind: length
+        target:
+          entity: left
+        value: 20
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 5
+      direction: normal
+      operation: new
+  - id: sk2
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: c
+        kind: circle
+    initial:
+      c:
+        - 10
+        - 10
+        - 3
+  - id: ex2
+    kind: extrude
+    extrude:
+      sketch: $sk2
+      distance: 5
+      direction: normal
+      operation: new
+  - id: ar1
+    kind: array
+    array:
+      source_body: "@body_ex2"
+      mode: linear
+      operation: new
+      include_source: true
+      count_x: 3
+      pitch_x: 20
+      direction_x_query: "@sk1/bottom"
+  - id: bo1
+    kind: boolean
+    boolean:
+      operation: subtract
+      target: "@body_ex1"
+      tools:
+        - "@body_ex2"
+        - "@body_ar1"
+        - "@body_ar1_1"

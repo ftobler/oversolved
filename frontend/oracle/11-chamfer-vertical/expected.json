@@ -1,0 +1,21 @@
+{
+  "method": "V = dx dy h - 4 (d^2/2) h (one triangular prism per vertical edge); A = box - 4(2 d h + d^2 - sqrt2 d h)",
+  "bodies": 1,
+  "volume": 1092,
+  "area": 681.8233764908629,
+  "centroid": [
+    10,
+    5,
+    3
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    20,
+    10,
+    6
+  ],
+  "faces": 10,
+  "edges": 24
+}

@@ -1,0 +1,21 @@
+{
+  "method": "r=7 sphere centred at the box corner: V = (1/8)(4/3) pi r^3; A = 4 pi r^2 / 8 + 3 (pi r^2 / 4) = 1.25 pi r^2; centroid of a sphere octant is (3r/8)(1,1,1)",
+  "bodies": 1,
+  "volume": 179.59438003021648,
+  "area": 192.42255003237483,
+  "centroid": [
+    2.625,
+    2.625,
+    2.625
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    7,
+    7,
+    7
+  ],
+  "faces": 4,
+  "edges": 7
+}

@@ -1,0 +1,114 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom:
+        - 2
+        - 0
+        - 5
+        - 0
+      right:
+        - 5
+        - 0
+        - 5
+        - 4
+      top:
+        - 5
+        - 4
+        - 2
+        - 4
+      left:
+        - 2
+        - 4
+        - 2
+        - 0
+    constraints:
+      - id: c1
+        kind: coincident
+        a:
+          entity: bottom
+          point: end
+        b:
+          entity: right
+          point: start
+      - id: c2
+        kind: coincident
+        a:
+          entity: right
+          point: end
+        b:
+          entity: top
+          point: start
+      - id: c3
+        kind: coincident
+        a:
+          entity: top
+          point: end
+        b:
+          entity: left
+          point: start
+      - id: c4
+        kind: coincident
+        a:
+          entity: left
+          point: end
+        b:
+          entity: bottom
+          point: start
+      - id: c5
+        kind: horizontal
+        target:
+          entity: bottom
+      - id: c6
+        kind: horizontal
+        target:
+          entity: top
+      - id: c7
+        kind: vertical
+        target:
+          entity: right
+      - id: c8
+        kind: vertical
+        target:
+          entity: left
+      - id: c9
+        kind: length
+        target:
+          entity: bottom
+        value: 3
+      - id: c10
+        kind: length
+        target:
+          entity: left
+        value: 4
+  - id: sk2
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: l1
+        kind: line
+        construction: true
+    initial:
+      l1:
+        - 0
+        - 0
+        - 0
+        - 4
+  - id: rv1
+    kind: revolve
+    revolve:
+      sketch: $sk1
+      angle: 180
+      axis: "@sk2/l1"
+      operation: new
