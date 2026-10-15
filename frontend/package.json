@@ -24,8 +24,8 @@
     "licenses:generate:rust": "node scripts/generateRustNotices.mjs",
     "licenses:check": "node scripts/generateThirdPartyNotices.mjs --check && node scripts/generateRustNotices.mjs --check",
     "licenses:mirror": "node scripts/fetchOccSource.mjs",
-    "occ:install": "npm i --no-save opencascade.js@1.1.1",
-    "occ:provision": "mkdir -p public/occ && cp node_modules/opencascade.js/dist/opencascade.wasm.js node_modules/opencascade.js/dist/opencascade.wasm.wasm public/occ/",
+    "occ:install": "npm i --no-save opencascade.js@1.1.1 && node scripts/occProvision.mjs verify",
+    "occ:provision": "node scripts/occProvision.mjs provision",
     "drive": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/driveCli.ts",
     "mcp": "node --experimental-strip-types --loader=./scripts/driveCli.loader.mjs scripts/mcpServer.ts"
   },

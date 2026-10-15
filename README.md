@@ -11,7 +11,7 @@ A build produces static files that any static host can serve.
 ## Stack
 
 - React + TypeScript frontend (`frontend/`), built with Vite
-- OpenCascade (OCCT 7.4) as the geometry kernel, WASM in a Web Worker
+- OpenCascade (OCCT 7.4.0p1 via opencascade.js 1.1.1) as the geometry kernel, WASM in a Web Worker
 - Rust solvers, WASM: `sketch-solver` (2D sketch constraints), `mate-solver`
   (assembly mates), on the shared `solver-core`
 - Python (`oversolved/`) for build-time icon generation only, never deployed

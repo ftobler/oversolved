@@ -1,0 +1,17 @@
+{
+  "_comment": "Single source of truth for the pinned OpenCascade artifact. occ:install and occ:provision verify against it (scripts/occProvision.mjs); the version-consistency test reads it. The registry integrity is the npm packument's dist.integrity for the exact version and is what npm itself checks at install; the sha256 digests pin the two files as installed, so provisioning refuses bytes that did not come from that tarball.",
+  "package": "opencascade.js",
+  "version": "1.1.1",
+  "registry": {
+    "tarball": "https://registry.npmjs.org/opencascade.js/-/opencascade.js-1.1.1.tgz",
+    "integrity": "sha512-lw6/vOl86+CkJ8d3V01mlbGAC0A49gc1HbwGcqGeKjk5SGRLiF15jyUuA8aYEvizcPNTu4Ta4A+Ut2DJgsa7AQ=="
+  },
+  "occt": {
+    "version": "7.4.0p1",
+    "commit": "33d9a6fa21ca4fa711da7066655aa2ba854545ee"
+  },
+  "artifacts": {
+    "opencascade.wasm.js": "be54247b3805dfb18493ddc35b936521fe3bda8f95f462cf0a24604ba561168f",
+    "opencascade.wasm.wasm": "6cc2f3fa1611d32ad7563f7092aa1bf58741124302630cef7d21561ecd7b7284"
+  }
+}

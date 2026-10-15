@@ -539,12 +539,12 @@ function cleanShapeIsSound(oc: OccModule, scope: DisposeScope, before: OccShape,
 export class BooleanSoundnessError extends Error {}
 
 /**
- * The last line of defence against a corrupt boolean: OCC 7.5 can report IsDone
- * with a shape that validates yet is geometrically impossible. The robustness
- * fuzz found two such families on exact surface tangencies. When a cylinder's
- * lateral surface touches a face plane exactly, the fuse comes back as the
- * target MINUS the tool (right magnitude, wrong sign: V=-768.25 where 1750 was
- * the floor), and when a sphere touches a cylinder wall exactly while
+ * The last line of defence against a corrupt boolean: OCCT 7.4.0p1 can report
+ * IsDone with a shape that validates yet is geometrically impossible. The
+ * robustness fuzz found two such families on exact surface tangencies. When a
+ * cylinder's lateral surface touches a face plane exactly, the fuse comes back
+ * as the target MINUS the tool (right magnitude, wrong sign: V=-768.25 where
+ * 1750 was the floor), and when a sphere touches a cylinder wall exactly while
  * overlapping it, the first boolean over the pair drops one operand and returns
  * it twice with one shell inverted (net volume 2.3e-13). Both ship as an ok
  * feature today, so the result has to be bounded before adoption: absolute
@@ -650,8 +650,8 @@ export function booleanWithDiff(
   const problem = booleanResultProblem(oc, scope, target, tool, op, attempt.shape)
   if (problem === null) return attempt
   // The first boolean over a pair whose surfaces touch in an exact tangency can
-  // take an OCC 7.5 branch that drops or inverts an operand. A bare Common over
-  // the same operands makes the kernel settle the shared geometry, and the
+  // take an OCCT 7.4.0p1 branch that drops or inverts an operand. A bare Common
+  // over the same operands makes the kernel settle the shared geometry, and the
   // rerun of the pipeline then comes out sound (the identity fuzz pins the
   // sphere-touching-a-wall case this recovers). The probe is the same call the
   // cut path already runs through shapesIntersect (M18), and it is only paid

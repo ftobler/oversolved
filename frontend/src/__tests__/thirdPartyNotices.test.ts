@@ -24,6 +24,10 @@ function packageJson() {
   return JSON.parse(readFileSync(path.join(frontendDir, 'package.json'), 'utf8'))
 }
 
+function occPin(): { version: string; artifacts: Record<string, string> } {
+  return JSON.parse(readFileSync(path.join(frontendDir, 'occ.pin.json'), 'utf8'))
+}
+
 describe('third-party notices', () => {
   // The whole point of generating the bundle: a dependency added without
   // regenerating would otherwise reach a deployment with no license at all.
@@ -82,22 +86,25 @@ describe('third-party notices', () => {
   })
 
   // A version bump in occ:install changes which OCCT binary is distributed, and
-  // therefore which corresponding source the notices must offer.
+  // therefore which corresponding source the notices must offer. The pin file
+  // is the single source of truth; occ:install only mirrors it.
   it('document the OpenCascade version that occ:install actually pins', () => {
+    const pin = occPin()
     const install = packageJson().scripts['occ:install']
     const pinned = /opencascade\.js@([\d.]+)/.exec(install)?.[1]
     expect(pinned, 'occ:install no longer pins an explicit version').toBeTruthy()
+    expect(pinned, 'occ:install and occ.pin.json disagree').toBe(pin.version)
     expect(readNotices('opencascade', 'README.md')).toContain(`opencascade.js@${pinned}`)
   })
 
-  // occ:provision decides which files are served, so the notices have to name
-  // the same ones. A renamed or added artifact would otherwise ship undeclared.
+  // The pin decides which files provisioning verifies and deploys, so the
+  // notices have to name the same ones. A renamed or added artifact would
+  // otherwise ship undeclared.
   it('name every OpenCascade artifact that occ:provision deploys', () => {
-    const provision = packageJson().scripts['occ:provision']
-    const artifacts = provision.match(/opencascade\.wasm\.[a-z]+/g) ?? []
+    const artifacts = Object.keys(occPin().artifacts)
     const doc = readNotices('opencascade', 'README.md')
     expect(artifacts.length).toBeGreaterThan(0)
-    for (const artifact of new Set<string>(artifacts)) {
+    for (const artifact of artifacts) {
       expect(doc, `${artifact} is deployed but not documented`).toContain(artifact)
     }
   })

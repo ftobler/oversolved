@@ -1,5 +1,5 @@
 /**
- * Load the real opencascade.js (Donalffons fork, OCC 7.5) for headless
+ * Load the real opencascade.js (Donalffons fork, OCCT 7.4.0p1) for headless
  * (Node/vitest) use, returning an [[OccModule]] or `null` when it is absent.
  *
  * opencascade.js is treated exactly like the wasm-pack solver build: a heavy,
@@ -7,7 +7,7 @@
  * `just frontend` never pull its ~66 MB. Install it locally to run the gated
  * Real tests:
  *
- *   cd frontend && npm run occ:install     # npm i --no-save opencascade.js@1.1.1
+ *   cd frontend && npm run occ:install     # npm i --no-save + the occ.pin.json check
  *
  * When it is not installed this resolves to `null` and the gated Real tests
  * skip, mirroring `loadSolver.ts`.
