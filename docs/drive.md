@@ -5,34 +5,39 @@ same command set:
 
 - the dev bridge, `window.__oversolved`, installed by the part editor in
   development and test builds;
-- the command journal, a ring of doc-changing commands that a repro downloads
-  and a replay reproduces;
-- the headless CLI, which runs the same scripts and journals through the real
-  kernel in node, with no browser at all.
+- the mutation journal, a ring of doc-changing mutation applies recorded at
+  the session seam, which a repro downloads and a replay reproduces;
+- the headless CLI, which runs the same scripts and replays journals through
+  the real kernel in node, with no browser at all.
 
 The source lives in `frontend/src/drive/` (bridge, script runner, journal,
-replay, headless session) and `frontend/scripts/driveCli.ts` (CLI).
+replay, seeded ids, headless session) and `frontend/scripts/driveCli.ts` (CLI).
 
 ## Gating and installation
 
-`Part.tsx` installs the bridge only when `DRIVE_ENABLED` is true
-(`frontend/src/drive/gate.ts`):
+`Part.tsx` installs the bridge and attaches the journal sink only when
+`DRIVE_ENABLED` is true (`frontend/src/drive/gate.ts`):
 
 ```ts
-export const DRIVE_ENABLED = import.meta.env.DEV || import.meta.env.MODE === 'test'
+declare const process: { env: { NODE_ENV?: string } }
+export const DRIVE_ENABLED = process.env.NODE_ENV !== 'production'
 ```
 
-Vite folds the constant at build time, so the production bundle drops the
-installer call and the whole bridge module with it, and contains no
-`__oversolved` string. The install returns an uninstall that clears the global
-only while it still holds that same surface, so a remount cannot delete a
-newer bridge.
+Vite statically replaces `process.env.NODE_ENV` with `"production"` in a
+production build, the initializer folds to `false`, and the guarded branches
+(the installer, the journal sink, the per-document reset) are dropped with the
+bridge and journal modules. Verified on `frontend/dist`: neither
+`__oversolved` nor `oversolved-repro` appears in the bundle. The earlier
+`import.meta.env.DEV` form was only evaluated at run time in this toolchain,
+so those modules stayed in `dist`. The install returns an uninstall that
+clears the global only while it still holds that same surface, so a remount
+cannot delete a newer bridge.
 
 The bridge is installed by the part editor (the assembly editor has none in
-v1). The registry itself is wrapped in a journaling subclass in dev/test builds
-(`useDriveCommandRegistry.ts`), so the journal records every doc-changing
-command the editor executes whether it came from the toolbar, a key binding,
-the bridge or a script.
+v1). The journal is not wired to the registry: recording sits at the
+`DocSession` mutation seam, so every user doc change the session applies is
+recorded whether it came from a command, a tool, a drag gesture or a script,
+and the solver write-back (which never goes through the session) is not.
 
 ## Bridge methods
 
@@ -132,18 +137,28 @@ A script is an array (or `{ steps: [...] }`) of steps:
 
 ## Journal and repro replay
 
-The journal is a ring (capacity 500) of entries recorded at the registry
-execution seam:
+The journal is a ring (capacity 500) of entries recorded at the `DocSession`
+mutation seam (`frontend/src/drive/journal.ts`, attached through
+`DocSessionDeps.journal`; `usePartDoc` wires it from the part page in dev/test
+builds only):
 
 ```ts
-{ commandId: string, params: unknown, docHashBefore: string, docHashAfter: string, at: number }
+{ kind: 'mutation' | 'batch', payload: Mutation | Mutation[], label?: string,
+  docHashBefore: string, docHashAfter: string, at: number }
 ```
 
-- Only a command that changed the document hash records an entry. Selection
-  changes, tool switches and other UI-only commands leave nothing, and the
-  solver write-back is not a command at all, so it is never journaled.
+- The session reports each apply it lands with the docs as they stood before
+  and after, synchronously inside the apply and before any solve can write
+  back; the sink hashes them there. That is what makes drawing and gestures
+  (which dispatch mutations without a command) journaled, and what keeps the
+  solver write-back out (it never goes through the session). A no-op apply
+  (hashes equal) records nothing.
+- A doc change no mutation can replay restarts the journal: undo/redo and a
+  cancelled preview, gesture or edit session clear the ring, and the next
+  entry captures its own baseline. A document switch clears it too, and each
+  record carries its `docId`, so a journal can never span two documents.
 - When the ring fills, it restarts as a new generation with the incoming
-  command as its first entry: what remains is always a contiguous, replayable
+  apply as its first entry: what remains is always a contiguous, replayable
   suffix with a matching baseline.
 - `docHashOf` is the one canonical document hash: `stableJson` (the checkpoint
   serializer from `frontend/src/kernel/builderHash.ts`) hashed with
@@ -162,10 +177,28 @@ execution seam:
 }
 ```
 
-`replayJournal` (`frontend/src/drive/replay.ts`) reproduces a repro: it checks
-the baseline hash first, executes each command, and after every step compares
-the live document hash with the recorded `docHashAfter`. A failed command or a
-diverged hash stops the replay and reports both hashes.
+`replayJournal` (`frontend/src/drive/replay.ts`) reproduces a repro on a fresh
+session: it checks the baseline hash first, then for every entry checks the
+running doc against `docHashBefore`, applies the mutation (a batch through
+`executeGroup`), hashes synchronously right after the apply and compares with
+`docHashAfter`, and only then settles the step's solve. Hashing before the
+settle is what makes record and replay compare the same authored
+pre-write-back state. A failed apply or a diverged hash stops the replay and
+reports both hashes.
+
+Replay installs a fresh seeded id source for its duration
+(`frontend/src/drive/seededIds.ts`) and restores the previous one after. The
+id guarantee is precise:
+
+- Mutations with embedded ids (feature adds, entity adds from the drawing
+  tools, any `--doc`-loaded replay) reproduce exactly, because replay applies
+  the recorded ids verbatim.
+- Mutations whose handler mints ids internally (`add_rect`, `add_ngon`, fresh
+  constraint ids) reproduce exactly only when the recording also ran under the
+  seeded source. The CLI always does; a browser-recorded repro under the
+  crypto default does not for those mutations. `randomId` and every mint site
+  that routes through it (`frontend/src/utils/yamlMutations/helpers.ts`) use
+  the injected source, which defaults to crypto for the app.
 
 ### Journal versus crash recovery
 
@@ -176,8 +209,8 @@ inside it:
   over the `workingRev`/`savedRev` pair in `workspace/store.ts`. It asks
   whether to keep (adopt) or discard the working copy and writes nothing until
   the user answers. It answers "adopt or discard the working copy".
-- The journal owns command-level reproduction. It answers "here is the exact
-  command sequence that produced this document".
+- The journal owns mutation-level reproduction. It answers "here is the exact
+  mutation sequence that produced this document".
 
 The two share no state and never feed each other.
 
@@ -197,19 +230,26 @@ npm run drive -- replay repro.json
 - `run` builds a document from mutation steps and/or command steps through one
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
   and the journal (`--repro`), and prints steps, document hash and solve state.
+  It installs a fresh seeded id source before the first step, so two runs of
+  one script produce byte-identical documents (the `cliSmoke` suite runs the
+  box script twice in two processes and compares the printed `docHash`).
 - `measure` reports `bodyCount`, `volume` (`volumeOf` from
   `frontend/src/kernel/occ/volume.ts`) and face/edge/vertex counts from the
   final checkpoint's bodies.
 - `export` writes STEP or STL bytes.
-- `replay` verifies a repro hash by hash and exits nonzero on divergence.
+- `replay` applies the recorded mutations to a fresh session under the seeded
+  source, verifies each step's before and after hash and exits nonzero on
+  divergence.
 
 One session per process is the v1 contract: `solveLocally` keeps its
 cross-solve checkpoint cache as single-writer module state, so two sessions in
 one process would interleave their caches. Run two processes instead of
 isolating the kernel globals. Command-driven adds mint deterministic
-`<kind>_<n>` ids from a per-session counter, and mutation steps pass explicit
-entity/feature ids where the handler accepts one, so a script replays to the
-same document hash.
+`<kind>_<n>` ids from a per-session counter; mutation steps pass explicit
+entity/feature ids where the handler accepts one, and the seeded source covers
+the handlers that mint internally. `delete_selected` is refused headlessly
+(an `unsupported` Result) rather than reporting an ok that deleted nothing;
+use mutation steps instead.
 
 When OCC.js or the nodejs Rust solver build is absent, the CLI reports the
 solver as unavailable and exits nonzero rather than guessing.

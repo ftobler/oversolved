@@ -62,16 +62,16 @@ IME composition are skipped (`isEditableTarget`).
 
 ### The Execution Seam Outside the UI
 
-The registry instance is the one seam every user action passes (toolbar,
-keymap, module-level `executeCommand`), so two external surfaces hang off the
-same instance in development and test builds:
+The registry instance is the seam every named user action passes (toolbar,
+keymap, module-level `executeCommand`); in development and test builds the
+page installs `window.__oversolved` over the same instance, exposing
+`commands()`/`execute()`/`script()` plus `inspect()`.
 
-- A journaling subclass records every doc-changing command for repro replay.
-- The page installs `window.__oversolved` over the same instance, exposing
-  `commands()`/`execute()`/`script()` plus `inspect()`.
-
-The headless CLI drives the same spec table through a `DocSession` in node.
-All three are documented in `docs/drive.md`.
+The journal does not hang off the registry: it records at the `DocSession`
+mutation seam instead, so drawing and gestures (which dispatch mutations
+without a command) are covered and the solver write-back is not. The headless
+CLI drives the same spec table and the same session in node. All of it is
+documented in `docs/drive.md`.
 
 ### Constraint Registry (`constraintRegistry.ts`)
 
