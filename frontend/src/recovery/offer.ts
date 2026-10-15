@@ -2,8 +2,7 @@
 // about to open and decide whether it holds edits the stored bytes do not. The
 // editor is held back while the user answers, so the accepted snapshot can be
 // handed to the loader (recovery/restore.ts) before it reads anything.
-import { parse as parseYaml } from 'yaml'
-import type { PartDoc } from '@/types/cad'
+import { loadPartDocText } from '@/persistence/docSchema'
 import {
   readRecoveryJournal,
   recoveryAhead,
@@ -39,13 +38,12 @@ export async function findRecoveryOffer(
     return null
   }
   if (!record) return null
-  let stored: PartDoc | null = null
-  try {
-    stored = (parseYaml(storedText) ?? {}) as PartDoc
-  } catch {
-    return null
-  }
-  if (!recoveryAhead(stored, record)) return null
+  // The stored text crosses the same loader the open uses, so the comparison
+  // runs against the document the editor would actually seat; text the loader
+  // refuses is declined like unparseable text, never thrown.
+  const stored = loadPartDocText(storedText, { name: docId })
+  if (!stored.ok) return null
+  if (!recoveryAhead(stored.doc, record)) return null
   let thumbnail: string | null = null
   try {
     thumbnail = (await getPreviewStore().get(workspace, docId)) ?? null

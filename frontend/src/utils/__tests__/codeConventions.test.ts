@@ -106,17 +106,23 @@ describe('code conventions', () => {
 // into a document type and surfacing later as an obscure builder error. The
 // scan is source text on purpose: it answers "did we write a cast down", which
 // is the thing that rots, and names the file and line when it did.
+//
+// The dev tooling beside the product (`frontend/scripts`, the drive CLI
+// included) reads documents too, so it is scanned alongside `src`: same rule,
+// or the CLI is the one load path left unchecked.
 describe('loaded documents enter through the loader', () => {
   const ALLOWLIST = new Set(['persistence/docSchema.ts'])
   // Both spellings: the bare cast and the checked one the loader writes.
   const CAST = /\bas\s+(?:unknown\s+as\s+)?(PartDoc|AssemblyDoc)\b/
   const COMMENTS = [/\/\*[\s\S]*?\*\//g, /(?:^|\s)\/\/[^\n]*/g]
+  const SCRIPTS = join(SRC, '..', 'scripts')
+  const castScanFiles = [...srcOnlyFiles, ...collectFiles(SCRIPTS, ['.ts', '.tsx'])]
 
   it('no PartDoc/AssemblyDoc cast outside the loader module', () => {
     const violations: string[] = []
     let loaderHits = 0
-    for (const file of srcOnlyFiles) {
-      const rel = file.replace(SRC, 'src/')
+    for (const file of castScanFiles) {
+      const rel = file.startsWith(SRC) ? file.replace(SRC, 'src/') : file.replace(join(SRC, '..') + '/', '')
       let text = readFileSync(file, 'utf8')
       for (const pattern of COMMENTS) text = text.replace(pattern, '')
       text.split('\n').forEach((line, i) => {

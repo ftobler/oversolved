@@ -19,6 +19,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
+import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
 import { runHeadless, measureHeadless, exportHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
@@ -41,7 +42,14 @@ setSketchTopology(loadTopology())
 const writeProtocol = routeKernelStdoutToStderr()
 
 function emptyPartDoc(): PartDoc {
-  return seedBuiltins({ version: 1, kind: 'part', features: [] } as PartDoc)
+  return seedBuiltins({ version: 1, kind: 'part', features: [] })
+}
+
+// A document arriving on the protocol crosses the same loader as one read from
+// disk or the store, so an invalid payload comes back as an ok:false tool
+// result naming the field instead of an internal error or a half-parsed spec.
+function loadDocPayload(payload: unknown) {
+  return loadPartDoc(payload, { name: 'mcp' })
 }
 
 // Paths resolve against the server's cwd, like the CLI's --file values.
@@ -61,7 +69,9 @@ const ops: McpCadOps = {
   },
 
   async run(req) {
-    const doc = (req.doc as PartDoc | undefined) ?? emptyPartDoc()
+    const loaded = req.doc === undefined ? null : loadDocPayload(req.doc)
+    if (loaded && !loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+    const doc = loaded ? loaded.doc : emptyPartDoc()
     // The CLI journal pins the id seed, so a script mints the same ids on
     // every call and the returned document hashes repeat across runs.
     const result = await runHeadless({
@@ -81,7 +91,9 @@ const ops: McpCadOps = {
   },
 
   async measure(req) {
-    const measure = await measureHeadless(req.doc as PartDoc, {
+    const loaded = loadDocPayload(req.doc)
+    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+    const measure = await measureHeadless(loaded.doc, {
       docId: req.docId ?? 'mcp',
       files: readFiles(req.files),
     })
@@ -92,7 +104,9 @@ const ops: McpCadOps = {
   },
 
   async export(req) {
-    const bytes = await exportHeadless(req.doc as PartDoc, {
+    const loaded = loadDocPayload(req.doc)
+    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+    const bytes = await exportHeadless(loaded.doc, {
       format: req.format,
       bodyId: req.body ?? null,
       docId: req.docId ?? 'mcp',

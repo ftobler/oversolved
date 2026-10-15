@@ -30,6 +30,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
+import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
 import { runHeadless, measureHeadless, exportHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
@@ -112,7 +113,12 @@ function readDoc(file: string): PartDoc {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`${file}: expected a document object`)
   }
-  return seedBuiltins(parsed as PartDoc)
+  // The same loader the app reads through: a legacy shape is healed and a
+  // document the app would refuse fails here by field instead of reaching the
+  // kernel half-parsed.
+  const loaded = loadPartDoc(parsed, { name: file })
+  if (!loaded.ok) throw new Error(docLoadErrorMessage(loaded.error))
+  return seedBuiltins(loaded.doc)
 }
 
 function readSteps(file: string): ScriptStep[] {
@@ -161,7 +167,7 @@ async function runCommand(args: Args): Promise<number> {
   const steps = readSteps(scriptFile)
   const doc = args.flags.doc
     ? readDoc(args.flags.doc)
-    : seedBuiltins({ version: 1, kind: 'part', features: [] } as PartDoc)
+    : seedBuiltins({ version: 1, kind: 'part', features: [] })
   const journal = createCliJournal()
   const result = await runHeadless({
     doc,
@@ -194,7 +200,7 @@ async function commandsCommand(): Promise<number> {
   // A fresh seeded session supplies the live enabled verdicts; reading the
   // catalog runs no spec body and starts no solve.
   const part = createHeadlessPart({
-    doc: seedBuiltins({ version: 1, kind: 'part', features: [] } as PartDoc),
+    doc: seedBuiltins({ version: 1, kind: 'part', features: [] }),
     docId: 'cli-commands',
   })
   printJson({
@@ -250,8 +256,12 @@ async function replayCommand(args: Args): Promise<number> {
     throw new Error(`${file}: not an oversolved repro payload`)
   }
   // The replay installs its own fresh seeded source and applies the recorded
-  // mutations to a session, hashing synchronously around each apply.
-  const part = createHeadlessPart({ doc: repro.doc as PartDoc, docId: 'replay' })
+  // mutations to a session, hashing synchronously around each apply. The
+  // recorded baseline crosses the same loader as any stored document, so a
+  // repro carrying a shape the app would refuse fails here by field.
+  const baseline = loadPartDoc(repro.doc, { name: file })
+  if (!baseline.ok) throw new Error(docLoadErrorMessage(baseline.error))
+  const part = createHeadlessPart({ doc: baseline.doc, docId: 'replay' })
   const outcome = await replayJournal(repro, part.session, () => part.idle())
   printJson(outcome)
   return outcome.ok ? 0 : 1
