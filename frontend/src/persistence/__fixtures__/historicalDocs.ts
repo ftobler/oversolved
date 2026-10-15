@@ -104,6 +104,33 @@ part_style:
 `,
 }
 
+// The stamp at or past every ladder step's target: the ladder must leave such a
+// document alone. The literal 2 is cross-checked against CURRENT_DOC_VERSION in
+// the load suite, so bumping the loader's version without adding a fixture for
+// the new stamp fails loudly instead of silently never exercising the gate.
+export const CURRENT_V2_PART: HistoricalDocument = {
+  name: 'current v2 part',
+  note: 'stamped at the ladder current version, nothing to migrate',
+  text: `version: 2
+kind: part
+features:
+  - id: Origin
+    kind: origin
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      line1: [0, 0, 20, 0]
+    entities:
+      - id: line1
+        kind: line
+    constraints:
+      - id: c1
+        kind: horizontal
+        a: "$line1"
+`,
+}
+
 export const CURRENT_ASSEMBLY: HistoricalDocument = {
   name: 'current assembly',
   note: 'current assembly shape',
@@ -132,6 +159,7 @@ export const ALL_HISTORICAL_PART_DOCS: HistoricalDocument[] = [
   LEGACY_V0_PART,
   LEGACY_V1_PART,
   CURRENT_PART,
+  CURRENT_V2_PART,
 ]
 
 export const ALL_HISTORICAL_ASSEMBLY_DOCS: HistoricalDocument[] = [

@@ -4,10 +4,14 @@
 // builder.
 import { describe, it, expect } from 'vitest'
 import {
+  CURRENT_DOC_VERSION,
   docLoadErrorMessage,
+  docVersion,
   loadAssemblyDocText,
+  loadDocText,
   loadPartDoc,
   loadPartDocText,
+  migrate,
   MAX_ARRAY_CELLS,
   MAX_ARRAY_COUNT,
   MAX_FEATURES,
@@ -15,6 +19,7 @@ import {
 import {
   ALL_HISTORICAL_ASSEMBLY_DOCS,
   ALL_HISTORICAL_PART_DOCS,
+  CURRENT_V2_PART,
   LEGACY_V0_PART,
   LEGACY_V1_PART,
 } from '@/persistence/__fixtures__/historicalDocs'
@@ -89,6 +94,50 @@ describe('golden documents load and migrate', () => {
   it('reads empty text as the empty document an editor starts from', () => {
     const result = loadPartDocText('')
     expect(result).toEqual({ ok: true, doc: {}, migrations: [] })
+  })
+})
+
+describe('the version gate', () => {
+  // A stale singular body pick, the shape the plural-body-picks step heals.
+  const staleBodyPick = () => ({
+    features: [{ id: 't1', kind: 'transform', transform: { body: '@body_ex1' } }],
+  })
+
+  it('runs a step for a document behind its target version', () => {
+    const doc = staleBodyPick()
+    expect(migrate(doc, 1)).toEqual(['plural-body-picks'])
+    expect((doc.features[0].transform as { bodies?: string[] }).bodies).toEqual(['@body_ex1'])
+  })
+
+  it('skips every step at the current version, stale keys included', () => {
+    // The stamp is the document's promise that it is already current; the
+    // ladder does not second-guess it, even when a healable-looking key sits
+    // in the payload. Nothing in this app writes the stamp, so this boundary
+    // only arises for a document another writer stamped.
+    const doc = staleBodyPick()
+    expect(migrate(doc, CURRENT_DOC_VERSION)).toEqual([])
+    expect((doc.features[0].transform as { body?: string }).body).toBe('@body_ex1')
+  })
+
+  it('the current-version fixture is stamped at CURRENT_DOC_VERSION', () => {
+    const result = loadPartDocText(CURRENT_V2_PART.text, { name: CURRENT_V2_PART.name })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(docVersion(result.doc)).toBe(CURRENT_DOC_VERSION)
+    expect(result.migrations).toEqual([])
+  })
+})
+
+describe('loadDocText routes by the entry kind', () => {
+  it('sends an assembly entry to the assembly checks and everything else to the part checks', () => {
+    expect(loadDocText('kind: assembly\nfeatures: []', 'assembly').ok).toBe(true)
+    expect(loadDocText('kind: part\nfeatures: []', 'part').ok).toBe(true)
+    expect(loadDocText('features: []', undefined).ok).toBe(true)
+    // A stamped kind the part checks would refuse is the mismatch the routing
+    // exists to surface, not a payload the entry kind may override.
+    const mismatch = loadDocText('kind: assembly\nfeatures: []', undefined)
+    expect(mismatch.ok).toBe(false)
+    if (!mismatch.ok) expect(mismatch.error.field).toBe('kind')
   })
 })
 
