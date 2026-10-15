@@ -21,7 +21,7 @@ export type ExtrudeDirection = 'normal' | 'reverse' | 'symmetric'
 export type ExtrudeOperation = 'add' | 'cut' | 'new'
 export type ExtrudeTermination = 'blind' | 'up_to'
 
-export interface ExtrudeFeatureDef {
+export type ExtrudeFeatureDef = {
   sketch: string | string[]
   distance: NumberOrExpr
   direction?: ExtrudeDirection
@@ -33,26 +33,26 @@ export interface ExtrudeFeatureDef {
   merge_target?: string
 }
 
-export interface FilletFeatureDef {
+export type FilletFeatureDef = {
   edges: string[]
   radius: NumberOrExpr
 }
 
-export interface ChamferFeatureDef {
+export type ChamferFeatureDef = {
   edges: string[]
   distance: NumberOrExpr
   kind?: 'distance' | 'angle_distance'
   angle?: NumberOrExpr
 }
 
-export interface BooleanFeatureDef {
+export type BooleanFeatureDef = {
   operation: 'union' | 'subtract' | 'intersect'
   target: string
   tools: string[]
   keep_tools?: boolean
 }
 
-export interface ArrayFeatureDef {
+export type ArrayFeatureDef = {
   source_body?: string
   mode?: 'linear' | 'rectangular'
   operation?: 'add' | 'new'
@@ -69,7 +69,7 @@ export interface ArrayFeatureDef {
   invert_y?: boolean
 }
 
-export interface CircularArrayFeatureDef {
+export type CircularArrayFeatureDef = {
   source_body?: string
   operation?: 'add' | 'new'
   include_source?: boolean
@@ -83,7 +83,7 @@ export interface CircularArrayFeatureDef {
 
 export type RevolveDirection = 'normal' | 'reverse' | 'symmetric'
 
-export interface RevolveFeatureDef {
+export type RevolveFeatureDef = {
   sketch: string | string[]
   angle: NumberOrExpr
   direction?: RevolveDirection
@@ -92,18 +92,18 @@ export interface RevolveFeatureDef {
   merge_target?: string
 }
 
-export interface SweepFeatureDef {
+export type SweepFeatureDef = {
   sketch: string | string[]  // profile reference(s)
   path: string | string[]  // spine reference(s): sketch edges that form the path
   operation?: 'add' | 'cut' | 'new'
   merge_target?: string
 }
 
-export interface DeleteBodyFeatureDef {
+export type DeleteBodyFeatureDef = {
   bodies: string[]  // one ref per body to remove; picking is multi-select
 }
 
-export interface HoleFeatureDef {
+export type HoleFeatureDef = {
   sketch: string
   diameter: NumberOrExpr
   depth_mode: 'blind' | 'through_all'
@@ -112,14 +112,14 @@ export interface HoleFeatureDef {
   target?: string
 }
 
-export interface MirrorFeatureDef {
+export type MirrorFeatureDef = {
   body: string
   plane: string
   keep_original?: boolean
   merge?: boolean
 }
 
-export interface TransformFeatureDef {
+export type TransformFeatureDef = {
   // One ref per body to move; picking is multi-select and the SAME transform is
   // applied to every one of them. A doc written before this field was plural
   // carries the singular `body`; migrateLegacyBodyPicks rewrites it to a
@@ -138,7 +138,7 @@ export interface TransformFeatureDef {
   scale_center_from?: string
 }
 
-export interface VariableFeatureDef {
+export type VariableFeatureDef = {
   expression: NumberOrExpr  // math formula, e.g. "width * 2 + 10" (or a plain number)
   value?: number            // cached evaluated result (written by the solver, read-only in UI)
   unit?: string             // optional display hint ("mm", "deg")
@@ -313,7 +313,7 @@ export interface PartEntityDef {
   source?: string  // for projected entities: reference to source entity (e.g. "@sketch0/line1")
 }
 
-export interface PlaneDef {
+export type PlaneDef = {
   mode?: 'offset' | 'three_point' | 'plane_point' | 'line_angle' | 'edge_point' | 'on_face' | 'on_face_edge_angle'
   plane?: string
   offset?: NumberOrExpr
@@ -328,33 +328,142 @@ export interface PlaneDef {
   rotation?: NumberOrExpr
 }
 
-export interface PartFeature {
+// A feature is a closed discriminated union: each variant pins its literal
+// `kind` and the payload that kind requires, so a feature shape that cannot
+// solve (an extrude without its def, a variable without an expression) is a
+// type error rather than a runtime surprise. The YAML shape is identical to
+// what the old optional-payload interface serialized, so no migration exists:
+// a doc that carries `kind: extrude` plus `extrude: {...}` parses back into
+// ExtrudeFeature byte for byte. The document loader (persistence/docSchema)
+// is the boundary that turns unknown YAML into this union; everywhere
+// downstream narrows by `kind` instead of probing payload fields.
+export type FeatureBase = {
   id: string
-  kind: string
   label?: string
   visible?: boolean  // absent means visible; false means hidden
-  auto_hidden?: boolean  // sketch only: the user showed it while consumed, so the one-shot consume auto-hide is spent; `visible` alone decides
-  suppressed?: boolean  // absent or false = active; true = backend skips this feature
+  suppressed?: boolean  // absent or false = active; true = the solver skips this feature
+}
+
+export type OriginFeature = FeatureBase & {
+  kind: 'origin'
+}
+
+export type SketchFeature = FeatureBase & {
+  kind: 'sketch'
   plane?: string  // query string, e.g. "@builtin_plane_front"
   entities?: PartEntityDef[]
   initial?: Record<string, number[]>
   constraints?: PartConstraint[]
-  definition?: PlaneDef
-  extrude?: ExtrudeFeatureDef  // present when kind === 'extrude'
-  revolve?: RevolveFeatureDef  // present when kind === 'revolve'
-  sweep?: SweepFeatureDef  // present when kind === 'sweep'
-  fillet?: FilletFeatureDef  // present when kind === 'fillet'
-  chamfer?: ChamferFeatureDef  // present when kind === 'chamfer'
-  boolean?: BooleanFeatureDef  // present when kind === 'boolean'
-  array?: ArrayFeatureDef  // present when kind === 'array'
-  circular_array?: CircularArrayFeatureDef  // present when kind === 'circular_array'
-  delete_body?: DeleteBodyFeatureDef  // present when kind === 'delete_body'
-  hole?: HoleFeatureDef  // present when kind === 'hole'
-  transform?: TransformFeatureDef  // present when kind === 'transform'
-  mirror?: MirrorFeatureDef  // present when kind === 'mirror'
-  variable?: VariableFeatureDef  // present when kind === 'variable'
-  file_id?: string  // uuid of the file registry entry holding this import's STEP bytes (kind === 'import_step')
+  auto_hidden?: boolean  // sketch only: the user showed it while consumed, so the one-shot consume auto-hide is spent; `visible` alone decides
   drag_anchor?: string  // transient solve-only hint: entity just dragged, anchored firmly by the solver
+}
+
+export type PlaneFeature = FeatureBase & {
+  kind: 'plane'
+  definition?: PlaneDef
+}
+
+export type ExtrudeFeature = FeatureBase & {
+  kind: 'extrude'
+  extrude: ExtrudeFeatureDef
+}
+
+export type RevolveFeature = FeatureBase & {
+  kind: 'revolve'
+  revolve: RevolveFeatureDef
+}
+
+export type SweepFeature = FeatureBase & {
+  kind: 'sweep'
+  sweep: SweepFeatureDef
+}
+
+export type FilletFeature = FeatureBase & {
+  kind: 'fillet'
+  fillet: FilletFeatureDef
+}
+
+export type ChamferFeature = FeatureBase & {
+  kind: 'chamfer'
+  chamfer: ChamferFeatureDef
+}
+
+export type BooleanFeature = FeatureBase & {
+  kind: 'boolean'
+  boolean: BooleanFeatureDef
+}
+
+export type ArrayFeature = FeatureBase & {
+  kind: 'array'
+  array: ArrayFeatureDef
+}
+
+export type CircularArrayFeature = FeatureBase & {
+  kind: 'circular_array'
+  circular_array: CircularArrayFeatureDef
+}
+
+export type DeleteBodyFeature = FeatureBase & {
+  kind: 'delete_body'
+  delete_body: DeleteBodyFeatureDef
+}
+
+export type HoleFeature = FeatureBase & {
+  kind: 'hole'
+  hole: HoleFeatureDef
+}
+
+export type TransformFeature = FeatureBase & {
+  kind: 'transform'
+  transform: TransformFeatureDef
+}
+
+export type MirrorFeature = FeatureBase & {
+  kind: 'mirror'
+  mirror: MirrorFeatureDef
+}
+
+export type VariableFeature = FeatureBase & {
+  kind: 'variable'
+  variable: VariableFeatureDef
+}
+
+export type ImportStepFeature = FeatureBase & {
+  kind: 'import_step'
+  file_id: string  // uuid of the file registry entry holding this import's STEP bytes
+  // Optional uniform scale applied to the imported shape. Read flat off the
+  // feature by the solver and evaluated as a math expression, so it stays
+  // NumberOrExpr and lives here rather than in a sub-def (there is none).
+  scale?: NumberOrExpr
+}
+
+export type PartFeature =
+  | OriginFeature
+  | SketchFeature
+  | PlaneFeature
+  | ExtrudeFeature
+  | RevolveFeature
+  | SweepFeature
+  | FilletFeature
+  | ChamferFeature
+  | BooleanFeature
+  | ArrayFeature
+  | CircularArrayFeature
+  | DeleteBodyFeature
+  | HoleFeature
+  | TransformFeature
+  | MirrorFeature
+  | VariableFeature
+  | ImportStepFeature
+
+export type FeatureKind = PartFeature['kind']
+
+/** Narrow a feature to the variant with the given literal kind. */
+export function isFeatureKind<K extends FeatureKind>(
+  feature: PartFeature,
+  kind: K,
+): feature is Extract<PartFeature, { kind: K }> {
+  return feature.kind === kind
 }
 
 export type Feature = PartFeature

@@ -25,14 +25,14 @@ vi.mock('@/utils/invariants', async (importOriginal) => {
 const extrudeDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
-  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first', extrude: { sketch: [], distance: 1 } }],
 })
 
 const colorDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
   part_style: { b1: { color: '#ff0000' } },
-  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first', extrude: { sketch: [], distance: 1 } }],
 })
 
 const variableDoc = (): PartDoc => makeDoc({
@@ -45,8 +45,8 @@ const rollbackDoc = (): PartDoc => ({
   rollback: 2,
   features: [
     { id: 'f1', kind: 'sketch' },
-    { id: 'f2', kind: 'extrude' },
-    { id: 'f3', kind: 'fillet' },
+    { id: 'f2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+    { id: 'f3', kind: 'fillet', fillet: { edges: [], radius: 1 } },
   ],
 })
 

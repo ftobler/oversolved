@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { applyAddConstraint, applySetConstraintSign } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const constraints0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').constraints!
 
 const makeDoc = (): PartDoc => ({
   version: 1,
@@ -19,7 +22,7 @@ const makeDoc = (): PartDoc => ({
   ],
 })
 
-const onlyConstraint = (doc: PartDoc) => doc.features![0].constraints![0]
+const onlyConstraint = (doc: PartDoc) => constraints0(doc)[0]
 
 describe('applyAddConstraint with sign', () => {
   it('writes the orientation sign onto a directional dimension', () => {

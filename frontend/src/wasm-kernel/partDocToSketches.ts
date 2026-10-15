@@ -15,7 +15,7 @@
  * skipped with a reason. Those await the phase-2 projection lowering.
  */
 
-import type { PartConstraint, PartFeature } from '@/types/cad'
+import type { PartConstraint, PartFeature, SketchFeature } from '@/types/cad'
 import { resolveVertexRef } from '@/types/vertexRef'
 import type { SketchInput } from './lowerSketch'
 
@@ -182,7 +182,7 @@ function toLocus(ref: unknown): unknown {
  *  Lifetime is fail-soft: the lowering is gated on the host still existing. Delete
  *  the host and this returns nothing, leaving P an ordinary under-constrained
  *  point resting at its last solved position (it floats until reconstrained). */
-function expandDockConstraint(c: PartConstraint, feature: PartFeature): PartConstraint[] {
+function expandDockConstraint(c: PartConstraint, feature: SketchFeature): PartConstraint[] {
   if (!c.host || !c.point) return []
   const host = (feature.constraints ?? []).find((h) => h.id === c.host)
   if (!host) return []  // host deleted: float (emit no residual)
@@ -201,7 +201,7 @@ function expandDockConstraint(c: PartConstraint, feature: PartFeature): PartCons
  *  leaving every other constraint untouched. Runs before the resolve loop so the
  *  solver only ever sees real constraint kinds. (Offset is not sugar at this
  *  layer: it is stored directly as parallel/concentric + an ordinary dimension.) */
-function expandSugarConstraints(feature: PartFeature): PartConstraint[] {
+function expandSugarConstraints(feature: SketchFeature): PartConstraint[] {
   const out: PartConstraint[] = []
   for (const c of feature.constraints ?? []) {
     if (c.kind === 'ngon') out.push(...lowerNgonConstraint(c))

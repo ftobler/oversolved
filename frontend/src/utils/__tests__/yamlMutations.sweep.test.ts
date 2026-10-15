@@ -9,6 +9,9 @@ import {
   applyRemoveSweepPath,
   normalizeRefList,
 } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const sweep0 = (doc: PartDoc) => featureAt(doc, 0, 'sweep').sweep
 
 const baseDoc: PartDoc = { features: [] }
 
@@ -19,15 +22,15 @@ describe('add_sweep', () => {
     expect(doc.features).toHaveLength(1)
     expect(doc.features![0].kind).toBe('sweep')
     expect(doc.features![0].id).toBe('sw1')
-    expect(doc.features![0].sweep).toBeDefined()
-    expect(doc.features![0].sweep!.sketch).toEqual(['$sk1'])
-    expect(doc.features![0].sweep!.path).toEqual(['$path1'])
+    expect(sweep0(doc)).toBeDefined()
+    expect(sweep0(doc).sketch).toEqual(['$sk1'])
+    expect(sweep0(doc).path).toEqual(['$path1'])
   })
 
   it('stores empty profile array when sketchQuery is empty', () => {
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddSweep(doc, 'sw1', undefined, '', '$path1')
-    expect(doc.features![0].sweep!.sketch).toEqual([])
+    expect(sweep0(doc).sketch).toEqual([])
   })
 
   it('uses label when provided, defaults to "Sweep" otherwise', () => {
@@ -64,9 +67,9 @@ describe('add_sweep_profile', () => {
       features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: ['$sk1'], path: '$p' } }],
     }
     applyAddSweepProfile(doc, 'sw1', '$sk2')
-    expect(doc.features![0].sweep!.sketch).toEqual(['$sk1', '$sk2'])
+    expect(sweep0(doc).sketch).toEqual(['$sk1', '$sk2'])
     applyAddSweepProfile(doc, 'sw1', '$sk2')
-    expect(doc.features![0].sweep!.sketch).toEqual(['$sk1'])
+    expect(sweep0(doc).sketch).toEqual(['$sk1'])
   })
 
   it('normalizes a string sketch before appending', () => {
@@ -74,7 +77,7 @@ describe('add_sweep_profile', () => {
       features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: '$sk1', path: '$p' } }],
     }
     applyAddSweepProfile(doc, 'sw1', '$sk2')
-    expect(doc.features![0].sweep!.sketch).toEqual(['$sk1', '$sk2'])
+    expect(sweep0(doc).sketch).toEqual(['$sk1', '$sk2'])
   })
 
   it('does nothing if sweep is undefined', () => {
@@ -92,7 +95,7 @@ describe('remove_sweep_profile', () => {
       features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: ['$sk1', '$sk2', '$sk3'], path: '$p' } }],
     }
     applyRemoveSweepProfile(doc, 'sw1', 1)
-    expect(doc.features![0].sweep!.sketch).toEqual(['$sk1', '$sk3'])
+    expect(sweep0(doc).sketch).toEqual(['$sk1', '$sk3'])
   })
 
   it('does nothing if sweep is undefined', () => {
@@ -110,9 +113,9 @@ describe('add_sweep_path', () => {
       features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: ['$sk1'], path: ['$p1'] } }],
     }
     applyAddSweepPath(doc, 'sw1', '$p2')
-    expect(doc.features![0].sweep!.path).toEqual(['$p1', '$p2'])
+    expect(sweep0(doc).path).toEqual(['$p1', '$p2'])
     applyAddSweepPath(doc, 'sw1', '$p2')
-    expect(doc.features![0].sweep!.path).toEqual(['$p1'])
+    expect(sweep0(doc).path).toEqual(['$p1'])
   })
 
   it('normalizes a legacy string path before appending', () => {
@@ -120,7 +123,7 @@ describe('add_sweep_path', () => {
       features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: ['$sk1'], path: '$p1' } }],
     }
     applyAddSweepPath(doc, 'sw1', '$p2')
-    expect(doc.features![0].sweep!.path).toEqual(['$p1', '$p2'])
+    expect(sweep0(doc).path).toEqual(['$p1', '$p2'])
   })
 
   it('does nothing if sweep is undefined', () => {
@@ -138,7 +141,7 @@ describe('remove_sweep_path', () => {
       features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: ['$sk1'], path: ['$p1', '$p2', '$p3'] } }],
     }
     applyRemoveSweepPath(doc, 'sw1', 1)
-    expect(doc.features![0].sweep!.path).toEqual(['$p1', '$p3'])
+    expect(sweep0(doc).path).toEqual(['$p1', '$p3'])
   })
 
   it('does nothing if sweep is undefined', () => {
@@ -156,7 +159,7 @@ describe('set_sweep_field', () => {
       features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: '$sk1', path: '$p' } }],
     }
     applySetSweepField(doc, 'sw1', 'path', '?sk2/line1@sk2:straightedge')
-    expect(doc.features![0].sweep!.path).toBe('?sk2/line1@sk2:straightedge')
+    expect(sweep0(doc).path).toBe('?sk2/line1@sk2:straightedge')
   })
 
   it('updates the operation', () => {
@@ -164,7 +167,7 @@ describe('set_sweep_field', () => {
       features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: '$sk1', path: '$p', operation: 'add' } }],
     }
     applySetSweepField(doc, 'sw1', 'operation', 'cut')
-    expect(doc.features![0].sweep!.operation).toBe('cut')
+    expect(sweep0(doc).operation).toBe('cut')
   })
 
   it('removes merge_target when empty string passed', () => {
@@ -172,7 +175,7 @@ describe('set_sweep_field', () => {
       features: [{ id: 'sw1', kind: 'sweep', sweep: { sketch: '$sk1', path: '$p', merge_target: '@body_ex0' } }],
     }
     applySetSweepField(doc, 'sw1', 'merge_target', '')
-    expect(doc.features![0].sweep!).not.toHaveProperty('merge_target')
+    expect(sweep0(doc)).not.toHaveProperty('merge_target')
   })
 
   it('does nothing if sweep is undefined', () => {

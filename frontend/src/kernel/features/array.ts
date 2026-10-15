@@ -20,6 +20,7 @@ import { readBodyNames } from '../occ/bodyNames'
 type Dict = Record<string, unknown>
 
 interface ArrayResult {
+  [key: string]: unknown
   status: string
   // The first body; `body_ids` carries the rest when instances or splits add more.
   body_id: string

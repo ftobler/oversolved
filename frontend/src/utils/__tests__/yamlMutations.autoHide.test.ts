@@ -18,6 +18,10 @@ import {
   applySetFeatureVisibility,
   applyToggleSketchPlaneVisibility,
 } from '@/utils/yamlMutations/partStyle'
+import { featureAt } from '@/testing/featureAccess'
+
+const auto_hidden0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').auto_hidden!
+const extrude1 = (doc: PartDoc) => featureAt(doc, 1, 'extrude').extrude
 
 // The auto-hide is derived from what the document consumes (featureVisibility);
 // these drive it through the real mutations and read what would be drawn.
@@ -125,7 +129,7 @@ describe('the auto-hide ends with the consumption', () => {
     const doc = makeDoc([sketchFeature('sk1'), extrudeFeature('ex1')])
     applyAddExtrudeProfile(doc, 'ex1', 'entity:sk1:circle1')
     applyRemoveExtrudeProfile(doc, 'ex1', 0)
-    expect(doc.features![1].extrude!.sketch).toEqual([])
+    expect(extrude1(doc).sketch).toEqual([])
     expect(drawn(doc, 'sk1')).toBe(true)
   })
 
@@ -226,7 +230,7 @@ describe('the auto-hide is a one-shot', () => {
     const doc = makeDoc([sketchFeature('sk1'), extrudeFeature('ex1')])
     applySetFeatureVisibility(doc, 'sk1', false)
     applySetFeatureVisibility(doc, 'sk1', true)
-    expect(doc.features![0].auto_hidden).toBeUndefined()
+    expect(auto_hidden0(doc)).toBeUndefined()
     applyAddExtrudeProfile(doc, 'ex1', 'entity:sk1:circle1')
     expect(drawn(doc, 'sk1')).toBe(false)
   })

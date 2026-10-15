@@ -9,12 +9,13 @@
 // Skips when the Rust solver build is absent.
 
 import { describe, it, expect } from 'vitest'
-import type { PartDoc, PartFeature } from '@/types/cad'
+import type { PartDoc } from '@/types/cad'
 import { loadSolver } from '../loadSolver'
 import { lowerSketch } from '../lowerSketch'
 import { encodeInput, decodeOutput, Status, type SolverOutput } from '../codec'
 import { partDocToSketches } from '../partDocToSketches'
 import { applyAddNgon, applyAddConstraint, applyDeleteElements } from '@/utils/yamlMutations'
+import { sketchAt } from '@/testing/featureAccess'
 
 const bytes = loadSolver()
 
@@ -50,7 +51,7 @@ function emptySketch(): PartDoc {
   return { features: [{ id: 'sk', kind: 'sketch', plane: '@builtin_plane_front', entities: [], initial: {}, constraints: [] }] }
 }
 
-const feat = (doc: PartDoc): PartFeature => doc.features![0]
+const feat = (doc: PartDoc) => sketchAt(doc)
 const circleId = (doc: PartDoc) => feat(doc).entities!.find((e) => e.kind === 'circle')!.id
 const lineIds = (doc: PartDoc) => feat(doc).entities!.filter((e) => e.kind === 'line').map((e) => e.id)
 

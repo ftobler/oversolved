@@ -21,6 +21,7 @@ import type { WorkspaceSession } from '@/workspace/session'
 import type { PartDoc, BodyResult } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import { editorState } from '@/stores/editorState'
+import type { PartFeature } from '@/types/cad'
 
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
   return { version: 1, kind: 'part', features: [], ...overrides }
@@ -294,7 +295,8 @@ describe('useSolver', () => {
 
     it('sets solveError for a doc with an unported feature kind', async () => {
       const { result } = setupHook()
-      const doc = makeDoc({ features: [{ id: 'x1', kind: 'future_feature' }] })
+      // A kind the union cannot name: exactly the hand-edited-doc case the gate exists for.
+      const doc = makeDoc({ features: [{ id: 'x1', kind: 'future_feature' } as unknown as PartFeature] })
       await act(async () => { await result.current.reSolve(doc) })
       expect(mockSolveLocally).not.toHaveBeenCalled()
       expect(result.current.solveError).toContain('unported feature kinds')
@@ -381,7 +383,7 @@ describe('useSolver', () => {
       const doc = makeDoc({
         features: [
           { id: 'feat1', kind: 'sketch' },
-          { id: 'feat2', kind: 'extrude' },
+          { id: 'feat2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
         ],
       })
       useEditorState.getState().setRollbackPosition(1)
@@ -402,8 +404,8 @@ describe('useSolver', () => {
         rollback: 5,
         features: [
           { id: 'f1', kind: 'sketch' },
-          { id: 'f2', kind: 'extrude' },
-          { id: 'f3', kind: 'extrude' },
+          { id: 'f2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+          { id: 'f3', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
         ],
       })
       useEditorState.getState().setRollbackPosition(1)

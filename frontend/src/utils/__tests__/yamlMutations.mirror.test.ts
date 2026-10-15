@@ -4,6 +4,9 @@ import {
   applyAddMirror,
   applySetMirrorField,
 } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const mirror0 = (doc: PartDoc) => featureAt(doc, 0, 'mirror').mirror
 
 const baseDoc: PartDoc = { features: [] }
 
@@ -40,28 +43,28 @@ describe('Mirror mutations', () => {
       const doc = makeDoc()
       applyAddMirror(doc, 'mir1')
       applySetMirrorField(doc, 'mir1', 'body', '@extrude1')
-      expect(doc.features![0].mirror!.body).toBe('@extrude1')
+      expect(mirror0(doc).body).toBe('@extrude1')
     })
 
     it('updates plane field', () => {
       const doc = makeDoc()
       applyAddMirror(doc, 'mir1')
       applySetMirrorField(doc, 'mir1', 'plane', '@builtin_plane_front')
-      expect(doc.features![0].mirror!.plane).toBe('@builtin_plane_front')
+      expect(mirror0(doc).plane).toBe('@builtin_plane_front')
     })
 
     it('updates keep_original field', () => {
       const doc = makeDoc()
       applyAddMirror(doc, 'mir1')
       applySetMirrorField(doc, 'mir1', 'keep_original', false)
-      expect(doc.features![0].mirror!.keep_original).toBe(false)
+      expect(mirror0(doc).keep_original).toBe(false)
     })
 
     it('updates merge field', () => {
       const doc = makeDoc()
       applyAddMirror(doc, 'mir1')
       applySetMirrorField(doc, 'mir1', 'merge', false)
-      expect(doc.features![0].mirror!.merge).toBe(false)
+      expect(mirror0(doc).merge).toBe(false)
     })
 
     it('does nothing when feature is missing', () => {
@@ -75,7 +78,7 @@ describe('Mirror mutations', () => {
       applyAddMirror(doc, 'mir1')
       applySetMirrorField(doc, 'mir1', 'plane', '@builtin_plane_front')
       applySetMirrorField(doc, 'mir1', 'plane', undefined)
-      expect('plane' in doc.features![0].mirror!).toBe(false)
+      expect('plane' in mirror0(doc)).toBe(false)
     })
   })
 })

@@ -10,6 +10,7 @@ import { PlaneSelector } from '@/components/sketch/PlaneSelector'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
+import type { SketchFeature } from '@/types/cad'
 
 const sketch: PartFeature = { id: 'sk1', kind: 'sketch', label: 'sketch 1' }
 
@@ -25,7 +26,7 @@ beforeEach(() => {
   })
 })
 
-function renderSelector(onMutation: (m: Mutation) => void, featureDef?: PartFeature) {
+function renderSelector(onMutation: (m: Mutation) => void, featureDef?: SketchFeature) {
   return render(
     <PlaneSelector
       feature={sketch}

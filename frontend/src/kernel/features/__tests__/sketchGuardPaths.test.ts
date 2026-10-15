@@ -21,7 +21,7 @@ import {
 } from '../sketch'
 import * as solverWasm from '@/wasm-kernel/solverWasm'
 import { Repository } from '../../query'
-import type { PartFeature } from '@/types/cad'
+import type { SketchFeature } from '@/types/cad'
 
 beforeEach(() => {
   resetSketchSolver()
@@ -71,7 +71,7 @@ describe('prepareDragContext fail-soft', () => {
       entities: [{ id: 'l1', kind: 'line' }],
       initial: { l1: [0, 0, 4, 0] },
       constraints: [{ id: 'c1', kind: 'fixed', target: '$l1', axis: 'z' }],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     expect(prepareDragContext(feature, 'l1', 'start')).toBeNull()
   })
 
@@ -81,7 +81,7 @@ describe('prepareDragContext fail-soft', () => {
       entities: [{ id: 'l1', kind: 'line' }],
       initial: { l1: [0, 0, 4, 0] },
       constraints: [],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     const ctx = prepareDragContext(feature, 'l1', 'start')
     expect(ctx).not.toBeNull()
     setSketchSolver(() => {

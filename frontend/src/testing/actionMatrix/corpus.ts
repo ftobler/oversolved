@@ -100,6 +100,7 @@ export function enumerateTargets(doc: PartDoc): MatrixTarget[] {
   const constraints: MatrixTarget[] = []
   for (const feature of doc.features ?? []) {
     features.push({ id: `@${feature.id}`, kind: 'feature', featureId: null })
+    if (feature.kind !== 'sketch') continue
     for (const entity of feature.entities ?? []) {
       entities.push({ id: `entity:${feature.id}:${entity.id}`, kind: 'entity', featureId: feature.id })
       if (entity.kind === 'line') {

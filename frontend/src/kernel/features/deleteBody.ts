@@ -13,6 +13,7 @@ import { resolveBodyRefList } from './shared/bodyResolution'
 type Dict = Record<string, unknown>
 
 interface DeleteBodyResult {
+  [key: string]: unknown
   status: string
   deleted_body_ids: string[]
 }

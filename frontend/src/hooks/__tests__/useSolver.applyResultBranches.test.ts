@@ -122,7 +122,7 @@ describe('applySolveResult branches', () => {
       v1: { status: 'partial', value: 5 },
       v2: { value: 7 },
     }))
-    const doc = makeDoc({ features: [{ id: 'v1', kind: 'variable' }, { id: 'v2', kind: 'variable' }] })
+    const doc = makeDoc({ features: [{ id: 'v1', kind: 'variable', variable: { expression: '0' } }, { id: 'v2', kind: 'variable', variable: { expression: '0' } }] })
 
     await act(async () => { await result.current.reSolve(doc) })
 

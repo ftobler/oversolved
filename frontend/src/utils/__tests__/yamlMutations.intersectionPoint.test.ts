@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc, PartFeature } from '@/types/cad'
+import type { PartDoc } from '@/types/cad'
 import { applyAddPointAtIntersection } from '@/utils/yamlMutations/sketch'
+import { featureAt } from '@/testing/featureAccess'
 
 // Two circles plus a stray line; the materialize action pins a new point to the
 // two curves that meet at the contact via coincident-to-locus constraints.
@@ -26,7 +27,7 @@ function makeSketchDoc(): PartDoc {
   }
 }
 
-const sketch = (doc: PartDoc): PartFeature => doc.features![0]
+const sketch = (doc: PartDoc) => featureAt(doc, 0, 'sketch')
 const coincidents = (doc: PartDoc) => (sketch(doc).constraints ?? []).filter(c => c.kind === 'coincident')
 const newPointId = (doc: PartDoc) => sketch(doc).entities!.find(e => e.kind === 'point')!.id
 

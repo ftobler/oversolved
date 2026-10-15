@@ -13,8 +13,8 @@ import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURES: PartFeature[] = [
-  { id: 'ex1', kind: 'extrude' },
-  { id: 'ca1', kind: 'circular_array' },
+  { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+  { id: 'ca1', kind: 'circular_array', circular_array: {} },
 ]
 
 function makeFeature(source_body = ''): PartFeature {

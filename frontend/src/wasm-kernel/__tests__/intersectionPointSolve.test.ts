@@ -16,6 +16,9 @@ import { lowerSketch } from '../lowerSketch'
 import { encodeInput, decodeOutput } from '../codec'
 import { partDocToSketches } from '../partDocToSketches'
 import { applyAddPointAtIntersection, applyMoveEntity } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
 
 const bytes = loadSolver()
 
@@ -42,7 +45,7 @@ function tangentCirclesDoc(): PartDoc {
   }
 }
 
-const pointId = (doc: PartDoc) => doc.features![0].entities!.find(e => e.kind === 'point')!.id
+const pointId = (doc: PartDoc) => entities0(doc).find(e => e.kind === 'point')!.id
 const distTo = (p: number[], c: number[]) => Math.hypot(p[0] - c[0], p[1] - c[1])
 
 describe.skipIf(!bytes)('materialized intersection point', () => {

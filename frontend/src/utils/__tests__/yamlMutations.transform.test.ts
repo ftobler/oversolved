@@ -7,6 +7,9 @@ import {
   applySetTransformField,
   migrateLegacyBodyPicks,
 } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const transform0 = (doc: PartDoc) => featureAt(doc, 0, 'transform').transform
 
 const baseDoc: PartDoc = { features: [] }
 
@@ -57,7 +60,7 @@ describe('Transform mutations', () => {
       applyAddTransform(doc, 'xf1')
       applyAddTransformBody(doc, 'xf1', '@body_ex1')
       applyAddTransformBody(doc, 'xf1', '@body_ex2')
-      expect(doc.features![0].transform!.bodies).toEqual(['@body_ex1', '@body_ex2'])
+      expect(transform0(doc).bodies).toEqual(['@body_ex1', '@body_ex2'])
     })
 
     it('re-picking the same body removes it', () => {
@@ -66,7 +69,7 @@ describe('Transform mutations', () => {
       applyAddTransformBody(doc, 'xf1', '@body_ex1')
       applyAddTransformBody(doc, 'xf1', '@body_ex2')
       applyAddTransformBody(doc, 'xf1', '@body_ex1')
-      expect(doc.features![0].transform!.bodies).toEqual(['@body_ex2'])
+      expect(transform0(doc).bodies).toEqual(['@body_ex2'])
     })
 
     it('removes by index', () => {
@@ -75,7 +78,7 @@ describe('Transform mutations', () => {
       applyAddTransformBody(doc, 'xf1', '@body_ex1')
       applyAddTransformBody(doc, 'xf1', '@body_ex2')
       applyRemoveTransformBody(doc, 'xf1', 0)
-      expect(doc.features![0].transform!.bodies).toEqual(['@body_ex2'])
+      expect(transform0(doc).bodies).toEqual(['@body_ex2'])
     })
 
     it('does nothing when the feature is missing', () => {
@@ -89,7 +92,7 @@ describe('Transform mutations', () => {
       it('migration heals the singular ref before the mutators see it', () => {
         const doc = legacyDoc()
         expect(migrateLegacyBodyPicks(doc)).toBe(1)
-        const sub = doc.features![0].transform!
+        const sub = transform0(doc)
         expect(sub.bodies).toEqual(['@b1'])
         expect('body' in sub).toBe(false)
       })
@@ -97,7 +100,7 @@ describe('Transform mutations', () => {
       it('applyAddTransformBody seeds the list from the legacy pick instead of dropping it', () => {
         const doc = legacyDoc()
         expect(() => applyAddTransformBody(doc, 'xf1', '@b2')).not.toThrow()
-        const sub = doc.features![0].transform!
+        const sub = transform0(doc)
         expect(sub.bodies).toEqual(['@b1', '@b2'])
         expect('body' in sub).toBe(false)
       })
@@ -106,7 +109,7 @@ describe('Transform mutations', () => {
         const doc = legacyDoc()
         migrateLegacyBodyPicks(doc)
         applyAddTransformBody(doc, 'xf1', '@b2')
-        const sub = doc.features![0].transform!
+        const sub = transform0(doc)
         expect(sub.bodies).toEqual(['@b1', '@b2'])
         expect('body' in sub).toBe(false)
       })
@@ -115,13 +118,13 @@ describe('Transform mutations', () => {
         const doc = legacyDoc()
         migrateLegacyBodyPicks(doc)
         applyAddTransformBody(doc, 'xf1', '@b1')
-        expect(doc.features![0].transform!.bodies).toEqual([])
+        expect(transform0(doc).bodies).toEqual([])
       })
 
       it('applyRemoveTransformBody does not throw on an unmigrated legacy doc', () => {
         const doc = legacyDoc()
         expect(() => applyRemoveTransformBody(doc, 'xf1', 0)).not.toThrow()
-        expect(doc.features![0].transform!.bodies).toEqual([])
+        expect(transform0(doc).bodies).toEqual([])
       })
     })
   })
@@ -131,42 +134,42 @@ describe('Transform mutations', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
       applySetTransformField(doc, 'xf1', 'operation', 'replace')
-      expect(doc.features![0].transform!.operation).toBe('replace')
+      expect(transform0(doc).operation).toBe('replace')
     })
 
     it('updates translation field', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
       applySetTransformField(doc, 'xf1', 'translation', [10, 20, 30])
-      expect(doc.features![0].transform!.translation).toEqual([10, 20, 30])
+      expect(transform0(doc).translation).toEqual([10, 20, 30])
     })
 
     it('updates rotation_angle field', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
       applySetTransformField(doc, 'xf1', 'rotation_angle', 45)
-      expect(doc.features![0].transform!.rotation_angle).toBe(45)
+      expect(transform0(doc).rotation_angle).toBe(45)
     })
 
     it('updates rotation_axis field', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
       applySetTransformField(doc, 'xf1', 'rotation_axis', '@sk1/axisLine')
-      expect(doc.features![0].transform!.rotation_axis).toBe('@sk1/axisLine')
+      expect(transform0(doc).rotation_axis).toBe('@sk1/axisLine')
     })
 
     it('updates scale field', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
       applySetTransformField(doc, 'xf1', 'scale', 2.5)
-      expect(doc.features![0].transform!.scale).toBe(2.5)
+      expect(transform0(doc).scale).toBe(2.5)
     })
 
     it('updates scale_center_from field', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
       applySetTransformField(doc, 'xf1', 'scale_center_from', '@sk1/pt1xy')
-      expect(doc.features![0].transform!.scale_center_from).toBe('@sk1/pt1xy')
+      expect(transform0(doc).scale_center_from).toBe('@sk1/pt1xy')
     })
 
     it('does nothing when feature is missing', () => {
@@ -180,7 +183,7 @@ describe('Transform mutations', () => {
       applyAddTransform(doc, 'xf1')
       applySetTransformField(doc, 'xf1', 'rotation_axis', '@sk1/axisLine')
       applySetTransformField(doc, 'xf1', 'rotation_axis', undefined)
-      expect('rotation_axis' in doc.features![0].transform!).toBe(false)
+      expect('rotation_axis' in transform0(doc)).toBe(false)
     })
   })
 })

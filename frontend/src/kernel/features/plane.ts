@@ -19,6 +19,7 @@ import { resolveFaceSlashFrame } from './faceProfile'
 type Dict = Record<string, unknown>
 
 interface PlaneResult {
+  [key: string]: unknown
   status: string
   plane: Frame3D
 }

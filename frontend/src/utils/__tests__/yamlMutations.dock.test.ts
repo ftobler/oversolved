@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc, PartFeature } from '@/types/cad'
+import type { PartDoc } from '@/types/cad'
 import { applyAddConstraint, applyAddDock } from '@/utils/yamlMutations/sketch'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
+import { featureAt } from '@/testing/featureAccess'
 
 // Two circles held tangent; the dock materializes a point at the contact and
 // ties it to the tangent host (lazy inferred materialization).
@@ -26,7 +27,7 @@ function makeSketchDoc(): PartDoc {
   return doc
 }
 
-const sketch = (doc: PartDoc): PartFeature => doc.features![0]
+const sketch = (doc: PartDoc) => featureAt(doc, 0, 'sketch')
 const hostId = (doc: PartDoc) => sketch(doc).constraints!.find(c => c.kind === 'tangent')!.id
 const docks = (doc: PartDoc) => (sketch(doc).constraints ?? []).filter(c => c.kind === 'dock')
 const points = (doc: PartDoc) => sketch(doc).entities!.filter(e => e.kind === 'point')

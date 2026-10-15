@@ -10,6 +10,11 @@
 
 import { describe, it, expect } from 'vitest'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
+import { featureAt } from '@/testing/featureAccess'
+import type { PartDoc } from '@/types/cad'
+
+const constraints0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').constraints!
+const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
 
 describe('parseable_fixture_builds_doc', () => {
   it('feature ID equals the parseable string', () => {
@@ -39,7 +44,7 @@ describe('parseable_fixture_builds_doc', () => {
       }),
     )
 
-    const entityIds = doc.features![0].entities!.map(e => e.id)
+    const entityIds = entities0(doc).map(e => e.id)
     expect(entityIds).toEqual(['line1', 'arc1'])
   })
 
@@ -52,7 +57,7 @@ describe('parseable_fixture_builds_doc', () => {
       }),
     )
 
-    const constraintIds = doc.features![0].constraints!.map(c => c.id)
+    const constraintIds = constraints0(doc).map(c => c.id)
     expect(constraintIds).toEqual(['c1'])
   })
 
@@ -96,7 +101,7 @@ describe('parseable_fixture_does_not_leak_into_yaml', () => {
     )
 
     const parsed = JSON.parse(JSON.stringify(doc)) as typeof doc
-    const entity = parsed.features![0].entities![0]
+    const entity = entities0(parsed)[0]
 
     // Only standard PartEntityDef keys are allowed.
     const allowedKeys = new Set(['id', 'kind', 'construction', 'source'])

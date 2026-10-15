@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, PartFeature } from '@/types/cad'
+import type { Sketch, Constraints, Topology, PlaneTransform, EntityStatus, SketchFeature } from '@/types/cad'
 import { useSketchEditorStore, type VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 
 // Vertex/point rendering
@@ -69,7 +69,7 @@ export interface Geometry3DProps {
   solveStatus?: string
   entityStatus?: EntityStatus
   otherSketches?: Record<string, Sketch>
-  featureDef?: PartFeature
+  featureDef?: SketchFeature
 }
 
 export default function Geometry3D({ featureId, solved, entities, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef }: Geometry3DProps) {

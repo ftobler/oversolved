@@ -123,7 +123,7 @@ features:
     act(() => { useSketchEditorStore.getState().toggleNormalSelection(face, 'pick') })
     await waitFor(() => {
       const ex = usePartEditorStore.getState().features.find(f => f.kind === 'extrude' && f.id !== 'ex1')
-      expect(ex?.extrude?.sketch).toEqual([face])
+      expect(ex?.kind === 'extrude' ? ex.extrude.sketch : undefined).toEqual([face])
     })
     expect(shown('sk1')).toBe(false)
   })

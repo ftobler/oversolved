@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc, PartFeature, PartConstraint } from '@/types/cad'
+import type { PartDoc, PartConstraint } from '@/types/cad'
 import { applyAddRect, applyAddCenterRect, applyAddNgon } from '@/utils/yamlMutations'
 import { parseTarget } from '@/utils/yamlMutations/helpers'
+import { featureAt } from '@/testing/featureAccess'
 
 // The snap refs the rect, center rect and n-gon draw tools carry to the doc
 // writer: each one must become a coincident on the vertex that sits where the
@@ -16,7 +17,7 @@ function sketchDoc(): PartDoc {
   return { features: [{ id: FID, kind: 'sketch', plane: '@builtin_plane_front', entities: [], initial: {}, constraints: [] }] }
 }
 
-const feat = (doc: PartDoc): PartFeature => doc.features![0]
+const feat = (doc: PartDoc) => featureAt(doc, 0, 'sketch')
 const coincidents = (doc: PartDoc): PartConstraint[] =>
   (feat(doc).constraints ?? []).filter(c => c.kind === 'coincident')
 

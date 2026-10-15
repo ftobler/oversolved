@@ -3,6 +3,7 @@ import type { PartDoc } from '@/types/cad'
 import { applyAddOffset, applyAddEntity, applyAddRect, applyAddConstraint, applyDeleteElements } from '@/utils/yamlMutations'
 import { CONSTRAINTS } from '@/registry'
 import { offsetCorners, lineIntersect, parseVertexRef } from '@/utils/geometry/offsetProfile'
+import { sketchAt } from '@/testing/featureAccess'
 
 const DIMENSION_KINDS = new Set(CONSTRAINTS.filter((c) => c.category === 'dimensional').map((c) => c.kind))
 
@@ -11,7 +12,7 @@ function sketchDoc(): PartDoc {
 }
 
 function feat(doc: PartDoc) {
-  return doc.features![0]
+  return sketchAt(doc)
 }
 
 /** Lines forming an open L: a horizontal then a vertical, sharing a coincident

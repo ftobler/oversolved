@@ -100,9 +100,14 @@ export function wellFormedProblems(doc: PartDoc | null): string[] {
   const hasId = (value: unknown): boolean => typeof value === 'string' && value !== ''
   for (const feature of doc.features) {
     if (!hasId(feature.id)) problems.push('feature without an id')
-    if (typeof feature.kind !== 'string' || feature.kind === '') {
+    // Widened on purpose: this is the fuzz driver's well-formedness view of a
+    // document that crossed session/serialization seams, so it must be able to
+    // report a kind the union cannot name rather than assume the type holds.
+    const kind: string = feature.kind
+    if (typeof kind !== 'string' || kind === '') {
       problems.push(`feature ${feature.id} without a kind`)
     }
+    if (feature.kind !== 'sketch') continue
     for (const entity of feature.entities ?? []) {
       if (!hasId(entity.id)) problems.push(`entity of ${feature.id} without an id`)
     }

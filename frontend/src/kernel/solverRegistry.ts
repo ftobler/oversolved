@@ -19,6 +19,7 @@ import type { DisposeScope } from './occ/disposeScope'
 import type { HandleTable } from './occ/handleTable'
 import type { Repository } from './query'
 import type { Body } from './types3d'
+import type { FeatureKind, PartFeature } from '@/types/cad'
 import type { FeatureSolver } from './builder'
 import { solveExtrude } from './features/extrude'
 import { solveRevolve } from './features/revolve'
@@ -33,29 +34,81 @@ import { solveImportStep } from './features/importStep'
 import { solveSketch } from './features/sketch'
 import { solvePlane } from './features/plane'
 import { solveVariable } from './features/variable'
-import { evalFeatureParams, EXPR_FIELDS_BY_KIND } from './evalExpr'
+import { evalFeatureParams, EXPR_FIELDS_BY_KIND, isExprFieldKind, type ExprFieldKind } from './evalExpr'
+
+// ─── Kind → solver dispatch ───
+
+/**
+ * Kinds the dispatch table covers. `origin` has no solver: it is a builtin repo
+ * result, never a solved feature. `import_step` needs the per-build file map,
+ * which is not on the shared dispatcher signature, so createFeatureSolver wires
+ * it directly. The exclusion is the compiler's: add a variant to PartFeature
+ * and this table fails to type-check until a solver lands beside it.
+ */
+type DispatchedKind = Exclude<FeatureKind, 'origin' | 'import_step'>
+
+type FeatureOf<K extends FeatureKind> = Extract<PartFeature, { kind: K }>
+
+/**
+ * The dispatch signature with the feature parameter pinned to its variant, so a
+ * solver registered under the wrong kind fails to compile instead of silently
+ * reading absent fields.
+ */
+type LeafSolver<K extends DispatchedKind> = (
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  feature: FeatureOf<K>,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  featuresById: Record<string, Record<string, unknown>>,
+) => Record<string, unknown>
+
+export type SolverTable = { [K in DispatchedKind]: LeafSolver<K> }
+
+const KIND_SOLVER: SolverTable = {
+  sketch: (_oc, _scope, _table, feature, globalRepo, bodyStore) =>
+    solveSketch(feature, globalRepo, bodyStore),
+  plane: solvePlane,
+  extrude: solveExtrude,
+  revolve: solveRevolve,
+  sweep: solveSweep,
+  hole: solveHole,
+  boolean: solveBoolean,
+  fillet: solveFillet,
+  chamfer: solveChamfer,
+  array: solveArray,
+  circular_array: solveCircularArray,
+  transform: solveTransform,
+  mirror: solveMirror,
+  delete_body: solveDeleteBody,
+  // Variables carry no OCC geometry. The builder path short-circuits them in
+  // ``createFeatureSolver`` (passing the live variable context); this entry is
+  // the ``getSolver`` fallback and resolves against an empty context.
+  variable: (_oc, _scope, _table, feature) => solveVariable(feature, {}),
+}
+
+type AnyLeafSolver = SolverTable[DispatchedKind]
+
+function isDispatchedKind(kind: string): kind is DispatchedKind {
+  return Object.hasOwn(KIND_SOLVER, kind)
+}
+
+/** Resolve a leaf solver for the given feature kind, or null if unported. */
+export function getSolver(kind: string): AnyLeafSolver | null {
+  return isDispatchedKind(kind) ? KIND_SOLVER[kind] : null
+}
 
 // ─── Ported kind set ───
 
-/** Feature kinds that have a TS/WASM solver. */
-export const PORTED_FEATURE_KINDS = Object.freeze(new Set([
-  'sketch',
-  'plane',
-  'extrude',
-  'revolve',
-  'sweep',
-  'fillet',
-  'chamfer',
-  'boolean',
-  'hole',
-  'array',
-  'circular_array',
-  'transform',
-  'mirror',
-  'delete_body',
-  'import_step',
-  'variable',
-]))
+/**
+ * Feature kinds that have a TS/WASM solver. Derived from the dispatch table
+ * plus the import_step special case, so the gate and the table cannot drift:
+ * a kind counts as solvable exactly when createFeatureSolver can dispatch it.
+ */
+export const PORTED_FEATURE_KINDS: ReadonlySet<string> = Object.freeze(
+  new Set<string>([...Object.keys(KIND_SOLVER), 'import_step']),
+)
 
 // ─── Per-doc gate ───
 
@@ -82,59 +135,18 @@ export function unportedKinds(features: Array<{ kind?: unknown }>): Set<string> 
   return missing
 }
 
-// ─── Kind → solver dispatch ───
-
-type LeafSolver = (
-  oc: OccModule,
-  scope: DisposeScope,
-  table: HandleTable,
-  feature: Record<string, unknown>,
-  globalRepo: Repository,
-  bodyStore: Record<string, Body>,
-  featuresById?: Record<string, Record<string, unknown>>,
-) => Record<string, unknown>
-
-// Leaf solvers take heterogeneous parameter lists; this catch-all accepts any
-// of them, and the cast narrows the erased result to the dispatch signature.
-type HeterogeneousSolver = (...args: never[]) => unknown
-const _s = (fn: HeterogeneousSolver): LeafSolver => fn as unknown as LeafSolver
-
-const KIND_SOLVER: Record<string, LeafSolver> = {
-  sketch: _s((_oc, _scope, _table, feature: Record<string, unknown>, globalRepo: Repository, bodyStore: Record<string, Body>) =>
-    solveSketch(feature, globalRepo, bodyStore),
-  ),
-  plane: _s(solvePlane),
-  extrude: _s(solveExtrude),
-  revolve: _s(solveRevolve),
-  sweep: _s(solveSweep),
-  hole: _s(solveHole),
-  boolean: _s(solveBoolean),
-  fillet: _s(solveFillet),
-  chamfer: _s(solveChamfer),
-  array: _s(solveArray),
-  circular_array: _s(solveCircularArray),
-  transform: _s(solveTransform),
-  mirror: _s(solveMirror),
-  delete_body: _s(solveDeleteBody),
-  // Variables carry no OCC geometry. The builder path short-circuits them in
-  // ``createFeatureSolver`` (passing the live variable context); this entry is
-  // the ``getSolver`` fallback and resolves against an empty context.
-  variable: _s((_oc, _scope, _table, feature: Record<string, unknown>) => solveVariable(feature, {})),
-}
-
-/** Resolve a leaf solver for the given feature kind, or null if unported. */
-export function getSolver(kind: string): LeafSolver | null {
-  return KIND_SOLVER[kind] ?? null
-}
-
 // ─── Expression resolution ───
 
 /**
  * Where each kind's expression-capable params live. Most kinds nest them under
  * `feature[kind]`; `plane` keeps them in `feature.definition`; `import_step`
  * reads `scale` straight off the feature. An empty string means feature-level.
+ * Each value is pinned to a key of that kind's payload, so a mistyped sub-key
+ * cannot survive a rename of the def field it names.
  */
-const EXPR_SUBKEY_BY_KIND: Record<string, string> = {
+type ExprSubKey<K extends ExprFieldKind> = '' | Extract<keyof FeatureOf<K>, string>
+
+const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
   extrude: 'extrude',
   revolve: 'revolve',
   fillet: 'fillet',
@@ -163,14 +175,14 @@ export function resolveFeatureExpressions(
 ): { feature: Record<string, unknown> } | { exception: string } {
   const kind = feature.kind as string | undefined
   if (!kind) return { feature }
+  if (!isExprFieldKind(kind)) return { feature }
   const exprFields = EXPR_FIELDS_BY_KIND[kind]
-  if (!exprFields) return { feature }
 
   // Leaf solvers overlay feature-level fields over the sub-dict
   // (`{ ...sub, ...feature }`), so a param may be stored either flat on the
   // feature or nested under its sub-key. Evaluate both so neither storage form
   // silently slips past with an unresolved expression string.
-  const subKey = EXPR_SUBKEY_BY_KIND[kind] ?? ''
+  const subKey = EXPR_SUBKEY_BY_KIND[kind]
   const copy: Record<string, unknown> = { ...feature }
   const targets: Record<string, unknown>[] = [copy]
   if (subKey !== '') {
@@ -231,8 +243,7 @@ export function createFeatureSolver(
       }
       return solveImportStep(oc, scope, table, resolvedImport.feature, globalRepo, bodyStore, files)
     }
-    const solver = KIND_SOLVER[kind]
-    if (!solver) {
+    if (!isDispatchedKind(kind)) {
       return { status: 'exception', exception: `unported feature kind: ${kind}` }
     }
     // Resolve any math-expression params (e.g. distance="50+25") to numbers
@@ -243,6 +254,26 @@ export function createFeatureSolver(
       return { status: 'exception', exception: resolved.exception }
     }
     // hole.ts takes featuresById as its 7th argument; other solvers ignore it.
-    return solver(oc, scope, table, resolved.feature, globalRepo, bodyStore, featuresById)
+    return dispatchFeature(kind, oc, scope, table, resolved.feature, globalRepo, bodyStore, featuresById)
   }
+}
+
+/**
+ * Call the table entry for `kind`. The feature reaches the kernel as a
+ * structured clone off the worker wire, so the runtime kind check above is the
+ * only thing that makes the variant assumption true; this cast is that blind
+ * boundary, not an erasure of the dispatch type -- the table's mapped type
+ * still ties every kind to its variant at registration.
+ */
+function dispatchFeature<K extends DispatchedKind>(
+  kind: K,
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  feature: Record<string, unknown>,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  featuresById: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  return KIND_SOLVER[kind](oc, scope, table, feature as FeatureOf<K>, globalRepo, bodyStore, featuresById)
 }

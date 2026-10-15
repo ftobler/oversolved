@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import type { PartDoc, PartFeature, PartConstraint } from '@/types/cad'
+import type { PartDoc, PartConstraint } from '@/types/cad'
 import { applyAddNgon, applyDeleteElements } from '@/utils/yamlMutations'
 import { parseTarget } from '@/utils/yamlMutations/helpers'
+import { featureAt } from '@/testing/featureAccess'
 
 // The n-gon's center is a construction circumcircle authored alongside the
 // lines. The `ngon` sugar constraint owns the circle through its `circle` field
@@ -15,7 +16,7 @@ function sketchDoc(): PartDoc {
   return { features: [{ id: FID, kind: 'sketch', plane: '@builtin_plane_front', entities: [], initial: {}, constraints: [] }] }
 }
 
-const feat = (doc: PartDoc): PartFeature => doc.features![0]
+const feat = (doc: PartDoc) => featureAt(doc, 0, 'sketch')
 const circles = (doc: PartDoc) => (feat(doc).entities ?? []).filter(e => e.kind === 'circle')
 const ngonOf = (doc: PartDoc): PartConstraint => feat(doc).constraints!.find(c => c.kind === 'ngon')!
 const pinnedTo = (doc: PartDoc, snapRef: string): PartConstraint[] =>

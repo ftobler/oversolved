@@ -91,7 +91,7 @@ describe('useSolver requestId race guard', () => {
     mockSolveLocally.mockReturnValueOnce(v2Promise)
 
     let p2!: Promise<void>
-    act(() => { p2 = result.current.reSolve(makeDoc({ features: [{ id: 'f2', kind: 'extrude' }] })) })
+    act(() => { p2 = result.current.reSolve(makeDoc({ features: [{ id: 'f2', kind: 'extrude', extrude: { sketch: [], distance: 1 } }] })) })
 
     // Resolve V1 (stale)
     await act(async () => {

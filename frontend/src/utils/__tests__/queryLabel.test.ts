@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { queryLabel, extractFeatureId } from '@/utils/query/queryLabel'
 import type { PartFeature } from '@/types/cad'
 
+const extrudeDef = { sketch: [] as string[], distance: 1 }
 const features: PartFeature[] = [
-  { id: 'extrude1', kind: 'extrude', label: 'My Extrude' },
-  { id: 'ex1', kind: 'extrude', label: 'My Extrude' },
-  { id: 'ab-1', kind: 'extrude', label: 'Dash Feature' },
-  { id: 'e1tMr2u-m4rxTxhoZSw2z05E', kind: 'extrude', label: 'Real Base64url' },
+  { id: 'extrude1', kind: 'extrude', label: 'My Extrude', extrude: extrudeDef },
+  { id: 'ex1', kind: 'extrude', label: 'My Extrude', extrude: extrudeDef },
+  { id: 'ab-1', kind: 'extrude', label: 'Dash Feature', extrude: extrudeDef },
+  { id: 'e1tMr2u-m4rxTxhoZSw2z05E', kind: 'extrude', label: 'Real Base64url', extrude: extrudeDef },
   { id: 'sk1', kind: 'sketch', label: 'Sketch 1' },
-  { id: 'fillet2', kind: 'fillet', label: 'Fillet 2' },
+  { id: 'fillet2', kind: 'fillet', label: 'Fillet 2', fillet: { edges: [], radius: 1 } },
   { id: 'sketch3', kind: 'sketch' },
 ]
 
@@ -238,7 +239,7 @@ describe('queryLabel', () => {
       // resolution: when a feature really is named `ex1_1`, the sibling suffix
       // belongs to it, not to `ex1`. extractFeatureId (no known set) still
       // strips, but queryLabel must not.
-      const withSibling = [...features, { id: 'ex1_1', kind: 'extrude', label: 'Ex1 One' }]
+      const withSibling = [...features, { id: 'ex1_1', kind: 'extrude' as const, label: 'Ex1 One', extrude: extrudeDef }]
       expect(queryLabel('@body_ex1_1/face/0', withSibling)).toBe('Face of Ex1 One')
     })
 

@@ -17,6 +17,10 @@ import { lowerSketch } from '../lowerSketch'
 import { encodeInput, decodeOutput } from '../codec'
 import { partDocToSketches } from '../partDocToSketches'
 import { applyAddConstraint, applyAddDock, applyMoveEntity, applyDeleteElements } from '@/utils/yamlMutations'
+import { featureAt, sketchAt } from '@/testing/featureAccess'
+
+const constraints0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').constraints!
+const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
 
 const bytes = loadSolver()
 
@@ -46,8 +50,8 @@ function tangentDoc(): PartDoc {
   return doc
 }
 
-const hostId = (doc: PartDoc) => doc.features![0].constraints!.find(c => c.kind === 'tangent')!.id
-const pointId = (doc: PartDoc) => doc.features![0].entities!.find(e => e.kind === 'point')!.id
+const hostId = (doc: PartDoc) => constraints0(doc).find(c => c.kind === 'tangent')!.id
+const pointId = (doc: PartDoc) => entities0(doc).find(e => e.kind === 'point')!.id
 const distTo = (p: number[], c: number[]) => Math.hypot(p[0] - c[0], p[1] - c[1])
 
 describe.skipIf(!bytes)('docked point', () => {
@@ -101,13 +105,13 @@ describe.skipIf(!bytes)('docked point', () => {
     // A free point elsewhere; constrain it coincident to the tangent contact by
     // naming the dock handle. The interception materializes the contact point and
     // rewrites the coincident to it.
-    const sk = doc.features![0]
+    const sk = sketchAt(doc)
     sk.entities!.push({ id: 'free', kind: 'point' })
     sk.initial!['free'] = [3, 4]
     applyAddConstraint(doc, 'sk', 'coincident', ['vertex:sk:free:xy', `dock:sk:${hostId(doc)}`])
 
     const solved = solveFeature(doc)
-    const mat = doc.features![0].entities!.filter(e => e.kind === 'point').map(e => e.id)
+    const mat = entities0(doc).filter(e => e.kind === 'point').map(e => e.id)
     expect(mat).toHaveLength(2)
     const contactId = mat.find(id => id !== 'free')!
     const c = solved[contactId]
@@ -123,8 +127,8 @@ describe.skipIf(!bytes)('docked point', () => {
     const doc = tangentDoc()
     applyAddDock(doc, 'sk', [5, 0], hostId(doc))
     applyAddDock(doc, 'sk', [5, 0], hostId(doc))
-    const points = doc.features![0].entities!.filter(e => e.kind === 'point')
-    const docks = doc.features![0].constraints!.filter(c => c.kind === 'dock')
+    const points = entities0(doc).filter(e => e.kind === 'point')
+    const docks = constraints0(doc).filter(c => c.kind === 'dock')
     expect(points).toHaveLength(1)
     expect(docks).toHaveLength(1)
   })

@@ -12,6 +12,11 @@
  */
 
 import { create, all } from 'mathjs'
+import type {
+  ArrayFeatureDef, ChamferFeatureDef, CircularArrayFeatureDef, ExtrudeFeatureDef,
+  FilletFeatureDef, HoleFeatureDef, ImportStepFeature, PlaneDef, RevolveFeatureDef,
+  TransformFeatureDef,
+} from '@/types/cad'
 
 const math = create(all, {})
 
@@ -40,11 +45,32 @@ export function evalExpr(expr: string, context: Record<string, number> = {}): nu
   }
 }
 
+/** The payload each expression-capable kind keeps its params in. `import_step`
+ *  has no sub-def: its `scale` sits flat on the feature, so the honest entry
+ *  there is the feature itself. */
+interface ExprPayloads {
+  extrude: ExtrudeFeatureDef
+  revolve: RevolveFeatureDef
+  fillet: FilletFeatureDef
+  chamfer: ChamferFeatureDef
+  hole: HoleFeatureDef
+  array: ArrayFeatureDef
+  circular_array: CircularArrayFeatureDef
+  transform: TransformFeatureDef
+  plane: PlaneDef
+  import_step: ImportStepFeature
+}
+
+export type ExprFieldKind = keyof ExprPayloads
+
 /** Expression-capable fields per feature kind. Only these keys are evaluated
  *  before solver dispatch; everything else passes through untouched. The values
- *  may be plain numbers (legacy docs) or expression strings.
+ *  may be plain numbers (legacy docs) or expression strings. The mapped type
+ *  pins each field name to a key of that kind's payload, so a renamed or
+ *  mistyped def field is a build error instead of that field silently never
+ *  being evaluated.
  */
-export const EXPR_FIELDS_BY_KIND: Record<string, string[]> = {
+export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPayloads[K] & string)[] } = {
   extrude: ['distance'],
   revolve: ['angle'],
   fillet: ['radius'],
@@ -57,6 +83,13 @@ export const EXPR_FIELDS_BY_KIND: Record<string, string[]> = {
   import_step: ['scale'],
 }
 
+/** Whether `kind` is one of the kinds in the expression table. Narrowing a raw
+ *  (structurally unknown) kind with this is how the kernel indexes the table
+ *  without widening its type. */
+export function isExprFieldKind(kind: string): kind is ExprFieldKind {
+  return Object.hasOwn(EXPR_FIELDS_BY_KIND, kind)
+}
+
 /** Evaluate the expression-capable fields of a feature's sub-dict in place.
  *  String values are replaced by their evaluated number; plain numbers are left
  *  untouched. On a failed evaluation the original string is kept and a
@@ -65,7 +98,7 @@ export const EXPR_FIELDS_BY_KIND: Record<string, string[]> = {
  */
 export function evalFeatureParams(
   sub: Record<string, unknown>,
-  exprFields: string[],
+  exprFields: readonly string[],
   context: Record<string, number> = {},
 ): void {
   for (const key of exprFields) {

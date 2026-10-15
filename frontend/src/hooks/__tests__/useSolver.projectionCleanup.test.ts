@@ -21,6 +21,7 @@ vi.mock('@/stores/solverStore', () => ({
 import { useSolver } from '@/hooks/useSolver'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import type { PartDoc } from '@/types/cad'
+import { featureAt } from '@/testing/featureAccess'
 
 function makeDocWithProjection(): PartDoc {
   return {
@@ -102,7 +103,7 @@ describe('useSolver solve-path purity', () => {
 
     expect(result.current.solveResults.sk1.projection_errors).toEqual(['proj1'])
     const savedDoc = setDoc.mock.calls[0][0] as PartDoc
-    const feat = savedDoc.features![0]
+    const feat = featureAt(savedDoc, 0, 'sketch')
     expect(feat.entities!.map(e => e.id)).toEqual(['line1', 'proj1'])
   })
 
@@ -115,7 +116,7 @@ describe('useSolver solve-path purity', () => {
 
     expect(result.current.solveResults.sk1.constraints!.c_super.superfluous).toBe(true)
     const savedDoc = setDoc.mock.calls[0][0] as PartDoc
-    const feat = savedDoc.features![0]
+    const feat = featureAt(savedDoc, 0, 'sketch')
     expect(feat.constraints!.map(c => c.id)).toEqual(['c_keep', 'c_super'])
   })
 

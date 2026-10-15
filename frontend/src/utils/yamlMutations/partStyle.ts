@@ -144,7 +144,9 @@ export function applySetFeatureVisibility(doc: PartDoc, featureId: string, visib
 function spendAutoHideOnShow(doc: PartDoc, shown: PartFeature[]): void {
   const consumed = allConsumedSketchIds(doc.features ?? [])
   for (const f of shown) {
-    if (consumed.has(f.id)) f.auto_hidden = true
+    // Only a sketch carries the one-shot flag; a consumed non-sketch id can
+    // only be a stale ref, and stamping it would write a key nothing reads.
+    if (f.kind === 'sketch' && consumed.has(f.id)) f.auto_hidden = true
   }
 }
 
@@ -217,7 +219,7 @@ export function applySetPlaneDefinitionField(
   value: string | number,
 ): void {
   const feature = findFeature(doc, featureId)
-  if (!feature) return
+  if (feature?.kind !== 'plane') return
   if (!feature.definition) feature.definition = {}
   // A numeric plane field is persisted verbatim; a non-finite value would seed
   // NaN into the document and survive every reload, so reject it at the gate.
@@ -225,25 +227,47 @@ export function applySetPlaneDefinitionField(
     warn('applySetPlaneDefinitionField: ignoring non-finite value', { featureId, field, value })
     return
   }
-  ;(feature.definition as Record<string, string | number>)[field] = value
+  const definition: Record<string, string | number | undefined> = feature.definition
+  definition[field] = value
 }
 
 // ─── Pick field reorder ───
+
+/** Rewrite a stored `string | string[]` ref field into the live array the
+ *  reorder splices. Returns the array so the caller keeps a reference into the
+ *  document; the field is left alone when it was already an array. A missing
+ *  sub-def (a raw record naming the kind without it) returns undefined so the
+ *  reorder no-ops instead of throwing. */
+function normalizeStoredRefList(
+  sub: { sketch?: string | string[]; path?: string | string[] } | undefined,
+  field: 'sketch' | 'path',
+): string[] | undefined {
+  if (!sub) return undefined
+  const current = sub[field]
+  if (Array.isArray(current)) return current
+  const list = typeof current === 'string' && current ? [current] : []
+  sub[field] = list
+  return list
+}
 
 export function applyReorderPickField(doc: PartDoc, featureId: string, field: string, fromIndex: number, toIndex: number): void {
   const feature = doc.features?.find(f => f.id === featureId)
   if (!feature) return
 
+  // The payload reads stay optional: a raw record can name a kind without
+  // carrying its def, and reordering must no-op on it, not throw.
   let arr: unknown[] | undefined
   switch (field) {
     case 'edges':
-      arr = feature.fillet?.edges ?? feature.chamfer?.edges
+      if (feature.kind === 'fillet') arr = feature.fillet?.edges
+      else if (feature.kind === 'chamfer') arr = feature.chamfer?.edges
       break
     case 'tools':
-      arr = feature.boolean?.tools
+      if (feature.kind === 'boolean') arr = feature.boolean?.tools
       break
     case 'bodies':
-      arr = feature.delete_body?.bodies ?? feature.transform?.bodies
+      if (feature.kind === 'delete_body') arr = feature.delete_body?.bodies
+      else if (feature.kind === 'transform') arr = feature.transform?.bodies
       break
     case 'sketch':
       // A bare-string sketch ref (legacy docs, or hand-authored YAML) is
@@ -251,31 +275,19 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
       // is a live reference into the document -- same as every other branch
       // -- rather than a throwaway copy the trailing splice would mutate
       // without the change ever reaching the feature.
-      if (feature.extrude?.sketch !== undefined) {
-        if (!Array.isArray(feature.extrude.sketch)) {
-          feature.extrude.sketch = feature.extrude.sketch ? [feature.extrude.sketch] : []
-        }
-        arr = feature.extrude.sketch
-      } else if (feature.revolve?.sketch !== undefined) {
-        if (!Array.isArray(feature.revolve.sketch)) {
-          feature.revolve.sketch = feature.revolve.sketch ? [feature.revolve.sketch] : []
-        }
-        arr = feature.revolve.sketch
-      } else if (feature.sweep?.sketch !== undefined) {
-        if (!Array.isArray(feature.sweep.sketch)) {
-          feature.sweep.sketch = feature.sweep.sketch ? [feature.sweep.sketch] : []
-        }
-        arr = feature.sweep.sketch
+      if (feature.kind === 'extrude') {
+        arr = normalizeStoredRefList(feature.extrude, 'sketch')
+      } else if (feature.kind === 'revolve') {
+        arr = normalizeStoredRefList(feature.revolve, 'sketch')
+      } else if (feature.kind === 'sweep') {
+        arr = normalizeStoredRefList(feature.sweep, 'sketch')
       }
       break
     case 'path':
       // Same normalize-in-place rationale as 'sketch' above: a sweep path may
       // be stored as a bare string, and the splice needs a live array.
-      if (feature.sweep?.path !== undefined) {
-        if (!Array.isArray(feature.sweep.path)) {
-          feature.sweep.path = feature.sweep.path ? [feature.sweep.path] : []
-        }
-        arr = feature.sweep.path
+      if (feature.kind === 'sweep') {
+        arr = normalizeStoredRefList(feature.sweep, 'path')
       }
       break
     default:

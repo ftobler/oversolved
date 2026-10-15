@@ -7,6 +7,9 @@ import {
   applyRemoveRevolveProfile,
   normalizeRefList,
 } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const revolve0 = (doc: PartDoc) => featureAt(doc, 0, 'revolve').revolve
 
 const baseDoc: PartDoc = { features: [] }
 
@@ -17,15 +20,15 @@ describe('add_revolve', () => {
     expect(doc.features).toHaveLength(1)
     expect(doc.features![0].kind).toBe('revolve')
     expect(doc.features![0].id).toBe('rev1')
-    expect(doc.features![0].revolve).toBeDefined()
-    expect(doc.features![0].revolve!.angle).toBe(360)
-    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1'])
+    expect(revolve0(doc)).toBeDefined()
+    expect(revolve0(doc).angle).toBe(360)
+    expect(revolve0(doc).sketch).toEqual(['$sk1'])
   })
 
   it('stores empty array when sketchQuery is empty string', () => {
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '', 360)
-    expect(doc.features![0].revolve!.sketch).toEqual([])
+    expect(revolve0(doc).sketch).toEqual([])
   })
 
   it('uses label when provided', () => {
@@ -45,7 +48,7 @@ describe('add_revolve', () => {
     // world Z; the revolve leaf now rejects an axis-less feature instead.
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddRevolve(doc, 'rev1', undefined, '$sk1', 360)
-    expect(Object.keys(doc.features![0].revolve!).sort()).toEqual(['angle', 'sketch'])
+    expect(Object.keys(revolve0(doc)).sort()).toEqual(['angle', 'sketch'])
   })
 })
 
@@ -79,7 +82,7 @@ describe('add_revolve_profile', () => {
       ],
     }
     applyAddRevolveProfile(doc, 'rev1', '$sk2')
-    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1', '$sk2'])
+    expect(revolve0(doc).sketch).toEqual(['$sk1', '$sk2'])
   })
 
   it('normalizes a string sketch before appending', () => {
@@ -93,7 +96,7 @@ describe('add_revolve_profile', () => {
       ],
     }
     applyAddRevolveProfile(doc, 'rev1', '$sk2')
-    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1', '$sk2'])
+    expect(revolve0(doc).sketch).toEqual(['$sk1', '$sk2'])
   })
 
   it('toggles off an existing profile query', () => {
@@ -107,7 +110,7 @@ describe('add_revolve_profile', () => {
       ],
     }
     applyAddRevolveProfile(doc, 'rev1', '$sk1')
-    expect(doc.features![0].revolve!.sketch).toEqual(['$sk2'])
+    expect(revolve0(doc).sketch).toEqual(['$sk2'])
   })
 
   it('does nothing if revolve is undefined', () => {
@@ -133,7 +136,7 @@ describe('remove_revolve_profile', () => {
       ],
     }
     applyRemoveRevolveProfile(doc, 'rev1', 1)
-    expect(doc.features![0].revolve!.sketch).toEqual(['$sk1', '$sk3'])
+    expect(revolve0(doc).sketch).toEqual(['$sk1', '$sk3'])
   })
 
   it('removes the only profile leaving empty list', () => {
@@ -147,7 +150,7 @@ describe('remove_revolve_profile', () => {
       ],
     }
     applyRemoveRevolveProfile(doc, 'rev1', 0)
-    expect(doc.features![0].revolve!.sketch).toEqual([])
+    expect(revolve0(doc).sketch).toEqual([])
   })
 
   it('normalizes string sketch before removing', () => {
@@ -161,7 +164,7 @@ describe('remove_revolve_profile', () => {
       ],
     }
     applyRemoveRevolveProfile(doc, 'rev1', 0)
-    expect(doc.features![0].revolve!.sketch).toEqual([])
+    expect(revolve0(doc).sketch).toEqual([])
   })
 
   it('does nothing if revolve is undefined', () => {
@@ -187,7 +190,7 @@ describe('set_revolve_angle', () => {
       ],
     }
     applySetRevolveField(doc, 'rev1', 'angle', 180)
-    expect(doc.features![0].revolve!.angle).toBe(180)
+    expect(revolve0(doc).angle).toBe(180)
   })
 
   it('does nothing if revolve is undefined', () => {
@@ -213,7 +216,7 @@ describe('set_revolve_direction', () => {
       ],
     }
     applySetRevolveField(doc, 'rev1', 'direction', 'reverse')
-    expect(doc.features![0].revolve!.direction).toBe('reverse')
+    expect(revolve0(doc).direction).toBe('reverse')
   })
 
   it('updates revolve direction to symmetric', () => {
@@ -227,7 +230,7 @@ describe('set_revolve_direction', () => {
       ],
     }
     applySetRevolveField(doc, 'rev1', 'direction', 'symmetric')
-    expect(doc.features![0].revolve!.direction).toBe('symmetric')
+    expect(revolve0(doc).direction).toBe('symmetric')
   })
 
   it('does nothing if revolve is undefined', () => {
@@ -253,7 +256,7 @@ describe('set_revolve_axis', () => {
       ],
     }
     applySetRevolveField(doc, 'rev1', 'axis', '?sk1/line1:start@sk1:straightedge')
-    expect(doc.features![0].revolve!.axis).toBe('?sk1/line1:start@sk1:straightedge')
+    expect(revolve0(doc).axis).toBe('?sk1/line1:start@sk1:straightedge')
   })
 
   it('does nothing if revolve is undefined', () => {
@@ -279,7 +282,7 @@ describe('set_revolve_operation', () => {
       ],
     }
     applySetRevolveField(doc, 'rev1', 'operation', 'cut')
-    expect(doc.features![0].revolve!.operation).toBe('cut')
+    expect(revolve0(doc).operation).toBe('cut')
   })
 
   it('sets operation when field is absent', () => {
@@ -293,7 +296,7 @@ describe('set_revolve_operation', () => {
       ],
     }
     applySetRevolveField(doc, 'rev1', 'operation', 'new')
-    expect(doc.features![0].revolve!.operation).toBe('new')
+    expect(revolve0(doc).operation).toBe('new')
   })
 
   it('does nothing if revolve is undefined', () => {
@@ -319,7 +322,7 @@ describe('set_revolve_merge_target', () => {
       ],
     }
     applySetRevolveField(doc, 'rev1', 'merge_target', '@body_ex0')
-    expect(doc.features![0].revolve!.merge_target).toBe('@body_ex0')
+    expect(revolve0(doc).merge_target).toBe('@body_ex0')
   })
 
   it('removes merge_target when argument is empty', () => {
@@ -333,7 +336,7 @@ describe('set_revolve_merge_target', () => {
       ],
     }
     applySetRevolveField(doc, 'rev1', 'merge_target', undefined)
-    expect(doc.features![0].revolve!).not.toHaveProperty('merge_target')
+    expect(revolve0(doc)).not.toHaveProperty('merge_target')
   })
 
   it('removes merge_target when empty string passed', () => {
@@ -347,7 +350,7 @@ describe('set_revolve_merge_target', () => {
       ],
     }
     applySetRevolveField(doc, 'rev1', 'merge_target', '')
-    expect(doc.features![0].revolve!).not.toHaveProperty('merge_target')
+    expect(revolve0(doc)).not.toHaveProperty('merge_target')
   })
 
   it('does nothing if revolve is undefined', () => {
@@ -369,9 +372,9 @@ describe('mutation does not mutate original doc', () => {
   })
 
   it('set_revolve_angle does not mutate original', () => {
-    const original = { features: [{ id: 'rev1', kind: 'revolve', revolve: { sketch: '$sk1', angle: 90 } }] }
+    const original: PartDoc = { features: [{ id: 'rev1', kind: 'revolve', revolve: { sketch: '$sk1', angle: 90 } }] }
     const doc = structuredClone(original)
     applySetRevolveField(doc, 'rev1', 'angle', 180)
-    expect(original.features![0].revolve!.angle).toBe(90)
+    expect(revolve0(original).angle).toBe(90)
   })
 })

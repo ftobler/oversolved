@@ -5,8 +5,8 @@ import { RebuildTimingPopover } from '@/components/rebuild/RebuildTimingPopover'
 
 describe('RebuildTimingPopover', () => {
   const sampleFeatures = [
-    { id: 'sketch1', kind: 'sketch', label: 'Sketch 1' },
-    { id: 'extrude1', kind: 'extrude', label: 'Extrude 1' },
+    { id: 'sketch1', kind: 'sketch' as const, label: 'Sketch 1' },
+    { id: 'extrude1', kind: 'extrude' as const, label: 'Extrude 1', extrude: { sketch: [], distance: 1 } },
   ]
 
   it('returns null when not visible', () => {
@@ -62,7 +62,7 @@ describe('RebuildTimingPopover', () => {
     render(
       <RebuildTimingPopover
         featureTimings={{ slow: 1500 }}
-        features={[{ id: 'slow', kind: 'extrude', label: 'Slow' }]}
+        features={[{ id: 'slow', kind: 'extrude', label: 'Slow', extrude: { sketch: [], distance: 1 } }]}
         isVisible
       />
     )
@@ -85,8 +85,8 @@ describe('RebuildButton with timing', () => {
   const baseProps = {
     featureTimings: { sketch1: 2.3, extrude1: 1.1 },
     features: [
-      { id: 'sketch1', kind: 'sketch', label: 'Sketch 1' },
-      { id: 'extrude1', kind: 'extrude', label: 'Extrude 1' },
+      { id: 'sketch1', kind: 'sketch' as const, label: 'Sketch 1' },
+      { id: 'extrude1', kind: 'extrude' as const, label: 'Extrude 1', extrude: { sketch: [], distance: 1 } },
     ],
     onClick: vi.fn(),
   }

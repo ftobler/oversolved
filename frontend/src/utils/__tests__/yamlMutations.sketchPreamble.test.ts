@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { PartDoc, PartEntityDef, PartFeature } from '@/types/cad'
+import type { PartDoc, PartEntityDef, SketchFeature } from '@/types/cad'
 import {
   applyAddEntity, applyAddProjectedEntity, applyAddEntityWithConstraint, applyAddConstraint,
   applyAddPointAtIntersection, applyAddDock, applyAddRect, applyAddCenterRect, applyAddNgon,
   applyAddOffset, applyMoveEntity,
 } from '@/utils/yamlMutations/sketch'
 import { freshEntityIds, mintEntityId, randomId } from '@/utils/yamlMutations/helpers'
+import { featureAt } from '@/testing/featureAccess'
 
 // A sketch straight out of a YAML document that has never been drawn in: none of
 // the three lazily-created containers is present. Every mutation that writes one
@@ -28,7 +29,7 @@ function populatedDoc(): PartDoc {
   }
 }
 
-const sketch = (doc: PartDoc) => doc.features![0]
+const sketch = (doc: PartDoc) => featureAt(doc, 0, 'sketch')
 
 /** Make `crypto.getRandomValues` emit each byte value TWICE in a row, so every id
  *  the minter draws is immediately offered again. A collision guard that only
@@ -64,7 +65,7 @@ function bytesOfEntityId(id: string): number[] {
  *  cannot do, since there the collision partner is positional. Constraint ids draw
  *  6 bytes rather than 12 and are always served a fresh value: `c_<kind>_<id6>`
  *  cannot collide with an entity id, so echoing there would prove nothing. */
-function stubEchoingLastEntityId(feature: PartFeature): void {
+function stubEchoingLastEntityId(feature: SketchFeature): void {
   let servedAt = -1
   let fresh = 0
   vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(

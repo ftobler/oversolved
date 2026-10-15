@@ -25,38 +25,47 @@ function _ensureBodies(sub: { bodies?: string[]; body?: string }): string[] {
 // sub-feature is absent and clear-on-empty via setFeatureField. `kind` is the
 // sub-feature key (which also reads as the word in the warning); `fn` keeps the
 // public caller name in the diagnostic.
-function applySetSubFeatureField(doc: PartDoc, featureId: string, kind: keyof PartFeature, field: string, value: unknown, fn: string): void {
-  const sub = findFeature(doc, featureId)?.[kind]
-  if (!sub) {
+function setSubFeatureField(featureId: string, kind: string, sub: Record<string, unknown> | undefined, field: string, value: unknown, fn: string): boolean {
+  if (sub === undefined) {
     warn(`${fn}: feature ${featureId} has no ${kind}`)
-    return
+    return false
   }
-  setFeatureField(sub as unknown as Record<string, unknown>, field, value)
+  setFeatureField(sub, field, value)
+  return true
 }
 
 export function applySetExtrudeField(doc: PartDoc, featureId: string, field: keyof ExtrudeFeatureDef, value: unknown): void {
-  applySetSubFeatureField(doc, featureId, 'extrude', field, value, 'applySetExtrudeField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'extrude', feature?.kind === 'extrude' ? feature.extrude : undefined, field, value, 'applySetExtrudeField')
 }
 
 export function applySetRevolveField(doc: PartDoc, featureId: string, field: keyof RevolveFeatureDef, value: unknown): void {
-  applySetSubFeatureField(doc, featureId, 'revolve', field, value, 'applySetRevolveField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'revolve', feature?.kind === 'revolve' ? feature.revolve : undefined, field, value, 'applySetRevolveField')
 }
 
 export function applySetFilletField(doc: PartDoc, featureId: string, field: keyof FilletFeatureDef, value: unknown): void {
-  applySetSubFeatureField(doc, featureId, 'fillet', field, value, 'applySetFilletField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'fillet', feature?.kind === 'fillet' ? feature.fillet : undefined, field, value, 'applySetFilletField')
 }
 
 export function applySetChamferField(doc: PartDoc, featureId: string, field: keyof ChamferFeatureDef, value: unknown): void {
-  applySetSubFeatureField(doc, featureId, 'chamfer', field, value, 'applySetChamferField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'chamfer', feature?.kind === 'chamfer' ? feature.chamfer : undefined, field, value, 'applySetChamferField')
 }
 
 export function applySetBooleanField(doc: PartDoc, featureId: string, field: keyof BooleanFeatureDef, value: unknown): void {
-  applySetSubFeatureField(doc, featureId, 'boolean', field, value, 'applySetBooleanField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'boolean', feature?.kind === 'boolean' ? feature.boolean : undefined, field, value, 'applySetBooleanField')
 }
 
 export function applySetArrayField(doc: PartDoc, featureId: string, field: keyof ArrayFeatureDef, value: unknown): void {
   const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
+  // `sub` doubles as the kind and the payload check: a hand-edited record can
+  // name a kind without carrying its def, and that must warn like a wrong kind
+  // rather than throw into the undo path.
+  const sub = feature?.kind === 'array' ? feature.array : undefined
+  if (!sub) {
     warn(`applySetArrayField: feature ${featureId} has no array`)
     return
   }
@@ -64,12 +73,13 @@ export function applySetArrayField(doc: PartDoc, featureId: string, field: keyof
     applySetArrayMode(doc, featureId, value as 'linear' | 'rectangular')
     return
   }
-  setFeatureField(feature.array as unknown as Record<string, unknown>, field, value)
+  setFeatureField(sub, field, value)
 }
 
 export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof HoleFeatureDef, value: unknown): void {
-  const f = doc.features?.find(feat => feat.id === featureId)
-  if (!f?.hole) {
+  const f = findFeature(doc, featureId)
+  const sub = f?.kind === 'hole' ? f.hole : undefined
+  if (!sub) {
     warn(`applySetHoleField: feature ${featureId} has no hole`)
     return
   }
@@ -77,7 +87,7 @@ export function applySetHoleField(doc: PartDoc, featureId: string, field: keyof 
     applySetHoleSketch(doc, featureId, value)
     return
   }
-  setFeatureField(f.hole as unknown as Record<string, unknown>, field, value)
+  setFeatureField(sub, field, value)
 }
 
 function setFeatureField(obj: Record<string, unknown>, field: string, value: unknown): void {
@@ -141,13 +151,17 @@ function removableIndex(arr: unknown[], index: number): boolean {
 type RefListKind = 'extrude' | 'revolve' | 'sweep'
 type RefListField = 'sketch' | 'path'
 
-function refListSub(doc: PartDoc, featureId: string, kind: RefListKind, fn: string): Record<RefListField, string | string[]> | undefined {
-  const sub = findFeature(doc, featureId)?.[kind]
-  if (!sub) {
-    warn(`${fn}: feature ${featureId} has no ${kind}`)
-    return undefined
+function refListSub(doc: PartDoc, featureId: string, kind: RefListKind, fn: string): Partial<Record<RefListField, string | string[]>> | undefined {
+  const feature = findFeature(doc, featureId)
+  if (feature?.kind === kind) {
+    switch (feature.kind) {
+      case 'extrude': return feature.extrude
+      case 'revolve': return feature.revolve
+      case 'sweep': return feature.sweep
+    }
   }
-  return sub as unknown as Record<RefListField, string | string[]>
+  warn(`${fn}: feature ${featureId} has no ${kind}`)
+  return undefined
 }
 
 function toggleRef(doc: PartDoc, featureId: string, kind: RefListKind, field: RefListField, query: string, fn: string): void {
@@ -221,7 +235,8 @@ export const applyRemoveRevolveProfile = makeRemoveRefAt('revolve', 'sketch', 'a
 // ─── Sweep ───
 
 export function applySetSweepField(doc: PartDoc, featureId: string, field: keyof SweepFeatureDef, value: unknown): void {
-  applySetSubFeatureField(doc, featureId, 'sweep', field, value, 'applySetSweepField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'sweep', feature?.kind === 'sweep' ? feature.sweep : undefined, field, value, 'applySetSweepField')
 }
 
 export function applyAddSweep(
@@ -295,11 +310,8 @@ export function applyAddChamfer(
 // add/remove edge logic is shared across both kinds. `fn` keeps the original
 // caller name in the diagnostic so the warning still points at the public entry.
 function toggleEdge(doc: PartDoc, featureId: string, edgeQuery: string, kind: 'fillet' | 'chamfer', fn: string): void {
-  const sub = findFeature(doc, featureId)?.[kind]
-  if (!sub) {
-    warn(`${fn}: feature ${featureId} has no ${kind}`)
-    return
-  }
+  const sub = edgeSub(doc, featureId, kind, fn)
+  if (!sub) return
   const idx = sub.edges.indexOf(edgeQuery)
   if (idx >= 0) {
     sub.edges.splice(idx, 1)
@@ -309,13 +321,20 @@ function toggleEdge(doc: PartDoc, featureId: string, edgeQuery: string, kind: 'f
 }
 
 function removeEdgeAt(doc: PartDoc, featureId: string, index: number, kind: 'fillet' | 'chamfer', fn: string): void {
-  const sub = findFeature(doc, featureId)?.[kind]
-  if (!sub) {
-    warn(`${fn}: feature ${featureId} has no ${kind}`)
-    return
-  }
+  const sub = edgeSub(doc, featureId, kind, fn)
+  if (!sub) return
   if (!removableIndex(sub.edges, index)) return
   sub.edges.splice(index, 1)
+}
+
+/** The `edges: string[]` list fillet and chamfer share, or undefined with the
+ *  usual warning when the id names a missing or other-kind feature. */
+function edgeSub(doc: PartDoc, featureId: string, kind: 'fillet' | 'chamfer', fn: string): { edges: string[] } | undefined {
+  const feature = findFeature(doc, featureId)
+  if (feature?.kind === 'fillet' && kind === 'fillet') return feature.fillet
+  if (feature?.kind === 'chamfer' && kind === 'chamfer') return feature.chamfer
+  warn(`${fn}: feature ${featureId} has no ${kind}`)
+  return undefined
 }
 
 export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
@@ -348,25 +367,27 @@ export function applyAddBoolean(doc: PartDoc, featureId: string, label?: string)
 
 export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: string): void {
   const feature = findFeature(doc, featureId)
-  if (!feature?.boolean) {
+  const sub = feature?.kind === 'boolean' ? feature.boolean : undefined
+  if (!sub) {
     warn(`applyAddBooleanTool: feature ${featureId} has no boolean`)
     return
   }
-  const idx = feature.boolean.tools.indexOf(tool)
+  const idx = sub.tools.indexOf(tool)
   if (idx >= 0) {
-    feature.boolean.tools.splice(idx, 1)
+    sub.tools.splice(idx, 1)
   } else {
-    feature.boolean.tools.push(tool)
+    sub.tools.push(tool)
   }
 }
 
 export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: string): void {
   const feature = findFeature(doc, featureId)
-  if (!feature?.boolean) {
+  const sub = feature?.kind === 'boolean' ? feature.boolean : undefined
+  if (!sub) {
     warn(`applyRemoveBooleanTool: feature ${featureId} has no boolean`)
     return
   }
-  feature.boolean.tools = feature.boolean.tools.filter(t => t !== tool)
+  sub.tools = sub.tools.filter(t => t !== tool)
 }
 
 // ─── Array ───
@@ -393,21 +414,22 @@ export function applySetArrayMode(
   mode: 'linear' | 'rectangular',
 ): void {
   const feature = findFeature(doc, featureId)
-  if (!feature?.array) {
+  const sub = feature?.kind === 'array' ? feature.array : undefined
+  if (!sub) {
     warn(`applySetArrayMode: feature ${featureId} has no array`)
     return
   }
-  feature.array.mode = mode
+  sub.mode = mode
   if (mode === 'linear') {
-    if (typeof feature.array.count_x !== 'number') feature.array.count_x = 2
-    if (typeof feature.array.pitch_x !== 'number') feature.array.pitch_x = 20
-    delete feature.array.count_y
-    delete feature.array.pitch_y
+    if (typeof sub.count_x !== 'number') sub.count_x = 2
+    if (typeof sub.pitch_x !== 'number') sub.pitch_x = 20
+    delete sub.count_y
+    delete sub.pitch_y
   } else if (mode === 'rectangular') {
-    if (typeof feature.array.count_x !== 'number') feature.array.count_x = 2
-    if (typeof feature.array.pitch_x !== 'number') feature.array.pitch_x = 20
-    if (typeof feature.array.count_y !== 'number') feature.array.count_y = 2
-    if (typeof feature.array.pitch_y !== 'number') feature.array.pitch_y = 20
+    if (typeof sub.count_x !== 'number') sub.count_x = 2
+    if (typeof sub.pitch_x !== 'number') sub.pitch_x = 20
+    if (typeof sub.count_y !== 'number') sub.count_y = 2
+    if (typeof sub.pitch_y !== 'number') sub.pitch_y = 20
   }
 }
 
@@ -428,7 +450,8 @@ export function applyAddCircularArray(doc: PartDoc, featureId: string, label?: s
 }
 
 export function applySetCircularArrayField(doc: PartDoc, featureId: string, field: keyof CircularArrayFeatureDef, value: unknown): void {
-  applySetSubFeatureField(doc, featureId, 'circular_array', field, value, 'applySetCircularArrayField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'circular_array', feature?.kind === 'circular_array' ? feature.circular_array : undefined, field, value, 'applySetCircularArrayField')
 }
 
 // ─── Delete Body ───
@@ -450,7 +473,8 @@ export function applyAddDeleteBody(
 // Picking is a toggle, like the fillet/chamfer edge lists: re-picking a body
 // that is already listed drops it again.
 export function applyAddDeleteBodyRef(doc: PartDoc, featureId: string, bodyQuery: string): void {
-  const sub = findFeature(doc, featureId)?.delete_body
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'delete_body' ? feature.delete_body : undefined
   if (!sub) {
     warn(`applyAddDeleteBodyRef: feature ${featureId} has no delete_body`)
     return
@@ -468,7 +492,8 @@ export function applyAddDeleteBodyRef(doc: PartDoc, featureId: string, bodyQuery
 }
 
 export function applyRemoveDeleteBodyRef(doc: PartDoc, featureId: string, index: number): void {
-  const sub = findFeature(doc, featureId)?.delete_body
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'delete_body' ? feature.delete_body : undefined
   if (!sub) {
     warn(`applyRemoveDeleteBodyRef: feature ${featureId} has no delete_body`)
     return
@@ -489,12 +514,13 @@ export function applyAddHole(doc: PartDoc, featureId: string, label?: string): v
 }
 
 export function applySetHoleSketch(doc: PartDoc, featureId: string, sketch: string): void {
-  const f = doc.features?.find(feat => feat.id === featureId)
-  if (!f?.hole) {
+  const f = findFeature(doc, featureId)
+  const sub = f?.kind === 'hole' ? f.hole : undefined
+  if (!sub) {
     warn(`applySetHoleSketch: feature ${featureId} has no hole`)
     return
   }
-  f.hole.sketch = sketch
+  sub.sketch = sketch
 }
 
 // ─── Transform ───
@@ -516,7 +542,8 @@ export function applyAddTransform(doc: PartDoc, featureId: string, label?: strin
 
 /** Toggle a body ref in/out of the transform's pick list (re-picking removes). */
 export function applyAddTransformBody(doc: PartDoc, featureId: string, bodyQuery: string): void {
-  const sub = findFeature(doc, featureId)?.transform
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'transform' ? feature.transform : undefined
   if (!sub) {
     warn(`applyAddTransformBody: feature ${featureId} has no transform`)
     return
@@ -534,7 +561,8 @@ export function applyAddTransformBody(doc: PartDoc, featureId: string, bodyQuery
 }
 
 export function applyRemoveTransformBody(doc: PartDoc, featureId: string, index: number): void {
-  const sub = findFeature(doc, featureId)?.transform
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'transform' ? feature.transform : undefined
   if (!sub) {
     warn(`applyRemoveTransformBody: feature ${featureId} has no transform`)
     return
@@ -551,7 +579,8 @@ export function applySetTransformField(
   field: keyof TransformFeatureDef,
   value: unknown,
 ): void {
-  applySetSubFeatureField(doc, featureId, 'transform', field, value, 'applySetTransformField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'transform', feature?.kind === 'transform' ? feature.transform : undefined, field, value, 'applySetTransformField')
 }
 
 // ─── Mirror ───
@@ -571,7 +600,8 @@ export function applySetMirrorField(
   field: keyof MirrorFeatureDef,
   value: unknown,
 ): void {
-  applySetSubFeatureField(doc, featureId, 'mirror', field, value, 'applySetMirrorField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'mirror', feature?.kind === 'mirror' ? feature.mirror : undefined, field, value, 'applySetMirrorField')
 }
 
 // ─── Variable ───
@@ -613,5 +643,6 @@ export function applyAddVariable(doc: PartDoc, featureId: string, label?: string
 export function applySetVariableField(
   doc: PartDoc, featureId: string, field: keyof VariableFeatureDef, value: unknown,
 ): void {
-  applySetSubFeatureField(doc, featureId, 'variable', field, value, 'applySetVariableField')
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'variable', feature?.kind === 'variable' ? feature.variable : undefined, field, value, 'applySetVariableField')
 }

@@ -23,6 +23,7 @@ import { readBodyNames } from '../occ/bodyNames'
 type Dict = Record<string, unknown>
 
 export interface TransformResult {
+  [key: string]: unknown
   status: string
   body_id: string
   operation: string

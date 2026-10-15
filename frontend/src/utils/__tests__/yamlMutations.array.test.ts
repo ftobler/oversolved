@@ -4,6 +4,9 @@ import {
   applyAddArray,
   applySetArrayField,
 } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const array0 = (doc: PartDoc) => featureAt(doc, 0, 'array').array
 
 const baseDoc: PartDoc = { features: [] }
 
@@ -41,9 +44,9 @@ describe('Array mutations', () => {
       const doc = makeDoc()
       applyAddArray(doc, 'arr1')
       applySetArrayField(doc, 'arr1', 'mode', 'rectangular')
-      expect(doc.features![0].array!.mode).toBe('rectangular')
-      expect(doc.features![0].array!.count_y).toBe(2)
-      expect(doc.features![0].array!.pitch_y).toBe(20)
+      expect(array0(doc).mode).toBe('rectangular')
+      expect(array0(doc).count_y).toBe(2)
+      expect(array0(doc).pitch_y).toBe(20)
     })
 
     it('sets mode to linear and clears Y fields', () => {
@@ -51,8 +54,8 @@ describe('Array mutations', () => {
       applyAddArray(doc, 'arr1')
       applySetArrayField(doc, 'arr1', 'mode', 'rectangular')
       applySetArrayField(doc, 'arr1', 'mode', 'linear')
-      expect(doc.features![0].array!.mode).toBe('linear')
-      expect(doc.features![0].array!.count_y).toBeUndefined()
+      expect(array0(doc).mode).toBe('linear')
+      expect(array0(doc).count_y).toBeUndefined()
     })
 
     // A legacy array can carry a mode without the X spacing fields; switching it
@@ -63,7 +66,7 @@ describe('Array mutations', () => {
         features: [{ id: 'arr1', kind: 'array', array: { mode: 'linear', operation: 'add', include_source: true } }],
       }
       applySetArrayField(doc, 'arr1', 'mode', 'rectangular')
-      expect(doc.features![0].array).toMatchObject({
+      expect(array0(doc)).toMatchObject({
         mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20,
       })
     })

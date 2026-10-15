@@ -4,6 +4,9 @@ import {
   applyAddCircularArray,
   applySetCircularArrayField,
 } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const circular_array0 = (doc: PartDoc) => featureAt(doc, 0, 'circular_array').circular_array
 
 const baseDoc: PartDoc = { features: [] }
 
@@ -39,49 +42,49 @@ describe('Circular Array mutations', () => {
       const doc = makeDoc()
       applyAddCircularArray(doc, 'ca1')
       applySetCircularArrayField(doc, 'ca1', 'count', 8)
-      expect(doc.features![0].circular_array!.count).toBe(8)
+      expect(circular_array0(doc).count).toBe(8)
     })
 
     it('updates step_angle field to a value', () => {
       const doc = makeDoc()
       applyAddCircularArray(doc, 'ca1')
       applySetCircularArrayField(doc, 'ca1', 'step_angle', 45.0)
-      expect(doc.features![0].circular_array!.step_angle).toBe(45.0)
+      expect(circular_array0(doc).step_angle).toBe(45.0)
     })
 
     it('updates step_angle field to null for evenly spaced', () => {
       const doc = makeDoc()
       applyAddCircularArray(doc, 'ca1')
       applySetCircularArrayField(doc, 'ca1', 'step_angle', null)
-      expect(doc.features![0].circular_array!).not.toHaveProperty('step_angle')
+      expect(circular_array0(doc)).not.toHaveProperty('step_angle')
     })
 
     it('updates axis query field', () => {
       const doc = makeDoc()
       applyAddCircularArray(doc, 'ca1')
       applySetCircularArrayField(doc, 'ca1', 'axis', '@sk1/axisLine')
-      expect(doc.features![0].circular_array!.axis).toBe('@sk1/axisLine')
+      expect(circular_array0(doc).axis).toBe('@sk1/axisLine')
     })
 
     it('updates operation field', () => {
       const doc = makeDoc()
       applyAddCircularArray(doc, 'ca1')
       applySetCircularArrayField(doc, 'ca1', 'operation', 'new')
-      expect(doc.features![0].circular_array!.operation).toBe('new')
+      expect(circular_array0(doc).operation).toBe('new')
     })
 
     it('updates include_source field', () => {
       const doc = makeDoc()
       applyAddCircularArray(doc, 'ca1')
       applySetCircularArrayField(doc, 'ca1', 'include_source', false)
-      expect(doc.features![0].circular_array!.include_source).toBe(false)
+      expect(circular_array0(doc).include_source).toBe(false)
     })
 
     it('updates source_body field', () => {
       const doc = makeDoc()
       applyAddCircularArray(doc, 'ca1')
       applySetCircularArrayField(doc, 'ca1', 'source_body', 'extrude1')
-      expect(doc.features![0].circular_array!.source_body).toBe('extrude1')
+      expect(circular_array0(doc).source_body).toBe('extrude1')
     })
 
     it('warns when feature has no circular_array', () => {
@@ -90,7 +93,8 @@ describe('Circular Array mutations', () => {
       doc.features!.push({ id: 'other', kind: 'extrude', extrude: { sketch: [], distance: 10 } })
       applySetCircularArrayField(doc, 'other', 'count', 5)
       expect(warnSpy).toHaveBeenCalledWith('applySetCircularArrayField: feature other has no circular_array')
-      expect(doc.features![0].circular_array).toBeUndefined()
+      // The wrong-kind feature keeps its own payload and gains no circular_array.
+      expect(doc.features![0]).not.toHaveProperty('circular_array')
       warnSpy.mockRestore()
     })
   })

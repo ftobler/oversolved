@@ -64,13 +64,25 @@ function collectConsumed(
   known: ReadonlySet<string>,
   out: Set<string>,
 ): void {
-  const queries = [
-    ...refList(feature.extrude?.sketch),
-    ...refList(feature.revolve?.sketch),
-    ...refList(feature.sweep?.sketch),
-    ...refList(feature.sweep?.path),
-    ...refList(feature.hole?.sketch),
-  ]
+  // The payload reads stay tolerant of a missing def: feature records reach the
+  // UI straight out of stored YAML, and until the document loader validates
+  // them at the boundary a hand-edited kind without its payload must degrade to
+  // "consumes nothing" rather than take the visibility scan down.
+  let queries: string[] = []
+  switch (feature.kind) {
+    case 'extrude':
+      queries = refList(feature.extrude?.sketch)
+      break
+    case 'revolve':
+      queries = refList(feature.revolve?.sketch)
+      break
+    case 'sweep':
+      queries = [...refList(feature.sweep?.sketch), ...refList(feature.sweep?.path)]
+      break
+    case 'hole':
+      queries = refList(feature.hole?.sketch)
+      break
+  }
   for (const q of queries) {
     for (const id of sketchIdsInQuery(q, byId, known)) out.add(id)
   }

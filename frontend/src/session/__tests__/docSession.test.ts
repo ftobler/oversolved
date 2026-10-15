@@ -17,11 +17,12 @@ import { hashSavedText, type DirtyFacts } from '@/session/dirty'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import { createFakeSolveScheduler, type FakeSolveScheduler } from './fakeSolveScheduler'
+import { sketchAt } from '@/testing/featureAccess'
 
 const baseDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
-  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first', extrude: { sketch: [], distance: 1 } }],
 })
 
 const pointSketchDoc = (): PartDoc => makeDoc(makeSketch('sk1', {
@@ -35,8 +36,8 @@ const rollbackDoc = (): PartDoc => ({
   rollback: 2,
   features: [
     { id: 'f1', kind: 'sketch' },
-    { id: 'f2', kind: 'extrude' },
-    { id: 'f3', kind: 'fillet' },
+    { id: 'f2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+    { id: 'f3', kind: 'fillet', fillet: { edges: [], radius: 1 } },
   ],
 })
 
@@ -120,7 +121,7 @@ describe('execute', () => {
       type: 'add_constraint', featureId: 'sk1', kind: 'horizontal', targets: ['entity:sk1:l1'],
     })
 
-    const minted = session.getDoc()?.features?.[0]?.constraints?.[0]?.id
+    const minted = sketchAt(session.getDoc()!).constraints?.[0]?.id
     expect(minted).toBeDefined()
     expect(result).toEqual({ ok: true, createdIds: [minted] })
   })
@@ -132,7 +133,7 @@ describe('execute', () => {
       { type: 'add_constraint', featureId: 'sk1', kind: 'length', targets: ['entity:sk1:pt1'], value: 10 },
     ])
 
-    const minted = session.getDoc()?.features?.[0]?.constraints?.[0]?.id
+    const minted = sketchAt(session.getDoc()!).constraints?.[0]?.id
     expect(result).toEqual({ ok: true, createdIds: ['pt1', minted] })
   })
 

@@ -1,4 +1,4 @@
-import type { Feature, BodyResult, PartStyleEntry } from '@/types/cad'
+import type { Feature, SketchFeature, BodyResult, PartStyleEntry } from '@/types/cad'
 import { getBodiesToRender } from '@/utils/bodyRender'
 import type { BodyRenderItem } from '@/utils/bodyRender'
 
@@ -38,12 +38,12 @@ export function getSketchesToRender(
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,
   visibleFeatures: Set<string> | undefined,
-): Feature[] {
+): SketchFeature[] {
   if (!features || features.length === 0) return []
   const limit = rollbackPosition ?? features.length
   return features
     .slice(0, limit)
-    .filter(f => f.kind === 'sketch' && (!visibleFeatures || visibleFeatures.has(f.id)))
+    .filter((f): f is SketchFeature => f.kind === 'sketch' && (!visibleFeatures || visibleFeatures.has(f.id)))
 }
 
 /**

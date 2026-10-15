@@ -15,8 +15,8 @@ import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURES: PartFeature[] = [
-  { id: 'ex1', kind: 'extrude' },
-  { id: 'arr1', kind: 'array' },
+  { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+  { id: 'arr1', kind: 'array', array: {} },
 ]
 
 function makeFeature(over: Record<string, unknown> = {}): PartFeature {

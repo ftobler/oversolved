@@ -10,11 +10,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render } from '@testing-library/react'
 import { PlaneEditor } from '@/components/editors/PlaneEditor'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import type { PartFeature, PlaneDef, Mutation } from '@/types/cad'
+import type { PartFeature, PlaneFeature, PlaneDef, Mutation } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
 const sketch: PartFeature = { id: 'sk1', kind: 'sketch', label: 'sketch 1' }
-const plane: PartFeature = { id: 'pl1', kind: 'plane', label: 'plane 1' }
+const plane: PlaneFeature = { id: 'pl1', kind: 'plane', label: 'plane 1' }
 
 beforeEach(() => {
   useEditorState.setState({

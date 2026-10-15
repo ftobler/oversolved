@@ -14,14 +14,14 @@ import { createFakeSolveScheduler, type FakeSolveScheduler } from './fakeSolveSc
 const extrudeDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
-  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first', extrude: { sketch: [], distance: 1 } }],
 })
 
 const colorDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
   part_style: { b1: { color: '#ff0000' } },
-  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first' }],
+  features: [{ id: 'extrude-1', kind: 'extrude', label: 'first', extrude: { sketch: [], distance: 1 } }],
 })
 
 const bareSketchDoc = (): PartDoc => makeDoc(makeSketch('sk1'))
