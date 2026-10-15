@@ -15,24 +15,29 @@ replay, seeded ids, headless session) and `frontend/scripts/driveCli.ts` (CLI).
 
 ## Gating and installation
 
-`Part.tsx` installs the bridge and attaches the journal sink only when
-`DRIVE_ENABLED` is true (`frontend/src/drive/gate.ts`):
+`Part.tsx` installs the bridge only when `DRIVE_ENABLED` is true
+(`frontend/src/drive/gate.ts`):
 
 ```ts
 export const DRIVE_ENABLED = import.meta.env.DEV || import.meta.env.MODE === 'test'
 ```
 
-The expression is evaluated once at module scope and every guarded site
+The expression is evaluated once at module scope and the guarded site
 references the constant directly. In a production build Vite folds
 `import.meta.env.DEV` to `false` and `import.meta.env.MODE` to `"production"`,
 so the initializer becomes `false || "production" === "test"`, which the
-minifier folds to `false`; the guarded branches (the installer, the journal
-sink, the per-document reset) then drop with the bridge and journal modules.
-Verified on `frontend/dist`: neither `__oversolved` nor `oversolved-repro`
-appears in the bundle. Routing the check through a function defeats the fold (a
-call is not a constant), which is why the guarded sites read the constant. The
-install returns an uninstall that clears the global only while it still holds
-that same surface, so a remount cannot delete a newer bridge.
+minifier folds to `false`, dropping the installer and `driveSurface.ts`.
+Verified on `frontend/dist`: `__oversolved` does not appear in the bundle.
+Routing the check through a function defeats the fold (a call is not a
+constant), which is why the guarded site reads the constant. The install
+returns an uninstall that clears the global only while it still holds that
+same surface, so a remount cannot delete a newer bridge.
+
+The session journal sink is deliberately not gated: `Part.tsx` attaches it in
+every build, because the recovery autosave borrows the journal's replayable
+tail for the recovery journal and the crash reports. A production bundle
+therefore carries `frontend/src/drive/journal.ts` (and the `oversolved-repro`
+payload kind) while the bridge itself stays absent.
 
 The bridge is installed by the part editor (the assembly editor has none in
 v1). The journal is not wired to the registry: recording sits at the
@@ -140,8 +145,8 @@ A script is an array (or `{ steps: [...] }`) of steps:
 
 The journal is a ring (capacity 500) of entries recorded at the `DocSession`
 mutation seam (`frontend/src/drive/journal.ts`, attached through
-`DocSessionDeps.journal`; `usePartDoc` wires it from the part page in dev/test
-builds only):
+`DocSessionDeps.journal`; `usePartDoc` wires it from the part page in every
+build, because the recovery autosave reads the tail):
 
 ```ts
 { kind: 'mutation' | 'batch', payload: Mutation | Mutation[], label?: string,
@@ -233,10 +238,25 @@ inside it:
   over the `workingRev`/`savedRev` pair in `workspace/store.ts`. It asks
   whether to keep (adopt) or discard the working copy and writes nothing until
   the user answers. It answers "adopt or discard the working copy".
-- The journal owns mutation-level reproduction. It answers "here is the exact
-  mutation sequence that produced this document".
+- The command journal owns mutation-level reproduction. It answers "here is
+  the exact mutation sequence that produced this document".
+- The recovery journal (`frontend/src/recovery/journal.ts` plus
+  `recovery/autosave.ts`) is the autosave shadow copy: one row per document
+  uuid holding the live doc and the command journal's repro tail, written
+  debounced after each session change and cleared by an explicit save. The
+  open-time offer (`recovery/offer.ts`) compares its hash against the stored
+  bytes, and an accepted restore is adopted in memory only, so a recovery path
+  never writes the working copy.
+- Local crash reports (`frontend/src/recovery/crashReports.ts`) record stack,
+  build identity, the live doc snapshot and the same repro tail; the
+  `/docs/crash-reports` page lists them and exports one as a zip, so a bug
+  report carries a replay.
 
-The two share no state and never feed each other.
+The workspace prompt shares no state with any of these. The recovery journal
+and the crash reports both read the command journal's repro tail, and the
+replay helper (`recovery/__tests__/replayReport.ts`) rebuilds a report through
+`drive/replay.ts`, so a crash report and a repro download reproduce the same
+way.
 
 ## Headless CLI
 

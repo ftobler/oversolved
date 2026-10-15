@@ -102,8 +102,10 @@ export interface DocSessionDeps {
   // means the inspection simply omits the field.
   getValidation?: () => unknown
   getBodies?: () => unknown
-  // The journal sink (drive surface, headless CLI). Absent in production and
-  // in the unit suites: no sink, no bookkeeping.
+  // The journal sink (the part editor, the headless CLI). Absent in the unit
+  // suites and the assembly editor: no sink, no bookkeeping. The part editor
+  // supplies one in every build, because the recovery autosave borrows its
+  // repro tail.
   journal?: SessionJournalSink
 }
 

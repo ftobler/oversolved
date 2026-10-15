@@ -262,9 +262,9 @@ export function createCliJournal(): CommandJournal {
 
 let journal: CommandJournal | null = null
 
-/** The module-level journal the part editor records into. Lazy so merely
- *  importing this module (a gated reference the production build folds away)
- *  never constructs the ring. */
+/** The module-level journal the part editor records into in every build (the
+ *  recovery autosave borrows its repro tail), so merely importing this module
+ *  stays cheap: the ring is constructed lazily on the first getter call. */
 export function getCommandJournal(): CommandJournal {
   if (!journal) journal = new CommandJournal()
   return journal
