@@ -164,15 +164,15 @@ async function trimCrashReports(): Promise<void> {
 /**
  * One report as a zip: the record JSON, the document snapshot as YAML for
  * human reading, and the repro JSON for replaying. A report with no document
- * open when it crashed carries just the record. Bytes rather than a Blob so
- * the builder is testable headlessly; the download wraps them.
+ * open when it crashed carries just the record. Raw bytes rather than a Blob
+ * so the builder is testable headlessly; the download wraps them.
  */
-export async function buildCrashReportZip(report: CrashReportRecord): Promise<Uint8Array> {
+export async function buildCrashReportZip(report: CrashReportRecord): Promise<ArrayBuffer> {
   const zip = new JSZip()
   zip.file('crash-report.json', JSON.stringify(report, null, 2) + '\n')
   if (report.doc) zip.file('document.yaml', stringifyYaml(report.doc))
   if (report.repro) zip.file('repro.json', JSON.stringify(report.repro, null, 1) + '\n')
-  return zip.generateAsync({ type: 'uint8array' })
+  return zip.generateAsync({ type: 'arraybuffer' })
 }
 
 // The download name: when it happened, then the source, so a maintainer can

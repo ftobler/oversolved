@@ -10,6 +10,7 @@ import '@/pages/Docs.css'
 const DOCS_PAGES = [
   { to: '/docs/registry', label: 'Registry' },
   { to: '/docs/licenses', label: 'Licenses' },
+  { to: '/docs/crash-reports', label: 'Crash reports' },
 ] as const
 
 export default function Docs() {
