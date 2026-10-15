@@ -4,6 +4,7 @@ import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
 import { getPreviewStore } from '@/stores/previewStore'
 import { useUnsavedChangesStore, hashSavedText } from '@/stores/unsavedChangesStore'
+import { clearRecoveryJournal } from '@/recovery/journal'
 
 // The persistence seam both editors share. saveDoc, renameDoc and cloneDoc plus
 // the single-flight save chain were duplicated verbatim between
@@ -70,7 +71,18 @@ export function useDocPersistence<D>({
         // the dirty flag and the save count are gated on identity: an edit that
         // landed during the save window postdates these bytes, so its flag must
         // survive, or a reload would silently drop those edits.
-        useUnsavedChangesStore.getState().markSaved(hashSavedText(text), docRef.current === savedRef)
+        const clean = docRef.current === savedRef
+        useUnsavedChangesStore.getState().markSaved(hashSavedText(text), clean)
+        // The shadow copy has done its job: the stored bytes now match it, so
+        // it goes. Deliberately not cleared when an edit landed during the
+        // save: that newer shadow copy is ahead of the stored bytes and must
+        // survive to be offered. A failed clear is not fatal either, the open
+        // path also compares hashes, so a surviving twin is never offered.
+        if (clean) {
+          void clearRecoveryJournal(uuid).catch(e => {
+            console.error('[recovery] failed to clear the journal after save:', e)
+          })
+        }
         return true
       } catch (e) {
         setError(errorMessage(e, 'Failed to save document'))
