@@ -28,14 +28,19 @@ interface Ratchet {
   baseline: number
 }
 
+// The baselines track the whole tree, so every merge that brings new code
+// re-measures them; the counts above are from the tree the union landed on
+// (dev after doc-validation, the fuzz and the CLI work). A merge that adds a
+// token is allowed to raise a baseline, but a change to union-affected code is
+// not: that growth is exactly what this test is for.
 const RATCHETS: Ratchet[] = [
   {
     token: 'as unknown as',
-    baseline: 43,
+    baseline: 44,
   },
   {
     token: 'Record<string, unknown>',
-    baseline: 312,
+    baseline: 328,
   },
 ]
 
