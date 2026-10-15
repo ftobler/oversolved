@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { applyGeometryToFeature, applyRemoveDanglingContent, hasDanglingContentInDoc } from '@/utils/yamlMutations/solveResult'
 import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
 import type { PartDoc, Mutation } from '@/types/cad'
+import { featureById } from '@/testing/featureAccess'
+
+const sk1 = (doc: PartDoc) => featureById(doc, 'sk1', 'sketch')
+const ex1 = (doc: PartDoc) => featureById(doc, 'ex1', 'extrude')
 
 function makeDoc(): PartDoc {
   return {
@@ -23,6 +27,7 @@ function makeDoc(): PartDoc {
       {
         id: 'ex1',
         kind: 'extrude',
+        extrude: { sketch: [], distance: 1 },
       },
     ],
   }
@@ -32,7 +37,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
   it('writes geometry to feature.initial', () => {
     const doc = makeDoc()
     applyGeometryToFeature(doc, 'sk1', { line1_start: [0, 0], line1_end: [1, 1] })
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     expect(feat.initial).toEqual({ line1_start: [0, 0], line1_end: [1, 1] })
   })
 
@@ -42,14 +47,14 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     // re-deleted them. The solve path must never touch authored content.
     const doc = makeDoc()
     applyGeometryToFeature(doc, 'sk1', {})
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     expect(feat.constraints).toHaveLength(2)
   })
 
   it('keeps projected entities in the doc even when they would error', () => {
     const doc = makeDoc()
     applyGeometryToFeature(doc, 'sk1', {})
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     expect(feat.entities!.map(e => e.id)).toEqual(['line1', 'proj1'])
   })
 
@@ -58,15 +63,14 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     // entity kind; the resolved kind only shapes the rendered solve result.
     const doc = makeDoc()
     applyGeometryToFeature(doc, 'sk1', {})
-    const proj = doc.features!.find(f => f.id === 'sk1')!.entities!.find(e => e.id === 'proj1')!
+    const proj = sk1(doc).entities!.find(e => e.id === 'proj1')!
     expect(proj.kind).toBe('ellipse')
   })
 
   it('leaves unrelated features untouched', () => {
     const doc = makeDoc()
     applyGeometryToFeature(doc, 'sk1', { x: [1] })
-    const extrude = doc.features!.find(f => f.id === 'ex1')!
-    expect(extrude.initial).toBeUndefined()
+    expect(ex1(doc)).not.toHaveProperty('initial')
   })
 
   it('no-ops gracefully when featureId is not found', () => {
@@ -98,7 +102,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
       c1: [0, 0, Math.fround(Math.PI)],
       p1: [Math.fround(1 / 3), 2],
     })
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     expect(feat.initial).toEqual({ c1: [0, 0, 3.141593], p1: [0.333333, 2] })
   })
 
@@ -111,7 +115,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     const pristine = structuredClone(geometry)
     applyGeometryToFeature(doc, 'sk1', geometry)
     expect(geometry).toEqual(pristine)
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     // New arrays, not aliases of the solve result's.
     expect(feat.initial!.c1).not.toBe(geometry.c1)
     expect(feat.initial!.p1).not.toBe(geometry.p1)
@@ -129,7 +133,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
 
   it.each(F32_BAND)('keeps the authored spelling of %s when the solve re-derives it as f32', (v) => {
     const doc = makeDoc()
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     feat.initial = { line1: [0, 0, v, 0] }
     const before = feat.initial
     applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(v), 0] })
@@ -145,7 +149,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     // more digits than the mutators write. Agreeing with the solve inside the
     // envelope, the authored spelling is the one that stays.
     const doc = makeDoc()
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     feat.initial = { line1: [0, 0, Math.PI, 0] }
     applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(Math.PI), 0] })
     expect(feat.initial!.line1[2]).toBe(Math.PI)
@@ -153,7 +157,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
 
   it('installs the solved geometry when a component moved beyond the envelope', () => {
     const doc = makeDoc()
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25.7, 0] }
     applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(30), 0] })
     expect(feat.initial!.line1).toEqual([0, 0, 30, 0])
@@ -163,7 +167,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     // The keep is per component AND per entity: one entity outside the envelope
     // installs the whole map, so a half-matching solve is never half-installed.
     const doc = makeDoc()
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25, 0], proj1: [1, 1] }
     applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, 25, 0], proj1: [5, 1] })
     expect(feat.initial).toEqual({ line1: [0, 0, 25, 0], proj1: [5, 1] })
@@ -173,7 +177,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     // A projected dimension or an added entity changes the map's shape, which
     // no amount of matching values can stand in for.
     const doc = makeDoc()
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25.7, 0] }
     applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0], proj1: [1, 1] })
     expect(Object.keys(feat.initial!)).toEqual(['line1', 'proj1'])
@@ -181,7 +185,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
 
   it('installs when the solve dropped an entity the doc still carries', () => {
     const doc = makeDoc()
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     feat.initial = { line1: [0, 0, 25.7, 0], proj1: [1, 1] }
     applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0] })
     expect(Object.keys(feat.initial!)).toEqual(['line1'])
@@ -191,7 +195,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
     // A point lowering to a line (2 params to 4) is a different entity, not a
     // moved one, so a length mismatch can never read as "within tolerance".
     const doc = makeDoc()
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     feat.initial = { line1: [0, 0] }
     applyGeometryToFeature(doc, 'sk1', { line1: [0, 0, Math.fround(25.7), 0] })
     expect(feat.initial!.line1).toEqual([0, 0, 25.700001, 0])
@@ -199,7 +203,7 @@ describe('applyGeometryToFeature (pure solve path)', () => {
 
   it('keeps the existing array when both sides are empty', () => {
     const doc = makeDoc()
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     feat.initial = {}
     const before = feat.initial
     applyGeometryToFeature(doc, 'sk1', {})
@@ -226,7 +230,7 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
       }],
     }
     applyRemoveDanglingContent(doc, { sk1: { entities: ['proj1'], constraints: [] } })
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     expect(feat.entities!.map(e => e.id)).toEqual(['line1'])
     const ids = feat.constraints!.map(c => c.id)
     expect(ids).toContain('c_keep')
@@ -237,14 +241,14 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
   it('keeps an entity without a source even when listed for removal', () => {
     const doc = makeDoc()
     applyRemoveDanglingContent(doc, { sk1: { entities: ['line1'], constraints: [] } })
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     expect(feat.entities!.map(e => e.id)).toContain('line1')
   })
 
   it('removes superfluous constraints from the doc', () => {
     const doc = makeDoc()
     applyRemoveDanglingContent(doc, { sk1: { entities: [], constraints: ['c1'] } })
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     expect(feat.constraints!.map(c => c.id)).toEqual(['c2'])
   })
 
@@ -267,7 +271,7 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
       }],
     }
     applyRemoveDanglingContent(doc, { sk1: { entities: ['proj1'], constraints: [] } })
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     const ids = feat.constraints!.map(c => c.id)
     expect(ids).toContain('c_keep')
     expect(ids).not.toContain('c_drop')
@@ -276,9 +280,8 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
   it('leaves unrelated features untouched', () => {
     const doc = makeDoc()
     applyRemoveDanglingContent(doc, { sk1: { entities: ['proj1'], constraints: ['c1'] } })
-    const extrude = doc.features!.find(f => f.id === 'ex1')!
     // Still present, and its geometry was not touched by the sketch cleanup.
-    expect(extrude.initial).toBeUndefined()
+    expect(ex1(doc)).not.toHaveProperty('initial')
   })
 
   it('no-ops gracefully when the feature is not found', () => {
@@ -296,7 +299,7 @@ describe('applyRemoveDanglingContent (explicit cleanup command)', () => {
     const before = structuredClone(doc)
     applyRemoveDanglingContent(doc, { ex1: { entities: ['x'], constraints: ['y'] } })
     expect(doc).toEqual(before)
-    expect(doc.features!.find(f => f.id === 'ex1')!.initial).toBeUndefined()
+    expect(ex1(doc)).not.toHaveProperty('initial')
   })
 
   it('no-ops when the doc has no features array', () => {
@@ -328,7 +331,7 @@ describe('cleanup ref matching (exact-or-vertex-suffix, not textual prefix)', ()
       }],
     }
     applyRemoveDanglingContent(doc, { sk1: { entities: ['l1'], constraints: [] } })
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     expect(feat.entities!.map(e => e.id)).toEqual(['l10'])
     expect(feat.constraints!.map(c => c.id)).toEqual(['c_keep'])
   })
@@ -347,7 +350,7 @@ describe('cleanup ref matching (exact-or-vertex-suffix, not textual prefix)', ()
       }],
     }
     applyRemoveDanglingContent(doc, { sk1: { entities: ['proj1'], constraints: [] } })
-    const feat = doc.features!.find(f => f.id === 'sk1')!
+    const feat = sk1(doc)
     expect(feat.constraints).toHaveLength(0)
   })
 })
@@ -365,7 +368,7 @@ describe('hasDanglingContentInDoc (cleanup plan still targets the doc)', () => {
 
   it('is false when the targeted content is already gone from the doc', () => {
     const doc = makeDoc()
-    const feature = doc.features!.find(f => f.id === 'sk1')!
+    const feature = sk1(doc)
     feature.entities = feature.entities!.filter(e => e.id !== 'proj1')
     feature.constraints = feature.constraints!.filter(c => c.id !== 'c1')
     expect(hasDanglingContentInDoc(doc, { sk1: { entities: ['proj1'], constraints: ['c1'] } })).toBe(false)

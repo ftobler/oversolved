@@ -18,7 +18,7 @@
  * imported documents that still carry the raw sugar.
  */
 
-import type { PartFeature, Sketch, Entity } from '@/types/cad'
+import type { Sketch, SketchFeature, Entity } from '@/types/cad'
 import type { Repository } from '../query'
 import type { Body } from '../types3d'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
@@ -305,7 +305,7 @@ export function solveSketch(
   // sketch plane's local (0,0) -- which differ for a sketch on an offset/
   // projected face ("line constrained to origin" bug).
   const originLocal = projectWorldToFrame([0, 0, 0], plane as Frame3D)
-  const pf = loweredFeature as unknown as PartFeature
+  const pf = loweredFeature as unknown as SketchFeature
   const extract = partDocToSketches([pf], originLocal, pinnedIds)
   if (extract.skipped.length) {
     throw new Error(`sketch '${featureId}': ${extract.skipped[0].reason}`)
@@ -436,7 +436,7 @@ export interface DragContext {
  * static sketch or a simple translation preview).
  */
 export function prepareDragContext(
-  feature: PartFeature,
+  feature: SketchFeature,
   dragEntityId: string,
   dragVertexKey: string | null,
   originLocal: [number, number] = [0, 0],

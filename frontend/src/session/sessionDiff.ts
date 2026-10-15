@@ -65,7 +65,12 @@ function stripSolveWritten(doc: PartDoc): Record<string, unknown> {
   }
 }
 
-const stripSolvedGeometry = ({ initial: _initial, ...feature }: PartFeature): Record<string, unknown> => feature
+const stripSolvedGeometry = (feature: PartFeature): Record<string, unknown> => {
+  // Only a sketch carries solve-written `initial`; other kinds pass through.
+  if (feature.kind !== 'sketch') return feature
+  const { initial: _initial, ...rest } = feature
+  return rest
+}
 
 // The commit label for a preview apply. The color popover is the only preview
 // producer and it edits per-body material fields, so the diff is against the

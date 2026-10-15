@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { applyAddDeleteBody, applyAddDeleteBodyRef, applyRemoveDeleteBodyRef } from '@/utils/yamlMutations'
 import type { PartDoc } from '@/types/cad'
+import { featureAt } from '@/testing/featureAccess'
+
+const delete_body0 = (doc: PartDoc) => featureAt(doc, 0, 'delete_body').delete_body
 
 function emptyDoc(): PartDoc { return { features: [] } }
 
@@ -18,13 +21,13 @@ describe('applyAddDeleteBody', () => {
     applyAddDeleteBody(doc, 'db1', ['@body_ex1', '@body_ex2'])
     expect(doc.features).toHaveLength(1)
     expect(doc.features![0].kind).toBe('delete_body')
-    expect(doc.features![0].delete_body?.bodies).toEqual(['@body_ex1', '@body_ex2'])
+    expect(delete_body0(doc)?.bodies).toEqual(['@body_ex1', '@body_ex2'])
   })
 
   it('defaults to an empty body list when none given', () => {
     const doc = emptyDoc()
     applyAddDeleteBody(doc, 'db1')
-    expect(doc.features![0].delete_body?.bodies).toEqual([])
+    expect(delete_body0(doc)?.bodies).toEqual([])
   })
 
   it('copies the given list so the caller cannot alias the doc', () => {
@@ -32,7 +35,7 @@ describe('applyAddDeleteBody', () => {
     const bodies = ['@body_ex1']
     applyAddDeleteBody(doc, 'db1', bodies)
     bodies.push('@body_ex2')
-    expect(doc.features![0].delete_body?.bodies).toEqual(['@body_ex1'])
+    expect(delete_body0(doc)?.bodies).toEqual(['@body_ex1'])
   })
 
   it('uses default label', () => {
@@ -48,14 +51,14 @@ describe('applyAddDeleteBodyRef', () => {
     applyAddDeleteBody(doc, 'db1')
     applyAddDeleteBodyRef(doc, 'db1', '@body_ex1')
     applyAddDeleteBodyRef(doc, 'db1', '@body_ex2')
-    expect(doc.features![0].delete_body?.bodies).toEqual(['@body_ex1', '@body_ex2'])
+    expect(delete_body0(doc)?.bodies).toEqual(['@body_ex1', '@body_ex2'])
   })
 
   it('toggles an already-picked body back out', () => {
     const doc = emptyDoc()
     applyAddDeleteBody(doc, 'db1', ['@body_ex1', '@body_ex2'])
     applyAddDeleteBodyRef(doc, 'db1', '@body_ex1')
-    expect(doc.features![0].delete_body?.bodies).toEqual(['@body_ex2'])
+    expect(delete_body0(doc)?.bodies).toEqual(['@body_ex2'])
   })
 
   it('ignores unknown featureId', () => {
@@ -72,7 +75,7 @@ describe('applyAddDeleteBodyRef', () => {
   it('seeds the list from the legacy pick instead of dropping it', () => {
     const doc = legacyBodyDoc()
     applyAddDeleteBodyRef(doc, 'db1', '@b2')
-    const sub = doc.features![0].delete_body!
+    const sub = delete_body0(doc)
     expect(sub.bodies).toEqual(['@b1', '@b2'])
     expect('body' in sub).toBe(false)
   })
@@ -83,7 +86,7 @@ describe('applyRemoveDeleteBodyRef', () => {
     const doc = emptyDoc()
     applyAddDeleteBody(doc, 'db1', ['@body_ex1', '@body_ex2', '@body_ex3'])
     applyRemoveDeleteBodyRef(doc, 'db1', 1)
-    expect(doc.features![0].delete_body?.bodies).toEqual(['@body_ex1', '@body_ex3'])
+    expect(delete_body0(doc)?.bodies).toEqual(['@body_ex1', '@body_ex3'])
   })
 
   it('ignores unknown featureId', () => {

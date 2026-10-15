@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { applyAddVariable, applySetVariableField, applyRenameFeature } from '@/utils/yamlMutations'
 import type { PartDoc } from '@/types/cad'
+import { featureAt } from '@/testing/featureAccess'
 
 function emptyDoc(): PartDoc {
   return { features: [] }
@@ -49,20 +50,20 @@ describe('applySetVariableField', () => {
     const doc = emptyDoc()
     applyAddVariable(doc, 'v1', 'width')
     applySetVariableField(doc, 'v1', 'expression', '100 + margin')
-    expect(doc.features?.[0].variable?.expression).toBe('100 + margin')
+    expect(featureAt(doc, 0, 'variable').variable.expression).toBe('100 + margin')
   })
 
   it('sets the unit', () => {
     const doc = emptyDoc()
     applyAddVariable(doc, 'v1', 'width')
     applySetVariableField(doc, 'v1', 'unit', 'mm')
-    expect(doc.features?.[0].variable?.unit).toBe('mm')
+    expect(featureAt(doc, 0, 'variable').variable.unit).toBe('mm')
   })
 
   it('no-ops on a feature without a variable sub-dict', () => {
-    const doc: PartDoc = { features: [{ id: 'x', kind: 'extrude' }] }
+    const doc: PartDoc = { features: [{ id: 'x', kind: 'extrude', extrude: { sketch: [], distance: 1 } }] }
     applySetVariableField(doc, 'x', 'expression', '5')
-    expect(doc.features?.[0]).toEqual({ id: 'x', kind: 'extrude' })
+    expect(doc.features?.[0]).toEqual({ id: 'x', kind: 'extrude', extrude: { sketch: [], distance: 1 } })
   })
 })
 

@@ -42,11 +42,10 @@ export function migrateLegacyBodyPicks(doc: PartDoc): number {
   let rewritten = 0
   for (const feature of doc.features ?? []) {
     if (feature.kind !== 'transform' && feature.kind !== 'delete_body') continue
-    const sub = (feature.transform ?? feature.delete_body) as unknown as {
-      bodies?: unknown
-      body?: string
-    } | undefined
-    if (!sub) continue
+    // The pre-migration shape is a lie about the typed def (that is the whole
+    // point of this pass), so the fields are read through a widened view.
+    const sub: { bodies?: unknown; body?: string } =
+      feature.kind === 'transform' ? feature.transform : feature.delete_body
     if (!Array.isArray(sub.bodies) && typeof sub.body === 'string') {
       sub.bodies = sub.body ? [sub.body] : []
       rewritten += 1
@@ -67,7 +66,7 @@ export function migrateLegacyBodyPicks(doc: PartDoc): number {
 export function dropDeadAxisConstraints(doc: PartDoc): number {
   let removed = 0
   for (const feature of doc.features ?? []) {
-    if (!feature.constraints) continue
+    if (feature.kind !== 'sketch' || !feature.constraints) continue
     const kindById = new Map((feature.entities ?? []).map(e => [e.id, e.kind]))
     const before = feature.constraints.length
     feature.constraints = feature.constraints.filter(c => {

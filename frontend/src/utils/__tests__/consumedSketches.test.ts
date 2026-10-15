@@ -54,6 +54,15 @@ describe('consumedSketchIds', () => {
     const features: PartFeature[] = [sk('sk1'), { id: 'f1', kind: 'fillet', fillet: { edges: [], radius: 1 } }]
     expect(consumedSketchIds(features[1], features)).toEqual([])
   })
+
+  it('tolerates a stored record that names a kind without its payload', () => {
+    // The loader validates a payload when present but does not require one, and
+    // this scan runs over stored documents; a malformed record must consume
+    // nothing rather than take every render of the feature tree down.
+    const broken = { id: 'ex1', kind: 'extrude' } as unknown as PartFeature
+    const features: PartFeature[] = [sk('sk1'), broken]
+    expect(allConsumedSketchIds(features)).toEqual(new Set())
+  })
 })
 
 describe('allConsumedSketchIds', () => {

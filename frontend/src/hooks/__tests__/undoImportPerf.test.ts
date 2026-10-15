@@ -19,8 +19,9 @@ import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { MemoryFileRegistry } from '@/stores/fileRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 
-import type { PartDoc, PartFeature, SketchData } from '@/types/cad'
+import type { PartDoc, SketchData } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
+import { featureAt } from '@/testing/featureAccess'
 
 const MB = 1024 * 1024
 
@@ -105,7 +106,7 @@ describe('cloneDocForUndo', () => {
     const doc = makeImportDoc()
     const clone = cloneDocForUndo(doc)
     const srcImp = doc.features![1]
-    const cloneImp = clone.features![1]
+    const cloneImp = featureAt(clone, 1, 'import_step')
     expect(cloneImp).not.toBe(srcImp)
     expect(clone.features![0]).not.toBe(doc.features![0])
     const srcSk = doc.features![2] as { initial: Record<string, number[]> }
@@ -113,13 +114,13 @@ describe('cloneDocForUndo', () => {
 
     cloneImp.label = 'mutated'
     cloneImp.file_id = 'other'
-    expect((doc.features![1] as PartFeature).label).toBe('a.step')
-    expect((doc.features![1] as PartFeature).file_id).toBe('file-1')
+    expect(featureAt(doc, 1, 'import_step').label).toBe('a.step')
+    expect(featureAt(doc, 1, 'import_step').file_id).toBe('file-1')
   })
 
   it('carries no bytes on the import feature', () => {
     const clone = cloneDocForUndo(makeImportDoc())
-    const imp = clone.features![1]
+    const imp = featureAt(clone, 1, 'import_step')
     expect(imp.file_id).toBe('file-1')
     expect('file_data' in imp).toBe(false)
   })
@@ -146,8 +147,8 @@ describe('cloneDocForUndo', () => {
       ],
     } as PartDoc
     const clone = cloneDocForUndo(doc)
-    expect(clone.features![0].file_id).toBe('file-1')
-    expect(clone.features![1].file_id).toBe('file-2')
+    expect(featureAt(clone, 0, 'import_step').file_id).toBe('file-1')
+    expect(featureAt(clone, 1, 'import_step').file_id).toBe('file-2')
     expect(clone).toEqual(doc)
   })
 })
@@ -158,7 +159,7 @@ describe('undo/redo round-trip keeps the import reference', () => {
     kind: 'part',
     features: [
       { id: 'imp1', kind: 'import_step', label: 'part.step', file_id: 'file-1' },
-      ...extraSketchIds.map(id => ({ id, kind: 'sketch', label: `sketch ${id}` })),
+      ...extraSketchIds.map(id => ({ id, kind: 'sketch' as const, label: `sketch ${id}` })),
     ],
   })
 
@@ -187,12 +188,12 @@ describe('undo/redo round-trip keeps the import reference', () => {
     session.undo()
 
     expect(cell.current).toEqual(docA)
-    expect(cell.current!.features![0].file_id).toBe('file-1')
+    expect(featureAt(cell.current!, 0, 'import_step').file_id).toBe('file-1')
     expect(cell.current!.features).toHaveLength(1)
 
     session.redo()
     expect(cell.current).toEqual(docB)
-    expect(cell.current!.features![0].file_id).toBe('file-1')
+    expect(featureAt(cell.current!, 0, 'import_step').file_id).toBe('file-1')
     expect(cell.current!.features).toHaveLength(2)
   })
 
@@ -206,11 +207,11 @@ describe('undo/redo round-trip keeps the import reference', () => {
 
     const restored = cell.current!
     restored.features![0].label = 'renamed'
-    expect(restored.features![0].file_id).toBe('file-1')
+    expect(featureAt(restored, 0, 'import_step').file_id).toBe('file-1')
 
     session.redo()
     expect(cell.current).toEqual(docB)
-    expect(cell.current!.features![0].file_id).toBe('file-1')
+    expect(featureAt(cell.current!, 0, 'import_step').file_id).toBe('file-1')
   })
 })
 
@@ -256,17 +257,17 @@ describe('re-import through the real funnel', () => {
     act(() => result.current.handleMutation({ type: 'add_import_step', featureId: 'imp2', fileId: 'file-b', label: 'b.step' }))
 
     expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['imp1', 'imp2'])
-    expect((docRef.current!.features![1] as PartFeature).file_id).toBe('file-b')
+    expect(featureAt(docRef.current!, 1, 'import_step').file_id).toBe('file-b')
 
     // Undo to the single-import doc: the old entry restores file-a.
     act(() => result.current.handleUndo())
     expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['imp1'])
-    expect((docRef.current!.features![0] as PartFeature).file_id).toBe('file-a')
+    expect(featureAt(docRef.current!, 0, 'import_step').file_id).toBe('file-a')
 
     // Redo restores the re-imported doc with the NEW file on the new feature.
     act(() => result.current.handleRedo())
     expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['imp1', 'imp2'])
-    expect((docRef.current!.features![0] as PartFeature).file_id).toBe('file-a')
-    expect((docRef.current!.features![1] as PartFeature).file_id).toBe('file-b')
+    expect(featureAt(docRef.current!, 0, 'import_step').file_id).toBe('file-a')
+    expect(featureAt(docRef.current!, 1, 'import_step').file_id).toBe('file-b')
   })
 })

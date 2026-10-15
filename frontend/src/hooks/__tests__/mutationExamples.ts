@@ -122,7 +122,7 @@ const treeDoc = (): PartDoc => makeDoc(
 )
 
 const deleteBodyDoc = (): PartDoc => makeDoc(
-  { id: 'ex1', kind: 'extrude', label: 'Ext' },
+  { id: 'ex1', kind: 'extrude', label: 'Ext', extrude: { sketch: [], distance: 1 } },
   { id: 'db1', kind: 'delete_body', label: 'Delete Body', delete_body: { bodies: ['@b1', '@b2'] } },
 )
 
@@ -501,14 +501,14 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
 
   // whole-feature delete: the doc carries a feature to remove
   delete_feature: {
-    makeDoc: () => makeDoc(makeSketch('sk1'), { id: 'ex1', kind: 'extrude' }),
+    makeDoc: () => makeDoc(makeSketch('sk1'), { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } }),
     mutation: { type: 'delete_feature', featureId: 'ex1' },
   },
 
   // rollback: the no-op applier rides the mirror, which writes the store's
   // pre-synced position into the doc (see MutationExample's header).
   set_rollback: {
-    makeDoc: () => makeDoc(makeSketch('sk1'), { id: 'ex1', kind: 'extrude' }, { id: 'ex2', kind: 'extrude' }),
+    makeDoc: () => makeDoc(makeSketch('sk1'), { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } }, { id: 'ex2', kind: 'extrude', extrude: { sketch: [], distance: 1 } }),
     mutation: { type: 'set_rollback', position: 2 },
   },
 

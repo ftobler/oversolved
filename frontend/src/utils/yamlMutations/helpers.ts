@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, PartConstraint, PartEntityDef, PartTarget } from '@/types/cad'
+import type { PartDoc, PartFeature, PartConstraint, PartEntityDef, PartTarget, SketchFeature } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { selectionToQuery, parseSelectionId, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
@@ -18,6 +18,15 @@ export const allFinite = (vs: readonly number[]) => vs.every(v => Number.isFinit
 
 export function findFeature(doc: PartDoc, featureId: string): PartFeature | undefined {
   return doc.features?.find(f => f.id === featureId)
+}
+
+/** Find a feature and require it to be a sketch. Sketch mutations address the
+ *  sketch's entity/constraint containers, which no other kind carries; a stale
+ *  id that names some other feature must bail like a missing one rather than
+ *  write sketch fields onto it. */
+export function findSketchFeature(doc: PartDoc, featureId: string): SketchFeature | undefined {
+  const feature = findFeature(doc, featureId)
+  return feature?.kind === 'sketch' ? feature : undefined
 }
 
 /** The three lazily-created containers of a sketch feature. A feature straight out
@@ -44,8 +53,8 @@ export function resolveSketch<K extends keyof SketchLists>(
   doc: PartDoc,
   featureId: string,
   ...lists: K[]
-): (PartFeature & Pick<SketchLists, K>) | undefined {
-  const feature = findFeature(doc, featureId)
+): (SketchFeature & Pick<SketchLists, K>) | undefined {
+  const feature = findSketchFeature(doc, featureId)
   if (!feature) return undefined
   for (const list of lists) {
     if (list === 'entities') {
@@ -62,7 +71,7 @@ export function resolveSketch<K extends keyof SketchLists>(
       throw new Error(`resolveSketch: unhandled container ${String(unhandled)}`)
     }
   }
-  return feature as PartFeature & Pick<SketchLists, K>
+  return feature as SketchFeature & Pick<SketchLists, K>
 }
 
 /** Convert a selection ID to a query string.

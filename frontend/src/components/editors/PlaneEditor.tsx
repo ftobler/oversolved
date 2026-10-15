@@ -1,4 +1,4 @@
-import type { PartFeature, PlaneDef, Mutation } from '@/types/cad'
+import type { PartFeature, PlaneFeature, PlaneDef, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -7,7 +7,7 @@ import { ExpressionInput } from './widgets/ExpressionInput'
 
 interface PlaneEditorProps {
   feature: PartFeature
-  featureDef?: PartFeature
+  featureDef?: PlaneFeature
   onMutation: (m: Mutation) => void
   features: PartFeature[]
   partLabels: Record<string, string>
@@ -16,7 +16,7 @@ interface PlaneEditorProps {
 export function PlaneEditor({
   feature, featureDef, onMutation, features, partLabels,
 }: PlaneEditorProps) {
-  const def = (featureDef?.definition as PlaneDef | undefined) ?? { mode: 'offset' }
+  const def: PlaneDef = featureDef?.definition ?? { mode: 'offset' }
   const mode = def.mode ?? 'offset'
   const fid = feature.id
   const activePickField = useSketchEditorStore(s => s.activePickField)

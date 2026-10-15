@@ -5,7 +5,7 @@ import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
 import { EXTRUDE_SCHEMA, FILLET_SCHEMA, VARIABLE_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import type { PartFeature, Mutation } from '@/types/cad'
+import type { ExtrudeFeature, PartFeature, Mutation } from '@/types/cad'
 import { useState } from 'react'
 import { initializeTools } from '@/tools'
 import { toolRegistry } from '@/registry/toolRegistry'
@@ -270,7 +270,7 @@ describe('FeatureEditor text field', () => {
 
 describe('FeatureEditor extrude profile pick survives canvas tool switch', () => {
   it('keeps the profile pick field active after the select tool, so a face click still adds a profile', () => {
-    const initialFeature: PartFeature = {
+    const initialFeature: ExtrudeFeature = {
       id: 'ex1', kind: 'extrude',
       extrude: { sketch: [], distance: 10, direction: 'normal' },
     }

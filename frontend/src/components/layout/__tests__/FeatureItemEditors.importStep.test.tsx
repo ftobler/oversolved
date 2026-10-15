@@ -9,7 +9,7 @@ import type { PartFeature } from '@/types/cad'
 import type { WorkspaceSession } from '@/workspace/session'
 
 function importFeature(fileId?: string): PartFeature {
-  return { id: 'IM1', kind: 'import_step', file_id: fileId }
+  return { id: 'IM1', kind: 'import_step', file_id: fileId ?? '' }
 }
 
 function renderRow(fileId?: string) {

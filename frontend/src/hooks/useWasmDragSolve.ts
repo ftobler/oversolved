@@ -23,7 +23,7 @@
  *    translation preview or the static sketch.
  */
 import { useRef, useEffect, useMemo, useState } from 'react'
-import type { Sketch, PartFeature } from '@/types/cad'
+import type { Sketch, SketchFeature } from '@/types/cad'
 import type { DragState } from '@/stores/sketchEditorStore'
 import {
   initSketchSolver,
@@ -38,7 +38,7 @@ import type { CircleDragMode } from '@/kernel/features/circleDragMode'
 interface UseWasmDragSolveInput {
   featureId: string
   // Full feature definition; the drag context is lowered from it.
-  featureDef?: PartFeature
+  featureDef?: SketchFeature
   // Active drag state; null means no drag in progress.
   drag: DragState | null
   // True when a drag is active on THIS feature.

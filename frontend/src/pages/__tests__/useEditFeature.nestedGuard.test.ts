@@ -22,7 +22,7 @@ describe('useEditFeature nested-session guard (unit)', () => {
   })
 
   it('re-entering the currently-open feature does not close and reopen it', () => {
-    const features: PartFeature[] = [{ id: 'f1', kind: 'extrude' }]
+    const features: PartFeature[] = [{ id: 'f1', kind: 'extrude', extrude: { sketch: [], distance: 1 } }]
     const commitEditSession = vi.fn()
     const { result } = renderHook(() => useEditFeature({
       features,

@@ -10,6 +10,9 @@ import {
   applyMoveVertex, applyResizeCircle, applySetConstraintValue, applySetConstraintPos,
   applyAddPointAtIntersection,
 } from '@/utils/yamlMutations/sketch'
+import { featureAt } from '@/testing/featureAccess'
+
+const extrude0 = (doc: PartDoc) => featureAt(doc, 0, 'extrude').extrude
 
 // A non-finite number that reaches a mutation is always broken math upstream
 // (an empty numeric input parsed, a drag frame divided by a zero extent, a
@@ -33,7 +36,7 @@ function sketchDoc(): PartDoc {
   }
 }
 
-const feat = (doc: PartDoc) => doc.features![0]
+const feat = (doc: PartDoc) => featureAt(doc, 0, 'sketch')
 
 describe('non-finite guards', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
@@ -118,7 +121,7 @@ describe('non-finite guards', () => {
     it('still authors a feature for a finite value', () => {
       const doc: PartDoc = { version: 1, kind: 'part', features: [] }
       applyAddExtrude(doc, 'ex1', 'Ext', '@sk1', 10)
-      expect(doc.features![0].extrude!.distance).toBe(10)
+      expect(extrude0(doc).distance).toBe(10)
     })
   })
 
@@ -272,14 +275,14 @@ describe('non-finite guards', () => {
     })
 
     it('applySetRollback ignores a non-finite position and leaves rollback unset', () => {
-      const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude' }] }
+      const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } }] }
       applySetRollback(doc, Infinity)
       expect(doc.rollback).toBeUndefined()
       expect(warnSpy).toHaveBeenCalled()
     })
 
     it('applySetRollback still parks at a finite position', () => {
-      const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude' }] }
+      const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } }] }
       applySetRollback(doc, 0)
       expect(doc.rollback).toBe(0)
     })
@@ -292,7 +295,7 @@ describe('non-finite guards', () => {
         features: [{ id: 'p1', kind: 'plane', definition: { mode: 'offset', offset: 5 } }],
       }
       applySetPlaneDefinitionField(doc, 'p1', 'offset', NaN)
-      expect(feat(doc).definition!.offset).toBe(5)
+      expect(featureAt(doc, 0, 'plane').definition!.offset).toBe(5)
       expect(warnSpy).toHaveBeenCalled()
     })
 
@@ -302,7 +305,7 @@ describe('non-finite guards', () => {
         features: [{ id: 'p1', kind: 'plane', definition: { mode: 'offset' } }],
       }
       applySetPlaneDefinitionField(doc, 'p1', 'offset', 12)
-      expect(feat(doc).definition!.offset).toBe(12)
+      expect(featureAt(doc, 0, 'plane').definition!.offset).toBe(12)
     })
 
     it('applyAddPointAtIntersection ignores a non-finite location and adds no entity', () => {

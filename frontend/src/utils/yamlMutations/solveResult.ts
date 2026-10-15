@@ -84,7 +84,7 @@ export function applyGeometryToFeature(
   geometry: Record<string, number[]>,
 ): void {
   const featureDef = (doc.features ?? []).find(f => f.id === featureId)
-  if (!featureDef) return
+  if (featureDef?.kind !== 'sketch') return
   const existing = featureDef.initial
   // Keep the arrays the doc already holds, by reference: they may be shared with
   // the pre-solve doc the caller compares this clone against, so they must not
@@ -106,7 +106,7 @@ export function applyRemoveDanglingContent(
 ): void {
   for (const [featureId, { entities, constraints }] of Object.entries(perFeature)) {
     const feature = (doc.features ?? []).find(f => f.id === featureId)
-    if (!feature) continue
+    if (feature?.kind !== 'sketch') continue
     const flagged = new Set(entities)
     const toRemove = new Set(
       (feature.entities ?? [])
@@ -135,7 +135,7 @@ export function hasDanglingContentInDoc(
 ): boolean {
   for (const [featureId, { entities, constraints }] of Object.entries(perFeature)) {
     const feature = (doc.features ?? []).find(f => f.id === featureId)
-    if (!feature) continue
+    if (feature?.kind !== 'sketch') continue
     if (entities.some(eid => (feature.entities ?? []).some(e => e.id === eid && e.source != null))) return true
     if (constraints.some(cid => (feature.constraints ?? []).some(c => c.id === cid))) return true
   }

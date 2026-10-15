@@ -104,6 +104,7 @@ export interface MatrixHarness {
 export function installTarget(spec: PartDoc, target: MatrixTarget): void {
   const entityKindMap: Record<string, string> = {}
   for (const feature of spec.features ?? []) {
+    if (feature.kind !== 'sketch') continue
     for (const entity of feature.entities ?? []) {
       entityKindMap[`entity:${feature.id}:${entity.id}`] = entity.kind
     }

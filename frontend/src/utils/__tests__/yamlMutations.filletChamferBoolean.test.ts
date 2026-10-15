@@ -8,6 +8,11 @@ import {
   applyAddBooleanTool,
   applyRemoveBooleanTool,
 } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const boolean0 = (doc: PartDoc) => featureAt(doc, 0, 'boolean').boolean
+const chamfer0 = (doc: PartDoc) => featureAt(doc, 0, 'chamfer').chamfer
+const fillet0 = (doc: PartDoc) => featureAt(doc, 0, 'fillet').fillet
 
 describe('applyAddFilletEdge toggle', () => {
   it('adds a new edge query', () => {
@@ -21,7 +26,7 @@ describe('applyAddFilletEdge toggle', () => {
       ],
     }
     applyAddFilletEdge(doc, 'fillet1', '?body_ex1:edge:1')
-    expect(doc.features![0].fillet!.edges).toEqual(['?body_ex1:edge:0', '?body_ex1:edge:1'])
+    expect(fillet0(doc).edges).toEqual(['?body_ex1:edge:0', '?body_ex1:edge:1'])
   })
 
   it('removes an existing edge query (toggle)', () => {
@@ -35,7 +40,7 @@ describe('applyAddFilletEdge toggle', () => {
       ],
     }
     applyAddFilletEdge(doc, 'fillet1', '?body_ex1:edge:0')
-    expect(doc.features![0].fillet!.edges).toEqual(['?body_ex1:edge:1'])
+    expect(fillet0(doc).edges).toEqual(['?body_ex1:edge:1'])
   })
 
   it('does nothing if fillet is undefined', () => {
@@ -61,7 +66,7 @@ describe('applyRemoveFilletEdge', () => {
       ],
     }
     applyRemoveFilletEdge(doc, 'fillet1', 1)
-    expect(doc.features![0].fillet!.edges).toEqual(['e0', 'e2'])
+    expect(fillet0(doc).edges).toEqual(['e0', 'e2'])
   })
 })
 
@@ -77,7 +82,7 @@ describe('applyAddChamferEdge toggle', () => {
       ],
     }
     applyAddChamferEdge(doc, 'chamfer1', '?body_ex1:edge:1')
-    expect(doc.features![0].chamfer!.edges).toEqual(['?body_ex1:edge:0', '?body_ex1:edge:1'])
+    expect(chamfer0(doc).edges).toEqual(['?body_ex1:edge:0', '?body_ex1:edge:1'])
   })
 
   it('removes an existing edge query (toggle)', () => {
@@ -91,7 +96,7 @@ describe('applyAddChamferEdge toggle', () => {
       ],
     }
     applyAddChamferEdge(doc, 'chamfer1', '?body_ex1:edge:0')
-    expect(doc.features![0].chamfer!.edges).toEqual(['?body_ex1:edge:1'])
+    expect(chamfer0(doc).edges).toEqual(['?body_ex1:edge:1'])
   })
 
   it('does nothing if chamfer is undefined', () => {
@@ -117,7 +122,7 @@ describe('applyRemoveChamferEdge', () => {
       ],
     }
     applyRemoveChamferEdge(doc, 'chamfer1', 1)
-    expect(doc.features![0].chamfer!.edges).toEqual(['e0', 'e2'])
+    expect(chamfer0(doc).edges).toEqual(['e0', 'e2'])
   })
 })
 
@@ -133,7 +138,7 @@ describe('applyAddBooleanTool toggle', () => {
       ],
     }
     applyAddBooleanTool(doc, 'bool1', '@body3')
-    expect(doc.features![0].boolean!.tools).toEqual(['@body2', '@body3'])
+    expect(boolean0(doc).tools).toEqual(['@body2', '@body3'])
   })
 
   it('removes an existing tool (toggle)', () => {
@@ -147,7 +152,7 @@ describe('applyAddBooleanTool toggle', () => {
       ],
     }
     applyAddBooleanTool(doc, 'bool1', '@body2')
-    expect(doc.features![0].boolean!.tools).toEqual(['@body3'])
+    expect(boolean0(doc).tools).toEqual(['@body3'])
   })
 
   it('does nothing if boolean is undefined', () => {
@@ -173,6 +178,6 @@ describe('applyRemoveBooleanTool', () => {
       ],
     }
     applyRemoveBooleanTool(doc, 'bool1', '@body2')
-    expect(doc.features![0].boolean!.tools).toEqual(['@body3'])
+    expect(boolean0(doc).tools).toEqual(['@body3'])
   })
 })

@@ -10,6 +10,7 @@ import { usePartDoc } from '@/hooks/usePartDoc'
 import { computeDragMutation } from '@/components/Geometry3D/dragLogic'
 import type { PartDoc, Mutation } from '@/types/cad'
 import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
+import { featureAt } from '@/testing/featureAccess'
 
 const docRef: { current: PartDoc | null } = { current: null }
 const reSolve = vi.fn()
@@ -111,7 +112,7 @@ describe('circle-rim drag commit accounting', () => {
     expect(m?.type).toBe('resize_circle')
     // The undo entry snapshots the pre-drag doc, which still carries radius 3.
     const preDoc = result.current.undoStack[0].doc
-    const preCirc = (preDoc.features as PartDoc['features'])![0].initial!.circ1!
+    const preCirc = featureAt(preDoc, 0, 'sketch').initial!.circ1!
     expect(preCirc[2]).toBe(3)
   })
 
@@ -124,7 +125,7 @@ describe('circle-rim drag commit accounting', () => {
     expect(result.current.undoStack).toHaveLength(0)
     // The doc is untouched (no mutation reached it).
     if (docRef.current) {
-      const circ = (docRef.current.features as PartDoc['features'])![0].initial!.circ1!
+      const circ = featureAt(docRef.current, 0, 'sketch').initial!.circ1!
       expect(circ[2]).toBe(3)
     }
   })

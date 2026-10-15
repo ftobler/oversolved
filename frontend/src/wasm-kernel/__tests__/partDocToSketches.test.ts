@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { PartFeature, PartConstraint } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { partDocToSketches } from '../partDocToSketches'
+import type { SketchFeature } from '@/types/cad'
 
 describe('partDocToSketches', () => {
   it('resolves $-form sketch-local refs to dict form', () => {
@@ -184,7 +185,7 @@ describe('partDocToSketches', () => {
   })
 
   // A hexagon with its construction circumcircle, in the stored wire form.
-  function centeredHexagon(withCircle: boolean): PartFeature[] {
+  function centeredHexagon(withCircle: boolean): SketchFeature[] {
     const ids = ['l0', 'l1', 'l2', 'l3', 'l4', 'l5']
     const initial: Record<string, number[]> = { circ: [0, 0, 10] }
     ids.forEach((id, i) => {

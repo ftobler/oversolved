@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { PartDoc, PartConstraint } from '@/types/cad'
 import { applyAddConstraint, applySetConstraintPos, dropDeadAxisConstraints } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+import { sketchAt } from '@/testing/featureAccess'
+
+const constraints0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').constraints!
+const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
+const initial0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').initial!
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -31,7 +37,7 @@ describe('applyAddConstraint', () => {
   it('adds a single-target constraint', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'vertical', ['entity:Sketch1:line1'])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.id.startsWith('c_vertical'))
     expect(added).toBeDefined()
     expect(added!.kind).toBe('vertical')
@@ -41,7 +47,7 @@ describe('applyAddConstraint', () => {
   it('adds a two-target constraint', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'normal', ['entity:Sketch1:line1', 'entity:Sketch1:circ1'])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.id.startsWith('c_normal'))
     expect(added).toBeDefined()
     expect(added!.a).toEqual('$line1')
@@ -51,7 +57,7 @@ describe('applyAddConstraint', () => {
   it('adds constraint with vertex point reference', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'coincident', ['vertex:Sketch1:line1:end', 'vertex:Sketch1:circ1:center'])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.id.startsWith('c_coincident'))
     expect(added).toBeDefined()
     expect(added!.a).toEqual('$line1end')
@@ -62,7 +68,7 @@ describe('applyAddConstraint', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'vertical', ['entity:Sketch1:line1'])
     applyAddConstraint(doc, 'Sketch1', 'vertical', ['entity:Sketch1:circ1'])
-    const ids = doc.features![0].constraints!.map((c: PartConstraint) => c.id)
+    const ids = constraints0(doc).map((c: PartConstraint) => c.id)
     const vertIds = ids.filter((id: string) => id.startsWith('c_vertical'))
     expect(new Set(vertIds).size).toBe(vertIds.length)
   })
@@ -70,7 +76,7 @@ describe('applyAddConstraint', () => {
   it('adds constraint with value', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'length', ['entity:Sketch1:line1'], 42)
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.id.startsWith('c_length'))
     expect(added!.value).toBe(42)
   })
@@ -81,7 +87,7 @@ describe('applyAddConstraint', () => {
       'vertex:Sketch1:line1:start',
       '@builtin_origin',
     ])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.kind === 'coincident')
     expect(added).toBeDefined()
     expect(added!.a).toBe('$line1start')
@@ -91,7 +97,7 @@ describe('applyAddConstraint', () => {
   it('horizontal with two vertices sets a and b refs', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'horizontal', ['vertex:Sketch1:line1:start', 'vertex:Sketch1:line1:end'])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.kind === 'horizontal' && c.a !== undefined)
     expect(added).toBeDefined()
     expect(added!.a).toBe('$line1start')
@@ -102,7 +108,7 @@ describe('applyAddConstraint', () => {
   it('vertical with two vertices sets a and b refs', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'vertical', ['vertex:Sketch1:line1:start', 'vertex:Sketch1:line1:end'])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.kind === 'vertical' && c.a !== undefined)
     expect(added).toBeDefined()
     expect(added!.a).toBe('$line1start')
@@ -113,7 +119,7 @@ describe('applyAddConstraint', () => {
   it('horizontal with single line target uses target ref', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'horizontal', ['entity:Sketch1:line1'])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.kind === 'horizontal' && c.target !== undefined)
     expect(added).toBeDefined()
     expect(added!.target).toBe('$line1')
@@ -128,14 +134,14 @@ describe('applyAddConstraint', () => {
   it('vertical with two whole entities is rejected (not authored as a/b)', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'vertical', ['entity:Sketch1:circ1', 'entity:Sketch1:line1'])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     expect(constraints.find(c => c.kind === 'vertical')).toBeUndefined()
   })
 
   it('horizontal with an entity in the a/b slot is rejected', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'horizontal', ['vertex:Sketch1:line1:start', 'entity:Sketch1:circ1'])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     expect(constraints.find(c => c.kind === 'horizontal' && c.a !== undefined)).toBeUndefined()
   })
 })
@@ -157,7 +163,7 @@ describe('applyAddConstraint midpoint', () => {
       'entity:Sketch1:line1',
       'vertex:Sketch1:pt1:xy',
     ])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.kind === 'midpoint')
     expect(added).toBeDefined()
     expect(added!.line).toBe('$line1')
@@ -172,7 +178,7 @@ describe('applyAddConstraint midpoint', () => {
       'vertex:Sketch1:line1:end',
       'vertex:Sketch1:pt1:xy',
     ])
-    const constraints = doc.features![0].constraints!
+    const constraints = constraints0(doc)
     const added = constraints.find(c => c.kind === 'midpoint')
     expect(added).toBeDefined()
     expect(added!.point_a).toBe('$line1start')
@@ -182,13 +188,13 @@ describe('applyAddConstraint midpoint', () => {
 
   it('unrecognized target combo does not add constraint and calls console.warn in dev mode', () => {
     const doc = makeSampleDoc()
-    const countBefore = doc.features![0].constraints!.length
+    const countBefore = constraints0(doc).length
     // Two entity targets, not a recognized midpoint pattern
     applyAddConstraint(doc, 'Sketch1', 'midpoint', [
       'entity:Sketch1:line1',
       'entity:Sketch1:circ1',
     ])
-    expect(doc.features![0].constraints!.length).toBe(countBefore)
+    expect(constraints0(doc).length).toBe(countBefore)
     // warn is called in dev mode (vitest runs with DEV=true via import.meta.env.DEV)
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('midpoint'),
@@ -212,9 +218,9 @@ describe('applyAddConstraint operand guards', () => {
 
   it('a generic kind with no targets adds nothing and warns', () => {
     const doc = makeSampleDoc()
-    const countBefore = doc.features![0].constraints!.length
+    const countBefore = constraints0(doc).length
     applyAddConstraint(doc, 'Sketch1', 'parallel', [])
-    expect(doc.features![0].constraints!.length).toBe(countBefore)
+    expect(constraints0(doc).length).toBe(countBefore)
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('parallel'),
       expect.anything(),
@@ -224,7 +230,7 @@ describe('applyAddConstraint operand guards', () => {
   it('coincident with a single target is rejected rather than authored half-picked', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'coincident', ['entity:Sketch1:circ1'])
-    expect(doc.features![0].constraints!.find(c => c.kind === 'coincident')).toBeUndefined()
+    expect(constraints0(doc).find(c => c.kind === 'coincident')).toBeUndefined()
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('coincident'),
       expect.anything(),
@@ -234,7 +240,7 @@ describe('applyAddConstraint operand guards', () => {
   it('a valid two-target coincident still adds', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'coincident', ['vertex:Sketch1:line1:end', 'vertex:Sketch1:circ1:center'])
-    const added = doc.features![0].constraints!.find(c => c.kind === 'coincident')
+    const added = constraints0(doc).find(c => c.kind === 'coincident')
     expect(added).toBeDefined()
     expect(added!.a).toEqual('$line1end')
     expect(added!.b).toEqual('$circ1center')
@@ -243,7 +249,7 @@ describe('applyAddConstraint operand guards', () => {
   it('a single-target generic kind keeps its target form', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'length', ['entity:Sketch1:line1'], 42)
-    const added = doc.features![0].constraints!.find(c => c.kind === 'length')
+    const added = constraints0(doc).find(c => c.kind === 'length')
     expect(added).toBeDefined()
     expect(added!.target).toBe('$line1')
     expect(warnSpy).not.toHaveBeenCalled()
@@ -255,10 +261,10 @@ describe('applyAddConstraint operand guards', () => {
   // behave exactly like the generic kinds above.
   it('an axis kind with no targets adds nothing and warns', () => {
     const doc = makeSampleDoc()
-    const countBefore = doc.features![0].constraints!.length
+    const countBefore = constraints0(doc).length
     applyAddConstraint(doc, 'Sketch1', 'horizontal', [])
     applyAddConstraint(doc, 'Sketch1', 'vertical', [])
-    expect(doc.features![0].constraints!.length).toBe(countBefore)
+    expect(constraints0(doc).length).toBe(countBefore)
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('horizontal'),
       expect.anything(),
@@ -274,14 +280,14 @@ describe('applySetConstraintPos', () => {
   it('sets pos on an existing constraint', () => {
     const doc = makeSampleDoc()
     applySetConstraintPos(doc, 'Sketch1', 'c_len', [3.5, -2.0])
-    const c = doc.features![0].constraints!.find(c => c.id === 'c_len')
+    const c = constraints0(doc).find(c => c.id === 'c_len')
     expect(c!.pos).toEqual([3.5, -2.0])
   })
 
   it('rounds pos to 6 decimal places', () => {
     const doc = makeSampleDoc()
     applySetConstraintPos(doc, 'Sketch1', 'c_len', [1.23456789, -9.87654321])
-    const c = doc.features![0].constraints!.find(c => c.id === 'c_len')
+    const c = constraints0(doc).find(c => c.id === 'c_len')
     expect(c!.pos![0]).toBe(1.234568)
     expect(c!.pos![1]).toBe(-9.876543)
   })
@@ -290,7 +296,7 @@ describe('applySetConstraintPos', () => {
     const doc = makeSampleDoc()
     applySetConstraintPos(doc, 'Sketch1', 'c_nonexistent', [1, 2])
     // No pos set on any constraint
-    for (const c of doc.features![0].constraints!) {
+    for (const c of constraints0(doc)) {
       expect(c.pos).toBeUndefined()
     }
   })
@@ -298,14 +304,14 @@ describe('applySetConstraintPos', () => {
   it('no-ops for unknown feature', () => {
     const doc = makeSampleDoc()
     applySetConstraintPos(doc, 'NoSuchFeature', 'c_len', [1, 2])
-    const c = doc.features![0].constraints!.find(c => c.id === 'c_len')
+    const c = constraints0(doc).find(c => c.id === 'c_len')
     expect(c!.pos).toBeUndefined()
   })
 
   it('ignores a non-finite pos instead of persisting NaN into the document', () => {
     const doc = makeSampleDoc()
     applySetConstraintPos(doc, 'Sketch1', 'c_len', [NaN, Infinity])
-    expect(doc.features![0].constraints!.find(c => c.id === 'c_len')!.pos).toBeUndefined()
+    expect(constraints0(doc).find(c => c.id === 'c_len')!.pos).toBeUndefined()
   })
 })
 
@@ -320,7 +326,7 @@ describe('applyAddConstraint with face target', () => {
     const doc = docWithSketch('sketch1')
     applyAddConstraint(doc, 'sketch1', 'coincident',
       ['vertex:sketch1:lineA:start', 'face:sketch0:?3;@sketch0abc'])
-    const c = doc.features![0].constraints![0]
+    const c = constraints0(doc)[0]
     expect(c.b).toBe('?3;@sketch0abc')
   })
 
@@ -328,7 +334,7 @@ describe('applyAddConstraint with face target', () => {
     const doc = docWithSketch('sketch1')
     applyAddConstraint(doc, 'sketch1', 'coincident',
       ['vertex:sketch1:lineA:start', 'face:sketch0:?9,9;@sketch0la@sketch0lb:face'])
-    const c = doc.features![0].constraints![0]
+    const c = constraints0(doc)[0]
     expect(c.b).toBe('?9,9;@sketch0la@sketch0lb:face')
   })
 })
@@ -362,16 +368,16 @@ describe('dropDeadAxisConstraints', () => {
     const doc = docWithDeadVertical()
     const removed = dropDeadAxisConstraints(doc)
     expect(removed).toBe(1)
-    expect(doc.features![0].constraints).toHaveLength(0)
+    expect(constraints0(doc)).toHaveLength(0)
   })
 
   it('removes a horizontal whose single operand is a whole entity', () => {
     const doc = docWithDeadVertical()
-    doc.features![0].constraints = [
+    sketchAt(doc).constraints = [
       { id: 'c_dead', kind: 'horizontal', a: '$circ1', b: '$pt1' },
     ]
     expect(dropDeadAxisConstraints(doc)).toBe(1)
-    expect(doc.features![0].constraints).toHaveLength(0)
+    expect(constraints0(doc)).toHaveLength(0)
   })
 
   // A whole-entity ref whose id ends with a vertex key must not be read as that
@@ -380,48 +386,48 @@ describe('dropDeadAxisConstraints', () => {
   // degenerate constraint.
   it('removes a vertical over a whole entity whose id ends with a vertex key', () => {
     const doc = docWithDeadVertical()
-    doc.features![0].entities!.push({ id: 'line1end', kind: 'line' })
-    doc.features![0].initial!['line1end'] = [1, 1, 2, 2]
-    doc.features![0].constraints = [
+    entities0(doc).push({ id: 'line1end', kind: 'line' })
+    initial0(doc)['line1end'] = [1, 1, 2, 2]
+    sketchAt(doc).constraints = [
       { id: 'c_dead', kind: 'vertical', a: '$line1end', b: '$pt1' },
     ]
     expect(dropDeadAxisConstraints(doc)).toBe(1)
-    expect(doc.features![0].constraints).toHaveLength(0)
+    expect(constraints0(doc)).toHaveLength(0)
   })
 
   it('keeps a valid two-point vertical (point entity + line endpoint)', () => {
     const doc = docWithDeadVertical()
-    doc.features![0].constraints = [
+    sketchAt(doc).constraints = [
       { id: 'c_ok', kind: 'vertical', a: '$pt1', b: '$line1start' },
     ]
     expect(dropDeadAxisConstraints(doc)).toBe(0)
-    expect(doc.features![0].constraints).toHaveLength(1)
+    expect(constraints0(doc)).toHaveLength(1)
   })
 
   it('keeps a valid two-point vertical between two point entities', () => {
     const doc = docWithDeadVertical()
-    doc.features![0].constraints = [
+    sketchAt(doc).constraints = [
       { id: 'c_ok', kind: 'vertical', a: '$pt1', b: '$pt2' },
     ]
     expect(dropDeadAxisConstraints(doc)).toBe(0)
-    expect(doc.features![0].constraints).toHaveLength(1)
+    expect(constraints0(doc)).toHaveLength(1)
   })
 
   it('keeps the single-line target form (no a/b)', () => {
     const doc = docWithDeadVertical()
-    doc.features![0].constraints = [
+    sketchAt(doc).constraints = [
       { id: 'c_ok', kind: 'horizontal', target: '$line1' },
     ]
     expect(dropDeadAxisConstraints(doc)).toBe(0)
-    expect(doc.features![0].constraints).toHaveLength(1)
+    expect(constraints0(doc)).toHaveLength(1)
   })
 
   it('leaves non-axis constraints untouched', () => {
     const doc = docWithDeadVertical()
-    doc.features![0].constraints = [
+    sketchAt(doc).constraints = [
       { id: 'c_coin', kind: 'coincident', a: '$circ1', b: '$line1' },
     ]
     expect(dropDeadAxisConstraints(doc)).toBe(0)
-    expect(doc.features![0].constraints).toHaveLength(1)
+    expect(constraints0(doc)).toHaveLength(1)
   })
 })

@@ -349,7 +349,7 @@ describe('PickChip', () => {
     })
 
     it('does not recompute labels when values/features/partLabels are unchanged', () => {
-      const features = [{ id: 'ex1', kind: 'extrude', label: 'Extrude 1' }]
+      const features = [{ id: 'ex1', kind: 'extrude' as const, label: 'Extrude 1', extrude: { sketch: [], distance: 1 } }]
       const partLabels = { ex1: 'Part X' }
       // Same reference across rerenders, like a chip whose data did not change.
       const values = ['@ex1']

@@ -7,6 +7,13 @@ import {
 import {
   applyRemoveExtrudeProfile, applyRemoveFilletEdge, applyRemoveDeleteBodyRef, applyRemoveTransformBody,
 } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const definition0 = (doc: PartDoc) => featureAt(doc, 0, 'plane').definition!
+const delete_body0 = (doc: PartDoc) => featureAt(doc, 0, 'delete_body').delete_body
+const extrude0 = (doc: PartDoc) => featureAt(doc, 0, 'extrude').extrude
+const fillet0 = (doc: PartDoc) => featureAt(doc, 0, 'fillet').fillet
+const transform0 = (doc: PartDoc) => featureAt(doc, 0, 'transform').transform
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -110,20 +117,20 @@ describe('applySetPlaneDefinitionField', () => {
   it('sets plane field on a plane feature', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'plane1', kind: 'plane', definition: { mode: 'offset' } }] }
     applySetPlaneDefinitionField(doc, 'plane1', 'plane', '@builtin_plane_top')
-    expect(doc.features![0].definition!.plane).toBe('@builtin_plane_top')
+    expect(definition0(doc).plane).toBe('@builtin_plane_top')
   })
 
   it('sets offset field', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'plane1', kind: 'plane', definition: { mode: 'offset' } }] }
     applySetPlaneDefinitionField(doc, 'plane1', 'offset', 25)
-    expect(doc.features![0].definition!.offset).toBe(25)
+    expect(definition0(doc).offset).toBe(25)
   })
 
   it('creates definition if missing', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'plane1', kind: 'plane' }] }
     applySetPlaneDefinitionField(doc, 'plane1', 'mode', 'three_point')
-    expect(doc.features![0].definition).toBeDefined()
-    expect((doc.features![0].definition as Record<string, unknown>).mode).toBe('three_point')
+    expect(definition0(doc)).toBeDefined()
+    expect((definition0(doc) as Record<string, unknown>).mode).toBe('three_point')
   })
 
   it('is no-op for unknown featureId', () => {
@@ -261,7 +268,7 @@ describe('remove-by-index mutators refuse out-of-range indices', () => {
       }),
       remove: (doc, index) => applyRemoveExtrudeProfile(doc, 'ex1', index),
       list: (doc) => {
-        const sketch = doc.features![0].extrude!.sketch
+        const sketch = extrude0(doc).sketch
         return Array.isArray(sketch) ? sketch : undefined
       },
     },
@@ -273,7 +280,7 @@ describe('remove-by-index mutators refuse out-of-range indices', () => {
         features: [{ id: 'f1', kind: 'fillet', fillet: { edges: ['a', 'b'], radius: 2 } }],
       }),
       remove: (doc, index) => applyRemoveFilletEdge(doc, 'f1', index),
-      list: (doc) => doc.features![0].fillet!.edges,
+      list: (doc) => fillet0(doc).edges,
     },
     {
       name: 'applyRemoveDeleteBodyRef',
@@ -283,7 +290,7 @@ describe('remove-by-index mutators refuse out-of-range indices', () => {
         features: [{ id: 'db1', kind: 'delete_body', delete_body: { bodies: ['a', 'b'] } }],
       }),
       remove: (doc, index) => applyRemoveDeleteBodyRef(doc, 'db1', index),
-      list: (doc) => doc.features![0].delete_body!.bodies,
+      list: (doc) => delete_body0(doc).bodies,
     },
     {
       name: 'applyRemoveTransformBody',
@@ -297,7 +304,7 @@ describe('remove-by-index mutators refuse out-of-range indices', () => {
         }],
       }),
       remove: (doc, index) => applyRemoveTransformBody(doc, 'xf1', index),
-      list: (doc) => doc.features![0].transform!.bodies,
+      list: (doc) => transform0(doc).bodies,
     },
   ]
 

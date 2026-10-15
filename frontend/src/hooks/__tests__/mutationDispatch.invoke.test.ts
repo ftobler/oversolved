@@ -1,7 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import { makeSketch, makeDoc } from '@/utils/core/testFixture'
-import type { PartDoc, PartFeature } from '@/types/cad'
+import type { PartDoc } from '@/types/cad'
+import { featureById } from '@/testing/featureAccess'
+
+const sketch1 = (doc: PartDoc) => featureById(doc, 'S1', 'sketch')
+const sketch2 = (doc: PartDoc) => featureById(doc, 'S2', 'sketch')
+const sketch3 = (doc: PartDoc) => featureById(doc, 'S3', 'sketch')
+const extrude = (doc: PartDoc) => featureById(doc, 'EX', 'extrude').extrude
+const revolve = (doc: PartDoc) => featureById(doc, 'RV', 'revolve').revolve
+const fillet = (doc: PartDoc) => featureById(doc, 'FL', 'fillet').fillet
+const chamfer = (doc: PartDoc) => featureById(doc, 'CH', 'chamfer').chamfer
+const boolean = (doc: PartDoc) => featureById(doc, 'BL', 'boolean').boolean
+const array = (doc: PartDoc) => featureById(doc, 'AR', 'array').array
+const delBody = (doc: PartDoc) => featureById(doc, 'DB', 'delete_body').delete_body
+const transform = (doc: PartDoc) => featureById(doc, 'TR', 'transform').transform
 
 // The exhaustive suite proves the handler TABLE has a key for every Mutation
 // variant, but never invokes a single handler -- so the arrow bodies (which
@@ -33,7 +46,7 @@ function sketchDoc(): PartDoc {
   )
 }
 
-function feature(doc: PartDoc, id: string): PartFeature | undefined {
+function feature(doc: PartDoc, id: string) {
   return doc.features?.find(f => f.id === id)
 }
 
@@ -43,7 +56,7 @@ describe('mutationHandlers forward sketch mutations', () => {
     mutationHandlers.move_vertex(doc, {
       type: 'move_vertex', featureId: 'S1', entityId: 'l1', vertexKey: 'start', to: [2, 3],
     })
-    expect(feature(doc, 'S1')!.initial!.l1.slice(0, 2)).toEqual([2, 3])
+    expect(sketch1(doc).initial!.l1.slice(0, 2)).toEqual([2, 3])
   })
 
   it('move_vertex_with_constraint moves and adds the snap constraint', () => {
@@ -52,17 +65,17 @@ describe('mutationHandlers forward sketch mutations', () => {
       type: 'move_vertex_with_constraint', featureId: 'S1', entityId: 'l1', vertexKey: 'end',
       to: [9, 0], constraintKind: 'coincident', snapVertexId: 'vertex:S1:l2:start',
     })
-    const cs = feature(doc, 'S1')!.constraints!
+    const cs = sketch1(doc).constraints!
     expect(cs.some(c => c.kind === 'coincident')).toBe(true)
   })
 
   it('move_entity translates by delta', () => {
     const doc = sketchDoc()
-    const before = feature(doc, 'S1')!.initial!.l1.slice()
+    const before = sketch1(doc).initial!.l1.slice()
     mutationHandlers.move_entity(doc, {
       type: 'move_entity', featureId: 'S1', entityId: 'l1', delta: [1, 1],
     })
-    expect(feature(doc, 'S1')!.initial!.l1[0]).toBe(before[0] + 1)
+    expect(sketch1(doc).initial!.l1[0]).toBe(before[0] + 1)
   })
 
   it('add_constraint appends a constraint', () => {
@@ -70,7 +83,7 @@ describe('mutationHandlers forward sketch mutations', () => {
     mutationHandlers.add_constraint(doc, {
       type: 'add_constraint', featureId: 'S1', kind: 'horizontal', targets: ['$l1'],
     })
-    expect(feature(doc, 'S1')!.constraints!.some(c => c.kind === 'horizontal')).toBe(true)
+    expect(sketch1(doc).constraints!.some(c => c.kind === 'horizontal')).toBe(true)
   })
 
   it('set_constraint_value updates the value', () => {
@@ -78,7 +91,7 @@ describe('mutationHandlers forward sketch mutations', () => {
     mutationHandlers.set_constraint_value(doc, {
       type: 'set_constraint_value', featureId: 'S1', constraintId: 'k1', value: 42,
     })
-    expect(feature(doc, 'S1')!.constraints!.find(c => c.id === 'k1')!.value).toBe(42)
+    expect(sketch1(doc).constraints!.find(c => c.id === 'k1')!.value).toBe(42)
   })
 
   it('set_constraint_pos updates the label position', () => {
@@ -86,7 +99,7 @@ describe('mutationHandlers forward sketch mutations', () => {
     mutationHandlers.set_constraint_pos(doc, {
       type: 'set_constraint_pos', featureId: 'S1', constraintId: 'k1', pos: [3, 4],
     })
-    expect(feature(doc, 'S1')!.constraints!.find(c => c.id === 'k1')!.pos).toEqual([3, 4])
+    expect(sketch1(doc).constraints!.find(c => c.id === 'k1')!.pos).toEqual([3, 4])
   })
 
   it('set_constraint_sign sets the orientation sign (normalized to +/-1)', () => {
@@ -94,7 +107,7 @@ describe('mutationHandlers forward sketch mutations', () => {
     mutationHandlers.set_constraint_sign(doc, {
       type: 'set_constraint_sign', featureId: 'S1', constraintId: 'k1', sign: -3,
     })
-    expect(feature(doc, 'S1')!.constraints!.find(c => c.id === 'k1')!.sign).toBe(-1)
+    expect(sketch1(doc).constraints!.find(c => c.id === 'k1')!.sign).toBe(-1)
   })
 
   it('add_entity appends an entity with the given id', () => {
@@ -102,17 +115,17 @@ describe('mutationHandlers forward sketch mutations', () => {
     mutationHandlers.add_entity(doc, {
       type: 'add_entity', featureId: 'S1', kind: 'circle', params: [1, 1, 3], entityId: 'newC',
     })
-    expect(feature(doc, 'S1')!.entities!.some(e => e.id === 'newC')).toBe(true)
+    expect(sketch1(doc).entities!.some(e => e.id === 'newC')).toBe(true)
   })
 
   it('add_entity_with_constraint appends an entity', () => {
     const doc = sketchDoc()
-    const before = feature(doc, 'S1')!.entities!.length
+    const before = sketch1(doc).entities!.length
     mutationHandlers.add_entity_with_constraint(doc, {
       type: 'add_entity_with_constraint', featureId: 'S1', kind: 'line', params: [0, 0, 5, 5],
       vertexKey: 'start', constraintKind: 'coincident', snapVertexId: 'vertex:S1:l1:end', entityId: 'wl',
     })
-    expect(feature(doc, 'S1')!.entities!.length).toBe(before + 1)
+    expect(sketch1(doc).entities!.length).toBe(before + 1)
   })
 
   it('add_projected_entity appends a source-carrying entity', () => {
@@ -120,41 +133,41 @@ describe('mutationHandlers forward sketch mutations', () => {
     mutationHandlers.add_projected_entity(doc, {
       type: 'add_projected_entity', featureId: 'S1', kind: 'line', source: '@ex1/edge/1',
     })
-    expect(feature(doc, 'S1')!.entities!.some(e => e.source === '@ex1/edge/1')).toBe(true)
+    expect(sketch1(doc).entities!.some(e => e.source === '@ex1/edge/1')).toBe(true)
   })
 
   it('add_rect / add_center_rect / add_ngon add geometry', () => {
     const doc = sketchDoc()
-    const n0 = feature(doc, 'S1')!.entities!.length
+    const n0 = sketch1(doc).entities!.length
     mutationHandlers.add_rect(doc, { type: 'add_rect', featureId: 'S1', p0: [0, 0], p1: [4, 4] })
     mutationHandlers.add_center_rect(doc, { type: 'add_center_rect', featureId: 'S1', center: [0, 0], corner: [2, 2] })
     mutationHandlers.add_ngon(doc, { type: 'add_ngon', featureId: 'S1', center: [0, 0], corner: [3, 0], sides: 6 })
-    expect(feature(doc, 'S1')!.entities!.length).toBeGreaterThan(n0)
+    expect(sketch1(doc).entities!.length).toBeGreaterThan(n0)
   })
 
   it('apply_offset clones the source entities', () => {
     const doc = sketchDoc()
-    const n0 = feature(doc, 'S1')!.entities!.length
+    const n0 = sketch1(doc).entities!.length
     mutationHandlers.apply_offset(doc, { type: 'apply_offset', featureId: 'S1', sourceIds: ['l1'], distance: 2 })
-    expect(feature(doc, 'S1')!.entities!.length).toBeGreaterThan(n0)
+    expect(sketch1(doc).entities!.length).toBeGreaterThan(n0)
   })
 
   it('toggle_construction flips the construction flag', () => {
     const doc = sketchDoc()
     mutationHandlers.toggle_construction(doc, { type: 'toggle_construction', targets: ['entity:S1:l1'] })
-    expect(feature(doc, 'S1')!.entities!.find(e => e.id === 'l1')!.construction).toBe(true)
+    expect(sketch1(doc).entities!.find(e => e.id === 'l1')!.construction).toBe(true)
   })
 
   it('set_feature_plane updates the sketch plane', () => {
     const doc = sketchDoc()
     mutationHandlers.set_feature_plane(doc, { type: 'set_feature_plane', featureId: 'S1', plane: '@builtin_plane_top' })
-    expect(feature(doc, 'S1')!.plane).toBe('@builtin_plane_top')
+    expect(sketch1(doc).plane).toBe('@builtin_plane_top')
   })
 
   it('delete removes the targeted entity', () => {
     const doc = sketchDoc()
     mutationHandlers.delete(doc, { type: 'delete', targets: ['entity:S1:l2'] })
-    expect(feature(doc, 'S1')!.entities!.some(e => e.id === 'l2')).toBe(false)
+    expect(sketch1(doc).entities!.some(e => e.id === 'l2')).toBe(false)
   })
 })
 
@@ -164,10 +177,10 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.add_extrude(doc, { type: 'add_extrude', featureId: 'EX', sketchQuery: '@S1/area1', distance: 5 })
     expect(feature(doc, 'EX')!.kind).toBe('extrude')
     mutationHandlers.set_extrude_field(doc, { type: 'set_extrude_field', featureId: 'EX', field: 'distance', value: 9 })
-    expect(feature(doc, 'EX')!.extrude!.distance).toBe(9)
+    expect(extrude(doc)!.distance).toBe(9)
     mutationHandlers.add_extrude_profile(doc, { type: 'add_extrude_profile', featureId: 'EX', sketchQuery: '@S1/area2' })
     mutationHandlers.remove_extrude_profile(doc, { type: 'remove_extrude_profile', featureId: 'EX', index: 0 })
-    expect(feature(doc, 'EX')!.extrude).toBeDefined()
+    expect(extrude(doc)).toBeDefined()
   })
 
   it('revolve: add, set field, add/remove profile', () => {
@@ -176,7 +189,7 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.set_revolve_field(doc, { type: 'set_revolve_field', featureId: 'RV', field: 'angle', value: 180 })
     mutationHandlers.add_revolve_profile(doc, { type: 'add_revolve_profile', featureId: 'RV', sketchQuery: '@S1/area2' })
     mutationHandlers.remove_revolve_profile(doc, { type: 'remove_revolve_profile', featureId: 'RV', index: 0 })
-    expect(feature(doc, 'RV')!.revolve!.angle).toBe(180)
+    expect(revolve(doc)!.angle).toBe(180)
   })
 
   it('sweep: add, set field, add/remove profile and path', () => {
@@ -187,7 +200,7 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.remove_sweep_profile(doc, { type: 'remove_sweep_profile', featureId: 'SW', index: 0 })
     mutationHandlers.add_sweep_path(doc, { type: 'add_sweep_path', featureId: 'SW', pathQuery: '@S1/l2' })
     mutationHandlers.remove_sweep_path(doc, { type: 'remove_sweep_path', featureId: 'SW', index: 0 })
-    expect(feature(doc, 'SW')!.kind).toBe('sweep')
+    expect(featureById(doc, 'SW', 'sweep').kind).toBe('sweep')
   })
 
   it('fillet: add, set field, add/remove edge', () => {
@@ -195,9 +208,9 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.add_fillet(doc, { type: 'add_fillet', featureId: 'FL' })
     mutationHandlers.set_fillet_field(doc, { type: 'set_fillet_field', featureId: 'FL', field: 'radius', value: 2 })
     mutationHandlers.add_fillet_edge(doc, { type: 'add_fillet_edge', featureId: 'FL', edgeQuery: '@ex/edge/1' })
-    expect(feature(doc, 'FL')!.fillet!.edges).toContain('@ex/edge/1')
+    expect(fillet(doc)!.edges).toContain('@ex/edge/1')
     mutationHandlers.remove_fillet_edge(doc, { type: 'remove_fillet_edge', featureId: 'FL', index: 0 })
-    expect(feature(doc, 'FL')!.fillet!.edges).toHaveLength(0)
+    expect(fillet(doc)!.edges).toHaveLength(0)
   })
 
   it('chamfer: add, set field, add/remove edge', () => {
@@ -206,7 +219,7 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.set_chamfer_field(doc, { type: 'set_chamfer_field', featureId: 'CH', field: 'distance', value: 1 })
     mutationHandlers.add_chamfer_edge(doc, { type: 'add_chamfer_edge', featureId: 'CH', edgeQuery: '@ex/edge/2' })
     mutationHandlers.remove_chamfer_edge(doc, { type: 'remove_chamfer_edge', featureId: 'CH', index: 0 })
-    expect(feature(doc, 'CH')!.chamfer).toBeDefined()
+    expect(chamfer(doc)).toBeDefined()
   })
 
   it('boolean: add, set field, add/remove tool', () => {
@@ -214,19 +227,19 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.add_boolean(doc, { type: 'add_boolean', featureId: 'BL' })
     mutationHandlers.set_boolean_field(doc, { type: 'set_boolean_field', featureId: 'BL', field: 'operation', value: 'cut' })
     mutationHandlers.add_boolean_tool(doc, { type: 'add_boolean_tool', featureId: 'BL', tool: '@body_2' })
-    expect(feature(doc, 'BL')!.boolean!.tools).toContain('@body_2')
+    expect(boolean(doc)!.tools).toContain('@body_2')
     mutationHandlers.remove_boolean_tool(doc, { type: 'remove_boolean_tool', featureId: 'BL', tool: '@body_2' })
-    expect(feature(doc, 'BL')!.boolean!.tools).toHaveLength(0)
+    expect(boolean(doc)!.tools).toHaveLength(0)
   })
 
   it('array (linear + circular): add and set field', () => {
     const doc = sketchDoc()
     mutationHandlers.add_array(doc, { type: 'add_array', featureId: 'AR' })
     mutationHandlers.set_array_field(doc, { type: 'set_array_field', featureId: 'AR', field: 'count_x', value: 4 })
-    expect(feature(doc, 'AR')!.array!.count_x).toBe(4)
+    expect(array(doc)!.count_x).toBe(4)
     mutationHandlers.add_circular_array(doc, { type: 'add_circular_array', featureId: 'CA' })
     mutationHandlers.set_circular_array_field(doc, { type: 'set_circular_array_field', featureId: 'CA', field: 'count', value: 6 })
-    expect(feature(doc, 'CA')!.kind).toBe('circular_array')
+    expect(featureById(doc, 'CA', 'circular_array').kind).toBe('circular_array')
   })
 
   it('hole / transform / mirror / variable / delete_body: add and set field', () => {
@@ -241,16 +254,16 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.set_variable_field(doc, { type: 'set_variable_field', featureId: 'VR', field: 'value', value: '2*3' })
     mutationHandlers.add_delete_body(doc, { type: 'add_delete_body', featureId: 'DB', bodies: ['@body_1'] })
     mutationHandlers.add_delete_body_ref(doc, { type: 'add_delete_body_ref', featureId: 'DB', bodyQuery: '@body_2' })
-    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_1', '@body_2'])
+    expect(delBody(doc)!.bodies).toEqual(['@body_1', '@body_2'])
     mutationHandlers.remove_delete_body_ref(doc, { type: 'remove_delete_body_ref', featureId: 'DB', index: 0 })
-    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_2'])
+    expect(delBody(doc)!.bodies).toEqual(['@body_2'])
     expect(['HO', 'TR', 'MI', 'VR', 'DB'].every(id => !!feature(doc, id))).toBe(true)
   })
 
   it('add_import_step appends an import feature', () => {
     const doc = sketchDoc()
     mutationHandlers.add_import_step(doc, { type: 'add_import_step', featureId: 'IM', fileId: 'f1', label: 'Imported' })
-    expect(feature(doc, 'IM')!.kind).toBe('import_step')
+    expect(featureById(doc, 'IM', 'import_step').kind).toBe('import_step')
   })
 
   it('delete_body handlers do not crash on a legacy singular-body doc', () => {
@@ -265,11 +278,11 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(() => {
       mutationHandlers.add_delete_body_ref(doc, { type: 'add_delete_body_ref', featureId: 'DB', bodyQuery: '@body_2' })
     }).not.toThrow()
-    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_1', '@body_2'])
+    expect(delBody(doc)!.bodies).toEqual(['@body_1', '@body_2'])
     expect(() => {
       mutationHandlers.remove_delete_body_ref(doc, { type: 'remove_delete_body_ref', featureId: 'DB', index: 0 })
     }).not.toThrow()
-    expect(feature(doc, 'DB')!.delete_body!.bodies).toEqual(['@body_2'])
+    expect(delBody(doc)!.bodies).toEqual(['@body_2'])
   })
 
   it('transform handlers do not crash on a legacy singular-body doc', () => {
@@ -281,7 +294,7 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(() => {
       mutationHandlers.add_transform_body(doc, { type: 'add_transform_body', featureId: 'TR', bodyQuery: '@body_2' })
     }).not.toThrow()
-    expect(feature(doc, 'TR')!.transform!.bodies).toEqual(['@body_1', '@body_2'])
+    expect(transform(doc)!.bodies).toEqual(['@body_1', '@body_2'])
   })
 })
 
@@ -289,30 +302,30 @@ describe('mutationHandlers forward doc-level + part-style mutations', () => {
   it('add_sketch / add_plane and their field/visibility ops', () => {
     const doc = sketchDoc()
     mutationHandlers.add_sketch(doc, { type: 'add_sketch', featureId: 'S2', label: 'Sketch 2' })
-    expect(feature(doc, 'S2')!.kind).toBe('sketch')
+    expect(sketch2(doc).kind).toBe('sketch')
     mutationHandlers.add_plane(doc, { type: 'add_plane', featureId: 'PL', label: 'Plane' })
     mutationHandlers.set_plane_definition_field(doc, { type: 'set_plane_definition_field', featureId: 'PL', field: 'offset', value: 5 })
-    expect(feature(doc, 'PL')!.kind).toBe('plane')
+    expect(featureById(doc, 'PL', 'plane').kind).toBe('plane')
     mutationHandlers.toggle_plane_visibility(doc, { type: 'toggle_plane_visibility' })
     mutationHandlers.toggle_sketch_plane_visibility(doc, { type: 'toggle_sketch_plane_visibility' })
     mutationHandlers.set_feature_visibility(doc, { type: 'set_feature_visibility', featureId: 'S1', visible: false })
-    expect(feature(doc, 'S1')!.visible).toBe(false)
+    expect(sketch1(doc).visible).toBe(false)
   })
 
   it('add_sketch carries an optional plane query', () => {
     const doc = sketchDoc()
     mutationHandlers.add_sketch(doc, { type: 'add_sketch', featureId: 'S2', label: 'Sketch 2', plane: '@builtin_plane_top' })
-    expect(feature(doc, 'S2')!.plane).toBe('@builtin_plane_top')
+    expect(sketch2(doc).plane).toBe('@builtin_plane_top')
     mutationHandlers.add_sketch(doc, { type: 'add_sketch', featureId: 'S3' })
-    expect(feature(doc, 'S3')!.plane).toBeUndefined()
+    expect(sketch3(doc).plane).toBeUndefined()
   })
 
   it('rename_feature / set_feature_suppression', () => {
     const doc = sketchDoc()
     mutationHandlers.rename_feature(doc, { type: 'rename_feature', featureId: 'S1', label: 'Renamed' })
-    expect(feature(doc, 'S1')!.label).toBe('Renamed')
+    expect(sketch1(doc).label).toBe('Renamed')
     mutationHandlers.set_feature_suppression(doc, { type: 'set_feature_suppression', featureId: 'S1', suppressed: true })
-    expect(feature(doc, 'S1')!.suppressed).toBe(true)
+    expect(sketch1(doc).suppressed).toBe(true)
   })
 
   it('reorder_features / reorder_pick_field are dispatched', () => {
@@ -346,14 +359,14 @@ describe('mutationHandlers forward doc-level + part-style mutations', () => {
   it('remove_dangling_content removes the flagged entities and constraints', () => {
     const doc = sketchDoc()
     // Only source-carrying (projected) entities are eligible for removal.
-    feature(doc, 'S1')!.entities!.push({ id: 'proj', kind: 'line', source: '?edge;x' })
+    sketch1(doc).entities!.push({ id: 'proj', kind: 'line', source: '?edge;x' })
     mutationHandlers.remove_dangling_content(doc, {
       type: 'remove_dangling_content',
       features: {
         S1: { entities: ['proj'], constraints: ['k1'] },
       },
     })
-    const f = feature(doc, 'S1')!
+    const f = sketch1(doc)
     expect(f.entities!.some(e => e.id === 'proj')).toBe(false)
     expect(f.entities!.some(e => e.id === 'l1')).toBe(true)
     expect(f.constraints!.some(c => c.id === 'k1')).toBe(false)

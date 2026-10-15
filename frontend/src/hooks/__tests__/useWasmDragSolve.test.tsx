@@ -29,9 +29,9 @@ vi.mock('@/kernel/features/sketch', async (importOriginal) => {
 import { useWasmDragSolve } from '@/hooks/useWasmDragSolve'
 import { getLastDragSolve, setLastDragSolve } from '@/components/Geometry3D/dragSolveRegistry'
 import type { DragState } from '@/stores/sketchEditorStore'
-import type { PartFeature, Sketch } from '@/types/cad'
+import type { SketchFeature, Sketch } from '@/types/cad'
 
-const featureDef = { id: 'S1', kind: 'sketch', entities: [{ id: 'L1', kind: 'line' }] } as unknown as PartFeature
+const featureDef: SketchFeature = { id: 'S1', kind: 'sketch', entities: [{ id: 'L1', kind: 'line' }] }
 
 function vertexDrag(currentWorld: [number, number]): DragState {
   return {

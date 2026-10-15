@@ -1,4 +1,4 @@
-import type { PartFeature, Mutation } from '@/types/cad'
+import type { PartFeature, SketchFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
 import { resolveBarePlaneId } from '@/kernel/solverConstants'
@@ -19,7 +19,7 @@ function planeSelectionQuery(plane: string | undefined): string | null {
 
 interface PlaneSelectorProps {
   feature: PartFeature
-  featureDef?: PartFeature
+  featureDef?: SketchFeature
   onMutation: (m: Mutation) => void
   features: PartFeature[]
   partLabels: Record<string, string>

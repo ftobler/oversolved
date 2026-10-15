@@ -106,6 +106,9 @@ export function useSolver(
     const results: Record<string, SketchData> = {}
     for (const [id, feature] of Object.entries(result)) {
       const featureDef = (cloned.features ?? []).find(f => f.id === id)
+      // Only a sketch solve publishes entities/constraints/initial; for every
+      // other kind the authored sketch view of the result stays empty.
+      const sketchDef = featureDef?.kind === 'sketch' ? featureDef : undefined
       if (feature.geometry) {
         applyGeometryToFeature(cloned, id, feature.geometry)
         // A projection can resolve to a different kind than was declared at pick
@@ -113,11 +116,11 @@ export function useSolver(
         // resolved kind shapes the rendered sketch here without rewriting the
         // authored entity kind in the doc on every solve.
         const resolvedEntities = feature.resolved_kinds
-          ? (featureDef?.entities ?? []).map(e => ({ ...e, kind: feature.resolved_kinds?.[e.id] ?? e.kind }))
-          : featureDef?.entities
+          ? (sketchDef?.entities ?? []).map(e => ({ ...e, kind: feature.resolved_kinds?.[e.id] ?? e.kind }))
+          : sketchDef?.entities
         const solved = unflattenGeometry(feature.geometry, resolvedEntities)
         const astPosById = new Map(
-          (featureDef?.constraints ?? [])
+          (sketchDef?.constraints ?? [])
             .filter(c => c.pos)
             .map(c => [c.id, c.pos!])
         )
@@ -170,7 +173,7 @@ export function useSolver(
         }
       } else {
         results[id] = {
-          solved: unflattenGeometry(featureDef?.initial, featureDef?.entities),
+          solved: unflattenGeometry(sketchDef?.initial, sketchDef?.entities),
           status: feature.status ?? 'exception',
           ...(feature.body_id !== undefined && { body_id: feature.body_id }),
           // `body_ids` and `value` are read by the feature tree and were being

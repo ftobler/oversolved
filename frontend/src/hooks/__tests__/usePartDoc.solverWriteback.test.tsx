@@ -15,6 +15,7 @@ import { useSolverStore } from '@/stores/solverStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import type { PartDoc, Mutation } from '@/types/cad'
 import { editorState } from '@/stores/editorState'
+import { featureById } from '@/testing/featureAccess'
 
 const { mockSolveViaWorker } = vi.hoisted(() => ({ mockSolveViaWorker: vi.fn() }))
 
@@ -192,9 +193,15 @@ function bandResponse(): Record<string, unknown> {
   }
 }
 
-const constraintsOf = (doc: PartDoc | null) => doc?.features?.[0]?.constraints ?? []
+const constraintsOf = (doc: PartDoc | null) => {
+  const f = doc?.features?.[0]
+  return f?.kind === 'sketch' ? (f.constraints ?? []) : []
+}
 
-const entitiesOf = (doc: PartDoc | null) => doc?.features?.[0]?.entities ?? []
+const entitiesOf = (doc: PartDoc | null) => {
+  const f = doc?.features?.[0]
+  return f?.kind === 'sketch' ? (f.entities ?? []) : []
+}
 
 describe('solver write-back undo round-trip', () => {
   beforeEach(() => {
@@ -237,7 +244,7 @@ describe('solver write-back undo round-trip', () => {
 
     // A save after undo persists the restored doc.
     act(() => { result.current.saveDoc('doc-1', result.current.doc!) })
-    expect((saveDocMock.mock.calls[0][1] as PartDoc).features![0].constraints!.map(c => c.id))
+    expect(constraintsOf(saveDocMock.mock.calls[0][1] as PartDoc).map(c => c.id))
       .toEqual(['c_keep', 'c_super'])
   })
 
@@ -313,7 +320,7 @@ describe('solver write-back undo round-trip', () => {
 
     expect(result.current.solveError).toContain('Local solver unavailable')
     expect(result.current.solveResults.sk1).toBeUndefined()
-    const sk1 = docRef.current!.features!.find(f => f.id === 'sk1')!
+    const sk1 = featureById(docRef.current!, 'sk1', 'sketch')
     expect(sk1.entities!.map(e => e.id)).toEqual(['l2'])
   })
 

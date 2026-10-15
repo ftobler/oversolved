@@ -8,6 +8,9 @@ import {
   applyRemoveExtrudeProfile,
   normalizeRefList,
 } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const extrude0 = (doc: PartDoc) => featureAt(doc, 0, 'extrude').extrude
 
 const baseDoc: PartDoc = { features: [] }
 
@@ -18,15 +21,15 @@ describe('add_extrude', () => {
     expect(doc.features).toHaveLength(1)
     expect(doc.features![0].kind).toBe('extrude')
     expect(doc.features![0].id).toBe('ex1')
-    expect(doc.features![0].extrude).toBeDefined()
-    expect(doc.features![0].extrude!.distance).toBe(10)
-    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1'])
+    expect(extrude0(doc)).toBeDefined()
+    expect(extrude0(doc).distance).toBe(10)
+    expect(extrude0(doc).sketch).toEqual(['$sk1'])
   })
 
   it('stores empty array when sketchQuery is empty string', () => {
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', undefined, '', 10)
-    expect(doc.features![0].extrude!.sketch).toEqual([])
+    expect(extrude0(doc).sketch).toEqual([])
   })
 
   it('uses label when provided', () => {
@@ -44,7 +47,7 @@ describe('add_extrude', () => {
   it('defaults direction to normal', () => {
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', 10)
-    expect(doc.features![0].extrude!.direction).toBe('normal')
+    expect(extrude0(doc).direction).toBe('normal')
   })
 })
 
@@ -78,7 +81,7 @@ describe('add_extrude_profile', () => {
       ],
     }
     applyAddExtrudeProfile(doc, 'ex1', '$sk2')
-    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1', '$sk2'])
+    expect(extrude0(doc).sketch).toEqual(['$sk1', '$sk2'])
   })
 
   it('normalizes a string sketch before appending', () => {
@@ -92,7 +95,7 @@ describe('add_extrude_profile', () => {
       ],
     }
     applyAddExtrudeProfile(doc, 'ex1', '$sk2')
-    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1', '$sk2'])
+    expect(extrude0(doc).sketch).toEqual(['$sk1', '$sk2'])
   })
 
   it('toggles off an existing profile query', () => {
@@ -106,7 +109,7 @@ describe('add_extrude_profile', () => {
       ],
     }
     applyAddExtrudeProfile(doc, 'ex1', '$sk1')
-    expect(doc.features![0].extrude!.sketch).toEqual(['$sk2'])
+    expect(extrude0(doc).sketch).toEqual(['$sk2'])
   })
 
   it('does nothing if extrude is undefined', () => {
@@ -132,7 +135,7 @@ describe('remove_extrude_profile', () => {
       ],
     }
     applyRemoveExtrudeProfile(doc, 'ex1', 1)
-    expect(doc.features![0].extrude!.sketch).toEqual(['$sk1', '$sk3'])
+    expect(extrude0(doc).sketch).toEqual(['$sk1', '$sk3'])
   })
 
   it('removes the only profile leaving empty list', () => {
@@ -146,7 +149,7 @@ describe('remove_extrude_profile', () => {
       ],
     }
     applyRemoveExtrudeProfile(doc, 'ex1', 0)
-    expect(doc.features![0].extrude!.sketch).toEqual([])
+    expect(extrude0(doc).sketch).toEqual([])
   })
 
   it('normalizes string sketch before removing', () => {
@@ -160,7 +163,7 @@ describe('remove_extrude_profile', () => {
       ],
     }
     applyRemoveExtrudeProfile(doc, 'ex1', 0)
-    expect(doc.features![0].extrude!.sketch).toEqual([])
+    expect(extrude0(doc).sketch).toEqual([])
   })
 
   it('does nothing if extrude is undefined', () => {
@@ -186,7 +189,7 @@ describe('set_extrude_distance', () => {
       ],
     }
     applySetExtrudeField(doc, 'ex1', 'distance', 20)
-    expect(doc.features![0].extrude!.distance).toBe(20)
+    expect(extrude0(doc).distance).toBe(20)
   })
 
   it('does nothing if extrude is undefined', () => {
@@ -220,7 +223,7 @@ describe('set_extrude_direction', () => {
       ],
     }
     applySetExtrudeField(doc, 'ex1', 'direction', 'symmetric')
-    expect(doc.features![0].extrude!.direction).toBe('symmetric')
+    expect(extrude0(doc).direction).toBe('symmetric')
   })
 
   it('handles reverse direction', () => {
@@ -234,7 +237,7 @@ describe('set_extrude_direction', () => {
       ],
     }
     applySetExtrudeField(doc, 'ex1', 'direction', 'reverse')
-    expect(doc.features![0].extrude!.direction).toBe('reverse')
+    expect(extrude0(doc).direction).toBe('reverse')
   })
 
   it('does nothing if extrude is undefined', () => {
@@ -260,7 +263,7 @@ describe('set_extrude_operation', () => {
       ],
     }
     applySetExtrudeField(doc, 'ex1', 'operation', 'cut')
-    expect(doc.features![0].extrude!.operation).toBe('cut')
+    expect(extrude0(doc).operation).toBe('cut')
   })
 
   it('updates extrude operation back to add', () => {
@@ -274,7 +277,7 @@ describe('set_extrude_operation', () => {
       ],
     }
     applySetExtrudeField(doc, 'ex1', 'operation', 'add')
-    expect(doc.features![0].extrude!.operation).toBe('add')
+    expect(extrude0(doc).operation).toBe('add')
   })
 
   it('sets operation when field is absent', () => {
@@ -288,7 +291,7 @@ describe('set_extrude_operation', () => {
       ],
     }
     applySetExtrudeField(doc, 'ex1', 'operation', 'cut')
-    expect(doc.features![0].extrude!.operation).toBe('cut')
+    expect(extrude0(doc).operation).toBe('cut')
   })
 
   it('does nothing if extrude is undefined', () => {
@@ -312,7 +315,7 @@ describe('set_extrude_operation', () => {
       ],
     }
     applySetExtrudeField(doc, 'ex1', 'operation', 'new')
-    expect(doc.features![0].extrude!.operation).toBe('new')
+    expect(extrude0(doc).operation).toBe('new')
   })
 })
 
@@ -324,17 +327,17 @@ describe('mutation does not mutate original doc', () => {
   })
 
   it('set_extrude_distance does not mutate original', () => {
-    const original = { features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 5 } }] }
+    const original: PartDoc = { features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 5 } }] }
     const doc = structuredClone(original)
     applySetExtrudeField(doc, 'ex1', 'distance', 20)
-    expect(original.features![0].extrude!.distance).toBe(5)
+    expect(extrude0(original).distance).toBe(5)
   })
 
   it('set_extrude_direction does not mutate original', () => {
-    const original = { features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10, direction: 'normal' } }] }
+    const original: PartDoc = { features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10, direction: 'normal' } }] }
     const doc = structuredClone(original) as PartDoc
     applySetExtrudeField(doc, 'ex1', 'direction', 'symmetric')
-    expect(original.features![0].extrude!.direction).toBe('normal')
+    expect(extrude0(original).direction).toBe('normal')
   })
 })
 
@@ -350,7 +353,7 @@ describe('set_extrude_merge_target', () => {
       ],
     }
     applySetExtrudeField(doc, 'ex1', 'merge_target', '@body_ex0')
-    expect(doc.features![0].extrude!.merge_target).toBe('@body_ex0')
+    expect(extrude0(doc).merge_target).toBe('@body_ex0')
   })
 
   it('removes merge_target when called without value', () => {
@@ -364,7 +367,7 @@ describe('set_extrude_merge_target', () => {
       ],
     }
     applySetExtrudeField(doc, 'ex1', 'merge_target', undefined)
-    expect(doc.features![0].extrude!.merge_target).toBeUndefined()
+    expect(extrude0(doc).merge_target).toBeUndefined()
   })
 
   it('does nothing if extrude is undefined', () => {

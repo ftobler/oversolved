@@ -5,7 +5,7 @@ import type { Feature, BodyResult, PartStyleEntry } from '@/types/cad'
 describe('getBodiesToRender', () => {
   const features: Feature[] = [
     { id: 'sk1', kind: 'sketch' },
-    { id: 'ex1', kind: 'extrude' },
+    { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
   ]
 
   const bodies: Record<string, BodyResult> = {
@@ -133,9 +133,9 @@ describe('getBodiesToRender', () => {
 
 describe('getGhostBodiesToRender', () => {
   const features: Feature[] = [
-    { id: 'ex1', kind: 'extrude' },
-    { id: 'ex2', kind: 'extrude' },
-    { id: 'db1', kind: 'delete_body' },
+    { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+    { id: 'ex2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+    { id: 'db1', kind: 'delete_body', delete_body: { bodies: [] } },
   ]
   const ghostBody = (id: string, createdBy: string): BodyResult =>
     ({ id, created_by: createdBy, modified_by: [], mesh: { vertices: [], faces: [], face_data: [], face_queries: [] } } as unknown as BodyResult)

@@ -21,8 +21,10 @@ import { allConsumedSketchIds, consumedSketchIds } from '@/utils/query/consumedS
 /** Whether the document itself shows `feature`, before any editor override. */
 function shownInDoc(feature: PartFeature, consumed: ReadonlySet<string>): boolean {
   if (feature.visible === false) return false
-  // Consumed, and the user has not shown it since: the auto-hide applies.
-  return !(consumed.has(feature.id) && !feature.auto_hidden)
+  // Consumed, and the user has not shown it since: the auto-hide applies. Only
+  // a sketch carries the one-shot flag; for anything else it can never be spent.
+  const autoHiddenSpent = feature.kind === 'sketch' && feature.auto_hidden === true
+  return !(consumed.has(feature.id) && !autoHiddenSpent)
 }
 
 /**

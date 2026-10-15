@@ -12,7 +12,7 @@ import {
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { Repository } from '../../query'
 import type { Body } from '../../types3d'
-import type { PartFeature } from '@/types/cad'
+import type { SketchFeature } from '@/types/cad'
 
 type Dict = Record<string, unknown>
 
@@ -316,7 +316,7 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
       ],
       initial: { c0: [3, 4, 5], ln: [0, 0, 1, 0] },
       constraints: [{ id: 'cc', kind: 'coincident', a: '$lnend', b: '$c0center' }],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
 
     const ctx = prepareDragContext(feature, 'ln', null)
     expect(ctx).not.toBeNull()

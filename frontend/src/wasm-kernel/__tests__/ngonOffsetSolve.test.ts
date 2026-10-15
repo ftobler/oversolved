@@ -15,6 +15,9 @@ import { lowerSketch } from '../lowerSketch'
 import { encodeInput, decodeOutput } from '../codec'
 import { partDocToSketches } from '../partDocToSketches'
 import { applyAddNgon, applyAddOffset, applyAddEntity, applyAddRect, applyDeleteElements } from '@/utils/yamlMutations'
+import { featureAt, sketchAt } from '@/testing/featureAccess'
+
+const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
 
 const bytes = loadSolver()
 
@@ -59,7 +62,7 @@ describe.skipIf(!bytes)('n-gon sugar solves to a regular polygon', () => {
       applyAddNgon(doc, 'sk', [0, 0], [10, 0], sides)
 
       // The construction circumcircle rides along; the polygon is the lines.
-      const lineIds = doc.features![0].entities!.filter((e) => e.kind === 'line').map((e) => e.id)
+      const lineIds = entities0(doc).filter((e) => e.kind === 'line').map((e) => e.id)
       expect(lineIds).toHaveLength(sides)
 
       const solved = solveFeature(doc)
@@ -92,7 +95,7 @@ describe.skipIf(!bytes)('n-gon sugar solves to a regular polygon', () => {
   it('breaking the n-gon (deleting the ngon constraint) leaves the line chain intact', () => {
     const doc = emptySketch()
     applyAddNgon(doc, 'sk', [0, 0], [10, 0], 5)
-    const feat = doc.features![0]
+    const feat = sketchAt(doc)
     const ngon = feat.constraints!.find((c) => c.kind === 'ngon')!
     expect(ngon).toBeTruthy()
 
@@ -106,7 +109,7 @@ describe.skipIf(!bytes)('n-gon sugar solves to a regular polygon', () => {
   it('deleting one member line garbage-collects the ngon constraint', () => {
     const doc = emptySketch()
     applyAddNgon(doc, 'sk', [0, 0], [10, 0], 6)
-    const feat = doc.features![0]
+    const feat = sketchAt(doc)
     const victim = feat.entities![0].id
     applyDeleteElements(doc, [`entity:sk:${victim}`])
     expect(feat.constraints!.some((c) => c.kind === 'ngon')).toBe(false)
@@ -121,7 +124,7 @@ describe.skipIf(!bytes)('offset sugar solves to a true offset', () => {
     const doc = emptySketch()
     applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'src')
     applyAddOffset(doc, 'sk', ['src'], 5)
-    const dstId = doc.features![0].entities!.find((e) => e.id !== 'src')!.id
+    const dstId = entities0(doc).find((e) => e.id !== 'src')!.id
 
     const solved = solveFeature(doc)
     const src = solved['src']
@@ -134,7 +137,7 @@ describe.skipIf(!bytes)('offset sugar solves to a true offset', () => {
     const doc = emptySketch()
     applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'src')
     applyAddOffset(doc, 'sk', ['src'], -4)
-    const dstId = doc.features![0].entities!.find((e) => e.id !== 'src')!.id
+    const dstId = entities0(doc).find((e) => e.id !== 'src')!.id
     const solved = solveFeature(doc)
     expect(perpDistance(solved['src'], [solved[dstId][0], solved[dstId][1]])).toBeCloseTo(-4, 2)
   })
@@ -143,7 +146,7 @@ describe.skipIf(!bytes)('offset sugar solves to a true offset', () => {
     const doc = emptySketch()
     applyAddEntity(doc, 'sk', 'circle', [0, 0, 5], 'src')
     applyAddOffset(doc, 'sk', ['src'], 3)
-    const dstId = doc.features![0].entities!.find((e) => e.id !== 'src')!.id
+    const dstId = entities0(doc).find((e) => e.id !== 'src')!.id
     const dst = solveFeature(doc)[dstId]
     expect(Math.hypot(dst[0], dst[1])).toBeLessThan(1e-2)  // concentric at origin
     expect(Math.abs(dst[2] - 8)).toBeLessThan(1e-2)        // r = 5 + 3
@@ -154,7 +157,7 @@ describe.skipIf(!bytes)('offset sugar solves to a true offset', () => {
     // Degree slots: a half circle, as the arc convention reads angles.
     applyAddEntity(doc, 'sk', 'arc', [0, 0, 5, 0, 180], 'src')
     applyAddOffset(doc, 'sk', ['src'], 2)
-    const dstId = doc.features![0].entities!.find((e) => e.id !== 'src')!.id
+    const dstId = entities0(doc).find((e) => e.id !== 'src')!.id
     const dst = solveFeature(doc)[dstId]
     expect(Math.abs(dst[2] - 7)).toBeLessThan(1e-2)
   })
@@ -167,9 +170,9 @@ describe.skipIf(!bytes)('connected-profile offset stays a closed profile after s
   it('offset rectangle solves to a closed loop with no corner gaps', () => {
     const doc = emptySketch()
     applyAddRect(doc, 'sk', [0, 0], [10, 10])
-    const srcIds = doc.features![0].entities!.map((e) => e.id)
+    const srcIds = entities0(doc).map((e) => e.id)
     applyAddOffset(doc, 'sk', srcIds, 2)
-    const cloneIds = doc.features![0].entities!.map((e) => e.id).filter((id) => !srcIds.includes(id))
+    const cloneIds = entities0(doc).map((e) => e.id).filter((id) => !srcIds.includes(id))
     expect(cloneIds).toHaveLength(4)
 
     const solved = solveFeature(doc)
@@ -192,9 +195,9 @@ describe.skipIf(!bytes)('connected-profile offset stays a closed profile after s
   it('small inward offset of a square solves to a smaller square', () => {
     const doc = emptySketch()
     applyAddRect(doc, 'sk', [0, 0], [10, 10])  // CCW: +offset mites inward
-    const srcIds = doc.features![0].entities!.map((e) => e.id)
+    const srcIds = entities0(doc).map((e) => e.id)
     applyAddOffset(doc, 'sk', srcIds, 2)
-    const cloneIds = doc.features![0].entities!.map((e) => e.id).filter((id) => !srcIds.includes(id))
+    const cloneIds = entities0(doc).map((e) => e.id).filter((id) => !srcIds.includes(id))
 
     const solved = solveFeature(doc)
     for (const id of cloneIds) {

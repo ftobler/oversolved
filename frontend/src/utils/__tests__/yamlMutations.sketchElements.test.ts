@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { applyDeleteElements, applyAddEntityWithConstraint, applyAddImportStep } from '@/utils/yamlMutations'
+import { featureAt } from '@/testing/featureAccess'
+
+const constraints0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').constraints!
+const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
+const initial0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').initial!
 
 const makeSampleDoc = (): PartDoc => ({
   version: 1,
@@ -31,35 +36,35 @@ describe('applyDeleteElements', () => {
   it('deletes an entity from entities list and initial', () => {
     const doc = makeSampleDoc()
     applyDeleteElements(doc, ['entity:Sketch1:circ1'])
-    expect(doc.features![0].entities).toHaveLength(2)
-    expect(doc.features![0].entities!.map(e => e.id)).not.toContain('circ1')
-    expect(doc.features![0].initial!.circ1).toBeUndefined()
-    expect(doc.features![0].initial!.line1).toBeDefined()
+    expect(entities0(doc)).toHaveLength(2)
+    expect(entities0(doc).map(e => e.id)).not.toContain('circ1')
+    expect(initial0(doc).circ1).toBeUndefined()
+    expect(initial0(doc).line1).toBeDefined()
   })
 
   it('deletes a constraint', () => {
     const doc = makeSampleDoc()
     applyDeleteElements(doc, ['constraint:Sketch1:c_horiz'])
-    expect(doc.features![0].constraints).toHaveLength(1)
-    expect(doc.features![0].constraints![0].id).toBe('c_len')
+    expect(constraints0(doc)).toHaveLength(1)
+    expect(constraints0(doc)[0].id).toBe('c_len')
   })
 
   it('deletes multiple elements at once', () => {
     const doc = makeSampleDoc()
     applyDeleteElements(doc, ['entity:Sketch1:line1', 'constraint:Sketch1:c_len'])
-    expect(doc.features![0].entities).toHaveLength(2)
+    expect(entities0(doc)).toHaveLength(2)
     // Both constraints reference $line1; c_len is explicitly deleted and
     // c_horiz is garbage-collected because it references the deleted entity.
-    expect(doc.features![0].constraints).toHaveLength(0)
-    expect(doc.features![0].initial!.line1).toBeUndefined()
+    expect(constraints0(doc)).toHaveLength(0)
+    expect(initial0(doc).line1).toBeUndefined()
   })
 
   it('deletes constraints that reference deleted entities', () => {
     const doc = makeSampleDoc()
     applyDeleteElements(doc, ['entity:Sketch1:line1'])
-    expect(doc.features![0].entities).toHaveLength(2)
+    expect(entities0(doc)).toHaveLength(2)
     // Both constraints reference $line1 and should be garbage-collected
-    expect(doc.features![0].constraints).toHaveLength(0)
+    expect(constraints0(doc)).toHaveLength(0)
   })
 
   it('deletes constraints referencing deleted entity sub-points', () => {
@@ -77,7 +82,7 @@ describe('applyDeleteElements', () => {
       }],
     }
     applyDeleteElements(doc, ['entity:Sketch1:line1'])
-    expect(doc.features![0].constraints).toHaveLength(0)
+    expect(constraints0(doc)).toHaveLength(0)
   })
 
   it('keeps constraints that do not reference deleted entities', () => {
@@ -99,8 +104,8 @@ describe('applyDeleteElements', () => {
       }],
     }
     applyDeleteElements(doc, ['entity:Sketch1:line1'])
-    expect(doc.features![0].constraints).toHaveLength(1)
-    expect(doc.features![0].constraints![0].id).toBe('c_vert')
+    expect(constraints0(doc)).toHaveLength(1)
+    expect(constraints0(doc)[0].id).toBe('c_vert')
   })
 })
 
@@ -113,11 +118,11 @@ describe('applyAddEntityWithConstraint', () => {
       constraints: [{ id: 'c1', kind: 'horizontal', target: '$line1' }],
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [5, 5, 15, 5], 'start', 'vertex:Sketch1:line1:end', 'coincident')
-    expect(doc.features![0].entities).toHaveLength(2)
-    expect(doc.features![0].entities![1].kind).toBe('line')
-    expect(doc.features![0].initial![doc.features![0].entities![1].id]).toEqual([5, 5, 15, 5])
-    expect(doc.features![0].constraints).toHaveLength(2)
-    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')
+    expect(entities0(doc)).toHaveLength(2)
+    expect(entities0(doc)[1].kind).toBe('line')
+    expect(initial0(doc)[entities0(doc)[1].id]).toEqual([5, 5, 15, 5])
+    expect(constraints0(doc)).toHaveLength(2)
+    const newConstraint = constraints0(doc).find(c => c.kind === 'coincident')
     expect(newConstraint).toBeDefined()
   })
 
@@ -129,9 +134,9 @@ describe('applyAddEntityWithConstraint', () => {
       constraints: [],
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'point', [1.23456789, 9.87654321], 'xy', 'vertex:Sketch1:line1:end', 'coincident')
-    const newEntity = doc.features![0].entities![1]
-    expect(doc.features![0].initial![newEntity.id]![0]).toBe(1.234568)
-    expect(doc.features![0].initial![newEntity.id]![1]).toBe(9.876543)
+    const newEntity = entities0(doc)[1]
+    expect(initial0(doc)[newEntity.id]![0]).toBe(1.234568)
+    expect(initial0(doc)[newEntity.id]![1]).toBe(9.876543)
   })
 
   it('is no-op for unknown feature', () => {
@@ -141,7 +146,7 @@ describe('applyAddEntityWithConstraint', () => {
       constraints: [],
     }] }
     applyAddEntityWithConstraint(doc, 'Nonexistent', 'line', [0, 0, 10, 10], 'start', 'vertex:Sketch1:line1:end', 'coincident')
-    expect(doc.features![0].entities).toHaveLength(0)
+    expect(entities0(doc)).toHaveLength(0)
   })
 
   it('creates concentric constraint for circle center snapping', () => {
@@ -152,9 +157,9 @@ describe('applyAddEntityWithConstraint', () => {
       constraints: [],
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'circle', [0, 0, 3], 'center', 'vertex:Sketch1:circ1:center', 'concentric')
-    expect(doc.features![0].entities).toHaveLength(2)
-    expect(doc.features![0].constraints).toHaveLength(1)
-    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'concentric')
+    expect(entities0(doc)).toHaveLength(2)
+    expect(constraints0(doc)).toHaveLength(1)
+    const newConstraint = constraints0(doc).find(c => c.kind === 'concentric')
     expect(newConstraint).toBeDefined()
     expect(newConstraint!.a).toBeDefined()
     expect(newConstraint!.b).toBeDefined()
@@ -168,8 +173,8 @@ describe('applyAddEntityWithConstraint', () => {
       constraints: [],
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 0, 5, 5], 'start', 'vertex:Sketch1:line1:start', 'coincident')
-    const newEntity = doc.features![0].entities![1]
-    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
+    const newEntity = entities0(doc)[1]
+    const newConstraint = constraints0(doc).find(c => c.kind === 'coincident')!
     expect(newConstraint.a).toBe(`$${newEntity.id}start`)
     expect(newConstraint.b).toBe('$line1start')
   })
@@ -182,8 +187,8 @@ describe('applyAddEntityWithConstraint', () => {
       constraints: [],
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'arc', [5, 5, 3, 0, 90], 'end', 'vertex:Sketch1:arc1:end', 'coincident')
-    expect(doc.features![0].entities).toHaveLength(2)
-    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')
+    expect(entities0(doc)).toHaveLength(2)
+    const newConstraint = constraints0(doc).find(c => c.kind === 'coincident')
     expect(newConstraint).toBeDefined()
   })
 
@@ -196,7 +201,7 @@ describe('applyAddEntityWithConstraint', () => {
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 0, 10, 10], 'start', 'vertex:Sketch1:line1:end', 'coincident')
     applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 0, 5, 5], 'start', 'vertex:Sketch1:line1:end', 'coincident')
-    const entities = doc.features![0].entities
+    const entities = entities0(doc)
     expect(entities).toHaveLength(2)
     expect(entities![0].id).not.toBe(entities![1].id)
   })
@@ -209,8 +214,8 @@ describe('applyAddEntityWithConstraint', () => {
       constraints: [],
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 5, 5, 5], 'end', undefined, 'coincident', 'entity:Sketch1:line1')
-    const newEntity = doc.features![0].entities![1]
-    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
+    const newEntity = entities0(doc)[1]
+    const newConstraint = constraints0(doc).find(c => c.kind === 'coincident')!
     expect(newConstraint.a).toBe(`$${newEntity.id}end`)
     expect(newConstraint.b).toBe('$line1')
   })
@@ -223,8 +228,8 @@ describe('applyAddEntityWithConstraint', () => {
       constraints: [],
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 0, 10, 10], 'start', undefined, 'coincident', undefined)
-    expect(doc.features![0].entities).toHaveLength(1)
-    expect(doc.features![0].constraints).toHaveLength(0)
+    expect(entities0(doc)).toHaveLength(1)
+    expect(constraints0(doc)).toHaveLength(0)
   })
 
   it('uses source feature ID for cross-sketch snap vertex', () => {
@@ -235,8 +240,8 @@ describe('applyAddEntityWithConstraint', () => {
       constraints: [],
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'line', [0, 0, 5, 5], 'start', 'vertex:Sketch2:line1:start', 'coincident')
-    const newEntity = doc.features![0].entities![0]
-    const newConstraint = doc.features![0].constraints!.find(c => c.kind === 'coincident')!
+    const newEntity = entities0(doc)[0]
+    const newConstraint = constraints0(doc).find(c => c.kind === 'coincident')!
     expect(newConstraint.a).toBe(`$${newEntity.id}start`)
     // Absolute cross-feature refs are slash-joined (canonical kernel format).
     expect(newConstraint.b).toBe('@Sketch2/line1/start')
@@ -275,9 +280,9 @@ describe('applyAddEntityWithConstraint with @builtin_origin', () => {
       constraints: [],
     }] }
     applyAddEntityWithConstraint(doc, 'Sketch1', 'point', [3, 4], 'xy', '@builtin_origin', 'coincident')
-    expect(doc.features![0].entities).toHaveLength(1)
-    expect(doc.features![0].constraints).toHaveLength(1)
-    const c = doc.features![0].constraints![0]
+    expect(entities0(doc)).toHaveLength(1)
+    expect(constraints0(doc)).toHaveLength(1)
+    const c = constraints0(doc)[0]
     expect(c.kind).toBe('coincident')
     expect(c.b).toBe('@builtin_origin')
   })

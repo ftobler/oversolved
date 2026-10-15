@@ -14,9 +14,10 @@ import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
 import { useEditorState } from '@/hooks/useEditorState'
+import type { PartDoc } from '@/types/cad'
 
 const F = vi.hoisted(() => {
-  const doc = {
+  const doc: PartDoc = {
     version: 1,
     kind: 'part',
     features: [
@@ -307,7 +308,7 @@ describe('Part page actions', () => {
   it('the active sketch menu aligns the camera to its plane and toggles the constraint tiles', () => {
     useEditorState.setState({
     editingFeatureId: 'sketch1',
-    rollbackPosition: F.doc.features.length,
+    rollbackPosition: F.doc.features!.length,
   })
     renderPart()
 
@@ -324,7 +325,7 @@ describe('Part page actions', () => {
   it('a viewport right-click in sketch edit offers Normal to sketch', () => {
     useEditorState.setState({
     editingFeatureId: 'sketch1',
-    rollbackPosition: F.doc.features.length,
+    rollbackPosition: F.doc.features!.length,
   })
     renderPart()
 
@@ -349,7 +350,7 @@ describe('Part page actions', () => {
   it('the active sketch menu Exit Sketch closes the menu', () => {
     useEditorState.setState({
     editingFeatureId: 'sketch1',
-    rollbackPosition: F.doc.features.length,
+    rollbackPosition: F.doc.features!.length,
   })
     renderPart()
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
-import type { FeatureHandleData, PartDoc, PartFeature } from '@/types/cad'
+import type { ExtrudeFeatureDef, FeatureHandleData, PartDoc, PartFeature } from '@/types/cad'
 
 /**
  * FeatureHandles owns the whole editing-arrow gesture: it decides whether a
@@ -75,13 +75,13 @@ const HANDLE: FeatureHandleData = {
   min: 0.1,
 }
 
-function extrudeFeature(overrides: Partial<PartFeature['extrude']> = {}): PartFeature {
+function extrudeFeature(overrides: Partial<ExtrudeFeatureDef> = {}): PartFeature {
   return {
     id: 'F1',
     kind: 'extrude',
     label: 'Extrude',
-    extrude: { distance: 5, ...overrides },
-  } as unknown as PartFeature
+    extrude: { sketch: [], distance: 5, ...overrides },
+  }
 }
 
 function installFeature(feature: PartFeature) {
@@ -169,7 +169,8 @@ describe('FeatureHandles pointer-down guard', () => {
   it('refuses to start a drag for an expression value', () => {
     // The stored sub-def carries the raw expression string.
     const feature = extrudeFeature()
-    ;(feature.extrude as unknown as Record<string, unknown>).distance = 'width*2'
+    if (feature.kind !== 'extrude') throw new Error('fixture is not an extrude')
+    feature.extrude.distance = 'width*2'
     installFeature(feature)
 
     render(<FeatureHandles />)

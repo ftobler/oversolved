@@ -11,6 +11,9 @@ vi.mock('@/stores/solverStore', () => ({
 
 import { useSolver } from '@/hooks/useSolver'
 import type { PartDoc, BodyResult } from '@/types/cad'
+import { featureAt } from '@/testing/featureAccess'
+
+const initial0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').initial!
 
 function makeDoc(): PartDoc {
   return {
@@ -43,12 +46,12 @@ describe('useSolver doc integrity', () => {
     await act(async () => { await result.current.reSolve(originalDoc) })
 
     // original doc should be untouched
-    expect(originalDoc.features![0].initial).toEqual({ old_pt: [9, 9] })
+    expect(initial0(originalDoc)).toEqual({ old_pt: [9, 9] })
 
     // setDoc should have been called with a cloned doc carrying the new geometry
     expect(setDoc).toHaveBeenCalled()
     const savedDoc = setDoc.mock.calls[0][0] as PartDoc
     expect(savedDoc).not.toBe(originalDoc)
-    expect(savedDoc.features![0].initial).toEqual({ new_pt: [1, 2] })
+    expect(initial0(savedDoc)).toEqual({ new_pt: [1, 2] })
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { PartFeature } from '@/types/cad'
+import type { SketchFeature, PartFeature } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import { visibleFeatureIds } from '@/utils/featureVisibility'
 
@@ -7,7 +7,7 @@ import { visibleFeatureIds } from '@/utils/featureVisibility'
 // query), so the rule is exercised on the shape real picks store.
 const area = (sk: string) => makeAncestryQuery([`@${sk}/c1`, 'surface:0', `@${sk}`], 'flatface')
 
-const sketch = (id: string, extra: Partial<PartFeature> = {}): PartFeature => ({ id, kind: 'sketch', ...extra })
+const sketch = (id: string, extra: Partial<SketchFeature> = {}): SketchFeature => ({ id, kind: 'sketch', ...extra })
 const extrude = (id: string, profiles: string[]): PartFeature =>
   ({ id, kind: 'extrude', extrude: { sketch: profiles, distance: 10 } })
 

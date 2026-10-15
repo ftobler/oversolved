@@ -30,6 +30,7 @@ import { readBodyNames } from '../occ/bodyNames'
 type Dict = Record<string, unknown>
 
 interface BooleanResult {
+  [key: string]: unknown
   status: string
   body_id: string
   body_ids: string[]

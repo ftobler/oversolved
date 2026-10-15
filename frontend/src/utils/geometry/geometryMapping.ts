@@ -1,6 +1,6 @@
 import type {
   Sketch, Constraints, Point,
-  PartEntityDef, PartFeature, PartConstraint, ConstraintRender,
+  PartEntityDef, SketchFeature, PartConstraint, ConstraintRender,
   LineSegment, Circle, Arc, PointEntity, Ellipse, Spline,
   ProjectedLineSegment, ProjectedCircle, ProjectedArc, ProjectedPointEntity, ProjectedEllipse, ProjectedSpline,
 } from '@/types/cad'
@@ -627,7 +627,7 @@ function computeConstraintRenderCore(constraint: PartConstraint, sketch: Sketch)
   return { kind: 'unknown' }
 }
 
-export function deriveConstraints(feature: PartFeature, sketch: Sketch): Constraints {
+export function deriveConstraints(feature: SketchFeature, sketch: Sketch): Constraints {
   if (!feature.constraints) return {}
   const result: Constraints = {}
   for (const c of feature.constraints) {

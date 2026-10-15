@@ -46,10 +46,11 @@ export function FeatureItemEditors({
   const kind = feature.kind
 
   if (kind === 'plane' && !BUILTIN_FEATURE_IDS.has(feature.id)) {
+    const featureDef = doc?.features?.find(f => f.id === feature.id)
     return (
       <PlaneEditor
         feature={feature}
-        featureDef={doc?.features?.find(f => f.id === feature.id)}
+        featureDef={featureDef?.kind === 'plane' ? featureDef : undefined}
         onMutation={onMutation}
         features={features}
         partLabels={partLabels}
@@ -58,10 +59,11 @@ export function FeatureItemEditors({
   }
 
   if (kind === 'sketch') {
+    const featureDef = doc?.features?.find(f => f.id === feature.id)
     return (
       <PlaneSelector
         feature={feature}
-        featureDef={doc?.features?.find(f => f.id === feature.id)}
+        featureDef={featureDef?.kind === 'sketch' ? featureDef : undefined}
         onMutation={onMutation}
         features={features}
         partLabels={partLabels}

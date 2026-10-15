@@ -3,6 +3,9 @@ import type { PartDoc } from '@/types/cad'
 import { applyAddNgon, applyAddOffset, applyAddEntity, applyDeleteElements } from '@/utils/yamlMutations'
 import { round } from '@/utils/yamlMutations/helpers'
 import { CONSTRAINTS } from '@/registry'
+import { featureAt } from '@/testing/featureAccess'
+
+const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
 
 // Every constraint kind that carries a numeric dimension value. Offset must
 // author NONE of these -- the user dimensions the result afterward.
@@ -16,7 +19,7 @@ describe('applyAddNgon', () => {
   it('creates N line entities, a closed coincident chain, and one ngon constraint', () => {
     const doc = sketchDoc()
     applyAddNgon(doc, 'sk', [0, 0], [10, 0], 6)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
 
     const lines = feat.entities!.filter((e) => e.kind === 'line')
     expect(lines).toHaveLength(6)
@@ -33,7 +36,7 @@ describe('applyAddNgon', () => {
   it('seeds the lines on the circumcircle through the corner click', () => {
     const doc = sketchDoc()
     applyAddNgon(doc, 'sk', [0, 0], [10, 0], 4)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
     // First vertex sits at the corner; all vertices are radius 10 from center.
     for (const id of feat.entities!.filter((e) => e.kind === 'line').map((e) => e.id)) {
       const p = feat.initial![id]
@@ -44,13 +47,13 @@ describe('applyAddNgon', () => {
   it('clamps sides below 3 up to a triangle', () => {
     const doc = sketchDoc()
     applyAddNgon(doc, 'sk', [0, 0], [5, 0], 2)
-    expect(doc.features![0].entities!.filter((e) => e.kind === 'line')).toHaveLength(3)
+    expect(entities0(doc).filter((e) => e.kind === 'line')).toHaveLength(3)
   })
 
   it('does nothing for a degenerate (zero-radius) n-gon', () => {
     const doc = sketchDoc()
     applyAddNgon(doc, 'sk', [3, 3], [3, 3], 6)
-    expect(doc.features![0].entities).toHaveLength(0)
+    expect(entities0(doc)).toHaveLength(0)
   })
 })
 
@@ -59,7 +62,7 @@ describe('applyAddOffset', () => {
     const doc = sketchDoc()
     applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'src')
     applyAddOffset(doc, 'sk', ['src'], 5)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
 
     expect(feat.entities).toHaveLength(2)
     const dst = feat.entities!.find((e) => e.id !== 'src')!
@@ -78,7 +81,7 @@ describe('applyAddOffset', () => {
     const doc = sketchDoc()
     applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'src')
     applyAddOffset(doc, 'sk', ['src'], -4)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
     const dst = feat.entities!.find((e) => e.id !== 'src')!
     expect(feat.initial![dst.id]).toEqual([0, -4, 10, -4])
   })
@@ -87,7 +90,7 @@ describe('applyAddOffset', () => {
     const doc = sketchDoc()
     applyAddEntity(doc, 'sk', 'circle', [0, 0, 5], 'src')
     applyAddOffset(doc, 'sk', ['src'], 3)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
     const dst = feat.entities!.find((e) => e.id !== 'src')!
     expect(feat.initial![dst.id]).toEqual([0, 0, 8])  // r = 5 + 3, center unchanged
     expect(feat.constraints!.find((c) => c.kind === 'concentric')).toMatchObject({ a: '$src', b: '$' + dst.id })
@@ -98,7 +101,7 @@ describe('applyAddOffset', () => {
     const doc = sketchDoc()
     applyAddEntity(doc, 'sk', 'arc', [0, 0, 5, 0, Math.PI], 'src')
     applyAddOffset(doc, 'sk', ['src'], 2)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
     const dst = feat.entities!.find((e) => e.id !== 'src')!
     expect(feat.initial![dst.id]).toEqual([0, 0, 7, round(0), round(Math.PI)])  // r = 5 + 2, angles preserved
     expect(feat.constraints!.find((c) => c.kind === 'concentric')).toMatchObject({ a: '$src', b: '$' + dst.id })
@@ -111,7 +114,7 @@ describe('applyAddOffset', () => {
     applyAddEntity(doc, 'sk', 'line', [10, 0, 10, 10], 'b')
     applyAddEntity(doc, 'sk', 'circle', [0, 0, 5], 'c')
     applyAddOffset(doc, 'sk', ['a', 'b', 'c'], 2)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
     expect(feat.entities).toHaveLength(6)  // 3 sources + 3 copies
     expect(feat.constraints!.filter((c) => c.kind === 'parallel')).toHaveLength(2)
     expect(feat.constraints!.filter((c) => c.kind === 'concentric')).toHaveLength(1)
@@ -122,7 +125,7 @@ describe('applyAddOffset', () => {
     const doc = sketchDoc()
     applyAddEntity(doc, 'sk', 'spline', [0, 0, 1, 1, 2, 1, 3, 0], 'src')
     applyAddOffset(doc, 'sk', ['src'], 2)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
     expect(feat.entities).toHaveLength(2)
     const dst = feat.entities!.find((e) => e.id !== 'src')!
     expect(feat.initial![dst.id]).toEqual(feat.initial!['src'])  // copy at source
@@ -133,7 +136,7 @@ describe('applyAddOffset', () => {
     const doc = sketchDoc()
     applyAddEntity(doc, 'sk', 'line', [3, 3, 3, 3], 'src')
     applyAddOffset(doc, 'sk', ['src'], 5)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
     expect(feat.entities).toHaveLength(1)  // no clone created
     expect(feat.constraints ?? []).toHaveLength(0)
   })
@@ -142,7 +145,7 @@ describe('applyAddOffset', () => {
     const doc = sketchDoc()
     applyAddEntity(doc, 'sk', 'line', [0, 0, 10, 0], 'src')
     applyAddOffset(doc, 'sk', ['src'], 5)
-    const feat = doc.features![0]
+    const feat = featureAt(doc, 0, 'sketch')
     const dst = feat.entities!.find((e) => e.id !== 'src')!
 
     applyDeleteElements(doc, [`entity:sk:${dst.id}`])

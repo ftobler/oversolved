@@ -1,8 +1,8 @@
 import type { PartDoc, PartConstraint, PartTarget } from '@/types/cad'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
 import {
-  warn, round, allFinite, findFeature, parseTarget, uniqueConstraintId, resolveSketch,
-  mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
+  warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
+  resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
 } from './helpers'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { ellipseAxisDrag, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
@@ -88,7 +88,7 @@ export function applyMoveVertex(
   to: [number, number],
   solvedGeometry?: Record<string, number[]>,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = findSketchFeature(doc, featureId)
   if (!feature?.initial) return
   // A non-finite drop position is broken pointer math upstream. round(NaN) is
   // still NaN, so letting it through would persist the poison into the doc and
@@ -144,7 +144,7 @@ export function applyMoveEntity(
   solvedGeometry?: Record<string, number[]>,
 ): void {
   const [dx, dy] = delta
-  const feature = findFeature(doc, featureId)
+  const feature = findSketchFeature(doc, featureId)
   if (!feature?.initial) return
   // A non-finite delta is broken pointer math upstream (a drag frame divided by
   // a zero extent, or an empty numeric input parsed). round(NaN) is still NaN,
@@ -186,7 +186,7 @@ export function applyResizeCircle(
   radius: number,
   solvedGeometry?: Record<string, number[]>,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = findSketchFeature(doc, featureId)
   if (!feature?.initial) return
   // A non-finite or non-positive radius is broken pointer math upstream, or an
   // attempt to invert the circle. round(NaN) is still NaN, so letting it through
@@ -299,7 +299,7 @@ export function applyToggleConstruction(doc: PartDoc, targets: string[]): void {
     byFeature[fid].add(eid)
   }
   for (const [fid, eids] of Object.entries(byFeature)) {
-    const feature = findFeature(doc, fid)
+    const feature = findSketchFeature(doc, fid)
     if (!feature?.entities) continue
     for (const def of feature.entities) {
       if (eids.has(def.id) && def.kind !== 'point') {
@@ -321,7 +321,7 @@ export function applyDeleteElements(doc: PartDoc, targets: string[]): void {
     if (parts[0] === 'vertex') byFeature[fid].entities.add(parts[2])
   }
   for (const [fid, { entities: entsToDelete, constraints: consToDelete }] of Object.entries(byFeature)) {
-    const feature = findFeature(doc, fid)
+    const feature = findSketchFeature(doc, fid)
     if (!feature) continue
     if (entsToDelete.size > 0) {
       if (feature.entities) feature.entities = feature.entities.filter(e => !entsToDelete.has(e.id))
@@ -348,7 +348,7 @@ export function applySetConstraintValue(
   constraintId: string,
   value: number,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = findSketchFeature(doc, featureId)
   if (!feature?.constraints) return
   // A dimension value is persisted verbatim into the doc; a NaN/Inf must be
   // rejected at the boundary rather than rounded into it.
@@ -366,7 +366,7 @@ export function applySetConstraintPos(
   constraintId: string,
   pos: [number, number],
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = findSketchFeature(doc, featureId)
   if (!feature?.constraints) return
   // Same boundary as applySetConstraintValue: label positions are stored, not
   // derived, so a non-finite coordinate would persist as-is.
@@ -386,7 +386,7 @@ export function applySetConstraintSign(
   constraintId: string,
   sign: number,
 ): void {
-  const feature = findFeature(doc, featureId)
+  const feature = findSketchFeature(doc, featureId)
   if (!feature?.constraints) return
   const c = feature.constraints.find(c => c.id === constraintId)
   if (c) c.sign = sign < 0 ? -1 : 1
@@ -615,7 +615,7 @@ function _dockPointId(dock: PartConstraint, knownIds: Set<string>): string | nul
  *  author an unresolvable `$dock:` ref, so the caller must drop the pick. */
 function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: string[]): string[] | null {
   if (!targets.some(t => t.startsWith('dock:') || t.startsWith('isect:'))) return targets
-  const feature = findFeature(doc, featureId)
+  const feature = findSketchFeature(doc, featureId)
   if (!feature) return targets
   const resolved: string[] = []
   for (const t of targets) {
@@ -647,7 +647,7 @@ function _resolveInferredTargets(doc: PartDoc, featureId: string, targets: strin
 }
 
 export function applySetFeaturePlane(doc: PartDoc, featureId: string, plane: string): void {
-  const feature = findFeature(doc, featureId)
+  const feature = findSketchFeature(doc, featureId)
   if (!feature) return
   feature.plane = plane
 }

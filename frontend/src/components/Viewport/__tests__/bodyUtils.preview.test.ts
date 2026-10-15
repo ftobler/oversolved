@@ -18,7 +18,7 @@ describe('getSketchesToRender', () => {
     { id: 'sk1', kind: 'sketch' },
     { id: 'pl1', kind: 'plane' },
     { id: 'sk2', kind: 'sketch' },
-    { id: 'ex1', kind: 'extrude' },
+    { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
   ]
 
   it('returns [] for undefined or empty feature lists', () => {
@@ -47,8 +47,8 @@ describe('getPreviewBodies', () => {
   // idx: sk1=0, ex1=1, ex2=2
   const features: Feature[] = [
     { id: 'sk1', kind: 'sketch' },
-    { id: 'ex1', kind: 'extrude' },
-    { id: 'ex2', kind: 'extrude' },
+    { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+    { id: 'ex2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
   ]
   const bodies: Record<string, BodyResult> = {
     body_ex1: makeBody('ex1'),

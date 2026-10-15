@@ -4,7 +4,7 @@ import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
-import type { Feature, PartFeature, Sketch, BodyResult, PlaneDef } from '@/types/cad'
+import type { Feature, PartFeature, Sketch, BodyResult } from '@/types/cad'
 import { unflattenGeometry, deriveConstraints } from '@/utils/geometry/geometryMapping'
 import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
@@ -417,7 +417,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
     // Resolve plane transform: kernel-provided or derived from builtin plane string.
     const planeTransform = activeResult?.plane_transform
-      ?? (activeFeature?.plane ? builtinPlaneTransform(activeFeature.plane) : null)
+      ?? (activeFeature?.kind === 'sketch' && activeFeature.plane
+        ? builtinPlaneTransform(activeFeature.plane)
+        : null)
 
     if (!planeTransform || !bodies) return otherSketches
 
@@ -437,12 +439,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     const sizes: Record<string, number> = {}
     features?.forEach(f => {
       if (f.kind === 'plane') {
-        const planeDef = featureDefs?.find(fd => fd.id === f.id)?.definition as PlaneDef | undefined
-        sizes[f.id] = calculatePlaneSize(planeDef, bodies)
+        sizes[f.id] = calculatePlaneSize(f.definition, bodies)
       }
     })
     return sizes
-  }, [features, featureDefs, bodies])
+  }, [features, bodies])
 
   // Latch the travel as it happens, then hand the move on to the rubber band. An
   // orbit that swings out and returns near its start would otherwise read as a
@@ -577,7 +578,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
         {activeSketchFeatures.map(f => {
           const solveResult = solveResults?.[f.id]
-          const fullFeatureDef = featureDefs?.find(fd => fd.id === f.id) || f
+          const authored = featureDefs?.find(fd => fd.id === f.id)
+          const fullFeatureDef = authored?.kind === 'sketch' ? authored : f
           const sketch = solveResult?.solved ? solveResult.solved : unflattenGeometry(fullFeatureDef.initial || {}, fullFeatureDef.entities)
           const constraints = solveResult?.constraints ? solveResult.constraints : deriveConstraints(fullFeatureDef, sketch)
           const isActiveFeature = f.id === activeFeatureId

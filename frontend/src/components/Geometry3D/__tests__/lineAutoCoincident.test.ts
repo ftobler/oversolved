@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { computeDrawClick, type DrawSnapState } from '@/components/Geometry3D/drawLogic'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import type { PartDoc, Mutation, PartConstraint } from '@/types/cad'
+import { sketchAt } from '@/testing/featureAccess'
 
 // End-to-end over the pure layer: drive the line tool the way DrawingTool does
 // and read the constraints that actually land in the document. The reported bug
@@ -30,7 +31,7 @@ function emptyDoc(): PartDoc {
 }
 
 function sketchOf(doc: PartDoc) {
-  return doc.features![0]
+  return sketchAt(doc)
 }
 
 /** One click: resolve it, apply its mutations, and carry the tool state forward

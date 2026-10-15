@@ -26,11 +26,11 @@ import { lowerSketch } from '@/wasm-kernel/lowerSketch'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { encodeInput, decodeOutput } from '@/wasm-kernel/codec'
 import { applyMoveVertex, applyMoveEntity } from '@/utils/yamlMutations/sketch'
-import type { PartDoc, PartFeature } from '@/types/cad'
+import type { PartDoc, SketchFeature } from '@/types/cad'
 
 const solveBytes = loadSolver()
 
-function rectSketchFeature(sketchId: string, w = 10, h = 6): PartFeature {
+function rectSketchFeature(sketchId: string, w = 10, h = 6): SketchFeature {
   return {
     id: sketchId, kind: 'sketch', label: 'Rectangle', plane: '@builtin_plane_front',
     entities: [
@@ -50,7 +50,7 @@ function rectSketchFeature(sketchId: string, w = 10, h = 6): PartFeature {
       { id: 'len1', kind: 'length', target: { entity: 'bottom' }, value: w },
       { id: 'len2', kind: 'length', target: { entity: 'left' }, value: h },
     ],
-  } as unknown as PartFeature
+  } as unknown as SketchFeature
 }
 
 // The drag path uses REG_WEIGHT_BASE=1e-3 on all params and
@@ -103,7 +103,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       constraints: [
         { id: 'c_co', kind: 'coincident', a: '$lnstart', b: '@builtin_origin' },
       ],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
 
     // Document origin (0,0,0) on this plane lands at local (-5, -10).
     const originLocal: [number, number] = [-5, -10]
@@ -130,7 +130,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
   // source-lines. Guards the FULL round trip (drag preview vs committed hard
   // solve), where a coordinate-frame divergence surfaces as a snap on release.
   const ORIGIN_LOCAL: [number, number] = [-5, -10]
-  function originLineFeature(id: string): PartFeature {
+  function originLineFeature(id: string): SketchFeature {
     return {
       id, kind: 'sketch', label: 'sketch 2', plane: '@builtin_plane_front',
       entities: [
@@ -146,16 +146,16 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
         { id: 'c_co', kind: 'coincident', a: '$AflKf', b: '@builtin_origin' },
         { id: 'c_v', kind: 'vertical', target: '$AflKf' },
       ],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
   }
   // Mirrors solveSketch's commit path: strip `source` (re-projected/dropped)
   // before partDocToSketches, thread the document origin in as originLocal.
-  function hardSolveLine(feature: PartFeature): number[] {
+  function hardSolveLine(feature: SketchFeature): number[] {
     if (!solveBytes) throw new Error('no solver')
-    const lowered = {
+    const lowered: SketchFeature = {
       ...feature,
       entities: (feature.entities ?? []).map((e) => ({ ...e, source: undefined })),
-    } as PartFeature
+    }
     const { sketches } = partDocToSketches([lowered], ORIGIN_LOCAL)
     const { input, layout } = lowerSketch(sketches[0].sketch)
     const out = decodeOutput(solveBytes(encodeInput(input)))
@@ -206,7 +206,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       entities: [{ id: 'C1', kind: 'circle' }],
       initial: { C1: [5, 5, 3] },
       constraints: [],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     expect(prepareDragContext(circle, 'C1', 'start')).toBeNull()
     expect(prepareDragContext(circle, 'C1', 'center')).not.toBeNull()
   })
@@ -220,7 +220,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       entities: [{ id: 'E1', kind: 'ellipse' }],
       initial: { E1: [0, 0, 10, 5, 0] },
       constraints: [],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
 
     expect(prepareDragContext(ellipse, 'E1', 'center')).not.toBeNull()
     for (const key of ['major1', 'major2', 'minor1', 'minor2']) {
@@ -236,7 +236,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
   })
 
   it('returns null for a non-sketch feature instead of throwing', () => {
-    const notASketch = { id: 'ext1', kind: 'extrude' } as unknown as PartFeature
+    const notASketch = { id: 'ext1', kind: 'extrude' } as unknown as SketchFeature
     expect(prepareDragContext(notASketch, 'x', 'start')).toBeNull()
   })
 
@@ -253,7 +253,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       constraints: [
         { id: 'c1', kind: 'coincident', a: { entity: 'L1', point: 'start' }, b: { entity: 'P2', point: 'xy' } },
       ],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
 
     const ctx = prepareDragContext(feature, 'L1', 'end')
     expect(ctx).not.toBeNull()
@@ -291,7 +291,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
         { id: 'h1', kind: 'horizontal', target: { entity: 'L1' } },
         { id: 'v1', kind: 'vertical', target: { entity: 'L2' } },
       ],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     const ctx = prepareDragContext(feature, 'L2', 'end')!
 
     // Drag L2.end from [10, 10] toward [10, 8]. The vertical constraint on L2
@@ -374,7 +374,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       entities: [{ id: 'S1', kind: 'spline' }],
       initial: { S1: [0, 0, 3, 5, 7, 5, 10, 0] },
       constraints: [],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     const ctx = prepareDragContext(feature, 'S1', 'c1')!
     expect(ctx).not.toBeNull()
 
@@ -394,7 +394,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       // [cx, cy, radius, angle_start, angle_end]: start at (5,0), end at (0,5).
       initial: { A1: [0, 0, 5, 0, 90] },
       constraints: [],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     const ctx = prepareDragContext(feature, 'A1', 'start')!
     expect(ctx).not.toBeNull()
     expect(ctx.arcEndpoint).toBeTruthy()
@@ -417,7 +417,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       entities: [{ id: 'P1', kind: 'point' }],
       initial: { P1: [3, 4] },
       constraints: [],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     const ctx = prepareDragContext(feature, 'P1', 'xy')!
     expect(ctx).not.toBeNull()
 
@@ -433,7 +433,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       entities: [{ id: 'A1', kind: 'arc' }],
       initial: { A1: [0, 0, 5, 0, 90] },
       constraints: [],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     const ctx = prepareDragContext(feature, 'A1', 'end')!
     expect(ctx.arcEndpoint).toBeTruthy()
 
@@ -466,7 +466,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
       entities: [{ id: 'X1', kind: 'unknown' }],
       initial: { X1: [0, 0] },
       constraints: [],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     expect(prepareDragContext(feature, 'X1', null)).toBeNull()
   })
 
@@ -627,13 +627,13 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
   // any constraint that pins it (a pinned-centre fixture uses initial centre at the
   // pin position). A free circle is fully unconstrained.
 
-  function circleFeature(id: string, constraints: unknown[] = [], initial: Record<string, number[]> = { C1: [5, 5, 3] }): PartFeature {
+  function circleFeature(id: string, constraints: unknown[] = [], initial: Record<string, number[]> = { C1: [5, 5, 3] }): SketchFeature {
     return {
       id, kind: 'sketch', label: 'Circle', plane: '@builtin_plane_front',
       entities: [{ id: 'C1', kind: 'circle' }],
       initial,
-      constraints: constraints as PartFeature['constraints'],
-    } as unknown as PartFeature
+      constraints: constraints as SketchFeature['constraints'],
+    } as unknown as SketchFeature
   }
 
   it('builds an edge drag context for a circle with a sizeIndex', () => {
@@ -680,7 +680,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
         { id: 'c0', kind: 'coincident', a: { entity: 'L1', point: 'start' }, b: '@builtin_origin' },
         { id: 'c1', kind: 'coincident', a: { entity: 'C1', point: 'center' }, b: { entity: 'L1', point: 'start' } },
       ],
-    } as unknown as PartFeature
+    } as unknown as SketchFeature
     const ctx = prepareDragContext(f, 'C1', null)!
     expect(probeCircleDragMode(ctx)).toBe('radius')
   })

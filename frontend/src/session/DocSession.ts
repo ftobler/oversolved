@@ -189,6 +189,7 @@ function contentIds(doc: PartDoc): Set<string> {
   const ids = new Set<string>()
   for (const feature of doc.features ?? []) {
     ids.add(feature.id)
+    if (feature.kind !== 'sketch') continue
     for (const entity of feature.entities ?? []) ids.add(entity.id)
     for (const constraint of feature.constraints ?? []) ids.add(constraint.id)
   }
@@ -200,6 +201,7 @@ function createdIdsBetween(before: PartDoc, after: PartDoc): string[] {
   const created: string[] = []
   for (const feature of after.features ?? []) {
     if (!beforeIds.has(feature.id)) created.push(feature.id)
+    if (feature.kind !== 'sketch') continue
     for (const entity of feature.entities ?? []) {
       if (!beforeIds.has(entity.id)) created.push(entity.id)
     }

@@ -15,8 +15,8 @@ import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURES: PartFeature[] = [
   { id: 'sk1', kind: 'sketch' },
-  { id: 'ex1', kind: 'extrude' },
-  { id: 'ex2', kind: 'extrude' },
+  { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+  { id: 'ex2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
 ]
 
 const SCHEMA: FeatureEditorSchema = {
