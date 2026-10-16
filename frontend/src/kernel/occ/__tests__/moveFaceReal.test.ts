@@ -64,7 +64,7 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     return scope.track(algo.Shape())
   }
 
-  /** A 10-box with 2mm chamfers on its four top edges. */
+  // A 10-box with 2mm chamfers on its four top edges.
   function chamferedBox(scope: DisposeScope, size = 10, dist = 2): OccShape {
     const body = scope.track(makeBox(occ, scope, size, size, size))
     const mk = scope.track(new occ.BRepFilletAPI_MakeChamfer(body))
@@ -88,7 +88,7 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     return out
   }
 
-  /** A 10-box with a 2mm-radius fillet on one top edge (a tangent neighbour). */
+  // A 10-box with a 2mm-radius fillet on one top edge (a tangent neighbour).
   function filletedBox(scope: DisposeScope): OccShape {
     const body = scope.track(makeBox(occ, scope, 10, 10, 10))
     const mk = scope.track(new occ.BRepFilletAPI_MakeFillet(body, occ.ChFi3d_FilletShape.ChFi3d_Rational))
@@ -101,7 +101,7 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     return scope.track(mk.Shape())
   }
 
-  /** A U channel: 30x10x4 base with 10x10x6 arms at x 0..10 and 20..30. */
+  // A U channel: 30x10x4 base with 10x10x6 arms at x 0..10 and 20..30.
   function uChannel(scope: DisposeScope): OccShape {
     const base = scope.track(makeBoxAt(occ, scope, [0, 0, 0], 30, 10, 4))
     const left = scope.track(makeBoxAt(occ, scope, [0, 0, 4], 10, 10, 6))
@@ -109,19 +109,19 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     return scope.track(boolBodies(scope, boolBodies(scope, base, left, 'fuse'), right, 'fuse'))
   }
 
-  /** A 10-box with a blind hole r2 d3 (floor at z=7). */
+  // A 10-box with a blind hole r2 d3 (floor at z=7).
   const blindHoleBox = (scope: DisposeScope): OccShape =>
     scope.track(boolBodies(scope, scope.track(makeBox(occ, scope, 10, 10, 10)), cylinderAt(scope, 5, 5, 7, 2, 3), 'cut'))
 
-  /** A 10-box with a boss r2 h3 on top. */
+  // A 10-box with a boss r2 h3 on top.
   const bossBox = (scope: DisposeScope): OccShape =>
     scope.track(boolBodies(scope, scope.track(makeBox(occ, scope, 10, 10, 10)), cylinderAt(scope, 5, 5, 10, 2, 3), 'fuse'))
 
-  /** An L plate: 10x10x5 minus a 5x5x5 corner (non-convex top face). */
+  // An L plate: 10x10x5 minus a 5x5x5 corner (non-convex top face).
   const lPlate = (scope: DisposeScope): OccShape =>
     scope.track(boolBodies(scope, scope.track(makeBox(occ, scope, 10, 10, 5)), scope.track(makeBoxAt(occ, scope, [5, 5, 0], 5, 5, 5)), 'cut'))
 
-  /** A right isoceles triangular prism: legs 10/10 in x/z, depth 10 in y. */
+  // A right isoceles triangular prism: legs 10/10 in x/z, depth 10 in y.
   function wedge(scope: DisposeScope): OccShape {
     const e1 = scope.track(makeLineEdge(occ, scope, [0, 0, 0], [10, 0, 0]))
     const e2 = scope.track(makeLineEdge(occ, scope, [10, 0, 0], [0, 0, 10]))
@@ -131,7 +131,7 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     return scope.track(makePrism(occ, scope, face, [0, 1, 0], 10))
   }
 
-  /** A prism of a Bezier-capped D shape: the curved side is a spline neighbour. */
+  // A prism of a Bezier-capped D shape: the curved side is a spline neighbour.
   function splineNeighbour(scope: DisposeScope): OccShape {
     const arc = scope.track(makeBezierEdge(occ, scope, [[0, 0, 0], [5, -3, 0], [10, 0, 0]]))
     const line = scope.track(makeLineEdge(occ, scope, [10, 0, 0], [0, 0, 0]))
