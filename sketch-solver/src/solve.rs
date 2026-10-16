@@ -275,9 +275,12 @@ fn redundancy_flags(problem: &Problem, x: &[f64], jac: &DMatrix<f64>, n_wire: us
         for (r, _) in rows.iter().enumerate() {
             // The residual and Jacobian builders mirror row counts by contract;
             // a broken mirror must not trap the Worker, so a short Jacobian
-            // just stops the walk here.
+            // stops the WHOLE walk and keeps the flags decided so far. If only
+            // this row were skipped, `row0` would still advance past the end
+            // and every later constraint would read a missing row as "adds no
+            // rank", misflagging the rest of the set as redundant.
             if row0 + r >= jac.nrows() {
-                break;
+                return flags;
             }
             if basis.len() == n {
                 break;
@@ -1420,6 +1423,35 @@ mod tests {
     }
 
     #[test]
+    fn a_short_jacobian_stops_the_redundancy_walk_instead_of_misflagging_the_tail() {
+        // Three horizontals, one row each, but a Jacobian truncated to two
+        // rows: the third constraint has no row to check, so its verdict is
+        // unknown and the walk must stop. The old walk only broke the inner
+        // loop, advanced row0 past the end, and read every later constraint as
+        // if it added no rank, flagging the whole tail redundant.
+        let horiz = |i| c_target(ConstraintKind::Horizontal, i, PointSelector::Absent);
+        let inp = input(
+            vec![line(0), line(4), line(8)],
+            vec![
+                0.0, 0.0, 10.0, 0.0, 10.0, 1.0, 10.0, 5.0, 10.0, 5.0, 10.0, 6.0,
+            ],
+            vec![horiz(0), horiz(1), horiz(2)],
+        );
+        let problem = Problem::new(&inp);
+        let x = problem.x0.clone();
+        let full = problem.jacobian(&x, x.len());
+        assert_eq!(full.nrows(), 3, "fixture assumes one row per horizontal");
+
+        let short = full.rows(0, 2).into_owned();
+        let flags = redundancy_flags(&problem, &x, &short, 3);
+        assert_eq!(
+            flags,
+            vec![0, 0, 0],
+            "a missing row must leave the tail unflagged, not blame it"
+        );
+    }
+
+    #[test]
     fn conflicting_dimensions_carry_the_miss_and_nothing_is_flagged_redundant() {
         // A fixed start plus two lengths that disagree by 4%. The unsatisfied
         // solve must not run the redundancy walk (flags are for satisfied
@@ -1460,6 +1492,37 @@ mod tests {
         // The drag fast path owns the 60 Hz budget; the per-constraint walk is
         // cold-path work, and the caller's count guard expects empty arrays.
         let out = solve_sketch(&contradictory_lengths(true));
+        assert!(out.constraint_flags.is_empty());
+        assert!(out.constraint_miss.is_empty());
+    }
+
+    #[test]
+    fn the_verdict_walk_handles_the_degenerate_constraint_sets() {
+        // Empty constraint list: the walk has nothing to classify and emits one
+        // empty verdict array per request, not a panic.
+        let out = solve_sketch(&input(vec![line(0)], vec![0.0, 0.0, 10.0, 1.0], vec![]));
+        assert!(out.constraint_flags.is_empty());
+        assert!(out.constraint_miss.is_empty());
+
+        // One constraint: the single verdict is the walk's whole output.
+        let out = solve_sketch(&input(
+            vec![line(0)],
+            vec![0.0, 0.0, 10.0, 0.0],
+            vec![c_target(
+                ConstraintKind::Horizontal,
+                0,
+                PointSelector::Absent,
+            )],
+        ));
+        assert_eq!(out.constraint_flags, vec![0]);
+        assert_eq!(out.constraint_miss, vec![0.0]);
+
+        // All pins, no authored constraints: the sketch is fully constrained by
+        // the pin rows alone, and there is no constraint to blame.
+        let mut inp = input(vec![point(0)], vec![2.0, 3.0], vec![]);
+        inp.pinned_mask = vec![0b11];
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
         assert!(out.constraint_flags.is_empty());
         assert!(out.constraint_miss.is_empty());
     }
