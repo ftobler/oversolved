@@ -26,6 +26,12 @@ export const COLOR_BODY_REMOVED = '#bb5be1'
 export const COLOR_SOLVED = '#0288d1'  // darker blue for underconstrained
 export const COLOR_FULLY_CONSTRAINED = '#ffffff'  // white for fully constrained
 export const COLOR_ERROR = '#ef5350'
+// The deeper error red: the constraints the solve blamed for an unsatisfied
+// sketch sit inside the all-red mark, one shade down so the culprits are
+// findable without hunting the whole red sketch. Deliberately the same hue
+// family as COLOR_ERROR, only darker, so it reads as "this one" rather than as
+// a different state.
+export const COLOR_ERROR_DEEP = '#b71c1c'
 export const COLOR_INACTIVE = '#3a4048'
 export const COLOR_HOVER = '#ffffff'
 export const COLOR_SELECTED = '#ff9800'

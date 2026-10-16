@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { COLOR_ERROR, COLOR_ERROR_DEEP } from '@/components/Geometry3D/constants'
 import type { Sketch, Constraints } from '@/types/cad'
 
 vi.mock('@react-three/fiber', () => ({
@@ -148,6 +149,23 @@ describe('ConstraintTile see-through background', () => {
     const style = tileStyle(container)
     expect(style.background).toBe('transparent')
     expect(style.outline).toContain('solid')
+  })
+
+  it('a culprit tile carries the deeper error red outline', () => {
+    // On an unsatisfied solve every entity already paints red; the tile of a
+    // constraint the solve blamed must stand out inside that, in the one
+    // darker red the scene language reserves for culprits.
+    useEditorState.setState({
+    normalSelection: new Set(),
+  })
+    const constraints: Constraints = {
+      c1: { render: { kind: 'symbol_horizontal', at: [5, 0] }, residual: 0.5, culprit: true } as Constraints[string],
+    }
+    const { container } = renderOverlays(constraints)
+    const style = tileStyle(container)
+    expect(style.background).toBe('transparent')
+    expect(style.outline).toContain(COLOR_ERROR_DEEP)
+    expect(style.outline).not.toContain(COLOR_ERROR)
   })
 
   it('hovering a tile still paints a fill', () => {

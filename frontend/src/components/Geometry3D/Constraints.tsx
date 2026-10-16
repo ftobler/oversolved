@@ -4,10 +4,10 @@ import type { Sketch, Constraints, Entity, PlaneTransform } from '@/types/cad'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl, groupConstraintsByEntity } from '@/utils/geometry/sketchHelpers'
 import { renderDimension } from '@/components/Geometry3D/dimensions/renderDimension'
-import { COLOR_SELECTED, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
+import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { findEntitiesAtPoint } from '@/components/Geometry3D/drawGeometry'
 
-function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean }) {
+function ConstraintTile({ url, id, featureId, highlightIds, superfluous, culprit }: { url: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }) {
   const [hovered, setHovered] = useState(false)
   const wasHoveredRef = useRef(false)
   const cId = `constraint:${featureId}:${id}`
@@ -25,7 +25,16 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
   // Idle tiles are see-through so the geometry under them stays visible and
   // pickable by eye; only the transient hover / selected states get a fill.
   const bgColor = selected ? COLOR_SELECTED : hovered ? '#4e4e4e' : 'transparent'
-  const fgStyle = (hovered || selected) ? 'invert(1.0)' : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)' : 'invert(0.7)'
+  // A culprit tile is drawn in the deeper error red: the whole sketch already
+  // paints red on an unsatisfied solve, and the blamed constraints must stand
+  // out inside it. A redundant tile keeps the existing non-driver treatment
+  // (dimmed, amber outline), which is also the "measurement, not a driver"
+  // reading the user asked for.
+  const fgStyle = (hovered || selected) ? 'invert(1.0)'
+    : culprit ? 'invert(0.35) sepia(1) saturate(6) hue-rotate(-45deg)'
+    : superfluous ? 'invert(0.5) sepia(1) saturate(3) hue-rotate(0deg)'
+    : 'invert(0.7)'
+  const outline = culprit ? COLOR_ERROR_DEEP : superfluous ? '#b37400' : undefined
   return (
     <div
       key={id}
@@ -48,7 +57,7 @@ function ConstraintTile({ url, id, featureId, highlightIds, superfluous }: { url
         pointerEvents: 'auto',
         userSelect: 'none',
         WebkitUserSelect: 'none',
-        ...(superfluous && { outline: '1px solid #b37400' }),
+        ...(outline && { outline: `1px solid ${outline}` }),
       }}
     >
       <img
@@ -86,7 +95,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
 
     // Sub-group symbols by their `at` position so each distinct location gets its own Html anchor.
     // Key is a rounded grid string; value holds the canonical position and its icon list.
-    const atGroups = new Map<string, { at: [number, number]; icons: { url: string; key: string; highlightIds: string[]; superfluous?: boolean }[] }>()
+    const atGroups = new Map<string, { at: [number, number]; icons: { url: string; key: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }[] }>()
 
     for (const [cid, c] of clist) {
       const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; [key: string]: unknown }
@@ -114,10 +123,16 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
           const atEntities = findEntitiesAtPoint(sketch, at)
           highlightIds = atEntities.length > 0 ? atEntities : [eid]
         }
-        atGroups.get(atKey)!.icons.push({ url, key: cid, highlightIds, superfluous: c.superfluous })
+        atGroups.get(atKey)!.icons.push({ url, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit })
 
       } else {
-        const el = renderDimension(cid, r, dimOffset, { featureId, entityId: eid }, planeTransform)
+        // The solve verdicts ride the interaction block so the dimension label
+        // can paint itself: culprit deep red, redundant dimmed amber.
+        const el = renderDimension(cid, r, dimOffset, {
+          featureId, entityId: eid,
+          ...(c.superfluous ? { redundant: true } : {}),
+          ...(c.culprit ? { culprit: true } : {}),
+        }, planeTransform)
         if (el) dimElements.push(el)
       }
     }
@@ -128,8 +143,8 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
       symbolElements.push(
         <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
-            {icons.map(({ url, key, highlightIds, superfluous }) => (
-              <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} />
+            {icons.map(({ url, key, highlightIds, superfluous, culprit }) => (
+              <ConstraintTile key={key} url={url} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} />
             ))}
           </div>
         </Html>

@@ -27,6 +27,11 @@ export function pointTo3D(p: Point): [number, number, number] | null {
 }
 
 export const COLOR_CONSTRAINT = '#ffd54f'
+// A constraint the solve flagged as redundant: still a measurement, no longer
+// a driver, so its label drops to a dimmed amber instead of the full-claim
+// colour. Kept in the amber family so it still reads as a constraint, not as
+// an error.
+export const COLOR_CONSTRAINT_DIM = '#8d7529'
 
 export const ICON_SIZE = 22
 export const ICON_COLS = 3

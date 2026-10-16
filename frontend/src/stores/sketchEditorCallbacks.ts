@@ -21,6 +21,15 @@ export const sketchCallbacks: {
   getSketch: ((featureId: string) => Sketch | null) | null
   beginBrepProjection: (() => void) | null
   cancelBrepProjection: (() => void) | null
+  // The authoring gate for a new constraint: true when the add would make the
+  // constraint set redundant, so the store refuses it instead of dispatching.
+  // Registered by Part.tsx (it owns the doc and the solver probe); a headless
+  // store use has no port and allows every add.
+  checkRedundantAdd: ((pending: PendingConstraint) => boolean) | null
+  // Surfaces an authoring refusal the store itself decides on, so it reaches
+  // the user through the same message dialog as a command rejection. Null in a
+  // headless store use, where there is no dialog to show.
+  showMessage: ((payload: SketchMessage) => void) | null
   // The value dialog lives in the UI store (sketchEditorStore). The editor
   // state store reaches it through these ports instead of importing the UI
   // store, which would close an import cycle between the two stores.
@@ -34,15 +43,44 @@ export const sketchCallbacks: {
   getSketch: null,
   beginBrepProjection: null,
   cancelBrepProjection: null,
+  checkRedundantAdd: null,
+  showMessage: null,
   openDialog: null,
   closeDialog: null,
 }
+
+/** A would-be add_constraint, before it becomes a mutation: the shape the
+ *  redundancy gate answers about. `value`/`pos`/`sign` are what a dimension
+ *  carries; the dimension confirm path passes all three so a duplicate
+ *  dimension is a real probe candidate (a value-less dimension contributes no
+ *  solver rows and can never read redundant). */
+export interface PendingConstraint {
+  featureId: string
+  kind: string
+  targets: string[]
+  value?: number
+  pos?: [number, number]
+  sign?: number
+}
+
+/** One user-facing message the store can raise without a command context. */
+export interface SketchMessage {
+  title: string
+  message: string
+  variant?: 'info' | 'success' | 'error'
+}
+
+/** The dialog title every authoring rejection uses, so the command path and the
+ *  dimension confirm path cannot drift apart. */
+export const CANNOT_APPLY_TITLE = 'Cannot apply constraint'
 
 export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void) | null): void
 export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) => void) | null): void
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
 export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
+export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean) | null): void
+export function setSketchCallback(key: 'showMessage', cb: ((payload: SketchMessage) => void) | null): void
 export function setSketchCallback(key: 'openDialog', cb: ((dialog: DialogState) => void) | null): void
 export function setSketchCallback(key: 'closeDialog', cb: (() => void) | null): void
 export function setSketchCallback(key: keyof typeof sketchCallbacks, cb: unknown): void {

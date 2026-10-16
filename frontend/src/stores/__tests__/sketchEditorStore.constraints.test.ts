@@ -161,6 +161,40 @@ describe('sketchEditorStore', () => {
       expect(handler).toHaveBeenCalledOnce()
     })
 
+    it('refuses an add the redundancy gate rejects, with no mutation', () => {
+      // The port runs the real solver on a draft copy (Part.tsx wires it); the
+      // store contract here is that a true answer stops the add before any
+      // mutation object exists, and the reason names the overconstraint.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('checkRedundantAdd', () => true)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+
+      const reason = useSketchEditorStore.getState().applyConstraint('length')
+
+      expect(reason).toMatch(/would overconstrain/i)
+      expect(reason).toMatch(/length/i)
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('asks the redundancy gate with the pending add and authors on a false answer', () => {
+      const handler = vi.fn()
+      const gate = vi.fn(() => false)
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('checkRedundantAdd', gate)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+
+      expect(useSketchEditorStore.getState().applyConstraint('length')).toBeNull()
+      expect(gate).toHaveBeenCalledWith({
+        featureId: 'Sketch1',
+        kind: 'length',
+        targets: ['entity:Sketch1:L1'],
+      })
+      expect(handler).toHaveBeenCalledOnce()
+    })
+
     it('returns a rejection message for a single non-line horizontal target', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

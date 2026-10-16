@@ -5,8 +5,8 @@
 // constraints.rs/codec.rs: the vitest wasm-kernel suite owns boundary
 // coverage, so drift here only affects the ungated Node scripts.
 
-export const MAGIC_IN = 0x3347_4b53 // "SKG3": rev 3 (f64 scalars), mirrors sketch-solver/src/codec.rs
-export const MAGIC_OUT = 0x3352_4b53 // "SKR3"
+export const MAGIC_IN = 0x3347_4b53 // "SKG3": rev 4 (f64 scalars), mirrors sketch-solver/src/codec.rs
+export const MAGIC_OUT = 0x3452_4b53 // "SKR4": adds the per-constraint verdicts
 
 export const Kind = { Line: 0, Circle: 1, Arc: 2, Point: 3, Ellipse: 4, Spline: 5 }
 export const CKind = {
@@ -137,6 +137,7 @@ export function decodeOutput(buf) {
   const nParams = u32()
   const nStatus = u32()
   const vfLen = u32()
+  const nConstraintStatus = u32()
   const overallStatus = u8()
   const params = []
   for (let i = 0; i < nParams; i++) params.push(f64())
@@ -145,10 +146,14 @@ export function decodeOutput(buf) {
   // vertexFreedom rides the wire but no harness script consumes it: read past
   // it to keep the cursor aligned.
   for (let i = 0; i < vfLen; i++) f64()
+  const constraintFlags = []
+  for (let i = 0; i < nConstraintStatus; i++) constraintFlags.push(u8())
+  const constraintMiss = []
+  for (let i = 0; i < nConstraintStatus; i++) constraintMiss.push(f64())
   const residualNorm = f64()
   const rank = u32()
   const dof = u32()
   const iters = u32()
   const ms = f64()
-  return { overallStatus, params, entityStatus, residualNorm, rank, dof, iters, ms }
+  return { overallStatus, params, entityStatus, constraintFlags, constraintMiss, residualNorm, rank, dof, iters, ms }
 }
