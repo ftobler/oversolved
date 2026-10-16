@@ -88,6 +88,22 @@ describe('solveBoolean guard paths', () => {
     ).toThrow(/unknown operation 'xor'/)
   })
 
+  it('rejects a present-but-non-numeric clearance by field name', () => {
+    // The solve pipeline resolves expressions to numbers first, so a value that
+    // reaches here as a string is malformed. It must fail loud rather than
+    // silently become 0 (an ungrown cut, decision 6).
+    expect(() =>
+      solveBoolean(
+        oc,
+        scope,
+        table,
+        { id: 'b', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'], clearance: 'oops' } },
+        repo,
+        { body_t: body('body_t'), body_u0: body('body_u0') },
+      ),
+    ).toThrow(/'clearance' must be a number, got string/)
+  })
+
   it('throws when tool body does not exist', () => {
     // The target must carry a real shape so the pre-loop "has no shape" guard
     // passes and the tool resolution is what fails.

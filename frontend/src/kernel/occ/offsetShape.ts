@@ -27,7 +27,8 @@
 import { drainList, type DisposeScope } from './disposeScope'
 import { shapeIsValid, volumeOf } from './booleans'
 import { SubShapeMap } from './subshapeIdentity'
-import type { OccModule, OccShape, OccShapeEnumValue, OccSubShape } from './occTypes'
+import { sameEnum } from './enumValue'
+import type { OccModule, OccOrientableShape, OccShape, OccShapeEnumValue, OccSubShape } from './occTypes'
 
 /** The 3D offset could not be applied, or produced a shape that cannot be a
  *  boolean tool. The message is the reason; the caller adds the tool context. */
@@ -36,19 +37,14 @@ export class OffsetError extends Error {}
 const SHAPE_TOL = 1e-6
 const VOLUME_EPS = 1e-9
 
-/** embind hands an enum back as a raw number or a `{value}` box; compare both. */
-function enumValue(e: unknown): number {
-  return typeof e === 'number' ? e : (e as { value: number }).value
-}
-
 type ShapeKind = 'solid' | 'shell' | 'other'
 
 /** The TopAbs kind of a shape's top level, read via ShapeType(). */
 function shapeKind(oc: OccModule, shape: OccShape): ShapeKind {
   const st = (shape as OccShape & { ShapeType?(): unknown }).ShapeType?.()
   if (st === undefined) return 'other'
-  if (enumValue(st) === enumValue(oc.TopAbs_ShapeEnum.TopAbs_SOLID)) return 'solid'
-  if (enumValue(st) === enumValue(oc.TopAbs_ShapeEnum.TopAbs_SHELL)) return 'shell'
+  if (sameEnum(st, oc.TopAbs_ShapeEnum.TopAbs_SOLID)) return 'solid'
+  if (sameEnum(st, oc.TopAbs_ShapeEnum.TopAbs_SHELL)) return 'shell'
   return 'other'
 }
 
@@ -118,6 +114,16 @@ export function offsetSolid(
     throw new OffsetError('the offset did not produce a solid or a single shell')
   }
 
+  // A wrapped shell, or an offset that folds, can come back inside out: the
+  // signed volume is negative while every face is correct. Reverse the solid so
+  // downstream volume reads and the sign law below see a positively oriented
+  // tool, exactly as an authored solid is (plan step 3).
+  let after = volumeOf(oc, scope, result)
+  if (after < 0) {
+    result = scope.track((result as OccOrientableShape).Reversed())
+    after = volumeOf(oc, scope, result)
+  }
+
   if (!shapeIsValid(oc, scope, result)) {
     throw new OffsetError('the offset result is not a valid solid (BRepCheck_Analyzer)')
   }
@@ -126,7 +132,6 @@ export function offsetSolid(
   // and leave positive material. This catches a silently degenerate offset that
   // still validated.
   const before = volumeOf(oc, scope, shape)
-  const after = volumeOf(oc, scope, result)
   if (d > 0 && after <= before + VOLUME_EPS) {
     throw new OffsetError(`the offset did not grow the tool (${before} -> ${after})`)
   }

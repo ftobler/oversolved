@@ -14,7 +14,7 @@ import { makeBox, makeBoxAt, makeCylinder } from '../primitives'
 import { booleanWithDiff, countSubShapes, shapeIsValid, volumeOf } from '../booleans'
 import { applyFilletWithDiff } from '../edgeModifier'
 import { offsetSolid, OffsetError } from '../offsetShape'
-import type { OccModule, OccShape, OccSubShape } from '../occTypes'
+import type { OccModule, OccOrientableShape, OccShape, OccSubShape } from '../occTypes'
 import type { Vec3 } from '../primitives'
 
 const oc = await loadOcc()
@@ -130,6 +130,23 @@ describe.skipIf(!oc)('offsetSolid (real OCC)', () => {
     try {
       const box = makeBox(occ, scope, 4, 4, 12)
       expect(() => offsetSolid(occ, scope, box, 0)).toThrow(OffsetError)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('reverses a negatively oriented offset result so no negative-volume tool escapes', () => {
+    const scope = new DisposeScope()
+    try {
+      // An inside-out input makes the raw offset come back with a negative
+      // signed volume; the guard must reverse it (plan step 3) rather than hand
+      // a negative-volume tool to the cut.
+      const box = makeBox(occ, scope, 4, 4, 12)
+      const reversed = scope.track((box as OccOrientableShape).Reversed())
+      const grown = offsetSolid(occ, scope, reversed, 0.1)
+      const result = scope.track(grown.shape)
+      expect(volumeOf(occ, scope, result)).toBeGreaterThan(0)
+      expect(volumeOf(occ, scope, result)).toBeCloseTo(3.8 * 3.8 * 11.8, 3)
     } finally {
       scope.dispose()
     }

@@ -283,6 +283,70 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     }
   })
 
+  it('fails loud on a filleted tool shrunk past its radius (clearance -0.6)', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      // The r0.5 fillet cannot take -0.6: the grown (shrunk) tool no longer
+      // reaches the target and the kernel cuts nothing. That must be a
+      // clearance error, never a status: ok with the hole missing (decision 6).
+      const store: Record<string, Body> = {
+        body_t: targetBody(occ, scope, table),
+        body_u: filletedBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, 0.5),
+      }
+      let message = ''
+      try {
+        solve(occ, scope, table, store, {
+          operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: -0.6,
+        })
+      } catch (e) {
+        message = e instanceof Error ? e.message : String(e)
+      }
+      expect(message).toContain("clearance -0.6 could not be applied to tool 'body_u'")
+      expect(message).toContain('does not intersect the target')
+      expect(message).not.toContain('nudge')
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('only lets a flush tool bite once it has grown', () => {
+    const flushTool = (occ: OccModule, scope: DisposeScope, table: HandleTable): Body =>
+      boxBody(occ, scope, table, 'body_u', [10, 3, 0] as Vec3, 4, 4, 8)
+    // clearance 0: the authored tool touches the x=10 face but shares no
+    // material, so the cut is skipped and the target keeps its volume.
+    {
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const store: Record<string, Body> = { body_t: targetBody(occ, scope, table), body_u: flushTool(occ, scope, table) }
+        const { result, store: after } = solve(occ, scope, table, store, {
+          operation: 'subtract', target: 'body_t', tools: ['body_u'],
+        })
+        expect(result.status).toBe('ok')
+        expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0, 3)
+      } finally {
+        scope.dispose()
+      }
+    }
+    // clearance +0.1: the grown tool reaches 0.1 into the target, cutting a
+    // pocket 4.2 wide (y) and 0.1 deep (x) through the full height.
+    {
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const store: Record<string, Body> = { body_t: targetBody(occ, scope, table), body_u: flushTool(occ, scope, table) }
+        const { result, store: after } = solve(occ, scope, table, store, {
+          operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: 0.1,
+        })
+        expect(result.status).toBe('ok')
+        expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 0.1 * 4.2 * 8, 3)
+      } finally {
+        scope.dispose()
+      }
+    }
+  })
+
   it('keep_tools leaves the authored tool and re-mints its UUIDs on the target', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()

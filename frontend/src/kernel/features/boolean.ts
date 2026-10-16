@@ -47,6 +47,20 @@ const OP_MAP: Record<string, 'fuse' | 'cut' | 'common'> = {
 }
 
 /**
+ * The one clearance failure message: the offset could not be applied to a tool.
+ * Every clearance failure (the offset itself, a shrunk tool that no longer
+ * reaches the target, an unsound cut) goes through here so the feature names
+ * the clearance rather than falling back to an ungrown cut or the generic
+ * tangency nudge (decision 6).
+ */
+function clearanceFailure(clearance: number, toolRef: string, reason: string): Error {
+  return new Error(
+    `boolean: clearance ${clearance} could not be applied to tool '${toolRef}': ${reason}. ` +
+    "Reduce the clearance; a negative clearance cannot exceed the tool's smallest fillet radius or wall half-thickness.",
+  )
+}
+
+/**
  * Grow (c > 0) or shrink (c < 0) a tool with a sharp-join 3D offset, translating
  * the offset's own failure into a clearance-specific message. The feature never
  * falls back to an ungrown cut: a hole that is silently the wrong size is worse
@@ -62,12 +76,7 @@ function growTool(
   try {
     return offsetSolid(oc, scope, toolShape, clearance)
   } catch (e) {
-    if (e instanceof OffsetError) {
-      throw new Error(
-        `boolean: clearance ${clearance} could not be applied to tool '${toolRef}': ${e.message}. ` +
-        "Reduce the clearance; a negative clearance cannot exceed the tool's smallest fillet radius or wall half-thickness.",
-      )
-    }
+    if (e instanceof OffsetError) throw clearanceFailure(clearance, toolRef, e.message)
     throw e
   }
 }
@@ -89,8 +98,15 @@ export function solveBoolean(
   const keepTools = (sub.keep_tools as boolean) ?? false
   // Signed mm: grows (+) or shrinks (-) every tool of a subtract, isotropically.
   // Absent means 0; a non-zero value on union/intersect is ignored with a
-  // warning so switching the operation never breaks a doc (decision 5).
-  const clearance = typeof sub.clearance === 'number' ? sub.clearance : 0
+  // warning so switching the operation never breaks a doc (decision 5). The
+  // solve pipeline resolves `clearance` expressions first, so anything present
+  // that is not a number here is malformed and must fail by name rather than
+  // silently become an ungrown cut (decision 6).
+  const rawClearance = sub.clearance
+  if (rawClearance !== undefined && typeof rawClearance !== 'number') {
+    throw new Error(`boolean: 'clearance' must be a number, got ${typeof rawClearance}`)
+  }
+  const clearance = typeof rawClearance === 'number' ? rawClearance : 0
 
   if (!targetRef) throw new Error("boolean: 'target' is required")
   if (toolRefs.length === 0) throw new Error("boolean: 'tools' must have at least one entry")
@@ -158,6 +174,14 @@ export function solveBoolean(
     // only once it has grown, which is the intended behaviour.
     if (op === 'cut' || op === 'common') {
       if (!shapesIntersect(oc, resultShape, cutTool)) {
+        // A shrunk tool (clearance < 0) is a subset of the authored one: if it
+        // no longer reaches the target, the offset degenerated into a shape the
+        // kernel cannot cut (or the authored tool never touched). Report the
+        // clearance rather than skipping: a missing hole shown as 'ok' is worse
+        // than an error (decision 6).
+        if (op === 'cut' && clearance < 0) {
+          throw clearanceFailure(clearance, toolRef, 'the shrunk tool does not intersect the target')
+        }
         warn(`${operation}: tool '${toolRef}' does not intersect the target; skipped`)
         continue
       }
@@ -171,9 +195,7 @@ export function solveBoolean(
       // A clearance growth can push the cut into a tangency the kernel cannot
       // resolve; name the clearance rather than the generic nudge message.
       if (op === 'cut' && clearance !== 0 && e instanceof BooleanSoundnessError) {
-        throw new Error(
-          `boolean: clearance ${clearance} could not be applied to tool '${toolRef}': ${e.message}`,
-        )
+        throw clearanceFailure(clearance, toolRef, e.message)
       }
       throw e
     }
@@ -200,8 +222,7 @@ export function solveBoolean(
   // Mirror the implicit cut/add warning: a boolean that consumed a tool but left
   // the target's brep_diff untouched produced no real geometry change.
   if (foldedAny && lastDiff !== null && brepDiffIsEmpty(lastDiff)) {
-    const msg = `${operation}: operation produced no geometry change`
-    result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
+    warn(`${operation}: operation produced no geometry change`)
   }
 
   // An intersect of disjoint bodies yields an empty compound; name it so the
@@ -210,7 +231,7 @@ export function solveBoolean(
     const probe = new DisposeScope()
     try {
       if (volumeOf(oc, probe, resultShape) < 1e-10) {
-        result.solver_warning = `${operation}: operation produced no overlapping geometry (empty result)`
+        warn(`${operation}: operation produced no overlapping geometry (empty result)`)
       }
     } catch {
       // Volume probe failed; leave without the warning.
@@ -248,8 +269,7 @@ export function solveBoolean(
     // resplitBody deleted the body from the store; report the deletion with
     // body_id still naming the consumed body and body_ids: [] for "nothing
     // survives" (the convention stated in resplitBody's docstring).
-    const msg = `boolean: the ${operation} removed all of body '${targetBody.id}'; the body was deleted`
-    result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
+    warn(`boolean: the ${operation} removed all of body '${targetBody.id}'; the body was deleted`)
     result.body_ids = []
     return result
   }
