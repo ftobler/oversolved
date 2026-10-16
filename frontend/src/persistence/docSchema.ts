@@ -15,14 +15,16 @@ import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
-import { dropDeadAxisConstraints, migrateLegacyBodyPicks } from '@/utils/yamlMigrations'
+import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams } from '@/utils/yamlMigrations'
 
-// The version the ladder migrates to. A document carrying `version` 2 or newer
+// The version the ladder migrates to. A document carrying `version` 3 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
-// runs the steps whose target version it is behind. The historic heals target 2
-// deliberately: the version stamps predate them, so a document stamped 1 can
-// still carry the stale shapes they fix.
-export const CURRENT_DOC_VERSION = 2
+// runs the steps whose target version it is behind. The step at 3 canonicalizes
+// the two spellings the format used to tolerate (feature refs `$id` -> `@id`,
+// flat params -> nested); the historic heals target 2 deliberately: the version
+// stamps predate them, so a document stamped 1 can still carry the stale shapes
+// they fix.
+export const CURRENT_DOC_VERSION = 3
 
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
@@ -93,6 +95,11 @@ interface MigrationStep {
 // touches and skips anything that does not have the shape it heals: a garbage
 // document just reaches the validator untouched and is rejected there.
 const MIGRATION_STEPS: MigrationStep[] = [
+  // Canonicalization runs before plural-body-picks: a flat legacy singular
+  // `body` has to be folded into the sub-def first, or the plural step (which
+  // reads the sub-def only) never sees it.
+  { id: 'canonical-feature-params', to: 3, apply: stepCanonicalFeatureParams },
+  { id: 'feature-refs-absolute', to: 3, apply: stepFeatureRefsAbsolute },
   { id: 'drop-dead-axis-constraints', to: 2, apply: stepDropDeadAxisConstraints },
   { id: 'plural-body-picks', to: 2, apply: stepPluralBodyPicks },
   { id: 'drop-redundant-inline-step-payload', to: 2, apply: stepDropRedundantInlineStepPayload },
@@ -147,6 +154,16 @@ function stepDropDeadAxisConstraints(doc: DocRecord): number {
 function stepPluralBodyPicks(doc: DocRecord): number {
   const part = migratablePartDoc(doc)
   return part ? migrateLegacyBodyPicks(part) : 0
+}
+
+function stepCanonicalFeatureParams(doc: DocRecord): number {
+  const part = migratablePartDoc(doc)
+  return part ? canonicalizeFeatureParams(part) : 0
+}
+
+function stepFeatureRefsAbsolute(doc: DocRecord): number {
+  const part = migratablePartDoc(doc)
+  return part ? migrateFeatureRefsToAbsolute(part) : 0
 }
 
 // The workspace migration lifts an import_step's inline base64 payload into a

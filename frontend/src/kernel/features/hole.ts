@@ -26,7 +26,7 @@ import { stripRefSigil } from '@/utils/refSigil'
 import { makeCylinderWithFaces, type CylinderFaces, type Vec3 } from '../occ/primitives'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { holeFacePath, mintFaceUuid, type HoleFaceRole } from '../constructionName'
-import { absolute, emitWire } from '../query'
+import { absolute, emitWire, featureRefId } from '../query'
 import { bodyFrame } from '../occ/tessellation'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
@@ -73,7 +73,7 @@ function parseHoleSketchRef(
     if (sketchId === null) return { sketchId: ref, entityId: null }
     return { sketchId, entityId: soleEntityInQuery(ref, sketchId) }
   }
-  return { sketchId: stripRefSigil(ref, '@$'), entityId: null }
+  return { sketchId: featureRefId(ref) ?? stripRefSigil(ref, '@$'), entityId: null }
 }
 
 /**

@@ -52,20 +52,16 @@ export function rectSketchSk(sketchId: string, w: number, h: number, plane = '@b
 }
 
 export function extrudeSpec(sketchId: string, extrudeId: string, opts: {
-  distance?: number; operation?: string; direction?: string; nested?: boolean
+  distance?: number; operation?: string; direction?: string
 } = {}) {
   const distance = opts.distance ?? 5
   const direction = opts.direction ?? 'normal'
   const operation = opts.operation ?? 'add'
-  if (opts.nested) {
-    return {
-      id: extrudeId, kind: 'extrude', label: 'Extrude',
-      extrude: { sketch: '$' + sketchId, distance, direction, operation },
-    }
-  }
+  // Params live nested under the kind key and the profile ref is the canonical
+  // absolute `@<sketchId>`; both are the one spelling the document format has.
   return {
     id: extrudeId, kind: 'extrude', label: 'Extrude',
-    sketch: '$' + sketchId, distance, direction, operation,
+    extrude: { sketch: '@' + sketchId, distance, direction, operation },
   }
 }
 
@@ -138,7 +134,7 @@ export function disjointTwoRectSpec(operation = 'new') {
           { id: 'lb', kind: 'length' as const, target: { entity: 'b_bot' }, value: 2 },
         ],
       },
-      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 3, direction: 'normal', operation },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 3, direction: 'normal', operation } },
     ],
   }
 }
@@ -182,7 +178,7 @@ export function vennBisectSpec(operation = 'add') {
           { id: 'dia', kind: 'diameter' as const, target: '$cR', value: 20 },
         ],
       },
-      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10, direction: 'normal', operation } },
     ],
   }
 }

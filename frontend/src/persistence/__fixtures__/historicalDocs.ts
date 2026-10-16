@@ -104,14 +104,40 @@ part_style:
 `,
 }
 
-// The stamp at or past every ladder step's target: the ladder must leave such a
-// document alone. The literal 2 is cross-checked against CURRENT_DOC_VERSION in
-// the load suite, so bumping the loader's version without adding a fixture for
-// the new stamp fails loudly instead of silently never exercising the gate.
+// A document stamped one behind the ladder version: the target-3
+// canonicalization steps still run on it (2 < 3) and change nothing, because it
+// is already canonical.
 export const CURRENT_V2_PART: HistoricalDocument = {
   name: 'current v2 part',
-  note: 'stamped at the ladder current version, nothing to migrate',
+  note: 'stamped one behind the ladder, nothing to migrate',
   text: `version: 2
+kind: part
+features:
+  - id: Origin
+    kind: origin
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      line1: [0, 0, 20, 0]
+    entities:
+      - id: line1
+        kind: line
+    constraints:
+      - id: c1
+        kind: horizontal
+        a: "$line1"
+`,
+}
+
+// The stamp at the ladder current version: the ladder must leave such a
+// document alone. The literal 3 is cross-checked against CURRENT_DOC_VERSION in
+// the load suite, so bumping the loader's version without adding a fixture for
+// the new stamp fails loudly instead of silently never exercising the gate.
+export const CURRENT_V3_PART: HistoricalDocument = {
+  name: 'current v3 part',
+  note: 'stamped at the ladder current version, nothing to migrate',
+  text: `version: 3
 kind: part
 features:
   - id: Origin
@@ -160,6 +186,7 @@ export const ALL_HISTORICAL_PART_DOCS: HistoricalDocument[] = [
   LEGACY_V1_PART,
   CURRENT_PART,
   CURRENT_V2_PART,
+  CURRENT_V3_PART,
 ]
 
 export const ALL_HISTORICAL_ASSEMBLY_DOCS: HistoricalDocument[] = [

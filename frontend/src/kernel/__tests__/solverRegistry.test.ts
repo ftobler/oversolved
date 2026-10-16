@@ -257,12 +257,16 @@ describe('resolveFeatureExpressions', () => {
     if ('exception' in r) expect(r.exception).toContain('2+/')
   })
 
-  it('resolves a flat feature-level expression (not under the sub-key)', () => {
-    // Some specs carry params flat on the feature; leaf solvers overlay these
-    // over the sub-dict, so they must be evaluated too.
+  it('canonicalizes a flat feature-level expression into the sub-dict', () => {
+    // A flat param is legacy input: resolveFeatureExpressions folds it into the
+    // sub-dict first, then evaluates there, so the one evaluated target holds
+    // every expression-capable field.
     const r = resolveFeatureExpressions({ id: 'e1', kind: 'extrude', distance: '50+25' })
     expect('feature' in r).toBe(true)
-    if ('feature' in r) expect(r.feature.distance).toBe(75)
+    if ('feature' in r) {
+      expect((r.feature.extrude as Record<string, unknown>).distance).toBe(75)
+      expect('distance' in r.feature).toBe(false)
+    }
   })
 
   it('resolves feature-level scale for import_step', () => {

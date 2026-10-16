@@ -172,6 +172,33 @@ export function ref(elementId: string): string {
   return "@" + elementId
 }
 
+/**
+ * The feature id a feature-level reference names, or null for every other ref
+ * form. A reference from one feature to another feature is absolute on the wire
+ * (`@<featureId>`); `$` is strictly host-local (an entity inside its own
+ * sketch). The legacy `$<featureId>` spelling is still read here for one release
+ * so an unmigrated in-memory document keeps solving, but writers emit `@` and
+ * the loader rewrites the old form.
+ *
+ * A ref that names something INSIDE a feature (a slash form `@feat/face/0` or
+ * `@feat/eid`), an ancestry query (`?`), a viewport pick
+ * (`entity:`/`vertex:`), or a host-local entity ref whose bare id cannot be a
+ * feature (the legacy `$sketch.entity` sweep-path form) is not a feature-level
+ * reference and returns null. The caller decides what the id must name (a
+ * sketch, a helix, ...); this is the one grammar seam that tells the two
+ * spellings apart.
+ */
+export function featureRefId(ref: unknown): string | null {
+  if (typeof ref !== "string") return null
+  const sigil = ref[0]
+  if (sigil !== "@" && sigil !== "$") return null
+  const body = ref.slice(1)
+  if (body === "" || body.includes("/")) return null
+  // `$sketch.entity` (the legacy sweep-path form) names an entity, not a feature.
+  if (sigil === "$" && body.includes(".")) return null
+  return body
+}
+
 const BODY_AT_RE = /@(body_[^@:;,/]+)/g
 
 /** Return the body id ("body_...") a query refers to, or null. */

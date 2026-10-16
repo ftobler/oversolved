@@ -1,5 +1,8 @@
 import type { PartDoc } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
+import { featureRefId } from '@/kernel/query'
+import { FEATURE_DEF_SUBKEY, nestedFeatureParams } from '@/kernel/features/shared/featureParams'
+import { warn } from './yamlMutations/helpers'
 
 // The load-time migration steps, in the order the ladder applies them. Both
 // predate any trustworthy version stamp (a document written with `version: 1`
@@ -82,4 +85,106 @@ export function dropDeadAxisConstraints(doc: PartDoc): number {
     removed += before - feature.constraints.length
   }
   return removed
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Rewrite a feature-level reference to a feature from the legacy `$id` local
+ * spelling to the canonical `@id` absolute one. Only refs whose bare id names a
+ * feature IN THIS DOCUMENT are touched, so a host-local sketch constraint
+ * operand (`$line1`, kept local) and the legacy `$sketch.entity` sweep-path form
+ * are left alone. Walks each sub-def (the kind key; `definition` for a plane)
+ * recursively; a kind with no sub-def (sketch's own constraints) is never
+ * entered. Idempotent: a second pass finds no `$` feature refs.
+ */
+export function migrateFeatureRefsToAbsolute(doc: PartDoc): number {
+  const features = doc.features
+  if (!features) return 0
+  const known = new Set(features.map(f => f.id))
+  let rewritten = 0
+  for (const feature of features) {
+    const row = feature as unknown as Record<string, unknown>
+    const kind = row.kind
+    if (typeof kind !== 'string') continue
+    const subKey = FEATURE_DEF_SUBKEY[kind as keyof typeof FEATURE_DEF_SUBKEY]
+    if (subKey === undefined) continue
+    const sub = row[subKey]
+    if (sub === undefined) continue
+    const { value, count } = rewriteFeatureRefsIn(sub, known)
+    if (count > 0) {
+      row[subKey] = value
+      rewritten += 1
+    }
+  }
+  return rewritten
+}
+
+function rewriteFeatureRefsIn(value: unknown, known: ReadonlySet<string>): { value: unknown; count: number } {
+  if (typeof value === 'string') {
+    const id = featureRefId(value)
+    // Only the legacy `$` spelling is rewritten; `@` is already canonical.
+    if (id !== null && value[0] === '$' && known.has(id)) return { value: '@' + id, count: 1 }
+    return { value, count: 0 }
+  }
+  if (Array.isArray(value)) {
+    // A hostile document can carry a sparse billion-entry array (the loader's
+    // own cap is MAX_FEATURE_LIST); walking it here would hang the migration.
+    // Anything over the cap is left for the validator to refuse by field.
+    if (value.length > REF_WALK_LIST_CAP) return { value, count: 0 }
+    let count = 0
+    const out = value.map(v => {
+      const r = rewriteFeatureRefsIn(v, known)
+      count += r.count
+      return r.value
+    })
+    return count > 0 ? { value: out, count } : { value, count: 0 }
+  }
+  if (isRecord(value)) {
+    let count = 0
+    let changed = false
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      const r = rewriteFeatureRefsIn(v, known)
+      count += r.count
+      if (r.value !== v) changed = true
+      out[k] = r.value
+    }
+    return changed ? { value: out, count } : { value, count: 0 }
+  }
+  return { value, count: 0 }
+}
+
+// Mirrors persistence/docSchema's MAX_FEATURE_LIST; a ref list never approaches
+// it, and walking a larger one would hang on a hostile sparse array.
+const REF_WALK_LIST_CAP = 10_000
+
+/**
+ * Canonicalize feature params: fold every non-base flat field into the feature's
+ * sub-def (the kind key; `definition` for a plane). Flat wins on conflict, the
+ * same rule the old leaf-solver overlay used, so folding changes no geometry;
+ * the shadowed nested value is logged. A kind with no sub-def, or one with
+ * nothing flat, is left alone. Idempotent. Returns the number of features
+ * rewritten. Mirrors nestedFeatureParams, the runtime helper the solver adapter
+ * shares, so load and solve agree on where a param lives.
+ */
+export function canonicalizeFeatureParams(doc: PartDoc): number {
+  const features = doc.features
+  if (!features) return 0
+  let moved = 0
+  for (const feature of features) {
+    const row = feature as unknown as Record<string, unknown>
+    if (typeof row.kind !== 'string') continue
+    const { feature: canonical, dropped } = nestedFeatureParams(row)
+    if (canonical === row) continue
+    for (const key of Object.keys(row)) delete row[key]
+    Object.assign(row, canonical)
+    moved += 1
+    if (dropped.length > 0) {
+      warn(`docSchema: flat params moved into the sub-def, overriding the nested value: ${dropped.join(', ')}`)
+    }
+  }
+  return moved
 }

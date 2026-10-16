@@ -617,11 +617,10 @@ export function solveFillet(
   bodyStore: Record<string, Body>,
 ): EdgeFeatureResult {
   const sub = (feature.fillet as Dict) ?? {}
-  const merged: Dict = { ...sub, ...feature }
-  const radiusRaw = merged.radius
+  const radiusRaw = sub.radius
   const radius = Number(radiusRaw !== undefined && radiusRaw !== null ? radiusRaw : 1.0)
   if (!Number.isFinite(radius) || radius <= 0) throw new Error('fillet: radius must be positive')
-  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'fillet', (o, s, shape, edges, nm) =>
+  return applyEdgeFeature(oc, scope, table, sub, bodyStore, 'fillet', (o, s, shape, edges, nm) =>
     applyFilletWithLineage(o, s, shape, radius, edges, nm),
   // unit_scale=1 here is a 1:1 UX approximation: dragging along the
   // face-bisector normal is not the exact radius/bisector-travel relation
@@ -642,13 +641,12 @@ export function solveChamfer(
 ): EdgeFeatureResult {
   const sub = (feature.chamfer as Dict) ?? {}
   const chamferMode = (sub.kind as string) ?? 'distance'
-  const merged: Dict = { ...sub, ...feature }
-  const distanceRaw = merged.distance
+  const distanceRaw = sub.distance
   const distance = Number(distanceRaw !== undefined && distanceRaw !== null ? distanceRaw : 1.0)
-  const angleRaw = merged.angle
+  const angleRaw = sub.angle
   const angle = Number(angleRaw !== undefined && angleRaw !== null ? angleRaw : 45.0)
   if (!Number.isFinite(distance) || distance <= 0) throw new Error('chamfer: distance must be positive')
-  return applyEdgeFeature(oc, scope, table, merged, bodyStore, 'chamfer', (o, s, shape, edges, nm) =>
+  return applyEdgeFeature(oc, scope, table, sub, bodyStore, 'chamfer', (o, s, shape, edges, nm) =>
     applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, nm),
   // See fillet above: unit_scale=1 is a 1:1 UX approximation along the
   // face-bisector normal, not the exact chamfer geometry relation.

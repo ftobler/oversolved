@@ -107,7 +107,7 @@ exports[`golden documents load and migrate > loads current part: current shape, 
 
 exports[`golden documents load and migrate > loads current part: current shape, nothing to migrate 2`] = `[]`;
 
-exports[`golden documents load and migrate > loads current v2 part: stamped at the ladder current version, nothing to migrate 1`] = `
+exports[`golden documents load and migrate > loads current v2 part: stamped one behind the ladder, nothing to migrate 1`] = `
 {
   "features": [
     {
@@ -146,7 +146,48 @@ exports[`golden documents load and migrate > loads current v2 part: stamped at t
 }
 `;
 
-exports[`golden documents load and migrate > loads current v2 part: stamped at the ladder current version, nothing to migrate 2`] = `[]`;
+exports[`golden documents load and migrate > loads current v2 part: stamped one behind the ladder, nothing to migrate 2`] = `[]`;
+
+exports[`golden documents load and migrate > loads current v3 part: stamped at the ladder current version, nothing to migrate 1`] = `
+{
+  "features": [
+    {
+      "id": "Origin",
+      "kind": "origin",
+    },
+    {
+      "constraints": [
+        {
+          "a": "$line1",
+          "id": "c1",
+          "kind": "horizontal",
+        },
+      ],
+      "entities": [
+        {
+          "id": "line1",
+          "kind": "line",
+        },
+      ],
+      "id": "sk1",
+      "initial": {
+        "line1": [
+          0,
+          0,
+          20,
+          0,
+        ],
+      },
+      "kind": "sketch",
+      "plane": "@builtin_plane_front",
+    },
+  ],
+  "kind": "part",
+  "version": 3,
+}
+`;
+
+exports[`golden documents load and migrate > loads current v3 part: stamped at the ladder current version, nothing to migrate 2`] = `[]`;
 
 exports[`golden documents load and migrate > loads legacy part: pre-versioning heals: dead axis constraint, singular body picks, stale inline payload 1`] = `
 {

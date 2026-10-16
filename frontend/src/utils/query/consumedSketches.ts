@@ -8,6 +8,7 @@
 // is open (utils/featureVisibility) both ask here.
 
 import type { PartFeature } from '@/types/cad'
+import { featureRefId } from '@/utils/query'
 import { selectionSourceFeatureIds } from '@/utils/query/pickOrder'
 
 function refList(ref: string | string[] | undefined): string[] {
@@ -24,6 +25,14 @@ function sketchIdsInQuery(
   known: ReadonlySet<string>,
 ): string[] {
   if (!query) return []
+  // A bare feature-level ref (`@<sketchId>` canonical, `$<sketchId>` legacy)
+  // names the sketch itself. selectionSourceFeatureIds only reads the `@`
+  // spelling, so routing through the one grammar seam here keeps a legacy `$`
+  // doc's consumed sketch hidden instead of silently leaving it on screen.
+  const featureId = featureRefId(query)
+  if (featureId !== null) {
+    return byId.get(featureId)?.kind === 'sketch' ? [featureId] : []
+  }
   const sources = selectionSourceFeatureIds(query, known)
   // A body face or edge names the sketch edges that swept it in its ancestry
   // (`@ex1@body_ex1@sk1/left`), so it mentions the sketch without being sketch

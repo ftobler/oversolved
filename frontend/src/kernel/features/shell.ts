@@ -76,13 +76,12 @@ export function solveShell(
 ): ShellResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.shell as Dict) ?? {}
-  const merged: Dict = { ...sub, ...feature }
-  const thicknessRaw = merged.thickness
+  const thicknessRaw = sub.thickness
   const thickness = Number(thicknessRaw !== undefined && thicknessRaw !== null ? thicknessRaw : 1)
   if (!Number.isFinite(thickness) || thickness <= 0) throw new Error('shell: thickness must be positive')
-  const direction: ShellDirection = merged.direction === 'outward' ? 'outward' : 'inward'
-  const faces = (merged.faces as string[]) ?? []
-  const sourceBody = (merged.source_body as string) ?? ''
+  const direction: ShellDirection = sub.direction === 'outward' ? 'outward' : 'inward'
+  const faces = (sub.faces as string[]) ?? []
+  const sourceBody = (sub.source_body as string) ?? ''
   if (Object.keys(bodyStore).length === 0) throw new Error('shell: no bodies in body_store')
   if (faces.length === 0 && !sourceBody) throw new Error('shell: no faces and no source_body; a closed hollow needs a body')
 

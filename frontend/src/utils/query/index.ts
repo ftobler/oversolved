@@ -12,5 +12,5 @@
 // Do NOT call to inspect kind -- use the `kind` field directly.
 // If you find yourself calling this just to pass the value somewhere else,
 // keep the Query object instead.
-export { emitWire, parseQuery, local, absolute, ancestry } from "@/kernel/query"
+export { emitWire, parseQuery, local, absolute, ancestry, featureRefId } from "@/kernel/query"
 export type { Query, LocalQuery, AbsoluteQuery, AncestryQuery } from "@/types/query"
