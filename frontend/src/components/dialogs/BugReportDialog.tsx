@@ -11,7 +11,7 @@ import '@/components/dialogs/BugReportDialog.css'
 type UndoEntry = { doc: unknown; mutation: Mutation }
 
 export interface BugReportAttachments {
-  ast: boolean
+  doc: boolean
   selection: boolean
   history: boolean
   historyCount: number
@@ -36,7 +36,7 @@ export default function BugReportDialog({ isOpen, onClose }: BugReportDialogProp
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [attachments, setAttachments] = useState<BugReportAttachments>({
-    ast: true,
+    doc: true,
     selection: true,
     history: true,
     historyCount: 5,
@@ -54,7 +54,7 @@ export default function BugReportDialog({ isOpen, onClose }: BugReportDialogProp
         title: form.title,
         description: form.description,
       }
-      if (attachments.ast) report.ast = doc
+      if (attachments.doc) report.doc = doc
       if (attachments.selection) report.selection = [...selection]
       if (attachments.history) {
         report.history = undoStack.slice(-attachments.historyCount).map(entry => ({
@@ -114,11 +114,11 @@ export default function BugReportDialog({ isOpen, onClose }: BugReportDialogProp
             <label className="bug-report-checkbox-label">
               <input
                 type="checkbox"
-                checked={attachments.ast}
-                onChange={e => setAttachments(a => ({ ...a, ast: e.target.checked }))}
+                checked={attachments.doc}
+                onChange={e => setAttachments(a => ({ ...a, doc: e.target.checked }))}
                 disabled={submitting}
               />
-              AST (current document)
+              Document
             </label>
             <label className="bug-report-checkbox-label">
               <input

@@ -67,7 +67,7 @@ describe('BugReportDialog', () => {
     expect(send.mock.calls[0][0]).toMatchObject({
       title: 'It broke',
       description: 'while extruding',
-      ast: { features: [] },
+      doc: { features: [] },
       selection: ['edge-1'],
     })
     expect(onClose).toHaveBeenCalled()
@@ -77,14 +77,14 @@ describe('BugReportDialog', () => {
     const send = vi.spyOn(backendBundle.telemetry, 'send').mockResolvedValue()
     render(<BugReportDialog isOpen onClose={vi.fn()} />)
     fillTitle('No payload')
-    fireEvent.click(screen.getByLabelText(/AST/))
+    fireEvent.click(screen.getByLabelText(/Document/))
     fireEvent.click(screen.getByLabelText(/Selection/))
     fireEvent.click(screen.getByLabelText(/Edit history/))
     fireEvent.click(screen.getByText('Submit Report'))
 
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1))
     const report = send.mock.calls[0][0]
-    expect(report).not.toHaveProperty('ast')
+    expect(report).not.toHaveProperty('doc')
     expect(report).not.toHaveProperty('selection')
     expect(report).not.toHaveProperty('history')
   })
