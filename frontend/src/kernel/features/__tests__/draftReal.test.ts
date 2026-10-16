@@ -72,7 +72,7 @@ describe.skipIf(!oc)('solveDraft leaf (real OCC)', () => {
     }
   }
 
-  /** The body's face whose centroid coordinate on `axis` is greatest/least. */
+  // The body's face whose centroid coordinate on `axis` is greatest/least.
   function sideFace(scope: DisposeScope, table: HandleTable, body: Body, axis: 0 | 1 | 2, which: 'min' | 'max'): string {
     const faces = canonicalFaces(occ, scope, table.get<OccShape>(body.shape!)) as OccShape[]
     let best = 0
