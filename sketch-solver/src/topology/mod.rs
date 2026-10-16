@@ -25,6 +25,12 @@ pub(crate) mod codec;
 pub(crate) mod curve_intersect;
 pub(crate) mod curve_split;
 pub(crate) mod dcel;
+// The invariant oracle: an independent judge of `detect_topology`'s output.
+// Compiled for every test build, and for a build that opts into the `fuzz`
+// feature (the node pkg the repro test drives); the production WASM binary
+// carries neither.
+#[cfg(any(test, feature = "fuzz"))]
+pub(crate) mod oracle;
 pub(crate) mod profile_loops;
 
 /// A 2D point/vector shared by the intersection, split, loop and DCEL modules.
