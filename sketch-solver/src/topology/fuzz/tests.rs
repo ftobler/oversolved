@@ -1061,8 +1061,30 @@ fn pending_classes(violations: &[Violation]) -> Vec<&'static str> {
 /// hundreds of times per failing seed).
 type SweepResult = (Vec<String>, usize);
 
-fn sweep(from: u32, to: u32, write: bool) -> SweepResult {
+/// Every catalogue entry that names a fixture class must be backed by its
+/// minimised case, in the same tree, so the acceptance can never be vacuous.
+/// Checked over the whole catalogue rather than only the seeds one sweep
+/// visits: a harvest that failed to write its case must not be papered over
+/// by a narrower range.
+fn missing_case_failures(entries: &[KnownSeed]) -> Vec<String> {
     let mut failures = Vec::new();
+    for k in entries {
+        for class in k.classes.iter().filter(|c| REQUIRES_CASE.contains(c)) {
+            let path = case_path(k.seed, class);
+            if !path.exists() {
+                failures.push(format!(
+                    "seed {}: class {class} has no fixture at {}",
+                    k.seed,
+                    path.display()
+                ));
+            }
+        }
+    }
+    failures
+}
+
+fn sweep(from: u32, to: u32, write: bool) -> SweepResult {
+    let mut failures = missing_case_failures(KNOWN_FAILING_SEEDS);
     let mut covered = 0usize;
     for seed in from..=to {
         let gen = generate(seed);
@@ -1114,21 +1136,26 @@ fn sweep(from: u32, to: u32, write: bool) -> SweepResult {
             }
         }
         failures.push(report);
-        // A fixture class must be backed by its minimised case, in the same
-        // tree, so the acceptance can never be vacuous.
-        if known == Some(&classes[..]) {
-            for class in classes.iter().filter(|c| REQUIRES_CASE.contains(c)) {
-                let path = case_path(seed, class);
-                if !path.exists() {
-                    failures.push(format!(
-                        "seed {seed}: class {class} has no fixture at {}",
-                        path.display()
-                    ));
-                }
-            }
-        }
     }
     (failures, covered)
+}
+
+#[test]
+fn a_catalogue_entry_without_its_fixture_fails_the_check() {
+    // The check is catalogue-wide and must catch a missing file: seed 3000000
+    // cannot have a fixture, while every real fixture entry must be backed.
+    let phantom = [KnownSeed {
+        seed: 3000000,
+        classes: &["coverage", "stability"],
+    }];
+    let failures = missing_case_failures(&phantom);
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert!(failures[0].contains("3000000.json"), "{}", failures[0]);
+    assert!(
+        missing_case_failures(KNOWN_FAILING_SEEDS).is_empty(),
+        "the catalogue's fixtures are incomplete: {:?}",
+        missing_case_failures(KNOWN_FAILING_SEEDS)
+    );
 }
 
 #[test]
