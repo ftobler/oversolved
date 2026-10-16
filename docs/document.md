@@ -25,20 +25,53 @@ covered here.
 ## Document Structure
 
 ```yaml
-version: 1
+version: 3
 kind: part
 
 features:
   - id: sk1
     kind: sketch
-    ...
 ```
 
-Top-level fields: `version` (int), `kind` (string, currently `"part"`), `features` (list).
+Top-level fields: `version` (int, the migration-ladder stamp; the ladder target
+is `CURRENT_DOC_VERSION = 3` in `persistence/docSchema.ts`, and a missing or
+older stamp runs the steps that bring it up), `kind` (string, `"part"`),
+`rollback` (int, an index into `features`; absent means the end of the stack,
+and a rolled-back document reopens where the user left it), `features` (list),
+`part_style` (map from body id to display style, reconciled by the solve),
+`oversolved` (int, a stamp the loader checks is an integer and nothing else
+reads).
 
-A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`) flat and every other param under the field named after its kind (`extrude: {...}`; `definition:` for a plane). A reference from one feature to another feature is absolute, `@<featureId>`; `$` is host-local to a sketch's own entities. `persistence/docSchema.ts` folds the legacy flat params and the `$id` feature refs onto these canonical forms on load; `persistence/partDocSchema.ts` is the hand-written JSON Schema contract (kept in step with `types/cad.ts` by the compile-time kind tether and the corpus test), served as the MCP resource `oversolved://schema/part-document`.
+A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`)
+flat and every other param under the field named after its kind
+(`extrude: {...}`; `definition:` for a plane), except `sketch`, whose `plane`,
+`entities`, `constraints`, `initial` and `auto_hidden` sit flat on the feature,
+and `import_step`, whose `file_id` and `scale` do. `origin` carries no params.
+A reference from one feature to another feature is absolute, `@<featureId>`; `$`
+is host-local to a sketch's own entities. `persistence/docSchema.ts` folds the
+legacy flat params and the `$id` feature refs onto these canonical forms on
+load; `persistence/partDocSchema.ts` is the hand-written JSON Schema contract
+(kept in step with `types/cad.ts` by the compile-time kind tether and the corpus
+test), served as the MCP resource `oversolved://schema/part-document`.
 
 ## Feature Kinds
+
+### origin
+
+The document origin. Every fresh document starts with four built-in features:
+`Origin` (kind `origin`) and the three cardinal planes `Top`, `Front`, `Right`
+(kind `plane`, with no `definition`; their frames are the `builtin_plane_*`
+entries of `kernel/solverConstants.ts`).
+
+```yaml
+- id: Origin
+  kind: origin
+```
+
+The built-ins cannot be deleted, reordered or suppressed
+(`applyDeleteFeature`, `applyReorderFeatures`, `applySetFeatureSuppression` in
+`utils/yamlMutations/partStyle.ts`), and the rollback bar can never be parked
+above them.
 
 ### sketch
 
@@ -47,7 +80,7 @@ A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`)
   kind: sketch
   plane: "@builtin_plane_front"   # query; defaults to front plane
   label: "Sketch 1"
-  hide: false
+  visible: true                   # absent means visible
   initial:                         # warm-start guesses [flat param arrays]
     line_base:   [0.0, 0.0, 17.32, 0.0]
   entities:
@@ -56,8 +89,25 @@ A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`)
   constraints:
     - id: c1
       kind: horizontal
-      target: { entity: line_base }
+      target: "$line_base"
 ```
+
+`suppressed: true` skips the feature in the solve. `auto_hidden` is sketch-only:
+set once the user has shown a consumed sketch, so the one-shot consume auto-hide
+will not hide it again. `drag_anchor` is a transient solve-only hint (the entity
+just dragged) that is never stored in the document.
+
+| kind | params | meaning |
+|------|--------|---------|
+| `point` | `[x, y]` | position |
+| `line` | `[x1, y1, x2, y2]` | start, end |
+| `circle` | `[cx, cy, r]` | center, radius |
+| `arc` | `[cx, cy, r, a0, a1]` | center, radius, start angle (deg), end angle (deg) |
+| `ellipse` | `[cx, cy, a, b, theta]` | center, semi-major (a>=b>=0), semi-minor, major-axis rotation (deg) |
+| `spline` | `[x1, y1, x2, y2, x3, y3, x4, y4]` | cubic Bezier: P1/P4 on-curve endpoints, P2/P3 control points |
+| `center_rect` | compound (expanded to 4 lines) | xy, size |
+
+Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) that carries a `source` field is projected from a 3D source and gets an automatic `fixed` constraint pinning it. Legacy `projected_*` kinds are still accepted on read and normalized to their base kind. Any entity can set `construction: true`.
 
 ### plane
 
@@ -78,10 +128,18 @@ A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`)
   kind: extrude
   extrude:
     sketch: "@sk1"              # or list of refs
-    distance: 10.0              # depth is a legacy alias
+    distance: 10.0              # required; the legacy `depth` spelling is read as an alias
     direction: normal           # normal | reverse | symmetric
     operation: new              # new | add | cut
+    termination: blind          # blind | up_to
+    up_to: "@body_ex1/face/0"   # up_to only: a plane, a point, or a planar face
+    merge_target: "@body_ex1"   # optional: the body the result fuses into
 ```
+
+`up_to` trims the extrude at the picked element instead of at `distance`. A
+target that does not resolve, or meets several elements, falls back to the blind
+distance with a solver warning; a non-planar face target and
+`direction: symmetric` are refused.
 
 ### revolve
 
@@ -93,6 +151,7 @@ A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`)
     angle: 360.0
     axis: "@sk1/axisLine"       # required pick: line edge, sketch line, or circular edge
     operation: new
+    merge_target: "@body_ex1"   # optional
 ```
 
 ### sweep
@@ -124,6 +183,7 @@ A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`)
     edges: ["?query:edge"]
     distance: 1.0
     kind: distance              # distance | angle_distance
+    angle: 45.0                 # angle_distance only, deg
 ```
 
 ### shell
@@ -200,6 +260,7 @@ the body untouched; the other groups still apply (status `partial`).
     depth: 20.0
     depth_mode: blind            # blind | through_all
     direction: normal
+    target: "@body_ex1"          # optional: the body to drill into
 ```
 
 ### transform
@@ -209,14 +270,23 @@ the body untouched; the other groups still apply (status `partial`).
   kind: transform
   transform:
     bodies: ["@body_ex1"]
-    translation: [20, 0, 0]
-    rotation_angle: 90.0
     operation: new               # new | replace
+    translation: [20, 0, 0]      # or translation_from + translation_to picks
+    translation_from: "@pts/p1"
+    translation_to: "@pts/p2"
+    rotation_angle: 90.0
+    rotation_axis: "@sk1/axisLine"   # pick; or rotation_axis_origin + rotation_axis_direction
+    rotation_axis_origin: [0, 0, 0]
+    rotation_axis_direction: [0, 0, 1]
+    scale: 1.0                   # or scale_center + scale_center_from
+    scale_center: [0, 0, 0]
+    scale_center_from: "@pts/p1"
 ```
 
 Note: the pick is a list; a document that still says `body:` (the pre-plural
-form) is migrated to `bodies:` on load by `migrateLegacyBodyPicks`, so the code
-tab should always write the plural key.
+form) is migrated to `bodies:` on load by `migrateLegacyBodyPicks`. Write the
+plural key. The raw view (`RawDocumentDialog.tsx`) is a read-only fallback for a
+file that failed to load, not an editor.
 
 ### array
 
@@ -224,10 +294,19 @@ tab should always write the plural key.
 - id: arr1
   kind: array
   array:
-    source_body: "extrude1"
+    source_body: "@extrude1"     # required
     mode: linear                 # linear | rectangular
+    operation: new               # new | add
+    include_source: true         # keep the source as instance 0 of the pattern
     count_x: 3
     pitch_x: 20.0
+    direction_x: [1, 0, 0]       # or direction_x_query, a straight edge or planar face
+    invert_x: false              # reverse the direction
+    count_y: 2                   # rectangular only
+    pitch_y: 10.0
+    direction_y: [0, 1, 0]
+    direction_y_query: "?query:straightedge"
+    invert_y: false
 ```
 
 ### circular_array
@@ -238,10 +317,11 @@ A rotational array is its own feature kind (not a `mode` of `array`):
 - id: carr1
   kind: circular_array
   circular_array:
-    source_body: "extrude1"
+    source_body: "@extrude1"
     count: 4
     step_angle: 90.0             # optional; defaults to 360 / count
     axis: "@sk1/axisLine"        # query; or axis_origin + axis_direction
+    invert_axis: false           # reverse the sweep sense
     operation: new               # new | add
     include_source: true
 ```
@@ -276,6 +356,12 @@ A rotational array is its own feature kind (not a `mode` of `array`):
   scale: 1.0
 ```
 
+`import_step` keeps its params flat on the feature: it is the one
+expression-capable kind with no kind sub-dict (`ExprPayloads` in
+`kernel/evalExpr.ts`). `file_id` names an entry in the file registry
+(`stores/fileRegistry`), which resolves to the STEP bytes for the solve; the old
+inline `file_data` spelling is refused by name.
+
 ### variable
 
 ```yaml
@@ -284,19 +370,11 @@ A rotational array is its own feature kind (not a `mode` of `array`):
   label: width                   # the variable name (must be a valid identifier)
   variable:
     expression: "10 + 2"         # number or formula; evaluated against earlier variables
+    unit: "mm"                   # optional display hint
 ```
 
-| kind | params | meaning |
-|------|--------|---------|
-| `point` | `[x, y]` | position |
-| `line` | `[x1, y1, x2, y2]` | start, end |
-| `circle` | `[cx, cy, r]` | center, radius |
-| `arc` | `[cx, cy, r, a0, a1]` | center, radius, start angle (deg), end angle (deg) |
-| `ellipse` | `[cx, cy, a, b, theta]` | center, semi-major (a>=b>=0), semi-minor, major-axis rotation (deg) |
-| `spline` | `[x1, y1, x2, y2, x3, y3, x4, y4]` | cubic Bezier: P1/P4 on-curve endpoints, P2/P3 control points |
-| `center_rect` | compound (expanded to 4 lines) | xy, size |
-
-Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) that carries a `source` field is projected from a 3D source and gets an automatic `fixed` constraint pinning it. Legacy `projected_*` kinds are still accepted on read and normalized to their base kind. Any entity can set `construction: true`.
+`value` (number) is the solver-written cache of the evaluated result; it is
+never authored.
 
 ### helix
 
@@ -350,7 +428,13 @@ The solve registers `_curve_<id>` (plain descriptor data), `<id>` (its axis),
 
 ## Constraints
 
-Refs use `{"entity": "<eid>", "point": "start"|"end"|"center"|"xy"}` or `{"external_xy": [x, y]}`. `point` defaults to `start`.
+Constraint operands are query strings: a local ref (`$line1`, or `$line1start`
+for a vertex) names an entity of the same sketch, `@builtin_origin` names the
+document origin, and absolute or ancestry queries (`@sk1/line1/start`,
+`?4;@ex1:solid`) name anything else. The loader also accepts the pre-resolved
+dict forms on read: `{"entity": "<eid>", "point": "<key>"}` (`point` names a
+vertex key such as `start`, `end`, `center`, `xy`; absent means the whole
+entity) and `{"external_xy": [x, y]}`. The app writes the string form.
 
 | kind | description |
 |------|-------------|
@@ -373,16 +457,27 @@ Refs use `{"entity": "<eid>", "point": "start"|"end"|"center"|"xy"}` or `{"exter
 | `concentric` | Center-delta x and y |
 | `radius_difference` | Difference of two radii minus value |
 | `fixed` | Params pinned to initial |
+| `colinear` | Point on the infinite line through a line |
+| `ngon` | Sugar: regular polygon over `refs` (member lines), optionally pinned to the `circle` circumcircle; lowered to equal_length, angle and coincident rows |
+| `dock` | Sugar: `point` pinned to the implied contact of the `host` constraint (today a tangent's foot); lowered to coincident rows, and floats when the host is deleted |
+
+`sign` (+1 or -1) picks the side a directional dimension measures on, keeping
+`value` non-negative; absent means the legacy side-agnostic absolute behavior.
+`pos` is the dimension label position, a 2D offset in sketch space relative to
+the constraint's anchor point. Both are authored, never solver output.
 
 ## Query Syntax
 
 | Prefix | Kind | Example |
 |--------|------|---------|
-| `$<eid><sub>` | LocalQuery - entity in current sketch | `$line1/start` |
+| `$<eid><sub>` | LocalQuery - entity in current sketch | `$line1`, `$line1start` |
 | `@<feature_id>/<eid>/<sub>` | AbsoluteQuery - cross-feature | `@sk1/line1/start`, `@builtin_plane_front` |
 | `?<hex_lengths>;<id_strings>[:<type>]` | AncestryQuery - hierarchical | `?4;@ex1:solid` |
 
-Sub suffixes: `start`, `end`, `center`, `xy`. Ancestry types: `solid`, `face`, `flatface`, `cylinderface`, `edge`, `straightedge`, `vertex`.
+Sub suffixes: `start`, `end`, `center`, `xy`, the ellipse axis keys
+(`major1`/`major2`/`minor1`/`minor2`) and the spline controls (`c1`, `c2`).
+Ancestry types: `solid`, `face`, `flatface`, `cylinderface`, `edge`,
+`straightedge`, `vertex`.
 
 Geometric classifiers disambiguate topology elements that share ancestry. They are minted `@cls_*` tokens that ride the ancestry id list (no grammar change), not a separate suffix: cardinal/axial (`@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn`) and line-division (`@cls_ld_<lineid>_p|n`). See `docs/query.md` for the resolution tiers.
 
@@ -398,12 +493,27 @@ Shorthands `"Front"`, `"Top"`, `"Right"` also recognized.
 
 ## Constraint Status
 
-Determined from Jacobian rank at the solution (no rigid-body DOF allowance: a
-point pinned at the origin still leaves a removable rotation DOF):
-- **fully_constrained** - Jacobian rank reaches the parameter count (rank == n_params)
-- **underconstrained** - Jacobian rank < n_params
-- **overconstrained** - final residual loss > 1e-4
+Derived from the constraint Jacobian at the solution
+(`sketch-solver/src/solve.rs`):
+
+- **fully_constrained** - the residual is satisfied and the Jacobian rank
+  reaches the parameter count (`rank == n_params`); rank counts singular values
+  above `RANK_TOL = 1e-6`.
+- **underconstrained** - the residual is satisfied but the rank is below the
+  parameter count.
+- **overconstrained** - the final residual norm is not within
+  `LOSS_REL = 1e-7` times the sketch's size (`Problem::scale`, the diagonal of
+  the seed geometry's bounding box, `residuals/scale.rs`), or it is not finite.
+  The solver then reports a per-constraint miss fraction so the UI can localise
+  the conflict.
+
+There is no rigid-body DOF allowance: a point pinned at the origin still leaves
+a removable rotation DOF.
 
 ## Frontend Adapter Note
 
-The frontend rendering layer (`Geometry3D`) converts solver result flat arrays to named-field format (`{line1: {start: [x,y], end: [x,y]}}`). Flat arrays are used on the wire so solver output is isomorphic with the document `initial` field.
+The conversion from solver result flat arrays to the named-field format
+(`{line1: {start: [x,y], end: [x,y]}}`) lives in the frontend rendering layer,
+not the solver: `utils/geometry/geometryMapping.ts` (`unflattenGeometry`). Flat
+arrays are used on the wire so solver output is isomorphic with the document
+`initial` field.
