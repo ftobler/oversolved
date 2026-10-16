@@ -1,0 +1,1 @@
+euler: split edge piece 0 (entity m4_3) has an endpoint with no vertex

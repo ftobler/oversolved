@@ -1,0 +1,1 @@
+structure: surface 0 self-intersects between segments 1 and 118 near (19.000000, 0.000000)

@@ -320,6 +320,63 @@ fn hand_fixtures() -> Vec<(&'static str, Vec<(String, InputEntity)>)> {
             ),
         ],
     ));
+    out.push(("miss_side_circle_pair", {
+        // The dcel test's `circle_pair_offset_by`, gap within the
+        // miss-side tangency budget: two standalone disks.
+        let r = 5.0;
+        let gap = 0.5 * MERGE.max(1e-5 * r);
+        vec![
+            ("A".into(), circle([0.0, 0.0], r)),
+            ("B".into(), circle([2.0 * r + gap, 0.0], r)),
+        ]
+    }));
+    out.push(("three_circles_a_hair_apart", {
+        let r: f64 = 2.61391544342041;
+        let s = 2.0 * r + 1e-7;
+        vec![
+            ("A".into(), circle([0.0, 0.0], r)),
+            ("B".into(), circle([s, 0.0], r)),
+            ("C".into(), circle([s / 2.0, 3.0f64.sqrt() * s / 2.0], r)),
+        ]
+    }));
+    out.push(("off_segment_foot_crossing", {
+        // From `a_crossing_survives_a_foot_that_lies_off_the_segment`: the
+        // line's perpendicular foot is off its own segment while the real
+        // crossing stays.
+        let r: f64 = 100.0;
+        let y = r - 1e-3;
+        let half = (r * r - y * y).sqrt();
+        vec![
+            ("A".into(), circle([0.0, 0.0], r)),
+            ("H".into(), line([0.1, y], [half + 0.5, y])),
+        ]
+    }));
+    out.push(("near_miss_off_segment_foot", {
+        // The miss side of the same branch: within the tangency budget, but
+        // the contact would fall beyond the segment's end.
+        let r: f64 = 100.0;
+        vec![
+            ("A".into(), circle([0.0, 0.0], r)),
+            ("H".into(), line([5.0, r + 1e-4], [40.0, r + 1e-4])),
+        ]
+    }));
+    out.push(("huge_angle_arc", {
+        // From `arc_with_huge_decoded_angles_completes...`: the hostile arc
+        // must not stall the oracle either, and the square must survive it.
+        let mut geom = square(2.0);
+        geom.push(("bad".into(), arc([50.0, 50.0], 1.0, 3e38, 3e38)));
+        geom
+    }));
+    out.push(("spline_chord_half_edge", {
+        // From `full_open_spline_half_edge_preserves_its_control_points`: an
+        // open spline plus its chord, no crossing.
+        let start = [0.0, 0.0];
+        let end = [2.0, 0.0];
+        vec![
+            ("s0".into(), spline_open(start, [0.5, 2.0], [1.5, 2.0], end)),
+            ("l0".into(), line(end, start)),
+        ]
+    }));
     out
 }
 
@@ -355,15 +412,29 @@ fn pending(violations: &[Violation]) -> Vec<String> {
 #[test]
 fn oracle_accepts_hand_fixtures() {
     // No false positives: every fixture the dcel tests pin must pass the
-    // oracle before it is trusted to judge generated input.
+    // oracle before it is trusted to judge generated input. The counts are
+    // exact so a fixture cannot be dropped silently; adding one means bumping
+    // the number deliberately.
+    let hand = hand_fixtures();
+    // The JSON scenarios' raw names overlap the hand names (`square`,
+    // `standalone_circle`), so they are namespaced here to keep the failure
+    // output unambiguous.
+    let json: Vec<(String, Vec<(String, InputEntity)>)> = json_fixture_inputs()
+        .into_iter()
+        .map(|(n, g)| (format!("json:{n}"), g))
+        .collect();
+    assert_eq!(hand.len(), 26, "the named fixture list changed");
+    assert_eq!(json.len(), 9, "the JSON scenario fixture list changed");
+    let mut names: Vec<&str> = hand.iter().map(|(n, _)| *n).collect();
+    names.extend(json.iter().map(|(n, _)| n.as_str()));
+    let unique: std::collections::BTreeSet<&str> = names.iter().copied().collect();
+    assert_eq!(unique.len(), names.len(), "fixture names must be unique");
     let mut failures: Vec<String> = Vec::new();
-    let mut count = 0;
-    let fixtures = hand_fixtures()
+    let fixtures = hand
         .into_iter()
         .map(|(n, g)| (n.to_string(), g))
-        .chain(json_fixture_inputs());
+        .chain(json);
     for (name, geom) in fixtures {
-        count += 1;
         let out = detect_topology(&geom);
         for v in pending(&check_topology(&geom, &out)) {
             failures.push(format!("{name}: {v}"));
@@ -373,14 +444,51 @@ fn oracle_accepts_hand_fixtures() {
         }
     }
     assert!(
-        count > 20,
-        "the fixture list should stay broad, got {count}"
-    );
-    assert!(
         failures.is_empty(),
         "oracle false positives:\n{}",
         failures.join("\n")
     );
+}
+
+#[test]
+fn a_failed_match_names_the_field() {
+    // 252-order's areas matched and its hole list differed, yet the old
+    // message just said "has no match". Both fields that can be the culprit
+    // must be named, and a centroid failure must report the drift against
+    // its (thickness-scaled) budget.
+    let face = |area: f64, holes: Vec<f64>, centroid: Vec2, thickness: f64| FaceSummary {
+        area,
+        holes,
+        centroid,
+        thickness,
+    };
+    let a = vec![face(10.0, vec![1.0], [0.0, 0.0], 1.0)];
+    let holes_differ = vec![face(10.0, vec![2.0], [0.0, 0.0], 1.0)];
+    let v = compare_face_multisets(
+        "order",
+        "entity permutation",
+        &a,
+        &holes_differ,
+        1e-9,
+        1e-9,
+        1e-7,
+        MERGE,
+    );
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].reason.contains("hole list differs"), "{}", v[0].reason);
+    let centroid_moved = vec![face(10.0, vec![1.0], [5.0, 0.0], 1.0)];
+    let v = compare_face_multisets(
+        "stability",
+        "vertex jitter",
+        &a,
+        &centroid_moved,
+        1e-6,
+        1e-6,
+        2e-6,
+        4e-6,
+    );
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].reason.contains("centroid"), "{}", v[0].reason);
 }
 
 #[test]
@@ -432,6 +540,93 @@ fn probe_tangent_fixture() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn a_sub_cell_corner_gap_is_not_a_lost_area() {
+    // The reviewer's repro: a 100x100 square whose (0,0) corner is left open.
+    // Under MERGE the builder fuses the two ends and the square closes; at or
+    // over MERGE the chain stays open, detect_topology returns no surface, and
+    // the interior is reachable through the opening, so no face is expected.
+    // The opening is far below one grid cell (the grid is span/200), which is
+    // the resolution the old band corridor missed: the tunnel has to carry
+    // the reachability decision at MERGE resolution.
+    for scale in [1.0, 1500.0] {
+        let s = 100.0 * scale;
+        let square = |gap: f64| {
+            vec![
+                ("bottom".into(), line([gap, 0.0], [s, 0.0])),
+                ("right".into(), line([s, 0.0], [s, s])),
+                ("top".into(), line([s, s], [0.0, s])),
+                ("left".into(), line([0.0, s], [0.0, 0.0])),
+            ]
+        };
+        // Under MERGE: one fused contour, one face, and the oracle accepts it.
+        let closed = square(MERGE / 2.0);
+        let out = detect_topology(&closed);
+        assert_eq!(
+            out.surfaces.len(),
+            1,
+            "scale {scale}: a sub-merge gap must close the contour"
+        );
+        assert!(
+            pending(&check_topology(&closed, &out)).is_empty(),
+            "scale {scale}: the closed square must pass"
+        );
+        // At MERGE (the builder's merge is strict `<`) and at 2x MERGE (the
+        // reviewer's 2e-5 at scale 1): open chain, no surface, no lost area.
+        for gap in [MERGE, 2.0 * MERGE] {
+            let geom = square(gap);
+            let out = detect_topology(&geom);
+            assert!(
+                out.surfaces.is_empty(),
+                "scale {scale} gap {gap:e}: a gap at or over MERGE leaves the chain open"
+            );
+            let v = pending(&check_topology(&geom, &out));
+            assert!(
+                v.is_empty(),
+                "scale {scale} gap {gap:e}: false lost area: {v:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_sub_cell_channel_between_two_arcs_is_not_a_lost_area() {
+    // Seed 18's minimisation: two open arcs crossing once, leaving a
+    // half-cell-wide channel between them that is open at the (3.5, 0) end.
+    // No surface is expected (the channel is reachable around the opening),
+    // and neither the grid's cell steps nor its corner steps can traverse the
+    // channel's thin diagonal; the fill must still not read it as a lost
+    // area.
+    let geom = vec![
+        ("a0".into(), arc([3.5, 2.5], 2.5, -90.0, 90.0)),
+        ("a1".into(), arc([3.5, 1.0], 1.5, -90.0, 0.0)),
+    ];
+    let out = detect_topology(&geom);
+    assert!(out.surfaces.is_empty(), "the open arcs bound no face");
+    let v = pending(&check_topology(&geom, &out));
+    assert!(v.is_empty(), "false lost area: {v:?}");
+}
+
+#[test]
+fn the_verified_lost_areas_still_report() {
+    // Seeds 141 and 303: lost areas the reviewer verified with an independent
+    // point-in-face test. Their boundaries are closed at MERGE resolution, so
+    // there is no end-to-barrier opening to tunnel through and the coverage
+    // check must keep reporting them.
+    for name in ["141", "303"] {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("src/topology/dcel/tests/fuzz_cases/{name}.json"));
+        let bytes = std::fs::read(&path)
+            .unwrap_or_else(|e| panic!("{}: {e} (run the fuzz harvester?)", path.display()));
+        let geom = codec::decode_input(&bytes).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+        let v = pending(&check_input(&geom));
+        assert!(
+            v.iter().any(|x| x.contains("coverage (lost area)")),
+            "{name}: the verified lost area is gone: {v:?}"
+        );
     }
 }
 
