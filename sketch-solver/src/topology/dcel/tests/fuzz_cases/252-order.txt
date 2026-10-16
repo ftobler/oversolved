@@ -1,2 +1,0 @@
-order: entity permutation: face with area 399013.795854836 and centroid (163.110484, 23.280605) has no match
-order: entity permutation: face with area 251859.558397624 and centroid (76.807578, 5.019561) has no match

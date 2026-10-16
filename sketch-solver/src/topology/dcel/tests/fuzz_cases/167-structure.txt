@@ -1,0 +1,1 @@
+structure: surface 0 self-intersects between segments 33 and 84 near (809.256430, 1262.974279)

@@ -1,0 +1,2 @@
+structure: surface 0 area -2.3865140974521637e-8 is at or below the face-existence floor
+structure: surface 0 self-intersects between segments 0 and 191 near (-2250.000000, -6000.000006)

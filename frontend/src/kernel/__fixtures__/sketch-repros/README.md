@@ -3,6 +3,27 @@
 Recorded browser sessions for the sketch area builder, replayed headless by
 `src/kernel/__tests__/sketchRepros.test.ts`.
 
+## Building the oracle
+
+The replay test calls the fuzz-gated `check_topology_violations` export, so the
+sketch-solver node package must be built with the cargo feature:
+
+```sh
+just wasm   # builds sketch-solver pkg-node with `-- --features fuzz`
+```
+
+or by hand from `sketch-solver/`:
+
+```sh
+wasm-pack build --target nodejs --out-dir pkg-node --release -- --features fuzz
+```
+
+The production web build (`--target web`, `pkg/`, what `just wasm` copies into
+`frontend/public/wasm`) stays feature-free on purpose: the oracle is a test
+judge and must not ship. A `pkg-node` that exists without the export makes the
+test fail with this rebuild instruction instead of skipping, because a silent
+skip here would hide the whole suite from CI.
+
 ## Recording
 
 1. Run a dev build (`just dev`) and click until the sketch looks wrong.

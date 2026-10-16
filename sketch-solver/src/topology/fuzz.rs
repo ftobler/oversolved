@@ -25,6 +25,7 @@ use super::oracle::{
     jitter_input, Violation,
 };
 use super::TOL_TOPOLOGY_MERGE as MERGE;
+use crate::radians;
 
 // ─── PRNG ───
 
@@ -127,8 +128,10 @@ fn spline(p0: [f64; 2], c1: [f64; 2], c2: [f64; 2], p3: [f64; 2]) -> InputEntity
     }
 }
 
-/// The motif kinds, in a frozen order: a seed picks by index, so adding a kind
-/// at the end never re-rolls the earlier seeds (it only changes the last one).
+/// The motif kinds, in a frozen order. A seed picks by `floor(u * len)`, so
+/// changing the list AT ALL (even appending) re-maps draws, re-rolls every
+/// seed's sketch, and requires regenerating the catalogue and every case.
+/// That is a deliberate re-baseline, not a routine edit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Kind {
     Rectangle,
@@ -600,26 +603,7 @@ fn endpoint_onto_curve(rnd: &mut Prng, entities: &mut [(String, InputEntity)]) {
         return;
     }
     let target = targets[rnd.below(targets.len())];
-    let te = &entities[target].1;
-    let projected = if let (Some(s), Some(e)) = (te.start, te.end) {
-        let (dx, dy) = (e[0] - s[0], e[1] - s[1]);
-        let len2 = dx * dx + dy * dy;
-        if len2 <= 0.0 {
-            return;
-        }
-        let t = (((pick.p[0] - s[0]) * dx + (pick.p[1] - s[1]) * dy) / len2).clamp(0.0, 1.0);
-        [s[0] + t * dx, s[1] + t * dy]
-    } else if let (Some(c), Some(r)) = (te.center, te.radius) {
-        if r <= 0.0 {
-            return;
-        }
-        let (dx, dy) = (pick.p[0] - c[0], pick.p[1] - c[1]);
-        let d = dx.hypot(dy);
-        if d <= 0.0 {
-            return;
-        }
-        [c[0] + r * dx / d, c[1] + r * dy / d]
-    } else {
+    let Some(projected) = project_onto_entity(&entities[target].1, pick.p) else {
         return;
     };
     // Keep a line from collapsing onto its own other end.
@@ -639,6 +623,69 @@ fn other_end(e: InputEntity, field: usize) -> Option<[f64; 2]> {
         FIELD_END => e.start,
         _ => None,
     }
+}
+
+/// Degrees modulo 360 with the divisor's sign, the degree twin of
+/// `dcel::pymod`'s radian wrap.
+fn pymod_deg(a: f64) -> f64 {
+    ((a % 360.0) + 360.0) % 360.0
+}
+
+/// Project a point onto one entity's own geometry: an arc by angle (clamped
+/// to its CCW sweep), a line or spline onto its chord, a circle onto the rim.
+/// `None` for a degenerate target or one whose kind the snap cannot use (an
+/// ellipse's stored fields describe no point-bearing curve parametrization
+/// here).
+fn project_onto_entity(target: &InputEntity, p: [f64; 2]) -> Option<[f64; 2]> {
+    if let (Some(c), Some(r), Some(a0), Some(a1)) = (
+        target.center,
+        target.radius,
+        target.angle_start,
+        target.angle_end,
+    ) {
+        // An arc is projected BY ANGLE, clamped to its CCW sweep: its stored
+        // endpoints are only the chord, and snapping to the chord would put
+        // the moved end inside the arc's bulge rather than on the curve.
+        if r <= 0.0 {
+            return None;
+        }
+        let (dx, dy) = (p[0] - c[0], p[1] - c[1]);
+        if dx == 0.0 && dy == 0.0 {
+            return None;
+        }
+        let start = radians(a0);
+        let sweep = radians(pymod_deg(a1 - a0));
+        let rel = (dy.atan2(dx) - start).rem_euclid(std::f64::consts::TAU);
+        let a = if rel <= sweep {
+            start + rel
+        } else if rel - sweep <= std::f64::consts::TAU - rel {
+            start + sweep // past the end: snap to the end
+        } else {
+            start // before the start: snap to the start
+        };
+        return Some([c[0] + r * a.cos(), c[1] + r * a.sin()]);
+    }
+    if let (Some(s), Some(e)) = (target.start, target.end) {
+        let (dx, dy) = (e[0] - s[0], e[1] - s[1]);
+        let len2 = dx * dx + dy * dy;
+        if len2 <= 0.0 {
+            return None;
+        }
+        let t = (((p[0] - s[0]) * dx + (p[1] - s[1]) * dy) / len2).clamp(0.0, 1.0);
+        return Some([s[0] + t * dx, s[1] + t * dy]);
+    }
+    if let (Some(c), Some(r)) = (target.center, target.radius) {
+        if r <= 0.0 {
+            return None;
+        }
+        let (dx, dy) = (p[0] - c[0], p[1] - c[1]);
+        let d = dx.hypot(dy);
+        if d <= 0.0 {
+            return None;
+        }
+        return Some([c[0] + r * dx / d, c[1] + r * dy / d]);
+    }
+    None
 }
 
 /// Offset one shared endpoint by 0.5x or 2x the merge tolerance: the first gap
@@ -867,10 +914,6 @@ pub(crate) fn check_generated(entities: &[(String, InputEntity)], seed: u32) -> 
     violations
 }
 
-pub(crate) fn has_pending(violations: &[Violation]) -> bool {
-    violations.iter().any(|v| v.is_pending())
-}
-
 /// Minimise every pending violation class of one seed. Returns the minimised
 /// inputs with the class they still exhibit.
 pub(crate) fn minimise_seed(
@@ -954,25 +997,15 @@ pub(crate) fn input_json(entities: &[(String, InputEntity)]) -> Vec<u8> {
     serde_json::to_vec_pretty(&values).expect("input encodes")
 }
 
-/// One seed's checked-in cases, if any: `{seed}*.json` in the case directory.
-pub(crate) fn case_files_for(seed: u32) -> Vec<PathBuf> {
-    let dir = fuzz_cases_dir();
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return vec![];
+/// The fixture path for one seed and class: `<seed>.json` for coverage (its
+/// own name), `<seed>-<class>.json` otherwise. Mirrors `write_case`.
+pub(crate) fn case_path(seed: u32, class: &str) -> PathBuf {
+    let name = if class == "coverage" {
+        format!("{seed}.json")
+    } else {
+        format!("{seed}-{class}.json")
     };
-    let prefix = format!("{seed}.");
-    let dash = format!("{seed}-");
-    let mut out: Vec<PathBuf> = entries
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            p.extension().is_some_and(|x| x == "json")
-                && p.file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.starts_with(&prefix) || n.starts_with(&dash))
-        })
-        .collect();
-    out.sort();
-    out
+    fuzz_cases_dir().join(name)
 }
 
 /// Check in one minimised case: the input JSON plus the violation text. Only
@@ -985,12 +1018,7 @@ pub(crate) fn write_case(
 ) {
     let dir = fuzz_cases_dir();
     std::fs::create_dir_all(&dir).expect("fuzz_cases dir");
-    let suffix = if class == "coverage" {
-        String::new()
-    } else {
-        format!("-{class}")
-    };
-    let base = dir.join(format!("{seed}{suffix}"));
+    let base = case_path(seed, class).with_extension("");
     std::fs::write(base.with_extension("json"), input_json(input)).expect("write case json");
     std::fs::write(
         base.with_extension("txt"),
