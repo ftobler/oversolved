@@ -328,12 +328,15 @@ export const CULPRIT_COVERAGE = 0.9
  * across constraint kinds because the solver already divided each row's
  * residual by its Jacobian row norm and the sketch scale (see
  * `constraint_miss` in sketch-solver/src/solve.rs). An all-zero miss (the
- * defect sits in the pin rows, not the constraints) selects nothing.
+ * defect sits in the pin rows, not the constraints) selects nothing. A
+ * non-finite value is not a measurement: one Infinity makes the total
+ * unmeetable by every finite miss, so the whole positive set (not just the
+ * offender) would be blamed; non-finite entries are dropped.
  */
 export function culpritConstraintIndices(miss: number[]): Set<number> {
   const order = miss
     .map((m, i) => [m, i] as const)
-    .filter(([m]) => m > 0)
+    .filter(([m]) => Number.isFinite(m) && m > 0)
     .sort((a, b) => b[0] - a[0])
   const culprits = new Set<number>()
   const total = order.reduce((sum, [m]) => sum + m, 0)
@@ -430,14 +433,20 @@ export function solveSketch(
   const rendered = deriveConstraints(pf, solvedSketch)
   const wireIndexById = new Map<string, number>()
   constraintIds.forEach((cid, i) => { if (cid !== null) wireIndexById.set(cid, i) })
-  const culprits = out.overallStatus === Status.overconstrained
-    ? culpritConstraintIndices(out.constraintMiss)
-    : new Set<number>()
+  // Redundancy is only ever measured on a satisfied solve: the solver's walk
+  // is a phase fact of a settled system (see solve.rs), and on an unsatisfied
+  // one the same bytes carry whatever the failed solve left there. Gate the
+  // read here so the contract is enforced at the one place that consumes it,
+  // and let the miss pick the culprits on the unsatisfied side.
+  const satisfiedSolve = out.overallStatus !== Status.overconstrained
+  const culprits = satisfiedSolve
+    ? new Set<number>()
+    : culpritConstraintIndices(out.constraintMiss)
   const constraintResults: Constraints = {}
   for (const [cid, c] of Object.entries(rendered)) {
     const idx = wireIndexById.get(cid)
     if (idx === undefined) continue
-    const redundant = (out.constraintFlags[idx] & CONSTRAINT_FLAG.redundant) !== 0
+    const redundant = satisfiedSolve && (out.constraintFlags[idx] & CONSTRAINT_FLAG.redundant) !== 0
     constraintResults[cid] = {
       ...c,
       residual: out.constraintMiss[idx] ?? 0,

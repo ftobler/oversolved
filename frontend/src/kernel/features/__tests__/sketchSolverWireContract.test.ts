@@ -134,6 +134,15 @@ describe('culprit selection', () => {
   it('selects nothing for an all-zero miss', () => {
     expect(culpritConstraintIndices([0, 0]).size).toBe(0)
   })
+
+  it('drops a non-finite miss instead of letting it poison the coverage', () => {
+    // An Infinity makes the total unmeetable by every finite miss, so the
+    // finite offenders behind it would all be selected; the entry itself is
+    // not a measurement either. Only the finite positives decide.
+    expect([...culpritConstraintIndices([Infinity, 0.9, 0.01])]).toEqual([1])
+    expect(culpritConstraintIndices([Infinity]).size).toBe(0)
+    expect([...culpritConstraintIndices([NaN, 0.9, 0.01])]).toEqual([1])
+  })
 })
 
 // Wiring: the check has to be ON the hard-solve path, not merely exported.
@@ -141,14 +150,14 @@ describe.skipIf(!solveBytes)('solveSketch refuses a skewed solver output', () =>
   beforeAll(() => resetSketchSolver())
   afterAll(() => resetSketchSolver())
 
-  const rect = (id: string): PartFeature => ({
+  const rect = (id: string, constraints: unknown[] = []): PartFeature => ({
     id, kind: 'sketch', label: 'Rectangle', plane: '@builtin_plane_front',
     entities: [
       { id: 'bottom', kind: 'line' }, { id: 'right', kind: 'line' },
       { id: 'top', kind: 'line' }, { id: 'left', kind: 'line' },
     ],
     initial: { bottom: [0, 0, 10, 0], right: [10, 0, 10, 6], top: [10, 6, 0, 6], left: [0, 6, 0, 0] },
-    constraints: [],
+    constraints,
   } as unknown as PartFeature)
 
   it('solves normally with the real solver', () => {
@@ -174,6 +183,25 @@ describe.skipIf(!solveBytes)('solveSketch refuses a skewed solver output', () =>
     })
     expect(() => solveSketch(rect('skew') as unknown as Record<string, unknown>, initGlobalRepo(), {}))
       .toThrow(/entity statuses, expected/)
+  })
+
+  it('throws instead of zipping skewed verdicts when the constraint count is short', () => {
+    // The same declared-count skew one array over: n_constraint_status is the
+    // fifth u32 (magic, n_params, n_status, vertex_freedom_len, n_verdicts).
+    // The sketch carries one constraint, so the real output must declare one
+    // verdict pair; patching it down makes the arrays disagree with the wire
+    // constraints this side sent.
+    const constrained = rect('skew-verdicts', [{ id: 'c1', kind: 'horizontal', target: { entity: 'bottom' } }])
+    setSketchSolver((input: Uint8Array) => {
+      const buf = solveBytes!(input)
+      const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
+      const nVerdicts = view.getUint32(16, true)
+      expect(nVerdicts, 'fixture assumes the solver returned verdicts').toBeGreaterThan(0)
+      view.setUint32(16, nVerdicts - 1, true)
+      return buf
+    })
+    expect(() => solveSketch(constrained as unknown as Record<string, unknown>, initGlobalRepo(), {}))
+      .toThrow(/constraint flags and .*constraint misses, expected/)
   })
 })
 

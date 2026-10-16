@@ -128,6 +128,28 @@ describe.skipIf(!solveBytes)('redundant constraints are flagged, not errors', ()
     // Redundancy is not claimed on an unsatisfied solve.
     expect(flagged(out)).toEqual([])
   })
+
+  it('a redundant bit on an unsatisfied solve is ignored, never painted', () => {
+    // The wire contract is "flags are only meaningful on a satisfied solve":
+    // solve.rs only walks the rows then. Patch every flag byte of an
+    // unsatisfied output to the redundant bit and the read side must still
+    // paint nothing, because the miss, not the flag, is that solve's signal.
+    setSketchSolver((input: Uint8Array) => {
+      const buf = solveBytes!(input)
+      const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
+      const nParams = view.getUint32(4, true)
+      const nStatus = view.getUint32(8, true)
+      const vfLen = view.getUint32(12, true)
+      const nVerdicts = view.getUint32(16, true)
+      const flagsAt = 21 + nParams * 8 + nStatus + vfLen * 8
+      for (let i = 0; i < nVerdicts; i++) view.setUint8(flagsAt + i, 0xff)
+      return buf
+    })
+    const out = solve(lineSketch([originPin, horizontal, length('c_ten', 10), length('c_eleven', 11)]))
+    expect(out.status).toBe('overconstrained')
+    expect(flagged(out)).toEqual([])
+    expect(culprits(out).sort()).toEqual(['c_eleven', 'c_ten'])
+  })
 })
 
 describe.skipIf(!solveBytes)('authoring probe', () => {
@@ -178,10 +200,30 @@ describe.skipIf(!solveBytes)('wouldOverconstrain (the store gate)', () => {
     }],
   }) as unknown as PartDoc
 
-  it('refuses a duplicate dimension the doc would accept today', () => {
+  it('refuses a duplicate dimension with the value the dimension dialog collects', () => {
+    // The pending here is the shape finalizeDimensionPlacement builds for the
+    // gate (value/pos/sign), pinned end to end by the store suite; the value is
+    // what makes the duplicate a probe candidate at all.
     const doc = docWith([originPin, horizontal, length('c_len', 10)])
     expect(wouldOverconstrain(doc, {
       featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10,
+    })).toBe(true)
+  })
+
+  it('cannot judge a value-less dimension, so a bare command-path add falls open', () => {
+    // applyConstraint carries no value for a dimensional kind; that draft adds
+    // no solver rows, so the gate must not claim redundancy and the add
+    // proceeds (the solve reports whatever the value-less dimension means).
+    const doc = docWith([originPin, horizontal, length('c_len', 10)])
+    expect(wouldOverconstrain(doc, {
+      featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'],
+    })).toBe(false)
+  })
+
+  it('ignores the label pos in the verdict', () => {
+    const doc = docWith([originPin, horizontal, length('c_len', 10)])
+    expect(wouldOverconstrain(doc, {
+      featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10, pos: [0, 7],
     })).toBe(true)
   })
 
