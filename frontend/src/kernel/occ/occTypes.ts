@@ -205,6 +205,43 @@ export interface OccBooleanOp extends OccDisposable {
   Shape(): OccShape
 }
 
+/** BRepAlgoAPI_Splitter: split an argument shape by tool shapes (faces or
+ *  solids). A plain BRepAlgoAPI_BuilderAlgo, so it has no history surface --
+ *  declared on its own rather than as an OccBooleanOp. */
+export interface OccSplitter extends OccDisposable {
+  SetArguments(args: OccListOfShape): void
+  SetTools(tools: OccListOfShape): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+}
+
+/** One BRepOffset_Interval: the edge-convexity the analyse classified. */
+export interface OccOffsetInterval extends OccDisposable {
+  Type_2(): OccEnumValue
+}
+
+/** BRepOffset_ListOfInterval: the intervals an edge belongs to (empty for an
+ *  edge the analyse did not see). First_1() reads the first; there is no
+ *  iterator binding in this build. */
+export interface OccOffsetIntervalList extends OccDisposable {
+  Size(): number
+  First_1(): OccOffsetInterval
+}
+
+/** BRepOffset_Analyse: classify a solid's edges Convex / Concave / Tangent
+ *  against an angular tolerance. `Type(edge)` yields the intervals of one edge. */
+export interface OccOffsetAnalyse extends OccDisposable {
+  Type(edge: OccShape): OccOffsetIntervalList
+}
+
+/** BRepClass_FaceClassifier: classify a point against a face (IN / ON / OUT).
+ *  Constructed empty, then Perform_2 run per point. */
+export interface OccFaceClassifier extends OccDisposable {
+  Perform_2(face: OccShape, pnt: OccPnt, tol: number): void
+  State(): OccEnumValue
+}
+
 /** BRep_Builder: the low-level builder used to assemble a TopoDS_Compound, and
  *  to promote a TopoDS_Shell into a TopoDS_Solid for the offset normalisation. */
 export interface OccBRepBuilder extends OccDisposable {
@@ -308,11 +345,14 @@ export interface OccAnalyticCylinder extends OccDisposable {
   Radius(): number
 }
 
-/** gp_Cone read accessors (BRepAdaptor_Surface.Cone()). */
+/** gp_Cone read accessors (BRepAdaptor_Surface.Cone()). `SemiAngle` is the half
+ *  angle from the axis: the move-face extender needs it to stop the extended
+ *  face at the apex (only one nappe may split the slab). */
 export interface OccAnalyticCone extends OccDisposable {
   Axis(): OccAxisDir
   Position(): OccAx3
   RefRadius(): number
+  SemiAngle(): number
 }
 
 /** gp_Sphere read accessors (BRepAdaptor_Surface.Sphere()). */
@@ -580,6 +620,14 @@ export interface OccModule extends OccBaseModule {
   // BRepPrimAPI_MakeBox(corner, dx, dy, dz): an axis-aligned box at a corner.
   BRepPrimAPI_MakeBox_2: new (corner: OccPnt, dx: number, dy: number, dz: number) => OccPrismBuilder
   BRepPrimAPI_MakeCylinder_3: new (axis: OccDisposable, radius: number, height: number) => OccCylinderBuilder
+  // BRepPrimAPI_MakeCone(ax2, r1, r2, height): a cone/frustum (r1 at the axis
+  // origin, r2 at the far end; r2 = 0 makes a full cone).
+  BRepPrimAPI_MakeCone_3: new (
+    axis: OccDisposable,
+    r1: number,
+    r2: number,
+    height: number,
+  ) => OccPrismBuilder
   ShapeFix_Face_2: new (face: OccShape) => OccShapeFixFace
   ShapeFix_Wire_1: new () => OccShapeFixWire
 
@@ -774,6 +822,52 @@ export interface OccModule extends OccBaseModule {
   // 1.1.1, OCCT 7.4.0p1). It shares BRepOffsetAPI_MakeOffsetShape (declared with
   // the clearance block above) and the two join enums.
   BRepOffsetAPI_MakeThickSolid_1: new () => OccThickSolidMaker
+
+  // ─── move-face leaf ───
+  // Split a slab by extended neighbour faces, then fuse/cut the cells under the
+  // picked face. Bindings pinned by occ/__tests__/moveFaceReal.test.ts.
+  BRepAlgoAPI_Splitter_1: new () => OccSplitter
+  // BRepOffset_Analyse(shape, angleTol): edge convexity classification.
+  BRepOffset_Analyse_2: new (shape: OccShape, angle: number) => OccOffsetAnalyse
+  BRepOffset_Type: {
+    BRepOffset_Convex: OccEnumValue
+    BRepOffset_Concave: OccEnumValue
+    BRepOffset_Tangent: OccEnumValue
+    BRepOffset_FreeBoundary: OccEnumValue
+    BRepOffset_Other: OccEnumValue
+  }
+  // BRepClass_FaceClassifier(): empty ctor + Perform_2(face, pnt, tol).
+  BRepClass_FaceClassifier_1: new () => OccFaceClassifier
+  TopAbs_State: {
+    TopAbs_IN: OccEnumValue
+    TopAbs_OUT: OccEnumValue
+    TopAbs_ON: OccEnumValue
+    TopAbs_UNKNOWN: OccEnumValue
+  }
+  // BRepBuilderAPI_MakeFace on an analytic surface with a parameter window:
+  // _9 plane, _10 cylinder, _11 cone. The v range is the surface's own (a
+  // cylinder's is axial, a cone's is slant-length).
+  BRepBuilderAPI_MakeFace_9: new (
+    pln: OccDisposable,
+    umin: number,
+    umax: number,
+    vmin: number,
+    vmax: number,
+  ) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_10: new (
+    cyl: OccDisposable,
+    umin: number,
+    umax: number,
+    vmin: number,
+    vmax: number,
+  ) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_11: new (
+    cone: OccDisposable,
+    umin: number,
+    umax: number,
+    vmin: number,
+    vmax: number,
+  ) => OccFaceBuilder
 
   // ─── transform / mirror / array group ───
   gp_Trsf_1: new () => OccTrsf
