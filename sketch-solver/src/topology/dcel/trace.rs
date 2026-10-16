@@ -84,6 +84,35 @@ pub(super) fn face_area(cycle: &[usize], hes: &[HalfEdge], verts: &Verts) -> f64
     sum / 2.0
 }
 
+/// Departure angles within this many radians of each other are the same
+/// direction to the trace's resolution: at a tangency cusp the first derivative
+/// cannot separate the edges, and only curvature can.
+const ANGLE_TIE: f64 = 1e-7;
+
+/// Quantise a departure angle into the tie window. A NaN angle (a poisoned
+/// param that reached the geometry pass) has no direction to order by, so it
+/// sorts before every real angle rather than comparing equal to everything the
+/// way a raw `partial_cmp` would.
+fn angle_bucket(angle: f64) -> i64 {
+    if angle.is_nan() {
+        return i64::MIN;
+    }
+    (angle / ANGLE_TIE).round() as i64
+}
+
+/// Total order for one vertex's departure fan: quantised angle, then signed
+/// curvature, then the half-edge's own index. Quantising first is what makes
+/// the key a genuine total order: comparing raw angles inside an epsilon window
+/// is intransitive (a ~ b, b ~ c, but a not~ c), so the sorted fan depended on
+/// the input permutation and could misorder `next_he` at a cusp. The index is
+/// unique, so even identical (angle, curvature) pairs are fully determined.
+fn departure_order(a: &(f64, f64, usize), b: &(f64, f64, usize)) -> std::cmp::Ordering {
+    angle_bucket(a.0)
+        .cmp(&angle_bucket(b.0))
+        .then_with(|| a.1.total_cmp(&b.1))
+        .then_with(|| a.2.cmp(&b.2))
+}
+
 fn boundary_edge(eg: &EdgeGeom, id: &str, v0: &str, v1: &str) -> BoundaryEdge {
     BoundaryEdge {
         geom: eg.clone(),
@@ -140,26 +169,14 @@ pub(super) fn trace_face_cycles(
             .push((angle, bend(eg), i));
     }
     for outs in out_map.values_mut() {
-        // Order CCW by departure angle. Two edges that leave along the same tangent
-        // (a tangency cusp) have effectively equal angles; the first derivative
-        // cannot separate them, so break the tie by signed curvature (the
-        // right-bending edge precedes the left-bending one). ANGLE_TIE rounds away
-        // the float noise between two analytically-equal tangent directions while
-        // staying far below the gap between genuinely distinct crossing edges.
-        const ANGLE_TIE: f64 = 1e-7;
-        // A NaN angle or curvature (a poisoned param that reached the geometry
-        // pass) compares to nothing, so both orderings fall back to Equal the
-        // way `dedup` does: an unordered edge is a lost face, an unwrap here is
-        // a dead Worker.
-        outs.sort_by(|a, b| {
-            if (a.0 - b.0).abs() > ANGLE_TIE {
-                a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
-            } else if a.1 != b.1 {
-                a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
-            } else {
-                a.2.cmp(&b.2)
-            }
-        });
+        // Order CCW by departure angle. Two edges that leave along the same
+        // tangent (a tangency cusp) have effectively equal angles that the
+        // first derivative cannot separate, so the tie goes to signed curvature
+        // (the right-bending edge precedes the left-bending one). See
+        // `departure_order` for why the angle is quantised first: a NaN angle
+        // or curvature falls back to a deterministic position instead of an
+        // unordered fan, which would be a lost face.
+        outs.sort_by(departure_order);
     }
 
     debug_assert!(
@@ -400,4 +417,78 @@ pub(super) fn build_edge_queries(hes: &[HalfEdge], he_eid: &[String]) -> Vec<Edg
         });
     }
     edges
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Deterministic LCG knock-off: enough to shuffle a small fan, no crate
+    // dependency, and the same seed gives the same clusters on every machine so
+    // a failure is reproducible.
+    fn prng(state: &mut u64) -> u64 {
+        *state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (*state >> 33) ^ (*state >> 17)
+    }
+
+    fn unit(state: &mut u64) -> f64 {
+        (prng(state) % 1_000_000) as f64 / 1_000_000.0
+    }
+
+    /// One cusp cluster: 3 to 7 departures whose angles all fall inside a
+    /// ~2e-7 rad window, with curvatures that disagree with the angle order so
+    /// the curvature tie-break actually runs. The old epsilon-window comparator
+    /// is intransitive on such a set; the quantised key must produce one
+    /// sequence for every input permutation.
+    fn cusp_cluster(state: &mut u64) -> Vec<(f64, f64, usize)> {
+        let base = unit(state) * 4.0 - 2.0;
+        let k = 3 + (prng(state) % 5) as usize;
+        (0..k)
+            .map(|i| {
+                let jitter = (unit(state) - 0.5) * 2.0e-7;
+                let curvature = unit(state) * 10.0 - 5.0;
+                (base + jitter, curvature, i)
+            })
+            .collect()
+    }
+
+    fn index_order(v: &[(f64, f64, usize)]) -> Vec<usize> {
+        let mut c = v.to_vec();
+        c.sort_by(departure_order);
+        c.iter().map(|k| k.2).collect()
+    }
+
+    #[test]
+    fn cusp_departure_order_is_a_total_order_under_every_permutation() {
+        let mut state: u64 = 0x5eed_5eed;
+        for _case in 0..256 {
+            let cluster = cusp_cluster(&mut state);
+            let expected = index_order(&cluster);
+            for _perm in 0..24 {
+                let mut shuffled = cluster.clone();
+                for i in (1..shuffled.len()).rev() {
+                    let j = (prng(&mut state) % (i as u64 + 1)) as usize;
+                    shuffled.swap(i, j);
+                }
+                assert_eq!(
+                    index_order(&shuffled),
+                    expected,
+                    "a permutation changed the departure order of {cluster:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cusp_cluster_orders_by_curvature_inside_the_window() {
+        // Two departures the same direction to well under the tie window but
+        // with opposite bends: the right-bending edge (negative curvature)
+        // must precede the left-bending one regardless of which came first.
+        let right = (0.3, -2.0, 7);
+        let left = (0.3 + 1e-9, 2.0, 3);
+        assert_eq!(index_order(&[right, left]), vec![7, 3]);
+        assert_eq!(index_order(&[left, right]), vec![7, 3]);
+    }
 }
