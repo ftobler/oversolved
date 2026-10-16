@@ -37,6 +37,7 @@ export function resetSketchEditorStore(): void {
   setSketchCallback('onMutationBatch', null)
   setSketchCallback('beginBrepProjection', null)
   setSketchCallback('cancelBrepProjection', null)
+  setSketchCallback('checkRedundantAdd', null)
 }
 
 // Register the per-test setup. Call inside a suite's describe body so the hooks

@@ -21,6 +21,11 @@ export const sketchCallbacks: {
   getSketch: ((featureId: string) => Sketch | null) | null
   beginBrepProjection: (() => void) | null
   cancelBrepProjection: (() => void) | null
+  // The authoring gate for a new constraint: true when the add would make the
+  // constraint set redundant, so the store refuses it instead of dispatching.
+  // Registered by Part.tsx (it owns the doc and the solver probe); a headless
+  // store use has no port and allows every add.
+  checkRedundantAdd: ((pending: PendingConstraint) => boolean) | null
   // The value dialog lives in the UI store (sketchEditorStore). The editor
   // state store reaches it through these ports instead of importing the UI
   // store, which would close an import cycle between the two stores.
@@ -34,8 +39,17 @@ export const sketchCallbacks: {
   getSketch: null,
   beginBrepProjection: null,
   cancelBrepProjection: null,
+  checkRedundantAdd: null,
   openDialog: null,
   closeDialog: null,
+}
+
+/** A would-be add_constraint, before it becomes a mutation: the shape the
+ *  redundancy gate answers about. */
+export interface PendingConstraint {
+  featureId: string
+  kind: string
+  targets: string[]
 }
 
 export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void) | null): void
@@ -43,6 +57,7 @@ export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) 
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
 export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
+export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean) | null): void
 export function setSketchCallback(key: 'openDialog', cb: ((dialog: DialogState) => void) | null): void
 export function setSketchCallback(key: 'closeDialog', cb: (() => void) | null): void
 export function setSketchCallback(key: keyof typeof sketchCallbacks, cb: unknown): void {

@@ -567,6 +567,15 @@ export const editorState = createStore<EditorState>((set, get) => ({
       }
     }
 
+    // Refuse a constraint that would make the set redundant, the "this would
+    // overconstrain" of most CAD. The port runs the real solver on a draft copy
+    // (Part.tsx owns the doc and the probe), so no mutation is created when the
+    // add is refused; existing redundancy in a document is a solve fact, not an
+    // error, and is flagged there instead.
+    if (sketchCallbacks.checkRedundantAdd?.({ featureId: activeFeatureId, kind, targets })) {
+      return `This would overconstrain the sketch: the ${label.toLowerCase()} is already implied by the existing constraints.`
+    }
+
     onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
     return null
   },
