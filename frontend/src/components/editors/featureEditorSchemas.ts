@@ -273,12 +273,16 @@ export const VARIABLE_SCHEMA: FeatureEditorSchema = {
 // so a flat/cone face and an ellipse are refused at pick time by omission; the
 // solver repeats the check because a hand-written doc skips this gate.
 function helixPickOk(id: string): boolean {
-  if (id.includes(':cylinderface')) return true
-  if (id.includes(':straightedge')) return true
-  if (id.includes(':circle') || id.includes(':arc')) return true
-  if (id.startsWith('entity:')) return true
-  // Topo-fallback face refs carry no type; accept and let the solver classify.
-  return /^@[^/]+\/face\/\d+$/.test(id)
+  // Refuse the face/edge kinds a helix cannot sit on by name. The type
+  // restriction rides in the ancestry query (`...:coneface`).
+  for (const bad of ['flatface', 'coneface', 'sphereface', 'torusface', 'ellipse']) {
+    if (id.includes(':' + bad)) return false
+  }
+  // Everything else a pick can name is a candidate: an ancestry query
+  // (?...:cylinderface/:circle/:arc/:straightedge), a sketch entity
+  // (@sketch/entity), a topo-fallback face (@body/face/N) or an entity ref.
+  // A body or wrong-kind face that slips through is refused by the solver.
+  return id.startsWith('?') || id.startsWith('@') || id.startsWith('entity:')
 }
 
 const HELIX_USES_PITCH = (d: SchemaData) => d.mode === 'pitch_turns' || d.mode === 'pitch_height'

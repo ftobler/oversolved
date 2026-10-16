@@ -164,6 +164,50 @@ describe.skipIf(!oc)('helix leaf (real OCC)', () => {
     }
   })
 
+  it('a sketch circle reference lifts through the sketch plane', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const repo = new Repository()
+    try {
+      repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+      repo.register('sk/circ0', { external_params: [0, 0, 5], kind: 'circle', sketch_id: 'sk' })
+      const result = solveHelix(oc!, scope, table, {
+        id: 'hx1', kind: 'helix',
+        helix: { reference: '@sk/circ0', radius_mode: 'derived', mode: 'pitch_turns', pitch: 2, turns: 4, hand: 'right', direction: 'normal', start_angle: 0, offset: 0 },
+      }, repo, {})
+      expect(result.status).toBe('ok')
+      expect(result.helix.radius).toBeCloseTo(5)
+      // The circle's axis is the sketch normal (+Z) and it lies in the sketch
+      // plane (z=0), so the helix rides radius 5 about world Z.
+      for (const p of result.curve.points) expect(distanceToZAxis(p)).toBeCloseTo(5, 4)
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+  })
+
+  it('a sketch line reference with an entered radius is lifted and used', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const repo = new Repository()
+    try {
+      repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
+      repo.register('sk/ln0', { external_params: [5, 0, 5, 10], kind: 'line', sketch_id: 'sk' })
+      const result = solveHelix(oc!, scope, table, {
+        id: 'hx1', kind: 'helix',
+        helix: { reference: '@sk/ln0', radius_mode: 'entered', radius: 2, mode: 'pitch_turns', pitch: 2, turns: 3, hand: 'right', direction: 'normal', start_angle: 0, offset: 0 },
+      }, repo, {})
+      expect(result.status).toBe('ok')
+      expect(result.helix.radius).toBeCloseTo(2)
+      // The sketch line is (5,0)-(5,10) on the front plane, i.e. world x=5,
+      // z=0, y 0..10; the helix rides radius 2 about that line.
+      for (const p of result.curve.points) expect(Math.hypot(p[0] - 5, p[2])).toBeCloseTo(2, 6)
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+  })
+
   it('a left-hand helix mirrors the right-hand one', () => {
     const { scope, table, repo, bodyStore } = setup()
     try {
