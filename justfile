@@ -118,15 +118,17 @@ frontend-test:
     npx vitest run 2>&1 | tee ../tmp/npx_test.log
 
 # Long seeded fuzz run: random mutation and undo/redo sequences over the
-# mutation registry, driven headlessly through DocSession with the real kernel
-# when installed. The PR gate runs a bounded 4 seeds x 6 steps; this recipe
+# mutation registry, driven headlessly through DocSession with the real kernel.
+# The PR gate skips the real side where it is not provisioned; this recipe sets
+# FUZZ_REQUIRE_REAL so a missing build fails instead of passing in seconds on the
+# fake side alone. The PR gate runs a bounded 4 seeds x 6 steps; this recipe
 # widens both sides (fake and real) and settles every step before asserting its
 # document, idle and history-cap invariants. `just fuzz 500 60` for a bigger
 # sweep; a failing seed is printed by number and can be replayed alone.
 [working-directory: "frontend"]
 fuzz seeds="200" steps="40":
     mkdir -p ../tmp
-    FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts 2>&1 | tee ../tmp/fuzz.log
+    FUZZ_REQUIRE_REAL=1 FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts 2>&1 | tee ../tmp/fuzz.log
 
 # The full action-matrix sweep: every part command on every target of all 72
 # corpus documents, compared exactly against the committed baseline. The real
@@ -210,7 +212,9 @@ icons:
 
 # --- setup ---
 
-# Install all dependencies (Python + frontend + wasm tools + opencascade.js)
+# Install all dependencies (Python + frontend + wasm tools + solver build + opencascade.js).
+# The solver build is not optional for the gates: without pkg-node every real-kernel
+# suite skips silently.
 install:
     mkdir -p tmp
     # note cairo needs apt libcairo2-dev
@@ -219,6 +223,7 @@ install:
         .venv/bin/pip install -e ".[dev]" && \
         just install-npm && \
         just install-wasm && \
+        just wasm && \
         just install-occ; \
     } 2>&1 | tee tmp/just_install.log
 
@@ -228,11 +233,13 @@ install-npm:
     npm install 2>&1 | tee ../tmp/npm_install.log
 
 # wasm-pack is installed project-local so nothing leaks into ~/.cargo/bin.
+# --locked builds from wasm-pack's own Cargo.lock: a fresh resolve fails since
+# every zip 2.x (pulled in by binary-install) was yanked, a lockfile still may pin one.
 
 # Install the wasm build tool into tmp/tools.
 install-wasm:
     mkdir -p tmp
-    cargo install wasm-pack --root tmp/tools 2>&1 | tee tmp/cargo_install_wasm_pack.log
+    cargo install wasm-pack --version 0.15.0 --locked --root tmp/tools 2>&1 | tee tmp/cargo_install_wasm_pack.log
 
 [working-directory: "frontend"]
 install-occ:

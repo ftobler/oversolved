@@ -80,9 +80,22 @@ export function findFirstDirty(
 ): number {
   if (!prevState) return 0
   const prevOrder = prevState.feature_order
+  // Checkpoints are keyed by id, so a repeated id (an imported or hand-edited
+  // doc; commands mint fresh ids) leaves one checkpoint for several features.
+  // It describes whichever copy was built last, never safely the one at i, so
+  // the clean prefix must stop before it, in either build's order.
+  const repeated = new Set<string>()
+  for (const order of [features.map((f) => String(f.id ?? '')), prevOrder]) {
+    const seen = new Set<string>()
+    for (const fid of order) {
+      if (seen.has(fid)) repeated.add(fid)
+      seen.add(fid)
+    }
+  }
   for (let i = 0; i < features.length; i++) {
     const feature = features[i]
     const fid = String(feature.id ?? '')
+    if (repeated.has(fid)) return i
     if (i >= prevOrder.length || prevOrder[i] !== fid) return i
     const prevCheckpoint = prevState.checkpoints[fid]
     if (!prevCheckpoint) return i

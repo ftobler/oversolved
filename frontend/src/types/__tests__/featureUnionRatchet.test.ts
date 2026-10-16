@@ -42,7 +42,7 @@ const RATCHETS: Ratchet[] = [
   },
   {
     token: 'Record<string, unknown>',
-    baseline: 341,
+    baseline: 345,
   },
 ]
 

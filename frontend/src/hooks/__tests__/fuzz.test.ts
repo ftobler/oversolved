@@ -141,6 +141,17 @@ describe('the history cap', () => {
   })
 })
 
+// The real suite below skips where the kernel is not provisioned, which keeps the
+// PR gate runnable on a fresh checkout but let `just fuzz` pass in 3 s on the fake
+// side alone while reporting green. The recipe sets FUZZ_REQUIRE_REAL so the long
+// run refuses to count without the real kernel.
+describe.runIf(process.env.FUZZ_REQUIRE_REAL === '1')('the fuzz real-kernel requirement', () => {
+  it('has opencascade.js and the solver build loaded', () => {
+    expect(oc, 'opencascade.js missing: run `just install-occ`').not.toBeNull()
+    expect(solveBytes, 'solver pkg-node missing: run `just wasm`').not.toBeNull()
+  })
+})
+
 describe.skipIf(!oc || !solveBytes)('the seeded fuzz ratchet (real kernel)', () => {
   beforeAll(() => {
     resetSketchSolver()
@@ -162,6 +173,10 @@ describe.skipIf(!oc || !solveBytes)('the seeded fuzz ratchet (real kernel)', () 
       // live table instead of a null one, and then reuses its object.
       setSolveLocalsForTest(async () => oc)
       expect(persistentTableForTest(), `seed ${seed} cache not reset`).toBeNull()
+      // The solves chain through microtasks only, so a long sweep never hands
+      // the loop a macrotask turn and vitest's worker RPC replies sit unread
+      // until its 60 s timer fails the run ("Timeout calling onTaskUpdate").
+      await new Promise(resolve => setImmediate(resolve))
 
       const result = await runFuzzSequence(generateSequence(seed, FUZZ_STEPS), {
         scheduler: createRealSolveScheduler(),
@@ -184,21 +199,31 @@ describe('the fuzz minimiser', () => {
   // fails against the real session driver when the pre-sync is withheld. The
   // minimiser has to find exactly that step. The length is fixed, not the
   // env-sized FAKE_STEPS: the minimiser test is about the mechanism, and the
-  // pinned sequence must not change under a long-run override.
-  const ROLLBACK_FAULT_SEED = 15
+  // sequence must not change under a long-run override.
+  //
+  // The seed is found, not hard-coded: the generator draws by index into the
+  // registry, so every new mutation type reshuffles which seed draws
+  // set_rollback (a pinned 15 went stale when move/delete face landed).
   const ROLLBACK_FAULT_STEPS = 16
+  const ROLLBACK_SEED_SEARCH = 200
 
   function hasRollback(steps: readonly FuzzStep[]): boolean {
     return steps.some(step => step.kind === 'mutation' && step.type === 'set_rollback')
   }
 
-  it('pins a known failing seed for the rollback fault', () => {
-    const steps = generateSequence(ROLLBACK_FAULT_SEED, ROLLBACK_FAULT_STEPS)
-    expect(hasRollback(steps)).toBe(true)
+  function rollbackFaultSeed(): number {
+    for (let seed = 0; seed < ROLLBACK_SEED_SEARCH; seed++) {
+      if (hasRollback(generateSequence(seed, ROLLBACK_FAULT_STEPS))) return seed
+    }
+    return -1
+  }
+
+  it('finds a seed whose sequence draws the rollback fault', () => {
+    expect(rollbackFaultSeed()).toBeGreaterThanOrEqual(0)
   })
 
-  it('reduces the pinned failing seed to the one step that faults', async () => {
-    const steps = generateSequence(ROLLBACK_FAULT_SEED, ROLLBACK_FAULT_STEPS)
+  it('reduces the failing seed to the one step that faults', async () => {
+    const steps = generateSequence(rollbackFaultSeed(), ROLLBACK_FAULT_STEPS)
     const fails = async (candidate: readonly FuzzStep[]): Promise<boolean> => {
       const result = await runFuzzSequence(candidate, fakeSolver(), { presyncRollback: false })
       return result.violations.length > 0

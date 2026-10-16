@@ -31,6 +31,7 @@ features:
   - id: sk0
     kind: sketch
     label: Sketch 0
+    auto_hidden: true
   - id: ex1
     kind: extrude
     label: Extrude 1
@@ -84,7 +85,8 @@ describe('plane-on-face and the nested edit session guard', () => {
     // immediately, not swallow into the sketch's eventual aggregate. sk0
     // always carries a visibility button (sketches do regardless of which
     // feature is being edited), so it is the probe. Two toggles net back to
-    // the starting state but, if per-action, leave two distinct entries.
+    // the starting state but, if per-action, leave two distinct entries. ex1
+    // consumes sk0, so the fixture spends its auto-hide to start it shown.
     const sk0Item = () => screen.getByText('Sketch 0').closest('.feature-item') as HTMLElement
     fireEvent.click(within(sk0Item()).getByTitle('Hide'))
     await waitFor(() => expect(within(sk0Item()).queryByTitle('Show')).not.toBeNull())

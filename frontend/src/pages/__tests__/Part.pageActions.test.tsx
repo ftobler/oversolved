@@ -23,7 +23,10 @@ const F = vi.hoisted(() => {
     features: [
       { id: 'Origin', kind: 'origin' },
       { id: 'Front', kind: 'plane' },
-      { id: 'sketch1', kind: 'sketch', label: 'Sketch 1', plane: '@builtin_plane_front', constraints: [{ id: 'c1', kind: 'superfluous' }] },
+      // extrude1 consumes sketch1, which would auto-hide it; the sketch-edit
+      // tests set editingFeatureId directly (no enterEdit force-show), so the
+      // spent auto_hidden flag keeps the sketch on screen as the app would.
+      { id: 'sketch1', kind: 'sketch', label: 'Sketch 1', plane: '@builtin_plane_front', auto_hidden: true, constraints: [{ id: 'c1', kind: 'superfluous' }] },
       { id: 'extrude1', kind: 'extrude', label: 'Extrude 1', extrude: { sketch: '$sketch1', distance: 10 } },
       { id: 'plane1', kind: 'plane', label: 'Plane 1' },
     ],
