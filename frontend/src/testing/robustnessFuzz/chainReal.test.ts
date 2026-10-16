@@ -290,15 +290,16 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     // start-only chains. The floors are a fraction of the observed coverage so
     // a bounded range that legitimately refuses stays green while a generator
     // that stops drawing edits (or a runner that stops reaching the kernel)
-    // fails. The refusal count moves with pool scheduling and machine load (13
-    // to 16 of 24 seeds across runs at 2 workers, 16 under full-suite load, 18
-    // at 1 worker, measured 2026-10-16), so the cap is a measured upper bound
-    // with headroom: it still catches a sweep that refuses nearly everything.
+    // fails. Refusals move with the pool schedule: 13 of these 24 seeds always
+    // refuse and seeds 10/16/19/21 flip with their child's carried kernel state
+    // (13-17 refusals over 20 measured pools; 18 on a single child), so the cap
+    // sits at the measured ceiling - it still catches a sweep that refuses
+    // nearly everything.
     expect(completed).toBeGreaterThan(0)
     expect(modifierBuilds).toBeGreaterThanOrEqual(Math.ceil(SEEDS / 2))
     expect(untrackedBuilds).toBe(0)
     expect(recordedPicks).toBeGreaterThan(0)
-    expect(refusals).toBeLessThanOrEqual(Math.ceil(SEEDS * 0.8))
+    expect(refusals).toBeLessThanOrEqual(Math.ceil(SEEDS * 0.75))
   })
 
   it('same seed replays the identical chain and the identical reports', { timeout: 60_000 }, async () => {
