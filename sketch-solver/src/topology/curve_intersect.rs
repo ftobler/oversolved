@@ -13,7 +13,10 @@
 //! no-sign-change approach inside the near-tangent gap budget reports the foot
 //! of its closest approach as a contact, mirroring the line/circle collapse in
 //! the dcel. A true miss, further apart than that budget, still reports nothing,
-//! so a graze never spuriously splits a curve.
+//! so a graze never spuriously splits a curve. A crossing pair narrower than
+//! one scan sample is not a graze: the sampled valley's refinement lands on the
+//! far side of zero and both roots are bisected out, so a real lens is reported
+//! as its two intersections at every width.
 
 use super::curve_split::{bezier_point, ellipse_point_at};
 use super::dcel::{pymod, TANGENT_GAP_REL};
@@ -243,18 +246,81 @@ fn minimize(f: &dyn Fn(f64) -> f64, lo: f64, hi: f64) -> f64 {
     0.5 * (a + b)
 }
 
+/// What one sampled valley window turned out to hold: no contact, the foot of
+/// a closest approach inside `gap_tol`, or the two roots of a crossing pair the
+/// samples did not separate.
+enum Valley {
+    None,
+    Graze(f64, f64),
+    Pair(f64, f64),
+}
+
+/// One valley window `[lo, hi]` around sample `i`, whose neighbours carry the
+/// same sign: refine it and say what it holds.
+///
+/// The refinement minimises the SIGNED residual (|g| on a window that keeps one
+/// sign), so a minimum on the far side of zero from the window's samples is a
+/// crossing pair hidden between two samples: both flanks change sign there, and
+/// each is bisected to its exact root. A crossing pair is geometry, not an
+/// ambiguity to collapse, so it must be reported as its two intersections
+/// however narrow it is (a lens between samples used to lose one or both of
+/// them to the near-tangency collapse). Only a window that stays one-signed is
+/// a graze candidate, and only the budget decides whether it contacts.
+#[allow(clippy::too_many_arguments)]
+fn valley_window(
+    g: &dyn Fn(f64) -> f64,
+    gap_at: &dyn Fn(f64) -> Option<f64>,
+    gap_tol: f64,
+    gs: &[f64],
+    prev: usize,
+    i: usize,
+    next: usize,
+    lo: f64,
+    hi: f64,
+) -> Valley {
+    let same_sign = |x: f64, y: f64| (x > 0.0 && y > 0.0) || (x < 0.0 && y < 0.0);
+    if !(same_sign(gs[prev], gs[i]) && same_sign(gs[i], gs[next]))
+        || gs[i].abs() > gs[prev].abs()
+        || gs[i].abs() > gs[next].abs()
+    {
+        return Valley::None;
+    }
+    let t_min = if gs[i] > 0.0 {
+        minimize(&|t: f64| g(t), lo, hi)
+    } else {
+        minimize(&|t: f64| -g(t), lo, hi)
+    };
+    let g_min = g(t_min);
+    // A dip that comes out the far side of zero is a crossing pair hidden
+    // between samples, not a graze: the pair has no foot to assert, and a
+    // contact in its middle would split a sliver out of a real crossing.
+    if !(g_min == 0.0 || same_sign(g_min, gs[i])) {
+        return Valley::Pair(bisect(g, lo, t_min), bisect(g, t_min, hi));
+    }
+    match gap_at(t_min) {
+        Some(gap) if gap <= gap_tol => Valley::Graze(t_min, gap),
+        _ => Valley::None,
+    }
+}
+
 /// Roots of g over [t0, t1] found by scanning for sign changes and refining,
-/// plus the near-tangency contacts: a sampled valley of |g| whose window keeps
-/// one sign (so no crossing lives in it) and whose refined minimum comes within
-/// `gap_tol` world units of the other curve yields that minimum's parameter.
-/// For periodic curves pass the full period [0, 2pi) and `periodic`; the seam
-/// is covered because the endpoints coincide.
+/// plus the near-tangency contacts and the sub-sample crossing pairs.
+///
+/// A crossing pair narrower than one sample step is detected through the
+/// sampled valley: the samples bracket it with one sign, the refinement lands
+/// inside it, and the two bisections report both roots exactly. The scan's
+/// DETECTION resolution is therefore its step (the samples must reveal the
+/// pair, which the valley test and the 2-step window do), while the roots
+/// themselves are exact, not a foot approximation. A graze is the "virtual
+/// tangent point" a converged tangent constraint leaves (see the dcel
+/// collapse): a sampled valley whose window keeps one sign and whose refined
+/// minimum comes within `gap_tol` world units of the other curve yields that
+/// minimum's parameter, and a true miss beyond the budget stays a miss. For
+/// periodic curves pass the full period [0, 2pi) and `periodic`; the seam is
+/// covered because the endpoints coincide.
 ///
 /// Crossings come first in scan order, then the grazes, so a caller's hit list
-/// only gains the new contacts at the end. A graze is the "virtual tangent
-/// point" a converged tangent constraint leaves (see the dcel collapse): the
-/// region it closes can only build on that foot, and a true miss beyond the
-/// budget stays a miss.
+/// only gains the new contacts at the end.
 fn scan_roots_and_grazes(
     g: &dyn Fn(f64) -> f64,
     gap_at: &dyn Fn(f64) -> Option<f64>,
@@ -279,38 +345,29 @@ fn scan_roots_and_grazes(
     // A sampled valley is a sample below both neighbours. The one-sign window
     // rejects the pseudo-valleys on either side of a root, where |g| is also
     // locally minimal but the contact is the crossing itself, already emitted.
-    let same_sign = |x: f64, y: f64| (x > 0.0 && y > 0.0) || (x < 0.0 && y < 0.0);
     let mut grazes: Vec<(f64, f64)> = Vec::new();
-    // The valley test and the hidden-crossing guard, shared by the interior
-    // windows and the wrapped seam window: a seam that skipped the guard could
-    // emit a phantom foot in the middle of a sub-sample crossing pair.
-    let consider = |prev: usize, i: usize, next: usize, lo: f64, hi: f64| -> Option<(f64, f64)> {
-        if !(same_sign(gs[prev], gs[i]) && same_sign(gs[i], gs[next]))
-            || gs[i].abs() > gs[prev].abs()
-            || gs[i].abs() > gs[next].abs()
-        {
-            return None;
-        }
-        let t_min = minimize(&|t: f64| g(t).abs(), lo, hi);
-        let g_min = g(t_min);
-        // A dip that comes out the far side of zero is a crossing pair hidden
-        // between samples, not a graze: the pair has no foot to assert, and a
-        // contact in its middle would split a sliver out of a real crossing.
-        if !(g_min == 0.0 || same_sign(g_min, gs[i])) {
-            return None;
-        }
-        let gap = gap_at(t_min)?;
-        (gap <= gap_tol).then_some((t_min, gap))
+    // The two roots of every sub-sample crossing pair, in scan order. They are
+    // crossings, so they join the sign-change roots rather than the grazes.
+    let mut pairs: Vec<f64> = Vec::new();
+    let wrap = |t: f64| if periodic { pymod(t, TWO_PI) } else { t };
+    let mut take = |v: Valley| match v {
+        Valley::Graze(t, gap) => grazes.push((wrap(t), gap)),
+        Valley::Pair(a, b) => pairs.extend([a, b]),
+        Valley::None => {}
     };
     for i in 1..SCAN_SAMPLES {
-        if let Some((t_min, gap)) = consider(i - 1, i, i + 1, ts[i - 1], ts[i + 1]) {
-            let t = if periodic {
-                pymod(t_min, TWO_PI)
-            } else {
-                t_min
-            };
-            grazes.push((t, gap));
-        }
+        let v = valley_window(
+            g,
+            gap_at,
+            gap_tol,
+            &gs,
+            i - 1,
+            i,
+            i + 1,
+            ts[i - 1],
+            ts[i + 1],
+        );
+        take(v);
     }
     if periodic {
         // The seam sample: `ts[0]` and `ts[SCAN_SAMPLES]` are the same point,
@@ -318,9 +375,18 @@ fn scan_roots_and_grazes(
         // it back into [0, 2pi) for the split pass.
         let first = 1;
         let last = SCAN_SAMPLES - 1;
-        if let Some((t_min, gap)) = consider(last, 0, first, ts[last], ts[first] + (t1 - t0)) {
-            grazes.push((pymod(t_min, TWO_PI), gap));
-        }
+        let v = valley_window(
+            g,
+            gap_at,
+            gap_tol,
+            &gs,
+            last,
+            0,
+            first,
+            ts[last],
+            ts[first] + (t1 - t0),
+        );
+        take(v);
     }
 
     // A flat valley can present several sampled valleys around one true
@@ -334,6 +400,7 @@ fn scan_roots_and_grazes(
         }
         kept.push(t);
     }
+    roots.extend(pairs);
     roots.extend(kept);
     roots
 }

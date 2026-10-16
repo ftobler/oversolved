@@ -394,20 +394,23 @@ fn a_near_tangency_at_the_scanned_ellipses_seam_reports_the_foot() {
 }
 
 #[test]
-fn sub_sample_crossing_lens_is_not_resolved_by_the_scan() {
-    // Known limitation, parked with the solver-tolerance model
-    // (feature/kernel-tolerances.md): a real two-crossing lens whose whole
-    // crossing pair falls between two scan samples never trips the
-    // sign-change scan. The near-tangent collapse reads the sampled valley
-    // through the hidden-crossing guard, and the ternary lands essentially
-    // on a crossing, so the sign it stops at decides between 0 contacts
-    // (rejected as a hidden pair) and 1 (reported as a foot); the second
-    // crossing is lost either way. Measured on the review fixture, a
-    // 3000/2000 ellipse and a 4000-radius circle whose rim dips 0.01 into
-    // its +a apex (rim gap inside the 0.02 budget), sliding the circle
-    // along the tangent moves the outcome over 0, 1, 1 where dense
-    // sampling sees two crossings. Pin "never both", not the 0/1 split:
-    // that split is decided at the last ternary step.
+fn sub_sample_crossing_lens_is_resolved_by_the_signed_valley() {
+    // A real two-crossing lens whose whole crossing pair falls between two
+    // scan samples: the sign-change scan alone never sees it (the samples
+    // bracket the lens with one sign), and the near-tangent collapse used to
+    // read the sampled valley as a graze, keeping at most one of the two
+    // crossings. The valley refinement now minimises the SIGNED residual, so
+    // a minimum past zero reveals the pair and both flanks are bisected to
+    // their exact roots. Measured on the review fixture, a 3000/2000 ellipse
+    // and a 4000-radius circle whose rim dips 0.01 into its +a apex (rim gap
+    // inside the 0.02 budget), sliding the circle along the tangent used to
+    // move the outcome over 0, 1, 1 (the split was decided at the last
+    // ternary step); it now reports both crossings at every slid position
+    // where dense sampling sees two.
+    //
+    // This is also the tolerance model's fixture: the pair's separation is
+    // half a scan step, so the scan's DETECTION resolution is its step while
+    // the roots are exact (feature/kernel-tolerances.md).
     let a = 3000.0;
     let b = 2000.0;
     let r = 4000.0;
@@ -421,31 +424,49 @@ fn sub_sample_crossing_lens_is_not_resolved_by_the_scan() {
         c: [a + r - 0.01, y0],
         r,
     };
-    let dense_crossings = |y0: f64| -> usize {
+    let dense_crossings = |y0: f64| -> Vec<f64> {
         // 4e4 samples puts ~14 of them across the lens, far denser than
         // the scan's 512 and cheap enough for a unit test.
         let n = 40_000usize;
         let cc = [a + r - 0.01, y0];
         let mut prev = f64::NAN;
-        let mut count = 0usize;
+        let mut roots: Vec<f64> = Vec::new();
         for i in 0..=n {
             let phi = TWO_PI * i as f64 / n as f64;
             let p = [a * phi.cos(), b * phi.sin()];
             let g = (p[0] - cc[0]).hypot(p[1] - cc[1]) - r;
             if !prev.is_nan() && (prev > 0.0) != (g > 0.0) {
-                count += 1;
+                roots.push(phi);
             }
             prev = g;
         }
-        count
+        roots
     };
     for y0 in [9.5, 9.75, 10.0] {
-        assert_eq!(dense_crossings(y0), 2, "y0 {y0}: the lens is real");
+        let truth = dense_crossings(y0);
+        assert_eq!(truth.len(), 2, "y0 {y0}: the lens is real");
         let h = intersect_curves(&ell, &circ(y0));
-        assert!(
-            h.len() <= 1,
-            "y0 {y0}: at most one of the two crossings may be reported, got {h:?}"
+        assert_eq!(
+            h.len(),
+            2,
+            "y0 {y0}: both crossings of a real lens must be reported, got {h:?}"
         );
+        // Each reported hit sits on its dense-sampling twin; the two roots are
+        // exact bisections, so one scan step is a generous match window.
+        for hit in &h {
+            let t = pymod((hit.point[1] / b).atan2(hit.point[0] / a), TWO_PI);
+            let nearest = truth
+                .iter()
+                .map(|&d| {
+                    let off = pymod(t - d, TWO_PI);
+                    off.min(TWO_PI - off)
+                })
+                .fold(f64::INFINITY, f64::min);
+            assert!(
+                nearest < 1e-3,
+                "y0 {y0}: hit {hit:?} is {nearest:e} from the nearest dense crossing"
+            );
+        }
     }
 }
 
