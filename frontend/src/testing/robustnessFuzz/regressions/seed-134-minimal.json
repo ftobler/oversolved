@@ -1,0 +1,59 @@
+{
+  "seed": 134,
+  "violations": [
+    "step 4: body body_seed_1 has volume -163.6246173744683"
+  ],
+  "steps": [
+    {
+      "kind": "start",
+      "id": "seed",
+      "body": "body_seed",
+      "shape": "arc-profile",
+      "size": [
+        42.5,
+        25,
+        20
+      ],
+      "arcRadius": 5,
+      "angleDeg": 0
+    },
+    {
+      "kind": "boolean",
+      "id": "s1",
+      "operation": "subtract",
+      "target": "body_seed",
+      "tool": "sphere",
+      "toolId": "tool_s1",
+      "toolBody": "body_tool_s1",
+      "size": [
+        10,
+        0,
+        0
+      ],
+      "anchor": "max",
+      "offset": [
+        -1,
+        -1,
+        -2
+      ]
+    },
+    {
+      "kind": "hole",
+      "id": "s2",
+      "target": "body_seed",
+      "face": 2,
+      "diameter": 7.5,
+      "depth": 7.5,
+      "depthMode": "blind"
+    },
+    {
+      "kind": "mirror",
+      "id": "s4",
+      "target": "body_seed",
+      "plane": "face",
+      "face": 3,
+      "keepOriginal": true,
+      "merge": true
+    }
+  ]
+}

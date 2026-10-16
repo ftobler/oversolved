@@ -18,6 +18,7 @@
     "BRepBuilderAPI_Transform",
     "BRepBuilderAPI_TransitionMode",
     "BRepCheck_Analyzer",
+    "BRepClass3d_SolidClassifier",
     "BRepClass_FaceClassifier",
     "BRepFilletAPI_MakeChamfer",
     "BRepFilletAPI_MakeFillet",

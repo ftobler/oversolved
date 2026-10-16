@@ -1,0 +1,28 @@
+{
+  "seed": 398,
+  "violations": [
+    "step 1: body body_seed has volume 0"
+  ],
+  "steps": [
+    {
+      "kind": "start",
+      "id": "seed",
+      "body": "body_seed",
+      "shape": "revolve",
+      "size": [
+        5,
+        5,
+        17.5
+      ],
+      "arcRadius": 0,
+      "angleDeg": 180
+    },
+    {
+      "kind": "shell",
+      "id": "s1",
+      "target": "body_seed",
+      "face": 2,
+      "thickness": 2.5
+    }
+  ]
+}

@@ -862,6 +862,9 @@ export interface OccModule extends OccBaseModule {
   }
   // BRepClass_FaceClassifier(): empty ctor + Perform_2(face, pnt, tol).
   BRepClass_FaceClassifier_1: new () => OccFaceClassifier
+  // BRepClass3d_SolidClassifier(solid, pnt, tol): classify a point against a
+  // solid; the cavity fold uses it to find which solid encloses a void.
+  BRepClass3d_SolidClassifier_3: new (solid: OccShape, pnt: OccXYZ, tol: number) => OccDisposable & { State(): OccEnumValue }
   TopAbs_State: {
     TopAbs_IN: OccEnumValue
     TopAbs_OUT: OccEnumValue

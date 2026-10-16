@@ -223,6 +223,26 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
     }
   })
 
+  // The robustness fuzz seed 398 drew this: walls exactly half the width meet
+  // in the middle, and OCC hands back a solid that passes BRepCheck yet holds
+  // no material. It must refuse like the past-the-radius case above.
+  it('a thickness of exactly half the width errors instead of building an empty solid', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = boxBody(scope, table)
+      const body = bodyStore.body_b
+      const shapeBefore = body.shape
+      const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
+      expect(() => solveShell(occ, scope, table, { id: 'sh1', shell: { faces: [q], thickness: 5 } }, new Repository(), bodyStore))
+        .toThrow(/shell/)
+      expect(body.shape).toBe(shapeBefore)
+      expect(body.modified_by).toEqual([])
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('names the offset and rim faces by construction, and they survive a 10 -> 14 edit', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()

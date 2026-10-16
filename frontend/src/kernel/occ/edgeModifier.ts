@@ -427,7 +427,8 @@ export function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape
  * ShapeFix is a projector, not a rebuilder: the defect it is meant to clear
  * here is a missing pcurve on an edge the blend shares with a corner patch.
  * The guards mirror `canonicalSurfaces`: the healed shape must actually come
- * out valid, keep the same solid/face/edge counts, and hold the same volume.
+ * out valid, keep the same solid/face/edge counts, and hold the same positive
+ * volume.
  * A heal that changes the topology count has invented or dropped a face rather
  * than projected a curve, which is the corrupt case wearing a repair, so it is
  * refused. The returned shape is DETACHED, matching `maker.Shape()`: the
@@ -464,6 +465,9 @@ export function healShape(
   }
   const v0 = volumeOf(oc, scope, shape)
   const v1 = volumeOf(oc, scope, healed)
+  // A build with no material (a shell whose walls meet) is collapsed, not
+  // missing a pcurve, and keeping its ~0 volume would pass the check below.
+  if (!(v0 > 1e-9)) return reject()
   if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return reject()
   const context = scope.track(fixer.Context()).get()
   const E = oc.TopAbs_ShapeEnum

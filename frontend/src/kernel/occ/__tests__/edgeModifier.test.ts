@@ -429,6 +429,8 @@ interface EdgeOccOptions {
   modifiedThrows?: boolean
   // Shape the fake ShapeFix returns; a healed shape with different topology.
   healed?: OccShape
+  // The volume every GProp read reports (default 1): a collapsed build reads ~0.
+  volume?: number
   // The maker's output topology (default: empty) and its Generated() history.
   builtFaces?: EdgeFake[]
   builtEdges?: EdgeFake[]
@@ -523,7 +525,7 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
       return { delete: () => {} }
     },
     GProp_GProps_1: function () {
-      return { mass: 1, Mass: function () { return this.mass }, delete: () => {} }
+      return { mass: opts.volume ?? 1, Mass: function () { return this.mass }, delete: () => {} }
     },
     BRepGProp: {
       VolumeProperties_1: (): void => {},
@@ -657,6 +659,24 @@ describe('applyEdgeModifier guard / error classification', () => {
       shapeEdges: [edge],
       healed,
       valid: (analyzed) => analyzed === healed,
+    })
+    const res = runChamfer(oc, shape, [edge])
+    expect(res.success).toBe(false)
+    expect(res.reason).toContain('invalid geometry')
+  })
+
+  it('refuses to heal a result that holds no material', () => {
+    // The robustness fuzz seed 398: a shell whose walls meet comes back invalid
+    // at ~0 volume, and ShapeFix makes it valid while keeping every count and
+    // that same ~0 volume. Volume preservation is no guard when there is no
+    // volume to preserve, so an empty result must be refused, not repaired.
+    const edge = makeEdgeFake()
+    const healed = { faces: [], edges: [], delete: () => {} } as unknown as OccShape
+    const { oc, shape } = makeEdgeOcc({
+      shapeEdges: [edge],
+      healed,
+      valid: (analyzed) => analyzed === healed,
+      volume: -2.3e-13,
     })
     const res = runChamfer(oc, shape, [edge])
     expect(res.success).toBe(false)
