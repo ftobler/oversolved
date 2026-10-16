@@ -120,6 +120,23 @@ An empty `faces` list makes a closed hollow (one solid with an inner void), so
 `source_body` is required: no face names the body. Faces naming several bodies
 is an error.
 
+### move_face
+
+```yaml
+- id: mf1
+  kind: move_face
+  move_face:
+    faces: ["?query;...:flatface"]  # planar faces, applied in list order
+    distance: 5                     # signed along each face's outward normal,
+                                    # expression-capable; 0 is the identity
+```
+
+Each face moves along its own outward normal and the faces that bound it are
+extended (or trimmed) along their own surfaces, so a cone base pushed down grows
+the cone itself. Positive adds material, negative removes it. A move that
+removes the whole body is an error. v1 moves planar faces only; a face with a
+tangent neighbour (a fillet) is refused.
+
 ### boolean
 
 ```yaml

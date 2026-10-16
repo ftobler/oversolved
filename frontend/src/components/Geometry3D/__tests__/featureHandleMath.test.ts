@@ -13,6 +13,13 @@ describe('handleValueFromTravel', () => {
     expect(handleValueFromTravel(3, -10, 1, 0.01)).toBe(0.01)
   })
 
+  it('crosses 0 freely when min is negative (a signed move-face distance)', () => {
+    expect(handleValueFromTravel(3, -5, 1, -1e6)).toBeCloseTo(-2)
+    expect(handleValueFromTravel(-3, 5, 1, -1e6)).toBeCloseTo(2)
+    // Still clamped at the floor, never below it.
+    expect(handleValueFromTravel(-3, -2e6, 1, -1e6)).toBe(-1e6)
+  })
+
   it('clamps to max when given', () => {
     expect(handleValueFromTravel(350, 100, 1, 0.01, 360)).toBe(360)
     expect(handleValueFromTravel(350, 100, 1, 0.01)).toBeCloseTo(450)

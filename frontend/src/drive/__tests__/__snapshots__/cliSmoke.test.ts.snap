@@ -20,6 +20,13 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
+      "id": "add_move_face",
+      "label": "Add move face",
+      "params": [],
+      "undoable": true,
+    },
+    {
+      "enabled": true,
       "id": "add_shell",
       "label": "Add shell",
       "params": [],

@@ -137,6 +137,24 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+export const MOVE_FACE_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_move_face',
+  subKey: 'move_face',
+  defaults: { faces: [], distance: 5 },
+  fields: [
+    { type: 'pick', key: 'faces', label: 'Faces', multi: true,
+      addMutationType: 'add_move_face_ref', addValueKey: 'faceQuery',
+      removeMutationType: 'remove_move_face_ref',
+      // Planarity is a kernel classification, so only a `flatface` restriction
+      // is accepted; a cylinder/cone face is refused at the chip, never sampled
+      // from triangles. A face the kernel refuses is reported, not dropped.
+      validatePick: (id) => id.startsWith('?') && id.endsWith(':flatface') },
+    // Signed: positive adds material, negative removes, 0 is the identity, so
+    // there is no `> 0` validator (the kernel refuses a non-finite value).
+    { type: 'number', key: 'distance', label: 'Distance', default: 5, unit: 'mm' },
+  ],
+}
+
 export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_boolean',
   subKey: 'boolean',
@@ -367,6 +385,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   fillet: FILLET_SCHEMA,
   chamfer: CHAMFER_SCHEMA,
   shell: SHELL_SCHEMA,
+  move_face: MOVE_FACE_SCHEMA,
   boolean: BOOLEAN_SCHEMA,
   hole: HOLE_SCHEMA,
   transform: TRANSFORM_SCHEMA,

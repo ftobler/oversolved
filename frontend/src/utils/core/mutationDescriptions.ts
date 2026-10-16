@@ -108,6 +108,14 @@ export function describeMutation(m: Mutation): string {
       return `add shell face ${m.faceQuery}`
     case 'remove_shell_face':
       return `remove shell face at index ${m.index}`
+    case 'add_move_face':
+      return `add move face ${m.label ?? m.featureId}`
+    case 'set_move_face_field':
+      return `set move face ${m.field} to ${m.value}`
+    case 'add_move_face_ref':
+      return `add move face ref ${m.faceQuery}`
+    case 'remove_move_face_ref':
+      return `remove move face ref at index ${m.index}`
     case 'add_boolean':
       return `add boolean ${m.label ?? m.featureId}`
     case 'set_boolean_field':

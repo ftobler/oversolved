@@ -90,6 +90,7 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   fillet: { field: 'edges', multi: true },
   chamfer: { field: 'edges', multi: true },
   shell: { field: 'faces', multi: true },
+  move_face: { field: 'faces', multi: true },
   hole: { field: 'sketch' },
   boolean: { field: 'target' },
   transform: { field: 'bodies', multi: true },
@@ -613,6 +614,23 @@ export default function Part() {
     setRollbackForNewFeature(features)
     store.setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
     const result = handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
+    // Move Face starts from what the user already has selected: pre-fill the
+    // pick list with the selected flat faces, the way Add Plane takes a face
+    // from the selection. A non-flat pick cannot be pre-filled (planarity is a
+    // kernel classification), so it is simply left for the pick field.
+    if (kind === 'move_face') {
+      for (const id of selection) {
+        if (!id.startsWith('?')) continue
+        try {
+          const q = parseQuery(id)
+          if (q.kind === 'ancestry' && q.typeRestriction === 'flatface') {
+            handleMutation({ type: 'add_move_face_ref', featureId: fid, faceQuery: stripSelectionWrapper(id) })
+          }
+        } catch {
+          // not a pickable ancestry query; the pick field is the way in
+        }
+      }
+    }
     // enterEditFeature would bail because React hasn't re-rendered with the
     // new feature yet (features.findIndex(f => f.id === fid) returns -1), so
     // the id is set eagerly; the session started above already owns commit and
@@ -623,7 +641,7 @@ export default function Part() {
     // The Result rides back to the command spec so a programmatic caller sees
     // the created feature id.
     return result
-  }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, closeOpenEditorForAdd])
+  }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, closeOpenEditorForAdd, selection])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return

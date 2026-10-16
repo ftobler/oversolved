@@ -52,6 +52,10 @@ import {
   applySetShellField,
   applyAddShellFace,
   applyRemoveShellFace,
+  applyAddMoveFace,
+  applySetMoveFaceField,
+  applyAddMoveFaceRef,
+  applyRemoveMoveFaceRef,
   applyAddBoolean,
   applySetBooleanField,
   applyAddBooleanTool,
@@ -205,6 +209,14 @@ export const mutationHandlers: MutationHandlers = {
     applyAddShellFace(next, m.featureId, m.faceQuery),
   remove_shell_face: (next, m) =>
     applyRemoveShellFace(next, m.featureId, m.index),
+  add_move_face: (next, m) =>
+    applyAddMoveFace(next, m.featureId, m.label),
+  set_move_face_field: (next, m) =>
+    applySetMoveFaceField(next, m.featureId, m.field, m.value),
+  add_move_face_ref: (next, m) =>
+    applyAddMoveFaceRef(next, m.featureId, m.faceQuery),
+  remove_move_face_ref: (next, m) =>
+    applyRemoveMoveFaceRef(next, m.featureId, m.index),
   add_boolean: (next, m) =>
     applyAddBoolean(next, m.featureId, m.label),
   set_boolean_field: (next, m) =>

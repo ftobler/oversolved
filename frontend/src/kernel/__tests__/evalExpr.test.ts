@@ -104,6 +104,13 @@ describe('evalFeatureParams', () => {
     evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.shell, { wall: 2.5 })
     expect(sub.thickness).toBe(2.5)
   })
+
+  it('lists and evaluates the move-face distance expression to a signed number', () => {
+    expect(EXPR_FIELDS_BY_KIND.move_face).toEqual(['distance'])
+    const sub: Record<string, unknown> = { distance: '2*h' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.move_face, { h: -3 })
+    expect(sub.distance).toBe(-6)
+  })
 })
 
 describe('boolean clearance expression', () => {

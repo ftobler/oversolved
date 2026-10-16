@@ -24,6 +24,7 @@ import type {
   HelixFeature,
   HoleFeature,
   MirrorFeature,
+  MoveFaceFeature,
   PartFeature,
   PlaneFeature,
   RevolveFeature,
@@ -50,6 +51,7 @@ describe('the part feature union is closed', () => {
       | 'fillet'
       | 'chamfer'
       | 'shell'
+      | 'move_face'
       | 'boolean'
       | 'array'
       | 'circular_array'
@@ -74,6 +76,7 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'fillet'>>().toEqualTypeOf<FilletFeature>()
     expectTypeOf<FeatureParam<'chamfer'>>().toEqualTypeOf<ChamferFeature>()
     expectTypeOf<FeatureParam<'shell'>>().toEqualTypeOf<ShellFeature>()
+    expectTypeOf<FeatureParam<'move_face'>>().toEqualTypeOf<MoveFaceFeature>()
     expectTypeOf<FeatureParam<'boolean'>>().toEqualTypeOf<BooleanFeature>()
     expectTypeOf<FeatureParam<'array'>>().toEqualTypeOf<ArrayFeature>()
     expectTypeOf<FeatureParam<'circular_array'>>().toEqualTypeOf<CircularArrayFeature>()

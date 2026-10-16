@@ -28,6 +28,7 @@ describe('PORTED_FEATURE_KINDS', () => {
       'delete_body', 'import_step',
       'variable',
       'shell', 'helix',
+      'move_face',
     ]
     expect(PORTED_FEATURE_KINDS.size).toBe(expected.length)
     for (const kind of expected) {

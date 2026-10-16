@@ -56,6 +56,14 @@ export type ShellFeatureDef = {
   source_body?: string
 }
 
+export type MoveFaceFeatureDef = {
+  // Faces to move, each along its own outward normal. Applied in list order.
+  faces: string[]
+  // Signed along each face's outward normal: positive adds material, negative
+  // removes. 0 is the identity.
+  distance: NumberOrExpr
+}
+
 export type BooleanFeatureDef = {
   operation: 'union' | 'subtract' | 'intersect'
   target: string
@@ -432,6 +440,11 @@ export type ShellFeature = FeatureBase & {
   shell: ShellFeatureDef
 }
 
+export type MoveFaceFeature = FeatureBase & {
+  kind: 'move_face'
+  move_face: MoveFaceFeatureDef
+}
+
 export type BooleanFeature = FeatureBase & {
   kind: 'boolean'
   boolean: BooleanFeatureDef
@@ -496,6 +509,7 @@ export type PartFeature =
   | FilletFeature
   | ChamferFeature
   | ShellFeature
+  | MoveFaceFeature
   | BooleanFeature
   | ArrayFeature
   | CircularArrayFeature
@@ -1087,6 +1101,10 @@ export type Mutation =
   | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
   | { type: 'add_shell_face'; featureId: string; faceQuery: string }
   | { type: 'remove_shell_face'; featureId: string; index: number }
+  | { type: 'add_move_face'; featureId: string; label?: string }
+  | { type: 'set_move_face_field'; featureId: string; field: keyof MoveFaceFeatureDef; value: unknown }
+  | { type: 'add_move_face_ref'; featureId: string; faceQuery: string }
+  | { type: 'remove_move_face_ref'; featureId: string; index: number }
   | { type: 'add_boolean'; featureId: string; label?: string }
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
