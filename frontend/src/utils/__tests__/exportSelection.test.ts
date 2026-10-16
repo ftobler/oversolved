@@ -66,6 +66,19 @@ describe('planExport', () => {
     expect(again).toEqual(first)
   })
 
+  it('flattens path separators and parent segments so entries stay in the archive', () => {
+    const parts: ExportPart[] = [
+      { id: 'x', name: 'a/../b' },
+      { id: 'y', name: '..\\..\\etc' },
+    ]
+    const files = planExport(parts, { mode: 'separate', selectedIds: ['x', 'y'] }, 'stl', 'asm.stl')
+    for (const file of files) {
+      expect(file.name).not.toMatch(/[\\/]/)
+      expect(file.name).not.toContain('..')
+    }
+    expect(new Set(files.map(f => f.name)).size).toBe(2)
+  })
+
   it('yields no files for an empty selection', () => {
     expect(planExport(PARTS, { mode: 'separate', selectedIds: [] }, 'stl', 'a.stl')).toEqual([])
   })

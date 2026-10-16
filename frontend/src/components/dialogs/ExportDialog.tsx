@@ -108,12 +108,13 @@ export default function ExportDialog({
   }
 
   // Everything starts from the whole list, so switching to a narrower mode does
-  // not silently drop parts the user can still see ticked.
+  // not silently drop parts the user can still see ticked. Everything ignores
+  // the ticks, so it clears them rather than keeping dead state.
   const handleModeChange = (mode: ExportMode) => {
     setSelection(prev => ({
       mode,
       selectedIds: mode === 'everything'
-        ? prev.selectedIds
+        ? []
         : (prev.mode === 'everything' && parts ? parts.map(part => part.id) : prev.selectedIds),
     }))
   }

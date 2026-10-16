@@ -143,10 +143,13 @@ describe('AssemblyEditor export (Stage 9)', () => {
     expect(screen.getByText('Export Model')).toBeTruthy()
   })
 
-  it('hides the tessellation slider: assembly STL comes from the bundle meshes', async () => {
+  it('hides the tessellation preset: assembly STL comes from the bundle meshes', async () => {
     await openExportDialog()
     fireEvent.click(screen.getByLabelText('STL'))
-    expect(screen.queryByText('Tessellation Detail')).toBeNull()
+    // Guard the section itself and a preset control, so the test fails if the
+    // control is rendered even though assembly STL has no deflection to steer.
+    expect(screen.queryByText('Tessellation')).toBeNull()
+    expect(screen.queryByLabelText('Fine')).toBeNull()
   })
 
   it('STEP: sends every part with its solved transform, then downloads the bytes', async () => {
@@ -279,6 +282,21 @@ describe('AssemblyEditor export (Stage 9)', () => {
 
       // One worker build per part, and a single zip download.
       expect(h.exportAssemblyViaWorker).toHaveBeenCalledTimes(2)
+      const [blob, name] = h.downloadBlob.mock.calls[0]
+      expect(name).toBe('My_Assembly.zip')
+      expect(blob.type).toBe('application/zip')
+      expect(blob.size).toBeGreaterThan(0)
+    })
+
+    it('separate mode still zips when only one part is ticked', async () => {
+      await openExportDialog()
+      fireEvent.click(screen.getByLabelText('Each part separately'))
+      // Leave one of the two ticked copies.
+      fireEvent.click(screen.getAllByLabelText('Bracket')[0])
+      download()
+      await waitFor(() => expect(h.downloadBlob).toHaveBeenCalledTimes(1))
+
+      expect(h.exportAssemblyViaWorker).toHaveBeenCalledTimes(1)
       const [blob, name] = h.downloadBlob.mock.calls[0]
       expect(name).toBe('My_Assembly.zip')
       expect(blob.type).toBe('application/zip')

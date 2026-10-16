@@ -67,12 +67,19 @@ export function planExport(
   }
   const seen = new Map<string, number>()
   return chosen.map(part => {
-    const stem = sanitizeBaseName(part.name)
+    const stem = zipEntryStem(part.name)
     const count = (seen.get(stem) ?? 0) + 1
     seen.set(stem, count)
     const suffix = count === 1 ? '' : ` (${count})`
     return { name: `${stem}${suffix}.${extension}`, partIds: [part.id] }
   })
+}
+
+/** A part name flattened into a single zip entry: path separators and `..`
+ *  would otherwise nest or escape the archive instead of naming one entry. */
+function zipEntryStem(name: string): string {
+  const flattened = sanitizeBaseName(name).replace(/[\\/]+/g, '_').replace(/\.{2,}/g, '_')
+  return flattened.replace(/^\.+/, '') || 'part'
 }
 
 /** Bundle one file per part into a single archive, reusing the workspace zip

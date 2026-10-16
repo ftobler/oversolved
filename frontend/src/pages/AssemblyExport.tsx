@@ -76,11 +76,9 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
         const bytesFor = (ids: string[]): Promise<Uint8Array | null> =>
           buildBytes(format, subsetInstances(instances, ids), poses)
 
-        if (plan.length === 1) {
-          const bytes = await bytesFor(plan[0].partIds)
-          if (!bytes) throw new EmptyAssemblyError()
-          downloadBlob(new Blob([bytes as BlobPart], { type: exportMime(format) }), plan[0].name)
-        } else {
+        if (selection.mode === 'separate') {
+          // Separate mode is one archive, always: a single ticked part still
+          // arrives as a one-entry zip rather than a bare file.
           const files = await Promise.all(plan.map(async entry => {
             const bytes = await bytesFor(entry.partIds)
             if (!bytes) throw new EmptyAssemblyError()
@@ -88,6 +86,11 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
           }))
           const zip = await zipExportFiles(files)
           downloadBlob(new Blob([zip as BlobPart], { type: 'application/zip' }), swapExtension(fileName, 'zip'))
+        } else {
+          // Everything and selected collapse into one file.
+          const bytes = await bytesFor(plan[0].partIds)
+          if (!bytes) throw new EmptyAssemblyError()
+          downloadBlob(new Blob([bytes as BlobPart], { type: exportMime(format) }), plan[0].name)
         }
       } catch (e) {
         if (e instanceof EmptyAssemblyError) {

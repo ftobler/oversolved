@@ -99,6 +99,20 @@ describe('PartExportImport worker export', () => {
     expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ format: 'stl', tessellation: 'normal' })
   })
 
+  // The preset is typed UI state that must survive every hop to the kernel; a
+  // non-default pick is the case a default-only assertion would miss.
+  it('carries a non-default tessellation preset from the dialog to the worker', async () => {
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const ref = renderDialog()
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('STL'))
+    fireEvent.click(screen.getByLabelText('Coarse'))
+    await clickDownload()
+
+    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ format: 'stl', tessellation: 'coarse' })
+  })
+
   // A body entry point names the body to serialize; dropping it would silently
   // export the whole part instead of the one the user right-clicked.
   it('forwards the body opened via openExport to the worker', async () => {
