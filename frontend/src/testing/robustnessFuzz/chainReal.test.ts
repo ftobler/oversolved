@@ -77,18 +77,31 @@ const REPLAY_TIMEOUT_MS = 30_000
 const MINIMIZE_TIMEOUT_MS = 10_000
 
 // Known kernel hangs, pinned by seed. A seed here is reported as known; any
-// hang NOT on this list fails the sweep with the seed and hung step. All three
-// are the same OCCT 7.4.0p1 hazard: ShapeUpgrade_UnifySameDomain spins inside
-// the fuse clean when the welded shapes have exactly coincident faces. The
-// browser worker survives a spin by killing the worker (solverClient's
+// hang NOT on this list fails the sweep with the seed and hung step. All of
+// them are the same OCCT 7.4.0p1 hazard: ShapeUpgrade_UnifySameDomain spins
+// inside the fuse clean when the welded shapes have exactly coincident faces.
+// The browser worker survives a spin by killing the worker (solverClient's
 // watchdog); the fuzz child is its test-side equivalent. Triage (2026-10-15):
 //   47  the second circular-array instance fuse of a chamfered, ball-cut body.
 //   76  mirror-merge of a 270 degree revolve about a plane holding its seam.
 //   149 mirror-merge of a 270 degree revolve about the seam's symmetry plane.
+// The 1500-seed nightly triage (2026-10-16) added the rest: the same
+// coincide-face spin in mirror and circular-array fuses, plus one inside the
+// persistence replay's perturbed rebuild (seed 1306, reported as step -1).
 const KNOWN_HANGS: readonly { seed: number; step: number; kind: string }[] = [
   { seed: 47, step: 4, kind: 'circular-array' },
   { seed: 76, step: 1, kind: 'mirror' },
   { seed: 149, step: 1, kind: 'mirror' },
+  { seed: 206, step: 1, kind: 'mirror' },
+  { seed: 254, step: 4, kind: 'circular-array' },
+  { seed: 466, step: 2, kind: 'mirror' },
+  { seed: 504, step: 1, kind: 'mirror' },
+  { seed: 601, step: 2, kind: 'circular-array' },
+  { seed: 741, step: 1, kind: 'mirror' },
+  { seed: 931, step: 2, kind: 'mirror' },
+  { seed: 972, step: 3, kind: 'mirror' },
+  { seed: 1306, step: -1, kind: 'persistence' },
+  { seed: 1428, step: 1, kind: 'mirror' },
 ]
 
 // Known red picks, pinned by seed and step. The naming check reaches the step
@@ -97,9 +110,17 @@ const KNOWN_HANGS: readonly { seed: number; step: number; kind: string }[] = [
 // carry DIFFERENT construction UUIDs, and the foreign-uuid exclusion
 // (queryRepository) forbids handing one back in place of the named element.
 // Triaged as a real naming fragility awaiting its own fix, not silenced: the
-// message stays in the log. The first four were found by the widened
-// persistence gate (picks from steps that built are checked even when a later
-// step or the perturbed replay refused); seed 142 predates it.
+// message stays in the log. 142, 145, 186 (x2) and 187 came from the 200-seed
+// acceptance triage (145, 186 and 187 via the widened persistence gate, which
+// also checks picks from built steps of a refused chain; seed 142 predates
+// that gate); 227 through 1433 from the 1500-seed nightly triage on
+// 2026-10-16. Three kinds share the pin:
+// a re-mint (the reference goes dead under the +2.5 mm growth), an unreached
+// pick (the perturbed chain refused at an earlier step, so the reference
+// cannot even be tested, reported only for a completed base run), and one type
+// change (seed 1433's edge re-resolves to an arc). The rate holds steady at
+// about 1 in 40 built references, so a wider range keeps surfacing new seeds:
+// the class awaits its own naming fix (backlog.md).
 const KNOWN_STALE_PICKS: readonly { seed: number; step: number; note: string }[] = [
   {
     seed: 142,
@@ -126,6 +147,57 @@ const KNOWN_STALE_PICKS: readonly { seed: number; step: number; note: string }[]
     step: 4,
     note: 'revolve-start face @u|u_9403... re-mints under a +2.5 mm growth; the built step reference goes dead while the chain later refuses',
   },
+  { seed: 227, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 227, step: 3, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 248, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 248, step: 5, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 283, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 291, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 291, step: 4, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 366, step: 4, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 378, step: 4, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 388, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 398, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 445, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 470, step: 3, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 481, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 481, step: 4, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 487, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 499, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 499, step: 6, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 550, step: 2, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 550, step: 5, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 561, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 564, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 577, step: 5, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 578, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 591, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 650, step: 3, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 703, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 709, step: 1, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 709, step: 2, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 710, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 727, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 848, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 853, step: 1, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 893, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 893, step: 4, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 968, step: 5, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 976, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1007, step: 5, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1117, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1117, step: 5, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 1189, step: 1, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1190, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1225, step: 4, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 1240, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1323, step: 2, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 1376, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1397, step: 5, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1411, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1430, step: 2, note: 'unreached: the perturbed chamfer refused on invalid geometry' },
+  { seed: 1430, step: 4, note: 'unreached: the perturbed chamfer refused on invalid geometry' },
+  { seed: 1433, step: 4, note: 're-resolves to an arc under the growth, recorded as a circle' },
 ]
 
 afterAll(() => {
@@ -294,5 +366,17 @@ describe.skipIf(!occAvailable || !stripTypes)('the recipe minimiser', () => {
       // A failing assertion above must not leave the scratch recipe behind.
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// The pins were grown by hand from a wide sweep, so a duplicate key is a
+// transcription slip that would silently make one finding cover for another.
+// This runs without a kernel, so it guards the tables on every leg.
+describe('the robustness fuzz pin tables', () => {
+  it('keys every pin by a unique seed and step', () => {
+    const hangKeys = KNOWN_HANGS.map((h) => `${h.seed}:${h.step}`)
+    expect(new Set(hangKeys).size).toBe(hangKeys.length)
+    const pickKeys = KNOWN_STALE_PICKS.map((p) => `${p.seed}:${p.step}`)
+    expect(new Set(pickKeys).size).toBe(pickKeys.length)
   })
 })
