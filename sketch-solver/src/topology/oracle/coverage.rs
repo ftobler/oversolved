@@ -1,6 +1,6 @@
 //! The coverage oracle: a grid flood fill over the sampled barrier with
-//! MERGE-resolution gap tunnels, judging the cells it can decide against the
-//! built faces.
+//! builder-fusion-resolution gap tunnels, judging the cells it can decide
+//! against the built faces.
 
 use std::collections::BTreeMap;
 
@@ -236,6 +236,7 @@ pub(crate) fn coverage_violations(
         .iter()
         .map(|(_, c)| sample_curve(c, chord_tol))
         .collect();
+    let reach: Vec<f64> = curves.iter().map(|(_, c)| end_reach(c)).collect();
     for s in &sampled {
         all.extend_from_slice(&s.pts);
     }
@@ -314,14 +315,14 @@ pub(crate) fn coverage_violations(
     // judged.
     let barriers = barrier_segments(&sampled);
     let index = barrier_index(&barriers, &grid);
-    let seals = gap_seals(&sampled);
+    let seals = gap_seals(&sampled, &reach);
     let test = BarrierTest {
         grid: &grid,
         index: &index,
         barriers: &barriers,
         seals: &seals,
     };
-    let tunnels = gap_tunnels(&sampled, &test, &grid, &blocked, band);
+    let tunnels = gap_tunnels(&sampled, &reach, &test, &grid, &blocked, band);
     let pessimistic_blocked = dilate(&blocked, &grid);
     let reached = flood_reach(&grid, &pessimistic_blocked, &BTreeMap::new(), None);
     let reached_opt = flood_reach(&grid, &blocked, &tunnels, Some(&test));
@@ -476,18 +477,71 @@ fn closest_on_segment(p: Vec2, a: Vec2, b: Vec2) -> (Vec2, f64) {
     (q, (p[0] - q[0]).hypot(p[1] - q[1]))
 }
 
-/// The barrier points an open curve's end could gap against, nearest first:
-/// one per other curve, plus the own curve's best loop-back. A same-curve
-/// point whose along-curve distance is comparable to its Euclidean distance
-/// is just the curve continuing past the end (it cannot be a passage: any
-/// path "through" it crosses the curve), so only a real loop-back, where the
-/// curve has travelled far to return close, is kept.
-fn gap_candidates(sampled: &[Sampled], own: usize, end_idx: usize) -> Vec<(Vec2, f64)> {
+/// How far past an open end the builder's intersector can put a contact and
+/// still register it: a line end is bound by the parameter window in
+/// `dcel/intersect.rs` (`EPS` on `t` in `[0, 1]`, which is `EPS * length` in
+/// world units), an arc end by the `MERGE / r` angle slack its span filter
+/// allows (a world reach of MERGE along the carrier), and a spline end's
+/// contact is dropped by `register_hit` wherever it lands at or past the end.
+/// Circles and ellipses are closed, so they have no ends to reach from.
+fn end_reach(c: &Curve) -> f64 {
+    match *c {
+        Curve::Line { p0, p1 } => EPS * (p1[0] - p0[0]).hypot(p1[1] - p0[1]),
+        Curve::Arc { .. } => MERGE,
+        Curve::Spline { .. } => 0.0,
+        Curve::Circle { .. } | Curve::Ellipse { .. } => 0.0,
+    }
+}
+
+/// One candidate opening at an open curve's end: the barrier point it faces,
+/// the gap distance, and whether the builder fuses the two there (see
+/// `end_fuses`).
+struct Opening {
+    q: Vec2,
+    d: f64,
+    fused: bool,
+}
+
+/// Whether the builder fuses a contact that lands `d` from an open end and in
+/// the interior of another curve. The carrier crossing sits `d / sin(theta)`
+/// from the end along the end's carrier, so only a gap up to
+/// `reach * sin(theta)` is inside the end's intersector window. The `MERGE`
+/// cap is the vertex merge itself: above it a crossing is only fused when the
+/// intersector clamps the minted point back onto the end, which depends on
+/// the pair's operand order, so the oracle leaves such an opening to the
+/// tunnel and skips its cells rather than judging them. The same modelling
+/// gap applies to the target's own span window, which is only ever wider.
+fn end_fuses(reach: f64, end_dir: Vec2, target_dir: Vec2, d: f64) -> bool {
+    if d >= MERGE {
+        return false;
+    }
+    let end_len = end_dir[0].hypot(end_dir[1]);
+    let target_len = target_dir[0].hypot(target_dir[1]);
+    if end_len <= EPS || target_len <= EPS {
+        return false;
+    }
+    let cross = end_dir[0] * target_dir[1] - end_dir[1] * target_dir[0];
+    d <= reach * cross.abs() / (end_len * target_len)
+}
+
+/// The barrier points an open curve's end could fuse with or gap against,
+/// nearest first: one per other curve, plus the own curve's best loop-back. A
+/// same-curve point whose along-curve distance is comparable to its Euclidean
+/// distance is just the curve continuing past the end (it cannot be a passage:
+/// any path "through" it crosses the curve), so only a real loop-back, where
+/// the curve has travelled far to return close, is kept.
+fn gap_candidates(sampled: &[Sampled], reach: &[f64], own: usize, end_idx: usize) -> Vec<Opening> {
     let own_curve = &sampled[own];
     let own_pt = own_curve.pts[end_idx];
     let n_own = own_curve.pts.len();
     let last_own = n_own - 1;
-    let mut candidates: Vec<(Vec2, f64)> = Vec::new();
+    let neighbour = if end_idx == 0 {
+        own_curve.pts[1]
+    } else {
+        own_curve.pts[end_idx - 1]
+    };
+    let end_dir = [own_pt[0] - neighbour[0], own_pt[1] - neighbour[1]];
+    let mut candidates: Vec<Opening> = Vec::new();
     let mut own_best: Option<(Vec2, f64)> = None;
     let mut along = 0.0;
     let consider_own = |k: usize, along: f64, own_best: &mut Option<(Vec2, f64)>| {
@@ -517,23 +571,52 @@ fn gap_candidates(sampled: &[Sampled], own: usize, end_idx: usize) -> Vec<(Vec2,
                 .hypot(own_curve.pts[k + 1][1] - own_curve.pts[k][1]);
         }
     }
-    candidates.extend(own_best);
+    if let Some((q, d)) = own_best {
+        // The builder never intersects an entity with itself, so the only
+        // fusion the curve's own two ends can get is the vertex merge their
+        // seeded ids already go through.
+        let far = if end_idx == 0 {
+            own_curve.pts[last_own]
+        } else {
+            own_curve.pts[0]
+        };
+        let own_end = (q[0] - far[0]).hypot(q[1] - far[1]) <= EPS;
+        candidates.push(Opening {
+            q,
+            d,
+            fused: own_end && d < MERGE,
+        });
+    }
     for (j, s) in sampled.iter().enumerate() {
         if j == own || s.pts.len() < 2 {
             continue;
         }
         let n = s.pts.len();
         let last = if s.closed { n } else { n - 1 };
-        let mut best: Option<(Vec2, f64)> = None;
+        let mut best: Option<(Vec2, f64, Vec2)> = None;
         for k in 0..last {
-            let (q, d) = closest_on_segment(own_pt, s.pts[k], s.pts[(k + 1) % n]);
-            if d > EPS && best.is_none_or(|(_, bd)| d < bd) {
-                best = Some((q, d));
+            let (a, b) = (s.pts[k], s.pts[(k + 1) % n]);
+            let (q, d) = closest_on_segment(own_pt, a, b);
+            if d > EPS && best.is_none_or(|(_, bd, _)| d < bd) {
+                best = Some((q, d, [b[0] - a[0], b[1] - a[1]]));
             }
         }
-        candidates.extend(best);
+        let Some((q, d, target_dir)) = best else {
+            continue;
+        };
+        // An open target's endpoint is a seeded vertex, so an approach there
+        // is fused by the vertex merge alone, whatever the kinds.
+        let target_end = !s.closed
+            && ((q[0] - s.pts[0][0]).hypot(q[1] - s.pts[0][1]) <= EPS
+                || (q[0] - s.pts[last][0]).hypot(q[1] - s.pts[last][1]) <= EPS);
+        let fused = if target_end {
+            d < MERGE
+        } else {
+            end_fuses(reach[own], end_dir, target_dir, d)
+        };
+        candidates.push(Opening { q, d, fused });
     }
-    candidates.sort_by(|a, b| a.1.total_cmp(&b.1));
+    candidates.sort_by(|a, b| a.d.total_cmp(&b.d));
     candidates
 }
 
@@ -559,20 +642,21 @@ fn barrier_index(barriers: &[(Vec2, Vec2)], grid: &Grid) -> BTreeMap<usize, Vec<
     index
 }
 
-/// The seals: every open curve end that sits closer than MERGE to the
-/// barrier is fused with it by the builder's vertex merge (strict `< MERGE`),
-/// so no path may thread through such an opening. A sealed opening behind a
-/// region keeps that region reportable as a lost area.
-fn gap_seals(sampled: &[Sampled]) -> Vec<(Vec2, Vec2)> {
+/// The seals: every opening the builder fuses into one vertex (see
+/// `end_fuses` and the seeded-endpoint merge). No path may thread a sealed
+/// opening, so a region behind one stays reportable as a lost area; an
+/// opening the builder leaves open carries a tunnel instead and its region is
+/// skipped, never judged from the grid's guess.
+fn gap_seals(sampled: &[Sampled], reach: &[f64]) -> Vec<(Vec2, Vec2)> {
     let mut seals: Vec<(Vec2, Vec2)> = Vec::new();
     for (i, s) in sampled.iter().enumerate() {
         if s.closed || s.pts.len() < 2 {
             continue;
         }
         for end_idx in [0, s.pts.len() - 1] {
-            for (q, d) in gap_candidates(sampled, i, end_idx) {
-                if d < MERGE {
-                    seals.push((s.pts[end_idx], q));
+            for opening in gap_candidates(sampled, reach, i, end_idx) {
+                if opening.fused {
+                    seals.push((s.pts[end_idx], opening.q));
                 }
             }
         }
@@ -580,10 +664,9 @@ fn gap_seals(sampled: &[Sampled]) -> Vec<(Vec2, Vec2)> {
     seals
 }
 
-/// Certified passages through the openings between open curve ends and the
-/// barrier, as extra fill edges between the free cells on their two sides.
-/// An end at or beyond MERGE from the barrier leaves the contour open and the
-/// region behind it is reachable. Two hubs are offered per opening: the gap
+/// Certified passages through the openings the builder leaves open, as extra
+/// fill edges between the free cells on their two sides. A fused opening is
+/// sealed instead and gets none. Two hubs are offered per opening: the gap
 /// midpoint (a straight crossing) and a point just past the end (the route
 /// around the curve's tip, which is where a sub-cell opening is often
 /// threaded). Every edge a hub adds is a pair of cells whose polylines
@@ -591,13 +674,14 @@ fn gap_seals(sampled: &[Sampled]) -> Vec<(Vec2, Vec2)> {
 /// so a tunnel can never pierce a closed boundary.
 fn gap_tunnels(
     sampled: &[Sampled],
+    reach: &[f64],
     test: &BarrierTest<'_>,
     grid: &Grid,
     blocked: &[bool],
     band: f64,
 ) -> BTreeMap<usize, Vec<usize>> {
     let mut tunnels: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-    let reach = PASSAGE_REACH_CELLS * (grid.cell + band);
+    let passage_reach = PASSAGE_REACH_CELLS * (grid.cell + band);
     // Openings wider than this are resolved by the fill's own steps, so only
     // the nearest couple of candidates per end are worth a hub.
     let max_gap = 6.0 * grid.cell + 8.0 * MERGE;
@@ -617,14 +701,17 @@ fn gap_tunnels(
             if step_len <= EPS {
                 continue;
             }
-            for (ci, (q, d)) in gap_candidates(sampled, i, end_idx).into_iter().enumerate() {
-                if d < MERGE {
-                    // Sealed by the builder's own merge; keep looking for a
-                    // farther genuine opening (a three-curve junction can
-                    // seal on one curve and open on another).
+            for (ci, opening) in gap_candidates(sampled, reach, i, end_idx)
+                .into_iter()
+                .enumerate()
+            {
+                if opening.fused {
+                    // Fused by the builder; keep looking for a farther
+                    // genuine opening (a three-curve junction can close on
+                    // one curve and open on another).
                     continue;
                 }
-                if ci >= 2 || d > max_gap {
+                if ci >= 2 || opening.d > max_gap {
                     break;
                 }
                 hub_edges(
@@ -632,17 +719,17 @@ fn gap_tunnels(
                     grid,
                     blocked,
                     test,
-                    [0.5 * (end[0] + q[0]), 0.5 * (end[1] + q[1])],
-                    reach,
+                    [0.5 * (end[0] + opening.q[0]), 0.5 * (end[1] + opening.q[1])],
+                    passage_reach,
                 );
                 // Just past the tip: far enough that the hub is off the
                 // curve, near enough to stay on the end's side of the gap.
-                let step = (0.5 * d).clamp(4.0 * EPS, 0.5 * grid.cell);
+                let step = (0.5 * opening.d).clamp(4.0 * EPS, 0.5 * grid.cell);
                 let past = [
                     end[0] - step * inward[0] / step_len,
                     end[1] - step * inward[1] / step_len,
                 ];
-                hub_edges(&mut tunnels, grid, blocked, test, past, reach);
+                hub_edges(&mut tunnels, grid, blocked, test, past, passage_reach);
             }
         }
     }

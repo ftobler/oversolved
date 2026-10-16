@@ -3,6 +3,7 @@ use crate::radians;
 use crate::topology::codec;
 use crate::topology::dcel::{detect_topology, InputEntity};
 use crate::topology::profile_loops::Vec2;
+use crate::topology::TOL_TOPOLOGY_EPS as EPS;
 use crate::topology::TOL_TOPOLOGY_MERGE as MERGE;
 
 // ─── hand fixtures (the geometries the dcel tests pin) ───
@@ -612,6 +613,106 @@ fn a_sub_cell_channel_between_two_arcs_is_not_a_lost_area() {
     assert!(out.surfaces.is_empty(), "the open arcs bound no face");
     let v = pending(&check_topology(&geom, &out));
     assert!(v.is_empty(), "false lost area: {v:?}");
+}
+
+/// A 40x100 pocket whose two bottom corners are open line ends landing on a
+/// base line's interior at distance `gap`. The sides are 100 long, so the
+/// builder's intersector window for each end is `EPS * 100 = 1e-7`.
+fn t_junction_pocket(gap: f64) -> Vec<(String, InputEntity)> {
+    vec![
+        ("base".into(), line([-50.0, 0.0], [50.0, 0.0])),
+        ("left".into(), line([0.0, gap], [0.0, 100.0])),
+        ("top".into(), line([0.0, 100.0], [40.0, 100.0])),
+        ("right".into(), line([40.0, 100.0], [40.0, gap])),
+    ]
+}
+
+#[test]
+fn a_t_junction_opening_closes_only_inside_the_intersector_window() {
+    // The builder lands an interior contact only inside its intersector
+    // window: a line end's parameter must stay within `EPS`, so a 100-long
+    // side fuses with the base only at a gap below `EPS * 100 = 1e-7`. The
+    // old seal at `d < MERGE` claimed a fusion the builder never made and
+    // reported this deliberately open pocket as a lost area for every gap in
+    // (1e-7, MERGE).
+    let window = 100.0 * EPS;
+    // Inside the window the builder closes the chain: one face, and the
+    // oracle must agree (the seal keeps the pocket bounded and judged).
+    for gap in [window / 4.0, window / 2.0] {
+        let geom = t_junction_pocket(gap);
+        let out = detect_topology(&geom);
+        assert_eq!(
+            out.surfaces.len(),
+            1,
+            "gap {gap:e}: the builder fuses the T junctions"
+        );
+        let v = pending(&check_topology(&geom, &out));
+        assert!(v.is_empty(), "gap {gap:e}: false report: {v:?}");
+    }
+    // The seal must keep judging, not merely stay silent: with the face
+    // dropped, a window gap is a lost area again.
+    let geom = t_junction_pocket(window / 4.0);
+    let mut out = detect_topology(&geom);
+    out.surfaces.clear();
+    let v = pending(&check_topology(&geom, &out));
+    assert!(
+        v.iter().any(|x| x.contains("coverage (lost area)")),
+        "a dropped face behind a sealed T junction must report: {v:?}"
+    );
+    // Above the window and below MERGE the builder leaves the pocket open:
+    // the oracle must not seal, so the tunnel skips the cells behind the
+    // openings instead of reporting a lost area.
+    for gap in [3e-7, 1e-6, 5e-6, 9e-6] {
+        assert!(
+            gap > window && gap < MERGE,
+            "gap {gap:e} is in the probe range"
+        );
+        let geom = t_junction_pocket(gap);
+        let out = detect_topology(&geom);
+        assert!(
+            out.surfaces.is_empty(),
+            "gap {gap:e}: the builder leaves the T junctions open"
+        );
+        let v = pending(&check_topology(&geom, &out));
+        assert!(v.is_empty(), "gap {gap:e}: false lost area: {v:?}");
+    }
+    // At and above MERGE the pocket is still open and still not reported:
+    // the behaviour that was already correct.
+    for gap in [MERGE, 2.0 * MERGE] {
+        let geom = t_junction_pocket(gap);
+        let out = detect_topology(&geom);
+        assert!(
+            out.surfaces.is_empty(),
+            "gap {gap:e}: open at MERGE and beyond"
+        );
+        let v = pending(&check_topology(&geom, &out));
+        assert!(v.is_empty(), "gap {gap:e}: false lost area: {v:?}");
+    }
+}
+
+#[test]
+fn a_spline_end_on_a_line_interior_does_not_fuse() {
+    // `register_hit` drops a spline contact that lands at or past its own
+    // end, so even a gap far below MERGE leaves the chain open; sealing there
+    // would invent a lost area for the deliberately open pocket.
+    for gap in [1e-8, 5e-7, 2e-5] {
+        let geom = vec![
+            ("base".into(), line([-50.0, 0.0], [50.0, 0.0])),
+            (
+                "left".into(),
+                spline_open([0.0, gap], [0.0, 33.0], [0.0, 66.0], [0.0, 100.0]),
+            ),
+            ("top".into(), line([0.0, 100.0], [40.0, 100.0])),
+            ("right".into(), line([40.0, 100.0], [40.0, gap])),
+        ];
+        let out = detect_topology(&geom);
+        assert!(
+            out.surfaces.is_empty(),
+            "gap {gap:e}: the spline end does not fuse"
+        );
+        let v = pending(&check_topology(&geom, &out));
+        assert!(v.is_empty(), "gap {gap:e}: false lost area: {v:?}");
+    }
 }
 
 #[test]

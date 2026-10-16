@@ -31,18 +31,21 @@
 //! two fills: a pessimistic one whose barrier is dilated by a cell (so it
 //! cannot slip through a diagonal), and an optimistic one with an explicit
 //! TUNNEL between free cells on the two sides of every opening between a
-//! curve end and its nearest barrier point. The decision is MERGE resolution,
-//! not grid resolution: a gap closer than MERGE is a seal (the builder fuses
-//! those endpoints into one vertex, so the chain is closed), a gap at or
-//! beyond it is passable (a tunnel is attempted, and only certified when the
-//! cell-to-midpoint polyline clears the sampled barrier and every seal). A
-//! cell whose reachability differs between the two fills sits behind such an
-//! opening and is skipped rather than judged; a genuinely enclosed region has
-//! no end-to-barrier gap at or beyond MERGE to tunnel through, so it stays
-//! reported. Tunnels are attempted for openings of any width (the narrow ones
-//! are why they exist; wide ones either already pass or are harmless
-//! shortcuts), because the grid alignment can hide openings several cells
-//! wide at the corner of a contour.
+//! curve end and its nearest barrier point. The decision is the builder's own
+//! fusion, not grid resolution: an opening the builder demonstrably fuses
+//! into one vertex is a seal (two seeded endpoints within MERGE of each
+//! other, or an interior contact inside the intersector's window, see
+//! `end_fuses`), so no path may thread it; an opening the builder leaves open
+//! gets a tunnel instead, certified only when the cell-to-midpoint polyline
+//! clears the sampled barrier and every seal. A cell whose reachability
+//! differs between the two fills sits behind such an opening and is skipped
+//! rather than judged, so an opening the oracle cannot classify is never
+//! turned into a false report. A genuinely enclosed region has no
+//! end-to-barrier opening to tunnel through, so it stays reported. Tunnels
+//! are attempted for openings of any width (the narrow ones are why they
+//! exist; wide ones either already pass or are harmless shortcuts), because
+//! the grid alignment can hide openings several cells wide at the corner of a
+//! contour.
 //!
 //! Known-limitation tags: a violation on an input containing a
 //! self-intersecting spline or a line crossing both rings of concentric
