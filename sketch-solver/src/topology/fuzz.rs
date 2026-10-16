@@ -1208,7 +1208,10 @@ mod tests {
                 .filter(|v| v.is_pending())
                 .map(|v| v.class)
                 .collect();
-            if !write && pending_classes.iter().all(|c| accepted(c)) {
+            if !write
+                && pending_classes.iter().all(|c| accepted(c))
+                && std::env::var("FUZZ_TRIAGE").is_err()
+            {
                 covered += 1;
                 continue;
             }

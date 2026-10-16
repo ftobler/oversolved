@@ -1,0 +1,1 @@
+stability: vertex jitter: face with area 0.144570405 and centroid (5.912392, -1.129910) has no match
