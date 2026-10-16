@@ -28,6 +28,7 @@ import { solveFillet, solveChamfer, resolveFilletEdges } from '@/kernel/features
 import { solveHole } from '@/kernel/features/hole'
 import { solveArray, solveCircularArray } from '@/kernel/features/array'
 import { solveMirror } from '@/kernel/features/transformMirror'
+import { solveShell } from '@/kernel/features/shell'
 import { extractOccErrorMessage } from '@/kernel/errors'
 import type { Repository } from '@/kernel/query'
 import type { Body } from '@/kernel/types3d'
@@ -323,7 +324,8 @@ function checkMonotonic(step: RecipeStep, targetBefore: number | undefined, edit
     || step.kind === 'linear-array'
     || step.kind === 'circular-array'
     || (step.kind === 'mirror' && step.keepOriginal && step.merge)
-  const cutLike = (step.kind === 'boolean' && step.operation === 'subtract') || step.kind === 'hole'
+  // Shell is drawn inward only, so like a cut it never adds material.
+  const cutLike = (step.kind === 'boolean' && step.operation === 'subtract') || step.kind === 'hole' || step.kind === 'shell'
   if (!joinLike && !cutLike) return
   if (targetBefore === undefined) {
     violations.push({ step: stepIndex, message: `the ${step.kind} step ran with no target volume to compare against` })
@@ -668,6 +670,18 @@ function applyStep(
         source_body: step.target, count: step.count, step_angle: step.stepDeg,
         include_source: true, operation: 'add', axis: query,
       },
+    }, repoForLeaves, bodyStore)
+    return { editedIds: result.body_ids }
+  }
+  if (step.kind === 'shell') {
+    const body = requireBody(bodyStore, step.target)
+    const face = expected !== undefined && expected.kind === 'face'
+      ? resolveRecordedFace(oc, scope, table.get<OccShape>(body.shape as OccHandle), body, step.face, expected)
+      : pickFace(facesOf(oc, scope, table.get<OccShape>(body.shape as OccHandle), body), step.face)
+    if (face.query) picks.push({ step: stepIndex, kind: 'face', body: step.target, query: face.query, elementKind: face.surfaceType })
+    const result = solveShell(oc, scope, table, {
+      id: step.id,
+      shell: { faces: [face.query], thickness: step.thickness, direction: 'inward' },
     }, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }
   }

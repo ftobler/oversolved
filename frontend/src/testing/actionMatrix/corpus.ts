@@ -8,6 +8,7 @@
 import baseline from '@/wasm-kernel/regression-baseline.json'
 import faceExtrudeAfterArrayCut from '@/kernel/features/__fixtures__/faceExtrudeAfterArrayCut.json'
 import filletInvalidResultDoc from '@/kernel/features/__fixtures__/filletInvalidResultDoc.json'
+import boxWithShellDoc from '@/kernel/features/__fixtures__/boxWithShellDoc.json'
 import { loadPartDoc } from '@/persistence/docSchema'
 import type { PartDoc, PartFeature } from '@/types/cad'
 
@@ -63,6 +64,14 @@ export function corpusDocs(): CorpusDoc[] {
     label: 'fixture:filletInvalidResultDoc',
     spec: { version: 1, kind: 'part', features: filletInvalidResultDoc as unknown as PartFeature[] },
   })
+  // A shell-containing document: the matrix needs one target for the shell
+  // commands (the regression baseline predates the shell kind).
+  const shellFixture = loadPartDoc(
+    { version: 1, kind: 'part', features: boxWithShellDoc as unknown as PartFeature[] },
+    { name: 'box_with_shell' },
+  )
+  if (!shellFixture.ok) throw new Error(`action-matrix fixture failed to load: ${shellFixture.error.field} ${shellFixture.error.message}`)
+  docs.push({ label: 'box_with_shell', spec: shellFixture.doc })
   return docs
 }
 

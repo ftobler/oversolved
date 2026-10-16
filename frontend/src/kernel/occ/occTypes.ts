@@ -90,6 +90,19 @@ export interface OccPipeShellBuilder extends OccPrismBuilder {
 }
 
 /**
+ * The minimal history surface a name-transfer pass reads off any modifier: the
+ * builder-style narration of what became of an input sub-shape. BRepFilletAPI,
+ * BRepOffsetAPI_MakeThickSolid and BRepOffsetAPI_MakeOffsetShape (a
+ * BRepBuilderAPI_MakeShape subclass) all expose it, so identity transfer is one
+ * implementation over this shape rather than one per maker.
+ */
+export interface OccModifierHistory extends OccDisposable {
+  IsDeleted(shape: OccShape): boolean
+  Modified(shape: OccShape): OccListOfShape
+  Generated(shape: OccShape): OccListOfShape
+}
+
+/**
  * BRepFilletAPI_Make{Fillet,Chamfer}: the edge-modifier makers. They share the
  * boolean-style history surface (IsDeleted / Modified / Generated) plus the
  * edge-add calls. `Add_2(value, edge)` is the (radius|distance, edge) overload;
@@ -99,15 +112,59 @@ export interface OccPipeShellBuilder extends OccPrismBuilder {
  * 2026-09-15, which compiled fine and threw `BindingError: called with 3
  * arguments, expected 4` on every call.
  */
-export interface OccEdgeModifierMaker extends OccDisposable {
+export interface OccEdgeModifierMaker extends OccModifierHistory {
   Add_2(value: number, edge: OccShape): void
   AddDA(distance: number, angle: number, edge: OccShape, face: OccShape): void
   Build(): void
   IsDone(): boolean
   Shape(): OccShape
-  IsDeleted(shape: OccShape): boolean
-  Modified(shape: OccShape): OccListOfShape
-  Generated(shape: OccShape): OccListOfShape
+}
+
+/**
+ * BRepOffsetAPI_MakeThickSolid: hollow a solid to a wall thickness with zero or
+ * more closing (removed) faces. `MakeThickSolidByJoin` is the OCCT 7.4 9-arg
+ * form (shape, closingFaces, offset, tol, mode, intersection, selfInter, join,
+ * removeIntEdges); embind binds every argument, so the shorter defaults of some
+ * OCCT wrappers are not available here. History: a kept face `Generated()` its
+ * offset wall, a removed face `Modified()` into its rim.
+ */
+export interface OccThickSolidMaker extends OccModifierHistory {
+  MakeThickSolidByJoin(
+    shape: OccShape,
+    closingFaces: OccListOfShape,
+    offset: number,
+    tol: number,
+    mode: OccEnumValue,
+    intersection: boolean,
+    selfInter: boolean,
+    join: OccEnumValue,
+    removeIntEdges: boolean,
+  ): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+}
+
+/**
+ * BRepOffsetAPI_MakeOffsetShape: the pure offset fallback. `PerformByJoin` is
+ * the OCCT 7.4 8-arg form (shape, offset, tol, mode, intersection, selfInter,
+ * join, removeIntEdges); it shares the builder history surface, so a kept
+ * face's offset image is `Generated()`.
+ */
+export interface OccOffsetShapeMaker extends OccModifierHistory {
+  PerformByJoin(
+    shape: OccShape,
+    offset: number,
+    tol: number,
+    mode: OccEnumValue,
+    intersection: boolean,
+    selfInter: boolean,
+    join: OccEnumValue,
+    removeIntEdges: boolean,
+  ): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
 }
 
 /**
@@ -688,6 +745,22 @@ export interface OccModule extends OccBaseModule {
   BRepFilletAPI_MakeChamfer: new (shape: OccShape) => OccEdgeModifierMaker
   ChFi3d_FilletShape: {
     ChFi3d_Rational: OccEnumValue
+  }
+
+  // ─── shell leaf ───
+  // BRepOffsetAPI_MakeThickSolid / BRepOffsetAPI_MakeOffsetShape: the offset
+  // makers the shell adapter drives. The `_1` ctors are the default forms the
+  // shipped build binds (verified against opencascade.js 1.1.1, OCCT 7.4.0p1).
+  BRepOffsetAPI_MakeThickSolid_1: new () => OccThickSolidMaker
+  BRepOffsetAPI_MakeOffsetShape_1: new () => OccOffsetShapeMaker
+  // BRepOffset_Skin is the general-purpose join mode; the shell uses it with
+  // GeomAbs_Intersection so outward walls keep sharp corners.
+  BRepOffset_Mode: {
+    BRepOffset_Skin: OccEnumValue
+  }
+  GeomAbs_JoinType: {
+    GeomAbs_Arc: OccEnumValue
+    GeomAbs_Intersection: OccEnumValue
   }
 
   // ─── transform / mirror / array group ───

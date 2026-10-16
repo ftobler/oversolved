@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
 
 /** Append a feature, lazily initializing the features array. */
@@ -306,51 +306,80 @@ export function applyAddChamfer(
   pushFeature(doc, feature)
 }
 
-// fillet and chamfer both carry an identical `edges: string[]` list, so the
-// add/remove edge logic is shared across both kinds. `fn` keeps the original
-// caller name in the diagnostic so the warning still points at the public entry.
-function toggleEdge(doc: PartDoc, featureId: string, edgeQuery: string, kind: 'fillet' | 'chamfer', fn: string): void {
-  const sub = edgeSub(doc, featureId, kind, fn)
-  if (!sub) return
-  const idx = sub.edges.indexOf(edgeQuery)
-  if (idx >= 0) {
-    sub.edges.splice(idx, 1)
-  } else {
-    sub.edges.push(edgeQuery)
-  }
-}
-
-function removeEdgeAt(doc: PartDoc, featureId: string, index: number, kind: 'fillet' | 'chamfer', fn: string): void {
-  const sub = edgeSub(doc, featureId, kind, fn)
-  if (!sub) return
-  if (!removableIndex(sub.edges, index)) return
-  sub.edges.splice(index, 1)
-}
-
-/** The `edges: string[]` list fillet and chamfer share, or undefined with the
- *  usual warning when the id names a missing or other-kind feature. */
-function edgeSub(doc: PartDoc, featureId: string, kind: 'fillet' | 'chamfer', fn: string): { edges: string[] } | undefined {
+// fillet, chamfer and shell each carry a `string[]` pick list (edges or
+// faces), so the add/remove-toggle logic is shared across them by list key.
+// `fn` keeps the original caller name in the diagnostic so the warning still
+// points at the public entry point.
+function listSub(
+  doc: PartDoc,
+  featureId: string,
+  kind: string,
+  field: string,
+  fn: string,
+): string[] | undefined {
   const feature = findFeature(doc, featureId)
-  if (feature?.kind === 'fillet' && kind === 'fillet') return feature.fillet
-  if (feature?.kind === 'chamfer' && kind === 'chamfer') return feature.chamfer
-  warn(`${fn}: feature ${featureId} has no ${kind}`)
+  if (feature?.kind === kind) {
+    const sub = (feature as unknown as Record<string, Record<string, unknown> | undefined>)[kind]
+    const list = sub?.[field]
+    if (Array.isArray(list)) return list as string[]
+  }
+  warn(`${fn}: feature ${featureId} has no ${kind}.${field}`)
   return undefined
 }
 
+function toggleListValue(doc: PartDoc, featureId: string, kind: string, field: string, value: string, fn: string): void {
+  const list = listSub(doc, featureId, kind, field, fn)
+  if (!list) return
+  const idx = list.indexOf(value)
+  if (idx >= 0) list.splice(idx, 1)
+  else list.push(value)
+}
+
+function removeListAt(doc: PartDoc, featureId: string, kind: string, field: string, index: number, fn: string): void {
+  const list = listSub(doc, featureId, kind, field, fn)
+  if (!list) return
+  if (!removableIndex(list, index)) return
+  list.splice(index, 1)
+}
+
 export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
-  toggleEdge(doc, featureId, edgeQuery, 'fillet', 'applyAddFilletEdge')
+  toggleListValue(doc, featureId, 'fillet', 'edges', edgeQuery, 'applyAddFilletEdge')
 }
 
 export function applyRemoveFilletEdge(doc: PartDoc, featureId: string, index: number): void {
-  removeEdgeAt(doc, featureId, index, 'fillet', 'applyRemoveFilletEdge')
+  removeListAt(doc, featureId, 'fillet', 'edges', index, 'applyRemoveFilletEdge')
 }
 
 export function applyAddChamferEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
-  toggleEdge(doc, featureId, edgeQuery, 'chamfer', 'applyAddChamferEdge')
+  toggleListValue(doc, featureId, 'chamfer', 'edges', edgeQuery, 'applyAddChamferEdge')
 }
 
 export function applyRemoveChamferEdge(doc: PartDoc, featureId: string, index: number): void {
-  removeEdgeAt(doc, featureId, index, 'chamfer', 'applyRemoveChamferEdge')
+  removeListAt(doc, featureId, 'chamfer', 'edges', index, 'applyRemoveChamferEdge')
+}
+
+// ─── Shell ───
+
+export function applyAddShell(doc: PartDoc, featureId: string, label?: string): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'shell',
+    label: label ?? 'Shell',
+    shell: { faces: [], thickness: 1, direction: 'inward' },
+  })
+}
+
+export function applySetShellField(doc: PartDoc, featureId: string, field: keyof ShellFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'shell', feature?.kind === 'shell' ? feature.shell : undefined, field, value, 'applySetShellField')
+}
+
+export function applyAddShellFace(doc: PartDoc, featureId: string, faceQuery: string): void {
+  toggleListValue(doc, featureId, 'shell', 'faces', faceQuery, 'applyAddShellFace')
+}
+
+export function applyRemoveShellFace(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'shell', 'faces', index, 'applyRemoveShellFace')
 }
 
 // ─── Boolean ───

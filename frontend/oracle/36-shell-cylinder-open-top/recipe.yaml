@@ -1,0 +1,27 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: c
+        kind: circle
+    initial:
+      c:
+        - 0
+        - 0
+        - 5
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 10
+      direction: normal
+      operation: new
+  - id: sh1
+    kind: shell
+    shell:
+      faces:
+        - "?15,4,9,6,7;@u|u_42825f874782e937@ex1@body_ex1@sk1/c@cls_zp:flatface"
+      thickness: 1
+      direction: inward

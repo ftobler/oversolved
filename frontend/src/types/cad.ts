@@ -45,6 +45,17 @@ export type ChamferFeatureDef = {
   angle?: NumberOrExpr
 }
 
+export type ShellDirection = 'inward' | 'outward'
+
+export type ShellFeatureDef = {
+  // Removed faces (the openings), may be empty for a closed hollow. Then
+  // `source_body` is required, since no face names the body.
+  faces: string[]
+  thickness: NumberOrExpr
+  direction?: ShellDirection
+  source_body?: string
+}
+
 export type BooleanFeatureDef = {
   operation: 'union' | 'subtract' | 'intersect'
   target: string
@@ -391,6 +402,11 @@ export type ChamferFeature = FeatureBase & {
   chamfer: ChamferFeatureDef
 }
 
+export type ShellFeature = FeatureBase & {
+  kind: 'shell'
+  shell: ShellFeatureDef
+}
+
 export type BooleanFeature = FeatureBase & {
   kind: 'boolean'
   boolean: BooleanFeatureDef
@@ -449,6 +465,7 @@ export type PartFeature =
   | SweepFeature
   | FilletFeature
   | ChamferFeature
+  | ShellFeature
   | BooleanFeature
   | ArrayFeature
   | CircularArrayFeature
@@ -1031,6 +1048,10 @@ export type Mutation =
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
+  | { type: 'add_shell'; featureId: string; label?: string }
+  | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
+  | { type: 'add_shell_face'; featureId: string; faceQuery: string }
+  | { type: 'remove_shell_face'; featureId: string; index: number }
   | { type: 'add_boolean'; featureId: string; label?: string }
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }

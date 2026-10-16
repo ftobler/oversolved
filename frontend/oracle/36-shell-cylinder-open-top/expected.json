@@ -1,0 +1,21 @@
+{
+  "method": "V = pi*5^2*10 - pi*4^2*9 = 250pi - 144pi = 106pi; A = 25pi + 100pi + 16pi + 72pi + 9pi = 222pi (outer cap, outer wall, inner cap, inner wall, top rim); 5 faces, 6 edges",
+  "bodies": 1,
+  "volume": 333.00882128040783,
+  "area": 697.4338288934176,
+  "centroid": [
+    0,
+    0,
+    4.320754716981132
+  ],
+  "bbox": [
+    -5,
+    -5,
+    0,
+    5,
+    5,
+    10
+  ],
+  "faces": 5,
+  "edges": 6
+}

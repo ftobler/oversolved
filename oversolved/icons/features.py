@@ -256,6 +256,26 @@ def feature_chamfer(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-shell.svg")
+def feature_shell(ctx):
+    """Icon for Shell: a box hollowed to a wall, with the top face open."""
+    left, right = 0.18, 0.82
+    top, bottom = 0.18, 0.82
+    wall = 0.16
+
+    # Outer box outline.
+    ctx.rectangle(left, top, right - left, bottom - top)
+    stroke(ctx, 2.0)
+
+    # The cavity walls, drawn without a top edge: the removed face leaves the
+    # box open at the top, so the walls run from the top rim down and across.
+    ctx.move_to(left + wall, top)
+    ctx.line_to(left + wall, bottom - wall)
+    ctx.line_to(right - wall, bottom - wall)
+    ctx.line_to(right - wall, top)
+    stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/feature-boolean.svg")
 def feature_boolean(ctx):
     """Icon for Boolean: two overlapping circles (Venn diagram style)."""

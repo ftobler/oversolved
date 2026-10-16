@@ -27,6 +27,7 @@ import { solveSweep } from './features/sweep'
 import { solveHole } from './features/hole'
 import { solveBoolean } from './features/boolean'
 import { solveFillet, solveChamfer } from './features/filletChamfer'
+import { solveShell } from './features/shell'
 import { solveArray, solveCircularArray } from './features/array'
 import { solveTransform, solveMirror } from './features/transformMirror'
 import { solveDeleteBody } from './features/deleteBody'
@@ -79,6 +80,7 @@ const KIND_SOLVER: SolverTable = {
   boolean: solveBoolean,
   fillet: solveFillet,
   chamfer: solveChamfer,
+  shell: solveShell,
   array: solveArray,
   circular_array: solveCircularArray,
   transform: solveTransform,
@@ -153,6 +155,7 @@ const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
   revolve: 'revolve',
   fillet: 'fillet',
   chamfer: 'chamfer',
+  shell: 'shell',
   hole: 'hole',
   array: 'array',
   circular_array: 'circular_array',

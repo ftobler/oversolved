@@ -97,6 +97,13 @@ describe('evalFeatureParams', () => {
     evalFeatureParams(sub, ['distance'])
     expect(sub.distance).toBeUndefined()
   })
+
+  it('lists and evaluates the shell thickness expression', () => {
+    expect(EXPR_FIELDS_BY_KIND.shell).toEqual(['thickness'])
+    const sub: Record<string, unknown> = { thickness: 'wall' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.shell, { wall: 2.5 })
+    expect(sub.thickness).toBe(2.5)
+  })
 })
 
 describe('boolean clearance expression', () => {

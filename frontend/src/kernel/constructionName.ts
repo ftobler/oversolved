@@ -53,6 +53,21 @@ export function filletFacePath(createdBy: string, filletedEdgeUuid: string): str
   return `${createdBy}|fillet|${filletedEdgeUuid}`
 }
 
+/** What a shell face is: the offset wall born from a kept source face, or the
+ *  rim strip where a removed (open) face was. */
+export type ShellFaceRole = 'offset' | 'rim'
+
+/**
+ * A shell face: `<createdBy>|shell|<role>|<sourceFaceUuid>`. The source face
+ * names it, never its geometry: an offset wall is named after the face it was
+ * offset from, a rim after the removed face whose opening it borders. Both
+ * survive a thickness change, a face edit or a resize because the source face's
+ * UUID does.
+ */
+export function shellFacePath(createdBy: string, role: ShellFaceRole, sourceFaceUuid: string): string {
+  return `${createdBy}|shell|${role}|${sourceFaceUuid}`
+}
+
 /** What a hole's cutter face is: the bore wall, or one of the cutter's discs,
  *  `mouth` where the cutter starts and `floor` where it ends. A through_all
  *  cutter starts backed off outside the body and ends past it, so neither disc

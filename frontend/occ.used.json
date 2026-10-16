@@ -23,6 +23,7 @@
     "BRepMesh_IncrementalMesh",
     "BRepOffsetAPI_MakeOffsetShape",
     "BRepOffsetAPI_MakePipeShell",
+    "BRepOffsetAPI_MakeThickSolid",
     "BRepOffset_Mode",
     "BRepPrimAPI_MakeBox",
     "BRepPrimAPI_MakeCylinder",

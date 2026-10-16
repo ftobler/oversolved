@@ -98,6 +98,22 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
   kind: distance                # distance | angle_distance
 ```
 
+### shell
+
+```yaml
+- id: sh1
+  kind: shell
+  shell:
+    faces: ["?query:flatface"]   # removed faces (openings); may be empty
+    thickness: 1.0               # expression-capable, > 0
+    direction: inward            # inward | outward (inward keeps the outer skin)
+    source_body: "@body_ex1"     # required when faces is empty
+```
+
+An empty `faces` list makes a closed hollow (one solid with an inner void), so
+`source_body` is required: no face names the body. Faces naming several bodies
+is an error.
+
 ### boolean
 
 ```yaml

@@ -1,0 +1,48 @@
+{
+  "method": "V = 10^3 - 8*8*9 = 424; A = 500 (outer, top open) + 352 (inner walls) + 36 (top rim) = 888; 11 faces, 24 edges",
+  "bodies": 1,
+  "volume": 424,
+  "area": 888,
+  "centroid": [
+    5,
+    5,
+    4.320754716981132
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    10,
+    10,
+    10
+  ],
+  "faces": 11,
+  "edges": 24,
+  "edit": {
+    "what": "edit ex1.extrude.distance 10 -> 14",
+    "method": "Same formulas with the height at 14: V = 10*10*14 - 8*8*13 = 568; A = 660 + 480 + 36 = 1176; the stored open-face pick still resolves",
+    "feature": "ex1",
+    "field": "distance",
+    "value": 14,
+    "expect": {
+      "bodies": 1,
+      "volume": 568,
+      "area": 1176,
+      "centroid": [
+        5,
+        5,
+        6.267605633802817
+      ],
+      "bbox": [
+        0,
+        0,
+        0,
+        10,
+        10,
+        14
+      ],
+      "faces": 11,
+      "edges": 24
+    }
+  }
+}

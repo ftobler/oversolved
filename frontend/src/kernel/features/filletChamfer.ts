@@ -12,8 +12,9 @@ import type { Body } from '../types3d'
 import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId, constructionUuidToken } from '../query'
 import { geometryClassifiers } from '../geomHash'
 import { resolveBody, resolveBodyIds } from './shared/bodyResolution'
+import { buildFaceIndex, makeFaceIndexCache, resolveFacesByQuery, type FaceIndex } from './shared/faceResolution'
 import { resplitBody } from './bodySplit'
-import { canonicalEdges, canonicalFaces, assertAligned, readBodyNames } from '../occ/bodyNames'
+import { canonicalEdges, assertAligned, readBodyNames } from '../occ/bodyNames'
 import { elementCreator, newIndexSets } from '../occ/modifierAttribution'
 import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
 import { faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
@@ -196,30 +197,20 @@ export function makeEdgeIndexCache(
   }
 }
 
-/** Resolve a face ancestry query to all OCC edges of the matching face. */
+/** Resolve a face ancestry query to all OCC edges of the matching face. The
+ *  face itself comes from the shared construction resolver (shared/
+ *  faceResolution.ts), so the UUID and stable-ancestry tiers are the shell's. */
 function resolveFaceToEdges(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
   q: string,
   body: Body,
+  faceIndex: FaceIndex,
 ): OccShape[] {
-  let ids: string[]
-  try {
-    ;[ids] = parseAncestry(q)
-  } catch {
-    return []
-  }
   if (body.shape === null) return []
-  const shape = table.get<OccShape>(body.shape)
-
-  const uuidTok = ids.find((i) => i.startsWith('@u|'))
-  const faceUuid = uuidTok !== undefined ? uuidTok.slice(3) : null
-  if (faceUuid === null || body.face_uuids === undefined) return []
-  const faces = canonicalFaces(oc, scope, shape)
-  assertAligned(faces.length, body.face_uuids, `${body.id} face lookup`)
-  const at = body.face_uuids.indexOf(faceUuid)
-  return at >= 0 ? exploreEdges(oc, scope, faces[at]) : []
+  const face = resolveFacesByQuery(oc, scope, table, body, faceIndex, [q]).get(q) ?? null
+  return face === null ? [] : exploreEdges(oc, scope, face)
 }
 
 /**
@@ -236,6 +227,7 @@ export function resolveEdgesByQuery(
   index: EdgeIndex,
   edgeQueries: string[],
   bodyStore: Record<string, unknown> | null = null,
+  faceIndexFor?: (body: Body) => FaceIndex,
 ): Map<string, OccShape[]> {
   const isFaceQuery = (q: string): boolean => {
     try {
@@ -261,7 +253,11 @@ export function resolveEdgesByQuery(
       edge = resolveByStableAncestry(index.ancestryRepo, q, bodyStore)
     }
     if (edge === undefined && isFaceQuery(q)) {
-      for (const fe of resolveFaceToEdges(oc, scope, table, q, body)) addUnique(fe)
+      // A face query resolves every edge of the face: build the per-body face
+      // index once per solve (the caller passes a shared cache), never once per
+      // query.
+      const faceIndex = faceIndexFor ? faceIndexFor(body) : buildFaceIndex(oc, scope, table, body)
+      for (const fe of resolveFaceToEdges(oc, scope, table, q, body, faceIndex)) addUnique(fe)
     }
     if (edge !== undefined) addUnique(edge)
     out.set(q, edges)
@@ -278,12 +274,13 @@ export function resolveEdgesWithIndex(
   index: EdgeIndex,
   edgeQueries: string[],
   bodyStore: Record<string, unknown> | null = null,
+  faceIndexFor?: (body: Body) => FaceIndex,
 ): OccShape[] {
   const result: OccShape[] = []
   // The per-query lists are deduped internally; a query that names an edge an
   // earlier query already claimed must not duplicate it in the flat result.
   const dedup = new SubShapeDedup()
-  for (const es of resolveEdgesByQuery(oc, scope, table, body, index, edgeQueries, bodyStore).values()) {
+  for (const es of resolveEdgesByQuery(oc, scope, table, body, index, edgeQueries, bodyStore, faceIndexFor).values()) {
     for (const e of es) if (dedup.add(e as OccSubShape)) result.push(e)
   }
   return result
@@ -411,10 +408,13 @@ function applyEdgeFeature(
 
   const sourceBody = (feature.source_body as string) ?? ''
   const indexFor = makeEdgeIndexCache(oc, scope, table)
+  // A face query resolves to every edge of the face, which walks the body's
+  // faces; one shared cache keeps that walk to once per body per solve.
+  const faceIndexFor = makeFaceIndexCache(oc, scope, table)
   const contains = (bid: string, q: string): boolean => {
     const body = bodyStore[bid]
     if (body === undefined || body.shape === null) return false
-    return resolveEdgesWithIndex(oc, scope, table, body, indexFor(body), [q], bodyStore).length > 0
+    return resolveEdgesWithIndex(oc, scope, table, body, indexFor(body), [q], bodyStore, faceIndexFor).length > 0
   }
 
   const groups = new Map<string, string[]>()
@@ -502,7 +502,7 @@ function applyEdgeFeature(
       continue
     }
 
-    const byQuery = resolveEdgesByQuery(oc, scope, table, body, indexFor(body), qlist, bodyStore)
+    const byQuery = resolveEdgesByQuery(oc, scope, table, body, indexFor(body), qlist, bodyStore, faceIndexFor)
     const topoEdges: OccShape[] = []
     const dedup = new SubShapeDedup()
     const queryOf = new Map<OccShape, string>()  // edge -> the query that named it

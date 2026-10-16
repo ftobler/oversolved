@@ -262,6 +262,9 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
       if (feature.kind === 'fillet') arr = feature.fillet?.edges
       else if (feature.kind === 'chamfer') arr = feature.chamfer?.edges
       break
+    case 'faces':
+      if (feature.kind === 'shell') arr = feature.shell?.faces
+      break
     case 'tools':
       if (feature.kind === 'boolean') arr = feature.boolean?.tools
       break

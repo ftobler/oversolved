@@ -1,0 +1,21 @@
+{
+  "method": "V = 10^3 - 8^3 = 488; A = 6*10^2 (outer) + 6*8^2 (inner void) = 984; 12 faces, 24 edges",
+  "bodies": 1,
+  "volume": 488,
+  "area": 984,
+  "centroid": [
+    5,
+    5,
+    5
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    10,
+    10,
+    10
+  ],
+  "faces": 12,
+  "edges": 24
+}

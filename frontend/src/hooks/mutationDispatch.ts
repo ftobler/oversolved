@@ -48,6 +48,10 @@ import {
   applyRemoveFilletEdge,
   applyAddChamferEdge,
   applyRemoveChamferEdge,
+  applyAddShell,
+  applySetShellField,
+  applyAddShellFace,
+  applyRemoveShellFace,
   applyAddBoolean,
   applySetBooleanField,
   applyAddBooleanTool,
@@ -191,6 +195,14 @@ export const mutationHandlers: MutationHandlers = {
     applyAddChamferEdge(next, m.featureId, m.edgeQuery),
   remove_chamfer_edge: (next, m) =>
     applyRemoveChamferEdge(next, m.featureId, m.index),
+  add_shell: (next, m) =>
+    applyAddShell(next, m.featureId, m.label),
+  set_shell_field: (next, m) =>
+    applySetShellField(next, m.featureId, m.field, m.value),
+  add_shell_face: (next, m) =>
+    applyAddShellFace(next, m.featureId, m.faceQuery),
+  remove_shell_face: (next, m) =>
+    applyRemoveShellFace(next, m.featureId, m.index),
   add_boolean: (next, m) =>
     applyAddBoolean(next, m.featureId, m.label),
   set_boolean_field: (next, m) =>
