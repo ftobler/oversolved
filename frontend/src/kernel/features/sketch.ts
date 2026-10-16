@@ -18,13 +18,17 @@
  * imported documents that still carry the raw sugar.
  */
 
-import type { Sketch, SketchFeature, Entity } from '@/types/cad'
+import type { Sketch, SketchFeature, Entity, Constraints } from '@/types/cad'
 import type { Repository } from '../query'
 import type { Body } from '../types3d'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
-import { encodeInput, decodeOutput, STATUS_NAME, type FlatInput, type SolverOutput } from '@/wasm-kernel/codec'
+import {
+  encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG,
+  type FlatInput, type SolverOutput,
+} from '@/wasm-kernel/codec'
 import { VERTEX_INDICES, ALL_COORD_INDICES } from '@/registry'
+import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, type TopologyBytes } from '../topologyDecorate'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
@@ -41,6 +45,11 @@ export interface SketchResult {
   status: string
   geometry?: Record<string, number[]>
   features?: Record<string, { status: string }>
+  /** Per-constraint solve facts, keyed by doc constraint id: the render block,
+   *  the miss fraction and the non-driver (redundant) / culprit markers. Feeds
+   *  `applySolveResult` so the constraint overlays can paint what the solve
+   *  found; omitted when no constraint produced a render. */
+  constraints?: Constraints
   /** The document origin (0,0,0) expressed in this sketch's local 2D frame.
    *  Both the hard solve and the drag path need the same value so @builtin_origin
    *  constraints pin to the same point. Computed once here, consumed by the drag
@@ -283,6 +292,61 @@ export function assertSolverOutputMatchesLayout(
   }
 }
 
+/**
+ * Refuse an output whose per-constraint verdict arrays disagree with the wire
+ * constraints this side sent. Same class of skew `assertSolverOutputMatchesLayout`
+ * guards on the entity side: the counts are the solver's own claim about
+ * itself, and `constraintIds` is zipped positionally against them. The drag
+ * path asks for no verdicts (the walk is cold-only), so there the required
+ * answer is exactly empty, not merely tolerated.
+ */
+export function assertConstraintVerdictsMatchInput(
+  out: SolverOutput,
+  nConstraints: number,
+  dragMode: boolean,
+  featureId: string,
+): void {
+  const expected = dragMode ? 0 : nConstraints
+  if (out.constraintFlags.length !== expected || out.constraintMiss.length !== expected) {
+    throw new Error(
+      `sketch '${featureId}': solver returned ${out.constraintFlags.length} constraint flags and `
+      + `${out.constraintMiss.length} constraint misses, expected ${expected}`,
+    )
+  }
+}
+
+/** Fraction of the total per-constraint miss the culprit set must cover. */
+export const CULPRIT_COVERAGE = 0.9
+
+/**
+ * Wire indices of the constraints carrying an unsatisfied solve's miss:
+ * largest miss first until `CULPRIT_COVERAGE` of the total is covered.
+ *
+ * A two-way conflict splits the miss between both sides, so a largest-first
+ * walk keeps both, while a one-sided blame (one bad dimension against a set of
+ * satisfied ones) stops after the offender. The magnitudes are comparable
+ * across constraint kinds because the solver already divided each row's
+ * residual by its Jacobian row norm and the sketch scale (see
+ * `constraint_miss` in sketch-solver/src/solve.rs). An all-zero miss (the
+ * defect sits in the pin rows, not the constraints) selects nothing.
+ */
+export function culpritConstraintIndices(miss: number[]): Set<number> {
+  const order = miss
+    .map((m, i) => [m, i] as const)
+    .filter(([m]) => m > 0)
+    .sort((a, b) => b[0] - a[0])
+  const culprits = new Set<number>()
+  const total = order.reduce((sum, [m]) => sum + m, 0)
+  if (!(total > 0)) return culprits
+  let covered = 0
+  for (const [m, i] of order) {
+    culprits.add(i)
+    covered += m
+    if (covered >= CULPRIT_COVERAGE * total) break
+  }
+  return culprits
+}
+
 export function solveSketch(
   feature: Dict,
   globalRepo: Repository,
@@ -315,9 +379,10 @@ export function solveSketch(
   }
 
   const { sketch } = extract.sketches[0]
-  const { input, layout } = lowerSketch(sketch)
+  const { input, layout, constraintIds } = lowerSketch(sketch)
   const out = decodeOutput(solverBytes(encodeInput(input)))
   assertSolverOutputMatchesLayout(out, layout, featureId, input.options.skipStatusPass)
+  assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, featureId)
   const status = STATUS_NAME[out.overallStatus]
 
   // Reconstruct per-entity geometry and status maps, plus rich geometry for
@@ -351,6 +416,36 @@ export function solveSketch(
   ))
   const plane_transform = frameToPlaneTransform(plane as Frame3D)
 
+  // Per-constraint verdicts: map the wire-order flags back to the authored ids
+  // and attach the render block computed from the SOLVED geometry. A constraint
+  // the solve calls redundant is marked `superfluous` (the existing non-driver
+  // language the overlays and the cleanup command already read); a conflict
+  // culprit is marked `culprit` for the deeper-red paint. Sugar expanded to
+  // synthetic ids (ngon/dock) has no authored id on the wire, so its pieces
+  // stay unmarked.
+  const renderEntities = Object.keys(resolvedKinds).length
+    ? (pf.entities ?? []).map((e) => ({ ...e, kind: resolvedKinds[e.id] ?? e.kind }))
+    : pf.entities
+  const solvedSketch = unflattenGeometry(geometry, renderEntities)
+  const rendered = deriveConstraints(pf, solvedSketch)
+  const wireIndexById = new Map<string, number>()
+  constraintIds.forEach((cid, i) => { if (cid !== null) wireIndexById.set(cid, i) })
+  const culprits = out.overallStatus === Status.overconstrained
+    ? culpritConstraintIndices(out.constraintMiss)
+    : new Set<number>()
+  const constraintResults: Constraints = {}
+  for (const [cid, c] of Object.entries(rendered)) {
+    const idx = wireIndexById.get(cid)
+    if (idx === undefined) continue
+    const redundant = (out.constraintFlags[idx] & CONSTRAINT_FLAG.redundant) !== 0
+    constraintResults[cid] = {
+      ...c,
+      residual: out.constraintMiss[idx] ?? 0,
+      ...(redundant ? { superfluous: true } : {}),
+      ...(culprits.has(idx) ? { culprit: true } : {}),
+    }
+  }
+
   return {
     status,
     geometry,
@@ -358,9 +453,68 @@ export function solveSketch(
     originLocal,
     topology,
     plane_transform,
+    ...(Object.keys(constraintResults).length ? { constraints: constraintResults } : {}),
     ...(Object.keys(resolvedKinds).length ? { resolved_kinds: resolvedKinds } : {}),
     ...(projectionErrors.length ? { projection_errors: projectionErrors } : {}),
     solve_ms: 0,
+  }
+}
+
+// ─── Authoring probe ───
+
+/**
+ * True when the draft constraint (the one appended last to `feature` by the
+ * authoring path) would add no new rank to the sketch's constraint set.
+ *
+ * The authoring refusal (`applyConstraint` in editorState) asks this before
+ * creating a mutation, so a redundant constraint is refused like most CAD,
+ * while documents that already carry one are tolerated and flagged instead.
+ * The probe runs the real solver, not a static scan, exactly as
+ * `probeCircleDragMode` probes the real drag solver: a static duplicate check
+ * would miss the implied cases (a parallel already implied by two horizontals)
+ * and could not see chained edits.
+ *
+ * Runs cold with the status pass skipped, because only the per-constraint
+ * walk's answer is read. Returns null when no answer can be determined: no
+ * solver, an unlowerable sketch, or an UNSATISFIED draft set (that is a
+ * conflict, not redundancy; the solve will report it and the UI will mark the
+ * culprits). Projected entities are pinned from their last resolved params, as
+ * in `prepareDragContext`.
+ */
+export function probeRedundantConstraint(feature: SketchFeature, draftId: string): boolean | null {
+  if (!solverBytes) return null
+  try {
+    const entities = feature.entities ?? []
+    let loweredFeature = feature
+    const pinnedIds: string[] = []
+    if (entities.some((e) => e.source)) {
+      const initial = feature.initial ?? {}
+      const kept: typeof entities = []
+      for (const ent of entities) {
+        if (!ent.source) { kept.push(ent); continue }
+        if (initial[ent.id]) { kept.push({ ...ent, source: undefined }); pinnedIds.push(ent.id) }
+      }
+      loweredFeature = { ...feature, entities: kept }
+    }
+    const extract = partDocToSketches([loweredFeature], [0, 0], pinnedIds)
+    if (extract.skipped.length || !extract.sketches.length) return null
+    const { input, constraintIds } = lowerSketch(extract.sketches[0].sketch, { skipStatusPass: true })
+    const out = decodeOutput(solverBytes(encodeInput(input)))
+    assertConstraintVerdictsMatchInput(out, input.constraints.length, false, feature.id)
+    if (out.overallStatus === Status.overconstrained) return null
+    // The draft may lower to several wire constraints (sugar expansion); it
+    // counts as redundant only when every piece of it is.
+    let sawDraft = false
+    for (let i = 0; i < constraintIds.length; i++) {
+      const cid = constraintIds[i]
+      if (cid === null) continue
+      if (cid !== draftId && !cid.startsWith(`${draftId}_`)) continue
+      sawDraft = true
+      if ((out.constraintFlags[i] & CONSTRAINT_FLAG.redundant) === 0) return false
+    }
+    return sawDraft ? true : null
+  } catch {
+    return null
   }
 }
 
@@ -714,6 +868,7 @@ export function solveSketchDrag(
     // last good preview, and throwing out of a pointer handler is strictly
     // worse. Same check, same detection, the response the path already chose.
     assertSolverOutputMatchesLayout(out, layout, 'drag', input.options.skipStatusPass)
+    assertConstraintVerdictsMatchInput(out, input.constraints.length, input.options.dragMode, 'drag')
   } catch {
     return null
   }

@@ -19,6 +19,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   solveSketch,
   assertSolverOutputMatchesLayout,
+  assertConstraintVerdictsMatchInput,
+  culpritConstraintIndices,
   setSketchSolver,
   resetSketchSolver,
   isSketchSolverReady,
@@ -42,6 +44,8 @@ function outputOf(over: Partial<SolverOutput> = {}): SolverOutput {
     paramsSolved: [0, 0, 1, 1],
     entityStatus: [0, 1],
     overallStatus: 1,
+    constraintFlags: [],
+    constraintMiss: [],
     diagnostics: { residualNorm: 0, rank: 2, dof: 0, iters: 3, ms: 0.1 },
     ...over,
   }
@@ -87,6 +91,48 @@ describe('solver output / layout count contract', () => {
       .toThrow(/unknown status code 7/)
     expect(() => assertSolverOutputMatchesLayout(outputOf({ entityStatus: [0, 9] }), layoutOf(2), 'sk1', false))
       .toThrow(/unknown status code 9 for entity e1/)
+  })
+})
+
+// The constraint side of the same count contract: the per-constraint verdict
+// arrays are zipped positionally against the wire constraints, so their
+// declared length must match what was sent -- exactly empty on the drag path,
+// which asks for no verdicts at all.
+describe('solver output / constraint verdict contract', () => {
+  it('accepts one flag and one miss per constraint sent', () => {
+    expect(() => assertConstraintVerdictsMatchInput(
+      outputOf({ constraintFlags: [0, 1], constraintMiss: [0, 0.5] }), 2, false, 'sk1',
+    )).not.toThrow()
+  })
+
+  it('refuses a verdict array that disagrees with the constraint count', () => {
+    expect(() => assertConstraintVerdictsMatchInput(
+      outputOf({ constraintFlags: [0], constraintMiss: [0] }), 2, false, 'sk1',
+    )).toThrow(/1 constraint flags and 1 constraint misses, expected 2/)
+  })
+
+  it('requires exactly empty verdicts on the drag path', () => {
+    expect(() => assertConstraintVerdictsMatchInput(
+      outputOf({ constraintFlags: [], constraintMiss: [] }), 2, true, 'drag',
+    )).not.toThrow()
+    expect(() => assertConstraintVerdictsMatchInput(
+      outputOf({ constraintFlags: [0, 0], constraintMiss: [0, 0] }), 2, true, 'drag',
+    )).toThrow(/expected 0/)
+  })
+})
+
+describe('culprit selection', () => {
+  it('keeps both sides of a two-way conflict', () => {
+    expect([...culpritConstraintIndices([0.5, 0.5, 0])].sort()).toEqual([0, 1])
+  })
+
+  it('stops after the offender when the blame is one-sided', () => {
+    // 0.9 alone already covers 90% of the 0.92 total.
+    expect([...culpritConstraintIndices([0.9, 0.01, 0.01])]).toEqual([0])
+  })
+
+  it('selects nothing for an all-zero miss', () => {
+    expect(culpritConstraintIndices([0, 0]).size).toBe(0)
   })
 })
 

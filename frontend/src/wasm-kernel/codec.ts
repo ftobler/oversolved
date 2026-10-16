@@ -57,16 +57,26 @@ export const Status = { fully_constrained: 0, underconstrained: 1, overconstrain
 /** Index -> status string, the inverse of the Rust `Status::to_u8`. */
 export const STATUS_NAME = ['fully_constrained', 'underconstrained', 'overconstrained'] as const
 
-// Rev 3 of the wire layout. Every scalar is f64; rev 2 carried f32, which
-// quantized solved coordinates at ~6e-8 relative (1e-5 to 1e-4 mm on typical
-// parts, far above OCCT's 1e-7 confusion). The magic IS the version handshake:
-// the layout evolved before (has_sign flag + trailing sign f32) without moving
-// these, so a stale js/wasm pairing decoded shifted offsets instead of failing.
-// Bump BOTH sides (these two and sketch-solver/src/codec.rs) on any layout
-// change. Invalidating stale cached payloads is acceptable and safe
-// post-wave-1: bundle-cache reads degrade to cold rebuilds.
+/** Bits of a per-constraint verdict byte, mirroring `CONSTRAINT_FLAG_*` in
+ *  sketch-solver/src/lib.rs. One byte per input constraint, in wire order. */
+export const CONSTRAINT_FLAG = {
+  /** Every Jacobian row of the constraint already lies in the span of the
+   *  earlier constraints': a measurement, not a driver. */
+  redundant: 1 << 0,
+} as const
+
+// Rev 4 of the wire layout. The output gained the per-constraint verdicts (a
+// flag byte and an f32 miss per input constraint) plus their header count; the
+// input layout is unchanged from rev 3, whose scalars are f64 (rev 2 carried
+// f32, which quantized solved coordinates at ~6e-8 relative, 1e-5 to 1e-4 mm on
+// typical parts, far above OCCT's 1e-7 confusion). The magic IS the version
+// handshake: the layout evolved before (has_sign flag + trailing sign f32)
+// without moving these, so a stale js/wasm pairing decoded shifted offsets
+// instead of failing. Bump BOTH sides (these two and sketch-solver/src/codec.rs)
+// on any layout change. Invalidating stale cached payloads is acceptable and
+// safe post-wave-1: bundle-cache reads degrade to cold rebuilds.
 const MAGIC_IN = 0x33474b53  // "SKG3", little-endian on the wire
-const MAGIC_OUT = 0x33524b53  // "SKR3"
+const MAGIC_OUT = 0x34524b53  // "SKR4"
 
 export interface FlatEntity {
   kind: number
@@ -106,6 +116,12 @@ export interface SolverOutput {
   paramsSolved: number[]
   entityStatus: number[]
   overallStatus: number
+  /** Per-constraint verdict bits (`CONSTRAINT_FLAG.*`), index-aligned with the
+   *  constraint array that was encoded. Empty on the drag fast path. */
+  constraintFlags: number[]
+  /** Per-constraint miss as a fraction of the sketch scale, parallel to
+   *  `constraintFlags`. All zeros on a satisfied cold solve; empty on drag. */
+  constraintMiss: number[]
   diagnostics: { residualNorm: number; rank: number; dof: number; iters: number; ms: number }
 }
 
@@ -153,6 +169,12 @@ class ByteReader {
   f64(): number {
     const v = this.view.getFloat64(this.pos, true)
     this.pos += 8
+    return v
+  }
+
+  f32(): number {
+    const v = this.view.getFloat32(this.pos, true)
+    this.pos += 4
     return v
   }
 }
@@ -220,6 +242,7 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   const nParams = r.u32()
   const nStatus = r.u32()
   const vfLen = r.u32()
+  const nConstraintStatus = r.u32()
   const overallStatus = r.u8()
 
   const paramsSolved: number[] = []
@@ -230,6 +253,10 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   // it yet, so it is read past to keep the cursor aligned rather than decoded
   // into a field nobody reads.
   for (let i = 0; i < vfLen; i++) r.f64()
+  const constraintFlags: number[] = []
+  for (let i = 0; i < nConstraintStatus; i++) constraintFlags.push(r.u8())
+  const constraintMiss: number[] = []
+  for (let i = 0; i < nConstraintStatus; i++) constraintMiss.push(r.f32())
 
   const residualNorm = r.f64()
   const rank = r.u32()
@@ -241,6 +268,8 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
     paramsSolved,
     entityStatus,
     overallStatus,
+    constraintFlags,
+    constraintMiss,
     diagnostics: { residualNorm, rank, dof, iters, ms },
   }
 }

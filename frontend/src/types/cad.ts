@@ -868,7 +868,12 @@ export type ConstraintRender = SymbolRender | DimLinearRender | DimRadiusRender 
 export interface Constraint {
   render: ConstraintRender
   residual: number
+  /** The solve flagged this constraint as adding no rank beyond the others: a
+   *  measurement, not a driver. Rendered dimmed with the non-driver outline. */
   superfluous?: boolean
+  /** The solve blamed this constraint for a share of an unsatisfied sketch's
+   *  miss. Rendered in the deeper error red, on top of the all-red sketch. */
+  culprit?: boolean
 }
 
 export interface Constraints {

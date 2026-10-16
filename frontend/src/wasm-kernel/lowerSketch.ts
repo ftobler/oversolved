@@ -97,6 +97,11 @@ export interface LowerResult {
   input: FlatInput
   // Index-aligned entity layout, including the injected origin at the end.
   layout: EntityLayout[]
+  /** Doc constraint id per wire constraint, in the same order; null for the
+   *  implicit origin pin (no authored constraint owns it) and for a constraint
+   *  dict that carried no string id. The solver's per-constraint verdicts are
+   *  index-aligned with the wire, so this maps one back to its doc id. */
+  constraintIds: Array<string | null>
 }
 
 export interface LowerOptions {
@@ -221,9 +226,13 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
   }
 
   const constraints: FlatConstraint[] = []
+  const constraintIds: Array<string | null> = []
   for (const c of sk.constraints) {
     const lowered = lowerConstraint(c)
-    if (lowered) constraints.push(lowered)
+    if (lowered) {
+      constraints.push(lowered)
+      constraintIds.push(typeof c.id === 'string' ? c.id : null)
+    }
   }
 
   // Implicit origin pin, mirroring _solve_sketch's ORIGIN_FIX.
@@ -232,6 +241,7 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     refs: [{ role: Role.target, ref: { kind: 'entity', index: idToIndex.get(ORIGIN_ID)!, point: Sel.xy } }],
     xy: [0, 0],
   })
+  constraintIds.push(null)
 
   const input: FlatInput = {
     entities: flatEntities,
@@ -245,5 +255,5 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
       skipStatusPass: opts?.skipStatusPass ?? false,
     },
   }
-  return { input, layout }
+  return { input, layout, constraintIds }
 }
