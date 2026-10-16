@@ -218,11 +218,13 @@ install-npm:
     npm install 2>&1 | tee ../tmp/npm_install.log
 
 # wasm-pack is installed project-local so nothing leaks into ~/.cargo/bin.
+# --locked builds from wasm-pack's own Cargo.lock: a fresh resolve fails since
+# every zip 2.x (pulled in by binary-install) was yanked, a lockfile still may pin one.
 
 # Install the wasm build tool into tmp/tools.
 install-wasm:
     mkdir -p tmp
-    cargo install wasm-pack --root tmp/tools 2>&1 | tee tmp/cargo_install_wasm_pack.log
+    cargo install wasm-pack --version 0.15.0 --locked --root tmp/tools 2>&1 | tee tmp/cargo_install_wasm_pack.log
 
 [working-directory: "frontend"]
 install-occ:
