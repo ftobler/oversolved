@@ -237,7 +237,11 @@ pub struct Output {
     /// count for both). One value per constraint: the largest single-row Newton
     /// step its rows imply (see `solve::constraint_miss`). All zeros on a
     /// satisfied solve; empty on the drag fast path.
-    pub constraint_miss: Vec<f32>,
+    ///
+    /// f64, not the f32 a diagnostic could afford: the wire's single scalar
+    /// width is an invariant the repo greps for (no f32 on either codec), and
+    /// the extra bytes are bounded by the constraint count.
+    pub constraint_miss: Vec<f64>,
     pub diagnostics: Diagnostics,
 }
 

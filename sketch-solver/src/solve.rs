@@ -170,7 +170,7 @@ pub fn solve_sketch(input: &Input) -> Output {
     } else {
         (
             redundancy_flags(&problem, &params_solved, &jac, input.constraints.len()),
-            vec![0f32; input.constraints.len()],
+            vec![0f64; input.constraints.len()],
         )
     };
 
@@ -329,8 +329,8 @@ fn constraint_miss(
     jac: &DMatrix<f64>,
     scale: f64,
     n_wire: usize,
-) -> Vec<f32> {
-    let mut miss = vec![0f32; n_wire];
+) -> Vec<f64> {
+    let mut miss = vec![0f64; n_wire];
     let denom = if scale > 0.0 { scale } else { 1.0 };
     let wire = problem.constraint_wire_indices();
     let mut rows: Vec<f64> = Vec::new();
@@ -348,7 +348,7 @@ fn constraint_miss(
                 worst = worst.max(res.abs() / jn);
             }
         }
-        miss[wire[ci]] = (worst / denom) as f32;
+        miss[wire[ci]] = worst / denom;
         row0 += rows.len();
     }
     miss

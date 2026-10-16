@@ -47,14 +47,13 @@ function outputBytes(magic: number): Uint8Array {
   const constraintMiss = [0.5, 0, 0.125]
   const size = 4 + 4 + 4 + 4 + 4 + 1
     + params.length * 8 + entityStatus.length + vertexFreedom.length * 8
-    + constraintFlags.length + constraintMiss.length * 4
+    + constraintFlags.length + constraintMiss.length * 8
     + 8 + 4 + 4 + 4 + 8
   const buf = new ArrayBuffer(size)
   const dv = new DataView(buf)
   let pos = 0
   const u32 = (v: number) => { dv.setUint32(pos, v, true); pos += 4 }
   const u8 = (v: number) => { dv.setUint8(pos, v); pos += 1 }
-  const f32 = (v: number) => { dv.setFloat32(pos, v, true); pos += 4 }
   const f64 = (v: number) => { dv.setFloat64(pos, v, true); pos += 8 }
   u32(magic)
   u32(params.length)  // nParams
@@ -66,7 +65,7 @@ function outputBytes(magic: number): Uint8Array {
   for (const s of entityStatus) u8(s)
   for (const v of vertexFreedom) f64(v)
   for (const f of constraintFlags) u8(f)
-  for (const m of constraintMiss) f32(m)
+  for (const m of constraintMiss) f64(m)
   f64(1.25)  // residualNorm
   u32(5)  // rank
   u32(1)  // dof
@@ -144,7 +143,7 @@ describe.skipIf(!solveBytes)('sketch wire real-wasm round-trip', () => {
     expect(Math.abs(out.paramsSolved[2] - 10)).toBeLessThan(1e-3)
     expect(Math.abs(out.paramsSolved[3])).toBeLessThan(1e-3)
     expect(out.diagnostics.residualNorm).toBeLessThan(1e-4)
-    // Rev 4: one verdict byte and one f32 miss per constraint sent, all clean.
+    // Rev 4: one verdict byte and one miss per constraint sent, all clean.
     expect(out.constraintFlags).toEqual([0, 0, 0])
     expect(out.constraintMiss).toEqual([0, 0, 0])
   })

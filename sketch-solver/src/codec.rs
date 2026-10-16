@@ -60,7 +60,7 @@
 //! entity_status:  n_entities_status x u8
 //! vertex_freedom: vertex_freedom_len x f64
 //! constraint_flags: n_constraints_status x u8
-//! constraint_miss:  n_constraints_status x f32
+//! constraint_miss:  n_constraints_status x f64
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 
@@ -367,7 +367,7 @@ pub fn encode_output(out: &Output) -> Vec<u8> {
         w.u8(f);
     }
     for &m in &out.constraint_miss {
-        w.f32(m);
+        w.f64(m);
     }
     w.f64(out.diagnostics.residual_norm);
     w.u32(out.diagnostics.rank);
@@ -403,9 +403,9 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     for _ in 0..n_constraint_status {
         constraint_flags.push(r.u8()?);
     }
-    let mut constraint_miss = Vec::with_capacity(r.capacity_for(n_constraint_status, 4));
+    let mut constraint_miss = Vec::with_capacity(r.capacity_for(n_constraint_status, 8));
     for _ in 0..n_constraint_status {
-        constraint_miss.push(r.f32()?);
+        constraint_miss.push(r.f64()?);
     }
     let residual_norm = r.f64()?;
     let rank = r.u32()?;
@@ -602,8 +602,8 @@ mod tests {
             overall_status: 0,
             vertex_freedom: vec![-0.0, 1e6],
             constraint_flags: vec![crate::CONSTRAINT_FLAG_REDUNDANT, 0, 1],
-            // f32 by design (see the layout docs); bit-exact round trip of the
-            // f32 values the solver emits. Index-aligned with the flags above.
+            // Diagnostic fractions: 1.5 and 0.25 are exactly representable, and
+            // -0.0 pins that the encoder does not normalise the sign away.
             constraint_miss: vec![1.5, 0.25, -0.0],
             diagnostics: Diagnostics::default(),
         };
@@ -1137,8 +1137,8 @@ mod tests {
             decode_output(truncated),
             Err(CodecError::UnexpectedEof)
         ));
-        // Cutting into the f32 miss block fails on the f32 read instead: drop
-        // the trailing diagnostics (28 bytes) plus the last byte of the miss.
+        // Cutting into the miss block fails on the f64 read instead: drop the
+        // trailing diagnostics (28 bytes) plus the last byte of the miss.
         let miss_cut = &bytes[..bytes.len() - 28 - 1];
         assert!(matches!(
             decode_output(miss_cut),

@@ -66,7 +66,7 @@ export const CONSTRAINT_FLAG = {
 } as const
 
 // Rev 4 of the wire layout. The output gained the per-constraint verdicts (a
-// flag byte and an f32 miss per input constraint) plus their header count; the
+// flag byte and an f64 miss per input constraint) plus their header count; the
 // input layout is unchanged from rev 3, whose scalars are f64 (rev 2 carried
 // f32, which quantized solved coordinates at ~6e-8 relative, 1e-5 to 1e-4 mm on
 // typical parts, far above OCCT's 1e-7 confusion). The magic IS the version
@@ -171,12 +171,6 @@ class ByteReader {
     this.pos += 8
     return v
   }
-
-  f32(): number {
-    const v = this.view.getFloat32(this.pos, true)
-    this.pos += 4
-    return v
-  }
 }
 
 export function encodeInput(input: FlatInput): Uint8Array {
@@ -256,7 +250,7 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   const constraintFlags: number[] = []
   for (let i = 0; i < nConstraintStatus; i++) constraintFlags.push(r.u8())
   const constraintMiss: number[] = []
-  for (let i = 0; i < nConstraintStatus; i++) constraintMiss.push(r.f32())
+  for (let i = 0; i < nConstraintStatus; i++) constraintMiss.push(r.f64())
 
   const residualNorm = r.f64()
   const rank = r.u32()
