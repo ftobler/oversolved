@@ -14,6 +14,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { selectByPredicate } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
 import { resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
+import { topoFallbackQuery } from '@/utils/query/selectionId'
 import type { BodyResult } from '@/types/cad'
 
 const oc = await loadOcc()
@@ -107,15 +108,35 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     expect(measure!.volume).toBeCloseTo(1179.398223686155, 6)
   })
 
-  it('returns exactly the queries the picking path registers for the same edges', async () => {
+  it('returns exactly the queries the picking path registers for the same named edges', async () => {
     const bodies = await bodiesOf({ id: 'sel-click', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
     const body = firstBody(bodies)
-    const registered = resolveEdgeQueries(body.edges, body.edge_queries, body.id)
+    // All 12 box edges are named, so the picking path returns the kernel array
+    // by identity and the selector's whole-edge list is that same list, in order.
+    expect(resolveEdgeQueries(body.edges, body.edge_queries, body.id)).toBe(body.edge_queries)
+    const selected = selectByPredicate({ kind: 'edge' }, bodies).queries
+    expect(selected).toEqual(body.edge_queries)
+    expect(selected).toHaveLength(12)
+  })
+
+  it('cannot name an edge the kernel left unnamed, where a click stores a topo fallback', async () => {
+    const bodies = await bodiesOf({ id: 'sel-unnamed', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
+    const bodyId = Object.keys(bodies).sort()[0]
+    const body = bodies[bodyId]
+    // Poke the defensive-alignment gap: a short kernel query array. The picking
+    // path pads the missing slot with a body/index topo fallback, while the
+    // selector only ever returns kernel-named queries and so drops that edge.
+    // The divergence is the documented limit of selector output under a click.
+    const queries = [...(body.edge_queries ?? []).slice(0, -1), '']
+    const registered = resolveEdgeQueries(body.edges, queries, bodyId)
     expect(registered).not.toBeNull()
-    // All 12 box edges are named, so the picking path indexes the raw list; the
-    // selector's whole-edge list must be that same list, in the same order.
-    expect(selectByPredicate({ kind: 'edge' }, bodies).queries).toEqual(registered)
-    expect(registered).toHaveLength(12)
+    const fallback = topoFallbackQuery(bodyId, 'edge', queries.length - 1)
+    expect(registered![registered!.length - 1]).toBe(fallback)
+
+    const unnamed = { [bodyId]: { ...body, edge_queries: queries } }
+    const selected = selectByPredicate({ kind: 'edge' }, unnamed).queries
+    expect(selected).toHaveLength(11)
+    expect(selected).not.toContain(fallback)
   })
 
   it('the selected queries survive an upstream extrude-distance edit', async () => {
