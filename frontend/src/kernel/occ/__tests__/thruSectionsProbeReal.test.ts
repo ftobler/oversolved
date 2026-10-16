@@ -83,6 +83,33 @@ describe.skipIf(!oc)('ThruSections phase-1 probe (real OCC)', () => {
     return oc
   }
 
+  it('binds exactly one constructor and a one-argument AddWire', () => {
+    const module = setup()
+    const scope = new DisposeScope()
+    try {
+      // Exactly one constructor overload, under the plain class name (no
+      // `_1`/`_2` suffix like the classes with several bound ctors).
+      expect(Object.keys(module).filter((k) => k.includes('ThruSections'))).toEqual(['BRepOffsetAPI_ThruSections'])
+      const bottom = wireOf(module, scope, square(10), 0)
+      const top = wireOf(module, scope, square(6), 10)
+      // The bound constructor is the 3-argument form.
+      const maker = scope.track(new module.BRepOffsetAPI_ThruSections(true, true, 1e-6))
+      // AddWire takes no isClosing flag: the two-argument call is refused by
+      // embind before anything reaches the maker, so the one-argument form the
+      // adapter uses is the only one.
+      expect(() =>
+        (maker as unknown as { AddWire(w: OccShape, closing: boolean): void }).AddWire(bottom, false),
+      ).toThrow(/AddWire called with 2 arguments, expected 1/)
+      maker.AddWire(bottom)
+      maker.AddWire(top)
+      maker.Build()
+      expect(maker.IsDone()).toBe(true)
+      expect(canonicalFaces(module, scope, scope.track(maker.Shape()))).toHaveLength(6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('builds a ruled two-section loft with the frustum volume', () => {
     const module = setup()
     const scope = new DisposeScope()

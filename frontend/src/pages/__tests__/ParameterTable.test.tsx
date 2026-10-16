@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import ParameterTable from '@/pages/ParameterTable'
+import { isValidVariableName } from '@/kernel/features/variable'
 import type { ParameterRow } from '@/pages/partParameters'
 
 const rows: ParameterRow[] = [
@@ -67,9 +68,13 @@ describe('ParameterTable', () => {
     const { onMutation } = open()
     const name = screen.getByLabelText('Name of width')
     fireEvent.focus(name)
-    fireEvent.change(name, { target: { value: 'plate width' } })
+    // A variable's label is its reference name, so the doc layer silently drops
+    // a rename that is not a valid identifier: the test names one that is, so
+    // what it pins is a rename the app actually applies.
+    fireEvent.change(name, { target: { value: 'plate_width' } })
     fireEvent.blur(name)
-    expect(onMutation).toHaveBeenCalledWith({ type: 'rename_feature', featureId: 'v1', label: 'plate width' })
+    expect(isValidVariableName('plate_width')).toBe(true)
+    expect(onMutation).toHaveBeenCalledWith({ type: 'rename_feature', featureId: 'v1', label: 'plate_width' })
 
     const unit = screen.getByLabelText('Unit of width')
     onMutation.mockClear()
@@ -83,6 +88,30 @@ describe('ParameterTable', () => {
     const { onMutation } = open()
     fireEvent.change(screen.getByLabelText('Unit hint of height'), { target: { value: 'deg' } })
     expect(onMutation).toHaveBeenCalledWith({ type: 'set_variable_field', featureId: 'v2', field: 'unit', value: 'deg' })
+  })
+
+  it('abandons the draft when the document changes under the open field', () => {
+    const { onMutation, onClose, onAdd, rerender } = open()
+    const field = screen.getByLabelText('Expression of width') as HTMLInputElement
+    fireEvent.focus(field)
+    fireEvent.change(field, { target: { value: '30' } })
+    expect(field.value).toBe('30')
+
+    // The document changed under the open field (a solve landed, another view
+    // edited the variable). The doc wins: the field shows the stored value and
+    // the draft is abandoned rather than written over the new one.
+    rerender(
+      <ParameterTable
+        isOpen
+        rows={[{ ...rows[0], expression: '25' }, rows[1], rows[2]]}
+        onClose={onClose}
+        onMutation={onMutation}
+        onAdd={onAdd}
+      />,
+    )
+    expect((screen.getByLabelText('Expression of width') as HTMLInputElement).value).toBe('25')
+    fireEvent.blur(field)
+    expect(onMutation).not.toHaveBeenCalled()
   })
 
   it('abandons the draft on Escape instead of committing it', () => {

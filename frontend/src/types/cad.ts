@@ -88,8 +88,8 @@ export type DraftFeatureDef = {
   // Required; there is no stored default.
   neutral: string
   // The pull direction: an edge/face axis pick, oriented from the neutral plane
-  // into the body whatever way the pick points. Empty means the neutral plane's
-  // own normal, oriented the same way.
+  // toward the body's bounding-box centre (the pick's own sign is ignored).
+  // Empty means the neutral plane's own normal, oriented the same way.
   direction?: string
 }
 

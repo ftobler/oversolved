@@ -8,8 +8,17 @@
 //     constructor path; `gp_Pln_3(point, direction)` is the bound plane
 //     constructor (there is no declared `gp_Pln` point-and-direction alias).
 //   - `Add(face, direction, angleRadians, neutralPlane, flag)` is the 5-argument
-//     form; `AddDone()` precedes `Build()`. The flag changes nothing on the
-//     analytic cases (it only tells the maker how hard to check the face).
+//     form; it returns NOTHING, and `AddDone()` is the per-pick verdict: true
+//     when every pick so far is usable, false when the maker recorded the last
+//     pick as its bad shape, with no throw either way. `AddDone()` must precede
+//     `Build()` (it is called after every pick here). The flag changes nothing
+//     on the analytic cases (it only tells the maker how hard to check the face).
+//   - A pick the neutral plane does not touch is NOT reported by `Add`: the
+//     maker records it internally (`Draft_Modification::InternalAdd` sets its
+//     bad shape and returns false) and `AddDone()` answers false. Every LATER
+//     `Add` then throws `Standard_ConstructionError`, as does `Build()`
+//     (`Perform`), so the first bad pick is also the last one a caller can
+//     judge: there is no per-face throw and no partial draft.
 //   - History: a DRAFTED face is `Generated()` into its tilted image and
 //     reports neither `Modified` nor `IsDeleted`; its neighbours (the faces
 //     whose boundary the tilt moved) are `Modified()`; a face the draft does
@@ -151,7 +160,7 @@ describe.skipIf(!oc)('DraftAngle phase-1 probe (real OCC)', () => {
     }
   })
 
-  it('drafting a face the neutral plane does not touch fails at the build, not at Add', () => {
+  it('answers AddDone false for a pick the neutral plane does not touch, and poisons every later Add', () => {
     const module = setup()
     const scope = new DisposeScope()
     try {
@@ -162,17 +171,43 @@ describe.skipIf(!oc)('DraftAngle phase-1 probe (real OCC)', () => {
       const pln = scope.track(new module.gp_Pln_3(pnt, dir))
       maker.Init(box)
       // The top face is parallel to the neutral plane and does not touch it, so
-      // the draft has no intersection line to rotate about. `Add` accepts it
-      // (nothing is validated there); the failure surfaces when the accumulated
-      // draft is processed, as an OCC error the caller sees as a throw. The leaf
-      // therefore treats a build-level failure as a red feature, not as a
-      // per-face refusal.
+      // the draft has no intersection line to rotate about.
       const top = zFace(module, scope, box, 10)
-      maker.Add(top, dir as unknown as OccShape, (10 * Math.PI) / 180, pln as unknown as OccShape, true)
-      expect(() => {
-        maker.AddDone()
-        maker.Build()
-      }).toThrow()
+      const side = xSides(module, scope, box)[0]
+      // Add itself reports nothing (it returns undefined) and does not throw.
+      expect(() => maker.Add(top, dir as unknown as OccShape, (10 * Math.PI) / 180, pln as unknown as OccShape, true)).not.toThrow()
+      // AddDone is the verdict: the maker recorded this pick as its bad shape.
+      expect(maker.AddDone()).toBe(false)
+      // From here every later Add throws, so the bad pick is also the last one a
+      // caller can judge.
+      expect(() => maker.Add(side, dir as unknown as OccShape, (10 * Math.PI) / 180, pln as unknown as OccShape, true)).toThrow()
+      expect(() => maker.Build()).toThrow()
+      expect(maker.IsDone()).toBe(false)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('answers AddDone true for every usable pick, and lets Build run', () => {
+    const module = setup()
+    const scope = new DisposeScope()
+    try {
+      const box = scope.track(new module.BRepPrimAPI_MakeBox_1(10, 10, 10).Shape())
+      const maker = scope.track(new module.BRepOffsetAPI_DraftAngle_1())
+      const dir = scope.track(new module.gp_Dir_4(0, 0, 1))
+      const pnt = scope.track(new module.gp_Pnt_3(0, 0, 0))
+      const pln = scope.track(new module.gp_Pln_3(pnt, dir))
+      maker.Init(box)
+      const sides = xSides(module, scope, box)
+      // Per-pick AddDone is not destructive in this build: both picks apply and
+      // the volume is the two-sided draft, not the one-sided one.
+      for (const side of sides) {
+        maker.Add(side, dir as unknown as OccShape, (10 * Math.PI) / 180, pln as unknown as OccShape, true)
+        expect(maker.AddDone()).toBe(true)
+      }
+      maker.Build()
+      expect(maker.IsDone()).toBe(true)
+      expect(volumeOf(module, scope, scope.track(maker.Shape()))).toBeCloseTo(823.673019291535, 6)
     } finally {
       scope.dispose()
     }

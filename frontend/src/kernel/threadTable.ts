@@ -7,9 +7,11 @@
 // bore the user authored, and the table only says what thread the bore is for.
 //
 // Tap drills are the published values for the coarse series (nominal minus
-// pitch for the metric sizes, the standard inch sizes for the unified ones),
-// not a formula: the standard is the data, and the table's own test pins the
-// invariant that a tap drill is smaller than its nominal.
+// pitch for the metric sizes; the standard inch drills, e.g. #7 for 1/4-20 and
+// #3 for 1/4-28, converted to millimetres for the unified ones), not a formula:
+// the standard is the data, and the table's own test pins the published drill of
+// a representative row per series as well as the invariant that a tap drill is
+// smaller than its nominal.
 
 export type ThreadSystem = 'metric' | 'unc' | 'unf'
 
@@ -33,12 +35,12 @@ export const THREAD_TABLE: readonly ThreadEntry[] = [
   { designation: 'M8x1.25', system: 'metric', nominal: 8, pitch: 1.25, tapDrill: 6.8 },
   { designation: 'M10x1.5', system: 'metric', nominal: 10, pitch: 1.5, tapDrill: 8.5 },
   { designation: 'M12x1.75', system: 'metric', nominal: 12, pitch: 1.75, tapDrill: 10.2 },
-  { designation: '1/4-20 UNC', system: 'unc', nominal: 6.35, pitch: 1.27, tapDrill: 5.1 },
-  { designation: '5/16-18 UNC', system: 'unc', nominal: 7.9375, pitch: 1.4111, tapDrill: 6.53 },
-  { designation: '3/8-16 UNC', system: 'unc', nominal: 9.525, pitch: 1.5875, tapDrill: 7.94 },
-  { designation: '1/4-28 UNF', system: 'unf', nominal: 6.35, pitch: 0.9071, tapDrill: 5.49 },
-  { designation: '5/16-24 UNF', system: 'unf', nominal: 7.9375, pitch: 1.0583, tapDrill: 6.91 },
-  { designation: '3/8-24 UNF', system: 'unf', nominal: 9.525, pitch: 1.0583, tapDrill: 8.43 },
+  { designation: '1/4-20 UNC', system: 'unc', nominal: 6.35, pitch: 1.27, tapDrill: 5.1054 },
+  { designation: '5/16-18 UNC', system: 'unc', nominal: 7.9375, pitch: 1.4111, tapDrill: 6.5278 },
+  { designation: '3/8-16 UNC', system: 'unc', nominal: 9.525, pitch: 1.5875, tapDrill: 7.9375 },
+  { designation: '1/4-28 UNF', system: 'unf', nominal: 6.35, pitch: 0.9071, tapDrill: 5.4102 },
+  { designation: '5/16-24 UNF', system: 'unf', nominal: 7.9375, pitch: 1.0583, tapDrill: 6.9088 },
+  { designation: '3/8-24 UNF', system: 'unf', nominal: 9.525, pitch: 1.0583, tapDrill: 8.4328 },
 ]
 
 const BY_DESIGNATION = new Map(THREAD_TABLE.map((entry) => [entry.designation, entry]))

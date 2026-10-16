@@ -234,10 +234,11 @@ end cap, whatever their world positions.
     direction: "?query;...:straightedge"  # pull axis, optional
 ```
 
-The pull direction points from the neutral plane into the body whatever way the
-pick points (empty means the neutral plane's own normal, oriented the same way),
-so a positive `angle` always recedes along the pull direction away from the
-neutral plane (material comes off) and a negative angle grows the part.
+The pull direction is oriented from the neutral plane toward the body's
+bounding-box centre, so the pick's own sign is ignored and a positive `angle`
+always recedes along the pull direction away from the neutral plane (material
+comes off) while a negative angle grows the part. An empty `direction` uses the
+neutral plane's own normal, oriented the same way.
 
 ### move_face
 

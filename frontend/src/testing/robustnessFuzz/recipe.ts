@@ -14,8 +14,11 @@
 import { makePrng } from '@/hooks/__tests__/fuzzHarness'
 import { threadDesignations } from '@/kernel/threadTable'
 
-// The thread designations a fuzz hole is drawn from: the whole table, so every
-// entry's metadata path is exercised across the seed range.
+// The thread designations a fuzz hole's cosmetic thread is picked from. The
+// pick is derived from the already-drawn face index (0..3), so the sweep
+// exercises the first four entries (M2x0.4 .. M4x0.7), not the whole table: the
+// threaded PATH is what this step covers, and the table's rows are pinned by its
+// own test plus the M6x1 leaf and oracle cases.
 const DESIGNATIONS = threadDesignations()
 
 // Every placement and size is authored in grid steps and emitted in mm, so the
@@ -313,8 +316,9 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
         // The cosmetic thread is derived from the already-drawn face index, so
         // the generator consumes no extra randomness: every seed's chain stays
         // byte-identical to the pre-thread generator and the pinned findings
-        // keep their seeds. Plain bores are covered by the leaf and oracle
-        // tests; the sweep's job here is the threaded path.
+        // keep their seeds. That index is drawn 0..3, so only the table's first
+        // four designations appear here (see DESIGNATIONS above); plain bores
+        // are covered by the leaf and oracle tests.
         thread: DESIGNATIONS[face % DESIGNATIONS.length],
       }
     }

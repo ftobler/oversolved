@@ -210,9 +210,12 @@ export interface OccThruSectionsMaker extends OccModifierHistory {
 /**
  * BRepOffsetAPI_DraftAngle: tilt picked faces about their intersection with a
  * neutral plane. `Init(shape)` seeds the maker; `Add(face, direction, angle,
- * neutralPlane, flag)` adds one drafted face in RADIANS (the `_1` ctor and the
- * 5-argument Add are the bound forms; pinned by draftAngleProbeReal.test.ts).
- * `AddDone()` must follow the Add calls and precede `Build`.
+ * neutralPlane, flag)` adds one drafted face in RADIANS and reports NOTHING (the
+ * `_1` ctor and the 5-argument Add are the bound forms; pinned by
+ * draftAngleProbeReal.test.ts). `AddDone()` is the per-pick verdict: it answers
+ * true when every pick so far is usable and false when the maker recorded the
+ * last one as its bad shape, without throwing; it must be called before
+ * `Build()`. Once a bad shape is recorded, every later `Add` and `Build` throws.
  *
  * History: a DRAFTED face is `Generated()` into its new tilted face (its old
  * self is gone), a face whose geometry the draft changed because it borders a
@@ -227,7 +230,7 @@ export interface OccDraftAngleMaker extends OccModifierHistory {
   // OccShape doubles as the argument alias for such proxies, but reading them as
   // shapes would be a lie the type system should not tell.
   Add(face: OccShape, direction: OccDisposable, angle: number, neutralPlane: OccDisposable, flag: boolean): void
-  AddDone(): void
+  AddDone(): boolean
   Build(): void
   IsDone(): boolean
   Shape(): OccShape

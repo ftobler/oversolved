@@ -222,27 +222,38 @@ describe.skipIf(!oc)('solveDraft leaf (real OCC)', () => {
     }
   })
 
-  it('a face the neutral plane does not touch fails the whole build with a message', () => {
+  it('refuses a pick the neutral plane does not touch, naming that pick and no other', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
       const bodyStore = boxBody(scope, table)
       const body = bodyStore.body_b
-      const top = sideFace(scope, table, body, 2, 'max')
-      let threw: unknown = null
-      try {
-        solveDraft(
-          occ, scope, table,
-          draftFeature({ faces: [faceQuery(top)] }),
-          repoWithNeutral(), bodyStore,
-        )
-      } catch (e) {
-        threw = e
+      const good = sideFace(scope, table, body, 0, 'min')
+      const bad = sideFace(scope, table, body, 2, 'max')
+      const badQuery = faceQuery(bad)
+      const goodQuery = faceQuery(good)
+      // Both orders: the maker records the FIRST bad pick as its bad shape and
+      // refuses every later Add, so the refusal must name the bad pick whether
+      // it came first or last. (A buggy per-face catch blamed the pick after
+      // the bad one, which is the good one here.)
+      for (const [first, second] of [[goodQuery, badQuery], [badQuery, goodQuery]] as const) {
+        const before = volumeOf(occ, scope, table.get<OccShape>(body.shape!))
+        let threw: unknown = null
+        try {
+          solveDraft(occ, scope, table, draftFeature({ faces: [first, second] }), repoWithNeutral(), bodyStore)
+        } catch (e) {
+          threw = e
+        }
+        expect(threw).not.toBeNull()
+        const message = (threw as Error).message
+        expect(message).toMatch(/^draft: the draft cannot be applied to /)
+        expect(message).toContain(badQuery)
+        expect(message).not.toContain(goodQuery)
+        // Nothing was applied: the body is untouched, not partially drafted.
+        expect(body.modified_by).toEqual([])
+        expect(body.brep_diff).toBeNull()
+        expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeCloseTo(before, 9)
       }
-      expect(threw).not.toBeNull()
-      expect((threw as Error).message).toMatch(/^draft: /)
-      expect(body.modified_by).toEqual([])
-      expect(body.brep_diff).toBeNull()
     } finally {
       scope.dispose()
     }

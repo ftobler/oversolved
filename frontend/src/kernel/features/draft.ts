@@ -5,12 +5,14 @@
 // from picks (a datum plane or planar face for the neutral, an edge/face axis or
 // the neutral's own normal for the pull).
 //
-// The pull direction is oriented FROM the neutral plane INTO the body whatever
-// way the pick points, so the sign of `angle` means one thing always: positive
-// recedes along the pull direction away from the neutral plane (material comes
-// off), negative grows the part. A face the kernel refuses (Add throws, e.g. its
-// neutral intersection is ill-defined) is reported in failed_faces and the other
-// picks still build; a pick that resolves to no current face is unresolved_faces.
+// The pull direction is oriented from the neutral plane toward the body's
+// bounding-box centre (the pick's own sign is ignored), so the sign of `angle`
+// means one thing always: positive recedes along the pull direction away from
+// the neutral plane (material comes off), negative grows the part. A pick the
+// kernel cannot draft is a loud refusal naming that pick: the maker records it
+// as its bad shape and refuses every later pick and the build itself, so there
+// is no partial draft. A pick that resolves to no current face is
+// unresolved_faces and the resolved picks still build.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
@@ -36,9 +38,6 @@ interface DraftResult {
   // Query strings that matched no current face (a stale pick): re-picking is the
   // fix. Only on a partial result.
   unresolved_faces?: string[]
-  // Query strings whose face resolved but the kernel refused to draft: the pick
-  // itself is the problem. Only on a partial result.
-  failed_faces?: string[]
   exception?: string
 }
 
@@ -143,17 +142,17 @@ export function solveDraft(
     oc, scope, oldShape, topoFaces, angle, pull, neutral, featureId, oldNames,
   )
 
-  // Map the refused faces back to every query that named them; a query already
-  // reported unresolved must not be flagged twice.
-  const failed: string[] = []
-  const resolvedQueries = new Set([...byQuery].filter(([, f]) => f !== null).map(([q]) => q))
-  for (const f of res.refused) {
-    for (const q of queriesOfFace.get(f) ?? []) {
-      if (resolvedQueries.has(q)) failed.push(q)
-    }
-  }
-
   if (!res.success) {
+    // A refused pick is named by every query that resolved to it. Every query
+    // in `refused` resolved (an unresolved query never reaches the adapter), so
+    // no filter is needed here.
+    const refused = res.refused.flatMap((f) => queriesOfFace.get(f) ?? [])
+    if (refused.length > 0) {
+      throw new Error(
+        `draft: the draft cannot be applied to ${[...new Set(refused)].join(', ')}; ` +
+        'adjust the angle, the neutral plane or the pick',
+      )
+    }
     throw new Error(`draft: ${res.reason ?? 'unknown failure'}`)
   }
 
@@ -162,17 +161,13 @@ export function solveDraft(
   body.brep_diff = res.diff
   body.modified_by.push(featureId)
 
-  if (unresolved.length > 0 || failed.length > 0) {
-    const parts: string[] = []
-    if (unresolved.length > 0) parts.push(`${unresolved.length} face(s) could not be resolved`)
-    if (failed.length > 0) parts.push(`${failed.length} face(s) could not be drafted`)
+  if (unresolved.length > 0) {
     return {
       status: 'partial',
       body_id: bodyIds[0],
       body_ids: bodyIds,
       unresolved_faces: [...new Set(unresolved)],
-      failed_faces: [...new Set(failed)],
-      exception: `draft: ${parts.join('; ')}`,
+      exception: `draft: ${unresolved.length} face(s) could not be resolved`,
     }
   }
   return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds }

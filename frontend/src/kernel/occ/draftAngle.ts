@@ -6,7 +6,13 @@
 // real OCCT 7.4.0p1 build:
 //   - `new BRepOffsetAPI_DraftAngle_1()` + `Init(shape)` is the bound
 //     constructor path; `Add(face, gp_Dir, angleRadians, gp_Pln, flag)` is the
-//     5-argument form and `AddDone()` must precede `Build()`.
+//     5-argument form, which returns nothing, and `AddDone()` is the per-pick
+//     verdict: true when every pick so far is usable, false when the maker
+//     recorded the last pick as its bad shape (no throw either way).
+//   - Once a bad shape is recorded, every LATER `Add` and the final `Build()`
+//     throw `Standard_ConstructionError` (Draft_Modification::Add / Perform), so
+//     the first bad pick is also the last one the caller can judge. There is no
+//     per-face throw and no partial draft: a refused pick is a loud refusal.
 //   - A DRAFTED face is `Generated()` into its tilted image (its old self is
 //     gone and reports neither Modified nor IsDeleted), a face whose geometry
 //     the draft changed because it borders a drafted face is `Modified()`, and
@@ -14,9 +20,6 @@
 //   - A box's +x and -x faces, drafted +10 degrees with the neutral plane at
 //     z=0 and the pull direction +z, give V = 823.673 on a 10-cube (one face
 //     gives 911.837): a POSITIVE angle recedes along the pull direction.
-//   - `Add` throws per face for a pick the draft cannot use, so a face the
-//     kernel refuses is reported (failed), not fatal, as long as one pick
-//     builds.
 //
 // Names are construction-based: a tilted face mints
 // `<createdBy>|draft|<sourceFaceUuid>`, every other face carries its old UUID
@@ -61,7 +64,8 @@ export interface DraftResult {
   names: NewNames | null
   diff: BrepDiff
   // The resolved input faces the maker accepted (their output image is the
-  // tilted face) and refused, in input order.
+  // tilted face), and the pick the maker rejected: at most ONE refused face,
+  // because a recorded bad shape poisons every later Add and the build itself.
   accepted: OccShape[]
   refused: OccShape[]
 }
@@ -111,16 +115,26 @@ export function applyDraftWithLineage(
       try {
         maker.Add(face as OccShape, dir, radians(angleDeg), pln, true)
       } catch {
-        // The draft cannot use this face (its intersection with the neutral
-        // plane is ill-defined, or it is parallel to the pull direction). The
-        // leaf reports it as a failed pick; the other faces still build.
+        // Add throws only once the maker holds a bad shape (which this loop
+        // stops at) or for an input it cannot use at all; either way nothing
+        // can build, so blame this pick and stop.
         refused.push(face)
-        continue
+        break
+      }
+      // The per-pick verdict. Add returns nothing in this build; AddDone
+      // answers false when the maker recorded THIS pick as its bad shape.
+      if (!maker.AddDone()) {
+        refused.push(face)
+        break
       }
       accepted.push(face)
     }
+    if (refused.length > 0) {
+      // A recorded bad shape makes Build throw, so a refusal is a loud refusal
+      // naming the pick, never a partial with the other picks applied.
+      return fail(shape, 'the draft cannot be applied to a picked face', accepted, refused)
+    }
     if (accepted.length === 0) return fail(shape, 'no_accepted_faces', accepted, refused)
-    maker.AddDone()
     maker.Build()
     if (!maker.IsDone()) return fail(shape, 'build_not_done', accepted, refused)
   } catch (e) {
