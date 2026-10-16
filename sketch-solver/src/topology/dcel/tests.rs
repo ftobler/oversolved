@@ -581,6 +581,73 @@ fn near_tangent_lines_to_an_ellipse_close_the_side_regions() {
 }
 
 #[test]
+fn a_concave_container_keeps_a_nested_face_as_its_hole() {
+    // The nesting fix end to end: a small C-shaped traced face inside a big
+    // one, plus a circle in the notch. The small C's centroid sits in its own
+    // mouth, which the big C's mouth also covers, so the centroid-only test
+    // dropped the hole; the circle is genuinely outside both and stays its own
+    // face. The two C outlines share no edge and no vertex, so the DCEL sees
+    // three clean loops.
+    let outline = |pts: &[[f64; 2]], prefix: &str| {
+        (0..pts.len())
+            .map(|i| {
+                (
+                    format!("{prefix}{i}"),
+                    line(pts[i], pts[(i + 1) % pts.len()]),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let big = outline(
+        &[
+            [0.0, 0.0],
+            [0.0, 12.0],
+            [12.0, 12.0],
+            [12.0, 8.0],
+            [4.0, 8.0],
+            [4.0, 4.0],
+            [12.0, 4.0],
+            [12.0, 0.0],
+        ],
+        "big",
+    );
+    let small = outline(
+        &[
+            [1.5, 1.0],
+            [1.5, 11.0],
+            [10.5, 11.0],
+            [10.5, 9.0],
+            [3.5, 9.0],
+            [3.5, 3.0],
+            [10.5, 3.0],
+            [10.5, 1.0],
+        ],
+        "small",
+    );
+    let mut geom = big;
+    geom.extend(small);
+    geom.push(("disc".into(), circle([8.0, 6.0], 1.0)));
+
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 3, "big C, small C and the disc");
+    let with_hole: Vec<_> = t.surfaces.iter().filter(|s| !s.holes.is_empty()).collect();
+    assert_eq!(with_hole.len(), 1, "only the big C carries a hole");
+    assert!(
+        with_hole[0]
+            .face_entity_ids
+            .iter()
+            .all(|id| id.starts_with("big")),
+        "the hole belongs to the big C's face"
+    );
+    assert!(
+        with_hole[0].holes[0]
+            .iter()
+            .all(|e| e.id.as_deref().is_some_and(|id| id.starts_with("small"))),
+        "the hole is the small C's loop"
+    );
+}
+
+#[test]
 fn a_crossing_survives_a_foot_that_lies_off_the_segment() {
     // The collapse must never cost a real root. A line running from just past
     // the foot of its own perpendicular to beyond the rim crosses the circle
