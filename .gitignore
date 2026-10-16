@@ -48,6 +48,7 @@ scratch/
 # Agent git worktrees. The tracked .claude/settings.json must stay visible, so
 # only the per-agent worktree checkouts are ignored.
 .claude/worktrees/
+.worktrees/
 
 *.log
 # Real-doc parity anchors (4b.5): gitignored, best-effort/skip-on-failure
