@@ -128,6 +128,12 @@ describe('selectByPredicate: direction predicates', () => {
     const out = queriesOf({ kind: 'face', where: { perpendicular: [0, 0, 1] } }, box())
     expect(out).toHaveLength(4)
   })
+
+  it('a zero axis matches nothing at the engine level', () => {
+    // validateSelector rejects this at the MCP boundary, but the engine is
+    // callable directly; a degenerate direction is never perpendicular.
+    expect(() => queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 0] } }, box())).toThrow(SelectorError)
+  })
 })
 
 describe('selectByPredicate: type and radius', () => {
@@ -313,6 +319,15 @@ describe('validateSelector', () => {
     expect(() => validateSelector({ kind: 'edge', typo: 1 })).toThrow(/unknown key "typo"/)
     expect(() => validateSelector({ kind: 'vertex' })).toThrow(/kind must be/)
     expect(() => validateSelector({ kind: 'edge', where: { parallel: [0, 0] } })).toThrow(/three finite numbers/)
+  })
+
+  it('rejects a zero axis wherever an axis is taken', () => {
+    // A zero axis has a zero dot against every direction, so `perpendicular`
+    // would match everything; the boundary must refuse it by field name.
+    expect(() => validateSelector({ kind: 'edge', where: { parallel: [0, 0, 0] } })).toThrow(/non-zero axis/)
+    expect(() => validateSelector({ kind: 'edge', where: { perpendicular: [0, 0, 0] } })).toThrow(/non-zero axis/)
+    expect(() => validateSelector({ kind: 'edge', where: { extreme: { axis: [0, 0, 0], side: 'max' } } }))
+      .toThrow(/non-zero axis/)
   })
 
   it('rejects a predicate object with two keys', () => {

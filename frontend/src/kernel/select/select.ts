@@ -36,12 +36,18 @@ export interface EvalContext {
   from?: string
 }
 
+function isZero(v: Vec3): boolean {
+  return v[0] === 0 && v[1] === 0 && v[2] === 0
+}
+
 function isParallel(a: Vec3 | null, axis: Vec3): boolean {
-  return a !== null && Math.abs(dot(a, axis)) > 1 - DIRECTION_EPS
+  return a !== null && !isZero(a) && Math.abs(dot(a, axis)) > 1 - DIRECTION_EPS
 }
 
 function isPerpendicular(a: Vec3 | null, axis: Vec3): boolean {
-  return a !== null && Math.abs(dot(a, axis)) < DIRECTION_EPS
+  // A zero direction or a zero axis has a zero dot against everything, which the
+  // `<` test would read as perpendicular to all: refuse both.
+  return a !== null && !isZero(a) && !isZero(axis) && Math.abs(dot(a, axis)) < DIRECTION_EPS
 }
 
 function radiusMatches(value: number | null, test: RadiusTest): boolean {

@@ -33,6 +33,11 @@ function vec3(v: unknown, path: string): Vec3 {
   if (!Array.isArray(v) || v.length !== 3 || !v.every(n => typeof n === 'number' && Number.isFinite(n))) {
     throw new SelectorError(`${path} must be three finite numbers`)
   }
+  // A zero axis is degenerate: the dot product with every direction is zero, so
+  // a perpendicular test would match everything. Refuse it at the boundary.
+  if (v[0] === 0 && v[1] === 0 && v[2] === 0) {
+    throw new SelectorError(`${path} must be a non-zero axis`)
+  }
   return [v[0], v[1], v[2]]
 }
 
