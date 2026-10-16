@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSketchEditorStore, useSketchUiStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { evalExpr } from '@/kernel/evalExpr'
-import { COLOR_CONSTRAINT } from '@/utils/geometry/sketchHelpers'
-import { COLOR_SELECTED, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
+import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM } from '@/utils/geometry/sketchHelpers'
+import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
 import { useDimDispatchRegistration } from './useDimDispatchRegistration'
 import type { PlaneTransform } from '@/types/cad'
@@ -26,6 +26,12 @@ export interface DimInteraction {
   entityId: string
   constraintId: string
   promptLabel: string
+  /** The solve flagged this constraint redundant: its label drops to the
+   *  dimmed amber (a measurement, not a driver). */
+  redundant?: boolean
+  /** The solve blamed this constraint for an unsatisfied sketch's miss: its
+   *  label takes the deeper error red, on top of the all-red sketch. */
+  culprit?: boolean
 }
 
 export function useDimInteraction(
@@ -111,7 +117,14 @@ export function useDimInteraction(
   const selKey = interaction ? `constraint:${interaction.featureId}:${cid}` : null
   const selected = useSketchEditorStore(s => selKey ? s.normalSelection.has(selKey) : false)
 
-  const color = selected ? COLOR_SELECTED : hovered ? '#ffffff' : COLOR_CONSTRAINT
+  // Solve verdicts only tint the idle state: selection and hover still own the
+  // label while the user is acting on it (they answer "what am I doing", the
+  // verdict answers "what did the solve find").
+  const color = selected ? COLOR_SELECTED
+    : hovered ? '#ffffff'
+    : interaction?.culprit ? COLOR_ERROR_DEEP
+    : interaction?.redundant ? COLOR_CONSTRAINT_DIM
+    : COLOR_CONSTRAINT
   return { hovered, selected, color, onOver, onOut, onClick, onDoubleClick, resetDragMoved, isDragged }
 }
 
