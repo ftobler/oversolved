@@ -107,7 +107,7 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     setSketchSolver(solveBytes)
   })
 
-  /** The body shape of `featureId`'s checkpoint, for a geometric read. */
+  // The body shape of `featureId`'s checkpoint, for a geometric read.
   function bodyShape(r: BuildResponse, featureId: string, bodyId: string): OccShape {
     const ckp = r._build_state!.checkpoints[featureId]
     return h.table.get<OccShape>(ckp.body_store_snapshot[bodyId].shape!)
@@ -121,10 +121,10 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     try { return canonicalFaces(occ, scope, bodyShape(r, featureId, bodyId)).length } finally { scope.dispose() }
   }
 
-  /** A 20x20x10 plain box document. */
+  // A 20x20x10 plain box document.
   const boxSpec = (): { features: Dict[] } => ({ features: [rectSketch('sk1', 20, 20), extrude('ex1', '$sk1', 10)] })
 
-  /** The box, then a blind r2 d5 hole at (10,10). */
+  // The box, then a blind r2 d5 hole at (10,10).
   const holedSpec = (): { features: Dict[] } => ({
     features: [
       rectSketch('sk1', 20, 20),
@@ -134,7 +134,7 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     ],
   })
 
-  /** The bore wall + floor queries of a solved holed body. */
+  // The bore wall + floor queries of a solved holed body.
   function holeFaces(r: BuildResponse, bodyId = 'body_ex1'): { bore: string; floor: string } {
     const mesh = meshOf(h, r, bodyId)
     const bore = queryByType(mesh, 'cylinderface')

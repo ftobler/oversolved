@@ -45,7 +45,7 @@ import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
 /** One connected group of picked faces that the operator refused, with its reason. */
 export interface FailedDefeatureGroup {
-  /** Indices into the `faces` argument, ascending; the group's faces. */
+  // Indices into the `faces` argument, ascending; the group's faces.
   faceIndices: number[]
   reason: string
 }
@@ -55,8 +55,8 @@ export interface DefeatureResult {
   names: NewNames | null
   diff: BrepDiff
   failedGroups: FailedDefeatureGroup[]
-  /** True when at least one group's faces were actually removed. When false,
-   *  `shape` is the UNCHANGED input (the caller must not re-register it). */
+  // True when at least one group's faces were actually removed. When false,
+  // `shape` is the UNCHANGED input (the caller must not re-register it).
   applied: boolean
 }
 

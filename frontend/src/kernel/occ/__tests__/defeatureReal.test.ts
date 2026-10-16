@@ -61,7 +61,7 @@ describe.skipIf(!oc)('defeature phase-0 probe (real OCC)', () => {
 
   const cylinderFaces = (scope: DisposeScope, s: OccShape): OccShape[] =>
     facesOf(scope, s).filter((f) => faceType(scope, f) === 'cylinderface')
-  /** The one planar face whose centroid is exactly `c`. */
+  // The one planar face whose centroid is exactly `c`.
   const planarFaceAt = (scope: DisposeScope, s: OccShape, c: Vec3): OccShape =>
     facesOf(scope, s).find(
       (f) => faceType(scope, f) === 'flatface' && c.every((v, i) => Math.abs(centroid(scope, f)[i] - v) < 1e-6),
@@ -69,7 +69,7 @@ describe.skipIf(!oc)('defeature phase-0 probe (real OCC)', () => {
   const planarFacesAtZ = (scope: DisposeScope, s: OccShape, z: number): OccShape[] =>
     facesOf(scope, s).filter((f) => faceType(scope, f) === 'flatface' && Math.abs(centroid(scope, f)[2] - z) < 1e-6)
 
-  /** The 20x20x10 base box (V = 4000), untracked as the primitives contract. */
+  // The 20x20x10 base box (V = 4000), untracked as the primitives contract.
   const box = (scope: DisposeScope): OccShape => makeBox(OCC, scope, 20, 20, 10)
 
   const verticalEdges = (scope: DisposeScope, s: OccShape): OccShape[] =>

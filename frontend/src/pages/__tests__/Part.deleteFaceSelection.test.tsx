@@ -10,7 +10,6 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { useEditorState } from '@/hooks/useEditorState'
 
