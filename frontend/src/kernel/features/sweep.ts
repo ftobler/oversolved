@@ -21,6 +21,8 @@ import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage } from '../occ/prismLineage'
 import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, type Vec3 } from '../occ/primitives'
+import { buildCurveEdge } from '../occ/helixEdge'
+import { descriptorFromRepo } from './helix'
 import { stripRefSigil } from '@/utils/refSigil'
 
 type Dict = Record<string, unknown>
@@ -469,6 +471,17 @@ export function collectPathEdges(
   return [spineEdges, firstSketchId]
 }
 
+/** The helix id a path ref names, when its bare id carries a `_curve_`
+ *  descriptor. A helix path is real 3D geometry, not sketch topology, so it
+ *  takes a separate arm in path resolution. */
+function helixPathRef(ref: string, globalRepo: Repository): string | null {
+  let id = ref
+  if (id.startsWith('@')) id = id.slice(1).split('/')[0]
+  else if (id.startsWith('$')) id = id.slice(1)
+  else return null
+  return globalRepo.elements.get('_curve_' + id) !== undefined ? id : null
+}
+
 /** Solve a sweep feature into the body store (mirrors `_solve_sweep`). */
 export function solveSweep(
   oc: OccModule,
@@ -607,15 +620,38 @@ export function solveSweep(
   }
   if (allLoops.length === 0) throw new Error('sweep: no closed profile found')
 
-  const [spineEdges] = collectPathEdges(oc, scope, pathRefs, globalRepo)
+  // A curve path (a helix) is built from its descriptor; a sketch path keeps
+  // the existing topology route. In v1 a helix path stands alone.
+  const helixIds = [...new Set(pathRefs.map((r) => helixPathRef(r, globalRepo)).filter((x): x is string => x !== null))]
+  let spineEdges: OccShape[]
+  let binormal: Vec3 | null = null
+  let helixPath = false
+  if (helixIds.length > 0) {
+    if (pathRefs.length !== helixIds.length || helixIds.length > 1) {
+      throw new Error('sweep: a helix path must stand alone; mixing it with other path edges is not supported')
+    }
+    const desc = descriptorFromRepo(globalRepo, helixIds[0])
+    if (desc === null) throw new Error(`sweep: helix path '${helixIds[0]}' has no curve descriptor`)
+    spineEdges = [scope.track(buildCurveEdge(oc, scope, desc))]
+    binormal = desc.axis
+    helixPath = true
+  } else {
+    spineEdges = collectPathEdges(oc, scope, pathRefs, globalRepo)[0]
+  }
 
   const bodyId = 'body_' + featureId
   const result: { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } = { status: 'ok', body_id: bodyId }
   const operation = ((merged.operation as string) ?? 'add') as BodyOperation
 
-  const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId)
+  const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId, binormal)
   const swept = scope.track(lineage.solid)
   for (const e of spineEdges) scope.release(e)
+  // A profile taller than the pitch (or wider than the radius) makes the shell
+  // self-intersect; the named error is clearer than a bare invalid-solid
+  // message and must never crash the worker.
+  if (helixPath && !scope.track(new oc.BRepCheck_Analyzer(swept, true)).IsValid_2()) {
+    throw new Error('sweep: profile overlaps the next turn: pitch < profile height')
+  }
 
   const opResult = applyBodyOperation(oc, scope, table, {
     toolShape: swept,

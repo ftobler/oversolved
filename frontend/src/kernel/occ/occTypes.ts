@@ -83,6 +83,14 @@ export interface OccListOfShape extends OccDisposable {
  */
 export interface OccPipeShellBuilder extends OccPrismBuilder {
   SetTransitionMode(mode: OccEnumValue): void
+  // The pipe-shell trihedron modes. BRepOffsetAPI_MakePipeShell declares four
+  // SetMode overloads in this build (SpineSupport, gp_Ax2, gp_Dir, Frenet
+  // boolean); the gp_Dir one is the binormal mode a constant-axis helix sweep
+  // wants, pinning the profile's orientation to a fixed direction instead of
+  // the CorrectedFrenet frame. The overload suffix is pinned by
+  // helixEdgeProbeReal.test.ts.
+  SetMode_2(ax: OccDisposable): void
+  SetMode_3(dir: OccDisposable): void
   Add_1(profile: OccShape, withContact: boolean, withCorrection: boolean): void
   Build(): void
   IsDone(): boolean
@@ -634,6 +642,41 @@ export interface OccModule extends OccBaseModule {
     BRepBuilderAPI_RightCorner: OccEnumValue
     BRepBuilderAPI_Transformed: OccEnumValue
     BRepBuilderAPI_RoundCorner: OccEnumValue
+  }
+
+  // ─── helix: an edge in a cylinder surface's parameter space ───
+  // BRepBuilderAPI_MakeEdge(Handle(Geom2d_Curve), Handle(Geom_Surface), p1, p2):
+  // the parametric-space overload (_31 by declaration order, pinned by the
+  // probe). Geom2d_Line in (u, v) space where u is angle and v is axial, then
+  // BuildCurves3d lifts it to a 3D BSpline edge on the cylinder.
+  Geom_CylindricalSurface_1: new (frame: OccDisposable, radius: number) => OccDisposable
+  Geom2d_Line_3: new (pnt: OccDisposable, dir: OccDisposable) => OccDisposable
+  gp_Pnt2d_3: new (x: number, y: number) => OccDisposable
+  gp_Dir2d_4: new (x: number, y: number) => OccDisposable
+  Handle_Geom2d_Curve_2: new (curve: OccDisposable) => OccDisposable
+  Handle_Geom_Surface_2: new (surface: OccDisposable) => OccDisposable
+  BRepBuilderAPI_MakeEdge_31: new (
+    curve: OccDisposable,
+    surface: OccDisposable,
+    p1: number,
+    p2: number,
+  ) => OccEdgeBuilder
+  // BRepLib::BuildCurves3d(shape, tolerance, continuity, maxDegree, maxSegment):
+  // approximates the parametrically-built edge into its 3D form. The 5-arg
+  // overload is _1 in this build (the shape-only form is _2), pinned by
+  // helixEdgeProbeReal.test.ts.
+  BRepLib: {
+    BuildCurves3d_1(
+      shape: OccShape,
+      tolerance: number,
+      continuity: OccEnumValue,
+      maxDegree: number,
+      maxSegment: number,
+    ): void
+  }
+  GeomAbs_Shape: {
+    GeomAbs_C0: OccEnumValue
+    GeomAbs_C1: OccEnumValue
   }
 
   // ─── fillet / chamfer leaf ───

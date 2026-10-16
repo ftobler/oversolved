@@ -24,6 +24,7 @@ import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/componen
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
+import HelixCurve from '@/components/Viewport/HelixCurve'
 import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
 import { BUILTIN_PLANE_ROTATIONS } from '@/utils/builtinPlanes'
 import { calculatePlaneSize, getActiveSketchPlane } from '@/components/Viewport/viewportPlaneSizing'
@@ -553,6 +554,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
                 size={planeSizes[f.id]}
               />
             )
+          })}
+
+        {(features ?? [])
+          .filter(f => f.kind === 'helix')
+          .filter(f => isActive(f.id, features, rollbackPosition, visibleFeatures))
+          .map(f => {
+            const curve = solveResults?.[f.id]?.curve
+            if (!curve) return null
+            return <HelixCurve key={f.id} featureId={f.id} curve={curve} />
           })}
 
         {(() => {

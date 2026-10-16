@@ -4,7 +4,8 @@
 // types) and adds the eight types that table lacks (move_vertex,
 // move_vertex_with_constraint, move_entity, resize_circle, delete_feature,
 // set_rollback, edit_session, preview_commit), derived by diffing against
-// mutationDispatch.exhaustive.test.ts's ALL_MUTATION_TYPES. The history
+// mutationDispatch.exhaustive.test.ts's ALL_MUTATION_TYPES, plus the helix
+// pair (add_helix, set_helix_field). The history
 // property and transcript suites iterate this registry instead of a second
 // hand-maintained list.
 //
@@ -105,6 +106,15 @@ const variableDoc = (): PartDoc => makeDoc({
 const partStyleDoc = (): PartDoc => ({
   ...makeDoc(),
   part_style: { b1: { name: 'part 1', color: '#ff0000' } },
+})
+
+const helixDoc = (): PartDoc => makeDoc({
+  id: 'hx1', kind: 'helix', label: 'Helix',
+  helix: {
+    reference: '@ex1/face/0', radius_mode: 'derived', mode: 'pitch_turns',
+    pitch: 2, turns: 5, height: 10, helix_angle: 5, offset: 0, start_angle: 0,
+    hand: 'right', direction: 'normal',
+  },
 })
 
 const planeDoc = (): PartDoc => makeDoc({
@@ -401,6 +411,16 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   set_variable_field: {
     makeDoc: variableDoc,
     mutation: { type: 'set_variable_field', featureId: 'v1', field: 'expression', value: '42' },
+  },
+
+  // helix
+  add_helix: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_helix', featureId: 'hx1', label: 'Helix', reference: '@ex1/face/0' },
+  },
+  set_helix_field: {
+    makeDoc: helixDoc,
+    mutation: { type: 'set_helix_field', featureId: 'hx1', field: 'turns', value: 8 },
   },
 
   // part style

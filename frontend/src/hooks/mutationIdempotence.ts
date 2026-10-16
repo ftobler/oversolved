@@ -51,6 +51,7 @@ export const IDEMPOTENT_MUTATION = {
   set_transform_field: true,
   set_mirror_field: true,
   set_variable_field: true,
+  set_helix_field: true,
 
   // Constraint writes: the value, the drag position or the sign may be identical.
   set_constraint_value: true,
@@ -138,6 +139,7 @@ export const IDEMPOTENT_MUTATION = {
   add_transform: false,
   add_mirror: false,
   add_variable: false,
+  add_helix: false,
 
   // The add_* toggle family (add_*_profile, add_sweep_path, add_*_edge,
   // add_boolean_tool, add_delete_body_ref, add_transform_body): re-applying an

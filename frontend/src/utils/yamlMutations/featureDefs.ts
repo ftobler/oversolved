@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
 
 /** Append a feature, lazily initializing the features array. */
@@ -645,4 +645,37 @@ export function applySetVariableField(
 ): void {
   const feature = findFeature(doc, featureId)
   setSubFeatureField(featureId, 'variable', feature?.kind === 'variable' ? feature.variable : undefined, field, value, 'applySetVariableField')
+}
+
+// ─── Helix ───
+
+export function applyAddHelix(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  reference?: string,
+): void {
+  // Every field is seeded with its default so a mode switch never blanks one;
+  // `reference` rides in when the caller created the helix from a pick.
+  const helix: HelixFeatureDef = {
+    radius_mode: 'derived',
+    mode: 'pitch_turns',
+    pitch: 1,
+    turns: 5,
+    height: 5,
+    helix_angle: 5,
+    offset: 0,
+    start_angle: 0,
+    hand: 'right',
+    direction: 'normal',
+  }
+  if (reference) helix.reference = reference
+  pushFeature(doc, { id: featureId, kind: 'helix', label: label ?? 'Helix', helix })
+}
+
+export function applySetHelixField(
+  doc: PartDoc, featureId: string, field: keyof HelixFeatureDef, value: unknown,
+): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'helix', feature?.kind === 'helix' ? feature.helix : undefined, field, value, 'applySetHelixField')
 }

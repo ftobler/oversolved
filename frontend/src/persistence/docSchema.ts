@@ -547,6 +547,29 @@ function checkVariable(sub: DocRecord, field: string): void {
   checkOptional(sub, 'unit', field, checkString)
 }
 
+const HELIX_MODES = ['pitch_turns', 'pitch_height', 'turns_height', 'angle_turns', 'angle_height'] as const
+const HELIX_HANDS = ['right', 'left'] as const
+const HELIX_RADIUS_MODES = ['derived', 'entered'] as const
+
+function checkHelix(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'reference', field, checkRef)
+  checkOptional(sub, 'radius_mode', field, (v, f) => checkEnum(v, f, HELIX_RADIUS_MODES))
+  checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, HELIX_MODES))
+  checkOptional(sub, 'hand', field, (v, f) => checkEnum(v, f, HELIX_HANDS))
+  checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, ['normal', 'reverse']))
+  checkOptional(sub, 'height_from_reference', field, checkBoolean)
+  for (const key of ['radius', 'pitch', 'turns', 'height', 'helix_angle', 'offset', 'start_angle']) {
+    checkOptional(sub, key, field, checkExpr)
+  }
+  // The one range the parametrisation cannot cross: 0 and 90 are degenerate, so
+  // a literal angle outside (0, 90) is refused here. An expression is checked
+  // when the solver resolves it.
+  const angle = sub.helix_angle
+  if (typeof angle === 'number' && (angle <= 0 || angle >= 90)) {
+    fail(`${field}.helix_angle`, `must be between 0 and 90 degrees, got ${angle}`)
+  }
+}
+
 function checkImportStep(sub: DocRecord, field: string): void {
   checkOptional(sub, 'file_id', field, checkString)
   checkOptional(sub, 'file_data', field, checkString)
@@ -571,6 +594,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['transform', checkTransform],
   ['mirror', checkMirror],
   ['variable', checkVariable],
+  ['helix', checkHelix],
   ['import_step', checkImportStep],
 ])
 

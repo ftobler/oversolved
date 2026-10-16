@@ -144,6 +144,31 @@ export type VariableFeatureDef = {
   unit?: string             // optional display hint ("mm", "deg")
 }
 
+// A reference curve: a helix laid on a cylinder. It is NOT a body; it follows
+// the datum-plane pattern (a repo element plus a solve-result field) and feeds
+// sweeps. Every numeric field is expression-capable. All fields are stored even
+// when the current `mode` ignores them, so switching mode never loses input.
+export type HelixRadiusMode = 'derived' | 'entered'
+export type HelixMode = 'pitch_turns' | 'pitch_height' | 'turns_height' | 'angle_turns' | 'angle_height'
+export type HelixHand = 'right' | 'left'
+export type HelixDirection = 'normal' | 'reverse'
+
+export type HelixFeatureDef = {
+  reference?: string  // cylinder face | circular edge | straight edge | sketch circle/line
+  radius_mode?: HelixRadiusMode
+  radius?: NumberOrExpr
+  mode?: HelixMode
+  pitch?: NumberOrExpr
+  turns?: NumberOrExpr
+  height?: NumberOrExpr
+  helix_angle?: NumberOrExpr
+  height_from_reference?: boolean
+  offset?: NumberOrExpr
+  start_angle?: NumberOrExpr
+  hand?: HelixHand
+  direction?: HelixDirection
+}
+
 export interface FaceData {
   centroid: [number, number, number]
   normal: [number, number, number]
@@ -428,6 +453,11 @@ export type VariableFeature = FeatureBase & {
   variable: VariableFeatureDef
 }
 
+export type HelixFeature = FeatureBase & {
+  kind: 'helix'
+  helix: HelixFeatureDef
+}
+
 export type ImportStepFeature = FeatureBase & {
   kind: 'import_step'
   file_id: string  // uuid of the file registry entry holding this import's STEP bytes
@@ -454,6 +484,7 @@ export type PartFeature =
   | TransformFeature
   | MirrorFeature
   | VariableFeature
+  | HelixFeature
   | ImportStepFeature
 
 export type FeatureKind = PartFeature['kind']
@@ -968,6 +999,10 @@ export interface SketchData {
   value?: number  // a variable's solved value, rendered inline in the tree
   exception?: string
   handle?: FeatureHandleData  // editing handle for brep features (extrude/revolve/fillet/chamfer)
+  // A helix's derived quantities (the mode's computed pitch/turns/height/length
+  // and the angle) plus the sampled curve the viewport draws.
+  helix?: Record<string, number>
+  curve?: EdgeDataSpline
 }
 
 export type EntityStatus = Record<string, ConstraintStatus>
@@ -1055,6 +1090,8 @@ export type Mutation =
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
   | { type: 'add_variable'; featureId: string; label?: string }
   | { type: 'set_variable_field'; featureId: string; field: keyof VariableFeatureDef; value: unknown }
+  | { type: 'add_helix'; featureId: string; label?: string; reference?: string }
+  | { type: 'set_helix_field'; featureId: string; field: keyof HelixFeatureDef; value: unknown }
   | { type: 'reorder_features'; featureId: string; toIndex: number }
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }

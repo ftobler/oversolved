@@ -340,3 +340,26 @@ def feature_transform(ctx):
     # but only top-left and bottom-right corners to avoid clutter
     partial_line(box_left, box_top, box_left + 0.3, box_top - 0.25, 0.3, 0.7)
     partial_line(box_left + box_w, box_top + box_h, box_left + 0.3 + box_w, box_top - 0.25 + box_h, 0.3, 0.65)
+
+
+@icon("frontend/src/assets/icons/feature-helix.svg")
+def feature_helix(ctx):
+    """Icon for Helix: a three-turn coil seen at a slant over its axis."""
+    # The axis the coil climbs about, drawn faint behind it.
+    ctx.move_to(0.5, 0.08)
+    ctx.line_to(0.5, 0.92)
+    stroke(ctx, 1.0)
+
+    # The coil: a vertical sine trace, three turns.
+    turns = 3
+    amp = 0.26
+    steps = 120
+    for i in range(steps + 1):
+        t = i / steps
+        y = 0.14 + t * 0.72
+        x = 0.5 + amp * math.sin(2 * math.pi * turns * t)
+        if i == 0:
+            ctx.move_to(x, y)
+        else:
+            ctx.line_to(x, y)
+    stroke(ctx, 1.5)
