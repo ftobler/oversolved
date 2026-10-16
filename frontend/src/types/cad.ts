@@ -168,6 +168,39 @@ export type HoleFeatureDef = {
   depth: NumberOrExpr
   direction?: 'normal' | 'reverse'
   target?: string
+  // A cosmetic thread: metadata plus the display helix the solve reports. It
+  // changes no geometry, so the bore stays the authored `diameter` (normally the
+  // table entry's tap drill).
+  thread?: ThreadSpec
+}
+
+export interface ThreadSpec {
+  // The thread table entry's designation, e.g. 'M6x1'.
+  designation: string
+  // The thread's own (major) diameter and its pitch, copied from the table at
+  // pick time so a later table edit cannot silently re-describe an old doc.
+  nominal: number
+  pitch: number
+}
+
+/** One drilled bore's cosmetic-thread display helix. */
+export interface ThreadHelixData {
+  center: [number, number, number]
+  axis: [number, number, number]
+  // The bore's radius: the wall the helix rides on, not the thread's nominal.
+  radius: number
+  pitch: number
+  turns: number
+  points: [number, number, number][]
+}
+
+/** What a hole solve reports for its cosmetic thread: the metadata plus one
+ *  display helix per drilled bore. */
+export interface ThreadDisplayData {
+  designation: string
+  nominal: number
+  pitch: number
+  helices: ThreadHelixData[]
 }
 
 export type MirrorFeatureDef = {
@@ -1096,6 +1129,8 @@ export interface SketchData {
   // and the angle) plus the sampled curve the viewport draws.
   helix?: Record<string, number>
   curve?: EdgeDataSpline
+  // A hole's cosmetic thread: metadata plus the bore display helices.
+  thread?: ThreadDisplayData
 }
 
 export type EntityStatus = Record<string, ConstraintStatus>

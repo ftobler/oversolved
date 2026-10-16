@@ -225,6 +225,16 @@ const FEATURE_SCHEMA_BY_KIND = {
     properties: {
       sketch: REF, diameter: NUMBER_OR_EXPR, depth_mode: { enum: ['blind', 'through_all'] },
       depth: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse'] }, target: REF,
+      thread: {
+        type: 'object',
+        required: ['designation', 'nominal', 'pitch'],
+        properties: {
+          designation: { type: 'string', minLength: 1 },
+          nominal: { type: 'number', exclusiveMinimum: 0 },
+          pitch: { type: 'number', exclusiveMinimum: 0 },
+        },
+        additionalProperties: false,
+      },
     },
   }),
   transform: feature('transform', {

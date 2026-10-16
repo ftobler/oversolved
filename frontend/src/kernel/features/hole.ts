@@ -32,6 +32,7 @@ import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
+import { threadHelices, type ThreadDisplay, type ThreadSite } from './threadDisplay'
 import type { PlaneLike } from './shared/planes'
 
 type Dict = Record<string, unknown>
@@ -42,6 +43,28 @@ interface HoleResult {
   body_id: string
   body_ids: string[]
   hole_count: number
+  // The cosmetic thread the drilled bores are for, if the feature names one: its
+  // metadata plus one display helix per drilled site. A cosmetic thread changes
+  // no geometry, so this rides the result rather than the body.
+  thread?: ThreadDisplay
+}
+
+/**
+ * The cosmetic thread a hole's `thread` field names, or null. The doc schema
+ * already checked the pair against the thread table at the boundary, so this
+ * only refuses a spec a hand-built solve would otherwise carry into the result:
+ * a missing designation, or a non-positive nominal or pitch.
+ */
+function readThreadSpec(raw: unknown): { designation: string; nominal: number; pitch: number } | null {
+  if (raw === null || raw === undefined) return null
+  const spec = raw as Dict
+  const designation = typeof spec.designation === 'string' ? spec.designation : ''
+  const nominal = Number(spec.nominal ?? 0)
+  const pitch = Number(spec.pitch ?? 0)
+  if (designation === '') throw new Error('hole: a cosmetic thread needs a designation')
+  if (!Number.isFinite(nominal) || nominal <= 0) throw new Error('hole: the thread nominal must be positive')
+  if (!Number.isFinite(pitch) || pitch <= 0) throw new Error('hole: the thread pitch must be positive')
+  return { designation, nominal, pitch }
 }
 
 /**
@@ -238,6 +261,7 @@ export function solveHole(
   const depth = Number(sub.depth ?? 10.0)
   const direction = (sub.direction as string) ?? 'normal'
   const targetRef = (sub.target as string) ?? ''
+  const thread = readThreadSpec(sub.thread)
 
   if (!Number.isFinite(diameter) || diameter <= 0) throw new Error('hole: diameter must be positive')
   if (depthMode !== 'through_all') {
@@ -276,6 +300,8 @@ export function solveHole(
 
   let throughDepth = 0.0
   let throughBackOffset = 0.0
+  // How far a through-all bore runs inside the body, for the thread display.
+  let throughSpan = 0.0
   if (depthMode === 'through_all') {
     const span = bodySpanAlong(oc, scope, currentShape, axis)
     // Back the cutter off by the full projected span plus a hair so a site on
@@ -284,10 +310,14 @@ export function solveHole(
     const margin = span * 1e-3 + 1e-6
     throughDepth = span * 3.0
     throughBackOffset = span + margin
+    throughSpan = span
   }
 
   let skippedCount = 0
   const skippedEntityIds: string[] = []
+  // The bores the thread display rides: one entry per site that actually cut,
+  // so a thread never draws where the hole removed nothing.
+  const threadSites: ThreadSite[] = []
   // This hole's own cuts only, like boolean and bodyOps. Seeding with the body's
   // previous diff credited the last modifier's surviving elements to the hole in a
   // full build, while a build restored past that modifier has no diff to seed with.
@@ -357,6 +387,13 @@ export function solveHole(
     // Accumulate per-cut diffs so all rims survive, not just the last.
     accumulatedDiff = mergeBrepDiff(accumulatedDiff, res.diff)
     cutAny = true
+    // The bore the cosmetic thread (if any) is displayed on.
+    threadSites.push({
+      center: [center3d[0], center3d[1], center3d[2]],
+      axis: [axis[0], axis[1], axis[2]],
+      radius: site.radius,
+      length: depthMode === 'through_all' ? throughSpan : depth,
+    })
   }
 
   const total = drilled.length
@@ -399,6 +436,14 @@ export function solveHole(
     body_id: bodyIds[0],
     body_ids: bodyIds,
     hole_count: placed - missedSites.length,
+  }
+  if (thread !== null && threadSites.length > 0) {
+    result.thread = {
+      designation: thread.designation,
+      nominal: thread.nominal,
+      pitch: thread.pitch,
+      helices: threadHelices(threadSites, thread.pitch),
+    }
   }
   if (skippedCount > 0) {
     // Wording pinned by the frozen parity snapshot (occ/__fixtures__/hole.json,

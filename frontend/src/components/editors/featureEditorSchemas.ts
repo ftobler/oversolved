@@ -2,6 +2,8 @@ import type { FeatureEditorSchema } from './FeatureEditor'
 import {
   normalizeRefList,
 } from '@/utils/yamlMutations'
+import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations } from '@/kernel/threadTable'
+import type { ThreadSpec } from '@/types/cad'
 import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 import { stripSelectionWrapper } from '@/utils/query/selectionId'
 
@@ -248,7 +250,32 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => d.depth_mode === 'blind', validate: (v) => v > 0, unit: 'mm' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }] },
+    // The cosmetic thread: metadata plus a display helix on the bore, no
+    // geometry change. The checkbox writes (or clears) the whole spec and the
+    // select looks the designation up in the table, so neither writes a field
+    // of its own; the diameter stays whatever the user authored (normally the
+    // entry's tap drill, which the option label shows).
+    { type: 'checkbox', key: '_threaded', label: 'Cosmetic thread', default: false,
+      isChecked: (d) => d.thread != null,
+      getMutation: (checked, d) => ({
+        field: 'thread',
+        value: checked ? threadSpecFor(String(d._thread_designation ?? threadDesignations()[0])) : null,
+      }) },
+    { type: 'select', key: '_thread_designation', label: 'Thread',
+      default: threadDesignations()[0],
+      showWhen: (d) => d._threaded === true || d.thread != null,
+      valueFrom: (d) => String(d.thread?.designation ?? d._thread_designation ?? threadDesignations()[0]),
+      getMutation: (option) => ({ field: 'thread', value: threadSpecFor(option) }),
+      options: THREAD_TABLE.map((entry) => ({ value: entry.designation, label: threadLabel(entry) })) },
   ],
+}
+
+/** The doc's thread spec for a table designation, or the first entry when the
+ *  designation is unknown (a hand-edited doc cannot reach here: the loader
+ *  would have refused it). */
+function threadSpecFor(designation: string): ThreadSpec {
+  const entry = threadEntry(designation) ?? THREAD_TABLE[0]
+  return { designation: entry.designation, nominal: entry.nominal, pitch: entry.pitch }
 }
 
 export const TRANSFORM_SCHEMA: FeatureEditorSchema = {

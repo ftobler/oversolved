@@ -298,7 +298,17 @@ the body untouched; the other groups still apply (status `partial`).
     depth_mode: blind            # blind | through_all
     direction: normal
     target: "@body_ex1"          # optional: the body to drill into
+    thread:                      # optional, cosmetic only (no geometry change)
+      designation: M6x1          # a thread-table entry
+      nominal: 6.0               # the thread's major diameter, mm
+      pitch: 1.0                 # mm per turn
 ```
+
+A cosmetic thread adds no geometry: the bore stays the authored `diameter`
+(normally the table entry's tap drill) and the solve reports the thread's
+metadata plus one display helix per drilled bore, drawn on the bore wall. The
+pair is checked against the thread table at load time when the table carries the
+designation.
 
 ### transform
 

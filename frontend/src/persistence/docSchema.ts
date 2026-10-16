@@ -15,6 +15,7 @@ import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
+import { threadEntry } from '@/kernel/threadTable'
 import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams } from '@/utils/yamlMigrations'
 
 // The version the ladder migrates to. A document carrying `version` 3 or newer
@@ -578,6 +579,31 @@ function checkDeleteFace(sub: DocRecord, field: string): void {
   checkOptional(sub, 'faces', field, checkRefList)
 }
 
+// The hole's cosmetic thread spec: a designation whose nominal and pitch must
+// agree with the table when the table knows it. A doc that carries an unknown
+// designation still loads (the thread is metadata and changes no geometry), but
+// its pair is checked against the entry when there is one, so a hand-typed M6
+// with M8's numbers cannot pass as a valid thread.
+function checkThread(value: unknown, field: string): void {
+  const thread = checkRecord(value, field)
+  if (typeof thread.designation !== 'string' || thread.designation === '') {
+    fail(`${field}.designation`, 'must be a non-empty thread designation')
+  }
+  checkFiniteNumber(thread.nominal, `${field}.nominal`)
+  checkFiniteNumber(thread.pitch, `${field}.pitch`)
+  if ((thread.nominal as number) <= 0) fail(`${field}.nominal`, 'must be positive')
+  if ((thread.pitch as number) <= 0) fail(`${field}.pitch`, 'must be positive')
+  const entry = threadEntry(thread.designation as string)
+  if (entry !== null) {
+    if (Math.abs((thread.nominal as number) - entry.nominal) > 1e-9) {
+      fail(`${field}.nominal`, `${thread.designation} names ${entry.nominal} mm, got ${thread.nominal}`)
+    }
+    if (Math.abs((thread.pitch as number) - entry.pitch) > 1e-9) {
+      fail(`${field}.pitch`, `${thread.designation} has a ${entry.pitch} mm pitch, got ${thread.pitch}`)
+    }
+  }
+}
+
 function checkHole(sub: DocRecord, field: string): void {
   checkOptional(sub, 'sketch', field, checkRef)
   checkOptional(sub, 'diameter', field, checkExpr)
@@ -585,6 +611,7 @@ function checkHole(sub: DocRecord, field: string): void {
   checkOptional(sub, 'depth', field, checkExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, ['normal', 'reverse']))
   checkOptional(sub, 'target', field, checkRef)
+  checkOptional(sub, 'thread', field, checkThread)
 }
 
 function checkTransform(sub: DocRecord, field: string): void {

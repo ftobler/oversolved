@@ -26,6 +26,14 @@ export interface SelectFieldDef extends BaseFieldDef {
   type: 'select'
   default?: string
   options: { value: string; label: string }[]
+  // The option the control shows, when it is not the stored value itself (a
+  // field holding an object has no string to display). Falls back to the stored
+  // value, then the default.
+  valueFrom?: (data: SchemaData) => string
+  // The mutation a selection writes, when it is not the plain
+  // `{ field: key, value: option }` write. A select over a table (the hole's
+  // thread designations) writes the looked-up record under its own field.
+  getMutation?: (option: string, data: SchemaData) => { field: string; value: unknown }
 }
 
 export interface CheckboxFieldDef extends BaseFieldDef {
@@ -81,6 +89,7 @@ export interface NumberFieldWidgetProps extends WidgetBaseProps {
 export interface SelectFieldWidgetProps extends WidgetBaseProps {
   field: SelectFieldDef
   value: string | undefined
+  data: SchemaData
   mutationType: string
 }
 

@@ -67,6 +67,7 @@ One directory per case: `frontend/oracle/<NN-name>/`.
 | 37-sweep-helix-square | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | ok | ok |
 | 38-sweep-helix-left | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | - | ok |
 | 39-loft-face-to-sketch | 2 | 1653.33333 | 1062.33725 | faces 12, edges 24 | ok | ok |
+| 40-hole-thread | 1 | 1121.46018 | 822.831853 | faces 8, edges 15 | - | ok |
 
 ## Cases
 
@@ -809,3 +810,20 @@ Edit STEP round trip:
   - centroid [5.00000000, 5.00000000, 9.08035714] -> [5.00000000, 5.00000000, 9.08035714] (max dev 0)
   - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] -> [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] (max dev 0)
   - counts faces 12, edges 24 -> faces 12, edges 24
+### 40-hole-thread
+
+`A cosmetic thread is metadata: the plate carries exactly the blind bore it would without one, so V = 1200 - pi r^2 h with r = 2.5, h = 4, 8 faces (the top face gains the bore's rim, the wall and the floor are the two new faces) and 15 edges; the solve reports M6x1 (nominal 6, pitch 1) with a display helix on the bore`
+
+Live build (expected -> measured):
+  - volume 1121.46018 -> 1121.46018 (rel dev 0)
+  - area 822.831853 -> 822.831853 (rel dev 0)
+  - centroid [10.0000000, 5.00000000, 3.07003353] -> [10.0000000, 5.00000000, 3.07003353] (max dev 1.78e-15)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 20.0000000, 10.0000000, 6.00000000] -> [0.00000000, 0.00000000, 0.00000000, 20.0000000, 10.0000000, 6.00000000] (max dev 0)
+  - counts faces 8, edges 15 -> faces 8, edges 15
+
+STEP round trip:
+  - volume 1121.46018 -> 1121.46018 (rel dev -2.64e-15)
+  - area 822.831853 -> 822.831853 (rel dev 4.97e-15)
+  - centroid [10.0000000, 5.00000000, 3.07003353] -> [10.0000000, 5.00000000, 3.07003353] (max dev 2.66e-15)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 20.0000000, 10.0000000, 6.00000000] -> [0.00000000, 0.00000000, 0.00000000, 20.0000000, 10.0000000, 6.00000000] (max dev 0)
+  - counts faces 8, edges 15 -> faces 8, edges 15

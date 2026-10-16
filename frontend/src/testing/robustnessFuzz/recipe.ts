@@ -12,6 +12,11 @@
 // also what makes the recipe the unit the minimiser drops steps from.
 
 import { makePrng } from '@/hooks/__tests__/fuzzHarness'
+import { threadDesignations } from '@/kernel/threadTable'
+
+// The thread designations a fuzz hole is drawn from: the whole table, so every
+// entry's metadata path is exercised across the seed range.
+const DESIGNATIONS = threadDesignations()
 
 // Every placement and size is authored in grid steps and emitted in mm, so the
 // recipe reads in the same units the document does while the seed still
@@ -90,6 +95,10 @@ export interface RecipeHole {
   diameter: number
   depth: number
   depthMode: 'blind' | 'through_all'
+  // The thread-table designation for a cosmetic thread, or null for a plain
+  // bore. The thread changes no geometry; it is derived from `face` at draw
+  // time so the generator's stream does not move.
+  thread: string | null
 }
 
 export interface RecipeLinearArray {
@@ -295,12 +304,20 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
       return { kind: 'fillet', id, target: PRIMARY_BODY, edge: drawInt(rnd, 0, 11), radius: grid(drawInt(rnd, 1, 2)) }
     case 'chamfer':
       return { kind: 'chamfer', id, target: PRIMARY_BODY, edge: drawInt(rnd, 0, 11), distance: grid(drawInt(rnd, 1, 2)) }
-    case 'hole':
+    case 'hole': {
+      const face = drawInt(rnd, 0, 3)
       return {
-        kind: 'hole', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
+        kind: 'hole', id, target: PRIMARY_BODY, face,
         diameter: grid(drawInt(rnd, 2, 3)), depth: grid(drawInt(rnd, 2, 4)),
         depthMode: rnd() < 0.7 ? 'blind' : 'through_all',
+        // The cosmetic thread is derived from the already-drawn face index, so
+        // the generator consumes no extra randomness: every seed's chain stays
+        // byte-identical to the pre-thread generator and the pinned findings
+        // keep their seeds. Plain bores are covered by the leaf and oracle
+        // tests; the sweep's job here is the threaded path.
+        thread: DESIGNATIONS[face % DESIGNATIONS.length],
       }
+    }
     case 'array': {
       if (rnd() < 0.7) {
         return { kind: 'linear-array', id, target: PRIMARY_BODY, count: drawInt(rnd, 2, 3), pitch: grid(drawInt(rnd, 2, 4)), axis: drawOf(rnd, ['x', 'y', 'z'] as const) }

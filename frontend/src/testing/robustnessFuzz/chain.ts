@@ -32,6 +32,7 @@ import { solveShell } from '@/kernel/features/shell'
 import { solveHelix } from '@/kernel/features/helix'
 import { solveLoft } from '@/kernel/features/loft'
 import { extractOccErrorMessage } from '@/kernel/errors'
+import { threadEntry } from '@/kernel/threadTable'
 import type { Repository } from '@/kernel/query'
 import type { Body } from '@/kernel/types3d'
 import type { LoopEdge } from '@/kernel/profileLoops'
@@ -42,6 +43,15 @@ type Dict = Record<string, unknown>
 
 const PLANE_XY: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 const PLANE_XZ: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, 1, 0] }
+
+// The table entry a drawn designation names, as the document stores it. A
+// designation the table lost is a generator bug, so it throws rather than
+// silently dropping the thread.
+function threadSpec(designation: string): { designation: string; nominal: number; pitch: number } {
+  const entry = threadEntry(designation)
+  if (entry === null) throw new Error(`fuzz: '${designation}' is not in the thread table`)
+  return { designation: entry.designation, nominal: entry.nominal, pitch: entry.pitch }
+}
 
 function axisVec(axis: AxisName): Vec3 {
   return axis === 'x' ? [1, 0, 0] : axis === 'y' ? [0, 1, 0] : [0, 0, 1]
@@ -644,6 +654,7 @@ function applyStep(
         // the reversed axis or the blind cutter starts outside and removes nothing.
         direction: 'reverse',
         target: step.target,
+        ...(step.thread !== null ? { thread: threadSpec(step.thread) } : {}),
       },
     }, repoForLeaves, bodyStore, { [sketchId]: { entities: [{ id: 'p1', kind: 'point' }] } })
     return { editedIds: result.body_ids }
