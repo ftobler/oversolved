@@ -14,12 +14,11 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { bodyIdOf, parseAncestry } from '../query'
 import { resolveBody } from './shared/bodyResolution'
 import { resplitBody } from './bodySplit'
 import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
 import { SubShapeMap } from '../occ/subshapeIdentity'
-import { makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
+import { bodyOfQuery, makeFaceIndexCache, queryFaceUuid, resolveFacesByQuery } from './shared/faceResolution'
 import { applyMoveFace, faceNormalAndCentroid, MoveFaceRefusal } from '../occ/moveFace'
 import { transferBooleanNames } from './booleanLineage'
 import { mintFaceUuid, moveFaceExtendPath } from '../constructionName'
@@ -48,43 +47,12 @@ interface MoveFaceResult {
   handle?: FeatureHandle
 }
 
-/** The `@u|<uuid>` token of a face query, or null when it names none. */
-function queryFaceUuid(q: string): string | null {
-  try {
-    const [ids] = parseAncestry(q)
-    const tok = ids.find((i) => i.startsWith('@u|'))
-    return tok !== undefined ? tok.slice(3) : null
-  } catch {
-    return null
-  }
-}
-
 /** UUID -> face for a shape's face names (the mapping `resolveFacesByQuery`
  *  builds on a stored Body, rebuilt here on an intermediate move shape). */
 function uuidMap(names: SubShapeMap<string>): Map<string, OccShape> {
   const out = new Map<string, OccShape>()
   for (const [face, uuid] of names.entries()) out.set(uuid, face as OccShape)
   return out
-}
-
-/** The one body a query names, from its `@body_*` token or by resolving the face
- *  itself, or null when it names none (mirrors the shell leaf). */
-function bodyOfQuery(
-  oc: OccModule,
-  scope: DisposeScope,
-  table: HandleTable,
-  bodyStore: Record<string, Body>,
-  indexFor: ReturnType<typeof makeFaceIndexCache>,
-  q: string,
-): string | null {
-  const named = bodyIdOf(q, bodyStore)
-  if (named !== null && named in bodyStore) return named
-  for (const bid of Object.keys(bodyStore)) {
-    const body = bodyStore[bid]
-    if (body.shape === null) continue
-    if (resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q)) return bid
-  }
-  return null
 }
 
 /**

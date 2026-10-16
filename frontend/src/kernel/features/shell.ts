@@ -9,13 +9,12 @@ import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { bodyIdOf } from '../query'
 import { resolveBody } from './shared/bodyResolution'
 import { resplitBody } from './bodySplit'
 import { readBodyNames, type UuidArray } from '../occ/bodyNames'
 import { SubShapeDedup } from '../occ/primitives'
 import { applyShellWithLineage, type ShellDirection } from '../occ/thickSolid'
-import { makeFaceIndexCache, resolveFacesByQuery, type FaceIndex } from './shared/faceResolution'
+import { bodyOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
 
 type Dict = Record<string, unknown>
 
@@ -36,26 +35,6 @@ interface ShellResult {
 
 function named(uuids: UuidArray | undefined): boolean {
   return uuids?.some((u) => u !== null) ?? false
-}
-
-/** The single body a query names, from its `@body_*` token or by resolving the
- *  face itself, or null when it names none. */
-function bodyOfQuery(
-  oc: OccModule,
-  scope: DisposeScope,
-  table: HandleTable,
-  bodyStore: Record<string, Body>,
-  indexFor: (body: Body) => FaceIndex,
-  q: string,
-): string | null {
-  const named = bodyIdOf(q, bodyStore)
-  if (named !== null && named in bodyStore) return named
-  for (const bid of Object.keys(bodyStore)) {
-    const body = bodyStore[bid]
-    if (body.shape === null) continue
-    if (resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q)) return bid
-  }
-  return null
 }
 
 /**

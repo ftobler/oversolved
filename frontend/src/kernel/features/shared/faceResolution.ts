@@ -9,7 +9,7 @@ import type { DisposeScope } from '../../occ/disposeScope'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { HandleTable } from '../../occ/handleTable'
 import type { Body } from '../../types3d'
-import { Repository, AmbiguousQueryError, ref, parseAncestry, constructionUuidToken, isClassifierId } from '../../query'
+import { Repository, AmbiguousQueryError, ref, parseAncestry, constructionUuidToken, isClassifierId, bodyIdOf } from '../../query'
 import { canonicalFaces, assertAligned } from '../../occ/bodyNames'
 import { faceCentroid, faceSurfaceType, type Vec3 } from '../../occ/primitives'
 import { geometryClassifiers } from '../../geomHash'
@@ -83,7 +83,7 @@ export function makeFaceIndexCache(
 }
 
 /** The `@u|<uuid>` token of a query, or null when it names none. */
-function queryFaceUuid(q: string): string | null {
+export function queryFaceUuid(q: string): string | null {
   try {
     const [ids] = parseAncestry(q)
     const tok = ids.find((i) => i.startsWith('@u|'))
@@ -91,6 +91,27 @@ function queryFaceUuid(q: string): string | null {
   } catch {
     return null
   }
+}
+
+/** The one body a query names, from its `@body_*` token or by resolving the
+ *  face itself, or null when it names none. Shared by the shell and move-face
+ *  leaves, which pick faces but act on the owning body. */
+export function bodyOfQuery(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  bodyStore: Record<string, Body>,
+  indexFor: (body: Body) => FaceIndex,
+  q: string,
+): string | null {
+  const named = bodyIdOf(q, bodyStore)
+  if (named !== null && named in bodyStore) return named
+  for (const bid of Object.keys(bodyStore)) {
+    const body = bodyStore[bid]
+    if (body.shape === null) continue
+    if (resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q)) return bid
+  }
+  return null
 }
 
 /** Stable-ancestry tier: recover a face whose UUID died, validated by its
