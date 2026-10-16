@@ -8,8 +8,8 @@
 // only sizes the runs and pins the regression seeds.
 //
 // The default suite is bounded (a handful of seeds); FUZZ_SEEDS and FUZZ_STEPS
-// size the long run the `just fuzz` recipe carries (its nightly wiring is still
-// with the orchestrator). The real kernel runs where installed, exactly like
+// size the long run the `just fuzz` recipe carries (the main-branch CI gate runs
+// it). The real kernel runs where installed, exactly like
 // the other Real suites; the fake scheduler covers the history mechanics
 // everywhere.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'

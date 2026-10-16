@@ -134,7 +134,7 @@ fuzz seeds="200" steps="40":
 # corpus documents, compared exactly against the committed baseline. The real
 # kernel runs where provisioned (the fake scheduler otherwise; a command's
 # status cannot depend on the scheduler), and the run takes minutes, so it is a
-# nightly, not a PR-gate, cost. The PR gate keeps the bounded smoke slices.
+# main-gate, not a PR-gate, cost. The PR gate keeps the bounded smoke slices.
 # Regenerate the baseline with `npm run regen:action-matrix` from frontend/.
 [working-directory: "frontend"]
 ratchet-matrix:
@@ -151,10 +151,10 @@ ratchet-matrix:
 # frontend/src/testing/robustnessFuzz/chainTimeout.ts). Each chain child holds
 # its own ~0.75 GB OCC kernel, so this recipe pins the pool to 2 and the vitest
 # forks to 1: the two suites run in sequence instead of two extra kernels deep
-# (raise workers on a wide, memory-rich box, not on the nightly runner). The PR
+# (raise workers on a wide, memory-rich box, not on the CI runner). The PR
 # suite runs a bounded 24-chain-seed range and its identity sweep derives a
 # quarter of this one (the default 200 is the plan's acceptance range; the
-# nightly runs 1500 and `just robustness-fuzz 5000` is the plan's full scale).
+# main gate runs 1500 and `just robustness-fuzz 5000` is the plan's full scale).
 [working-directory: "frontend"]
 robustness-fuzz seeds="200" workers="2":
     mkdir -p ../tmp

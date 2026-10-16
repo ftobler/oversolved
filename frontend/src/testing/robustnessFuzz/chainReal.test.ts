@@ -20,7 +20,7 @@
 // and their order do not depend on the pool width (sweep.ts).
 //
 // The default sweep is bounded for the PR gate; ROBUSTNESS_FUZZ_SEEDS widens it
-// for `just robustness-fuzz` and the nightly. The suite skips where OCC.js is
+// for `just robustness-fuzz` and the main gate. The suite skips where OCC.js is
 // not installed, like every *Real suite, and on a Node too old to run the
 // watchdog child (--experimental-strip-types needs 22.6).
 
@@ -53,8 +53,8 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(raw) && raw > 0 ? raw : fallback
 }
 
-// The bounded default keeps the PR gate fast; the recipe and the nightly widen
-// it (200 is the plan's acceptance range, 1500 the nightly's). The budget per
+// The bounded default keeps the PR gate fast; the recipe and the main gate widen
+// it (200 is the plan's acceptance range, 1500 the main gate's). The budget per
 // seed covers the base replay, the persistence replay and an amortised share of
 // the watchdog kills (a hanging seed costs the full 30 s).
 const SEEDS = envInt('ROBUSTNESS_FUZZ_SEEDS', 24)
@@ -281,7 +281,7 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     }
 
     // Known findings are not silent: a green run prints them, and the wide
-    // range (the nightly) is what keeps both lists honest.
+    // range (the main gate) is what keeps both lists honest.
     console.log(`[robustness-fuzz] chain sweep: ${SEEDS} seeds, ${completed} completed, ${refusals} refused, ${recordedPicks} picks, ${hangs.length} known hangs, ${redPicks.length} known red picks`)
     for (const hang of hangs) console.log(`[robustness-fuzz] known hang: ${hang}`)
     for (const red of redPicks) console.log(`[robustness-fuzz] known red pick: ${red}`)

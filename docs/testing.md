@@ -5,10 +5,10 @@ Four ratchets catch regressions the unit suites cannot: the action matrix
 edit and undo/redo sequences), the geometry robustness fuzz (seeded feature
 chains against the real kernel) and the volume oracle (analytic geometry
 against the real kernel). Their baselines are committed and reviewed like code.
-The nightly Gitea job (`nightly` in `.github/workflows/ci-gitea.yaml`, cron
-plus manual dispatch only) provisions the WASM solvers and OCC.js and runs
-`just fuzz`, `just ratchet-matrix` then `just robustness-fuzz 1500`, teeing
-every recipe to tmp/ and uploading the logs as its report artifact.
+The Gitea `ratchets` job in `.github/workflows/ci-gitea.yaml` runs on main only
+(a push or a manual dispatch there): it provisions the WASM solvers and OCC.js
+and runs `just fuzz`, `just ratchet-matrix` then `just robustness-fuzz 1500`,
+teeing every recipe to tmp/ and uploading the logs as its report artifact.
 
 ## Action matrix
 
@@ -29,7 +29,7 @@ targets x 45 commands, 33,030 rows, one row per line so the diff is readable).
   6 targets) with the fake scheduler, so it needs no OCC.js, and
   `actionMatrixReal.test.ts` replays three cheap documents on the real kernel
   where installed.
-- Nightly: `just ratchet-matrix` (`ACTION_MATRIX_FULL=1`) replays the whole
+- Main gate: `just ratchet-matrix` (`ACTION_MATRIX_FULL=1`) replays the whole
   corpus exactly against the baseline, with the real kernel when provisioned
   and the fake scheduler otherwise (a command's status cannot depend on the
   scheduler). It takes minutes, not seconds, hence the separate recipe.
@@ -92,7 +92,7 @@ reached again, a completed one also reports references it never reached.
   chain sweep skips there rather than fail; the CI matrix runs one such leg.
 - Long run: `just robustness-fuzz <seeds> <workers>` (chain default 200, the
   plan's acceptance range; identity a quarter of it, floored at 32), 1500 in
-  the nightly and 5000 for a dedicated full-scale run; the tee'd log is the
+  the main gate and 5000 for a dedicated full-scale run; the tee'd log is the
   report.
 - Failure: the violations are minimised by dropping steps and the minimal
   recipe is written under `src/testing/robustnessFuzz/regressions/` as a triage

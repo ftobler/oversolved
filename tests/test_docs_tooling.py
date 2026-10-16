@@ -39,7 +39,7 @@ DOC_AND_TOOLING_SURFACE = (
     "pyproject.toml",
     ".github/workflows/ci-gitea.yaml",
     ".github/workflows/ci-github.yaml",
-    ".github/workflows/main.yaml",
+    ".github/workflows/pages-github.yaml",
 )
 
 
