@@ -1,0 +1,1 @@
+stability: vertex jitter: face count 1 != 0 (faces at least 2.0000000000000005e-5 thick)

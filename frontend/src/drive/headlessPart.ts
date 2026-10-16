@@ -38,6 +38,11 @@ export interface HeadlessPart {
   registry: CommandRegistry<PartCommandContext>
   solve: SolveScheduler<PartDoc>
   getDoc(): PartDoc | null
+  // The per-feature solve status of the last settle (`featureId -> status`).
+  // The CLI only needs the scheduler state, but a caller checking a document
+  // against what the user saw (the repro test's sidecar expectations) needs
+  // each sketch's own verdict.
+  solveStatuses(): Record<string, string>
   idle(): Promise<void>
   run(steps: readonly ScriptStep[]): Promise<ScriptRunOutcome>
 }
@@ -46,6 +51,11 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   const docId = opts.docId ?? 'headless'
   const docBox: { current: PartDoc | null } = { current: opts.doc }
   const solveResultsBox: { current: Record<string, SketchData> } = { current: {} }
+  // What the last settle published per feature, by id: the browser adapter
+  // fills the session's SketchData map here, and headlessly only the verdict is
+  // needed (a caller checking a document against what the user saw), so the
+  // solver's own answer is kept instead of a re-derived result object.
+  const statusesBox: { current: Record<string, string> } = { current: {} }
   const dirtyFacts = { dirty: false, saves: 0, savedHash: null as number | null }
 
   const reSolve: ReSolveFn = async (doc, solveOpts?: SolveOptions) => {
@@ -61,6 +71,12 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // and reconcile part_style. The journal ignores it: its hashes were taken
     // synchronously around the apply, before this write-back landed.
     docBox.current = applySolveToDoc(doc, response)
+    const statuses: Record<string, string> = {}
+    for (const [id, feature] of Object.entries(response.result ?? {})) {
+      const status = (feature as { status?: unknown } | null)?.status
+      if (typeof status === 'string') statuses[id] = status
+    }
+    statusesBox.current = statuses
   }
 
   const solve = createWorkerSolveScheduler(() => reSolve)
@@ -133,6 +149,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     registry,
     solve,
     getDoc: () => docBox.current,
+    solveStatuses: () => statusesBox.current,
     idle: () => solve.idle(),
     run,
   }
