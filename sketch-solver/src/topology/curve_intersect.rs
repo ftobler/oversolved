@@ -836,9 +836,12 @@ fn intersect_pair(a: &Curve, b: &Curve, hits: &mut Vec<Hit>) {
 }
 
 /// Intersection points of two curves with the parameter on each. Order of a and
-/// b is preserved (`t_a` refers to a, `t_b` to b). The sign-change scan reports
-/// no tangency (a touch with no crossing); the closed-form arms (line/ellipse,
-/// circle/circle) report a coincident double root as a single point.
+/// b is preserved (`t_a` refers to a, `t_b` to b). A transversal crossing is
+/// reported once, from either a closed form or the sign-change scan; a
+/// no-sign-change approach inside the near-tangent gap budget is reported at
+/// the foot of its closest approach instead of being dropped as a tangency
+/// (see `scan_roots_and_grazes` and `line_ellipse`'s miss side), while a true
+/// miss beyond the budget reports nothing.
 pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
     let mut hits: Vec<Hit> = Vec::new();
     intersect_pair(a, b, &mut hits);

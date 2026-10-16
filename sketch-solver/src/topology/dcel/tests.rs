@@ -140,10 +140,12 @@ fn near_tangent_lines_at_the_ellipse_seam_keep_the_face() {
     // standalone face.
     //
     // The circle test drives its contact through `lc`'s miss-side virtual
-    // tangent point; the ellipse's `line_ellipse` has no miss-side rule, so the
-    // lines graze instead (pushed inward by `g`). Each graze yields two roots
-    // within MERGE of the foot, which the point de-dup folds to one contact;
-    // the two lines' contacts are `2*b*delta` apart and fuse into one vertex.
+    // tangent point; `line_ellipse` now has the same miss-side rule, but this
+    // test keeps its lines pushed inward by `g` (the point sits inside the
+    // rim, so the discriminant stays positive). Each line genuinely crosses in
+    // two roots within MERGE of the foot, which the point de-dup folds to one
+    // contact; the two lines' contacts are `2*b*delta` apart and fuse into one
+    // vertex.
     let a: f64 = 50.0;
     let b: f64 = 10.0;
     let g: f64 = 2e-14; // inward graze: disc stays robustly positive
