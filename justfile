@@ -191,12 +191,16 @@ sketch-fuzz from to:
 # tests). Two crates, two binaries: the sketch/OCC worker and the anchor solver
 # worker each load only their own. See the workspace root Cargo.toml.
 
-# Build both Rust solvers to WASM and copy them into the frontend.
+# Build both Rust solvers to WASM and copy them into the frontend. The
+# sketch-solver nodejs target carries `--features fuzz`: sketchRepros.test.ts
+# drives the fuzz-gated oracle export and must not skip in a provisioned tree.
+# The web target and the other three builds stay feature-free (the production
+# WASM binary never pays for the oracle).
 wasm:
     mkdir -p tmp
     { \
         (cd sketch-solver && {{wasm_pack}} build --target web --out-dir pkg --release) && \
-        (cd sketch-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release) && \
+        (cd sketch-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release -- --features fuzz) && \
         (cd mate-solver && {{wasm_pack}} build --target web --out-dir pkg --release) && \
         (cd mate-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release) && \
         (cd frontend && node scripts/copyWasm.mjs); \
