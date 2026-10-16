@@ -11,7 +11,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
-import { parseAncestry } from '../../query'
+import { parseAncestry, makeAncestryQuery, constructionUuidToken } from '../../query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { BuildState } from '../../types3d'
 
@@ -148,8 +148,8 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
   it('a stale pick is partial with unresolved_faces; all stale is an exception', () => {
     const base = h.run(boxSpec())
     const top = faceQueryAt(base.bodies, 'cls_zp')
-    const side = faceQueryAt(base.bodies, 'cls_xp')
-    const stale = side.replace(uuidOf(side) ?? '@u|x', '@u|dead0000000000000000')
+    // A uuid-only query: no ancestry to recover from, so it can never resolve.
+    const stale = makeAncestryQuery([constructionUuidToken('dead0000000000000000')], 'flatface')
     {
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top, stale], distance: 5 } }] })
       expect(h.res(r, 'mf1').status).toBe('partial')
@@ -160,6 +160,34 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [stale], distance: 5 } }] })
       expect(h.res(r, 'mf1').status).toBe('exception')
     }
+  })
+
+  it('a later pick consumed by an earlier move is failed, not unresolved', () => {
+    const base = h.run(boxSpec())
+    const top = faceQueryAt(base.bodies, 'cls_zp')
+    const beforeUuids = new Set(((h.body(base, 'body_ex1') as BodyView).mesh?.face_queries ?? []).map(uuidOf))
+    const topEdges = ((h.body(base, 'body_ex1') as BodyView).edge_queries ?? []).filter((q) => q.includes('cls_zp'))
+    expect(topEdges.length).toBeGreaterThanOrEqual(4)
+    const chamferSpec = {
+      features: [...boxSpec().features, { id: 'ch1', kind: 'chamfer', edges: topEdges.slice(0, 4), distance: 1 }],
+    }
+    const rc = h.run(chamferSpec)
+    expect(h.res(rc, 'ch1').status).toBe('ok')
+    // A chamfer face is one the chamfer introduced: its UUID is not in the box.
+    const chamferFace = ((h.body(rc, 'body_ex1') as BodyView).mesh?.face_queries ?? []).find((q) => {
+      const u = uuidOf(q)
+      return u !== undefined && !beforeUuids.has(u)
+    })
+    expect(chamferFace).toBeDefined()
+    // Move the top inward past the chamfer layer: the chamfers vanish, so the
+    // later pick is consumed -- failed (geometry is the fix), not unresolved.
+    const spec = {
+      features: [...chamferSpec.features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top, chamferFace], distance: -3 } }],
+    }
+    const r = h.run(spec)
+    expect(h.res(r, 'mf1').status).toBe('partial')
+    expect(h.res(r, 'mf1').failed_faces).toEqual([chamferFace])
+    expect(((h.res(r, 'mf1').unresolved_faces as string[] | undefined) ?? [])).toEqual([])
   })
 
   it('a downstream fillet on the moved cap survives a distance edit', () => {

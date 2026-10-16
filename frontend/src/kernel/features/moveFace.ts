@@ -164,7 +164,13 @@ export function solveMoveFace(
         face = resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) ?? null
       }
       if (face === null) {
-        unresolved.push(q)
+        // A later pick the intermediate shape no longer carries: when it still
+        // resolves on the ORIGINAL body, an earlier move consumed it (the
+        // geometry is the fix, not the pick); otherwise it is a stale pick.
+        const existedBefore = bodyApplied > 0 &&
+          (resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) ?? null) !== null
+        if (existedBefore) failed.push(q)
+        else unresolved.push(q)
         continue
       }
       if (distance === 0) {
