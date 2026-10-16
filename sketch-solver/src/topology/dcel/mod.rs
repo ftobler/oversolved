@@ -74,8 +74,9 @@ const TANGENT_COLLAPSE_REL: f64 = 1e-3;
 // its miss-side rule: two circles whose centre distance falls a hair beyond
 // r1 + r2 (or a hair inside |r1 - r2|) get their single foot asserted within
 // the same budget, for the same reason -- the gap is the residual the tangent
-// solver drives to zero.
-const TANGENT_GAP_REL: f64 = 1e-5;
+// solver drives to zero. The sampled-root paths in `curve_intersect.rs` mirror
+// the same budget for the conic and spline pairs those paths own.
+pub(super) const TANGENT_GAP_REL: f64 = 1e-5;
 
 // ─── Input geometry (the enriched richGeom dict, classified like classifyEntities) ───
 

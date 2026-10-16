@@ -269,6 +269,71 @@ describe('subdivideLoops', () => {
   })
 })
 
+describe('loopContainment with concave containers', () => {
+  // A C (the shape of "⊂"): back bar at x in [0, back], arms reaching to x = w,
+  // arm thickness t. Its area centroid can sit in the mouth, outside the loop.
+  const cShape = (w: number, h: number, t: number, back: number): LoopEdge[] => {
+    const p = [[0, 0], [0, h], [w, h], [w, h - t], [back, h - t], [back, t], [w, t], [w, 0]]
+    return p.map((q, i) => ({ kind: 'line', start: q, end: p[(i + 1) % p.length] }))
+  }
+  const poly = (p: number[][]): LoopEdge[] =>
+    p.map((q, i) => ({ kind: 'line', start: q, end: p[(i + 1) % p.length] }))
+  const circleLoop = (cx: number, cy: number, r: number): LoopEdge[] => [
+    arcEdge(cx, cy, r, 0, 180),
+    arcEdge(cx, cy, r, 180, 360),
+  ]
+
+  it('the C centroid itself sits in the mouth, outside the loop', () => {
+    // The shape of the failure: the centroid probe answers containment wrong
+    // for a concave loop.
+    const c = cShape(10, 10, 2, 2)
+    expect(pointInLoop(loopCentroid(c), c)).toBe(false)
+  })
+
+  it('nests a C inside a C when the inner centroid sits in its own mouth', () => {
+    // The small C's material is inside the big C, but its centroid falls in
+    // the small C's own mouth, which the big C's mouth also covers, so the
+    // centroid-only test dropped the hole. Same fixture as the Rust kernel.
+    const big = cShape(10, 11, 4, 2)
+    const small = cShape(10, 10, 2, 2)
+    const { container } = loopContainment([big, small])
+    expect(container).toEqual([-1, 0])
+    const groups = subdivideLoops([big, small])
+    expect(groups[0][1]).toEqual([small])
+    expect(groups[1][1]).toEqual([])
+  })
+
+  it('nests a U inside a U the same way', () => {
+    const outerU = poly([
+      [0, 0], [0, 12], [10, 12], [10, 0], [8, 0], [8, 10], [2, 10], [2, 0],
+    ])
+    const innerU = poly([
+      [1, 1], [1, 11], [9, 11], [9, 1], [8.5, 1], [8.5, 10.5], [1.5, 10.5], [1.5, 1],
+    ])
+    const { container } = loopContainment([outerU, innerU])
+    expect(container).toEqual([-1, 0])
+  })
+
+  it('keeps a circle in the notch of a C independent', () => {
+    // The C's centroid is in its mouth, where the circle sits, but the circle
+    // is genuinely outside the C: no containment may be invented for it.
+    const big = cShape(10, 11, 4, 2)
+    const small = cShape(10, 10, 2, 2)
+    const disc = circleLoop(6, 5, 1)
+    expect(loopContainment([big, small, disc]).container).toEqual([-1, 0, -1])
+    const groups = subdivideLoops([big, small, disc])
+    expect(groups[2][1]).toEqual([])
+  })
+
+  it('concentric loops still nest by area', () => {
+    const outer = rect(0, 0, 10, 10)
+    const inner = rect(3, 3, 7, 7)
+    expect(loopContainment([outer, inner]).container).toEqual([-1, 0])
+    // Two identical concentric loops do not nest: the rule is strictly larger.
+    expect(loopContainment([rect(0, 0, 10, 10), rect(0, 0, 10, 10)]).container).toEqual([-1, -1])
+  })
+})
+
 describe('classifyLoops additional', () => {
   it('returns empty array for empty input', () => {
     expect(classifyLoops([])).toEqual([])

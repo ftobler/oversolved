@@ -9,12 +9,14 @@
 //!   ellipse  ecc. angle in [0, 2*pi) the Geom_Ellipse parameter phi
 //!   bezier   t in [0, 1]
 //!
-//! Robustness rule: numeric pairs report only genuine sign-change crossings. A
-//! tangency (a touch with no sign change) yields no point, so a single grazing
-//! contact does not split a curve.
+//! Robustness rule: numeric pairs report genuine sign-change crossings, and a
+//! no-sign-change approach inside the near-tangent gap budget reports the foot
+//! of its closest approach as a contact, mirroring the line/circle collapse in
+//! the dcel. A true miss, further apart than that budget, still reports nothing,
+//! so a graze never spuriously splits a curve.
 
 use super::curve_split::{bezier_point, ellipse_point_at};
-use super::dcel::pymod;
+use super::dcel::{pymod, TANGENT_GAP_REL};
 use super::{TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE, TWO_PI};
 use crate::{radians, MIN_SEMI_AXIS_SQ};
 
@@ -127,10 +129,83 @@ fn conic_residual(curve: &Curve) -> Option<Box<dyn Fn(Vec2) -> f64>> {
     }
 }
 
-// ─── 1-D root finding by dense sampling + bisection (sign-change only) ───
+// ─── near-tangency budget for the sampled-root paths ───
+
+/// World-space budget for reading a no-sign-change approach as a contact:
+/// `MERGE.max(TANGENT_GAP_REL * scale)`, the same rule `lc`/`cc` apply on their
+/// miss side. `scale` is the pair's smaller characteristic radius; see
+/// `curve_scale`. On a true miss there is no crossing to swallow, so the budget
+/// can only invent a contact where the curves come within it of touching, never
+/// erase a crossing the user drew.
+fn tangent_gap_tol(scale: f64) -> f64 {
+    TOL_TOPOLOGY_MERGE.max(TANGENT_GAP_REL * scale)
+}
+
+/// Characteristic radius of a carrier curve for the gap budget. A circle
+/// contributes its radius and an ellipse its smaller semi-axis (its tightest
+/// curvature), which is the two-circle case of `cc`'s `r_min`. A bezier has no
+/// radius, so half its control-polygon bounding-box diagonal stands in; a line
+/// contributes 0, leaving the `MERGE` floor (its caller pairs it with a curve
+/// that does have a scale).
+fn curve_scale(curve: &Curve) -> f64 {
+    match *curve {
+        Curve::Circle { r, .. } => r.abs(),
+        Curve::Ellipse { a, b, .. } => a.abs().min(b.abs()),
+        Curve::Bezier { p0, c1, c2, p3 } => bezier_scale(&[p0, c1, c2, p3]),
+        Curve::Line { .. } => 0.0,
+    }
+}
+
+fn bezier_scale(c: &BzCtrl) -> f64 {
+    let b = bbox(c);
+    0.5 * (b[2] - b[0]).hypot(b[3] - b[1])
+}
+
+/// World-space distance from a point to a conic, read off the residual's
+/// first-order (normal) form `|F| / |grad F|`. For the circle this is exactly
+/// the radial gap `|p - c| - r`, which is what `lc`'s `dist - r` measures, and
+/// near the curve it is the distance to the nearest point on it. `None` where
+/// the gradient vanishes (the ellipse centre) or the residual is not finite.
+fn conic_gap(curve: &Curve, p: Vec2) -> Option<f64> {
+    match *curve {
+        Curve::Circle { c, r } => {
+            let d = (p[0] - c[0]).hypot(p[1] - c[1]);
+            if d.is_finite() {
+                Some((d - r).abs())
+            } else {
+                None
+            }
+        }
+        Curve::Ellipse { c, a, b, theta } => {
+            let cr = radians(theta).cos();
+            let sr = radians(theta).sin();
+            let dx = p[0] - c[0];
+            let dy = p[1] - c[1];
+            let xl = dx * cr + dy * sr;
+            let yl = -dx * sr + dy * cr;
+            let aa = (a * a).max(MIN_SEMI_AXIS_SQ);
+            let bb = (b * b).max(MIN_SEMI_AXIS_SQ);
+            let f = xl * xl / aa + yl * yl / bb - 1.0;
+            let gx = 2.0 * xl / aa;
+            let gy = 2.0 * yl / bb;
+            let m = gx.hypot(gy);
+            if f.is_finite() && m.is_finite() && m > 0.0 {
+                Some(f.abs() / m)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+// ─── 1-D root finding by dense sampling + bisection, plus near-tangency minima ───
 
 const SCAN_SAMPLES: usize = 512;
 const BISECT_ITERS: usize = 60;
+/// Ternary iterations for a sampled valley: (2/3)^48 shrinks one sampling
+/// bracket (~1e-2 rad) below any parameter difference the split pass can see.
+const TERNARY_ITERS: usize = 48;
 
 fn bisect(g: &dyn Fn(f64) -> f64, lo: f64, hi: f64) -> f64 {
     let mut a = lo;
@@ -152,25 +227,114 @@ fn bisect(g: &dyn Fn(f64) -> f64, lo: f64, hi: f64) -> f64 {
     0.5 * (a + b)
 }
 
-/// Roots of g over [t0, t1] found by scanning for sign changes and refining. For
-/// periodic curves pass the full period [0, 2pi); the seam is covered because the
-/// endpoints coincide (g(0) == g(2pi)).
-fn scan_roots(g: &dyn Fn(f64) -> f64, t0: f64, t1: f64) -> Vec<f64> {
-    let mut roots = Vec::new();
-    let step = (t1 - t0) / SCAN_SAMPLES as f64;
-    let mut prev_t = t0;
-    let mut prev_g = g(prev_t);
-    for i in 1..=SCAN_SAMPLES {
-        let cur_t = t0 + i as f64 * step;
-        let cur_g = g(cur_t);
-        if prev_g == 0.0 {
-            roots.push(prev_t);
-        } else if prev_g * cur_g < 0.0 {
-            roots.push(bisect(g, prev_t, cur_t));
+/// Ternary minimisation of a locally unimodal function over a small bracket.
+fn minimize(f: &dyn Fn(f64) -> f64, lo: f64, hi: f64) -> f64 {
+    let mut a = lo;
+    let mut b = hi;
+    for _ in 0..TERNARY_ITERS {
+        let m1 = a + (b - a) / 3.0;
+        let m2 = b - (b - a) / 3.0;
+        if f(m1) <= f(m2) {
+            b = m2;
+        } else {
+            a = m1;
         }
-        prev_t = cur_t;
-        prev_g = cur_g;
     }
+    0.5 * (a + b)
+}
+
+/// Roots of g over [t0, t1] found by scanning for sign changes and refining,
+/// plus the near-tangency contacts: a sampled valley of |g| whose window keeps
+/// one sign (so no crossing lives in it) and whose refined minimum comes within
+/// `gap_tol` world units of the other curve yields that minimum's parameter.
+/// For periodic curves pass the full period [0, 2pi) and `periodic`; the seam
+/// is covered because the endpoints coincide.
+///
+/// Crossings come first in scan order, then the grazes, so a caller's hit list
+/// only gains the new contacts at the end. A graze is the "virtual tangent
+/// point" a converged tangent constraint leaves (see the dcel collapse): the
+/// region it closes can only build on that foot, and a true miss beyond the
+/// budget stays a miss.
+fn scan_roots_and_grazes(
+    g: &dyn Fn(f64) -> f64,
+    gap_at: &dyn Fn(f64) -> Option<f64>,
+    gap_tol: f64,
+    t0: f64,
+    t1: f64,
+    periodic: bool,
+) -> Vec<f64> {
+    let step = (t1 - t0) / SCAN_SAMPLES as f64;
+    let ts: Vec<f64> = (0..=SCAN_SAMPLES).map(|i| t0 + i as f64 * step).collect();
+    let gs: Vec<f64> = ts.iter().map(|&t| g(t)).collect();
+
+    let mut roots = Vec::new();
+    for i in 0..SCAN_SAMPLES {
+        if gs[i] == 0.0 {
+            roots.push(ts[i]);
+        } else if gs[i] * gs[i + 1] < 0.0 {
+            roots.push(bisect(g, ts[i], ts[i + 1]));
+        }
+    }
+
+    // A sampled valley is a sample below both neighbours. The one-sign window
+    // rejects the pseudo-valleys on either side of a root, where |g| is also
+    // locally minimal but the contact is the crossing itself, already emitted.
+    let same_sign = |x: f64, y: f64| (x > 0.0 && y > 0.0) || (x < 0.0 && y < 0.0);
+    let mut grazes: Vec<(f64, f64)> = Vec::new();
+    // The valley test and the hidden-crossing guard, shared by the interior
+    // windows and the wrapped seam window: a seam that skipped the guard could
+    // emit a phantom foot in the middle of a sub-sample crossing pair.
+    let consider = |prev: usize, i: usize, next: usize, lo: f64, hi: f64| -> Option<(f64, f64)> {
+        if !(same_sign(gs[prev], gs[i]) && same_sign(gs[i], gs[next]))
+            || gs[i].abs() > gs[prev].abs()
+            || gs[i].abs() > gs[next].abs()
+        {
+            return None;
+        }
+        let t_min = minimize(&|t: f64| g(t).abs(), lo, hi);
+        let g_min = g(t_min);
+        // A dip that comes out the far side of zero is a crossing pair hidden
+        // between samples, not a graze: the pair has no foot to assert, and a
+        // contact in its middle would split a sliver out of a real crossing.
+        if !(g_min == 0.0 || same_sign(g_min, gs[i])) {
+            return None;
+        }
+        let gap = gap_at(t_min)?;
+        (gap <= gap_tol).then_some((t_min, gap))
+    };
+    for i in 1..SCAN_SAMPLES {
+        if let Some((t_min, gap)) = consider(i - 1, i, i + 1, ts[i - 1], ts[i + 1]) {
+            let t = if periodic {
+                pymod(t_min, TWO_PI)
+            } else {
+                t_min
+            };
+            grazes.push((t, gap));
+        }
+    }
+    if periodic {
+        // The seam sample: `ts[0]` and `ts[SCAN_SAMPLES]` are the same point,
+        // so its window wraps and the refinement may land past t1; pymod folds
+        // it back into [0, 2pi) for the split pass.
+        let first = 1;
+        let last = SCAN_SAMPLES - 1;
+        if let Some((t_min, gap)) = consider(last, 0, first, ts[last], ts[first] + (t1 - t0)) {
+            grazes.push((pymod(t_min, TWO_PI), gap));
+        }
+    }
+
+    // A flat valley can present several sampled valleys around one true
+    // minimum; keep one contact per cluster so the split list cannot gain a
+    // phantom sliver segment between two params that name the same foot.
+    grazes.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut kept: Vec<f64> = Vec::new();
+    for (t, _) in grazes {
+        if kept.last().is_some_and(|&p| (t - p).abs() <= step) {
+            continue;
+        }
+        kept.push(t);
+    }
+    roots.extend(kept);
     roots
 }
 
@@ -193,7 +357,10 @@ fn dedup_hits(hits: Vec<Hit>) -> Vec<Hit> {
 // ─── closed-form pairs ───
 
 /// Line vs ellipse: map the line into the ellipse's local unit-circle space,
-/// intersect the unit circle in closed form, map hit points back to world.
+/// intersect the unit circle in closed form, map hit points back to world. A
+/// miss-side near tangency is collapsed to its foot, mirroring `lc`: the solver
+/// leaves a converged tangent a hair short of the rim, and the region closes on
+/// that contact.
 fn line_ellipse(l0: Vec2, l1: Vec2, c: Vec2, a: f64, b: f64, theta: f64) -> Vec<Vec2> {
     let cr = radians(theta).cos();
     let sr = radians(theta).sin();
@@ -214,7 +381,23 @@ fn line_ellipse(l0: Vec2, l1: Vec2, c: Vec2, a: f64, b: f64, theta: f64) -> Vec<
     let cc = q0[0] * q0[0] + q0[1] * q0[1] - 1.0;
     let disc = bb * bb - 4.0 * aa * cc;
     if disc < 0.0 {
-        return vec![];
+        // Virtual tangent point, `lc`'s rule in the ellipse's terms: the foot
+        // of the closest approach, kept when the world gap it leaves is inside
+        // `MERGE.max(TANGENT_GAP_REL * r)` of the rim and the foot still lies
+        // on the finite segment. A miss has no crossing to swallow.
+        let raw = -bb / (2.0 * aa);
+        let seg = (l1[0] - l0[0]).hypot(l1[1] - l0[1]);
+        let overhang = (-raw).max(raw - 1.0).max(0.0) * seg;
+        if overhang > TOL_TOPOLOGY_MERGE {
+            return vec![];
+        }
+        let t = raw.clamp(0.0, 1.0);
+        let p = [l0[0] + t * (l1[0] - l0[0]), l0[1] + t * (l1[1] - l0[1])];
+        let ell = Curve::Ellipse { c, a, b, theta };
+        return match conic_gap(&ell, p) {
+            Some(gap) if gap <= tangent_gap_tol(curve_scale(&ell)) => vec![p],
+            _ => vec![],
+        };
     }
     let sd = disc.sqrt();
     let mut pts = Vec::new();
@@ -254,14 +437,26 @@ fn circle_circle(ac: Vec2, ar: f64, bc: Vec2, br: f64) -> Vec<Vec2> {
 }
 
 /// Cubic Bezier vs line via the cubic the line's implicit form induces in t.
+/// The graze side mirrors `lc`: the world gap is the residual divided by the
+/// line's normal length, and the bezier's own scale anchors the tolerance.
 fn bezier_line(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, l0: Vec2, l1: Vec2) -> Vec<f64> {
     let nx = l1[1] - l0[1];
     let ny = -(l1[0] - l0[0]);
+    let len = nx.hypot(ny);
     let g = move |t: f64| -> f64 {
         let p = bezier_point(p0, c1, c2, p3, t);
         nx * (p[0] - l0[0]) + ny * (p[1] - l0[1])
     };
-    scan_roots(&g, 0.0, 1.0)
+    let gap_at = |t: f64| -> Option<f64> {
+        let v = g(t);
+        if len > 0.0 && v.is_finite() {
+            Some(v.abs() / len)
+        } else {
+            None
+        }
+    };
+    let tol = tangent_gap_tol(curve_scale(&Curve::Bezier { p0, c1, c2, p3 }));
+    scan_roots_and_grazes(&g, &gap_at, tol, 0.0, 1.0, false)
 }
 
 // ─── bezier vs bezier by recursive AABB subdivision ───
@@ -386,7 +581,94 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
     if budget.truncated {
         return vec![];
     }
+    if out.is_empty() {
+        // The boxes never overlapped, so the pair either crosses nowhere or
+        // grazes: a solver-driven tangency can leave exactly this picture, and
+        // only the foot lets the region close.
+        let tol = tangent_gap_tol(bezier_scale(&ca).min(bezier_scale(&cb)));
+        if let Some(hit) = bezier_near_touch(&ca, &cb, tol) {
+            out.push(hit);
+        }
+    }
     out
+}
+
+// Coarse sample count for the near-touch search; the alternating refinement
+// below starts from one coarse cell, so this only has to beat one cell.
+const NEAR_TOUCH_SAMPLES: usize = 64;
+// A within-tolerance stretch longer than this many coarse samples is two
+// curves running together (the degenerate overlap the AABB search already
+// handles), not a local graze.
+const NEAR_TOUCH_RUN: usize = 8;
+
+/// A near-touch of two splines that never crosses: coarse samples locate the
+/// closest cell, then alternating ternary refinements slide the pair onto the
+/// foot of the closest approach. The contact is emitted only when the refined
+/// gap is inside `tol` and the near approach stayed local. The midpoint of the
+/// refined pair is the virtual tangent point, mirroring `lc`/`cc`.
+fn bezier_near_touch(ca: &BzCtrl, cb: &BzCtrl, tol: f64) -> Option<Hit> {
+    let at = |c: &BzCtrl, t: f64| bezier_point(c[0], c[1], c[2], c[3], t);
+    let mut ti = 0.0;
+    let mut ui = 0.0;
+    let mut best = f64::INFINITY;
+    let mut near_run = 0usize;
+    for i in 0..=NEAR_TOUCH_SAMPLES {
+        let t = i as f64 / NEAR_TOUCH_SAMPLES as f64;
+        let pa = at(ca, t);
+        let mut nearest = f64::INFINITY;
+        for j in 0..=NEAR_TOUCH_SAMPLES {
+            let u = j as f64 / NEAR_TOUCH_SAMPLES as f64;
+            let pb = at(cb, u);
+            let d = (pa[0] - pb[0]).hypot(pa[1] - pb[1]);
+            if d < nearest {
+                nearest = d;
+                if d < best {
+                    best = d;
+                    ti = t;
+                    ui = u;
+                }
+            }
+        }
+        if nearest <= tol {
+            near_run += 1;
+        }
+    }
+    if near_run > NEAR_TOUCH_RUN {
+        return None;
+    }
+    let win = 1.0 / NEAR_TOUCH_SAMPLES as f64;
+    for _ in 0..12 {
+        let (lo, hi) = ((ui - win).max(0.0), (ui + win).min(1.0));
+        ui = minimize(
+            &|u: f64| {
+                let pb = at(cb, u);
+                let pa = at(ca, ti);
+                (pa[0] - pb[0]).hypot(pa[1] - pb[1])
+            },
+            lo,
+            hi,
+        );
+        let (lo, hi) = ((ti - win).max(0.0), (ti + win).min(1.0));
+        ti = minimize(
+            &|t: f64| {
+                let pa = at(ca, t);
+                let pb = at(cb, ui);
+                (pa[0] - pb[0]).hypot(pa[1] - pb[1])
+            },
+            lo,
+            hi,
+        );
+    }
+    let pa = at(ca, ti);
+    let pb = at(cb, ui);
+    if (pa[0] - pb[0]).hypot(pa[1] - pb[1]) > tol {
+        return None;
+    }
+    Some(Hit {
+        point: [(pa[0] + pb[0]) / 2.0, (pa[1] + pb[1]) / 2.0],
+        t_a: ti,
+        t_b: ui,
+    })
 }
 
 // ─── public entry point ───
@@ -410,6 +692,7 @@ fn scan_curve(
     a: &Curve,
     b: &Curve,
     scanned: &Curve,
+    other: &Curve,
     scanned_is_a: bool,
     residual: Box<dyn Fn(Vec2) -> f64>,
     hits: &mut Vec<Hit>,
@@ -430,8 +713,11 @@ fn scan_curve(
         Curve::Bezier { .. } => 1.0,
         _ => TWO_PI,
     };
+    let periodic = !matches!(*scanned, Curve::Bezier { .. });
     let g = |t: f64| residual(eval_at(t));
-    let params = scan_roots(&g, 0.0, hi);
+    let gap_at = |t: f64| conic_gap(other, eval_at(t));
+    let tol = tangent_gap_tol(curve_scale(scanned).min(curve_scale(other)));
+    let params = scan_roots_and_grazes(&g, &gap_at, tol, 0.0, hi, periodic);
     for t in params {
         let pt = eval_at(t);
         hits.push(Hit {
@@ -447,7 +733,7 @@ fn scan_curve(
 fn scan_conic(a: &Curve, b: &Curve, scanned_is_a: bool, hits: &mut Vec<Hit>) {
     let (scanned, other) = if scanned_is_a { (a, b) } else { (b, a) };
     if let Some(residual) = conic_residual(other) {
-        scan_curve(a, b, scanned, scanned_is_a, residual, hits);
+        scan_curve(a, b, scanned, other, scanned_is_a, residual, hits);
     }
 }
 
@@ -544,9 +830,12 @@ fn intersect_pair(a: &Curve, b: &Curve, hits: &mut Vec<Hit>) {
 }
 
 /// Intersection points of two curves with the parameter on each. Order of a and
-/// b is preserved (`t_a` refers to a, `t_b` to b). The sign-change scan reports
-/// no tangency (a touch with no crossing); the closed-form arms (line/ellipse,
-/// circle/circle) report a coincident double root as a single point.
+/// b is preserved (`t_a` refers to a, `t_b` to b). A transversal crossing is
+/// reported once, from either a closed form or the sign-change scan; a
+/// no-sign-change approach inside the near-tangent gap budget is reported at
+/// the foot of its closest approach instead of being dropped as a tangency
+/// (see `scan_roots_and_grazes` and `line_ellipse`'s miss side), while a true
+/// miss beyond the budget reports nothing.
 pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
     let mut hits: Vec<Hit> = Vec::new();
     intersect_pair(a, b, &mut hits);
@@ -563,232 +852,4 @@ pub fn intersect_curves(a: &Curve, b: &Curve) -> Vec<Hit> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn line(p0: Vec2, p1: Vec2) -> Curve {
-        Curve::Line { p0, p1 }
-    }
-
-    #[test]
-    fn line_through_ellipse_center() {
-        let e = Curve::Ellipse {
-            c: [0.0, 0.0],
-            a: 3.0,
-            b: 1.0,
-            theta: 0.0,
-        };
-        let h = intersect_curves(&line([-4.0, 0.0], [4.0, 0.0]), &e);
-        assert_eq!(h.len(), 2);
-        let mut xs: Vec<f64> = h.iter().map(|x| x.point[0]).collect();
-        xs.sort_by(|p, q| p.total_cmp(q));
-        assert!((xs[0] + 3.0).abs() < 1e-9 && (xs[1] - 3.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn circle_circle_two_points() {
-        let a = Curve::Circle {
-            c: [0.0, 0.0],
-            r: 1.0,
-        };
-        let b = Curve::Circle {
-            c: [1.0, 0.0],
-            r: 1.0,
-        };
-        let h = intersect_curves(&a, &b);
-        assert_eq!(h.len(), 2);
-        for hit in &h {
-            assert!((hit.point[0] - 0.5).abs() < 1e-9);
-        }
-    }
-
-    #[test]
-    fn circle_circle_tangent_reports_one_point() {
-        // A coincident double root is a real contact for the closed-form arms,
-        // unlike the sign-change scan's no-tangency rule. The two rims touch at
-        // exactly (1,0).
-        let a = Curve::Circle {
-            c: [0.0, 0.0],
-            r: 1.0,
-        };
-        let b = Curve::Circle {
-            c: [2.0, 0.0],
-            r: 1.0,
-        };
-        let h = intersect_curves(&a, &b);
-        assert_eq!(h.len(), 1);
-        assert!((h[0].point[0] - 1.0).abs() < 1e-9 && (h[0].point[1]).abs() < 1e-9);
-    }
-
-    #[test]
-    fn line_tangent_to_ellipse_reports_one_point() {
-        // Zero discriminant in the closed-form line/ellipse arm: y = 1 touches
-        // the ellipse a=2, b=1 at (0,1) and must report the double root once.
-        let ell = Curve::Ellipse {
-            c: [0.0, 0.0],
-            a: 2.0,
-            b: 1.0,
-            theta: 0.0,
-        };
-        let h = intersect_curves(&line([-3.0, 1.0], [3.0, 1.0]), &ell);
-        assert_eq!(h.len(), 1);
-        assert!((h[0].point[0]).abs() < 1e-9 && (h[0].point[1] - 1.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn circle_ellipse_four_points() {
-        let circ = Curve::Circle {
-            c: [0.0, 0.0],
-            r: 2.0,
-        };
-        let ell = Curve::Ellipse {
-            c: [0.0, 0.0],
-            a: 3.0,
-            b: 1.0,
-            theta: 0.0,
-        };
-        let h = intersect_curves(&circ, &ell);
-        assert_eq!(h.len(), 4);
-    }
-
-    #[test]
-    fn collapsed_ellipse_conic_produces_no_nan_hits() {
-        // b == 0 makes the conic residual divide by zero; the resulting NaN is
-        // never a sign change, so the scan must simply report nothing (or a
-        // finite point), never a NaN coordinate feeding the vertex merge.
-        let flat = Curve::Ellipse {
-            c: [0.0, 0.0],
-            a: 3.0,
-            b: 0.0,
-            theta: 0.0,
-        };
-        let circ = Curve::Circle {
-            c: [0.0, 0.0],
-            r: 2.0,
-        };
-        let g = conic_residual(&flat).expect("a flat ellipse is still a conic");
-        assert!(
-            g([1.0, 0.5]).is_finite(),
-            "conic residual off the flat axis"
-        );
-        assert!(g([1.0, 0.0]).is_finite(), "conic residual on the flat axis");
-        for hit in intersect_curves(&circ, &flat) {
-            assert!(
-                hit.point[0].is_finite() && hit.point[1].is_finite() && hit.t_a.is_finite(),
-                "degenerate ellipse produced {hit:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn conic_residual_returns_none_for_non_conics() {
-        // A line or bezier has no implicit conic form. Returning None lets the
-        // scan dispatch skip it instead of aborting the worker.
-        assert!(conic_residual(&line([0.0, 0.0], [1.0, 0.0])).is_none());
-        let bz = Curve::Bezier {
-            p0: [0.0, 0.0],
-            c1: [1.0, 0.0],
-            c2: [0.0, 1.0],
-            p3: [1.0, 1.0],
-        };
-        assert!(conic_residual(&bz).is_none());
-    }
-
-    #[test]
-    fn bezier_line_one_crossing() {
-        let bz = Curve::Bezier {
-            p0: [0.0, 0.0],
-            c1: [1.0, 2.0],
-            c2: [2.0, -2.0],
-            p3: [3.0, 0.0],
-        };
-        let h = intersect_curves(&bz, &line([-1.0, 0.0], [4.0, 0.0]));
-        // y=0 line crosses the symmetric S-curve at the two ends and the middle.
-        assert!(!h.is_empty());
-        for hit in &h {
-            assert!(hit.point[1].abs() < 1e-6);
-        }
-    }
-
-    #[test]
-    fn bezier_bezier_cross() {
-        let a = Curve::Bezier {
-            p0: [-2.0, 0.0],
-            c1: [-1.0, 0.0],
-            c2: [1.0, 0.0],
-            p3: [2.0, 0.0],
-        };
-        let b = Curve::Bezier {
-            p0: [0.0, -2.0],
-            c1: [0.0, -1.0],
-            c2: [0.0, 1.0],
-            p3: [0.0, 2.0],
-        };
-        let h = intersect_curves(&a, &b);
-        assert_eq!(h.len(), 1);
-        assert!(h[0].point[0].abs() < 1e-5 && h[0].point[1].abs() < 1e-5);
-    }
-
-    #[test]
-    fn bezier_bezier_three_crossings() {
-        // A wiggling spline through a straight-as-bezier segment crosses three
-        // times; none of those transversal hits may be lost to the recursion
-        // budget or its degenerate-overlap policy.
-        let a = Curve::Bezier {
-            p0: [-3.0, 0.0],
-            c1: [-1.0, 0.0],
-            c2: [1.0, 0.0],
-            p3: [3.0, 0.0],
-        };
-        let b = Curve::Bezier {
-            p0: [0.0, -2.0],
-            c1: [4.0, 6.0],
-            c2: [-4.0, -6.0],
-            p3: [0.0, 2.0],
-        };
-        let h = intersect_curves(&a, &b);
-        assert_eq!(h.len(), 3);
-        for hit in &h {
-            assert!(hit.point[1].abs() < 1e-6);
-            assert!((-3.0..=3.0).contains(&hit.point[0]));
-        }
-    }
-
-    #[test]
-    fn identical_beziers_terminate_and_report_nothing() {
-        // Pasting a spline onto itself used to explode the AABB subdivision:
-        // every split pair's boxes keep touching until the FLAT cutoff,
-        // pushing ~10^8 phantom leaves into an unbounded Vec on the wasm
-        // heap. It must now return promptly under the degenerate-overlap
-        // policy (no points), not hang or abort.
-        let bz = Curve::Bezier {
-            p0: [0.0, 0.0],
-            c1: [1.0, 2.0],
-            c2: [2.0, -2.0],
-            p3: [3.0, 0.0],
-        };
-        let h = intersect_curves(&bz, &bz);
-        assert!(h.is_empty());
-    }
-
-    #[test]
-    fn heavily_overlapping_beziers_stay_bounded() {
-        // The same shape nudged past the control-polygon short-circuit: the
-        // search must stay inside its budget and its output inside the >10
-        // discard bound, whatever the exact crossing count turns out to be.
-        let a = Curve::Bezier {
-            p0: [0.0, 0.0],
-            c1: [1.0, 2.0],
-            c2: [2.0, -2.0],
-            p3: [3.0, 0.0],
-        };
-        let b = Curve::Bezier {
-            p0: [0.005, 0.0],
-            c1: [1.005, 2.0],
-            c2: [2.005, -2.0],
-            p3: [3.005, 0.0],
-        };
-        let h = intersect_curves(&a, &b);
-        assert!(h.len() <= 10);
-    }
-}
+mod tests;

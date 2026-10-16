@@ -26,6 +26,46 @@ fn a_point_between_two_vertices_merges_into_the_first_registered() {
 }
 
 #[test]
+fn vertex_emission_order_is_the_registration_order_on_every_run() {
+    // The backlog item "DCEL vertex emission order is HashMap-random" is
+    // stale: the pool is the insertion-ordered `Verts` since 7676df76, and
+    // `vertices`/`intersection_points` are drained straight from its Vec, so
+    // their order is the registration order on every run. A HashMap-ordered
+    // emission would reshuffle under a fresh seed every run.
+    let geom = vec![
+        ("a".into(), line([0.0, 0.0], [4.0, 0.0])),
+        ("b".into(), line([4.0, 0.0], [4.0, 4.0])),
+        ("c".into(), line([4.0, 4.0], [0.0, 4.0])),
+        ("d".into(), line([0.0, 4.0], [0.0, 0.0])),
+        // Crosses the left and right side mid-span; its two hits are minted
+        // after the four seeded corners.
+        ("cross".into(), line([-1.0, 2.0], [5.0, 2.0])),
+    ];
+    let first = detect_topology(&geom);
+    let vertex_ids = |t: &crate::topology::dcel::TopologyOut| -> Vec<String> {
+        t.vertices.iter().map(|(k, _)| k.clone()).collect()
+    };
+    for _ in 0..64 {
+        assert_eq!(vertex_ids(&detect_topology(&geom)), vertex_ids(&first));
+    }
+    // Registration order, not sorted: the seeded corners own _v0.._v3, the
+    // cross line's free endpoints follow, then the two chord hits.
+    let ids = vertex_ids(&first);
+    assert_eq!(
+        ids,
+        vec!["_v0", "_v1", "_v2", "_v3", "_v4", "_v5", "_v6", "_v7"]
+    );
+    assert_eq!(
+        first
+            .intersection_points
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect::<Vec<_>>(),
+        vec!["_v6", "_v7"]
+    );
+}
+
+#[test]
 fn single_square_is_one_surface() {
     let t = detect_topology(&square(2.0));
     assert_eq!(t.surfaces.len(), 1);
@@ -100,10 +140,12 @@ fn near_tangent_lines_at_the_ellipse_seam_keep_the_face() {
     // standalone face.
     //
     // The circle test drives its contact through `lc`'s miss-side virtual
-    // tangent point; the ellipse's `line_ellipse` has no miss-side rule, so the
-    // lines graze instead (pushed inward by `g`). Each graze yields two roots
-    // within MERGE of the foot, which the point de-dup folds to one contact;
-    // the two lines' contacts are `2*b*delta` apart and fuse into one vertex.
+    // tangent point; `line_ellipse` now has the same miss-side rule, but this
+    // test keeps its lines pushed inward by `g` (the point sits inside the
+    // rim, so the discriminant stays positive). Each line genuinely crosses in
+    // two roots within MERGE of the foot, which the point de-dup folds to one
+    // contact; the two lines' contacts are `2*b*delta` apart and fuse into one
+    // vertex.
     let a: f64 = 50.0;
     let b: f64 = 10.0;
     let g: f64 = 2e-14; // inward graze: disc stays robustly positive
@@ -536,6 +578,115 @@ fn tangent_collapse_holds_across_the_solver_residual_band() {
         let t = detect_topology(&tangent_pair_offset_by(gap));
         assert_eq!(t.surfaces.len(), 3, "gap {gap:e}: a real miss stays a miss");
     }
+}
+
+#[test]
+fn near_tangent_lines_to_an_ellipse_close_the_side_regions() {
+    // Bug class A: a line tangent to an ellipse reported no contact, so the
+    // region the line closes never built. The stadium's top and bottom sides
+    // sit a hair off tangency to the ellipse inside it; within the gap budget
+    // each side's virtual contact splits the ellipse and the stadium into the
+    // pinned left and right side regions plus the disk. On a real miss the
+    // ellipse stays whole and the stadium is its one and only region.
+    let (a, b, half_width): (f64, f64, f64) = (5.0, 2.0, 6.0);
+    let stadium = |gap: f64| {
+        vec![
+            ("e0".into(), ellipse([0.0, 0.0], a, b, 0.0)),
+            (
+                "top".into(),
+                line([-half_width, b + gap], [half_width, b + gap]),
+            ),
+            (
+                "bottom".into(),
+                line([half_width, -b - gap], [-half_width, -b - gap]),
+            ),
+            (
+                "right".into(),
+                line([half_width, b + gap], [half_width, -b - gap]),
+            ),
+            (
+                "left".into(),
+                line([-half_width, -b - gap], [-half_width, b + gap]),
+            ),
+        ]
+    };
+    for gap in [1e-7, 5e-6] {
+        let t = detect_topology(&stadium(gap));
+        assert_eq!(
+            t.surfaces.len(),
+            3,
+            "gap {gap:e}: disk + left and right side regions"
+        );
+    }
+    let t = detect_topology(&stadium(1e-2));
+    assert_eq!(t.surfaces.len(), 2, "a real miss leaves the stadium whole");
+}
+
+#[test]
+fn a_concave_container_keeps_a_nested_face_as_its_hole() {
+    // The nesting fix end to end: a small C-shaped traced face inside a big
+    // one, plus a circle in the notch. The small C's centroid sits in its own
+    // mouth, which the big C's mouth also covers, so the centroid-only test
+    // dropped the hole; the circle is genuinely outside both and stays its own
+    // face. The two C outlines share no edge and no vertex, so the DCEL sees
+    // three clean loops.
+    let outline = |pts: &[[f64; 2]], prefix: &str| {
+        (0..pts.len())
+            .map(|i| {
+                (
+                    format!("{prefix}{i}"),
+                    line(pts[i], pts[(i + 1) % pts.len()]),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let big = outline(
+        &[
+            [0.0, 0.0],
+            [0.0, 12.0],
+            [12.0, 12.0],
+            [12.0, 8.0],
+            [4.0, 8.0],
+            [4.0, 4.0],
+            [12.0, 4.0],
+            [12.0, 0.0],
+        ],
+        "big",
+    );
+    let small = outline(
+        &[
+            [1.5, 1.0],
+            [1.5, 11.0],
+            [10.5, 11.0],
+            [10.5, 9.0],
+            [3.5, 9.0],
+            [3.5, 3.0],
+            [10.5, 3.0],
+            [10.5, 1.0],
+        ],
+        "small",
+    );
+    let mut geom = big;
+    geom.extend(small);
+    geom.push(("disc".into(), circle([8.0, 6.0], 1.0)));
+
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 3, "big C, small C and the disc");
+    let with_hole: Vec<_> = t.surfaces.iter().filter(|s| !s.holes.is_empty()).collect();
+    assert_eq!(with_hole.len(), 1, "only the big C carries a hole");
+    assert!(
+        with_hole[0]
+            .face_entity_ids
+            .iter()
+            .all(|id| id.starts_with("big")),
+        "the hole belongs to the big C's face"
+    );
+    assert!(
+        with_hole[0].holes[0]
+            .iter()
+            .all(|e| e.id.as_deref().is_some_and(|id| id.starts_with("small"))),
+        "the hole is the small C's loop"
+    );
 }
 
 #[test]
