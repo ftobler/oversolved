@@ -482,6 +482,66 @@ function helixPathRef(ref: string, globalRepo: Repository): string | null {
   return globalRepo.elements.get('_curve_' + id) !== undefined ? id : null
 }
 
+/** Sample a profile boundary edge into 2D plane points, enough to bracket its
+ *  axial span. Lines/splines use their control points; arcs/ellipses are sampled
+ *  so an interior extremum (a bulge past the endpoints) is not missed. */
+function edgeSample2d(e: Dict): number[][] {
+  const kind = e.kind as string | undefined
+  const pts: number[][] = []
+  const push = (p: unknown): void => {
+    if (Array.isArray(p) && p.length >= 2) pts.push([p[0] as number, p[1] as number])
+  }
+  if ((kind === 'arc' || kind === 'ellipse_arc' || kind === 'ellipse') && Array.isArray(e.center)) {
+    const c = e.center as number[]
+    const a = kind === 'arc' ? (e.radius as number) : (e.a as number)
+    const b = kind === 'arc' ? (e.radius as number) : (e.b as number)
+    const theta = (kind === 'arc' ? 0 : ((e.theta as number) ?? 0)) * (Math.PI / 180)
+    const ccw = (e.ccw as boolean) ?? true
+    let lo = kind === 'ellipse' ? 0 : ((e.angle_start_deg as number) ?? 0)
+    let hi = kind === 'ellipse' ? 360 : ((e.angle_end_deg as number) ?? 360)
+    if (!ccw) [lo, hi] = [hi, lo]
+    const r0 = lo * (Math.PI / 180)
+    const r1 = hi * (Math.PI / 180)
+    for (let i = 0; i <= 48; i++) {
+      const t = r0 + ((r1 - r0) * i) / 48
+      pts.push([
+        c[0] + a * Math.cos(t) * Math.cos(theta) - b * Math.sin(t) * Math.sin(theta),
+        c[1] + a * Math.cos(t) * Math.sin(theta) + b * Math.sin(t) * Math.cos(theta),
+      ])
+    }
+    return pts
+  }
+  push(e.start)
+  push(e.end)
+  push(e.c1)
+  push(e.c2)
+  return pts
+}
+
+/**
+ * The profile's extent along the sweep's advance axis. A screw sweep repeats one
+ * pitch apart, so a profile whose axial span reaches the pitch folds back onto
+ * its previous turn. OCC builds that self-intersecting shell into a shape whose
+ * BRepCheck verdict is still "valid" (measured: the volume just scales with the
+ * profile height), so the overlap has to be caught from the geometry, not the
+ * built solid's validity.
+ */
+function profileAxialSpan(loops: Dict[][], plane: PlaneLike, axis: Vec3): number {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const loop of loops) {
+    for (const e of loop) {
+      for (const p of edgeSample2d(e)) {
+        const w = sketchToWorld2d(p, plane)
+        const axial = w[0] * axis[0] + w[1] * axis[1] + w[2] * axis[2]
+        if (axial < lo) lo = axial
+        if (axial > hi) hi = axial
+      }
+    }
+  }
+  return Number.isFinite(lo) ? hi - lo : 0
+}
+
 /** Solve a sweep feature into the body store (mirrors `_solve_sweep`). */
 export function solveSweep(
   oc: OccModule,
@@ -626,6 +686,7 @@ export function solveSweep(
   let spineEdges: OccShape[]
   let binormal: Vec3 | null = null
   let helixPath = false
+  let helixPitch: number | null = null
   if (helixIds.length > 0) {
     if (pathRefs.length !== helixIds.length || helixIds.length > 1) {
       throw new Error('sweep: a helix path must stand alone; mixing it with other path edges is not supported')
@@ -634,9 +695,20 @@ export function solveSweep(
     if (desc === null) throw new Error(`sweep: helix path '${helixIds[0]}' has no curve descriptor`)
     spineEdges = [scope.track(buildCurveEdge(oc, scope, desc))]
     binormal = desc.axis
+    helixPitch = Math.abs(desc.pitch)
     helixPath = true
   } else {
     spineEdges = collectPathEdges(oc, scope, pathRefs, globalRepo)[0]
+  }
+
+  // A profile whose axial span reaches the pitch overlaps its previous turn.
+  // Refuse it before building; the self-intersecting shell OCC returns from
+  // MakePipeShell otherwise passes BRepCheck_Analyzer (see profileAxialSpan).
+  if (helixPath && binormal !== null && helixPitch !== null) {
+    const span = profileAxialSpan(allLoops, firstPt as PlaneLike, binormal)
+    if (span >= helixPitch - 1e-9) {
+      throw new Error('sweep: profile overlaps the next turn: pitch < profile height')
+    }
   }
 
   const bodyId = 'body_' + featureId

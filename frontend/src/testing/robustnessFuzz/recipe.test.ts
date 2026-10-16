@@ -31,6 +31,7 @@ function referencedBodies(step: RecipeStep): string[] {
     case 'linear-array': return [step.target]
     case 'circular-array': return [step.target]
     case 'mirror': return [step.target]
+    case 'helix': return [step.target]
   }
 }
 
@@ -72,6 +73,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'linear-array': return [step.pitch]
       case 'circular-array': return [step.stepDeg]
       case 'mirror': return []
+      case 'helix': return [step.pitch]
     }
   }
 
@@ -85,6 +87,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'linear-array': return [step.count]
       case 'circular-array': return [step.count]
       case 'mirror': return [step.face]
+      case 'helix': return [step.face, step.turns]
     }
   }
 
@@ -132,7 +135,7 @@ describe('the geometry-fuzz recipe generator', () => {
       }
     }
     expect([...kinds].sort()).toEqual([
-      'boolean', 'chamfer', 'circular-array', 'fillet', 'hole', 'linear-array', 'mirror', 'start',
+      'boolean', 'chamfer', 'circular-array', 'fillet', 'helix', 'hole', 'linear-array', 'mirror', 'start',
     ])
     expect([...tools].sort()).toEqual(['box', 'cylinder', 'sphere'])
   })

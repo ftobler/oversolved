@@ -125,6 +125,18 @@ export interface RecipeMirror {
   merge: boolean
 }
 
+export interface RecipeHelix {
+  kind: 'helix'
+  id: string
+  target: string
+  // Index into the target's cylinder faces; taken modulo the count at run time.
+  face: number
+  // Axial rise per turn. Kept at least two grid steps so a swept profile would
+  // not immediately self-overlap (the plan's "pitch >= 2x a small profile").
+  pitch: number
+  turns: number
+}
+
 export type RecipeStep =
   | RecipeStart
   | RecipeBoolean
@@ -134,6 +146,7 @@ export type RecipeStep =
   | RecipeLinearArray
   | RecipeCircularArray
   | RecipeMirror
+  | RecipeHelix
 
 export interface Recipe {
   seed: number
@@ -221,10 +234,11 @@ interface StepBudget {
   hole: number
   array: number
   mirror: number
+  helix: number
 }
 
 function freshBudget(): StepBudget {
-  return { boolean: 2, fillet: 2, chamfer: 2, hole: 2, array: 1, mirror: 1 }
+  return { boolean: 2, fillet: 2, chamfer: 2, hole: 2, array: 1, mirror: 1, helix: 1 }
 }
 
 function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep | null {
@@ -240,6 +254,7 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
   else if (roll < 0.66) kind = 'chamfer'
   else if (roll < 0.80) kind = 'hole'
   else if (roll < 0.90) kind = 'array'
+  else if (roll < 0.93) kind = 'helix'
   else kind = 'mirror'
   if (!spend(kind)) return null
   switch (kind) {
@@ -265,6 +280,11 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
         kind: 'mirror', id, target: PRIMARY_BODY,
         plane: drawOf(rnd, ['x', 'y', 'z', 'face'] as const), face: drawInt(rnd, 0, 3),
         keepOriginal: rnd() < 0.7, merge: rnd() < 0.8,
+      }
+    case 'helix':
+      return {
+        kind: 'helix', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
+        pitch: grid(drawInt(rnd, 2, 4)), turns: drawInt(rnd, 2, 4),
       }
   }
 }

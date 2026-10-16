@@ -125,10 +125,18 @@ export function resolveHelixParams(def: HelixFeatureDef, ref: HelixReference): H
   const usesHeight = mode === 'pitch_height' || mode === 'turns_height' || mode === 'angle_height'
   let heightFromRef = false
   if (def.height_from_reference) {
-    if (ref.extent === undefined) {
+    // Only a cylinder face has an axial extent a helix can span. A straight
+    // edge also carries `extent` (its line length), so keying the error on
+    // `extent === undefined` silently took the line length as the height.
+    if (ref.kind !== 'cylinderface') {
       throw new Error('helix: height_from_reference needs a cylinder face reference')
     }
-    if (usesHeight) heightFromRef = true
+    if (usesHeight) {
+      if (ref.extent === undefined) {
+        throw new Error('helix: height_from_reference needs a cylinder face with an axial extent')
+      }
+      heightFromRef = true
+    }
   }
 
   let pitch = num(def.pitch, NaN)

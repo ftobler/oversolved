@@ -14,6 +14,7 @@ import { Repository } from '../../query'
 import { sortedFacesOf } from '../../occ/faceLoops'
 import { makeCylinderWithFaces, makeCircleEdge, makeLineEdge } from '../../occ/primitives'
 import { solveHelix } from '../helix'
+import { resolveAxisQuery } from '../shared/directionQuery'
 import type { Body } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
@@ -76,6 +77,8 @@ describe.skipIf(!oc)('helix leaf (real OCC)', () => {
       expect(repo.elements.get('hx1')).toBeDefined()
       expect(repo.elements.get('hx1/start')).toBeDefined()
       expect(repo.elements.get('hx1/end')).toBeDefined()
+      // A helix is a reference curve, never a body.
+      expect(Object.keys(bodyStore)).toEqual(['body_ex1'])
     } finally {
       table.disposeAll()
       scope.dispose()
@@ -99,6 +102,27 @@ describe.skipIf(!oc)('helix leaf (real OCC)', () => {
       expect(result.helix.radius).toBeCloseTo(5)
       // No axial extent: normal starts in the circle's plane.
       expect(result.curve.points[0][2]).toBeCloseTo(10, 6)
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+  })
+
+  it('the bare helix id resolves to its axis, not its endpoint chord', () => {
+    const { scope, table, repo, bodyStore } = setup()
+    try {
+      // Fractional turns so the start-to-end chord is NOT the climb axis: only
+      // the center/axis branch can return +Z here.
+      solveHelix(oc!, scope, table, {
+        id: 'hx1', kind: 'helix',
+        helix: { reference: '@cf', radius_mode: 'derived', mode: 'pitch_turns', pitch: 2, turns: 3.25, hand: 'right', direction: 'normal', start_angle: 0, offset: 0 },
+      }, repo, bodyStore)
+      const [origin, dir] = resolveAxisQuery('@hx1', repo, [9, 9, 9], [1, 0, 0], bodyStore)
+      // The axis is the cylinder's Z axis through the origin, not the chord.
+      expect(Math.hypot(origin[0], origin[1])).toBeCloseTo(0, 6)
+      expect(dir[0]).toBeCloseTo(0)
+      expect(dir[1]).toBeCloseTo(0)
+      expect(Math.abs(dir[2])).toBeCloseTo(1)
     } finally {
       table.disposeAll()
       scope.dispose()
@@ -158,6 +182,12 @@ describe.skipIf(!oc)('helix leaf (real OCC)', () => {
         id: 'h2', kind: 'helix',
         helix: { reference: '@ell', radius_mode: 'derived', mode: 'pitch_turns', pitch: 2, turns: 3 },
       }, repo, {})).toThrow(/ellipse/)
+
+      repo.register('flat', { type: 'flatface', normal: [0, 0, 1], centroid: [0, 0, 1] })
+      expect(() => solveHelix(oc!, scope, table, {
+        id: 'h3', kind: 'helix',
+        helix: { reference: '@flat', radius_mode: 'derived', mode: 'pitch_turns', pitch: 2, turns: 3 },
+      }, repo, {})).toThrow(/flat face/)
     } finally {
       table.disposeAll()
       scope.dispose()

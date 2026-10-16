@@ -95,6 +95,9 @@ describe('resolveHelixParams', () => {
     expect(() => resolveHelixParams(baseDef({ radius_mode: 'entered', radius: -1 }), faceRef())).toThrow(/radius/)
     const straight: HelixReference = { kind: 'straight_edge', axis: [0, 0, 1], origin: [0, 0, 0], extent: 10 }
     expect(() => resolveHelixParams(baseDef({ radius_mode: 'derived' }), straight)).toThrow(/straight-edge/)
+    // A straight edge carries an `extent` (its length), so height_from_reference
+    // must be refused by KIND, not by the missing extent.
+    expect(() => resolveHelixParams(baseDef({ radius_mode: 'entered', radius: 3, mode: 'pitch_height', pitch: 2, height_from_reference: true }), straight)).toThrow(/height_from_reference/)
     const edge: HelixReference = { kind: 'circular_edge', axis: [0, 0, 1], origin: [0, 0, 0], radius: 5 }
     expect(() => resolveHelixParams(baseDef({ height_from_reference: true }), edge)).toThrow(/height_from_reference/)
   })
@@ -148,7 +151,6 @@ describe('four-way independence', () => {
         const pts = HANDS.map((hand) => helixPoint(build({ hand, direction, start_angle: start, offset: 3 }).desc, 0))
         // Same radial direction and same axial placement: the start point is
         // identical for both hands.
-        expect(Object.is(pts[0][0], pts[1][0]) || Math.abs(pts[0][0] - pts[1][0]) < 1e-12).toBe(true)
         expect(dist(pts[0], pts[1])).toBeLessThan(1e-12)
       }
     }

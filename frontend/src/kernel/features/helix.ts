@@ -128,6 +128,9 @@ function refuseUnsupportedReference(refStr: string, globalRepo: Repository, body
   const entry = globalRepo.query(refStr, null, bodyStore) as Dict | null
   if (entry === null) return
   const type = entry.type as string | undefined
+  if (type === 'flatface') {
+    throw new Error('helix: a flat face cannot carry a helix; pick a cylinder face or a circle')
+  }
   if (type === 'coneface') {
     throw new Error('helix: a cone face cannot carry a helix; pick a cylinder face or a circle')
   }

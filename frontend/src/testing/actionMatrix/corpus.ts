@@ -8,6 +8,7 @@
 import baseline from '@/wasm-kernel/regression-baseline.json'
 import faceExtrudeAfterArrayCut from '@/kernel/features/__fixtures__/faceExtrudeAfterArrayCut.json'
 import filletInvalidResultDoc from '@/kernel/features/__fixtures__/filletInvalidResultDoc.json'
+import bossWithHelix from '@/kernel/features/__fixtures__/bossWithHelix.json'
 import { loadPartDoc } from '@/persistence/docSchema'
 import type { PartDoc, PartFeature } from '@/types/cad'
 
@@ -63,6 +64,12 @@ export function corpusDocs(): CorpusDoc[] {
     label: 'fixture:filletInvalidResultDoc',
     spec: { version: 1, kind: 'part', features: filletInvalidResultDoc as unknown as PartFeature[] },
   })
+  // A reference-curve producer: the matrix sweeps commands against the helix
+  // feature target and confirms a non-body feature does not break the command
+  // table (it produces no body to modify).
+  const helixFixture = loadPartDoc(bossWithHelix, { name: 'fixture:boss_with_helix' })
+  if (!helixFixture.ok) throw new Error(`action-matrix fixture failed to load: ${helixFixture.error.field} ${helixFixture.error.message}`)
+  docs.push({ label: 'fixture:boss_with_helix', spec: helixFixture.doc })
   return docs
 }
 

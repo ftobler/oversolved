@@ -45,6 +45,19 @@ function profileBoundary() {
 // The profile plane: through (10,0,0), x=+X, y=+Z, normal +Y (a radial plane).
 const PROFILE_PLANE: PlaneLike = { origin: [10, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, 1, 0] }
 
+// A radial square 4 tall (local v = axial) over a pitch of 3: consecutive turns
+// overlap, the self-intersection case the leaf names.
+function tallProfileBoundary() {
+  return [{
+    boundary: [
+      { kind: 'line', id: 'l1', start: [-0.5, -2], end: [0.5, -2] },
+      { kind: 'line', id: 'l2', start: [0.5, -2], end: [0.5, 2] },
+      { kind: 'line', id: 'l3', start: [0.5, 2], end: [-0.5, 2] },
+      { kind: 'line', id: 'l4', start: [-0.5, 2], end: [-0.5, -2] },
+    ],
+  }]
+}
+
 // The helix descriptor buildCurveEdge consumes, laid to start at (10,0,0) on
 // the +X radius (start_angle -90 with x0=+Y and y0=z x x0=-X).
 function helixDescriptor(hand: 'right' | 'left' = 'right') {
@@ -128,6 +141,30 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
       expect(body).toBeDefined()
       const volume = volumeOf(oc!, scope, table.get<OccShape>(body.shape!))
       expect(Math.abs(volume - PAPPUS)).toBeLessThan(PAPPUS * 5e-3)
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+  })
+
+  it('a profile taller than the pitch is the named overlap error, body unchanged', () => {
+    // 4 tall along the helix axis over a pitch of 3: consecutive turns overlap,
+    // so the swept solid is invalid. The leaf must name that as an overlap
+    // error rather than surface a generic MakePipeShell/valid-solid failure,
+    // and must not have minted a body.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const bodyStore: Record<string, Body> = {}
+    try {
+      const repo = new Repository()
+      repo.register('_pt_skP', PROFILE_PLANE)
+      repo.register('_topo_skP', { surfaces: tallProfileBoundary() })
+      repo.register('_curve_hx1', helixDescriptor())
+      expect(() => solveSweep(oc!, scope, table, {
+        id: 'sw1', kind: 'sweep',
+        sweep: { sketch: ['$skP'], path: '@hx1', operation: 'new' },
+      }, repo, bodyStore)).toThrow(/overlaps the next turn/)
+      expect(bodyStore['body_sw1']).toBeUndefined()
     } finally {
       table.disposeAll()
       scope.dispose()

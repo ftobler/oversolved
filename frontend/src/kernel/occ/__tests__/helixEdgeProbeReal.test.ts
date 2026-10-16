@@ -14,10 +14,10 @@ import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import { makeLineEdge, makeWire, faceSurfaceType, type Vec3 } from '../primitives'
-import { makeCylinder, makeCylinderWithFaces } from '../primitives'
+import { makeCylinder, makeCylinderWithFaces, makeCircleEdge, makeFaceFromWire, makePrism } from '../primitives'
 import { buildCurveEdge, helixMaxSegment } from '../helixEdge'
 import { helixFrame, resolveHelixParams, helixPoint, type HelixReference } from '../../features/helixMath'
-import type { HelixFeatureDef } from '@/types/cad'
+import type { HelixDirection, HelixFeatureDef } from '@/types/cad'
 import type { OccModule, OccShape } from '../occTypes'
 
 const oc = await loadOcc()
@@ -25,10 +25,16 @@ const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2
 const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
 
-function descFor(turns: number, radius = 10, pitch = 3) {
+function descFor(
+  turns: number,
+  radius = 10,
+  pitch = 3,
+  direction: HelixDirection = 'normal',
+  startAngle = 0,
+) {
   const ref: HelixReference = { kind: 'cylinderface', axis: [0, 0, 1], origin: [0, 0, 0], radius, extent: 100 }
   const def: HelixFeatureDef = {
-    mode: 'pitch_turns', pitch, turns, hand: 'right', direction: 'normal', start_angle: 0, offset: 0,
+    mode: 'pitch_turns', pitch, turns, hand: 'right', direction, start_angle: startAngle, offset: 0,
   }
   const params = resolveHelixParams(def, ref)
   return helixFrame(ref, params, def)
@@ -84,6 +90,29 @@ describe.skipIf(!oc)('helix edge probe (real OCC)', () => {
     expect(helixMaxSegment(100)).toBeGreaterThan(helixMaxSegment(10))
   })
 
+  it('reverse direction (startUV mirror) builds the edge on the analytic helix', () => {
+    // The reverse arm mirrors the in-frame start angle (startUV) and flips the
+    // climb axis to -a0; a regression there would build an edge that is the
+    // mirror of the sampled curve while the pure-math tests still pass.
+    for (const startAngle of [0, 30]) {
+      const scope = new DisposeScope()
+      try {
+        const desc = descFor(4, 10, 3, 'reverse', startAngle)
+        const edge = buildCurveEdge(oc!, scope, desc)
+        const pts = sampleEdge(oc!, scope, edge, 500)
+        const hz = desc.pitch / (2 * Math.PI)
+        let worst = 0
+        for (const p of pts) {
+          const t = dot(sub(p, desc.origin), desc.axis) / hz
+          worst = Math.max(worst, dist(p, helixPoint(desc, t)))
+        }
+        expect(worst).toBeLessThan(1e-6 * desc.radius)
+      } finally {
+        scope.dispose()
+      }
+    }
+  })
+
   it('BRepOffsetAPI_MakePipeShell SetMode_3 takes a gp_Dir', () => {
     const scope = new DisposeScope()
     try {
@@ -115,6 +144,37 @@ describe.skipIf(!oc)('helix edge probe (real OCC)', () => {
       expect(dist(axis, [0, 0, 1])).toBeLessThan(1e-9)
       const radius = cyl.Radius()
       expect(Math.abs(radius - 5)).toBeLessThan(1e-6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a prism-extruded cylinder reports its axis along the extrude direction', () => {
+    // The helix reads a picked cylinder face's axis straight from the OCC
+    // surface, so the leaf only agrees with itself if every producer reports
+    // the axis the same way. A primitive is covered above; this is the extrude
+    // producer (a circle face lifted along +Z), which is the one a boss uses.
+    const scope = new DisposeScope()
+    try {
+      const edge = scope.track(makeCircleEdge(oc!, scope, [0, 0, 0], [0, 0, 1], [1, 0, 0], 5))
+      const wire = scope.track(makeWire(oc!, scope, [edge]))
+      const face = scope.track(makeFaceFromWire(oc!, scope, wire))
+      const shape = scope.track(makePrism(oc!, scope, face, [0, 0, 1], 6))
+      const exp = scope.track(new oc!.TopExp_Explorer_2(shape, oc!.TopAbs_ShapeEnum.TopAbs_FACE, oc!.TopAbs_ShapeEnum.TopAbs_SHAPE))
+      let lateral: OccShape | null = null
+      for (; exp.More(); exp.Next()) {
+        const f = scope.track(oc!.TopoDS.Face_1(exp.Current()))
+        if (faceSurfaceType(oc!, scope, f) === 'cylinderface') { lateral = f; break }
+      }
+      if (lateral === null) throw new Error('no cylinder face')
+      const ad = scope.track(new oc!.BRepAdaptor_Surface_2(lateral, true))
+      const ax = scope.track(ad.Cylinder()).Axis().Direction()
+      const a: Vec3 = [ax.X(), ax.Y(), ax.Z()]
+      // The surface may report the axis either way along the extrude; the sign
+      // is harmless because the leaf takes the axis AND the V=0 origin from this
+      // same adaptor (recorded, not assumed).
+      expect(Math.hypot(a[0], a[1])).toBeLessThan(1e-9)
+      expect(Math.abs(a[2])).toBeGreaterThan(1 - 1e-9)
     } finally {
       scope.dispose()
     }

@@ -89,7 +89,6 @@ export interface OccPipeShellBuilder extends OccPrismBuilder {
   // wants, pinning the profile's orientation to a fixed direction instead of
   // the CorrectedFrenet frame. The overload suffix is pinned by
   // helixEdgeProbeReal.test.ts.
-  SetMode_2(ax: OccDisposable): void
   SetMode_3(dir: OccDisposable): void
   Add_1(profile: OccShape, withContact: boolean, withCorrection: boolean): void
   Build(): void

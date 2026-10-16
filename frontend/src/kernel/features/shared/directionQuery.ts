@@ -78,6 +78,20 @@ export function resolveCircularReference(
   const data = globalRepo.query(query, null, bodyStore) as Dict | null
   if (!data) return null
 
+  // Circular / arc / ellipse edge: truthy center/axis. Checked BEFORE the
+  // straight branch because a registered helix carries BOTH (center/axis for
+  // its axis, start/end for its endpoints); it is a curve about an axis, so
+  // `@<helixId>` must resolve to that axis, not to its start-to-end chord.
+  if (data.center && data.axis) {
+    const dir = normalize3(data.axis as number[])
+    if (dir) {
+      const center = [...(data.center as number[])]
+      const radius = typeof data.radius === 'number' ? data.radius : undefined
+      const xAxis = Array.isArray(data.x_axis) ? (data.x_axis as number[]) : undefined
+      return { kind: 'circular_edge', axis: dir, origin: center, radius, xAxis }
+    }
+  }
+
   // Straight 3D edge: truthy start/end (circular edges carry undefined start/end).
   if (data.start && data.end) {
     const start = data.start as number[]
@@ -86,18 +100,6 @@ export function resolveCircularReference(
     if (dir) {
       const extent = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2])
       return { kind: 'straight_edge', axis: dir, origin: start, extent }
-    }
-  }
-
-  // Circular / arc / ellipse edge: truthy center/axis (straight edges carry
-  // undefined center/axis).
-  if (data.center && data.axis) {
-    const dir = normalize3(data.axis as number[])
-    if (dir) {
-      const center = [...(data.center as number[])]
-      const radius = typeof data.radius === 'number' ? data.radius : undefined
-      const xAxis = Array.isArray(data.x_axis) ? (data.x_axis as number[]) : undefined
-      return { kind: 'circular_edge', axis: dir, origin: center, radius, xAxis }
     }
   }
 
