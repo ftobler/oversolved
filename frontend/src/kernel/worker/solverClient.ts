@@ -11,10 +11,10 @@
  * stay empty and immutable.
  *
  * Crash handling: a Worker-level error rejects every in-flight solve and drops
- * the Worker; the next solve respawns it and rebuilds from feature 0 (the AST
- * lives in main-thread JS, so no user work is lost). A crash arms a short
- * cooldown that suppresses further respawns for CRASH_COOLDOWN_MS, so a drag
- * burst over a trapping doc spins at most one Worker per window; the solve
+ * the Worker; the next solve respawns it and rebuilds from feature 0 (the
+ * document lives in main-thread JS, so no user work is lost). A crash arms a
+ * short cooldown that suppresses further respawns for CRASH_COOLDOWN_MS, so a
+ * drag burst over a trapping doc spins at most one Worker per window; the solve
  * after the cooldown respawns normally. Solve and bundle builds are the
  * burst-driven kinds (drag solves, and the drag-driven assembly relays the
  * anchor worker fires per part) and both ride the cooldown; exports and
@@ -151,8 +151,8 @@ function onMessage(e: { data: SolverWorkerMessage }): void {
 }
 
 // Fail every in-flight request and drop the Worker; the next request respawns a
-// fresh one that rebuilds from feature 0 (the AST lives in main-thread JS, so no
-// user work is lost). Shared by the crash trap and the hang watchdog.
+// fresh one that rebuilds from feature 0 (the document lives in main-thread JS,
+// so no user work is lost). Shared by the crash trap and the hang watchdog.
 function dropWorker(err: Error): void {
   for (const p of pending.values()) {
     if (p.timer) clearTimeout(p.timer)

@@ -10,9 +10,9 @@
  * HandleTable, last BuildState, cross-solve checkpoint cache) and lives here in
  * the Worker. Only the BuildResponse *minus* `_build_state` crosses back.
  *
- * Crash recovery: on a hard WASM trap the host discards
- * this Worker and respawns it, replaying the AST. Nothing here persists state
- * the host cannot rebuild from the main-thread AST.
+ * Crash recovery: on a hard WASM trap the host discards this Worker and
+ * respawns it, replaying the document, which lives in main-thread JS. Nothing
+ * here persists state the host cannot rebuild from it.
  */
 
 import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader } from '../solveLocally'

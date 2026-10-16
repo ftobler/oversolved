@@ -309,7 +309,7 @@ export function isBodyFeatureResult(r: unknown): r is BodyFeatureResult {
   return typeof r === 'object' && r !== null && ('body_id' in r || 'body_ids' in r)
 }
 
-// ─── Document AST Types ───
+// ─── Document Types ───
 
 // A query string referencing an entity or sub-element, e.g. "$line1" or "$arc1start".
 // See docs/query.md for the full query syntax.

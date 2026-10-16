@@ -1,7 +1,7 @@
 // @vitest-environment node
 //
 // Integration for bugreports/bug-report-1788207174415 ("sketch area building"),
-// driving the report's own AST through the real Rust solver + area builder.
+// driving the report's own document through the real Rust solver + area builder.
 //
 // A venn of two circles, an external line tangent to both, and a vertical line
 // from the small circle's centre down to the origin. Five regions: the two

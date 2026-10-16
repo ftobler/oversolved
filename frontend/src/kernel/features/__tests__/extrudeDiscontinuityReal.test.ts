@@ -19,8 +19,8 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-// Exact peanut-with-hole sketch from the bug AST (entity ids preserved so the
-// face / edge queries resolve to the same geometry).
+// Exact peanut-with-hole sketch from the bug-report document (entity ids
+// preserved so the face / edge queries resolve to the same geometry).
 const SK = '6pRTd41W5i8Ux58DLe2HoXwA'
 const BODY1 = 'b9WPcaHhXLtCABRq9yR_GR84'
 
@@ -59,8 +59,8 @@ const peanutWithHoleSketch = {
 }
 
 // The four ring surfaces that bound the peanut-with-hole (the exact `sketch`
-// profile entries in the bug AST, with two duplicated-key suffixes so each
-// flatface is distinct).  Resolved lazily from the post-sketch topo snapshot.
+// profile entries in the bug-report document, with two duplicated-key suffixes so
+// each flatface is distinct).  Resolved lazily from the post-sketch topo snapshot.
 function surfaceQueriesFromSketch(result: BuildResponse): string[] {
   const state = result._build_state as unknown as {
     checkpoints: Record<string, { repo_snapshot: { elements: Record<string, unknown> } }>

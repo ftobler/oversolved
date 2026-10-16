@@ -27,7 +27,7 @@ export interface VertexDef {
 }
 
 export interface EntityDef {
-  // Solver kind string, the canonical name used in the AST and solver.
+  // Solver kind string, the canonical name the document and the solver share.
   kind: string
 
   // Human-readable label shown in toolbar and docs.
