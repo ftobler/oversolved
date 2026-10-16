@@ -294,6 +294,49 @@ pub fn loop_centroid(loop_edges: &[BoundaryEdge]) -> Vec2 {
     [cx, cy]
 }
 
+/// A point `point_in_loop` reads as genuinely inside the loop, for the
+/// containment questions `loop_centroid` cannot answer: a concave loop (a C or
+/// a U) can have its area centroid in its own notch, outside the loop, and
+/// every containment question asked of that point is then answered wrong.
+/// Returns the centroid when it verifies as interior; otherwise nudges a
+/// boundary edge's midpoint to either side, shrinking the step until one side
+/// verifies (a step past the opposite boundary of a thin loop lands outside and
+/// is rejected). `None` when nothing verifies, so the caller can keep its
+/// centroid-only behaviour.
+fn interior_probe(loop_edges: &[BoundaryEdge]) -> Option<Vec2> {
+    let pts = loop_pts(loop_edges, 1);
+    let n = pts.len();
+    if n < 3 {
+        return None;
+    }
+    let centroid = loop_centroid(loop_edges);
+    if point_in_loop(centroid, loop_edges) {
+        return Some(centroid);
+    }
+    for i in 0..n {
+        let a = pts[i];
+        let b = pts[(i + 1) % n];
+        let dx = b[0] - a[0];
+        let dy = b[1] - a[1];
+        let len = dx.hypot(dy);
+        if len <= 0.0 {
+            continue;
+        }
+        let m = [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])];
+        let (nx, ny) = (-dy / len, dx / len);
+        for scale in [0.25, 0.1, 0.02, 0.005, 0.001, 0.0002] {
+            let step = len * scale;
+            for side in [1.0, -1.0] {
+                let candidate = [m[0] + side * step * nx, m[1] + side * step * ny];
+                if point_in_loop(candidate, loop_edges) {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// For each loop: its immediate `container` (the smallest strictly larger loop
 /// that encloses it, or `None`). The `depth` count is also returned for the
 /// even/odd `classify_loops` model.
@@ -301,6 +344,10 @@ fn loop_containment(loops: &[Vec<BoundaryEdge>]) -> (Vec<usize>, Vec<Option<usiz
     let n = loops.len();
     let areas: Vec<f64> = loops.iter().map(|l| loop_signed_area(l).abs()).collect();
     let cents: Vec<Vec2> = loops.iter().map(|l| loop_centroid(l)).collect();
+    // The centroid is the historical probe and stays the primary one; a
+    // concave loop whose centroid sits outside it is backed by a probe that is
+    // verified interior, or a hole inside it would be dropped.
+    let probes: Vec<Option<Vec2>> = loops.iter().map(|l| interior_probe(l)).collect();
 
     let mut depth = vec![0usize; n];
     let mut container: Vec<Option<usize>> = vec![None; n];
@@ -310,7 +357,9 @@ fn loop_containment(loops: &[Vec<BoundaryEdge>]) -> (Vec<usize>, Vec<Option<usiz
             if i == j {
                 continue;
             }
-            if areas[j] > areas[i] && point_in_loop(cents[i], &loops[j]) {
+            let held = point_in_loop(cents[i], &loops[j])
+                || probes[i].is_some_and(|p| point_in_loop(p, &loops[j]));
+            if areas[j] > areas[i] && held {
                 depth[i] += 1;
                 if areas[j] < best_area {
                     best_area = areas[j];
@@ -408,6 +457,117 @@ mod tests {
 
         let sub = subdivide_loops(&loops);
         assert_eq!(sub, vec![(0, vec![1]), (1, vec![2]), (2, vec![])]);
+    }
+
+    /// Closed line loop over the given vertices.
+    fn poly(pts: &[Vec2]) -> Vec<BoundaryEdge> {
+        let n = pts.len();
+        (0..n)
+            .map(|i| BoundaryEdge {
+                geom: EdgeGeom::Line {
+                    start: pts[i],
+                    end: pts[(i + 1) % n],
+                },
+                id: None,
+                start_vertex: None,
+                end_vertex: None,
+            })
+            .collect()
+    }
+
+    /// A C (the shape of "⊂"): back bar `x in [0, back]`, arms reaching to
+    /// `x = w`, arm thickness `t`. The mouth is the region between the arms.
+    fn c_shape(w: f64, h: f64, t: f64, back: f64) -> Vec<BoundaryEdge> {
+        poly(&[
+            [0.0, 0.0],
+            [0.0, h],
+            [w, h],
+            [w, h - t],
+            [back, h - t],
+            [back, t],
+            [w, t],
+            [w, 0.0],
+        ])
+    }
+
+    /// A circle the way the area builder emits one: two 180 degree arcs.
+    fn circle_loop(cx: f64, cy: f64, r: f64) -> Vec<BoundaryEdge> {
+        vec![
+            arc_edge([cx, cy], r, 0.0, 180.0, true),
+            arc_edge([cx, cy], r, 180.0, 360.0, true),
+        ]
+    }
+
+    #[test]
+    fn interior_probe_of_a_concave_loop_lands_inside_it() {
+        // The C's centroid sits in its own mouth, outside the loop; the probe
+        // must land somewhere the ray cast accepts as interior.
+        let c = c_shape(10.0, 10.0, 2.0, 2.0);
+        let centroid = loop_centroid(&c);
+        assert!(!point_in_loop(centroid, &c), "the centroid is in the mouth");
+        let probe = interior_probe(&c).expect("a concave loop has an interior probe");
+        assert!(point_in_loop(probe, &c), "the probe verifies as interior");
+    }
+
+    #[test]
+    fn subdivide_keeps_a_nested_loop_whose_centroid_sits_in_its_own_notch() {
+        // Nested C shapes: the small C's material is inside the big C, but its
+        // centroid falls in the small C's own mouth, which is also inside the
+        // big C's mouth, so the old centroid-only test dropped the hole.
+        let big = c_shape(10.0, 11.0, 4.0, 2.0);
+        let small = c_shape(10.0, 10.0, 2.0, 2.0);
+        let sub = subdivide_loops(&[big, small]);
+        assert_eq!(sub, vec![(0, vec![1]), (1, vec![])]);
+
+        // The nested U pair is the same failure with a U instead of a C.
+        let outer_u = poly(&[
+            [0.0, 0.0],
+            [0.0, 12.0],
+            [10.0, 12.0],
+            [10.0, 0.0],
+            [8.0, 0.0],
+            [8.0, 10.0],
+            [2.0, 10.0],
+            [2.0, 0.0],
+        ]);
+        let inner_u = poly(&[
+            [1.0, 1.0],
+            [1.0, 11.0],
+            [9.0, 11.0],
+            [9.0, 1.0],
+            [8.5, 1.0],
+            [8.5, 10.5],
+            [1.5, 10.5],
+            [1.5, 1.0],
+        ]);
+        let sub = subdivide_loops(&[outer_u, inner_u]);
+        assert_eq!(sub, vec![(0, vec![1]), (1, vec![])]);
+    }
+
+    #[test]
+    fn a_circle_in_the_notch_of_a_c_is_not_a_hole_of_it() {
+        // The C's centroid is in its mouth, where the circle sits; the circle
+        // is genuinely outside the C, so no containment may be invented for
+        // it. Nested C's still nest, the circle stays its own face.
+        let big = c_shape(10.0, 11.0, 4.0, 2.0);
+        let small = c_shape(10.0, 10.0, 2.0, 2.0);
+        let circle = circle_loop(6.0, 5.0, 1.0);
+        let sub = subdivide_loops(&[big, small, circle]);
+        assert_eq!(sub, vec![(0, vec![1]), (1, vec![]), (2, vec![])]);
+    }
+
+    #[test]
+    fn subdivide_concentric_loops_nest_by_area() {
+        // Equal centroids cannot be told apart by a point test, so the strict
+        // area comparison is what decides: the larger holds the smaller, and
+        // two identical loops are two independent faces.
+        let outer = rect(0.0, 0.0, 10.0, 10.0);
+        let inner = rect(3.0, 3.0, 7.0, 7.0);
+        let sub = subdivide_loops(&[outer.clone(), inner]);
+        assert_eq!(sub, vec![(0, vec![1]), (1, vec![])]);
+        let twin = rect(0.0, 0.0, 10.0, 10.0);
+        let sub = subdivide_loops(&[outer, twin]);
+        assert_eq!(sub, vec![(0, vec![]), (1, vec![])]);
     }
 
     fn arc_edge(center: Vec2, radius: f64, a0: f64, a1: f64, ccw: bool) -> BoundaryEdge {

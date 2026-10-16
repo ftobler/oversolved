@@ -174,6 +174,43 @@ export function pointInLoop(pt: number[], loop: LoopEdge[], arcSamples = 1): boo
 }
 
 /**
+ * A point `pointInLoop` reads as genuinely inside the loop, for the containment
+ * questions `loopCentroid` cannot answer: a concave loop (a C or a U) can have
+ * its area centroid in its own notch, outside the loop, and every containment
+ * question asked of that point is then answered wrong. Returns the centroid
+ * when it verifies as interior; otherwise nudges a boundary edge's midpoint to
+ * either side, shrinking the step until one side verifies (a step past the
+ * opposite boundary of a thin loop lands outside and is rejected). `null` when
+ * nothing verifies, so the caller can keep its centroid-only behaviour.
+ */
+function interiorProbe(loop: LoopEdge[], arcSamples: number): number[] | null {
+  const pts = loopPts(loop, arcSamples)
+  const n = pts.length
+  if (n < 3) return null
+  const centroid = loopCentroid(loop)
+  if (pointInLoop(centroid, loop, arcSamples)) return centroid
+  for (let i = 0; i < n; i++) {
+    const a = pts[i]
+    const b = pts[(i + 1) % n]
+    const dx = b[0] - a[0]
+    const dy = b[1] - a[1]
+    const len = Math.hypot(dx, dy)
+    if (!(len > 0)) continue
+    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+    const nx = -dy / len
+    const ny = dx / len
+    for (const scale of [0.25, 0.1, 0.02, 0.005, 0.001, 0.0002]) {
+      const step = len * scale
+      for (const side of [1, -1]) {
+        const candidate = [m[0] + side * step * nx, m[1] + side * step * ny]
+        if (pointInLoop(candidate, loop, arcSamples)) return candidate
+      }
+    }
+  }
+  return null
+}
+
+/**
  * Containment analysis: for each loop, its nesting `depth` (how many other
  * loops enclose it) and its immediate `container` (the smallest strictly larger
  * loop that encloses it, or -1 if none).
@@ -192,14 +229,21 @@ export function loopContainment(
   const n = loops.length
   const areas = loops.map((loop) => Math.abs(loopSignedArea(loop, arcSamples)))
   const cents = loops.map((loop) => loopCentroid(loop))
+  // The centroid is the historical probe and stays the primary one; a concave
+  // loop whose centroid sits outside it is backed by a probe that is verified
+  // interior, or a hole inside it would be dropped.
+  const probes = loops.map((loop) => interiorProbe(loop, arcSamples))
 
   const depth: number[] = new Array(n).fill(0)
   const container: number[] = new Array(n).fill(-1)  // immediate enclosing loop
   for (let i = 0; i < n; i++) {
     let bestArea = Infinity
+    const probe = probes[i]
     for (let j = 0; j < n; j++) {
       if (i === j) continue
-      if (areas[j] > areas[i] && pointInLoop(cents[i], loops[j], arcSamples)) {
+      const held = pointInLoop(cents[i], loops[j], arcSamples)
+        || (probe !== null && pointInLoop(probe, loops[j], arcSamples))
+      if (areas[j] > areas[i] && held) {
         depth[i] += 1
         if (areas[j] < bestArea) {
           bestArea = areas[j]
