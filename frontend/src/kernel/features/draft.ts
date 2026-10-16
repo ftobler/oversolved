@@ -94,9 +94,11 @@ export function solveDraft(
   // body for the angle's sign to mean one thing.
   let neutral: DraftNeutralPlane | null
   try {
-    neutral = resolveUpToPlane(oc, scope, table, neutralRef, [0, 0, 1], globalRepo, bodyStore)
+    neutral = resolveUpToPlane(oc, scope, table, neutralRef, [0, 0, 1], globalRepo, bodyStore, 'draft')
   } catch (e) {
-    throw new Error(`draft: neutral plane '${neutralRef}': ${e instanceof Error ? e.message : String(e)}`)
+    // The shared resolver already names the draft through `label`; do not
+    // prefix it a second time.
+    throw new Error(e instanceof Error ? e.message : `draft: neutral plane '${neutralRef}': ${String(e)}`)
   }
   if (neutral === null) throw new Error(`draft: neutral plane '${neutralRef}' did not resolve`)
 
