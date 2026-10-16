@@ -15,9 +15,9 @@ may be expression strings evaluated against earlier `variable` features
 solver runs (`center_rect`, the `ngon` constraint).
 
 The same document is the target for every author: the GUI, the drive surface
-(the dev bridge, the MCP server and the headless CLI in `frontend/src/drive`),
-and the import/export paths. The JSON Schema in `persistence/partDocSchema.ts`
-is the contract.
+(the dev bridge and the headless operations in `frontend/src/drive`; the CLI
+and MCP entry points in `frontend/scripts`), and the import/export paths. The
+JSON Schema in `persistence/partDocSchema.ts` is the contract.
 
 The assembly document (parts, instances, mates) is a separate format and is not
 covered here.
@@ -70,8 +70,10 @@ entries of `kernel/solverConstants.ts`).
 
 The built-ins cannot be deleted, reordered or suppressed
 (`applyDeleteFeature`, `applyReorderFeatures`, `applySetFeatureSuppression` in
-`utils/yamlMutations/partStyle.ts`), and the rollback bar can never be parked
-above them.
+`utils/yamlMutations/partStyle.ts`). The rollback bar cannot be dragged above
+them (`FeatureTree.tsx` clamps the drop targets to the built-in count), but the
+stored `rollback` field is not clamped to them: a hand-authored `rollback: 0`
+passes the loader and the bar is drawn at that index.
 
 ### sketch
 
@@ -373,8 +375,9 @@ inline `file_data` spelling is refused by name.
     unit: "mm"                   # optional display hint
 ```
 
-`value` (number) is the solver-written cache of the evaluated result; it is
-never authored.
+`value` (number) is reserved for the solver's evaluated result: it is never
+authored, and nothing writes it back into the document today (the solved value
+is rendered from the solve results, not read back from this field).
 
 ### helix
 
@@ -476,8 +479,8 @@ the constraint's anchor point. Both are authored, never solver output.
 
 Sub suffixes: `start`, `end`, `center`, `xy`, the ellipse axis keys
 (`major1`/`major2`/`minor1`/`minor2`) and the spline controls (`c1`, `c2`).
-Ancestry types: `solid`, `face`, `flatface`, `cylinderface`, `edge`,
-`straightedge`, `vertex`.
+Ancestry types: `solid`, `face` and its subtypes (`flatface`, `cylinderface`,
+`coneface`, `sphereface`, `torusface`), `edge` and `straightedge`, `vertex`.
 
 Geometric classifiers disambiguate topology elements that share ancestry. They are minted `@cls_*` tokens that ride the ancestry id list (no grammar change), not a separate suffix: cardinal/axial (`@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn`) and line-division (`@cls_ld_<lineid>_p|n`). See `docs/query.md` for the resolution tiers.
 

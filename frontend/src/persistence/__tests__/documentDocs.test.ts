@@ -172,31 +172,50 @@ function schemaFailure(feature: unknown, doc: unknown): string {
   return `schema: ${validationText(validateSchema.errors)}`
 }
 
-/** Every fenced yaml block that holds a feature list: a block whose content is
- *  a yaml sequence. The Document Structure block is a whole document (a
- *  mapping) and is not a feature example. */
-function featureBlocks(): unknown[] {
-  const features: unknown[] = []
+/** Every fenced yaml block in the doc, parsed. A parse error throws here, so a
+ *  bad example fails the file; nothing is skipped by shape, and a block whose
+ *  first line is a comment is still read. */
+function yamlBlocks(): Array<{ text: string; parsed: unknown }> {
+  const blocks: Array<{ text: string; parsed: unknown }> = []
   for (const match of DOC.matchAll(/```yaml\n([\s\S]*?)```/g)) {
-    const block = match[1]
-    if (!block.trimStart().startsWith('-')) continue
-    const parsed: unknown = parseYaml(block)
-    if (!Array.isArray(parsed)) {
-      throw new Error(`docs/document.md feature block did not parse to a list:\n${block}`)
-    }
-    features.push(...parsed)
+    blocks.push({ text: match[1], parsed: parseYaml(match[1]) })
   }
-  return features
+  return blocks
 }
 
-describe('fenced yaml feature blocks', () => {
-  it('is non-empty (the reader finds the examples)', () => {
-    expect(featureBlocks().length).toBeGreaterThan(0)
+const YAML_BLOCKS = yamlBlocks()
+
+describe('fenced yaml examples', () => {
+  it('is non-empty and holds only document examples and feature lists', () => {
+    expect(YAML_BLOCKS.length).toBeGreaterThan(0)
+    // A scalar or empty block is a doc bug, not something to skip silently.
+    const stray = YAML_BLOCKS.filter(b => !Array.isArray(b.parsed) && !isRecord(b.parsed))
+    expect(stray.map(b => b.text.trim())).toEqual([])
   })
 
-  it('validates every block through the loader and the JSON Schema', () => {
+  it('pins the document example to the current ladder version', () => {
+    const documents = YAML_BLOCKS.filter(b => isRecord(b.parsed))
+    expect(documents.length).toBeGreaterThan(0)
     const failures: string[] = []
-    for (const feature of featureBlocks()) {
+    for (const { parsed } of documents) {
+      const doc = parsed as Record<string, unknown>
+      if (doc.version !== CURRENT_DOC_VERSION) {
+        failures.push(`version ${JSON.stringify(doc.version)} is not CURRENT_DOC_VERSION ${CURRENT_DOC_VERSION}`)
+      }
+      if (!validateSchema(parsed)) failures.push(`schema: ${validationText(validateSchema.errors)}`)
+    }
+    expect(failures).toEqual([])
+  })
+
+  // Known gap, not fixable from the doc side: a sigil-less body ref such as
+  // `source_body: "extrude1"` passes both validators (`REF` in partDocSchema.ts
+  // only bans a leading `$`, and kernel resolveBody accepts the bare spelling),
+  // so the guard cannot require the `@` the examples use.
+  it('validates every feature example through the loader and the JSON Schema', () => {
+    const features = YAML_BLOCKS.flatMap(b => (Array.isArray(b.parsed) ? b.parsed : []))
+    expect(features.length).toBeGreaterThan(0)
+    const failures: string[] = []
+    for (const feature of features) {
       const label = isRecord(feature)
         ? `${String(feature.kind ?? '?')}/${String(feature.id ?? '?')}`
         : JSON.stringify(feature)
