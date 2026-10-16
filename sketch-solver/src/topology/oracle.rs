@@ -584,6 +584,5 @@ pub(crate) fn violations_json(input: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 #[path = "oracle/tests.rs"]
 mod tests;
