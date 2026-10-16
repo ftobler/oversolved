@@ -50,14 +50,17 @@
 //!
 //! ```text
 //! header:
-//!   u32  magic = MAGIC_OUT ("SKR3", little-endian on the wire)
+//!   u32  magic = MAGIC_OUT ("SKR4", little-endian on the wire)
 //!   u32  n_params
 //!   u32  n_entities_status   // 0 on the drag fast path or when skip_status_pass
 //!   u32  vertex_freedom_len  // f64 count; also 0 on the drag fast path
+//!   u32  n_constraints_status // per-constraint verdict count; 0 on the drag fast path
 //!   u8   overall_status
 //! params_solved:  n_params x f64
 //! entity_status:  n_entities_status x u8
 //! vertex_freedom: vertex_freedom_len x f64
+//! constraint_flags: n_constraints_status x u8
+//! constraint_miss:  n_constraints_status x f32
 //! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
 //! ```
 
@@ -66,20 +69,23 @@ use solver_core::bytes::{Eof, Reader, Writer};
 use crate::constraints::{Axis, Constraint, PointSelector, Ref, RefRole};
 use crate::{Diagnostics, Entity, EqualityPin, Input, Kind, Options, Output};
 
-// Rev 3 of the wire layout. Every scalar switched from f32 to f64: the layout
-// had already evolved once (the has_sign flag bit + trailing sign f32 per
-// constraint record, commit 9f81d31f) without moving these values, so a stale
-// js/wasm pairing decoded shifted offsets instead of failing loudly. The magic
-// IS the version handshake for a buffer that is built and consumed within one
-// process: bump BOTH sides of the boundary (this file and
-// frontend/src/wasm-kernel/codec.ts) on any layout change. Invalidating old
+// Rev 4 of the wire layout: the output gained the per-constraint verdicts
+// (`constraint_flags` + `constraint_miss`) and their header count. The input
+// layout is unchanged from rev 3, so MAGIC stays. Rev 3 switched every scalar
+// from f32 to f64; the layout had already evolved once (the has_sign flag bit +
+// trailing sign f32 per constraint record, commit 9f81d31f) without moving
+// these values, so a stale js/wasm pairing decoded shifted offsets instead of
+// failing loudly. The magic IS the version handshake for a buffer that is built
+// and consumed within one process: bump BOTH sides of the boundary (this file
+// and frontend/src/wasm-kernel/codec.ts) on any layout change. Invalidating old
 // cached payloads is acceptable and safe post-wave-1: bundle-cache reads of
 // stale buffers degrade to cold rebuilds.
 pub const MAGIC: u32 = 0x3347_4B53; // "SKG3" in LE memory order
-pub const MAGIC_OUT: u32 = 0x3352_4B53; // "SKR3" in LE memory order
+pub const MAGIC_OUT: u32 = 0x3452_4B53; // "SKR4" in LE memory order
 
-/// The rev 1 and rev 2 values. Kept only so tests can assert a stale pairing
-/// (either the f32 layout or the pre-sign one) is rejected rather than
+/// The rev 1 and rev 2 values (and rev 3, whose output lacked the
+/// per-constraint verdicts). Kept only so tests can assert a stale pairing
+/// (either the f32 layout or an older field set) is rejected rather than
 /// silently misdecoded.
 #[cfg(test)]
 pub const MAGIC_REV1: u32 = 0x5347_4B53;
@@ -89,6 +95,8 @@ pub const MAGIC_OUT_REV1: u32 = 0x5347_4B52;
 pub const MAGIC_REV2: u32 = 0x3247_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_REV2: u32 = 0x3252_4B53;
+#[cfg(test)]
+pub const MAGIC_OUT_REV3: u32 = 0x3352_4B53;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CodecError {
@@ -336,11 +344,15 @@ fn encode_constraint(w: &mut Writer, c: &Constraint) {
 // ─── Output ───
 
 pub fn encode_output(out: &Output) -> Vec<u8> {
+    // One header count drives both per-constraint arrays: the verdicts are
+    // index-aligned by contract, and a mismatch would silently shift them.
+    debug_assert_eq!(out.constraint_flags.len(), out.constraint_miss.len());
     let mut w = Writer::default();
     w.u32(MAGIC_OUT);
     w.u32(out.params_solved.len() as u32);
     w.u32(out.entity_status.len() as u32);
     w.u32(out.vertex_freedom.len() as u32);
+    w.u32(out.constraint_flags.len() as u32);
     w.u8(out.overall_status);
     for &p in &out.params_solved {
         w.f64(p);
@@ -350,6 +362,12 @@ pub fn encode_output(out: &Output) -> Vec<u8> {
     }
     for &v in &out.vertex_freedom {
         w.f64(v);
+    }
+    for &f in &out.constraint_flags {
+        w.u8(f);
+    }
+    for &m in &out.constraint_miss {
+        w.f32(m);
     }
     w.f64(out.diagnostics.residual_norm);
     w.u32(out.diagnostics.rank);
@@ -367,6 +385,7 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     let n_params = r.u32()? as usize;
     let n_status = r.u32()? as usize;
     let vf_len = r.u32()? as usize;
+    let n_constraint_status = r.u32()? as usize;
     let overall_status = r.u8()?;
     let mut params_solved = Vec::with_capacity(r.capacity_for(n_params, 8));
     for _ in 0..n_params {
@@ -380,6 +399,14 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     for _ in 0..vf_len {
         vertex_freedom.push(r.f64()?);
     }
+    let mut constraint_flags = Vec::with_capacity(r.capacity_for(n_constraint_status, 1));
+    for _ in 0..n_constraint_status {
+        constraint_flags.push(r.u8()?);
+    }
+    let mut constraint_miss = Vec::with_capacity(r.capacity_for(n_constraint_status, 4));
+    for _ in 0..n_constraint_status {
+        constraint_miss.push(r.f32()?);
+    }
     let residual_norm = r.f64()?;
     let rank = r.u32()?;
     let dof = r.u32()?;
@@ -390,6 +417,8 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
         entity_status,
         overall_status,
         vertex_freedom,
+        constraint_flags,
+        constraint_miss,
         diagnostics: Diagnostics {
             residual_norm,
             rank,
@@ -572,6 +601,10 @@ mod tests {
             entity_status: Vec::new(),
             overall_status: 0,
             vertex_freedom: vec![-0.0, 1e6],
+            constraint_flags: vec![crate::CONSTRAINT_FLAG_REDUNDANT, 0, 1],
+            // f32 by design (see the layout docs); bit-exact round trip of the
+            // f32 values the solver emits. Index-aligned with the flags above.
+            constraint_miss: vec![1.5, 0.25, -0.0],
             diagnostics: Diagnostics::default(),
         };
         let decoded = decode_output(&encode_output(&out)).unwrap();
@@ -581,6 +614,8 @@ mod tests {
         for (got, want) in decoded.vertex_freedom.iter().zip(&out.vertex_freedom) {
             assert_eq!(got.to_bits(), want.to_bits());
         }
+        assert_eq!(decoded.constraint_flags, out.constraint_flags);
+        assert_eq!(decoded.constraint_miss, out.constraint_miss);
     }
 
     #[test]
@@ -656,6 +691,8 @@ mod tests {
             entity_status: vec![0, 1],
             overall_status: crate::Status::Underconstrained.to_u8(),
             vertex_freedom: vec![0.0, 1.0, 1.0, 0.0],
+            constraint_flags: vec![crate::CONSTRAINT_FLAG_REDUNDANT, 0],
+            constraint_miss: vec![0.0, 0.375],
             diagnostics: Diagnostics {
                 residual_norm: 1.25e-9,
                 rank: 5,
@@ -668,6 +705,8 @@ mod tests {
         assert_eq!(decoded.params_solved, out.params_solved);
         assert_eq!(decoded.entity_status, out.entity_status);
         assert_eq!(decoded.vertex_freedom, out.vertex_freedom);
+        assert_eq!(decoded.constraint_flags, out.constraint_flags);
+        assert_eq!(decoded.constraint_miss, out.constraint_miss);
         assert_eq!(decoded.diagnostics.rank, 5);
         assert_eq!(decoded.diagnostics.iters, 7);
         assert!((decoded.diagnostics.residual_norm - 1.25e-9).abs() < 1e-18);
@@ -806,6 +845,8 @@ mod tests {
             entity_status: vec![0],
             overall_status: 0,
             vertex_freedom: Vec::new(),
+            constraint_flags: Vec::new(),
+            constraint_miss: Vec::new(),
             diagnostics: Diagnostics::default(),
         };
         let mut bytes = encode_output(&out);
@@ -820,10 +861,31 @@ mod tests {
             entity_status: vec![0],
             overall_status: 0,
             vertex_freedom: Vec::new(),
+            constraint_flags: Vec::new(),
+            constraint_miss: Vec::new(),
             diagnostics: Diagnostics::default(),
         };
         let mut bytes = encode_output(&out);
         bytes[..4].copy_from_slice(&MAGIC_OUT_REV2.to_le_bytes());
+        assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
+    }
+
+    #[test]
+    fn rev3_output_magic_rejected() {
+        // Rev 3's output header carried no per-constraint verdict count, so a
+        // rev 3 payload fed to this decoder must fail at the magic rather than
+        // read the diagnostics fields four bytes early.
+        let out = Output {
+            params_solved: vec![1.0],
+            entity_status: vec![0],
+            overall_status: 0,
+            vertex_freedom: Vec::new(),
+            constraint_flags: Vec::new(),
+            constraint_miss: Vec::new(),
+            diagnostics: Diagnostics::default(),
+        };
+        let mut bytes = encode_output(&out);
+        bytes[..4].copy_from_slice(&MAGIC_OUT_REV3.to_le_bytes());
         assert!(matches!(decode_output(&bytes), Err(CodecError::BadMagic)));
     }
 
@@ -1048,6 +1110,8 @@ mod tests {
             entity_status: vec![0],
             overall_status: 0,
             vertex_freedom: Vec::new(),
+            constraint_flags: Vec::new(),
+            constraint_miss: Vec::new(),
             diagnostics: Diagnostics::default(),
         };
         let mut bytes = encode_output(&out);
@@ -1062,6 +1126,8 @@ mod tests {
             entity_status: vec![0, 1],
             overall_status: 0,
             vertex_freedom: vec![1.0],
+            constraint_flags: vec![1, 0],
+            constraint_miss: vec![0.5, 0.25],
             diagnostics: Diagnostics::default(),
         };
         let bytes = encode_output(&out);
@@ -1069,6 +1135,13 @@ mod tests {
         let truncated = &bytes[..bytes.len() - 1];
         assert!(matches!(
             decode_output(truncated),
+            Err(CodecError::UnexpectedEof)
+        ));
+        // Cutting into the f32 miss block fails on the f32 read instead: drop
+        // the trailing diagnostics (28 bytes) plus the last byte of the miss.
+        let miss_cut = &bytes[..bytes.len() - 28 - 1];
+        assert!(matches!(
+            decode_output(miss_cut),
             Err(CodecError::UnexpectedEof)
         ));
     }

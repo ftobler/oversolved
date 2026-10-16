@@ -42,6 +42,10 @@ pub struct Problem<'a> {
     /// param slots their builder reads (see `operand_kinds_supply_slots`).
     /// Dropped at build time so no residual row can index off the end.
     constraints: Vec<&'a Constraint>,
+    /// Original `Input::constraints` index of each surviving constraint, in
+    /// residual-row order. Per-constraint verdicts ride the wire index-aligned
+    /// with the input, so the walk that produces them maps back through this.
+    constraint_wire_indices: Vec<usize>,
     pinned_indices: Vec<usize>,
     equality_pins: Vec<(usize, f64)>,
     /// (line_index, curve_index) -> which line endpoint is pinned to the
@@ -75,20 +79,28 @@ impl<'a> Problem<'a> {
         // Constraints that name one are dropped whole: a half-evaluated
         // constraint is worse than an absent one, and the missing-role path
         // already establishes "drop, do not panic" as the contract.
-        let constraints: Vec<&Constraint> = input
+        //
+        // A stale ref and an operand whose KIND has no param at a slot its
+        // builder reads (a Length on a Point target) are both dropped whole
+        // rather than guarded ad hoc per builder: one slice-index panic kills
+        // the worker. The second filter keeps residual and Jacobian row counts
+        // consistent automatically, since both are computed from this list.
+        let survives = |c: &Constraint| {
+            c.refs.iter().all(|(_, r)| match r {
+                Ref::Entity { index, .. } => input.entity_params_in_range(*index as usize),
+                Ref::External { .. } => true,
+            }) && Self::operand_kinds_supply_slots(input, c)
+        };
+        let constraint_wire_indices: Vec<usize> = input
             .constraints
             .iter()
-            .filter(|c| {
-                c.refs.iter().all(|(_, r)| match r {
-                    Ref::Entity { index, .. } => input.entity_params_in_range(*index as usize),
-                    Ref::External { .. } => true,
-                })
-            })
-            // Same contract one level up: an operand whose KIND has no param at
-            // a slot its builder reads (a Length on a Point target) would also
-            // panic the worker mid-solve, so it is dropped whole here rather
-            // than guarded ad hoc per builder.
-            .filter(|c| Self::operand_kinds_supply_slots(input, c))
+            .enumerate()
+            .filter(|(_, c)| survives(c))
+            .map(|(i, _)| i)
+            .collect();
+        let constraints: Vec<&Constraint> = constraint_wire_indices
+            .iter()
+            .map(|&i| &input.constraints[i])
             .collect();
 
         let mut line_circle_coincident = HashMap::new();
@@ -155,6 +167,7 @@ impl<'a> Problem<'a> {
             entities: &input.entities,
             x0,
             constraints,
+            constraint_wire_indices,
             pinned_indices,
             equality_pins,
             line_circle_coincident,
@@ -428,6 +441,17 @@ impl<'a> Problem<'a> {
             ConstraintKind::Fixed => self.r_fixed(c, x, r),
             ConstraintKind::RadiusDifference => self.r_radius_difference(c, x, r),
         }
+    }
+
+    /// The constraints that survived filtering, in residual-row order.
+    pub fn constraints(&self) -> &[&'a Constraint] {
+        &self.constraints
+    }
+
+    /// Wire index (`Input::constraints` position) of each surviving constraint,
+    /// in residual-row order. Parallel to `constraints`.
+    pub fn constraint_wire_indices(&self) -> &[usize] {
+        &self.constraint_wire_indices
     }
 
     /// True when the ref denotes a single point: an external reference, an
