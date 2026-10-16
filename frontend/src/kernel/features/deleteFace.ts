@@ -121,7 +121,9 @@ export function solveDeleteFace(
     const byQuery = resolveFacesByQuery(oc, scope, table, body, indexFor(body), qlist, bodyStore)
     const topoFaces: OccShape[] = []
     const dedup = new SubShapeDedup()
-    const queryOfFace = new Map<OccShape, string>()  // face -> the query that named it
+    // face -> EVERY query that named it, so a face named twice (a duplicate pick
+    // in different forms) still reports both queries when its group is refused.
+    const queriesOfFace = new Map<OccShape, string[]>()
     const resolvedQueries = new Set<string>()
     for (const [q, face] of byQuery) {
       if (face === null) {
@@ -129,10 +131,10 @@ export function solveDeleteFace(
         continue
       }
       resolvedQueries.add(q)
-      if (dedup.add(face as OccSubShape)) {
-        topoFaces.push(face)
-        queryOfFace.set(face, q)
-      }
+      const list = queriesOfFace.get(face)
+      if (list === undefined) queriesOfFace.set(face, [q])
+      else list.push(q)
+      if (dedup.add(face as OccSubShape)) topoFaces.push(face)
     }
     if (topoFaces.length === 0) continue
 
@@ -144,12 +146,14 @@ export function solveDeleteFace(
 
     // Map each refused group back to the queries that named its faces; only a
     // query whose face DID resolve counts as failed (an unresolved query is
-    // already in `unresolved` and must not be flagged twice).
+    // already in `unresolved` and must not be flagged twice). Every naming query
+    // is pushed, so a duplicate pick cannot escape failed_faces.
     const markFailed = (): void => {
       for (const g of res.failedGroups) {
         for (const i of g.faceIndices) {
-          const q = queryOfFace.get(topoFaces[i])
-          if (q !== undefined && resolvedQueries.has(q)) failed.push(q)
+          for (const q of queriesOfFace.get(topoFaces[i]) ?? []) {
+            if (resolvedQueries.has(q)) failed.push(q)
+          }
         }
       }
     }
