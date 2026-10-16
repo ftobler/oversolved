@@ -108,6 +108,7 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
     target: "@extrude1"
     tools: ["@extrude2"]
     keep_tools: false
+    clearance: 0.1               # subtract only; signed mm, grows (+) or shrinks (-) every tool on all sides
 ```
 
 ### hole

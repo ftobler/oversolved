@@ -137,10 +137,37 @@ export interface OccBooleanOp extends OccDisposable {
   Shape(): OccShape
 }
 
-/** BRep_Builder: the low-level builder used to assemble a TopoDS_Compound. */
+/** BRep_Builder: the low-level builder used to assemble a TopoDS_Compound, and
+ *  to promote a TopoDS_Shell into a TopoDS_Solid for the offset normalisation. */
 export interface OccBRepBuilder extends OccDisposable {
   MakeCompound(compound: OccShape): void
-  Add(compound: OccShape, shape: OccShape): void
+  MakeSolid(solid: OccShape): void
+  Add(parent: OccShape, shape: OccShape): void
+}
+
+/**
+ * BRepOffsetAPI_MakeOffsetShape: the 3D offset/clearance maker. In OCCT 7.4 the
+ * working entry point is `PerformByJoin(S, Offset, Tol, Mode, Intersection,
+ * SelfInter, Join, Thickening)` -- there is no `Message_ProgressRange` overload,
+ * so the 8-argument form is the one this build binds. History is `Generated`
+ * (NOT `Modified`): for every source face exactly one grown face comes back,
+ * which `IsSame`s a face of the result. `Shape()` is untracked for our purposes
+ * (the caller owns it/registers it).
+ */
+export interface OccOffsetShapeMaker extends OccDisposable {
+  PerformByJoin(
+    shape: OccShape,
+    offset: number,
+    tol: number,
+    mode: OccEnumValue,
+    intersection: boolean,
+    selfInter: boolean,
+    join: OccEnumValue,
+    thickening: boolean,
+  ): void
+  IsDone(): boolean
+  Shape(): OccShape
+  Generated(s: OccShape): OccListOfShape
 }
 
 /** ShapeUpgrade_UnifySameDomain: cadquery Shape.clean() with exposed history. */
@@ -454,6 +481,7 @@ export interface OccModule extends OccBaseModule {
     TopAbs_EDGE: OccShapeEnumValue
     TopAbs_VERTEX: OccShapeEnumValue
     TopAbs_SOLID: OccShapeEnumValue
+    TopAbs_SHELL: OccShapeEnumValue
     TopAbs_WIRE: OccShapeEnumValue
     TopAbs_SHAPE: OccShapeEnumValue
   }
@@ -464,6 +492,8 @@ export interface OccModule extends OccBaseModule {
     Solid_1(shape: OccShape): OccShape
     Wire_1(shape: OccShape): OccShape
   }
+  // A default-constructed TopoDS_Solid, filled by BRep_Builder.MakeSolid + Add.
+  TopoDS_Solid: new () => OccShape
   BRepAdaptor_Curve_2: new (edge: OccShape) => OccCurveAdaptor
   GeomAbs_CurveType: {
     GeomAbs_Line: OccEnumValue
@@ -581,6 +611,21 @@ export interface OccModule extends OccBaseModule {
     unifyFaces: boolean,
     concatBSplines: boolean,
   ) => OccUnify
+
+  // ─── 3D offset / clearance (offsetShape.ts) ───
+  // BRepOffsetAPI_MakeOffsetShape: the plain (suffix-free) maker is the one
+  // bound; PerformByJoin's offset-mode and join-type args come from the two enums.
+  BRepOffsetAPI_MakeOffsetShape_1: new () => OccOffsetShapeMaker
+  BRepOffset_Mode: {
+    BRepOffset_Skin: OccEnumValue
+    BRepOffset_Pipe: OccEnumValue
+    BRepOffset_RectoVerso: OccEnumValue
+  }
+  GeomAbs_JoinType: {
+    GeomAbs_Arc: OccEnumValue
+    GeomAbs_Tangent: OccEnumValue
+    GeomAbs_Intersection: OccEnumValue
+  }
 
   // ─── canonical surface recognition (canonicalSurfaces.ts) ───
   gp_Pnt_1: new () => OccXYZ

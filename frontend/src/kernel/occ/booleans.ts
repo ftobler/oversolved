@@ -506,7 +506,9 @@ function isClosedByVolume(volume: number): boolean {
   return Math.abs(volume) > 1e-12
 }
 
-function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
+/** Whole-shape BRepCheck gate. Exported because offsetShape.ts validates its
+ *  normalised offset solid with the same rule the boolean fallbacks use. */
+export function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
   return scope.track(new oc.BRepCheck_Analyzer(shape, true)).IsValid_2()
 }
 

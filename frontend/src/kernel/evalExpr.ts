@@ -13,9 +13,9 @@
 
 import { create, all } from 'mathjs'
 import type {
-  ArrayFeatureDef, ChamferFeatureDef, CircularArrayFeatureDef, ExtrudeFeatureDef,
-  FilletFeatureDef, HoleFeatureDef, ImportStepFeature, PlaneDef, RevolveFeatureDef,
-  TransformFeatureDef,
+  ArrayFeatureDef, BooleanFeatureDef, ChamferFeatureDef, CircularArrayFeatureDef,
+  ExtrudeFeatureDef, FilletFeatureDef, HoleFeatureDef, ImportStepFeature, PlaneDef,
+  RevolveFeatureDef, TransformFeatureDef,
 } from '@/types/cad'
 
 const math = create(all, {})
@@ -59,6 +59,7 @@ interface ExprPayloads {
   transform: TransformFeatureDef
   plane: PlaneDef
   import_step: ImportStepFeature
+  boolean: BooleanFeatureDef
 }
 
 export type ExprFieldKind = keyof ExprPayloads
@@ -81,6 +82,7 @@ export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPa
   transform: ['rotation_angle', 'scale'],
   plane: ['offset', 'angle', 'rotation'],
   import_step: ['scale'],
+  boolean: ['clearance'],
 }
 
 /** Whether `kind` is one of the kinds in the expression table. Narrowing a raw

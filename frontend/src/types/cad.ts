@@ -50,6 +50,9 @@ export type BooleanFeatureDef = {
   target: string
   tools: string[]
   keep_tools?: boolean
+  // Signed mm, subtract only: the tool grows (+) or shrinks (-) isotropically
+  // before the cut. Absent means 0 (no offset at all).
+  clearance?: NumberOrExpr
 }
 
 export type ArrayFeatureDef = {

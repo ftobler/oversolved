@@ -122,6 +122,8 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'tools', label: 'Tools', multi: true,
       addMutationType: 'add_boolean_tool', addValueKey: 'tool',
       removeMutationType: 'remove_boolean_tool', removeKey: 'tool', removeValueIsIndex: false },
+    { type: 'number', key: 'clearance', label: 'Clearance', default: 0, unit: 'mm',
+      showWhen: (d) => d.operation === 'subtract', validate: Number.isFinite },
     { type: 'checkbox', key: 'keep_tools', label: 'Keep tools', default: false },
   ],
 }
