@@ -1,5 +1,6 @@
 use super::*;
 use crate::radians;
+use crate::tolerance::tangent_gap_tol;
 use crate::topology::codec;
 use crate::topology::dcel::{detect_topology, InputEntity};
 use crate::topology::profile_loops::Vec2;
@@ -323,9 +324,10 @@ fn hand_fixtures() -> Vec<(&'static str, Vec<(String, InputEntity)>)> {
     ));
     out.push(("miss_side_circle_pair", {
         // The dcel test's `circle_pair_offset_by`, gap within the
-        // miss-side tangency budget: two standalone disks.
+        // miss-side tangency budget: two standalone disks. The budget comes
+        // from the tolerance ladder, so this fixture tracks a change to it.
         let r = 5.0;
-        let gap = 0.5 * MERGE.max(1e-5 * r);
+        let gap = 0.5 * tangent_gap_tol(r, MERGE);
         vec![
             ("A".into(), circle([0.0, 0.0], r)),
             ("B".into(), circle([2.0 * r + gap, 0.0], r)),

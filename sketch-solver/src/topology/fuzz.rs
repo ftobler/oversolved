@@ -464,8 +464,9 @@ pub(crate) fn generate(seed: u32) -> Generated {
         }
     }
 
-    // The injectors drive the world-space tolerances (MERGE is absolute), so
-    // they run after the per-seed scale factor. Lengths scale, angles do not.
+    // The injectors drive the world-space tolerances (the area builder's merge
+    // and the tangency budgets are world distances), so they run after the
+    // per-seed scale factor. Lengths scale, angles do not.
     for (_, e) in entities.iter_mut() {
         for p in [
             &mut e.start,
@@ -689,7 +690,10 @@ fn project_onto_entity(target: &InputEntity, p: [f64; 2]) -> Option<[f64; 2]> {
 }
 
 /// Offset one shared endpoint by 0.5x or 2x the merge tolerance: the first gap
-/// still merges, the second leaves the loop open.
+/// still merges, the second leaves the loop open. Straddling the identity rule
+/// is the point, so the gap is a world distance and does not scale with the
+/// seed: this is the `TOL_TOPOLOGY_MERGE` rung of the ladder, not a
+/// resolution-derived budget.
 fn near_miss_gap(rnd: &mut Prng, entities: &mut [(String, InputEntity)]) {
     if !rnd.chance(0.4) {
         return;
@@ -719,8 +723,10 @@ fn near_miss_gap(rnd: &mut Prng, entities: &mut [(String, InputEntity)]) {
     }
 }
 
-/// Nudge a tangency by +-1e-9 of the radius, the scale of the wire noise the
-/// solver leaves on a solved tangency (far below the merge tolerance).
+/// Nudge a tangency by +-1e-9 of the radius, the scale of the noise a
+/// well-converged tangency carries: a hundredth of the verdict width in
+/// relative terms (`tolerance::verdict_tol` allows 1e-7 of the sketch scale),
+/// and far below the merge tolerance.
 fn perturb_tangency(rnd: &mut Prng, entities: &mut [(String, InputEntity)]) {
     if !rnd.chance(0.4) {
         return;

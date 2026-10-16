@@ -305,7 +305,7 @@ fn bezier_near_touch_rejects_a_run_together_beyond_the_coincident_shortcut() {
         [100.0, 5e-4],
     ];
     assert!(!ctrl_polygons_coincident(&a, &b));
-    let tol = tangent_gap_tol(bezier_scale(&a).min(bezier_scale(&b)));
+    let tol = tangent_gap_tol(bezier_scale(&a).min(bezier_scale(&b)), TOL_TOPOLOGY_MERGE);
     assert!(tol > 5e-4, "the offset must sit inside the budget: {tol:e}");
     assert!(
         bezier_near_touch(&a, &b, tol).is_none(),
@@ -393,80 +393,161 @@ fn a_near_tangency_at_the_scanned_ellipses_seam_reports_the_foot() {
     );
 }
 
-#[test]
-fn sub_sample_crossing_lens_is_resolved_by_the_signed_valley() {
-    // A real two-crossing lens whose whole crossing pair falls between two
-    // scan samples: the sign-change scan alone never sees it (the samples
-    // bracket the lens with one sign), and the near-tangent collapse used to
-    // read the sampled valley as a graze, keeping at most one of the two
-    // crossings. The valley refinement now minimises the SIGNED residual, so
-    // a minimum past zero reveals the pair and both flanks are bisected to
-    // their exact roots. Measured on the review fixture, a 3000/2000 ellipse
-    // and a 4000-radius circle whose rim dips 0.01 into its +a apex (rim gap
-    // inside the 0.02 budget), sliding the circle along the tangent used to
-    // move the outcome over 0, 1, 1 (the split was decided at the last
-    // ternary step); it now reports both crossings at every slid position
-    // where dense sampling sees two.
-    //
-    // This is also the tolerance model's fixture: the pair's separation is
-    // half a scan step, so the scan's DETECTION resolution is its step while
-    // the roots are exact (feature/kernel-tolerances.md).
-    let a = 3000.0;
-    let b = 2000.0;
-    let r = 4000.0;
+/// The review family of sub-sample lenses: an `a x b` ellipse at the origin
+/// and a circle of radius `r` whose rim dips `depth` inside the ellipse's +a
+/// apex, slid `y0` along the tangent. Returns the pair and the eccentric-angle
+/// crossings dense sampling (4e4 samples, ~14 across the lens) sees, each
+/// bisected onto the crossing so the widths quoted in the tests are exact.
+fn lens_fixture(a: f64, b: f64, r: f64, depth: f64, y0: f64) -> (Curve, Curve, Vec<f64>) {
     let ell = Curve::Ellipse {
         c: [0.0, 0.0],
         a,
         b,
         theta: 0.0,
     };
-    let circ = |y0: f64| Curve::Circle {
-        c: [a + r - 0.01, y0],
+    let circ = Curve::Circle {
+        c: [a + r - depth, y0],
         r,
     };
-    let dense_crossings = |y0: f64| -> Vec<f64> {
-        // 4e4 samples puts ~14 of them across the lens, far denser than
-        // the scan's 512 and cheap enough for a unit test.
-        let n = 40_000usize;
-        let cc = [a + r - 0.01, y0];
-        let mut prev = f64::NAN;
-        let mut roots: Vec<f64> = Vec::new();
-        for i in 0..=n {
-            let phi = TWO_PI * i as f64 / n as f64;
-            let p = [a * phi.cos(), b * phi.sin()];
-            let g = (p[0] - cc[0]).hypot(p[1] - cc[1]) - r;
-            if !prev.is_nan() && (prev > 0.0) != (g > 0.0) {
-                roots.push(phi);
-            }
-            prev = g;
-        }
-        roots
+    let n = 40_000usize;
+    let cc = [a + r - depth, y0];
+    let gap = |phi: f64| {
+        let p = [a * phi.cos(), b * phi.sin()];
+        (p[0] - cc[0]).hypot(p[1] - cc[1]) - r
     };
-    for y0 in [9.5, 9.75, 10.0] {
-        let truth = dense_crossings(y0);
-        assert_eq!(truth.len(), 2, "y0 {y0}: the lens is real");
-        let h = intersect_curves(&ell, &circ(y0));
+    let mut roots: Vec<f64> = Vec::new();
+    let mut prev_phi = 0.0;
+    let mut prev = gap(0.0);
+    for i in 1..=n {
+        let phi = TWO_PI * i as f64 / n as f64;
+        let cur = gap(phi);
+        if (prev > 0.0) != (cur > 0.0) {
+            roots.push(bisect(&gap, prev_phi, phi));
+        }
+        prev_phi = phi;
+        prev = cur;
+    }
+    (ell, circ, roots)
+}
+
+/// The eccentric-angle parameter of a hit on the fixture's ellipse.
+fn lens_param(hit: &Hit, a: f64, b: f64) -> f64 {
+    pymod((hit.point[1] / b).atan2(hit.point[0] / a), TWO_PI)
+}
+
+/// Angular distance between a hit's parameter and the nearest dense crossing.
+fn nearest_lens_crossing(hit: &Hit, a: f64, b: f64, dense: &[f64]) -> f64 {
+    let t = lens_param(hit, a, b);
+    dense
+        .iter()
+        .map(|&d| {
+            let off = pymod(t - d, TWO_PI);
+            off.min(TWO_PI - off)
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// World separation of the two dense crossings of a lens fixture.
+fn lens_separation(a: f64, b: f64, dense: &[f64]) -> f64 {
+    let at = |phi: f64| [a * phi.cos(), b * phi.sin()];
+    let (p, q) = (at(dense[0]), at(dense[1]));
+    (p[0] - q[0]).hypot(p[1] - q[1])
+}
+
+#[test]
+fn sub_sample_crossing_lens_beyond_the_collapse_band_reports_both_roots() {
+    // A real two-crossing lens whose whole crossing pair falls between two
+    // scan samples: the sign-change scan alone never sees it (the samples
+    // bracket the lens with one sign), and the sampled valley used to be read
+    // through the hidden-crossing guard, where the last ternary step's side of
+    // zero decided between 0 contacts (the pair rejected) and 1 (a foot in the
+    // middle of a real lens). The valley refinement now minimises the SIGNED
+    // residual, so a minimum past zero is a crossing pair, and both flanks are
+    // bisected to their exact roots.
+    //
+    // This is the class the fix exists for: a lens wider than the collapse
+    // band (2 * TANGENT_COLLAPSE_RESOLUTIONS * resolution(r_min), here 2 *
+    // 1e-3 * 2000 = 4.0 world, the closed-form `cc` graze rule) is geometry,
+    // not a converged tangency. Measured on the review fixture family with
+    // dense sampling seeing two crossings at every one of them (the helper
+    // bisects each crossing, so these are the exact separations): at depth
+    // 0.01 and y0 = 8.95 the pair sits 4.464 world apart and the old scan
+    // reported 0 crossings; at depth 0.03 and y0 = -16.9 (5.079 apart) and
+    // depth 0.05 and y0 = -20 (10.0 apart) it reported the single foot the
+    // ternary landed on instead of the pair. The scan now reports both roots,
+    // each on its dense twin.
+    for (a, b, r, depth, y0) in [
+        (3000.0, 2000.0, 4000.0, 0.01, 8.95),
+        (3000.0, 2000.0, 4000.0, 0.03, -16.9),
+        (3000.0, 2000.0, 4000.0, 0.05, -20.0),
+    ] {
+        let (ell, circ, dense) = lens_fixture(a, b, r, depth, y0);
+        assert_eq!(
+            dense.len(),
+            2,
+            "depth {depth} y0 {y0}: the lens is real, got {dense:?}"
+        );
+        let sep = lens_separation(a, b, &dense);
+        let band = 2.0 * tangent_collapse_tol(b.min(r));
+        assert!(
+            sep > band,
+            "depth {depth} y0 {y0}: the fixture must sit outside the collapse band, sep {sep:e} vs {band:e}"
+        );
+        let h = intersect_curves(&ell, &circ);
         assert_eq!(
             h.len(),
             2,
-            "y0 {y0}: both crossings of a real lens must be reported, got {h:?}"
+            "depth {depth} y0 {y0}: both crossings of a real lens must be reported, got {h:?}"
         );
         // Each reported hit sits on its dense-sampling twin; the two roots are
         // exact bisections, so one scan step is a generous match window.
         for hit in &h {
-            let t = pymod((hit.point[1] / b).atan2(hit.point[0] / a), TWO_PI);
-            let nearest = truth
-                .iter()
-                .map(|&d| {
-                    let off = pymod(t - d, TWO_PI);
-                    off.min(TWO_PI - off)
-                })
-                .fold(f64::INFINITY, f64::min);
+            let nearest = nearest_lens_crossing(hit, a, b, &dense);
             assert!(
                 nearest < 1e-3,
-                "y0 {y0}: hit {hit:?} is {nearest:e} from the nearest dense crossing"
+                "depth {depth} y0 {y0}: hit {hit:?} is {nearest:e} from the nearest dense crossing"
             );
         }
+    }
+}
+
+#[test]
+fn sub_sample_crossing_lens_inside_the_collapse_band_is_one_virtual_tangent_point() {
+    // The pinned repro's own lens: the same family at depth 0.01, slid over
+    // y0 = 9.5..10.0. Both tangency budgets put it INSIDE the near-tangency
+    // band, so the model's answer is the single virtual tangent point, not two
+    // crossings: the rim gap 0.01 is inside the gap budget (1e-5 * 2000 =
+    // 0.02), and the crossings sit 2.236 to 3.509 world apart (exact, via the
+    // same bisection) against a 4.0 world collapse band. What the fix changed
+    // is who decides: the old scan reported 0 hits at y0 = 9.5 and 1 at
+    // y0 = 10 depending on which side of zero the last ternary step landed on,
+    // so the sampling phase, not the model, decided whether the tangency
+    // survived (0 lost the contact the region closes on). The sampled valley
+    // now refines the signed residual and reports exactly the model's one
+    // contact, deterministically, at every slid position.
+    let (a, b, r) = (3000.0, 2000.0, 4000.0);
+    for y0 in [9.5, 9.75, 10.0] {
+        let (ell, circ, dense) = lens_fixture(a, b, r, 0.01, y0);
+        assert_eq!(dense.len(), 2, "y0 {y0}: the lens is real");
+        let sep = lens_separation(a, b, &dense);
+        assert!(
+            sep <= 2.0 * tangent_collapse_tol(b.min(r)),
+            "y0 {y0}: the fixture must sit inside the collapse band, sep {sep:e}"
+        );
+        let h = intersect_curves(&ell, &circ);
+        assert_eq!(h.len(), 1, "y0 {y0}: one virtual tangent point, got {h:?}");
+        // The contact is the foot BETWEEN the two crossings, not one of them:
+        // its parameter sits inside the pair's span and one scan step from it.
+        let (first, second) = (dense[0], dense[1]);
+        let t = lens_param(&h[0], a, b);
+        assert!(
+            (first.min(second)..=first.max(second)).contains(&t),
+            "y0 {y0}: the foot {t:e} must lie between the crossings {first:e}..{second:e}"
+        );
+        assert!(
+            nearest_lens_crossing(&h[0], a, b, &dense) < 0.05,
+            "y0 {y0}: the foot must sit at the closest approach, got {h:?}"
+        );
     }
 }
 

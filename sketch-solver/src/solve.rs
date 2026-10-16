@@ -6,36 +6,19 @@
 //! scalar TS" boundary).
 
 use crate::residuals::Problem;
+use crate::tolerance::{verdict_tol, FREE_COMPONENT_TOL, RANK_TOL, REDUNDANT_ROW_REL};
 use crate::{Diagnostics, Input, Output, Status, CONSTRAINT_FLAG_REDUNDANT};
 use nalgebra::DMatrix;
 use solver_core::lm::{
     solve_lm, solve_lm_sparse, solve_lm_sparse_anchored, solve_lm_sparse_proximal,
 };
 
-/// Singular values above this count toward the rank.
-const RANK_TOL: f64 = 1e-6;
-/// A residual norm above this fraction of the sketch's size (see
-/// `Problem::scale`) means the system is unsatisfiable. Every row is a length
-/// now, so the verdict can be relative: the old absolute 1e-4 on the squared
-/// norm accepted a 1e-2 miss on any sketch, 4% of a 0.25-wide one.
-///
-/// Sized from measurement, not from the wire: rev 2's f32 params put a
-/// quantized ~6e-8 of the size into every decoded coordinate, so the old 1e-5
-/// floor sat above that noise. Rev 3 carries f64, and the crate's own solve
-/// tests measure satisfiable systems at 2.5e-8 relative residual at worst (the
-/// sparse drag fast path on a two-point sketch; the cold path's worst is
-/// 9.4e-9, the deliberately hard eight-line parallel chain at scale 0.01).
-/// The nearest deliberately unsatisfiable case measures 2.8e-2 (a 4 percent
-/// conflict). 1e-7 sits between them: 4x above the worst satisfiable reading,
-/// five orders below the unsatisfiable one, and 100x tighter than the
-/// f32-sized floor. The frontend sketch suites, which solve through the real
-/// wasm, all hold under it.
-const LOSS_REL: f64 = 1e-7;
-
-/// True when a solve's final residual reads as a satisfied system. A
-/// non-finite norm (malformed residual, singular blow-up) never does.
+/// True when a solve's final residual reads as a satisfied system. The width
+/// comes from the tolerance ladder (`tolerance::verdict_tol`: the measured
+/// multiple of the sketch's resolution); a non-finite norm (malformed
+/// residual, singular blow-up) never reads as satisfied.
 fn satisfied(residual_norm: f64, scale: f64) -> bool {
-    residual_norm.is_finite() && residual_norm <= LOSS_REL * scale
+    residual_norm.is_finite() && residual_norm <= verdict_tol(scale)
 }
 /// Drag re-solve regularization. A linear
 /// penalty `w*(x - x0)` per param biases the constraint null-space toward the
@@ -231,16 +214,6 @@ fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
     weights
 }
 
-/// Relative cut for the redundancy walk: a row whose remainder after
-/// orthogonalisation against every earlier row falls below this share of its
-/// own norm adds no new rank, so its constraint is a measurement, not a driver.
-///
-/// 1e-8 is three orders above the round-off an exactly duplicated row leaves
-/// (a copy of an earlier row reads ~1e-16 relative) and well below any real
-/// difference in constraint direction; the solve's own verdict floor is the
-/// 1e-7 of `LOSS_REL`.
-const REDUNDANT_REL_TOL: f64 = 1e-8;
-
 /// Incremental rank walk over the constraint rows in authoring order.
 ///
 /// Each constraint's rows are orthogonalised (modified Gram-Schmidt, with a
@@ -298,7 +271,7 @@ fn redundancy_flags(problem: &Problem, x: &[f64], jac: &DMatrix<f64>, n_wire: us
                 }
             }
             let after = norm(&v);
-            if after > REDUNDANT_REL_TOL * before {
+            if after > REDUNDANT_ROW_REL * before {
                 for vi in v.iter_mut() {
                     *vi /= after;
                 }
@@ -399,6 +372,8 @@ impl Spectrum {
         };
         let svd = j.clone().svd(false, want_null);
         let sv = &svd.singular_values;
+        // `RANK_TOL` is a numerical-rank floor on a dimensionless spectrum;
+        // its own comment in `tolerance` says why it is absolute.
         let rank = sv.iter().filter(|&&s| s > RANK_TOL).count();
         let Some(v_t) = svd.v_t else {
             return Spectrum {
@@ -420,14 +395,10 @@ impl Spectrum {
     }
 }
 
-/// A param is free when some null direction moves it by more than this. The
-/// null basis is orthonormal, so a genuinely free param reads O(1) and a
-/// constrained one reads round-off.
-const FREE_COMPONENT_TOL: f64 = 1e-6;
-
 /// Per-entity status. An entity is underconstrained exactly when one of its
 /// params can move without disturbing the constraints, i.e. when the null
-/// space has a component on its columns. That is the same test as pinning the
+/// space has a component on its columns above `tolerance::FREE_COMPONENT_TOL`
+/// (absolute: the basis is orthonormal). That is the same test as pinning the
 /// entity (appending identity rows) and watching the rank rise, which is how
 /// this used to run: one SVD per entity, 5.9 s for 200 lines against 0.2 s
 /// for the solve itself.
@@ -710,6 +681,46 @@ mod tests {
         );
         let out = solve_sketch(&inp);
         assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+    }
+
+    #[test]
+    fn a_user_typeable_conflict_at_a_metre_scale_is_overconstrained() {
+        // The verdict is relative (tolerance::verdict_tol: 1e8 resolutions of
+        // the sketch scale), so the question is whether the smallest conflict a
+        // user can type disappears into the width at the top of the scale
+        // range. A 1 m line drawn as 1000.0 and dimensioned 1000.01 disagrees
+        // by 0.01: the least-squares compromise misses each length row by
+        // ~0.005, against the 1e-4 verdict width of a scale-1000 sketch. The
+        // conflict stays visible, and the same sketch with the conflict spelled
+        // away stays satisfied, so the width is not hiding a real disagreement.
+        let metre = |len: f64| {
+            let fixed_start = c_target(ConstraintKind::Fixed, 0, PointSelector::Start);
+            let mut first = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+            first.value = Some(1000.0);
+            let mut second = first.clone();
+            second.value = Some(len);
+            input(
+                vec![line(0)],
+                vec![0.0, 0.0, 1000.0, 0.0],
+                vec![fixed_start, first, second],
+            )
+        };
+        let out = solve_sketch(&metre(1000.01));
+        assert_eq!(
+            out.overall_status,
+            Status::Overconstrained.to_u8(),
+            "0.01 mm of conflict on a 1 m sketch must not read as satisfied"
+        );
+        assert!(
+            out.diagnostics.residual_norm > 50.0 * verdict_tol(1000.0),
+            "the compromise must measure well past the width: {}",
+            out.diagnostics.residual_norm
+        );
+        assert_eq!(
+            solve_sketch(&metre(1000.0)).overall_status,
+            Status::Underconstrained.to_u8(),
+            "the satisfiable spelling of the same sketch stays satisfied"
+        );
     }
 
     #[test]
@@ -1228,7 +1239,7 @@ mod tests {
     fn dragged_point_far_off_a_line_is_not_overconstrained() {
         // A point coincident with a fixed horizontal line, seeded 100 units off
         // it and dragged there. The anchored compromise sits ~0.25 off the line,
-        // so its raw constraint residual exceeds the LOSS_REL verdict; the status must
+        // so its raw constraint residual exceeds the verdict width; the status must
         // still come from the constraint system (satisfiable), exactly as the
         // old first unanchored solve classified it. Otherwise the caller drops
         // the frame and the point freezes instead of sliding. The returned

@@ -45,38 +45,14 @@ use trace::{
     build_standalone_surfaces, nest_surfaces, trace_face_cycles,
 };
 
-// Near-tangency collapse: two curves that the solver tried to make tangent leave
-// a contact whose two analytic intersection points sit `2h` apart and tend to a
-// single point as `h -> 0`. Exact tangency (`h == 0`) never survives floating
-// point, so we DEFINE the contact at the foot point whenever the two roots are
-// within `TANGENT_COLLAPSE_REL * r_min` of coinciding. The real picture is
-// 0-or-2 intersections; asserting the one foot is the "virtual tangent point"
-// that collapses the numerical ambiguity into a singular truth the area builder
-// can lean on -- a tangent pair then stays two clean standalone faces instead of
-// being sliced by a phantom sliver arc. The threshold is on the point separation
-// (not the centre-distance gap, which the sqrt amplifies) and relative to the
-// smaller radius so it tracks model scale and clears the solver's converged
-// tangent residual by orders of magnitude while never merging a real crossing.
-const TANGENT_COLLAPSE_REL: f64 = 1e-3;
-
-// `lc` asserts the same virtual tangent point for a line, but keyed on the
-// PERPENDICULAR GAP `|dist - r|` rather than the root separation `h`. The two
-// are one threshold rewritten (`gap == h * h / (dist + r)`), but the gap is what
-// a tangent residual drives linearly where `h ~ sqrt(2 * r * gap)` is its square
-// root, so the gap is the form that can be compared against a solve and tested.
-// Applies to a MISS only, so it swallows no geometry and can be sized purely for
-// headroom: it is the distance by which a line may fail to reach a rim and still
-// be read as touching it. Relative to the radius so it tracks model scale, with
-// MERGE as the floor for tiny radii. That leaves ~1000x over the reported
-// sketch's 9e-8 residual, where the previous `h`-form rule left 52x -- and under
-// a square root 52x is thin, which is what an area flickering in and out of a
-// dragged sketch looks like from the outside. `cc` reuses the same constant for
-// its miss-side rule: two circles whose centre distance falls a hair beyond
-// r1 + r2 (or a hair inside |r1 - r2|) get their single foot asserted within
-// the same budget, for the same reason -- the gap is the residual the tangent
-// solver drives to zero. The sampled-root paths in `curve_intersect.rs` mirror
-// the same budget for the conic and spline pairs those paths own.
-pub(super) const TANGENT_GAP_REL: f64 = 1e-5;
+// The two near-tangency rules the area builder applies -- the gap budget for a
+// miss and the root-separation collapse for a pair of analytic roots -- are the
+// resolution-derived pair `tolerance::tangent_gap_tol` / `tangent_collapse_tol`.
+// Both are relative to the smaller characteristic radius of the pair, for the
+// reason stated there: a tangency's ambiguity is a world distance on the curve
+// the constraint drove, not on the sketch, and a fixed world budget would
+// swallow real features on a small sketch and be lost in the solver's noise on
+// a large one.
 
 // ─── Input geometry (the enriched richGeom dict, classified like classifyEntities) ───
 

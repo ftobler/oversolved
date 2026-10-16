@@ -30,6 +30,9 @@ pub mod residuals;
 pub mod solve;
 #[cfg(test)]
 pub mod test_util;
+/// The resolution and the threshold ladder it feeds (see the module docs); the
+/// two halves of the pipeline that consume it are `solve` and `topology`.
+pub(crate) mod tolerance;
 pub(crate) mod topology;
 
 #[cfg(target_arch = "wasm32")]

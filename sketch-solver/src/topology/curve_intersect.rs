@@ -14,14 +14,17 @@
 //! of its closest approach as a contact, mirroring the line/circle collapse in
 //! the dcel. A true miss, further apart than that budget, still reports nothing,
 //! so a graze never spuriously splits a curve. A crossing pair narrower than
-//! one scan sample is not a graze: the sampled valley's refinement lands on the
-//! far side of zero and both roots are bisected out, so a real lens is reported
-//! as its two intersections at every width.
+//! one scan sample is not a graze either: the sampled valley's refinement lands
+//! on the far side of zero and both roots are bisected out, unless the two sit
+//! inside the collapse budget, where the model defines the single virtual
+//! tangent point (see `tolerance`).
 
 use super::curve_split::{bezier_point, ellipse_point_at};
-use super::dcel::{pymod, TANGENT_GAP_REL};
+use super::dcel::pymod;
 use super::{TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE, TWO_PI};
-use crate::{radians, MIN_SEMI_AXIS_SQ};
+use crate::radians;
+use crate::tolerance::{tangent_collapse_tol, tangent_gap_tol};
+use crate::MIN_SEMI_AXIS_SQ;
 
 pub use super::Vec2;
 
@@ -62,12 +65,19 @@ pub struct Hit {
 const POINT_MERGE: f64 = TOL_TOPOLOGY_MERGE; // two hits closer than this are the same
 
 /// A squared direction/length below which the segment is treated as having no
-/// extent. Squared, so it is the square of the 1e-9 length floor.
+/// extent. Squared, so it is the square of the 1e-9 length floor. Absolute on
+/// purpose: a division guard for a degenerate direction, not a measure of how
+/// close the solver converged (the resolution at the smallest modelled scale
+/// is 1e-17, far below it).
 const ZERO_LENGTH_SQ: f64 = 1e-18;
 
 /// Tangent/coincidence budget for the circle-circle arm: a centre distance or
 /// half-chord this small is the degenerate touch, not a transversal crossing.
-/// Kept separate from the area notions because it is a length, not an area.
+/// Kept separate from the area notions because it is a length, not an area,
+/// and absolute on purpose: it only has to catch carriers that are the same
+/// curve to the f64 grid (1e-12 world is below the grid of a 1500-radius
+/// circle and ~1e-10 of the smallest modelled sketch), far under anything the
+/// resolution-derived budgets decide.
 const CIRCLE_TANGENT_EPS: f64 = 1e-12;
 
 // ─── recover a curve's parameter from a point known to lie on it ───
@@ -132,24 +142,15 @@ fn conic_residual(curve: &Curve) -> Option<Box<dyn Fn(Vec2) -> f64>> {
     }
 }
 
-// ─── near-tangency budget for the sampled-root paths ───
+// ─── near-tangency and sub-sample-pair budgets for the sampled-root paths ───
 
-/// World-space budget for reading a no-sign-change approach as a contact:
-/// `MERGE.max(TANGENT_GAP_REL * scale)`, the same rule `lc`/`cc` apply on their
-/// miss side. `scale` is the pair's smaller characteristic radius; see
-/// `curve_scale`. On a true miss there is no crossing to swallow, so the budget
-/// can only invent a contact where the curves come within it of touching, never
-/// erase a crossing the user drew.
-fn tangent_gap_tol(scale: f64) -> f64 {
-    TOL_TOPOLOGY_MERGE.max(TANGENT_GAP_REL * scale)
-}
-
-/// Characteristic radius of a carrier curve for the gap budget. A circle
+/// Characteristic radius of a carrier curve for the tangency budgets (see
+/// `tolerance::tangent_gap_tol` and `tangent_collapse_tol`). A circle
 /// contributes its radius and an ellipse its smaller semi-axis (its tightest
 /// curvature), which is the two-circle case of `cc`'s `r_min`. A bezier has no
 /// radius, so half its control-polygon bounding-box diagonal stands in; a line
-/// contributes 0, leaving the `MERGE` floor (its caller pairs it with a curve
-/// that does have a scale).
+/// contributes 0, leaving the caller's absolute floor (its caller pairs it with
+/// a curve that does have a scale).
 fn curve_scale(curve: &Curve) -> f64 {
     match *curve {
         Curve::Circle { r, .. } => r.abs(),
@@ -247,58 +248,79 @@ fn minimize(f: &dyn Fn(f64) -> f64, lo: f64, hi: f64) -> f64 {
 }
 
 /// What one sampled valley window turned out to hold: no contact, the foot of
-/// a closest approach inside `gap_tol`, or the two roots of a crossing pair the
-/// samples did not separate.
+/// a closest approach inside the pair's gap budget, or the two roots of a
+/// crossing pair the samples did not separate.
 enum Valley {
     None,
-    Graze(f64, f64),
+    Graze(f64),
     Pair(f64, f64),
 }
 
-/// One valley window `[lo, hi]` around sample `i`, whose neighbours carry the
-/// same sign: refine it and say what it holds.
+/// The pair's world geometry as the scan sees it (how far `other` is at a
+/// scanned parameter, how far apart two scanned parameters are) with the two
+/// budgets the valley applies: the near-tangency gap budget, and the collapse
+/// budget on the half-separation `h` the closed-form arms test.
+struct PairGeom<'a> {
+    gap_at: &'a dyn Fn(f64) -> Option<f64>,
+    sep: &'a dyn Fn(f64, f64) -> f64,
+    gap_tol: f64,
+    collapse_h: f64,
+}
+
+/// One valley window `[lo, hi]` around a sample whose neighbours carry its
+/// sign, with the three sample values (`prev`, `cur`, `next`): refine it and
+/// say what it holds.
 ///
 /// The refinement minimises the SIGNED residual (|g| on a window that keeps one
 /// sign), so a minimum on the far side of zero from the window's samples is a
 /// crossing pair hidden between two samples: both flanks change sign there, and
-/// each is bisected to its exact root. A crossing pair is geometry, not an
-/// ambiguity to collapse, so it must be reported as its two intersections
-/// however narrow it is (a lens between samples used to lose one or both of
-/// them to the near-tangency collapse). Only a window that stays one-signed is
-/// a graze candidate, and only the budget decides whether it contacts.
-#[allow(clippy::too_many_arguments)]
+/// each is bisected to its exact root. A pair is then either the two roots or,
+/// when they sit within the collapse budget of coinciding, the single virtual
+/// tangent point a converged tangency leaves (the rule `cc` applies on its
+/// graze side, one threshold rewritten; a foot here keeps a near-tangent pair
+/// from slicing a phantom sliver out of both curves). A crossing pair wider
+/// than that budget is geometry, not an ambiguity: both roots are reported
+/// however narrow the lens is (a lens between samples used to lose one or both
+/// of them to the near-tangency collapse). A window that stays one-signed is a
+/// graze candidate, and only the gap budget decides whether it contacts.
 fn valley_window(
     g: &dyn Fn(f64) -> f64,
-    gap_at: &dyn Fn(f64) -> Option<f64>,
-    gap_tol: f64,
-    gs: &[f64],
-    prev: usize,
-    i: usize,
-    next: usize,
+    pair: &PairGeom,
+    samples: [f64; 3],
     lo: f64,
     hi: f64,
 ) -> Valley {
+    let [prev, cur, next] = samples;
     let same_sign = |x: f64, y: f64| (x > 0.0 && y > 0.0) || (x < 0.0 && y < 0.0);
-    if !(same_sign(gs[prev], gs[i]) && same_sign(gs[i], gs[next]))
-        || gs[i].abs() > gs[prev].abs()
-        || gs[i].abs() > gs[next].abs()
+    if !(same_sign(prev, cur) && same_sign(cur, next))
+        || cur.abs() > prev.abs()
+        || cur.abs() > next.abs()
     {
         return Valley::None;
     }
-    let t_min = if gs[i] > 0.0 {
+    let t_min = if cur > 0.0 {
         minimize(&|t: f64| g(t), lo, hi)
     } else {
         minimize(&|t: f64| -g(t), lo, hi)
     };
     let g_min = g(t_min);
     // A dip that comes out the far side of zero is a crossing pair hidden
-    // between samples, not a graze: the pair has no foot to assert, and a
-    // contact in its middle would split a sliver out of a real crossing.
-    if !(g_min == 0.0 || same_sign(g_min, gs[i])) {
-        return Valley::Pair(bisect(g, lo, t_min), bisect(g, t_min, hi));
+    // between samples: both flanks change sign, so both roots are bisected
+    // out rather than asserting a foot in the middle of a real lens. The one
+    // exception is the pair the model defines as a converged tangency (inside
+    // the collapse budget), which keeps the single virtual tangent point at
+    // the dip's foot.
+    if !(g_min == 0.0 || same_sign(g_min, cur)) {
+        let (a, b) = (bisect(g, lo, t_min), bisect(g, t_min, hi));
+        // `sep` is the full separation of the two roots; the rule is the
+        // closed-form arms' half-separation `h`, hence the factor two.
+        if (pair.sep)(a, b) <= 2.0 * pair.collapse_h {
+            return Valley::Graze(t_min);
+        }
+        return Valley::Pair(a, b);
     }
-    match gap_at(t_min) {
-        Some(gap) if gap <= gap_tol => Valley::Graze(t_min, gap),
+    match (pair.gap_at)(t_min) {
+        Some(gap) if gap <= pair.gap_tol => Valley::Graze(t_min),
         _ => Valley::None,
     }
 }
@@ -314,7 +336,7 @@ fn valley_window(
 /// themselves are exact, not a foot approximation. A graze is the "virtual
 /// tangent point" a converged tangent constraint leaves (see the dcel
 /// collapse): a sampled valley whose window keeps one sign and whose refined
-/// minimum comes within `gap_tol` world units of the other curve yields that
+/// minimum comes within the gap budget of the other curve yields that
 /// minimum's parameter, and a true miss beyond the budget stays a miss. For
 /// periodic curves pass the full period [0, 2pi) and `periodic`; the seam is
 /// covered because the endpoints coincide.
@@ -323,8 +345,7 @@ fn valley_window(
 /// only gains the new contacts at the end.
 fn scan_roots_and_grazes(
     g: &dyn Fn(f64) -> f64,
-    gap_at: &dyn Fn(f64) -> Option<f64>,
-    gap_tol: f64,
+    pair: &PairGeom,
     t0: f64,
     t1: f64,
     periodic: bool,
@@ -345,28 +366,18 @@ fn scan_roots_and_grazes(
     // A sampled valley is a sample below both neighbours. The one-sign window
     // rejects the pseudo-valleys on either side of a root, where |g| is also
     // locally minimal but the contact is the crossing itself, already emitted.
-    let mut grazes: Vec<(f64, f64)> = Vec::new();
+    let mut grazes: Vec<f64> = Vec::new();
     // The two roots of every sub-sample crossing pair, in scan order. They are
     // crossings, so they join the sign-change roots rather than the grazes.
     let mut pairs: Vec<f64> = Vec::new();
     let wrap = |t: f64| if periodic { pymod(t, TWO_PI) } else { t };
     let mut take = |v: Valley| match v {
-        Valley::Graze(t, gap) => grazes.push((wrap(t), gap)),
-        Valley::Pair(a, b) => pairs.extend([a, b]),
+        Valley::Graze(t) => grazes.push(wrap(t)),
+        Valley::Pair(a, b) => pairs.extend([wrap(a), wrap(b)]),
         Valley::None => {}
     };
     for i in 1..SCAN_SAMPLES {
-        let v = valley_window(
-            g,
-            gap_at,
-            gap_tol,
-            &gs,
-            i - 1,
-            i,
-            i + 1,
-            ts[i - 1],
-            ts[i + 1],
-        );
+        let v = valley_window(g, pair, [gs[i - 1], gs[i], gs[i + 1]], ts[i - 1], ts[i + 1]);
         take(v);
     }
     if periodic {
@@ -377,12 +388,8 @@ fn scan_roots_and_grazes(
         let last = SCAN_SAMPLES - 1;
         let v = valley_window(
             g,
-            gap_at,
-            gap_tol,
-            &gs,
-            last,
-            0,
-            first,
+            pair,
+            [gs[last], gs[0], gs[first]],
             ts[last],
             ts[first] + (t1 - t0),
         );
@@ -392,9 +399,9 @@ fn scan_roots_and_grazes(
     // A flat valley can present several sampled valleys around one true
     // minimum; keep one contact per cluster so the split list cannot gain a
     // phantom sliver segment between two params that name the same foot.
-    grazes.sort_by(|a, b| a.0.total_cmp(&b.0));
+    grazes.sort_by(|a, b| a.total_cmp(b));
     let mut kept: Vec<f64> = Vec::new();
-    for (t, _) in grazes {
+    for t in grazes {
         if kept.last().is_some_and(|&p| (t - p).abs() <= step) {
             continue;
         }
@@ -450,8 +457,8 @@ fn line_ellipse(l0: Vec2, l1: Vec2, c: Vec2, a: f64, b: f64, theta: f64) -> Vec<
     if disc < 0.0 {
         // Virtual tangent point, `lc`'s rule in the ellipse's terms: the foot
         // of the closest approach, kept when the world gap it leaves is inside
-        // `MERGE.max(TANGENT_GAP_REL * r)` of the rim and the foot still lies
-        // on the finite segment. A miss has no crossing to swallow.
+        // the pair's gap budget (see `tolerance::tangent_gap_tol`) and the foot
+        // still lies on the finite segment. A miss has no crossing to swallow.
         let raw = -bb / (2.0 * aa);
         let seg = (l1[0] - l0[0]).hypot(l1[1] - l0[1]);
         let overhang = (-raw).max(raw - 1.0).max(0.0) * seg;
@@ -462,7 +469,7 @@ fn line_ellipse(l0: Vec2, l1: Vec2, c: Vec2, a: f64, b: f64, theta: f64) -> Vec<
         let p = [l0[0] + t * (l1[0] - l0[0]), l0[1] + t * (l1[1] - l0[1])];
         let ell = Curve::Ellipse { c, a, b, theta };
         return match conic_gap(&ell, p) {
-            Some(gap) if gap <= tangent_gap_tol(curve_scale(&ell)) => vec![p],
+            Some(gap) if gap <= tangent_gap_tol(curve_scale(&ell), TOL_TOPOLOGY_MERGE) => vec![p],
             _ => vec![],
         };
     }
@@ -505,7 +512,7 @@ fn circle_circle(ac: Vec2, ar: f64, bc: Vec2, br: f64) -> Vec<Vec2> {
 
 /// Cubic Bezier vs line via the cubic the line's implicit form induces in t.
 /// The graze side mirrors `lc`: the world gap is the residual divided by the
-/// line's normal length, and the bezier's own scale anchors the tolerance.
+/// line's normal length, and the bezier's own scale anchors the budgets.
 fn bezier_line(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, l0: Vec2, l1: Vec2) -> Vec<f64> {
     let nx = l1[1] - l0[1];
     let ny = -(l1[0] - l0[0]);
@@ -522,8 +529,21 @@ fn bezier_line(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2, l0: Vec2, l1: Vec2) -> Ve
             None
         }
     };
-    let tol = tangent_gap_tol(curve_scale(&Curve::Bezier { p0, c1, c2, p3 }));
-    scan_roots_and_grazes(&g, &gap_at, tol, 0.0, 1.0, false)
+    let sep = |t1: f64, t2: f64| -> f64 {
+        let p = bezier_point(p0, c1, c2, p3, t1);
+        let q = bezier_point(p0, c1, c2, p3, t2);
+        (p[0] - q[0]).hypot(p[1] - q[1])
+    };
+    // The line contributes no radius, so the bezier's own scale anchors both
+    // budgets, exactly as it anchored the gap budget alone.
+    let scale = bezier_scale(&[p0, c1, c2, p3]);
+    let pair = PairGeom {
+        gap_at: &gap_at,
+        sep: &sep,
+        gap_tol: tangent_gap_tol(scale, TOL_TOPOLOGY_MERGE),
+        collapse_h: tangent_collapse_tol(scale),
+    };
+    scan_roots_and_grazes(&g, &pair, 0.0, 1.0, false)
 }
 
 // ─── bezier vs bezier by recursive AABB subdivision ───
@@ -652,7 +672,7 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
         // The boxes never overlapped, so the pair either crosses nowhere or
         // grazes: a solver-driven tangency can leave exactly this picture, and
         // only the foot lets the region close.
-        let tol = tangent_gap_tol(bezier_scale(&ca).min(bezier_scale(&cb)));
+        let tol = tangent_gap_tol(bezier_scale(&ca).min(bezier_scale(&cb)), TOL_TOPOLOGY_MERGE);
         if let Some(hit) = bezier_near_touch(&ca, &cb, tol) {
             out.push(hit);
         }
@@ -783,8 +803,21 @@ fn scan_curve(
     let periodic = !matches!(*scanned, Curve::Bezier { .. });
     let g = |t: f64| residual(eval_at(t));
     let gap_at = |t: f64| conic_gap(other, eval_at(t));
-    let tol = tangent_gap_tol(curve_scale(scanned).min(curve_scale(other)));
-    let params = scan_roots_and_grazes(&g, &gap_at, tol, 0.0, hi, periodic);
+    let sep = |t1: f64, t2: f64| {
+        let p = eval_at(t1);
+        let q = eval_at(t2);
+        (p[0] - q[0]).hypot(p[1] - q[1])
+    };
+    // Both budgets read the pair's smaller characteristic radius, the same
+    // `r_min` the closed-form `lc`/`cc` arms apply.
+    let r_min = curve_scale(scanned).min(curve_scale(other));
+    let pair = PairGeom {
+        gap_at: &gap_at,
+        sep: &sep,
+        gap_tol: tangent_gap_tol(r_min, TOL_TOPOLOGY_MERGE),
+        collapse_h: tangent_collapse_tol(r_min),
+    };
+    let params = scan_roots_and_grazes(&g, &pair, 0.0, hi, periodic);
     for t in params {
         let pt = eval_at(t);
         hits.push(Hit {

@@ -1,7 +1,6 @@
 use crate::radians;
-use crate::topology::dcel::{
-    angle_in_arc, degrees, detect_topology, InputEntity, TopoEntity, TANGENT_GAP_REL,
-};
+use crate::tolerance::tangent_gap_tol;
+use crate::topology::dcel::{angle_in_arc, degrees, detect_topology, InputEntity, TopoEntity};
 use crate::topology::profile_loops::EdgeGeom;
 use crate::topology::TOL_TOPOLOGY_MERGE as MERGE;
 
@@ -475,7 +474,7 @@ fn near_tangent_circle_pair_miss_side_stays_two_standalone_faces() {
     // the solver left a hair APART must still close as two standalone disks
     // with one virtual tangent point, not zero contact.
     let r: f64 = 5.0;
-    let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+    let tol = tangent_gap_tol(r, MERGE);
     for gap in [1e-9, 1e-7, 0.5 * tol] {
         let t = detect_topology(&circle_pair_offset_by(r, gap));
         assert_eq!(t.surfaces.len(), 2, "gap {gap:e}: two standalone disks");
@@ -498,7 +497,7 @@ fn three_circles_a_hair_apart_still_make_four_areas() {
     // miss side. An equilateral centre spacing of 2r + gap keeps every pair
     // a miss within tolerance, so the central triangle must still build.
     let r: f64 = 2.61391544342041;
-    let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+    let tol = tangent_gap_tol(r, MERGE);
     for gap in [1e-7, 0.5 * tol] {
         let s = 2.0 * r + gap;
         let geom = vec![
@@ -571,7 +570,7 @@ fn tangent_collapse_holds_across_the_solver_residual_band() {
         assert_eq!(t.surfaces.len(), 4, "gap {gap:e}: no sliver face");
     }
     // Past tolerance on the miss side the line touches nothing, leaving just
-    // the venn's own 3 regions. The cliff is `TANGENT_GAP_REL * r` of the
+    // the venn's own 3 regions. The cliff is the pair's gap budget of the
     // SMALLER circle (4e-5 here) since the region needs both contacts; it is
     // pinned from both sides so widening the constant cannot pass unnoticed.
     for gap in [4.1e-5, 1e-3, 1e-2, 0.1] {

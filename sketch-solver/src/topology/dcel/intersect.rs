@@ -2,7 +2,8 @@ use super::super::profile_loops::Vec2;
 use super::super::{
     TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS,
 };
-use super::{angle_in_arc, InputEntity, TopoEntity, TANGENT_COLLAPSE_REL, TANGENT_GAP_REL};
+use super::{angle_in_arc, InputEntity, TopoEntity};
+use crate::tolerance::{tangent_collapse_tol, tangent_gap_tol};
 
 // ─── Intersection primitives ───
 
@@ -39,10 +40,11 @@ fn lc(p1: Vec2, p2: Vec2, cx: f64, cy: f64, r: f64) -> Vec<(f64, f64, Vec2)> {
     let b = 2.0 * (fx * dx + fy * dy);
     let c = fx * fx + fy * fy - r * r;
     let disc = b * b - 4.0 * a * c;
-    // Virtual tangent point, `cc`'s rule in the line's terms (see TANGENT_GAP_REL):
-    // a converged tangent constraint leaves `disc` a hair either side of zero, and
-    // the MISS side (`disc < 0`) has no roots to offer, so the contact the region
-    // closes on is simply lost (bugreports/bug-report-1788207174415).
+    // Virtual tangent point, `cc`'s rule in the line's terms (see
+    // `tolerance::tangent_gap_tol`): a converged tangent constraint leaves
+    // `disc` a hair either side of zero, and the MISS side (`disc < 0`) has no
+    // roots to offer, so the contact the region closes on is simply lost
+    // (bugreports/bug-report-1788207174415).
     //
     // Only the miss side. A near-graze already carries two real roots, and they
     // need no help: closer together than MERGE the vertex merge fuses them, and
@@ -51,7 +53,7 @@ fn lc(p1: Vec2, p2: Vec2, cx: f64, cy: f64, r: f64) -> Vec<(f64, f64, Vec2)> {
     // swallow, so widening it can only invent a contact where the curves come
     // within `gap` of touching, never erase one the user drew.
     let dist = (r * r - disc / (4.0 * a)).max(0.0).sqrt();
-    if disc < 0.0 && (dist - r).abs() <= MERGE.max(TANGENT_GAP_REL * r) {
+    if disc < 0.0 && (dist - r).abs() <= tangent_gap_tol(r, MERGE) {
         let raw = -b / (2.0 * a);
         // The foot is bounded in WORLD units, not in the line parameter: a line
         // whose endpoint is constrained onto the rim it is tangent to has its
@@ -116,12 +118,13 @@ pub(super) fn cc(
     // Miss side first. A converged tangency that landed a hair apart (d just
     // beyond r1 + r2, or just inside |r1 - r2|) has no roots, so the contact the
     // region closes on is lost. The gap is exactly the residual r_tangent drives
-    // (residuals.rs), so asserting the foot within TANGENT_GAP_REL * r_min (MERGE
-    // floor) restores the contact with pure headroom: a miss has no crossing to
-    // swallow. This is cc's mirror of lc's miss-side rule.
+    // (residuals.rs), so asserting the foot within the pair's gap budget (see
+    // `tolerance::tangent_gap_tol`) restores the contact with pure headroom: a
+    // miss has no crossing to swallow. This is cc's mirror of lc's miss-side
+    // rule.
     if d >= r1 + r2 {
         let gap = d - (r1 + r2);
-        if gap <= MERGE.max(TANGENT_GAP_REL * r1.min(r2)) {
+        if gap <= tangent_gap_tol(r1.min(r2), MERGE) {
             return vec![(
                 (my - cy1).atan2(mx - cx1),
                 (my - cy2).atan2(mx - cx2),
@@ -132,7 +135,7 @@ pub(super) fn cc(
     }
     if d <= (r1 - r2).abs() {
         let gap = (r1 - r2).abs() - d;
-        if gap <= MERGE.max(TANGENT_GAP_REL * r1.min(r2)) {
+        if gap <= tangent_gap_tol(r1.min(r2), MERGE) {
             return vec![(
                 (my - cy1).atan2(mx - cx1),
                 (my - cy2).atan2(mx - cx2),
@@ -145,7 +148,8 @@ pub(super) fn cc(
     // Graze side (|r1 - r2| < d < r1 + r2): two real roots. Fold them into the
     // foot to stop a phantom sliver arc slicing two near-tangent circles
     // (near_tangent_circles_stay_two_standalone_faces). Threshold stays the
-    // shipped h-form: on this side widening would swallow a real, if tiny, lens.
+    // shipped h-form of `tolerance::tangent_collapse_tol`: on this side widening
+    // would swallow a real, if tiny, lens.
     let h2 = r1 * r1 - a * a;
     if h2 < 0.0 {
         return vec![];
@@ -155,7 +159,7 @@ pub(super) fn cc(
     // coinciding, define the single contact at the foot [mx, my] (the exact
     // tangent point in the h == 0 limit) instead of emitting two near-duplicate
     // intersections that would slice both curves at a phantom sliver.
-    if h <= TANGENT_COLLAPSE_REL * r1.min(r2).max(EPS) {
+    if h <= tangent_collapse_tol(r1.min(r2).max(EPS)) {
         return vec![(
             (my - cy1).atan2(mx - cx1),
             (my - cy2).atan2(mx - cx2),
