@@ -303,6 +303,11 @@ pub fn loop_centroid(loop_edges: &[BoundaryEdge]) -> Vec2 {
 /// verifies (a step past the opposite boundary of a thin loop lands outside and
 /// is rejected). `None` when nothing verifies, so the caller can keep its
 /// centroid-only behaviour.
+///
+/// The polygon is sampled at one point per edge, like its caller. The TS mirror
+/// threads the profile dump's diagnostic sample count through instead, so its
+/// fine pass can re-run the same containment at CENTROID_ARC_SAMPLES; that pass
+/// has no counterpart here, so the coarse count is hardcoded.
 fn interior_probe(loop_edges: &[BoundaryEdge]) -> Option<Vec2> {
     let pts = loop_pts(loop_edges, 1);
     let n = pts.len();
@@ -319,7 +324,10 @@ fn interior_probe(loop_edges: &[BoundaryEdge]) -> Option<Vec2> {
         let dx = b[0] - a[0];
         let dy = b[1] - a[1];
         let len = dx.hypot(dy);
-        if len <= 0.0 {
+        // A zero-length edge has no normal, and a NaN len (a poisoned param
+        // that the TS mirror's `!(len > 0)` guard also skips) must not seed the
+        // step.
+        if len.is_nan() || len <= 0.0 {
             continue;
         }
         let m = [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])];
@@ -519,6 +527,10 @@ mod tests {
         let collinear = poly(&[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]]);
         assert_eq!(loop_signed_area(&collinear), 0.0);
         assert!(interior_probe(&collinear).is_none());
+        // A poisoned coordinate must not seed a step either: the NaN-length
+        // edge is skipped and no neighbour candidate verifies.
+        let poisoned = poly(&[[0.0, 0.0], [1.0, 0.0], [1.0, f64::NAN]]);
+        assert!(interior_probe(&poisoned).is_none());
     }
 
     #[test]

@@ -182,6 +182,11 @@ export function pointInLoop(pt: number[], loop: LoopEdge[], arcSamples = 1): boo
  * either side, shrinking the step until one side verifies (a step past the
  * opposite boundary of a thin loop lands outside and is rejected). `null` when
  * nothing verifies, so the caller can keep its centroid-only behaviour.
+ *
+ * `arcSamples` is threaded through so the profile dump's fine pass
+ * (`describeProfile` at CENTROID_ARC_SAMPLES) verifies the probe on the same
+ * polygon it tests containment with. The Rust mirror has no fine pass and
+ * samples at the coarse 1; at the default both agree.
  */
 function interiorProbe(loop: LoopEdge[], arcSamples: number): number[] | null {
   const pts = loopPts(loop, arcSamples)
