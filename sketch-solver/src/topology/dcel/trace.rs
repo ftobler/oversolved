@@ -106,6 +106,13 @@ fn angle_bucket(angle: f64) -> i64 {
 /// is intransitive (a ~ b, b ~ c, but a not~ c), so the sorted fan depended on
 /// the input permutation and could misorder `next_he` at a cusp. The index is
 /// unique, so even identical (angle, curvature) pairs are fully determined.
+///
+/// Accepted edge behaviour: buckets are equal only when both angles round to
+/// the same multiple of ANGLE_TIE, so a pair inside the window but straddling a
+/// half-bucket boundary (angular mismatch within roughly 5e-8 to 1e-7) is
+/// ordered by raw angle and the curvature tie-break never runs, where the old
+/// epsilon-window comparator ordered it by curvature. Deterministic and
+/// intended; a bucket-edge change shows up in the straddle test.
 fn departure_order(a: &(f64, f64, usize), b: &(f64, f64, usize)) -> std::cmp::Ordering {
     angle_bucket(a.0)
         .cmp(&angle_bucket(b.0))
@@ -490,5 +497,31 @@ mod tests {
         let left = (0.3 + 1e-9, 2.0, 3);
         assert_eq!(index_order(&[right, left]), vec![7, 3]);
         assert_eq!(index_order(&[left, right]), vec![7, 3]);
+    }
+
+    #[test]
+    fn a_straddled_bucket_edge_orders_by_angle_not_curvature() {
+        // -0.55 and +0.45 in ANGLE_TIE units are 1e-7 apart, the full tie
+        // window, but they round into adjacent buckets (-1 and 0), so the raw
+        // angle decides and curvature never runs. The right-bending edge sits
+        // in the later bucket, so a curvature order would reverse this pair;
+        // pin the angle order accepted by `departure_order`.
+        let earlier_left = (-0.55 * ANGLE_TIE, 2.0, 3);
+        let later_right = (0.45 * ANGLE_TIE, -2.0, 7);
+        assert_eq!(index_order(&[earlier_left, later_right]), vec![3, 7]);
+        assert_eq!(index_order(&[later_right, earlier_left]), vec![3, 7]);
+    }
+
+    #[test]
+    fn a_nan_angle_sorts_before_every_real_angle() {
+        // A poisoned param that reached the geometry pass has no direction to
+        // order by; `angle_bucket` must park it in the lowest bucket rather
+        // than let a raw comparison fall back to Equal (an unordered fan is a
+        // lost face).
+        assert_eq!(angle_bucket(f64::NAN), i64::MIN);
+        let nan = (f64::NAN, 0.0, 5);
+        let real = (-10.0, 0.0, 9);
+        assert_eq!(index_order(&[nan, real]), vec![5, 9]);
+        assert_eq!(index_order(&[real, nan]), vec![5, 9]);
     }
 }

@@ -510,6 +510,18 @@ mod tests {
     }
 
     #[test]
+    fn interior_probe_declines_degenerate_loops() {
+        // Under 3 polygon points there is no interior to probe at all; a
+        // zero-area collinear polygon has 3 points but no candidate the ray
+        // cast accepts, so both fall back to the caller's centroid-only path.
+        let single = poly(&[[0.0, 0.0]]);
+        assert!(interior_probe(&single).is_none());
+        let collinear = poly(&[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]]);
+        assert_eq!(loop_signed_area(&collinear), 0.0);
+        assert!(interior_probe(&collinear).is_none());
+    }
+
+    #[test]
     fn subdivide_keeps_a_nested_loop_whose_centroid_sits_in_its_own_notch() {
         // Nested C shapes: the small C's material is inside the big C, but its
         // centroid falls in the small C's own mouth, which is also inside the

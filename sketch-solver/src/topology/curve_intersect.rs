@@ -281,12 +281,15 @@ fn scan_roots_and_grazes(
     // locally minimal but the contact is the crossing itself, already emitted.
     let same_sign = |x: f64, y: f64| (x > 0.0 && y > 0.0) || (x < 0.0 && y < 0.0);
     let mut grazes: Vec<(f64, f64)> = Vec::new();
-    let mut consider = |i: usize, lo: f64, hi: f64| {
-        if !(same_sign(gs[i - 1], gs[i]) && same_sign(gs[i], gs[i + 1]))
-            || gs[i].abs() > gs[i - 1].abs()
-            || gs[i].abs() > gs[i + 1].abs()
+    // The valley test and the hidden-crossing guard, shared by the interior
+    // windows and the wrapped seam window: a seam that skipped the guard could
+    // emit a phantom foot in the middle of a sub-sample crossing pair.
+    let consider = |prev: usize, i: usize, next: usize, lo: f64, hi: f64| -> Option<(f64, f64)> {
+        if !(same_sign(gs[prev], gs[i]) && same_sign(gs[i], gs[next]))
+            || gs[i].abs() > gs[prev].abs()
+            || gs[i].abs() > gs[next].abs()
         {
-            return;
+            return None;
         }
         let t_min = minimize(&|t: f64| g(t).abs(), lo, hi);
         let g_min = g(t_min);
@@ -294,38 +297,29 @@ fn scan_roots_and_grazes(
         // between samples, not a graze: the pair has no foot to assert, and a
         // contact in its middle would split a sliver out of a real crossing.
         if !(g_min == 0.0 || same_sign(g_min, gs[i])) {
-            return;
+            return None;
         }
-        if let Some(gap) = gap_at(t_min) {
-            if gap <= gap_tol {
-                let t = if periodic {
-                    pymod(t_min, TWO_PI)
-                } else {
-                    t_min
-                };
-                grazes.push((t, gap));
-            }
-        }
+        let gap = gap_at(t_min)?;
+        (gap <= gap_tol).then_some((t_min, gap))
     };
     for i in 1..SCAN_SAMPLES {
-        consider(i, ts[i - 1], ts[i + 1]);
+        if let Some((t_min, gap)) = consider(i - 1, i, i + 1, ts[i - 1], ts[i + 1]) {
+            let t = if periodic {
+                pymod(t_min, TWO_PI)
+            } else {
+                t_min
+            };
+            grazes.push((t, gap));
+        }
     }
     if periodic {
         // The seam sample: `ts[0]` and `ts[SCAN_SAMPLES]` are the same point,
         // so its window wraps and the refinement may land past t1; pymod folds
         // it back into [0, 2pi) for the split pass.
-        let i = 0;
-        let (last, first) = (SCAN_SAMPLES - 1, 1);
-        if (same_sign(gs[last], gs[i]) && same_sign(gs[i], gs[first]))
-            && gs[i].abs() <= gs[last].abs()
-            && gs[i].abs() <= gs[first].abs()
-        {
-            let t_min = minimize(&|t: f64| g(t).abs(), ts[last], ts[first] + (t1 - t0));
-            if let Some(gap) = gap_at(t_min) {
-                if gap <= gap_tol {
-                    grazes.push((pymod(t_min, TWO_PI), gap));
-                }
-            }
+        let first = 1;
+        let last = SCAN_SAMPLES - 1;
+        if let Some((t_min, gap)) = consider(last, 0, first, ts[last], ts[first] + (t1 - t0)) {
+            grazes.push((pymod(t_min, TWO_PI), gap));
         }
     }
 
@@ -941,7 +935,7 @@ mod tests {
             b: 1.0,
             theta: 0.0,
         };
-        for gap in [1e-9, 1e-7, 5e-6] {
+        for gap in [1e-9, 1e-7, 5e-6, 9e-6] {
             let h = intersect_curves(&line([-3.0, 1.0 + gap], [3.0, 1.0 + gap]), &ell);
             assert_eq!(h.len(), 1, "gap {gap:e}: one virtual tangent point");
             assert!(
@@ -962,10 +956,39 @@ mod tests {
             b: 1.0,
             theta: 0.0,
         };
-        for gap in [1e-4, 1e-3, 1e-1] {
+        for gap in [1.1e-5, 1e-4, 1e-3, 1e-1] {
             let h = intersect_curves(&line([-3.0, 1.0 + gap], [3.0, 1.0 + gap]), &ell);
             assert!(h.is_empty(), "gap {gap:e} stays a miss");
         }
+    }
+
+    #[test]
+    fn line_near_tangent_off_its_segment_switches_at_the_merge_overhang() {
+        // The foot of the closest approach falls before the segment's start by
+        // `overhang` world units. Within MERGE the foot is clamped to the end
+        // vertex and still contacts; past MERGE there is nothing to clamp to
+        // and the pair stays a miss, even though the end vertex itself sits
+        // well inside the gap budget. The existing off-segment test pins the
+        // far 1.0 overhang; these pin the switch just around MERGE.
+        let ell = Curve::Ellipse {
+            c: [0.0, 0.0],
+            a: 2.0,
+            b: 1.0,
+            theta: 0.0,
+        };
+        let gap = 1e-6;
+        let just_inside = intersect_curves(&line([5e-6, 1.0 + gap], [2.0, 1.0 + gap]), &ell);
+        assert_eq!(just_inside.len(), 1, "half-MERGE overhang still contacts");
+        assert!(
+            (just_inside[0].point[0] - 5e-6).abs() < 1e-9,
+            "the clamped end vertex, not the true foot: {:?}",
+            just_inside[0].point
+        );
+        let just_outside = intersect_curves(&line([2e-5, 1.0 + gap], [2.0, 1.0 + gap]), &ell);
+        assert!(
+            just_outside.is_empty(),
+            "twice-MERGE overhang has no contact to make"
+        );
     }
 
     #[test]
@@ -1091,6 +1114,61 @@ mod tests {
     }
 
     #[test]
+    fn bezier_bezier_gap_just_inside_and_outside_the_budget_splits_cleanly() {
+        // A genuine spline pair (control points far apart, so the coincident
+        // short-circuit cannot answer) whose minimum distance to the straight
+        // carrier is 8e-6 or 2e-5 against a 1.5e-5 budget: the inside case must
+        // report its foot, the outside case must stay a miss.
+        let a = Curve::Bezier {
+            p0: [-1.0, 0.0],
+            c1: [0.0, 0.0],
+            c2: [1.0, 0.0],
+            p3: [2.0, 0.0],
+        };
+        // Symmetric cubic whose midpoint dips to y = g.
+        let b = |g: f64| Curve::Bezier {
+            p0: [0.0, 4.0 + g],
+            c1: [1.0 / 3.0, -4.0 / 3.0 + g],
+            c2: [2.0 / 3.0, -4.0 / 3.0 + g],
+            p3: [1.0, 4.0 + g],
+        };
+        let inside = intersect_curves(&a, &b(8e-6));
+        assert_eq!(inside.len(), 1, "8e-6 is inside the budget: {inside:?}");
+        assert!(
+            (inside[0].point[0] - 0.5).abs() < 1e-3 && inside[0].point[1].abs() < 1e-5,
+            "the foot at (0.5, 0): {:?}",
+            inside[0].point
+        );
+        assert!(
+            intersect_curves(&a, &b(2e-5)).is_empty(),
+            "2e-5 is outside the budget and stays a miss"
+        );
+    }
+
+    #[test]
+    fn bezier_near_touch_rejects_a_run_together_beyond_the_coincident_shortcut() {
+        // Two long offset copies: their control points sit 5e-4 apart, forty
+        // times POINT_MERGE, so `ctrl_polygons_coincident` cannot answer and
+        // the fallback runs. Every coarse sample of one sits within the 1e-3
+        // budget of the other, so the run heuristic must read the pair as two
+        // curves running together and report no contact.
+        let a: BzCtrl = [[-100.0, 0.0], [-50.0, 20.0], [50.0, -20.0], [100.0, 0.0]];
+        let b: BzCtrl = [
+            [-100.0, 5e-4],
+            [-50.0, 20.0 + 5e-4],
+            [50.0, -20.0 + 5e-4],
+            [100.0, 5e-4],
+        ];
+        assert!(!ctrl_polygons_coincident(&a, &b));
+        let tol = tangent_gap_tol(bezier_scale(&a).min(bezier_scale(&b)));
+        assert!(tol > 5e-4, "the offset must sit inside the budget: {tol:e}");
+        assert!(
+            bezier_near_touch(&a, &b, tol).is_none(),
+            "a run together is not a graze"
+        );
+    }
+
+    #[test]
     fn a_shallow_lens_never_reports_a_third_contact() {
         // A pair that really crosses in a shallow lens reports its crossings,
         // not a phantom graze in the middle of the lens: a third point between
@@ -1142,6 +1220,88 @@ mod tests {
         };
         let h = intersect_curves(&a, &b);
         assert!(h.is_empty(), "a run together is not a graze: {h:?}");
+    }
+
+    #[test]
+    fn a_near_tangency_at_the_scanned_ellipses_seam_reports_the_foot() {
+        // The periodic scan's seam window wraps ts[0] between its neighbours, so
+        // a foot sitting exactly on the 0/2pi seam is found by that window
+        // alone. A circle whose rim stops 5e-6 short of the ellipse's +a apex:
+        // no crossing anywhere, minimum gap on the seam.
+        let gap = 5e-6;
+        let ell = Curve::Ellipse {
+            c: [0.0, 0.0],
+            a: 2.0,
+            b: 1.0,
+            theta: 0.0,
+        };
+        let circ = Curve::Circle {
+            c: [3.0 + gap, 0.0],
+            r: 1.0,
+        };
+        let h = intersect_curves(&ell, &circ);
+        assert_eq!(h.len(), 1, "one virtual tangent point on the seam: {h:?}");
+        assert!(
+            (h[0].point[0] - 2.0).abs() < 1e-6 && h[0].point[1].abs() < 1e-6,
+            "the foot at the ellipse apex: {:?}",
+            h[0].point
+        );
+    }
+
+    #[test]
+    fn sub_sample_crossing_lens_is_not_resolved_by_the_scan() {
+        // Known limitation, parked with the solver-tolerance model
+        // (feature/kernel-tolerances.md): a real two-crossing lens whose whole
+        // crossing pair falls between two scan samples never trips the
+        // sign-change scan. The near-tangent collapse reads the sampled valley
+        // through the hidden-crossing guard, and the ternary lands essentially
+        // on a crossing, so the sign it stops at decides between 0 contacts
+        // (rejected as a hidden pair) and 1 (reported as a foot); the second
+        // crossing is lost either way. Measured on the review fixture, a
+        // 3000/2000 ellipse and a 4000-radius circle whose rim dips 0.01 into
+        // its +a apex (rim gap inside the 0.02 budget), sliding the circle
+        // along the tangent moves the outcome over 0, 1, 1 where dense
+        // sampling sees two crossings. Pin "never both", not the 0/1 split:
+        // that split is decided at the last ternary step.
+        let a = 3000.0;
+        let b = 2000.0;
+        let r = 4000.0;
+        let ell = Curve::Ellipse {
+            c: [0.0, 0.0],
+            a,
+            b,
+            theta: 0.0,
+        };
+        let circ = |y0: f64| Curve::Circle {
+            c: [a + r - 0.01, y0],
+            r,
+        };
+        let dense_crossings = |y0: f64| -> usize {
+            // 4e4 samples puts ~14 of them across the lens, far denser than
+            // the scan's 512 and cheap enough for a unit test.
+            let n = 40_000usize;
+            let cc = [a + r - 0.01, y0];
+            let mut prev = f64::NAN;
+            let mut count = 0usize;
+            for i in 0..=n {
+                let phi = TWO_PI * i as f64 / n as f64;
+                let p = [a * phi.cos(), b * phi.sin()];
+                let g = (p[0] - cc[0]).hypot(p[1] - cc[1]) - r;
+                if !prev.is_nan() && (prev > 0.0) != (g > 0.0) {
+                    count += 1;
+                }
+                prev = g;
+            }
+            count
+        };
+        for y0 in [9.5, 9.75, 10.0] {
+            assert_eq!(dense_crossings(y0), 2, "y0 {y0}: the lens is real");
+            let h = intersect_curves(&ell, &circ(y0));
+            assert!(
+                h.len() <= 1,
+                "y0 {y0}: at most one of the two crossings may be reported, got {h:?}"
+            );
+        }
     }
 
     #[test]
