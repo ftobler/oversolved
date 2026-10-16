@@ -26,6 +26,7 @@ import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createCliJournal } from '@/drive/journal'
 import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
+import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { routeKernelStdoutToStderr } from './kernelStdout'
 
@@ -61,6 +62,8 @@ function readFiles(files: McpFileRef[]): ReadonlyMap<string, Uint8Array> | undef
 }
 
 const ops: McpCadOps = {
+  partDocSchema: () => PART_DOC_SCHEMA_JSON,
+
   async commands() {
     // A fresh seeded session supplies the live enabled verdicts; reading the
     // catalog runs no spec body and starts no solve.

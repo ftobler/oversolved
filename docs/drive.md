@@ -320,7 +320,8 @@ solver as unavailable and exits nonzero rather than guessing.
 
 `frontend/scripts/mcpServer.ts` serves the same headless surface over the MCP
 stdio transport (newline-delimited JSON-RPC 2.0), hand-rolled with no SDK
-dependency. `initialize`, `tools/list` and `tools/call` live in
+dependency. `initialize`, `tools/list`, `tools/call`, `resources/list` and
+`resources/read` live in
 `frontend/src/drive/mcpServer.ts`; the tool ops call the same `headlessOps.ts`
 functions the CLI does. Point an MCP client at it directly (`cwd` is
 `frontend/`):
@@ -345,6 +346,11 @@ banner on stdout, so a client config must use the direct node invocation.
 
 - `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
   resolve against the server's cwd.
+- The server also serves one resource, `oversolved://schema/part-document`
+  (`resources/list`, `resources/read`): the JSON Schema for a part document
+  (`persistence/partDocSchema.ts`). Read it before authoring a document instead
+  of inferring the format from these examples; it pins the canonical spellings
+  (feature refs are `@id`, params nest under the kind key).
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails
@@ -364,7 +370,7 @@ previous call):
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":{"steps":[
   {"mutation":{"type":"add_sketch","featureId":"sk1","label":"Rectangle","plane":"@builtin_plane_front"}},
   {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[10,10]}},
-  {"mutation":{"type":"add_extrude","featureId":"ex1","label":"Extrude","sketchQuery":"$sk1","distance":5}}
+  {"mutation":{"type":"add_extrude","featureId":"ex1","label":"Extrude","sketchQuery":"@sk1","distance":5}}
 ]}}}
 // result.doc is the built document; edit one dimension and rebuild:
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"run","arguments":{

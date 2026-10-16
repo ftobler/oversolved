@@ -100,10 +100,9 @@ export function solveExtrude(
 ): ExtrudeResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.extrude as Dict) ?? {}
-  const mergeTarget = ((sub.merge_target as string) ?? (feature.merge_target as string)) ?? null
-  const merged: Dict = { ...sub, ...feature }
+  const mergeTarget = (sub.merge_target as string) ?? null
 
-  const sketchRaw = merged.sketch
+  const sketchRaw = sub.sketch
   const sketchRefs: string[] = Array.isArray(sketchRaw)
     ? (sketchRaw as string[]).filter((s) => s)
     : sketchRaw
@@ -112,7 +111,7 @@ export function solveExtrude(
   // Nullish, not truthy: an explicit distance=0 must survive to the non-zero
   // validation below instead of silently becoming the default depth.
   const distance = Number(
-    (merged.distance as number | null | undefined) ?? (merged.depth as number | null | undefined) ?? 1.0,
+    (sub.distance as number | null | undefined) ?? (sub.depth as number | null | undefined) ?? 1.0,
   )
 
   if (!Number.isFinite(distance) || distance === 0) throw new Error('extrude: distance must be non-zero')
@@ -203,8 +202,8 @@ export function solveExtrude(
 
   const bodyId = 'body_' + featureId
   const result: ExtrudeResult = { status: 'ok', body_id: bodyId }
-  const operation = ((merged.operation as string) ?? 'add') as BodyOperation
-  const direction = (merged.direction as string) ?? 'normal'
+  const operation = ((sub.operation as string) ?? 'add') as BodyOperation
+  const direction = (sub.direction as string) ?? 'normal'
 
   if (cqFaces.length === 0 && allLoops.length === 0) {
     // No profile geometry resolved -> no part. A part-less extrude is a failed
@@ -251,8 +250,8 @@ export function solveExtrude(
 
   // Up-to termination: resolve the cut plane once, using a representative extrude
   // direction so a point target can take the extrude direction as its normal.
-  const termination = (merged.termination as string) ?? 'blind'
-  const upToRef = (merged.up_to as string) ?? ''
+  const termination = (sub.termination as string) ?? 'blind'
+  const upToRef = (sub.up_to as string) ?? ''
   const usingFaces = cqFaces.length > 0 && allLoops.length === 0
   // One BRepAdaptor_Surface + BRepLProp_SLProps for the whole solve. Lazy, not
   // eager: faceNormal throws when the UV-midpoint normal is undefined

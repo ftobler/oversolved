@@ -13,7 +13,7 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { parseAncestry } from '../query'
+import { parseAncestry, featureRefId } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { extractProfileLoops } from './shared/profileLoops'
@@ -29,6 +29,13 @@ type Dict = Record<string, unknown>
 
 /** Resolve a sweep path reference to the sketch id holding the spine. */
 export function pathRefToSketchId(pathRef: string, globalRepo: Repository): string {
+  // A bare feature-level ref (`@<sketchId>`, canonical; `$<sketchId>`, legacy)
+  // is the sketch id directly. The slash/query forms below name geometry inside
+  // a sketch and have to be decoded further.
+  const featureId = featureRefId(pathRef)
+  if (featureId !== null) return featureId
+  // `@<sketchId>/<eid>` names one entity of a sketch; the path is on that
+  // sketch. The canonical bare `@<sketchId>` was already handled above.
   if (pathRef.startsWith('@')) return pathRef.slice(1).split('/')[0]
   if (pathRef.startsWith('?')) {
     const [ids] = parseAncestry(pathRef)
@@ -473,12 +480,14 @@ export function collectPathEdges(
 
 /** The helix id a path ref names, when its bare id carries a `_curve_`
  *  descriptor. A helix path is real 3D geometry, not sketch topology, so it
- *  takes a separate arm in path resolution. */
+ *  takes a separate arm in path resolution. Only the bare `@<id>`/`$<id>` form
+ *  names a helix: a slash form (`@hx1/e1`) names an entity inside a feature, so
+ *  it is refused. The pre-canonicalization reader took the head of a slash form,
+ *  which silently accepted a ref that never named a helix curve; that leniency
+ *  is dropped because nothing emits the form (helix refs are minted bare). */
 function helixPathRef(ref: string, globalRepo: Repository): string | null {
-  let id = ref
-  if (id.startsWith('@')) id = id.slice(1).split('/')[0]
-  else if (id.startsWith('$')) id = id.slice(1)
-  else return null
+  const id = featureRefId(ref)
+  if (id === null) return null
   return globalRepo.elements.get('_curve_' + id) !== undefined ? id : null
 }
 
@@ -553,16 +562,15 @@ export function solveSweep(
 ): { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.sweep as Dict) ?? {}
-  const mergeTarget = ((sub.merge_target as string) ?? (feature.merge_target as string)) ?? null
-  const merged: Dict = { ...sub, ...feature }
+  const mergeTarget = (sub.merge_target as string) ?? null
 
-  const sketchRaw = merged.sketch
+  const sketchRaw = sub.sketch
   const rawRefs: string[] = Array.isArray(sketchRaw)
     ? (sketchRaw as string[]).filter((s) => s)
     : sketchRaw
       ? [sketchRaw as string]
       : []
-  const pathRaw = merged.path
+  const pathRaw = sub.path
   const pathRefs: string[] = Array.isArray(pathRaw)
     ? (pathRaw as string[]).filter((s) => s)
     : pathRaw
@@ -713,7 +721,7 @@ export function solveSweep(
 
   const bodyId = 'body_' + featureId
   const result: { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } = { status: 'ok', body_id: bodyId }
-  const operation = ((merged.operation as string) ?? 'add') as BodyOperation
+  const operation = ((sub.operation as string) ?? 'add') as BodyOperation
 
   const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId, binormal)
   const swept = scope.track(lineage.solid)

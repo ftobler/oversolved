@@ -108,7 +108,7 @@ export interface BuildOutcome {
 }
 
 /** Build a spec and measure the live bodies plus their STEP round trip. */
-async function buildAndMeasure(oc: OccModule, spec: Record<string, unknown>): Promise<BuildOutcome> {
+export async function buildAndMeasure(oc: OccModule, spec: Record<string, unknown>): Promise<BuildOutcome> {
   const response = await solveLocally(spec)
   if (response === null) {
     // A provisioned environment never returns null; the suite's provisioning
