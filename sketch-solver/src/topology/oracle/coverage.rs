@@ -488,9 +488,10 @@ fn closest_on_segment(p: Vec2, a: Vec2, b: Vec2) -> (Vec2, f64) {
 /// still register it: a line end is bound by the parameter window in
 /// `dcel/intersect.rs` (`EPS` on `t` in `[0, 1]`, which is `EPS * length` in
 /// world units), an arc end by the `MERGE / r` angle slack its span filter
-/// allows (a world reach of MERGE along the carrier), and a spline end's
-/// contact is dropped by `register_hit` wherever it lands at or past the end.
-/// Circles and ellipses are closed, so they have no ends to reach from.
+/// allows (a world reach of at least MERGE along the carrier), and a spline
+/// end's contact is dropped by `register_hit` wherever it lands at or past
+/// the end. Circles and ellipses are closed, so they have no ends to reach
+/// from.
 fn end_reach(c: &Curve) -> f64 {
     match *c {
         Curve::Line { p0, p1 } => EPS * (p1[0] - p0[0]).hypot(p1[1] - p0[1]),
