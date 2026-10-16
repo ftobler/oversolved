@@ -29,18 +29,20 @@ interface Ratchet {
 }
 
 // The baselines track the whole tree, so every merge that brings new code
-// re-measures them; the counts above are from the tree the union landed on
-// (dev after doc-validation, the fuzz and the CLI work). A merge that adds a
-// token is allowed to raise a baseline, but a change to union-affected code is
-// not: that growth is exactly what this test is for.
+// re-measures them; the counts above are from the tree the batch of new
+// feature kinds (shell, boolean clearance, helix, export quality) landed on.
+// A merge that adds a token is allowed to raise a baseline (the new kinds add
+// their leaf `bodyStore` records and the generic sub-dict accessor), but a
+// change to union-affected code is not: that growth is exactly what this test
+// is for.
 const RATCHETS: Ratchet[] = [
   {
     token: 'as unknown as',
-    baseline: 44,
+    baseline: 46,
   },
   {
     token: 'Record<string, unknown>',
-    baseline: 328,
+    baseline: 334,
   },
 ]
 

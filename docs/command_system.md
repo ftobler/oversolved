@@ -258,6 +258,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `add_extrude` | Add extrude | `e` | yes | sketch/part |
 | `add_hole` | Add hole | - | yes | sketch/part |
 | `add_part` | Add part | - | yes | assembly |
+| `add_shell` | Add shell | - | yes | sketch/part |
 | `add_transform` | Add transform | - | yes | sketch/part |
 | `apply_angle` | Apply Angle | - | yes | sketch/part |
 | `apply_coincident` | Apply Coincident | `c` | yes | sketch/part |

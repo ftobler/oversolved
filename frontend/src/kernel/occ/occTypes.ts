@@ -129,7 +129,7 @@ export interface OccEdgeModifierMaker extends OccModifierHistory {
 
 /**
  * BRepOffsetAPI_MakeThickSolid: hollow a solid to a wall thickness with zero or
- * more closing (removed) faces. `MakeThickSolidByJoin` is the OCCT 7.4 9-arg
+ * more closing (removed) faces. `MakeThickSolidByJoin` is the OCCT 7.4.0p1 9-arg
  * form (shape, closingFaces, offset, tol, mode, intersection, selfInter, join,
  * removeIntEdges); embind binds every argument, so the shorter defaults of some
  * OCCT wrappers are not available here. History: a kept face `Generated()` its
@@ -155,7 +155,7 @@ export interface OccThickSolidMaker extends OccModifierHistory {
 /**
  * BRepOffsetAPI_MakeOffsetShape: the 3D offset/clearance maker and the shell
  * fallback (a BRepBuilderAPI_MakeShape subclass, so it shares the builder
- * history surface). `PerformByJoin` is the OCCT 7.4 8-arg form (shape, offset,
+ * history surface). `PerformByJoin` is the OCCT 7.4.0p1 8-arg form (shape, offset,
  * tol, mode, intersection, selfInter, join, thickening); there is no
  * `Message_ProgressRange` overload in this build. History is `Generated` (NOT
  * `Modified`): for every source face exactly one grown face comes back, which

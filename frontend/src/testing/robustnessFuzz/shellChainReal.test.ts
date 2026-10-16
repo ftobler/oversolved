@@ -15,8 +15,9 @@ import type { OccModule } from '@/kernel/occ/occTypes'
 const oc = await loadOcc()
 
 describe.skipIf(!oc)('RecipeShell fuzz step (real kernel)', () => {
-  // Seeds whose chains draw a shell step after a start body.
-  const SHELL_SEEDS = [23, 93]
+  // Seeds whose chains draw a shell step after a start body (re-picked when the
+  // recipe weights shifted).
+  const SHELL_SEEDS = [6, 15]
 
   for (const seed of SHELL_SEEDS) {
     it(`seed ${seed} builds its shell step without a violation`, { timeout: 60_000 }, () => {
