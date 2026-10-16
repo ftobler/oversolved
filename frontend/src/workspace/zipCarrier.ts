@@ -35,11 +35,12 @@ const FILE_OPTS: FileOptions = {
   comment: '',
 }
 
-// The raw archive. Pure over the tree, so it is testable without a handle and
-// is itself the export payload.
-export async function buildZipBytes(tree: WorkspaceTree): Promise<Uint8Array> {
+// A bare archive from arbitrary named entries, with the same pinned metadata as
+// the tree writer so any zip this app writes stays byte-stable. Separation
+// exports bundle one file per part through this.
+export async function buildZipFromEntries(entries: readonly SerializedFile[]): Promise<Uint8Array> {
   const zip = new JSZip()
-  for (const file of serializeTree(tree)) zip.file(file.path, file.data, FILE_OPTS)
+  for (const file of entries) zip.file(file.path, file.data, FILE_OPTS)
   return zip.generateAsync({
     type: 'uint8array',
     compression: 'STORE',
@@ -48,6 +49,12 @@ export async function buildZipBytes(tree: WorkspaceTree): Promise<Uint8Array> {
     comment: '',
     mimeType: 'application/zip',
   })
+}
+
+// The raw archive. Pure over the tree, so it is testable without a handle and
+// is itself the export payload.
+export function buildZipBytes(tree: WorkspaceTree): Promise<Uint8Array> {
+  return buildZipFromEntries(serializeTree(tree))
 }
 
 // Every entry of an archive, as serializeTree's shape, in the archive's order.

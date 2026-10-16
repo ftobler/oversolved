@@ -9,13 +9,17 @@ import { fileIdsInSpec, resolveFilesSessionFirst } from '@/stores/fileRegistry/r
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
 
+import type { TessellationPreset } from '@/kernel/tessellationPresets'
+
 export type GeometryFormat = 'step' | 'stl'
 
 export interface PartExportOptions {
   format: GeometryFormat
   // One body of the part, or null for the compound of all of them.
   bodyId: string | null
-  tessellation: number
+  // STL mesh quality; resolved by the worker through tessellationPresets. STEP
+  // ignores it, but the dialog always names the current choice.
+  tessellation: TessellationPreset
 }
 
 // Structural, so a live WorkspaceSession passes as is. Null means no workspace

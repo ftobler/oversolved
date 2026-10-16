@@ -21,6 +21,7 @@ import type { TessMesh } from './occ/tessellation'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
+import { resolveTessellation, type TessellationPreset } from './tessellationPresets'
 import { surfaceAreaOf, volumeOf } from './occ/volume'
 import { solidCentroid } from './occ/primitives'
 import { canonicalEdges, canonicalFaces, canonicalVertices } from './occ/bodyNames'
@@ -425,8 +426,8 @@ export interface LocalExportOptions {
   format: 'step' | 'stl'
   // Export this single body; omitted/null exports the whole assembly.
   bodyId?: string | null
-  // STL only: linear deflection knob from the export dialog. STEP ignores it.
-  tessellation?: number
+  // STL only: the mesh quality preset from the export dialog. STEP ignores it.
+  tessellation?: TessellationPreset
 }
 
 /**
@@ -621,10 +622,10 @@ function serialiseShape(
   opts: Pick<LocalExportOptions, 'format' | 'tessellation'>,
 ): Uint8Array {
   if (opts.format === 'step') return stepShapeToBytes(oc, scope, shape)
-  // STL deflection params mirror the old server export: linear = tess*2,
-  // angular = tess*0.6. Default to the dialog's 0.5 if no value came through.
-  const tess = opts.tessellation && opts.tessellation > 0 ? opts.tessellation : 0.5
-  return shapeToStlBytes(oc, scope, shape, tess * 2, tess * 0.6)
+  // STL deflection params come from the shared preset table; `normal` resolves
+  // to the pair the old slider default produced, so a default export is stable.
+  const { linearDeflection, angularDeflection } = resolveTessellation(opts.tessellation)
+  return shapeToStlBytes(oc, scope, shape, linearDeflection, angularDeflection)
 }
 
 /**
