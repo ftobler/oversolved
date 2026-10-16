@@ -68,6 +68,18 @@ export function shellFacePath(createdBy: string, role: ShellFaceRole, sourceFace
   return `${createdBy}|shell|${role}|${sourceFaceUuid}`
 }
 
+/**
+ * A lateral move-face cell face: `<createdBy>|extend|<neighbourUuid>`, the
+ * piece of the neighbour's surface the move extended. Named after the neighbour
+ * it extends, so a later resize or parameter edit recomputes the same UUID.
+ * After the clean, a lateral merged into its neighbour keeps the neighbour's
+ * own UUID (target-first merged-face naming); one that stays separate keeps
+ * this geometry-free name.
+ */
+export function moveFaceExtendPath(createdBy: string, neighbourUuid: string): string {
+  return `${createdBy}|extend|${neighbourUuid}`
+}
+
 /** What a hole's cutter face is: the bore wall, or one of the cutter's discs,
  *  `mouth` where the cutter starts and `floor` where it ends. A through_all
  *  cutter starts backed off outside the body and ends past it, so neither disc

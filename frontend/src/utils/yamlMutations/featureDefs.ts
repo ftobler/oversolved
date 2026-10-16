@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
 
 /** Append a feature, lazily initializing the features array. */
@@ -380,6 +380,30 @@ export function applyAddShellFace(doc: PartDoc, featureId: string, faceQuery: st
 
 export function applyRemoveShellFace(doc: PartDoc, featureId: string, index: number): void {
   removeListAt(doc, featureId, 'shell', 'faces', index, 'applyRemoveShellFace')
+}
+
+// ─── Move face ───
+
+export function applyAddMoveFace(doc: PartDoc, featureId: string, label?: string): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'move_face',
+    label: label ?? 'Move Face',
+    move_face: { faces: [], distance: 5 },
+  })
+}
+
+export function applySetMoveFaceField(doc: PartDoc, featureId: string, field: keyof MoveFaceFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'move_face', feature?.kind === 'move_face' ? feature.move_face : undefined, field, value, 'applySetMoveFaceField')
+}
+
+export function applyAddMoveFaceRef(doc: PartDoc, featureId: string, faceQuery: string): void {
+  toggleListValue(doc, featureId, 'move_face', 'faces', faceQuery, 'applyAddMoveFaceRef')
+}
+
+export function applyRemoveMoveFaceRef(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'move_face', 'faces', index, 'applyRemoveMoveFaceRef')
 }
 
 // ─── Boolean ───

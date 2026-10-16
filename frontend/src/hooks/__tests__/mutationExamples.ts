@@ -73,6 +73,11 @@ const shellDoc = (): PartDoc => makeDoc({
   shell: { faces: [], thickness: 1, direction: 'inward' },
 })
 
+const moveFaceDoc = (): PartDoc => makeDoc({
+  id: 'mf1', kind: 'move_face', label: 'Move Face',
+  move_face: { faces: [], distance: 5 },
+})
+
 const booleanDoc = (): PartDoc => makeDoc({
   id: 'b1', kind: 'boolean', label: 'Boolean',
   boolean: { operation: 'union', target: '', tools: ['@t1'] },
@@ -156,6 +161,11 @@ const chamferPopulatedDoc = (): PartDoc => makeDoc({
 const shellPopulatedDoc = (): PartDoc => makeDoc({
   id: 'sh1', kind: 'shell', label: 'Shell',
   shell: { faces: ['?f1'], thickness: 1, direction: 'inward' },
+})
+
+const moveFacePopulatedDoc = (): PartDoc => makeDoc({
+  id: 'mf1', kind: 'move_face', label: 'Move Face',
+  move_face: { faces: ['?f1'], distance: 5 },
 })
 
 // A projected entity (source-carrying) and a superfluous constraint, the two
@@ -355,6 +365,24 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   remove_shell_face: {
     makeDoc: shellPopulatedDoc,
     mutation: { type: 'remove_shell_face', featureId: 'sh1', index: 0 },
+  },
+
+  // move face
+  add_move_face: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_move_face', featureId: 'mf1', label: 'Move Face' },
+  },
+  set_move_face_field: {
+    makeDoc: moveFaceDoc,
+    mutation: { type: 'set_move_face_field', featureId: 'mf1', field: 'distance', value: 3 },
+  },
+  add_move_face_ref: {
+    makeDoc: moveFaceDoc,
+    mutation: { type: 'add_move_face_ref', featureId: 'mf1', faceQuery: '?f1' },
+  },
+  remove_move_face_ref: {
+    makeDoc: moveFacePopulatedDoc,
+    mutation: { type: 'remove_move_face_ref', featureId: 'mf1', index: 0 },
   },
 
   // boolean

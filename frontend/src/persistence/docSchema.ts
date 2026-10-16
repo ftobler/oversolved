@@ -492,6 +492,12 @@ function checkShell(sub: DocRecord, field: string): void {
   checkOptional(sub, 'source_body', field, checkRef)
 }
 
+function checkMoveFace(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'faces', field, checkRefList)
+  // Signed: 0 is the identity, negative removes material, so no positivity gate.
+  checkOptional(sub, 'distance', field, checkExpr)
+}
+
 function checkBooleanDef(sub: DocRecord, field: string): void {
   checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['union', 'subtract', 'intersect']))
   checkOptional(sub, 'target', field, checkRef)
@@ -612,6 +618,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['fillet', checkFillet],
   ['chamfer', checkChamfer],
   ['shell', checkShell],
+  ['move_face', checkMoveFace],
   ['boolean', checkBooleanDef],
   ['array', checkArray],
   ['circular_array', checkCircularArray],

@@ -15,7 +15,7 @@ import { create, all } from 'mathjs'
 import type {
   ArrayFeatureDef, BooleanFeatureDef, ChamferFeatureDef, CircularArrayFeatureDef,
   ExtrudeFeatureDef, FilletFeatureDef, HelixFeatureDef, HoleFeatureDef,
-  ImportStepFeature, PlaneDef, RevolveFeatureDef, ShellFeatureDef, TransformFeatureDef,
+  ImportStepFeature, PlaneDef, RevolveFeatureDef, ShellFeatureDef, TransformFeatureDef, MoveFaceFeatureDef,
 } from '@/types/cad'
 
 const math = create(all, {})
@@ -54,6 +54,7 @@ interface ExprPayloads {
   fillet: FilletFeatureDef
   chamfer: ChamferFeatureDef
   shell: ShellFeatureDef
+  move_face: MoveFaceFeatureDef
   hole: HoleFeatureDef
   array: ArrayFeatureDef
   circular_array: CircularArrayFeatureDef
@@ -79,6 +80,7 @@ export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPa
   fillet: ['radius'],
   chamfer: ['distance', 'angle'],
   shell: ['thickness'],
+  move_face: ['distance'],
   hole: ['diameter', 'depth'],
   array: ['pitch_x', 'pitch_y', 'count_x', 'count_y'],
   circular_array: ['step_angle', 'count'],
