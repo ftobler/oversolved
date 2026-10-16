@@ -17,6 +17,9 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { parseAncestry, makeAncestryQuery, ref, constructionUuidToken } from '../../query'
 import { volumeOf } from '../../occ/volume'
 import { canonicalFaces } from '../../occ/bodyNames'
+import { makeBoxAt, makeCylinder } from '../../occ/primitives'
+import { booleanWithDiff } from '../../occ/booleans'
+import { stepShapeToBytes } from '../../occ/stepIo'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 
@@ -74,6 +77,23 @@ function blindHole(id: string, sketch: string, target: string, diameter: number,
 
 /** The construction-UUID token (`@u|<uuid>`) of a face query, if any. */
 const uuidTokenOf = (q: string): string | undefined => parseAncestry(q)[0].find((i) => i.startsWith('@u|'))
+
+/**
+ * A 20x20x10 box with one r2 through hole, exported to STEP and read back: the
+ * imported-body path delete_face exists for, where there is no editable history
+ * at all. Built here so the analytic volume stays readable (4000 - pi 4 10).
+ */
+function holedStepBytes(occ: OccModule): Uint8Array {
+  const scope = new DisposeScope()
+  try {
+    const box = makeBoxAt(occ, scope, [0, 0, 0], 20, 20, 10)
+    const tool = makeCylinder(occ, scope, [10, 10, -1], [0, 0, 1], 2, 12)
+    const cut = scope.track(booleanWithDiff(occ, scope, box, tool, 'cut').shape)
+    return stepShapeToBytes(occ, scope, cut)
+  } finally {
+    scope.dispose()
+  }
+}
 
 function meshOf(h: SharedHarness, r: BuildResponse, bodyId: string): FaceMesh {
   return (h.body(r, bodyId).mesh ?? {}) as FaceMesh
@@ -179,14 +199,19 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
 
   it('a hole wall alone refuses the whole feature and leaves the body for downstream', () => {
     const r1 = h.run(holedSpec())
-    const { bore } = holeFaces(r1)
+    const { bore, floor } = holeFaces(r1)
     const spec = holedSpec()
     spec.features.push({ id: 'df1', kind: 'delete_face', delete_face: { faces: [bore] } })
-    // A downstream planar feature still solves on the unchanged body.
-    spec.features.push({ id: 'df2', kind: 'delete_face', delete_face: { faces: [] } })
+    // A real downstream feature proves what the test claims: deleting the still
+    // present hole floor alone heals it to a through hole, which can only solve
+    // if df1 left the blind hole intact. An empty-faces delete_face would only
+    // throw on its own and prove nothing.
+    spec.features.push({ id: 'df2', kind: 'delete_face', delete_face: { faces: [floor] } })
     const r = h.run(spec, { prevState: r1._build_state })
     expect(h.res(r, 'df1').status).toBe('exception')
+    expect(h.res(r, 'df2').status).toBe('ok')
     expect(bodyVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 5, 2)
+    expect(bodyVolume(r, 'df2', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 10, 2)
   })
 
   it('a stale pick is unresolved_faces; every pick stale throws', () => {
@@ -334,5 +359,57 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     expect((h.res(r, 'df1').body_ids as string[]).sort()).toEqual(['body_ex1', 'body_ex2'])
     expect(bodyVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000, 2)
     expect(bodyVolume(r, 'df1', 'body_ex2')).toBeCloseTo(4000, 2)
+  })
+
+  it('a duplicate query naming one refused face reports every query in failed_faces', () => {
+    // Hole 1 picked fully (heals); hole 2's bore picked alone in TWO wire forms
+    // (refused). Both forms name the same face, so both must appear in
+    // failed_faces: mapping one query per face let the second escape silently.
+    const one = h.run(holedSpec())
+    const { bore: bore1, floor: floor1 } = holeFaces(one)
+
+    const spec: { features: Dict[] } = holedSpec()
+    spec.features.push(pointSketch('skh2', 5, 5))
+    spec.features.push(blindHole('h2', '$skh2', '@body_ex1', 4, 5))
+    const r1 = h.run(spec)
+    expect(h.res(r1, 'h2').status).toBe('ok')
+    const bores = queryByType(meshOf(h, r1, 'body_ex1'), 'cylinderface')
+    const bore2 = bores.find((q) => q !== bore1)!
+    expect(bore2).toBeDefined()
+    // The same face asked for without the surface-type restriction, so the two
+    // queries differ as strings but resolve to one face.
+    const bore2Again = makeAncestryQuery(parseAncestry(bore2)[0])
+
+    spec.features.push({ id: 'df1', kind: 'delete_face', delete_face: { faces: [bore1, floor1, bore2, bore2Again] } })
+    const r = h.run(spec)
+    expect(h.res(r, 'df1').status).toBe('partial')
+    expect([...(h.res(r, 'df1').failed_faces as string[])].sort()).toEqual([bore2, bore2Again].sort())
+    expect(h.res(r, 'df1').unresolved_faces).toEqual([])
+  })
+
+  it('deletes a through hole in an imported STEP body and the box-face UUIDs carry over', () => {
+    // The main delete_face audience: geometry with no editable history. The bore
+    // wall is deleted; the six box faces keep the UUIDs their STEP entities
+    // minted, so picks made before the edit survive.
+    const bytes = holedStepBytes(occ)
+    const importSpec = { features: [{ id: 'stepdf', kind: 'import_step', file_id: 'stepdf' }] }
+    const files = new Map([['stepdf', bytes]])
+    const imp = h.run(importSpec, { files })
+    expect(h.res(imp, 'stepdf').status).toBe('ok')
+    const bid = 'body_stepdf'
+    const before = meshOf(h, imp, bid)
+    const wall = queryByType(before, 'cylinderface')
+    expect(wall).toHaveLength(1)
+    const wallUuid = uuidTokenOf(wall[0])
+    const boxUuids = (before.face_queries ?? []).map(uuidTokenOf).filter((u): u is string => u !== undefined && u !== wallUuid)
+    expect(boxUuids).toHaveLength(6)
+
+    const spec = { features: [...importSpec.features, { id: 'df1', kind: 'delete_face', delete_face: { faces: [wall[0]] } }] }
+    const r = h.run(spec, { files })
+    expect(h.res(r, 'df1').status).toBe('ok')
+    expect(bodyVolume(r, 'df1', bid)).toBeCloseTo(4000, 2)
+    expect(bodyFaceCount(r, 'df1', bid)).toBe(6)
+    const after = new Set((meshOf(h, r, bid).face_queries ?? []).map(uuidTokenOf))
+    for (const u of boxUuids) expect(after.has(u)).toBe(true)
   })
 })
