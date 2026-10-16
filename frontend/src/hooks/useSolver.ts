@@ -121,7 +121,7 @@ export function useSolver(
           ? (sketchDef?.entities ?? []).map(e => ({ ...e, kind: feature.resolved_kinds?.[e.id] ?? e.kind }))
           : sketchDef?.entities
         const solved = unflattenGeometry(feature.geometry, resolvedEntities)
-        const astPosById = new Map(
+        const docPosById = new Map(
           (sketchDef?.constraints ?? [])
             .filter(c => c.pos)
             .map(c => [c.id, c.pos!])
@@ -133,7 +133,7 @@ export function useSolver(
         const constraints: import('@/types/cad').Constraints | undefined = feature.constraints
           ? Object.fromEntries(
               Object.entries(feature.constraints).map(([cid, c]) => {
-                const pos = astPosById.get(cid)
+                const pos = docPosById.get(cid)
                 const render = pos ? { ...c.render, pos } : c.render
                 return [cid, {
                   render,
