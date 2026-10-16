@@ -474,6 +474,8 @@ function checkBooleanDef(sub: DocRecord, field: string): void {
   checkOptional(sub, 'target', field, checkRef)
   checkOptional(sub, 'tools', field, checkRefList)
   checkOptional(sub, 'keep_tools', field, checkBoolean)
+  // Optional and absent means 0, so there is no migration rung.
+  checkOptional(sub, 'clearance', field, checkExpr)
 }
 
 function checkCountPair(sub: DocRecord, field: string): void {

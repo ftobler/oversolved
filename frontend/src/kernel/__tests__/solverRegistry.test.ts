@@ -279,7 +279,9 @@ describe('resolveFeatureExpressions', () => {
   })
 
   it('leaves kinds without expression fields untouched', () => {
-    const f = { id: 'b1', kind: 'boolean', boolean: { op: 'union' } }
+    // sweep has no expression-capable field, so the feature passes through by
+    // reference (boolean no longer qualifies: its clearance is evaluatable).
+    const f = { id: 'sw1', kind: 'sweep', sweep: { operation: 'add' } }
     const r = resolveFeatureExpressions(f)
     expect('feature' in r).toBe(true)
     if ('feature' in r) expect(r.feature).toBe(f)

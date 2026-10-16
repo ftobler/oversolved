@@ -159,6 +159,7 @@ const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
   transform: 'transform',
   plane: 'definition',
   import_step: '',
+  boolean: 'boolean',
 }
 
 /**

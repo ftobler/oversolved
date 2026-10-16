@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evalExpr, evalFeatureParams } from '../evalExpr'
+import { evalExpr, evalFeatureParams, EXPR_FIELDS_BY_KIND } from '../evalExpr'
 
 describe('evalExpr', () => {
   it('returns a plain number string via the fast path', () => {
@@ -96,5 +96,24 @@ describe('evalFeatureParams', () => {
     const sub: Record<string, unknown> = {}
     evalFeatureParams(sub, ['distance'])
     expect(sub.distance).toBeUndefined()
+  })
+})
+
+describe('boolean clearance expression', () => {
+  it('is an expression-capable field of the boolean kind', () => {
+    expect(EXPR_FIELDS_BY_KIND.boolean).toContain('clearance')
+  })
+
+  it('evaluates a boolean sub clearance against a variable context', () => {
+    const sub: Record<string, unknown> = { operation: 'subtract', clearance: 'tol' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.boolean, { tol: 0.2 })
+    expect(sub.clearance).toBe(0.2)
+  })
+
+  it('writes clearance_error on a bad expression and keeps the string', () => {
+    const sub: Record<string, unknown> = { operation: 'subtract', clearance: '2+/' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.boolean)
+    expect(sub.clearance).toBe('2+/')
+    expect(sub.clearance_error).toBe('Cannot evaluate "2+/"')
   })
 })

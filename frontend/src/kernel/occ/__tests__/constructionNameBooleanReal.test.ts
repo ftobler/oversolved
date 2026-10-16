@@ -11,10 +11,19 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
+import { HandleTable } from '../handleTable'
 import { extrudeProfileWithLineage } from '../prismLineage'
 import { booleanWithDiff } from '../booleans'
 import { applyFilletWithLineage } from '../edgeModifier'
 import { transferBooleanNames } from '../../features/booleanLineage'
+import { solveBoolean } from '../../features/boolean'
+import { SharedHarness } from '../sharedHarness'
+import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
+import { Repository } from '../../query'
+import { canonicalFaces, namesToArray } from '../bodyNames'
+import type { SubShapeMap } from '../subshapeIdentity'
+import { loadSolver } from '@/wasm-kernel/loadSolver'
+import type { Body } from '../../types3d'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
 import type { OccModule, OccShape, OccSubShape } from '../occTypes'
@@ -28,6 +37,7 @@ import {
 } from '../../constructionName'
 
 const oc = await loadOcc()
+const solveBytes = loadSolver()
 
 function planeAt(z: number): PlaneLike {
   return { origin: [0, 0, z], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
@@ -200,4 +210,144 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       scope.dispose()
     }
   })
+})
+
+/** The face UUIDs a `names` map carries, read as an array aligned to `shape`. */
+function faceUuidsOf(
+  occ: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  faceNames: SubShapeMap<string>,
+): string[] {
+  return namesToArray(canonicalFaces(occ, scope, shape), faceNames) as string[]
+}
+
+describe.skipIf(!oc)('boolean clearance naming (real OCC)', () => {
+  let occ: OccModule
+  beforeAll(() => {
+    if (!oc) throw new Error('unreachable: skipIf guards this')
+    occ = oc
+  })
+
+  it('hole walls carry the tool face UUIDs equally at clearance 0 and +0.1', () => {
+    const toolSideUuids = [0, 1, 2, 3].map((i) => mintFaceUuid(sideFacePath('e_u', `sk_u/l${i}`)))
+
+    const targetFaceUuids = (clearance: number): string[] => {
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const target = extrudeProfileWithLineage(
+          occ, scope, square(0, 0, 10), planeAt(0), [0, 0, 1] as Vec3, 10, 'sk_t', 'e_t',
+        )
+        const tool = extrudeProfileWithLineage(
+          occ, scope, square(3, 3, 4), planeAt(-1), [0, 0, 1] as Vec3, 12, 'sk_u', 'e_u',
+        )
+        const store: Record<string, Body> = {
+          body_t: {
+            id: 'body_t', created_by: 'e_t', modified_by: [], sketch_id: 'sk_t',
+            shape: table.register(target.solid, 'e_t'), brep_diff: null, profile_queries: [],
+            face_uuids: faceUuidsOf(occ, scope, target.solid, target.faceNames),
+          },
+          body_u: {
+            id: 'body_u', created_by: 'e_u', modified_by: [], sketch_id: 'sk_u',
+            shape: table.register(tool.solid, 'e_u'), brep_diff: null, profile_queries: [],
+            face_uuids: faceUuidsOf(occ, scope, tool.solid, tool.faceNames),
+          },
+        }
+        solveBoolean(
+          occ, scope, table,
+          { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance } },
+          new Repository(), store,
+        )
+        return (store.body_t.face_uuids ?? []) as string[]
+      } finally {
+        scope.dispose()
+      }
+    }
+
+    const atZero = targetFaceUuids(0)
+    const atTenth = targetFaceUuids(0.1)
+    // The four hole walls survive identically at both clearances: the grown face
+    // carries the source face's UUID, so a downstream pick is stable.
+    for (const u of toolSideUuids) {
+      expect(atZero).toContain(u)
+      expect(atTenth).toContain(u)
+    }
+  })
+})
+
+function rectSketch(sketchId: string, w: number, h: number, opts?: { offsetX?: number; offsetY?: number }) {
+  const ox = opts?.offsetX ?? 0
+  const oy = opts?.offsetY ?? 0
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'bottom', kind: 'line' as const }, { id: 'right', kind: 'line' as const },
+      { id: 'top', kind: 'line' as const }, { id: 'left', kind: 'line' as const },
+    ],
+    initial: {
+      bottom: [ox, oy, ox + w, oy], right: [ox + w, oy, ox + w, oy + h],
+      top: [ox + w, oy + h, ox, oy + h], left: [ox, oy + h, ox, oy],
+    },
+    constraints: [
+      { id: 'c1', kind: 'coincident' as const, a: { entity: 'bottom', point: 'end' as const }, b: { entity: 'right', point: 'start' as const } },
+      { id: 'c2', kind: 'coincident' as const, a: { entity: 'right', point: 'end' as const }, b: { entity: 'top', point: 'start' as const } },
+      { id: 'c3', kind: 'coincident' as const, a: { entity: 'top', point: 'end' as const }, b: { entity: 'left', point: 'start' as const } },
+      { id: 'c4', kind: 'coincident' as const, a: { entity: 'left', point: 'end' as const }, b: { entity: 'bottom', point: 'start' as const } },
+      { id: 'c5', kind: 'horizontal' as const, target: { entity: 'bottom' } },
+      { id: 'c6', kind: 'horizontal' as const, target: { entity: 'top' } },
+      { id: 'c7', kind: 'vertical' as const, target: { entity: 'right' } },
+      { id: 'c8', kind: 'vertical' as const, target: { entity: 'left' } },
+      { id: 'c9', kind: 'length' as const, target: { entity: 'bottom' }, value: w },
+      { id: 'c10', kind: 'length' as const, target: { entity: 'left' }, value: h },
+    ],
+  }
+}
+
+describe.skipIf(!oc || !solveBytes)('clearance naming through the builder (real OCC + Rust solver)', () => {
+  const h = new SharedHarness(oc!)
+  beforeAll(() => {
+    if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
+    resetSketchSolver()
+    setSketchSolver(solveBytes)
+  })
+
+  it('a fillet picked on a hole-wall edge at clearance 0 still solves at +0.1', () => {
+    const features = [
+      rectSketch('sk1', 20, 20),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
+      rectSketch('sk2', 6, 6, { offsetX: 7, offsetY: 7 }),
+      { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 20, direction: 'symmetric', operation: 'new' },
+    ]
+    const baseDoc = {
+      version: 1, kind: 'part', features: [
+        ...features,
+        { id: 'bool1', kind: 'boolean', boolean: { operation: 'subtract', target: '@ex1', tools: ['@ex2'], clearance: 0 } },
+      ],
+    }
+    const r0 = h.run(baseDoc)
+    expect(h.res(r0, 'bool1').status).toBe('ok')
+
+    // The boolean created the hole-rim edges; pick one by the persistent query it
+    // emitted, exactly as a user pick would.
+    const body = (r0.bodies as Record<string, { edge_queries?: string[]; edge_created_by?: string[] }>).body_ex1
+    const idx = (body.edge_created_by ?? []).findIndex((cb) => cb === 'bool1')
+    expect(idx, 'the boolean should create hole-rim edges').toBeGreaterThanOrEqual(0)
+    const edgeQuery = body.edge_queries![idx]
+
+    const withClearance = (clearance: number) => ({
+      version: 1, kind: 'part', features: [
+        ...features,
+        { id: 'bool1', kind: 'boolean', boolean: { operation: 'subtract', target: '@ex1', tools: ['@ex2'], clearance } },
+        { id: 'fillet1', kind: 'fillet', edges: [edgeQuery], radius: 1 },
+      ],
+    })
+
+    const r1 = h.run(withClearance(0))
+    expect(h.res(r1, 'fillet1').status).toBe('ok')
+    // Editing the clearance must not strand the picked edge: the grown hole wall
+    // keeps the source face's UUID, so the query resolves again.
+    const r2 = h.run(withClearance(0.1), { prevState: r1._build_state })
+    expect(h.res(r2, 'fillet1').status).toBe('ok')
+  }, 120_000)
 })
