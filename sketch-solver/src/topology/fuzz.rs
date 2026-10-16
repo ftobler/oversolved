@@ -21,8 +21,8 @@ use std::path::PathBuf;
 
 use super::dcel::{detect_topology, InputEntity};
 use super::oracle::{
-    check_determinism, check_topology, compare_face_multisets, face_summaries, jitter_input,
-    Violation,
+    check_determinism_against, check_topology, compare_face_multisets, face_summaries,
+    jitter_input, Violation,
 };
 use super::TOL_TOPOLOGY_MERGE as MERGE;
 
@@ -736,6 +736,10 @@ pub(crate) type EntityList = Vec<(String, InputEntity)>;
 /// and the violation texts that input produces.
 pub(crate) type MinimisedCase = (String, EntityList, Vec<String>);
 
+/// The minimiser's failure predicate: does this candidate still exhibit the
+/// violation being minimised? Must be a pure function of the candidate.
+pub(crate) type Fails<'a> = dyn Fn(&[(String, InputEntity)]) -> bool + 'a;
+
 // ─── Minimiser ───
 
 /// Greedy delta minimisation: drop one entity at a time, accept while the
@@ -747,7 +751,7 @@ pub(crate) type MinimisedCase = (String, EntityList, Vec<String>);
 pub(crate) fn minimise(
     input: &[(String, InputEntity)],
     motif_of: &[String],
-    still_fails: &dyn Fn(&[(String, InputEntity)]) -> bool,
+    still_fails: &Fails<'_>,
 ) -> EntityList {
     let mut current: EntityList = input.to_vec();
     let mut groups: Vec<String> = motif_of.to_vec();
@@ -818,7 +822,7 @@ pub(crate) fn check_generated(entities: &[(String, InputEntity)], seed: u32) -> 
     // builds of the sketch rather than the six a per-check helper would.
     let out = detect_topology(entities);
     let mut violations = check_topology(entities, &out);
-    violations.extend(check_determinism(entities));
+    violations.extend(check_determinism_against(entities, &out));
     let base = face_summaries(&out);
 
     let mut rnd = Prng::new(seed ^ 0x5eed_1234);

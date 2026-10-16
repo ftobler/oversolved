@@ -1471,7 +1471,11 @@ pub(crate) fn face_summaries(out: &TopologyOut) -> Vec<FaceSummary> {
                 .map(|h| loop_area_centroid(h).0.abs())
                 .collect();
             holes.sort_by(|a, b| a.total_cmp(b));
-            let poly = loop_polygon(&s.boundary, MERGE, 256);
+            // A coarse sampling for the perimeter: a face's thickness needs a
+            // couple of percent, not merge-tight geometry, and a merge-tight
+            // sampling of a large circle is tens of thousands of points.
+            let coarse = (area.abs().sqrt() / 50.0).max(MERGE);
+            let poly = loop_polygon(&s.boundary, coarse, 128);
             let mut perimeter = 0.0;
             for k in 0..poly.len() {
                 let p = poly[k];
@@ -2001,12 +2005,30 @@ pub(crate) fn check_input(input: &[(String, InputEntity)]) -> Vec<Violation> {
     check_topology(input, &out)
 }
 
-/// Determinism: the same input twice must be byte-identical (through the
-/// structural output's own encoding of every field).
-pub(crate) fn check_determinism(input: &[(String, InputEntity)]) -> Vec<Violation> {
-    let a = format!("{:?}", detect_topology(input));
-    let b = format!("{:?}", detect_topology(input));
-    if a == b {
+/// Determinism against an already-computed run: the vertex id sequence, the
+/// edge identity sequence and every face's exact area, holes and centroid must
+/// repeat bit-for-bit. Comparing those beats formatting the whole output (a
+/// large sketch's debug string is tens of megabytes) and covers the same
+/// classes: a randomized vertex pool or edge order changes the ids/indices,
+/// a randomized merge changes the areas.
+pub(crate) fn check_determinism_against(
+    input: &[(String, InputEntity)],
+    out: &TopologyOut,
+) -> Vec<Violation> {
+    let other = detect_topology(input);
+    let ids_a: Vec<&String> = out.vertices.iter().map(|(k, _)| k).collect();
+    let ids_b: Vec<&String> = other.vertices.iter().map(|(k, _)| k).collect();
+    let edges_a: Vec<(&String, usize)> = out
+        .edges
+        .iter()
+        .map(|e| (&e.entity_id, e.edge_index))
+        .collect();
+    let edges_b: Vec<(&String, usize)> = other
+        .edges
+        .iter()
+        .map(|e| (&e.entity_id, e.edge_index))
+        .collect();
+    if ids_a == ids_b && edges_a == edges_b && face_summaries(out) == face_summaries(&other) {
         vec![]
     } else {
         vec![Violation::new(
@@ -2014,6 +2036,12 @@ pub(crate) fn check_determinism(input: &[(String, InputEntity)]) -> Vec<Violatio
             "two runs of the same input differ".to_string(),
         )]
     }
+}
+
+/// Determinism: the same input twice, from scratch.
+pub(crate) fn check_determinism(input: &[(String, InputEntity)]) -> Vec<Violation> {
+    let out = detect_topology(input);
+    check_determinism_against(input, &out)
 }
 
 /// Entity-order independence: the permuted input (out[i] = input[perm[i]]) must
