@@ -263,7 +263,8 @@ way.
 The CLI runs beside `frontend/scripts/regenCorpus.ts` with the same
 `--experimental-strip-types` recipe, plus a loader shim for `import.meta.env`.
 Its operations (run, measure, export) live in `frontend/src/drive/headlessOps.ts`
-and are shared with the MCP server, so the two external surfaces cannot drift:
+and are shared with the MCP server (which adds `select`, a predicate selector
+over the solve output), so the two external surfaces cannot drift:
 
 ```bash
 cd frontend
@@ -342,6 +343,21 @@ banner on stdout, so a client config must use the direct node invocation.
 | `run` | `steps`, optional `doc`, `docId`, `files` | `{ ok, steps, docHash, solve, doc }`; pass `doc` back in to chain edits |
 | `measure` | `doc`, optional `docId`, `files` | `{ ok, bodyCount, volume, area, centroid, bbox, faces, edges, vertices }` |
 | `export` | `doc`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, file, format, bytes }` |
+| `select` | `doc`, `selector`, optional `docId`, `files` | `{ ok, queries, items }`: the query strings a click would store, plus a geometry summary per item |
+
+- `select` runs a predicate over the solved bodies and returns the exact query
+  strings a click would store, so a headless author (an LLM, a translator, the
+  fuzzer) can pick a fillet/chamfer/hole target without a pointer. The selector
+  is a structured language modeled on CadQuery's string selectors: `kind` is
+  `edge` or `face`; `where` combines `and`/`or`/`not` with `parallel`,
+  `perpendicular`, `type`, `extreme` (the min/max-projection group, tolerance
+  grouped so a box top yields all four edges), `on_face` (edges bounding the
+  selected faces), `created_by` (ancestry through the query engine) and
+  `radius`. The selector itself is an authoring aid and is never stored: the
+  returned queries are what goes into the document, exactly as if each element
+  had been clicked. An empty match is a tool error whose message names the
+  nearest-miss count per predicate; an unknown predicate key is an invalid
+  argument rejected by name. The engine is pure TS in `frontend/src/kernel/select/`.
 
 - `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
   resolve against the server's cwd.

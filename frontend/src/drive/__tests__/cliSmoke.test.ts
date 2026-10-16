@@ -376,7 +376,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
 
       const list = await client.request('tools/list', {})
       const tools = (list.result as { tools: Array<{ name: string; inputSchema: unknown }> }).tools
-      expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run'])
+      expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run', 'select'])
 
       const built = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
       expect(built.ok).toBe(true)
@@ -404,6 +404,36 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
       }))
       expect(exported).toMatchObject({ ok: true, format: 'step' })
       expect(readFileSync(stepFile).byteLength).toBeGreaterThan(0)
+
+      // Select the four vertical edges by predicate, then fillet exactly those
+      // queries: the selector output is what a click would have stored.
+      const selected = toolPayload(await client.request('tools/call', {
+        name: 'select',
+        arguments: { doc: edited.doc, selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } },
+      }))
+      expect(selected.ok).toBe(true)
+      const queries = selected.queries as string[]
+      expect(queries).toHaveLength(4)
+
+      const filletSteps = [
+        { mutation: { type: 'add_fillet', featureId: 'fi1', label: 'Fillet' } },
+        ...queries.map(edgeQuery => ({ mutation: { type: 'add_fillet_edge', featureId: 'fi1', edgeQuery } })),
+        { mutation: { type: 'set_fillet_field', featureId: 'fi1', field: 'radius', value: 1 } },
+      ]
+      const filleted = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { doc: edited.doc, steps: filletSteps },
+      }))
+      expect(filleted.ok).toBe(true)
+
+      const filletMeasure = toolPayload(await client.request('tools/call', {
+        name: 'measure',
+        arguments: { doc: filleted.doc },
+      }))
+      // Four radius-1 fillets on the 10x10x8 box: the four side faces stay, the
+      // two caps stay and four quarter-cylinders appear.
+      expect(filletMeasure.faces).toBe(10)
+      expect(filletMeasure.volume as number).toBeCloseTo(800 - 4 * (1 - Math.PI / 4) * 8, 6)
 
       const stlFile = path.join(TMP_DIR, 'mcp-box.stl')
       const stl = toolPayload(await client.request('tools/call', {

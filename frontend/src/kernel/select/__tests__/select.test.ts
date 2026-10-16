@@ -1,0 +1,322 @@
+// Unit tests for the selector engine over synthetic solve results. Pure TS, no
+// kernel: a hand-built BodyResult exercises every predicate, the tolerance
+// grouping, the adjacency join and the empty-result diagnostics.
+
+import { describe, it, expect } from 'vitest'
+import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
+import type { Predicate, Selector } from '@/kernel/select'
+import { makeAncestryQuery } from '@/kernel/query'
+import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+
+type V3 = [number, number, number]
+
+function line(a: V3, b: V3): EdgeData {
+  return { kind: 'line', start: a, end: b }
+}
+
+function circle(center: V3, radius: number, axis: V3): EdgeData {
+  return { kind: 'circle', center, radius, axis, x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI }
+}
+
+function face(centroid: V3, normal: V3, surface_type: string, radius?: number): FaceData {
+  return {
+    centroid,
+    normal,
+    surface_type,
+    ...(radius !== undefined && { surface_frame: { axis: normal, origin: centroid, radius } }),
+  }
+}
+
+/** A wire query naming body `bodyId` and the tokens given, with a type tail. */
+function q(bodyId: string, tokens: string[], type: string): string {
+  return makeAncestryQuery([`@${bodyId}`, ...tokens], type)
+}
+
+function bodyResult(
+  id: string,
+  edges: EdgeData[],
+  edgeQueries: string[],
+  faces: FaceData[],
+  faceQueries: string[],
+  faceEdgeQueries: string[][],
+): BodyResult {
+  return {
+    id,
+    created_by: 'ex1',
+    modified_by: [],
+    edges,
+    edge_queries: edgeQueries,
+    mesh: { vertices: [], faces: [], face_data: faces, face_queries: faceQueries, face_edge_queries: faceEdgeQueries },
+  }
+}
+
+// A 10x10x10 box: 12 line edges (4 vertical, 4 top, 4 bottom) and 6 flat faces.
+// The ten top/bottom edges are perpendicular to Z, the four vertical ones
+// parallel; the top face's normal is +Z, the bottom's -Z.
+const BOX_EDGES: EdgeData[] = [
+  line([0, 0, 0], [0, 0, 10]), line([10, 0, 0], [10, 0, 10]),
+  line([10, 10, 0], [10, 10, 10]), line([0, 10, 0], [0, 10, 10]),
+  line([0, 0, 10], [10, 0, 10]), line([10, 0, 10], [10, 10, 10]),
+  line([10, 10, 10], [0, 10, 10]), line([0, 10, 10], [0, 0, 10]),
+  line([0, 0, 0], [10, 0, 0]), line([10, 0, 0], [10, 10, 0]),
+  line([10, 10, 0], [0, 10, 0]), line([0, 10, 0], [0, 0, 0]),
+]
+
+function edgeQueriesFor(bodyId: string, count: number): string[] {
+  return Array.from({ length: count }, (_, i) => q(bodyId, [`@u|e_${i}`], 'straightedge'))
+}
+
+function box(): Record<string, BodyResult> {
+  const eq = edgeQueriesFor('body_ex1', 12)
+  const topBoundary = eq.slice(4, 8)
+  const bottomBoundary = eq.slice(8, 12)
+  const faces: FaceData[] = [
+    face([5, 5, 10], [0, 0, 1], 'flatface'),
+    face([5, 5, 0], [0, 0, -1], 'flatface'),
+    face([0, 5, 5], [-1, 0, 0], 'flatface'),
+    face([10, 5, 5], [1, 0, 0], 'flatface'),
+    face([5, 0, 5], [0, -1, 0], 'flatface'),
+    face([5, 10, 5], [0, 1, 0], 'flatface'),
+  ]
+  const faceQueries = faces.map((f, i) => q('body_ex1', [`@u|f_${i}`], f.surface_type!))
+  const faceEdgeQueries = [topBoundary, bottomBoundary, [], [], [], []]
+  return { body_ex1: bodyResult('body_ex1', BOX_EDGES, eq, faces, faceQueries, faceEdgeQueries) }
+}
+
+function withCircle(): Record<string, BodyResult> {
+  const bodies = box()
+  const b = bodies.body_ex1
+  b.edges!.push(circle([5, 5, 5], 2, [0, 0, 1]))
+  b.edge_queries!.push(q('body_ex1', ['@u|e_c'], 'edge'))
+  return bodies
+}
+
+function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
+  return selectByPredicate(selector, bodies).queries
+}
+
+describe('selectByPredicate: direction predicates', () => {
+  it('parallel Z keeps the four vertical line edges', () => {
+    const out = queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, box())
+    expect(out).toEqual(edgeQueriesFor('body_ex1', 12).slice(0, 4))
+  })
+
+  it('perpendicular Z keeps the eight horizontal edges', () => {
+    const out = queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, box())
+    expect(out).toEqual(edgeQueriesFor('body_ex1', 12).slice(4, 12))
+  })
+
+  it('parallel on faces keeps the faces whose normal is parallel, both caps', () => {
+    const bodies = box()
+    const items = selectByPredicate({ kind: 'face', where: { parallel: [0, 0, 1] } }, bodies).items
+    // A parallel test ignores sign, so both the +Z top and the -Z bottom cap match.
+    expect(items).toHaveLength(2)
+    for (const item of items) expect(item.geometry).toMatchObject({ kind: 'face', surface_type: 'flatface' })
+  })
+
+  it('an extreme clause pins the top cap alone', () => {
+    const selector: Selector = {
+      kind: 'face',
+      where: { and: [{ parallel: [0, 0, 1] }, { extreme: { axis: [0, 0, 1], side: 'max' } }] },
+    }
+    const items = selectByPredicate(selector, box()).items
+    expect(items).toHaveLength(1)
+    expect((items[0].geometry as { centroid: number[] }).centroid[2]).toBe(10)
+  })
+
+  it('perpendicular on faces keeps the four side faces', () => {
+    const out = queriesOf({ kind: 'face', where: { perpendicular: [0, 0, 1] } }, box())
+    expect(out).toHaveLength(4)
+  })
+})
+
+describe('selectByPredicate: type and radius', () => {
+  it('type filters edge kinds', () => {
+    const bodies = withCircle()
+    expect(queriesOf({ kind: 'edge', where: { type: 'circle' } }, bodies)).toHaveLength(1)
+    expect(queriesOf({ kind: 'edge', where: { type: 'line' } }, bodies)).toHaveLength(12)
+  })
+
+  it('type filters face surface types', () => {
+    expect(queriesOf({ kind: 'face', where: { type: 'flatface' } }, box())).toHaveLength(6)
+  })
+
+  it('radius matches a circle edge and a cylinder face', () => {
+    const bodies = withCircle()
+    expect(queriesOf({ kind: 'edge', where: { radius: { eq: 2 } } }, bodies)).toHaveLength(1)
+    // A radius test that no candidate satisfies leaves the selector empty, and
+    // an empty selector is an error (not a silent zero).
+    expect(() => queriesOf({ kind: 'edge', where: { radius: { min: 3 } } }, bodies)).toThrow(SelectorError)
+    // A line edge has no radius: the test is a non-match, not a throw of its own.
+    expect(() => queriesOf({ kind: 'edge', where: { and: [{ type: 'line' }, { radius: 2 }] } }, bodies))
+      .toThrow(SelectorError)
+  })
+})
+
+describe('selectByPredicate: extreme', () => {
+  it('groups the four top edges at the max Z, not one', () => {
+    const out = queriesOf({ kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'max' } } }, box())
+    expect(out).toEqual(edgeQueriesFor('body_ex1', 12).slice(4, 8))
+  })
+
+  it('groups within the measure tolerance, not by exact equality', () => {
+    const edges: EdgeData[] = [
+      line([0, 0, 10], [10, 0, 10]),
+      line([0, 1, 10 + 1e-7], [10, 1, 10 + 1e-7]),
+      line([0, 2, 10 + 2e-7], [10, 2, 10 + 2e-7]),
+      line([0, 3, 5], [10, 3, 5]),
+    ]
+    const bodies = {
+      body_ex1: bodyResult(
+        'body_ex1', edges, edgeQueriesFor('body_ex1', 4), [], [], [],
+      ),
+    }
+    // Three projections a fraction of a micron apart form one group; the far
+    // edge is left out.
+    const out = queriesOf({ kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'max' } } }, bodies)
+    expect(out).toHaveLength(3)
+  })
+
+  it('min side groups the bottom edges', () => {
+    const out = queriesOf({ kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'min' } } }, box())
+    expect(out).toEqual(edgeQueriesFor('body_ex1', 12).slice(8, 12))
+  })
+})
+
+describe('selectByPredicate: adjacency and composition', () => {
+  it('on_face keeps the edges bounding the selected faces', () => {
+    const selector: Selector = {
+      kind: 'edge',
+      where: {
+        on_face: {
+          kind: 'face',
+          where: { and: [{ parallel: [0, 0, 1] }, { extreme: { axis: [0, 0, 1], side: 'max' } }] },
+        },
+      },
+    }
+    expect(queriesOf(selector, box())).toEqual(edgeQueriesFor('body_ex1', 12).slice(4, 8))
+  })
+
+  it('on_face rejects a non-face inner selector', () => {
+    const selector = { kind: 'edge', where: { on_face: { kind: 'edge' } } } as unknown as Selector
+    expect(() => queriesOf(selector, box())).toThrow(/on_face needs a face selector/)
+  })
+
+  it('not complements against the pool', () => {
+    const out = queriesOf({ kind: 'edge', where: { not: { parallel: [0, 0, 1] } } }, box())
+    expect(out).toHaveLength(8)
+  })
+
+  it('and narrows sequentially and or unions', () => {
+    expect(queriesOf({ kind: 'edge', where: { and: [{ type: 'line' }, { parallel: [0, 0, 1] }] } }, box()))
+      .toHaveLength(4)
+    expect(queriesOf({ kind: 'edge', where: { or: [{ parallel: [0, 0, 1] }, { type: 'circle' }] } }, withCircle()))
+      .toHaveLength(5)
+  })
+
+  it('an and chain narrows an extreme to the earlier clauses', () => {
+    // First the horizontal edges, then the max-Z group of THOSE: the top edges.
+    const selector: Selector = {
+      kind: 'edge',
+      where: { and: [{ perpendicular: [0, 0, 1] }, { extreme: { axis: [0, 0, 1], side: 'max' } }] },
+    }
+    expect(queriesOf(selector, box())).toEqual(edgeQueriesFor('body_ex1', 12).slice(4, 8))
+  })
+})
+
+describe('selectByPredicate: from, order and provenance', () => {
+  it('orders by body id then index', () => {
+    const bodies = {
+      body_zeta: bodyResult('body_zeta', [line([0, 0, 0], [0, 0, 1])], ['q_zeta_0'], [], [], []),
+      body_alpha: bodyResult('body_alpha', [line([0, 0, 0], [0, 0, 1])], ['q_alpha_0'], [], [], []),
+    }
+    const out = queriesOf({ kind: 'edge' }, bodies)
+    expect(out).toEqual(['q_alpha_0', 'q_zeta_0'])
+  })
+
+  it('from restricts to one body', () => {
+    const bodies = {
+      body_a: bodyResult('body_a', [line([0, 0, 0], [0, 0, 1])], ['qa'], [], [], []),
+      body_b: bodyResult('body_b', [line([0, 0, 0], [0, 0, 1])], ['qb'], [], [], []),
+    }
+    expect(queriesOf({ from: 'body_b', kind: 'edge' }, bodies)).toEqual(['qb'])
+  })
+
+  it('from naming a missing body fails loud', () => {
+    expect(() => queriesOf({ from: 'body_nope', kind: 'edge' }, box())).toThrow(SelectorError)
+  })
+
+  it('created_by matches an ancestry feature token', () => {
+    const bodies = {
+      body_ex1: bodyResult(
+        'body_ex1',
+        [line([0, 0, 0], [0, 0, 1]), line([1, 0, 0], [1, 0, 1])],
+        [q('body_ex1', ['@u|e_0', '@ex1'], 'straightedge'), q('body_ex1', ['@u|e_1', '@ex2'], 'straightedge')],
+        [], [], [],
+      ),
+    }
+    expect(queriesOf({ kind: 'edge', where: { created_by: 'ex2' } }, bodies))
+      .toEqual([q('body_ex1', ['@u|e_1', '@ex2'], 'straightedge')])
+    expect(queriesOf({ kind: 'edge', where: { created_by: 'ex1' } }, bodies)).toHaveLength(1)
+  })
+})
+
+describe('selectByPredicate: alignment and diagnostics', () => {
+  it('skips unnamed edges and reads a short query array defensively', () => {
+    const bodies = {
+      body_ex1: bodyResult(
+        'body_ex1',
+        [line([0, 0, 0], [0, 0, 1]), line([1, 0, 0], [1, 0, 1]), line([2, 0, 0], [2, 0, 1])],
+        ['qa', ''],  // edge 1 is unnamed, edge 2 has no query slot
+        [], [], [],
+      ),
+    }
+    expect(queriesOf({ kind: 'edge' }, bodies)).toEqual(['qa'])
+  })
+
+  it('an empty result names the nearest-miss count per predicate', () => {
+    let error: unknown
+    try {
+      selectByPredicate({ kind: 'edge', where: { and: [{ parallel: [0, 0, 1] }, { type: 'spline' }] } }, box())
+    } catch (e) {
+      error = e
+    }
+    expect(error).toBeInstanceOf(SelectorError)
+    const message = (error as Error).message
+    expect(message).toContain('matched no edges')
+    expect(message).toMatch(/parallel \[0, 0, 1\] matched 4/)
+    expect(message).toMatch(/type "spline" matched 0/)
+  })
+
+  it('returns the geometry summary the agent reads back', () => {
+    const items = selectByPredicate({ kind: 'edge', where: { parallel: [0, 0, 1] } }, box()).items
+    expect(items[0].geometry).toMatchObject({ kind: 'line', length: 10 })
+    expect(items[0].body).toBe('body_ex1')
+    expect(items[0].index).toBe(0)
+  })
+})
+
+describe('validateSelector', () => {
+  it('accepts a well-formed selector', () => {
+    const raw = { kind: 'edge', where: { and: [{ parallel: [0, 0, 1] }, { type: 'line' }] } }
+    const validated = validateSelector(raw)
+    expect(validated.kind).toBe('edge')
+    expect((validated.where as { and: Predicate[] }).and).toHaveLength(2)
+  })
+
+  it('rejects an unknown predicate by name', () => {
+    expect(() => validateSelector({ kind: 'edge', where: { parallelish: [0, 0, 1] } }))
+      .toThrow(/unknown predicate "parallelish"/)
+  })
+
+  it('rejects unknown top-level keys, a bad kind and a bad vector', () => {
+    expect(() => validateSelector({ kind: 'edge', typo: 1 })).toThrow(/unknown key "typo"/)
+    expect(() => validateSelector({ kind: 'vertex' })).toThrow(/kind must be/)
+    expect(() => validateSelector({ kind: 'edge', where: { parallel: [0, 0] } })).toThrow(/three finite numbers/)
+  })
+
+  it('rejects a predicate object with two keys', () => {
+    expect(() => validateSelector({ kind: 'edge', where: { parallel: [0, 0, 1], type: 'line' } }))
+      .toThrow(/exactly one predicate key/)
+  })
+})

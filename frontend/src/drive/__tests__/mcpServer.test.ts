@@ -26,6 +26,7 @@ function fakeOps(answer: (tool: string, args: unknown) => McpToolPayload = () =>
       run: record('run') as McpCadOps['run'],
       measure: record('measure') as McpCadOps['measure'],
       export: record('export') as McpCadOps['export'],
+      select: record('select') as McpCadOps['select'],
     },
   }
 }
@@ -67,7 +68,7 @@ describe('createMcpServer', () => {
     const server = createMcpServer(fakeOps().ops)
     const response = await request(server, 2, 'tools/list', {})
     const tools = (response as { result: { tools: typeof MCP_TOOLS } }).result.tools
-    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run'])
+    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run', 'select'])
     for (const tool of tools) expect(tool.inputSchema).toMatchObject({ type: 'object' })
   })
 
@@ -138,5 +139,29 @@ describe('createMcpServer', () => {
     })
     expect(response).toMatchObject({ id: 15 })
     expect(calls[0].args).toMatchObject({ files: [{ id: 'f1', path: 'box.step' }] })
+  })
+
+  it('validates the select selector and rejects unknown predicates', async () => {
+    const { ops, calls } = fakeOps()
+    const server = createMcpServer(ops)
+
+    // A well-formed selector is validated and reaches the op.
+    const ok = await request(server, 20, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } },
+    })
+    expect(ok).toMatchObject({ id: 20 })
+    expect(calls[0]).toEqual({ tool: 'select', args: expect.objectContaining({ selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } }) })
+
+    // An unknown predicate key is rejected by name, before the op runs.
+    expectError(await request(server, 21, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'edge', where: { frobnicate: [0, 0, 1] } } },
+    }), -32602)
+    expectError(await request(server, 22, 'tools/call', { name: 'select', arguments: { doc: {} } }), -32602)
+    expectError(await request(server, 23, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'vertex' } },
+    }), -32602)
   })
 })
