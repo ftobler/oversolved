@@ -55,6 +55,7 @@ const FIELD_MUTATION_TYPE = {
   revolve: 'set_revolve_field',
   fillet: 'set_fillet_field',
   chamfer: 'set_chamfer_field',
+  move_face: 'set_move_face_field',
 } as const
 
 function emitFieldMutation(
