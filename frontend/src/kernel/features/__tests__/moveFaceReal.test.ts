@@ -18,7 +18,12 @@ import type { BuildState } from '../../types3d'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-interface FaceInfo { face_queries?: string[]; face_edge_queries?: string[][] }
+interface FaceInfo {
+  face_queries?: string[]
+  face_edge_queries?: string[][]
+  // Per-face normal + centroid, aligned with face_queries (tessellation payload).
+  face_data?: { normal: number[]; centroid: number[] }[]
+}
 interface BodyView { mesh?: FaceInfo & { vertices?: number[][] }; edge_queries?: string[]; modified_by?: string[] }
 
 /** The Construction UUID token of a query, or undefined. */
@@ -73,6 +78,93 @@ function bbox(body: BodyView): { min: number[]; max: number[] } {
   const max = [-Infinity, -Infinity, -Infinity]
   for (const v of verts) for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], v[i]); max[i] = Math.max(max[i], v[i]) }
   return { min, max }
+}
+
+/** A U profile 30x10 with a 10x6 notch in the top: extruding it along the front
+ *  normal gives two pillars joined by a 4-thick web. Moving the web floor down
+ *  to the base cuts the web through and severs the pillars. */
+function uProfileSketch(sketchId: string) {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'U profile', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'bottom', kind: 'line' as const }, { id: 'right', kind: 'line' as const },
+      { id: 'topRight', kind: 'line' as const }, { id: 'innerRight', kind: 'line' as const },
+      { id: 'web', kind: 'line' as const }, { id: 'innerLeft', kind: 'line' as const },
+      { id: 'topLeft', kind: 'line' as const }, { id: 'left', kind: 'line' as const },
+    ],
+    initial: {
+      bottom: [0, 0, 30, 0], right: [30, 0, 30, 10],
+      topRight: [30, 10, 20, 10], innerRight: [20, 10, 20, 4],
+      web: [20, 4, 10, 4], innerLeft: [10, 4, 10, 10],
+      topLeft: [10, 10, 0, 10], left: [0, 10, 0, 0],
+    },
+    constraints: [
+      { id: 'co1', kind: 'coincident' as const, a: { entity: 'bottom', point: 'end' as const }, b: { entity: 'right', point: 'start' as const } },
+      { id: 'co2', kind: 'coincident' as const, a: { entity: 'right', point: 'end' as const }, b: { entity: 'topRight', point: 'start' as const } },
+      { id: 'co3', kind: 'coincident' as const, a: { entity: 'topRight', point: 'end' as const }, b: { entity: 'innerRight', point: 'start' as const } },
+      { id: 'co4', kind: 'coincident' as const, a: { entity: 'innerRight', point: 'end' as const }, b: { entity: 'web', point: 'start' as const } },
+      { id: 'co5', kind: 'coincident' as const, a: { entity: 'web', point: 'end' as const }, b: { entity: 'innerLeft', point: 'start' as const } },
+      { id: 'co6', kind: 'coincident' as const, a: { entity: 'innerLeft', point: 'end' as const }, b: { entity: 'topLeft', point: 'start' as const } },
+      { id: 'co7', kind: 'coincident' as const, a: { entity: 'topLeft', point: 'end' as const }, b: { entity: 'left', point: 'start' as const } },
+      { id: 'co8', kind: 'coincident' as const, a: { entity: 'left', point: 'end' as const }, b: { entity: 'bottom', point: 'start' as const } },
+      { id: 'h1', kind: 'horizontal' as const, target: { entity: 'bottom' } },
+      { id: 'h2', kind: 'horizontal' as const, target: { entity: 'topRight' } },
+      { id: 'h3', kind: 'horizontal' as const, target: { entity: 'web' } },
+      { id: 'h4', kind: 'horizontal' as const, target: { entity: 'topLeft' } },
+      { id: 'v1', kind: 'vertical' as const, target: { entity: 'right' } },
+      { id: 'v2', kind: 'vertical' as const, target: { entity: 'innerRight' } },
+      { id: 'v3', kind: 'vertical' as const, target: { entity: 'innerLeft' } },
+      { id: 'v4', kind: 'vertical' as const, target: { entity: 'left' } },
+      { id: 'l1', kind: 'length' as const, target: { entity: 'bottom' }, value: 30 },
+      { id: 'l2', kind: 'length' as const, target: { entity: 'right' }, value: 10 },
+      { id: 'l3', kind: 'length' as const, target: { entity: 'topRight' }, value: 10 },
+      { id: 'l4', kind: 'length' as const, target: { entity: 'innerRight' }, value: 6 },
+      { id: 'l5', kind: 'length' as const, target: { entity: 'web' }, value: 10 },
+      { id: 'l6', kind: 'length' as const, target: { entity: 'innerLeft' }, value: 6 },
+      { id: 'l7', kind: 'length' as const, target: { entity: 'topLeft' }, value: 10 },
+      { id: 'l8', kind: 'length' as const, target: { entity: 'left' }, value: 10 },
+    ],
+  }
+}
+
+/** The one face query whose tessellated normal + centroid satisfy `match`. */
+function faceQueryWhere(bodies: Record<string, unknown>, match: (normal: number[], centroid: number[]) => boolean): string {
+  const body = Object.values(bodies)[0] as BodyView
+  const queries = body?.mesh?.face_queries ?? []
+  const data = body?.mesh?.face_data ?? []
+  for (let i = 0; i < queries.length; i++) {
+    const d = data[i]
+    if (d && match(d.normal, d.centroid)) return queries[i]
+  }
+  throw new Error(`no face matched among ${queries.length} faces`)
+}
+
+/** A trapezoid profile [0,r1] at the base up to [0,r2] at height h: revolved
+ *  around its axis-side edge it makes a cone frustum (apex above r2). */
+function trapezoidSketch(sketchId: string, r1: number, r2: number, h: number) {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Trapezoid', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'bottom', kind: 'line' as const }, { id: 'slant', kind: 'line' as const },
+      { id: 'top', kind: 'line' as const }, { id: 'axis', kind: 'line' as const },
+    ],
+    initial: {
+      bottom: [0, 0, r1, 0], slant: [r1, 0, r2, h],
+      top: [r2, h, 0, h], axis: [0, h, 0, 0],
+    },
+    constraints: [
+      { id: 'c1', kind: 'coincident' as const, a: { entity: 'bottom', point: 'end' as const }, b: { entity: 'slant', point: 'start' as const } },
+      { id: 'c2', kind: 'coincident' as const, a: { entity: 'slant', point: 'end' as const }, b: { entity: 'top', point: 'start' as const } },
+      { id: 'c3', kind: 'coincident' as const, a: { entity: 'top', point: 'end' as const }, b: { entity: 'axis', point: 'start' as const } },
+      { id: 'c4', kind: 'coincident' as const, a: { entity: 'axis', point: 'end' as const }, b: { entity: 'bottom', point: 'start' as const } },
+      { id: 'c5', kind: 'horizontal' as const, target: { entity: 'bottom' } },
+      { id: 'c6', kind: 'horizontal' as const, target: { entity: 'top' } },
+      { id: 'c7', kind: 'vertical' as const, target: { entity: 'axis' } },
+      { id: 'c8', kind: 'length' as const, target: { entity: 'bottom' }, value: r1 },
+      { id: 'c9', kind: 'length' as const, target: { entity: 'top' }, value: r2 },
+      { id: 'c10', kind: 'length' as const, target: { entity: 'axis' }, value: h },
+    ],
+  }
 }
 
 describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solver)', () => {
@@ -236,5 +328,67 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const uuids = (r: ReturnType<typeof h.run>): string[] =>
       ((h.body(r, 'body_ex1') as BodyView).mesh?.face_queries ?? []).map(uuidOf).filter((u): u is string => u !== undefined).sort()
     expect(uuids(inc)).toEqual(uuids(full))
+  })
+
+  it('an inward move that severs the body yields two bodies via resplitBody', () => {
+    // The U profile's web floor (y=4) moved down to y=0 removes the web between
+    // the pillars; they were joined only there, so the body must resplit into
+    // two pillars seated under distinct sibling ids.
+    const spec = {
+      features: [
+        uProfileSketch('sk1'),
+        { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
+      ],
+    }
+    const base = h.run(spec)
+    expect(h.res(base, 'ex1').status).toBe('ok')
+    const web = faceQueryWhere(base.bodies, (n, c) => Math.abs(n[1] - 1) < 1e-6 && Math.abs(c[1] - 4) < 1e-6)
+    const r = h.run({ features: [...spec.features, { id: 'mf1', kind: 'move_face', move_face: { faces: [web], distance: -4 } }] })
+    expect(h.res(r, 'mf1').status).toBe('ok')
+    const ids = (h.res(r, 'mf1').body_ids as string[]) ?? []
+    expect(ids).toHaveLength(2)
+    // Ordered by centroid in the parent frame: the left pillar keeps the base id.
+    expect(bbox(h.body(r, ids[0])).max[0]).toBeCloseTo(10, 6)
+    expect(bbox(h.body(r, ids[1])).min[0]).toBeCloseTo(20, 6)
+  })
+
+  it('a top moved past the apex drops the top edge, so a downstream chamfer goes red', () => {
+    // A frustum (r10 at y=0 to r5 at y=10) revolved about +Y; its apex is at
+    // y=20. Moving the top +15 past the apex leaves a full cone whose top face
+    // and top circle edge are gone. A downstream chamfer naming those two edges
+    // must report the missing one unresolved and chamfer only the survivor,
+    // never re-bind the vanished edge to another.
+    const axis = {
+      id: 'skax', kind: 'sketch' as const, label: 'Axis', plane: '@builtin_plane_front',
+      entities: [{ id: 'ax', kind: 'line' as const }],
+      initial: { ax: [0, 0, 0, 1] },
+      constraints: [],
+    }
+    const baseFeatures = [
+      axis,
+      trapezoidSketch('skf', 10, 5, 10),
+      { id: 'rev1', kind: 'revolve', sketch: '$skf', angle: 360, axis: '@skax/ax' },
+    ]
+    const base = h.run({ features: baseFeatures })
+    expect(h.res(base, 'rev1').status).toBe('ok')
+    const top = faceQueryWhere(base.bodies, (n, c) => Math.abs(n[1] - 1) < 1e-6 && Math.abs(c[1] - 10) < 1e-6)
+    const edges = ((h.body(base, 'body_rev1') as BodyView).edge_queries ?? [])
+    const topEdge = edges.find((q) => q.includes('cls_yp'))
+    const botEdge = edges.find((q) => q.includes('cls_yn'))
+    expect(topEdge).toBeDefined()
+    expect(botEdge).toBeDefined()
+
+    const spec = { features: [
+      ...baseFeatures,
+      { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: 15 } },
+      { id: 'ch1', kind: 'chamfer', edges: [topEdge, botEdge], distance: 0.5 },
+    ] }
+    const r = h.run(spec)
+    expect(h.res(r, 'mf1').status).toBe('ok')
+    // Past the apex: the cone reaches y=20, its top face is gone.
+    expect(bbox(h.body(r, 'body_rev1')).max[1]).toBeCloseTo(20, 3)
+    expect(h.res(r, 'ch1').status).toBe('partial')
+    expect(h.res(r, 'ch1').unresolved_edges).toEqual([topEdge])
+    expect((h.res(r, 'ch1').failed_edges as string[] | undefined) ?? []).toEqual([])
   })
 })
