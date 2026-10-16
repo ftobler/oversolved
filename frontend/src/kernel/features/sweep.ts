@@ -480,7 +480,11 @@ export function collectPathEdges(
 
 /** The helix id a path ref names, when its bare id carries a `_curve_`
  *  descriptor. A helix path is real 3D geometry, not sketch topology, so it
- *  takes a separate arm in path resolution. */
+ *  takes a separate arm in path resolution. Only the bare `@<id>`/`$<id>` form
+ *  names a helix: a slash form (`@hx1/e1`) names an entity inside a feature, so
+ *  it is refused. The pre-canonicalization reader took the head of a slash form,
+ *  which silently accepted a ref that never named a helix curve; that leniency
+ *  is dropped because nothing emits the form (helix refs are minted bare). */
 function helixPathRef(ref: string, globalRepo: Repository): string | null {
   const id = featureRefId(ref)
   if (id === null) return null

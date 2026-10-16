@@ -127,7 +127,7 @@ const FEATURE_SCHEMA_BY_KIND = {
   plane: feature('plane', { key: 'definition', properties: PLANE_DEF.properties as JsonSchema }),
   extrude: feature('extrude', {
     key: 'extrude',
-    required: ['sketch'],
+    required: ['sketch', 'distance'],
     properties: {
       sketch: REF_OR_LIST, distance: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse', 'symmetric'] },
       termination: { enum: ['blind', 'up_to'] }, up_to: REF, operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
@@ -135,7 +135,7 @@ const FEATURE_SCHEMA_BY_KIND = {
   }),
   revolve: feature('revolve', {
     key: 'revolve',
-    required: ['sketch'],
+    required: ['sketch', 'angle'],
     properties: {
       sketch: REF_OR_LIST, angle: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse', 'symmetric'] },
       axis: REF, operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
@@ -143,31 +143,33 @@ const FEATURE_SCHEMA_BY_KIND = {
   }),
   sweep: feature('sweep', {
     key: 'sweep',
-    required: ['sketch'],
+    required: ['sketch', 'path'],
     properties: {
       sketch: REF_OR_LIST, path: REF_OR_LIST, operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
     },
   }),
   fillet: feature('fillet', {
     key: 'fillet',
-    required: ['edges'],
+    required: ['edges', 'radius'],
     properties: { edges: REF_LIST, radius: NUMBER_OR_EXPR },
   }),
   chamfer: feature('chamfer', {
     key: 'chamfer',
-    required: ['edges'],
+    required: ['edges', 'distance'],
     properties: {
       edges: REF_LIST, distance: NUMBER_OR_EXPR, kind: { enum: ['distance', 'angle_distance'] }, angle: NUMBER_OR_EXPR,
     },
   }),
   shell: feature('shell', {
     key: 'shell',
+    required: ['faces', 'thickness'],
     properties: {
       faces: REF_LIST, thickness: NUMBER_OR_EXPR, direction: { enum: ['inward', 'outward'] }, source_body: REF,
     },
   }),
   boolean: feature('boolean', {
     key: 'boolean',
+    required: ['operation', 'target', 'tools'],
     properties: {
       operation: { enum: ['union', 'subtract', 'intersect'] }, target: REF, tools: REF_LIST,
       keep_tools: { type: 'boolean' }, clearance: NUMBER_OR_EXPR,
@@ -192,11 +194,12 @@ const FEATURE_SCHEMA_BY_KIND = {
   }),
   delete_body: feature('delete_body', {
     key: 'delete_body',
+    required: ['bodies'],
     properties: { bodies: REF_LIST },
   }),
   hole: feature('hole', {
     key: 'hole',
-    required: ['sketch'],
+    required: ['sketch', 'diameter', 'depth_mode', 'depth'],
     properties: {
       sketch: REF, diameter: NUMBER_OR_EXPR, depth_mode: { enum: ['blind', 'through_all'] },
       depth: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse'] }, target: REF,
@@ -204,6 +207,7 @@ const FEATURE_SCHEMA_BY_KIND = {
   }),
   transform: feature('transform', {
     key: 'transform',
+    required: ['bodies'],
     properties: {
       bodies: REF_LIST, operation: { enum: ['new', 'replace'] }, translation: VEC3,
       translation_from: REF, translation_to: REF, rotation_axis: REF, rotation_angle: NUMBER_OR_EXPR,
@@ -213,10 +217,12 @@ const FEATURE_SCHEMA_BY_KIND = {
   }),
   mirror: feature('mirror', {
     key: 'mirror',
+    required: ['body', 'plane'],
     properties: { body: REF, plane: REF, keep_original: { type: 'boolean' }, merge: { type: 'boolean' } },
   }),
   variable: feature('variable', {
     key: 'variable',
+    required: ['expression'],
     properties: { expression: NUMBER_OR_EXPR, value: { type: 'number' }, unit: { type: 'string' } },
   }),
   helix: feature('helix', {

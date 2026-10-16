@@ -14,7 +14,7 @@ features:
 
 Top-level fields: `version` (int), `kind` (string, currently `"part"`), `features` (list).
 
-A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`) flat and every other param under the field named after its kind (`extrude: {...}`; `definition:` for a plane). A reference from one feature to another feature is absolute, `@<featureId>`; `$` is host-local to a sketch's own entities. `persistence/docSchema.ts` folds the legacy flat params and the `$id` feature refs onto these canonical forms on load; `persistence/partDocSchema.ts` is the generated JSON Schema contract, served as the MCP resource `oversolved://schema/part-document`.
+A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`) flat and every other param under the field named after its kind (`extrude: {...}`; `definition:` for a plane). A reference from one feature to another feature is absolute, `@<featureId>`; `$` is host-local to a sketch's own entities. `persistence/docSchema.ts` folds the legacy flat params and the `$id` feature refs onto these canonical forms on load; `persistence/partDocSchema.ts` is the hand-written JSON Schema contract (kept in step with `types/cad.ts` by the compile-time kind tether and the corpus test), served as the MCP resource `oversolved://schema/part-document`.
 
 ## Feature Kinds
 

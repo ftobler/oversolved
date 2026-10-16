@@ -63,9 +63,9 @@ export function solveTransform(
   bodyStore: Record<string, Body>,
 ): TransformResult {
   const featureId = (feature.id as string) ?? ''
-  const sub = (feature.transform as Dict) ?? {}
-  const { transform: _t, ...rest } = feature
-  const cfg: Dict = { ...sub, ...rest }
+  // Params live in the kind sub-dict only; the solver adapter folds any legacy
+  // flat params in before dispatch, so there is nothing to overlay here.
+  const cfg = (feature.transform as Dict) ?? {}
 
   // Every source body is resolved up front, before any shape is touched: a ref
   // that names nothing has to fail the feature outright rather than after half
@@ -238,9 +238,8 @@ export function solveMirror(
   bodyStore: Record<string, Body>,
 ): TransformResult {
   const featureId = (feature.id as string) ?? ''
-  const sub = (feature.mirror as Dict) ?? {}
-  const { mirror: _m, ...rest } = feature
-  const cfg: Dict = { ...sub, ...rest }
+  // Params live in the kind sub-dict only; see solveTransform.
+  const cfg = (feature.mirror as Dict) ?? {}
 
   const bodyQuery = (cfg.body as string) ?? ''
   const sourceBody = bodyQuery ? resolveBody(bodyQuery, bodyStore) : null

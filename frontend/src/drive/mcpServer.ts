@@ -69,8 +69,9 @@ export interface McpCadOps {
   run(req: McpRunRequest): Promise<McpToolPayload>
   measure(req: McpMeasureRequest): Promise<McpToolPayload>
   export(req: McpExportRequest): Promise<McpToolPayload>
-  // The generated part-document JSON Schema, served as the MCP resource. A
-  // string so the server stays free of the schema module's graph.
+  // The part-document JSON Schema, served as the MCP resource. Injected as a
+  // string so the server does not depend on the schema's build graph; only the
+  // URI constant (from partDocSchema, the same source) is imported here.
   partDocSchema(): string
 }
 

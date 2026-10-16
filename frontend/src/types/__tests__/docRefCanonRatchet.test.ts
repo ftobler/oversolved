@@ -6,8 +6,11 @@
 //    only legitimate ones (a sketch's own constraint operands, a local vertex
 //    ref, and the wire codec's local branch); a feature writer routes through
 //    the query engine instead.
-// 2. No leaf solver overlays flat params over the sub-dict
-//    (`{ ...sub, ...feature }`); params live in the sub-dict only.
+// 2. No leaf solver overlays flat params over the sub-dict. The overlay can be
+//    spelled several ways (`{ ...sub, ...feature }`, `{ ...sub, ...rest }` after
+//    destructuring the kind key out, either order, or an Object.assign); all of
+//    them are the regression this ratchet pins. Params live in the sub-dict
+//    only.
 //
 // The scan skips `__tests__/`, `*.test.*` and `testing/` (test support code)
 // and strips comments first, exactly as featureUnionRatchet.test.ts does.
@@ -98,16 +101,40 @@ describe('doc-ref-canon ratchets', () => {
     }
   })
 
+  // Every spelling a flat overlay takes: the sub-dict spread beside the whole
+  // feature or a feature-derived `rest`, in either order, or via Object.assign.
+  // The first ratchet matched only `...sub, ...feature`, so `{ ...sub, ...rest }`
+  // (what transform/mirror used) slipped through.
+  const OVERLAY_PATTERNS = [
+    /\.\.\.sub\b[^;{}]*\.\.\.(?:feature|rest)\b/,
+    /\.\.\.(?:feature|rest)\b[^;{}]*\.\.\.sub\b/,
+    /Object\.assign\([^)]*\bsub\b[^)]*\b(?:feature|rest)\b/,
+  ]
+
   it('no leaf solver overlays flat params over the sub-dict', () => {
     const offenders: string[] = []
-    const spread = /\.\.\.sub,\s*\.\.\.feature/
     for (const full of sourceFiles()) {
-      if (spread.test(stripComments(readFileSync(full, 'utf8')))) offenders.push(rel(full))
+      const source = stripComments(readFileSync(full, 'utf8'))
+      if (OVERLAY_PATTERNS.some(p => p.test(source))) offenders.push(rel(full))
     }
     expect(
       offenders,
       `flat-param overlay reappeared in: ${offenders.join(', ')}. Params live in ` +
         `the kind sub-dict; read feature[kind] directly.`,
     ).toEqual([])
+  })
+
+  it('the overlay patterns catch every spelling the invariant names', () => {
+    const shapes = [
+      '{ ...sub, ...feature }',
+      '{ ...sub, ...rest }',
+      '{ ...feature, ...sub }',
+      '{ ...rest, ...sub }',
+      'Object.assign({}, sub, feature)',
+      'Object.assign({}, sub, rest)',
+    ]
+    for (const shape of shapes) {
+      expect(OVERLAY_PATTERNS.some(p => p.test(shape)), `no pattern matched: ${shape}`).toBe(true)
+    }
   })
 })
