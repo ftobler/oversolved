@@ -9,7 +9,7 @@ import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { wouldOverconstrain } from '@/kernel/features/constraintProbe'
 import { visibleFeatureIds } from '@/utils/featureVisibility'
-import { useSketchEditorStore, useSketchUiStore, setSketchCallback, sketchOwnedDeleteTargets } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, setSketchCallback, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { capturePreview } from '@/stores/previewStore/capture'
@@ -758,7 +758,7 @@ export default function Part() {
   // a draft copy of the active sketch feature, so a redundant add is refused
   // before `applyConstraint` creates a mutation. docRef is a ref, so the
   // callback never goes stale.
-  const checkRedundantAdd = useCallback((pending: { featureId: string; kind: string; targets: string[] }) => {
+  const checkRedundantAdd = useCallback((pending: PendingConstraint) => {
     return wouldOverconstrain(docRef.current, pending)
   }, [docRef])
 
@@ -770,6 +770,10 @@ export default function Part() {
     setSketchCallback('onRebuild', handleRebuild)
     setSketchCallback('onExitSketch', handleExitSketch)
     setSketchCallback('checkRedundantAdd', checkRedundantAdd)
+    // How the dimension confirm path surfaces an authoring refusal of its own
+    // (the gate above answers, but the refusal has no command caller to return
+    // a reason to): the same MessageDialog the command rejections use.
+    setSketchCallback('showMessage', showMessage)
     // Used by finalizeDimensionPlacement to pre-fill the value-edit dialog
     // with the current natural measurement.
     setSketchCallback('getSketch', (featureId: string) => {
@@ -783,9 +787,10 @@ export default function Part() {
       setSketchCallback('onRebuild', null)
       setSketchCallback('onExitSketch', null)
       setSketchCallback('checkRedundantAdd', null)
+      setSketchCallback('showMessage', null)
       setSketchCallback('getSketch', null)
     }
-  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, solveResults])
+  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults])
 
   // The sketch editor store is module-level and survives a Part unmount, so a
   // remounted Part (WorkspacePage keys it by entry) would otherwise inherit the

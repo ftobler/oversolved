@@ -6,7 +6,7 @@ import { okResult } from '@/session/result'
 import type { ActiveTool } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import type { EditorState } from '@/stores/editorState'
-import { useSketchUiStore, type SketchUiState } from '@/stores/sketchEditorStore'
+import { useSketchUiStore, CANNOT_APPLY_TITLE, type SketchUiState } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
@@ -302,7 +302,7 @@ export function constraintCommandSpec(c: ConstraintDef): CommandSpec<PartCommand
         return okResult()
       }
       const reason = ctx.state().applyConstraint(c.kind)
-      if (reason !== null) ctx.showMessage({ title: 'Cannot apply constraint', message: reason, variant: 'error' })
+      if (reason !== null) ctx.showMessage({ title: CANNOT_APPLY_TITLE, message: reason, variant: 'error' })
       return okResult()
     },
   }

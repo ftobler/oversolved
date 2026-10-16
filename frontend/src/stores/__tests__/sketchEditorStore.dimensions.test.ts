@@ -255,6 +255,87 @@ describe('sketchEditorStore', () => {
       setSketchCallback('getSketch', null)
     })
 
+    it('a duplicate dimension is refused at confirm with the cannot-apply message', () => {
+      // The dimension tool is the canonical dimension path, so the authoring
+      // gate has to answer here too: the dialog's value is what makes the
+      // duplicate a probe candidate (a value-less dimension adds no solver
+      // rows), and the refusal must arrive before any mutation exists.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      const gate = vi.fn(() => true)
+      setSketchCallback('checkRedundantAdd', gate)
+      const messages = vi.fn()
+      setSketchCallback('showMessage', messages)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
+
+      expect(gate).toHaveBeenCalledWith({
+        featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
+      })
+      expect(handler).not.toHaveBeenCalled()
+      expect(messages).toHaveBeenCalledWith({
+        title: 'Cannot apply constraint',
+        message: expect.stringMatching(/would overconstrain.*length/),
+        variant: 'error',
+      })
+      expect(useSketchUiStore.getState().pendingDialog).toBeNull()
+      setSketchCallback('getSketch', null)
+    })
+
+    it('hands the gate the label pos the dialog collected, and authors on a false answer', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      const gate = vi.fn(() => false)
+      setSketchCallback('checkRedundantAdd', gate)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+    dimensionCursorWorld: [5, 7],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
+
+      // The probe sees exactly what the mutation would carry (pos relative to
+      // the dim anchor), so it judges the dimension that is about to land.
+      expect(gate).toHaveBeenCalledWith({
+        featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10, pos: [0, 7],
+      })
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10, pos: [0, 7],
+      })
+      setSketchCallback('getSketch', null)
+    })
+
+    it('a refused projected dimension deletes the gesture projection and adds nothing', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('checkRedundantAdd', () => true)
+      setSketchCallback('showMessage', vi.fn())
+      setSketchCallback('getSketch', () => ({}))
+      useSketchEditorStore.getState().addBrepDimensionPick('?b1/edge:3', { isVertexPick: false, sourceKind: 'line' })
+      const eid = handler.mock.calls[0][0].entityId
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      handler.mockClear()
+
+      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
+
+      // The projection was scratch work for a gesture that committed nothing,
+      // so it goes with no undo entry exactly like a cancel.
+      expect(handler.mock.calls.map(c => (c[0] as Mutation).type)).toEqual(['delete'])
+      expect(handler).toHaveBeenCalledWith({ type: 'delete', targets: [`entity:S1:${eid}`] })
+      expect(useSketchEditorStore.getState().pendingBrepProjectionIds).toEqual([])
+      setSketchCallback('getSketch', null)
+    })
+
     it('a projected body edge dimensions as a length once solved', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
