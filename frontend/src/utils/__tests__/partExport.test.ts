@@ -60,13 +60,13 @@ describe('exportPartBytes', () => {
     const resolveFile = vi.fn(async () => new Uint8Array([7]))
     const spec = partExportSpec(DOC, 'u1')
 
-    const bytes = await exportPartBytes(spec, { format: 'step', bodyId: null, tessellation: 0 }, { resolveFile })
+    const bytes = await exportPartBytes(spec, { format: 'step', bodyId: null, tessellation: 'normal' }, { resolveFile })
 
     expect(Array.from(bytes)).toEqual([1, 2])
     expect(resolveFile).toHaveBeenCalledWith('f1')
     const [sent, options, files] = exportViaWorker.mock.calls[0] as [Record<string, unknown>, unknown, Record<string, Uint8Array>]
     expect(sent).toBe(spec)
-    expect(options).toEqual({ format: 'step', bodyId: null, tessellation: 0 })
+    expect(options).toEqual({ format: 'step', bodyId: null, tessellation: 'normal' })
     expect(Array.from(files.f1)).toEqual([7])
   })
 
@@ -75,7 +75,7 @@ describe('exportPartBytes', () => {
     exportViaWorker.mockResolvedValue(new Uint8Array([1]))
     const resolveFile = vi.fn(async () => new Uint8Array([7]))
 
-    await exportPartBytes(partExportSpec(DOC), { format: 'stl', bodyId: null, tessellation: 0.5 }, { resolveFile })
+    await exportPartBytes(partExportSpec(DOC), { format: 'stl', bodyId: null, tessellation: 'normal' }, { resolveFile })
 
     expect(resolveFile).not.toHaveBeenCalled()
     expect(exportViaWorker.mock.calls[0][2]).toBeUndefined()
@@ -84,7 +84,7 @@ describe('exportPartBytes', () => {
   it('turns a null worker answer into the no-geometry error', async () => {
     exportViaWorker.mockResolvedValue(null)
     await expect(
-      exportPartBytes(partExportSpec({ features: [] }), { format: 'step', bodyId: null, tessellation: 0 }, null),
+      exportPartBytes(partExportSpec({ features: [] }), { format: 'step', bodyId: null, tessellation: 'normal' }, null),
     ).rejects.toBeInstanceOf(EmptyExportError)
   })
 })

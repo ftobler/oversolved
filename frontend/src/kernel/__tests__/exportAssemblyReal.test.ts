@@ -191,13 +191,13 @@ describe.skipIf(!oc || !solveBytes)('exportAssemblyLocally (real OCC + Rust solv
   })
 
   it('STL-exports the whole assembly: two boxes carry twice one box of triangles', async () => {
-    const one = await exportAssemblyLocally([{ spec: partA(), transform: IDENTITY_TRANSFORM }], { format: 'stl', tessellation: 0.5 })
+    const one = await exportAssemblyLocally([{ spec: partA(), transform: IDENTITY_TRANSFORM }], { format: 'stl', tessellation: 'normal' })
     const two = await exportAssemblyLocally(
       [
         { spec: partA(), transform: IDENTITY_TRANSFORM },
         { spec: partB(), transform: placed(100, 0, 0) },
       ],
-      { format: 'stl', tessellation: 0.5 },
+      { format: 'stl', tessellation: 'normal' },
     )
     expect(stlTriangleCount(one!)).toBeGreaterThanOrEqual(12)
     expect(stlTriangleCount(two!)).toBe(stlTriangleCount(one!) * 2)  // two boxes, 12 triangles each

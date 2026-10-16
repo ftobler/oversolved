@@ -1,4 +1,5 @@
 import type { ExportFormat } from '@/components/dialogs/ExportDialog'
+import type { TessellationPreset } from '@/kernel/tessellationPresets'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { exportMime, exportPartBytes, partExportSpec, partSpecFromText, type FileResolver } from '@/utils/partExport'
 import type { EntryMeta, WorkspaceEntry } from '@/workspace/types'
@@ -34,7 +35,7 @@ export async function downloadDocumentEntry(
   entry: EntryMeta,
   text: string,
   format: ExportFormat,
-  tessellation: number,
+  tessellation: TessellationPreset,
   fileName: string,
   resolver: FileResolver | null,
 ): Promise<void> {

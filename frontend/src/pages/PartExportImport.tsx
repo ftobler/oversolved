@@ -1,7 +1,7 @@
 import { forwardRef, useState, useImperativeHandle } from 'react'
 import { stringify as stringifyYaml } from 'yaml'
 import ExportDialog from '@/components/dialogs/ExportDialog'
-import type { ExportFormat } from '@/components/dialogs/ExportDialog'
+import type { ExportRequest } from '@/components/dialogs/ExportDialog'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useNotify } from '@/contexts/ToastContext'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
@@ -33,7 +33,7 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
       },
     }))
 
-    const handleExportDownload = async (format: ExportFormat, tessellation: number, fileName: string) => {
+    const handleExportDownload = async ({ format, tessellation, fileName }: ExportRequest) => {
       if (!doc?.features) return
       // The YAML source is the document itself, so it needs no kernel round-trip
       // and no geometry: serialise the in-memory doc exactly as `saveDoc` stores

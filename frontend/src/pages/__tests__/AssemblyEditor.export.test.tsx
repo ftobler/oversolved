@@ -225,4 +225,71 @@ describe('AssemblyEditor export (Stage 9)', () => {
     await waitFor(() => screen.getByText(/no visible parts/i))
     expect(h.exportAssemblyViaWorker).not.toHaveBeenCalled()
   })
+
+  // Choosing what to export: two instances of the same part, so the parts list
+  // has a duplicate name to disambiguate.
+  describe('parts selection', () => {
+    const ASSEMBLY_TWO_HANDLES = [
+      'kind: assembly',
+      'features:',
+      '  - id: f1',
+      '    kind: part_instance',
+      '    instance:',
+      '      handle: hA',
+      '      doc_id: part-1',
+      '      doc_rev: 1',
+      '      transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }',
+      '  - id: f2',
+      '    kind: part_instance',
+      '    instance:',
+      '      handle: hB',
+      '      doc_id: part-1',
+      '      doc_rev: 1',
+      '      transform: { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }',
+    ].join('\n')
+    const SECOND_TRANSFORM = { tx: 5, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
+
+    beforeEach(() => {
+      h.loadContent = ASSEMBLY_TWO_HANDLES
+      h.solveAssemblyViaWorker.mockResolvedValue({
+        payload: { transforms: { hA: SOLVED_TRANSFORM, hB: SECOND_TRANSFORM }, bodies: SOLVED_BODIES },
+      })
+    })
+
+    it('selected mode builds only the ticked parts into one file', async () => {
+      await openExportDialog()
+      fireEvent.click(screen.getByLabelText('Selected parts'))
+      // Untick the first copy, leaving the second (the tx=5 one).
+      fireEvent.click(screen.getAllByLabelText('Bracket')[0])
+      download()
+      await waitFor(() => expect(h.exportAssemblyViaWorker).toHaveBeenCalledTimes(1))
+
+      const [parts] = h.exportAssemblyViaWorker.mock.calls[0]
+      expect(parts).toHaveLength(1)
+      expect(parts[0].transform).toEqual(SECOND_TRANSFORM)
+      await waitFor(() => expect(h.downloadBlob).toHaveBeenCalledTimes(1))
+      expect(h.downloadBlob.mock.calls[0][1]).toBe('My_Assembly.step')
+    })
+
+    it('separate mode zips one file per ticked part', async () => {
+      await openExportDialog()
+      fireEvent.click(screen.getByLabelText('Each part separately'))
+      download()
+      await waitFor(() => expect(h.downloadBlob).toHaveBeenCalledTimes(1))
+
+      // One worker build per part, and a single zip download.
+      expect(h.exportAssemblyViaWorker).toHaveBeenCalledTimes(2)
+      const [blob, name] = h.downloadBlob.mock.calls[0]
+      expect(name).toBe('My_Assembly.zip')
+      expect(blob.type).toBe('application/zip')
+      expect(blob.size).toBeGreaterThan(0)
+    })
+
+    it('disables the download when every part is unticked', async () => {
+      await openExportDialog()
+      fireEvent.click(screen.getByLabelText('Selected parts'))
+      for (const box of screen.getAllByLabelText('Bracket')) fireEvent.click(box)
+      expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled()
+    })
+  })
 })

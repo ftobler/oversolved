@@ -95,9 +95,8 @@ describe('PartExportImport worker export', () => {
     const [blob, filename] = downloadBlob.mock.calls[0] as [Blob, string]
     expect(blob.type).toBe('model/stl')
     expect(filename.endsWith('.stl')).toBe(true)
-    // The slider default is what the worker is handed for STL; STEP always
-    // passes 0 because it carries no tessellation.
-    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ format: 'stl', tessellation: 0.5 })
+    // `normal` is the dialog default and reproduces the old export mesh.
+    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ format: 'stl', tessellation: 'normal' })
   })
 
   // A body entry point names the body to serialize; dropping it would silently

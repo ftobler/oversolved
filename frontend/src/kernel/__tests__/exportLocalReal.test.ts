@@ -125,8 +125,8 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   })
 
   it('STL-exports the whole assembly (both boxes meshed)', async () => {
-    const whole = await exportLocally(twoBodyDoc(), { format: 'stl', tessellation: 0.5 })
-    const single = await exportLocally(twoBodyDoc(), { format: 'stl', bodyId: 'body_ex1', tessellation: 0.5 })
+    const whole = await exportLocally(twoBodyDoc(), { format: 'stl', tessellation: 'normal' })
+    const single = await exportLocally(twoBodyDoc(), { format: 'stl', bodyId: 'body_ex1', tessellation: 'normal' })
     expect(whole).not.toBeNull()
     expect(single).not.toBeNull()
     const wholeTris = stlTriangleCount(whole!)
