@@ -2,7 +2,13 @@
 //! former `frontend/src/kernel/topology.ts` (`detectTopology`, deleted once
 //! this port reached parity). Pairwise intersections
 //! -> entity splitting -> planar half-edge DCEL -> face-cycle traversal -> CCW
-//! bounded surfaces, plus standalone closed loops and hole nesting.
+//! bounded surfaces, plus standalone closed loops and hole nesting. Which of
+//! those bounded faces are fillable is the even/odd rule over the closed
+//! carriers (`holes`): the interiors of nested shells alternate material and
+//! hole, so a washer sliced across yields its two ring halves rather than four
+//! regions, and the bore's halves are published as `hole_regions` instead of
+//! surfaces (an untouched shell keeps the standalone model, where its bore is
+//! its own selectable area).
 //!
 //! This port stops at GEOMETRY. It emits a structural `TopologyOut` tagging each
 //! edge/surface with its source entity id(s) and a deterministic index; it does
@@ -29,6 +35,7 @@ use super::{
 use crate::radians;
 
 mod build;
+mod holes;
 mod intersect;
 mod trace;
 
@@ -40,6 +47,7 @@ use build::{
     find_all_intersections, normalize_arc_spans, normalize_arcs_and_init_splits,
     seed_construction_crossings, tag_entities,
 };
+use holes::split_hole_faces;
 use intersect::classify;
 use trace::{
     build_edge_queries, build_standalone_ellipses, build_standalone_splines,
@@ -254,6 +262,12 @@ pub struct TopologyOut {
     pub vertices: Vec<(String, Vec2)>,
     pub edges: Vec<EdgeOut>,
     pub surfaces: Vec<SurfaceOut>,
+    /// The traced DCEL faces the even/odd rule reads as holes (their region is
+    /// the interior of a shell nested in another shell, see `holes`). They are
+    /// part of the planar subdivision but are not fillable, so they are not
+    /// surfaces; they are published for the oracle, which counts them in the
+    /// Euler identity and checks their cells stay empty.
+    pub hole_regions: Vec<SurfaceOut>,
 }
 
 // ─── small helpers ───
@@ -510,11 +524,22 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         &lobe_vertex,
     );
 
-    let mut surfaces = trace_face_cycles(&hes, &he_eid, &verts);
-    surfaces.extend(build_standalone_surfaces(&cls.circles, &splits));
-    surfaces.extend(build_standalone_ellipses(&cls.ellipses, &splits));
-    surfaces.extend(build_standalone_splines(&cls.splines, &splits, &mut verts));
-    surfaces = nest_surfaces(surfaces);
+    // The even/odd rule classifies every face, traced or standalone: an
+    // UNcut shell whose interior is inside a cut shell's bore is a hole too
+    // (the standalone island survives only where no cut shell surrounds it).
+    let mut faces = trace_face_cycles(&hes, &he_eid, &verts);
+    faces.extend(build_standalone_surfaces(&cls.circles, &splits));
+    faces.extend(build_standalone_ellipses(&cls.ellipses, &splits));
+    faces.extend(build_standalone_splines(&cls.splines, &splits, &mut verts));
+    let (mut surfaces, hole_regions) = split_hole_faces(
+        faces,
+        &he_eid,
+        &cls.circles,
+        &cls.ellipses,
+        &cls.splines,
+        &splits,
+    );
+    surfaces = nest_surfaces(surfaces, &hole_regions);
 
     let edges = build_edge_queries(&hes, &he_eid);
 
@@ -532,5 +557,6 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         vertices,
         edges,
         surfaces,
+        hole_regions,
     }
 }

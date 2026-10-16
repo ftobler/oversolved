@@ -38,7 +38,6 @@ import type { PartDoc, SketchFeature } from '@/types/cad'
 interface OracleViolation {
   class: string
   reason: string
-  known: string | null
   text: string
 }
 
@@ -174,7 +173,7 @@ describe.skipIf(!oc || !topology || !checkTopology)('sketch repros', () => {
       for (const sketch of sketches) {
         const geom = richGeomOf(sketch)
         const bytes = encodeGeom(geom)
-        const pending = decodeViolations(checkTopology!(bytes)).filter(v => v.known === null)
+        const pending = decodeViolations(checkTopology!(bytes))
         expect(
           pending,
           `${file} sketch ${sketch.id}: ${pending.map(v => v.text).join(' | ')}`,

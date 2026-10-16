@@ -313,10 +313,16 @@ pub(crate) fn edge_end(eg: &EdgeGeom) -> Option<Vec2> {
 
 pub(crate) fn half_edge_usage_violations(out: &TopologyOut) -> Vec<Violation> {
     // Each traced face side must be one half-edge of a split edge piece, each
-    // piece is used by at most two sides, and no oriented side twice.
+    // piece is used by at most two sides, and no oriented side twice. Hole
+    // regions are traced faces too, so their sides count like a surface's.
     let mut uses: BTreeMap<usize, Vec<(String, String, EdgeGeom)>> = BTreeMap::new();
     let mut violations = Vec::new();
-    for (si, s) in out.surfaces.iter().enumerate() {
+    for (si, s) in out
+        .surfaces
+        .iter()
+        .chain(out.hole_regions.iter())
+        .enumerate()
+    {
         for be in &s.boundary {
             let (Some(v0), Some(v1), Some(id)) = (&be.start_vertex, &be.end_vertex, &be.id) else {
                 continue; // a standalone loop's sides are not split pieces
@@ -374,39 +380,32 @@ pub(crate) fn half_edge_usage_violations(out: &TopologyOut) -> Vec<Violation> {
 }
 
 pub(crate) fn hole_wiring_violations(out: &TopologyOut) -> Vec<Violation> {
-    // Every hole loop is another face's boundary (every visible region is its
-    // own selectable area, so a hole is never a private subdivision).
+    // Every hole loop is another face's boundary. A face here is either a
+    // surface or a hole region: the even/odd rule's dropped faces still own
+    // their loops, and a material face that covers a hole region subtracts it.
     type SideKey = (Option<String>, Option<String>, Option<String>);
+    let key_of = |loop_edges: &[BoundaryEdge]| -> Vec<SideKey> {
+        loop_edges
+            .iter()
+            .map(|be| {
+                (
+                    be.id.clone(),
+                    be.start_vertex.clone(),
+                    be.end_vertex.clone(),
+                )
+            })
+            .collect()
+    };
     let boundary_keys: Vec<Vec<SideKey>> = out
         .surfaces
         .iter()
-        .map(|s| {
-            s.boundary
-                .iter()
-                .map(|be| {
-                    (
-                        be.id.clone(),
-                        be.start_vertex.clone(),
-                        be.end_vertex.clone(),
-                    )
-                })
-                .collect()
-        })
+        .chain(out.hole_regions.iter())
+        .map(|s| key_of(&s.boundary))
         .collect();
     let mut violations = Vec::new();
     for (si, s) in out.surfaces.iter().enumerate() {
         for (hi, hole) in s.holes.iter().enumerate() {
-            let key: Vec<SideKey> = hole
-                .iter()
-                .map(|be| {
-                    (
-                        be.id.clone(),
-                        be.start_vertex.clone(),
-                        be.end_vertex.clone(),
-                    )
-                })
-                .collect();
-            if !boundary_keys.contains(&key) {
+            if !boundary_keys.contains(&key_of(hole)) {
                 violations.push(Violation::new(
                     "structure",
                     format!("surface {si} hole {hi} is not any face's boundary loop"),
@@ -429,7 +428,7 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
     };
 
     let mut used: BTreeSet<String> = BTreeSet::new();
-    for s in &out.surfaces {
+    for s in out.surfaces.iter().chain(out.hole_regions.iter()) {
         for be in &s.boundary {
             if let Some(v) = &be.start_vertex {
                 used.insert(v.clone());
@@ -489,7 +488,10 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
 
     let vertex_count = used.len();
     let edge_count = edges.len() + self_loops;
-    let face_count = out.surfaces.len() + 1; // the outer face
+    // Every traced face, hole regions included, plus the outer face: the
+    // Euler identity is over the planar subdivision, not over the fillable
+    // subset.
+    let face_count = out.surfaces.len() + out.hole_regions.len() + 1;
 
     // Connected components over the used vertices plus one for every
     // vertex-free standalone loop (a circle or full ellipse: it bounds area
@@ -522,6 +524,7 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
     let vertex_free_faces = out
         .surfaces
         .iter()
+        .chain(out.hole_regions.iter())
         .filter(|s| {
             s.boundary
                 .iter()
@@ -532,6 +535,7 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
 
     let lhs = vertex_count as i64 - edge_count as i64 + face_count as i64;
     let rhs = 1 + component_count as i64;
+    let mut violations = Vec::new();
     if lhs != rhs {
         violations.push(Violation::new(
             "euler",

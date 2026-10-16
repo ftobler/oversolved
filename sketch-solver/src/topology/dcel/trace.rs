@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use super::super::curve_split::{bezier_point, ellipse_point_at};
-use super::super::profile_loops::{subdivide_loops, BoundaryEdge, EdgeGeom, Vec2};
+use super::super::profile_loops::{
+    loop_pts, point_in_polygon, subdivide_loops, BoundaryEdge, EdgeGeom, Vec2,
+};
 use super::super::{TOL_FACE_EXISTENCE_MIN_AREA, TOL_TOPOLOGY_MERGE as MERGE, TWO_PI};
 use super::build::{bend, depart, HalfEdge};
 use super::{dedup, EdgeOut, Split, SurfaceOut, TopoEntity, Verts};
@@ -391,9 +393,28 @@ pub(super) fn build_standalone_splines(
     })
 }
 
-/// Fold nested loops into the sketch-area model via `subdivide_loops`: every loop
-/// stays its own area, carrying the loops immediately nested inside it as holes.
-pub(super) fn nest_surfaces(surfaces: Vec<SurfaceOut>) -> Vec<SurfaceOut> {
+/// Fold nested loops into the sketch-area model via `subdivide_loops`: every
+/// loop stays its own area, carrying the loops immediately nested inside it as
+/// holes.
+///
+/// `hole_regions` then subtracts every face the even/odd rule refused to fill
+/// from whatever material face covers its region. On a sliced washer no
+/// material face covers the bore (the ring halves never surround it), so this
+/// is a no-op; on the arrangement where an UNsliced outer loop stayed its own
+/// island face while a shell inside it was sliced, the island's boundary
+/// encloses the bore, and without the subtraction its area would silently
+/// include a region the rule calls a hole.
+/// Samples per arc when the nesting pass reads a face's loop against a hole
+/// region's boundary. Finer than the face-classification sampling because a
+/// chord that cuts the corner here would decide coverage.
+const HOLE_COVER_SAMPLES: usize = 64;
+/// Samples per arc of a hole region's own boundary in the same test.
+const FACE_CHAIN_SAMPLES: usize = 16;
+
+pub(super) fn nest_surfaces(
+    surfaces: Vec<SurfaceOut>,
+    hole_regions: &[SurfaceOut],
+) -> Vec<SurfaceOut> {
     if surfaces.len() < 2 {
         return surfaces;
     }
@@ -405,9 +426,38 @@ pub(super) fn nest_surfaces(surfaces: Vec<SurfaceOut>) -> Vec<SurfaceOut> {
         if !hole_idxs.is_empty() {
             s.holes = hole_idxs.into_iter().map(|i| loops[i].clone()).collect();
         }
+        // The face's own loop, finely sampled: a face COVERS a hole region
+        // when the region's whole boundary lies inside it. A face merely
+        // adjacent to the region (the ring sharing the bore's arc) keeps the
+        // region outside its loop, because the inscribed polygon of a convex
+        // arc lies on the far side of it.
+        let own: Vec<Vec2> = loop_pts(&s.boundary, HOLE_COVER_SAMPLES);
+        for hole in hole_regions {
+            // The hole region is one traced piece of a shell's interior; every
+            // piece whose region this face covers must be subtracted, or the
+            // face's area swallows a hole.
+            if s.holes.iter().any(|h| same_loop(h, &hole.boundary)) {
+                continue;
+            }
+            let covered = loop_pts(&hole.boundary, FACE_CHAIN_SAMPLES)
+                .iter()
+                .all(|&p| point_in_polygon(p, &own));
+            if covered {
+                s.holes.push(hole.boundary.clone());
+            }
+        }
         out.push(s);
     }
     out
+}
+
+/// Two loops are the same face boundary: the same sides in the same order,
+/// compared by entity id and vertex pair (the traced faces carry both).
+fn same_loop(a: &[BoundaryEdge], b: &[BoundaryEdge]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b.iter()).all(|(x, y)| {
+            x.id == y.id && x.start_vertex == y.start_vertex && x.end_vertex == y.end_vertex
+        })
 }
 
 pub(super) fn build_edge_queries(hes: &[HalfEdge], he_eid: &[String]) -> Vec<EdgeOut> {

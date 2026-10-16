@@ -12,8 +12,9 @@
 //!    `scale/200`), mark a cell "on curve" when its rectangle comes within
 //!    `3 * TOL_TOPOLOGY_MERGE` of a curve, and flood fill the rest from the
 //!    border. A cell the fill does not reach must lie inside exactly one built
-//!    face (outer loop minus holes); a reached cell must lie inside none. This
-//!    judges the result without trusting the builder at all.
+//!    face (outer loop minus holes), unless the even/odd hole rule reads its
+//!    region as a hole, where it must lie in none; a reached cell must lie
+//!    inside none. This judges the result without trusting the builder at all.
 //! 2. Structure: every loop closes and is non-self-intersecting, every face
 //!    side lands on a registered vertex of its own geometry, every face side
 //!    names a real non-construction input entity, every hole loop is the
@@ -47,15 +48,6 @@
 //! the grid alignment can hide openings several cells wide at the corner of a
 //! contour.
 //!
-//! Known-limitation tags: a violation on an input containing a
-//! self-intersecting spline or a line crossing both rings of concentric
-//! circles carries `known:<backlog-slug>` and does not count as a failure. The
-//! two held-out limitations are accepted behaviour, not bugs to report; the
-//! classes they can plausibly corrupt are the geometry-consistency ones
-//! (coverage, structure, euler, half-edge), while the pipeline-level checks
-//! (determinism, order, stability) stay untagged because the held-out
-//! limitations do not excuse those.
-//!
 //! Only the JSON entry the `fuzz` build exposes is reachable without
 //! `cfg(test)`; the generator-facing helpers below are dead in that build.
 //! The coverage, structure and geometry machinery lives in the submodules;
@@ -66,15 +58,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::dcel::{detect_topology, InputEntity, TopologyOut};
 use super::profile_loops::Vec2;
-use super::{TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE};
+use super::TOL_TOPOLOGY_MERGE as MERGE;
 use crate::radians;
 
 mod coverage;
 mod geometry;
+mod holes;
 mod structure;
 
 use coverage::{coverage_violations, face_polys};
-use geometry::{bbox_of, sample_spline, seg_seg_intersect};
+use geometry::bbox_of;
 use structure::{check_loop, euler_violations, half_edge_usage_violations, hole_wiring_violations};
 
 pub(crate) use coverage::{CELLS_PER_DIAGONAL, FACE_POLY_MAX_PTS};
@@ -82,40 +75,23 @@ pub(crate) use geometry::{compare_face_multisets, face_summaries, FaceSummary};
 pub(crate) use geometry::{edge_polyline, loop_area_centroid, loop_polygon, point_in_polygon};
 pub(crate) use structure::edge_end;
 
-// ─── Violations and known-limitation slugs ───
+// ─── Violations ───
 
-/// Backlog slugs of the two held-out limitations (see feature/backlog.md).
-pub(crate) const KNOWN_SELF_INTERSECTING_SPLINE: &str = "slice-spline-self-intersect";
-pub(crate) const KNOWN_DONUT_SLICED_ACROSS_RINGS: &str = "donut-sliced-across-rings";
-
-/// One invariant violation. `known` is the backlog slug of a held-out
-/// limitation the input exhibits, and a tagged violation is not a failure.
+/// One invariant violation.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Violation {
     pub(crate) class: &'static str,
     pub(crate) reason: String,
-    pub(crate) known: Option<&'static str>,
 }
 
 impl Violation {
     pub(crate) fn new(class: &'static str, reason: String) -> Self {
-        Violation {
-            class,
-            reason,
-            known: None,
-        }
-    }
-
-    pub(crate) fn is_pending(&self) -> bool {
-        self.known.is_none()
+        Violation { class, reason }
     }
 
     /// The text the fuzz minimiser and the checked-in cases carry.
     pub(crate) fn render(&self) -> String {
-        match self.known {
-            Some(slug) => format!("{}: {} [known:{}]", self.class, self.reason, slug),
-            None => format!("{}: {}", self.class, self.reason),
-        }
+        format!("{}: {}", self.class, self.reason)
     }
 }
 
@@ -215,126 +191,6 @@ fn real_curves(input: &[(String, InputEntity)]) -> Vec<(String, Curve)> {
     out
 }
 
-/// The held-out limitation slugs the input exhibits. Self-intersecting spline
-/// first (its geometry poisons more checks), then the line across a washer.
-pub(crate) fn known_slugs(input: &[(String, InputEntity)]) -> Vec<&'static str> {
-    let curves = real_curves(input);
-    let mut slugs = Vec::new();
-    if curves.iter().any(|(_, c)| match c {
-        Curve::Spline { p0, c1, c2, p3 } => {
-            // Coarse sampling on purpose: a self-crossing is a feature-scale
-            // event, and a merge-tight flattening of a large spline is tens of
-            // thousands of points whose O(n^2) scan dominated the whole check.
-            let span = bbox_of(&[*p0, *c1, *c2, *p3])
-                .map(|b| (b[2] - b[0]).hypot(b[3] - b[1]))
-                .unwrap_or(0.0);
-            let s = sample_spline(*p0, *c1, *c2, *p3, chord_tol_for(span));
-            let mut pts = s.pts;
-            if pts.len() > 256 {
-                let step = pts.len().div_ceil(256);
-                pts = pts
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| i % step == 0)
-                    .map(|(_, p)| *p)
-                    .collect();
-            }
-            let n = pts.len();
-            let segs = if s.closed { n } else { n - 1 };
-            let mut crosses = false;
-            'outer: for i in 0..segs {
-                let a = pts[i];
-                let b = pts[(i + 1) % n];
-                for j in (i + 1)..segs {
-                    if (i + 1) % n == j || (j + 1) % n == i {
-                        continue;
-                    }
-                    let c = pts[j];
-                    let d = pts[(j + 1) % n];
-                    if seg_seg_intersect(a, b, c, d) {
-                        let shared = [a, b].iter().any(|p| {
-                            [c, d]
-                                .iter()
-                                .any(|q| (p[0] - q[0]).hypot(p[1] - q[1]) <= MERGE)
-                        });
-                        if !shared {
-                            crosses = true;
-                            break 'outer;
-                        }
-                    }
-                }
-            }
-            crosses
-        }
-        _ => false,
-    }) {
-        slugs.push(KNOWN_SELF_INTERSECTING_SPLINE);
-    }
-    if line_crosses_both_rings_of_a_washer(&curves) {
-        slugs.push(KNOWN_DONUT_SLICED_ACROSS_RINGS);
-    }
-    slugs
-}
-
-/// True when some line pierces both circles of a concentric pair (two proper
-/// crossings each): the "line across a washer" case.
-fn line_crosses_both_rings_of_a_washer(curves: &[(String, Curve)]) -> bool {
-    let circles: Vec<(Vec2, f64)> = curves
-        .iter()
-        .filter_map(|(_, c)| match *c {
-            Curve::Circle { c, r } if r > MERGE => Some((c, r)),
-            _ => None,
-        })
-        .collect();
-    let lines: Vec<(Vec2, Vec2)> = curves
-        .iter()
-        .filter_map(|(_, c)| match *c {
-            Curve::Line { p0, p1 } => Some((p0, p1)),
-            _ => None,
-        })
-        .collect();
-    for i in 0..circles.len() {
-        for j in (i + 1)..circles.len() {
-            let ((c1, r1), (c2, r2)) = (circles[i], circles[j]);
-            if (c1[0] - c2[0]).hypot(c1[1] - c2[1]) > MERGE || (r1 - r2).abs() <= MERGE {
-                continue;
-            }
-            for (p0, p1) in &lines {
-                if chord_count(*p0, *p1, c1, r1) == 2 && chord_count(*p0, *p1, c2, r2) == 2 {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-/// Number of proper crossings of the segment `p0..p1` with the circle.
-fn chord_count(p0: Vec2, p1: Vec2, c: Vec2, r: f64) -> usize {
-    let dx = p1[0] - p0[0];
-    let dy = p1[1] - p0[1];
-    let fx = p0[0] - c[0];
-    let fy = p0[1] - c[1];
-    let a = dx * dx + dy * dy;
-    if a <= 0.0 {
-        return 0;
-    }
-    let b = 2.0 * (fx * dx + fy * dy);
-    let cc = fx * fx + fy * fy - r * r;
-    let disc = b * b - 4.0 * a * cc;
-    if disc <= 0.0 {
-        return 0;
-    }
-    let sq = disc.sqrt();
-    let mut count = 0;
-    for t in [(-b - sq) / (2.0 * a), (-b + sq) / (2.0 * a)] {
-        if t > EPS && t < 1.0 - EPS {
-            count += 1;
-        }
-    }
-    count
-}
-
 /// A few points that bound a curve, for span measurements: the control points
 /// for a spline, the centre/radius box for a circle or arc, a conservative box
 /// for an ellipse, the endpoints for a line.
@@ -397,10 +253,25 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
     let faces = face_polys(out, chord_tol);
 
     if !curves.is_empty() {
-        violations.extend(coverage_violations(&curves, &faces, chord_tol));
+        let shells = holes::chains_of(&curves, chord_tol, &out.edges);
+        violations.extend(coverage_violations(&curves, &faces, chord_tol, &shells));
     }
 
     let verts: BTreeMap<String, Vec2> = out.vertices.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    for (hi, hole) in out.hole_regions.iter().enumerate() {
+        // A hole region is a traced face the even/odd rule refused to fill; it
+        // must be as well-formed as any surface (closure, live ids, geometry
+        // reaching its vertices), or the subdivision it stands for is broken.
+        check_loop(
+            &format!("hole region {hi}"),
+            &hole.boundary,
+            &verts,
+            &input_ids,
+            &construction_ids,
+            chord_tol,
+            &mut violations,
+        );
+    }
     for (si, s) in out.surfaces.iter().enumerate() {
         for (hi, hole) in s.holes.iter().enumerate() {
             check_loop(
@@ -427,17 +298,6 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
     violations.extend(half_edge_usage_violations(out));
     violations.extend(euler_violations(out));
 
-    // Tag the geometry-consistency classes when the input exhibits a held-out
-    // limitation; the pipeline-level classes never get tagged (see the module
-    // comment).
-    let slugs = known_slugs(input);
-    if !slugs.is_empty() {
-        for v in &mut violations {
-            if matches!(v.class, "coverage" | "structure" | "euler" | "half-edge") {
-                v.known = Some(slugs[0]);
-            }
-        }
-    }
     violations
 }
 
@@ -567,7 +427,7 @@ pub(crate) fn jitter_input(
         .collect()
 }
 
-/// JSON of the violations for the node boundary: `[{class, reason, known}]`.
+/// JSON of the violations for the node boundary: `[{class, reason, text}]`.
 #[cfg(feature = "fuzz")]
 pub(crate) fn violations_json(input: &[u8]) -> Result<Vec<u8>, String> {
     let geometry = super::codec::decode_input(input).map_err(|e| format!("{e:?}"))?;
@@ -578,7 +438,6 @@ pub(crate) fn violations_json(input: &[u8]) -> Result<Vec<u8>, String> {
             serde_json::json!({
                 "class": v.class,
                 "reason": v.reason,
-                "known": v.known,
                 "text": v.render(),
             })
         })

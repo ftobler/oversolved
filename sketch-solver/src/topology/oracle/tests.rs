@@ -404,12 +404,8 @@ fn json_fixture_inputs() -> Vec<(String, Vec<(String, InputEntity)>)> {
     out
 }
 
-fn pending(violations: &[Violation]) -> Vec<String> {
-    violations
-        .iter()
-        .filter(|v| v.is_pending())
-        .map(|v| v.render())
-        .collect()
+fn texts(violations: &[Violation]) -> Vec<String> {
+    violations.iter().map(|v| v.render()).collect()
 }
 
 #[test]
@@ -439,7 +435,7 @@ fn oracle_accepts_hand_fixtures() {
         .chain(json);
     for (name, geom) in fixtures {
         let out = detect_topology(&geom);
-        for v in pending(&check_topology(&geom, &out)) {
+        for v in texts(&check_topology(&geom, &out)) {
             failures.push(format!("{name}: {v}"));
         }
         for v in check_determinism(&geom) {
@@ -574,7 +570,7 @@ fn a_sub_cell_corner_gap_is_not_a_lost_area() {
             "scale {scale}: a sub-merge gap must close the contour"
         );
         assert!(
-            pending(&check_topology(&closed, &out)).is_empty(),
+            texts(&check_topology(&closed, &out)).is_empty(),
             "scale {scale}: the closed square must pass"
         );
         // At MERGE (the builder's merge is strict `<`) and at 2x MERGE (the
@@ -590,7 +586,7 @@ fn a_sub_cell_corner_gap_is_not_a_lost_area() {
                 out.surfaces.is_empty(),
                 "scale {scale} gap {gap:e}: a gap at or over MERGE leaves the chain open"
             );
-            let v = pending(&check_topology(&geom, &out));
+            let v = texts(&check_topology(&geom, &out));
             assert!(
                 v.is_empty(),
                 "scale {scale} gap {gap:e}: false lost area: {v:?}"
@@ -613,7 +609,7 @@ fn a_sub_cell_channel_between_two_arcs_is_not_a_lost_area() {
     ];
     let out = detect_topology(&geom);
     assert!(out.surfaces.is_empty(), "the open arcs bound no face");
-    let v = pending(&check_topology(&geom, &out));
+    let v = texts(&check_topology(&geom, &out));
     assert!(v.is_empty(), "false lost area: {v:?}");
 }
 
@@ -648,7 +644,7 @@ fn a_t_junction_opening_closes_only_inside_the_intersector_window() {
             1,
             "gap {gap:e}: the builder fuses the T junctions"
         );
-        let v = pending(&check_topology(&geom, &out));
+        let v = texts(&check_topology(&geom, &out));
         assert!(v.is_empty(), "gap {gap:e}: false report: {v:?}");
     }
     // The seal must keep judging, not merely stay silent: with the face
@@ -656,7 +652,7 @@ fn a_t_junction_opening_closes_only_inside_the_intersector_window() {
     let geom = t_junction_pocket(window / 4.0);
     let mut out = detect_topology(&geom);
     out.surfaces.clear();
-    let v = pending(&check_topology(&geom, &out));
+    let v = texts(&check_topology(&geom, &out));
     assert!(
         v.iter().any(|x| x.contains("coverage (lost area)")),
         "a dropped face behind a sealed T junction must report: {v:?}"
@@ -675,7 +671,7 @@ fn a_t_junction_opening_closes_only_inside_the_intersector_window() {
             out.surfaces.is_empty(),
             "gap {gap:e}: the builder leaves the T junctions open"
         );
-        let v = pending(&check_topology(&geom, &out));
+        let v = texts(&check_topology(&geom, &out));
         assert!(v.is_empty(), "gap {gap:e}: false lost area: {v:?}");
     }
     // At and above MERGE the pocket is still open and still not reported:
@@ -687,7 +683,7 @@ fn a_t_junction_opening_closes_only_inside_the_intersector_window() {
             out.surfaces.is_empty(),
             "gap {gap:e}: open at MERGE and beyond"
         );
-        let v = pending(&check_topology(&geom, &out));
+        let v = texts(&check_topology(&geom, &out));
         assert!(v.is_empty(), "gap {gap:e}: false lost area: {v:?}");
     }
 }
@@ -712,7 +708,7 @@ fn a_spline_end_on_a_line_interior_does_not_fuse() {
             out.surfaces.is_empty(),
             "gap {gap:e}: the spline end does not fuse"
         );
-        let v = pending(&check_topology(&geom, &out));
+        let v = texts(&check_topology(&geom, &out));
         assert!(v.is_empty(), "gap {gap:e}: false lost area: {v:?}");
     }
 }
@@ -729,7 +725,7 @@ fn the_verified_lost_areas_still_report() {
         let bytes = std::fs::read(&path)
             .unwrap_or_else(|e| panic!("{}: {e} (run the fuzz harvester?)", path.display()));
         let geom = codec::decode_input(&bytes).unwrap_or_else(|e| panic!("{name}: {e:?}"));
-        let v = pending(&check_input(&geom));
+        let v = texts(&check_input(&geom));
         assert!(
             v.iter().any(|x| x.contains("coverage (lost area)")),
             "{name}: the verified lost area is gone: {v:?}"
@@ -745,7 +741,7 @@ fn oracle_rejects_a_mutilated_topology() {
     out.surfaces.clear();
     let v = check_topology(&geom, &out);
     assert!(
-        v.iter().any(|x| x.class == "coverage" && x.is_pending()),
+        v.iter().any(|x| x.class == "coverage"),
         "dropping the only face must read as a lost area: {v:?}"
     );
 
@@ -754,7 +750,7 @@ fn oracle_rejects_a_mutilated_topology() {
     out.surfaces[0].boundary.reverse();
     let v = check_topology(&geom, &out);
     assert!(
-        v.iter().any(|x| x.class == "structure" && x.is_pending()),
+        v.iter().any(|x| x.class == "structure"),
         "reversing a cycle must read as a structural break: {v:?}"
     );
 
@@ -775,53 +771,47 @@ fn oracle_rejects_a_mutilated_topology() {
     out.surfaces[inner].holes.push(outer_loop);
     let v = check_topology(&geom, &out);
     assert!(
-        v.iter().any(|x| x.class == "coverage" && x.is_pending()),
+        v.iter().any(|x| x.class == "coverage"),
         "a misplaced hole must read as a coverage break: {v:?}"
     );
 }
 
 #[test]
-fn a_self_crossing_spline_is_tagged_known() {
-    // The held-out limitation: a cubic whose loop crosses itself. The
-    // detector must see it, and the geometry-consistency classes it can
-    // poison must carry the slug instead of counting as failures.
-    let geom = vec![(
-        "s0".into(),
-        spline_open([0.0, 0.0], [4.0, 3.0], [-4.0, 3.0], [1.0, 0.0]),
-    )];
-    assert_eq!(known_slugs(&geom), vec![KNOWN_SELF_INTERSECTING_SPLINE]);
-    for v in check_input(&geom) {
-        assert_eq!(v.known, Some(KNOWN_SELF_INTERSECTING_SPLINE), "{v:?}");
-    }
-}
-
-#[test]
 fn a_self_crossing_spline_keeps_the_oracle_clean() {
     // The lobe the self-crossing pass splits out is real geometry: the oracle
-    // judges it like any other face, and nothing about it reads as a
-    // violation (the tag on self-intersecting inputs only exists because the
-    // crossing USED to be ignored).
+    // judges it like any other face. Before the crossing was split the curve
+    // enclosed nothing, which is why this input used to carry a known-
+    // limitation tag instead of an assertion.
     let geom = vec![(
         "s0".into(),
         spline_open([0.0, 0.0], [4.0, 3.0], [-4.0, 3.0], [1.0, 0.0]),
     )];
     let out = detect_topology(&geom);
     assert_eq!(out.surfaces.len(), 1, "the lobe is the one face");
-    let violations = pending(&check_topology(&geom, &out));
+    let violations = texts(&check_topology(&geom, &out));
     assert!(violations.is_empty(), "{violations:?}");
 }
 
 #[test]
-fn a_line_across_a_washer_is_tagged_known() {
+fn a_line_across_a_washer_keeps_two_c_shapes() {
+    // The even/odd rule end to end: slicing a washer across must leave the two
+    // ring halves as the fillable areas and read the bore's halves as holes.
+    // Before the rule, connected geometry made each half its own loop and the
+    // DCEL emitted four fillable regions (this input used to carry a
+    // known-limitation tag).
     let geom = vec![
         ("outer".into(), circle([0.0, 0.0], 2.0)),
         ("inner".into(), circle([0.0, 0.0], 1.0)),
         ("slice".into(), line([-3.0, 0.0], [3.0, 0.0])),
     ];
-    assert_eq!(known_slugs(&geom), vec![KNOWN_DONUT_SLICED_ACROSS_RINGS]);
-    for v in check_input(&geom) {
-        assert_eq!(v.known, Some(KNOWN_DONUT_SLICED_ACROSS_RINGS), "{v:?}");
+    let out = detect_topology(&geom);
+    assert_eq!(out.surfaces.len(), 2, "the two ring halves");
+    assert_eq!(out.hole_regions.len(), 2, "the two bore halves");
+    for s in &out.surfaces {
+        assert!(s.holes.is_empty(), "a ring half carries no hole of its own");
     }
+    let violations = texts(&check_topology(&geom, &out));
+    assert!(violations.is_empty(), "{violations:?}");
 }
 
 #[test]

@@ -8,7 +8,10 @@
 //! geometry (pairwise intersection, vertex merge, half-edge DCEL, face cycles,
 //! standalone loops, hole nesting) and returns a STRUCTURAL topology
 //! (`TopologyOut`) tagging every edge/surface with its source entity id plus a
-//! deterministic index. It emits NO ancestry query strings; the TS layer
+//! deterministic index. Which bounded faces are FILLABLE is the even/odd rule
+//! over the closed carriers (`dcel::holes`): a washer sliced across by a line
+//! yields its two ring halves, not four regions, while an untouched shell keeps
+//! its standalone island. It emits NO ancestry query strings; the TS layer
 //! decorates the structural output with queries and classifiers in
 //! `frontend/src/kernel/topologyDecorate.ts` (driven by `query.ts`). The loop
 //! sampling helpers here mirror their surviving TS namesakes in

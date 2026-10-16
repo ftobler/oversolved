@@ -244,11 +244,13 @@ pub fn loop_signed_area(loop_edges: &[BoundaryEdge]) -> f64 {
     acc / 2.0
 }
 
-/// Ray-casting point-in-polygon test against a 2D loop.
-pub fn point_in_loop(pt: Vec2, loop_edges: &[BoundaryEdge]) -> bool {
+/// Ray-casting point-in-polygon test against explicit polygon points.
+/// `point_in_loop` samples its edges at one point each, which is too coarse
+/// for a containment question between curves that nearly touch; callers that
+/// need resolution sample first and reach this directly.
+pub fn point_in_polygon(pt: Vec2, pts: &[Vec2]) -> bool {
     let x = pt[0];
     let y = pt[1];
-    let pts = loop_pts(loop_edges, 1);
     let n = pts.len();
     if n == 0 {
         return false;
@@ -266,6 +268,11 @@ pub fn point_in_loop(pt: Vec2, loop_edges: &[BoundaryEdge]) -> bool {
         j = i;
     }
     inside
+}
+
+/// Ray-casting point-in-polygon test against a 2D loop.
+pub fn point_in_loop(pt: Vec2, loop_edges: &[BoundaryEdge]) -> bool {
+    point_in_polygon(pt, &loop_pts(loop_edges, 1))
 }
 
 /// Area-weighted centroid of a 2D loop polygon.

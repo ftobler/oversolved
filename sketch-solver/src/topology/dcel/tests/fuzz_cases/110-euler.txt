@@ -1,1 +1,1 @@
-euler: split edge piece 0 (entity m4_7) has an endpoint with no vertex
+euler: V - E + F = 10 - 11 + 2 = 1, expected 1 + 1 = 2

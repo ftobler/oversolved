@@ -167,7 +167,7 @@ fn fuzz_cases_regress() {
         let class = stem.split_once('-').map(|(_, c)| c).unwrap_or("coverage");
         let pending: Vec<String> = check_generated(&entities, seed)
             .iter()
-            .filter(|v| v.is_pending() && v.class == class)
+            .filter(|v| v.class == class)
             .map(|v| v.render())
             .collect();
         let recorded = std::fs::read_to_string(path.with_extension("txt")).unwrap_or_default();
@@ -201,7 +201,7 @@ fn fuzz_cases_regress() {
     eprintln!("fuzz_cases_regress: {checked} case(s) checked");
 }
 
-/// One seed's known pending failure classes: the PR range's contract. The
+/// One seed's known failure classes: the PR range's contract. The
 /// sweep fails when a seed fails with a class outside its entry, when a
 /// catalogued seed goes clean (delete its entry and cases), and when a clean
 /// seed starts failing. `classes` is sorted and deduplicated.
@@ -229,7 +229,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 8,
-        classes: &["coverage", "stability"],
+        classes: &["stability"],
     },
     KnownSeed {
         seed: 9,
@@ -277,7 +277,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 32,
-        classes: &["euler", "stability", "structure"],
+        classes: &["coverage", "euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 33,
@@ -317,6 +317,10 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 46,
+        classes: &["stability"],
+    },
+    KnownSeed {
+        seed: 48,
         classes: &["stability"],
     },
     KnownSeed {
@@ -400,6 +404,10 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability"],
     },
     KnownSeed {
+        seed: 84,
+        classes: &["coverage", "stability"],
+    },
+    KnownSeed {
         seed: 85,
         classes: &["stability"],
     },
@@ -428,10 +436,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability"],
     },
     KnownSeed {
-        seed: 95,
-        classes: &["stability"],
-    },
-    KnownSeed {
         seed: 96,
         classes: &["coverage", "stability"],
     },
@@ -445,7 +449,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 99,
-        classes: &["coverage", "euler", "stability"],
+        classes: &["coverage", "euler"],
     },
     KnownSeed {
         seed: 100,
@@ -504,11 +508,19 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability"],
     },
     KnownSeed {
+        seed: 116,
+        classes: &["coverage", "euler", "structure"],
+    },
+    KnownSeed {
         seed: 117,
         classes: &["stability"],
     },
     KnownSeed {
         seed: 118,
+        classes: &["stability"],
+    },
+    KnownSeed {
+        seed: 119,
         classes: &["stability"],
     },
     KnownSeed {
@@ -522,6 +534,10 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     KnownSeed {
         seed: 123,
         classes: &["coverage", "euler"],
+    },
+    KnownSeed {
+        seed: 125,
+        classes: &["stability"],
     },
     KnownSeed {
         seed: 126,
@@ -577,7 +593,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 141,
-        classes: &["coverage", "euler", "stability", "structure"],
+        classes: &["coverage", "euler", "structure"],
     },
     KnownSeed {
         seed: 144,
@@ -637,7 +653,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 163,
-        classes: &["euler", "stability", "structure"],
+        classes: &["coverage", "euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 164,
@@ -649,7 +665,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 167,
-        classes: &["euler", "stability", "structure"],
+        classes: &["coverage", "euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 168,
@@ -740,12 +756,20 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["coverage", "euler", "structure"],
     },
     KnownSeed {
+        seed: 204,
+        classes: &["stability"],
+    },
+    KnownSeed {
         seed: 205,
         classes: &["euler", "stability"],
     },
     KnownSeed {
         seed: 206,
         classes: &["stability"],
+    },
+    KnownSeed {
+        seed: 207,
+        classes: &["coverage", "euler", "order", "stability", "structure"],
     },
     KnownSeed {
         seed: 208,
@@ -881,11 +905,11 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 252,
-        classes: &["coverage", "euler", "order", "stability"],
+        classes: &["coverage", "euler", "order"],
     },
     KnownSeed {
         seed: 253,
-        classes: &["coverage", "euler", "stability"],
+        classes: &["coverage", "euler"],
     },
     KnownSeed {
         seed: 254,
@@ -973,7 +997,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 283,
-        classes: &["stability"],
+        classes: &["coverage", "euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 285,
@@ -989,10 +1013,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 288,
-        classes: &["stability"],
-    },
-    KnownSeed {
-        seed: 289,
         classes: &["stability"],
     },
     KnownSeed {
@@ -1021,7 +1041,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 297,
-        classes: &["stability"],
+        classes: &["coverage", "euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 298,
@@ -1040,14 +1060,10 @@ fn catalogue_for(seed: u32) -> Option<&'static [&'static str]> {
         .map(|k| k.classes)
 }
 
-/// The pending classes of one run, sorted and deduplicated: the catalogue's
-/// key order.
+/// The classes of one run, sorted and deduplicated: the catalogue's key
+/// order.
 fn pending_classes(violations: &[Violation]) -> Vec<&'static str> {
-    let mut classes: Vec<&'static str> = violations
-        .iter()
-        .filter(|v| v.is_pending())
-        .map(|v| v.class)
-        .collect();
+    let mut classes: Vec<&'static str> = violations.iter().map(|v| v.class).collect();
     classes.sort_unstable();
     classes.dedup();
     classes
@@ -1109,7 +1125,7 @@ fn sweep(from: u32, to: u32, write: bool) -> SweepResult {
                 report.push_str(&format!(
                     "\n  catalogue says {expected:?}, the sweep found {classes:?}"
                 ));
-                for v in violations.iter().filter(|v| v.is_pending()) {
+                for v in &violations {
                     report.push_str(&format!("\n  {}", v.render()));
                 }
             }
@@ -1129,7 +1145,7 @@ fn sweep(from: u32, to: u32, write: bool) -> SweepResult {
                         "\n  new catalogue entry: KnownSeed {{ seed: {seed}, classes: &{classes:?} }},"
                     ));
                 } else {
-                    for v in violations.iter().filter(|v| v.is_pending()) {
+                    for v in &violations {
                         report.push_str(&format!("\n  {}", v.render()));
                     }
                 }

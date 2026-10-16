@@ -1,1 +1,1 @@
-coverage: coverage (overlap): 0 cells read as bounded but sit in no face and 1749 sit in more than one, first at (1.635750, -2.460889) with 2
+coverage: coverage (hole region filled): 2172 cells read as holes sit inside a face, first at (-0.570306, -2.368970)

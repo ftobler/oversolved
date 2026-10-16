@@ -12,6 +12,7 @@ use super::geometry::{
     bbox_of, loop_polygon, point_in_polygon, sample_curve, seg_rect_dist, seg_seg_intersect,
     Sampled,
 };
+use super::holes::hole_expected;
 use super::{Curve, Violation};
 
 /// Cells along the bbox diagonal: the plan's `scale/200`.
@@ -194,7 +195,7 @@ pub(crate) struct FacePoly {
 }
 
 impl FacePoly {
-    fn contains(&self, p: Vec2) -> bool {
+    pub(crate) fn contains(&self, p: Vec2) -> bool {
         if p[0] < self.bbox[0] || p[0] > self.bbox[2] || p[1] < self.bbox[1] || p[1] > self.bbox[3]
         {
             return false;
@@ -230,6 +231,7 @@ pub(crate) fn coverage_violations(
     curves: &[(String, Curve)],
     faces: &[FacePoly],
     chord_tol: f64,
+    shells: &[super::holes::Chain],
 ) -> Vec<Violation> {
     let mut all: Vec<Vec2> = Vec::new();
     let sampled: Vec<Sampled> = curves
@@ -346,6 +348,13 @@ pub(crate) fn coverage_violations(
     let mut unreached_example: Option<(Vec2, usize)> = None;
     let mut reached_inside = 0usize;
     let mut reached_example: Option<Vec2> = None;
+    // Cells whose region the oracle's own even/odd rule reads as a hole but
+    // which the builder filled anyway: the one way a hole region can be wrong
+    // in the filling direction. (The other direction, a material region left
+    // unfilled, lands in the lost-area count, because the oracle expects a
+    // face there.)
+    let mut hole_filled = 0usize;
+    let mut hole_example: Option<Vec2> = None;
     for j in 0..grid.ny {
         for i in 0..grid.nx {
             let k = j * grid.nx + i;
@@ -372,6 +381,13 @@ pub(crate) fn coverage_violations(
                 if inside > 0 {
                     reached_inside += 1;
                     reached_example.get_or_insert(p);
+                }
+                continue;
+            }
+            if hole_expected(p, shells) {
+                if inside > 0 {
+                    hole_filled += 1;
+                    hole_example.get_or_insert(p);
                 }
             } else if inside == 0 {
                 unreached_missing += 1;
@@ -400,6 +416,16 @@ pub(crate) fn coverage_violations(
         ));
     } else if unreached_missing > 0 || unreached_multi > 0 {
         unreachable!("counts only accumulate with an example");
+    }
+    if let Some(p) = hole_example {
+        out.push(Violation::new(
+            "coverage",
+            format!(
+                "coverage (hole region filled): {hole_filled} cells read as holes sit inside a \
+                 face, first at ({:.6}, {:.6})",
+                p[0], p[1]
+            ),
+        ));
     }
     if let Some(p) = reached_example {
         out.push(Violation::new(

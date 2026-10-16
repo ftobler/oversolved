@@ -1,1 +1,0 @@
-euler: V - E + F = 7 - 11 + 5 = 1, expected 1 + 1 = 2

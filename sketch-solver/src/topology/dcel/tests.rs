@@ -946,6 +946,64 @@ fn a_self_crossing_spline_closes_its_lobe() {
 }
 
 #[test]
+fn a_sliced_washer_keeps_the_c_shapes_and_drops_the_bore_halves() {
+    // The even/odd rule end to end: a washer sliced across by a line used to
+    // emit four bounded regions (two ring halves and two bore halves), because
+    // each face's own loop is contained in no other loop. The rule is stated
+    // on the closed carriers, so the outer and inner circles are still two
+    // shells whatever the line did to their loops: the ring halves are the
+    // fillable areas and the bore halves are holes.
+    let geom = vec![
+        ("outer".into(), circle([0.0, 0.0], 2.0)),
+        ("inner".into(), circle([0.0, 0.0], 1.0)),
+        ("slice".into(), line([-3.0, 0.0], [3.0, 0.0])),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2, "the two ring halves are the areas");
+    assert_eq!(t.hole_regions.len(), 2, "the bore halves are holes");
+    for s in &t.surfaces {
+        assert!(s.holes.is_empty(), "the ring halves carry no holes");
+    }
+    // The two C-shapes together are the annulus: pi * (4 - 1). Exact Green's
+    // quadrature, not the coarse polygon area: a half-annulus sampled at one
+    // interior point per arc under-reports by a third.
+    let area: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+        .sum();
+    let annulus = std::f64::consts::PI * 3.0;
+    assert!(
+        (area - annulus).abs() < 1e-3,
+        "the C-shapes' area {area} is not the annulus {annulus}"
+    );
+    // Both C-shapes carry a slice line side and an arc of each circle.
+    for s in &t.surfaces {
+        let ids = &s.face_entity_ids;
+        for want in ["outer", "inner", "slice"] {
+            assert!(
+                ids.iter().any(|id| id == want),
+                "a C-shape is bounded by {want}: {ids:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_unsliced_washer_keeps_its_island() {
+    // The rule's exemption: a shell the arrangement never cut keeps the sketch
+    // model's standalone loop, so an unsliced washer is still two areas (the
+    // ring with the bore as its hole, plus the bore as its own island).
+    let geom = vec![
+        ("outer".into(), circle([0.0, 0.0], 2.0)),
+        ("inner".into(), circle([0.0, 0.0], 1.0)),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2);
+    assert_eq!(t.hole_regions.len(), 0, "nothing is cut, nothing is a hole");
+}
+
+#[test]
 fn quarter_arc_split_by_a_bezier_makes_two_faces() {
     // The arc half: a quarter disk (arc plus its two radii) cleaved by a
     // straight cubic that enters on one radius and leaves through the arc,

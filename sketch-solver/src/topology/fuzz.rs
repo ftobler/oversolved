@@ -927,24 +927,18 @@ pub(crate) fn minimise_seed(
     seed: u32,
     violations: &[Violation],
 ) -> Vec<MinimisedCase> {
-    let mut classes: Vec<&'static str> = violations
-        .iter()
-        .filter(|v| v.is_pending())
-        .map(|v| v.class)
-        .collect();
+    let mut classes: Vec<&'static str> = violations.iter().map(|v| v.class).collect();
     classes.sort_unstable();
     classes.dedup();
     let mut out = Vec::new();
     for class in classes {
         let fails = |cand: &[(String, InputEntity)]| -> bool {
-            check_generated(cand, seed)
-                .iter()
-                .any(|v| v.is_pending() && v.class == class)
+            check_generated(cand, seed).iter().any(|v| v.class == class)
         };
         let minimal = minimise(&generated.entities, &generated.motif_of, &fails);
         let texts: Vec<String> = check_generated(&minimal, seed)
             .iter()
-            .filter(|v| v.is_pending() && v.class == class)
+            .filter(|v| v.class == class)
             .map(|v| v.render())
             .collect();
         out.push((class.to_string(), minimal, texts));
