@@ -11,6 +11,7 @@
  */
 
 import { createRequire } from 'node:module'
+import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -20,11 +21,21 @@ export const PKG_MATE = { dir: 'mate-solver', stem: 'mate_solver' } as const
 
 export type PkgNodeTarget = typeof PKG_SKETCH | typeof PKG_MATE
 
+function pkgNodePath(pkg: PkgNodeTarget): string {
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  return path.resolve(here, `../../../${pkg.dir}/pkg-node/${pkg.stem}.js`)
+}
+
+/** Whether the wasm-pack package's JS entry exists. A present package can
+ *  still lack an optional export (e.g. the fuzz-gated oracle); a caller that
+ *  needs one uses this to tell "not built yet" from "built without it". */
+export function pkgNodeExists(pkg: PkgNodeTarget = PKG_SKETCH): boolean {
+  return existsSync(pkgNodePath(pkg))
+}
+
 export function loadPkgNodeExport<T>(name: string, pkg: PkgNodeTarget = PKG_SKETCH): T | null {
   const require = createRequire(import.meta.url)
-  const here = path.dirname(fileURLToPath(import.meta.url))
-  const pkgPath = path.resolve(here, `../../../${pkg.dir}/pkg-node/${pkg.stem}.js`)
-  return loadExportOrNull<T>(name, pkgPath, require)
+  return loadExportOrNull<T>(name, pkgNodePath(pkg), require)
 }
 
 /** The require + classification seam, split out so the absent-vs-broken ruling
