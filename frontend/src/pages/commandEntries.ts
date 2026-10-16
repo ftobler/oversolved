@@ -433,6 +433,7 @@ const addHoleSpec = addFeatureSpec('add_hole', 'Add hole', 'hole')
 const addTransformSpec = addFeatureSpec('add_transform', 'Add transform', 'transform')
 const addShellSpec = addFeatureSpec('add_shell', 'Add shell', 'shell')
 const addMoveFaceSpec = addFeatureSpec('add_move_face', 'Add move face', 'move_face')
+const addDeleteFaceSpec = addFeatureSpec('add_delete_face', 'Add delete face', 'delete_face')
 
 /**
  * The sketch/part editor's full command table. Static data: every body reads
@@ -463,4 +464,5 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   addTransformSpec,
   addShellSpec,
   addMoveFaceSpec,
+  addDeleteFaceSpec,
 ]

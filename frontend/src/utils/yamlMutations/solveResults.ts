@@ -27,6 +27,7 @@ function featureIdsTouched(m: Mutation): string[] {
     case 'remove_move_face_ref':
     case 'remove_boolean_tool':
     case 'remove_transform_body':
+    case 'remove_delete_face_ref':
       return [m.featureId]
     default:
       return []

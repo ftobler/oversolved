@@ -29,6 +29,7 @@ import { solveBoolean } from './features/boolean'
 import { solveFillet, solveChamfer } from './features/filletChamfer'
 import { solveShell } from './features/shell'
 import { solveMoveFace } from './features/moveFace'
+import { solveDeleteFace } from './features/deleteFace'
 import { solveArray, solveCircularArray } from './features/array'
 import { solveTransform, solveMirror } from './features/transformMirror'
 import { solveDeleteBody } from './features/deleteBody'
@@ -86,6 +87,7 @@ const KIND_SOLVER: SolverTable = {
   chamfer: solveChamfer,
   shell: solveShell,
   move_face: solveMoveFace,
+  delete_face: solveDeleteFace,
   array: solveArray,
   circular_array: solveCircularArray,
   transform: solveTransform,

@@ -406,6 +406,34 @@ export function applyRemoveMoveFaceRef(doc: PartDoc, featureId: string, index: n
   removeListAt(doc, featureId, 'move_face', 'faces', index, 'applyRemoveMoveFaceRef')
 }
 
+// ─── Delete Face ───
+
+// `faces` seeds from the selection, as `add_delete_body` takes `bodies`: the
+// Delete key folds a whole face selection into one feature.
+export function applyAddDeleteFace(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  faces: string[] = [],
+): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'delete_face',
+    label: label ?? 'Delete Face',
+    delete_face: { faces: [...faces] },
+  })
+}
+
+// Picking is a toggle, like the shell's face list: re-picking a listed face
+// drops it again.
+export function applyAddDeleteFaceRef(doc: PartDoc, featureId: string, faceQuery: string): void {
+  toggleListValue(doc, featureId, 'delete_face', 'faces', faceQuery, 'applyAddDeleteFaceRef')
+}
+
+export function applyRemoveDeleteFaceRef(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'delete_face', 'faces', index, 'applyRemoveDeleteFaceRef')
+}
+
 // ─── Boolean ───
 
 export function applyAddBoolean(doc: PartDoc, featureId: string, label?: string): void {

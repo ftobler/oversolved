@@ -117,6 +117,22 @@ export const CHAMFER_SCHEMA: FeatureEditorSchema = {
 const FACE_QUERY = /:(flatface|cylinderface|coneface|sphereface|torusface|face)$/
 const isFaceQuery = (id: string): boolean => id.startsWith('?') && FACE_QUERY.test(id)
 
+export const DELETE_FACE_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_delete_face',
+  subKey: 'delete_face',
+  defaults: { faces: [] },
+  fields: [
+    // Any face is accepted at the chip: the kernel refuses what it cannot heal
+    // (a non-analytic neighbour, a pick that cannot close the gap) and reports it
+    // in failed_faces. Edges, vertices and bodies are refused here by the type
+    // restriction, as the shell's face field does.
+    { type: 'pick', key: 'faces', label: 'Faces', multi: true,
+      addMutationType: 'add_delete_face_ref', addValueKey: 'faceQuery',
+      removeMutationType: 'remove_delete_face_ref',
+      validatePick: isFaceQuery },
+  ],
+}
+
 export const SHELL_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_shell',
   subKey: 'shell',
@@ -386,6 +402,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   chamfer: CHAMFER_SCHEMA,
   shell: SHELL_SCHEMA,
   move_face: MOVE_FACE_SCHEMA,
+  delete_face: DELETE_FACE_SCHEMA,
   boolean: BOOLEAN_SCHEMA,
   hole: HOLE_SCHEMA,
   transform: TRANSFORM_SCHEMA,

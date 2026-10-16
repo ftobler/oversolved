@@ -64,6 +64,13 @@ export type MoveFaceFeatureDef = {
   distance: NumberOrExpr
 }
 
+// Removed faces and healed by extending the neighbours' surfaces. No parameters:
+// the picked set IS the whole spec. A connected group of picks (faces sharing an
+// edge) is removed or refused as a unit, so a partial pick heals what it can.
+export type DeleteFaceFeatureDef = {
+  faces: string[]
+}
+
 export type BooleanFeatureDef = {
   operation: 'union' | 'subtract' | 'intersect'
   target: string
@@ -445,6 +452,11 @@ export type MoveFaceFeature = FeatureBase & {
   move_face: MoveFaceFeatureDef
 }
 
+export type DeleteFaceFeature = FeatureBase & {
+  kind: 'delete_face'
+  delete_face: DeleteFaceFeatureDef
+}
+
 export type BooleanFeature = FeatureBase & {
   kind: 'boolean'
   boolean: BooleanFeatureDef
@@ -510,6 +522,7 @@ export type PartFeature =
   | ChamferFeature
   | ShellFeature
   | MoveFaceFeature
+  | DeleteFaceFeature
   | BooleanFeature
   | ArrayFeature
   | CircularArrayFeature
@@ -1105,6 +1118,9 @@ export type Mutation =
   | { type: 'set_move_face_field'; featureId: string; field: keyof MoveFaceFeatureDef; value: unknown }
   | { type: 'add_move_face_ref'; featureId: string; faceQuery: string }
   | { type: 'remove_move_face_ref'; featureId: string; index: number }
+  | { type: 'add_delete_face'; featureId: string; label?: string; faces?: string[] }
+  | { type: 'add_delete_face_ref'; featureId: string; faceQuery: string }
+  | { type: 'remove_delete_face_ref'; featureId: string; index: number }
   | { type: 'add_boolean'; featureId: string; label?: string }
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }

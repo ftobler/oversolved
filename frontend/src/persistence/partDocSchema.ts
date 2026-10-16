@@ -167,6 +167,16 @@ const FEATURE_SCHEMA_BY_KIND = {
       faces: REF_LIST, thickness: NUMBER_OR_EXPR, direction: { enum: ['inward', 'outward'] }, source_body: REF,
     },
   }),
+  move_face: feature('move_face', {
+    key: 'move_face',
+    required: ['faces', 'distance'],
+    properties: { faces: REF_LIST, distance: NUMBER_OR_EXPR },
+  }),
+  delete_face: feature('delete_face', {
+    key: 'delete_face',
+    required: ['faces'],
+    properties: { faces: REF_LIST },
+  }),
   boolean: feature('boolean', {
     key: 'boolean',
     required: ['operation', 'target', 'tools'],

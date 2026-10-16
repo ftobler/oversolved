@@ -559,6 +559,11 @@ function checkDeleteBody(sub: DocRecord, field: string): void {
   checkOptional(sub, 'bodies', field, checkRefList)
 }
 
+// No scalar params: `faces` is the whole spec. A non-array `faces` is refused.
+function checkDeleteFace(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'faces', field, checkRefList)
+}
+
 function checkHole(sub: DocRecord, field: string): void {
   checkOptional(sub, 'sketch', field, checkRef)
   checkOptional(sub, 'diameter', field, checkExpr)
@@ -636,6 +641,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['chamfer', checkChamfer],
   ['shell', checkShell],
   ['move_face', checkMoveFace],
+  ['delete_face', checkDeleteFace],
   ['boolean', checkBooleanDef],
   ['array', checkArray],
   ['circular_array', checkCircularArray],

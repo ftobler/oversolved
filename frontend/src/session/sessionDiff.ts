@@ -24,6 +24,7 @@ export const NO_FALLBACK_BREP_KINDS = new Set([
   'fillet', 'chamfer',
   'shell',
   'move_face',
+  'delete_face',
   'boolean', 'hole',
   'array', 'circular_array',
   'transform', 'mirror',

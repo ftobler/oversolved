@@ -179,6 +179,30 @@ export interface OccOffsetShapeMaker extends OccModifierHistory {
 }
 
 /**
+ * BRepAlgoAPI_Defeaturing: remove faces and heal the gap by extending the
+ * neighbours' surfaces. It is a BRepAlgoAPI_BuilderAlgo, so it shares the
+ * boolean-style history surface (IsDeleted / Modified / Generated, present only
+ * after `SetToFillHistory(true)`) without the boolean argument/tool calls.
+ *
+ * Bound methods pinned against opencascade.js 1.1.1 (OCCT 7.4.0p1) by
+ * defeatureReal.test.ts: `SetShape`, `AddFaceToRemove`, `AddFacesToRemove`,
+ * `SetToFillHistory`, `Build`, `IsDone`, `Shape`, `IsDeleted`, `Modified`,
+ * `Generated`. The BOPAlgo_Options side (`HasErrors` / warnings) is NOT bound,
+ * so the "feature could not be removed" warning OCCT prints is invisible here;
+ * `IsDeleted(face) == false` on a requested face is the only failure signal
+ * (a silent no-op otherwise reads as a valid result).
+ */
+export interface OccDefeaturingMaker extends OccModifierHistory {
+  SetShape(shape: OccShape): void
+  AddFaceToRemove(face: OccShape): void
+  AddFacesToRemove(faces: OccListOfShape): void
+  SetToFillHistory(fill: boolean): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+}
+
+/**
  * BRepTools_History from a boolean op (algo.History()) or a ShapeUpgrade
  * (unify.History_1()). The `Modified`/`Generated` lists drain via
  * Size/First_1/RemoveFirst -- there is no list-iterator binding in this build.
@@ -868,6 +892,12 @@ export interface OccModule extends OccBaseModule {
     vmin: number,
     vmax: number,
   ) => OccFaceBuilder
+
+  // ─── delete-face leaf ───
+  // BRepAlgoAPI_Defeaturing: remove picked faces, extend the neighbour surfaces
+  // and re-intersect. The plain (suffix-free) ctor is what the shipped build
+  // binds, pinned by defeatureReal.test.ts.
+  BRepAlgoAPI_Defeaturing: new () => OccDefeaturingMaker
 
   // ─── transform / mirror / array group ───
   gp_Trsf_1: new () => OccTrsf

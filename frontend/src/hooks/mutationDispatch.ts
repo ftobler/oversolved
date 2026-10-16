@@ -56,6 +56,9 @@ import {
   applySetMoveFaceField,
   applyAddMoveFaceRef,
   applyRemoveMoveFaceRef,
+  applyAddDeleteFace,
+  applyAddDeleteFaceRef,
+  applyRemoveDeleteFaceRef,
   applyAddBoolean,
   applySetBooleanField,
   applyAddBooleanTool,
@@ -217,6 +220,12 @@ export const mutationHandlers: MutationHandlers = {
     applyAddMoveFaceRef(next, m.featureId, m.faceQuery),
   remove_move_face_ref: (next, m) =>
     applyRemoveMoveFaceRef(next, m.featureId, m.index),
+  add_delete_face: (next, m) =>
+    applyAddDeleteFace(next, m.featureId, m.label, m.faces),
+  add_delete_face_ref: (next, m) =>
+    applyAddDeleteFaceRef(next, m.featureId, m.faceQuery),
+  remove_delete_face_ref: (next, m) =>
+    applyRemoveDeleteFaceRef(next, m.featureId, m.index),
   add_boolean: (next, m) =>
     applyAddBoolean(next, m.featureId, m.label),
   set_boolean_field: (next, m) =>

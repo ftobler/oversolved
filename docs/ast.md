@@ -137,6 +137,23 @@ the cone itself. Positive adds material, negative removes it. A move that
 removes the whole body is an error. v1 moves planar faces only; a face with a
 tangent neighbour (a fillet) is refused.
 
+### delete_face
+
+```yaml
+- id: df1
+  kind: delete_face
+  delete_face:
+    faces:                       # faces to remove; healed by extending neighbours
+      - "?query:cylinderface"
+      - "?query:flatface"
+```
+
+No parameters: the picked `faces` are the whole spec. A connected group of picks
+(faces sharing an edge, e.g. a hole's walls and its floor) is removed or refused
+as a unit, so a partial pick heals what it can (a blind hole's floor alone
+becomes a through hole). A refusal on every group fails the feature and leaves
+the body untouched; the other groups still apply (status `partial`).
+
 ### boolean
 
 ```yaml

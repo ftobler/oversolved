@@ -13,6 +13,7 @@ export const EDIT_LABELS: Record<string, string> = {
   chamfer: 'chamfer',
   shell: 'shell',
   move_face: 'move face',
+  delete_face: 'delete face',
   boolean: 'boolean',
   array: 'array',
   circular_array: 'circular array',

@@ -5,6 +5,13 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
   "commands": [
     {
       "enabled": true,
+      "id": "add_delete_face",
+      "label": "Add delete face",
+      "params": [],
+      "undoable": true,
+    },
+    {
+      "enabled": true,
       "id": "add_extrude",
       "label": "Add extrude",
       "params": [],
