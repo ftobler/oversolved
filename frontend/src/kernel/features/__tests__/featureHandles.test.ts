@@ -51,6 +51,14 @@ describe('linearHandle', () => {
   it('returns null for a degenerate direction', () => {
     expect(linearHandle('distance', [0, 0, 0], [0, 0, 0], 10)).toBeNull()
   })
+
+  it('honours an explicit min so a signed handle can cross 0', () => {
+    const h = linearHandle('distance', [0, 0, 0], [0, 0, 1], -3, 1, -1e6)!
+    expect(h.min).toBe(-1e6)
+    expect(h.value).toBe(-3)
+    // The default stays the positive floor (extrude/fillet/chamfer).
+    expect(linearHandle('distance', [0, 0, 0], [0, 0, 1], 1)!.min).toBe(HANDLE_MIN_VALUE)
+  })
 })
 
 describe('angularHandle', () => {

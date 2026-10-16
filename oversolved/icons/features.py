@@ -276,6 +276,38 @@ def feature_shell(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-move-face.svg")
+def feature_move_face(ctx):
+    """Icon for Move Face: a face with its outward normal arrow and the dashed
+    outline it moves to."""
+    # The face, a parallelogram in perspective.
+    ctx.move_to(0.18, 0.62)
+    ctx.line_to(0.58, 0.72)
+    ctx.line_to(0.82, 0.44)
+    ctx.line_to(0.42, 0.34)
+    ctx.close_path()
+    stroke(ctx, 2.0)
+
+    # The outward normal arrow.
+    ctx.move_to(0.5, 0.53)
+    ctx.line_to(0.5, 0.16)
+    stroke(ctx, 1.5)
+    ctx.move_to(0.44, 0.23)
+    ctx.line_to(0.5, 0.16)
+    ctx.line_to(0.56, 0.23)
+    stroke(ctx, 1.5)
+
+    # The dashed outline of the moved position.
+    ctx.set_dash([0.07, 0.05])
+    ctx.move_to(0.24, 0.86)
+    ctx.line_to(0.64, 0.96)
+    ctx.line_to(0.88, 0.68)
+    ctx.line_to(0.48, 0.58)
+    ctx.close_path()
+    stroke(ctx, 1.0)
+    ctx.set_dash([])
+
+
 @icon("frontend/src/assets/icons/feature-boolean.svg")
 def feature_boolean(ctx):
     """Icon for Boolean: two overlapping circles (Venn diagram style)."""
