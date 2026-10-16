@@ -26,12 +26,14 @@
 //!    separate entry points the fuzz drives with its own seed.
 //!
 //! Near-merge gaps are a resolution limit of any grid: a gap narrower than a
-//! cell cannot be resolved by the flood fill. The oracle therefore bridges
-//! endpoint pairs closer than `GAP_BRIDGE` (8 merge tolerances, well above the
-//! 0.5x and 2x merge gaps the generator injects) and treats any cell whose
-//! reachability flips between the bridged and the unbridged fill as
-//! undecidable and skips it. Without that pass, a 2x merge gap (which the
-//! builder correctly leaves open) would read as a lost area.
+//! cell cannot be resolved by the flood fill. The oracle therefore runs two
+//! fills: a pessimistic one whose barrier is dilated by a cell (so it cannot
+//! slip through a diagonal), and an optimistic one with a corridor punched
+//! through every endpoint pair closer than `GAP_BRIDGE` (8 merge tolerances,
+//! well above the 0.5x and 2x merge gaps the generator injects). Any cell
+//! whose reachability differs between the two is undecidable and skipped.
+//! Without that pass, a 2x merge gap (which the builder correctly leaves open)
+//! would read as a lost area.
 //!
 //! Known-limitation tags: a violation on an input containing a
 //! self-intersecting spline or a line crossing both rings of concentric
@@ -49,9 +51,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::dcel::{detect_topology, InputEntity, TopologyOut};
-use super::profile_loops::{loop_centroid, BoundaryEdge, EdgeGeom, Vec2};
+use super::profile_loops::{BoundaryEdge, EdgeGeom, Vec2};
 use super::{
-    TOL_FACE_EXISTENCE_MIN_AREA, TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TWO_PI,
+    TOL_FACE_EXISTENCE_MIN_AREA, TOL_NEAR_ZERO_AREA, TOL_TOPOLOGY_EPS as EPS,
+    TOL_TOPOLOGY_MERGE as MERGE, TWO_PI,
 };
 use crate::radians;
 
@@ -298,8 +301,11 @@ fn sample_curve(c: &Curve, tol: f64) -> Sampled {
         },
         Curve::Circle { c, r } => sample_arc(c, r, 0.0, TWO_PI, tol),
         Curve::Arc { c, r, a0, a1 } => {
-            let sweep = super::dcel::pymod(a1 - a0, TWO_PI);
-            sample_arc(c, r, a0, a0 + sweep, tol)
+            // Input arc angles are degrees (the document convention); the
+            // sampler works in radians.
+            let start = radians(a0);
+            let sweep = super::dcel::pymod(radians(a1) - start, TWO_PI);
+            sample_arc(c, r, start, start + sweep, tol)
         }
         Curve::Ellipse { c, a, b, theta } => sample_ellipse(c, a, b, theta, 0.0, TWO_PI, tol),
         Curve::Spline { p0, c1, c2, p3 } => sample_spline(p0, c1, c2, p3, tol),
@@ -388,7 +394,7 @@ fn edge_polyline(eg: &EdgeGeom, tol: f64) -> Sampled {
 
 /// One loop's polygon: the edges' points chained, consecutive duplicates (the
 /// shared junction of two edges) and the wrap-around duplicate dropped.
-fn loop_polygon(loop_edges: &[BoundaryEdge], tol: f64, max_pts: usize) -> Vec<Vec2> {
+pub(crate) fn loop_polygon(loop_edges: &[BoundaryEdge], tol: f64, max_pts: usize) -> Vec<Vec2> {
     let mut pts: Vec<Vec2> = Vec::new();
     for be in loop_edges {
         let s = edge_polyline(&be.geom, tol);
@@ -404,9 +410,17 @@ fn loop_polygon(loop_edges: &[BoundaryEdge], tol: f64, max_pts: usize) -> Vec<Ve
                 pts.push(p);
             }
         }
-        if pts.len() > max_pts {
-            break;
-        }
+    }
+    if pts.len() > max_pts {
+        // Decimate rather than truncate: a truncated polygon would have a
+        // wrong area and a wrong self-intersection story.
+        let step = pts.len().div_ceil(max_pts);
+        pts = pts
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| i % step == 0)
+            .map(|(_, p)| *p)
+            .collect();
     }
     if pts.len() > 1 {
         let first = pts[0];
@@ -505,19 +519,6 @@ fn point_in_polygon(p: Vec2, poly: &[Vec2]) -> bool {
     inside
 }
 
-fn polygon_area(pts: &[Vec2]) -> f64 {
-    let n = pts.len();
-    if n < 3 {
-        return 0.0;
-    }
-    let mut acc = 0.0;
-    for i in 0..n {
-        let j = (i + 1) % n;
-        acc += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
-    }
-    acc / 2.0
-}
-
 // ─── Grid and coverage ───
 
 /// Cells along the bbox diagonal: the plan's `scale/200`.
@@ -533,6 +534,13 @@ const BAND_MERGE: f64 = 3.0;
 const GAP_BRIDGE_MERGE: f64 = 8.0;
 /// Cap on the sampled points of one loop for the self-intersection test.
 const SELF_INTERSECT_MAX_PTS: usize = 512;
+/// Cap on the points of one face polygon for cell containment. The cap is a
+/// backstop against a pathological loop, not a sampling choice: a decimated
+/// polygon can cut across a band between two nearby curves (the crescent of
+/// two near-tangent circles is 0.03 wide), which would push cells inside a
+/// face out of it. The chord-tolerance sampling already bounds a real face at
+/// a few hundred points, so the cap sits far above that.
+const FACE_POLY_MAX_PTS: usize = 1024;
 
 struct Grid {
     nx: usize,
@@ -678,9 +686,15 @@ fn coverage_violations(
             continue;
         }
         let last = if s.closed { n } else { n - 1 };
+        let half_cell_diag = cell * std::f64::consts::SQRT_2 * 0.5;
         for k in 0..last {
             let a = s.pts[k];
             let b = s.pts[(k + 1) % n];
+            // Cheap reject: a cell whose centre is farther from the segment's
+            // midpoint than half the segment plus the band plus the cell's
+            // half diagonal cannot come within the band.
+            let mid = [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])];
+            let reach = 0.5 * (a[0] - b[0]).hypot(a[1] - b[1]) + band + half_cell_diag;
             let (mnx, mny, mxx, mxy) = (
                 a[0].min(b[0]) - band,
                 a[1].min(b[1]) - band,
@@ -695,6 +709,10 @@ fn coverage_violations(
                         continue;
                     }
                     let (x0, y0) = (grid.x0 + i as f64 * cell, grid.y0 + j as f64 * cell);
+                    let c = [x0 + 0.5 * cell, y0 + 0.5 * cell];
+                    if (c[0] - mid[0]).hypot(c[1] - mid[1]) > reach {
+                        continue;
+                    }
                     if seg_rect_dist(a, b, x0, y0, x0 + cell, y0 + cell) <= band {
                         blocked[j * grid.nx + i] = true;
                     }
@@ -703,19 +721,38 @@ fn coverage_violations(
         }
     }
 
-    // Gaps narrower than a cell cannot be resolved by the fill. Bridge every
-    // pair of curve ends closer than GAP_BRIDGE by clearing the cell that
-    // carries the pair in a second, optimistic barrier; a cell whose
-    // reachability flips between the two fills sits behind such a gap and is
-    // skipped rather than judged.
+    // A one-cell-wide digital curve does not stop a 4-connected fill: the
+    // curve can step diagonally from one marked cell into another, leaving a
+    // free pixel pair the fill slips through. So the pessimistic barrier is
+    // the marked set DILATED by one cell, which blocks the fill; and the
+    // optimistic barrier is the plain marked set with a corridor punched
+    // through every near-merge gap, which lets the fill pass through gaps too
+    // small for the grid. A cell whose reachability differs between the two
+    // fills sits somewhere the grid cannot decide (behind such a gap, or in a
+    // passage only as wide as a cell) and is skipped rather than judged.
     let gap_cells = near_gap_cells(&sampled, &grid, chord_tol);
     let mut optimistic_blocked = blocked.clone();
     for &(i, j) in &gap_cells {
         optimistic_blocked[j * grid.nx + i] = false;
     }
+    let pessimistic_blocked = dilate(&blocked, &grid);
 
-    let reached = flood_reach(&grid, &blocked);
+    let reached = flood_reach(&grid, &pessimistic_blocked);
     let reached_opt = flood_reach(&grid, &optimistic_blocked);
+
+    let mut face_union: Option<[f64; 4]> = None;
+    for f in faces {
+        face_union = Some(match face_union {
+            None => f.bbox,
+            Some(mut u) => {
+                u[0] = u[0].min(f.bbox[0]);
+                u[1] = u[1].min(f.bbox[1]);
+                u[2] = u[2].max(f.bbox[2]);
+                u[3] = u[3].max(f.bbox[3]);
+                u
+            }
+        });
+    }
 
     let mut unreached_missing = 0usize;
     let mut unreached_multi = 0usize;
@@ -729,7 +766,14 @@ fn coverage_violations(
                 continue;
             }
             let p = grid.center(i, j);
-            let inside = faces.iter().filter(|f| f.contains(p)).count();
+            // Outside the union of every face bbox the count is trivially
+            // zero, which is the common case over a padded grid.
+            let inside = match face_union {
+                Some(u) if p[0] >= u[0] && p[0] <= u[2] && p[1] >= u[1] && p[1] <= u[3] => {
+                    faces.iter().filter(|f| f.contains(p)).count()
+                }
+                _ => 0,
+            };
             if reached[k] {
                 if inside > 0 {
                     reached_inside += 1;
@@ -787,9 +831,35 @@ fn cell_range(lo: f64, hi: f64, grid: &Grid, axis: usize) -> (usize, usize) {
     (i0, i1.max(i0))
 }
 
+/// One-cell 4-neighbour dilation: the pessimistic barrier.
+fn dilate(blocked: &[bool], grid: &Grid) -> Vec<bool> {
+    let mut out = blocked.to_vec();
+    for j in 0..grid.ny {
+        for i in 0..grid.nx {
+            if !blocked[j * grid.nx + i] {
+                continue;
+            }
+            if i > 0 {
+                out[j * grid.nx + i - 1] = true;
+            }
+            if i + 1 < grid.nx {
+                out[j * grid.nx + i + 1] = true;
+            }
+            if j > 0 {
+                out[(j - 1) * grid.nx + i] = true;
+            }
+            if j + 1 < grid.ny {
+                out[(j + 1) * grid.nx + i] = true;
+            }
+        }
+    }
+    out
+}
+
 /// Grid cells the bridged fill may pass through: every pair of curve ends
 /// closer than `GAP_BRIDGE_MERGE * MERGE` (and not coincident), plus every
-/// curve end that sits that close to another curve's interior.
+/// curve end that sits that close to another curve's interior. The corridor is
+/// cleared on the optimistic barrier only.
 fn near_gap_cells(sampled: &[Sampled], grid: &Grid, chord_tol: f64) -> Vec<(usize, usize)> {
     let mut ends: Vec<Vec2> = Vec::new();
     for s in sampled {
@@ -974,6 +1044,13 @@ fn check_loop(
         }
     }
 
+    let (area, _) = loop_area_centroid(loop_edges);
+    if area <= TOL_FACE_EXISTENCE_MIN_AREA {
+        out.push(Violation::new(
+            "structure",
+            format!("{label} area {area:e} is at or below the face-existence floor"),
+        ));
+    }
     let poly = loop_polygon(loop_edges, chord_tol, SELF_INTERSECT_MAX_PTS);
     if poly.len() < 3 {
         out.push(Violation::new(
@@ -981,13 +1058,6 @@ fn check_loop(
             format!("{label} samples to fewer than 3 points"),
         ));
         return;
-    }
-    let area = polygon_area(&poly);
-    if area <= TOL_FACE_EXISTENCE_MIN_AREA {
-        out.push(Violation::new(
-            "structure",
-            format!("{label} area {area:e} is at or below the face-existence floor"),
-        ));
     }
     if let Some((i, j)) = first_self_crossing(&poly) {
         out.push(Violation::new(
@@ -1008,12 +1078,30 @@ fn first_self_crossing(poly: &[Vec2]) -> Option<(usize, usize)> {
     if n < 4 {
         return None;
     }
+    // A bbox per segment turns the O(n^2) scan into a near-linear one on the
+    // long curved loops: only overlapping boxes reach the orientation tests.
+    let boxes: Vec<[f64; 4]> = (0..n)
+        .map(|i| {
+            let a = poly[i];
+            let b = poly[(i + 1) % n];
+            [
+                a[0].min(b[0]),
+                a[1].min(b[1]),
+                a[0].max(b[0]),
+                a[1].max(b[1]),
+            ]
+        })
+        .collect();
     for i in 0..n {
         let a = poly[i];
         let b = poly[(i + 1) % n];
         for j in (i + 1)..n {
             if (i + 1) % n == j || (j + 1) % n == i {
                 continue; // adjacent sides share a vertex by construction
+            }
+            let (bi, bj) = (boxes[i], boxes[j]);
+            if bi[2] < bj[0] || bj[2] < bi[0] || bi[3] < bj[1] || bj[3] < bi[1] {
+                continue;
             }
             let c = poly[j];
             let d = poly[(j + 1) % n];
@@ -1362,24 +1450,44 @@ pub(crate) struct FaceSummary {
     pub(crate) area: f64,
     pub(crate) holes: Vec<f64>,
     pub(crate) centroid: Vec2,
+    /// `2 * area / perimeter`: how thick the face is on average. A face whose
+    /// thickness is comparable to a perturbation cannot be a stability
+    /// invariant (its area is a difference of nearly equal terms), so the
+    /// comparisons below exempt it instead of reporting noise.
+    pub(crate) thickness: f64,
 }
 
 pub(crate) fn face_summaries(out: &TopologyOut) -> Vec<FaceSummary> {
+    // Exact area and centroid per loop (Green's theorem quadrature): the
+    // comparisons below are 1e-9 relative, and a sampled polygon's area is
+    // not continuous in the geometry at that scale.
     out.surfaces
         .iter()
         .map(|s| {
-            let poly = loop_polygon(&s.boundary, MERGE, SELF_INTERSECT_MAX_PTS);
+            let (area, centroid) = loop_area_centroid(&s.boundary);
             let mut holes: Vec<f64> = s
                 .holes
                 .iter()
-                .map(|h| polygon_area(&loop_polygon(h, MERGE, SELF_INTERSECT_MAX_PTS)).abs())
+                .map(|h| loop_area_centroid(h).0.abs())
                 .collect();
             holes.sort_by(|a, b| a.total_cmp(b));
-            let centroid = loop_centroid(&s.boundary);
+            let poly = loop_polygon(&s.boundary, MERGE, 256);
+            let mut perimeter = 0.0;
+            for k in 0..poly.len() {
+                let p = poly[k];
+                let q = poly[(k + 1) % poly.len()];
+                perimeter += (p[0] - q[0]).hypot(p[1] - q[1]);
+            }
+            let thickness = if perimeter > 0.0 {
+                2.0 * area.abs() / perimeter
+            } else {
+                0.0
+            };
             FaceSummary {
-                area: polygon_area(&poly),
+                area,
                 holes,
                 centroid,
+                thickness,
             }
         })
         .collect()
@@ -1387,6 +1495,16 @@ pub(crate) fn face_summaries(out: &TopologyOut) -> Vec<FaceSummary> {
 
 /// Greedy multiset match between two runs, with a relative tolerance. Ids may
 /// differ; only the geometry has to agree.
+///
+/// `area_perturbation` is the largest boundary motion the two runs may have
+/// introduced (a sub-merge amount for a reordering, the jitter magnitude for
+/// the stability check) and `centroid_perturbation` the largest distance a
+/// face may have moved in response. A face thinner than
+/// `10 * area_perturbation` is exempt: its area is a difference of nearly
+/// equal terms, so that motion explains any change it shows. The tolerance on
+/// a compared face widens by `4 * perturbation / thickness`, which is what
+/// the same boundary motion can explain.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compare_face_multisets(
     class: &'static str,
     label: &str,
@@ -1394,34 +1512,44 @@ pub(crate) fn compare_face_multisets(
     b: &[FaceSummary],
     area_tol: f64,
     centroid_tol: f64,
+    area_perturbation: f64,
+    centroid_perturbation: f64,
 ) -> Vec<Violation> {
-    if a.len() != b.len() {
+    let perturbation = area_perturbation;
+    let min_thickness = 10.0 * perturbation;
+    let a_kept: Vec<&FaceSummary> = a.iter().filter(|f| f.thickness >= min_thickness).collect();
+    let b_kept: Vec<&FaceSummary> = b.iter().filter(|f| f.thickness >= min_thickness).collect();
+    if a_kept.len() != b_kept.len() {
         return vec![Violation::new(
             class,
-            format!("{label}: face count {} != {}", a.len(), b.len()),
+            format!(
+                "{label}: face count {} != {} (faces at least {min_thickness:e} thick)",
+                a_kept.len(),
+                b_kept.len()
+            ),
         )];
     }
-    let mut taken = vec![false; b.len()];
+    let mut taken = vec![false; b_kept.len()];
     let mut out = Vec::new();
-    for fa in a {
+    for fa in &a_kept {
         let mut best: Option<(usize, f64)> = None;
-        for (i, fb) in b.iter().enumerate() {
+        for (i, fb) in b_kept.iter().enumerate() {
             if taken[i] {
                 continue;
             }
+            let tol = area_tol.max(4.0 * perturbation / fa.thickness.max(f64::MIN_POSITIVE));
             let area_ok = (fa.area - fb.area).abs()
-                <= area_tol
+                <= tol
                     * fa.area
                         .abs()
                         .max(fb.area.abs())
                         .max(TOL_FACE_EXISTENCE_MIN_AREA);
             let holes_ok = fa.holes.len() == fb.holes.len()
                 && fa.holes.iter().zip(fb.holes.iter()).all(|(x, y)| {
-                    (x - y).abs()
-                        <= area_tol * x.abs().max(y.abs()).max(TOL_FACE_EXISTENCE_MIN_AREA)
+                    (x - y).abs() <= tol * x.abs().max(y.abs()).max(TOL_FACE_EXISTENCE_MIN_AREA)
                 });
             let d = (fa.centroid[0] - fb.centroid[0]).hypot(fa.centroid[1] - fb.centroid[1]);
-            let centroid_ok = d <= centroid_tol * scale_of(a);
+            let centroid_ok = d <= centroid_tol * scale_of(a) + centroid_perturbation;
             if area_ok && holes_ok && centroid_ok {
                 best = Some((i, d));
                 break;
@@ -1461,19 +1589,35 @@ pub(crate) fn known_slugs(input: &[(String, InputEntity)]) -> Vec<&'static str> 
     let mut slugs = Vec::new();
     if curves.iter().any(|(_, c)| match c {
         Curve::Spline { p0, c1, c2, p3 } => {
-            let s = sample_spline(*p0, *c1, *c2, *p3, MERGE);
-            let n = s.pts.len();
+            // Coarse sampling on purpose: a self-crossing is a feature-scale
+            // event, and a merge-tight flattening of a large spline is tens of
+            // thousands of points whose O(n^2) scan dominated the whole check.
+            let span = bbox_of(&[*p0, *c1, *c2, *p3])
+                .map(|b| (b[2] - b[0]).hypot(b[3] - b[1]))
+                .unwrap_or(0.0);
+            let s = sample_spline(*p0, *c1, *c2, *p3, chord_tol_for(span));
+            let mut pts = s.pts;
+            if pts.len() > 256 {
+                let step = pts.len().div_ceil(256);
+                pts = pts
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| i % step == 0)
+                    .map(|(_, p)| *p)
+                    .collect();
+            }
+            let n = pts.len();
             let segs = if s.closed { n } else { n - 1 };
             let mut crosses = false;
             'outer: for i in 0..segs {
-                let a = s.pts[i];
-                let b = s.pts[(i + 1) % n];
+                let a = pts[i];
+                let b = pts[(i + 1) % n];
                 for j in (i + 1)..segs {
                     if (i + 1) % n == j || (j + 1) % n == i {
                         continue;
                     }
-                    let c = s.pts[j];
-                    let d = s.pts[(j + 1) % n];
+                    let c = pts[j];
+                    let d = pts[(j + 1) % n];
                     if seg_seg_intersect(a, b, c, d) {
                         let shared = [a, b].iter().any(|p| {
                             [c, d]
@@ -1560,6 +1704,199 @@ fn chord_count(p0: Vec2, p1: Vec2, c: Vec2, r: f64) -> usize {
 
 // ─── Entry points ───
 
+/// A few points that bound a curve, for span measurements: the control points
+/// for a spline, the centre/radius box for a circle or arc, a conservative box
+/// for an ellipse, the endpoints for a line.
+fn hull_points(c: &Curve) -> Vec<Vec2> {
+    match *c {
+        Curve::Line { p0, p1 } => vec![p0, p1],
+        Curve::Circle { c, r } => vec![[c[0] - r, c[1] - r], [c[0] + r, c[1] + r]],
+        Curve::Arc { c, r, a0, a1 } => vec![
+            [c[0] - r, c[1] - r],
+            [c[0] + r, c[1] + r],
+            [c[0] + r * radians(a0).cos(), c[1] + r * radians(a0).sin()],
+            [c[0] + r * radians(a1).cos(), c[1] + r * radians(a1).sin()],
+        ],
+        Curve::Ellipse { c, a, b, theta: _ } => {
+            let r = a.abs().max(b.abs());
+            vec![[c[0] - r, c[1] - r], [c[0] + r, c[1] + r]]
+        }
+        Curve::Spline { p0, c1, c2, p3 } => vec![p0, c1, c2, p3],
+    }
+}
+
+// ─── Exact loop area and centroid ───
+
+/// 16-point Gauss-Legendre nodes and weights on [-1, 1]. The loop integrals
+/// below are trigonometric or polynomial and smooth, so fixed-order quadrature
+/// is essentially exact AND continuous in the geometry: a sampled polygon's
+/// area jumps whenever its point count crosses a threshold, which is exactly
+/// what a 1e-9 relative comparison cannot tolerate.
+const GL_NODES: [f64; 8] = [
+    0.09501250983763744,
+    0.2816035507792589,
+    0.45801677765722737,
+    0.6178762444026438,
+    0.755404408355003,
+    0.8656312023878318,
+    0.9445750230732326,
+    0.9894009349916499,
+];
+const GL_WEIGHTS: [f64; 8] = [
+    0.1894506104550685,
+    0.18260341504492358,
+    0.16915651939500254,
+    0.14959598881657674,
+    0.12462897125553388,
+    0.09515851168249279,
+    0.062253523938647894,
+    0.027152459411754096,
+];
+
+/// Integrate three integrands at once over `t in [0, 1]` with the 16-point
+/// rule: the Green's theorem integrands of one edge, evaluated in one pass.
+fn gl01_3(mut f: impl FnMut(f64) -> (f64, f64, f64)) -> (f64, f64, f64) {
+    let mut sum = (0.0, 0.0, 0.0);
+    for (node, weight) in GL_NODES.iter().zip(GL_WEIGHTS.iter()) {
+        for t in [0.5 - 0.5 * node, 0.5 + 0.5 * node] {
+            let v = f(t);
+            sum = (
+                sum.0 + weight * v.0,
+                sum.1 + weight * v.1,
+                sum.2 + weight * v.2,
+            );
+        }
+    }
+    (0.5 * sum.0, 0.5 * sum.1, 0.5 * sum.2)
+}
+
+/// The three Green's-theorem integrals of one boundary edge in its traversal
+/// direction: `(integral x dy, integral x^2 dy, integral y^2 dx)`.
+fn edge_integrals(eg: &EdgeGeom) -> (f64, f64, f64) {
+    // `dp` is the derivative with respect to the unit parameter `t`.
+    let integrand = |p: Vec2, dp: Vec2| (p[0] * dp[1], p[0] * p[0] * dp[1], p[1] * p[1] * dp[0]);
+    match *eg {
+        EdgeGeom::Line { start, end } => {
+            let dp = [end[0] - start[0], end[1] - start[1]];
+            gl01_3(|t| {
+                let p = [start[0] + t * dp[0], start[1] + t * dp[1]];
+                integrand(p, dp)
+            })
+        }
+        EdgeGeom::Arc {
+            center,
+            radius,
+            angle_start_deg,
+            angle_end_deg,
+            ccw,
+            ..
+        } => {
+            let a0 = radians(angle_start_deg);
+            let a1 = radians(angle_end_deg);
+            let sweep = if ccw {
+                super::dcel::pymod(a1 - a0, TWO_PI)
+            } else {
+                -super::dcel::pymod(a0 - a1, TWO_PI)
+            };
+            gl01_3(|t| {
+                let theta = a0 + t * sweep;
+                let p = [
+                    center[0] + radius * theta.cos(),
+                    center[1] + radius * theta.sin(),
+                ];
+                let dp = [-radius * theta.sin() * sweep, radius * theta.cos() * sweep];
+                integrand(p, dp)
+            })
+        }
+        EdgeGeom::EllipseArc {
+            center,
+            a,
+            b,
+            theta,
+            angle_start_deg,
+            angle_end_deg,
+            ccw,
+            ..
+        } => {
+            let th = radians(theta);
+            let (cr, sr) = (th.cos(), th.sin());
+            let p0 = radians(angle_start_deg);
+            let p1 = radians(angle_end_deg);
+            let sweep = if ccw {
+                super::dcel::pymod(p1 - p0, TWO_PI)
+            } else {
+                -super::dcel::pymod(p0 - p1, TWO_PI)
+            };
+            gl01_3(|t| {
+                let phi = p0 + t * sweep;
+                let (c, s) = (phi.cos(), phi.sin());
+                let p = [
+                    center[0] + a * c * cr - b * s * sr,
+                    center[1] + a * c * sr + b * s * cr,
+                ];
+                let dp = [
+                    (-a * s * cr - b * c * sr) * sweep,
+                    (-a * s * sr + b * c * cr) * sweep,
+                ];
+                integrand(p, dp)
+            })
+        }
+        EdgeGeom::Spline { start, c1, c2, end } => {
+            // A cubic's derivative is quadratic, so the integrands are degree
+            // five polynomials and the 16-point rule is exact, not approximate.
+            gl01_3(|t| {
+                let p = super::curve_split::bezier_point(start, c1, c2, end, t);
+                let d0 = [3.0 * (c1[0] - start[0]), 3.0 * (c1[1] - start[1])];
+                let d1 = [
+                    6.0 * (start[0] - 2.0 * c1[0] + c2[0]),
+                    6.0 * (start[1] - 2.0 * c1[1] + c2[1]),
+                ];
+                let d2 = [
+                    3.0 * (end[0] - 3.0 * c2[0] + 3.0 * c1[0] - start[0]),
+                    3.0 * (end[1] - 3.0 * c2[1] + 3.0 * c1[1] - start[1]),
+                ];
+                let dp = [
+                    d0[0] + d1[0] * t + d2[0] * t * t,
+                    d0[1] + d1[1] * t + d2[1] * t * t,
+                ];
+                integrand(p, dp)
+            })
+        }
+        EdgeGeom::Ellipse {
+            center,
+            a,
+            b,
+            theta: _,
+        } => {
+            // A full ellipse is closed; rotation does not change its area and
+            // its centroid is the centre, so the closed forms are exact.
+            let area = std::f64::consts::PI * a * b;
+            (area, 2.0 * center[0] * area, -2.0 * center[1] * area)
+        }
+    }
+}
+
+/// Exact signed area and area-weighted centroid of one loop, in the loop's
+/// stored traversal direction (CCW faces are positive).
+pub(crate) fn loop_area_centroid(loop_edges: &[BoundaryEdge]) -> (f64, Vec2) {
+    let mut integrals = (0.0, 0.0, 0.0);
+    for be in loop_edges {
+        let (a, b, c) = edge_integrals(&be.geom);
+        integrals.0 += a;
+        integrals.1 += b;
+        integrals.2 += c;
+    }
+    let area = integrals.0;
+    if area.abs() < TOL_NEAR_ZERO_AREA {
+        let first = loop_edges.first().and_then(|be| be.geom.start());
+        return (area, first.unwrap_or([0.0, 0.0]));
+    }
+    (
+        area,
+        [integrals.1 / (2.0 * area), -integrals.2 / (2.0 * area)],
+    )
+}
+
 /// Chord tolerance for the ground-truth sampling: the plan's "well below the
 /// merge tolerance" made scale-adaptive. A fixed 1e-7 would emit hundreds of
 /// thousands of segments for the r ~ 1000 motifs the generator reaches; tying
@@ -1584,11 +1921,12 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
         .collect();
 
     // One span for the whole run: the bbox diagonal of the real curves, so the
-    // grid and every sampling tolerance agree.
+    // grid and every sampling tolerance agree. Bounding points only: sampling
+    // every curve at a fine tolerance just to measure the span is the one
+    // quadratic cost the oracle would otherwise pay per check.
     let mut pts: Vec<Vec2> = Vec::new();
     for (_, c) in &curves {
-        let s = sample_curve(c, MERGE / 2.0);
-        pts.extend_from_slice(&s.pts);
+        pts.extend_from_slice(&hull_points(c));
     }
     let span = bbox_of(&pts)
         .map(|b| (b[2] - b[0]).hypot(b[3] - b[1]))
@@ -1601,11 +1939,11 @@ pub(crate) fn check_topology(input: &[(String, InputEntity)], out: &TopologyOut)
         .surfaces
         .iter()
         .map(|s| {
-            let outer = loop_polygon(&s.boundary, chord_tol, SELF_INTERSECT_MAX_PTS);
+            let outer = loop_polygon(&s.boundary, chord_tol, FACE_POLY_MAX_PTS);
             let holes = s
                 .holes
                 .iter()
-                .map(|h| loop_polygon(h, chord_tol, SELF_INTERSECT_MAX_PTS))
+                .map(|h| loop_polygon(h, chord_tol, FACE_POLY_MAX_PTS))
                 .collect();
             let bbox = bbox_of(&outer).unwrap_or([0.0, 0.0, 0.0, 0.0]);
             FacePoly { outer, holes, bbox }
@@ -1693,7 +2031,19 @@ pub(crate) fn check_order_independence(
     let permuted: Vec<(String, InputEntity)> = perm.iter().map(|&i| input[i].clone()).collect();
     let base = face_summaries(&detect_topology(input));
     let other = face_summaries(&detect_topology(&permuted));
-    compare_face_multisets("order", "entity permutation", &base, &other, 1e-9, 1e-9)
+    // A reordering moves nothing; the only noise it can introduce is a merge
+    // decision at sub-merge distances, so that is the perturbation the
+    // comparison is allowed to explain.
+    compare_face_multisets(
+        "order",
+        "entity permutation",
+        &base,
+        &other,
+        1e-9,
+        1e-9,
+        MERGE / 100.0,
+        MERGE,
+    )
 }
 
 /// Jitter stability: `jittered` is the same input moved by at most
@@ -1705,7 +2055,18 @@ pub(crate) fn check_stability(
 ) -> Vec<Violation> {
     let base = face_summaries(&detect_topology(input));
     let moved = face_summaries(&detect_topology(jittered));
-    compare_face_multisets("stability", "vertex jitter", &base, &moved, 1e-6, 1e-6)
+    // Two endpoints can move towards each other by 2 * MERGE / 10; that is the
+    // largest boundary motion the comparison must be able to explain.
+    compare_face_multisets(
+        "stability",
+        "vertex jitter",
+        &base,
+        &moved,
+        1e-6,
+        1e-6,
+        2.0 * MERGE / 10.0,
+        4.0 * MERGE / 10.0,
+    )
 }
 
 /// Move every defining point of every entity by the same per-entity delta, so a
@@ -2135,6 +2496,58 @@ mod tests {
             "oracle false positives:\n{}",
             failures.join("\n")
         );
+    }
+
+    #[test]
+    #[ignore]
+    fn probe_tangent_fixture() {
+        let geom = vec![
+            ("A".into(), circle([0.0, 0.0], 9.5)),
+            ("B".into(), circle([0.0, 10.0], 4.0)),
+            (
+                "L".into(),
+                line([3.340658664703369, 12.2], [7.9340643882751465, 5.225]),
+            ),
+        ];
+        let out = detect_topology(&geom);
+        let chords = chord_tol_for(22.0);
+        let _ = &chords;
+        eprintln!("chord tol {chords:?}");
+        for (si, s) in out.surfaces.iter().enumerate() {
+            let poly = loop_polygon(&s.boundary, chords, FACE_POLY_MAX_PTS);
+            let (area, centroid) = loop_area_centroid(&s.boundary);
+            let p = [3.873185, 8.555931];
+            eprintln!(
+                "surface {si}: sides {} poly {} area {area:.6} centroid ({:.3},{:.3}) contains {p:?} = {}",
+                s.boundary.len(),
+                poly.len(),
+                centroid[0],
+                centroid[1],
+                point_in_polygon(p, &poly)
+            );
+            for b in &s.boundary {
+                eprintln!(
+                    "    {:?} {:?} -> {:?}  start {:?} end {:?} geom {:?}",
+                    b.id,
+                    b.start_vertex,
+                    b.end_vertex,
+                    b.geom.start(),
+                    edge_end(&b.geom),
+                    b.geom
+                );
+            }
+            if si == 1 {
+                for (k, b) in s.boundary.iter().enumerate() {
+                    let chain = edge_polyline(&b.geom, chords);
+                    eprintln!(
+                        "      side {k}: n={} first {:?} last {:?}",
+                        chain.pts.len(),
+                        chain.pts.first(),
+                        chain.pts.last()
+                    );
+                }
+            }
+        }
     }
 
     #[test]

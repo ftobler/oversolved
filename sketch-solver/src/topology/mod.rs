@@ -31,6 +31,9 @@ pub(crate) mod dcel;
 // carries neither.
 #[cfg(any(test, feature = "fuzz"))]
 pub(crate) mod oracle;
+// The seeded generator and minimiser: test-only, it exists to drive the oracle.
+#[cfg(test)]
+pub(crate) mod fuzz;
 pub(crate) mod profile_loops;
 
 /// A 2D point/vector shared by the intersection, split, loop and DCEL modules.
