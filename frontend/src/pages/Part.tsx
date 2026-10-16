@@ -103,9 +103,13 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
 /**
  * The stored face query a selection id names, or null when it names something
  * else (a body, an edge, a vertex, an entity). `?`-ancestry ids carry the OCC
- * surface type as the type restriction; `face:` wrappers (owner attribution) and
- * topo-fallback `@<bodyId>/face/<idx>` refs also resolve to a face in the
- * kernel. A whole-body pick (`@body_...`) names no face and returns null.
+ * surface type as the type restriction; `face:` wrappers (owner attribution)
+ * unwrap to the inner wire query, which resolves. A topo-fallback
+ * `@<bodyId>/face/<idx>` ref is returned verbatim, but only the on-face plane
+ * resolves it (resolveFaceProfile reads it by index); the delete_face leaf
+ * resolves construction only (the UUID tier then stable ancestry), so such a
+ * pick lands in its unresolved_faces instead of healing. A whole-body pick
+ * (`@body_...`) names no face and returns null.
  */
 function faceSelectionQuery(id: string): string | null {
   if (id.startsWith('?')) {
