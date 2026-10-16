@@ -26,7 +26,7 @@ import { loadOcc } from '../occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '../features/sketch'
-import { loadPkgNodeExport, pkgNodeExists } from '@/wasm-kernel/loadPkgNode'
+import { loadPkgNodeExport, missingExportIsAnError, pkgNodeExists } from '@/wasm-kernel/loadPkgNode'
 import { createHeadlessPart } from '@/drive/headlessPart'
 import { replayJournal } from '@/drive/replay'
 import { loadPartDoc } from '@/persistence/docSchema'
@@ -71,7 +71,7 @@ const checkTopology = loadPkgNodeExport<OracleCheck>('check_topology_violations'
 // feature-free). A package without it was built by hand without the feature:
 // fail rather than skip, because a skip here means no CI run ever exercises
 // the repro oracle.
-if (pkgNodeExists() && !checkTopology) {
+if (missingExportIsAnError(pkgNodeExists(), checkTopology)) {
   throw new Error(
     'sketch-solver/pkg-node lacks check_topology_violations: rebuild it with the fuzz ' +
       'feature (`just wasm`, or wasm-pack build --target nodejs --release -- --features fuzz)',

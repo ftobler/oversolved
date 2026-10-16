@@ -175,11 +175,12 @@ rust-fmt:
     cargo fmt --all --check 2>&1 | tee tmp/cargo_fmt.log
 
 # Long area-builder fuzz run: seeds <from>..<to> through the motif generator and
-# the invariant oracle, with every new untagged failure minimised into
-# sketch-solver/src/topology/dcel/tests/fuzz_cases/ for review. The PR gate
-# already runs seeds 0..300 inside `just rust-test`; this is the harvesting
-# sweep, so it keeps the cases it writes (review, then commit them with the
-# findings they belong to).
+# the invariant oracle, judged against the per-seed catalogue in fuzz/tests.rs.
+# Every new coverage/structure/euler failure is minimised into
+# sketch-solver/src/topology/dcel/tests/fuzz_cases/ and every new failure's
+# catalogue entry is printed for review; stability and order are
+# catalogue-only. The PR gate already runs seeds 0..300 inside `just rust-test`;
+# this is the harvesting sweep, so review what it writes before committing.
 sketch-fuzz from to:
     mkdir -p tmp
     SKETCH_FUZZ_FROM={{from}} SKETCH_FUZZ_TO={{to}} SKETCH_FUZZ_WRITE=1 cargo test -p sketch-solver --lib topology::fuzz::tests::fuzz_range_from_env -- --ignored --nocapture 2>&1 | tee tmp/sketch_fuzz.log

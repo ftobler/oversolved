@@ -33,6 +33,13 @@ export function pkgNodeExists(pkg: PkgNodeTarget = PKG_SKETCH): boolean {
   return existsSync(pkgNodePath(pkg))
 }
 
+/** The rule a required optional export must follow: a missing export is
+ *  acceptable only when the whole package is missing too (a fresh checkout);
+ *  a present package without it is a misbuild, never a reason to skip. */
+export function missingExportIsAnError(pkgPresent: boolean, exportLoaded: unknown): boolean {
+  return pkgPresent && exportLoaded === null
+}
+
 export function loadPkgNodeExport<T>(name: string, pkg: PkgNodeTarget = PKG_SKETCH): T | null {
   const require = createRequire(import.meta.url)
   return loadExportOrNull<T>(name, pkgNodePath(pkg), require)

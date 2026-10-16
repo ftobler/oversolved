@@ -1148,9 +1148,11 @@ fn fuzz_seeds_0_300() {
 #[test]
 #[ignore]
 fn fuzz_range_from_env() {
-    // The long sweep. `just sketch-fuzz <from> <to>` sets the range and
-    // writes every new minimised case into fuzz_cases/ for review; a run
-    // that finds nothing prints the range it covered.
+    // The long sweep. `just sketch-fuzz <from> <to>` sets the range, writes a
+    // minimised fixture for every new coverage/structure/euler failure into
+    // fuzz_cases/, and prints the catalogue entries to add to
+    // KNOWN_FAILING_SEEDS for review; a run that finds nothing prints the
+    // range it covered.
     let env_u32 = |name: &str, fallback: u32| -> u32 {
         std::env::var(name)
             .ok()
