@@ -275,6 +275,51 @@ pub fn point_in_loop(pt: Vec2, loop_edges: &[BoundaryEdge]) -> bool {
     point_in_polygon(pt, &loop_pts(loop_edges, 1))
 }
 
+/// Distance from `pt` to a polygon's boundary.
+pub fn point_polygon_dist(pt: Vec2, pts: &[Vec2]) -> f64 {
+    let n = pts.len();
+    if n == 0 {
+        return f64::INFINITY;
+    }
+    let mut best = f64::INFINITY;
+    for i in 0..n {
+        best = best.min(point_segment_dist(pt, pts[i], pts[(i + 1) % n]));
+    }
+    best
+}
+
+/// How far a uniform n-gon on a curve of radius `r` falls inside it: the
+/// sagitta `r * (2*pi/n)^2 / 8`, with the polygon's half-diagonal standing in
+/// for `r`. The sampling error of a polygon read against a curve, in one place.
+pub fn polygon_sagitta(pts: &[Vec2], samples: usize) -> f64 {
+    if pts.is_empty() || samples == 0 {
+        return 0.0;
+    }
+    let (mut mnx, mut mny, mut mxx, mut mxy) = (pts[0][0], pts[0][1], pts[0][0], pts[0][1]);
+    for p in pts {
+        mnx = mnx.min(p[0]);
+        mny = mny.min(p[1]);
+        mxx = mxx.max(p[0]);
+        mxy = mxy.max(p[1]);
+    }
+    let r = 0.5 * (mxx - mnx).hypot(mxy - mny);
+    let theta = 2.0 * std::f64::consts::PI / samples as f64;
+    r * theta * theta / 8.0
+}
+
+/// Distance from `pt` to the closed segment `a..b`.
+pub fn point_segment_dist(pt: Vec2, a: Vec2, b: Vec2) -> f64 {
+    let dx = b[0] - a[0];
+    let dy = b[1] - a[1];
+    let len2 = dx * dx + dy * dy;
+    if len2 <= 0.0 {
+        return (pt[0] - a[0]).hypot(pt[1] - a[1]);
+    }
+    let t = (((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / len2).clamp(0.0, 1.0);
+    let q = [a[0] + t * dx, a[1] + t * dy];
+    (pt[0] - q[0]).hypot(pt[1] - q[1])
+}
+
 /// Area-weighted centroid of a 2D loop polygon.
 pub fn loop_centroid(loop_edges: &[BoundaryEdge]) -> Vec2 {
     let pts = loop_pts(loop_edges, CENTROID_ARC_SAMPLES);

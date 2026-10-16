@@ -1041,6 +1041,32 @@ fn a_nearly_closed_spline_is_a_shell_like_a_closed_one() {
 }
 
 #[test]
+fn a_lone_island_still_subtracts_the_bore_it_covers() {
+    // The island's hole subtraction must run when it is the only surface left:
+    // an uncut outer circle carrying a slit inner circle keeps the whole disk
+    // as one standalone face, and the bore pieces the slit traced are holes
+    // the disk must subtract (the early return used to skip exactly this).
+    let geom = vec![
+        ("outer".into(), circle([5.0, 3.0], 6.5)),
+        ("inner".into(), circle([5.0, 3.0], 5.0)),
+        ("slit_a".into(), line([3.0, 4.5], [-1.0, 4.5])),
+        ("slit_b".into(), line([-1.0, -1.5], [3.0, -1.5])),
+    ];
+    let t = detect_topology(&geom);
+    assert!(
+        t.surfaces.iter().any(|s| !s.holes.is_empty()),
+        "the covering face subtracts the bore: {} surfaces, {} hole regions",
+        t.surfaces.len(),
+        t.hole_regions.len()
+    );
+    let violations = crate::topology::oracle::check_input(&geom)
+        .iter()
+        .map(|v| v.render())
+        .collect::<Vec<_>>();
+    assert!(violations.is_empty(), "{violations:?}");
+}
+
+#[test]
 fn quarter_arc_split_by_a_bezier_makes_two_faces() {
     // The arc half: a quarter disk (arc plus its two radii) cleaved by a
     // straight cubic that enters on one radius and leaves through the arc,

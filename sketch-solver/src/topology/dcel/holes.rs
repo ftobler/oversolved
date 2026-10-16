@@ -38,7 +38,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::super::profile_loops::{loop_pts, point_in_polygon, BoundaryEdge, EdgeGeom, Vec2};
+use super::super::profile_loops::{
+    loop_pts, point_in_polygon, point_polygon_dist, polygon_sagitta, BoundaryEdge, EdgeGeom, Vec2,
+};
 use super::super::TOL_TOPOLOGY_MERGE as MERGE;
 use super::{Split, SurfaceOut, TopoEntity};
 use crate::radians;
@@ -105,9 +107,7 @@ impl Carrier {
                 let scale = a.abs().max(b.abs());
                 conic_gap(c, a, b, theta, p) <= ON_RESOLUTIONS * resolution(scale)
             }
-            Carrier::Polygon(ref pts) => {
-                point_in_polygon(p, pts) || point_near_polygon(p, pts, polygon_sagitta(pts))
-            }
+            Carrier::Polygon(ref pts) => point_in_polygon(p, pts) || near_polygon(p, pts),
         }
     }
 
@@ -182,49 +182,11 @@ fn conic_gap(c: Vec2, a: f64, b: f64, theta: f64, p: Vec2) -> f64 {
     }
 }
 
-/// How far the sampled polygon of a spline shell falls inside its curve: a
-/// uniform n-gon on a curve of radius `r` under-reports by about
-/// `r * (2*pi/n)^2 / 8`, and the polygon's half-diagonal stands in for `r`.
-fn polygon_sagitta(pts: &[Vec2]) -> f64 {
-    let b = bbox_of_pts(pts);
-    let r = 0.5 * (b[2] - b[0]).hypot(b[3] - b[1]);
-    let theta = 2.0 * std::f64::consts::PI / SPLINE_CHAIN_SAMPLES as f64;
-    r * theta * theta / 8.0
-}
-
-fn bbox_of_pts(pts: &[Vec2]) -> [f64; 4] {
-    let mut b = [pts[0][0], pts[0][1], pts[0][0], pts[0][1]];
-    for p in pts {
-        b[0] = b[0].min(p[0]);
-        b[1] = b[1].min(p[1]);
-        b[2] = b[2].max(p[0]);
-        b[3] = b[3].max(p[1]);
-    }
-    b
-}
-
-/// True when `p` is within `tol` of the closed polygon's boundary.
-fn point_near_polygon(p: Vec2, pts: &[Vec2], tol: f64) -> bool {
-    for i in 0..pts.len() {
-        let a = pts[i];
-        let b = pts[(i + 1) % pts.len()];
-        if seg_point_dist(a, b, p) <= tol {
-            return true;
-        }
-    }
-    false
-}
-
-fn seg_point_dist(a: Vec2, b: Vec2, p: Vec2) -> f64 {
-    let dx = b[0] - a[0];
-    let dy = b[1] - a[1];
-    let len2 = dx * dx + dy * dy;
-    if len2 <= 0.0 {
-        return (p[0] - a[0]).hypot(p[1] - a[1]);
-    }
-    let t = (((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2).clamp(0.0, 1.0);
-    let q = [a[0] + t * dx, a[1] + t * dy];
-    (p[0] - q[0]).hypot(p[1] - q[1])
+/// True when `p` is within `tol` of a closed polygon's boundary. A spline
+/// shell's samples lie on its curve, so a point read against them is on the
+/// shell within the polygon's own sagitta.
+fn near_polygon(p: Vec2, pts: &[Vec2]) -> bool {
+    point_polygon_dist(p, pts) <= polygon_sagitta(pts, SPLINE_CHAIN_SAMPLES)
 }
 
 /// One closed carrier: its region test, its sample points, and its nesting

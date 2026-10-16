@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use super::super::curve_split::{bezier_point, ellipse_point_at};
 use super::super::profile_loops::{
-    loop_pts, point_in_polygon, subdivide_loops, BoundaryEdge, EdgeGeom, Vec2,
+    loop_pts, point_in_polygon, point_polygon_dist, polygon_sagitta, subdivide_loops, BoundaryEdge,
+    EdgeGeom, Vec2,
 };
 use super::super::{TOL_FACE_EXISTENCE_MIN_AREA, TOL_TOPOLOGY_MERGE as MERGE, TWO_PI};
 use super::build::{bend, depart, HalfEdge};
@@ -393,17 +394,6 @@ pub(super) fn build_standalone_splines(
     })
 }
 
-/// Fold nested loops into the sketch-area model via `subdivide_loops`: every
-/// loop stays its own area, carrying the loops immediately nested inside it as
-/// holes.
-///
-/// `hole_regions` then subtracts every face the even/odd rule refused to fill
-/// from whatever material face covers its region. On a sliced washer no
-/// material face covers the bore (the ring halves never surround it), so this
-/// is a no-op; on the arrangement where an UNsliced outer loop stayed its own
-/// island face while a shell inside it was sliced, the island's boundary
-/// encloses the bore, and without the subtraction its area would silently
-/// include a region the rule calls a hole.
 /// Samples per arc when the nesting pass reads a face's loop against a hole
 /// region's boundary. Finer than the face-classification sampling because a
 /// chord that cuts the corner here would decide coverage.
@@ -411,13 +401,21 @@ const HOLE_COVER_SAMPLES: usize = 64;
 /// Samples per arc of a hole region's own boundary in the same test.
 const FACE_CHAIN_SAMPLES: usize = 16;
 
+/// Subtract the hole regions from the material faces that cover them, then
+/// fold nested loops into the sketch-area model via `subdivide_loops`: every
+/// surviving loop stays its own area, carrying the loops immediately nested
+/// inside it as holes.
+///
+/// The subtraction runs for EVERY face count, one included: on a sliced washer
+/// no material face covers the bore (the ring halves never surround it), so it
+/// is a no-op there, but on the arrangement where an UNsliced outer loop stayed
+/// its own island face while a shell inside it was sliced, that island is the
+/// single surface and its boundary encloses the bore; without the subtraction
+/// its area would silently include a region the rule calls a hole.
 pub(super) fn nest_surfaces(
     surfaces: Vec<SurfaceOut>,
     hole_regions: &[SurfaceOut],
 ) -> Vec<SurfaceOut> {
-    if surfaces.len() < 2 {
-        return surfaces;
-    }
     let loops: Vec<Vec<BoundaryEdge>> = surfaces.iter().map(|s| s.boundary.clone()).collect();
     let sub = subdivide_loops(&loops);
     let mut out: Vec<SurfaceOut> = Vec::with_capacity(surfaces.len());
@@ -427,11 +425,15 @@ pub(super) fn nest_surfaces(
             s.holes = hole_idxs.into_iter().map(|i| loops[i].clone()).collect();
         }
         // The face's own loop, finely sampled: a face COVERS a hole region
-        // when the region's whole boundary lies inside it. A face merely
-        // adjacent to the region (the ring sharing the bore's arc) keeps the
-        // region outside its loop, because the inscribed polygon of a convex
-        // arc lies on the far side of it.
+        // when the region lies inside it.
         let own: Vec<Vec2> = loop_pts(&s.boundary, HOLE_COVER_SAMPLES);
+        // The face polygon is inscribed, so a point ON the true loop can sit up
+        // to its sagitta outside the polygon; that is the width of "on it"
+        // here. A merely ADJACENT region (one that shares an arc with the
+        // face) has boundary points strictly outside the loop as well, and
+        // `strict_inside` keeps it from being subtracted from a face that
+        // never surrounded it.
+        let on_tol = polygon_sagitta(&own, HOLE_COVER_SAMPLES);
         for hole in hole_regions {
             // The hole region is one traced piece of a shell's interior; every
             // piece whose region this face covers must be subtracted, or the
@@ -439,9 +441,14 @@ pub(super) fn nest_surfaces(
             if s.holes.iter().any(|h| same_loop(h, &hole.boundary)) {
                 continue;
             }
-            let covered = loop_pts(&hole.boundary, FACE_CHAIN_SAMPLES)
-                .iter()
-                .all(|&p| point_in_polygon(p, &own));
+            let covered = covers_region(&own, &hole.boundary, on_tol);
+            #[cfg(test)]
+            if std::env::var("COVER_DEBUG").is_ok() {
+                eprintln!(
+                    "  surface {oi} vs a hole: covered {covered} (own {} pts, on_tol {on_tol:.3e})",
+                    own.len()
+                );
+            }
             if covered {
                 s.holes.push(hole.boundary.clone());
             }
@@ -449,6 +456,47 @@ pub(super) fn nest_surfaces(
         out.push(s);
     }
     out
+}
+
+/// True when the face loop `own` reaches into the region bounded by `region`:
+/// some point of the region's boundary, or the region's own interior point,
+/// lies strictly inside the loop. Overlap is the question, not enclosure,
+/// because a face loop that crosses itself can cover part of a region it does
+/// not surround.
+///
+/// A sample ON the loop says nothing: the loop is an inscribed polygon, so a
+/// point on the true curve (a side the region SHARES with the face, like a
+/// washer's ring and its bore) can read as either side, and a concave side puts
+/// the polygon on the wrong one. The `on_tol` skip is what keeps such a shared
+/// side from deciding the subtraction.
+fn covers_region(own: &[Vec2], region: &[BoundaryEdge], on_tol: f64) -> bool {
+    let strictly_inside = |p: Vec2| point_polygon_dist(p, own) > on_tol && point_in_polygon(p, own);
+    region_samples(region, FACE_CHAIN_SAMPLES)
+        .into_iter()
+        .any(strictly_inside)
+}
+
+/// Samples along a region's boundary, straight sides included. `loop_pts`
+/// gives an edge's start plus its curve interior but nothing for a line; the
+/// cover test needs points along every side, or a region whose only
+/// outside-the-loop evidence sits mid-line would read as covered.
+fn region_samples(region: &[BoundaryEdge], per_arc: usize) -> Vec<Vec2> {
+    const LINE_SAMPLES: usize = 4;
+    let mut pts = Vec::new();
+    for be in region {
+        if let EdgeGeom::Line { start, end } = be.geom {
+            for k in 0..LINE_SAMPLES {
+                let t = (k as f64 + 0.5) / LINE_SAMPLES as f64;
+                pts.push([
+                    start[0] + t * (end[0] - start[0]),
+                    start[1] + t * (end[1] - start[1]),
+                ]);
+            }
+        } else {
+            pts.extend(loop_pts(std::slice::from_ref(be), per_arc));
+        }
+    }
+    pts
 }
 
 /// Two loops are the same face boundary: the same sides in the same order,
@@ -564,6 +612,54 @@ mod tests {
         let later_right = (0.45 * ANGLE_TIE, -2.0, 7);
         assert_eq!(index_order(&[earlier_left, later_right]), vec![3, 7]);
         assert_eq!(index_order(&[later_right, earlier_left]), vec![3, 7]);
+    }
+
+    /// A closed line loop from polygon points.
+    fn poly_loop(pts: &[Vec2]) -> Vec<BoundaryEdge> {
+        let n = pts.len();
+        (0..n)
+            .map(|i| BoundaryEdge {
+                geom: EdgeGeom::Line {
+                    start: pts[i],
+                    end: pts[(i + 1) % n],
+                },
+                id: Some("l".into()),
+                start_vertex: Some(format!("_v{i}")),
+                end_vertex: Some(format!("_v{}", (i + 1) % n)),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_shared_side_does_not_decide_the_subtraction() {
+        // The face is a C (the polygon from the profile-loop tests): a region
+        // inside its top bar sharing the bar's right and top sides must be
+        // subtracted, and a region in its mouth sharing the mouth's sides must
+        // not. The shared sides sit ON the face loop, where the inscribed
+        // polygon reads a vertical side's points as OUTSIDE; skipping them is
+        // what lets the region's own sides decide.
+        let c = poly_loop(&[
+            [0.0, 0.0],
+            [0.0, 10.0],
+            [10.0, 10.0],
+            [10.0, 8.0],
+            [2.0, 8.0],
+            [2.0, 2.0],
+            [10.0, 2.0],
+            [10.0, 0.0],
+        ]);
+        let own = loop_pts(&c, HOLE_COVER_SAMPLES);
+        let on_tol = polygon_sagitta(&own, HOLE_COVER_SAMPLES);
+        let band = poly_loop(&[[8.0, 8.0], [10.0, 8.0], [10.0, 10.0], [8.0, 10.0]]);
+        assert!(
+            covers_region(&own, &band, on_tol),
+            "a region inside the bar sharing two of its sides is covered"
+        );
+        let mouth = poly_loop(&[[2.0, 2.0], [10.0, 2.0], [10.0, 8.0], [2.0, 8.0]]);
+        assert!(
+            !covers_region(&own, &mouth, on_tol),
+            "the C's mouth is outside the C, shared sides or not"
+        );
     }
 
     #[test]

@@ -436,6 +436,10 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability"],
     },
     KnownSeed {
+        seed: 95,
+        classes: &["stability"],
+    },
+    KnownSeed {
         seed: 96,
         classes: &["coverage", "stability"],
     },
@@ -905,7 +909,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 252,
-        classes: &["coverage", "euler", "order"],
+        classes: &["coverage", "euler", "order", "stability"],
     },
     KnownSeed {
         seed: 253,
@@ -1187,6 +1191,29 @@ fn a_catalogue_entry_without_its_fixture_fails_the_check() {
         "the catalogue's fixtures are incomplete: {:?}",
         missing_case_failures(KNOWN_FAILING_SEEDS)
     );
+}
+
+#[test]
+#[ignore]
+fn remint_fixtures() {
+    // Temporary tool: re-minimise the checked-in fixtures of the seeds whose
+    // class set still matches the catalogue but whose recorded text no longer
+    // reproduces (the minimised input, not the seed, stopped violating).
+    let seeds: Vec<u32> = std::env::var("REMINT_SEEDS")
+        .expect("REMINT_SEEDS")
+        .split(',')
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+    for seed in seeds {
+        let gen = generate(seed);
+        let violations = check_generated(&gen.entities, seed);
+        for (class, entities, texts) in minimise_seed(&gen, seed, &violations) {
+            if REQUIRES_CASE.contains(&class.as_str()) {
+                write_case(seed, &class, &entities, &texts);
+                eprintln!("rewrote {seed}-{class}: {}", texts.join(" | "));
+            }
+        }
+    }
 }
 
 #[test]

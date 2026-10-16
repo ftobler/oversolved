@@ -1,1 +1,1 @@
-coverage: coverage (hole region filled): 4361 cells read as holes sit inside a face, first at (-0.005147, -0.033868)
+coverage: coverage (hole region filled): 1705 cells read as holes sit inside a face, first at (-0.005147, -0.033868)
