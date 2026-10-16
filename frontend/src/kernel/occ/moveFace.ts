@@ -112,17 +112,20 @@ export function extendNeighbourFace(
     throw new MoveFaceRefusal(`move_face: neighbour face of type ${name} cannot be extended (v1)`)
   }
   const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  // adaptor.Plane()/Cylinder()/Cone() each return a fresh by-value gp_* proxy
+  // owning WASM memory; scope owns them for the read (the faceLoops.computeFacePlane
+  // rule), and the face builder copies the surface it is handed.
   if (kind === 'plane') {
     return scope.track(
-      new oc.BRepBuilderAPI_MakeFace_9(adaptor.Plane(), -L, L, -L, L).Face(),
+      new oc.BRepBuilderAPI_MakeFace_9(scope.track(adaptor.Plane()), -L, L, -L, L).Face(),
     )
   }
   if (kind === 'cylinder') {
     return scope.track(
-      new oc.BRepBuilderAPI_MakeFace_10(adaptor.Cylinder(), 0, 2 * Math.PI, -L, L).Face(),
+      new oc.BRepBuilderAPI_MakeFace_10(scope.track(adaptor.Cylinder()), 0, 2 * Math.PI, -L, L).Face(),
     )
   }
-  const cone = adaptor.Cone()
+  const cone = scope.track(adaptor.Cone())
   const semi = cone.SemiAngle()
   const refR = cone.RefRadius()
   // v runs along the slant; the apex is where the radius reaches zero.
@@ -179,12 +182,20 @@ function representativePoints(oc: OccModule, scope: DisposeScope, face: OccShape
   if (handle.IsNull()) return []
   const tri = handle.get()
   if (tri === null) return []
+  // A face placed by a TopLoc_Location stores its mesh in local coordinates;
+  // transform each node to world so the centroid is classified in the body's
+  // own space. Identity for the solids built here, non-identity for a placed
+  // import.
+  const trsf = scope.track(loc.Transformation())
   const out: Vec3[] = []
   for (let i = 1; i <= tri.NbTriangles(); i++) {
     const t = scope.track(tri.Triangle(i))
     const a = scope.track(tri.Node(t.Value(1)))
     const b = scope.track(tri.Node(t.Value(2)))
     const c = scope.track(tri.Node(t.Value(3)))
+    a.Transform(trsf)
+    b.Transform(trsf)
+    c.Transform(trsf)
     out.push([(a.X() + b.X() + c.X()) / 3, (a.Y() + b.Y() + c.Y()) / 3, (a.Z() + b.Z() + c.Z()) / 3])
   }
   return out
@@ -263,13 +274,16 @@ export function moveFaceCells(
   const n = faceNormal(oc, scope, face)
   const c0 = faceCentroid(oc, scope, face)
 
-  // The plane frame gives the slab's lateral walls their u/v at +-L.
+  // The plane frame gives the slab's lateral walls their u/v at +-L. Every
+  // accessor below returns a fresh by-value gp_* proxy owning WASM memory, so
+  // scope tracks each (the faceLoops.computeFacePlane rule).
   const planeAdaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
-  const position = scope.track(planeAdaptor.Plane().Position())
-  const origin = position.Location()
+  const plane = scope.track(planeAdaptor.Plane())
+  const position = scope.track(plane.Position())
+  const origin = scope.track(position.Location())
   const pOrigin: Vec3 = [origin.X(), origin.Y(), origin.Z()]
-  const xd = position.XDirection()
-  const yd = position.YDirection()
+  const xd = scope.track(position.XDirection())
+  const yd = scope.track(position.YDirection())
   const pX: Vec3 = [xd.X(), xd.Y(), xd.Z()]
   const pY: Vec3 = [yd.X(), yd.Y(), yd.Z()]
 
@@ -301,9 +315,7 @@ export function moveFaceCells(
   }
 
   // Slab: a big face on the picked plane, swept by n*d.
-  const bigFace = scope.track(
-    new oc.BRepBuilderAPI_MakeFace_9(planeAdaptor.Plane(), -L, L, -L, L).Face(),
-  )
+  const bigFace = scope.track(new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L).Face())
   const slab = makePrism(oc, scope, bigFace, n, d)
 
   const cells = splitCells(oc, scope, slab, toolFaces)
@@ -315,8 +327,14 @@ export function moveFaceCells(
 
   const picked: OccShape[] = []
   for (const cell of cells) {
-    if (isUnbounded(oc, scope, cell, pOrigin, pX, pY, L)) continue
-    if (cellSelected(oc, scope, cell, n, c0, d, outerFace, inner)) picked.push(cell)
+    if (!cellSelected(oc, scope, cell, n, c0, d, outerFace, inner)) continue
+    // Guard the cells the face actually claims: a selected cell reaching the
+    // slab's lateral wall is not enclosed by the neighbours. A cell that is
+    // merely an outer piece (not under the face) is skipped, not a refusal.
+    if (isUnbounded(oc, scope, cell, pOrigin, pX, pY, L)) {
+      throw new MoveFaceRefusal('move_face: the neighbours do not bound the moved face')
+    }
+    picked.push(cell)
   }
   if (picked.length === 0) {
     throw new MoveFaceRefusal('move_face: no cell of the moved face could be selected')
