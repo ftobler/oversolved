@@ -39,7 +39,7 @@ import { booleanWithDiff, exploreSolids } from '../booleans'
 import { canonicalFaces, canonicalEdges } from '../bodyNames'
 import { applyFilletWithDiff, applyChamferWithDiff, isValidShape } from '../edgeModifier'
 import { applyDeleteFacesWithLineage } from '../defeature'
-import type { OccModule, OccShape } from '../occTypes'
+import type { OccDisposable, OccModule, OccShape } from '../occTypes'
 
 const oc = await loadOcc()
 // The tests only run when the build is present; this is the non-null view.
@@ -71,6 +71,26 @@ describe.skipIf(!oc)('defeature phase-0 probe (real OCC)', () => {
 
   // The 20x20x10 base box (V = 4000), untracked as the primitives contract.
   const box = (scope: DisposeScope): OccShape => makeBox(OCC, scope, 20, 20, 10)
+
+  // BRepPrimAPI_MakeSphere / MakeTorus are bound but not declared on OccModule
+  // (no feature builds them yet), so they are reached through the same cast the
+  // primitives Real suite uses. A full sphere is one spherical face and a full
+  // torus one toroidal face: exactly the neighbour surfaces guard 2 allows but
+  // no other phase-0 case proves.
+  type SolidBuilder = { Shape(): OccShape } & OccDisposable
+  const sphereAt = (scope: DisposeScope, center: Vec3, radius: number): OccShape => {
+    const MakeSphere = (OCC as unknown as {
+      BRepPrimAPI_MakeSphere_5: new (p: OccDisposable, r: number) => SolidBuilder
+    }).BRepPrimAPI_MakeSphere_5
+    const pnt = scope.track(new OCC.gp_Pnt_3(center[0], center[1], center[2]))
+    return scope.track(new MakeSphere(pnt, radius)).Shape()
+  }
+  const torus = (scope: DisposeScope, major: number, minor: number): OccShape => {
+    const MakeTorus = (OCC as unknown as {
+      BRepPrimAPI_MakeTorus_1: new (r1: number, r2: number) => SolidBuilder
+    }).BRepPrimAPI_MakeTorus_1
+    return scope.track(new MakeTorus(major, minor)).Shape()
+  }
 
   const verticalEdges = (scope: DisposeScope, s: OccShape): OccShape[] =>
     (canonicalEdges(OCC, scope, s) as OccShape[]).filter((e) => {
@@ -140,8 +160,7 @@ describe.skipIf(!oc)('defeature phase-0 probe (real OCC)', () => {
       expect(res.applied).toBe(true)
       // One fillet gone: the sharp edge returns and the two adjacent fillets run
       // on to the corner (the probe measured 3950.029).
-      expect(volumeOf(OCC, scope, res.shape)).toBeGreaterThan(3945)
-      expect(volumeOf(OCC, scope, res.shape)).toBeLessThan(3955)
+      expect(volumeOf(OCC, scope, res.shape)).toBeCloseTo(3950.029, 3)
       expect(faceCount(scope, res.shape)).toBe(9)
     } finally {
       scope.dispose()
@@ -204,6 +223,49 @@ describe.skipIf(!oc)('defeature phase-0 probe (real OCC)', () => {
       expect(res.applied).toBe(true)
       expect(volumeOf(OCC, scope, res.shape)).toBeCloseTo(4000, 3)
       expect(faceCount(scope, res.shape)).toBe(6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a blind hole drilled into a sphere heals back to the sphere (sphereface neighbour)', () => {
+    const scope = new DisposeScope()
+    try {
+      const base = sphereAt(scope, [0, 0, 0], 5)
+      expect(facesOf(scope, base).map((f) => faceType(scope, f))).toEqual(['sphereface'])
+      // A blind r1.5 hole down the pole, its floor at z = 2 (inside the sphere).
+      // The bore wall's ring holds the sphere, so guard 2 must allow sphereface.
+      const shape = cut(scope, base, makeCylinder(OCC, scope, [0, 0, 2], [0, 0, 1], 1.5, 10))
+      const remove = [...cylinderFaces(scope, shape), planarFaceAt(scope, shape, [0, 0, 2])]
+      expect(remove).toHaveLength(2)
+      const res = applyDeleteFacesWithLineage(OCC, scope, shape, remove)
+      expect(res.applied).toBe(true)
+      expect(res.failedGroups).toEqual([])
+      expect(volumeOf(OCC, scope, res.shape)).toBeCloseTo((4 / 3) * Math.PI * 125, 3)
+      expect(faceCount(scope, res.shape)).toBe(1)
+      expect(isValidShape(OCC, scope, res.shape)).toBe(true)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a radial blind hole into a torus heals back to the torus (torusface neighbour)', () => {
+    const scope = new DisposeScope()
+    try {
+      const base = torus(scope, 5, 1.5)
+      expect(facesOf(scope, base).map((f) => faceType(scope, f))).toEqual(['torusface'])
+      // A radial r0.5 hole from outside the tube down to the tube centre (x = 5),
+      // so the floor disc sits inside the material. The wall's ring holds the
+      // torus, so guard 2 must allow torusface.
+      const shape = cut(scope, base, makeCylinder(OCC, scope, [5, 0, 0], [1, 0, 0], 0.5, 6))
+      const remove = [...cylinderFaces(scope, shape), planarFaceAt(scope, shape, [5, 0, 0])]
+      expect(remove).toHaveLength(2)
+      const res = applyDeleteFacesWithLineage(OCC, scope, shape, remove)
+      expect(res.applied).toBe(true)
+      expect(res.failedGroups).toEqual([])
+      expect(volumeOf(OCC, scope, res.shape)).toBeCloseTo(2 * Math.PI * Math.PI * 5 * 1.5 * 1.5, 3)
+      expect(faceCount(scope, res.shape)).toBe(1)
+      expect(isValidShape(OCC, scope, res.shape)).toBe(true)
     } finally {
       scope.dispose()
     }
