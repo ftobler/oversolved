@@ -258,17 +258,21 @@ def feature_chamfer(ctx):
 
 @icon("frontend/src/assets/icons/feature-shell.svg")
 def feature_shell(ctx):
-    """Icon for Shell: a hollow box with the open top (a thick-walled frame)."""
+    """Icon for Shell: a box hollowed to a wall, with the top face open."""
     left, right = 0.18, 0.82
-    top, bottom = 0.22, 0.82
+    top, bottom = 0.18, 0.82
     wall = 0.16
 
     # Outer box outline.
     ctx.rectangle(left, top, right - left, bottom - top)
     stroke(ctx, 2.0)
 
-    # Inner cavity: the removed face opening, inset by the wall thickness.
-    ctx.rectangle(left + wall, top + wall, (right - left) - 2 * wall, (bottom - top) - 2 * wall)
+    # The cavity walls, drawn without a top edge: the removed face leaves the
+    # box open at the top, so the walls run from the top rim down and across.
+    ctx.move_to(left + wall, top)
+    ctx.line_to(left + wall, bottom - wall)
+    ctx.line_to(right - wall, bottom - wall)
+    ctx.line_to(right - wall, top)
     stroke(ctx, 1.5)
 
 

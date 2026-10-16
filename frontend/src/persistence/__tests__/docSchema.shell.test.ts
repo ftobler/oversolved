@@ -50,4 +50,18 @@ describe('shell document validation', () => {
     if (result.ok) return
     expect(result.error.field).toBe('features[0].shell.faces')
   })
+
+  it('rejects a string thickness expression that evaluates <= 0', () => {
+    const result = loadPartDoc(doc({ faces: [], thickness: '1 - 1' }))
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.field).toBe('features[0].shell.thickness')
+  })
+
+  it('rejects a non-string source_body ref', () => {
+    const result = loadPartDoc(doc({ faces: [], thickness: 1, source_body: 42 }))
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.field).toBe('features[0].shell.source_body')
+  })
 })

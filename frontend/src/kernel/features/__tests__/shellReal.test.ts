@@ -22,9 +22,11 @@ import { deriveEdgeNames } from '../../occ/constructionLineage'
 import { ref, Repository, makeAncestryQuery, constructionUuidToken } from '../../query'
 import { solveShell } from '../shell'
 import { solveFillet } from '../filletChamfer'
+import { exploreEdges } from '../../occ/edgeModifier'
+import { buildFaceIndex } from '../shared/faceResolution'
 import { mintFaceUuid, shellFacePath } from '../../constructionName'
 import type { Body } from '../../types3d'
-import type { OccModule, OccShape } from '../../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
 
@@ -94,6 +96,11 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
       expect(canonicalEdges(occ, scope, shape)).toHaveLength(24)
       expect(body.modified_by).toEqual(['sh1'])
       expect(body.brep_diff?.new_faces.length).toBeGreaterThan(0)
+      // Inward removes material inside the original skin, so the bbox holds.
+      const box = scope.track(new occ.Bnd_Box_1())
+      occ.BRepBndLib.Add(shape, box, false)
+      expect([box.GetXmin(), box.GetYmin(), box.GetZmin(), box.GetXmax(), box.GetYmax(), box.GetZmax()].map((n) => Math.round(n)))
+        .toEqual([0, 0, 0, 10, 10, 10])
     } finally {
       scope.dispose()
     }
@@ -104,12 +111,20 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
     const table = new HandleTable()
     try {
       const bodyStore = boxBody(scope, table)
+      const body = bodyStore.body_b
+      const originalUuids = [...body.face_uuids!]
+      const bottomUuid = body.face_uuids![bottomFaceIndex(scope, table, body)]!
       const res = solveShell(occ, scope, table, { id: 'sh1', shell: { faces: [], thickness: 1, source_body: '@body_b' } }, new Repository(), bodyStore)
       expect(res.status).toBe('ok')
       expect(res.body_ids).toEqual(['body_b'])
       const shape = shelledShape(scope, table, bodyStore.body_b)
       expect(volumeOf(occ, scope, shape)).toBeCloseTo(488, 4)
       expect(canonicalFaces(occ, scope, shape)).toHaveLength(12)
+      // Every result face is named; the outer skin keeps the original UUIDs and
+      // the inner void mints an offset name keyed off each source face.
+      expect(body.face_uuids!.every((u) => u !== null)).toBe(true)
+      for (const u of originalUuids) expect(body.face_uuids).toContain(u)
+      expect(body.face_uuids).toContain(mintFaceUuid(shellFacePath('sh1', 'offset', bottomUuid)))
     } finally {
       scope.dispose()
     }
@@ -122,6 +137,8 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
       const bodyStore = boxBody(scope, table)
       const body = bodyStore.body_b
       const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
+      const topUuid = body.face_uuids![topFaceIndex(scope, table, body)]!
+      const keptUuids = body.face_uuids!.filter((u) => u !== topUuid)
       const res = solveShell(occ, scope, table, { id: 'sh1', shell: { faces: [q], thickness: 1, direction: 'outward' } }, new Repository(), bodyStore)
       expect(res.status).toBe('ok')
       const shape = shelledShape(scope, table, body)
@@ -131,6 +148,14 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
       occ.BRepBndLib.Add(shape, box, false)
       expect([box.GetXmin(), box.GetYmin(), box.GetZmin(), box.GetXmax(), box.GetYmax(), box.GetZmax()].map((n) => Math.round(n)))
         .toEqual([-1, -1, -1, 11, 11, 10])
+      // Outward names the same way as inward: the kept inner skin carries the
+      // old UUIDs (minus the removed top) and every kept face mints its offset
+      // wall keyed off the source face.
+      expect(body.face_uuids!.every((u) => u !== null)).toBe(true)
+      for (const u of keptUuids) {
+        expect(body.face_uuids).toContain(u)
+        expect(body.face_uuids).toContain(mintFaceUuid(shellFacePath('sh1', 'offset', u!)))
+      }
     } finally {
       scope.dispose()
     }
@@ -278,19 +303,36 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
     }
   })
 
-  it('an inner edge of the shelled body still resolves through fillet', () => {
+  it('an inner edge still resolves through fillet after a 10 -> 14 edit', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = boxBody(scope, table)
-      const body = bodyStore.body_b
-      const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
-      solveShell(occ, scope, table, { id: 'sh1', shell: { faces: [q], thickness: 1 } }, new Repository(), bodyStore)
-      // Pick an edge that bounds a named face and fillet it.
-      const edgeUuid = body.edge_uuids!.find((u) => u !== null)!
-      const edgeQuery = makeAncestryQuery([constructionUuidToken(edgeUuid)], 'edge')
-      const res = solveFillet(occ, scope, table, { id: 'fi1', fillet: { edges: [edgeQuery], radius: 0.2 } }, new Repository(), bodyStore)
-      expect(res.status).toBe('ok')
+      // Shell a 10-box, pick an INNER edge (one bounding the offset cavity
+      // floor) by construction, and return its query and the fillet result.
+      const filletInnerEdge = (size: number, storedQuery: string | null): { query: string; status: string } => {
+        const bodyStore = boxBody(scope, table, size)
+        const body = bodyStore.body_b
+        const topUuid = body.face_uuids![topFaceIndex(scope, table, body)]!
+        const bottomUuid = body.face_uuids![bottomFaceIndex(scope, table, body)]!
+        solveShell(occ, scope, table, { id: 'sh1', shell: { faces: [faceQuery(topUuid)], thickness: 1 } }, new Repository(), bodyStore)
+        const offsetFloor = mintFaceUuid(shellFacePath('sh1', 'offset', bottomUuid))
+        const outerEdges = canonicalEdges(occ, scope, table.get<OccShape>(body.shape!))
+        const innerEdge = exploreEdges(occ, scope, buildFaceIndex(occ, scope, table, body).byUuid.get(offsetFloor)!)
+        const at = outerEdges.findIndex((ce) => innerEdge.some((e) => (e as OccSubShape).IsSame(ce as OccSubShape)))
+        expect(at, 'the offset floor must bound a result edge').toBeGreaterThanOrEqual(0)
+        const uuid = body.edge_uuids![at]!
+        expect(uuid).not.toBeNull()
+        const query = storedQuery ?? makeAncestryQuery([constructionUuidToken(uuid)], 'edge')
+        const res = solveFillet(occ, scope, table, { id: 'fi1', fillet: { edges: [query], radius: 0.2 } }, new Repository(), bodyStore)
+        return { query, status: res.status }
+      }
+      const ten = filletInnerEdge(10, null)
+      expect(ten.status).toBe('ok')
+      // Rebuild at 14 with the pick stored at 10: the construction UUID is
+      // stable, so the same inner edge resolves and fillets.
+      const fourteen = filletInnerEdge(14, ten.query)
+      expect(fourteen.query).toBe(ten.query)
+      expect(fourteen.status).toBe('ok')
     } finally {
       scope.dispose()
     }

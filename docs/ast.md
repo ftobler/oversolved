@@ -115,6 +115,7 @@ An empty `faces` list makes a closed hollow (one solid with an inner void), so
 is an error.
 
 ### boolean
+
 ```yaml
 - id: bool1
   kind: boolean

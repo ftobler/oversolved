@@ -184,9 +184,16 @@ function applySealedShell(
   for (const src of oldFaces) {
     const srcUuid = old.faceNames.get(src as OccSubShape)
     if (!srcUuid) continue
-    for (const img of drainList(scope, offMaker.Generated(src)).flatMap((g) => facesOf(oc, scope, g))) {
-      offsetUuid.set(img as OccSubShape, srcUuid)
+    // The offset maker's history is not guaranteed to narrate every face (see
+    // mintRoleFaces): a throw here must leave the face to neighbour naming
+    // rather than escaping as a generic kernel exception.
+    let images: OccShape[]
+    try {
+      images = drainList(scope, offMaker.Generated(src)).flatMap((g) => facesOf(oc, scope, g))
+    } catch {
+      continue
     }
+    for (const img of images) offsetUuid.set(img as OccSubShape, srcUuid)
   }
   const offsetNames: SubShapeMap<string> = new SubShapeMap()
   for (const [face, srcUuid] of offsetUuid.entries()) {
@@ -243,7 +250,9 @@ function applySealedShell(
     scope.release(built)
     built = heal.shape
   }
-  return { shape: built, success: true, reason: null, names, diff }
+  // The repaired shape is already detached by healShape; the raw build is
+  // scope-tracked, so hand it out untracked either way.
+  return { shape: scope.isTracked(built) ? scope.detach(built) : built, success: true, reason: null, names, diff }
 }
 
 /**
@@ -335,5 +344,5 @@ export function applyShellWithLineage(
     return { shape: heal.shape, success: true, reason: null, names: rebased, diff }
   }
 
-  return { shape: built, success: true, reason: null, names, diff }
+  return { shape: scope.detach(built), success: true, reason: null, names, diff }
 }

@@ -126,6 +126,13 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
       off.Build()
       expect(off.IsDone()).toBe(true)
       const inner = scope.track(off.Shape())
+      // The inner void's wall history: each box face Generated() exactly one
+      // offset face and is never narrating a Modified image, so the closed
+      // hollow's offset names can be keyed off `Generated(sourceFace)`.
+      for (const f of canonicalFaces(module, scope, box) as OccShape[]) {
+        expect(drain(scope, off.Generated(f)).flatMap((g) => canonicalFaces(module, scope, g))).toHaveLength(1)
+        expect(drain(scope, off.Modified(f))).toHaveLength(0)
+      }
       const { shape } = booleanWithDiff(module, scope, box, inner, 'cut')
       scope.track(shape)
       expect(volumeOf(module, scope, shape)).toBeCloseTo(488, 6)
@@ -141,10 +148,22 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
     try {
       const box = boxOf(module, scope, 10)
       const top = topFace(module, scope, box)
-      const { result } = thickSolid(module, scope, box, [top], 1, module.GeomAbs_JoinType.GeomAbs_Intersection)
+      const keptFaces = (canonicalFaces(module, scope, box) as OccShape[]).filter(
+        (f) => !(f as OccSubShape).IsSame(top as OccSubShape),
+      )
+      const { maker, result } = thickSolid(module, scope, box, [top], 1, module.GeomAbs_JoinType.GeomAbs_Intersection)
       expect(volumeOf(module, scope, result)).toBeCloseTo(584, 6)
       expect(canonicalFaces(module, scope, result)).toHaveLength(11)
       expect(bbox(module, scope, result).map((n) => Math.round(n))).toEqual([-1, -1, -1, 11, 11, 10])
+      // Outward names the same way as inward: the kept inner skin survives by
+      // IsSame (it carries the old UUID) and each kept face Generated() exactly
+      // one offset wall; the removed face Modified() into its rim.
+      const newFaces = canonicalFaces(module, scope, result) as OccShape[]
+      for (const kept of keptFaces) {
+        expect(newFaces.some((nf) => (nf as OccSubShape).IsSame(kept as OccSubShape))).toBe(true)
+        expect(drain(scope, maker.Generated(kept))).toHaveLength(1)
+      }
+      expect(drain(scope, maker.Modified(top))).toHaveLength(1)
     } finally {
       scope.dispose()
     }
