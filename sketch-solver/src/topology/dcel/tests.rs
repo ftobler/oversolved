@@ -539,6 +539,48 @@ fn tangent_collapse_holds_across_the_solver_residual_band() {
 }
 
 #[test]
+fn near_tangent_lines_to_an_ellipse_close_the_side_regions() {
+    // Bug class A: a line tangent to an ellipse reported no contact, so the
+    // region the line closes never built. The stadium's top and bottom sides
+    // sit a hair off tangency to the ellipse inside it; within the gap budget
+    // each side's virtual contact splits the ellipse and the stadium into the
+    // pinned left and right side regions plus the disk. On a real miss the
+    // ellipse stays whole and the stadium is its one and only region.
+    let (a, b, half_width): (f64, f64, f64) = (5.0, 2.0, 6.0);
+    let stadium = |gap: f64| {
+        vec![
+            ("e0".into(), ellipse([0.0, 0.0], a, b, 0.0)),
+            (
+                "top".into(),
+                line([-half_width, b + gap], [half_width, b + gap]),
+            ),
+            (
+                "bottom".into(),
+                line([half_width, -b - gap], [-half_width, -b - gap]),
+            ),
+            (
+                "right".into(),
+                line([half_width, b + gap], [half_width, -b - gap]),
+            ),
+            (
+                "left".into(),
+                line([-half_width, -b - gap], [-half_width, b + gap]),
+            ),
+        ]
+    };
+    for gap in [1e-7, 5e-6] {
+        let t = detect_topology(&stadium(gap));
+        assert_eq!(
+            t.surfaces.len(),
+            3,
+            "gap {gap:e}: disk + left and right side regions"
+        );
+    }
+    let t = detect_topology(&stadium(1e-2));
+    assert_eq!(t.surfaces.len(), 2, "a real miss leaves the stadium whole");
+}
+
+#[test]
 fn a_crossing_survives_a_foot_that_lies_off_the_segment() {
     // The collapse must never cost a real root. A line running from just past
     // the foot of its own perpendicular to beyond the rim crosses the circle
