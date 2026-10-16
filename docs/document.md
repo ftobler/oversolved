@@ -1,4 +1,26 @@
-# AST - Feature/Sketch Document Schema
+# Part Document - Schema
+
+## What the document is
+
+A part document is an ordered list of feature records. Each record is one layer
+of a build: the state after feature N is the accumulation of features `[0..N]`.
+The rollback position is an index into that list, and an incremental rebuild
+reuses the unchanged prefix (`findFirstDirty`, `kernel/builder.ts`).
+
+The records are flat: no nesting, no control flow, no user functions. Repetition
+is a feature kind (`array`, `circular_array`). Dependencies between features are
+references (query strings, see Query Syntax) plus the list order; numeric params
+may be expression strings evaluated against earlier `variable` features
+(`kernel/evalExpr.ts`). Some kinds are shorthand that is lowered before the
+solver runs (`center_rect`, the `ngon` constraint).
+
+The same document is the target for every author: the GUI, the drive surface
+(the dev bridge, the MCP server and the headless CLI in `frontend/src/drive`),
+and the import/export paths. The JSON Schema in `persistence/partDocSchema.ts`
+is the contract.
+
+The assembly document (parts, instances, mates) is a separate format and is not
+covered here.
 
 ## Document Structure
 
