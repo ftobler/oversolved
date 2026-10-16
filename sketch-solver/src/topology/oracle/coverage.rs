@@ -349,6 +349,13 @@ pub(crate) fn coverage_violations(
     for j in 0..grid.ny {
         for i in 0..grid.nx {
             let k = j * grid.nx + i;
+            // A cell the two fills disagree on is skipped: a sub-cell channel
+            // or a certified tunnel into it is exactly what the grid cannot
+            // decide. The residual blind spot: a region reachable ONLY through
+            // a certified tunnel is never judged, and on a curved target a
+            // sub-MERGE opening measures up to the chord tolerance wider than
+            // it is, so a fused opening can be left to the tunnel and its
+            // region missed rather than falsely reported.
             if blocked[k] || reached[k] != reached_opt[k] {
                 continue;
             }
