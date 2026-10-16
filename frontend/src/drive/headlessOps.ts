@@ -10,9 +10,10 @@
 // invocation); a driver that keeps the process alive (MCP) must serialize its
 // calls, which its stdio loop does by construction.
 
-import type { PartDoc } from '@/types/cad'
+import type { PartDoc, BodyResult } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
-import { measureLocally, exportLocally, type LocalExportOptions, type LocalMeasure } from '@/kernel/solveLocally'
+import { measureLocally, exportLocally, solveLocally, type LocalExportOptions, type LocalMeasure } from '@/kernel/solveLocally'
+import { selectByPredicate, type SelectResult, type Selector } from '@/kernel/select'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
 import { partSolvePayload } from '@/drive/solveWriteBack'
@@ -92,4 +93,27 @@ export interface HeadlessExportOptions extends LocalExportOptions {
 export async function exportHeadless(doc: PartDoc, opts: HeadlessExportOptions): Promise<Uint8Array | null> {
   const { docId, files, ...exportOpts } = opts
   return exportLocally(partSolvePayload(doc, docId ?? 'headless'), exportOpts, files)
+}
+
+export interface HeadlessSelectOptions {
+  docId?: string
+  files?: ReadonlyMap<string, Uint8Array>
+}
+
+/**
+ * Select faces or edges by predicate over a document's solve output, returning
+ * the query strings a click would have stored. Null when the kernel is
+ * unavailable; throws SelectorError on an invalid expression or an empty match
+ * (the caller surfaces that as `{ ok: false, error }`).
+ */
+export async function selectHeadless(
+  doc: PartDoc,
+  selector: Selector,
+  opts: HeadlessSelectOptions = {},
+): Promise<SelectResult | null> {
+  const response = await solveLocally(partSolvePayload(doc, opts.docId ?? 'headless'), {
+    ...(opts.files ? { files: opts.files } : {}),
+  })
+  if (!response) return null
+  return selectByPredicate(selector, response.bodies as Record<string, BodyResult>)
 }

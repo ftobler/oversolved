@@ -16,6 +16,7 @@
 // once; an ops implementation that answers out of band would break that.
 
 import { PART_DOC_SCHEMA_URI } from '@/persistence/partDocSchema'
+import { validateSelector, type Selector } from '@/kernel/select'
 
 // The protocol revisions whose initialize handshake this server accepts. The
 // three methods implemented here exist unchanged in all of them, so a client
@@ -55,6 +56,13 @@ export interface McpExportRequest {
   files: McpFileRef[]
 }
 
+export interface McpSelectRequest {
+  doc: unknown
+  selector: Selector
+  docId?: string
+  files: McpFileRef[]
+}
+
 // A tool payload: JSON-safe, carrying `ok` like every other Result in the
 // project. `ok: false` means the tool ran and failed (a bad document, no
 // solid, an unavailable kernel) and the server sets the MCP isError flag; an
@@ -73,6 +81,7 @@ export interface McpCadOps {
   // string so the server does not depend on the schema's build graph; only the
   // URI constant (from partDocSchema, the same source) is imported here.
   partDocSchema(): string
+  select(req: McpSelectRequest): Promise<McpToolPayload>
 }
 
 export interface McpToolDefinition {
@@ -89,6 +98,71 @@ const FILE_LIST_SCHEMA = {
     required: ['id', 'path'],
     properties: { id: { type: 'string' }, path: { type: 'string' } },
     additionalProperties: false,
+  },
+}
+
+const VEC3_SCHEMA = {
+  type: 'array',
+  description: 'A world-space 3-vector.',
+  items: { type: 'number' },
+  minItems: 3,
+  maxItems: 3,
+}
+
+// The structured selector grammar advertised to MCP clients. The authoritative
+// check is validateSelector (a recursive JSON Schema cannot express "exactly one
+// predicate key" cleanly); this mirrors it so tools/list is honest about the
+// shape, and an unknown predicate is still rejected before the engine runs.
+//
+// A `$ref` fragment resolves against the schema-document root, which for a tool
+// is the whole `inputSchema`. These definitions are therefore spread into that
+// root as `$defs` and the `selector` property refs into them; nesting the
+// definitions under the property would leave `#/$defs/selector` dangling.
+const SELECTOR_DEFS: Record<string, unknown> = {
+  $defs: {
+    predicate: {
+      type: 'object',
+      description: 'A selector predicate; exactly one key.',
+      minProperties: 1,
+      maxProperties: 1,
+      properties: {
+        and: { type: 'array', items: { $ref: '#/$defs/predicate' }, minItems: 1 },
+        or: { type: 'array', items: { $ref: '#/$defs/predicate' }, minItems: 1 },
+        not: { $ref: '#/$defs/predicate' },
+        parallel: VEC3_SCHEMA,
+        perpendicular: VEC3_SCHEMA,
+        type: { type: 'string', description: 'Edge kind or face surface_type.' },
+        extreme: {
+          type: 'object',
+          required: ['axis', 'side'],
+          properties: { axis: VEC3_SCHEMA, side: { enum: ['min', 'max'] } },
+          additionalProperties: false,
+        },
+        on_face: { $ref: '#/$defs/selector' },
+        created_by: { type: 'string' },
+        radius: {
+          anyOf: [
+            { type: 'number' },
+            {
+              type: 'object',
+              properties: { eq: { type: 'number' }, min: { type: 'number' }, max: { type: 'number' } },
+              additionalProperties: false,
+            },
+          ],
+        },
+      },
+      additionalProperties: false,
+    },
+    selector: {
+      type: 'object',
+      required: ['kind'],
+      properties: {
+        from: { type: 'string', description: 'Body id to restrict to; omit for every body.' },
+        kind: { enum: ['edge', 'face'] },
+        where: { $ref: '#/$defs/predicate' },
+      },
+      additionalProperties: false,
+    },
   },
 }
 
@@ -143,6 +217,24 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         files: FILE_LIST_SCHEMA,
       },
       additionalProperties: false,
+    },
+  },
+  {
+    name: 'select',
+    description: 'Find faces or edges by predicate over the solved document and return the query strings a click '
+      + 'would store, plus a geometry summary per item. Run it after `run`, then feed the queries to a feature '
+      + '(fillet, chamfer, hole, ...). An empty match is an error naming the nearest-miss count per predicate.',
+    inputSchema: {
+      type: 'object',
+      required: ['doc', 'selector'],
+      properties: {
+        doc: { type: 'object' },
+        selector: { $ref: '#/$defs/selector' },
+        docId: { type: 'string' },
+        files: FILE_LIST_SCHEMA,
+      },
+      additionalProperties: false,
+      ...SELECTOR_DEFS,
     },
   },
 ]
@@ -276,6 +368,24 @@ function parseExportArgs(raw: unknown): McpExportRequest {
   }
 }
 
+function parseSelectArgs(raw: unknown): McpSelectRequest {
+  const record = asObject(raw ?? {}, 'arguments')
+  rejectUnknown(record, ['doc', 'selector', 'docId', 'files'])
+  const selectorRaw = requiredObject(record.selector, 'selector')
+  let selector: Selector
+  try {
+    selector = validateSelector(selectorRaw)
+  } catch (e) {
+    throw new McpInvalidParams(`field "selector": ${e instanceof Error ? e.message : String(e)}`)
+  }
+  return {
+    doc: requiredObject(record.doc, 'doc'),
+    selector,
+    ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
+    files: readFiles(record.files),
+  }
+}
+
 async function callTool(ops: McpCadOps, name: string, args: unknown): Promise<McpToolPayload> {
   switch (name) {
     case 'commands':
@@ -285,6 +395,7 @@ async function callTool(ops: McpCadOps, name: string, args: unknown): Promise<Mc
     case 'run': return ops.run(parseRunArgs(args))
     case 'measure': return ops.measure(parseMeasureArgs(args))
     case 'export': return ops.export(parseExportArgs(args))
+    case 'select': return ops.select(parseSelectArgs(args))
     default: throw new McpInvalidParams(`unknown tool "${name}"`)
   }
 }
@@ -318,7 +429,8 @@ export function createMcpServer(ops: McpCadOps): McpServer {
             capabilities: { tools: {}, resources: {} },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
             instructions: 'Drive the CAD document headlessly: commands lists the registry, run executes scripts, '
-              + 'measure reports geometry facts and export writes STEP or STL. The part-document JSON Schema is '
+              + 'measure reports geometry facts, select finds faces/edges by predicate over the solve output, '
+              + 'and export writes STEP or STL. The part-document JSON Schema is '
               + 'served as the resource ' + PART_DOC_SCHEMA_URI + '.',
           })
         case 'notifications/initialized':
