@@ -10,14 +10,27 @@
 //!
 //! Containment is decided on the shells' own sample points against a strict
 //! region test, so a shell that crosses or merely touches another is never
-//! contained in it and the two never nest. Both sides of the split (this
-//! derivation and the builder's `dcel::holes`) are geometric in the same way,
-//! which is what keeps their answers identical on the same input.
+//! contained in it and the two never nest. The level reads a cell through the
+//! same two-part rule the builder reads a face through: strictly inside a
+//! shell, or within `tolerance::on_carrier_tol` of it (the builder's face side
+//! is a RECOMPUTED point, so its closure question carries that allowance and a
+//! cell-level rule without it would disagree by construction).
+//!
+//! Two limits of this derivation are deliberate and stated rather than hidden:
+//!   - `subdivided` is read from the builder's own output (`out.edges`): the
+//!     derivation judges the fill RULE, not whether the builder found every
+//!     cut, so that axis of agreement is not independent.
+//!   - the derivation is a sampling of the same rule, not a second
+//!     implementation of the arrangement: on inputs whose traced faces are
+//!     degenerate (a face loop that crosses itself) the two can read a cell
+//!     differently, and those inputs are the catalogued failures, not this
+//!     check's to excuse.
 
 use super::geometry::{point_in_polygon, sample_curve};
 use super::Curve;
 use crate::radians;
-use crate::topology::profile_loops::{EdgeGeom, Vec2};
+use crate::tolerance::on_carrier_tol;
+use crate::topology::profile_loops::Vec2;
 use crate::topology::TOL_TOPOLOGY_MERGE as MERGE;
 use crate::MIN_SEMI_AXIS_SQ;
 
@@ -49,18 +62,70 @@ impl Carrier {
     fn holds(&self, p: Vec2) -> bool {
         match *self {
             Carrier::Circle { c, r } => (p[0] - c[0]).hypot(p[1] - c[1]) < r,
+            Carrier::Ellipse { c, a, b, theta } => conic_residual(c, a, b, theta, p) < 0.0,
+            Carrier::Polygon(ref pts) => point_in_polygon(p, pts),
+        }
+    }
+
+    /// Inside or on, the allowance included: the level rule the builder's
+    /// `holds_or_on` states for a face, read for a point. A cell centre is
+    /// never ON a shell, but a face side the builder rebuilt from a split
+    /// parameter can sit within the allowance of one, and the two rules must
+    /// agree on the region that face covers.
+    fn holds_or_on(&self, p: Vec2) -> bool {
+        match *self {
+            Carrier::Circle { c, r } => {
+                let magnitude = p[0]
+                    .abs()
+                    .max(p[1].abs())
+                    .max(c[0].abs())
+                    .max(c[1].abs())
+                    .max(r);
+                (p[0] - c[0]).hypot(p[1] - c[1]) <= r + on_carrier_tol(magnitude)
+            }
             Carrier::Ellipse { c, a, b, theta } => {
-                let cr = radians(theta).cos();
-                let sr = radians(theta).sin();
-                let dx = p[0] - c[0];
-                let dy = p[1] - c[1];
-                let xl = dx * cr + dy * sr;
-                let yl = -dx * sr + dy * cr;
-                xl * xl / (a * a).max(MIN_SEMI_AXIS_SQ) + yl * yl / (b * b).max(MIN_SEMI_AXIS_SQ)
-                    < 1.0
+                let magnitude = p[0]
+                    .abs()
+                    .max(p[1].abs())
+                    .max(c[0].abs())
+                    .max(c[1].abs())
+                    .max(a.abs())
+                    .max(b.abs());
+                conic_gap(c, a, b, theta, p) <= on_carrier_tol(magnitude)
             }
             Carrier::Polygon(ref pts) => point_in_polygon(p, pts),
         }
+    }
+}
+
+/// The conic residual `F(p)` of an ellipse: negative inside, zero on it.
+fn conic_residual(c: Vec2, a: f64, b: f64, theta: f64, p: Vec2) -> f64 {
+    let cr = radians(theta).cos();
+    let sr = radians(theta).sin();
+    let dx = p[0] - c[0];
+    let dy = p[1] - c[1];
+    let xl = dx * cr + dy * sr;
+    let yl = -dx * sr + dy * cr;
+    xl * xl / (a * a).max(MIN_SEMI_AXIS_SQ) + yl * yl / (b * b).max(MIN_SEMI_AXIS_SQ) - 1.0
+}
+
+/// First-order (world) signed gap of a point from an ellipse: negative inside,
+/// positive outside, in the residual-over-gradient form the builder uses.
+fn conic_gap(c: Vec2, a: f64, b: f64, theta: f64, p: Vec2) -> f64 {
+    let f = conic_residual(c, a, b, theta, p);
+    let cr = radians(theta).cos();
+    let sr = radians(theta).sin();
+    let dx = p[0] - c[0];
+    let dy = p[1] - c[1];
+    let xl = dx * cr + dy * sr;
+    let yl = -dx * sr + dy * cr;
+    let gx = 2.0 * xl / (a * a).max(MIN_SEMI_AXIS_SQ);
+    let gy = 2.0 * yl / (b * b).max(MIN_SEMI_AXIS_SQ);
+    let m = gx.hypot(gy);
+    if m > 0.0 {
+        f / m
+    } else {
+        f
     }
 }
 
@@ -226,7 +291,7 @@ pub(crate) fn hole_expected(p: Vec2, chains: &[Chain]) -> bool {
             && p[0] <= c.bbox[2]
             && p[1] >= c.bbox[1]
             && p[1] <= c.bbox[3]
-            && c.carrier.holds(p)
+            && c.carrier.holds_or_on(p)
     };
     let mut level = 0;
     for c in chains {
@@ -252,6 +317,7 @@ pub(crate) fn is_hole_level(level: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::topology::profile_loops::EdgeGeom;
 
     fn circ(c: Vec2, r: f64) -> Curve {
         Curve::Circle { c, r }

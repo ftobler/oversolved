@@ -1067,6 +1067,29 @@ fn a_lone_island_still_subtracts_the_bore_it_covers() {
 }
 
 #[test]
+fn a_washer_sliced_by_a_diameter_line_keeps_its_two_rings() {
+    // Two concentric circles cut by a diameter line: the ring halves are the
+    // areas and the bore halves the holes. The bore halves' boundary points are
+    // REBUILT (an arc endpoint from its angle, a crossing from the line/circle
+    // solve), so they land a few ulp of the largest coordinate off the inner
+    // carrier; an allowance derived from the carrier's radius alone was too
+    // tight for the crossing's magnitude and read every face as material.
+    let geom = vec![
+        ("line".into(), line([-0.105, 0.01], [0.105, 0.01])),
+        ("outer".into(), circle([-0.005, 0.01], 0.025)),
+        ("inner".into(), circle([-0.005, 0.01], 0.01)),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2, "the two ring halves are the areas");
+    assert_eq!(t.hole_regions.len(), 2, "the bore halves are holes");
+    let violations = crate::topology::oracle::check_input(&geom)
+        .iter()
+        .map(|v| v.render())
+        .collect::<Vec<_>>();
+    assert!(violations.is_empty(), "{violations:?}");
+}
+
+#[test]
 fn quarter_arc_split_by_a_bezier_makes_two_faces() {
     // The arc half: a quarter disk (arc plus its two radii) cleaved by a
     // straight cubic that enters on one radius and leaves through the arc,

@@ -1,1 +1,0 @@
-coverage: coverage (overlap): 0 cells read as bounded but sit in no face and 60 sit in more than one, first at (4.337349, -0.119968) with 2

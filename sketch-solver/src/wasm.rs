@@ -17,7 +17,7 @@ pub fn solve_sketch_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
 }
 
 /// Run the area builder over an ordered `richGeom` payload and judge the result
-/// with the invariant oracle, returning `[{class, reason, known, text}]`.
+/// with the invariant oracle, returning `[{class, reason, text}]`.
 ///
 /// Behind the `fuzz` feature on purpose: the oracle is a test-time judge, so
 /// the production WASM binary must not carry it, and only a node build made

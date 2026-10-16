@@ -44,7 +44,7 @@ use super::super::profile_loops::{
 use super::super::TOL_TOPOLOGY_MERGE as MERGE;
 use super::{Split, SurfaceOut, TopoEntity};
 use crate::radians;
-use crate::tolerance::resolution;
+use crate::tolerance::on_carrier_tol;
 use crate::MIN_SEMI_AXIS_SQ;
 
 /// Polygon resolution for a spline shell: uniform samples per cubic. A spline
@@ -92,20 +92,33 @@ impl Carrier {
     /// which is what makes the bore's pieces holes and leaves the ring -- whose
     /// boundary reaches far outside the bore -- material.
     ///
-    /// The "on" side carries the wire-noise allowance: an arc endpoint is
-    /// recomputed from its angles (or from a split parameter) and lands a few
-    /// ulp off the carrier, so a closure decided exactly would flip a face
-    /// whose side IS the shell. The allowance is the resolution of the shell's
-    /// own size (a relative multiple of `tolerance::resolution`), far below
-    /// anything the merge would treat as a separate curve.
+    /// The "on" side carries the point-recompute allowance
+    /// (`tolerance::on_carrier_tol`): an arc endpoint is rebuilt from its split
+    /// parameter and lands a few ulp of the comparison's largest coordinate off
+    /// the carrier, so a closure decided exactly would flip a face whose side IS
+    /// the shell. The allowance is not MERGE-sized on purpose: this is a closure
+    /// question about one recomputed point, not an identity question between two
+    /// curves (see the constant's derivation).
     fn holds_or_on(&self, p: Vec2) -> bool {
         match *self {
             Carrier::Circle { c, r } => {
-                (p[0] - c[0]).hypot(p[1] - c[1]) <= r + ON_RESOLUTIONS * resolution(r)
+                let magnitude = p[0]
+                    .abs()
+                    .max(p[1].abs())
+                    .max(c[0].abs())
+                    .max(c[1].abs())
+                    .max(r);
+                (p[0] - c[0]).hypot(p[1] - c[1]) <= r + on_carrier_tol(magnitude)
             }
             Carrier::Ellipse { c, a, b, theta } => {
-                let scale = a.abs().max(b.abs());
-                conic_gap(c, a, b, theta, p) <= ON_RESOLUTIONS * resolution(scale)
+                let magnitude = p[0]
+                    .abs()
+                    .max(p[1].abs())
+                    .max(c[0].abs())
+                    .max(c[1].abs())
+                    .max(a.abs())
+                    .max(b.abs());
+                conic_gap(c, a, b, theta, p) <= on_carrier_tol(magnitude)
             }
             Carrier::Polygon(ref pts) => point_in_polygon(p, pts) || near_polygon(p, pts),
         }
@@ -142,11 +155,6 @@ impl Carrier {
         }
     }
 }
-
-/// How many resolutions of a shell's size count as "on the shell" when a
-/// face's own boundary is read against it: enough for an arc endpoint
-/// recomputed from angles, far below the vertex merge.
-const ON_RESOLUTIONS: f64 = 4.0;
 
 /// The conic residual `F(p)` of an ellipse: negative inside, zero on it.
 fn conic_residual(c: Vec2, a: f64, b: f64, theta: f64, p: Vec2) -> f64 {

@@ -185,6 +185,36 @@ pub fn tangent_collapse_tol(r_min: f64) -> f64 {
     TANGENT_COLLAPSE_RESOLUTIONS * resolution(r_min)
 }
 
+// ─── The area builder's point-recompute allowance ───
+
+/// How many resolutions of the largest coordinate a comparison runs at count
+/// as "on the carrier" for a point the builder RECOMPUTED, and how that
+/// multiple is derived.
+///
+/// The closure question ("is this face side the shell itself?") reads points
+/// the split pass produced, not authored ones: an arc endpoint is rebuilt from
+/// its split parameter (`center + r * (cos, sin)` of an `atan2` of a crossing
+/// point), and the crossing itself came out of a bisection or a quadratic
+/// solve. Every step in that chain carries a rounding error proportional to the
+/// largest COORDINATE involved, not to the curve's radius: the `atan2` of a
+/// difference at magnitude `m` errs by ~`eps * m / r`, which the radius
+/// multiplies back to ~`eps * m`, and the endpoint evaluation and the
+/// comparison add a few more ulp of `m`. `resolution(m)` is 1e-15 * m, about
+/// 4.5 ulp, so 16 resolutions (~72 ulp) is that handful of steps with
+/// headroom, and still 1e-10 of MERGE at unit scale.
+///
+/// Deliberately NOT MERGE-sized: this is a closure question about one
+/// recomputed point, not an identity question between two curves. A
+/// MERGE-sized allowance would swallow real hairline features and would make
+/// the oracle's strict cell reads disagree wherever a face's boundary sits
+/// within MERGE of a shell without being on it.
+pub const ON_CARRIER_RESOLUTIONS: f64 = 16.0;
+
+/// The allowance for a comparison whose largest coordinate is `magnitude`.
+pub fn on_carrier_tol(magnitude: f64) -> f64 {
+    ON_CARRIER_RESOLUTIONS * resolution(magnitude)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,5 +315,68 @@ mod tests {
         // would stop meaning "round-off" and start meaning "10 km".
         assert!(RANK_TOL > verdict_tol(1.0));
         assert!(RANK_TOL < verdict_tol(1000.0));
+    }
+
+    #[test]
+    fn the_on_carrier_allowance_is_the_recompute_chain_derived() {
+        // The allowance is a multiple of the resolution at the comparison's
+        // own coordinate magnitude, not of a curve's size: it must scale with
+        // the numbers the recompute touches.
+        assert_eq!(
+            on_carrier_tol(1.0),
+            ON_CARRIER_RESOLUTIONS * resolution(1.0)
+        );
+        assert!(on_carrier_tol(2.0) > on_carrier_tol(1.0));
+        assert_eq!(on_carrier_tol(0.0), 0.0);
+        // Far below the identity rule: a closure question about one recomputed
+        // point must not swallow features the vertex merge would keep apart.
+        assert!(on_carrier_tol(1.0) < MERGE_FOR_TEST);
+        assert!(on_carrier_tol(1500.0) < MERGE_FOR_TEST);
+    }
+
+    /// The merge tolerance the area builder applies, as the test above reads
+    /// it: the allowance's stated ceiling.
+    const MERGE_FOR_TEST: f64 = 1e-5;
+
+    #[test]
+    fn the_on_carrier_allowance_covers_a_recomputed_crossing_endpoint() {
+        // Walk the builder's own chain: a line/circle crossing out of the
+        // quadratic, then the arc endpoint rebuilt from its angle. The closure
+        // question reads exactly such an endpoint, so the allowance must cover
+        // the rounding the chain leaves at every scale the app models.
+        let cases: [([f64; 2], f64); 5] = [
+            ([-0.005, 0.01], 0.025),
+            ([-0.005, 0.01], 0.01),
+            ([0.0, 0.0], 1.0),
+            ([1500.0, -800.0], 900.0),
+            ([0.02, 0.0], 0.005),
+        ];
+        for (c, r) in cases {
+            // The horizontal line through the centre, in the closed form the
+            // dcel's line/circle arm solves.
+            let (p0, d) = ([c[0] - 3.0 * r, c[1]], 6.0 * r);
+            let a = d * d;
+            let fx = p0[0] - c[0];
+            let b = 2.0 * fx * d;
+            let cc = fx * fx - r * r;
+            let disc = (b * b - 4.0 * a * cc).max(0.0);
+            let t = (-b - disc.sqrt()) / (2.0 * a);
+            let crossing = [p0[0] + t * d, p0[1]];
+            // The arc endpoint, rebuilt from the crossing's angle.
+            let angle = (crossing[1] - c[1]).atan2(crossing[0] - c[0]);
+            let endpoint = [c[0] + r * angle.cos(), c[1] + r * angle.sin()];
+            let miss = ((endpoint[0] - c[0]).hypot(endpoint[1] - c[1]) - r).abs();
+            let magnitude = endpoint[0]
+                .abs()
+                .max(endpoint[1].abs())
+                .max(c[0].abs())
+                .max(c[1].abs())
+                .max(r);
+            assert!(
+                miss <= on_carrier_tol(magnitude),
+                "centre {c:?} r {r}: the recompute leaves {miss:e}, allowance {:e}",
+                on_carrier_tol(magnitude)
+            );
+        }
     }
 }
