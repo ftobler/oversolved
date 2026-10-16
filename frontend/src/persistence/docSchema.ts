@@ -469,6 +469,29 @@ function checkChamfer(sub: DocRecord, field: string): void {
   checkOptional(sub, 'angle', field, checkExpr)
 }
 
+// A positive NumberOrExpr: a positive finite number, or a string that is either
+// unresolvable now (it names a document variable) or evaluates positive. A
+// thickness of 0 or less builds nothing or an inverted solid, so it is refused
+// at the boundary rather than at solve time.
+function checkPositiveExpr(value: unknown, field: string): void {
+  checkExpr(value, field)
+  if (typeof value === 'number') {
+    if (!(value > 0)) fail(field, `must be positive, got ${value}`)
+    return
+  }
+  const resolved = evalExpr(value as string)
+  if (Number.isFinite(resolved) && resolved <= 0) {
+    fail(field, `evaluates to ${resolved}, expected a positive number`)
+  }
+}
+
+function checkShell(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'faces', field, checkRefList)
+  checkOptional(sub, 'thickness', field, checkPositiveExpr)
+  checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, ['inward', 'outward']))
+  checkOptional(sub, 'source_body', field, checkRef)
+}
+
 function checkBooleanDef(sub: DocRecord, field: string): void {
   checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['union', 'subtract', 'intersect']))
   checkOptional(sub, 'target', field, checkRef)
@@ -563,6 +586,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['sweep', checkSweep],
   ['fillet', checkFillet],
   ['chamfer', checkChamfer],
+  ['shell', checkShell],
   ['boolean', checkBooleanDef],
   ['array', checkArray],
   ['circular_array', checkCircularArray],

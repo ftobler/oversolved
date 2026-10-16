@@ -67,6 +67,11 @@ const chamferDoc = (): PartDoc => makeDoc({
   chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 },
 })
 
+const shellDoc = (): PartDoc => makeDoc({
+  id: 'sh1', kind: 'shell', label: 'Shell',
+  shell: { faces: [], thickness: 1, direction: 'inward' },
+})
+
 const booleanDoc = (): PartDoc => makeDoc({
   id: 'b1', kind: 'boolean', label: 'Boolean',
   boolean: { operation: 'union', target: '', tools: ['@t1'] },
@@ -136,6 +141,11 @@ const sweepPopulatedDoc = (): PartDoc => makeDoc({
 const chamferPopulatedDoc = (): PartDoc => makeDoc({
   id: 'ch1', kind: 'chamfer', label: 'Chamfer',
   chamfer: { edges: ['?e1'], distance: 1, kind: 'distance', angle: 45 },
+})
+
+const shellPopulatedDoc = (): PartDoc => makeDoc({
+  id: 'sh1', kind: 'shell', label: 'Shell',
+  shell: { faces: ['?f1'], thickness: 1, direction: 'inward' },
 })
 
 // A projected entity (source-carrying) and a superfluous constraint, the two
@@ -317,6 +327,24 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   remove_chamfer_edge: {
     makeDoc: chamferPopulatedDoc,
     mutation: { type: 'remove_chamfer_edge', featureId: 'ch1', index: 0 },
+  },
+
+  // shell
+  add_shell: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_shell', featureId: 'sh1', label: 'Shell' },
+  },
+  set_shell_field: {
+    makeDoc: shellDoc,
+    mutation: { type: 'set_shell_field', featureId: 'sh1', field: 'thickness', value: 3 },
+  },
+  add_shell_face: {
+    makeDoc: shellDoc,
+    mutation: { type: 'add_shell_face', featureId: 'sh1', faceQuery: '?f1' },
+  },
+  remove_shell_face: {
+    makeDoc: shellPopulatedDoc,
+    mutation: { type: 'remove_shell_face', featureId: 'sh1', index: 0 },
   },
 
   // boolean

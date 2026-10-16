@@ -100,6 +100,14 @@ export function describeMutation(m: Mutation): string {
       return `add chamfer edge ${m.edgeQuery}`
     case 'remove_chamfer_edge':
       return `remove chamfer edge at index ${m.index}`
+    case 'add_shell':
+      return `add shell ${m.label ?? m.featureId}`
+    case 'set_shell_field':
+      return `set shell ${m.field} to ${m.value}`
+    case 'add_shell_face':
+      return `add shell face ${m.faceQuery}`
+    case 'remove_shell_face':
+      return `remove shell face at index ${m.index}`
     case 'add_boolean':
       return `add boolean ${m.label ?? m.featureId}`
     case 'set_boolean_field':

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evalExpr, evalFeatureParams } from '../evalExpr'
+import { evalExpr, evalFeatureParams, EXPR_FIELDS_BY_KIND } from '../evalExpr'
 
 describe('evalExpr', () => {
   it('returns a plain number string via the fast path', () => {
@@ -96,5 +96,12 @@ describe('evalFeatureParams', () => {
     const sub: Record<string, unknown> = {}
     evalFeatureParams(sub, ['distance'])
     expect(sub.distance).toBeUndefined()
+  })
+
+  it('lists and evaluates the shell thickness expression', () => {
+    expect(EXPR_FIELDS_BY_KIND.shell).toEqual(['thickness'])
+    const sub: Record<string, unknown> = { thickness: 'wall' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.shell, { wall: 2.5 })
+    expect(sub.thickness).toBe(2.5)
   })
 })

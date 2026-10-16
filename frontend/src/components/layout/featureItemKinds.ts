@@ -11,6 +11,7 @@ export const EDIT_LABELS: Record<string, string> = {
   sweep: 'sweep',
   fillet: 'fillet',
   chamfer: 'chamfer',
+  shell: 'shell',
   boolean: 'boolean',
   array: 'array',
   circular_array: 'circular array',

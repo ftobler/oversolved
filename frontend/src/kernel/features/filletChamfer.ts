@@ -12,8 +12,9 @@ import type { Body } from '../types3d'
 import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId, constructionUuidToken } from '../query'
 import { geometryClassifiers } from '../geomHash'
 import { resolveBody, resolveBodyIds } from './shared/bodyResolution'
+import { buildFaceIndex, resolveFacesByQuery } from './shared/faceResolution'
 import { resplitBody } from './bodySplit'
-import { canonicalEdges, canonicalFaces, assertAligned, readBodyNames } from '../occ/bodyNames'
+import { canonicalEdges, assertAligned, readBodyNames } from '../occ/bodyNames'
 import { elementCreator, newIndexSets } from '../occ/modifierAttribution'
 import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
 import { faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
@@ -196,7 +197,9 @@ export function makeEdgeIndexCache(
   }
 }
 
-/** Resolve a face ancestry query to all OCC edges of the matching face. */
+/** Resolve a face ancestry query to all OCC edges of the matching face. The
+ *  face itself comes from the shared construction resolver (shared/
+ *  faceResolution.ts), so the UUID and stable-ancestry tiers are the shell's. */
 function resolveFaceToEdges(
   oc: OccModule,
   scope: DisposeScope,
@@ -204,22 +207,9 @@ function resolveFaceToEdges(
   q: string,
   body: Body,
 ): OccShape[] {
-  let ids: string[]
-  try {
-    ;[ids] = parseAncestry(q)
-  } catch {
-    return []
-  }
   if (body.shape === null) return []
-  const shape = table.get<OccShape>(body.shape)
-
-  const uuidTok = ids.find((i) => i.startsWith('@u|'))
-  const faceUuid = uuidTok !== undefined ? uuidTok.slice(3) : null
-  if (faceUuid === null || body.face_uuids === undefined) return []
-  const faces = canonicalFaces(oc, scope, shape)
-  assertAligned(faces.length, body.face_uuids, `${body.id} face lookup`)
-  const at = body.face_uuids.indexOf(faceUuid)
-  return at >= 0 ? exploreEdges(oc, scope, faces[at]) : []
+  const face = resolveFacesByQuery(oc, scope, table, body, buildFaceIndex(oc, scope, table, body), [q]).get(q) ?? null
+  return face === null ? [] : exploreEdges(oc, scope, face)
 }
 
 /**

@@ -111,6 +111,32 @@ export const CHAMFER_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+/** A face pick query: the `?` wire form with a face type restriction, so an
+ *  edge query (`:edge`/`:straightedge`) or a vertex is refused, not silently
+ *  accepted as a face. */
+const FACE_QUERY = /:(flatface|cylinderface|coneface|sphereface|torusface|face)$/
+const isFaceQuery = (id: string): boolean => id.startsWith('?') && FACE_QUERY.test(id)
+
+export const SHELL_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_shell',
+  subKey: 'shell',
+  defaults: { faces: [], thickness: 1, direction: 'inward' },
+  fields: [
+    { type: 'pick', key: 'faces', label: 'Open Faces', multi: true,
+      addMutationType: 'add_shell_face', addValueKey: 'faceQuery',
+      removeMutationType: 'remove_shell_face',
+      validatePick: isFaceQuery },
+    { type: 'number', key: 'thickness', label: 'Thickness', default: 1, validate: (v) => v > 0, unit: 'mm' },
+    { type: 'select', key: 'direction', label: 'Direction', default: 'inward',
+      options: [{ value: 'inward', label: 'Inward' }, { value: 'outward', label: 'Outward' }] },
+    // No face names the body for a closed hollow, so the body pick is the only
+    // way to choose it; it is shown only when the opening list is empty.
+    { type: 'pick', key: 'source_body', label: 'Body',
+      showWhen: (d) => (Array.isArray(d.faces) ? d.faces.length : 0) === 0,
+      transform: resolveBodyPickRef, emptyText: '(pick body, required)' },
+  ],
+}
+
 export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_boolean',
   subKey: 'boolean',
@@ -274,6 +300,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   sweep: SWEEP_SCHEMA,
   fillet: FILLET_SCHEMA,
   chamfer: CHAMFER_SCHEMA,
+  shell: SHELL_SCHEMA,
   boolean: BOOLEAN_SCHEMA,
   hole: HOLE_SCHEMA,
   transform: TRANSFORM_SCHEMA,

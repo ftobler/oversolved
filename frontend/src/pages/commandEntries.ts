@@ -431,6 +431,7 @@ function addFeatureSpec(id: CommandName, label: string, kind: string, extra?: Re
 const addExtrudeSpec = addFeatureSpec('add_extrude', 'Add extrude', 'extrude', { sketchQuery: '', distance: 10 })
 const addHoleSpec = addFeatureSpec('add_hole', 'Add hole', 'hole')
 const addTransformSpec = addFeatureSpec('add_transform', 'Add transform', 'transform')
+const addShellSpec = addFeatureSpec('add_shell', 'Add shell', 'shell')
 
 /**
  * The sketch/part editor's full command table. Static data: every body reads
@@ -459,4 +460,5 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   addExtrudeSpec,
   addHoleSpec,
   addTransformSpec,
+  addShellSpec,
 ]
