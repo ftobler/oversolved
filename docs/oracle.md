@@ -64,6 +64,8 @@ One directory per case: `frontend/oracle/<NN-name>/`.
 | 34-shell-box-open-top | 1 | 424.000000 | 888.000000 | faces 11, edges 24 | ok | ok |
 | 35-shell-box-closed | 1 | 488.000000 | 984.000000 | faces 12, edges 24 | - | ok |
 | 36-shell-cylinder-open-top | 1 | 333.008821 | 697.433829 | faces 5, edges 6 | - | ok |
+| 37-sweep-helix-square | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | ok | ok |
+| 38-sweep-helix-left | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | - | ok |
 
 ## Cases
 
@@ -723,3 +725,53 @@ STEP round trip:
   - centroid [0.00000000, 0.00000000, 4.32075472] -> [7.74961818e-14, -1.23983633e-16, 4.32075472] (max dev 7.75e-14)
   - bbox [-5.00000000, -5.00000000, 0.00000000, 5.00000000, 5.00000000, 10.0000000] -> [-5.00000000, -5.00000000, 0.00000000, 5.00000000, 5.00000000, 10.0000000] (max dev 0)
   - counts faces 5, edges 6 -> faces 5, edges 6
+### 37-sweep-helix-square
+
+`A 1x1 radial square (in the y=0 plane, centred at radius 10) swept along a right-hand helix r=10, pitch=3, turns=4: V = A * 2 pi xbar * turns = 1 * 2 pi * 10 * 4 = 80 pi. Area/centroid/bbox have no closed form and are frozen from the kernel build (6 faces, 12 edges).`
+
+Live build (expected -> measured):
+  - volume 251.327482 -> 251.327482 (rel dev 0)
+  - area 1007.88300 -> 1007.88300 (rel dev 0)
+  - centroid [0.00000384546401, 0.00000000, 6.00000000] -> [0.00000384546401, -2.49191567e-15, 6.00000000] (max dev 4.80e-14)
+  - bbox [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] -> [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] (max dev 1.78e-15)
+  - counts faces 6, edges 12 -> faces 6, edges 12
+
+STEP round trip:
+  - volume 251.327482 -> 251.327482 (rel dev -2.37e-13)
+  - area 1007.88300 -> 1007.88300 (rel dev -1.83e-13)
+  - centroid [0.00000384546401, 0.00000000, 6.00000000] -> [0.00000384546792, -1.04619780e-12, 6.00000000] (max dev 3.91e-12)
+  - bbox [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] -> [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] (max dev 8.31e-12)
+  - counts faces 6, edges 12 -> faces 6, edges 12
+
+Edit: `edit hx1.turns 4 -> 6` (hx1.turns = 6).
+`The same sweep at turns=6: V = 1 * 2 pi * 10 * 6 = 120 pi; the frozen area/centroid/bbox follow the taller helix.`
+
+  - volume 376.991281 -> 376.991281 (rel dev 0)
+  - area 1510.82510 -> 1510.82510 (rel dev 0)
+  - centroid [0.00000561699751, 0.00000000, 9.00000000] -> [0.00000561699751, -4.34828671e-14, 9.00000000] (max dev 6.39e-14)
+  - bbox [-14.3038061, -14.3038061, -0.500000000, 14.3038061, 14.3038061, 18.5000000] -> [-14.3038061, -14.3038061, -0.500000000, 14.3038061, 14.3038061, 18.5000000] (max dev 7.11e-15)
+  - counts faces 6, edges 12 -> faces 6, edges 12
+
+Edit STEP round trip:
+  - volume 376.991281 -> 376.991281 (rel dev -9.66e-13)
+  - area 1510.82510 -> 1510.82510 (rel dev -5.40e-13)
+  - centroid [0.00000561699751, 0.00000000, 9.00000000] -> [0.00000561700306, 6.13655190e-12, 9.00000000] (max dev 6.14e-12)
+  - bbox [-14.3038061, -14.3038061, -0.500000000, 14.3038061, 14.3038061, 18.5000000] -> [-14.3038061, -14.3038061, -0.500000000, 14.3038061, 14.3038061, 18.5000000] (max dev 7.16e-12)
+  - counts faces 6, edges 12 -> faces 6, edges 12
+### 38-sweep-helix-left
+
+`The right-hand 80 pi sweep mirrored: the same 1x1 radial square on a left-hand helix r=10, pitch=3, turns=4. V = A * 2 pi xbar * turns = 1 * 2 pi * 10 * 4 = 80 pi; the left chirality mirrors the solid through the y=0 plane, so area/bbox match the right-hand case and the centroid sits on the axis.`
+
+Live build (expected -> measured):
+  - volume 251.327482 -> 251.327482 (rel dev 0)
+  - area 1007.88300 -> 1007.88300 (rel dev 0)
+  - centroid [0.00000384546401, 0.00000000, 6.00000000] -> [0.00000384546401, 2.49191567e-15, 6.00000000] (max dev 4.80e-14)
+  - bbox [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] -> [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] (max dev 1.78e-15)
+  - counts faces 6, edges 12 -> faces 6, edges 12
+
+STEP round trip:
+  - volume 251.327482 -> 251.327482 (rel dev -4.71e-13)
+  - area 1007.88300 -> 1007.88300 (rel dev -3.02e-13)
+  - centroid [0.00000384546401, 0.00000000, 6.00000000] -> [0.00000384546768, 1.27749431e-12, 6.00000000] (max dev 3.67e-12)
+  - bbox [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] -> [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] (max dev 5.75e-12)
+  - counts faces 6, edges 12 -> faces 6, edges 12

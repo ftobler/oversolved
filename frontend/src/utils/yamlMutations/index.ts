@@ -75,6 +75,8 @@ export {
   applySetMirrorField,
   applyAddVariable,
   applySetVariableField,
+  applyAddHelix,
+  applySetHelixField,
 } from './featureDefs'
 
 export {

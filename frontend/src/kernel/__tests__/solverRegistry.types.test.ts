@@ -21,6 +21,7 @@ import type {
   DeleteBodyFeature,
   ExtrudeFeature,
   FilletFeature,
+  HelixFeature,
   HoleFeature,
   MirrorFeature,
   PartFeature,
@@ -57,6 +58,7 @@ describe('the part feature union is closed', () => {
       | 'transform'
       | 'mirror'
       | 'variable'
+      | 'helix'
       | 'import_step'
     >()
   })
@@ -80,6 +82,7 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'transform'>>().toEqualTypeOf<TransformFeature>()
     expectTypeOf<FeatureParam<'mirror'>>().toEqualTypeOf<MirrorFeature>()
     expectTypeOf<FeatureParam<'variable'>>().toEqualTypeOf<VariableFeature>()
+    expectTypeOf<FeatureParam<'helix'>>().toEqualTypeOf<HelixFeature>()
   })
 
   it('rejects a feature of the wrong kind', () => {

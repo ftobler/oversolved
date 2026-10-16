@@ -82,6 +82,8 @@ const ALL_MUTATION_TYPES = [
   'set_mirror_field',
   'add_variable',
   'set_variable_field',
+  'add_helix',
+  'set_helix_field',
   'reorder_features',
   'reorder_pick_field',
   'set_feature_suppression',

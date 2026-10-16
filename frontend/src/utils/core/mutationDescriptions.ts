@@ -162,6 +162,10 @@ export function describeMutation(m: Mutation): string {
       return `add variable ${m.label ?? m.featureId}`
     case 'set_variable_field':
       return `set variable ${m.field} to ${m.value}`
+    case 'add_helix':
+      return `add helix ${m.label ?? m.featureId}`
+    case 'set_helix_field':
+      return `set helix ${m.field} to ${m.value}`
     case 'reorder_features':
       return `reorder ${m.featureId} to index ${m.toIndex}`
     case 'set_body_visibility':

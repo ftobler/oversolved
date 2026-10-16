@@ -135,6 +135,18 @@ export interface RecipeShell {
   thickness: number
 }
 
+export interface RecipeHelix {
+  kind: 'helix'
+  id: string
+  target: string
+  // Index into the target's cylinder faces; taken modulo the count at run time.
+  face: number
+  // Axial rise per turn. Kept at least two grid steps so a swept profile would
+  // not immediately self-overlap (the plan's "pitch >= 2x a small profile").
+  pitch: number
+  turns: number
+}
+
 export type RecipeStep =
   | RecipeStart
   | RecipeBoolean
@@ -145,6 +157,7 @@ export type RecipeStep =
   | RecipeCircularArray
   | RecipeMirror
   | RecipeShell
+  | RecipeHelix
 
 export interface Recipe {
   seed: number
@@ -233,10 +246,11 @@ interface StepBudget {
   array: number
   mirror: number
   shell: number
+  helix: number
 }
 
 function freshBudget(): StepBudget {
-  return { boolean: 2, fillet: 2, chamfer: 2, hole: 2, array: 1, mirror: 1, shell: 1 }
+  return { boolean: 2, fillet: 2, chamfer: 2, hole: 2, array: 1, mirror: 1, shell: 1, helix: 1 }
 }
 
 function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep | null {
@@ -247,15 +261,18 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
     return true
   }
   let kind: keyof StepBudget
-  if (roll < 0.34) kind = 'boolean'
-  else if (roll < 0.51) kind = 'fillet'
-  else if (roll < 0.62) kind = 'chamfer'
-  else if (roll < 0.75) kind = 'hole'
-  else if (roll < 0.85) kind = 'array'
-  else if (roll < 0.94) kind = 'mirror'
+  if (roll < 0.33) kind = 'boolean'
+  else if (roll < 0.50) kind = 'fillet'
+  else if (roll < 0.61) kind = 'chamfer'
+  else if (roll < 0.74) kind = 'hole'
+  else if (roll < 0.84) kind = 'array'
+  else if (roll < 0.90) kind = 'mirror'
   // Shell has the lowest weight: a small thickness keeps most picks buildable,
   // and a kernel refusal is an allowed failure, not a soundness break.
-  else kind = 'shell'
+  else if (roll < 0.95) kind = 'shell'
+  // The helix is a reference curve, not a body edit: it changes no body, so it
+  // is a cheap extra coverage step with the same lowest weight.
+  else kind = 'helix'
   if (!spend(kind)) return null
   switch (kind) {
     case 'boolean': return drawBoolean(rnd, id)
@@ -285,6 +302,11 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
       return {
         kind: 'shell', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
         thickness: grid(drawInt(rnd, 1, 2)),
+      }
+    case 'helix':
+      return {
+        kind: 'helix', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
+        pitch: grid(drawInt(rnd, 2, 4)), turns: drawInt(rnd, 2, 4),
       }
   }
 }

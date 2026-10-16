@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "kind": "part",
+  "features": [
+    {
+      "id": "skc",
+      "kind": "sketch",
+      "label": "Boss profile",
+      "plane": "@builtin_plane_front",
+      "entities": [{ "id": "c0", "kind": "circle" }],
+      "initial": { "c0": [0, 0, 5] },
+      "constraints": []
+    },
+    {
+      "id": "ex1",
+      "kind": "extrude",
+      "label": "Boss",
+      "sketch": "$skc",
+      "distance": 10,
+      "direction": "normal",
+      "operation": "add"
+    },
+    {
+      "id": "hx1",
+      "kind": "helix",
+      "label": "Helix",
+      "helix": {
+        "reference": "@skc/c0",
+        "radius_mode": "derived",
+        "mode": "pitch_turns",
+        "pitch": 2,
+        "turns": 5,
+        "hand": "right",
+        "direction": "normal",
+        "start_angle": 0,
+        "offset": 0
+      }
+    }
+  ]
+}

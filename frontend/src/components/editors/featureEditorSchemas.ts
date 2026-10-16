@@ -296,6 +296,70 @@ export const VARIABLE_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+// A helix rides a cylinder face, a circular edge or a sketch circle/line. The
+// type restriction rides in the selection id (`...:cylinderface`, `:arc`, ...),
+// so a flat/cone face and an ellipse are refused at pick time by omission; the
+// solver repeats the check because a hand-written doc skips this gate.
+function helixPickOk(id: string): boolean {
+  // Refuse the face/edge kinds a helix cannot sit on by name. The type
+  // restriction rides in the ancestry query (`...:coneface`).
+  for (const bad of ['flatface', 'coneface', 'sphereface', 'torusface', 'ellipse']) {
+    if (id.includes(':' + bad)) return false
+  }
+  // Everything else a pick can name is a candidate: an ancestry query
+  // (?...:cylinderface/:circle/:arc/:straightedge), a sketch entity
+  // (@sketch/entity), a topo-fallback face (@body/face/N) or an entity ref.
+  // A body or wrong-kind face that slips through is refused by the solver.
+  return id.startsWith('?') || id.startsWith('@') || id.startsWith('entity:')
+}
+
+const HELIX_USES_PITCH = (d: SchemaData) => d.mode === 'pitch_turns' || d.mode === 'pitch_height'
+const HELIX_USES_TURNS = (d: SchemaData) =>
+  d.mode === 'pitch_turns' || d.mode === 'turns_height' || d.mode === 'angle_turns'
+const HELIX_USES_HEIGHT = (d: SchemaData) =>
+  d.mode === 'pitch_height' || d.mode === 'turns_height' || d.mode === 'angle_height'
+const HELIX_USES_ANGLE = (d: SchemaData) => d.mode === 'angle_turns' || d.mode === 'angle_height'
+const HELIX_FACE_REF = (d: SchemaData) => typeof d.reference === 'string' && d.reference.includes(':cylinderface')
+
+export const HELIX_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_helix',
+  subKey: 'helix',
+  defaults: {
+    reference: '', radius_mode: 'derived', mode: 'pitch_turns',
+    pitch: 1, turns: 5, height: 5, helix_angle: 5, offset: 0, start_angle: 0,
+    hand: 'right', direction: 'normal',
+  },
+  fields: [
+    { type: 'pick', key: 'reference', label: 'Reference',
+      validatePick: helixPickOk, emptyText: '(pick a cylinder face, edge or circle)' },
+    { type: 'select', key: 'radius_mode', label: 'Radius', default: 'derived',
+      options: [{ value: 'derived', label: 'From reference' }, { value: 'entered', label: 'Enter' }] },
+    { type: 'number', key: 'radius', label: 'Radius', default: 5,
+      showWhen: (d) => d.radius_mode === 'entered', validate: (v) => v > 0, unit: 'mm' },
+    { type: 'select', key: 'mode', label: 'Define by', default: 'pitch_turns',
+      options: [
+        { value: 'pitch_turns', label: 'Pitch + Turns' },
+        { value: 'pitch_height', label: 'Pitch + Height' },
+        { value: 'turns_height', label: 'Turns + Height' },
+        { value: 'angle_turns', label: 'Angle + Turns' },
+        { value: 'angle_height', label: 'Angle + Height' },
+      ] },
+    { type: 'number', key: 'pitch', label: 'Pitch', default: 1, showWhen: HELIX_USES_PITCH, validate: (v) => v > 0, unit: 'mm' },
+    { type: 'number', key: 'turns', label: 'Turns', default: 5, showWhen: HELIX_USES_TURNS, validate: (v) => v > 0 },
+    { type: 'number', key: 'height', label: 'Height', default: 5, showWhen: HELIX_USES_HEIGHT, validate: (v) => v > 0, unit: 'mm' },
+    { type: 'number', key: 'helix_angle', label: 'Helix angle', default: 5,
+      showWhen: HELIX_USES_ANGLE, validate: (v) => v > 0 && v < 90, unit: 'deg' },
+    { type: 'checkbox', key: 'height_from_reference', label: 'Height from reference', default: false,
+      showWhen: (d) => HELIX_USES_HEIGHT(d) && HELIX_FACE_REF(d) },
+    { type: 'number', key: 'start_angle', label: 'Start angle', default: 0, unit: 'deg' },
+    { type: 'number', key: 'offset', label: 'Offset', default: 0, unit: 'mm' },
+    { type: 'select', key: 'hand', label: 'Hand', default: 'right',
+      options: [{ value: 'right', label: 'Right' }, { value: 'left', label: 'Left' }] },
+    { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
+      options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }] },
+  ],
+}
+
 export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   extrude: EXTRUDE_SCHEMA,
   revolve: REVOLVE_SCHEMA,
@@ -311,4 +375,5 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   circular_array: CIRCULAR_ARRAY_SCHEMA,
   delete_body: DELETE_BODY_SCHEMA,
   variable: VARIABLE_SCHEMA,
+  helix: HELIX_SCHEMA,
 }

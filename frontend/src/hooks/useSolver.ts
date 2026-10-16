@@ -98,6 +98,8 @@ export function useSolver(
       value?: number
       exception?: string
       handle?: FeatureHandleData
+      helix?: Record<string, number>
+      curve?: import('@/types/cad').EdgeDataSpline
       solve_ms?: number
       projection_errors?: string[]
     }>
@@ -184,6 +186,9 @@ export function useSolver(
           ...(feature.value !== undefined && { value: feature.value }),
           ...(feature.exception !== undefined && { exception: feature.exception }),
           ...(feature.handle !== undefined && { handle: feature.handle }),
+          // A helix's solved curve (the viewport draws it) and derived values.
+          ...(feature.curve !== undefined && { curve: feature.curve }),
+          ...(feature.helix !== undefined && { helix: feature.helix }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
         }
       }

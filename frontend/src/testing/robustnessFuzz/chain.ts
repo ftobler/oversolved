@@ -29,6 +29,7 @@ import { solveHole } from '@/kernel/features/hole'
 import { solveArray, solveCircularArray } from '@/kernel/features/array'
 import { solveMirror } from '@/kernel/features/transformMirror'
 import { solveShell } from '@/kernel/features/shell'
+import { solveHelix } from '@/kernel/features/helix'
 import { extractOccErrorMessage } from '@/kernel/errors'
 import type { Repository } from '@/kernel/query'
 import type { Body } from '@/kernel/types3d'
@@ -684,6 +685,31 @@ function applyStep(
       shell: { faces: [face.query], thickness: step.thickness, direction: 'inward' },
     }, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }
+  }
+  if (step.kind === 'helix') {
+    // A reference curve on a picked cylinder face of the running body: it
+    // changes no body, only registers the `_curve_<id>` descriptor and its
+    // axis/endpoints. The reference resolves through the same repo the leaves
+    // use, so a degenerate body (no cylinder face) refuses by name.
+    const body = requireBody(bodyStore, step.target)
+    const faces = facesOf(oc, scope, table.get<OccShape>(body.shape as OccHandle), body)
+    const cylinders = faces.filter((f) => f.surfaceType === 'cylinderface')
+    if (cylinders.length === 0) throw new Error('the body has no cylinder face to carry a helix')
+    const face = cylinders[step.face % cylinders.length]
+    const query = `@fuzz/helix/${step.id}`
+    repo.registerQuery(query, () => ({
+      type: 'cylinderface', body_id: body.id, face_index: faces.indexOf(face),
+      axis: face.normal, centroid: face.centroid,
+    }))
+    solveHelix(oc, scope, table, {
+      id: step.id,
+      helix: {
+        reference: query, radius_mode: 'derived', mode: 'pitch_turns',
+        pitch: step.pitch, turns: step.turns, hand: 'right', direction: 'normal',
+        start_angle: 0, offset: 0,
+      },
+    }, repoForLeaves, bodyStore)
+    return {}
   }
   // mirror
   const body = requireBody(bodyStore, step.target)

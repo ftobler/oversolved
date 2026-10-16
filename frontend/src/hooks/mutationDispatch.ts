@@ -81,6 +81,8 @@ import {
   applySetMirrorField,
   applyAddVariable,
   applySetVariableField,
+  applyAddHelix,
+  applySetHelixField,
   applySetBodyVisibility,
   applySetFeatureSuppression,
 } from '@/utils/yamlMutations'
@@ -259,6 +261,10 @@ export const mutationHandlers: MutationHandlers = {
     applyAddVariable(next, m.featureId, m.label),
   set_variable_field: (next, m) =>
     applySetVariableField(next, m.featureId, m.field, m.value),
+  add_helix: (next, m) =>
+    applyAddHelix(next, m.featureId, m.label, m.reference),
+  set_helix_field: (next, m) =>
+    applySetHelixField(next, m.featureId, m.field, m.value),
   reorder_features: (next, m) =>
     applyReorderFeatures(next, m.featureId, m.toIndex),
   reorder_pick_field: (next, m) =>

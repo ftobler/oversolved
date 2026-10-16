@@ -15,6 +15,7 @@ import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
 import featureMirrorIcon from '@/assets/icons/feature-mirror.svg'
 import featureVariableIcon from '@/assets/icons/feature-variable.svg'
+import featureHelixIcon from '@/assets/icons/feature-helix.svg'
 import featureImportIcon from '@/assets/icons/icon-upload.svg'
 
 // Falls back to the plane icon for unknown kinds (covers the `plane` kind and
@@ -38,6 +39,7 @@ export function getFeatureIcon(kind: string | undefined): string {
     case 'transform':       return featureTransformIcon
     case 'mirror':          return featureMirrorIcon
     case 'variable':        return featureVariableIcon
+    case 'helix':           return featureHelixIcon
     case 'import_step':     return featureImportIcon
     default:                return featurePlaneIcon
   }

@@ -1,0 +1,26 @@
+{
+  "method": "A 1x1 radial square (in the y=0 plane, centred at radius 10) swept along a right-hand helix r=10, pitch=3, turns=4: V = A * 2 pi xbar * turns = 1 * 2 pi * 10 * 4 = 80 pi. Area/centroid/bbox have no closed form and are frozen from the kernel build (6 faces, 12 edges).",
+  "bodies": 1,
+  "volume": 251.32748189557412,
+  "area": 1007.8829977388083,
+  "centroid": [0.000003845464010315328, 0, 6],
+  "bbox": [-16.89636499327575, -15.363061492468313, -0.5, 10.500000000003972, 15.363061492460927, 12.5],
+  "faces": 6,
+  "edges": 12,
+  "edit": {
+    "what": "edit hx1.turns 4 -> 6",
+    "method": "The same sweep at turns=6: V = 1 * 2 pi * 10 * 6 = 120 pi; the frozen area/centroid/bbox follow the taller helix.",
+    "feature": "hx1",
+    "field": "turns",
+    "value": 6,
+    "expect": {
+      "bodies": 1,
+      "volume": 376.9912814018819,
+      "area": 1510.8250981788074,
+      "centroid": [0.00000561699751260344, 0, 9],
+      "bbox": [-14.30380609137109, -14.303806091367155, -0.5, 14.303806091372778, 14.303806091374547, 18.5],
+      "faces": 6,
+      "edges": 12
+    }
+  }
+}

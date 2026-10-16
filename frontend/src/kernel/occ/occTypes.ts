@@ -83,6 +83,13 @@ export interface OccListOfShape extends OccDisposable {
  */
 export interface OccPipeShellBuilder extends OccPrismBuilder {
   SetTransitionMode(mode: OccEnumValue): void
+  // The pipe-shell trihedron modes. BRepOffsetAPI_MakePipeShell declares four
+  // SetMode overloads in this build (SpineSupport, gp_Ax2, gp_Dir, Frenet
+  // boolean); the gp_Dir one is the binormal mode a constant-axis helix sweep
+  // wants, pinning the profile's orientation to a fixed direction instead of
+  // the CorrectedFrenet frame. The overload suffix is pinned by
+  // helixEdgeProbeReal.test.ts.
+  SetMode_3(dir: OccDisposable): void
   Add_1(profile: OccShape, withContact: boolean, withCorrection: boolean): void
   Build(): void
   IsDone(): boolean
@@ -146,10 +153,14 @@ export interface OccThickSolidMaker extends OccModifierHistory {
 }
 
 /**
- * BRepOffsetAPI_MakeOffsetShape: the pure offset fallback. `PerformByJoin` is
- * the OCCT 7.4 8-arg form (shape, offset, tol, mode, intersection, selfInter,
- * join, removeIntEdges); it shares the builder history surface, so a kept
- * face's offset image is `Generated()`.
+ * BRepOffsetAPI_MakeOffsetShape: the 3D offset/clearance maker and the shell
+ * fallback (a BRepBuilderAPI_MakeShape subclass, so it shares the builder
+ * history surface). `PerformByJoin` is the OCCT 7.4 8-arg form (shape, offset,
+ * tol, mode, intersection, selfInter, join, thickening); there is no
+ * `Message_ProgressRange` overload in this build. History is `Generated` (NOT
+ * `Modified`): for every source face exactly one grown face comes back, which
+ * `IsSame`s a face of the result. `Shape()` is untracked for our purposes (the
+ * caller owns it/registers it).
  */
 export interface OccOffsetShapeMaker extends OccModifierHistory {
   PerformByJoin(
@@ -200,31 +211,6 @@ export interface OccBRepBuilder extends OccDisposable {
   MakeCompound(compound: OccShape): void
   MakeSolid(solid: OccShape): void
   Add(parent: OccShape, shape: OccShape): void
-}
-
-/**
- * BRepOffsetAPI_MakeOffsetShape: the 3D offset/clearance maker. In OCCT 7.4 the
- * working entry point is `PerformByJoin(S, Offset, Tol, Mode, Intersection,
- * SelfInter, Join, Thickening)` -- there is no `Message_ProgressRange` overload,
- * so the 8-argument form is the one this build binds. History is `Generated`
- * (NOT `Modified`): for every source face exactly one grown face comes back,
- * which `IsSame`s a face of the result. `Shape()` is untracked for our purposes
- * (the caller owns it/registers it).
- */
-export interface OccOffsetShapeMaker extends OccDisposable {
-  PerformByJoin(
-    shape: OccShape,
-    offset: number,
-    tol: number,
-    mode: OccEnumValue,
-    intersection: boolean,
-    selfInter: boolean,
-    join: OccEnumValue,
-    thickening: boolean,
-  ): void
-  IsDone(): boolean
-  Shape(): OccShape
-  Generated(s: OccShape): OccListOfShape
 }
 
 /** ShapeUpgrade_UnifySameDomain: cadquery Shape.clean() with exposed history. */
@@ -738,6 +724,41 @@ export interface OccModule extends OccBaseModule {
     BRepBuilderAPI_RoundCorner: OccEnumValue
   }
 
+  // ─── helix: an edge in a cylinder surface's parameter space ───
+  // BRepBuilderAPI_MakeEdge(Handle(Geom2d_Curve), Handle(Geom_Surface), p1, p2):
+  // the parametric-space overload (_31 by declaration order, pinned by the
+  // probe). Geom2d_Line in (u, v) space where u is angle and v is axial, then
+  // BuildCurves3d lifts it to a 3D BSpline edge on the cylinder.
+  Geom_CylindricalSurface_1: new (frame: OccDisposable, radius: number) => OccDisposable
+  Geom2d_Line_3: new (pnt: OccDisposable, dir: OccDisposable) => OccDisposable
+  gp_Pnt2d_3: new (x: number, y: number) => OccDisposable
+  gp_Dir2d_4: new (x: number, y: number) => OccDisposable
+  Handle_Geom2d_Curve_2: new (curve: OccDisposable) => OccDisposable
+  Handle_Geom_Surface_2: new (surface: OccDisposable) => OccDisposable
+  BRepBuilderAPI_MakeEdge_31: new (
+    curve: OccDisposable,
+    surface: OccDisposable,
+    p1: number,
+    p2: number,
+  ) => OccEdgeBuilder
+  // BRepLib::BuildCurves3d(shape, tolerance, continuity, maxDegree, maxSegment):
+  // approximates the parametrically-built edge into its 3D form. The 5-arg
+  // overload is _1 in this build (the shape-only form is _2), pinned by
+  // helixEdgeProbeReal.test.ts.
+  BRepLib: {
+    BuildCurves3d_1(
+      shape: OccShape,
+      tolerance: number,
+      continuity: OccEnumValue,
+      maxDegree: number,
+      maxSegment: number,
+    ): void
+  }
+  GeomAbs_Shape: {
+    GeomAbs_C0: OccEnumValue
+    GeomAbs_C1: OccEnumValue
+  }
+
   // ─── fillet / chamfer leaf ───
   // BRepFilletAPI_MakeFillet(shape, ChFi3d_Rational): the 2-arg form.
   BRepFilletAPI_MakeFillet: new (shape: OccShape, fshape: OccEnumValue) => OccEdgeModifierMaker
@@ -748,20 +769,11 @@ export interface OccModule extends OccBaseModule {
   }
 
   // ─── shell leaf ───
-  // BRepOffsetAPI_MakeThickSolid / BRepOffsetAPI_MakeOffsetShape: the offset
-  // makers the shell adapter drives. The `_1` ctors are the default forms the
-  // shipped build binds (verified against opencascade.js 1.1.1, OCCT 7.4.0p1).
+  // BRepOffsetAPI_MakeThickSolid: the shell's open-face maker. The `_1` ctor is
+  // the default form the shipped build binds (verified against opencascade.js
+  // 1.1.1, OCCT 7.4.0p1). It shares BRepOffsetAPI_MakeOffsetShape (declared with
+  // the clearance block above) and the two join enums.
   BRepOffsetAPI_MakeThickSolid_1: new () => OccThickSolidMaker
-  BRepOffsetAPI_MakeOffsetShape_1: new () => OccOffsetShapeMaker
-  // BRepOffset_Skin is the general-purpose join mode; the shell uses it with
-  // GeomAbs_Intersection so outward walls keep sharp corners.
-  BRepOffset_Mode: {
-    BRepOffset_Skin: OccEnumValue
-  }
-  GeomAbs_JoinType: {
-    GeomAbs_Arc: OccEnumValue
-    GeomAbs_Intersection: OccEnumValue
-  }
 
   // ─── transform / mirror / array group ───
   gp_Trsf_1: new () => OccTrsf

@@ -236,6 +236,56 @@ A rotational array is its own feature kind (not a `mode` of `array`):
 
 Projection is not a kind: any base-kind entity (`line`/`circle`/`arc`/`point`) that carries a `source` field is projected from a 3D source and gets an automatic `fixed` constraint pinning it. Legacy `projected_*` kinds are still accepted on read and normalized to their base kind. Any entity can set `construction: true`.
 
+### helix
+
+A reference curve (not a body). A helix laid on a cylinder: pick a cylindrical
+face, a circular/straight edge or a sketch circle/line as the reference. The
+radius comes from the reference (`derived`) or is typed (`entered`). `mode`
+names the two given quantities; the rest are derived with circumference
+`C = 2*pi*r`.
+
+```yaml
+- id: hx1
+  kind: helix
+  helix:
+    reference: ?...@u|f_...:cylinderface   # cylinder face | circular/straight edge | sketch circle/line
+    radius_mode: derived   # derived | entered
+    radius: 5              # read only when entered; > 0
+    mode: pitch_turns      # see the mode table
+    pitch: 1.5             # axial rise per turn, > 0
+    turns: 10              # > 0, fractional allowed
+    height: 15             # total axial length, > 0
+    helix_angle: 5         # deg, (0, 90)
+    height_from_reference: false   # height = the face's axial length (cylinder face only)
+    offset: 0              # axial start shift along the climb direction, may be negative
+    start_angle: 0         # deg, any value; the fine adjustment
+    hand: right            # right | left
+    direction: normal      # normal | reverse
+```
+
+All fields are stored even when the mode ignores them, so switching mode never
+loses input. Every numeric field is expression-capable.
+
+| mode | given | derived |
+|------|-------|---------|
+| `pitch_turns` | pitch, turns | height = pitch * turns |
+| `pitch_height` | pitch, height | turns = height / pitch |
+| `turns_height` | turns, height | pitch = height / turns |
+| `angle_turns` | helix_angle, turns | pitch = C * tan(angle), height = pitch * turns |
+| `angle_height` | helix_angle, height | pitch = C * tan(angle), turns = height / pitch |
+
+`height_from_reference: true` takes `height` from a cylinder face's axial extent
+in the modes that use height (a thread over the whole boss). With any other
+reference it is a solve error. The reference axis `a0`, the zero direction `x0`,
+the climb direction (`a0` for `normal`, `-a0` for `reverse`), `start_angle`,
+`hand` and `offset` are independent: flipping one never moves what another
+controls. `hand` is the curve's chirality about `a0`, so a right-hand thread
+stays right-hand when `direction` flips.
+
+The solve registers `_curve_<id>` (plain descriptor data), `<id>` (its axis),
+`<id>/start` and `<id>/end`, and reports the derived values. A helix is never a
+`bodyStore` body.
+
 ## Constraints
 
 Refs use `{"entity": "<eid>", "point": "start"|"end"|"center"|"xy"}` or `{"external_xy": [x, y]}`. `point` defaults to `start`.

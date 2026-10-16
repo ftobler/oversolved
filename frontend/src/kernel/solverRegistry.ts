@@ -34,6 +34,7 @@ import { solveDeleteBody } from './features/deleteBody'
 import { solveImportStep } from './features/importStep'
 import { solveSketch } from './features/sketch'
 import { solvePlane } from './features/plane'
+import { solveHelix } from './features/helix'
 import { solveVariable } from './features/variable'
 import { evalFeatureParams, EXPR_FIELDS_BY_KIND, isExprFieldKind, type ExprFieldKind } from './evalExpr'
 
@@ -73,6 +74,7 @@ const KIND_SOLVER: SolverTable = {
   sketch: (_oc, _scope, _table, feature, globalRepo, bodyStore) =>
     solveSketch(feature, globalRepo, bodyStore),
   plane: solvePlane,
+  helix: solveHelix,
   extrude: solveExtrude,
   revolve: solveRevolve,
   sweep: solveSweep,
@@ -161,6 +163,7 @@ const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
   circular_array: 'circular_array',
   transform: 'transform',
   plane: 'definition',
+  helix: 'helix',
   import_step: '',
   boolean: 'boolean',
 }

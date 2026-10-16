@@ -19,6 +19,7 @@ import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
 import featureMirrorIcon from '@/assets/icons/feature-mirror.svg'
 import featureVariableIcon from '@/assets/icons/feature-variable.svg'
+import featureHelixIcon from '@/assets/icons/feature-helix.svg'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import featureAddPlaneIcon from '@/assets/icons/feature-add-plane.svg'
@@ -95,6 +96,7 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Extrude (E)" onClick={() => handleAddFeature('extrude', { sketchQuery: '', distance: 10 })}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
               <button className="editor-btn" title="Add Revolve" onClick={() => handleAddFeature('revolve', { sketchQuery: '', angle: 360 })}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
               <button className="editor-btn" title="Add Sweep" onClick={() => handleAddFeature('sweep', { sketchQuery: '', pathQuery: '' })}><img src={featureSweepIcon} alt="Add Sweep" /></button>
+              <button className="editor-btn" title="Add Helix" onClick={() => handleAddFeature('helix')}><img src={featureHelixIcon} alt="Add Helix" /></button>
               <button className="editor-btn" title="Add Fillet" onClick={() => handleAddFeature('fillet')}><img src={featureFilletIcon} alt="Add Fillet" /></button>
               <button className="editor-btn" title="Add Chamfer" onClick={() => handleAddFeature('chamfer')}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
               <button className="editor-btn" title="Add Shell" onClick={() => handleAddFeature('shell')}><img src={featureShellIcon} alt="Add Shell" /></button>
