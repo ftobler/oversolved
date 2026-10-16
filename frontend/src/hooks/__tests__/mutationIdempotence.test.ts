@@ -65,14 +65,15 @@ const GUARDED = [
   'remove_fillet_edge',
   'remove_chamfer_edge',
   'remove_shell_face',
+  'remove_delete_face_ref',
   'remove_boolean_tool',
   'remove_delete_body_ref',
   'remove_transform_body',
 ]
 
 describe('mutationIdempotence classification', () => {
-  it('classifies exactly the 90 Mutation variants, no more and no fewer', () => {
-    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(90)
+  it('classifies exactly the 93 Mutation variants, no more and no fewer', () => {
+    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(93)
     // Sorting ignores key order, so regrouping the table stays free while adding
     // or dropping a name does not.
     expect([...Object.keys(IDEMPOTENT_MUTATION)].sort()).toEqual(Object.keys(mutationHandlers).sort())

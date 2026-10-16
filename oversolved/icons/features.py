@@ -276,6 +276,29 @@ def feature_shell(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-delete-face.svg")
+def feature_delete_face(ctx):
+    """Icon for Delete Face: a box with a dashed hole outline, struck through."""
+    # Solid box outline: the body that keeps its material.
+    ctx.rectangle(0.15, 0.15, 0.55, 0.55)
+    stroke(ctx, 2.0)
+
+    # Dashed circle: the face about to be removed and healed over.
+    cx, cy, r = 0.44, 0.44, 0.17
+    segments = 8
+    for i in range(segments):
+        a0 = 2 * math.pi * i / segments
+        a1 = a0 + (2 * math.pi / segments) * 0.6
+        ctx.move_to(cx + r * math.cos(a0), cy + r * math.sin(a0))
+        ctx.arc(cx, cy, r, a0, a1)
+    stroke(ctx, 1.5)
+
+    # Strike mark: the deletion, crossing the circle.
+    ctx.move_to(0.28, 0.6)
+    ctx.line_to(0.62, 0.26)
+    stroke(ctx, 2.0)
+
+
 @icon("frontend/src/assets/icons/feature-boolean.svg")
 def feature_boolean(ctx):
     """Icon for Boolean: two overlapping circles (Venn diagram style)."""

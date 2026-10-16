@@ -117,7 +117,7 @@ interface NameBuildContext {
 export function extractNames(
   oc: OccModule,
   scope: DisposeScope,
-  maker: OccEdgeModifierMaker,
+  maker: OccModifierHistory,
   newShape: OccShape,
   modifiedEdges: OccShape[],
   old: OldNames,
@@ -270,7 +270,7 @@ function mintGeneratedFilletFaces(
 function generatedFaces(
   oc: OccModule,
   scope: DisposeScope,
-  maker: OccEdgeModifierMaker,
+  maker: OccModifierHistory,
   oldEdges: OccShape[],
 ): SubShapeDedup {
   const sources: OccShape[] = [...oldEdges]
@@ -299,11 +299,16 @@ function generatedFaces(
  * Classify the modifier output into a BrepDiff (mirrors `ocp_edge_modifier_diff`).
  * Inputs are partitioned via IsDeleted/Modified; outputs partition new vs
  * inherited by IsSame against the preimage pool.
+ *
+ * Typed on the minimal [[OccModifierHistory]] so a non-edge modifier
+ * (delete-face's BRepAlgoAPI_Defeaturing) reuses the identical classification;
+ * the far-edge rule below is what makes "no new faces" fall out correctly for a
+ * heal-only operation.
  */
-function edgeModifierDiff(
+export function edgeModifierDiff(
   oc: OccModule,
   scope: DisposeScope,
-  maker: OccEdgeModifierMaker,
+  maker: OccModifierHistory,
   oldFaces: OccShape[],
   oldEdges: OccShape[],
   newFaces: OccShape[],

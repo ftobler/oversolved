@@ -90,6 +90,7 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   fillet: { field: 'edges', multi: true },
   chamfer: { field: 'edges', multi: true },
   shell: { field: 'faces', multi: true },
+  delete_face: { field: 'faces', multi: true },
   hole: { field: 'sketch' },
   boolean: { field: 'target' },
   transform: { field: 'bodies', multi: true },
@@ -97,6 +98,27 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   delete_body: { field: 'bodies', multi: true },
   circular_array: { field: 'axis' },
   helix: { field: 'reference' },
+}
+
+/**
+ * The stored face query a selection id names, or null when it names something
+ * else (a body, an edge, a vertex, an entity). `?`-ancestry ids carry the OCC
+ * surface type as the type restriction; `face:` wrappers (owner attribution) and
+ * topo-fallback `@<bodyId>/face/<idx>` refs also resolve to a face in the
+ * kernel. A whole-body pick (`@body_...`) names no face and returns null.
+ */
+function faceSelectionQuery(id: string): string | null {
+  if (id.startsWith('?')) {
+    try {
+      const q = parseQuery(id)
+      return q.kind === 'ancestry' && isFaceRestriction(q.typeRestriction) ? stripSelectionWrapper(id) : null
+    } catch {
+      return null
+    }
+  }
+  if (id.startsWith('face:')) return stripSelectionWrapper(id)
+  if (parseTopoFallbackQuery(id)?.kind === 'face') return stripSelectionWrapper(id)
+  return null
 }
 
 export default function Part() {
@@ -520,15 +542,26 @@ export default function Part() {
     const bodyIds = new Set(Object.keys(bodies))
     const bodyDeletes: Mutation[] = []
     const featureDeletes: Mutation[] = []
+    // Every selected face pick folds into ONE add_delete_face for the whole
+    // press (delete_face heals all of them in one feature), so a Delete with
+    // faces selected is one undo entry, the same pattern add_delete_body
+    // follows. Edges and vertices are not faces and stay ignored.
+    const facePicks: string[] = []
     // First pass names the feature ids this Delete actually removes, so the body
     // pass can tell whether a body's generator is going away with it.
     const deletingFeatures = new Set<string>()
     for (const id of [...sel]) {
+      const faceQuery = faceSelectionQuery(id)
+      if (faceQuery !== null) {
+        facePicks.push(faceQuery)
+        continue
+      }
       if (!id.startsWith('@') || id.startsWith('@builtin_')) continue
       const ref = id.slice(1)
       if (features.some(f => f.id === ref)) deletingFeatures.add(ref)
     }
     for (const id of [...sel]) {
+      if (faceSelectionQuery(id) !== null) continue
       if (!id.startsWith('@') || id.startsWith('@builtin_')) continue
       const ref = id.slice(1)
       // A whole-body pick (parts list or pick chip) inserts a real delete_body
@@ -551,7 +584,13 @@ export default function Part() {
     // One Delete action on N targets is one undo step, not N. commitMutationGroup
     // applies every handler to one doc clone and solves once at the end, so the
     // array order below only groups the mutations, it does not sequence them.
-    const threeD = [...bodyDeletes, ...featureDeletes]
+    const threeD = [
+      ...bodyDeletes,
+      ...(facePicks.length > 0
+        ? [{ type: 'add_delete_face', featureId: randomId(18), faces: facePicks, label: 'Delete Face' } as Mutation]
+        : []),
+      ...featureDeletes,
+    ]
 
     if (threeD.length > 0) {
       // A mixed selection (sketch entity + a 3D target) is ONE press, ONE entry.
@@ -612,7 +651,16 @@ export default function Part() {
     // recomputes the same pick_boundary and the cache hit is free.
     setRollbackForNewFeature(features)
     store.setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    const result = handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
+    // Starting the Delete Face tool with faces already selected pre-fills them,
+    // the same convenience handleAddPlane gives the on-face plane. Other kinds
+    // seed nothing from the selection.
+    const seedFaces = kind === 'delete_face'
+      ? [...selection].map(faceSelectionQuery).filter((q): q is string => q !== null)
+      : []
+    const result = handleMutation({
+      type: `add_${kind}`, featureId: fid, label, ...extra,
+      ...(seedFaces.length > 0 ? { faces: seedFaces } : {}),
+    } as Mutation)
     // enterEditFeature would bail because React hasn't re-rendered with the
     // new feature yet (features.findIndex(f => f.id === fid) returns -1), so
     // the id is set eagerly; the session started above already owns commit and
@@ -623,7 +671,7 @@ export default function Part() {
     // The Result rides back to the command spec so a programmatic caller sees
     // the created feature id.
     return result
-  }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, closeOpenEditorForAdd])
+  }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, closeOpenEditorForAdd, selection])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -631,25 +679,9 @@ export default function Part() {
     const featureId = randomId(18)
     const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
     const label = `plane ${planeCount + 1}`
-    const faceQuery = [...selection].find(id => {
-      // `?`-ancestry face queries carry the OCC surface type as the type
-      // restriction (flatface/cylinderface/face, classified by the shared
-      // kernel classifier); `face:` wrappers (owner attribution; stored as
-      // their inner query) and topo-fallback `@<bodyId>/face/<idx>` refs also
-      // resolve to a face in the kernel. A whole-body pick (`@body_...`) names
-      // no face and must not match.
-      if (id.startsWith('?')) {
-        try {
-          const q = parseQuery(id)
-          return q.kind === 'ancestry' && isFaceRestriction(q.typeRestriction)
-        } catch {
-          return false
-        }
-      }
-      return id.startsWith('face:') || parseTopoFallbackQuery(id)?.kind === 'face'
-    })
+    const faceQuery = [...selection].map(faceSelectionQuery).find((q) => q !== null)
     const definition = faceQuery
-      ? { mode: 'on_face', face: stripSelectionWrapper(faceQuery) } as const
+      ? { mode: 'on_face', face: faceQuery } as const
       : undefined
     setRollbackForNewFeature(features)
     startEditSession(true)

@@ -158,6 +158,16 @@ const shellPopulatedDoc = (): PartDoc => makeDoc({
   shell: { faces: ['?f1'], thickness: 1, direction: 'inward' },
 })
 
+const deleteFaceDoc = (): PartDoc => makeDoc({
+  id: 'df1', kind: 'delete_face', label: 'Delete Face',
+  delete_face: { faces: [] },
+})
+
+const deleteFacePopulatedDoc = (): PartDoc => makeDoc({
+  id: 'df1', kind: 'delete_face', label: 'Delete Face',
+  delete_face: { faces: ['?f1'] },
+})
+
 // A projected entity (source-carrying) and a superfluous constraint, the two
 // things remove_dangling_content is eligible to clean up.
 const danglingDoc = (): PartDoc => makeDoc(makeSketch('sk1', {
@@ -355,6 +365,20 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   remove_shell_face: {
     makeDoc: shellPopulatedDoc,
     mutation: { type: 'remove_shell_face', featureId: 'sh1', index: 0 },
+  },
+
+  // delete face
+  add_delete_face: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_delete_face', featureId: 'df1', label: 'Delete Face' },
+  },
+  add_delete_face_ref: {
+    makeDoc: deleteFaceDoc,
+    mutation: { type: 'add_delete_face_ref', featureId: 'df1', faceQuery: '?f1' },
+  },
+  remove_delete_face_ref: {
+    makeDoc: deleteFacePopulatedDoc,
+    mutation: { type: 'remove_delete_face_ref', featureId: 'df1', index: 0 },
   },
 
   // boolean

@@ -6,6 +6,7 @@
     "BRepAdaptor_Surface",
     "BRepAlgoAPI_Common",
     "BRepAlgoAPI_Cut",
+    "BRepAlgoAPI_Defeaturing",
     "BRepAlgoAPI_Fuse",
     "BRepBndLib",
     "BRepBuilderAPI_Copy",

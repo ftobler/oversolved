@@ -28,6 +28,7 @@ import { solveHole } from './features/hole'
 import { solveBoolean } from './features/boolean'
 import { solveFillet, solveChamfer } from './features/filletChamfer'
 import { solveShell } from './features/shell'
+import { solveDeleteFace } from './features/deleteFace'
 import { solveArray, solveCircularArray } from './features/array'
 import { solveTransform, solveMirror } from './features/transformMirror'
 import { solveDeleteBody } from './features/deleteBody'
@@ -83,6 +84,7 @@ const KIND_SOLVER: SolverTable = {
   fillet: solveFillet,
   chamfer: solveChamfer,
   shell: solveShell,
+  delete_face: solveDeleteFace,
   array: solveArray,
   circular_array: solveCircularArray,
   transform: solveTransform,

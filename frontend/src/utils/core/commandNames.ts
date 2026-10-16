@@ -16,6 +16,7 @@ export const COMMAND_NAMES = [
   'add_hole',
   'add_transform',
   'add_shell',
+  'add_delete_face',
   'apply_offset',
   'set_tool_mirror',
 
