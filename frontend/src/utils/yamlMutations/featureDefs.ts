@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, LoftFeatureDef, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
 
 /** Append a feature, lazily initializing the features array. */
@@ -380,6 +380,30 @@ export function applyAddShellFace(doc: PartDoc, featureId: string, faceQuery: st
 
 export function applyRemoveShellFace(doc: PartDoc, featureId: string, index: number): void {
   removeListAt(doc, featureId, 'shell', 'faces', index, 'applyRemoveShellFace')
+}
+
+// ─── Loft ───
+
+export function applyAddLoft(doc: PartDoc, featureId: string, label?: string): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'loft',
+    label: label ?? 'Loft',
+    loft: { profiles: [], ruled: false, operation: 'new' },
+  })
+}
+
+export function applySetLoftField(doc: PartDoc, featureId: string, field: keyof LoftFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'loft', feature?.kind === 'loft' ? feature.loft : undefined, field, value, 'applySetLoftField')
+}
+
+export function applyAddLoftProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
+  toggleListValue(doc, featureId, 'loft', 'profiles', sketchQuery, 'applyAddLoftProfile')
+}
+
+export function applyRemoveLoftProfile(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'loft', 'profiles', index, 'applyRemoveLoftProfile')
 }
 
 // ─── Move face ───

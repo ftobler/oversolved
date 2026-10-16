@@ -23,10 +23,11 @@ import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccModifierHistory } from './occTypes'
 import { canonicalFaces, canonicalEdges, carryFaceNames } from './bodyNames'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
-import { SubShapeIndexMap, faceCentroid } from './primitives'
+import { SubShapeIndexMap, isNullShape } from './primitives'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { booleanWithDiff } from './booleans'
-import { mintFaceUuid, shellFacePath, splitFacePath, orderSplitChildren, type SplitChild, type ShellFaceRole } from '../constructionName'
+import { mintFaceUuid, shellFacePath, type ShellFaceRole } from '../constructionName'
+import { mintHistoryFaces, modifierShapeDiff } from './modifierNames'
 import {
   builtFaceOf,
   inheritOldFaceNames,
@@ -37,7 +38,7 @@ import {
   type OldNames,
   type NewNames,
 } from './edgeModifier'
-import { nameNeighboursAndDeriveEdges, shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
+import { nameNeighboursAndDeriveEdges } from './constructionLineage'
 
 type Lineage = Record<string, string[]>
 
@@ -64,10 +65,9 @@ function facesOf(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[
 
 /**
  * Mint `<createdBy>|shell|<role>|<sourceUuid>` for every image the maker
- * narrates for `sourceFaces`. One image -> the base path; several -> ordered
- * split children. Existing names are never overwritten, so the kept faces
- * inherited first win. `which` selects the history call: a kept face's wall is
- * `Generated`, a removed face's rim is `Modified`.
+ * narrates for `sourceFaces`, through the shared mintHistoryFaces. `which`
+ * selects the history call: a kept face's wall is `Generated`, a removed face's
+ * rim is `Modified`.
  */
 function mintRoleFaces(
   oc: OccModule,
@@ -84,68 +84,22 @@ function mintRoleFaces(
   old: OldNames,
   newShape: OccShape,
 ): void {
-  let frame: NormalFrame | null = null
-  for (const src of sourceFaces) {
-    const srcUuid = uuidOf(src)
-    if (!srcUuid) continue
-    let images: OccShape[]
-    try {
-      images = drainList(scope, maker[which](src)).flatMap((g) => facesOf(oc, scope, g))
-    } catch {
-      continue
-    }
-    if (images.length === 0) continue
-    const ancestry = old.faceAncestry[srcUuid] ?? []
-    const base = mintFaceUuid(shellFacePath(createdBy, role, srcUuid))
-    const assign = (face: OccShape, uuid: string): void => {
-      const key = builtFace(face)
-      if (faceNames.has(key)) return
-      faceNames.set(key, uuid)
-      faceAncestry[uuid] = [...ancestry]
-    }
-    if (images.length === 1) {
-      assign(images[0], base)
-    } else {
-      frame ??= shapeNormalFrame(oc, scope, newShape)
-      const f0 = frame
-      const ordered = orderSplitChildren(
-        images.map<SplitChild<OccShape>>((f) => ({
-          item: f,
-          key: normalizedWorldKey(f0, faceCentroid(oc, scope, f)),
-        })),
-      )
-      if (ordered !== null) ordered.forEach((f, i) => assign(f, mintFaceUuid(splitFacePath(base, i))))
-    }
-  }
+  mintHistoryFaces({
+    oc,
+    scope,
+    maker,
+    sourceFaces,
+    uuidOf,
+    which,
+    pathOf: (sourceUuid) => shellFacePath(createdBy, role, sourceUuid),
+    ancestryOf: (sourceUuid) => old.faceAncestry[sourceUuid] ?? [],
+    builtFace,
+    faceNames,
+    faceAncestry,
+    newShape,
+  })
 }
 
-/** Classify the modifier output into a BrepDiff (mirrors `edgeModifierDiff`):
- *  output faces In the preimage pool are inherited, the rest are new. */
-function shellDiff(
-  oldFaces: OccShape[],
-  oldEdges: OccShape[],
-  newFaces: OccShape[],
-  newEdges: OccShape[],
-  removedFaces: OccShape[],
-): BrepDiff {
-  const diff = emptyBrepDiff()
-  const facePool = new SubShapeDedup()
-  for (const f of oldFaces) facePool.add(f as OccSubShape)
-  for (const f of newFaces) (facePool.has(f as OccSubShape) ? diff.inherited_faces : diff.new_faces).push(f)
-
-  const edgePool = new SubShapeDedup()
-  for (const e of oldEdges) edgePool.add(e as OccSubShape)
-  for (const e of newEdges) (edgePool.has(e as OccSubShape) ? diff.inherited_edges : diff.new_edges).push(e)
-
-  const removed = new SubShapeDedup()
-  for (const f of removedFaces) removed.add(f as OccSubShape)
-  for (const f of oldFaces) {
-    if (removed.has(f as OccSubShape)) diff.deleted_input_faces.push(f)
-    else if (!facePool.has(f as OccSubShape)) diff.modified_input_faces.push(f)
-  }
-  diff.deleted_input_edges = oldEdges.filter((e) => !edgePool.has(e as OccSubShape))
-  return diff
-}
 
 /** Names + diff for the closed-hollow fallback: offset maker then boolean cut.
  *
@@ -272,7 +226,7 @@ export function applyShellWithLineage(
   direction: ShellDirection,
   oldNames: OldNames | null = null,
 ): ShellResult {
-  if ((shape as unknown as { IsNull(): boolean }).IsNull()) return fail(shape, 'null_shape')
+  if (isNullShape(shape)) return fail(shape, 'null_shape')
 
   const oldFaces = canonicalFaces(oc, scope, shape) as OccShape[]
   const oldEdges = canonicalEdges(oc, scope, shape) as OccShape[]
@@ -302,7 +256,7 @@ export function applyShellWithLineage(
 
   const newFaces = canonicalFaces(oc, scope, built) as OccShape[]
   const newEdges = canonicalEdges(oc, scope, built) as OccShape[]
-  let diff = shellDiff(oldFaces, oldEdges, newFaces, newEdges, closingFaces)
+  let diff = modifierShapeDiff(oldFaces, oldEdges, newFaces, newEdges, closingFaces)
 
   let names: NewNames | null = null
   if (oldNames !== null) {

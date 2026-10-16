@@ -167,6 +167,13 @@ const FEATURE_SCHEMA_BY_KIND = {
       faces: REF_LIST, thickness: NUMBER_OR_EXPR, direction: { enum: ['inward', 'outward'] }, source_body: REF,
     },
   }),
+  loft: feature('loft', {
+    key: 'loft',
+    required: ['profiles'],
+    properties: {
+      profiles: REF_LIST, ruled: { type: 'boolean' }, operation: { enum: ['new', 'add', 'cut'] }, merge_target: REF,
+    },
+  }),
   move_face: feature('move_face', {
     key: 'move_face',
     required: ['faces', 'distance'],

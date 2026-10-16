@@ -73,6 +73,11 @@ const shellDoc = (): PartDoc => makeDoc({
   shell: { faces: [], thickness: 1, direction: 'inward' },
 })
 
+const loftDoc = (): PartDoc => makeDoc({
+  id: 'lo1', kind: 'loft', label: 'Loft',
+  loft: { profiles: [], ruled: false, operation: 'new' },
+})
+
 const moveFaceDoc = (): PartDoc => makeDoc({
   id: 'mf1', kind: 'move_face', label: 'Move Face',
   move_face: { faces: [], distance: 5 },
@@ -161,6 +166,11 @@ const chamferPopulatedDoc = (): PartDoc => makeDoc({
 const shellPopulatedDoc = (): PartDoc => makeDoc({
   id: 'sh1', kind: 'shell', label: 'Shell',
   shell: { faces: ['?f1'], thickness: 1, direction: 'inward' },
+})
+
+const loftPopulatedDoc = (): PartDoc => makeDoc({
+  id: 'lo1', kind: 'loft', label: 'Loft',
+  loft: { profiles: ['@sk1'], ruled: false, operation: 'new' },
 })
 
 const moveFacePopulatedDoc = (): PartDoc => makeDoc({
@@ -375,6 +385,24 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   remove_shell_face: {
     makeDoc: shellPopulatedDoc,
     mutation: { type: 'remove_shell_face', featureId: 'sh1', index: 0 },
+  },
+
+  // loft
+  add_loft: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_loft', featureId: 'lo1', label: 'Loft' },
+  },
+  set_loft_field: {
+    makeDoc: loftDoc,
+    mutation: { type: 'set_loft_field', featureId: 'lo1', field: 'ruled', value: true },
+  },
+  add_loft_profile: {
+    makeDoc: loftDoc,
+    mutation: { type: 'add_loft_profile', featureId: 'lo1', sketchQuery: '@sk1' },
+  },
+  remove_loft_profile: {
+    makeDoc: loftPopulatedDoc,
+    mutation: { type: 'remove_loft_profile', featureId: 'lo1', index: 0 },
   },
 
   // move face

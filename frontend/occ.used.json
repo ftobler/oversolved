@@ -29,6 +29,7 @@
     "BRepOffsetAPI_MakeOffsetShape",
     "BRepOffsetAPI_MakePipeShell",
     "BRepOffsetAPI_MakeThickSolid",
+    "BRepOffsetAPI_ThruSections",
     "BRepOffset_Analyse",
     "BRepOffset_Mode",
     "BRepOffset_Type",

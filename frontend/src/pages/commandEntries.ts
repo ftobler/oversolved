@@ -432,6 +432,7 @@ const addExtrudeSpec = addFeatureSpec('add_extrude', 'Add extrude', 'extrude', {
 const addHoleSpec = addFeatureSpec('add_hole', 'Add hole', 'hole')
 const addTransformSpec = addFeatureSpec('add_transform', 'Add transform', 'transform')
 const addShellSpec = addFeatureSpec('add_shell', 'Add shell', 'shell')
+const addLoftSpec = addFeatureSpec('add_loft', 'Add loft', 'loft')
 const addMoveFaceSpec = addFeatureSpec('add_move_face', 'Add move face', 'move_face')
 const addDeleteFaceSpec = addFeatureSpec('add_delete_face', 'Add delete face', 'delete_face')
 
@@ -463,6 +464,7 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   addHoleSpec,
   addTransformSpec,
   addShellSpec,
+  addLoftSpec,
   addMoveFaceSpec,
   addDeleteFaceSpec,
 ]

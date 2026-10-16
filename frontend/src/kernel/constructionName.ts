@@ -68,6 +68,22 @@ export function shellFacePath(createdBy: string, role: ShellFaceRole, sourceFace
   return `${createdBy}|shell|${role}|${sourceFaceUuid}`
 }
 
+/** What a loft face is: a band between two sections, or one of the two end
+ *  caps. */
+export type LoftFaceRole = 'side' | 'cap'
+
+/**
+ * A loft face: `<createdBy>|loft|<role>|<slot>`. A side's slot is
+ * `s<sectionIndex>|<entityId>`, the section whose boundary edge the band grew
+ * from (OCC reports every band of a ruled loft from every section's edges, so
+ * the LOWEST section that reaches a band names it); a cap's slot is `start` or
+ * `end`, the first or last profile in the authored order, never the world axis.
+ * Both survive a resize because the section order and the entity ids do.
+ */
+export function loftFacePath(createdBy: string, role: LoftFaceRole, slot: string): string {
+  return `${createdBy}|loft|${role}|${slot}`
+}
+
 /**
  * A lateral move-face cell face: `<createdBy>|extend|<neighbourUuid>`, the
  * piece of the neighbour's surface the move extended. Named after the neighbour

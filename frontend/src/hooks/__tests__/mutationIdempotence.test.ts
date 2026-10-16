@@ -45,6 +45,7 @@ const GUARDED = [
   'set_fillet_field',
   'set_chamfer_field',
   'set_shell_field',
+  'set_loft_field',
   'set_move_face_field',
   'set_boolean_field',
   'set_array_field',
@@ -66,6 +67,7 @@ const GUARDED = [
   'remove_fillet_edge',
   'remove_chamfer_edge',
   'remove_shell_face',
+  'remove_loft_profile',
   'remove_move_face_ref',
   'remove_delete_face_ref',
   'remove_boolean_tool',
@@ -74,8 +76,8 @@ const GUARDED = [
 ]
 
 describe('mutationIdempotence classification', () => {
-  it('classifies exactly the 97 Mutation variants, no more and no fewer', () => {
-    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(97)
+  it('classifies exactly the 101 Mutation variants, no more and no fewer', () => {
+    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(101)
     // Sorting ignores key order, so regrouping the table stays free while adding
     // or dropping a name does not.
     expect([...Object.keys(IDEMPOTENT_MUTATION)].sort()).toEqual(Object.keys(mutationHandlers).sort())

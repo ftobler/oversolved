@@ -64,6 +64,19 @@ export type MoveFaceFeatureDef = {
   distance: NumberOrExpr
 }
 
+export type LoftFeatureDef = {
+  // Two or more profile refs, in order along the loft (the first is the start
+  // cap). Each ref is a whole sketch (`@sk2`), a picked area or curve
+  // (`?...`/`entity:...`), or a planar body face; the profiles sit on planes the
+  // loft passes through, not necessarily parallel.
+  profiles: string[]
+  // false (default) builds one smooth surface through every section; true
+  // builds straight ruled bands between consecutive sections.
+  ruled?: boolean
+  operation?: 'new' | 'add' | 'cut'
+  merge_target?: string
+}
+
 // Removed faces and healed by extending the neighbours' surfaces. No parameters:
 // the picked set IS the whole spec. A connected group of picks (faces sharing an
 // edge) is removed or refused as a unit, so a partial pick heals what it can.
@@ -452,6 +465,11 @@ export type MoveFaceFeature = FeatureBase & {
   move_face: MoveFaceFeatureDef
 }
 
+export type LoftFeature = FeatureBase & {
+  kind: 'loft'
+  loft: LoftFeatureDef
+}
+
 export type DeleteFaceFeature = FeatureBase & {
   kind: 'delete_face'
   delete_face: DeleteFaceFeatureDef
@@ -522,6 +540,7 @@ export type PartFeature =
   | ChamferFeature
   | ShellFeature
   | MoveFaceFeature
+  | LoftFeature
   | DeleteFaceFeature
   | BooleanFeature
   | ArrayFeature
@@ -1119,6 +1138,10 @@ export type Mutation =
   | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
   | { type: 'add_shell_face'; featureId: string; faceQuery: string }
   | { type: 'remove_shell_face'; featureId: string; index: number }
+  | { type: 'add_loft'; featureId: string; label?: string }
+  | { type: 'set_loft_field'; featureId: string; field: keyof LoftFeatureDef; value: unknown }
+  | { type: 'add_loft_profile'; featureId: string; sketchQuery: string }
+  | { type: 'remove_loft_profile'; featureId: string; index: number }
   | { type: 'add_move_face'; featureId: string; label?: string }
   | { type: 'set_move_face_field'; featureId: string; field: keyof MoveFaceFeatureDef; value: unknown }
   | { type: 'add_move_face_ref'; featureId: string; faceQuery: string }

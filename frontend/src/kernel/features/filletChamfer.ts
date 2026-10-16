@@ -17,7 +17,7 @@ import { resplitBody } from './bodySplit'
 import { canonicalEdges, assertAligned, readBodyNames } from '../occ/bodyNames'
 import { elementCreator, newIndexSets } from '../occ/modifierAttribution'
 import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
-import { faceNormal, edgeToGeom, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
+import { faceNormal, edgeToGeom, isNullShape, SubShapeDedup, SubShapeMultiIndex, type EdgeSortKey, type Vec3 } from '../occ/primitives'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import {
   applyFilletWithLineage,
@@ -495,7 +495,7 @@ function applyEdgeFeature(
     }
     const oldShape = table.get<OccShape>(body.shape)
     try {
-      if ((oldShape as unknown as { IsNull(): boolean }).IsNull()) {
+      if (isNullShape(oldShape)) {
         unresolved.push(...qlist)
         continue
       }

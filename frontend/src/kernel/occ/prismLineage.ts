@@ -32,6 +32,7 @@ import {
   makeWire,
   SubShapeDedup,
   SubShapeMultiIndex,
+  isNullShape,
   type Vec3,
 } from './primitives'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
@@ -72,7 +73,7 @@ function capGeneratedFaces(
       return
     }
     const trackedShape = scope.track(shape)
-    if ((trackedShape as unknown as { IsNull(): boolean }).IsNull()) return
+    if (isNullShape(trackedShape)) return
     const exp = scope.track(new oc.TopExp_Explorer_2(trackedShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
     for (; exp.More(); exp.Next()) {
       const raw = scope.track(exp.Current())

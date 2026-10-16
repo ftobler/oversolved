@@ -179,6 +179,35 @@ export interface OccOffsetShapeMaker extends OccModifierHistory {
 }
 
 /**
+ * BRepOffsetAPI_ThruSections: loft a solid through a sequence of section wires.
+ * The build binds exactly one constructor, taking all three arguments
+ * (isSolid, ruled, pres3d), and `AddWire` WITHOUT the isClosing flag: a call
+ * with two arguments is a BindingError, exactly like the thick-solid maker's
+ * short form (pinned by thruSectionsProbeReal.test.ts).
+ *
+ * History (a BRepBuilderAPI_MakeShape subclass): `Generated(edge)` returns the
+ * image of that edge in EVERY band it belongs to -- both the band below and the
+ * band above a middle section, so a band is reachable from either of its two
+ * sections and a name must be minted from the LOWEST section that reaches it.
+ * `FirstShape()`/`LastShape()` each hold the cap face of the first/last added
+ * wire, in add order, never the world axis. `Modified`/`IsDeleted` report
+ * nothing useful for a wire input.
+ */
+export interface OccThruSectionsMaker extends OccModifierHistory {
+  AddWire(wire: OccShape): void
+  CheckCompatibility(check: boolean): void
+  SetSmoothing(use: boolean): void
+  SetMaxDegree(degree: number): void
+  SetContinuity(continuity: OccEnumValue): void
+  SetParType(parType: OccEnumValue): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+  FirstShape(): OccShape
+  LastShape(): OccShape
+}
+
+/**
  * BRepAlgoAPI_Defeaturing: remove faces and heal the gap by extending the
  * neighbours' surfaces. It is a BRepAlgoAPI_BuilderAlgo, so it shares the
  * boolean-style history surface (IsDeleted / Modified / Generated, present only
@@ -846,6 +875,14 @@ export interface OccModule extends OccBaseModule {
   // 1.1.1, OCCT 7.4.0p1). It shares BRepOffsetAPI_MakeOffsetShape (declared with
   // the clearance block above) and the two join enums.
   BRepOffsetAPI_MakeThickSolid_1: new () => OccThickSolidMaker
+
+  // ─── loft leaf ───
+  // BRepOffsetAPI_ThruSections: loft a solid through a sequence of section
+  // wires. Only ONE constructor overload is bound in this build (no `_1`
+  // suffix) and it takes all three arguments: isSolid, ruled, pres3d. AddWire
+  // is bound WITHOUT the isClosing flag. Pinned by
+  // occ/__tests__/thruSectionsProbeReal.test.ts.
+  BRepOffsetAPI_ThruSections: new (isSolid: boolean, ruled: boolean, pres3d: number) => OccThruSectionsMaker
 
   // ─── move-face leaf ───
   // Split a slab by extended neighbour faces, then fuse/cut the cells under the

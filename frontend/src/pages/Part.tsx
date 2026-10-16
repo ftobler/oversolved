@@ -91,6 +91,7 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   fillet: { field: 'edges', multi: true },
   chamfer: { field: 'edges', multi: true },
   shell: { field: 'faces', multi: true },
+  loft: { field: 'profiles', multi: true },
   move_face: { field: 'faces', multi: true },
   delete_face: { field: 'faces', multi: true },
   hole: { field: 'sketch' },

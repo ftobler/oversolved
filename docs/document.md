@@ -204,6 +204,24 @@ An empty `faces` list makes a closed hollow (one solid with an inner void), so
 `source_body` is required: no face names the body. Faces naming several bodies
 is an error.
 
+### loft
+
+```yaml
+- id: lo1
+  kind: loft
+  loft:
+    profiles: ["@sk1", "@sk2", "@sk3"]  # two or more, in order along the loft
+    ruled: false                        # false (default) smooth, true ruled bands
+    operation: new                      # new | add | cut
+    merge_target: "@body_ex1"           # add/cut target, optional
+```
+
+Each profile resolves like an extrude profile (a whole sketch, a picked area or
+curve, a planar body face); its outer boundary is the section, so a section's
+holes are not carried through the surface. A section that resolves to several
+separate regions is an error. The first profile is the start cap, the last the
+end cap, whatever their world positions.
+
 ### move_face
 
 ```yaml

@@ -12,6 +12,7 @@ export const EDIT_LABELS: Record<string, string> = {
   fillet: 'fillet',
   chamfer: 'chamfer',
   shell: 'shell',
+  loft: 'loft',
   move_face: 'move face',
   delete_face: 'delete face',
   boolean: 'boolean',

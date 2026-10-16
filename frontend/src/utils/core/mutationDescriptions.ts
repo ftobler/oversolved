@@ -116,6 +116,14 @@ export function describeMutation(m: Mutation): string {
       return `add move face ref ${m.faceQuery}`
     case 'remove_move_face_ref':
       return `remove move face ref at index ${m.index}`
+    case 'add_loft':
+      return `add loft ${m.label ?? m.featureId}`
+    case 'set_loft_field':
+      return `set loft ${m.field} to ${m.value}`
+    case 'add_loft_profile':
+      return `add loft profile ${m.sketchQuery}`
+    case 'remove_loft_profile':
+      return `remove loft profile at index ${m.index}`
     case 'add_delete_face':
       return `add delete face ${m.label ?? m.featureId}`
     case 'add_delete_face_ref':

@@ -11,6 +11,7 @@ import featureSweepIcon from '@/assets/icons/feature-sweep.svg'
 import featureFilletIcon from '@/assets/icons/feature-fillet.svg'
 import featureChamferIcon from '@/assets/icons/feature-chamfer.svg'
 import featureShellIcon from '@/assets/icons/feature-shell.svg'
+import featureLoftIcon from '@/assets/icons/feature-loft.svg'
 import featureMoveFaceIcon from '@/assets/icons/feature-move-face.svg'
 import featureDeleteFaceIcon from '@/assets/icons/feature-delete-face.svg'
 import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
@@ -102,6 +103,7 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Fillet" onClick={() => handleAddFeature('fillet')}><img src={featureFilletIcon} alt="Add Fillet" /></button>
               <button className="editor-btn" title="Add Chamfer" onClick={() => handleAddFeature('chamfer')}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
               <button className="editor-btn" title="Add Shell" onClick={() => handleAddFeature('shell')}><img src={featureShellIcon} alt="Add Shell" /></button>
+              <button className="editor-btn" title="Add Loft" onClick={() => handleAddFeature('loft')}><img src={featureLoftIcon} alt="Add Loft" /></button>
               <button className="editor-btn" title="Move Face" onClick={() => handleAddFeature('move_face')}><img src={featureMoveFaceIcon} alt="Move Face" /></button>
               <button className="editor-btn" title="Delete Face" onClick={() => handleAddFeature('delete_face')}><img src={featureDeleteFaceIcon} alt="Delete Face" /></button>
               <button className="editor-btn" title="Add Hole" onClick={() => handleAddFeature('hole')}><img src={featureHoleIcon} alt="Add Hole" /></button>

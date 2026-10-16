@@ -10,7 +10,7 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccModifierHistory, OccShapeEnumValue, OccShapeFixShape } from './occTypes'
-import { faceCentroid, SubShapeIndexMap } from './primitives'
+import { faceCentroid, isNullShape, SubShapeIndexMap } from './primitives'
 import { volumeOf } from './booleans'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
 import { canonicalEdges, canonicalVertices, type ShapeNames } from './bodyNames'
@@ -551,7 +551,7 @@ function applyEdgeModifier(
     skippedEdgeIndices: [],
   })
 
-  if ((shape as unknown as { IsNull(): boolean }).IsNull()) return fail('null_shape')
+  if (isNullShape(shape)) return fail('null_shape')
 
   // Old-shape face/edge walks hoisted here for extractNames, edgeModifierDiff
   // and the membership check below -- together they explored the same shape up
