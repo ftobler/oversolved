@@ -36,8 +36,9 @@ mod trace;
 mod tests;
 
 use build::{
-    add_curve_intersections, build_half_edge_graph, find_all_intersections, normalize_arc_spans,
-    normalize_arcs_and_init_splits, seed_construction_crossings, tag_entities,
+    add_curve_intersections, add_spline_self_intersections, build_half_edge_graph,
+    find_all_intersections, normalize_arc_spans, normalize_arcs_and_init_splits,
+    seed_construction_crossings, tag_entities,
 };
 use intersect::classify;
 use trace::{
@@ -467,6 +468,12 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
 
     let endpoint_vids = verts.keys();
 
+    // A spline's own crossing is geometry no other entity can supply, so it is
+    // seeded before the pairwise passes add their contacts. It runs after
+    // `endpoint_vids` is captured: a crossing is a real intersection point for
+    // the snapshot list, not an endpoint.
+    let lobe_vertex = add_spline_self_intersections(&cls.splines, &mut splits, &mut verts);
+
     let mut elist: Vec<(String, TopoEntity)> = Vec::new();
     elist.extend(cls.lines.iter().cloned());
     elist.extend(cls.circles.iter().cloned());
@@ -500,6 +507,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         &splits,
         &cls.splines,
         &cls.ellipses,
+        &lobe_vertex,
     );
 
     let mut surfaces = trace_face_cycles(&hes, &he_eid, &verts);

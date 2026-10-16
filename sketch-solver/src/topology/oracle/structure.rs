@@ -314,7 +314,7 @@ pub(crate) fn edge_end(eg: &EdgeGeom) -> Option<Vec2> {
 pub(crate) fn half_edge_usage_violations(out: &TopologyOut) -> Vec<Violation> {
     // Each traced face side must be one half-edge of a split edge piece, each
     // piece is used by at most two sides, and no oriented side twice.
-    let mut uses: BTreeMap<usize, Vec<(String, String)>> = BTreeMap::new();
+    let mut uses: BTreeMap<usize, Vec<(String, String, EdgeGeom)>> = BTreeMap::new();
     let mut violations = Vec::new();
     for (si, s) in out.surfaces.iter().enumerate() {
         for be in &s.boundary {
@@ -322,10 +322,11 @@ pub(crate) fn half_edge_usage_violations(out: &TopologyOut) -> Vec<Violation> {
                 continue; // a standalone loop's sides are not split pieces
             };
             match piece_of(out, id, &be.geom) {
-                Some(piece) => uses
-                    .entry(piece)
-                    .or_default()
-                    .push((v0.clone(), v1.clone())),
+                Some(piece) => {
+                    uses.entry(piece)
+                        .or_default()
+                        .push((v0.clone(), v1.clone(), be.geom.clone()))
+                }
                 None => violations.push(Violation::new(
                     "half-edge",
                     format!(
@@ -347,16 +348,26 @@ pub(crate) fn half_edge_usage_violations(out: &TopologyOut) -> Vec<Violation> {
             ));
             continue;
         }
-        // Two uses must be the two orientations.
-        if used.len() == 2 && used[0] == used[1] {
-            violations.push(Violation::new(
-                "half-edge",
-                format!(
-                    "split edge piece {piece} sits twice in the same orientation \
-                     ({} -> {})",
-                    used[0].0, used[0].1
-                ),
-            ));
+        if used.len() == 2 {
+            // Two uses must be the two orientations. A self-loop piece carries
+            // the same vertex pair on both sides (a spline lobe from a
+            // self-crossing), so there only the geometry can tell the
+            // orientations apart.
+            let same_orientation = if used[0].0 == used[0].1 {
+                used[0].2 == used[1].2
+            } else {
+                used[0].0 == used[1].0 && used[0].1 == used[1].1
+            };
+            if same_orientation {
+                violations.push(Violation::new(
+                    "half-edge",
+                    format!(
+                        "split edge piece {piece} sits twice in the same orientation \
+                         ({} -> {})",
+                        used[0].0, used[0].1
+                    ),
+                ));
+            }
         }
     }
     violations
@@ -458,7 +469,9 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
     }
 
     // A standalone closed spline is its own component with a self-loop piece
-    // the half-edge graph never emits (the standalone pass owns it).
+    // the half-edge graph never emits (the standalone pass owns it); a
+    // self-loop piece from a self-crossing IS emitted and already sits in
+    // `edges`, so only a boundary with no matching piece adds one here.
     let self_loops = out
         .surfaces
         .iter()
@@ -467,6 +480,10 @@ pub(crate) fn euler_violations(out: &TopologyOut) -> Vec<Violation> {
                 && matches!(s.boundary[0].geom, EdgeGeom::Spline { .. })
                 && s.boundary[0].start_vertex.is_some()
                 && s.boundary[0].start_vertex == s.boundary[0].end_vertex
+                && s.boundary[0]
+                    .id
+                    .as_deref()
+                    .is_none_or(|id| piece_of(out, id, &s.boundary[0].geom).is_none())
         })
         .count();
 

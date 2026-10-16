@@ -781,7 +781,7 @@ fn oracle_rejects_a_mutilated_topology() {
 }
 
 #[test]
-fn a_self_intersecting_spline_is_tagged_known() {
+fn a_self_crossing_spline_is_tagged_known() {
     // The held-out limitation: a cubic whose loop crosses itself. The
     // detector must see it, and the geometry-consistency classes it can
     // poison must carry the slug instead of counting as failures.
@@ -793,6 +793,22 @@ fn a_self_intersecting_spline_is_tagged_known() {
     for v in check_input(&geom) {
         assert_eq!(v.known, Some(KNOWN_SELF_INTERSECTING_SPLINE), "{v:?}");
     }
+}
+
+#[test]
+fn a_self_crossing_spline_keeps_the_oracle_clean() {
+    // The lobe the self-crossing pass splits out is real geometry: the oracle
+    // judges it like any other face, and nothing about it reads as a
+    // violation (the tag on self-intersecting inputs only exists because the
+    // crossing USED to be ignored).
+    let geom = vec![(
+        "s0".into(),
+        spline_open([0.0, 0.0], [4.0, 3.0], [-4.0, 3.0], [1.0, 0.0]),
+    )];
+    let out = detect_topology(&geom);
+    assert_eq!(out.surfaces.len(), 1, "the lobe is the one face");
+    let violations = pending(&check_topology(&geom, &out));
+    assert!(violations.is_empty(), "{violations:?}");
 }
 
 #[test]

@@ -18,6 +18,10 @@
 //! on the far side of zero and both roots are bisected out, unless the two sit
 //! inside the collapse budget, where the model defines the single virtual
 //! tangent point (see `tolerance`).
+//!
+//! A spline is additionally intersected with ITSELF (`bezier_self_crossing`):
+//! a figure-eight's own crossing splits its lobes apart exactly as a crossing
+//! with another curve would.
 
 use super::curve_split::{bezier_point, ellipse_point_at};
 use super::dcel::pymod;
@@ -610,8 +614,8 @@ fn bezier_bezier(ca: BzCtrl, cb: BzCtrl) -> Vec<Hit> {
     if ctrl_polygons_coincident(&ca, &cb) {
         return vec![];
     }
-    let mut out: Vec<Hit> = Vec::new();
     const FLAT: f64 = 1e-7;
+    let mut out: Vec<Hit> = Vec::new();
     let mut budget = BbBudget {
         visits_left: NODE_BUDGET,
         truncated: false,
@@ -755,6 +759,93 @@ fn bezier_near_touch(ca: &BzCtrl, cb: &BzCtrl, tol: f64) -> Option<Hit> {
         point: [(pa[0] + pb[0]) / 2.0, (pa[1] + pb[1]) / 2.0],
         t_a: ti,
         t_b: ui,
+    })
+}
+
+// ─── bezier self-intersection ───
+
+/// A spline crossing itself: the two parameters whose curve points meet,
+/// `t_lo < t_hi`, and the world point both branches pass through.
+#[derive(Clone, Copy, Debug)]
+pub struct SelfCross {
+    pub t_lo: f64,
+    pub t_hi: f64,
+    pub point: Vec2,
+}
+
+/// Two branches closer than this in parameter are one instant of the curve to
+/// the split pass (its de-dup width is `TOL_TOPOLOGY_SPLIT`, 1e-7), so no two
+/// pieces can meet there. Deliberately absolute: a curve parameter is
+/// dimensionless, there is nothing to scale it by.
+const SELF_PARAM_EPS: f64 = 1e-9;
+
+fn cross2(u: Vec2, v: Vec2) -> f64 {
+    u[0] * v[1] - u[1] * v[0]
+}
+
+/// The self-crossing of a cubic Bezier in closed form.
+///
+/// Subtracting `B(s)` from `B(t)` factors `(t - s)` out of the difference, and
+/// what remains is a vector quadratic in the sum `u = t + s` and the product
+/// `v = t * s`. Eliminating `v` between the two components leaves a LINEAR
+/// equation in `u` (the `u^2` terms cancel), so the double point of a cubic is
+/// exact algebra, not a subdivision search: `u` from one cross product, `v`
+/// from one component, and the two parameters from the quadratic's roots.
+/// The result is the pair of parameters themselves, which is what the split
+/// pass consumes.
+///
+/// `None` for a curve with no isolated double point inside its own parameter
+/// window: a curve that never meets itself (`v` beyond the roots), a retrace
+/// or any other collinear control net (the elimination's cross product
+/// vanishes, and an overlap is not a crossing), a double point outside
+/// [0, 1], or the closed spline's own closure `(0, 1)` (its start and end are
+/// already one vertex; the standalone pass owns the loop).
+pub fn bezier_self_crossing(c: &BzCtrl) -> Option<SelfCross> {
+    let d1 = [c[1][0] - c[0][0], c[1][1] - c[0][1]];
+    let d2 = [c[2][0] - c[1][0], c[2][1] - c[1][1]];
+    let d3 = [c[3][0] - c[2][0], c[3][1] - c[2][1]];
+    // B(t) in difference form: B(t) = b0 + a t + b t^2 + cc t^3.
+    let a = [3.0 * d1[0], 3.0 * d1[1]];
+    let b = [3.0 * (d2[0] - d1[0]), 3.0 * (d2[1] - d1[1])];
+    let cc = [d1[0] - 2.0 * d2[0] + d3[0], d1[1] - 2.0 * d2[1] + d3[1]];
+    let den = cross2(cc, b);
+    if den == 0.0 {
+        return None;
+    }
+    let u = -cross2(cc, a) / den;
+    if !u.is_finite() {
+        return None;
+    }
+    // The larger component of the cubic coefficient carries the product
+    // equation best; a vanishing cubic term is a quadratic carrier, which
+    // cannot meet itself except by retracing (already excluded).
+    let k = if cc[0].abs() >= cc[1].abs() { 0 } else { 1 };
+    if cc[k] == 0.0 {
+        return None;
+    }
+    let v = (a[k] + b[k] * u + cc[k] * u * u) / cc[k];
+    let disc = u * u - 4.0 * v;
+    // NaN (a non-finite control point) is not a double point either.
+    if disc.is_nan() || disc <= 0.0 {
+        return None;
+    }
+    let sq = disc.sqrt();
+    let (t_lo, t_hi) = (0.5 * (u - sq), 0.5 * (u + sq));
+    if t_lo < 0.0 || t_hi > 1.0 || t_hi - t_lo <= SELF_PARAM_EPS {
+        return None;
+    }
+    // A closed spline always has the double point (0, 1): both parameters are
+    // its one seeded vertex, and the standalone pass builds its loop. Only an
+    // interior double point is a self-crossing to split at.
+    if t_lo <= SELF_PARAM_EPS && t_hi >= 1.0 - SELF_PARAM_EPS {
+        return None;
+    }
+    let pa = bezier_point(c[0], c[1], c[2], c[3], t_lo);
+    let pb = bezier_point(c[0], c[1], c[2], c[3], t_hi);
+    Some(SelfCross {
+        t_lo,
+        t_hi,
+        point: [0.5 * (pa[0] + pb[0]), 0.5 * (pa[1] + pb[1])],
     })
 }
 

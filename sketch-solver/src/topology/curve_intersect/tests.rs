@@ -707,3 +707,83 @@ fn heavily_overlapping_beziers_stay_bounded() {
     let h = intersect_curves(&a, &b);
     assert!(h.len() <= 10);
 }
+
+#[test]
+fn a_self_crossing_spline_reports_one_crossing() {
+    // The oracle's long-standing self-crossing fixture: an open cubic whose
+    // branches leave the start, loop over the top and meet again on the way
+    // to the end.
+    let c: BzCtrl = [[0.0, 0.0], [4.0, 3.0], [-4.0, 3.0], [1.0, 0.0]];
+    let cross = bezier_self_crossing(&c).expect("the fixture crosses itself");
+    assert!(0.0 < cross.t_lo && cross.t_lo < cross.t_hi && cross.t_hi < 1.0);
+
+    // Both branches pass through the reported point: B(t_lo) and B(t_hi)
+    // agree far inside the vertex merge.
+    let pa = bezier_point(c[0], c[1], c[2], c[3], cross.t_lo);
+    let pb = bezier_point(c[0], c[1], c[2], c[3], cross.t_hi);
+    let apart = (pa[0] - pb[0]).hypot(pa[1] - pb[1]);
+    assert!(
+        apart < 1e-9,
+        "the two branches are {apart:e} apart: {pa:?} {pb:?}"
+    );
+    for p in [pa, pb] {
+        let d = (p[0] - cross.point[0]).hypot(p[1] - cross.point[1]);
+        assert!(d < 1e-9, "{:?} sits {d:e} off the crossing", cross.point);
+    }
+    // The fixture's crossing is the shallow X near (0.44, 0.36): pin where it
+    // lands, not just that something was found.
+    assert!(
+        (cross.point[0] - 0.44).abs() < 1e-6 && (cross.point[1] - 0.36).abs() < 1e-6,
+        "{:?}",
+        cross.point
+    );
+}
+
+#[test]
+fn a_teardrop_and_an_s_curve_report_no_self_crossing() {
+    // The shapes the builder must not split: a closed teardrop whose ends
+    // merge at one point, a smooth S, and a straight segment.
+    let teardrop: BzCtrl = [[0.0, 0.0], [1.0, 2.0], [-1.0, 2.0], [0.0, 0.0]];
+    let s_curve: BzCtrl = [[0.0, 0.0], [1.0, 2.0], [2.0, -2.0], [3.0, 0.0]];
+    let straight: BzCtrl = [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]];
+    for (label, c) in [
+        ("teardrop", teardrop),
+        ("s curve", s_curve),
+        ("straight", straight),
+    ] {
+        assert!(
+            bezier_self_crossing(&c).is_none(),
+            "{label} reported a self-crossing"
+        );
+    }
+}
+
+#[test]
+fn a_retracing_spline_reports_nothing_instead_of_a_partial_ring() {
+    // The cubic runs out along x and comes straight back through the same
+    // points: every branch pair coincides, so there is no isolated double
+    // point. The degenerate-overlap policy reports nothing, like the pairwise
+    // identical-carrier shortcut: a partial ring of phantom split points would
+    // slice the curve into nonsense.
+    let c: BzCtrl = [[0.0, 0.0], [1.0, 0.0], [-1.0, 0.0], [0.0, 0.0]];
+    assert!(bezier_self_crossing(&c).is_none());
+}
+
+#[test]
+fn a_self_crossing_is_found_at_every_curve_scale() {
+    // The closed form reads control-point differences only, so it must not
+    // depend on the curve's size: the same shape at a thousandth and a
+    // thousand times the size reports its one crossing.
+    let base: BzCtrl = [[0.0, 0.0], [4.0, 3.0], [-4.0, 3.0], [1.0, 0.0]];
+    for scale in [1e-3, 1.0, 1e3] {
+        let c: BzCtrl = base.map(|p| [p[0] * scale, p[1] * scale]);
+        let cross = bezier_self_crossing(&c).expect("scaled fixture crosses");
+        let pa = bezier_point(c[0], c[1], c[2], c[3], cross.t_lo);
+        let pb = bezier_point(c[0], c[1], c[2], c[3], cross.t_hi);
+        let apart = (pa[0] - pb[0]).hypot(pa[1] - pb[1]);
+        assert!(
+            apart <= 1e-12 * scale,
+            "scale {scale:e}: branches {apart:e} apart"
+        );
+    }
+}

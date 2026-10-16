@@ -225,7 +225,11 @@ pub(super) fn trace_face_cycles(
         }
         if !cycle.is_empty() && cur == start {
             let cycle = collapse_spikes(&cycle);
-            if cycle.len() >= 2 && face_area(&cycle, hes, verts) > TOL_FACE_EXISTENCE_MIN_AREA {
+            // A single surviving side is a self-loop piece whose two ends are
+            // the same vertex: a spline lobe between a self-crossing's
+            // parameters. The area gate below is what filters a degenerate
+            // one, not the length.
+            if !cycle.is_empty() && face_area(&cycle, hes, verts) > TOL_FACE_EXISTENCE_MIN_AREA {
                 let boundary: Vec<BoundaryEdge> = cycle
                     .iter()
                     .map(|&i| boundary_edge(&hes[i].2, &he_eid[i], &hes[i].0, &hes[i].1))

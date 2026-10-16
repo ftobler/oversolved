@@ -905,6 +905,47 @@ fn closed_spline_split_by_a_line_makes_two_faces() {
 }
 
 #[test]
+fn a_self_crossing_spline_closes_its_lobe() {
+    // A cubic whose branches meet again near (0.44, 0.36): the crossing must
+    // become a vertex, the piece between the two parameters a self-loop
+    // half-edge, and the lobe it bounds the one face. Before the self-crossing
+    // pass the curve had no vertex but its ends, every span of it was a running
+    // piece between them, and the lobe was invisible.
+    let geom = vec![(
+        "s0".into(),
+        spline_open([0.0, 0.0], [4.0, 3.0], [-4.0, 3.0], [1.0, 0.0]),
+    )];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 1, "the lobe is the one face");
+    let boundary = &t.surfaces[0].boundary;
+    assert_eq!(boundary.len(), 1, "the lobe is the self-loop piece alone");
+    assert!(matches!(boundary[0].geom, EdgeGeom::Spline { .. }));
+    assert_eq!(
+        boundary[0].start_vertex, boundary[0].end_vertex,
+        "the lobe starts and ends on the crossing vertex"
+    );
+    // The crossing vertex is one of the two minted ones, and the lobe's area
+    // is the region between the two parameters: positive, smaller than the
+    // curve's own bounding box, and stable to the vertex merge.
+    let cross = &t
+        .intersection_points
+        .iter()
+        .find(|(_, p)| (p[0] - 0.44).abs() < 1e-4 && (p[1] - 0.36).abs() < 1e-4)
+        .expect("the crossing is an intersection point");
+    assert_eq!(&boundary[0].start_vertex, &Some(cross.0.clone()));
+    let area = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::profile_loops::loop_signed_area(&s.boundary))
+        .sum::<f64>();
+    // Rough magnitude check: the lobe spans about 1.1 by 1.9 world units.
+    assert!(
+        (0.5..4.0).contains(&area),
+        "lobe area {area} outside the plausible band"
+    );
+}
+
+#[test]
 fn quarter_arc_split_by_a_bezier_makes_two_faces() {
     // The arc half: a quarter disk (arc plus its two radii) cleaved by a
     // straight cubic that enters on one radius and leaves through the arc,
