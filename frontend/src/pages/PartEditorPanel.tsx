@@ -50,6 +50,7 @@ interface PartEditorPanelProps {
   handleAddPlane: () => void
   handleImportStep: () => void
   handleExportStep: () => void
+  onOpenParameters: () => void
   viewportRef: React.RefObject<ViewportHandle | null>
   handleRightClick: (pos: [number, number], targetId?: string) => void
   // Bottom-right in-viewport overlay (the measurement readout).
@@ -70,6 +71,7 @@ export default function PartEditorPanel({
   handleAddPlane,
   handleImportStep,
   handleExportStep,
+  onOpenParameters,
   viewportRef,
   handleRightClick,
   viewportHud,
@@ -116,6 +118,7 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Circular Array" onClick={() => handleAddFeature('circular_array')}><img src={featureCircularArrayIcon} alt="Add Circular Array" /></button>
               <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
               <button className="editor-btn" title="Add Variable" onClick={() => handleAddFeature('variable')}><img src={featureVariableIcon} alt="Add Variable" /></button>
+              <button className="editor-btn" title="Parameters" onClick={onOpenParameters}><img src={featureVariableIcon} alt="Parameters" /></button>
 
               <div className="toolbar-separator" />
 

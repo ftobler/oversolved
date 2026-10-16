@@ -422,7 +422,10 @@ inline `file_data` spelling is refused by name.
 
 `value` (number) is reserved for the solver's evaluated result: it is never
 authored, and nothing writes it back into the document today (the solved value
-is rendered from the solve results, not read back from this field).
+is rendered from the solve results, not read back from this field). A variable's
+`unit` is a display hint only: nothing converts values from it, and the
+parameter table (the part editor's Parameters view) shows every variable as
+name / expression / unit / solved value, editing all three authored columns.
 
 ### helix
 

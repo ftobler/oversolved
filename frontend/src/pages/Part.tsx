@@ -29,6 +29,8 @@ import '@/pages/Part.css'
 
 import PartToolbar from '@/pages/PartToolbar'
 import PartEditorPanel from '@/pages/PartEditorPanel'
+import ParameterTable from '@/pages/ParameterTable'
+import { newParameterMutation, parameterRows } from '@/pages/partParameters'
 import PartDebugPanel from '@/pages/PartDebugPanel'
 import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport, { type PartExportImportHandle } from '@/pages/PartExportImport'
@@ -167,6 +169,9 @@ export default function Part() {
   }, [uuid, workspaceId])
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
+  // The parameter table is a view over the variables: transient UI state, not
+  // part of the document (the same class as the rename dialog's).
+  const [parametersOpen, setParametersOpen] = useState(false)
   // Non-null while the clone prompt is open; holds the name it was seeded with.
   const [cloneName, setCloneName] = useState<string | null>(null)
   const [partColorPopover, setPartColorPopoverState] = useState<PartColorPopoverState>(null)
@@ -1262,6 +1267,14 @@ export default function Part() {
         }
       />
 
+      <ParameterTable
+        isOpen={parametersOpen}
+        rows={parameterRows(features, solveResults)}
+        onClose={() => setParametersOpen(false)}
+        onMutation={handleMutation}
+        onAdd={() => handleMutation(newParameterMutation(randomId(18), 'var'))}
+      />
+
       <PartEditorPanel
         mode={mode}
         setMode={setMode}
@@ -1278,6 +1291,7 @@ export default function Part() {
         handleAddPlane={handleAddPlane}
         handleImportStep={handleImportStep}
         handleExportStep={handleExportStep}
+        onOpenParameters={() => setParametersOpen(true)}
         viewportRef={viewportRef}
         handleRightClick={handleRightClick}
         viewportHud={
