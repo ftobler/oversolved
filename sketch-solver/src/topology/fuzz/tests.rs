@@ -1142,15 +1142,30 @@ fn sweep(from: u32, to: u32, write: bool) -> SweepResult {
 
 #[test]
 fn a_catalogue_entry_without_its_fixture_fails_the_check() {
-    // The check is catalogue-wide and must catch a missing file: seed 3000000
-    // cannot have a fixture, while every real fixture entry must be backed.
-    let phantom = [KnownSeed {
-        seed: 3000000,
-        classes: &["coverage", "stability"],
-    }];
+    // The check is catalogue-wide and must catch a missing file in either
+    // naming form: seed 3000000 (coverage, `<seed>.json`) and seed 3000001
+    // (euler, `<seed>-<class>.json`) cannot have fixtures, while every real
+    // fixture entry must be backed.
+    let phantom = [
+        KnownSeed {
+            seed: 3000000,
+            classes: &["coverage", "stability"],
+        },
+        KnownSeed {
+            seed: 3000001,
+            classes: &["euler"],
+        },
+    ];
     let failures = missing_case_failures(&phantom);
-    assert_eq!(failures.len(), 1, "{failures:?}");
-    assert!(failures[0].contains("3000000.json"), "{}", failures[0]);
+    assert_eq!(failures.len(), 2, "{failures:?}");
+    assert!(
+        failures.iter().any(|f| f.contains("3000000.json")),
+        "{failures:?}"
+    );
+    assert!(
+        failures.iter().any(|f| f.contains("3000001-euler.json")),
+        "{failures:?}"
+    );
     assert!(
         missing_case_failures(KNOWN_FAILING_SEEDS).is_empty(),
         "the catalogue's fixtures are incomplete: {:?}",
