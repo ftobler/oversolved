@@ -770,6 +770,25 @@ fn a_retracing_spline_reports_nothing_instead_of_a_partial_ring() {
 }
 
 #[test]
+fn a_near_closed_spline_reports_no_crossing() {
+    // A teardrop whose ends sit a sub-merge gap apart swaps its two branches
+    // over that gap, so the tiny loop they enclose is the closure: one point
+    // to the vertex merge, not a crossing to split at.
+    for gap in [0.0, 0.5 * TOL_TOPOLOGY_MERGE] {
+        let c: BzCtrl = [[0.0, 0.0], [1.0, 2.0], [-1.0, 2.0], [gap, 0.0]];
+        assert!(
+            bezier_self_crossing(&c).is_none(),
+            "gap {gap:e} is the closure, not a crossing"
+        );
+    }
+    // Past the merge the loop is real geometry: the branches meet the ends'
+    // neighbourhood no more, so the crossing is reported.
+    let open: BzCtrl = [[0.0, 0.0], [1.0, 2.0], [-1.0, 2.0], [0.1, 0.0]];
+    let cross = bezier_self_crossing(&open).expect("a 0.1 gap loops for real");
+    assert!(cross.t_lo < cross.t_hi);
+}
+
+#[test]
 fn a_self_crossing_is_found_at_every_curve_scale() {
     // The closed form reads control-point differences only, so it must not
     // depend on the curve's size: the same shape at a thousandth and a

@@ -815,6 +815,21 @@ fn a_line_across_a_washer_keeps_two_c_shapes() {
 }
 
 #[test]
+fn a_standalone_closed_loop_is_a_face_not_a_half_edge_break() {
+    // An uncut closed curve bounds its face through the standalone pass, so its
+    // side legitimately has no split piece: the half-edge usage check must
+    // read that as the standalone model rather than as a structural break.
+    let geom = vec![(
+        "s0".into(),
+        spline_closed([0.0, 0.0], [1.0, 2.0], [-1.0, 2.0]),
+    )];
+    let out = detect_topology(&geom);
+    assert_eq!(out.surfaces.len(), 1);
+    let violations = texts(&check_topology(&geom, &out));
+    assert!(violations.is_empty(), "{violations:?}");
+}
+
+#[test]
 fn order_independence_and_stability_hold_on_a_hand_fixture() {
     let mut geom = square(4.0);
     geom.push(("cross".into(), line([-1.0, 2.0], [5.0, 2.0])));

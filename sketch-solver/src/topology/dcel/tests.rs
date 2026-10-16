@@ -1004,6 +1004,43 @@ fn an_unsliced_washer_keeps_its_island() {
 }
 
 #[test]
+fn a_nearly_closed_spline_is_a_shell_like_a_closed_one() {
+    // A teardrop whose ends sit a gap under MERGE apart is one closed curve to
+    // the vertex merge, so it is a shell like the exactly closed teardrop. The
+    // cubic's only double point is its own near-closure; reporting it split the
+    // curve at a phantom lobe and left the shell out of the hole rule, which
+    // the oracle (which reads the ends as merged) then disagreed with.
+    for gap in [0.0, 0.5 * MERGE] {
+        let geom = vec![
+            (
+                "s0".into(),
+                spline_open([0.0, 0.0], [1.0, 2.0], [-1.0, 2.0], [gap, 0.0]),
+            ),
+            ("l0".into(), line([-3.0, 0.0], [3.0, 0.0])),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(
+            t.surfaces.len(),
+            1,
+            "gap {gap:e}: the teardrop is one standalone area"
+        );
+        assert!(
+            t.surfaces[0].holes.is_empty() && t.hole_regions.is_empty(),
+            "gap {gap:e}: nothing nests in a lone teardrop"
+        );
+        assert!(
+            t.edges.iter().all(|e| e.entity_id == "l0"),
+            "gap {gap:e}: the spline must not be split anywhere"
+        );
+        let violations = crate::topology::oracle::check_input(&geom)
+            .iter()
+            .map(|v| v.render())
+            .collect::<Vec<_>>();
+        assert!(violations.is_empty(), "gap {gap:e}: {violations:?}");
+    }
+}
+
+#[test]
 fn quarter_arc_split_by_a_bezier_makes_two_faces() {
     // The arc half: a quarter disk (arc plus its two radii) cleaved by a
     // straight cubic that enters on one radius and leaves through the arc,

@@ -87,8 +87,11 @@ fn closed_carrier(c: &Curve, chord_tol: f64) -> Option<Carrier> {
             Some(Carrier::Ellipse { c, a, b, theta })
         }
         Curve::Spline { p0, p3, .. } if (p0[0] - p3[0]).hypot(p0[1] - p3[1]) <= MERGE => {
-            // A figure-eight bounds no single region, so it neither nests nor
-            // is nested: the same exclusion the builder applies.
+            // The curvature rule closes the spline wherever the builder's
+            // vertex merge does: a gap within MERGE is one point to the
+            // pipeline, so the curve is a shell like the exactly closed
+            // teardrop (a closed cubic cannot cross itself, and the
+            // near-closure is not a crossing to the builder either).
             let s = sample_curve(c, chord_tol);
             let poly = s.pts;
             if poly.len() < 3 {

@@ -327,6 +327,13 @@ pub(crate) fn half_edge_usage_violations(out: &TopologyOut) -> Vec<Violation> {
             let (Some(v0), Some(v1), Some(id)) = (&be.start_vertex, &be.end_vertex, &be.id) else {
                 continue; // a standalone loop's sides are not split pieces
             };
+            // An entity the split graph never emitted a piece of bounds its
+            // face as a STANDALONE loop (an uncut closed curve): its side
+            // legitimately has no piece. A side whose entity does have pieces
+            // must match one, or the face is not a traced cycle.
+            if !out.edges.iter().any(|e| &e.entity_id == id) {
+                continue;
+            }
             match piece_of(out, id, &be.geom) {
                 Some(piece) => {
                     uses.entry(piece)

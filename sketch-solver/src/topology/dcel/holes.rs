@@ -38,7 +38,6 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::super::curve_intersect::bezier_self_crossing;
 use super::super::profile_loops::{loop_pts, point_in_polygon, BoundaryEdge, EdgeGeom, Vec2};
 use super::super::TOL_TOPOLOGY_MERGE as MERGE;
 use super::{Split, SurfaceOut, TopoEntity};
@@ -245,8 +244,16 @@ struct Chain {
 
 /// The carrier a closed spline bounds, or `None` for a spline whose start and
 /// end are distinct vertices (an open curve closes only together with other
-/// edges) or one that crosses itself (a figure-eight bounds no single region,
-/// so nothing can nest inside it).
+/// edges).
+///
+/// A closed spline cannot cross itself: with the ends coincident the curve is
+/// a nonnegative combination of its two control legs (`B(t) = w1*C1 + w2*C2`
+/// with `w1 = 3t(1-t)^2`, `w2 = 3t^2(1-t)`), and equal values at two distinct
+/// parameters force the legs to be parallel, which is a retrace rather than a
+/// transversal crossing. The near-closure of a spline whose ends sit a
+/// sub-merge gap apart is the same point to the merge and is rejected by
+/// `bezier_self_crossing` for that reason, so there is nothing to exclude
+/// here.
 fn spline_carrier(
     id: &str,
     start: Vec2,
@@ -259,7 +266,7 @@ fn spline_carrier(
     // The seed pass pushes the two endpoint splits first, in order; a merged
     // start/end pair is one vertex id, an open spline's are two.
     let (v0, v1) = (spl.first()?.1.clone(), spl.get(1)?.1.clone());
-    if v0 != v1 || bezier_self_crossing(&[start, c1, c2, end]).is_some() {
+    if v0 != v1 {
         return None;
     }
     let edge = BoundaryEdge {

@@ -25,7 +25,7 @@
 
 use super::curve_split::{bezier_point, ellipse_point_at};
 use super::dcel::pymod;
-use super::{TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE, TWO_PI};
+use super::{TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE, TOL_TOPOLOGY_SPLIT, TWO_PI};
 use crate::radians;
 use crate::tolerance::{tangent_collapse_tol, tangent_gap_tol};
 use crate::MIN_SEMI_AXIS_SQ;
@@ -773,12 +773,6 @@ pub struct SelfCross {
     pub point: Vec2,
 }
 
-/// Two branches closer than this in parameter are one instant of the curve to
-/// the split pass (its de-dup width is `TOL_TOPOLOGY_SPLIT`, 1e-7), so no two
-/// pieces can meet there. Deliberately absolute: a curve parameter is
-/// dimensionless, there is nothing to scale it by.
-const SELF_PARAM_EPS: f64 = 1e-9;
-
 fn cross2(u: Vec2, v: Vec2) -> f64 {
     u[0] * v[1] - u[1] * v[0]
 }
@@ -794,12 +788,26 @@ fn cross2(u: Vec2, v: Vec2) -> f64 {
 /// The result is the pair of parameters themselves, which is what the split
 /// pass consumes.
 ///
+/// Two windows are read against the pipeline's own constants, and what falls
+/// inside either is a touch rather than a crossing:
+///   - the parameters must be at least `TOL_TOPOLOGY_SPLIT` apart, the split
+///     pass's parameter de-dup width: closer than that they cannot become two
+///     pieces, so the curve pinches rather than crosses;
+///   - the crossing point must lie more than `TOL_TOPOLOGY_MERGE` from BOTH of
+///     the curve's own ends, the vertex merge: a double point the merge fuses
+///     with an end IS the closure of a spline whose ends sit a sub-merge gap
+///     apart (two branches swapping sides over a gap below the merge, so the
+///     tiny loop they enclose is a point to the pipeline), and splitting there
+///     would slice a phantom lobe out of a curve that merely closes. The ends'
+///     own control points anchor the test: they are the vertices the seed pass
+///     minted, whatever the branch separation at the double point measures (it
+///     is zero by construction).
+///
 /// `None` for a curve with no isolated double point inside its own parameter
 /// window: a curve that never meets itself (`v` beyond the roots), a retrace
 /// or any other collinear control net (the elimination's cross product
-/// vanishes, and an overlap is not a crossing), a double point outside
-/// [0, 1], or the closed spline's own closure `(0, 1)` (its start and end are
-/// already one vertex; the standalone pass owns the loop).
+/// vanishes, and an overlap is not a crossing), or a double point outside
+/// [0, 1].
 pub fn bezier_self_crossing(c: &BzCtrl) -> Option<SelfCross> {
     let d1 = [c[1][0] - c[0][0], c[1][1] - c[0][1]];
     let d2 = [c[2][0] - c[1][0], c[2][1] - c[1][1]];
@@ -817,12 +825,9 @@ pub fn bezier_self_crossing(c: &BzCtrl) -> Option<SelfCross> {
         return None;
     }
     // The larger component of the cubic coefficient carries the product
-    // equation best; a vanishing cubic term is a quadratic carrier, which
-    // cannot meet itself except by retracing (already excluded).
+    // equation best; a vanishing cubic term would have made `den` zero above,
+    // so the divisor cannot be zero here.
     let k = if cc[0].abs() >= cc[1].abs() { 0 } else { 1 };
-    if cc[k] == 0.0 {
-        return None;
-    }
     let v = (a[k] + b[k] * u + cc[k] * u * u) / cc[k];
     let disc = u * u - 4.0 * v;
     // NaN (a non-finite control point) is not a double point either.
@@ -831,16 +836,14 @@ pub fn bezier_self_crossing(c: &BzCtrl) -> Option<SelfCross> {
     }
     let sq = disc.sqrt();
     let (t_lo, t_hi) = (0.5 * (u - sq), 0.5 * (u + sq));
-    if t_lo < 0.0 || t_hi > 1.0 || t_hi - t_lo <= SELF_PARAM_EPS {
-        return None;
-    }
-    // A closed spline always has the double point (0, 1): both parameters are
-    // its one seeded vertex, and the standalone pass builds its loop. Only an
-    // interior double point is a self-crossing to split at.
-    if t_lo <= SELF_PARAM_EPS && t_hi >= 1.0 - SELF_PARAM_EPS {
+    if t_lo < 0.0 || t_hi > 1.0 || t_hi - t_lo <= TOL_TOPOLOGY_SPLIT {
         return None;
     }
     let pa = bezier_point(c[0], c[1], c[2], c[3], t_lo);
+    let closes = |end: Vec2| (pa[0] - end[0]).hypot(pa[1] - end[1]) <= TOL_TOPOLOGY_MERGE;
+    if closes(c[0]) || closes(c[3]) {
+        return None;
+    }
     let pb = bezier_point(c[0], c[1], c[2], c[3], t_hi);
     Some(SelfCross {
         t_lo,
