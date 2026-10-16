@@ -174,6 +174,11 @@ const FEATURE_SCHEMA_BY_KIND = {
       profiles: REF_LIST, ruled: { type: 'boolean' }, operation: { enum: ['new', 'add', 'cut'] }, merge_target: REF,
     },
   }),
+  draft: feature('draft', {
+    key: 'draft',
+    required: ['faces', 'angle', 'neutral'],
+    properties: { faces: REF_LIST, angle: NUMBER_OR_EXPR, neutral: REF, direction: REF },
+  }),
   move_face: feature('move_face', {
     key: 'move_face',
     required: ['faces', 'distance'],

@@ -208,6 +208,32 @@ export interface OccThruSectionsMaker extends OccModifierHistory {
 }
 
 /**
+ * BRepOffsetAPI_DraftAngle: tilt picked faces about their intersection with a
+ * neutral plane. `Init(shape)` seeds the maker; `Add(face, direction, angle,
+ * neutralPlane, flag)` adds one drafted face in RADIANS (the `_1` ctor and the
+ * 5-argument Add are the bound forms; pinned by draftAngleProbeReal.test.ts).
+ * `AddDone()` must follow the Add calls and precede `Build`.
+ *
+ * History: a DRAFTED face is `Generated()` into its new tilted face (its old
+ * self is gone), a face whose geometry the draft changed because it borders a
+ * drafted face is `Modified()` into its new image, and an untouched face is
+ * `IsSame` in the output. `gp_Dir` and `gp_Pln` are passed as the opaque
+ * shapes this build wraps them in.
+ */
+export interface OccDraftAngleMaker extends OccModifierHistory {
+  Init(shape: OccShape): void
+  // direction is a gp_Dir proxy and neutralPlane a gp_Pln one. They are typed on
+  // the opaque OccDisposable rather than OccShape because they are NOT shapes:
+  // OccShape doubles as the argument alias for such proxies, but reading them as
+  // shapes would be a lie the type system should not tell.
+  Add(face: OccShape, direction: OccDisposable, angle: number, neutralPlane: OccDisposable, flag: boolean): void
+  AddDone(): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+}
+
+/**
  * BRepAlgoAPI_Defeaturing: remove faces and heal the gap by extending the
  * neighbours' surfaces. It is a BRepAlgoAPI_BuilderAlgo, so it shares the
  * boolean-style history surface (IsDeleted / Modified / Generated, present only
@@ -568,6 +594,10 @@ export type OccShapeEnumValue = object
  */
 export interface OccBaseModule {
   gp_Pnt_3: new (x: number, y: number, z: number) => OccPnt
+  // gp_Pln(origin, normal): the draft's neutral plane. The `_3` overload is the
+  // one that takes the point-and-direction pair in this build (verified by
+  // draftAngleProbeReal.test.ts, which drafts a box through it).
+  gp_Pln_3: new (origin: OccPnt, normal: OccXYZ) => OccPln
   gp_Vec_4: new (x: number, y: number, z: number) => OccVec
   BRepBuilderAPI_MakePolygon_1: new () => OccPolygonBuilder
   BRepBuilderAPI_MakeFace_15: new (wire: OccShape, onlyPlane: boolean) => OccFaceBuilder
@@ -883,6 +913,13 @@ export interface OccModule extends OccBaseModule {
   // is bound WITHOUT the isClosing flag. Pinned by
   // occ/__tests__/thruSectionsProbeReal.test.ts.
   BRepOffsetAPI_ThruSections: new (isSolid: boolean, ruled: boolean, pres3d: number) => OccThruSectionsMaker
+
+  // ─── draft leaf ───
+  // BRepOffsetAPI_DraftAngle: tilt picked faces about their intersection with a
+  // neutral plane. `_1` is the default ctor and `_2` the Init-in-ctor form; the
+  // leaf uses `_1` + Init, pinning the bound 5-argument Add.
+  BRepOffsetAPI_DraftAngle_1: new () => OccDraftAngleMaker
+  BRepOffsetAPI_DraftAngle_2: new (shape: OccShape) => OccDraftAngleMaker
 
   // ─── move-face leaf ───
   // Split a slab by extended neighbour faces, then fuse/cut the cells under the

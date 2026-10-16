@@ -264,6 +264,7 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
       break
     case 'faces':
       if (feature.kind === 'shell') arr = feature.shell?.faces
+      else if (feature.kind === 'draft') arr = feature.draft?.faces
       else if (feature.kind === 'move_face') arr = feature.move_face?.faces
       else if (feature.kind === 'delete_face') arr = feature.delete_face?.faces
       break

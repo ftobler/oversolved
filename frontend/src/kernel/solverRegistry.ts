@@ -29,6 +29,7 @@ import { solveBoolean } from './features/boolean'
 import { solveFillet, solveChamfer } from './features/filletChamfer'
 import { solveShell } from './features/shell'
 import { solveLoft } from './features/loft'
+import { solveDraft } from './features/draft'
 import { solveMoveFace } from './features/moveFace'
 import { solveDeleteFace } from './features/deleteFace'
 import { solveArray, solveCircularArray } from './features/array'
@@ -88,6 +89,7 @@ const KIND_SOLVER: SolverTable = {
   chamfer: solveChamfer,
   shell: solveShell,
   loft: solveLoft,
+  draft: solveDraft,
   move_face: solveMoveFace,
   delete_face: solveDeleteFace,
   array: solveArray,
@@ -165,6 +167,7 @@ const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
   fillet: 'fillet',
   chamfer: 'chamfer',
   shell: 'shell',
+  draft: 'draft',
   move_face: 'move_face',
   hole: 'hole',
   array: 'array',

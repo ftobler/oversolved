@@ -222,6 +222,23 @@ holes are not carried through the surface. A section that resolves to several
 separate regions is an error. The first profile is the start cap, the last the
 end cap, whatever their world positions.
 
+### draft
+
+```yaml
+- id: dr1
+  kind: draft
+  draft:
+    faces: ["?query;...:flatface"]  # faces to tilt, all on one body
+    angle: 3                        # signed degrees, expression-capable
+    neutral: "@builtin_plane_front" # required: plane or planar face
+    direction: "?query;...:straightedge"  # pull axis, optional
+```
+
+The pull direction points from the neutral plane into the body whatever way the
+pick points (empty means the neutral plane's own normal, oriented the same way),
+so a positive `angle` always recedes along the pull direction away from the
+neutral plane (material comes off) and a negative angle grows the part.
+
 ### move_face
 
 ```yaml

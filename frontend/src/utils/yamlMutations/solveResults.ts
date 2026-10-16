@@ -25,6 +25,7 @@ function featureIdsTouched(m: Mutation): string[] {
     case 'remove_fillet_edge':
     case 'remove_chamfer_edge':
     case 'remove_loft_profile':
+    case 'remove_draft_face':
     case 'remove_move_face_ref':
     case 'remove_boolean_tool':
     case 'remove_transform_body':

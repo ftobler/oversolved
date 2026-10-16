@@ -20,6 +20,7 @@ import type {
   CircularArrayFeature,
   DeleteBodyFeature,
   DeleteFaceFeature,
+  DraftFeature,
   ExtrudeFeature,
   FilletFeature,
   HelixFeature,
@@ -54,6 +55,7 @@ describe('the part feature union is closed', () => {
       | 'chamfer'
       | 'shell'
       | 'loft'
+      | 'draft'
       | 'move_face'
       | 'delete_face'
       | 'boolean'
@@ -81,6 +83,7 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'chamfer'>>().toEqualTypeOf<ChamferFeature>()
     expectTypeOf<FeatureParam<'shell'>>().toEqualTypeOf<ShellFeature>()
     expectTypeOf<FeatureParam<'loft'>>().toEqualTypeOf<LoftFeature>()
+    expectTypeOf<FeatureParam<'draft'>>().toEqualTypeOf<DraftFeature>()
     expectTypeOf<FeatureParam<'move_face'>>().toEqualTypeOf<MoveFaceFeature>()
     expectTypeOf<FeatureParam<'delete_face'>>().toEqualTypeOf<DeleteFaceFeature>()
     expectTypeOf<FeatureParam<'boolean'>>().toEqualTypeOf<BooleanFeature>()

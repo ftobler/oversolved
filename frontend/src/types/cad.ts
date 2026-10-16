@@ -77,6 +77,22 @@ export type LoftFeatureDef = {
   merge_target?: string
 }
 
+export type DraftFeatureDef = {
+  // Faces to tilt. All picks must resolve on one body, like the shell's.
+  faces: string[]
+  // Signed degrees. A positive angle tilts each picked face so the section
+  // RECEDES as it moves along the pull direction away from the neutral plane
+  // (material comes off); a negative angle grows the part instead.
+  angle: NumberOrExpr
+  // The neutral plane the faces rotate about: a datum plane or a planar face.
+  // Required; there is no stored default.
+  neutral: string
+  // The pull direction: an edge/face axis pick, oriented from the neutral plane
+  // into the body whatever way the pick points. Empty means the neutral plane's
+  // own normal, oriented the same way.
+  direction?: string
+}
+
 // Removed faces and healed by extending the neighbours' surfaces. No parameters:
 // the picked set IS the whole spec. A connected group of picks (faces sharing an
 // edge) is removed or refused as a unit, so a partial pick heals what it can.
@@ -470,6 +486,11 @@ export type LoftFeature = FeatureBase & {
   loft: LoftFeatureDef
 }
 
+export type DraftFeature = FeatureBase & {
+  kind: 'draft'
+  draft: DraftFeatureDef
+}
+
 export type DeleteFaceFeature = FeatureBase & {
   kind: 'delete_face'
   delete_face: DeleteFaceFeatureDef
@@ -541,6 +562,7 @@ export type PartFeature =
   | ShellFeature
   | MoveFaceFeature
   | LoftFeature
+  | DraftFeature
   | DeleteFaceFeature
   | BooleanFeature
   | ArrayFeature
@@ -1142,6 +1164,10 @@ export type Mutation =
   | { type: 'set_loft_field'; featureId: string; field: keyof LoftFeatureDef; value: unknown }
   | { type: 'add_loft_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_loft_profile'; featureId: string; index: number }
+  | { type: 'add_draft'; featureId: string; label?: string }
+  | { type: 'set_draft_field'; featureId: string; field: keyof DraftFeatureDef; value: unknown }
+  | { type: 'add_draft_face'; featureId: string; faceQuery: string }
+  | { type: 'remove_draft_face'; featureId: string; index: number }
   | { type: 'add_move_face'; featureId: string; label?: string }
   | { type: 'set_move_face_field'; featureId: string; field: keyof MoveFaceFeatureDef; value: unknown }
   | { type: 'add_move_face_ref'; featureId: string; faceQuery: string }

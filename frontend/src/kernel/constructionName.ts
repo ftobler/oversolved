@@ -85,6 +85,15 @@ export function loftFacePath(createdBy: string, role: LoftFaceRole, slot: string
 }
 
 /**
+ * A drafted face: `<createdBy>|draft|<sourceFaceUuid>`, the tilted image of the
+ * face that was picked. The source face names it, never its geometry, so a
+ * later angle change or resize recomputes the same UUID.
+ */
+export function draftFacePath(createdBy: string, sourceFaceUuid: string): string {
+  return `${createdBy}|draft|${sourceFaceUuid}`
+}
+
+/**
  * A lateral move-face cell face: `<createdBy>|extend|<neighbourUuid>`, the
  * piece of the neighbour's surface the move extended. Named after the neighbour
  * it extends, so a later resize or parameter edit recomputes the same UUID.

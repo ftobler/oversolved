@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, LoftFeatureDef, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, LoftFeatureDef, DraftFeatureDef, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
 
 /** Append a feature, lazily initializing the features array. */
@@ -404,6 +404,30 @@ export function applyAddLoftProfile(doc: PartDoc, featureId: string, sketchQuery
 
 export function applyRemoveLoftProfile(doc: PartDoc, featureId: string, index: number): void {
   removeListAt(doc, featureId, 'loft', 'profiles', index, 'applyRemoveLoftProfile')
+}
+
+// ─── Draft ───
+
+export function applyAddDraft(doc: PartDoc, featureId: string, label?: string): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'draft',
+    label: label ?? 'Draft',
+    draft: { faces: [], angle: 3, neutral: '' },
+  })
+}
+
+export function applySetDraftField(doc: PartDoc, featureId: string, field: keyof DraftFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'draft', feature?.kind === 'draft' ? feature.draft : undefined, field, value, 'applySetDraftField')
+}
+
+export function applyAddDraftFace(doc: PartDoc, featureId: string, faceQuery: string): void {
+  toggleListValue(doc, featureId, 'draft', 'faces', faceQuery, 'applyAddDraftFace')
+}
+
+export function applyRemoveDraftFace(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'draft', 'faces', index, 'applyRemoveDraftFace')
 }
 
 // ─── Move face ───

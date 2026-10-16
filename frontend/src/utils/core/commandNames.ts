@@ -17,6 +17,7 @@ export const COMMAND_NAMES = [
   'add_transform',
   'add_shell',
   'add_loft',
+  'add_draft',
   'add_move_face',
   'add_delete_face',
   'apply_offset',

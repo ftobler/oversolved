@@ -180,6 +180,27 @@ export const LOFT_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+export const DRAFT_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_draft',
+  subKey: 'draft',
+  defaults: { faces: [], angle: 3, neutral: '' },
+  fields: [
+    { type: 'pick', key: 'faces', label: 'Faces', multi: true,
+      addMutationType: 'add_draft_face', addValueKey: 'faceQuery',
+      removeMutationType: 'remove_draft_face', validatePick: isFaceQuery },
+    // Signed: positive recedes along the pull direction away from the neutral
+    // plane, negative grows the part. Zero is a no-op, so it is refused here.
+    { type: 'number', key: 'angle', label: 'Angle', default: 3,
+      validate: (v) => Number.isFinite(v) && v !== 0, unit: 'deg' },
+    // A neutral plane is required: a draft has no stored default plane, so an
+    // unpicked one is a solve error rather than a silent world-XY neutral.
+    { type: 'pick', key: 'neutral', label: 'Neutral Plane', transform: stripSelectionWrapper,
+      emptyText: '(pick plane or face, required)' },
+    { type: 'pick', key: 'direction', label: 'Pull Direction', transform: resolveAxisQuery,
+      emptyText: '(neutral normal)' },
+  ],
+}
+
 export const MOVE_FACE_SCHEMA: FeatureEditorSchema = {  mutationPrefix: 'set_move_face',
   subKey: 'move_face',
   defaults: { faces: [], distance: 5 },
@@ -428,6 +449,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   chamfer: CHAMFER_SCHEMA,
   shell: SHELL_SCHEMA,
   loft: LOFT_SCHEMA,
+  draft: DRAFT_SCHEMA,
   move_face: MOVE_FACE_SCHEMA,
   delete_face: DELETE_FACE_SCHEMA,
   boolean: BOOLEAN_SCHEMA,

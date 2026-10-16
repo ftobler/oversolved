@@ -256,6 +256,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | Command | Label | Shortcut | Undo | Editor |
 |---|---|---|---|---|
 | `add_delete_face` | Add delete face | - | yes | sketch/part |
+| `add_draft` | Add draft | - | yes | sketch/part |
 | `add_extrude` | Add extrude | `e` | yes | sketch/part |
 | `add_hole` | Add hole | - | yes | sketch/part |
 | `add_loft` | Add loft | - | yes | sketch/part |

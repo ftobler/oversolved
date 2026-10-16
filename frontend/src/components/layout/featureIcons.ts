@@ -8,6 +8,7 @@ import featureFilletIcon from '@/assets/icons/feature-fillet.svg'
 import featureChamferIcon from '@/assets/icons/feature-chamfer.svg'
 import featureShellIcon from '@/assets/icons/feature-shell.svg'
 import featureLoftIcon from '@/assets/icons/feature-loft.svg'
+import featureDraftIcon from '@/assets/icons/feature-draft.svg'
 import featureMoveFaceIcon from '@/assets/icons/feature-move-face.svg'
 import featureDeleteFaceIcon from '@/assets/icons/feature-delete-face.svg'
 import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
@@ -35,6 +36,7 @@ export function getFeatureIcon(kind: string | undefined): string {
     case 'chamfer':         return featureChamferIcon
     case 'shell':           return featureShellIcon
     case 'loft':            return featureLoftIcon
+    case 'draft':           return featureDraftIcon
     case 'move_face':       return featureMoveFaceIcon
     case 'delete_face':     return featureDeleteFaceIcon
     case 'boolean':         return featureBooleanIcon
