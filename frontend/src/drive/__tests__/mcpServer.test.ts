@@ -6,6 +6,7 @@
 // suite in cliSmoke.test.ts.
 
 import { describe, it, expect } from 'vitest'
+import Ajv from 'ajv'
 import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
 
 type FakeOps = {
@@ -70,6 +71,20 @@ describe('createMcpServer', () => {
     const tools = (response as { result: { tools: typeof MCP_TOOLS } }).result.tools
     expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run', 'select'])
     for (const tool of tools) expect(tool.inputSchema).toMatchObject({ type: 'object' })
+  })
+
+  it('advertises a select schema whose refs compile and rejects unknown predicates', () => {
+    const tool = MCP_TOOLS.find(t => t.name === 'select')
+    expect(tool).toBeDefined()
+    // Compiling resolves every $ref against the inputSchema root; a dangling one
+    // (the definitions nested under properties.selector) throws here.
+    const validate = new Ajv().compile(tool!.inputSchema)
+    const call = (selector: unknown) => validate({ doc: {}, selector })
+    expect(call({ kind: 'edge', where: { parallel: [0, 0, 1] } })).toBe(true)
+    // Nested refs (and/or/not/on_face) resolve through the same hoisted $defs.
+    expect(call({ kind: 'edge', where: { and: [{ parallel: [0, 0, 1] }, { not: { on_face: { kind: 'face' } } }] } })).toBe(true)
+    // An unknown predicate fails additionalProperties on the predicate def.
+    expect(call({ kind: 'edge', where: { frobnicate: [0, 0, 1] } })).toBe(false)
   })
 
   it('calls a tool and returns its payload as text content', async () => {

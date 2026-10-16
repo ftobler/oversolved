@@ -108,7 +108,12 @@ const VEC3_SCHEMA = {
 // check is validateSelector (a recursive JSON Schema cannot express "exactly one
 // predicate key" cleanly); this mirrors it so tools/list is honest about the
 // shape, and an unknown predicate is still rejected before the engine runs.
-const SELECTOR_SCHEMA: Record<string, unknown> = {
+//
+// A `$ref` fragment resolves against the schema-document root, which for a tool
+// is the whole `inputSchema`. These definitions are therefore spread into that
+// root as `$defs` and the `selector` property refs into them; nesting the
+// definitions under the property would leave `#/$defs/selector` dangling.
+const SELECTOR_DEFS: Record<string, unknown> = {
   $defs: {
     predicate: {
       type: 'object',
@@ -154,7 +159,6 @@ const SELECTOR_SCHEMA: Record<string, unknown> = {
       additionalProperties: false,
     },
   },
-  $ref: '#/$defs/selector',
 }
 
 export const MCP_TOOLS: readonly McpToolDefinition[] = [
@@ -220,11 +224,12 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       required: ['doc', 'selector'],
       properties: {
         doc: { type: 'object' },
-        selector: SELECTOR_SCHEMA,
+        selector: { $ref: '#/$defs/selector' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
       additionalProperties: false,
+      ...SELECTOR_DEFS,
     },
   },
 ]
