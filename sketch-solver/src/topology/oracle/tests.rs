@@ -576,7 +576,11 @@ fn a_sub_cell_corner_gap_is_not_a_lost_area() {
         );
         // At MERGE (the builder's merge is strict `<`) and at 2x MERGE (the
         // reviewer's 2e-5 at scale 1): open chain, no surface, no lost area.
-        for gap in [MERGE, 2.0 * MERGE] {
+        // The wider gaps are the reviewer's scan range (0.8 at scale 1,
+        // 1..21 mm at scale 1500): openings several cells wide whose corner
+        // still cannot be crossed by a cell-wide step.
+        let wide: &[f64] = if scale < 2.0 { &[0.8, 2.0] } else { &[21.0] };
+        for gap in [MERGE, 2.0 * MERGE].iter().chain(wide.iter()).copied() {
             let geom = square(gap);
             let out = detect_topology(&geom);
             assert!(
