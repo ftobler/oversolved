@@ -14,6 +14,8 @@ features:
 
 Top-level fields: `version` (int), `kind` (string, currently `"part"`), `features` (list).
 
+A feature keeps its base fields (`id`, `kind`, `label`, `visible`, `suppressed`) flat and every other param under the field named after its kind (`extrude: {...}`; `definition:` for a plane). A reference from one feature to another feature is absolute, `@<featureId>`; `$` is host-local to a sketch's own entities. `persistence/docSchema.ts` folds the legacy flat params and the `$id` feature refs onto these canonical forms on load; `persistence/partDocSchema.ts` is the generated JSON Schema contract, served as the MCP resource `oversolved://schema/part-document`.
+
 ## Feature Kinds
 
 ### sketch
@@ -52,10 +54,11 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
 ```yaml
 - id: ex1
   kind: extrude
-  sketch: "$sk1"                # or list of refs
-  distance: 10.0                # depth is a legacy alias
-  direction: normal             # normal | reverse | symmetric
-  operation: new                # new | add | cut
+  extrude:
+    sketch: "@sk1"              # or list of refs
+    distance: 10.0              # depth is a legacy alias
+    direction: normal           # normal | reverse | symmetric
+    operation: new              # new | add | cut
 ```
 
 ### revolve
@@ -63,10 +66,11 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
 ```yaml
 - id: rev1
   kind: revolve
-  sketch: "$sk1"
-  angle: 360.0
-  axis: "@sk1/axisLine"         # required pick: line edge, sketch line, or circular edge
-  operation: new
+  revolve:
+    sketch: "@sk1"
+    angle: 360.0
+    axis: "@sk1/axisLine"       # required pick: line edge, sketch line, or circular edge
+    operation: new
 ```
 
 ### sweep
@@ -75,10 +79,10 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
 - id: sw1
   kind: sweep
   sweep:
-    sketch: "$sk1"               # profile ref (or list)
-    path: "@sk2/spine"           # path ref (or list)
-    operation: add               # new | add | cut
-    merge_target: "@body_ex1"    # optional
+    sketch: "@sk1"              # profile ref (or list)
+    path: "@sk2/spine"          # path ref (or list)
+    operation: add              # new | add | cut
+    merge_target: "@body_ex1"   # optional
 ```
 
 ### fillet / chamfer
@@ -86,16 +90,18 @@ Top-level fields: `version` (int), `kind` (string, currently `"part"`), `feature
 ```yaml
 - id: fil1
   kind: fillet
-  edges: ["?query:edge"]
-  radius: 1.0
+  fillet:
+    edges: ["?query:edge"]
+    radius: 1.0
 ```
 
 ```yaml
 - id: ch1
   kind: chamfer
-  edges: ["?query:edge"]
-  distance: 1.0
-  kind: distance                # distance | angle_distance
+  chamfer:
+    edges: ["?query:edge"]
+    distance: 1.0
+    kind: distance              # distance | angle_distance
 ```
 
 ### shell

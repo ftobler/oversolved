@@ -26,6 +26,7 @@ function fakeOps(answer: (tool: string, args: unknown) => McpToolPayload = () =>
       run: record('run') as McpCadOps['run'],
       measure: record('measure') as McpCadOps['measure'],
       export: record('export') as McpCadOps['export'],
+      partDocSchema: () => '{"title":"Oversolved part document"}',
     },
   }
 }
@@ -106,13 +107,35 @@ describe('createMcpServer', () => {
       ...ops,
       measure: async () => { throw new Error('kernel exploded') },
     })
-    expectError(await request(server, 10, 'resources/list'), -32601)
+    expectError(await request(server, 10, 'prompts/list'), -32601)
     const parseError = await server.handleLine('not json')
     expect(JSON.parse(parseError!)).toMatchObject({ id: null, error: { code: -32700 } })
     expectError(await request(server, 11, 'tools/call', { name: 'measure', arguments: { doc: {} } }), -32603)
     // Still serving after the bug.
     const ok = await request(server, 12, 'tools/call', { name: 'run', arguments: { steps: [] } })
     expect(ok).toMatchObject({ id: 12 })
+  })
+
+  it('advertises the part-document schema as a resource and serves it', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const list = await request(server, 17, 'resources/list', {})
+    expect(list).toMatchObject({
+      id: 17,
+      result: { resources: [{ uri: 'oversolved://schema/part-document', mimeType: 'application/schema+json' }] },
+    })
+    const read = await request(server, 18, 'resources/read', { uri: 'oversolved://schema/part-document' })
+    const contents = (read as { result: { contents: Array<{ uri: string; mimeType: string; text: string }> } }).result.contents
+    expect(contents[0].mimeType).toBe('application/schema+json')
+    expect(JSON.parse(contents[0].text)).toMatchObject({ title: 'Oversolved part document' })
+    expectError(await request(server, 19, 'resources/read', { uri: 'oversolved://nope' }), -32602)
+    expectError(await request(server, 20, 'resources/read', {}), -32602)
+  })
+
+  it('announces the resources capability and answers nothing to a resource notification', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const init = await request(server, 21, 'initialize', {})
+    expect((init as { result: { capabilities: Record<string, unknown> } }).result.capabilities).toMatchObject({ resources: {} })
+    expect(await server.handle({ jsonrpc: '2.0', method: 'resources/list' })).toBeNull()
   })
 
   it('answers nothing to notifications and to messages that are not requests', async () => {

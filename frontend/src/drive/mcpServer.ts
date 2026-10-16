@@ -1,7 +1,7 @@
 // The MCP server over the headless surface: a hand-rolled JSON-RPC 2.0 stdio
-// protocol (initialize, tools/list, tools/call) with no SDK dependency. The
-// transport is newline-delimited JSON, one message per line, which is what the
-// MCP stdio transport specifies.
+// protocol (initialize, tools/list, tools/call, resources/list, resources/read)
+// with no SDK dependency. The transport is newline-delimited JSON, one message
+// per line, which is what the MCP stdio transport specifies.
 //
 // The tool table is data (name, description, inputSchema) declared here, and
 // every call is validated against the same shape before the injected ops run,
@@ -14,6 +14,8 @@
 // stdio loop awaits each message before reading the next, so the process-wide
 // kernel state (solveLocally's cross-solve cache) never sees two sessions at
 // once; an ops implementation that answers out of band would break that.
+
+import { PART_DOC_SCHEMA_URI } from '@/persistence/partDocSchema'
 
 // The protocol revisions whose initialize handshake this server accepts. The
 // three methods implemented here exist unchanged in all of them, so a client
@@ -67,6 +69,9 @@ export interface McpCadOps {
   run(req: McpRunRequest): Promise<McpToolPayload>
   measure(req: McpMeasureRequest): Promise<McpToolPayload>
   export(req: McpExportRequest): Promise<McpToolPayload>
+  // The generated part-document JSON Schema, served as the MCP resource. A
+  // string so the server stays free of the schema module's graph.
+  partDocSchema(): string
 }
 
 export interface McpToolDefinition {
@@ -141,10 +146,21 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   },
 ]
 
+/** The resources the server advertises. The part-document schema is the one
+ *  contract an agent reads before authoring a document, so it does not have to
+ *  infer the format from tool-call examples. */
+export const MCP_RESOURCES: readonly { uri: string; name: string; description: string; mimeType: string }[] = [
+  {
+    uri: PART_DOC_SCHEMA_URI,
+    name: 'part-document-schema',
+    description: 'JSON Schema for an Oversolved part document: feature refs are @id and params are nested under the kind key.',
+    mimeType: 'application/schema+json',
+  },
+]
+
 // Argument failures are JSON-RPC invalid-params, distinct from a tool that ran
 // and failed; the message names the offending field.
 class McpInvalidParams extends Error {}
-
 export type JsonRpcId = string | number | null
 
 export interface JsonRpcSuccess {
@@ -298,10 +314,11 @@ export function createMcpServer(ops: McpCadOps): McpServer {
         case 'initialize':
           return isNotification ? null : success(id, {
             protocolVersion: negotiatedProtocolVersion(request.params),
-            capabilities: { tools: {} },
+            capabilities: { tools: {}, resources: {} },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
             instructions: 'Drive the CAD document headlessly: commands lists the registry, run executes scripts, '
-              + 'measure reports geometry facts and export writes STEP or STL.',
+              + 'measure reports geometry facts and export writes STEP or STL. The part-document JSON Schema is '
+              + 'served as the resource ' + PART_DOC_SCHEMA_URI + '.',
           })
         case 'notifications/initialized':
           return null
@@ -309,6 +326,18 @@ export function createMcpServer(ops: McpCadOps): McpServer {
           return isNotification ? null : success(id, {})
         case 'tools/list':
           return isNotification ? null : success(id, { tools: MCP_TOOLS })
+        case 'resources/list':
+          return isNotification ? null : success(id, { resources: MCP_RESOURCES })
+        case 'resources/read': {
+          if (isNotification) return null
+          const params = asObject(request.params ?? {}, 'params')
+          const uri = params.uri
+          if (typeof uri !== 'string') throw new McpInvalidParams('resources/read needs a resource uri')
+          if (uri !== PART_DOC_SCHEMA_URI) throw new McpInvalidParams(`unknown resource uri "${uri}"`)
+          return success(id, {
+            contents: [{ uri, mimeType: 'application/schema+json', text: ops.partDocSchema() }],
+          })
+        }
         case 'tools/call': {
           if (isNotification) return null
           const params = asObject(request.params ?? {}, 'params')
