@@ -70,7 +70,8 @@ export type { EditorState, PartEditorFsm, ViewportDerivedState } from './editorS
 
 // Public surface preserved for existing consumers: the callback registry, the
 // pure helper exports, and every type the module used to declare locally.
-export { setSketchCallback, getSketchCallback } from './sketchEditorCallbacks'
+export { setSketchCallback, getSketchCallback, CANNOT_APPLY_TITLE } from './sketchEditorCallbacks'
+export type { PendingConstraint, SketchMessage } from './sketchEditorCallbacks'
 export { prunePickClaims, getEffectiveTool } from './sketchEditorHelpers'
 export type {
   DialogState,

@@ -130,7 +130,9 @@ jobs:
       # fullDocRegression.test.ts (the frozen full-document replay) and the
       # reference-oracle corpus (frontend/oracle, docs/oracle.md drift) run here
       # too and fail, rather than skip, under CI when any of it is missing.
-      # The build is identical across the Node matrix.
+      # sketch-solver's nodejs build carries `--features fuzz` because
+      # sketchRepros.test.ts drives the fuzz-gated oracle export; the web build
+      # stays feature-free. The build is identical across the Node matrix.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install wasm-pack
@@ -139,7 +141,7 @@ jobs:
           tool: wasm-pack
       - name: Build WASM solvers (nodejs for vitest)
         run: |
-          wasm-pack build --target nodejs --out-dir pkg-node --release
+          wasm-pack build --target nodejs --out-dir pkg-node --release -- --features fuzz
           cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
 
@@ -255,9 +257,12 @@ jobs:
         with:
           tool: wasm-pack
 
+      # sketch-solver's nodejs build carries `--features fuzz` for the
+      # sketchRepros oracle export (`just wasm` matches); the web build stays
+      # feature-free.
       - name: Build WASM solvers (nodejs for vitest)
         run: |
-          wasm-pack build --target nodejs --out-dir pkg-node --release
+          wasm-pack build --target nodejs --out-dir pkg-node --release -- --features fuzz
           cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
 

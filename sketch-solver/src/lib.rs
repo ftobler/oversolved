@@ -207,6 +207,16 @@ pub struct Diagnostics {
     pub ms: f64,
 }
 
+/// Bit values of `Output::constraint_flags`. One byte per input constraint, in
+/// the order `Input::constraints` was sent, so the frontend can map a flag back
+/// to the constraint id it authored.
+///
+/// A redundant constraint is a measurement, not a driver: every row of its
+/// Jacobian already lies in the span of the earlier constraints', so removing
+/// it changes nothing about the solution set. Blame lands on the LATER
+/// constraint, matching "the constraint I just added".
+pub const CONSTRAINT_FLAG_REDUNDANT: u8 = 1 << 0;
+
 #[derive(Debug, Clone, Default)]
 pub struct Output {
     pub params_solved: Vec<f64>,
@@ -218,6 +228,20 @@ pub struct Output {
     /// `[entity_count][dir_x, dir_y, ...]`. Empty on the drag fast path and
     /// when `skip_status_pass` is set.
     pub vertex_freedom: Vec<f64>,
+    /// Per-constraint verdict bits (`CONSTRAINT_FLAG_*`), index-aligned with
+    /// `Input::constraints` (dropped constraints included, flagged 0). Empty on
+    /// the drag fast path: the walk is for cold solves, the drag budget is not.
+    pub constraint_flags: Vec<u8>,
+    /// Per-constraint miss as a fraction of the sketch scale, index-aligned with
+    /// `Input::constraints` and with `constraint_flags` (the wire carries one
+    /// count for both). One value per constraint: the largest single-row Newton
+    /// step its rows imply (see `solve::constraint_miss`). All zeros on a
+    /// satisfied solve; empty on the drag fast path.
+    ///
+    /// f64, not the f32 a diagnostic could afford: the wire's single scalar
+    /// width is an invariant the repo greps for (no f32 on either codec), and
+    /// the extra bytes are bounded by the constraint count.
+    pub constraint_miss: Vec<f64>,
     pub diagnostics: Diagnostics,
 }
 

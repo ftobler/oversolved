@@ -176,6 +176,17 @@ rust-fmt:
     mkdir -p tmp
     cargo fmt --all --check 2>&1 | tee tmp/cargo_fmt.log
 
+# Long area-builder fuzz run: seeds <from>..<to> through the motif generator and
+# the invariant oracle, judged against the per-seed catalogue in fuzz/tests.rs.
+# Every new coverage/structure/euler failure is minimised into
+# sketch-solver/src/topology/dcel/tests/fuzz_cases/ and every new failure's
+# catalogue entry is printed for review; stability and order are
+# catalogue-only. The PR gate already runs seeds 0..300 inside `just rust-test`;
+# this is the harvesting sweep, so review what it writes before committing.
+sketch-fuzz from to:
+    mkdir -p tmp
+    SKETCH_FUZZ_FROM={{from}} SKETCH_FUZZ_TO={{to}} SKETCH_FUZZ_WRITE=1 cargo test -p sketch-solver --lib topology::fuzz::tests::fuzz_range_from_env -- --ignored --nocapture 2>&1 | tee tmp/sketch_fuzz.log
+
 
 # --- assets ---
 
@@ -183,12 +194,16 @@ rust-fmt:
 # tests). Two crates, two binaries: the sketch/OCC worker and the anchor solver
 # worker each load only their own. See the workspace root Cargo.toml.
 
-# Build both Rust solvers to WASM and copy them into the frontend.
+# Build both Rust solvers to WASM and copy them into the frontend. The
+# sketch-solver nodejs target carries `--features fuzz`: sketchRepros.test.ts
+# drives the fuzz-gated oracle export and must not skip in a provisioned tree.
+# The web target and the other three builds stay feature-free (the production
+# WASM binary never pays for the oracle).
 wasm:
     mkdir -p tmp
     { \
         (cd sketch-solver && {{wasm_pack}} build --target web --out-dir pkg --release) && \
-        (cd sketch-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release) && \
+        (cd sketch-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release -- --features fuzz) && \
         (cd mate-solver && {{wasm_pack}} build --target web --out-dir pkg --release) && \
         (cd mate-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release) && \
         (cd frontend && node scripts/copyWasm.mjs); \

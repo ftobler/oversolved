@@ -1,0 +1,1 @@
+coverage: coverage (overlap): 0 cells read as bounded but sit in no face and 15411 sit in more than one, first at (20012.330485, 1906.871041) with 2

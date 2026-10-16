@@ -11,6 +11,15 @@ description = "Sketch constraint solver: flat I/O codec, residual builders, sket
 # a headless CLI/Node runner can link it.
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# The area-builder invariant oracle plus the node-side violation check it backs
+# (`check_topology_violations`). Not a default feature: the production WASM
+# binary never pays for the oracle. Plain `cargo test` compiles it anyway via
+# `cfg(any(test, feature = "fuzz"))` on the module, so the default gate runs the
+# oracle tests while `wasm-pack build --release` (no features) stays lean; the
+# node build that the repro test drives is the one explicit opt-in.
+fuzz = []
+
 [dependencies]
 # The LM driver, sparse Jacobian rows, and byte cursors are shared with the mate
 # solver; see the workspace root Cargo.toml for why they live in their own crate.

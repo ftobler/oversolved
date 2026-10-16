@@ -6,7 +6,7 @@
 //! scalar TS" boundary).
 
 use crate::residuals::Problem;
-use crate::{Diagnostics, Input, Output, Status};
+use crate::{Diagnostics, Input, Output, Status, CONSTRAINT_FLAG_REDUNDANT};
 use nalgebra::DMatrix;
 use solver_core::lm::{
     solve_lm, solve_lm_sparse, solve_lm_sparse_anchored, solve_lm_sparse_proximal,
@@ -103,6 +103,10 @@ pub fn solve_sketch(input: &Input) -> Output {
             entity_status: Vec::new(),
             overall_status: status.to_u8(),
             vertex_freedom: Vec::new(),
+            // The drag fast path stays untouched: no per-constraint walk at
+            // 60 Hz. The caller's count guard expects these empty.
+            constraint_flags: Vec::new(),
+            constraint_miss: Vec::new(),
             diagnostics: Diagnostics {
                 residual_norm: clean.residual_norm,
                 rank: 0,
@@ -145,6 +149,31 @@ pub fn solve_sketch(input: &Input) -> Output {
     // `result.x` is not read again, so move it instead of cloning.
     let params_solved = result.x;
 
+    // Per-constraint verdicts: a satisfied cold solve marks redundancy, an
+    // unsatisfied one reports the per-constraint miss so the UI can localise
+    // the conflict. Both are cold-path work with no SVD: the redundancy walk is
+    // incremental Gram-Schmidt over the Jacobian rows (the per-constraint SVD
+    // variant was measured at 5.9 s for 200 lines), the miss is a row-norm
+    // ratio. `skip_status_pass` does not gate them: it skips the per-ENTITY
+    // pass, which is a different cost class.
+    let (constraint_flags, constraint_miss) = if status == Status::Overconstrained {
+        (
+            vec![0u8; input.constraints.len()],
+            constraint_miss(
+                &problem,
+                &params_solved,
+                &jac,
+                problem.scale(),
+                input.constraints.len(),
+            ),
+        )
+    } else {
+        (
+            redundancy_flags(&problem, &params_solved, &jac, input.constraints.len()),
+            vec![0f64; input.constraints.len()],
+        )
+    };
+
     let (entity_status, vertex_freedom) = if input.options.skip_status_pass {
         (Vec::new(), Vec::new())
     } else {
@@ -162,6 +191,8 @@ pub fn solve_sketch(input: &Input) -> Output {
         entity_status,
         overall_status: status.to_u8(),
         vertex_freedom,
+        constraint_flags,
+        constraint_miss,
         diagnostics: Diagnostics {
             residual_norm: result.residual_norm,
             rank: rank as u32,
@@ -198,6 +229,140 @@ fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
         }
     }
     weights
+}
+
+/// Relative cut for the redundancy walk: a row whose remainder after
+/// orthogonalisation against every earlier row falls below this share of its
+/// own norm adds no new rank, so its constraint is a measurement, not a driver.
+///
+/// 1e-8 is three orders above the round-off an exactly duplicated row leaves
+/// (a copy of an earlier row reads ~1e-16 relative) and well below any real
+/// difference in constraint direction; the solve's own verdict floor is the
+/// 1e-7 of `LOSS_REL`.
+const REDUNDANT_REL_TOL: f64 = 1e-8;
+
+/// Incremental rank walk over the constraint rows in authoring order.
+///
+/// Each constraint's rows are orthogonalised (modified Gram-Schmidt, with a
+/// second pass so the basis stays accurate as it grows) against the span of
+/// every earlier constraint's rows. A constraint whose rows all land in that
+/// span is redundant; blame falls on the LATER constraint, which is the one the
+/// user just authored. Rows are taken from the final Jacobian, so the walk sees
+/// the same linear structure the verdict was computed from; the pin and
+/// equality-pin rows are deliberately not part of the span, matching the plan's
+/// "earlier constraints" reading (a projected entity's pins would otherwise
+/// make every constraint on it redundant).
+///
+/// Once the basis spans the full parameter space every later row is dependent
+/// by construction, so the walk stops accumulating there. One pass, no SVD:
+/// O(m n^2) worst case, the alternative's 5.9 s for 200 lines is the stated
+/// reason.
+fn redundancy_flags(problem: &Problem, x: &[f64], jac: &DMatrix<f64>, n_wire: usize) -> Vec<u8> {
+    let mut flags = vec![0u8; n_wire];
+    let n = jac.ncols();
+    if n == 0 {
+        return flags;
+    }
+    let wire = problem.constraint_wire_indices();
+    // Orthonormal basis of the span so far, one flat row per direction.
+    let mut basis: Vec<Vec<f64>> = Vec::new();
+    let mut rows: Vec<f64> = Vec::new();
+    let mut row0 = 0usize;
+    for (ci, c) in problem.constraints().iter().enumerate() {
+        rows.clear();
+        problem.residual_one(c, x, &mut rows);
+        let mut adds_rank = false;
+        for (r, _) in rows.iter().enumerate() {
+            // The residual and Jacobian builders mirror row counts by contract;
+            // a broken mirror must not trap the Worker, so a short Jacobian
+            // stops the WHOLE walk and keeps the flags decided so far. If only
+            // this row were skipped, `row0` would still advance past the end
+            // and every later constraint would read a missing row as "adds no
+            // rank", misflagging the rest of the set as redundant.
+            if row0 + r >= jac.nrows() {
+                return flags;
+            }
+            if basis.len() == n {
+                break;
+            }
+            let mut v: Vec<f64> = jac.row(row0 + r).iter().copied().collect();
+            let before = norm(&v);
+            for _ in 0..2 {
+                for b in &basis {
+                    let d = dot(&v, b);
+                    if d != 0.0 {
+                        for (vi, bi) in v.iter_mut().zip(b.iter()) {
+                            *vi -= d * bi;
+                        }
+                    }
+                }
+            }
+            let after = norm(&v);
+            if after > REDUNDANT_REL_TOL * before {
+                for vi in v.iter_mut() {
+                    *vi /= after;
+                }
+                basis.push(v);
+                adds_rank = true;
+            }
+        }
+        if !rows.is_empty() && !adds_rank {
+            flags[wire[ci]] = CONSTRAINT_FLAG_REDUNDANT;
+        }
+        row0 += rows.len();
+    }
+    flags
+}
+
+/// Per-constraint miss at the final iterate, as a fraction of the sketch scale.
+///
+/// A row's raw residual mixes units across kinds (a parallel row is a cross
+/// product, i.e. a squared length, while a distance row is a length), so
+/// comparing raw magnitudes would always blame the squared-unit rows. Dividing
+/// each row's residual by its Jacobian row norm turns it into the position-space
+/// step that would zero that row alone, which IS comparable across kinds; the
+/// largest such step over a constraint's rows is its miss, and dividing by the
+/// sketch scale makes the value a unit-free fraction. The frontend reads these
+/// to pick the culprits of an unsatisfied solve (top contributors covering 90%
+/// of the total miss), so it needs exactly this: how far each constraint is
+/// from being satisfiable in the units of the sketch.
+fn constraint_miss(
+    problem: &Problem,
+    x: &[f64],
+    jac: &DMatrix<f64>,
+    scale: f64,
+    n_wire: usize,
+) -> Vec<f64> {
+    let mut miss = vec![0f64; n_wire];
+    let denom = if scale > 0.0 { scale } else { 1.0 };
+    let wire = problem.constraint_wire_indices();
+    let mut rows: Vec<f64> = Vec::new();
+    let mut row0 = 0usize;
+    for (ci, c) in problem.constraints().iter().enumerate() {
+        rows.clear();
+        problem.residual_one(c, x, &mut rows);
+        let mut worst = 0f64;
+        for (r, &res) in rows.iter().enumerate() {
+            if row0 + r >= jac.nrows() {
+                break;
+            }
+            let jn = jac.row(row0 + r).norm();
+            if jn > 0.0 {
+                worst = worst.max(res.abs() / jn);
+            }
+        }
+        miss[wire[ci]] = worst / denom;
+        row0 += rows.len();
+    }
+    miss
+}
+
+fn dot(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+fn norm(v: &[f64]) -> f64 {
+    dot(v, v).sqrt()
 }
 
 /// The singular structure of the final Jacobian: its rank and, on request, an
@@ -1169,5 +1334,196 @@ mod tests {
                 "drag moved a satisfied DOF: {p:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_duplicate_dimension_is_flagged_redundant() {
+        // Start fixed at the origin, horizontal, length 10, then the SAME length
+        // again. The duplicate's row is the first length row verbatim, so the
+        // later constraint is the redundant one.
+        let mut fixed_start = c_target(ConstraintKind::Fixed, 0, PointSelector::Start);
+        fixed_start.xy = Some((0.0, 0.0));
+        let horizontal = c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent);
+        let mut length = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+        length.value = Some(10.0);
+        let mut duplicate = length.clone();
+        duplicate.value = Some(10.0);
+
+        let inp = input(
+            vec![line(0)],
+            vec![0.0, 0.0, 10.0, 0.0],
+            vec![fixed_start, horizontal, length, duplicate],
+        );
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+        assert_eq!(
+            out.constraint_flags,
+            vec![0, 0, 0, CONSTRAINT_FLAG_REDUNDANT],
+            "the duplicate (last) constraint must take the blame"
+        );
+    }
+
+    #[test]
+    fn a_parallel_implied_by_four_horizontals_is_flagged_redundant() {
+        // The plan's four-horizontals rectangle: with every side horizontal, the
+        // parallel row is a linear combination of the two horizontal rows it
+        // references, so it adds no rank. The four horizontals themselves do
+        // (each acts on a different line).
+        let entities = vec![line(0), line(4), line(8), line(12)];
+        let params = vec![
+            0.0, 0.0, 10.0, 0.0, // bottom
+            10.0, 0.0, 10.0, 6.0, // right
+            10.0, 6.0, 0.0, 6.0, // top
+            0.0, 6.0, 0.0, 0.0, // left
+        ];
+        let horiz = |i| c_target(ConstraintKind::Horizontal, i, PointSelector::Absent);
+        let constraints = vec![
+            horiz(0),
+            horiz(1),
+            horiz(2),
+            horiz(3),
+            cons(
+                ConstraintKind::Parallel,
+                ab(
+                    e_ref(0, PointSelector::Absent),
+                    e_ref(2, PointSelector::Absent),
+                ),
+            ),
+        ];
+        let out = solve_sketch(&input(entities, params, constraints));
+        assert_eq!(out.constraint_flags[4], CONSTRAINT_FLAG_REDUNDANT);
+        assert!(
+            out.constraint_flags[..4].iter().all(|&f| f == 0),
+            "the four horizontals each add rank: {:?}",
+            out.constraint_flags
+        );
+    }
+
+    #[test]
+    fn a_clean_sketch_reports_zero_redundancy_flags() {
+        // Start pinned at the origin, horizontal, length: three independent
+        // drivers. Nothing may be flagged, or the UI would dim a real driver.
+        let mut fixed_start = c_target(ConstraintKind::Fixed, 0, PointSelector::Start);
+        fixed_start.xy = Some((0.0, 0.0));
+        let mut length = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+        length.value = Some(10.0);
+        let inp = input(
+            vec![line(0)],
+            vec![0.2, -0.1, 9.5, 0.8],
+            vec![
+                fixed_start,
+                c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent),
+                length,
+            ],
+        );
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+        assert!(out.constraint_flags.iter().all(|&f| f == 0));
+        assert!(out.constraint_miss.iter().all(|&m| m == 0.0));
+    }
+
+    #[test]
+    fn a_short_jacobian_stops_the_redundancy_walk_instead_of_misflagging_the_tail() {
+        // Three horizontals, one row each, but a Jacobian truncated to two
+        // rows: the third constraint has no row to check, so its verdict is
+        // unknown and the walk must stop. The old walk only broke the inner
+        // loop, advanced row0 past the end, and read every later constraint as
+        // if it added no rank, flagging the whole tail redundant.
+        let horiz = |i| c_target(ConstraintKind::Horizontal, i, PointSelector::Absent);
+        let inp = input(
+            vec![line(0), line(4), line(8)],
+            vec![
+                0.0, 0.0, 10.0, 0.0, 10.0, 1.0, 10.0, 5.0, 10.0, 5.0, 10.0, 6.0,
+            ],
+            vec![horiz(0), horiz(1), horiz(2)],
+        );
+        let problem = Problem::new(&inp);
+        let x = problem.x0.clone();
+        let full = problem.jacobian(&x, x.len());
+        assert_eq!(full.nrows(), 3, "fixture assumes one row per horizontal");
+
+        let short = full.rows(0, 2).into_owned();
+        let flags = redundancy_flags(&problem, &x, &short, 3);
+        assert_eq!(
+            flags,
+            vec![0, 0, 0],
+            "a missing row must leave the tail unflagged, not blame it"
+        );
+    }
+
+    #[test]
+    fn conflicting_dimensions_carry_the_miss_and_nothing_is_flagged_redundant() {
+        // A fixed start plus two lengths that disagree by 4%. The unsatisfied
+        // solve must not run the redundancy walk (flags are for satisfied
+        // solves), and the miss must land on the two dimensions, not on the
+        // satisfied fixed-start rows.
+        let mut fixed_start = c_target(ConstraintKind::Fixed, 0, PointSelector::Start);
+        fixed_start.xy = Some((0.0, 0.0));
+        let mut short = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+        short.value = Some(0.1);
+        let mut long = short.clone();
+        long.value = Some(0.104);
+        let inp = input(
+            vec![line(0)],
+            vec![0.0, 0.0, 0.1, 0.0],
+            vec![fixed_start, short, long],
+        );
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+        assert!(out.constraint_flags.iter().all(|&f| f == 0));
+        assert_eq!(out.constraint_miss.len(), 3);
+        // The fixed start sits exactly where it was asked to: ~zero miss.
+        assert!(
+            out.constraint_miss[0] < 1e-4,
+            "fixed rows carried the miss: {:?}",
+            out.constraint_miss
+        );
+        for i in [1, 2] {
+            assert!(
+                out.constraint_miss[i] > 0.01,
+                "conflicting dimension {i} missed nothing: {:?}",
+                out.constraint_miss
+            );
+        }
+    }
+
+    #[test]
+    fn the_drag_path_emits_no_constraint_verdicts() {
+        // The drag fast path owns the 60 Hz budget; the per-constraint walk is
+        // cold-path work, and the caller's count guard expects empty arrays.
+        let out = solve_sketch(&contradictory_lengths(true));
+        assert!(out.constraint_flags.is_empty());
+        assert!(out.constraint_miss.is_empty());
+    }
+
+    #[test]
+    fn the_verdict_walk_handles_the_degenerate_constraint_sets() {
+        // Empty constraint list: the walk has nothing to classify and emits one
+        // empty verdict array per request, not a panic.
+        let out = solve_sketch(&input(vec![line(0)], vec![0.0, 0.0, 10.0, 1.0], vec![]));
+        assert!(out.constraint_flags.is_empty());
+        assert!(out.constraint_miss.is_empty());
+
+        // One constraint: the single verdict is the walk's whole output.
+        let out = solve_sketch(&input(
+            vec![line(0)],
+            vec![0.0, 0.0, 10.0, 0.0],
+            vec![c_target(
+                ConstraintKind::Horizontal,
+                0,
+                PointSelector::Absent,
+            )],
+        ));
+        assert_eq!(out.constraint_flags, vec![0]);
+        assert_eq!(out.constraint_miss, vec![0.0]);
+
+        // All pins, no authored constraints: the sketch is fully constrained by
+        // the pin rows alone, and there is no constraint to blame.
+        let mut inp = input(vec![point(0)], vec![2.0, 3.0], vec![]);
+        inp.pinned_mask = vec![0b11];
+        let out = solve_sketch(&inp);
+        assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+        assert!(out.constraint_flags.is_empty());
+        assert!(out.constraint_miss.is_empty());
     }
 }
