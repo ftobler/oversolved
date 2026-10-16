@@ -603,7 +603,9 @@ mod tests {
             vertex_freedom: vec![-0.0, 1e6],
             constraint_flags: vec![crate::CONSTRAINT_FLAG_REDUNDANT, 0, 1],
             // Diagnostic fractions: 1.5 and 0.25 are exactly representable, and
-            // -0.0 pins that the encoder does not normalise the sign away.
+            // -0.0 pins that the encoder does not normalise the sign away (the
+            // comparison below is bit-exact, since f64 equality cannot tell
+            // -0.0 from 0.0).
             constraint_miss: vec![1.5, 0.25, -0.0],
             diagnostics: Diagnostics::default(),
         };
@@ -615,7 +617,11 @@ mod tests {
             assert_eq!(got.to_bits(), want.to_bits());
         }
         assert_eq!(decoded.constraint_flags, out.constraint_flags);
-        assert_eq!(decoded.constraint_miss, out.constraint_miss);
+        // Bit-exact like the params above: assert_eq! on f64 reads -0.0 as
+        // equal to 0.0 and could not pin the sign.
+        for (got, want) in decoded.constraint_miss.iter().zip(&out.constraint_miss) {
+            assert_eq!(got.to_bits(), want.to_bits());
+        }
     }
 
     #[test]

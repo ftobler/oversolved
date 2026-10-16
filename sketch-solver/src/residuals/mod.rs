@@ -3,7 +3,7 @@
 //! `Problem` precomputes the per-solve invariants (entity kinds/offsets, the
 //! initial param vector `x0`, the line-circle coincident map) once, then
 //! `residuals(x)` evaluates the stacked residual vector for a candidate `x`.
-//! Computation is in `f64`, and so is the wire format (rev 3): no conversion
+//! Computation is in `f64`, and so is the wire format (rev 4): no conversion
 //! happens on decode or encode.
 //!
 //! `pinned_mask` and `equality_pins` are lowered to extra residual rows here
