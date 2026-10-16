@@ -125,6 +125,16 @@ export interface RecipeMirror {
   merge: boolean
 }
 
+export interface RecipeShell {
+  kind: 'shell'
+  id: string
+  target: string
+  // Index into the target's planar faces; the runner opens that face and keeps
+  // the rest of the wall, so the shell removes material.
+  face: number
+  thickness: number
+}
+
 export type RecipeStep =
   | RecipeStart
   | RecipeBoolean
@@ -134,6 +144,7 @@ export type RecipeStep =
   | RecipeLinearArray
   | RecipeCircularArray
   | RecipeMirror
+  | RecipeShell
 
 export interface Recipe {
   seed: number
@@ -221,10 +232,11 @@ interface StepBudget {
   hole: number
   array: number
   mirror: number
+  shell: number
 }
 
 function freshBudget(): StepBudget {
-  return { boolean: 2, fillet: 2, chamfer: 2, hole: 2, array: 1, mirror: 1 }
+  return { boolean: 2, fillet: 2, chamfer: 2, hole: 2, array: 1, mirror: 1, shell: 1 }
 }
 
 function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep | null {
@@ -235,12 +247,15 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
     return true
   }
   let kind: keyof StepBudget
-  if (roll < 0.36) kind = 'boolean'
-  else if (roll < 0.54) kind = 'fillet'
-  else if (roll < 0.66) kind = 'chamfer'
-  else if (roll < 0.80) kind = 'hole'
-  else if (roll < 0.90) kind = 'array'
-  else kind = 'mirror'
+  if (roll < 0.34) kind = 'boolean'
+  else if (roll < 0.51) kind = 'fillet'
+  else if (roll < 0.62) kind = 'chamfer'
+  else if (roll < 0.75) kind = 'hole'
+  else if (roll < 0.85) kind = 'array'
+  else if (roll < 0.94) kind = 'mirror'
+  // Shell has the lowest weight: a small thickness keeps most picks buildable,
+  // and a kernel refusal is an allowed failure, not a soundness break.
+  else kind = 'shell'
   if (!spend(kind)) return null
   switch (kind) {
     case 'boolean': return drawBoolean(rnd, id)
@@ -265,6 +280,11 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
         kind: 'mirror', id, target: PRIMARY_BODY,
         plane: drawOf(rnd, ['x', 'y', 'z', 'face'] as const), face: drawInt(rnd, 0, 3),
         keepOriginal: rnd() < 0.7, merge: rnd() < 0.8,
+      }
+    case 'shell':
+      return {
+        kind: 'shell', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
+        thickness: grid(drawInt(rnd, 1, 2)),
       }
   }
 }
