@@ -26,6 +26,46 @@ fn a_point_between_two_vertices_merges_into_the_first_registered() {
 }
 
 #[test]
+fn vertex_emission_order_is_the_registration_order_on_every_run() {
+    // The backlog item "DCEL vertex emission order is HashMap-random" is
+    // stale: the pool is the insertion-ordered `Verts` since 7676df76, and
+    // `vertices`/`intersection_points` are drained straight from its Vec, so
+    // their order is the registration order on every run. A HashMap-ordered
+    // emission would reshuffle under a fresh seed every run.
+    let geom = vec![
+        ("a".into(), line([0.0, 0.0], [4.0, 0.0])),
+        ("b".into(), line([4.0, 0.0], [4.0, 4.0])),
+        ("c".into(), line([4.0, 4.0], [0.0, 4.0])),
+        ("d".into(), line([0.0, 4.0], [0.0, 0.0])),
+        // Crosses the left and right side mid-span; its two hits are minted
+        // after the four seeded corners.
+        ("cross".into(), line([-1.0, 2.0], [5.0, 2.0])),
+    ];
+    let first = detect_topology(&geom);
+    let vertex_ids = |t: &crate::topology::dcel::TopologyOut| -> Vec<String> {
+        t.vertices.iter().map(|(k, _)| k.clone()).collect()
+    };
+    for _ in 0..64 {
+        assert_eq!(vertex_ids(&detect_topology(&geom)), vertex_ids(&first));
+    }
+    // Registration order, not sorted: the seeded corners own _v0.._v3, the
+    // cross line's free endpoints follow, then the two chord hits.
+    let ids = vertex_ids(&first);
+    assert_eq!(
+        ids,
+        vec!["_v0", "_v1", "_v2", "_v3", "_v4", "_v5", "_v6", "_v7"]
+    );
+    assert_eq!(
+        first
+            .intersection_points
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect::<Vec<_>>(),
+        vec!["_v6", "_v7"]
+    );
+}
+
+#[test]
 fn single_square_is_one_surface() {
     let t = detect_topology(&square(2.0));
     assert_eq!(t.surfaces.len(), 1);
