@@ -63,8 +63,7 @@ export function solveDeleteFace(
 ): DeleteFaceResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.delete_face as Dict) ?? {}
-  const merged: Dict = { ...sub, ...feature }
-  const faces = (merged.faces as string[]) ?? []
+  const faces = (sub.faces as string[]) ?? []
   if (faces.length === 0) throw new Error('delete_face: requires at least one face')
   if (Object.keys(bodyStore).length === 0) throw new Error('delete_face: no bodies in body_store')
 

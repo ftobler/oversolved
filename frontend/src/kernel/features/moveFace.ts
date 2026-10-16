@@ -71,11 +71,10 @@ export function solveMoveFace(
 ): MoveFaceResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.move_face as Dict) ?? {}
-  const merged: Dict = { ...sub, ...feature }
-  const distanceRaw = merged.distance
+  const distanceRaw = sub.distance
   const distance = Number(distanceRaw !== undefined && distanceRaw !== null ? distanceRaw : 0)
   if (!Number.isFinite(distance)) throw new Error('move_face: distance must be a finite number')
-  const faces = (merged.faces as string[]) ?? []
+  const faces = (sub.faces as string[]) ?? []
   if (faces.length === 0) throw new Error('move_face: requires at least one face')
   if (Object.keys(bodyStore).length === 0) throw new Error('move_face: no bodies in body_store')
 

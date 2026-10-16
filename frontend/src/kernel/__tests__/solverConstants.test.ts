@@ -99,6 +99,6 @@ describe('solverConstants', () => {
     // TOL_LOOP_CLOSURE is the loop-chaining tolerance; it has no Rust twin
     // because the chaining lives only on the TS side of the split.
     const unmirrored = declared.filter((n) => !rust.has(n))
-    expect(unmirrored).toEqual(['TOL_LOOP_CLOSURE'])
+    expect(unmirrored).toEqual(['TOL_LOOP_CLOSURE', 'TOL_MOVE_FACE_TANGENT'])
   })
 })
