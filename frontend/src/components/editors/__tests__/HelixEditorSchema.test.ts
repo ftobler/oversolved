@@ -71,17 +71,19 @@ describe('HELIX_SCHEMA field visibility', () => {
 
 describe('HELIX_SCHEMA reference pick', () => {
   const validate = (field('reference') as PickFieldDef).validatePick!
+  const refusal = 'a helix sits on a cylinder face, a circular edge or a circle'
   it('accepts a cylinder face and circular/straight edges and sketch entities', () => {
-    expect(validate('?...:cylinderface')).toBe(true)
-    expect(validate('?...:straightedge')).toBe(true)
-    expect(validate('?...:circle')).toBe(true)
-    expect(validate('?...:arc')).toBe(true)
-    expect(validate('entity:sk1:l1')).toBe(true)
-    expect(validate('@ex1/face/0')).toBe(true)
+    expect(validate('?...:cylinderface')).toBeNull()
+    expect(validate('?...:straightedge')).toBeNull()
+    expect(validate('?...:circle')).toBeNull()
+    expect(validate('?...:arc')).toBeNull()
+    expect(validate('entity:sk1:l1')).toBeNull()
+    expect(validate('@ex1/face/0')).toBeNull()
   })
-  it('refuses a flat face, a cone face and an ellipse', () => {
-    expect(validate('?...:flatface')).toBe(false)
-    expect(validate('?...:coneface')).toBe(false)
-    expect(validate('?...:ellipse')).toBe(false)
+  it('refuses a flat face, a cone face and an ellipse with the reason', () => {
+    expect(validate('?...:flatface')).toBe(refusal)
+    expect(validate('?...:coneface')).toBe(refusal)
+    expect(validate('?...:ellipse')).toBe(refusal)
+    expect(validate('vertex:sk1:l1:start')).toBe(refusal)
   })
 })

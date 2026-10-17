@@ -26,7 +26,12 @@ function mountPickField(
   featureId: string,
   field: string,
   onPick: (id: string) => void,
-  opts?: { multi?: boolean; onUnpick?: (id: string) => void; features?: readonly { id: string }[] },
+  opts?: {
+    multi?: boolean
+    onUnpick?: (id: string) => void
+    features?: readonly { id: string }[]
+    validatePick?: (id: string) => string | null
+  },
 ) {
   function Spy() {
     const { isPicking, toggle, activate } = usePickField(featureId, field, onPick, opts)
@@ -274,6 +279,53 @@ describe('usePickField  -  auto-close (multi vs single)', () => {
     })
 
     expect(onPick).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+  })
+
+  it('single field drops a field-rule-rejected pick but stays open', () => {
+    // The field's own validatePick refusal follows the same policy as the
+    // build-order one: no mutation, no disarm. The helix reference field is the
+    // single-pick field with a rule today (a face pick is refused there).
+    const onPick = vi.fn()
+    const validatePick = (id: string) => (id.includes(':flatface') ? 'a helix sits on a cylinder face, a circular edge or a circle' : null)
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'hx1', field: 'reference' })
+    })
+    mountPickField('hx1', 'reference', onPick, { validatePick })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set(['?9;@body_ex1:flatface']))
+    })
+
+    expect(onPick).not.toHaveBeenCalled()
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+
+    // The field is still live: the next pick that passes the rule lands.
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set(['?9;@body_ex1:cylinderface']))
+    })
+    expect(onPick).toHaveBeenCalledWith('?9;@body_ex1:cylinderface')
+    expect(useSketchEditorStore.getState().activePickField).toBeNull()
+  })
+
+  it('multi field skips a field-rule-rejected id and keeps consuming the box', () => {
+    const onPick = vi.fn()
+    const validatePick = (id: string) => (id.endsWith(':flatface') ? null : 'pick a face')
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'mf1', field: 'faces', multi: true })
+    })
+    mountPickField('mf1', 'faces', onPick, { multi: true, validatePick })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(
+        new Set(['?9;@body_ex1:cylinderface', '?9;@body_ex1:flatface']),
+      )
+    })
+
+    expect(onPick).toHaveBeenCalledTimes(1)
+    expect(onPick).toHaveBeenCalledWith('?9;@body_ex1:flatface')
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
   })

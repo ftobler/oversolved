@@ -13,9 +13,18 @@ import { useNotifySafe } from '@/contexts/ToastContext'
  * When a new (non-chip-owned) item appears in `normalSelection`, it calls
  * `onPick(selectionId)` so the editor can dispatch its mutation, then clears
  * the selection so the chip's sync effect re-populates chip-owned items.
- * Single-pick fields auto-close after one pick; `multi` fields stay open and
- * consume every new id (a rubber-band box lands as one `normalSelection` set,
- * so all N boxed edges reach `onPick`, not just the first).
+ * Single-pick fields auto-close after one accepted pick; `multi` fields stay
+ * open and consume every new id (a rubber-band box lands as one
+ * `normalSelection` set, so all N boxed edges reach `onPick`, not just the
+ * first).
+ *
+ * A refused pick never reaches `onPick`: both refusal guards run here. Passing
+ * `features` enables the circular-dependency rule ("only reference earlier
+ * features"); `validatePick` is the field's own rule, returning the reason to
+ * refuse or null. A refusal raises one warning toast carrying that reason and
+ * keeps the field armed, unlike an accepted pick, so the user can go straight
+ * for valid geometry. The reason travels with the field's rule, so the toast
+ * cannot misstate why the pick was refused.
  *
  * Re-clicking an already-picked element toggles it out of `normalSelection`
  * (the viewport click path is symmetric). A chip-owned id that has dropped out
@@ -37,11 +46,6 @@ import { useNotifySafe } from '@/contexts/ToastContext'
  * Closing it means normalizing the clicked id the same way before comparing,
  * which belongs with the transform, not here.
  *
- * `features` is the build-order stack. Passing it enables the circular-dependency
- * guard: this is the one choke point every pick chip funnels through, so the
- * rule "you may only pick from features before you" is enforced here once
- * instead of in each editor.
- *
  * Returns `{ isPicking, toggle, activate }`: `toggle` activates this field
  * (clearing any other active field) or deactivates it if already active;
  * `activate` unconditionally arms this field, used after a chip is removed so
@@ -55,11 +59,13 @@ export function usePickField(
     multi?: boolean
     onUnpick?: (selectionId: string) => void
     features?: readonly { id: string }[]
+    validatePick?: (selectionId: string) => string | null
   },
 ): { isPicking: boolean; toggle: () => void; activate: () => void } {
   const multi = opts?.multi ?? false
   const onUnpick = opts?.onUnpick
   const features = opts?.features
+  const validatePick = opts?.validatePick
   const activePickField = useSketchEditorStore(s => s.activePickField)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const notify = useNotifySafe()
@@ -70,8 +76,8 @@ export function usePickField(
     const s = useSketchEditorStore.getState()
 
     // Consume every new (non-chip-owned) pick. A single field takes the first
-    // id and closes; a multi field loops over the whole set so a rubber-band
-    // box adds every edge instead of just the first one (g2-M3).
+    // accepted id and closes; a multi field loops over the whole set so a
+    // rubber-band box adds every edge instead of just the first one (g2-M3).
     let hasNewPick = false
     let refused = false
     for (const id of s.normalSelection) {
@@ -90,6 +96,22 @@ export function usePickField(
           return
         }
         continue  // multi: skip the rejected id, keep consuming the box
+      }
+      // The field's own rule, when it has one: it returns the refusal reason,
+      // which is what the user is told. A refused pick de-highlights with
+      // nothing added and keeps the field open, like the build-order refusal
+      // above; one toast per batch when a box drags in several bad picks.
+      const fieldRefusal = validatePick ? validatePick(id) : null
+      if (fieldRefusal !== null) {
+        if (!refused) {
+          refused = true
+          notify(`Pick refused: ${fieldRefusal}`, 'warning')
+        }
+        if (!multi) {
+          s.clearNormalSelection()
+          return
+        }
+        continue  // multi: skip the refused id, keep consuming the box
       }
       onPick(id)
       if (!multi) {
@@ -127,7 +149,7 @@ export function usePickField(
         return
       }
     }
-  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId, field, notify])
+  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId, field, notify, validatePick])
 
   const toggle = useCallback(() => {
     const s = useSketchEditorStore.getState()

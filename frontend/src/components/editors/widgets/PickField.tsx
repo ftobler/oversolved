@@ -2,7 +2,6 @@ import type { Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { useNotifySafe } from '@/contexts/ToastContext'
 import type { PickFieldWidgetProps } from './fieldTypes'
 
 export function PickFieldWidget({
@@ -10,16 +9,8 @@ export function PickFieldWidget({
 }: PickFieldWidgetProps) {
   const isMulti = field.multi ?? false
   const rawValues: unknown = data[field.key]
-  const notify = useNotifySafe()
 
   const pickCallback = (selectionId: string) => {
-    if (field.validatePick && !field.validatePick(selectionId)) {
-      // A refused pick must not vanish silently: the fillet/chamfer edge gate
-      // only accepts `?` queries, so a topo-fallback edge (no named query)
-      // de-highlights with nothing added. Surface the reason instead.
-      notify('Pick refused: this edge has no named query', 'warning')
-      return
-    }
     const transformed = field.transform ? field.transform(selectionId) : selectionId
 
     if (isMulti) {
@@ -65,7 +56,12 @@ export function PickFieldWidget({
     if (index >= 0) removeAt(index)
   }
 
-  const pickState = usePickField(fid, field.key, pickCallback, { multi: isMulti, onUnpick: unpickCallback, features })
+  // The field's own pick rule rides into the hook, which owns both refusal
+  // guards and the keep-the-field-open policy for them; this widget only
+  // dispatches the mutation for a pick that passed.
+  const pickState = usePickField(fid, field.key, pickCallback, {
+    multi: isMulti, onUnpick: unpickCallback, features, validatePick: field.validatePick,
+  })
   const { toggle, activate } = pickState
 
   // The feature's last solve splits the picks that did not apply into two kinds

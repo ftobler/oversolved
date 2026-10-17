@@ -47,7 +47,10 @@ export interface PickFieldDef extends BaseFieldDef {
   type: 'pick'
   multi?: boolean
   transform?: (selectionId: string) => string
-  validatePick?: (selectionId: string) => boolean
+  // The field's own pick rule: null accepts the element; a string is the reason
+  // to refuse it, and the text the user sees. The reason travels with the rule,
+  // so a refusal cannot misstate what the field accepts.
+  validatePick?: (selectionId: string) => string | null
   addMutationType?: string
   addValueKey?: string
   removeMutationType?: string

@@ -83,6 +83,16 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+/** Fillet/chamfer edge gate: the modifier re-finds its edges through the named
+ *  `?` query, so a topo-fallback edge (`@body_ex1/edge/3`) is refused at the
+ *  chip. A `?` face query is accepted on purpose: the kernel expands it to that
+ *  face's edges. The refusal is split by what was picked, so a misclicked plane
+ *  or body reads as the wrong kind instead of as an edge with no name. */
+const namedEdgePickRefusal = (id: string): string | null => {
+  if (id.startsWith('?')) return null
+  return /^@[^/]+\/edge\/\d+$/.test(id) ? 'this edge has no named query' : 'pick an edge'
+}
+
 export const FILLET_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_fillet',
   subKey: 'fillet',
@@ -91,7 +101,7 @@ export const FILLET_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'edges', label: 'Edges', multi: true,
       addMutationType: 'add_fillet_edge', addValueKey: 'edgeQuery',
       removeMutationType: 'remove_fillet_edge',
-      validatePick: (id) => id.startsWith('?') },
+      validatePick: namedEdgePickRefusal },
     { type: 'number', key: 'radius', label: 'Radius', default: 1, validate: (v) => v > 0 },
   ],
 }
@@ -104,7 +114,7 @@ export const CHAMFER_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'edges', label: 'Edges', multi: true,
       addMutationType: 'add_chamfer_edge', addValueKey: 'edgeQuery',
       removeMutationType: 'remove_chamfer_edge',
-      validatePick: (id) => id.startsWith('?') },
+      validatePick: namedEdgePickRefusal },
     { type: 'select', key: 'kind', label: 'Kind', default: 'distance',
       options: [{ value: 'distance', label: 'Distance' }, { value: 'angle_distance', label: 'Angle + Distance' }] },
     { type: 'number', key: 'distance', label: 'Distance', default: 1, validate: (v) => v > 0 },
@@ -119,6 +129,18 @@ export const CHAMFER_SCHEMA: FeatureEditorSchema = {
 const FACE_QUERY = /:(flatface|cylinderface|coneface|sphereface|torusface|face)$/
 const isFaceQuery = (id: string): boolean => id.startsWith('?') && FACE_QUERY.test(id)
 
+/** A face field's pick rule: null for a named face query, otherwise the reason
+ *  the pick is refused. The reasons are split by what the user picked, because
+ *  they are shown: a topo-fallback face has no name to persist, a `?` edge or
+ *  vertex query is the wrong kind of element, and anything else (a plane, a
+ *  whole body, a sketch element) is not a face at all. */
+const facePickRefusal = (id: string): string | null => {
+  if (!id.startsWith('?')) {
+    return /^@[^/]+\/(?:face|tri)\/\d+$/.test(id) ? 'this face has no named query' : 'pick a face'
+  }
+  return isFaceQuery(id) ? null : 'pick a face, not an edge or vertex'
+}
+
 export const DELETE_FACE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_delete_face',
   subKey: 'delete_face',
@@ -131,7 +153,7 @@ export const DELETE_FACE_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'faces', label: 'Faces', multi: true,
       addMutationType: 'add_delete_face_ref', addValueKey: 'faceQuery',
       removeMutationType: 'remove_delete_face_ref',
-      validatePick: isFaceQuery },
+      validatePick: facePickRefusal },
   ],
 }
 
@@ -143,7 +165,7 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'faces', label: 'Open Faces', multi: true,
       addMutationType: 'add_shell_face', addValueKey: 'faceQuery',
       removeMutationType: 'remove_shell_face',
-      validatePick: isFaceQuery },
+      validatePick: facePickRefusal },
     { type: 'number', key: 'thickness', label: 'Thickness', default: 1, validate: (v) => v > 0, unit: 'mm' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'inward',
       options: [{ value: 'inward', label: 'Inward' }, { value: 'outward', label: 'Outward' }] },
@@ -161,6 +183,12 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
 const isProfilePick = (id: string): boolean =>
   id.startsWith('?') || id.startsWith('@') || id.startsWith('entity:') || id.startsWith('$')
 
+/** The loft profile pick rule: the chip takes every form the kernel's collector
+ *  can resolve and this reason answers the rest (a sketch vertex, a constraint,
+ *  a dock/intersection tag). */
+const loftPickRefusal = (id: string): string | null =>
+  isProfilePick(id) ? null : 'pick a sketch area, sketch element or face'
+
 export const LOFT_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_loft',
   subKey: 'loft',
@@ -171,7 +199,7 @@ export const LOFT_SCHEMA: FeatureEditorSchema = {
     // empty text rather than silently building a one-section shell.
     { type: 'pick', key: 'profiles', label: 'Profiles', multi: true,
       addMutationType: 'add_loft_profile', addValueKey: 'sketchQuery',
-      removeMutationType: 'remove_loft_profile', validatePick: isProfilePick,
+      removeMutationType: 'remove_loft_profile', validatePick: loftPickRefusal,
       emptyText: '(pick two or more profiles, in order)' },
     { type: 'checkbox', key: 'ruled', label: 'Ruled', default: false },
     { type: 'select', key: 'operation', label: 'Operation', default: 'new',
@@ -189,7 +217,7 @@ export const DRAFT_SCHEMA: FeatureEditorSchema = {
   fields: [
     { type: 'pick', key: 'faces', label: 'Faces', multi: true,
       addMutationType: 'add_draft_face', addValueKey: 'faceQuery',
-      removeMutationType: 'remove_draft_face', validatePick: isFaceQuery },
+      removeMutationType: 'remove_draft_face', validatePick: facePickRefusal },
     // Signed: positive recedes along the pull direction away from the neutral
     // plane, negative grows the part. Zero is a no-op, so it is refused here.
     { type: 'number', key: 'angle', label: 'Angle', default: 3,
@@ -212,8 +240,14 @@ export const MOVE_FACE_SCHEMA: FeatureEditorSchema = {  mutationPrefix: 'set_mov
       removeMutationType: 'remove_move_face_ref',
       // Planarity is a kernel classification, so only a `flatface` restriction
       // is accepted; a cylinder/cone face is refused at the chip, never sampled
-      // from triangles. A face the kernel refuses is reported, not dropped.
-      validatePick: (id) => id.startsWith('?') && id.endsWith(':flatface') },
+      // from triangles. A face the kernel refuses is reported, not dropped. The
+      // refusal reason names the rule: the user who picked a bore wall gets
+      // "only moves planar faces", not a bogus claim about its query.
+      validatePick: (id) => {
+        const reason = facePickRefusal(id)
+        if (reason !== null) return reason
+        return id.endsWith(':flatface') ? null : 'move face only moves planar faces'
+      } },
     // Signed: positive adds material, negative removes, 0 is the identity, so
     // there is no `> 0` validator (the kernel refuses a non-finite value).
     { type: 'number', key: 'distance', label: 'Distance', default: 5, unit: 'mm' },
@@ -408,17 +442,19 @@ export const VARIABLE_SCHEMA: FeatureEditorSchema = {
 // type restriction rides in the selection id (`...:cylinderface`, `:arc`, ...),
 // so a flat/cone face and an ellipse are refused at pick time by omission; the
 // solver repeats the check because a hand-written doc skips this gate.
-function helixPickOk(id: string): boolean {
+function helixPickRefusal(id: string): string | null {
   // Refuse the face/edge kinds a helix cannot sit on by name. The type
   // restriction rides in the ancestry query (`...:coneface`).
+  const refusal = 'a helix sits on a cylinder face, a circular edge or a circle'
   for (const bad of ['flatface', 'coneface', 'sphereface', 'torusface', 'ellipse']) {
-    if (id.includes(':' + bad)) return false
+    if (id.includes(':' + bad)) return refusal
   }
   // Everything else a pick can name is a candidate: an ancestry query
   // (?...:cylinderface/:circle/:arc/:straightedge), a sketch entity
   // (@sketch/entity), a topo-fallback face (@body/face/N) or an entity ref.
   // A body or wrong-kind face that slips through is refused by the solver.
-  return id.startsWith('?') || id.startsWith('@') || id.startsWith('entity:')
+  if (id.startsWith('?') || id.startsWith('@') || id.startsWith('entity:')) return null
+  return refusal
 }
 
 const HELIX_USES_PITCH = (d: SchemaData) => d.mode === 'pitch_turns' || d.mode === 'pitch_height'
@@ -439,7 +475,7 @@ export const HELIX_SCHEMA: FeatureEditorSchema = {
   },
   fields: [
     { type: 'pick', key: 'reference', label: 'Reference',
-      validatePick: helixPickOk, emptyText: '(pick a cylinder face, edge or circle)' },
+      validatePick: helixPickRefusal, emptyText: '(pick a cylinder face, edge or circle)' },
     { type: 'select', key: 'radius_mode', label: 'Radius', default: 'derived',
       options: [{ value: 'derived', label: 'From reference' }, { value: 'entered', label: 'Enter' }] },
     { type: 'number', key: 'radius', label: 'Radius', default: 5,

@@ -20,15 +20,29 @@ describe('MOVE_FACE_SCHEMA', () => {
     expect(MOVE_FACE_SCHEMA.defaults).toEqual({ faces: [], distance: 5 })
   })
 
-  it('accepts a flat face query and refuses a curved or non-face one', () => {
+  it('accepts a flat face query', () => {
+    expect(facesField().validatePick!('?4;@ex1:flatface')).toBeNull()
+  })
+
+  it('refuses a curved or unclassified face with the planarity reason', () => {
+    // A pick can name a perfectly good named face query and still be refused
+    // here, because move-face moves planar faces only. The reason must name that
+    // rule, not claim the face has no query: the user picked a bore wall, which
+    // the kernel named and the field refused for being curved.
     const validate = facesField().validatePick!
-    expect(validate('?4;@ex1:flatface')).toBe(true)
-    expect(validate('?4;@ex1:cylinderface')).toBe(false)
-    expect(validate('?4;@ex1:coneface')).toBe(false)
-    expect(validate('?4;@ex1:sphereface')).toBe(false)
-    expect(validate('?4;@ex1:straightedge')).toBe(false)
-    expect(validate('?4;@ex1:edge')).toBe(false)
-    expect(validate('@body_ex1/face/0')).toBe(false)
+    for (const t of ['cylinderface', 'coneface', 'sphereface', 'torusface', 'face']) {
+      expect(validate(`?4;@ex1:${t}`), t).toBe('move face only moves planar faces')
+    }
+  })
+
+  it('refuses an edge, a vertex, a nameless face and a non-face by kind', () => {
+    const validate = facesField().validatePick!
+    expect(validate('?4;@ex1:straightedge')).toBe('pick a face, not an edge or vertex')
+    expect(validate('?4;@ex1:edge')).toBe('pick a face, not an edge or vertex')
+    expect(validate('?4;@ex1:vertex')).toBe('pick a face, not an edge or vertex')
+    expect(validate('@body_ex1/face/0')).toBe('this face has no named query')
+    expect(validate('@builtin_plane_top')).toBe('pick a face')
+    expect(validate('@ex1')).toBe('pick a face')
   })
 
   it('accepts a negative distance (no positivity validator)', () => {
