@@ -97,17 +97,22 @@ fn arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
     {
         let cx = center[0];
         let cy = center[1];
-        let mut a0 = radians(angle_start_deg);
-        let mut a1 = radians(angle_end_deg);
-        if !ccw {
-            std::mem::swap(&mut a0, &mut a1);
-        }
-        if a1 < a0 {
-            a1 += 2.0 * std::f64::consts::PI;
-        }
+        let a0 = radians(angle_start_deg);
+        let a1 = radians(angle_end_deg);
+        // Samples follow the stored traversal direction: a CW side sweeps
+        // towards its end angle (the sign of the sweep keeps the turn), so the
+        // point sequence stays on the edge's own arc. Swapping the angles
+        // instead, as this once did, sampled the complementary arc in reverse
+        // order and the loop polygon grew a chord across it.
+        let two_pi = 2.0 * std::f64::consts::PI;
+        let sweep = if ccw {
+            (a1 - a0).rem_euclid(two_pi)
+        } else {
+            -(a0 - a1).rem_euclid(two_pi)
+        };
         let mut out = Vec::with_capacity(n);
         for k in 0..n {
-            let a = a0 + (a1 - a0) * (k as f64 + 1.0) / (n as f64 + 1.0);
+            let a = a0 + sweep * (k as f64 + 1.0) / (n as f64 + 1.0);
             out.push([cx + radius * a.cos(), cy + radius * a.sin()]);
         }
         out
@@ -693,6 +698,27 @@ mod tests {
             assert!(
                 p[0] > 0.0 && p[1] > 0.0,
                 "sample off the first quadrant: {p:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn loop_pts_samples_a_cw_arc_towards_its_end_angle() {
+        // A CW side sweeps towards its end angle (here 0 -> 90 is the long way
+        // round, 270 degrees), so the interior samples follow the traversal:
+        // 54, 108, 162 and 216 degrees below the start. Swapping the angles
+        // instead sampled the same arc in reverse and the loop polygon grew a
+        // chord across it, which read a hole region inside a face that only
+        // touches it.
+        let pts = loop_pts(&[arc_edge([0.0, 0.0], 1.0, 0.0, 90.0, false)], 4);
+        assert_eq!(pts.len(), 5);
+        let want = |deg: f64| [deg.to_radians().cos(), deg.to_radians().sin()];
+        for (k, deg) in [-54.0, -108.0, -162.0, -216.0].iter().enumerate() {
+            let w = want(*deg);
+            assert!(
+                (pts[k + 1][0] - w[0]).abs() < 1e-12 && (pts[k + 1][1] - w[1]).abs() < 1e-12,
+                "sample {k} should sit at {deg} degrees: {:?}",
+                pts[k + 1]
             );
         }
     }

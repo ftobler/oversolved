@@ -402,13 +402,21 @@ const HOLE_COVER_SAMPLES: usize = 64;
 /// Samples per arc of a hole region's own boundary in the same test.
 const FACE_CHAIN_SAMPLES: usize = 16;
 
-/// Subtract the hole regions from the standalone island faces that cover them,
-/// then fold nested loops into the sketch-area model via `subdivide_loops`:
-/// every surviving loop stays its own area, carrying the loops immediately
-/// nested inside it as holes.
+/// Subtract the hole regions from the faces that own them, then fold nested
+/// loops into the sketch-area model via `subdivide_loops`: every surviving loop
+/// stays its own area, carrying the loops immediately nested inside it as
+/// holes.
+///
+/// Ownership is the region's boundary lying inside the face's own loop (or on
+/// it where the two share a side), NOT the face's interior merely reaching into
+/// the region: a traced face's loop is a component of the same subdivision, so
+/// a region the loop crosses or only touches is another face's, and subtracting
+/// there cut regions the face never surrounded (the frontend's extrude of a
+/// hole-bearing body face lost its hole that way). A standalone island owns the
+/// shells nested inside its uncut loop under the same test.
 ///
 /// The subtraction runs for EVERY face count, one included: on a sliced washer
-/// no material face covers the bore (the ring halves never surround it), so it
+/// no material face owns the bore (the ring halves never surround it), so it
 /// is a no-op there, but on the arrangement where an UNsliced outer loop stayed
 /// its own island face while a shell inside it was sliced, that island is the
 /// single surface and its boundary encloses the bore; without the subtraction
@@ -416,7 +424,6 @@ const FACE_CHAIN_SAMPLES: usize = 16;
 pub(super) fn nest_surfaces(
     surfaces: Vec<SurfaceOut>,
     hole_shells: &[HoleShell],
-    island_loops: &[Vec<BoundaryEdge>],
 ) -> Vec<SurfaceOut> {
     let loops: Vec<Vec<BoundaryEdge>> = surfaces.iter().map(|s| s.boundary.clone()).collect();
     let sub = subdivide_loops(&loops);
@@ -426,27 +433,20 @@ pub(super) fn nest_surfaces(
         if !hole_idxs.is_empty() {
             s.holes = hole_idxs.into_iter().map(|i| loops[i].clone()).collect();
         }
-        // The face's own loop, finely sampled: a face COVERS a hole region
-        // when the region lies inside it.
+        // The face's own loop, finely sampled: a face owns a hole region when
+        // the region lies inside it.
         let own: Vec<Vec2> = loop_pts(&s.boundary, HOLE_COVER_SAMPLES);
         // The face polygon is inscribed, so a point ON the true loop can sit up
         // to its sagitta outside the polygon; that is the width of "on it"
         // here. A merely ADJACENT region (one that shares an arc with the
         // face) has boundary points strictly outside the loop as well, and
-        // `strict_inside` keeps it from being subtracted from a face that
+        // `covers_region` keeps it from being subtracted from a face that
         // never surrounded it.
         let on_tol = polygon_sagitta(&own, HOLE_COVER_SAMPLES);
-        // Only a standalone island subtracts: a traced face's region is another
-        // component of the same subdivision, so the hole regions inside it are
-        // not its to remove.
-        if !island_loops.iter().any(|l| same_loop(l, &s.boundary)) {
-            out.push(s);
-            continue;
-        }
         for shell in hole_shells {
             for region in &shell.regions {
                 // The region is one traced piece of the shell's interior; the
-                // piece whose region this face covers is the wire to subtract
+                // piece whose region this face owns is the wire to subtract
                 // (the shell's whole loop would cross a face that covers only
                 // part of it).
                 if s.holes.iter().any(|h| same_loop(h, &region.boundary)) {
@@ -462,11 +462,12 @@ pub(super) fn nest_surfaces(
     out
 }
 
-/// True when the face loop `own` reaches into the region bounded by `region`:
-/// some point of the region's boundary, or the region's own interior point,
-/// lies strictly inside the loop. Overlap is the question, not enclosure,
-/// because a face loop that crosses itself can cover part of a region it does
-/// not surround.
+/// True when the face loop `own` surrounds the region bounded by `region`:
+/// every sample of the region's boundary lies inside the loop or on it, and at
+/// least one lies strictly inside. A region the loop only crosses or touches
+/// keeps some boundary point strictly outside and is not owned: the face's
+/// area would otherwise swallow a region it does not surround. A boundary
+/// lying entirely on the loop is the loop itself, not a hole.
 ///
 /// A sample ON the loop says nothing: the loop is an inscribed polygon, so a
 /// point on the true curve (a side the region SHARES with the face, like a
@@ -474,10 +475,17 @@ pub(super) fn nest_surfaces(
 /// the polygon on the wrong one. The `on_tol` skip is what keeps such a shared
 /// side from deciding the subtraction.
 fn covers_region(own: &[Vec2], region: &[BoundaryEdge], on_tol: f64) -> bool {
-    let strictly_inside = |p: Vec2| point_polygon_dist(p, own) > on_tol && point_in_polygon(p, own);
-    region_samples(region, FACE_CHAIN_SAMPLES)
-        .into_iter()
-        .any(strictly_inside)
+    let mut strictly_inside = false;
+    for p in region_samples(region, FACE_CHAIN_SAMPLES) {
+        if point_polygon_dist(p, own) <= on_tol {
+            continue;
+        }
+        if !point_in_polygon(p, own) {
+            return false;
+        }
+        strictly_inside = true;
+    }
+    strictly_inside
 }
 
 /// Samples along a region's boundary, straight sides included. `loop_pts`

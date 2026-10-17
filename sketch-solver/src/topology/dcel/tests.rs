@@ -1090,6 +1090,71 @@ fn a_lone_island_still_subtracts_the_bore_it_covers() {
 }
 
 #[test]
+fn a_traced_face_subtracts_the_bore_it_owns() {
+    // An outer circle cut only in its ring and an inner circle cut only in its
+    // bore. The ring face is not a standalone island, but its boundary encloses
+    // the bore: the bore halves are its inner boundary, so they must be
+    // subtracted. The island-only rule skipped them and the oracle read the
+    // bore's cells as filled.
+    let geom = vec![
+        ("outer".into(), circle([0.0, 0.0], 2.0)),
+        ("inner".into(), circle([0.0, 0.0], 1.0)),
+        ("ring_cut".into(), line([-3.0, 1.8], [3.0, 1.8])),
+        ("bore_cut".into(), line([-1.5, 0.5], [1.5, 0.5])),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2, "the cap and the lower ring");
+    assert_eq!(t.hole_regions.len(), 2, "the two bore halves are holes");
+    let ring = t
+        .surfaces
+        .iter()
+        .find(|s| !s.holes.is_empty())
+        .expect("the ring face subtracts the two bore halves");
+    assert_eq!(ring.holes.len(), 2, "both bore halves");
+    let violations = crate::topology::oracle::check_input(&geom)
+        .iter()
+        .map(|v| v.render())
+        .collect::<Vec<_>>();
+    assert!(violations.is_empty(), "{violations:?}");
+}
+
+#[test]
+fn a_face_that_does_not_surround_a_hole_region_keeps_it_out() {
+    // The frontend's peanut-with-hole sketch (the extrude add-hole regression):
+    // two crossing circles, their chord line and a hole circle centred on one
+    // lobe. The crescent face's loop walks along the hole's own arc, but the
+    // crescent only TOUCHES the hole's pieces, it does not surround them: the
+    // pieces belong to the lens faces on the other side. A loop-based coverage
+    // test that read the region's samples as covered wired the hole pieces into
+    // the crescent, and the extrude's add-fuse lost the hole.
+    let geom = vec![
+        ("cL".into(), circle([-6.614378452301025, 7.5], 10.0)),
+        ("cR".into(), circle([6.614378452301025, 7.5], 10.0)),
+        ("ln".into(), line([0.0, 0.0], [0.0, 15.0])),
+        (
+            "cHole".into(),
+            circle([-6.614378452301025, 7.5], 5.703681945800781),
+        ),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 4, "the four material faces of the peanut");
+    assert_eq!(t.hole_regions.len(), 2, "the hole circle is cut in two");
+    for s in &t.surfaces {
+        assert!(
+            s.holes.is_empty(),
+            "no face surrounds the hole: {:?} carries {}",
+            s.face_entity_ids,
+            s.holes.len()
+        );
+    }
+    let violations = crate::topology::oracle::check_input(&geom)
+        .iter()
+        .map(|v| v.render())
+        .collect::<Vec<_>>();
+    assert!(violations.is_empty(), "{violations:?}");
+}
+
+#[test]
 fn a_washer_sliced_by_a_diameter_line_keeps_its_two_rings() {
     // Two concentric circles cut by a diameter line: the ring halves are the
     // areas and the bore halves the holes. The bore halves' boundary points are

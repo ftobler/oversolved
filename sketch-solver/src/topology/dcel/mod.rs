@@ -531,7 +531,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     faces.extend(build_standalone_surfaces(&cls.circles, &splits));
     faces.extend(build_standalone_ellipses(&cls.ellipses, &splits));
     faces.extend(build_standalone_splines(&cls.splines, &splits, &mut verts));
-    let (mut surfaces, hole_shells, island_loops) = split_hole_faces(
+    let (mut surfaces, hole_shells) = split_hole_faces(
         faces,
         &he_eid,
         &cls.circles,
@@ -543,7 +543,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         .iter()
         .flat_map(|s| s.regions.iter().cloned())
         .collect();
-    surfaces = nest_surfaces(surfaces, &hole_shells, &island_loops);
+    surfaces = nest_surfaces(surfaces, &hole_shells);
 
     let edges = build_edge_queries(&hes, &he_eid);
 

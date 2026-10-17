@@ -1,1 +1,1 @@
-coverage: coverage (hole region filled): 713 cells read as holes sit inside a face, first at (0.021580, -0.028918)
+coverage: coverage (lost area): 4933 cells read as bounded but sit in no face and 0 sit in more than one, first at (-0.007583, -0.048911) with 0

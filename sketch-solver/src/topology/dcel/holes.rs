@@ -196,15 +196,10 @@ fn near_polygon(p: Vec2, pts: &[Vec2]) -> bool {
     point_polygon_dist(p, pts) <= polygon_sagitta(pts, SPLINE_CHAIN_SAMPLES)
 }
 
-/// One closed carrier: its region test, its sample points, its own loop, and
-/// its nesting depth.
+/// One closed carrier: its region test, its sample points and its nesting
+/// depth.
 struct Chain {
     carrier: Carrier,
-    /// The shell's own loop, one wire: the nesting pass subtracts THIS from a
-    /// face that covers the shell, not the shell's traced pieces (pieces that
-    /// share an arc make touching hole wires, which a face builder cannot
-    /// take).
-    loop_edges: Vec<BoundaryEdge>,
     /// One plus the depth of the deepest chain that strictly contains this one
     /// (zero for a chain nothing contains). `region_state` reads it.
     depth: usize,
@@ -296,17 +291,16 @@ fn spline_loop(
     }])
 }
 
-/// The region test of one closed entity, with its own loop. `None` for the
-/// kinds that never close on their own (lines, arcs, open splines) and for a
-/// degenerate ellipse, which the standalone pass also refuses to build a face
-/// from.
+/// The region test of one closed entity. `None` for the kinds that never close
+/// on their own (lines, arcs, open splines) and for a degenerate ellipse, which
+/// the standalone pass also refuses to build a face from.
 fn chain_carrier(
     id: &str,
     e: &TopoEntity,
     splits: &HashMap<String, Vec<Split>>,
-) -> Option<(Carrier, Vec<BoundaryEdge>)> {
+) -> Option<Carrier> {
     let loop_edges = chain_loop(id, e, splits)?;
-    let carrier = match *e {
+    Some(match *e {
         TopoEntity::Circle { center, radius, .. } => Carrier::Circle {
             c: center,
             r: radius,
@@ -325,8 +319,7 @@ fn chain_carrier(
         },
         TopoEntity::Spline { .. } => Carrier::Polygon(loop_pts(&loop_edges, SPLINE_CHAIN_SAMPLES)),
         TopoEntity::Line { .. } | TopoEntity::Arc { .. } => return None,
-    };
-    Some((carrier, loop_edges))
+    })
 }
 
 /// The closed carriers of one classified sketch, with their nesting depths.
@@ -340,12 +333,11 @@ fn chains_of(
 ) -> Vec<Chain> {
     let mut chains: Vec<Chain> = Vec::new();
     for (id, e) in circles.iter().chain(ellipses).chain(splines) {
-        let Some((carrier, loop_edges)) = chain_carrier(id, e, splits) else {
+        let Some(carrier) = chain_carrier(id, e, splits) else {
             continue;
         };
         chains.push(Chain {
             carrier,
-            loop_edges,
             subdivided: subdivided_ids.contains(id.as_str()),
             depth: 0,
         });
@@ -460,15 +452,15 @@ fn carrier_area(carrier: &Carrier) -> f64 {
 /// One shell whose interior the rule refused to fill: the loop a covering face
 /// subtracts, plus the traced faces the refusal dropped.
 pub(super) struct HoleShell {
-    /// The traced pieces of its interior: the wires the islands subtract, and
-    /// the faces the oracle counts and checks.
+    /// The traced pieces of its interior: the wires the owning faces subtract,
+    /// and the faces the oracle counts and checks.
     pub regions: Vec<SurfaceOut>,
 }
 
 /// Split the traced faces into the ones the even/odd rule fills and the ones
 /// it reads as holes. A hole face is not emitted as a surface; it is returned
-/// grouped under the shell that owns it, so the nesting pass can subtract the
-/// shell from whatever material face covers its region, and so the oracle can
+/// grouped under the shell that owns it, so the nesting pass can subtract it
+/// from whatever material face surrounds its region, and so the oracle can
 /// count the pieces in the planar subdivision's Euler identity and check that
 /// their cells stay empty.
 pub(super) fn split_hole_faces(
@@ -478,7 +470,7 @@ pub(super) fn split_hole_faces(
     ellipses: &[(String, TopoEntity)],
     splines: &[(String, TopoEntity)],
     splits: &HashMap<String, Vec<Split>>,
-) -> (Vec<SurfaceOut>, Vec<HoleShell>, Vec<Vec<BoundaryEdge>>) {
+) -> (Vec<SurfaceOut>, Vec<HoleShell>) {
     let subdivided_ids: HashSet<&str> = he_eid.iter().map(|s| s.as_str()).collect();
     let chains = chains_of(circles, ellipses, splines, splits, &subdivided_ids);
     let mut material: Vec<SurfaceOut> = Vec::with_capacity(faces.len());
@@ -496,17 +488,7 @@ pub(super) fn split_hole_faces(
         }
     }
     shells.retain(|s| !s.regions.is_empty());
-    // The faces that may subtract a shell are the STANDALONE islands: an uncut
-    // chain's own loop, whose region is the whole disk. A traced face's region
-    // is a different component of the same subdivision, so it never holds a
-    // hole region's region; only a degenerate loop can look like it does, and
-    // subtracting there would cut a region the face never owned.
-    let island_loops: Vec<Vec<BoundaryEdge>> = chains
-        .iter()
-        .filter(|c| !c.subdivided)
-        .map(|c| c.loop_edges.clone())
-        .collect();
-    (material, shells, island_loops)
+    (material, shells)
 }
 
 #[cfg(test)]
@@ -551,7 +533,6 @@ mod tests {
     fn chain_at(depth: usize, r: f64) -> Chain {
         Chain {
             carrier: Carrier::Circle { c: [0.0, 0.0], r },
-            loop_edges: vec![],
             subdivided: true,
             depth,
         }
@@ -655,7 +636,6 @@ mod tests {
                 c: [1.0, 0.0],
                 r: 2.0,
             },
-            loop_edges: vec![],
             subdivided: true,
             depth: 0,
         };
@@ -672,7 +652,6 @@ mod tests {
                 c: [3.0, 0.0],
                 r: 1.0,
             },
-            loop_edges: vec![],
             subdivided: true,
             depth: 0,
         };
@@ -700,8 +679,7 @@ mod tests {
             .iter()
             .map(|(id, _): &(String, TopoEntity)| id.clone())
             .collect();
-        let (material, shells, _islands) =
-            split_hole_faces(faces, &cut, &circles, &[], &[], &splits);
+        let (material, shells) = split_hole_faces(faces, &cut, &circles, &[], &[], &splits);
         assert_eq!(material.len(), 2, "the two ring halves are material");
         let regions: usize = shells.iter().map(|s| s.regions.len()).sum();
         assert_eq!(regions, 2, "the two bore halves are holes");
@@ -720,8 +698,7 @@ mod tests {
             .iter()
             .map(|(id, _): &(String, TopoEntity)| id.clone())
             .collect();
-        let (material, shells, _islands) =
-            split_hole_faces(faces, &cut, &circles, &[], &[], &splits);
+        let (material, shells) = split_hole_faces(faces, &cut, &circles, &[], &[], &splits);
         assert_eq!(material.len(), 1);
         assert!(shells.is_empty());
     }
@@ -746,8 +723,7 @@ mod tests {
             .iter()
             .map(|(id, _): &(String, TopoEntity)| id.clone())
             .collect();
-        let (material, shells, _islands) =
-            split_hole_faces(faces, &cut, &circles, &[], &[], &splits);
+        let (material, shells) = split_hole_faces(faces, &cut, &circles, &[], &[], &splits);
         assert_eq!(material.len(), 2, "ring + boss");
         let regions: usize = shells.iter().map(|s| s.regions.len()).sum();
         assert_eq!(regions, 1, "the bore region is the hole");
