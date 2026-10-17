@@ -1184,9 +1184,12 @@ fn a_catalogue_entry_without_its_fixture_fails_the_check() {
 #[test]
 #[ignore]
 fn remint_fixtures() {
-    // Temporary tool: re-minimise the checked-in fixtures of the seeds whose
-    // class set still matches the catalogue but whose recorded text no longer
-    // reproduces (the minimised input, not the seed, stopped violating).
+    // Re-minimise the checked-in fixtures of the seeds whose class set still
+    // matches the catalogue but whose recorded text no longer reproduces: the
+    // minimised input, not the seed, stopped violating. The harvest only ever
+    // writes fixtures for NEW failures, so after a behaviour change it is this
+    // tool that refreshes a catalogue seed's stale fixture (set REMINT_SEEDS to
+    // a comma-separated seed list).
     let seeds: Vec<u32> = std::env::var("REMINT_SEEDS")
         .expect("REMINT_SEEDS")
         .split(',')
