@@ -402,10 +402,10 @@ const HOLE_COVER_SAMPLES: usize = 64;
 /// Samples per arc of a hole region's own boundary in the same test.
 const FACE_CHAIN_SAMPLES: usize = 16;
 
-/// Subtract the hole shells from the material faces that cover them, then fold
-/// nested loops into the sketch-area model via `subdivide_loops`: every
-/// surviving loop stays its own area, carrying the loops immediately nested
-/// inside it as holes.
+/// Subtract the hole regions from the standalone island faces that cover them,
+/// then fold nested loops into the sketch-area model via `subdivide_loops`:
+/// every surviving loop stays its own area, carrying the loops immediately
+/// nested inside it as holes.
 ///
 /// The subtraction runs for EVERY face count, one included: on a sliced washer
 /// no material face covers the bore (the ring halves never surround it), so it

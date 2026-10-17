@@ -29,12 +29,11 @@
 //! across it.
 //!
 //! Nested-hole wiring (`subdivide_loops` / `loop_containment`) is untouched:
-//! the standalone loops of an UNsliced sketch keep their "hole region is its
-//! own selectable area" model, so an unsliced washer is still two areas (ring
-//! plus bore). Only the faces of the connected arrangement (the traced cycles)
-//! are classified here, which is exactly where the old model and connected
-//! geometry disagreed. The cost of that split: slicing a washer changes how
-//! its bore is reported (from its own area to a non-fillable hole region).
+//! every surviving loop keeps its own area, carrying the loops nested inside it
+//! as holes. The standalone faces go through the fill rule here too, and the
+//! exemption above is what keeps an unsliced washer's bore its own island
+//! (its shell was never cut); slicing that washer changes how the bore is
+//! reported, from its own area to a non-fillable hole region.
 
 use std::collections::{HashMap, HashSet};
 

@@ -206,8 +206,8 @@ pub fn tangent_collapse_tol(r_min: f64) -> f64 {
 /// Deliberately NOT MERGE-sized: this is a closure question about one
 /// recomputed point, not an identity question between two curves. A
 /// MERGE-sized allowance would swallow real hairline features and would make
-/// the oracle's strict cell reads disagree wherever a face's boundary sits
-/// within MERGE of a shell without being on it.
+/// the oracle's cell reads disagree wherever a face's boundary sits within
+/// MERGE of a shell without being on it.
 pub const ON_CARRIER_RESOLUTIONS: f64 = 16.0;
 
 /// The allowance for a comparison whose largest coordinate is `magnitude`.
