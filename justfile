@@ -3,11 +3,15 @@
 # `just` command runner. Targets can be run with `just <target>`.
 #
 #   everyday   dev, build, static
-#   gates      default (python + frontend), python, frontend, rust-test,
-#              rust-lint, rust-fmt, licenses
+#   gates      default (python + frontend), python (mypy, ruff, lint-py,
+#              pytest), frontend (icons, frontend-lint, frontend-test,
+#              licenses, build), rust-test, rust-lint, rust-fmt
+#   ratchets   fuzz, ratchet-matrix, robustness-fuzz, sketch-fuzz
 #   assets     wasm, icons
-#   setup      install
+#   setup      install (install-npm, install-wasm, install-occ)
 #   cleanup    clean, deepclean
+#
+# A bare `just` runs the first recipe, `dev`, not `default`.
 
 # pipefail keeps a recipe's own exit code when it pipes into `tee`, which every
 # gate below does; without it the gate would report tee's success instead.
@@ -18,7 +22,7 @@ set shell := ["bash", "-cuo", "pipefail"]
 wasm_pack := justfile_directory() / "tmp" / "tools" / "bin" / "wasm-pack"
 
 
-# --- everyday ---
+# ─── everyday ───
 
 # The app is browser-only, so the Vite dev server IS the whole running app:
 # storage is IndexedDB, compute is WASM, nothing else needs to be running.
@@ -47,7 +51,7 @@ static:
     npx --yes serve -s frontend/dist
 
 
-# --- gates ---
+# ─── gates ───
 
 # Run every gate (Python + frontend).
 default:
@@ -76,12 +80,15 @@ mypy:
     mkdir -p tmp
     .venv/bin/python -m mypy tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py 2>&1 | tee tmp/mypy.log
 
-# local ruff gate; CI still runs flake8 (same E/F/W rule set) as the safety net
+# CI still runs flake8 (same E/F/W rule set) as the safety net.
+
+# Lint the Python tooling with ruff.
 ruff:
     mkdir -p tmp
     .venv/bin/python -m ruff check tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py 2>&1 | tee tmp/ruff.log
 
 # lint.py itself is not listed: it holds the rule fixtures and is not a folder.
+
 # Comment-style lint over the repo's Python (dashes, banners).
 lint-py:
     mkdir -p tmp
@@ -106,12 +113,14 @@ licenses:
     mkdir -p ../tmp
     npm run licenses:check 2>&1 | tee ../tmp/licenses_check.log
 
+# ESLint plus the comment-style lint over the frontend TypeScript.
 [working-directory: "frontend"]
 frontend-lint:
     mkdir -p ../tmp
     npm run lint 2>&1 | tee ../tmp/npm_lint.log
-    ../.venv/bin/python ../lint.py src scripts 2>&1 | tee ../tmp/lint_py.log
+    ../.venv/bin/python ../lint.py src scripts 2>&1 | tee ../tmp/lint_ts.log
 
+# Run the frontend unit tests (vitest, real kernel where provisioned).
 [working-directory: "frontend"]
 frontend-test:
     mkdir -p ../tmp
@@ -125,17 +134,22 @@ frontend-test:
 # widens both sides (fake and real) and settles every step before asserting its
 # document, idle and history-cap invariants. `just fuzz 500 60` for a bigger
 # sweep; a failing seed is printed by number and can be replayed alone.
+
+# Long seeded mutation and undo/redo fuzz (real kernel required).
 [working-directory: "frontend"]
 fuzz seeds="200" steps="40":
     mkdir -p ../tmp
     FUZZ_REQUIRE_REAL=1 FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts 2>&1 | tee ../tmp/fuzz.log
 
-# The full action-matrix sweep: every part command on every target of all 72
-# corpus documents, compared exactly against the committed baseline. The real
+# The full action-matrix sweep: every part command on every target of every
+# corpus document (the 70-spec regression baseline plus the doc-shaped
+# fixtures), compared exactly against the committed baseline. The real
 # kernel runs where provisioned (the fake scheduler otherwise; a command's
 # status cannot depend on the scheduler), and the run takes minutes, so it is a
 # main-gate, not a PR-gate, cost. The PR gate keeps the bounded smoke slices.
 # Regenerate the baseline with `npm run regen:action-matrix` from frontend/.
+
+# Full action-matrix sweep against the committed baseline.
 [working-directory: "frontend"]
 ratchet-matrix:
     mkdir -p ../tmp
@@ -155,17 +169,19 @@ ratchet-matrix:
 # suite runs a bounded 24-chain-seed range and its identity sweep derives a
 # quarter of this one (the default 200 is the plan's acceptance range; the
 # main gate runs 1500 and `just robustness-fuzz 5000` is the plan's full scale).
+
+# Geometry robustness fuzz: random feature chains against the real kernel.
 [working-directory: "frontend"]
 robustness-fuzz seeds="200" workers="2":
     mkdir -p ../tmp
     VITEST_MAX_FORKS=1 ROBUSTNESS_FUZZ_WORKERS={{workers}} ROBUSTNESS_FUZZ_SEEDS={{seeds}} npx vitest run src/testing/robustnessFuzz 2>&1 | tee ../tmp/robustness_fuzz.log
 
-# Test the Rust solver workspace (solver-core + sketch-solver + mate-solver)
+# Test the Rust solver workspace (solver-core + sketch-solver + mate-solver).
 rust-test:
     mkdir -p tmp
     cargo test --workspace 2>&1 | tee tmp/cargo_test.log
 
-# Lint the Rust solver workspace (clippy incl. tests, deny warnings)
+# Lint the Rust solver workspace (clippy incl. tests, deny warnings, comment lint).
 rust-lint:
     mkdir -p tmp
     cargo clippy --workspace --tests -- -D warnings 2>&1 | tee tmp/cargo_clippy.log
@@ -183,22 +199,25 @@ rust-fmt:
 # catalogue entry is printed for review; stability and order are
 # catalogue-only. The PR gate already runs seeds 0..300 inside `just rust-test`;
 # this is the harvesting sweep, so review what it writes before committing.
+
+# Harvesting area-builder fuzz over seeds <from>..<to> (writes fuzz_cases/).
 sketch-fuzz from to:
     mkdir -p tmp
     SKETCH_FUZZ_FROM={{from}} SKETCH_FUZZ_TO={{to}} SKETCH_FUZZ_WRITE=1 cargo test -p sketch-solver --lib topology::fuzz::tests::fuzz_range_from_env -- --ignored --nocapture 2>&1 | tee tmp/sketch_fuzz.log
 
 
-# --- assets ---
+# ─── assets ───
 
 # Build both Rust solvers to WASM (web target for frontend + nodejs target for
 # tests). Two crates, two binaries: the sketch/OCC worker and the anchor solver
 # worker each load only their own. See the workspace root Cargo.toml.
 
-# Build both Rust solvers to WASM and copy them into the frontend. The
-# sketch-solver nodejs target carries `--features fuzz`: sketchRepros.test.ts
+# The sketch-solver nodejs target carries `--features fuzz`: sketchRepros.test.ts
 # drives the fuzz-gated oracle export and must not skip in a provisioned tree.
 # The web target and the other three builds stay feature-free (the production
 # WASM binary never pays for the oracle).
+
+# Build both Rust solvers to WASM and copy them into the frontend.
 wasm:
     mkdir -p tmp
     { \
@@ -215,11 +234,12 @@ icons:
     .venv/bin/python oversolved/icons.py 2>&1 | tee tmp/icons.log
 
 
-# --- setup ---
+# ─── setup ───
+
+# The solver build is not optional for the gates: without pkg-node every
+# real-kernel suite skips silently.
 
 # Install all dependencies (Python + frontend + wasm tools + solver build + opencascade.js).
-# The solver build is not optional for the gates: without pkg-node every real-kernel
-# suite skips silently.
 install:
     mkdir -p tmp
     # note cairo needs apt libcairo2-dev
@@ -232,6 +252,7 @@ install:
         just install-occ; \
     } 2>&1 | tee tmp/just_install.log
 
+# Install the frontend npm dependencies.
 [working-directory: "frontend"]
 install-npm:
     mkdir -p ../tmp
@@ -246,15 +267,16 @@ install-wasm:
     mkdir -p tmp
     cargo install wasm-pack --version 0.15.0 --locked --root tmp/tools 2>&1 | tee tmp/cargo_install_wasm_pack.log
 
+# Install opencascade.js (--no-save) and provision it into public/occ.
 [working-directory: "frontend"]
 install-occ:
     mkdir -p ../tmp
     { npm run occ:install && npm run occ:provision; } 2>&1 | tee ../tmp/occ_install.log
 
 
-# --- cleanup ---
+# ─── cleanup ───
 
-# Remove build artifacts (keeps .venv and node_modules)
+# Remove build artifacts (keeps .venv and node_modules).
 clean:
     find . -type d \( -name __pycache__ -o -name .pytest_cache -o -name .mypy_cache -o -name .ruff_cache \) -exec rm -rf {} + 2>/dev/null; true
     find . -name '*.pyc' -delete
@@ -263,7 +285,7 @@ clean:
     rm -rf mate-solver/pkg mate-solver/pkg-node
     rm -rf frontend/dist frontend/public/wasm frontend/public/occ
 
-# Remove everything above plus venv and node_modules
+# Remove everything above plus venv and node_modules.
 deepclean:
     just clean
     rm -rf .venv
