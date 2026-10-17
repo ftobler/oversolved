@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, LoftFeatureDef, DraftFeatureDef, MoveFaceFeatureDef, ArrayFeatureDef, CircularArrayFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList } from './helpers'
 
 /** Append a feature, lazily initializing the features array. */
@@ -306,51 +306,180 @@ export function applyAddChamfer(
   pushFeature(doc, feature)
 }
 
-// fillet and chamfer both carry an identical `edges: string[]` list, so the
-// add/remove edge logic is shared across both kinds. `fn` keeps the original
-// caller name in the diagnostic so the warning still points at the public entry.
-function toggleEdge(doc: PartDoc, featureId: string, edgeQuery: string, kind: 'fillet' | 'chamfer', fn: string): void {
-  const sub = edgeSub(doc, featureId, kind, fn)
-  if (!sub) return
-  const idx = sub.edges.indexOf(edgeQuery)
-  if (idx >= 0) {
-    sub.edges.splice(idx, 1)
-  } else {
-    sub.edges.push(edgeQuery)
-  }
-}
-
-function removeEdgeAt(doc: PartDoc, featureId: string, index: number, kind: 'fillet' | 'chamfer', fn: string): void {
-  const sub = edgeSub(doc, featureId, kind, fn)
-  if (!sub) return
-  if (!removableIndex(sub.edges, index)) return
-  sub.edges.splice(index, 1)
-}
-
-/** The `edges: string[]` list fillet and chamfer share, or undefined with the
- *  usual warning when the id names a missing or other-kind feature. */
-function edgeSub(doc: PartDoc, featureId: string, kind: 'fillet' | 'chamfer', fn: string): { edges: string[] } | undefined {
+// fillet, chamfer and shell each carry a `string[]` pick list (edges or
+// faces), so the add/remove-toggle logic is shared across them by list key.
+// `fn` keeps the original caller name in the diagnostic so the warning still
+// points at the public entry point.
+function listSub(
+  doc: PartDoc,
+  featureId: string,
+  kind: string,
+  field: string,
+  fn: string,
+): string[] | undefined {
   const feature = findFeature(doc, featureId)
-  if (feature?.kind === 'fillet' && kind === 'fillet') return feature.fillet
-  if (feature?.kind === 'chamfer' && kind === 'chamfer') return feature.chamfer
-  warn(`${fn}: feature ${featureId} has no ${kind}`)
+  if (feature?.kind === kind) {
+    const sub = (feature as unknown as Record<string, Record<string, unknown> | undefined>)[kind]
+    const list = sub?.[field]
+    if (Array.isArray(list)) return list as string[]
+  }
+  warn(`${fn}: feature ${featureId} has no ${kind}.${field}`)
   return undefined
 }
 
+function toggleListValue(doc: PartDoc, featureId: string, kind: string, field: string, value: string, fn: string): void {
+  const list = listSub(doc, featureId, kind, field, fn)
+  if (!list) return
+  const idx = list.indexOf(value)
+  if (idx >= 0) list.splice(idx, 1)
+  else list.push(value)
+}
+
+function removeListAt(doc: PartDoc, featureId: string, kind: string, field: string, index: number, fn: string): void {
+  const list = listSub(doc, featureId, kind, field, fn)
+  if (!list) return
+  if (!removableIndex(list, index)) return
+  list.splice(index, 1)
+}
+
 export function applyAddFilletEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
-  toggleEdge(doc, featureId, edgeQuery, 'fillet', 'applyAddFilletEdge')
+  toggleListValue(doc, featureId, 'fillet', 'edges', edgeQuery, 'applyAddFilletEdge')
 }
 
 export function applyRemoveFilletEdge(doc: PartDoc, featureId: string, index: number): void {
-  removeEdgeAt(doc, featureId, index, 'fillet', 'applyRemoveFilletEdge')
+  removeListAt(doc, featureId, 'fillet', 'edges', index, 'applyRemoveFilletEdge')
 }
 
 export function applyAddChamferEdge(doc: PartDoc, featureId: string, edgeQuery: string): void {
-  toggleEdge(doc, featureId, edgeQuery, 'chamfer', 'applyAddChamferEdge')
+  toggleListValue(doc, featureId, 'chamfer', 'edges', edgeQuery, 'applyAddChamferEdge')
 }
 
 export function applyRemoveChamferEdge(doc: PartDoc, featureId: string, index: number): void {
-  removeEdgeAt(doc, featureId, index, 'chamfer', 'applyRemoveChamferEdge')
+  removeListAt(doc, featureId, 'chamfer', 'edges', index, 'applyRemoveChamferEdge')
+}
+
+// ─── Shell ───
+
+export function applyAddShell(doc: PartDoc, featureId: string, label?: string): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'shell',
+    label: label ?? 'Shell',
+    shell: { faces: [], thickness: 1, direction: 'inward' },
+  })
+}
+
+export function applySetShellField(doc: PartDoc, featureId: string, field: keyof ShellFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'shell', feature?.kind === 'shell' ? feature.shell : undefined, field, value, 'applySetShellField')
+}
+
+export function applyAddShellFace(doc: PartDoc, featureId: string, faceQuery: string): void {
+  toggleListValue(doc, featureId, 'shell', 'faces', faceQuery, 'applyAddShellFace')
+}
+
+export function applyRemoveShellFace(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'shell', 'faces', index, 'applyRemoveShellFace')
+}
+
+// ─── Loft ───
+
+export function applyAddLoft(doc: PartDoc, featureId: string, label?: string): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'loft',
+    label: label ?? 'Loft',
+    loft: { profiles: [], ruled: false, operation: 'new' },
+  })
+}
+
+export function applySetLoftField(doc: PartDoc, featureId: string, field: keyof LoftFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'loft', feature?.kind === 'loft' ? feature.loft : undefined, field, value, 'applySetLoftField')
+}
+
+export function applyAddLoftProfile(doc: PartDoc, featureId: string, sketchQuery: string): void {
+  toggleListValue(doc, featureId, 'loft', 'profiles', sketchQuery, 'applyAddLoftProfile')
+}
+
+export function applyRemoveLoftProfile(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'loft', 'profiles', index, 'applyRemoveLoftProfile')
+}
+
+// ─── Draft ───
+
+export function applyAddDraft(doc: PartDoc, featureId: string, label?: string): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'draft',
+    label: label ?? 'Draft',
+    draft: { faces: [], angle: 3, neutral: '' },
+  })
+}
+
+export function applySetDraftField(doc: PartDoc, featureId: string, field: keyof DraftFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'draft', feature?.kind === 'draft' ? feature.draft : undefined, field, value, 'applySetDraftField')
+}
+
+export function applyAddDraftFace(doc: PartDoc, featureId: string, faceQuery: string): void {
+  toggleListValue(doc, featureId, 'draft', 'faces', faceQuery, 'applyAddDraftFace')
+}
+
+export function applyRemoveDraftFace(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'draft', 'faces', index, 'applyRemoveDraftFace')
+}
+
+// ─── Move face ───
+
+export function applyAddMoveFace(doc: PartDoc, featureId: string, label?: string): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'move_face',
+    label: label ?? 'Move Face',
+    move_face: { faces: [], distance: 5 },
+  })
+}
+
+export function applySetMoveFaceField(doc: PartDoc, featureId: string, field: keyof MoveFaceFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'move_face', feature?.kind === 'move_face' ? feature.move_face : undefined, field, value, 'applySetMoveFaceField')
+}
+
+export function applyAddMoveFaceRef(doc: PartDoc, featureId: string, faceQuery: string): void {
+  toggleListValue(doc, featureId, 'move_face', 'faces', faceQuery, 'applyAddMoveFaceRef')
+}
+
+export function applyRemoveMoveFaceRef(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'move_face', 'faces', index, 'applyRemoveMoveFaceRef')
+}
+
+// ─── Delete Face ───
+
+// `faces` seeds from the selection, as `add_delete_body` takes `bodies`: the
+// Delete key folds a whole face selection into one feature.
+export function applyAddDeleteFace(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  faces: string[] = [],
+): void {
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'delete_face',
+    label: label ?? 'Delete Face',
+    delete_face: { faces: [...faces] },
+  })
+}
+
+// Picking is a toggle, like the shell's face list: re-picking a listed face
+// drops it again.
+export function applyAddDeleteFaceRef(doc: PartDoc, featureId: string, faceQuery: string): void {
+  toggleListValue(doc, featureId, 'delete_face', 'faces', faceQuery, 'applyAddDeleteFaceRef')
+}
+
+export function applyRemoveDeleteFaceRef(doc: PartDoc, featureId: string, index: number): void {
+  removeListAt(doc, featureId, 'delete_face', 'faces', index, 'applyRemoveDeleteFaceRef')
 }
 
 // ─── Boolean ───
@@ -645,4 +774,37 @@ export function applySetVariableField(
 ): void {
   const feature = findFeature(doc, featureId)
   setSubFeatureField(featureId, 'variable', feature?.kind === 'variable' ? feature.variable : undefined, field, value, 'applySetVariableField')
+}
+
+// ─── Helix ───
+
+export function applyAddHelix(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  reference?: string,
+): void {
+  // Every field is seeded with its default so a mode switch never blanks one;
+  // `reference` rides in when the caller created the helix from a pick.
+  const helix: HelixFeatureDef = {
+    radius_mode: 'derived',
+    mode: 'pitch_turns',
+    pitch: 1,
+    turns: 5,
+    height: 5,
+    helix_angle: 5,
+    offset: 0,
+    start_angle: 0,
+    hand: 'right',
+    direction: 'normal',
+  }
+  if (reference) helix.reference = reference
+  pushFeature(doc, { id: featureId, kind: 'helix', label: label ?? 'Helix', helix })
+}
+
+export function applySetHelixField(
+  doc: PartDoc, featureId: string, field: keyof HelixFeatureDef, value: unknown,
+): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'helix', feature?.kind === 'helix' ? feature.helix : undefined, field, value, 'applySetHelixField')
 }

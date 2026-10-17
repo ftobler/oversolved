@@ -184,7 +184,7 @@ plain, JSON-safe snapshot of the scene, readable without a devtools connection:
 
 ```
 User interaction → Tool logic → Mutation object → onMutation
-  → Part.tsx → YAML AST updated → WASM kernel re-solve
+  → Part.tsx → document updated → WASM kernel re-solve
   → Geometry returned → Store updated → Scene re-rendered
 ```
 

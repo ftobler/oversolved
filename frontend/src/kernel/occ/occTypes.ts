@@ -83,10 +83,30 @@ export interface OccListOfShape extends OccDisposable {
  */
 export interface OccPipeShellBuilder extends OccPrismBuilder {
   SetTransitionMode(mode: OccEnumValue): void
+  // The pipe-shell trihedron modes. BRepOffsetAPI_MakePipeShell declares four
+  // SetMode overloads in this build (SpineSupport, gp_Ax2, gp_Dir, Frenet
+  // boolean); the gp_Dir one is the binormal mode a constant-axis helix sweep
+  // wants, pinning the profile's orientation to a fixed direction instead of
+  // the CorrectedFrenet frame. The overload suffix is pinned by
+  // helixEdgeProbeReal.test.ts.
+  SetMode_3(dir: OccDisposable): void
   Add_1(profile: OccShape, withContact: boolean, withCorrection: boolean): void
   Build(): void
   IsDone(): boolean
   MakeSolid(): boolean
+}
+
+/**
+ * The minimal history surface a name-transfer pass reads off any modifier: the
+ * builder-style narration of what became of an input sub-shape. BRepFilletAPI,
+ * BRepOffsetAPI_MakeThickSolid and BRepOffsetAPI_MakeOffsetShape (a
+ * BRepBuilderAPI_MakeShape subclass) all expose it, so identity transfer is one
+ * implementation over this shape rather than one per maker.
+ */
+export interface OccModifierHistory extends OccDisposable {
+  IsDeleted(shape: OccShape): boolean
+  Modified(shape: OccShape): OccListOfShape
+  Generated(shape: OccShape): OccListOfShape
 }
 
 /**
@@ -99,15 +119,145 @@ export interface OccPipeShellBuilder extends OccPrismBuilder {
  * 2026-09-15, which compiled fine and threw `BindingError: called with 3
  * arguments, expected 4` on every call.
  */
-export interface OccEdgeModifierMaker extends OccDisposable {
+export interface OccEdgeModifierMaker extends OccModifierHistory {
   Add_2(value: number, edge: OccShape): void
   AddDA(distance: number, angle: number, edge: OccShape, face: OccShape): void
   Build(): void
   IsDone(): boolean
   Shape(): OccShape
-  IsDeleted(shape: OccShape): boolean
-  Modified(shape: OccShape): OccListOfShape
-  Generated(shape: OccShape): OccListOfShape
+}
+
+/**
+ * BRepOffsetAPI_MakeThickSolid: hollow a solid to a wall thickness with zero or
+ * more closing (removed) faces. `MakeThickSolidByJoin` is the OCCT 7.4.0p1 9-arg
+ * form (shape, closingFaces, offset, tol, mode, intersection, selfInter, join,
+ * removeIntEdges); embind binds every argument, so the shorter defaults of some
+ * OCCT wrappers are not available here. History: a kept face `Generated()` its
+ * offset wall, a removed face `Modified()` into its rim.
+ */
+export interface OccThickSolidMaker extends OccModifierHistory {
+  MakeThickSolidByJoin(
+    shape: OccShape,
+    closingFaces: OccListOfShape,
+    offset: number,
+    tol: number,
+    mode: OccEnumValue,
+    intersection: boolean,
+    selfInter: boolean,
+    join: OccEnumValue,
+    removeIntEdges: boolean,
+  ): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+}
+
+/**
+ * BRepOffsetAPI_MakeOffsetShape: the 3D offset/clearance maker and the shell
+ * fallback (a BRepBuilderAPI_MakeShape subclass, so it shares the builder
+ * history surface). `PerformByJoin` is the OCCT 7.4.0p1 8-arg form (shape, offset,
+ * tol, mode, intersection, selfInter, join, thickening); there is no
+ * `Message_ProgressRange` overload in this build. History is `Generated` (NOT
+ * `Modified`): for every source face exactly one grown face comes back, which
+ * `IsSame`s a face of the result. `Shape()` is untracked for our purposes (the
+ * caller owns it/registers it).
+ */
+export interface OccOffsetShapeMaker extends OccModifierHistory {
+  PerformByJoin(
+    shape: OccShape,
+    offset: number,
+    tol: number,
+    mode: OccEnumValue,
+    intersection: boolean,
+    selfInter: boolean,
+    join: OccEnumValue,
+    removeIntEdges: boolean,
+  ): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+}
+
+/**
+ * BRepOffsetAPI_ThruSections: loft a solid through a sequence of section wires.
+ * The build binds exactly one constructor, taking all three arguments
+ * (isSolid, ruled, pres3d), and `AddWire` WITHOUT the isClosing flag: a call
+ * with two arguments is a BindingError, exactly like the thick-solid maker's
+ * short form (pinned by thruSectionsProbeReal.test.ts).
+ *
+ * History (a BRepBuilderAPI_MakeShape subclass): `Generated(edge)` returns the
+ * image of that edge in EVERY band it belongs to -- both the band below and the
+ * band above a middle section, so a band is reachable from either of its two
+ * sections and a name must be minted from the LOWEST section that reaches it.
+ * `FirstShape()`/`LastShape()` each hold the cap face of the first/last added
+ * wire, in add order, never the world axis. `Modified`/`IsDeleted` report
+ * nothing useful for a wire input.
+ */
+export interface OccThruSectionsMaker extends OccModifierHistory {
+  AddWire(wire: OccShape): void
+  CheckCompatibility(check: boolean): void
+  SetSmoothing(use: boolean): void
+  SetMaxDegree(degree: number): void
+  SetContinuity(continuity: OccEnumValue): void
+  SetParType(parType: OccEnumValue): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+  FirstShape(): OccShape
+  LastShape(): OccShape
+}
+
+/**
+ * BRepOffsetAPI_DraftAngle: tilt picked faces about their intersection with a
+ * neutral plane. `Init(shape)` seeds the maker; `Add(face, direction, angle,
+ * neutralPlane, flag)` adds one drafted face in RADIANS and reports NOTHING (the
+ * `_1` ctor and the 5-argument Add are the bound forms; pinned by
+ * draftAngleProbeReal.test.ts). `AddDone()` is the per-pick verdict: it answers
+ * true when every pick so far is usable and false when the maker recorded the
+ * last one as its bad shape, without throwing; it must be called before
+ * `Build()`. Once a bad shape is recorded, every later `Add` and `Build` throws.
+ *
+ * History: a DRAFTED face is `Generated()` into its new tilted face (its old
+ * self is gone), a face whose geometry the draft changed because it borders a
+ * drafted face is `Modified()` into its new image, and an untouched face is
+ * `IsSame` in the output. `gp_Dir` and `gp_Pln` are passed as the opaque
+ * shapes this build wraps them in.
+ */
+export interface OccDraftAngleMaker extends OccModifierHistory {
+  Init(shape: OccShape): void
+  // direction is a gp_Dir proxy and neutralPlane a gp_Pln one. They are typed on
+  // the opaque OccDisposable rather than OccShape because they are NOT shapes:
+  // OccShape doubles as the argument alias for such proxies, but reading them as
+  // shapes would be a lie the type system should not tell.
+  Add(face: OccShape, direction: OccDisposable, angle: number, neutralPlane: OccDisposable, flag: boolean): void
+  AddDone(): boolean
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+}
+
+/**
+ * BRepAlgoAPI_Defeaturing: remove faces and heal the gap by extending the
+ * neighbours' surfaces. It is a BRepAlgoAPI_BuilderAlgo, so it shares the
+ * boolean-style history surface (IsDeleted / Modified / Generated, present only
+ * after `SetToFillHistory(true)`) without the boolean argument/tool calls.
+ *
+ * Bound methods pinned against opencascade.js 1.1.1 (OCCT 7.4.0p1) by
+ * defeatureReal.test.ts: `SetShape`, `AddFaceToRemove`, `AddFacesToRemove`,
+ * `SetToFillHistory`, `Build`, `IsDone`, `Shape`, `IsDeleted`, `Modified`,
+ * `Generated`. The BOPAlgo_Options side (`HasErrors` / warnings) is NOT bound,
+ * so the "feature could not be removed" warning OCCT prints is invisible here;
+ * `IsDeleted(face) == false` on a requested face is the only failure signal
+ * (a silent no-op otherwise reads as a valid result).
+ */
+export interface OccDefeaturingMaker extends OccModifierHistory {
+  SetShape(shape: OccShape): void
+  AddFaceToRemove(face: OccShape): void
+  AddFacesToRemove(faces: OccListOfShape): void
+  SetToFillHistory(fill: boolean): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
 }
 
 /**
@@ -137,10 +287,49 @@ export interface OccBooleanOp extends OccDisposable {
   Shape(): OccShape
 }
 
-/** BRep_Builder: the low-level builder used to assemble a TopoDS_Compound. */
+/** BRepAlgoAPI_Splitter: split an argument shape by tool shapes (faces or
+ *  solids). A plain BRepAlgoAPI_BuilderAlgo, so it has no history surface --
+ *  declared on its own rather than as an OccBooleanOp. */
+export interface OccSplitter extends OccDisposable {
+  SetArguments(args: OccListOfShape): void
+  SetTools(tools: OccListOfShape): void
+  Build(): void
+  IsDone(): boolean
+  Shape(): OccShape
+}
+
+/** One BRepOffset_Interval: the edge-convexity the analyse classified. */
+export interface OccOffsetInterval extends OccDisposable {
+  Type_2(): OccEnumValue
+}
+
+/** BRepOffset_ListOfInterval: the intervals an edge belongs to (empty for an
+ *  edge the analyse did not see). First_1() reads the first; there is no
+ *  iterator binding in this build. */
+export interface OccOffsetIntervalList extends OccDisposable {
+  Size(): number
+  First_1(): OccOffsetInterval
+}
+
+/** BRepOffset_Analyse: classify a solid's edges Convex / Concave / Tangent
+ *  against an angular tolerance. `Type(edge)` yields the intervals of one edge. */
+export interface OccOffsetAnalyse extends OccDisposable {
+  Type(edge: OccShape): OccOffsetIntervalList
+}
+
+/** BRepClass_FaceClassifier: classify a point against a face (IN / ON / OUT).
+ *  Constructed empty, then Perform_2 run per point. */
+export interface OccFaceClassifier extends OccDisposable {
+  Perform_2(face: OccShape, pnt: OccPnt, tol: number): void
+  State(): OccEnumValue
+}
+
+/** BRep_Builder: the low-level builder used to assemble a TopoDS_Compound, and
+ *  to promote a TopoDS_Shell into a TopoDS_Solid for the offset normalisation. */
 export interface OccBRepBuilder extends OccDisposable {
   MakeCompound(compound: OccShape): void
-  Add(compound: OccShape, shape: OccShape): void
+  MakeSolid(solid: OccShape): void
+  Add(parent: OccShape, shape: OccShape): void
 }
 
 /** ShapeUpgrade_UnifySameDomain: cadquery Shape.clean() with exposed history. */
@@ -238,11 +427,14 @@ export interface OccAnalyticCylinder extends OccDisposable {
   Radius(): number
 }
 
-/** gp_Cone read accessors (BRepAdaptor_Surface.Cone()). */
+/** gp_Cone read accessors (BRepAdaptor_Surface.Cone()). `SemiAngle` is the half
+ *  angle from the axis: the move-face extender needs it to stop the extended
+ *  face at the apex (only one nappe may split the slab). */
 export interface OccAnalyticCone extends OccDisposable {
   Axis(): OccAxisDir
   Position(): OccAx3
   RefRadius(): number
+  SemiAngle(): number
 }
 
 /** gp_Sphere read accessors (BRepAdaptor_Surface.Sphere()). */
@@ -405,6 +597,10 @@ export type OccShapeEnumValue = object
  */
 export interface OccBaseModule {
   gp_Pnt_3: new (x: number, y: number, z: number) => OccPnt
+  // gp_Pln(origin, normal): the draft's neutral plane. The `_3` overload is the
+  // one that takes the point-and-direction pair in this build (verified by
+  // draftAngleProbeReal.test.ts, which drafts a box through it).
+  gp_Pln_3: new (origin: OccPnt, normal: OccXYZ) => OccPln
   gp_Vec_4: new (x: number, y: number, z: number) => OccVec
   BRepBuilderAPI_MakePolygon_1: new () => OccPolygonBuilder
   BRepBuilderAPI_MakeFace_15: new (wire: OccShape, onlyPlane: boolean) => OccFaceBuilder
@@ -454,6 +650,7 @@ export interface OccModule extends OccBaseModule {
     TopAbs_EDGE: OccShapeEnumValue
     TopAbs_VERTEX: OccShapeEnumValue
     TopAbs_SOLID: OccShapeEnumValue
+    TopAbs_SHELL: OccShapeEnumValue
     TopAbs_WIRE: OccShapeEnumValue
     TopAbs_SHAPE: OccShapeEnumValue
   }
@@ -464,6 +661,8 @@ export interface OccModule extends OccBaseModule {
     Solid_1(shape: OccShape): OccShape
     Wire_1(shape: OccShape): OccShape
   }
+  // A default-constructed TopoDS_Solid, filled by BRep_Builder.MakeSolid + Add.
+  TopoDS_Solid: new () => OccShape
   BRepAdaptor_Curve_2: new (edge: OccShape) => OccCurveAdaptor
   GeomAbs_CurveType: {
     GeomAbs_Line: OccEnumValue
@@ -507,6 +706,14 @@ export interface OccModule extends OccBaseModule {
   // BRepPrimAPI_MakeBox(corner, dx, dy, dz): an axis-aligned box at a corner.
   BRepPrimAPI_MakeBox_2: new (corner: OccPnt, dx: number, dy: number, dz: number) => OccPrismBuilder
   BRepPrimAPI_MakeCylinder_3: new (axis: OccDisposable, radius: number, height: number) => OccCylinderBuilder
+  // BRepPrimAPI_MakeCone(ax2, r1, r2, height): a cone/frustum (r1 at the axis
+  // origin, r2 at the far end; r2 = 0 makes a full cone).
+  BRepPrimAPI_MakeCone_3: new (
+    axis: OccDisposable,
+    r1: number,
+    r2: number,
+    height: number,
+  ) => OccPrismBuilder
   ShapeFix_Face_2: new (face: OccShape) => OccShapeFixFace
   ShapeFix_Wire_1: new () => OccShapeFixWire
 
@@ -582,6 +789,21 @@ export interface OccModule extends OccBaseModule {
     concatBSplines: boolean,
   ) => OccUnify
 
+  // ─── 3D offset / clearance (offsetShape.ts) ───
+  // BRepOffsetAPI_MakeOffsetShape: the plain (suffix-free) maker is the one
+  // bound; PerformByJoin's offset-mode and join-type args come from the two enums.
+  BRepOffsetAPI_MakeOffsetShape_1: new () => OccOffsetShapeMaker
+  BRepOffset_Mode: {
+    BRepOffset_Skin: OccEnumValue
+    BRepOffset_Pipe: OccEnumValue
+    BRepOffset_RectoVerso: OccEnumValue
+  }
+  GeomAbs_JoinType: {
+    GeomAbs_Arc: OccEnumValue
+    GeomAbs_Tangent: OccEnumValue
+    GeomAbs_Intersection: OccEnumValue
+  }
+
   // ─── canonical surface recognition (canonicalSurfaces.ts) ───
   gp_Pnt_1: new () => OccXYZ
   gp_Vec_1: new () => OccXYZ
@@ -636,6 +858,41 @@ export interface OccModule extends OccBaseModule {
     BRepBuilderAPI_RoundCorner: OccEnumValue
   }
 
+  // ─── helix: an edge in a cylinder surface's parameter space ───
+  // BRepBuilderAPI_MakeEdge(Handle(Geom2d_Curve), Handle(Geom_Surface), p1, p2):
+  // the parametric-space overload (_31 by declaration order, pinned by the
+  // probe). Geom2d_Line in (u, v) space where u is angle and v is axial, then
+  // BuildCurves3d lifts it to a 3D BSpline edge on the cylinder.
+  Geom_CylindricalSurface_1: new (frame: OccDisposable, radius: number) => OccDisposable
+  Geom2d_Line_3: new (pnt: OccDisposable, dir: OccDisposable) => OccDisposable
+  gp_Pnt2d_3: new (x: number, y: number) => OccDisposable
+  gp_Dir2d_4: new (x: number, y: number) => OccDisposable
+  Handle_Geom2d_Curve_2: new (curve: OccDisposable) => OccDisposable
+  Handle_Geom_Surface_2: new (surface: OccDisposable) => OccDisposable
+  BRepBuilderAPI_MakeEdge_31: new (
+    curve: OccDisposable,
+    surface: OccDisposable,
+    p1: number,
+    p2: number,
+  ) => OccEdgeBuilder
+  // BRepLib::BuildCurves3d(shape, tolerance, continuity, maxDegree, maxSegment):
+  // approximates the parametrically-built edge into its 3D form. The 5-arg
+  // overload is _1 in this build (the shape-only form is _2), pinned by
+  // helixEdgeProbeReal.test.ts.
+  BRepLib: {
+    BuildCurves3d_1(
+      shape: OccShape,
+      tolerance: number,
+      continuity: OccEnumValue,
+      maxDegree: number,
+      maxSegment: number,
+    ): void
+  }
+  GeomAbs_Shape: {
+    GeomAbs_C0: OccEnumValue
+    GeomAbs_C1: OccEnumValue
+  }
+
   // ─── fillet / chamfer leaf ───
   // BRepFilletAPI_MakeFillet(shape, ChFi3d_Rational): the 2-arg form.
   BRepFilletAPI_MakeFillet: new (shape: OccShape, fshape: OccEnumValue) => OccEdgeModifierMaker
@@ -644,6 +901,83 @@ export interface OccModule extends OccBaseModule {
   ChFi3d_FilletShape: {
     ChFi3d_Rational: OccEnumValue
   }
+
+  // ─── shell leaf ───
+  // BRepOffsetAPI_MakeThickSolid: the shell's open-face maker. The `_1` ctor is
+  // the default form the shipped build binds (verified against opencascade.js
+  // 1.1.1, OCCT 7.4.0p1). It shares BRepOffsetAPI_MakeOffsetShape (declared with
+  // the clearance block above) and the two join enums.
+  BRepOffsetAPI_MakeThickSolid_1: new () => OccThickSolidMaker
+
+  // ─── loft leaf ───
+  // BRepOffsetAPI_ThruSections: loft a solid through a sequence of section
+  // wires. Only ONE constructor overload is bound in this build (no `_1`
+  // suffix) and it takes all three arguments: isSolid, ruled, pres3d. AddWire
+  // is bound WITHOUT the isClosing flag. Pinned by
+  // occ/__tests__/thruSectionsProbeReal.test.ts.
+  BRepOffsetAPI_ThruSections: new (isSolid: boolean, ruled: boolean, pres3d: number) => OccThruSectionsMaker
+
+  // ─── draft leaf ───
+  // BRepOffsetAPI_DraftAngle: tilt picked faces about their intersection with a
+  // neutral plane. `_1` is the default ctor and `_2` the Init-in-ctor form; the
+  // leaf uses `_1` + Init, pinning the bound 5-argument Add.
+  BRepOffsetAPI_DraftAngle_1: new () => OccDraftAngleMaker
+  BRepOffsetAPI_DraftAngle_2: new (shape: OccShape) => OccDraftAngleMaker
+
+  // ─── move-face leaf ───
+  // Split a slab by extended neighbour faces, then fuse/cut the cells under the
+  // picked face. Bindings pinned by occ/__tests__/moveFaceReal.test.ts.
+  BRepAlgoAPI_Splitter_1: new () => OccSplitter
+  // BRepOffset_Analyse(shape, angleTol): edge convexity classification.
+  BRepOffset_Analyse_2: new (shape: OccShape, angle: number) => OccOffsetAnalyse
+  BRepOffset_Type: {
+    BRepOffset_Convex: OccEnumValue
+    BRepOffset_Concave: OccEnumValue
+    BRepOffset_Tangent: OccEnumValue
+    BRepOffset_FreeBoundary: OccEnumValue
+    BRepOffset_Other: OccEnumValue
+  }
+  // BRepClass_FaceClassifier(): empty ctor + Perform_2(face, pnt, tol).
+  BRepClass_FaceClassifier_1: new () => OccFaceClassifier
+  // BRepClass3d_SolidClassifier(solid, pnt, tol): classify a point against a
+  // solid; the cavity fold uses it to find which solid encloses a void.
+  BRepClass3d_SolidClassifier_3: new (solid: OccShape, pnt: OccXYZ, tol: number) => OccDisposable & { State(): OccEnumValue }
+  TopAbs_State: {
+    TopAbs_IN: OccEnumValue
+    TopAbs_OUT: OccEnumValue
+    TopAbs_ON: OccEnumValue
+    TopAbs_UNKNOWN: OccEnumValue
+  }
+  // BRepBuilderAPI_MakeFace on an analytic surface with a parameter window:
+  // _9 plane, _10 cylinder, _11 cone. The v range is the surface's own (a
+  // cylinder's is axial, a cone's is slant-length).
+  BRepBuilderAPI_MakeFace_9: new (
+    pln: OccDisposable,
+    umin: number,
+    umax: number,
+    vmin: number,
+    vmax: number,
+  ) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_10: new (
+    cyl: OccDisposable,
+    umin: number,
+    umax: number,
+    vmin: number,
+    vmax: number,
+  ) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_11: new (
+    cone: OccDisposable,
+    umin: number,
+    umax: number,
+    vmin: number,
+    vmax: number,
+  ) => OccFaceBuilder
+
+  // ─── delete-face leaf ───
+  // BRepAlgoAPI_Defeaturing: remove picked faces, extend the neighbour surfaces
+  // and re-intersect. The plain (suffix-free) ctor is what the shipped build
+  // binds, pinned by defeatureReal.test.ts.
+  BRepAlgoAPI_Defeaturing: new () => OccDefeaturingMaker
 
   // ─── transform / mirror / array group ───
   gp_Trsf_1: new () => OccTrsf

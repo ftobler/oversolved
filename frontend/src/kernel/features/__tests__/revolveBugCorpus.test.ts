@@ -5,8 +5,8 @@
 // The user picked a vertical Z-direction body edge (the extrusion corner
 // inherited from sketch lines kbNgbTt + uYfJ14s) as the revolve axis, but the
 // revolved solid came out "squished", suggesting the resolver picked a
-// horizontal edge instead. This test rebuilds the bug-report AST verbatim and
-// asserts the revolve axis is the front-back (Z) direction through the
+// horizontal edge instead. This test rebuilds the bug-report document verbatim
+// and asserts the revolve axis is the front-back (Z) direction through the
 // editing-handle tangent (perpendicular to the axis), so a horizontal wrong
 // axis would fail the assertion.
 //
@@ -27,7 +27,7 @@ import { makeAncestryQuery, constructionUuidToken } from '../../query'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-// Identifiers preserved verbatim from the bug-report AST so the registered
+// Identifiers preserved verbatim from the bug-report document so the registered
 // ancestry tokens (sketchId/lineId pairs) line up exactly.
 const SK = 'h30Adw3veKrNb3y8Rmj7417V'
 const EX = 'cYbsX_9sPH41HMpA3J8DW26F'

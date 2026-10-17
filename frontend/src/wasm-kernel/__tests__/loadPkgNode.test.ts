@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { loadExportOrNull } from '../loadPkgNode'
+import { loadExportOrNull, missingExportIsAnError } from '../loadPkgNode'
 
 const PKG_PATH = '/repo/sketch-solver/pkg-node/sketch_solver.js'
 
@@ -36,5 +36,16 @@ describe('loadExportOrNull error handling', () => {
 
   it('returns null for a missing named export instead of an uncast undefined', () => {
     expect(loadExportOrNull('nope', PKG_PATH, () => ({}))).toBeNull()
+  })
+})
+
+describe('missingExportIsAnError', () => {
+  it('treats a missing export as an error only when the package exists', () => {
+    // Absent package: a fresh checkout, skip. Present package without the
+    // required export (sketchRepros' featureless pkg-node): a misbuild that
+    // must fail rather than skip.
+    expect(missingExportIsAnError(false, null)).toBe(false)
+    expect(missingExportIsAnError(true, null)).toBe(true)
+    expect(missingExportIsAnError(true, () => {})).toBe(false)
   })
 })

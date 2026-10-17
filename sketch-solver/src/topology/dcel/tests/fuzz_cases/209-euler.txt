@@ -1,0 +1,1 @@
+euler: V - E + F = 5 - 10 + 5 = 0, expected 1 + 1 = 2

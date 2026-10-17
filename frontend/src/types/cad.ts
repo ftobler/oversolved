@@ -45,11 +45,69 @@ export type ChamferFeatureDef = {
   angle?: NumberOrExpr
 }
 
+export type ShellDirection = 'inward' | 'outward'
+
+export type ShellFeatureDef = {
+  // Removed faces (the openings), may be empty for a closed hollow. Then
+  // `source_body` is required, since no face names the body.
+  faces: string[]
+  thickness: NumberOrExpr
+  direction?: ShellDirection
+  source_body?: string
+}
+
+export type MoveFaceFeatureDef = {
+  // Faces to move, each along its own outward normal. Applied in list order.
+  faces: string[]
+  // Signed along each face's outward normal: positive adds material, negative
+  // removes. 0 is the identity.
+  distance: NumberOrExpr
+}
+
+export type LoftFeatureDef = {
+  // Two or more profile refs, in order along the loft (the first is the start
+  // cap). Each ref is a whole sketch (`@sk2`), a picked area or curve
+  // (`?...`/`entity:...`), or a planar body face; the profiles sit on planes the
+  // loft passes through, not necessarily parallel.
+  profiles: string[]
+  // false (default) builds one smooth surface through every section; true
+  // builds straight ruled bands between consecutive sections.
+  ruled?: boolean
+  operation?: 'new' | 'add' | 'cut'
+  merge_target?: string
+}
+
+export type DraftFeatureDef = {
+  // Faces to tilt. All picks must resolve on one body, like the shell's.
+  faces: string[]
+  // Signed degrees. A positive angle tilts each picked face so the section
+  // RECEDES as it moves along the pull direction away from the neutral plane
+  // (material comes off); a negative angle grows the part instead.
+  angle: NumberOrExpr
+  // The neutral plane the faces rotate about: a datum plane or a planar face.
+  // Required; there is no stored default.
+  neutral: string
+  // The pull direction: an edge/face axis pick, oriented from the neutral plane
+  // toward the body's bounding-box centre (the pick's own sign is ignored).
+  // Empty means the neutral plane's own normal, oriented the same way.
+  direction?: string
+}
+
+// Removed faces and healed by extending the neighbours' surfaces. No parameters:
+// the picked set IS the whole spec. A connected group of picks (faces sharing an
+// edge) is removed or refused as a unit, so a partial pick heals what it can.
+export type DeleteFaceFeatureDef = {
+  faces: string[]
+}
+
 export type BooleanFeatureDef = {
   operation: 'union' | 'subtract' | 'intersect'
   target: string
   tools: string[]
   keep_tools?: boolean
+  // Signed mm, subtract only: the tool grows (+) or shrinks (-) isotropically
+  // before the cut. Absent means 0 (no offset at all).
+  clearance?: NumberOrExpr
 }
 
 export type ArrayFeatureDef = {
@@ -110,6 +168,39 @@ export type HoleFeatureDef = {
   depth: NumberOrExpr
   direction?: 'normal' | 'reverse'
   target?: string
+  // A cosmetic thread: metadata plus the display helix the solve reports. It
+  // changes no geometry, so the bore stays the authored `diameter` (normally the
+  // table entry's tap drill).
+  thread?: ThreadSpec
+}
+
+export interface ThreadSpec {
+  // The thread table entry's designation, e.g. 'M6x1'.
+  designation: string
+  // The thread's own (major) diameter and its pitch, copied from the table at
+  // pick time so a later table edit cannot silently re-describe an old doc.
+  nominal: number
+  pitch: number
+}
+
+/** One drilled bore's cosmetic-thread display helix. */
+export interface ThreadHelixData {
+  center: [number, number, number]
+  axis: [number, number, number]
+  // The bore's radius: the wall the helix rides on, not the thread's nominal.
+  radius: number
+  pitch: number
+  turns: number
+  points: [number, number, number][]
+}
+
+/** What a hole solve reports for its cosmetic thread: the metadata plus one
+ *  display helix per drilled bore. */
+export interface ThreadDisplayData {
+  designation: string
+  nominal: number
+  pitch: number
+  helices: ThreadHelixData[]
 }
 
 export type MirrorFeatureDef = {
@@ -142,6 +233,31 @@ export type VariableFeatureDef = {
   expression: NumberOrExpr  // math formula, e.g. "width * 2 + 10" (or a plain number)
   value?: number            // cached evaluated result (written by the solver, read-only in UI)
   unit?: string             // optional display hint ("mm", "deg")
+}
+
+// A reference curve: a helix laid on a cylinder. It is NOT a body; it follows
+// the datum-plane pattern (a repo element plus a solve-result field) and feeds
+// sweeps. Every numeric field is expression-capable. All fields are stored even
+// when the current `mode` ignores them, so switching mode never loses input.
+export type HelixRadiusMode = 'derived' | 'entered'
+export type HelixMode = 'pitch_turns' | 'pitch_height' | 'turns_height' | 'angle_turns' | 'angle_height'
+export type HelixHand = 'right' | 'left'
+export type HelixDirection = 'normal' | 'reverse'
+
+export type HelixFeatureDef = {
+  reference?: string  // cylinder face | circular edge | straight edge | sketch circle/line
+  radius_mode?: HelixRadiusMode
+  radius?: NumberOrExpr
+  mode?: HelixMode
+  pitch?: NumberOrExpr
+  turns?: NumberOrExpr
+  height?: NumberOrExpr
+  helix_angle?: NumberOrExpr
+  height_from_reference?: boolean
+  offset?: NumberOrExpr
+  start_angle?: NumberOrExpr
+  hand?: HelixHand
+  direction?: HelixDirection
 }
 
 export interface FaceData {
@@ -255,7 +371,7 @@ export function isBodyFeatureResult(r: unknown): r is BodyFeatureResult {
   return typeof r === 'object' && r !== null && ('body_id' in r || 'body_ids' in r)
 }
 
-// ─── Document AST Types ───
+// ─── Document Types ───
 
 // A query string referencing an entity or sub-element, e.g. "$line1" or "$arc1start".
 // See docs/query.md for the full query syntax.
@@ -388,6 +504,31 @@ export type ChamferFeature = FeatureBase & {
   chamfer: ChamferFeatureDef
 }
 
+export type ShellFeature = FeatureBase & {
+  kind: 'shell'
+  shell: ShellFeatureDef
+}
+
+export type MoveFaceFeature = FeatureBase & {
+  kind: 'move_face'
+  move_face: MoveFaceFeatureDef
+}
+
+export type LoftFeature = FeatureBase & {
+  kind: 'loft'
+  loft: LoftFeatureDef
+}
+
+export type DraftFeature = FeatureBase & {
+  kind: 'draft'
+  draft: DraftFeatureDef
+}
+
+export type DeleteFaceFeature = FeatureBase & {
+  kind: 'delete_face'
+  delete_face: DeleteFaceFeatureDef
+}
+
 export type BooleanFeature = FeatureBase & {
   kind: 'boolean'
   boolean: BooleanFeatureDef
@@ -428,6 +569,11 @@ export type VariableFeature = FeatureBase & {
   variable: VariableFeatureDef
 }
 
+export type HelixFeature = FeatureBase & {
+  kind: 'helix'
+  helix: HelixFeatureDef
+}
+
 export type ImportStepFeature = FeatureBase & {
   kind: 'import_step'
   file_id: string  // uuid of the file registry entry holding this import's STEP bytes
@@ -446,6 +592,11 @@ export type PartFeature =
   | SweepFeature
   | FilletFeature
   | ChamferFeature
+  | ShellFeature
+  | MoveFaceFeature
+  | LoftFeature
+  | DraftFeature
+  | DeleteFaceFeature
   | BooleanFeature
   | ArrayFeature
   | CircularArrayFeature
@@ -454,6 +605,7 @@ export type PartFeature =
   | TransformFeature
   | MirrorFeature
   | VariableFeature
+  | HelixFeature
   | ImportStepFeature
 
 export type FeatureKind = PartFeature['kind']
@@ -817,7 +969,12 @@ export type ConstraintRender = SymbolRender | DimLinearRender | DimRadiusRender 
 export interface Constraint {
   render: ConstraintRender
   residual: number
+  /** The solve flagged this constraint as adding no rank beyond the others: a
+   *  measurement, not a driver. Rendered dimmed with the non-driver outline. */
   superfluous?: boolean
+  /** The solve blamed this constraint for a share of an unsatisfied sketch's
+   *  miss. Rendered in the deeper error red, on top of the all-red sketch. */
+  culprit?: boolean
 }
 
 export interface Constraints {
@@ -968,6 +1125,12 @@ export interface SketchData {
   value?: number  // a variable's solved value, rendered inline in the tree
   exception?: string
   handle?: FeatureHandleData  // editing handle for brep features (extrude/revolve/fillet/chamfer)
+  // A helix's derived quantities (the mode's computed pitch/turns/height/length
+  // and the angle) plus the sampled curve the viewport draws.
+  helix?: Record<string, number>
+  curve?: EdgeDataSpline
+  // A hole's cosmetic thread: metadata plus the bore display helices.
+  thread?: ThreadDisplayData
 }
 
 export type EntityStatus = Record<string, ConstraintStatus>
@@ -1028,6 +1191,25 @@ export type Mutation =
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
+  | { type: 'add_shell'; featureId: string; label?: string }
+  | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
+  | { type: 'add_shell_face'; featureId: string; faceQuery: string }
+  | { type: 'remove_shell_face'; featureId: string; index: number }
+  | { type: 'add_loft'; featureId: string; label?: string }
+  | { type: 'set_loft_field'; featureId: string; field: keyof LoftFeatureDef; value: unknown }
+  | { type: 'add_loft_profile'; featureId: string; sketchQuery: string }
+  | { type: 'remove_loft_profile'; featureId: string; index: number }
+  | { type: 'add_draft'; featureId: string; label?: string }
+  | { type: 'set_draft_field'; featureId: string; field: keyof DraftFeatureDef; value: unknown }
+  | { type: 'add_draft_face'; featureId: string; faceQuery: string }
+  | { type: 'remove_draft_face'; featureId: string; index: number }
+  | { type: 'add_move_face'; featureId: string; label?: string }
+  | { type: 'set_move_face_field'; featureId: string; field: keyof MoveFaceFeatureDef; value: unknown }
+  | { type: 'add_move_face_ref'; featureId: string; faceQuery: string }
+  | { type: 'remove_move_face_ref'; featureId: string; index: number }
+  | { type: 'add_delete_face'; featureId: string; label?: string; faces?: string[] }
+  | { type: 'add_delete_face_ref'; featureId: string; faceQuery: string }
+  | { type: 'remove_delete_face_ref'; featureId: string; index: number }
   | { type: 'add_boolean'; featureId: string; label?: string }
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
@@ -1055,6 +1237,8 @@ export type Mutation =
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
   | { type: 'add_variable'; featureId: string; label?: string }
   | { type: 'set_variable_field'; featureId: string; field: keyof VariableFeatureDef; value: unknown }
+  | { type: 'add_helix'; featureId: string; label?: string; reference?: string }
+  | { type: 'set_helix_field'; featureId: string; field: keyof HelixFeatureDef; value: unknown }
   | { type: 'reorder_features'; featureId: string; toIndex: number }
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }

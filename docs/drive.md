@@ -263,7 +263,8 @@ way.
 The CLI runs beside `frontend/scripts/regenCorpus.ts` with the same
 `--experimental-strip-types` recipe, plus a loader shim for `import.meta.env`.
 Its operations (run, measure, export) live in `frontend/src/drive/headlessOps.ts`
-and are shared with the MCP server, so the two external surfaces cannot drift:
+and are shared with the MCP server (which adds `select`, a predicate selector
+over the solve output), so the two external surfaces cannot drift:
 
 ```bash
 cd frontend
@@ -320,7 +321,8 @@ solver as unavailable and exits nonzero rather than guessing.
 
 `frontend/scripts/mcpServer.ts` serves the same headless surface over the MCP
 stdio transport (newline-delimited JSON-RPC 2.0), hand-rolled with no SDK
-dependency. `initialize`, `tools/list` and `tools/call` live in
+dependency. `initialize`, `tools/list`, `tools/call`, `resources/list` and
+`resources/read` live in
 `frontend/src/drive/mcpServer.ts`; the tool ops call the same `headlessOps.ts`
 functions the CLI does. Point an MCP client at it directly (`cwd` is
 `frontend/`):
@@ -342,9 +344,29 @@ banner on stdout, so a client config must use the direct node invocation.
 | `run` | `steps`, optional `doc`, `docId`, `files` | `{ ok, steps, docHash, solve, doc }`; pass `doc` back in to chain edits |
 | `measure` | `doc`, optional `docId`, `files` | `{ ok, bodyCount, volume, area, centroid, bbox, faces, edges, vertices }` |
 | `export` | `doc`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, file, format, bytes }` |
+| `select` | `doc`, `selector`, optional `docId`, `files` | `{ ok, queries, items }`: the query strings a click would store, plus a geometry summary per item |
+
+- `select` runs a predicate over the solved bodies and returns the exact query
+  strings a click would store, so a headless author (an LLM, a translator, the
+  fuzzer) can pick a fillet/chamfer/hole target without a pointer. The selector
+  is a structured language modeled on CadQuery's string selectors: `kind` is
+  `edge` or `face`; `where` combines `and`/`or`/`not` with `parallel`,
+  `perpendicular`, `type`, `extreme` (the min/max-projection group, tolerance
+  grouped so a box top yields all four edges), `on_face` (edges bounding the
+  selected faces), `created_by` (ancestry through the query engine) and
+  `radius`. The selector itself is an authoring aid and is never stored: the
+  returned queries are what goes into the document, exactly as if each element
+  had been clicked. An empty match is a tool error whose message names the
+  nearest-miss count per predicate; an unknown predicate key is an invalid
+  argument rejected by name. The engine is pure TS in `frontend/src/kernel/select/`.
 
 - `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
   resolve against the server's cwd.
+- The server also serves one resource, `oversolved://schema/part-document`
+  (`resources/list`, `resources/read`): the JSON Schema for a part document
+  (`persistence/partDocSchema.ts`). Read it before authoring a document instead
+  of inferring the format from these examples; it pins the canonical spellings
+  (feature refs are `@id`, params nest under the kind key).
 - A payload with `ok: false` comes back with the MCP `isError` flag. The
   JSON-RPC error channel is reserved for malformed requests and invalid
   arguments; unknown fields are rejected by name, so a typo never fails
@@ -364,7 +386,7 @@ previous call):
 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":{"steps":[
   {"mutation":{"type":"add_sketch","featureId":"sk1","label":"Rectangle","plane":"@builtin_plane_front"}},
   {"mutation":{"type":"add_rect","featureId":"sk1","p0":[0,0],"p1":[10,10]}},
-  {"mutation":{"type":"add_extrude","featureId":"ex1","label":"Extrude","sketchQuery":"$sk1","distance":5}}
+  {"mutation":{"type":"add_extrude","featureId":"ex1","label":"Extrude","sketchQuery":"@sk1","distance":5}}
 ]}}}
 // result.doc is the built document; edit one dimension and rebuild:
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"run","arguments":{

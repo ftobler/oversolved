@@ -5,10 +5,10 @@ Four ratchets catch regressions the unit suites cannot: the action matrix
 edit and undo/redo sequences), the geometry robustness fuzz (seeded feature
 chains against the real kernel) and the volume oracle (analytic geometry
 against the real kernel). Their baselines are committed and reviewed like code.
-The nightly Gitea job (`nightly` in `.github/workflows/ci-gitea.yaml`, cron
-plus manual dispatch only) provisions the WASM solvers and OCC.js and runs
-`just fuzz`, `just ratchet-matrix` then `just robustness-fuzz 1500`, teeing
-every recipe to tmp/ and uploading the logs as its report artifact.
+The Gitea `ratchets` job in `.github/workflows/ci-gitea.yaml` runs on main only
+(a push or a manual dispatch there): it provisions the WASM solvers and OCC.js
+and runs `just fuzz`, `just ratchet-matrix` then `just robustness-fuzz 1500`,
+teeing every recipe to tmp/ and uploading the logs as its report artifact.
 
 ## Action matrix
 
@@ -22,14 +22,14 @@ calls a mutation handler directly; the context callbacks perform the same
 session calls the page handlers do.
 
 Each entry records `ok`, `failed` or `refused` plus its error or refusal text
-in `frontend/src/testing/actionMatrix/baseline.json` (72 documents x up to 12
-targets x 45 commands, 33,030 rows, one row per line so the diff is readable).
+in `frontend/src/testing/actionMatrix/baseline.json` (74 documents x up to 12
+targets x 50 commands, 37,550 rows, one row per line so the diff is readable).
 
 - PR gate: `actionMatrix.test.ts` replays a bounded smoke slice (5 documents,
   6 targets) with the fake scheduler, so it needs no OCC.js, and
   `actionMatrixReal.test.ts` replays three cheap documents on the real kernel
   where installed.
-- Nightly: `just ratchet-matrix` (`ACTION_MATRIX_FULL=1`) replays the whole
+- Main gate: `just ratchet-matrix` (`ACTION_MATRIX_FULL=1`) replays the whole
   corpus exactly against the baseline, with the real kernel when provisioned
   and the fake scheduler otherwise (a command's status cannot depend on the
   scheduler). It takes minutes, not seconds, hence the separate recipe.
@@ -79,20 +79,25 @@ reached again, a completed one also reports references it never reached.
 - Every replay runs in a forked child under a SIGKILL watchdog
   (`chainTimeout.ts`, mirroring `kernel/solveTimeout.ts`): an OCC clean can
   spin forever in synchronous WASM, and the killed seed is reported with the
-  step that hung. Children are pooled: `ROBUSTNESS_FUZZ_WORKERS` (default 2)
-  recipes replay concurrently, a kill drops only its own child, and the seed
-  range is slotted by seed and aggregated in seed order, so the findings do not
-  depend on the pool width. Each child holds its own ~0.75 GB OCC kernel, which
-  is why the recipe pins the pool and `VITEST_MAX_FORKS=1` together; raise
+  step that hung. `ROBUSTNESS_FUZZ_WORKERS` (default 2) recipes replay
+  concurrently, each in a child that replays exactly one recipe and is then
+  retired: a reused child carried OCC state into the next seed and flipped
+  borderline fuses and picks between runs. A kill drops only its own child,
+  and the seed range is slotted by seed and aggregated in seed order, so the
+  findings depend on neither the pool width nor the schedule. Each child
+  holds its own ~0.75 GB OCC kernel, which is why the recipe pins the pool
+  and `VITEST_MAX_FORKS=1` together; raise
   workers only on a wide, memory-rich box. `KNOWN_HANGS` and `KNOWN_STALE_PICKS`
   in `chainReal.test.ts` pin the triaged findings; anything else fails the
-  sweep.
+  sweep. The pins key on the recipe a seed draws, so a change to the recipe
+  generator (a new step kind, a moved roll threshold) redraws most seeds and
+  needs a fresh 1500-seed triage in the same batch.
 - PR gate: bounded 24 chain seeds and 32 identity seeds. On a Node older than
   22.6 the watchdog child cannot start (--experimental-strip-types), so the
   chain sweep skips there rather than fail; the CI matrix runs one such leg.
 - Long run: `just robustness-fuzz <seeds> <workers>` (chain default 200, the
   plan's acceptance range; identity a quarter of it, floored at 32), 1500 in
-  the nightly and 5000 for a dedicated full-scale run; the tee'd log is the
+  the main gate and 5000 for a dedicated full-scale run; the tee'd log is the
   report.
 - Failure: the violations are minimised by dropping steps and the minimal
   recipe is written under `src/testing/robustnessFuzz/regressions/` as a triage

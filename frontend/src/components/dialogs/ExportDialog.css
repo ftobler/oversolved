@@ -34,24 +34,14 @@
   accent-color: #4fc3f7;
 }
 
-.export-dialog-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.export-dialog-slider-row .export-dialog-slider {
-  flex: 1;
-  width: auto;
+/* The parts the export may cover; capped so a large assembly does not push the
+   filename field and the buttons off screen. */
+.export-dialog-parts {
+  list-style: none;
+  margin: 0;
   padding: 0;
-  accent-color: #4fc3f7;
-}
-
-.export-dialog-slider-value {
-  font-size: 12px;
-  color: #888;
-  min-width: 28px;
-  text-align: right;
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .export-dialog-filename {

@@ -19,13 +19,19 @@ import type {
   ChamferFeature,
   CircularArrayFeature,
   DeleteBodyFeature,
+  DeleteFaceFeature,
+  DraftFeature,
   ExtrudeFeature,
   FilletFeature,
+  HelixFeature,
   HoleFeature,
   MirrorFeature,
+  MoveFaceFeature,
   PartFeature,
+  LoftFeature,
   PlaneFeature,
   RevolveFeature,
+  ShellFeature,
   SketchFeature,
   SweepFeature,
   TransformFeature,
@@ -47,6 +53,11 @@ describe('the part feature union is closed', () => {
       | 'sweep'
       | 'fillet'
       | 'chamfer'
+      | 'shell'
+      | 'loft'
+      | 'draft'
+      | 'move_face'
+      | 'delete_face'
       | 'boolean'
       | 'array'
       | 'circular_array'
@@ -55,6 +66,7 @@ describe('the part feature union is closed', () => {
       | 'transform'
       | 'mirror'
       | 'variable'
+      | 'helix'
       | 'import_step'
     >()
   })
@@ -69,6 +81,11 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'sweep'>>().toEqualTypeOf<SweepFeature>()
     expectTypeOf<FeatureParam<'fillet'>>().toEqualTypeOf<FilletFeature>()
     expectTypeOf<FeatureParam<'chamfer'>>().toEqualTypeOf<ChamferFeature>()
+    expectTypeOf<FeatureParam<'shell'>>().toEqualTypeOf<ShellFeature>()
+    expectTypeOf<FeatureParam<'loft'>>().toEqualTypeOf<LoftFeature>()
+    expectTypeOf<FeatureParam<'draft'>>().toEqualTypeOf<DraftFeature>()
+    expectTypeOf<FeatureParam<'move_face'>>().toEqualTypeOf<MoveFaceFeature>()
+    expectTypeOf<FeatureParam<'delete_face'>>().toEqualTypeOf<DeleteFaceFeature>()
     expectTypeOf<FeatureParam<'boolean'>>().toEqualTypeOf<BooleanFeature>()
     expectTypeOf<FeatureParam<'array'>>().toEqualTypeOf<ArrayFeature>()
     expectTypeOf<FeatureParam<'circular_array'>>().toEqualTypeOf<CircularArrayFeature>()
@@ -77,6 +94,7 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'transform'>>().toEqualTypeOf<TransformFeature>()
     expectTypeOf<FeatureParam<'mirror'>>().toEqualTypeOf<MirrorFeature>()
     expectTypeOf<FeatureParam<'variable'>>().toEqualTypeOf<VariableFeature>()
+    expectTypeOf<FeatureParam<'helix'>>().toEqualTypeOf<HelixFeature>()
   })
 
   it('rejects a feature of the wrong kind', () => {

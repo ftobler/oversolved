@@ -20,7 +20,7 @@ import { narrowCommandName, type CommandName } from '@/utils/core/commandNames'
 // ─── Constraint definition ───
 
 export interface ConstraintDef {
-  // Solver kind string, the canonical name used in the AST and solver.
+  // Solver kind string, the canonical name the document and the solver share.
   kind: string
 
   // Human-readable label shown in the toolbar tooltip and docs.

@@ -12,6 +12,7 @@
 
 import type { RebuildValidation } from '../builder'
 import type { PartBundle } from '../partBundle'
+import type { TessellationPreset } from '../tessellationPresets'
 import type { Transform3D, MateAnchorDescriptor } from '../../types/cad'
 import type { MateSpec, AssemblySolveStatus, MeshPayload, AnchorPose } from '../solveAssembly'
 import type { OccLoadProgress } from '../occ/loadProgress'
@@ -62,7 +63,9 @@ export interface BundleRequest {
 export interface ExportRequestOptions {
   format: 'step' | 'stl'
   bodyId?: string | null
-  tessellation?: number
+  // STL only: the mesh quality the dialog chose. The worker resolves the name
+  // through tessellationPresets; STEP ignores it.
+  tessellation?: TessellationPreset
 }
 
 /** Build a document Worker-side and serialise it to STEP/STL bytes. */

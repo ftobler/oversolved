@@ -15,14 +15,17 @@ import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import { VERTEX_POINT_KEYS } from '@/types/vertexKeys'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
-import { dropDeadAxisConstraints, migrateLegacyBodyPicks } from '@/utils/yamlMigrations'
+import { threadEntry } from '@/kernel/threadTable'
+import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams } from '@/utils/yamlMigrations'
 
-// The version the ladder migrates to. A document carrying `version` 2 or newer
+// The version the ladder migrates to. A document carrying `version` 3 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
-// runs the steps whose target version it is behind. The historic heals target 2
-// deliberately: the version stamps predate them, so a document stamped 1 can
-// still carry the stale shapes they fix.
-export const CURRENT_DOC_VERSION = 2
+// runs the steps whose target version it is behind. The step at 3 canonicalizes
+// the two spellings the format used to tolerate (feature refs `$id` -> `@id`,
+// flat params -> nested); the historic heals target 2 deliberately: the version
+// stamps predate them, so a document stamped 1 can still carry the stale shapes
+// they fix.
+export const CURRENT_DOC_VERSION = 3
 
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
@@ -93,6 +96,11 @@ interface MigrationStep {
 // touches and skips anything that does not have the shape it heals: a garbage
 // document just reaches the validator untouched and is rejected there.
 const MIGRATION_STEPS: MigrationStep[] = [
+  // Canonicalization runs before plural-body-picks: a flat legacy singular
+  // `body` has to be folded into the sub-def first, or the plural step (which
+  // reads the sub-def only) never sees it.
+  { id: 'canonical-feature-params', to: 3, apply: stepCanonicalFeatureParams },
+  { id: 'feature-refs-absolute', to: 3, apply: stepFeatureRefsAbsolute },
   { id: 'drop-dead-axis-constraints', to: 2, apply: stepDropDeadAxisConstraints },
   { id: 'plural-body-picks', to: 2, apply: stepPluralBodyPicks },
   { id: 'drop-redundant-inline-step-payload', to: 2, apply: stepDropRedundantInlineStepPayload },
@@ -147,6 +155,16 @@ function stepDropDeadAxisConstraints(doc: DocRecord): number {
 function stepPluralBodyPicks(doc: DocRecord): number {
   const part = migratablePartDoc(doc)
   return part ? migrateLegacyBodyPicks(part) : 0
+}
+
+function stepCanonicalFeatureParams(doc: DocRecord): number {
+  const part = migratablePartDoc(doc)
+  return part ? canonicalizeFeatureParams(part) : 0
+}
+
+function stepFeatureRefsAbsolute(doc: DocRecord): number {
+  const part = migratablePartDoc(doc)
+  return part ? migrateFeatureRefsToAbsolute(part) : 0
 }
 
 // The workspace migration lifts an import_step's inline base64 payload into a
@@ -469,11 +487,56 @@ function checkChamfer(sub: DocRecord, field: string): void {
   checkOptional(sub, 'angle', field, checkExpr)
 }
 
+// A positive NumberOrExpr: a positive finite number, or a string that is either
+// unresolvable now (it names a document variable) or evaluates positive. A
+// thickness of 0 or less builds nothing or an inverted solid, so it is refused
+// at the boundary rather than at solve time.
+function checkPositiveExpr(value: unknown, field: string): void {
+  checkExpr(value, field)
+  if (typeof value === 'number') {
+    if (!(value > 0)) fail(field, `must be positive, got ${value}`)
+    return
+  }
+  const resolved = evalExpr(value as string)
+  if (Number.isFinite(resolved) && resolved <= 0) {
+    fail(field, `evaluates to ${resolved}, expected a positive number`)
+  }
+}
+
+function checkShell(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'faces', field, checkRefList)
+  checkOptional(sub, 'thickness', field, checkPositiveExpr)
+  checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, ['inward', 'outward']))
+  checkOptional(sub, 'source_body', field, checkRef)
+}
+
+function checkLoft(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'profiles', field, checkRefList)
+  checkOptional(sub, 'ruled', field, checkBoolean)
+  checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, OPERATIONS))
+  checkOptional(sub, 'merge_target', field, checkRef)
+}
+
+function checkDraft(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'faces', field, checkRefList)
+  checkOptional(sub, 'angle', field, checkExpr)
+  checkOptional(sub, 'neutral', field, checkRef)
+  checkOptional(sub, 'direction', field, checkRef)
+}
+
+function checkMoveFace(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'faces', field, checkRefList)
+  // Signed: 0 is the identity, negative removes material, so no positivity gate.
+  checkOptional(sub, 'distance', field, checkExpr)
+}
+
 function checkBooleanDef(sub: DocRecord, field: string): void {
   checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['union', 'subtract', 'intersect']))
   checkOptional(sub, 'target', field, checkRef)
   checkOptional(sub, 'tools', field, checkRefList)
   checkOptional(sub, 'keep_tools', field, checkBoolean)
+  // Optional and absent means 0, so there is no migration rung.
+  checkOptional(sub, 'clearance', field, checkExpr)
 }
 
 function checkCountPair(sub: DocRecord, field: string): void {
@@ -511,6 +574,36 @@ function checkDeleteBody(sub: DocRecord, field: string): void {
   checkOptional(sub, 'bodies', field, checkRefList)
 }
 
+// No scalar params: `faces` is the whole spec. A non-array `faces` is refused.
+function checkDeleteFace(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'faces', field, checkRefList)
+}
+
+// The hole's cosmetic thread spec: a designation whose nominal and pitch must
+// agree with the table when the table knows it. A doc that carries an unknown
+// designation still loads (the thread is metadata and changes no geometry), but
+// its pair is checked against the entry when there is one, so a hand-typed M6
+// with M8's numbers cannot pass as a valid thread.
+function checkThread(value: unknown, field: string): void {
+  const thread = checkRecord(value, field)
+  if (typeof thread.designation !== 'string' || thread.designation === '') {
+    fail(`${field}.designation`, 'must be a non-empty thread designation')
+  }
+  checkFiniteNumber(thread.nominal, `${field}.nominal`)
+  checkFiniteNumber(thread.pitch, `${field}.pitch`)
+  if ((thread.nominal as number) <= 0) fail(`${field}.nominal`, 'must be positive')
+  if ((thread.pitch as number) <= 0) fail(`${field}.pitch`, 'must be positive')
+  const entry = threadEntry(thread.designation as string)
+  if (entry !== null) {
+    if (Math.abs((thread.nominal as number) - entry.nominal) > 1e-9) {
+      fail(`${field}.nominal`, `${thread.designation} names ${entry.nominal} mm, got ${thread.nominal}`)
+    }
+    if (Math.abs((thread.pitch as number) - entry.pitch) > 1e-9) {
+      fail(`${field}.pitch`, `${thread.designation} has a ${entry.pitch} mm pitch, got ${thread.pitch}`)
+    }
+  }
+}
+
 function checkHole(sub: DocRecord, field: string): void {
   checkOptional(sub, 'sketch', field, checkRef)
   checkOptional(sub, 'diameter', field, checkExpr)
@@ -518,6 +611,7 @@ function checkHole(sub: DocRecord, field: string): void {
   checkOptional(sub, 'depth', field, checkExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, ['normal', 'reverse']))
   checkOptional(sub, 'target', field, checkRef)
+  checkOptional(sub, 'thread', field, checkThread)
 }
 
 function checkTransform(sub: DocRecord, field: string): void {
@@ -547,6 +641,29 @@ function checkVariable(sub: DocRecord, field: string): void {
   checkOptional(sub, 'unit', field, checkString)
 }
 
+const HELIX_MODES = ['pitch_turns', 'pitch_height', 'turns_height', 'angle_turns', 'angle_height'] as const
+const HELIX_HANDS = ['right', 'left'] as const
+const HELIX_RADIUS_MODES = ['derived', 'entered'] as const
+
+function checkHelix(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'reference', field, checkRef)
+  checkOptional(sub, 'radius_mode', field, (v, f) => checkEnum(v, f, HELIX_RADIUS_MODES))
+  checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, HELIX_MODES))
+  checkOptional(sub, 'hand', field, (v, f) => checkEnum(v, f, HELIX_HANDS))
+  checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, ['normal', 'reverse']))
+  checkOptional(sub, 'height_from_reference', field, checkBoolean)
+  for (const key of ['radius', 'pitch', 'turns', 'height', 'helix_angle', 'offset', 'start_angle']) {
+    checkOptional(sub, key, field, checkExpr)
+  }
+  // The one range the parametrisation cannot cross: 0 and 90 are degenerate, so
+  // a literal angle outside (0, 90) is refused here. An expression is checked
+  // when the solver resolves it.
+  const angle = sub.helix_angle
+  if (typeof angle === 'number' && (angle <= 0 || angle >= 90)) {
+    fail(`${field}.helix_angle`, `must be between 0 and 90 degrees, got ${angle}`)
+  }
+}
+
 function checkImportStep(sub: DocRecord, field: string): void {
   checkOptional(sub, 'file_id', field, checkString)
   checkOptional(sub, 'file_data', field, checkString)
@@ -563,6 +680,11 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['sweep', checkSweep],
   ['fillet', checkFillet],
   ['chamfer', checkChamfer],
+  ['shell', checkShell],
+  ['loft', checkLoft],
+  ['draft', checkDraft],
+  ['move_face', checkMoveFace],
+  ['delete_face', checkDeleteFace],
   ['boolean', checkBooleanDef],
   ['array', checkArray],
   ['circular_array', checkCircularArray],
@@ -571,6 +693,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['transform', checkTransform],
   ['mirror', checkMirror],
   ['variable', checkVariable],
+  ['helix', checkHelix],
   ['import_step', checkImportStep],
 ])
 

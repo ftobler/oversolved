@@ -13,9 +13,10 @@
 
 import { create, all } from 'mathjs'
 import type {
-  ArrayFeatureDef, ChamferFeatureDef, CircularArrayFeatureDef, ExtrudeFeatureDef,
-  FilletFeatureDef, HoleFeatureDef, ImportStepFeature, PlaneDef, RevolveFeatureDef,
-  TransformFeatureDef,
+  ArrayFeatureDef, BooleanFeatureDef, ChamferFeatureDef, CircularArrayFeatureDef,
+  DraftFeatureDef,
+  ExtrudeFeatureDef, FilletFeatureDef, HelixFeatureDef, HoleFeatureDef,
+  ImportStepFeature, PlaneDef, RevolveFeatureDef, ShellFeatureDef, TransformFeatureDef, MoveFaceFeatureDef,
 } from '@/types/cad'
 
 const math = create(all, {})
@@ -53,12 +54,17 @@ interface ExprPayloads {
   revolve: RevolveFeatureDef
   fillet: FilletFeatureDef
   chamfer: ChamferFeatureDef
+  shell: ShellFeatureDef
+  draft: DraftFeatureDef
+  move_face: MoveFaceFeatureDef
   hole: HoleFeatureDef
   array: ArrayFeatureDef
   circular_array: CircularArrayFeatureDef
   transform: TransformFeatureDef
   plane: PlaneDef
+  helix: HelixFeatureDef
   import_step: ImportStepFeature
+  boolean: BooleanFeatureDef
 }
 
 export type ExprFieldKind = keyof ExprPayloads
@@ -75,12 +81,17 @@ export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPa
   revolve: ['angle'],
   fillet: ['radius'],
   chamfer: ['distance', 'angle'],
+  shell: ['thickness'],
+  draft: ['angle'],
+  move_face: ['distance'],
   hole: ['diameter', 'depth'],
   array: ['pitch_x', 'pitch_y', 'count_x', 'count_y'],
   circular_array: ['step_angle', 'count'],
   transform: ['rotation_angle', 'scale'],
   plane: ['offset', 'angle', 'rotation'],
+  helix: ['radius', 'pitch', 'turns', 'height', 'helix_angle', 'offset', 'start_angle'],
   import_step: ['scale'],
+  boolean: ['clearance'],
 }
 
 /** Whether `kind` is one of the kinds in the expression table. Narrowing a raw

@@ -4,7 +4,7 @@
 // first capture, edge_resolves_not_unique_20260728_213049.md): "fillet 2 has one
 // edge pick but 6 faces highlight and fillet 2 fails".
 //
-// The AST is the user's document (`__fixtures__/pickIdentityCorpus.json`),
+// The corpus is the user's document (`__fixtures__/pickIdentityCorpus.json`),
 // minus the trailing fillet whose stored pick is the broken query itself --
 // this test re-picks instead, which is what the user has to do once. Its
 // legacy geometric picks (`@gde|`/`@gdf|`, no longer resolved) were migrated
@@ -41,7 +41,7 @@ const solveBytes = loadSolver()
 
 const BODY = 'body_e1tMr2u-m4rxTxhoZSw2z05E'
 const BOOLEAN = '4g6penAMAb__68YySKl9knDI'
-// The last feature of the corpus that must produce geometry, in AST order.
+// The last feature of the corpus that must produce geometry, in document order.
 const SOLID_FEATURES = [
   'e1tMr2u-m4rxTxhoZSw2z05E',  // extrude 1 (the annular tube)
   'hJObESEbHbHJlpZ85sqcIiMg',  // array 2 (linear, fused)

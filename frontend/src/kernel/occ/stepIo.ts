@@ -12,6 +12,7 @@ import { makeScaleTrsf } from './transforms'
 import { readShapeFaces, assembleMesh } from './tessellation'
 import { SubShapeIndexMap, unplacer } from './primitives'
 import { SubShapeMap } from './subshapeIdentity'
+import { enumVal, sameEnum } from './enumValue'
 import { encodeBinaryStl } from '../stl'
 
 // A fixed short scratch path in the emscripten MEMFS. Two quirks of this OCC.js
@@ -20,12 +21,6 @@ import { encodeBinaryStl } from '../stl'
 // and neutral. The kernel is single-threaded and each call writes -> reads ->
 // unlinks synchronously, so reusing one path across calls is safe.
 const SCRATCH_PATH = '/s.step'
-
-// Various OCC.js return-status calls (ReadFile, Transfer, Write) may return a
-// raw enum number or an embind enum object wrapping it in `.value`, depending
-// on binding version. Unwrap either shape so callers can compare against a
-// named enum member instead of a magic number.
-const enumVal = (e: unknown): number => (typeof e === 'number' ? e : (e as { value: number }).value)
 
 /**
  * Decode a base64 string to bytes (portable across Node + browser/Worker).
@@ -207,15 +202,6 @@ function forEachTransferredFace(
 /** Delete embind proxies in reverse acquisition order, tolerating nulls. */
 function drop(...objects: (OccDisposable | null | undefined)[]): void {
   for (const obj of objects) obj?.delete()
-}
-
-/**
- * Compare two embind enum values. The binding hands them back as a raw number
- * in some places and as a `{value}` box in others (`ReadFile` above deals with
- * the same inconsistency), and `TopAbs_ShapeEnum` members are typed opaquely.
- */
-function sameEnum(a: unknown, b: unknown): boolean {
-  return enumVal(a) === enumVal(b)
 }
 
 /**

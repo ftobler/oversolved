@@ -79,29 +79,30 @@ When asked to plan a feature:
 - Keep an overview and order of execution of features to apply documented in `feature/overview.md`. Keep it very short. One line per feature.
 
 When asked to implement a feature:
-- consult `feature/overview.md` to find the next feature to implement in sequence.
-- you read the `feature/<topic>.md` and execute according to content.
+- Consult `feature/overview.md` to find the next feature to implement in sequence.
+- You read the `feature/<topic>.md` and execute according to content.
 - Always make tests. Especially on bugs.
 - Code review using a subagent.
-- when done append a one-line shipped entry to `feature/overview.md` and remove the `*.md` file you implemented the feature from.
+- When done append a one-line shipped entry to `feature/overview.md` and remove the `*.md` file you implemented the feature from.
+- Use a worktree in `.worktrees/<topic>` with branch `feature/<topic>` except if the user indicates you directly to work in `dev` or any other branch.
 
 When the user asks to plan a feature but mentions of making it light or quick:
-- do not do research
+- Do not do research.
 - dump his intent + your immediate knowledge (if you have any) inside the feature plan
-- do not play the architect, that is here the implementers job.
-- can be as simple as a mental note or a TODO item.
+- Do not play the architect, that is here the implementers job.
+- Can be as simple as a mental note or a TODO item.
 
 ## feature/overview.md
 
-An index, not a history. Its job is to be scannable in seconds. Rules:
+An kanban board or a index, not a history. Its job is to be scannable in seconds. Rules:
 
 - One line per entry, always. No continuation lines, no paragraph prose.
-- Every entry starts with its state: pending, shipped, or deferred.
+- Every entry starts with its state: `pending`, `in_flight`, `shipped`, or `deferred`. In special circumstances states as `review`, `merge`, `blocked` are allowed but should be avoided.
 - Findings, rationale and detail live in the plan, the review file, or git, never here. A plan file is deleted once shipped, so the one-liner is all that remains.
 - Pending: `- [pending] topic (feature/<topic>.md): one-line intent.`
-- Shipped: `- [shipped] <hash> topic: one-line outcome.` The hash is the main-repo tip commit, or the batch tip for a multi-commit entry.
-- Deferred: `- [deferred] topic: one-line note.`
-- Append new shipped entries at the very end (oldest first). Never prepend.
+- In Flight: `- [in_flight] topic (feature/<topic>.md): one-line intent.` Some agent is working on this. Agents are ephemeral and have no name to track. Whoever creates the worktree must update this.
+- Shipped: `- [shipped] <hash> topic (~~feature/<topic>.md~~): one-line outcome.` The hash is the main-repo tip commit, or the batch tip for a multi-commit entry. In this state the worktree is removed and the branch merged to `dev`. The cleanup is the responsibility of whoever merges it.
+- Deferred: `- [deferred] topic (feature/<topic>.md): one-line note.`
 - Agents auto-prune: on every touch, collapse the file back to one line per entry and move anything that needs a second sentence into the plan, the review file, or git.
 
 ## knowledge base

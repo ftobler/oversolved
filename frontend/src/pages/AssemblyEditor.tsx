@@ -744,7 +744,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         onRename={handleRenameMateConfirm}
         onCancel={() => setRenameMateTarget(null)}
       />
-      <AssemblyExport ref={exportRef} doc={doc} docName={docName} />
+      <AssemblyExport ref={exportRef} doc={doc} docName={docName} docNames={docNames} />
     </div>
     </CommandRegistryProvider>
   )

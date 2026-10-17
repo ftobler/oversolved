@@ -4,7 +4,8 @@
 // types) and adds the eight types that table lacks (move_vertex,
 // move_vertex_with_constraint, move_entity, resize_circle, delete_feature,
 // set_rollback, edit_session, preview_commit), derived by diffing against
-// mutationDispatch.exhaustive.test.ts's ALL_MUTATION_TYPES. The history
+// mutationDispatch.exhaustive.test.ts's ALL_MUTATION_TYPES, plus the helix
+// pair (add_helix, set_helix_field). The history
 // property and transcript suites iterate this registry instead of a second
 // hand-maintained list.
 //
@@ -67,6 +68,26 @@ const chamferDoc = (): PartDoc => makeDoc({
   chamfer: { edges: [], distance: 1, kind: 'distance', angle: 45 },
 })
 
+const shellDoc = (): PartDoc => makeDoc({
+  id: 'sh1', kind: 'shell', label: 'Shell',
+  shell: { faces: [], thickness: 1, direction: 'inward' },
+})
+
+const loftDoc = (): PartDoc => makeDoc({
+  id: 'lo1', kind: 'loft', label: 'Loft',
+  loft: { profiles: [], ruled: false, operation: 'new' },
+})
+
+const draftDoc = (): PartDoc => makeDoc({
+  id: 'dr1', kind: 'draft', label: 'Draft',
+  draft: { faces: [], angle: 3, neutral: '' },
+})
+
+const moveFaceDoc = (): PartDoc => makeDoc({
+  id: 'mf1', kind: 'move_face', label: 'Move Face',
+  move_face: { faces: [], distance: 5 },
+})
+
 const booleanDoc = (): PartDoc => makeDoc({
   id: 'b1', kind: 'boolean', label: 'Boolean',
   boolean: { operation: 'union', target: '', tools: ['@t1'] },
@@ -107,6 +128,15 @@ const partStyleDoc = (): PartDoc => ({
   part_style: { b1: { name: 'part 1', color: '#ff0000' } },
 })
 
+const helixDoc = (): PartDoc => makeDoc({
+  id: 'hx1', kind: 'helix', label: 'Helix',
+  helix: {
+    reference: '@ex1/face/0', radius_mode: 'derived', mode: 'pitch_turns',
+    pitch: 2, turns: 5, height: 10, helix_angle: 5, offset: 0, start_angle: 0,
+    hand: 'right', direction: 'normal',
+  },
+})
+
 const planeDoc = (): PartDoc => makeDoc({
   id: 'Top', kind: 'plane',
   definition: { mode: 'offset', plane: '@builtin_plane_front' },
@@ -136,6 +166,36 @@ const sweepPopulatedDoc = (): PartDoc => makeDoc({
 const chamferPopulatedDoc = (): PartDoc => makeDoc({
   id: 'ch1', kind: 'chamfer', label: 'Chamfer',
   chamfer: { edges: ['?e1'], distance: 1, kind: 'distance', angle: 45 },
+})
+
+const shellPopulatedDoc = (): PartDoc => makeDoc({
+  id: 'sh1', kind: 'shell', label: 'Shell',
+  shell: { faces: ['?f1'], thickness: 1, direction: 'inward' },
+})
+
+const loftPopulatedDoc = (): PartDoc => makeDoc({
+  id: 'lo1', kind: 'loft', label: 'Loft',
+  loft: { profiles: ['@sk1'], ruled: false, operation: 'new' },
+})
+
+const draftPopulatedDoc = (): PartDoc => makeDoc({
+  id: 'dr1', kind: 'draft', label: 'Draft',
+  draft: { faces: ['?f1'], angle: 3, neutral: '@builtin_plane_front' },
+})
+
+const moveFacePopulatedDoc = (): PartDoc => makeDoc({
+  id: 'mf1', kind: 'move_face', label: 'Move Face',
+  move_face: { faces: ['?f1'], distance: 5 },
+})
+
+const deleteFaceDoc = (): PartDoc => makeDoc({
+  id: 'df1', kind: 'delete_face', label: 'Delete Face',
+  delete_face: { faces: [] },
+})
+
+const deleteFacePopulatedDoc = (): PartDoc => makeDoc({
+  id: 'df1', kind: 'delete_face', label: 'Delete Face',
+  delete_face: { faces: ['?f1'] },
 })
 
 // A projected entity (source-carrying) and a superfluous constraint, the two
@@ -319,6 +379,91 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
     mutation: { type: 'remove_chamfer_edge', featureId: 'ch1', index: 0 },
   },
 
+  // shell
+  add_shell: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_shell', featureId: 'sh1', label: 'Shell' },
+  },
+  set_shell_field: {
+    makeDoc: shellDoc,
+    mutation: { type: 'set_shell_field', featureId: 'sh1', field: 'thickness', value: 3 },
+  },
+  add_shell_face: {
+    makeDoc: shellDoc,
+    mutation: { type: 'add_shell_face', featureId: 'sh1', faceQuery: '?f1' },
+  },
+  remove_shell_face: {
+    makeDoc: shellPopulatedDoc,
+    mutation: { type: 'remove_shell_face', featureId: 'sh1', index: 0 },
+  },
+
+  // loft
+  add_loft: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_loft', featureId: 'lo1', label: 'Loft' },
+  },
+  set_loft_field: {
+    makeDoc: loftDoc,
+    mutation: { type: 'set_loft_field', featureId: 'lo1', field: 'ruled', value: true },
+  },
+  add_loft_profile: {
+    makeDoc: loftDoc,
+    mutation: { type: 'add_loft_profile', featureId: 'lo1', sketchQuery: '@sk1' },
+  },
+  remove_loft_profile: {
+    makeDoc: loftPopulatedDoc,
+    mutation: { type: 'remove_loft_profile', featureId: 'lo1', index: 0 },
+  },
+
+  // draft
+  add_draft: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_draft', featureId: 'dr1', label: 'Draft' },
+  },
+  set_draft_field: {
+    makeDoc: draftDoc,
+    mutation: { type: 'set_draft_field', featureId: 'dr1', field: 'angle', value: 5 },
+  },
+  add_draft_face: {
+    makeDoc: draftDoc,
+    mutation: { type: 'add_draft_face', featureId: 'dr1', faceQuery: '?f1' },
+  },
+  remove_draft_face: {
+    makeDoc: draftPopulatedDoc,
+    mutation: { type: 'remove_draft_face', featureId: 'dr1', index: 0 },
+  },
+
+  // move face
+  add_move_face: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_move_face', featureId: 'mf1', label: 'Move Face' },
+  },
+  set_move_face_field: {
+    makeDoc: moveFaceDoc,
+    mutation: { type: 'set_move_face_field', featureId: 'mf1', field: 'distance', value: 3 },
+  },
+  add_move_face_ref: {
+    makeDoc: moveFaceDoc,
+    mutation: { type: 'add_move_face_ref', featureId: 'mf1', faceQuery: '?f1' },
+  },
+  remove_move_face_ref: {
+    makeDoc: moveFacePopulatedDoc,
+    mutation: { type: 'remove_move_face_ref', featureId: 'mf1', index: 0 },
+  },
+  // delete face
+  add_delete_face: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_delete_face', featureId: 'df1', label: 'Delete Face' },
+  },
+  add_delete_face_ref: {
+    makeDoc: deleteFaceDoc,
+    mutation: { type: 'add_delete_face_ref', featureId: 'df1', faceQuery: '?f1' },
+  },
+  remove_delete_face_ref: {
+    makeDoc: deleteFacePopulatedDoc,
+    mutation: { type: 'remove_delete_face_ref', featureId: 'df1', index: 0 },
+  },
+
   // boolean
   add_boolean: {
     makeDoc: emptyDoc,
@@ -401,6 +546,16 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   set_variable_field: {
     makeDoc: variableDoc,
     mutation: { type: 'set_variable_field', featureId: 'v1', field: 'expression', value: '42' },
+  },
+
+  // helix
+  add_helix: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_helix', featureId: 'hx1', label: 'Helix', reference: '@ex1/face/0' },
+  },
+  set_helix_field: {
+    makeDoc: helixDoc,
+    mutation: { type: 'set_helix_field', featureId: 'hx1', field: 'turns', value: 8 },
   },
 
   // part style

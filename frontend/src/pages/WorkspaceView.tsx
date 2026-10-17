@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Dialog from '@/components/dialogs/Dialog'
 import MessageDialog from '@/components/dialogs/MessageDialog'
-import ExportDialog, { type ExportFormat } from '@/components/dialogs/ExportDialog'
+import ExportDialog, { type ExportRequest } from '@/components/dialogs/ExportDialog'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { LoadingState } from '@/components/shared/LoadingState'
 import DocTilePreview from '@/components/shared/DocTilePreview'
@@ -295,7 +295,7 @@ export default function WorkspaceView() {
 
   // Runs inside the dialog's own busy state and closes it either way, so the
   // failure lands in the banner the closed dialog uncovers.
-  const handleExportDownload = (format: ExportFormat, tessellation: number, fileName: string) => {
+  const handleExportDownload = ({ format, tessellation, fileName }: ExportRequest) => {
     const entry = exportTarget
     if (!entry) return Promise.resolve()
     return runBusy(`export:${entry.id}`, `Failed to export ${entry.name}`, async () => {

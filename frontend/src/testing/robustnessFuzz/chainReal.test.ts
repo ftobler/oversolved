@@ -20,7 +20,7 @@
 // and their order do not depend on the pool width (sweep.ts).
 //
 // The default sweep is bounded for the PR gate; ROBUSTNESS_FUZZ_SEEDS widens it
-// for `just robustness-fuzz` and the nightly. The suite skips where OCC.js is
+// for `just robustness-fuzz` and the main gate. The suite skips where OCC.js is
 // not installed, like every *Real suite, and on a Node too old to run the
 // watchdog child (--experimental-strip-types needs 22.6).
 
@@ -53,17 +53,18 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(raw) && raw > 0 ? raw : fallback
 }
 
-// The bounded default keeps the PR gate fast; the recipe and the nightly widen
-// it (200 is the plan's acceptance range, 1500 the nightly's). The budget per
-// seed covers the base replay, the persistence replay and an amortised share of
-// the watchdog kills (a hanging seed costs the full 30 s).
+// The bounded default keeps the PR gate fast; the recipe and the main gate widen
+// it (200 is the plan's acceptance range, 1500 the main gate's). The budget per
+// seed covers the fresh child's kernel load (~1.5 s, chainTimeout), the base
+// replay, the persistence replay and an amortised share of the watchdog kills
+// (a hanging seed costs the full 30 s).
 const SEEDS = envInt('ROBUSTNESS_FUZZ_SEEDS', 24)
 // The pool bound lives in the test (the source module cannot read process.env
 // by convention): 2 keeps the forked OCC kernels inside the runner's memory,
 // and the justfile pins VITEST_MAX_FORKS beside it.
 configureChainWorkers(envInt('ROBUSTNESS_FUZZ_WORKERS', 2))
 const WORKERS = chainWorkerCount()
-const BUDGET_MS = 2_500
+const BUDGET_MS = 4_000
 // The wall budget covers SEEDS worth of recipes spread over WORKERS children:
 // the pool turns the per-seed cost into a per-worker cost, so the cap divides
 // with it or a wide run would fail a sweep the job budget still allows.
@@ -77,18 +78,34 @@ const REPLAY_TIMEOUT_MS = 30_000
 const MINIMIZE_TIMEOUT_MS = 10_000
 
 // Known kernel hangs, pinned by seed. A seed here is reported as known; any
-// hang NOT on this list fails the sweep with the seed and hung step. All three
-// are the same OCCT 7.4.0p1 hazard: ShapeUpgrade_UnifySameDomain spins inside
-// the fuse clean when the welded shapes have exactly coincident faces. The
-// browser worker survives a spin by killing the worker (solverClient's
-// watchdog); the fuzz child is its test-side equivalent. Triage (2026-10-15):
-//   47  the second circular-array instance fuse of a chamfered, ball-cut body.
-//   76  mirror-merge of a 270 degree revolve about a plane holding its seam.
-//   149 mirror-merge of a 270 degree revolve about the seam's symmetry plane.
+// hang NOT on this list fails the sweep with the seed and hung step. All but
+// one are the same OCCT 7.4.0p1 hazard: ShapeUpgrade_UnifySameDomain spins
+// inside the fuse clean when the welded shapes have exactly coincident faces.
+// The browser worker survives a spin by killing the worker (solverClient's
+// watchdog); the fuzz child is its test-side equivalent. The shell and helix
+// generator steps (d03837d7, 7362336a) redrew 1003 of the 1500 recipes, so
+// the 2026-10-16 pins all went stale; the 2026-10-17 re-triage replayed each
+// new hang alone under a 300 s watchdog. Every fuse below still spun at 300 s
+// (mirror, circular-array and one plain union, seed 535; seed 762 joined once
+// every recipe ran on a fresh kernel). Seed 268 is not a spin: its perturbed
+// rebuild's shell spends ~22 s in MakeThickSolidByJoin before refusing
+// build_not_done (backlog.md). It fits the 30 s ceiling on a fresh kernel on
+// a fast machine and crossed it when children were reused, so both progress
+// marks the kill can land on (the shell step or the persistence phase) stay
+// pinned for slower runners.
 const KNOWN_HANGS: readonly { seed: number; step: number; kind: string }[] = [
-  { seed: 47, step: 4, kind: 'circular-array' },
-  { seed: 76, step: 1, kind: 'mirror' },
-  { seed: 149, step: 1, kind: 'mirror' },
+  { seed: 49, step: 1, kind: 'mirror' },
+  { seed: 268, step: -1, kind: 'persistence' },
+  { seed: 268, step: 3, kind: 'shell' },
+  { seed: 355, step: 5, kind: 'circular-array' },
+  { seed: 378, step: 3, kind: 'mirror' },
+  { seed: 535, step: 3, kind: 'boolean' },
+  { seed: 622, step: 3, kind: 'circular-array' },
+  { seed: 639, step: 2, kind: 'mirror' },
+  { seed: 762, step: 2, kind: 'mirror' },
+  { seed: 1215, step: 2, kind: 'circular-array' },
+  { seed: 1359, step: 1, kind: 'mirror' },
+  { seed: 1469, step: 2, kind: 'mirror' },
 ]
 
 // Known red picks, pinned by seed and step. The naming check reaches the step
@@ -97,25 +114,24 @@ const KNOWN_HANGS: readonly { seed: number; step: number; kind: string }[] = [
 // carry DIFFERENT construction UUIDs, and the foreign-uuid exclusion
 // (queryRepository) forbids handing one back in place of the named element.
 // Triaged as a real naming fragility awaiting its own fix, not silenced: the
-// message stays in the log. The first four were found by the widened
-// persistence gate (picks from steps that built are checked even when a later
-// step or the perturbed replay refused); seed 142 predates it.
+// message stays in the log. The table was re-triaged on 2026-10-17 after the
+// shell and helix steps redrew most recipes, then baselined to exactly the
+// set that fires once every recipe runs on a fresh kernel (two 1500-seed runs
+// gave identical findings; reused children had flipped picks between runs).
+// Three kinds share the pin: a re-mint (the reference goes dead under the
+// +2.5 mm growth), an unreached pick (the perturbed chain refused at an
+// earlier step, so the reference cannot even be tested, reported only for a
+// completed base run), and the refused fuse, chamfer or fillet variant of it.
+// The rate holds at about 1 in 50 built references, so a wider range keeps
+// surfacing new seeds: the class awaits its own naming fix (backlog.md).
 const KNOWN_STALE_PICKS: readonly { seed: number; step: number; note: string }[] = [
-  {
-    seed: 142,
-    step: 4,
-    note: 'hole face @sk_s3/p1 re-mints under a +2.5 mm box growth: the base uuid included a two-classifier name, the rebuild a one-classifier sibling, and neither is recoverable from the other',
-  },
   {
     seed: 145,
     step: 3,
     note: 'revolve-start edge @u|e_9310... re-mints under a +2.5 mm growth; the built step reference goes dead while the chain later refuses',
   },
-  {
-    seed: 186,
-    step: 3,
-    note: 'revolve-start face @u|u_245e... re-mints under a +2.5 mm growth on an otherwise completed chain',
-  },
+  { seed: 145, step: 4, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 156, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
   {
     seed: 186,
     step: 4,
@@ -126,6 +142,39 @@ const KNOWN_STALE_PICKS: readonly { seed: number; step: number; note: string }[]
     step: 4,
     note: 'revolve-start face @u|u_9403... re-mints under a +2.5 mm growth; the built step reference goes dead while the chain later refuses',
   },
+  { seed: 227, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 227, step: 3, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 263, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 280, step: 2, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 366, step: 4, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 388, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 529, step: 5, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 561, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 578, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 578, step: 5, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 682, step: 3, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 709, step: 1, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 709, step: 2, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 710, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 727, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 753, step: 2, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 853, step: 1, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 893, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 893, step: 4, note: 'unreached: the perturbed chain refused at an earlier step' },
+  { seed: 951, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 976, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1065, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1100, step: 2, note: 'unreached: the perturbed fillet refused on invalid geometry' },
+  { seed: 1117, step: 3, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1131, step: 3, note: 'unreached: the perturbed fuse refused as unsound' },
+  { seed: 1131, step: 4, note: 'unreached: the perturbed fuse refused as unsound' },
+  { seed: 1189, step: 1, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1190, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1323, step: 2, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 1350, step: 2, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1375, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1378, step: 4, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1476, step: 3, note: 'unreached: the perturbed chamfer refused on invalid geometry' },
 ]
 
 afterAll(() => {
@@ -209,7 +258,7 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     }
 
     // Known findings are not silent: a green run prints them, and the wide
-    // range (the nightly) is what keeps both lists honest.
+    // range (the main gate) is what keeps both lists honest.
     console.log(`[robustness-fuzz] chain sweep: ${SEEDS} seeds, ${completed} completed, ${refusals} refused, ${recordedPicks} picks, ${hangs.length} known hangs, ${redPicks.length} known red picks`)
     for (const hang of hangs) console.log(`[robustness-fuzz] known hang: ${hang}`)
     for (const red of redPicks) console.log(`[robustness-fuzz] known red pick: ${red}`)
@@ -218,13 +267,15 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     // start-only chains. The floors are a fraction of the observed coverage so
     // a bounded range that legitimately refuses stays green while a generator
     // that stops drawing edits (or a runner that stops reaching the kernel)
-    // fails. The refusal cap is the measured rate with headroom (the sweep
-    // tolerates a refuelled kernel refusing many seeds, not nearly all).
+    // fails. Every recipe runs on a fresh kernel, so the refusals are fixed:
+    // 11 of these 24 seeds refuse. The cap at three quarters leaves headroom
+    // for a generator change and still catches a sweep that refuses nearly
+    // everything.
     expect(completed).toBeGreaterThan(0)
     expect(modifierBuilds).toBeGreaterThanOrEqual(Math.ceil(SEEDS / 2))
     expect(untrackedBuilds).toBe(0)
     expect(recordedPicks).toBeGreaterThan(0)
-    expect(refusals).toBeLessThanOrEqual(Math.ceil(SEEDS * 0.6))
+    expect(refusals).toBeLessThanOrEqual(Math.ceil(SEEDS * 0.75))
   })
 
   it('same seed replays the identical chain and the identical reports', { timeout: 60_000 }, async () => {
@@ -235,9 +286,8 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
     if (first.status !== 'done' || second.status !== 'done') throw new Error('a pinned recipe hung')
     expect(first.replay.run.violations).toEqual([])
     expect(second.replay.run.violations).toEqual([])
-    // Reports carry the per-step CountingScope traffic, so equal reports pin
-    // the disposal traffic flat across identical runs: a leak that accumulates
-    // per run would move one of the counters.
+    // Each replay runs on its own fresh child, so this pins determinism across
+    // kernels; the leak check on one shared kernel is in its own suite below.
     expect(second.replay.run.reports).toEqual(first.replay.run.reports)
     expect(second.replay.run.refusals).toEqual(first.replay.run.refusals)
   })
@@ -294,5 +344,34 @@ describe.skipIf(!occAvailable || !stripTypes)('the recipe minimiser', () => {
       // A failing assertion above must not leave the scratch recipe behind.
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe.skipIf(!occAvailable)('one kernel replaying a seed twice', () => {
+  it('reports the identical disposal traffic both times', { timeout: 60_000 }, async () => {
+    // The watchdog pool never reuses a kernel, so the in-process kernel is the
+    // only place an accumulating leak can show. Reports carry the per-step
+    // CountingScope traffic: a leak that grows per run moves a counter.
+    disposeChainChild()
+    const oc = await loadOcc()
+    if (!oc) throw new Error('unreachable: skipIf guards this')
+    const recipe = generateRecipe(11)
+    const first = runChain(oc, recipe)
+    const second = runChain(oc, recipe)
+    expect(first.violations).toEqual([])
+    expect(second.reports).toEqual(first.reports)
+    expect(second.refusals).toEqual(first.refusals)
+  })
+})
+
+// The pins were grown by hand from a wide sweep, so a duplicate key is a
+// transcription slip that would silently make one finding cover for another.
+// This runs without a kernel, so it guards the tables on every leg.
+describe('the robustness fuzz pin tables', () => {
+  it('keys every pin by a unique seed and step', () => {
+    const hangKeys = KNOWN_HANGS.map((h) => `${h.seed}:${h.step}`)
+    expect(new Set(hangKeys).size).toBe(hangKeys.length)
+    const pickKeys = KNOWN_STALE_PICKS.map((p) => `${p.seed}:${p.step}`)
+    expect(new Set(pickKeys).size).toBe(pickKeys.length)
   })
 })

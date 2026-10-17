@@ -94,7 +94,7 @@ export default function Registry() {
           <section id="entities">
             <h2>Entity Types <span className="reg-count">({ENTITIES.length})</span></h2>
             <p>
-              Sketch entity types. <strong>Params</strong> is the flat array length used in the AST <code>initial</code> map.
+              Sketch entity types. <strong>Params</strong> is the flat array length used in the document's <code>initial</code> map.
               <strong>Vertices</strong> shows named sub-elements and their parameter indices.
             </p>
             <div className="reg-table-wrap">

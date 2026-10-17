@@ -19,7 +19,7 @@ A build produces static files that any static host can serve.
 ## Quick start
 
 ```bash
-just install    # .venv, npm install, wasm-pack, opencascade.js
+just install    # .venv, npm install, wasm-pack, solver wasm build, opencascade.js
 just dev        # Vite dev server: this is the whole running app
 just build      # static app into frontend/dist
 ```

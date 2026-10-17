@@ -2,6 +2,8 @@ import type { FeatureEditorSchema } from './FeatureEditor'
 import {
   normalizeRefList,
 } from '@/utils/yamlMutations'
+import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations } from '@/kernel/threadTable'
+import type { ThreadSpec } from '@/types/cad'
 import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 import { stripSelectionWrapper } from '@/utils/query/selectionId'
 
@@ -111,6 +113,113 @@ export const CHAMFER_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+/** A face pick query: the `?` wire form with a face type restriction, so an
+ *  edge query (`:edge`/`:straightedge`) or a vertex is refused, not silently
+ *  accepted as a face. */
+const FACE_QUERY = /:(flatface|cylinderface|coneface|sphereface|torusface|face)$/
+const isFaceQuery = (id: string): boolean => id.startsWith('?') && FACE_QUERY.test(id)
+
+export const DELETE_FACE_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_delete_face',
+  subKey: 'delete_face',
+  defaults: { faces: [] },
+  fields: [
+    // Any face is accepted at the chip: the kernel refuses what it cannot heal
+    // (a non-analytic neighbour, a pick that cannot close the gap) and reports it
+    // in failed_faces. Edges, vertices and bodies are refused here by the type
+    // restriction, as the shell's face field does.
+    { type: 'pick', key: 'faces', label: 'Faces', multi: true,
+      addMutationType: 'add_delete_face_ref', addValueKey: 'faceQuery',
+      removeMutationType: 'remove_delete_face_ref',
+      validatePick: isFaceQuery },
+  ],
+}
+
+export const SHELL_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_shell',
+  subKey: 'shell',
+  defaults: { faces: [], thickness: 1, direction: 'inward' },
+  fields: [
+    { type: 'pick', key: 'faces', label: 'Open Faces', multi: true,
+      addMutationType: 'add_shell_face', addValueKey: 'faceQuery',
+      removeMutationType: 'remove_shell_face',
+      validatePick: isFaceQuery },
+    { type: 'number', key: 'thickness', label: 'Thickness', default: 1, validate: (v) => v > 0, unit: 'mm' },
+    { type: 'select', key: 'direction', label: 'Direction', default: 'inward',
+      options: [{ value: 'inward', label: 'Inward' }, { value: 'outward', label: 'Outward' }] },
+    // No face names the body for a closed hollow, so the body pick is the only
+    // way to choose it; it is shown only when the opening list is empty.
+    { type: 'pick', key: 'source_body', label: 'Body',
+      showWhen: (d) => (Array.isArray(d.faces) ? d.faces.length : 0) === 0,
+      transform: resolveBodyPickRef, emptyText: '(pick body, required)' },
+  ],
+}
+
+// A sketch profile is the classic loft section, but any element a profile field
+// can resolve works too (a picked area, a planar face), so the chip accepts what
+// the kernel's collector can resolve and lets the solve name a bad pick.
+const isProfilePick = (id: string): boolean =>
+  id.startsWith('?') || id.startsWith('@') || id.startsWith('entity:') || id.startsWith('$')
+
+export const LOFT_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_loft',
+  subKey: 'loft',
+  defaults: { profiles: [], ruled: false, operation: 'new' },
+  normalize: (raw) => ({ ...raw, profiles: normalizeRefList(raw.profiles) }),
+  fields: [
+    // Two or more: the kernel refuses fewer, so the field says so in the chip's
+    // empty text rather than silently building a one-section shell.
+    { type: 'pick', key: 'profiles', label: 'Profiles', multi: true,
+      addMutationType: 'add_loft_profile', addValueKey: 'sketchQuery',
+      removeMutationType: 'remove_loft_profile', validatePick: isProfilePick,
+      emptyText: '(pick two or more profiles, in order)' },
+    { type: 'checkbox', key: 'ruled', label: 'Ruled', default: false },
+    { type: 'select', key: 'operation', label: 'Operation', default: 'new',
+      options: [{ value: 'new', label: 'New' }, { value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }] },
+    { type: 'pick', key: 'merge_target', label: 'Merge Target',
+      showWhen: showMergeTarget, transform: resolveBodyPickRef, removeValue: undefined,
+      emptyText: '(all bodies)' },
+  ],
+}
+
+export const DRAFT_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_draft',
+  subKey: 'draft',
+  defaults: { faces: [], angle: 3, neutral: '' },
+  fields: [
+    { type: 'pick', key: 'faces', label: 'Faces', multi: true,
+      addMutationType: 'add_draft_face', addValueKey: 'faceQuery',
+      removeMutationType: 'remove_draft_face', validatePick: isFaceQuery },
+    // Signed: positive recedes along the pull direction away from the neutral
+    // plane, negative grows the part. Zero is a no-op, so it is refused here.
+    { type: 'number', key: 'angle', label: 'Angle', default: 3,
+      validate: (v) => Number.isFinite(v) && v !== 0, unit: 'deg' },
+    // A neutral plane is required: a draft has no stored default plane, so an
+    // unpicked one is a solve error rather than a silent world-XY neutral.
+    { type: 'pick', key: 'neutral', label: 'Neutral Plane', transform: stripSelectionWrapper,
+      emptyText: '(pick plane or face, required)' },
+    { type: 'pick', key: 'direction', label: 'Pull Direction', transform: resolveAxisQuery,
+      emptyText: '(neutral normal)' },
+  ],
+}
+
+export const MOVE_FACE_SCHEMA: FeatureEditorSchema = {  mutationPrefix: 'set_move_face',
+  subKey: 'move_face',
+  defaults: { faces: [], distance: 5 },
+  fields: [
+    { type: 'pick', key: 'faces', label: 'Faces', multi: true,
+      addMutationType: 'add_move_face_ref', addValueKey: 'faceQuery',
+      removeMutationType: 'remove_move_face_ref',
+      // Planarity is a kernel classification, so only a `flatface` restriction
+      // is accepted; a cylinder/cone face is refused at the chip, never sampled
+      // from triangles. A face the kernel refuses is reported, not dropped.
+      validatePick: (id) => id.startsWith('?') && id.endsWith(':flatface') },
+    // Signed: positive adds material, negative removes, 0 is the identity, so
+    // there is no `> 0` validator (the kernel refuses a non-finite value).
+    { type: 'number', key: 'distance', label: 'Distance', default: 5, unit: 'mm' },
+  ],
+}
+
 export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_boolean',
   subKey: 'boolean',
@@ -122,6 +231,8 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'tools', label: 'Tools', multi: true,
       addMutationType: 'add_boolean_tool', addValueKey: 'tool',
       removeMutationType: 'remove_boolean_tool', removeKey: 'tool', removeValueIsIndex: false },
+    { type: 'number', key: 'clearance', label: 'Clearance', default: 0, unit: 'mm',
+      showWhen: (d) => d.operation === 'subtract', validate: Number.isFinite },
     { type: 'checkbox', key: 'keep_tools', label: 'Keep tools', default: false },
   ],
 }
@@ -139,7 +250,32 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => d.depth_mode === 'blind', validate: (v) => v > 0, unit: 'mm' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }] },
+    // The cosmetic thread: metadata plus a display helix on the bore, no
+    // geometry change. The checkbox writes (or clears) the whole spec and the
+    // select looks the designation up in the table, so neither writes a field
+    // of its own; the diameter stays whatever the user authored (normally the
+    // entry's tap drill, which the option label shows).
+    { type: 'checkbox', key: '_threaded', label: 'Cosmetic thread', default: false,
+      isChecked: (d) => d.thread != null,
+      getMutation: (checked, d) => ({
+        field: 'thread',
+        value: checked ? threadSpecFor(String(d._thread_designation ?? threadDesignations()[0])) : null,
+      }) },
+    { type: 'select', key: '_thread_designation', label: 'Thread',
+      default: threadDesignations()[0],
+      showWhen: (d) => d._threaded === true || d.thread != null,
+      valueFrom: (d) => String(d.thread?.designation ?? d._thread_designation ?? threadDesignations()[0]),
+      getMutation: (option) => ({ field: 'thread', value: threadSpecFor(option) }),
+      options: THREAD_TABLE.map((entry) => ({ value: entry.designation, label: threadLabel(entry) })) },
   ],
+}
+
+/** The doc's thread spec for a table designation, or the first entry when the
+ *  designation is unknown (a hand-edited doc cannot reach here: the loader
+ *  would have refused it). */
+function threadSpecFor(designation: string): ThreadSpec {
+  const entry = threadEntry(designation) ?? THREAD_TABLE[0]
+  return { designation: entry.designation, nominal: entry.nominal, pitch: entry.pitch }
 }
 
 export const TRANSFORM_SCHEMA: FeatureEditorSchema = {
@@ -268,12 +404,81 @@ export const VARIABLE_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+// A helix rides a cylinder face, a circular edge or a sketch circle/line. The
+// type restriction rides in the selection id (`...:cylinderface`, `:arc`, ...),
+// so a flat/cone face and an ellipse are refused at pick time by omission; the
+// solver repeats the check because a hand-written doc skips this gate.
+function helixPickOk(id: string): boolean {
+  // Refuse the face/edge kinds a helix cannot sit on by name. The type
+  // restriction rides in the ancestry query (`...:coneface`).
+  for (const bad of ['flatface', 'coneface', 'sphereface', 'torusface', 'ellipse']) {
+    if (id.includes(':' + bad)) return false
+  }
+  // Everything else a pick can name is a candidate: an ancestry query
+  // (?...:cylinderface/:circle/:arc/:straightedge), a sketch entity
+  // (@sketch/entity), a topo-fallback face (@body/face/N) or an entity ref.
+  // A body or wrong-kind face that slips through is refused by the solver.
+  return id.startsWith('?') || id.startsWith('@') || id.startsWith('entity:')
+}
+
+const HELIX_USES_PITCH = (d: SchemaData) => d.mode === 'pitch_turns' || d.mode === 'pitch_height'
+const HELIX_USES_TURNS = (d: SchemaData) =>
+  d.mode === 'pitch_turns' || d.mode === 'turns_height' || d.mode === 'angle_turns'
+const HELIX_USES_HEIGHT = (d: SchemaData) =>
+  d.mode === 'pitch_height' || d.mode === 'turns_height' || d.mode === 'angle_height'
+const HELIX_USES_ANGLE = (d: SchemaData) => d.mode === 'angle_turns' || d.mode === 'angle_height'
+const HELIX_FACE_REF = (d: SchemaData) => typeof d.reference === 'string' && d.reference.includes(':cylinderface')
+
+export const HELIX_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_helix',
+  subKey: 'helix',
+  defaults: {
+    reference: '', radius_mode: 'derived', mode: 'pitch_turns',
+    pitch: 1, turns: 5, height: 5, helix_angle: 5, offset: 0, start_angle: 0,
+    hand: 'right', direction: 'normal',
+  },
+  fields: [
+    { type: 'pick', key: 'reference', label: 'Reference',
+      validatePick: helixPickOk, emptyText: '(pick a cylinder face, edge or circle)' },
+    { type: 'select', key: 'radius_mode', label: 'Radius', default: 'derived',
+      options: [{ value: 'derived', label: 'From reference' }, { value: 'entered', label: 'Enter' }] },
+    { type: 'number', key: 'radius', label: 'Radius', default: 5,
+      showWhen: (d) => d.radius_mode === 'entered', validate: (v) => v > 0, unit: 'mm' },
+    { type: 'select', key: 'mode', label: 'Define by', default: 'pitch_turns',
+      options: [
+        { value: 'pitch_turns', label: 'Pitch + Turns' },
+        { value: 'pitch_height', label: 'Pitch + Height' },
+        { value: 'turns_height', label: 'Turns + Height' },
+        { value: 'angle_turns', label: 'Angle + Turns' },
+        { value: 'angle_height', label: 'Angle + Height' },
+      ] },
+    { type: 'number', key: 'pitch', label: 'Pitch', default: 1, showWhen: HELIX_USES_PITCH, validate: (v) => v > 0, unit: 'mm' },
+    { type: 'number', key: 'turns', label: 'Turns', default: 5, showWhen: HELIX_USES_TURNS, validate: (v) => v > 0 },
+    { type: 'number', key: 'height', label: 'Height', default: 5, showWhen: HELIX_USES_HEIGHT, validate: (v) => v > 0, unit: 'mm' },
+    { type: 'number', key: 'helix_angle', label: 'Helix angle', default: 5,
+      showWhen: HELIX_USES_ANGLE, validate: (v) => v > 0 && v < 90, unit: 'deg' },
+    { type: 'checkbox', key: 'height_from_reference', label: 'Height from reference', default: false,
+      showWhen: (d) => HELIX_USES_HEIGHT(d) && HELIX_FACE_REF(d) },
+    { type: 'number', key: 'start_angle', label: 'Start angle', default: 0, unit: 'deg' },
+    { type: 'number', key: 'offset', label: 'Offset', default: 0, unit: 'mm' },
+    { type: 'select', key: 'hand', label: 'Hand', default: 'right',
+      options: [{ value: 'right', label: 'Right' }, { value: 'left', label: 'Left' }] },
+    { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
+      options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }] },
+  ],
+}
+
 export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   extrude: EXTRUDE_SCHEMA,
   revolve: REVOLVE_SCHEMA,
   sweep: SWEEP_SCHEMA,
   fillet: FILLET_SCHEMA,
   chamfer: CHAMFER_SCHEMA,
+  shell: SHELL_SCHEMA,
+  loft: LOFT_SCHEMA,
+  draft: DRAFT_SCHEMA,
+  move_face: MOVE_FACE_SCHEMA,
+  delete_face: DELETE_FACE_SCHEMA,
   boolean: BOOLEAN_SCHEMA,
   hole: HOLE_SCHEMA,
   transform: TRANSFORM_SCHEMA,
@@ -282,4 +487,5 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   circular_array: CIRCULAR_ARRAY_SCHEMA,
   delete_body: DELETE_BODY_SCHEMA,
   variable: VARIABLE_SCHEMA,
+  helix: HELIX_SCHEMA,
 }

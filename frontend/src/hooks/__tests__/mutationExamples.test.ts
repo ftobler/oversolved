@@ -23,11 +23,11 @@ const entries = Object.entries(MUTATION_EXAMPLES)
 describe('mutation example registry', () => {
   it('covers exactly the types the dispatch table handles', () => {
     // The exhaustive dispatch suite pins the handler table to its literal list
-    // of all 84 Mutation types, so comparing against the table is the same
+    // of all Mutation types, so comparing against the table is the same
     // completeness fact without importing one test file from another or
     // keeping a second copy of the list.
     expect(Object.keys(MUTATION_EXAMPLES).sort()).toEqual(Object.keys(mutationHandlers).sort())
-    expect(entries).toHaveLength(84)
+    expect(entries).toHaveLength(105)
   })
 
   it('declares exactly the label-only carriers', () => {

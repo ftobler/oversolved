@@ -362,11 +362,10 @@ export function solveArray(
 ): ArrayResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.array as Dict) ?? {}
-  const merged: Dict = { ...sub, ...feature }
-  const body = resolveSourceBody(merged, bodyStore, 'array')
-  const includeSource = (merged.include_source as boolean) ?? true
-  const operation = (merged.operation as string) ?? 'add'
-  const transforms = buildArrayTransforms(oc, scope, merged, globalRepo, bodyStore)
+  const body = resolveSourceBody(sub, bodyStore, 'array')
+  const includeSource = (sub.include_source as boolean) ?? true
+  const operation = (sub.operation as string) ?? 'add'
+  const transforms = buildArrayTransforms(oc, scope, sub, globalRepo, bodyStore)
   return applyArray(oc, scope, table, body, transforms, includeSource, operation, featureId, bodyStore, 'array')
 }
 
@@ -381,10 +380,9 @@ export function solveCircularArray(
 ): ArrayResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.circular_array as Dict) ?? {}
-  const merged: Dict = { ...sub, ...feature }
-  const body = resolveSourceBody(merged, bodyStore, 'circular_array')
-  const includeSource = (merged.include_source as boolean) ?? true
-  const operation = (merged.operation as string) ?? 'add'
-  const transforms = buildCircularTransforms(oc, scope, merged, globalRepo, bodyStore)
+  const body = resolveSourceBody(sub, bodyStore, 'circular_array')
+  const includeSource = (sub.include_source as boolean) ?? true
+  const operation = (sub.operation as string) ?? 'add'
+  const transforms = buildCircularTransforms(oc, scope, sub, globalRepo, bodyStore)
   return applyArray(oc, scope, table, body, transforms, includeSource, operation, featureId, bodyStore, 'circular_array')
 }

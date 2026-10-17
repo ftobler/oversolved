@@ -2,7 +2,13 @@
 //! former `frontend/src/kernel/topology.ts` (`detectTopology`, deleted once
 //! this port reached parity). Pairwise intersections
 //! -> entity splitting -> planar half-edge DCEL -> face-cycle traversal -> CCW
-//! bounded surfaces, plus standalone closed loops and hole nesting.
+//! bounded surfaces, plus standalone closed loops and hole nesting. Which of
+//! those bounded faces are fillable is the even/odd rule over the closed
+//! carriers (`holes`): the interiors of nested shells alternate material and
+//! hole, so a washer sliced across yields its two ring halves rather than four
+//! regions, and the bore's halves are published as `hole_regions` instead of
+//! surfaces (an untouched shell keeps the standalone model, where its bore is
+//! its own selectable area).
 //!
 //! This port stops at GEOMETRY. It emits a structural `TopologyOut` tagging each
 //! edge/surface with its source entity id(s) and a deterministic index; it does
@@ -29,6 +35,7 @@ use super::{
 use crate::radians;
 
 mod build;
+mod holes;
 mod intersect;
 mod trace;
 
@@ -36,46 +43,25 @@ mod trace;
 mod tests;
 
 use build::{
-    add_curve_intersections, build_half_edge_graph, find_all_intersections, normalize_arc_spans,
-    normalize_arcs_and_init_splits, seed_construction_crossings, tag_entities,
+    add_curve_intersections, add_spline_self_intersections, build_half_edge_graph,
+    find_all_intersections, normalize_arc_spans, normalize_arcs_and_init_splits,
+    seed_construction_crossings, tag_entities,
 };
+use holes::split_hole_faces;
 use intersect::classify;
 use trace::{
     build_edge_queries, build_standalone_ellipses, build_standalone_splines,
     build_standalone_surfaces, nest_surfaces, trace_face_cycles,
 };
 
-// Near-tangency collapse: two curves that the solver tried to make tangent leave
-// a contact whose two analytic intersection points sit `2h` apart and tend to a
-// single point as `h -> 0`. Exact tangency (`h == 0`) never survives floating
-// point, so we DEFINE the contact at the foot point whenever the two roots are
-// within `TANGENT_COLLAPSE_REL * r_min` of coinciding. The real picture is
-// 0-or-2 intersections; asserting the one foot is the "virtual tangent point"
-// that collapses the numerical ambiguity into a singular truth the area builder
-// can lean on -- a tangent pair then stays two clean standalone faces instead of
-// being sliced by a phantom sliver arc. The threshold is on the point separation
-// (not the centre-distance gap, which the sqrt amplifies) and relative to the
-// smaller radius so it tracks model scale and clears the solver's converged
-// tangent residual by orders of magnitude while never merging a real crossing.
-const TANGENT_COLLAPSE_REL: f64 = 1e-3;
-
-// `lc` asserts the same virtual tangent point for a line, but keyed on the
-// PERPENDICULAR GAP `|dist - r|` rather than the root separation `h`. The two
-// are one threshold rewritten (`gap == h * h / (dist + r)`), but the gap is what
-// a tangent residual drives linearly where `h ~ sqrt(2 * r * gap)` is its square
-// root, so the gap is the form that can be compared against a solve and tested.
-// Applies to a MISS only, so it swallows no geometry and can be sized purely for
-// headroom: it is the distance by which a line may fail to reach a rim and still
-// be read as touching it. Relative to the radius so it tracks model scale, with
-// MERGE as the floor for tiny radii. That leaves ~1000x over the reported
-// sketch's 9e-8 residual, where the previous `h`-form rule left 52x -- and under
-// a square root 52x is thin, which is what an area flickering in and out of a
-// dragged sketch looks like from the outside. `cc` reuses the same constant for
-// its miss-side rule: two circles whose centre distance falls a hair beyond
-// r1 + r2 (or a hair inside |r1 - r2|) get their single foot asserted within
-// the same budget, for the same reason -- the gap is the residual the tangent
-// solver drives to zero.
-const TANGENT_GAP_REL: f64 = 1e-5;
+// The two near-tangency rules the area builder applies -- the gap budget for a
+// miss and the root-separation collapse for a pair of analytic roots -- are the
+// resolution-derived pair `tolerance::tangent_gap_tol` / `tangent_collapse_tol`.
+// Both are relative to the smaller characteristic radius of the pair, for the
+// reason stated there: a tangency's ambiguity is a world distance on the curve
+// the constraint drove, not on the sketch, and a fixed world budget would
+// swallow real features on a small sketch and be lost in the solver's noise on
+// a large one.
 
 // ─── Input geometry (the enriched richGeom dict, classified like classifyEntities) ───
 
@@ -276,6 +262,12 @@ pub struct TopologyOut {
     pub vertices: Vec<(String, Vec2)>,
     pub edges: Vec<EdgeOut>,
     pub surfaces: Vec<SurfaceOut>,
+    /// The traced DCEL faces the even/odd rule reads as holes (their region is
+    /// the interior of a shell nested in another shell, see `holes`). They are
+    /// part of the planar subdivision but are not fillable, so they are not
+    /// surfaces; they are published for the oracle, which counts them in the
+    /// Euler identity and checks their cells stay empty.
+    pub hole_regions: Vec<SurfaceOut>,
 }
 
 // ─── small helpers ───
@@ -490,6 +482,12 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
 
     let endpoint_vids = verts.keys();
 
+    // A spline's own crossing is geometry no other entity can supply, so it is
+    // seeded before the pairwise passes add their contacts. It runs after
+    // `endpoint_vids` is captured: a crossing is a real intersection point for
+    // the snapshot list, not an endpoint.
+    let lobe_vertex = add_spline_self_intersections(&cls.splines, &mut splits, &mut verts);
+
     let mut elist: Vec<(String, TopoEntity)> = Vec::new();
     elist.extend(cls.lines.iter().cloned());
     elist.extend(cls.circles.iter().cloned());
@@ -523,13 +521,29 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         &splits,
         &cls.splines,
         &cls.ellipses,
+        &lobe_vertex,
     );
 
-    let mut surfaces = trace_face_cycles(&hes, &he_eid, &verts);
-    surfaces.extend(build_standalone_surfaces(&cls.circles, &splits));
-    surfaces.extend(build_standalone_ellipses(&cls.ellipses, &splits));
-    surfaces.extend(build_standalone_splines(&cls.splines, &splits, &mut verts));
-    surfaces = nest_surfaces(surfaces);
+    // The even/odd rule classifies every face, traced or standalone: an
+    // UNcut shell whose interior is inside a cut shell's bore is a hole too
+    // (the standalone island survives only where no cut shell surrounds it).
+    let mut faces = trace_face_cycles(&hes, &he_eid, &verts);
+    faces.extend(build_standalone_surfaces(&cls.circles, &splits));
+    faces.extend(build_standalone_ellipses(&cls.ellipses, &splits));
+    faces.extend(build_standalone_splines(&cls.splines, &splits, &mut verts));
+    let (mut surfaces, hole_shells) = split_hole_faces(
+        faces,
+        &he_eid,
+        &cls.circles,
+        &cls.ellipses,
+        &cls.splines,
+        &splits,
+    );
+    let hole_regions: Vec<SurfaceOut> = hole_shells
+        .iter()
+        .flat_map(|s| s.regions.iter().cloned())
+        .collect();
+    surfaces = nest_surfaces(surfaces, &hole_shells);
 
     let edges = build_edge_queries(&hes, &he_eid);
 
@@ -547,5 +561,6 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
         vertices,
         edges,
         surfaces,
+        hole_regions,
     }
 }

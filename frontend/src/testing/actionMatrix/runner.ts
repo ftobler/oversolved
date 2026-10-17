@@ -5,7 +5,7 @@
 //
 // Entry cost is dominated by session and store construction, not by the
 // command, so the runner takes a solver factory (fake in the PR gate, real in
-// the nightly) and a per-document hook (the real kernel resets its cross-solve
+// the main gate) and a per-document hook (the real kernel resets its cross-solve
 // cache per document there).
 import type { PartDoc } from '@/types/cad'
 import { PART_COMMAND_SPECS, type PartCommandSpec, type ShowMessagePayload } from '@/pages/commandEntries'

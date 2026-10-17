@@ -15,6 +15,12 @@ export const TOL_TOPOLOGY_EPS = 1e-9
 // sketch-solver/src/topology/mod.rs.
 export const TOL_TOPOLOGY_MERGE = 1e-5
 export const TOL_TOPOLOGY_SPLIT = 1e-7
+// Move-face tangent tolerance: the angular tolerance handed to
+// BRepOffset_Analyse. An edge whose dihedral angle is within this of flat is a
+// Tangent join (a fillet boundary), and move-face refuses it: the extended
+// neighbour surface has no meaningful continuation past the tangency. Radians,
+// measured off the surface normals, so it is scale-free.
+export const TOL_MOVE_FACE_TANGENT = 1e-3
 // OCC's Precision::Confusion(), the tolerance BRepBuilderAPI_MakeWire uses to
 // decide whether two edge endpoints are the same point. It is not ours to
 // choose: it is compiled into opencascade.js@1.1.1 (OCCT 7.4.0p1). Mirrored here so

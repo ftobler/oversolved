@@ -1,0 +1,64 @@
+kind: part
+features:
+  - id: skc
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: c0
+        kind: circle
+    initial:
+      c0:
+        - 0
+        - 0
+        - 10
+  - id: hx1
+    kind: helix
+    helix:
+      reference: "@skc/c0"
+      radius_mode: derived
+      mode: pitch_turns
+      pitch: 3
+      turns: 4
+      hand: right
+      direction: normal
+      start_angle: 0
+      offset: 0
+  - id: skp
+    kind: sketch
+    plane: "@builtin_plane_top"
+    entities:
+      - id: l1
+        kind: line
+      - id: l2
+        kind: line
+      - id: l3
+        kind: line
+      - id: l4
+        kind: line
+    initial:
+      l1:
+        - 9.5
+        - -0.5
+        - 10.5
+        - -0.5
+      l2:
+        - 10.5
+        - -0.5
+        - 10.5
+        - 0.5
+      l3:
+        - 10.5
+        - 0.5
+        - 9.5
+        - 0.5
+      l4:
+        - 9.5
+        - 0.5
+        - 9.5
+        - -0.5
+  - id: sw1
+    kind: sweep
+    sweep:
+      sketch: "$skp"
+      path: "@hx1"
+      operation: new

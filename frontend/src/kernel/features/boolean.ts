@@ -16,13 +16,15 @@
 // is retained.
 
 import { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { resolveBody } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
-import { booleanWithDiff, volumeOf, shapesIntersect } from '../occ/booleans'
+import { booleanWithDiff, volumeOf, shapesIntersect, BooleanSoundnessError } from '../occ/booleans'
+import { offsetSolid, OffsetError } from '../occ/offsetShape'
+import { SubShapeMap } from '../occ/subshapeIdentity'
 import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames } from '../occ/bodyNames'
@@ -44,6 +46,41 @@ const OP_MAP: Record<string, 'fuse' | 'cut' | 'common'> = {
   intersect: 'common',
 }
 
+/**
+ * The one clearance failure message: the offset could not be applied to a tool.
+ * Every clearance failure (the offset itself, a shrunk tool that no longer
+ * reaches the target, an unsound cut) goes through here so the feature names
+ * the clearance rather than falling back to an ungrown cut or the generic
+ * tangency nudge (decision 6).
+ */
+function clearanceFailure(clearance: number, toolRef: string, reason: string): Error {
+  return new Error(
+    `boolean: clearance ${clearance} could not be applied to tool '${toolRef}': ${reason}. ` +
+    "Reduce the clearance; a negative clearance cannot exceed the tool's smallest fillet radius or wall half-thickness.",
+  )
+}
+
+/**
+ * Grow (c > 0) or shrink (c < 0) a tool with a sharp-join 3D offset, translating
+ * the offset's own failure into a clearance-specific message. The feature never
+ * falls back to an ungrown cut: a hole that is silently the wrong size is worse
+ * than an error (decision 6).
+ */
+function growTool(
+  oc: OccModule,
+  scope: DisposeScope,
+  toolShape: OccShape,
+  clearance: number,
+  toolRef: string,
+): { shape: OccShape; faceImage: (src: OccSubShape) => OccSubShape } {
+  try {
+    return offsetSolid(oc, scope, toolShape, clearance)
+  } catch (e) {
+    if (e instanceof OffsetError) throw clearanceFailure(clearance, toolRef, e.message)
+    throw e
+  }
+}
+
 /** Solve a boolean feature into the body store (mirrors `_solve_boolean`). */
 export function solveBoolean(
   oc: OccModule,
@@ -59,6 +96,17 @@ export function solveBoolean(
   const targetRef = (sub.target as string) ?? ''
   const toolRefs = (sub.tools as string[]) ?? []
   const keepTools = (sub.keep_tools as boolean) ?? false
+  // Signed mm: grows (+) or shrinks (-) every tool of a subtract, isotropically.
+  // Absent means 0; a non-zero value on union/intersect is ignored with a
+  // warning so switching the operation never breaks a doc (decision 5). The
+  // solve pipeline resolves `clearance` expressions first, so anything present
+  // that is not a number here is malformed and must fail by name rather than
+  // silently become an ungrown cut (decision 6).
+  const rawClearance = sub.clearance
+  if (rawClearance !== undefined && typeof rawClearance !== 'number') {
+    throw new Error(`boolean: 'clearance' must be a number, got ${typeof rawClearance}`)
+  }
+  const clearance = typeof rawClearance === 'number' ? rawClearance : 0
 
   if (!targetRef) throw new Error("boolean: 'target' is required")
   if (toolRefs.length === 0) throw new Error("boolean: 'tools' must have at least one entry")
@@ -77,6 +125,10 @@ export function solveBoolean(
   // names, so a face keeps its identity through a multi-tool boolean.
   let { faceNames, edgeNames, faceAncestry, edgeAncestry } = readBodyNames(oc, scope, resultShape, targetBody)
   const result: BooleanResult = { status: 'ok', body_id: targetBody.id, body_ids: [], operation }
+  const warn = (msg: string): void => {
+    result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
+  }
+  if (op !== 'cut' && clearance !== 0) warn('clearance applies to subtract only; ignored')
 
   for (const toolRef of toolRefs) {
     const toolBody = resolveBody(toolRef, bodyStore)
@@ -95,21 +147,58 @@ export function solveBoolean(
     const toolShape = table.get<OccShape>(toolBody.shape)
     const unifyFaces = !(targetBody.imported || toolBody.imported)
 
+    // A subtract grows each tool before the cut (clearance > 0) or shrinks it
+    // (clearance < 0). The grown shape is a transient operand of this step: the
+    // tool body, the consumed-tool release, keep_tools and the resplit all keep
+    // seeing the authored tool. Grown faces carry their source face's UUID, so a
+    // pick on a hole wall keeps its identity across a clearance edit.
+    const toolNames = readBodyNames(oc, scope, toolShape, toolBody)
+    let cutTool = toolShape
+    if (op === 'cut' && clearance !== 0) {
+      const grown = growTool(oc, scope, toolShape, clearance, toolRef)
+      cutTool = scope.track(grown.shape)
+      const rekeyed = new SubShapeMap<string>()
+      for (const [face, uuid] of toolNames.faceNames.entries()) {
+        rekeyed.set(grown.faceImage(face), uuid)
+      }
+      toolNames.faceNames = rekeyed
+    }
+
     // Mirror the implicit cut/add guards (bodyOps.applyBodyOperation): probe the
     // overlap before folding so a disjoint tool is neither consumed nor left
     // silent. A subtract of a non-overlapping tool would otherwise eat the body
     // with no visible effect; an intersect of disjoint bodies yields an empty
     // compound that must not be reported as 'ok'. The probe is a bare Common
-    // with history off (M18); the fuse path never probed and must not start.
+    // with history off (M18); the fuse path never probed and must not start. A
+    // grown tool is probed grown: a tool flush against the target intersects
+    // only once it has grown, which is the intended behaviour.
     if (op === 'cut' || op === 'common') {
-      if (!shapesIntersect(oc, resultShape, toolShape)) {
-        result.solver_warning = `${operation}: tool '${toolRef}' does not intersect the target; skipped`
+      if (!shapesIntersect(oc, resultShape, cutTool)) {
+        // A shrunk tool (clearance < 0) is a subset of the authored one: if it
+        // no longer reaches the target, the offset degenerated into a shape the
+        // kernel cannot cut (or the authored tool never touched). Report the
+        // clearance rather than skipping: a missing hole shown as 'ok' is worse
+        // than an error (decision 6).
+        if (op === 'cut' && clearance < 0) {
+          throw clearanceFailure(clearance, toolRef, 'the shrunk tool does not intersect the target')
+        }
+        warn(`${operation}: tool '${toolRef}' does not intersect the target; skipped`)
         continue
       }
     }
 
     const prevShape = resultShape
-    const res = booleanWithDiff(oc, scope, resultShape, toolShape, op, { unifyFaces })
+    let res
+    try {
+      res = booleanWithDiff(oc, scope, resultShape, cutTool, op, { unifyFaces })
+    } catch (e) {
+      // A clearance growth can push the cut into a tangency the kernel cannot
+      // resolve; name the clearance rather than the generic nudge message.
+      if (op === 'cut' && clearance !== 0 && e instanceof BooleanSoundnessError) {
+        throw clearanceFailure(clearance, toolRef, e.message)
+      }
+      throw e
+    }
     resultShape = scope.track(res.shape)
     if (foldedAny) scope.release(prevShape)
     const names = transferBooleanNames(oc, scope, {
@@ -117,7 +206,7 @@ export function solveBoolean(
       faceOrigin: res.faceOrigin,
       targetFaceNames: faceNames,
       targetFaceAncestry: faceAncestry,
-      toolFaceNames: readBodyNames(oc, scope, toolShape, toolBody).faceNames,
+      toolFaceNames: toolNames.faceNames,
       toolFaceAncestry: toolBody.face_ancestry ?? null,
       toolUuidScope: keepTools ? featureId : null,
     })
@@ -133,8 +222,7 @@ export function solveBoolean(
   // Mirror the implicit cut/add warning: a boolean that consumed a tool but left
   // the target's brep_diff untouched produced no real geometry change.
   if (foldedAny && lastDiff !== null && brepDiffIsEmpty(lastDiff)) {
-    const msg = `${operation}: operation produced no geometry change`
-    result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
+    warn(`${operation}: operation produced no geometry change`)
   }
 
   // An intersect of disjoint bodies yields an empty compound; name it so the
@@ -143,7 +231,7 @@ export function solveBoolean(
     const probe = new DisposeScope()
     try {
       if (volumeOf(oc, probe, resultShape) < 1e-10) {
-        result.solver_warning = `${operation}: operation produced no overlapping geometry (empty result)`
+        warn(`${operation}: operation produced no overlapping geometry (empty result)`)
       }
     } catch {
       // Volume probe failed; leave without the warning.
@@ -181,8 +269,7 @@ export function solveBoolean(
     // resplitBody deleted the body from the store; report the deletion with
     // body_id still naming the consumed body and body_ids: [] for "nothing
     // survives" (the convention stated in resplitBody's docstring).
-    const msg = `boolean: the ${operation} removed all of body '${targetBody.id}'; the body was deleted`
-    result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
+    warn(`boolean: the ${operation} removed all of body '${targetBody.id}'; the body was deleted`)
     result.body_ids = []
     return result
   }

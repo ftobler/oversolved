@@ -13,7 +13,7 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { parseAncestry } from '../query'
+import { parseAncestry, featureRefId } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { extractProfileLoops } from './shared/profileLoops'
@@ -21,12 +21,21 @@ import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage } from '../occ/prismLineage'
 import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, type Vec3 } from '../occ/primitives'
+import { buildCurveEdge } from '../occ/helixEdge'
+import { descriptorFromRepo } from './helix'
 import { stripRefSigil } from '@/utils/refSigil'
 
 type Dict = Record<string, unknown>
 
 /** Resolve a sweep path reference to the sketch id holding the spine. */
 export function pathRefToSketchId(pathRef: string, globalRepo: Repository): string {
+  // A bare feature-level ref (`@<sketchId>`, canonical; `$<sketchId>`, legacy)
+  // is the sketch id directly. The slash/query forms below name geometry inside
+  // a sketch and have to be decoded further.
+  const featureId = featureRefId(pathRef)
+  if (featureId !== null) return featureId
+  // `@<sketchId>/<eid>` names one entity of a sketch; the path is on that
+  // sketch. The canonical bare `@<sketchId>` was already handled above.
   if (pathRef.startsWith('@')) return pathRef.slice(1).split('/')[0]
   if (pathRef.startsWith('?')) {
     const [ids] = parseAncestry(pathRef)
@@ -469,6 +478,79 @@ export function collectPathEdges(
   return [spineEdges, firstSketchId]
 }
 
+/** The helix id a path ref names, when its bare id carries a `_curve_`
+ *  descriptor. A helix path is real 3D geometry, not sketch topology, so it
+ *  takes a separate arm in path resolution. Only the bare `@<id>`/`$<id>` form
+ *  names a helix: a slash form (`@hx1/e1`) names an entity inside a feature, so
+ *  it is refused. The pre-canonicalization reader took the head of a slash form,
+ *  which silently accepted a ref that never named a helix curve; that leniency
+ *  is dropped because nothing emits the form (helix refs are minted bare). */
+function helixPathRef(ref: string, globalRepo: Repository): string | null {
+  const id = featureRefId(ref)
+  if (id === null) return null
+  return globalRepo.elements.get('_curve_' + id) !== undefined ? id : null
+}
+
+/** Sample a profile boundary edge into 2D plane points, enough to bracket its
+ *  axial span. Lines/splines use their control points; arcs/ellipses are sampled
+ *  so an interior extremum (a bulge past the endpoints) is not missed. */
+function edgeSample2d(e: Dict): number[][] {
+  const kind = e.kind as string | undefined
+  const pts: number[][] = []
+  const push = (p: unknown): void => {
+    if (Array.isArray(p) && p.length >= 2) pts.push([p[0] as number, p[1] as number])
+  }
+  if ((kind === 'arc' || kind === 'ellipse_arc' || kind === 'ellipse') && Array.isArray(e.center)) {
+    const c = e.center as number[]
+    const a = kind === 'arc' ? (e.radius as number) : (e.a as number)
+    const b = kind === 'arc' ? (e.radius as number) : (e.b as number)
+    const theta = (kind === 'arc' ? 0 : ((e.theta as number) ?? 0)) * (Math.PI / 180)
+    const ccw = (e.ccw as boolean) ?? true
+    let lo = kind === 'ellipse' ? 0 : ((e.angle_start_deg as number) ?? 0)
+    let hi = kind === 'ellipse' ? 360 : ((e.angle_end_deg as number) ?? 360)
+    if (!ccw) [lo, hi] = [hi, lo]
+    const r0 = lo * (Math.PI / 180)
+    const r1 = hi * (Math.PI / 180)
+    for (let i = 0; i <= 48; i++) {
+      const t = r0 + ((r1 - r0) * i) / 48
+      pts.push([
+        c[0] + a * Math.cos(t) * Math.cos(theta) - b * Math.sin(t) * Math.sin(theta),
+        c[1] + a * Math.cos(t) * Math.sin(theta) + b * Math.sin(t) * Math.cos(theta),
+      ])
+    }
+    return pts
+  }
+  push(e.start)
+  push(e.end)
+  push(e.c1)
+  push(e.c2)
+  return pts
+}
+
+/**
+ * The profile's extent along the sweep's advance axis. A screw sweep repeats one
+ * pitch apart, so a profile whose axial span reaches the pitch folds back onto
+ * its previous turn. OCC builds that self-intersecting shell into a shape whose
+ * BRepCheck verdict is still "valid" (measured: the volume just scales with the
+ * profile height), so the overlap has to be caught from the geometry, not the
+ * built solid's validity.
+ */
+function profileAxialSpan(loops: Dict[][], plane: PlaneLike, axis: Vec3): number {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const loop of loops) {
+    for (const e of loop) {
+      for (const p of edgeSample2d(e)) {
+        const w = sketchToWorld2d(p, plane)
+        const axial = w[0] * axis[0] + w[1] * axis[1] + w[2] * axis[2]
+        if (axial < lo) lo = axial
+        if (axial > hi) hi = axial
+      }
+    }
+  }
+  return Number.isFinite(lo) ? hi - lo : 0
+}
+
 /** Solve a sweep feature into the body store (mirrors `_solve_sweep`). */
 export function solveSweep(
   oc: OccModule,
@@ -480,16 +562,15 @@ export function solveSweep(
 ): { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.sweep as Dict) ?? {}
-  const mergeTarget = ((sub.merge_target as string) ?? (feature.merge_target as string)) ?? null
-  const merged: Dict = { ...sub, ...feature }
+  const mergeTarget = (sub.merge_target as string) ?? null
 
-  const sketchRaw = merged.sketch
+  const sketchRaw = sub.sketch
   const rawRefs: string[] = Array.isArray(sketchRaw)
     ? (sketchRaw as string[]).filter((s) => s)
     : sketchRaw
       ? [sketchRaw as string]
       : []
-  const pathRaw = merged.path
+  const pathRaw = sub.path
   const pathRefs: string[] = Array.isArray(pathRaw)
     ? (pathRaw as string[]).filter((s) => s)
     : pathRaw
@@ -607,15 +688,50 @@ export function solveSweep(
   }
   if (allLoops.length === 0) throw new Error('sweep: no closed profile found')
 
-  const [spineEdges] = collectPathEdges(oc, scope, pathRefs, globalRepo)
+  // A curve path (a helix) is built from its descriptor; a sketch path keeps
+  // the existing topology route. In v1 a helix path stands alone.
+  const helixIds = [...new Set(pathRefs.map((r) => helixPathRef(r, globalRepo)).filter((x): x is string => x !== null))]
+  let spineEdges: OccShape[]
+  let binormal: Vec3 | null = null
+  let helixPath = false
+  let helixPitch: number | null = null
+  if (helixIds.length > 0) {
+    if (pathRefs.length !== helixIds.length || helixIds.length > 1) {
+      throw new Error('sweep: a helix path must stand alone; mixing it with other path edges is not supported')
+    }
+    const desc = descriptorFromRepo(globalRepo, helixIds[0])
+    if (desc === null) throw new Error(`sweep: helix path '${helixIds[0]}' has no curve descriptor`)
+    spineEdges = [scope.track(buildCurveEdge(oc, scope, desc))]
+    binormal = desc.axis
+    helixPitch = Math.abs(desc.pitch)
+    helixPath = true
+  } else {
+    spineEdges = collectPathEdges(oc, scope, pathRefs, globalRepo)[0]
+  }
+
+  // A profile whose axial span reaches the pitch overlaps its previous turn.
+  // Refuse it before building; the self-intersecting shell OCC returns from
+  // MakePipeShell otherwise passes BRepCheck_Analyzer (see profileAxialSpan).
+  if (helixPath && binormal !== null && helixPitch !== null) {
+    const span = profileAxialSpan(allLoops, firstPt as PlaneLike, binormal)
+    if (span >= helixPitch - 1e-9) {
+      throw new Error('sweep: profile overlaps the next turn: pitch < profile height')
+    }
+  }
 
   const bodyId = 'body_' + featureId
   const result: { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } = { status: 'ok', body_id: bodyId }
-  const operation = ((merged.operation as string) ?? 'add') as BodyOperation
+  const operation = ((sub.operation as string) ?? 'add') as BodyOperation
 
-  const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId)
+  const lineage = sweepProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, spineEdges, firstSketchId, featureId, binormal)
   const swept = scope.track(lineage.solid)
   for (const e of spineEdges) scope.release(e)
+  // A profile taller than the pitch (or wider than the radius) makes the shell
+  // self-intersect; the named error is clearer than a bare invalid-solid
+  // message and must never crash the worker.
+  if (helixPath && !scope.track(new oc.BRepCheck_Analyzer(swept, true)).IsValid_2()) {
+    throw new Error('sweep: profile overlaps the next turn: pitch < profile height')
+  }
 
   const opResult = applyBodyOperation(oc, scope, table, {
     toolShape: swept,

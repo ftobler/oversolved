@@ -22,7 +22,7 @@ import { getToolPickConfig } from '@/registry/toolPickConfig'
 import { planBrepDimensionPick, refreshProjectedPickKinds } from '@/tools/dimensionProjection'
 import { randomId } from '@/utils/yamlMutations/helpers'
 import type { DialogState, SketchEditorState } from './sketchEditorTypes'
-import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId } from './sketchEditorCallbacks'
+import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectionEntityId, CANNOT_APPLY_TITLE, type PendingConstraint } from './sketchEditorCallbacks'
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
 import { activateTool, deactivateTool } from './sketchEditorToolLifecycle'
 import { clampRollbackPosition } from '@/session/DocSession'
@@ -55,6 +55,15 @@ export function sketchOwnedDeleteTargets(selection: Set<string>, activeFeatureId
     }
     return false
   })
+}
+
+// The user-facing reason for an add the redundancy gate refuses. Shared by the
+// command path (applyConstraint returns it to the caller, which raises the
+// cannot-apply message) and the dimension confirm path (which raises the
+// message itself through the showMessage port), so both say the same thing.
+function overconstrainReason(kind: string): string {
+  const label = CONSTRAINT_BY_KIND.get(kind)?.label ?? kind
+  return `This would overconstrain the sketch: the ${label.toLowerCase()} is already implied by the existing constraints.`
 }
 
 // The part-side editor FSM fields this store owns. Declared here rather than in
@@ -567,6 +576,15 @@ export const editorState = createStore<EditorState>((set, get) => ({
       }
     }
 
+    // Refuse a constraint that would make the set redundant, the "this would
+    // overconstrain" of most CAD. The port runs the real solver on a draft copy
+    // (Part.tsx owns the doc and the probe), so no mutation is created when the
+    // add is refused; existing redundancy in a document is a solve fact, not an
+    // error, and is flagged there instead.
+    if (sketchCallbacks.checkRedundantAdd?.({ featureId: activeFeatureId, kind, targets })) {
+      return overconstrainReason(kind)
+    }
+
     onMutation({ type: 'add_constraint', featureId: activeFeatureId, kind, targets })
     return null
   },
@@ -831,6 +849,27 @@ export const editorState = createStore<EditorState>((set, get) => ({
         const sign = sketch
           ? computeDimensionSign(constraintKind, targets, sketch, featureId)
           : null
+        // The same authoring gate applyConstraint runs, now with the value the
+        // dialog collected: without it a duplicate dimension could never be
+        // seen (a value-less dimension contributes no solver rows), and the
+        // dimension tool would be the one door around the refusal. The reason
+        // rides the same cannot-apply message as a command rejection, and the
+        // gesture's projections are scratch work, so a refusal cleans them up
+        // like any other abort instead of leaving them in the doc.
+        const pending: PendingConstraint = {
+          featureId, kind: constraintKind, targets, value,
+          ...(pos && { pos }),
+          ...(sign !== null && { sign }),
+        }
+        if (sketchCallbacks.checkRedundantAdd?.(pending)) {
+          sketchCallbacks.showMessage?.({
+            title: CANNOT_APPLY_TITLE,
+            message: overconstrainReason(constraintKind),
+            variant: 'error',
+          })
+          get().cancelBrepProjectionGesture()
+          return
+        }
         onMutation({
           type: 'add_constraint',
           featureId, kind: constraintKind, targets, value,

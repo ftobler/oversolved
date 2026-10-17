@@ -1,0 +1,1 @@
+structure: surface 1 self-intersects between segments 51 and 53 near (0.027216, 0.005456)

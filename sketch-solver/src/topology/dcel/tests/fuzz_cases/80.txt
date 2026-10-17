@@ -1,0 +1,1 @@
+coverage: coverage (lost area): 3825 cells read as bounded but sit in no face and 0 sit in more than one, first at (24364.082964, -2085.445927) with 0

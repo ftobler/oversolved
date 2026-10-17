@@ -1,7 +1,6 @@
 use crate::radians;
-use crate::topology::dcel::{
-    angle_in_arc, degrees, detect_topology, InputEntity, TopoEntity, TANGENT_GAP_REL,
-};
+use crate::tolerance::tangent_gap_tol;
+use crate::topology::dcel::{angle_in_arc, degrees, detect_topology, InputEntity, TopoEntity};
 use crate::topology::profile_loops::EdgeGeom;
 use crate::topology::TOL_TOPOLOGY_MERGE as MERGE;
 
@@ -23,6 +22,46 @@ fn a_point_between_two_vertices_merges_into_the_first_registered() {
         assert_eq!(verts.vid([1.5 * MERGE, 0.0]), "_v1");
         assert_eq!(verts.vid([0.8 * MERGE, 0.0]), "_v0");
     }
+}
+
+#[test]
+fn vertex_emission_order_is_the_registration_order_on_every_run() {
+    // The backlog item "DCEL vertex emission order is HashMap-random" is
+    // stale: the pool is the insertion-ordered `Verts` since 7676df76, and
+    // `vertices`/`intersection_points` are drained straight from its Vec, so
+    // their order is the registration order on every run. A HashMap-ordered
+    // emission would reshuffle under a fresh seed every run.
+    let geom = vec![
+        ("a".into(), line([0.0, 0.0], [4.0, 0.0])),
+        ("b".into(), line([4.0, 0.0], [4.0, 4.0])),
+        ("c".into(), line([4.0, 4.0], [0.0, 4.0])),
+        ("d".into(), line([0.0, 4.0], [0.0, 0.0])),
+        // Crosses the left and right side mid-span; its two hits are minted
+        // after the four seeded corners.
+        ("cross".into(), line([-1.0, 2.0], [5.0, 2.0])),
+    ];
+    let first = detect_topology(&geom);
+    let vertex_ids = |t: &crate::topology::dcel::TopologyOut| -> Vec<String> {
+        t.vertices.iter().map(|(k, _)| k.clone()).collect()
+    };
+    for _ in 0..64 {
+        assert_eq!(vertex_ids(&detect_topology(&geom)), vertex_ids(&first));
+    }
+    // Registration order, not sorted: the seeded corners own _v0.._v3, the
+    // cross line's free endpoints follow, then the two chord hits.
+    let ids = vertex_ids(&first);
+    assert_eq!(
+        ids,
+        vec!["_v0", "_v1", "_v2", "_v3", "_v4", "_v5", "_v6", "_v7"]
+    );
+    assert_eq!(
+        first
+            .intersection_points
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect::<Vec<_>>(),
+        vec!["_v6", "_v7"]
+    );
 }
 
 #[test]
@@ -100,10 +139,12 @@ fn near_tangent_lines_at_the_ellipse_seam_keep_the_face() {
     // standalone face.
     //
     // The circle test drives its contact through `lc`'s miss-side virtual
-    // tangent point; the ellipse's `line_ellipse` has no miss-side rule, so the
-    // lines graze instead (pushed inward by `g`). Each graze yields two roots
-    // within MERGE of the foot, which the point de-dup folds to one contact;
-    // the two lines' contacts are `2*b*delta` apart and fuse into one vertex.
+    // tangent point; `line_ellipse` now has the same miss-side rule, but this
+    // test keeps its lines pushed inward by `g` (the point sits inside the
+    // rim, so the discriminant stays positive). Each line genuinely crosses in
+    // two roots within MERGE of the foot, which the point de-dup folds to one
+    // contact; the two lines' contacts are `2*b*delta` apart and fuse into one
+    // vertex.
     let a: f64 = 50.0;
     let b: f64 = 10.0;
     let g: f64 = 2e-14; // inward graze: disc stays robustly positive
@@ -433,7 +474,7 @@ fn near_tangent_circle_pair_miss_side_stays_two_standalone_faces() {
     // the solver left a hair APART must still close as two standalone disks
     // with one virtual tangent point, not zero contact.
     let r: f64 = 5.0;
-    let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+    let tol = tangent_gap_tol(r, MERGE);
     for gap in [1e-9, 1e-7, 0.5 * tol] {
         let t = detect_topology(&circle_pair_offset_by(r, gap));
         assert_eq!(t.surfaces.len(), 2, "gap {gap:e}: two standalone disks");
@@ -456,7 +497,7 @@ fn three_circles_a_hair_apart_still_make_four_areas() {
     // miss side. An equilateral centre spacing of 2r + gap keeps every pair
     // a miss within tolerance, so the central triangle must still build.
     let r: f64 = 2.61391544342041;
-    let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+    let tol = tangent_gap_tol(r, MERGE);
     for gap in [1e-7, 0.5 * tol] {
         let s = 2.0 * r + gap;
         let geom = vec![
@@ -529,13 +570,122 @@ fn tangent_collapse_holds_across_the_solver_residual_band() {
         assert_eq!(t.surfaces.len(), 4, "gap {gap:e}: no sliver face");
     }
     // Past tolerance on the miss side the line touches nothing, leaving just
-    // the venn's own 3 regions. The cliff is `TANGENT_GAP_REL * r` of the
+    // the venn's own 3 regions. The cliff is the pair's gap budget of the
     // SMALLER circle (4e-5 here) since the region needs both contacts; it is
     // pinned from both sides so widening the constant cannot pass unnoticed.
     for gap in [4.1e-5, 1e-3, 1e-2, 0.1] {
         let t = detect_topology(&tangent_pair_offset_by(gap));
         assert_eq!(t.surfaces.len(), 3, "gap {gap:e}: a real miss stays a miss");
     }
+}
+
+#[test]
+fn near_tangent_lines_to_an_ellipse_close_the_side_regions() {
+    // Bug class A: a line tangent to an ellipse reported no contact, so the
+    // region the line closes never built. The stadium's top and bottom sides
+    // sit a hair off tangency to the ellipse inside it; within the gap budget
+    // each side's virtual contact splits the ellipse and the stadium into the
+    // pinned left and right side regions plus the disk. On a real miss the
+    // ellipse stays whole and the stadium is its one and only region.
+    let (a, b, half_width): (f64, f64, f64) = (5.0, 2.0, 6.0);
+    let stadium = |gap: f64| {
+        vec![
+            ("e0".into(), ellipse([0.0, 0.0], a, b, 0.0)),
+            (
+                "top".into(),
+                line([-half_width, b + gap], [half_width, b + gap]),
+            ),
+            (
+                "bottom".into(),
+                line([half_width, -b - gap], [-half_width, -b - gap]),
+            ),
+            (
+                "right".into(),
+                line([half_width, b + gap], [half_width, -b - gap]),
+            ),
+            (
+                "left".into(),
+                line([-half_width, -b - gap], [-half_width, b + gap]),
+            ),
+        ]
+    };
+    for gap in [1e-7, 5e-6] {
+        let t = detect_topology(&stadium(gap));
+        assert_eq!(
+            t.surfaces.len(),
+            3,
+            "gap {gap:e}: disk + left and right side regions"
+        );
+    }
+    let t = detect_topology(&stadium(1e-2));
+    assert_eq!(t.surfaces.len(), 2, "a real miss leaves the stadium whole");
+}
+
+#[test]
+fn a_concave_container_keeps_a_nested_face_as_its_hole() {
+    // The nesting fix end to end: a small C-shaped traced face inside a big
+    // one, plus a circle in the notch. The small C's centroid sits in its own
+    // mouth, which the big C's mouth also covers, so the centroid-only test
+    // dropped the hole; the circle is genuinely outside both and stays its own
+    // face. The two C outlines share no edge and no vertex, so the DCEL sees
+    // three clean loops.
+    let outline = |pts: &[[f64; 2]], prefix: &str| {
+        (0..pts.len())
+            .map(|i| {
+                (
+                    format!("{prefix}{i}"),
+                    line(pts[i], pts[(i + 1) % pts.len()]),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let big = outline(
+        &[
+            [0.0, 0.0],
+            [0.0, 12.0],
+            [12.0, 12.0],
+            [12.0, 8.0],
+            [4.0, 8.0],
+            [4.0, 4.0],
+            [12.0, 4.0],
+            [12.0, 0.0],
+        ],
+        "big",
+    );
+    let small = outline(
+        &[
+            [1.5, 1.0],
+            [1.5, 11.0],
+            [10.5, 11.0],
+            [10.5, 9.0],
+            [3.5, 9.0],
+            [3.5, 3.0],
+            [10.5, 3.0],
+            [10.5, 1.0],
+        ],
+        "small",
+    );
+    let mut geom = big;
+    geom.extend(small);
+    geom.push(("disc".into(), circle([8.0, 6.0], 1.0)));
+
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 3, "big C, small C and the disc");
+    let with_hole: Vec<_> = t.surfaces.iter().filter(|s| !s.holes.is_empty()).collect();
+    assert_eq!(with_hole.len(), 1, "only the big C carries a hole");
+    assert!(
+        with_hole[0]
+            .face_entity_ids
+            .iter()
+            .all(|id| id.starts_with("big")),
+        "the hole belongs to the big C's face"
+    );
+    assert!(
+        with_hole[0].holes[0]
+            .iter()
+            .all(|e| e.id.as_deref().is_some_and(|id| id.starts_with("small"))),
+        "the hole is the small C's loop"
+    );
 }
 
 #[test]
@@ -752,6 +902,279 @@ fn closed_spline_split_by_a_line_makes_two_faces() {
         spline_edges >= 2,
         "the spline must be cut into sub-edges, got {spline_edges}"
     );
+}
+
+#[test]
+fn a_self_crossing_spline_closes_its_lobe() {
+    // A cubic whose branches meet again near (0.44, 0.36): the crossing must
+    // become a vertex, the piece between the two parameters a self-loop
+    // half-edge, and the lobe it bounds the one face. Before the self-crossing
+    // pass the curve had no vertex but its ends, every span of it was a running
+    // piece between them, and the lobe was invisible.
+    let geom = vec![(
+        "s0".into(),
+        spline_open([0.0, 0.0], [4.0, 3.0], [-4.0, 3.0], [1.0, 0.0]),
+    )];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 1, "the lobe is the one face");
+    let boundary = &t.surfaces[0].boundary;
+    assert_eq!(boundary.len(), 1, "the lobe is the self-loop piece alone");
+    assert!(matches!(boundary[0].geom, EdgeGeom::Spline { .. }));
+    assert_eq!(
+        boundary[0].start_vertex, boundary[0].end_vertex,
+        "the lobe starts and ends on the crossing vertex"
+    );
+    // The crossing vertex is one of the two minted ones, and the lobe's area
+    // is the region between the two parameters: positive, smaller than the
+    // curve's own bounding box, and stable to the vertex merge.
+    let cross = &t
+        .intersection_points
+        .iter()
+        .find(|(_, p)| (p[0] - 0.44).abs() < 1e-4 && (p[1] - 0.36).abs() < 1e-4)
+        .expect("the crossing is an intersection point");
+    assert_eq!(&boundary[0].start_vertex, &Some(cross.0.clone()));
+    let area = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::profile_loops::loop_signed_area(&s.boundary))
+        .sum::<f64>();
+    // Rough magnitude check: the lobe spans about 1.1 by 1.9 world units.
+    assert!(
+        (0.5..4.0).contains(&area),
+        "lobe area {area} outside the plausible band"
+    );
+}
+
+#[test]
+fn a_node_at_the_start_still_slices_its_lobe() {
+    // B(0) = B(0.5) = (0, 0): the node sits on ONE end (the start), so it is
+    // not the closure and the lobe between the parameters is a face. The
+    // crossing's vertex is the start's own, so the lobe piece is a self-loop.
+    let geom = vec![(
+        "s0".into(),
+        spline_open([0.0, 0.0], [1.0, 1.0], [0.0, 2.0], [-3.0, -9.0]),
+    )];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 1, "the lobe is the one face");
+    let boundary = &t.surfaces[0].boundary;
+    assert_eq!(boundary.len(), 1, "the lobe is the self-loop piece alone");
+    assert_eq!(
+        boundary[0].start_vertex, boundary[0].end_vertex,
+        "the lobe starts and ends on the node, which is the start vertex"
+    );
+    assert!(
+        crate::topology::profile_loops::loop_signed_area(boundary) > 0.0,
+        "the lobe bounds a positive area"
+    );
+}
+
+#[test]
+fn a_sliced_washer_keeps_the_c_shapes_and_drops_the_bore_halves() {
+    // The even/odd rule end to end: a washer sliced across by a line used to
+    // emit four bounded regions (two ring halves and two bore halves), because
+    // each face's own loop is contained in no other loop. The rule is stated
+    // on the closed carriers, so the outer and inner circles are still two
+    // shells whatever the line did to their loops: the ring halves are the
+    // fillable areas and the bore halves are holes.
+    let geom = vec![
+        ("outer".into(), circle([0.0, 0.0], 2.0)),
+        ("inner".into(), circle([0.0, 0.0], 1.0)),
+        ("slice".into(), line([-3.0, 0.0], [3.0, 0.0])),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2, "the two ring halves are the areas");
+    assert_eq!(t.hole_regions.len(), 2, "the bore halves are holes");
+    for s in &t.surfaces {
+        assert!(s.holes.is_empty(), "the ring halves carry no holes");
+    }
+    // The two C-shapes together are the annulus: pi * (4 - 1). Exact Green's
+    // quadrature, not the coarse polygon area: a half-annulus sampled at one
+    // interior point per arc under-reports by a third.
+    let area: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+        .sum();
+    let annulus = std::f64::consts::PI * 3.0;
+    assert!(
+        (area - annulus).abs() < 1e-3,
+        "the C-shapes' area {area} is not the annulus {annulus}"
+    );
+    // Both C-shapes carry a slice line side and an arc of each circle.
+    for s in &t.surfaces {
+        let ids = &s.face_entity_ids;
+        for want in ["outer", "inner", "slice"] {
+            assert!(
+                ids.iter().any(|id| id == want),
+                "a C-shape is bounded by {want}: {ids:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_unsliced_washer_keeps_its_island() {
+    // The rule's exemption: a shell the arrangement never cut keeps the sketch
+    // model's standalone loop, so an unsliced washer is still two areas (the
+    // ring with the bore as its hole, plus the bore as its own island).
+    let geom = vec![
+        ("outer".into(), circle([0.0, 0.0], 2.0)),
+        ("inner".into(), circle([0.0, 0.0], 1.0)),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2);
+    assert_eq!(t.hole_regions.len(), 0, "nothing is cut, nothing is a hole");
+}
+
+#[test]
+fn a_nearly_closed_spline_is_a_shell_like_a_closed_one() {
+    // A teardrop whose ends sit a gap under MERGE apart is one closed curve to
+    // the vertex merge, so it is a shell like the exactly closed teardrop. The
+    // cubic's only double point is its own near-closure; reporting it split the
+    // curve at a phantom lobe and left the shell out of the hole rule, which
+    // the oracle (which reads the ends as merged) then disagreed with.
+    for gap in [0.0, 0.5 * MERGE] {
+        let geom = vec![
+            (
+                "s0".into(),
+                spline_open([0.0, 0.0], [1.0, 2.0], [-1.0, 2.0], [gap, 0.0]),
+            ),
+            ("l0".into(), line([-3.0, 0.0], [3.0, 0.0])),
+        ];
+        let t = detect_topology(&geom);
+        assert_eq!(
+            t.surfaces.len(),
+            1,
+            "gap {gap:e}: the teardrop is one standalone area"
+        );
+        assert!(
+            t.surfaces[0].holes.is_empty() && t.hole_regions.is_empty(),
+            "gap {gap:e}: nothing nests in a lone teardrop"
+        );
+        assert!(
+            t.edges.iter().all(|e| e.entity_id == "l0"),
+            "gap {gap:e}: the spline must not be split anywhere"
+        );
+        let violations = crate::topology::oracle::check_input(&geom)
+            .iter()
+            .map(|v| v.render())
+            .collect::<Vec<_>>();
+        assert!(violations.is_empty(), "gap {gap:e}: {violations:?}");
+    }
+}
+
+#[test]
+fn a_lone_island_still_subtracts_the_bore_it_covers() {
+    // The island's hole subtraction must run when it is the only surface left:
+    // an uncut outer circle carrying a slit inner circle keeps the whole disk
+    // as one standalone face, and the bore pieces the slit traced are holes
+    // the disk must subtract (the early return used to skip exactly this).
+    let geom = vec![
+        ("outer".into(), circle([5.0, 3.0], 6.5)),
+        ("inner".into(), circle([5.0, 3.0], 5.0)),
+        ("slit_a".into(), line([3.0, 4.5], [-1.0, 4.5])),
+        ("slit_b".into(), line([-1.0, -1.5], [3.0, -1.5])),
+    ];
+    let t = detect_topology(&geom);
+    assert!(
+        t.surfaces.iter().any(|s| !s.holes.is_empty()),
+        "the covering face subtracts the bore: {} surfaces, {} hole regions",
+        t.surfaces.len(),
+        t.hole_regions.len()
+    );
+    let violations = crate::topology::oracle::check_input(&geom)
+        .iter()
+        .map(|v| v.render())
+        .collect::<Vec<_>>();
+    assert!(violations.is_empty(), "{violations:?}");
+}
+
+#[test]
+fn a_traced_face_subtracts_the_bore_it_owns() {
+    // An outer circle cut only in its ring and an inner circle cut only in its
+    // bore. The ring face is not a standalone island, but its boundary encloses
+    // the bore: the bore halves are its inner boundary, so they must be
+    // subtracted. The island-only rule skipped them and the oracle read the
+    // bore's cells as filled.
+    let geom = vec![
+        ("outer".into(), circle([0.0, 0.0], 2.0)),
+        ("inner".into(), circle([0.0, 0.0], 1.0)),
+        ("ring_cut".into(), line([-3.0, 1.8], [3.0, 1.8])),
+        ("bore_cut".into(), line([-1.5, 0.5], [1.5, 0.5])),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2, "the cap and the lower ring");
+    assert_eq!(t.hole_regions.len(), 2, "the two bore halves are holes");
+    let ring = t
+        .surfaces
+        .iter()
+        .find(|s| !s.holes.is_empty())
+        .expect("the ring face subtracts the two bore halves");
+    assert_eq!(ring.holes.len(), 2, "both bore halves");
+    let violations = crate::topology::oracle::check_input(&geom)
+        .iter()
+        .map(|v| v.render())
+        .collect::<Vec<_>>();
+    assert!(violations.is_empty(), "{violations:?}");
+}
+
+#[test]
+fn a_face_that_does_not_surround_a_hole_region_keeps_it_out() {
+    // The frontend's peanut-with-hole sketch (the extrude add-hole regression):
+    // two crossing circles, their chord line and a hole circle centred on one
+    // lobe. The crescent face's loop walks along the hole's own arc, but the
+    // crescent only TOUCHES the hole's pieces, it does not surround them: the
+    // pieces belong to the lens faces on the other side. A loop-based coverage
+    // test that read the region's samples as covered wired the hole pieces into
+    // the crescent, and the extrude's add-fuse lost the hole.
+    let geom = vec![
+        ("cL".into(), circle([-6.614378452301025, 7.5], 10.0)),
+        ("cR".into(), circle([6.614378452301025, 7.5], 10.0)),
+        ("ln".into(), line([0.0, 0.0], [0.0, 15.0])),
+        (
+            "cHole".into(),
+            circle([-6.614378452301025, 7.5], 5.703681945800781),
+        ),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 4, "the four material faces of the peanut");
+    assert_eq!(t.hole_regions.len(), 2, "the hole circle is cut in two");
+    for s in &t.surfaces {
+        assert!(
+            s.holes.is_empty(),
+            "no face surrounds the hole: {:?} carries {}",
+            s.face_entity_ids,
+            s.holes.len()
+        );
+    }
+    let violations = crate::topology::oracle::check_input(&geom)
+        .iter()
+        .map(|v| v.render())
+        .collect::<Vec<_>>();
+    assert!(violations.is_empty(), "{violations:?}");
+}
+
+#[test]
+fn a_washer_sliced_by_a_diameter_line_keeps_its_two_rings() {
+    // Two concentric circles cut by a diameter line: the ring halves are the
+    // areas and the bore halves the holes. The bore halves' boundary points are
+    // REBUILT (an arc endpoint from its angle, a crossing from the line/circle
+    // solve), so they land a few ulp of the largest coordinate off the inner
+    // carrier; an allowance derived from the carrier's radius alone was too
+    // tight for the crossing's magnitude and read every face as material.
+    let geom = vec![
+        ("line".into(), line([-0.105, 0.01], [0.105, 0.01])),
+        ("outer".into(), circle([-0.005, 0.01], 0.025)),
+        ("inner".into(), circle([-0.005, 0.01], 0.01)),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 2, "the two ring halves are the areas");
+    assert_eq!(t.hole_regions.len(), 2, "the bore halves are holes");
+    let violations = crate::topology::oracle::check_input(&geom)
+        .iter()
+        .map(|v| v.render())
+        .collect::<Vec<_>>();
+    assert!(violations.is_empty(), "{violations:?}");
 }
 
 #[test]

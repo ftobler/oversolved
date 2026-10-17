@@ -152,10 +152,9 @@ export function solveRevolve(
 ): RevolveResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.revolve as Dict) ?? {}
-  const mergeTarget = ((sub.merge_target as string) ?? (feature.merge_target as string)) ?? null
-  const merged: Dict = { ...sub, ...feature }
+  const mergeTarget = (sub.merge_target as string) ?? null
 
-  const sketchRaw = merged.sketch
+  const sketchRaw = sub.sketch
   const sketchRefs: string[] = Array.isArray(sketchRaw)
     ? (sketchRaw as string[]).filter((s) => s)
     : sketchRaw
@@ -163,7 +162,7 @@ export function solveRevolve(
       : []
   // Nullish, not truthy: an explicit angle=0 must reach the non-zero validation
   // below and fail the feature, not silently become a full turn.
-  const angle = Number((merged.angle as number | null | undefined) ?? 360.0)
+  const angle = Number((sub.angle as number | null | undefined) ?? 360.0)
 
   if (!Number.isFinite(angle) || angle === 0) throw new Error('revolve: angle must be non-zero')
   if (Math.abs(angle) > 360) throw new Error('revolve: angle must be between -360 and 360')
@@ -251,12 +250,12 @@ export function solveRevolve(
   }
 
   // Throws when no axis was picked -- never a sweep about a default axis.
-  const [axisOrigin, axisDirection] = resolveRevolveAxis(merged, globalRepo, bodyStore)
+  const [axisOrigin, axisDirection] = resolveRevolveAxis(sub, globalRepo, bodyStore)
   const ao = axisOrigin as Vec3
   const ad = axisDirection as Vec3
 
-  const operation = ((merged.operation as string) ?? 'add') as BodyOperation
-  const direction = (merged.direction as string) ?? 'normal'
+  const operation = ((sub.operation as string) ?? 'add') as BodyOperation
+  const direction = (sub.direction as string) ?? 'normal'
 
   let toolShape: OccShape
   if (allLoops.length === 0) {

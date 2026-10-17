@@ -53,6 +53,58 @@ export function filletFacePath(createdBy: string, filletedEdgeUuid: string): str
   return `${createdBy}|fillet|${filletedEdgeUuid}`
 }
 
+/** What a shell face is: the offset wall born from a kept source face, or the
+ *  rim strip where a removed (open) face was. */
+export type ShellFaceRole = 'offset' | 'rim'
+
+/**
+ * A shell face: `<createdBy>|shell|<role>|<sourceFaceUuid>`. The source face
+ * names it, never its geometry: an offset wall is named after the face it was
+ * offset from, a rim after the removed face whose opening it borders. Both
+ * survive a thickness change, a face edit or a resize because the source face's
+ * UUID does.
+ */
+export function shellFacePath(createdBy: string, role: ShellFaceRole, sourceFaceUuid: string): string {
+  return `${createdBy}|shell|${role}|${sourceFaceUuid}`
+}
+
+/** What a loft face is: a band between two sections, or one of the two end
+ *  caps. */
+export type LoftFaceRole = 'side' | 'cap'
+
+/**
+ * A loft face: `<createdBy>|loft|<role>|<slot>`. A side's slot is
+ * `s<sectionIndex>|<entityId>`, the section whose boundary edge the band grew
+ * from (OCC reports every band of a ruled loft from every section's edges, so
+ * the LOWEST section that reaches a band names it); a cap's slot is `start` or
+ * `end`, the first or last profile in the authored order, never the world axis.
+ * Both survive a resize because the section order and the entity ids do.
+ */
+export function loftFacePath(createdBy: string, role: LoftFaceRole, slot: string): string {
+  return `${createdBy}|loft|${role}|${slot}`
+}
+
+/**
+ * A drafted face: `<createdBy>|draft|<sourceFaceUuid>`, the tilted image of the
+ * face that was picked. The source face names it, never its geometry, so a
+ * later angle change or resize recomputes the same UUID.
+ */
+export function draftFacePath(createdBy: string, sourceFaceUuid: string): string {
+  return `${createdBy}|draft|${sourceFaceUuid}`
+}
+
+/**
+ * A lateral move-face cell face: `<createdBy>|extend|<neighbourUuid>`, the
+ * piece of the neighbour's surface the move extended. Named after the neighbour
+ * it extends, so a later resize or parameter edit recomputes the same UUID.
+ * After the clean, a lateral merged into its neighbour keeps the neighbour's
+ * own UUID (target-first merged-face naming); one that stays separate keeps
+ * this geometry-free name.
+ */
+export function moveFaceExtendPath(createdBy: string, neighbourUuid: string): string {
+  return `${createdBy}|extend|${neighbourUuid}`
+}
+
 /** What a hole's cutter face is: the bore wall, or one of the cutter's discs,
  *  `mouth` where the cutter starts and `floor` where it ends. A through_all
  *  cutter starts backed off outside the body and ends past it, so neither disc

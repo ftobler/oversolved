@@ -18,6 +18,9 @@ function producedBodies(step: RecipeStep): string[] {
   if (step.kind === 'start') return [step.body]
   if (step.kind === 'boolean') return [step.toolBody]
   if (step.kind === 'mirror' && step.keepOriginal && !step.merge) return [`body_${step.id}`]
+  // The loft always builds a NEW body (`body_<id>`), not a mutation of the
+  // target; nothing later references it (the step is last in every recipe).
+  if (step.kind === 'loft') return [PRIMARY_BODY, `body_${step.id}`]
   return [PRIMARY_BODY]
 }
 
@@ -31,6 +34,9 @@ function referencedBodies(step: RecipeStep): string[] {
     case 'linear-array': return [step.target]
     case 'circular-array': return [step.target]
     case 'mirror': return [step.target]
+    case 'shell': return [step.target]
+    case 'helix': return [step.target]
+    case 'loft': return [step.target]
   }
 }
 
@@ -72,6 +78,9 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'linear-array': return [step.pitch]
       case 'circular-array': return [step.stepDeg]
       case 'mirror': return []
+      case 'shell': return [step.thickness]
+      case 'helix': return [step.pitch]
+      case 'loft': return [step.base, step.top, step.height]
     }
   }
 
@@ -85,14 +94,18 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'linear-array': return [step.count]
       case 'circular-array': return [step.count]
       case 'mirror': return [step.face]
+      case 'shell': return [step.face]
+      case 'helix': return [step.face, step.turns]
+      case 'loft': return []
     }
   }
 
   it('draws one start plus at most eight edits, all on the grid', () => {
     for (let seed = 0; seed < SEEDS; seed++) {
       const { steps } = generateRecipe(seed)
-      expect(steps.length).toBeGreaterThanOrEqual(1)
-      expect(steps.length).toBeLessThanOrEqual(9)
+      expect(steps.length).toBeGreaterThanOrEqual(2)
+      // The drawn chain (up to eight edits) plus the appended loft.
+      expect(steps.length).toBeLessThanOrEqual(10)
       expect(steps[0].kind).toBe('start')
       for (const step of steps) {
         for (const value of mmValues(step)) {
@@ -132,7 +145,7 @@ describe('the geometry-fuzz recipe generator', () => {
       }
     }
     expect([...kinds].sort()).toEqual([
-      'boolean', 'chamfer', 'circular-array', 'fillet', 'hole', 'linear-array', 'mirror', 'start',
+      'boolean', 'chamfer', 'circular-array', 'fillet', 'helix', 'hole', 'linear-array', 'loft', 'mirror', 'shell', 'start',
     ])
     expect([...tools].sort()).toEqual(['box', 'cylinder', 'sphere'])
   })

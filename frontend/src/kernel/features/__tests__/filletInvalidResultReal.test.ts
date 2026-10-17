@@ -2,7 +2,7 @@
 //
 // Corpus regression for bugreports/20260908_1723_filet_non_manifold_geometry.md
 // and 20260908_1725_filet_non_manifold_geometry_2.md -- two reports, one
-// document (the ASTs are byte-identical) and one defect.
+// document (the documents are byte-identical) and one defect.
 //
 // The user filleted a rounded corner where an earlier fillet and a chamfer had
 // already met, and got a body with edges lying across faces they never split, a

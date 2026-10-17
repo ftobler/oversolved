@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evalExpr, evalFeatureParams } from '../evalExpr'
+import { evalExpr, evalFeatureParams, EXPR_FIELDS_BY_KIND } from '../evalExpr'
 
 describe('evalExpr', () => {
   it('returns a plain number string via the fast path', () => {
@@ -96,5 +96,38 @@ describe('evalFeatureParams', () => {
     const sub: Record<string, unknown> = {}
     evalFeatureParams(sub, ['distance'])
     expect(sub.distance).toBeUndefined()
+  })
+
+  it('lists and evaluates the shell thickness expression', () => {
+    expect(EXPR_FIELDS_BY_KIND.shell).toEqual(['thickness'])
+    const sub: Record<string, unknown> = { thickness: 'wall' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.shell, { wall: 2.5 })
+    expect(sub.thickness).toBe(2.5)
+  })
+
+  it('lists and evaluates the move-face distance expression to a signed number', () => {
+    expect(EXPR_FIELDS_BY_KIND.move_face).toEqual(['distance'])
+    const sub: Record<string, unknown> = { distance: '2*h' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.move_face, { h: -3 })
+    expect(sub.distance).toBe(-6)
+  })
+})
+
+describe('boolean clearance expression', () => {
+  it('is an expression-capable field of the boolean kind', () => {
+    expect(EXPR_FIELDS_BY_KIND.boolean).toContain('clearance')
+  })
+
+  it('evaluates a boolean sub clearance against a variable context', () => {
+    const sub: Record<string, unknown> = { operation: 'subtract', clearance: 'tol' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.boolean, { tol: 0.2 })
+    expect(sub.clearance).toBe(0.2)
+  })
+
+  it('writes clearance_error on a bad expression and keeps the string', () => {
+    const sub: Record<string, unknown> = { operation: 'subtract', clearance: '2+/' }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.boolean)
+    expect(sub.clearance).toBe('2+/')
+    expect(sub.clearance_error).toBe('Cannot evaluate "2+/"')
   })
 })

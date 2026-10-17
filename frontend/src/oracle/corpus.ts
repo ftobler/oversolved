@@ -153,15 +153,17 @@ export function listOracleCases(): OracleCase[] {
   return listOracleDirs().map(readOracleCase)
 }
 
-/** Apply an edit to a parsed document in place: the named feature's field. */
+/** Apply an edit to a parsed document in place: the named feature's field.
+ *  Params live nested under the kind key (the one canonical spelling), so the
+ *  edit always lands in the sub-dict; a feature without one names a base field
+ *  the oracle corpus never edits. */
 export function applyOracleEdit(doc: Record<string, unknown>, edit: OracleEdit): void {
   const features = (doc.features as Array<Record<string, unknown>>) ?? []
   const feature = features.find((f) => f.id === edit.feature)
   if (feature === undefined) throw new Error(`oracle edit: no feature '${edit.feature}'`)
   const sub = feature[feature.kind as string] as Record<string, unknown> | undefined
-  // A param may be stored flat on the feature or nested under its kind key;
-  // write it back where it was found so the edit changes the value the leaf
-  // solver reads either way.
-  if (sub !== undefined && edit.field in sub) sub[edit.field] = edit.value
-  else feature[edit.field] = edit.value
+  if (sub === undefined) {
+    throw new Error(`oracle edit: feature '${edit.feature}' has no '${String(feature.kind)}' sub-dict`)
+  }
+  sub[edit.field] = edit.value
 }

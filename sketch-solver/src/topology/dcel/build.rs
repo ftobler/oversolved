@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use super::super::curve_intersect::{intersect_curves, Curve};
+use super::super::curve_intersect::{bezier_self_crossing, intersect_curves, Curve};
 use super::super::curve_split::{ellipse_point_at, subdivide_bezier, BezierCtrl};
 use super::super::profile_loops::{EdgeGeom, Vec2};
 use super::super::{TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI};
@@ -428,6 +428,46 @@ fn register_hit(
     }
 }
 
+/// Split each spline at its own crossing. A cubic whose branches meet again
+/// (a figure-eight) has no other entity there to mint the vertex, so without
+/// this pass the DCEL sees no vertex at the crossing, the lobes never close,
+/// and the curve encloses nothing. Both parameters take the SAME minted
+/// vertex, and the returned map (spline id -> that vertex) is what lets the
+/// half-edge build tell the lobe's self-loop span apart from a span whose two
+/// contacts merely fused into one vertex (a near-tangency pair, which must
+/// stay skipped rather than become a phantom sliver face).
+pub(super) fn add_spline_self_intersections(
+    splines: &[(String, TopoEntity)],
+    splits: &mut HashMap<String, Vec<Split>>,
+    verts: &mut Verts,
+) -> HashMap<String, String> {
+    let mut lobe_vertex: HashMap<String, String> = HashMap::new();
+    for (eid, e) in splines {
+        let TopoEntity::Spline {
+            start, c1, c2, end, ..
+        } = *e
+        else {
+            continue;
+        };
+        let Some(cross) = bezier_self_crossing(&[start, c1, c2, end]) else {
+            continue;
+        };
+        let v = verts.vid(cross.point);
+        // A missing split bucket means the entity was not seeded; skip it
+        // rather than index.
+        let Some(spl) = splits.get_mut(eid) else {
+            continue;
+        };
+        for t in [cross.t_lo, cross.t_hi] {
+            if !has_param(spl, t) {
+                spl.push((t, v.clone()));
+            }
+        }
+        lobe_vertex.insert(eid.clone(), v);
+    }
+    lobe_vertex
+}
+
 pub(super) fn add_curve_intersections(
     tagged: &[Tagged],
     splits: &mut HashMap<String, Vec<Split>>,
@@ -572,6 +612,7 @@ pub(super) fn build_half_edge_graph(
     splits: &HashMap<String, Vec<Split>>,
     splines: &[(String, TopoEntity)],
     ellipses: &[(String, TopoEntity)],
+    lobe_vertex: &HashMap<String, String>,
 ) -> (Vec<HalfEdge>, Vec<String>) {
     let mut hes: Vec<HalfEdge> = Vec::new();
     let mut he_eid: Vec<String> = Vec::new();
@@ -690,7 +731,24 @@ pub(super) fn build_half_edge_graph(
         for k in 0..spl.len().saturating_sub(1) {
             let (t0, v0) = &spl[k];
             let (t1, v1) = &spl[k + 1];
-            if v0 == v1 || t1 <= t0 {
+            if t1 <= t0 {
+                continue;
+            }
+            if v0 == v1 {
+                // A span that ends on its own start vertex is the lobe between
+                // a self-crossing's two parameters: emitted as a self-loop
+                // half-edge pair (its twin walks the same piece backwards).
+                // Any other fused pair is two contacts merged into one vertex
+                // (a near tangency); the span between them is a phantom sliver
+                // and stays skipped, as before. The whole closed curve (0..1
+                // with start == end) is the standalone pass's singleton.
+                let is_lobe =
+                    lobe_vertex.get(eid).is_some_and(|v| v == v0) && !(*t0 <= 0.0 && *t1 >= 1.0);
+                if !is_lobe {
+                    continue;
+                }
+                let eg = sub_spline_eg(&subdivide_bezier(&ctrl, *t0, *t1));
+                push_half_edge_pair(&mut hes, &mut he_eid, eid, v0, v1, eg);
                 continue;
             }
             let eg = if *t0 <= 0.0 && *t1 >= 1.0 {

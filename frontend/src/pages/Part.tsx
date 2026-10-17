@@ -7,8 +7,9 @@ import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper }
 import { stripRefSigil } from '@/utils/refSigil'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
+import { wouldOverconstrain } from '@/kernel/features/constraintProbe'
 import { visibleFeatureIds } from '@/utils/featureVisibility'
-import { useSketchEditorStore, useSketchUiStore, setSketchCallback, sketchOwnedDeleteTargets } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore, setSketchCallback, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { capturePreview } from '@/stores/previewStore/capture'
@@ -28,6 +29,8 @@ import '@/pages/Part.css'
 
 import PartToolbar from '@/pages/PartToolbar'
 import PartEditorPanel from '@/pages/PartEditorPanel'
+import ParameterTable from '@/pages/ParameterTable'
+import { newParameterMutation, parameterRows } from '@/pages/partParameters'
 import PartDebugPanel from '@/pages/PartDebugPanel'
 import PartColorPopover from '@/pages/PartColorPopover'
 import PartExportImport, { type PartExportImportHandle } from '@/pages/PartExportImport'
@@ -89,12 +92,43 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   sweep: { field: 'sketch', multi: true },
   fillet: { field: 'edges', multi: true },
   chamfer: { field: 'edges', multi: true },
+  shell: { field: 'faces', multi: true },
+  loft: { field: 'profiles', multi: true },
+  draft: { field: 'faces', multi: true },
+  move_face: { field: 'faces', multi: true },
+  delete_face: { field: 'faces', multi: true },
   hole: { field: 'sketch' },
   boolean: { field: 'target' },
   transform: { field: 'bodies', multi: true },
   mirror: { field: 'body' },
   delete_body: { field: 'bodies', multi: true },
   circular_array: { field: 'axis' },
+  helix: { field: 'reference' },
+}
+
+/**
+ * The stored face query a selection id names, or null when it names something
+ * else (a body, an edge, a vertex, an entity). `?`-ancestry ids carry the OCC
+ * surface type as the type restriction; `face:` wrappers (owner attribution)
+ * unwrap to the inner wire query, which resolves. A topo-fallback
+ * `@<bodyId>/face/<idx>` ref is returned verbatim, but only the on-face plane
+ * resolves it (resolveFaceProfile reads it by index); the delete_face leaf
+ * resolves construction only (the UUID tier then stable ancestry), so such a
+ * pick lands in its unresolved_faces instead of healing. A whole-body pick
+ * (`@body_...`) names no face and returns null.
+ */
+function faceSelectionQuery(id: string): string | null {
+  if (id.startsWith('?')) {
+    try {
+      const q = parseQuery(id)
+      return q.kind === 'ancestry' && isFaceRestriction(q.typeRestriction) ? stripSelectionWrapper(id) : null
+    } catch {
+      return null
+    }
+  }
+  if (id.startsWith('face:')) return stripSelectionWrapper(id)
+  if (parseTopoFallbackQuery(id)?.kind === 'face') return stripSelectionWrapper(id)
+  return null
 }
 
 export default function Part() {
@@ -135,6 +169,9 @@ export default function Part() {
   }, [uuid, workspaceId])
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
+  // The parameter table is a view over the variables: transient UI state, not
+  // part of the document (the same class as the rename dialog's).
+  const [parametersOpen, setParametersOpen] = useState(false)
   // Non-null while the clone prompt is open; holds the name it was seeded with.
   const [cloneName, setCloneName] = useState<string | null>(null)
   const [partColorPopover, setPartColorPopoverState] = useState<PartColorPopoverState>(null)
@@ -518,15 +555,26 @@ export default function Part() {
     const bodyIds = new Set(Object.keys(bodies))
     const bodyDeletes: Mutation[] = []
     const featureDeletes: Mutation[] = []
+    // Every selected face pick folds into ONE add_delete_face for the whole
+    // press (delete_face heals all of them in one feature), so a Delete with
+    // faces selected is one undo entry, the same pattern add_delete_body
+    // follows. Edges and vertices are not faces and stay ignored.
+    const facePicks: string[] = []
     // First pass names the feature ids this Delete actually removes, so the body
     // pass can tell whether a body's generator is going away with it.
     const deletingFeatures = new Set<string>()
     for (const id of [...sel]) {
+      const faceQuery = faceSelectionQuery(id)
+      if (faceQuery !== null) {
+        facePicks.push(faceQuery)
+        continue
+      }
       if (!id.startsWith('@') || id.startsWith('@builtin_')) continue
       const ref = id.slice(1)
       if (features.some(f => f.id === ref)) deletingFeatures.add(ref)
     }
     for (const id of [...sel]) {
+      if (faceSelectionQuery(id) !== null) continue
       if (!id.startsWith('@') || id.startsWith('@builtin_')) continue
       const ref = id.slice(1)
       // A whole-body pick (parts list or pick chip) inserts a real delete_body
@@ -549,7 +597,13 @@ export default function Part() {
     // One Delete action on N targets is one undo step, not N. commitMutationGroup
     // applies every handler to one doc clone and solves once at the end, so the
     // array order below only groups the mutations, it does not sequence them.
-    const threeD = [...bodyDeletes, ...featureDeletes]
+    const threeD = [
+      ...bodyDeletes,
+      ...(facePicks.length > 0
+        ? [{ type: 'add_delete_face', featureId: randomId(18), faces: facePicks, label: 'Delete Face' } as Mutation]
+        : []),
+      ...featureDeletes,
+    ]
 
     if (threeD.length > 0) {
       // A mixed selection (sketch entity + a 3D target) is ONE press, ONE entry.
@@ -610,7 +664,33 @@ export default function Part() {
     // recomputes the same pick_boundary and the cache hit is free.
     setRollbackForNewFeature(features)
     store.setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
-    const result = handleMutation({ type: `add_${kind}`, featureId: fid, label, ...extra } as Mutation)
+    // Starting the Delete Face tool with faces already selected pre-fills them,
+    // the same convenience handleAddPlane gives the on-face plane. Other kinds
+    // that take their faces as a list seed nothing.
+    const seedFaces = kind === 'delete_face'
+      ? [...selection].map(faceSelectionQuery).filter((q): q is string => q !== null)
+      : []
+    const result = handleMutation({
+      type: `add_${kind}`, featureId: fid, label, ...extra,
+      ...(seedFaces.length > 0 ? { faces: seedFaces } : {}),
+    } as Mutation)
+    // Move Face starts from what the user already has selected: pre-fill the
+    // pick list with the selected flat faces, the way Add Plane takes a face
+    // from the selection. A non-flat pick cannot be pre-filled (planarity is a
+    // kernel classification), so it is simply left for the pick field.
+    if (kind === 'move_face') {
+      for (const id of selection) {
+        if (!id.startsWith('?')) continue
+        try {
+          const q = parseQuery(id)
+          if (q.kind === 'ancestry' && q.typeRestriction === 'flatface') {
+            handleMutation({ type: 'add_move_face_ref', featureId: fid, faceQuery: stripSelectionWrapper(id) })
+          }
+        } catch {
+          // not a pickable ancestry query; the pick field is the way in
+        }
+      }
+    }
     // enterEditFeature would bail because React hasn't re-rendered with the
     // new feature yet (features.findIndex(f => f.id === fid) returns -1), so
     // the id is set eagerly; the session started above already owns commit and
@@ -621,7 +701,7 @@ export default function Part() {
     // The Result rides back to the command spec so a programmatic caller sees
     // the created feature id.
     return result
-  }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, closeOpenEditorForAdd])
+  }, [doc, features, handleMutation, bodies, setActivePickField, startEditSession, closeOpenEditorForAdd, selection])
 
   const handleAddPlane = useCallback(() => {
     if (!doc) return
@@ -629,25 +709,9 @@ export default function Part() {
     const featureId = randomId(18)
     const planeCount = (doc.features ?? []).filter(f => f.kind === 'plane' && !BUILT_IN_IDS.has(f.id)).length
     const label = `plane ${planeCount + 1}`
-    const faceQuery = [...selection].find(id => {
-      // `?`-ancestry face queries carry the OCC surface type as the type
-      // restriction (flatface/cylinderface/face, classified by the shared
-      // kernel classifier); `face:` wrappers (owner attribution; stored as
-      // their inner query) and topo-fallback `@<bodyId>/face/<idx>` refs also
-      // resolve to a face in the kernel. A whole-body pick (`@body_...`) names
-      // no face and must not match.
-      if (id.startsWith('?')) {
-        try {
-          const q = parseQuery(id)
-          return q.kind === 'ancestry' && isFaceRestriction(q.typeRestriction)
-        } catch {
-          return false
-        }
-      }
-      return id.startsWith('face:') || parseTopoFallbackQuery(id)?.kind === 'face'
-    })
+    const faceQuery = [...selection].map(faceSelectionQuery).find((q) => q !== null)
     const definition = faceQuery
-      ? { mode: 'on_face', face: stripSelectionWrapper(faceQuery) } as const
+      ? { mode: 'on_face', face: faceQuery } as const
       : undefined
     setRollbackForNewFeature(features)
     startEditSession(true)
@@ -751,6 +815,14 @@ export default function Part() {
     handleMutation({ type: 'toggle_plane_visibility' })
   }, [handleMutation])
 
+  // The authoring gate for a new constraint: the probe runs the real solver on
+  // a draft copy of the active sketch feature, so a redundant add is refused
+  // before `applyConstraint` creates a mutation. docRef is a ref, so the
+  // callback never goes stale.
+  const checkRedundantAdd = useCallback((pending: PendingConstraint) => {
+    return wouldOverconstrain(docRef.current, pending)
+  }, [docRef])
+
   useEffect(() => {
     setSketchCallback('onMutation', handleMutation)
     setSketchCallback('onMutationBatch', commitMutationGroup)
@@ -758,6 +830,11 @@ export default function Part() {
     setSketchCallback('cancelBrepProjection', cancelBrepProjection)
     setSketchCallback('onRebuild', handleRebuild)
     setSketchCallback('onExitSketch', handleExitSketch)
+    setSketchCallback('checkRedundantAdd', checkRedundantAdd)
+    // How the dimension confirm path surfaces an authoring refusal of its own
+    // (the gate above answers, but the refusal has no command caller to return
+    // a reason to): the same MessageDialog the command rejections use.
+    setSketchCallback('showMessage', showMessage)
     // Used by finalizeDimensionPlacement to pre-fill the value-edit dialog
     // with the current natural measurement.
     setSketchCallback('getSketch', (featureId: string) => {
@@ -770,9 +847,11 @@ export default function Part() {
       setSketchCallback('cancelBrepProjection', null)
       setSketchCallback('onRebuild', null)
       setSketchCallback('onExitSketch', null)
+      setSketchCallback('checkRedundantAdd', null)
+      setSketchCallback('showMessage', null)
       setSketchCallback('getSketch', null)
     }
-  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, solveResults])
+  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults])
 
   // The sketch editor store is module-level and survives a Part unmount, so a
   // remounted Part (WorkspacePage keys it by entry) would otherwise inherit the
@@ -1188,6 +1267,14 @@ export default function Part() {
         }
       />
 
+      <ParameterTable
+        isOpen={parametersOpen}
+        rows={parameterRows(features, solveResults)}
+        onClose={() => setParametersOpen(false)}
+        onMutation={handleMutation}
+        onAdd={() => handleMutation(newParameterMutation(randomId(18), 'var'))}
+      />
+
       <PartEditorPanel
         mode={mode}
         setMode={setMode}
@@ -1204,6 +1291,7 @@ export default function Part() {
         handleAddPlane={handleAddPlane}
         handleImportStep={handleImportStep}
         handleExportStep={handleExportStep}
+        onOpenParameters={() => setParametersOpen(true)}
         viewportRef={viewportRef}
         handleRightClick={handleRightClick}
         viewportHud={

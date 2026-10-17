@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useDimInteraction, useDimLabelPointerDown, type DimInteraction } from '../useDimInteraction'
+import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM } from '@/utils/geometry/sketchHelpers'
+import { COLOR_ERROR_DEEP } from '@/components/Geometry3D/constants'
 import type { DragState } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -171,6 +173,24 @@ describe('useDimInteraction hover / isDragged', () => {
     act(() => result.current.onOut())
     expect(result.current.hovered).toBe(false)
     expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set())
+  })
+
+  it('a culprit dimension paints the deeper error red, a redundant one dims', () => {
+    const { result: culprit } = renderHook(() => useDimInteraction('c1', 10, { ...INTERACTION, culprit: true }))
+    expect(culprit.current.color).toBe(COLOR_ERROR_DEEP)
+    const { result: redundant } = renderHook(() => useDimInteraction('c1', 10, { ...INTERACTION, redundant: true }))
+    expect(redundant.current.color).toBe(COLOR_CONSTRAINT_DIM)
+    // Idle and clean: the normal constraint amber.
+    const { result: clean } = renderHook(() => useDimInteraction('c1', 10, INTERACTION))
+    expect(clean.current.color).toBe(COLOR_CONSTRAINT)
+  })
+
+  it('selection and hover still outrank the verdict tint', () => {
+    const { result } = renderHook(() => useDimInteraction('c1', 10, { ...INTERACTION, culprit: true }))
+    act(() => useSketchEditorStore.getState().setDrag(dimDrag('c1', [0, 0], [1, 1])))
+    // hover is not touched by the drag; select via the hook's own click path.
+    act(() => result.current.onOver({ stopPropagation: vi.fn() }))
+    expect(result.current.color).toBe('#ffffff')
   })
 
   it('isDragged is true only for this constraint dim_label drag', () => {

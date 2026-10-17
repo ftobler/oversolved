@@ -22,6 +22,11 @@ const PROGRAMMATIC_ONLY = new Set([
   'apply_offset',   // selection action triggered from the toolbar
   'add_hole',
   'add_transform',
+  'add_shell',  // toolbar-only (no keyboard shortcut)
+  'add_loft',  // toolbar-only (no keyboard shortcut)
+  'add_draft',  // toolbar-only (no keyboard shortcut)
+  'add_move_face',  // toolbar-only (no keyboard shortcut)
+  'add_delete_face',  // toolbar-only (no keyboard shortcut)
   ...TOOLBAR_ONLY_CONSTRAINT_COMMANDS,
 ])
 

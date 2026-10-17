@@ -88,6 +88,7 @@ export function FeatureEditor({
               key={`${field.key}:${i}`}
               field={field as SelectFieldDef}
               value={data[field.key] as string | undefined}
+              data={data}
               fid={fid}
               onMutation={onMutation}
               mutationType={mutationType}

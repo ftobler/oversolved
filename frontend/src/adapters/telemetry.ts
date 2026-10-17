@@ -23,7 +23,7 @@ function jsonBlock(value: unknown): string {
 // Keys the formatter gives a shaped rendering to. Anything else the debug panel
 // starts attaching later still reaches the file as a generic JSON section rather
 // than being silently dropped.
-const SHAPED_KEYS = ['title', 'description', 'ast', 'selection', 'history']
+const SHAPED_KEYS = ['title', 'description', 'doc', 'selection', 'history']
 
 export function formatBugReportMarkdown(report: BugReport): string {
   const title = typeof report.title === 'string' && report.title.trim()
@@ -35,8 +35,8 @@ export function formatBugReportMarkdown(report: BugReport): string {
     sections.push(report.description.trim())
   }
 
-  if (report.ast !== undefined) {
-    sections.push('## AST', jsonBlock(report.ast))
+  if (report.doc !== undefined) {
+    sections.push('## Document', jsonBlock(report.doc))
   }
 
   if (report.selection !== undefined) {

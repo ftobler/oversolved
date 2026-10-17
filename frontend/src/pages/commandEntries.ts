@@ -6,7 +6,7 @@ import { okResult } from '@/session/result'
 import type { ActiveTool } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import type { EditorState } from '@/stores/editorState'
-import { useSketchUiStore, type SketchUiState } from '@/stores/sketchEditorStore'
+import { useSketchUiStore, CANNOT_APPLY_TITLE, type SketchUiState } from '@/stores/sketchEditorStore'
 import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
@@ -302,7 +302,7 @@ export function constraintCommandSpec(c: ConstraintDef): CommandSpec<PartCommand
         return okResult()
       }
       const reason = ctx.state().applyConstraint(c.kind)
-      if (reason !== null) ctx.showMessage({ title: 'Cannot apply constraint', message: reason, variant: 'error' })
+      if (reason !== null) ctx.showMessage({ title: CANNOT_APPLY_TITLE, message: reason, variant: 'error' })
       return okResult()
     },
   }
@@ -431,6 +431,11 @@ function addFeatureSpec(id: CommandName, label: string, kind: string, extra?: Re
 const addExtrudeSpec = addFeatureSpec('add_extrude', 'Add extrude', 'extrude', { sketchQuery: '', distance: 10 })
 const addHoleSpec = addFeatureSpec('add_hole', 'Add hole', 'hole')
 const addTransformSpec = addFeatureSpec('add_transform', 'Add transform', 'transform')
+const addShellSpec = addFeatureSpec('add_shell', 'Add shell', 'shell')
+const addLoftSpec = addFeatureSpec('add_loft', 'Add loft', 'loft')
+const addDraftSpec = addFeatureSpec('add_draft', 'Add draft', 'draft')
+const addMoveFaceSpec = addFeatureSpec('add_move_face', 'Add move face', 'move_face')
+const addDeleteFaceSpec = addFeatureSpec('add_delete_face', 'Add delete face', 'delete_face')
 
 /**
  * The sketch/part editor's full command table. Static data: every body reads
@@ -459,4 +464,9 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   addExtrudeSpec,
   addHoleSpec,
   addTransformSpec,
+  addShellSpec,
+  addLoftSpec,
+  addDraftSpec,
+  addMoveFaceSpec,
+  addDeleteFaceSpec,
 ]

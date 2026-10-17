@@ -75,13 +75,21 @@ export function PickFieldWidget({
   // geometry is the fix). Values added since the solve simply are not in either
   // set and stay neutral.
   const solveResult = usePartEditorStore(s => s.solveResults?.[fid])
-  const edgeSet = (key: string): ReadonlySet<string> | undefined => {
+  const solveSet = (key: string): ReadonlySet<string> | undefined => {
     if (typeof solveResult !== 'object' || solveResult === null) return undefined
     const raw = (solveResult as Record<string, unknown>)[key]
     return Array.isArray(raw) && raw.length > 0 ? new Set(raw as string[]) : undefined
   }
-  const unresolvedValues = edgeSet('unresolved_edges')
-  const failedValues = edgeSet('failed_edges')
+  // Edge-modifier fields report `unresolved_edges`/`failed_edges`; the shell's
+  // face field reports the face-named pair. Union both so one widget serves
+  // either, and a feature never carries the other kind's key.
+  const union = (a: ReadonlySet<string> | undefined, b: ReadonlySet<string> | undefined): ReadonlySet<string> | undefined => {
+    if (!a) return b
+    if (!b) return a
+    return new Set([...a, ...b])
+  }
+  const unresolvedValues = union(solveSet('unresolved_edges'), solveSet('unresolved_faces'))
+  const failedValues = union(solveSet('failed_edges'), solveSet('failed_faces'))
 
   return (
     <div className="feature-field-row feature-field-row--stacked">

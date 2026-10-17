@@ -6,8 +6,9 @@ import { RadiusDimension, DiameterDimension } from './Radial'
 import { AngleDimension } from './Angle'
 
 /** The owning feature/entity for a dimension's drag interaction. When omitted
- *  the dimension renders read-only (no pointer handlers). */
-export type DimInteractionBase = Pick<DimInteraction, 'featureId' | 'entityId'>
+ *  the dimension renders read-only (no pointer handlers). The verdict fields
+ *  ride along so the label can carry the solve's markings. */
+export type DimInteractionBase = Pick<DimInteraction, 'featureId' | 'entityId' | 'redundant' | 'culprit'>
 
 function interactionFor(base: DimInteractionBase | undefined, cid: string, promptLabel: string): DimInteraction | undefined {
   return base ? { ...base, constraintId: cid, promptLabel } : undefined

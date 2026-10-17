@@ -43,6 +43,26 @@ describe('build with mock solvers', () => {
     expect(findFirstDirty([feature], r._build_state)).toBe(0)
   })
 
+  it('ends the clean prefix at a feature whose id is not unique', () => {
+    // Checkpoints are keyed by id, so the later duplicate overwrites the
+    // earlier one's checkpoint. Reusing it as the clean prefix's last
+    // checkpoint restored handles the later copy's eviction had already freed
+    // (the fuzz's "HandleTable: handle N is not live" on seed 155).
+    const deps = makeDeps()
+    const dup = [
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'df1', kind: 'delete_face' },
+      { id: 'b1', kind: 'boolean' },
+      { id: 'df1', kind: 'delete_face' },
+    ]
+    const r = build({ features: dup }, {}, deps)
+    expect(findFirstDirty(dup, r._build_state)).toBe(1)
+
+    // The previous build carried the duplicate, the current doc no longer
+    // does: the surviving df1's checkpoint is still the overwritten one.
+    expect(findFirstDirty(dup.slice(0, 3), r._build_state)).toBe(1)
+  })
+
   it('reuses clean prefix from prev_state', () => {
     const deps = makeDeps({
       trySolveFeature: (feature): FeatureResult => ({ status: 'ok', solved: feature.id }),

@@ -23,6 +23,7 @@ export {
   emitWire,
   ref,
   bodyIdOf,
+  featureRefId,
   parseAncestry,
   makeAncestryQuery,
   isClassifierId,

@@ -82,15 +82,19 @@ describe('telemetry adapter', () => {
       expect(formatBugReportMarkdown({ title: '   ' })).toBe('# Bug report\n')
     })
 
-    it('fences the AST and selection attachments as JSON', () => {
+    it('fences the document and selection attachments as JSON', () => {
       const md = formatBugReportMarkdown({
         title: 'boom',
-        ast: { kind: 'part' },
+        doc: { kind: 'part' },
         selection: ['edge-1', 'edge-2'],
       })
-      expect(md).toContain('## AST\n\n```json\n{\n  "kind": "part"\n}\n```')
+      expect(md).toContain('## Document\n\n```json\n{\n  "kind": "part"\n}\n```')
       expect(md).toContain('## Selection (2 items)')
       expect(md).toContain('"edge-1"')
+    })
+
+    it('renders no Document section when the report carries no document', () => {
+      expect(formatBugReportMarkdown({ title: 'boom' })).not.toContain('## Document')
     })
 
     it('lists history entries by label with the mutation fenced under each', () => {

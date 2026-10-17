@@ -26,8 +26,8 @@ const solveBytes = loadSolver()
 const STEP_PATH = new URL('../../occ/__fixtures__/double_with_hole.step', import.meta.url)
 const stepBytes = new Uint8Array(readFileSync(STEP_PATH))
 
-// The AST from the bug report: import_step then an extrude whose profile is the
-// z+ (top) flat face of the imported body, added back onto that body.
+// The document from the bug report: import_step then an extrude whose profile
+// is the z+ (top) flat face of the imported body, added back onto that body.
 const IMP = 'G8BSdTsDWV8CpMW-lwVUFqNi'
 const files = new Map<string, Uint8Array>([[IMP, stepBytes]])
 

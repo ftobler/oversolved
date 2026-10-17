@@ -27,13 +27,20 @@ import { solveSweep } from './features/sweep'
 import { solveHole } from './features/hole'
 import { solveBoolean } from './features/boolean'
 import { solveFillet, solveChamfer } from './features/filletChamfer'
+import { solveShell } from './features/shell'
+import { solveLoft } from './features/loft'
+import { solveDraft } from './features/draft'
+import { solveMoveFace } from './features/moveFace'
+import { solveDeleteFace } from './features/deleteFace'
 import { solveArray, solveCircularArray } from './features/array'
 import { solveTransform, solveMirror } from './features/transformMirror'
 import { solveDeleteBody } from './features/deleteBody'
 import { solveImportStep } from './features/importStep'
 import { solveSketch } from './features/sketch'
 import { solvePlane } from './features/plane'
+import { solveHelix } from './features/helix'
 import { solveVariable } from './features/variable'
+import { nestedFeatureParams } from './features/shared/featureParams'
 import { evalFeatureParams, EXPR_FIELDS_BY_KIND, isExprFieldKind, type ExprFieldKind } from './evalExpr'
 
 // ─── Kind → solver dispatch ───
@@ -72,6 +79,7 @@ const KIND_SOLVER: SolverTable = {
   sketch: (_oc, _scope, _table, feature, globalRepo, bodyStore) =>
     solveSketch(feature, globalRepo, bodyStore),
   plane: solvePlane,
+  helix: solveHelix,
   extrude: solveExtrude,
   revolve: solveRevolve,
   sweep: solveSweep,
@@ -79,6 +87,11 @@ const KIND_SOLVER: SolverTable = {
   boolean: solveBoolean,
   fillet: solveFillet,
   chamfer: solveChamfer,
+  shell: solveShell,
+  loft: solveLoft,
+  draft: solveDraft,
+  move_face: solveMoveFace,
+  delete_face: solveDeleteFace,
   array: solveArray,
   circular_array: solveCircularArray,
   transform: solveTransform,
@@ -153,19 +166,28 @@ const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
   revolve: 'revolve',
   fillet: 'fillet',
   chamfer: 'chamfer',
+  shell: 'shell',
+  draft: 'draft',
+  move_face: 'move_face',
   hole: 'hole',
   array: 'array',
   circular_array: 'circular_array',
   transform: 'transform',
   plane: 'definition',
+  helix: 'helix',
   import_step: '',
+  boolean: 'boolean',
 }
 
 /**
  * Resolve any expression-string params on a feature to numbers before the leaf
- * solver runs. Returns a shallow copy with the relevant sub-dict cloned and
- * evaluated; the original feature (and the document) keeps its raw expression
- * strings. Plain-number fields are untouched, so legacy docs cost nothing.
+ * solver runs. A feature is canonicalized first: every flat param is folded into
+ * the sub-dict (flat wins, the same rule the loader migration applies), so the
+ * one target evaluated is the sub-dict (the feature itself for `import_step`,
+ * whose `scale` is feature-level by design). Returns a shallow copy with the
+ * sub-dict cloned and evaluated; the original feature (and the document) keeps
+ * its raw expression strings. Plain-number fields are untouched, so legacy docs
+ * cost nothing.
  *
  * On a failed evaluation the leaf solver is never reached: an `exception`
  * result is returned carrying the parse message. `context` supplies named
@@ -180,24 +202,17 @@ export function resolveFeatureExpressions(
   if (!isExprFieldKind(kind)) return { feature }
   const exprFields = EXPR_FIELDS_BY_KIND[kind]
 
-  // Leaf solvers overlay feature-level fields over the sub-dict
-  // (`{ ...sub, ...feature }`), so a param may be stored either flat on the
-  // feature or nested under its sub-key. Evaluate both so neither storage form
-  // silently slips past with an unresolved expression string.
+  const { feature: canonical } = nestedFeatureParams(feature)
   const subKey = EXPR_SUBKEY_BY_KIND[kind]
-  const copy: Record<string, unknown> = { ...feature }
-  const targets: Record<string, unknown>[] = [copy]
-  if (subKey !== '') {
-    copy[subKey] = { ...(copy[subKey] as Record<string, unknown> | undefined) }
-    targets.push(copy[subKey] as Record<string, unknown>)
-  }
+  const copy: Record<string, unknown> = { ...canonical }
+  const target: Record<string, unknown> = subKey === ''
+    ? copy
+    : (copy[subKey] = { ...(copy[subKey] as Record<string, unknown> | undefined) })
 
-  for (const target of targets) evalFeatureParams(target, exprFields, context)
+  evalFeatureParams(target, exprFields, context)
 
-  for (const target of targets) {
-    const errKey = Object.keys(target).find((k) => k.endsWith('_error'))
-    if (errKey) return { exception: String(target[errKey]) }
-  }
+  const errKey = Object.keys(target).find((k) => k.endsWith('_error'))
+  if (errKey) return { exception: String(target[errKey]) }
 
   return { feature: copy }
 }
@@ -230,16 +245,22 @@ export function createFeatureSolver(
     if (!kind) {
       return { status: 'exception', exception: 'feature missing kind' }
     }
+    // Canonical params once, here: a flat param is legacy input and is folded
+    // into the sub-dict (flat wins) before any leaf reads it, so the leaf
+    // solvers below only ever read the sub-dict. resolveFeatureExpressions
+    // repeats the fold harmlessly (it is idempotent) to stay correct when a
+    // caller reaches it directly.
+    const canonical = nestedFeatureParams(feature).feature
     // Variables carry no geometry: evaluate their expression against the
     // accumulated variable context and short-circuit the OCC path entirely.
     if (kind === 'variable') {
-      return solveVariable(feature, variableContext)
+      return solveVariable(canonical, variableContext)
     }
     // import_step is special-cased next to variable because it needs the solve
     // file map, which is not on the shared FeatureSolver signature. Resolve its
     // expression params (scale) first, exactly as the generic dispatch would.
     if (kind === 'import_step') {
-      const resolvedImport = resolveFeatureExpressions(feature, variableContext)
+      const resolvedImport = resolveFeatureExpressions(canonical, variableContext)
       if ('exception' in resolvedImport) {
         return { status: 'exception', exception: resolvedImport.exception }
       }
@@ -251,7 +272,7 @@ export function createFeatureSolver(
     // Resolve any math-expression params (e.g. distance="50+25") to numbers
     // before dispatch. Named variables from preceding features supply the
     // context; the leaf solvers only ever read numbers.
-    const resolved = resolveFeatureExpressions(feature, variableContext)
+    const resolved = resolveFeatureExpressions(canonical, variableContext)
     if ('exception' in resolved) {
       return { status: 'exception', exception: resolved.exception }
     }

@@ -11,7 +11,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable, OccHandle } from '../occ/handleTable'
 import type { Body, Frame3D } from '../types3d'
-import { Repository, parseAncestry, makeAncestryQuery, ref, constructionUuidToken } from '../query'
+import { Repository, parseAncestry, makeAncestryQuery, ref, constructionUuidToken, featureRefId } from '../query'
 import { canonicalFaces, canonicalIndex, assertAligned } from '../occ/bodyNames'
 import { extractOccFace, extractFaceLoops, sortedFacesOf, faceLoopsOfFace, computeFaceDatumFrame } from '../occ/faceLoops'
 import { extractProfileLoops, type ProfileLoopDiag } from './shared/profileLoops'
@@ -358,11 +358,28 @@ function collectEntityProfileLoops(
 }
 
 /**
+ * The whole-sketch profile path: read the sketch's registered plane transform
+ * and its topo surfaces and build loops from every closed region. Shared by the
+ * canonical `@<sketchId>` form, the legacy `$<sketchId>` form, and anything
+ * else that names a sketch directly. `registerTopFace` is called by the caller
+ * (extrude.ts) after resolveDirection, so it uses the effective distance.
+ */
+function collectWholeSketchLoops(sketchId: string, globalRepo: Repository): ExtrudeLoops {
+  const pt = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
+  if (pt === undefined) throw new Error(`sketch not found: ${sketchId}`)
+  const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
+  const surfaces = (topo.surfaces as Dict[]) ?? []
+  const diags: ProfileLoopDiag[] = []
+  const loops = extractProfileLoops(surfaces, diags)
+  return { loops, plane: pt, sketchId, face: null, surfaces, pt, loopDiags: diags }
+}
+
+/**
  * Resolve an extrude's profile to (loops, plane, sketch_id, face) (mirrors
- * `_collect_extrude_loops`). For a plain `$sketch` ref it registers the swept
- * top face and reads the sketch topology; for `@`/`?` refs it routes through
- * resolveFaceProfile; an `entity:`/`vertex:` viewport pick resolves to the area
- * that one entity bounds.
+ * `_collect_extrude_loops`). For a plain `@sketch`/`$sketch` ref it registers
+ * the swept top face and reads the sketch topology; for `@`/`?` refs it routes
+ * through resolveFaceProfile; an `entity:`/`vertex:` viewport pick resolves to
+ * the area that one entity bounds.
  */
 export function collectExtrudeLoops(
   oc: OccModule,
@@ -377,6 +394,18 @@ export function collectExtrudeLoops(
     return collectEntityProfileLoops(picked.sketchId, picked.eid, globalRepo)
   }
 
+  // A bare feature-level ref names a whole sketch. `@<sketchId>` is canonical
+  // and `$<sketchId>` is the legacy spelling; both must take the whole-sketch
+  // branch below. Without this the `@` form would fall through to the
+  // face-profile path, which was written for body-face picks and has no sketch
+  // topology to read, so migrating a doc to the canonical spelling used to red
+  // the extrude out. A bare `@<bodyId>` (a body ref, not a sketch) still falls
+  // through: the `_pt_` plane registry is what tells the two apart.
+  const featureId = featureRefId(sketchRef)
+  if (featureId !== null && globalRepo.elements.get('_pt_' + featureId) !== undefined) {
+    return collectWholeSketchLoops(featureId, globalRepo)
+  }
+
   if (sketchRef.startsWith('?') || sketchRef.startsWith('@')) {
     let sketchId = ''
     if (sketchRef.startsWith('?')) {
@@ -388,16 +417,9 @@ export function collectExtrudeLoops(
     return { loops, plane, sketchId, face, loopDiags }
   }
 
-  const sketchId = stripRefSigil(sketchRef, '$')
-  const pt = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
-  if (pt === undefined) throw new Error(`sketch not found: ${sketchId}`)
-  const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
-  const surfaces = (topo.surfaces as Dict[]) ?? []
-  // registerTopFace is now called by the caller (extrude.ts) after
-  // resolveDirection, so it uses the effective distance.
-  const diags: ProfileLoopDiag[] = []
-  const loops = extractProfileLoops(surfaces, diags)
-  return { loops, plane: pt, sketchId, face: null, surfaces, pt, loopDiags: diags }
+  // A legacy `$<sketchId>` (or any other bare string) with no registered plane
+  // reaches the whole-sketch branch so the missing sketch is refused by name.
+  return collectWholeSketchLoops(stripRefSigil(sketchRef, '$'), globalRepo)
 }
 
 // Re-export Frame3D for consumers building plane inputs.

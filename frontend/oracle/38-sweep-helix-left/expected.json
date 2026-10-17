@@ -1,0 +1,10 @@
+{
+  "method": "The right-hand 80 pi sweep mirrored: the same 1x1 radial square on a left-hand helix r=10, pitch=3, turns=4. V = A * 2 pi xbar * turns = 1 * 2 pi * 10 * 4 = 80 pi; the left chirality mirrors the solid through the y=0 plane, so area/bbox match the right-hand case and the centroid sits on the axis.",
+  "bodies": 1,
+  "volume": 251.32748189557412,
+  "area": 1007.8829977388083,
+  "centroid": [0.000003845464010315328, 0, 6],
+  "bbox": [-16.89636499327575, -15.363061492460927, -0.5, 10.500000000003972, 15.363061492468313, 12.5],
+  "faces": 6,
+  "edges": 12
+}

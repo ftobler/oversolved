@@ -215,7 +215,7 @@ fn reject_non_finite_output(out: &TopologyOut) -> Result<(), TopologyCodecError>
     let points_ok = out.intersection_points.iter().all(|(_, p)| pt_ok(p))
         && out.vertices.iter().all(|(_, p)| pt_ok(p));
     let edges_ok = out.edges.iter().all(|e| geom_is_finite(&e.geom));
-    let surfaces_ok = out.surfaces.iter().all(|s| {
+    let surfaces_ok = out.surfaces.iter().chain(out.hole_regions.iter()).all(|s| {
         s.boundary
             .iter()
             .chain(s.holes.iter().flatten())
@@ -368,11 +368,27 @@ pub fn encode_output(out: &TopologyOut) -> Result<Vec<u8>, TopologyCodecError> {
         })
         .collect();
 
+    // The even/odd hole faces, in the same shape. The TS decorator reads only
+    // `surfaces`, so these travel straight through it into the profile dump;
+    // the oracle is their consumer.
+    let hole_regions: Vec<Value> = out
+        .hole_regions
+        .iter()
+        .map(|s| {
+            let mut m = Map::new();
+            let boundary: Vec<Value> = s.boundary.iter().map(boundary_edge_value).collect();
+            m.insert("boundary".into(), Value::Array(boundary));
+            m.insert("face_entity_ids".into(), json!(s.face_entity_ids));
+            Value::Object(m)
+        })
+        .collect();
+
     let root = json!({
         "intersection_points": Value::Object(ip),
         "vertices": Value::Object(verts),
         "edges": edges,
         "surfaces": surfaces,
+        "hole_regions": hole_regions,
     });
     serde_json::to_vec(&root).map_err(TopologyCodecError::Json)
 }

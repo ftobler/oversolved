@@ -256,6 +256,130 @@ def feature_chamfer(ctx):
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-loft.svg")
+def feature_loft(ctx):
+    """Icon for Loft: two sections of different sizes bridged by the surface
+    between them (a small circle over a larger quadrilateral, in isometric)."""
+    # The larger bottom section, seen at a slant.
+    ctx.move_to(0.16, 0.76)
+    ctx.line_to(0.52, 0.88)
+    ctx.line_to(0.88, 0.68)
+    ctx.line_to(0.52, 0.56)
+    ctx.close_path()
+    stroke(ctx, 2.0)
+
+    # The smaller top section it lofts to.
+    ctx.arc(0.50, 0.28, px(3.2), 0, 2 * math.pi)
+    ctx.new_sub_path()
+    stroke(ctx, 2.0)
+
+    # The silhouette: the top section's rim down to the matching bottom corners.
+    ctx.move_to(0.36, 0.36)
+    ctx.line_to(0.22, 0.72)
+    ctx.move_to(0.64, 0.36)
+    ctx.line_to(0.82, 0.70)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/feature-draft.svg")
+def feature_draft(ctx):
+    """Icon for Draft: a wall tilted off vertical and hinged on the neutral
+    plane at its base (the dotted baseline)."""
+    # The tapered wall: wide at the neutral plane, narrow at the top.
+    ctx.move_to(0.30, 0.16)
+    ctx.line_to(0.16, 0.78)
+    ctx.line_to(0.84, 0.78)
+    ctx.line_to(0.70, 0.16)
+    ctx.close_path()
+    stroke(ctx, 2.0)
+
+    # The neutral plane the wall rotates about.
+    draw_dotted_line(ctx, 0.08, 0.86, 0.92, 0.86, 6)
+
+    # The draft angle, marked between the wall and the vertical it would have.
+    ctx.move_to(0.50, 0.20)
+    ctx.line_to(0.50, 0.74)
+    stroke(ctx, 1.0)
+    ctx.move_to(0.50, 0.52)
+    ctx.arc(0.50, 0.74, px(5.3), -math.pi / 2, -math.pi / 2 + 0.5)
+    stroke(ctx, 1.0)
+
+
+@icon("frontend/src/assets/icons/feature-shell.svg")
+def feature_shell(ctx):
+    """Icon for Shell: a box hollowed to a wall, with the top face open."""
+    left, right = 0.18, 0.82
+    top, bottom = 0.18, 0.82
+    wall = 0.16
+
+    # Outer box outline.
+    ctx.rectangle(left, top, right - left, bottom - top)
+    stroke(ctx, 2.0)
+
+    # The cavity walls, drawn without a top edge: the removed face leaves the
+    # box open at the top, so the walls run from the top rim down and across.
+    ctx.move_to(left + wall, top)
+    ctx.line_to(left + wall, bottom - wall)
+    ctx.line_to(right - wall, bottom - wall)
+    ctx.line_to(right - wall, top)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/feature-move-face.svg")
+def feature_move_face(ctx):
+    """Icon for Move Face: a face with its outward normal arrow and the dashed
+    outline it moves to."""
+    # The face, a parallelogram in perspective.
+    ctx.move_to(0.18, 0.62)
+    ctx.line_to(0.58, 0.72)
+    ctx.line_to(0.82, 0.44)
+    ctx.line_to(0.42, 0.34)
+    ctx.close_path()
+    stroke(ctx, 2.0)
+
+    # The outward normal arrow.
+    ctx.move_to(0.5, 0.53)
+    ctx.line_to(0.5, 0.16)
+    stroke(ctx, 1.5)
+    ctx.move_to(0.44, 0.23)
+    ctx.line_to(0.5, 0.16)
+    ctx.line_to(0.56, 0.23)
+    stroke(ctx, 1.5)
+
+    # The dashed outline of the moved position.
+    ctx.set_dash([0.07, 0.05])
+    ctx.move_to(0.24, 0.86)
+    ctx.line_to(0.64, 0.96)
+    ctx.line_to(0.88, 0.68)
+    ctx.line_to(0.48, 0.58)
+    ctx.close_path()
+    stroke(ctx, 1.0)
+    ctx.set_dash([])
+
+
+@icon("frontend/src/assets/icons/feature-delete-face.svg")
+def feature_delete_face(ctx):
+    """Icon for Delete Face: a box with a dashed hole outline, struck through."""
+    # Solid box outline: the body that keeps its material.
+    ctx.rectangle(0.15, 0.15, 0.55, 0.55)
+    stroke(ctx, 2.0)
+
+    # Dashed circle: the face about to be removed and healed over.
+    cx, cy, r = 0.44, 0.44, 0.17
+    segments = 8
+    for i in range(segments):
+        a0 = 2 * math.pi * i / segments
+        a1 = a0 + (2 * math.pi / segments) * 0.6
+        ctx.move_to(cx + r * math.cos(a0), cy + r * math.sin(a0))
+        ctx.arc(cx, cy, r, a0, a1)
+    stroke(ctx, 1.5)
+
+    # Strike mark: the deletion, crossing the circle.
+    ctx.move_to(0.28, 0.6)
+    ctx.line_to(0.62, 0.26)
+    stroke(ctx, 2.0)
+
+
 @icon("frontend/src/assets/icons/feature-boolean.svg")
 def feature_boolean(ctx):
     """Icon for Boolean: two overlapping circles (Venn diagram style)."""
@@ -340,3 +464,26 @@ def feature_transform(ctx):
     # but only top-left and bottom-right corners to avoid clutter
     partial_line(box_left, box_top, box_left + 0.3, box_top - 0.25, 0.3, 0.7)
     partial_line(box_left + box_w, box_top + box_h, box_left + 0.3 + box_w, box_top - 0.25 + box_h, 0.3, 0.65)
+
+
+@icon("frontend/src/assets/icons/feature-helix.svg")
+def feature_helix(ctx):
+    """Icon for Helix: a three-turn coil seen at a slant over its axis."""
+    # The axis the coil climbs about, drawn faint behind it.
+    ctx.move_to(0.5, 0.08)
+    ctx.line_to(0.5, 0.92)
+    stroke(ctx, 1.0)
+
+    # The coil: a vertical sine trace, three turns.
+    turns = 3
+    amp = 0.26
+    steps = 120
+    for i in range(steps + 1):
+        t = i / steps
+        y = 0.14 + t * 0.72
+        x = 0.5 + amp * math.sin(2 * math.pi * turns * t)
+        if i == 0:
+            ctx.move_to(x, y)
+        else:
+            ctx.line_to(x, y)
+    stroke(ctx, 1.5)

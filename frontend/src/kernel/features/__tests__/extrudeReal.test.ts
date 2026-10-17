@@ -423,8 +423,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     expect(h.res(result, 'ex1').status).toBe('exception')
   })
 
-  it('extrude sketch not found returns exception', () => {
-    // Extrude with a sketch ref that has no closed profile returns exception.
+  it('extrude of a sketch with no closed profile is an error', () => {
+    // The ref resolves but the sketch holds no closed profile: a part-less
+    // extrude is a failed one (status error), not an exception.
     const result = h.run({
       features: [
         {
@@ -435,7 +436,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
         { id: 'ex1', kind: 'extrude', sketch: ['@sk1'], distance: 5 },
       ],
     })
-    expect(h.res(result, 'ex1').status).toBe('exception')
+    expect(h.res(result, 'ex1').status).toBe('error')
+    expect(String(h.res(result, 'ex1').exception)).toMatch(/no closed profile/)
   })
 
   it('extrude key error still returns exception dict', () => {

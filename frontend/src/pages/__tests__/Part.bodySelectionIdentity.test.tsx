@@ -3,7 +3,8 @@
  * consumed as if they were feature ids by the Delete key, and addPlane's
  * on_face misses topo-fallback face queries. Pins the selection-body-identity
  * decisions: a picked body inserts a real delete_body feature (no phantom
- * delete_feature), an empty/primitive pick leaves the selection intact, and
+ * delete_feature), a face pick folds into one delete_face, an empty or edge
+ * pick leaves the selection intact, and
  * addPlane accepts any face-resolving selection id.
  */
 import { render, screen, fireEvent, act } from '@testing-library/react'
@@ -135,13 +136,26 @@ describe('Delete key on body and feature selections', () => {
   it('leaves the selection intact when nothing deletable is picked', async () => {
     await renderPartInFeatureMode()
 
-    // A face primitive of the body is not a whole-body pick, so Delete must
-    // neither delete the body nor fabricate a feature delete.
-    act(() => { useSketchEditorStore.getState().addToNormalSelection('@body_ex1/face/0') })
+    // An edge primitive of the body is not a whole-body pick and not a face,
+    // so Delete must neither delete the body nor fabricate a feature delete.
+    act(() => { useSketchEditorStore.getState().addToNormalSelection('@body_ex1/edge/0') })
     await act(async () => { executeCommand('delete_selected') })
 
     expect(mockCommitMutationGroup).not.toHaveBeenCalled()
-    expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1/face/0')).toBe(true)
+    expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1/edge/0')).toBe(true)
+  })
+
+  it('folds a face primitive pick into one delete_face, not a body delete', async () => {
+    await renderPartInFeatureMode()
+
+    // A face primitive is not the whole body, but since delete_face it is
+    // deletable: Delete heals it out with a delete_face feature.
+    act(() => { useSketchEditorStore.getState().addToNormalSelection('@body_ex1/face/0') })
+    await act(async () => { executeCommand('delete_selected') })
+
+    const group = mockCommitMutationGroup.mock.calls[0][0]
+    expect(group).toHaveLength(1)
+    expect(group[0]).toMatchObject({ type: 'add_delete_face', faces: ['@body_ex1/face/0'], label: 'Delete Face' })
   })
 
   it('leaves the selection intact for a builtin plane pick', async () => {

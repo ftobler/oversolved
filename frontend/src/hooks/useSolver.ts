@@ -91,13 +91,15 @@ export function useSolver(
       topology?: import('@/types/cad').Topology
       originLocal?: [number, number]
       plane_transform?: import('@/types/cad').PlaneTransform
-      constraints?: Record<string, { residual: number; render: import('@/types/cad').ConstraintRender; superfluous: boolean }>
+      constraints?: Record<string, { residual: number; render: import('@/types/cad').ConstraintRender; superfluous?: boolean; culprit?: boolean }>
       plane?: { origin: number[]; x_axis: number[]; y_axis: number[]; normal: number[] }
       body_id?: string
       body_ids?: string[]
       value?: number
       exception?: string
       handle?: FeatureHandleData
+      helix?: Record<string, number>
+      curve?: import('@/types/cad').EdgeDataSpline
       solve_ms?: number
       projection_errors?: string[]
     }>
@@ -119,19 +121,26 @@ export function useSolver(
           ? (sketchDef?.entities ?? []).map(e => ({ ...e, kind: feature.resolved_kinds?.[e.id] ?? e.kind }))
           : sketchDef?.entities
         const solved = unflattenGeometry(feature.geometry, resolvedEntities)
-        const astPosById = new Map(
+        const docPosById = new Map(
           (sketchDef?.constraints ?? [])
             .filter(c => c.pos)
             .map(c => [c.id, c.pos!])
         )
-        // Superfluous constraints stay visible and flagged instead of being
-        // written out of the doc; the flag is what the cleanup command reads.
+        // Superfluous (redundant) constraints stay visible and flagged instead
+        // of being written out of the doc; the flag is what the cleanup command
+        // reads. A culprit flag rides alongside for an unsatisfied solve, so
+        // the overlays can paint the constraints that carry the miss.
         const constraints: import('@/types/cad').Constraints | undefined = feature.constraints
           ? Object.fromEntries(
               Object.entries(feature.constraints).map(([cid, c]) => {
-                const pos = astPosById.get(cid)
+                const pos = docPosById.get(cid)
                 const render = pos ? { ...c.render, pos } : c.render
-                return [cid, { render, residual: c.residual, ...(c.superfluous ? { superfluous: true } : {}) }]
+                return [cid, {
+                  render,
+                  residual: c.residual,
+                  ...(c.superfluous ? { superfluous: true } : {}),
+                  ...(c.culprit ? { culprit: true } : {}),
+                }]
               })
             )
           : undefined
@@ -184,6 +193,9 @@ export function useSolver(
           ...(feature.value !== undefined && { value: feature.value }),
           ...(feature.exception !== undefined && { exception: feature.exception }),
           ...(feature.handle !== undefined && { handle: feature.handle }),
+          // A helix's solved curve (the viewport draws it) and derived values.
+          ...(feature.curve !== undefined && { curve: feature.curve }),
+          ...(feature.helix !== undefined && { helix: feature.helix }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
         }
       }

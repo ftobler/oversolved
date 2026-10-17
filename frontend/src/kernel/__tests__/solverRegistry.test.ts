@@ -16,7 +16,7 @@ import { Repository } from '../query'
 // ─── Ported-kind set completeness ───
 
 describe('PORTED_FEATURE_KINDS', () => {
-  it('contains all 16 leaf feature kinds (13 brep + sketch + plane + variable)', () => {
+  it('contains all 22 leaf feature kinds (19 brep + sketch + plane + variable)', () => {
     const expected = [
       'sketch',
       'plane',
@@ -27,6 +27,9 @@ describe('PORTED_FEATURE_KINDS', () => {
       'transform', 'mirror',
       'delete_body', 'import_step',
       'variable',
+      'shell', 'helix',
+      'move_face', 'delete_face',
+      'loft', 'draft',
     ]
     expect(PORTED_FEATURE_KINDS.size).toBe(expected.length)
     for (const kind of expected) {
@@ -256,12 +259,16 @@ describe('resolveFeatureExpressions', () => {
     if ('exception' in r) expect(r.exception).toContain('2+/')
   })
 
-  it('resolves a flat feature-level expression (not under the sub-key)', () => {
-    // Some specs carry params flat on the feature; leaf solvers overlay these
-    // over the sub-dict, so they must be evaluated too.
+  it('canonicalizes a flat feature-level expression into the sub-dict', () => {
+    // A flat param is legacy input: resolveFeatureExpressions folds it into the
+    // sub-dict first, then evaluates there, so the one evaluated target holds
+    // every expression-capable field.
     const r = resolveFeatureExpressions({ id: 'e1', kind: 'extrude', distance: '50+25' })
     expect('feature' in r).toBe(true)
-    if ('feature' in r) expect(r.feature.distance).toBe(75)
+    if ('feature' in r) {
+      expect((r.feature.extrude as Record<string, unknown>).distance).toBe(75)
+      expect('distance' in r.feature).toBe(false)
+    }
   })
 
   it('resolves feature-level scale for import_step', () => {
@@ -279,7 +286,9 @@ describe('resolveFeatureExpressions', () => {
   })
 
   it('leaves kinds without expression fields untouched', () => {
-    const f = { id: 'b1', kind: 'boolean', boolean: { op: 'union' } }
+    // sweep has no expression-capable field, so the feature passes through by
+    // reference (boolean no longer qualifies: its clearance is evaluatable).
+    const f = { id: 'sw1', kind: 'sweep', sweep: { operation: 'add' } }
     const r = resolveFeatureExpressions(f)
     expect('feature' in r).toBe(true)
     if ('feature' in r) expect(r.feature).toBe(f)

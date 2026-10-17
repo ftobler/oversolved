@@ -100,6 +100,44 @@ export function describeMutation(m: Mutation): string {
       return `add chamfer edge ${m.edgeQuery}`
     case 'remove_chamfer_edge':
       return `remove chamfer edge at index ${m.index}`
+    case 'add_shell':
+      return `add shell ${m.label ?? m.featureId}`
+    case 'set_shell_field':
+      return `set shell ${m.field} to ${m.value}`
+    case 'add_shell_face':
+      return `add shell face ${m.faceQuery}`
+    case 'remove_shell_face':
+      return `remove shell face at index ${m.index}`
+    case 'add_move_face':
+      return `add move face ${m.label ?? m.featureId}`
+    case 'set_move_face_field':
+      return `set move face ${m.field} to ${m.value}`
+    case 'add_move_face_ref':
+      return `add move face ref ${m.faceQuery}`
+    case 'remove_move_face_ref':
+      return `remove move face ref at index ${m.index}`
+    case 'add_loft':
+      return `add loft ${m.label ?? m.featureId}`
+    case 'set_loft_field':
+      return `set loft ${m.field} to ${m.value}`
+    case 'add_loft_profile':
+      return `add loft profile ${m.sketchQuery}`
+    case 'remove_loft_profile':
+      return `remove loft profile at index ${m.index}`
+    case 'add_draft':
+      return `add draft ${m.label ?? m.featureId}`
+    case 'set_draft_field':
+      return `set draft ${m.field} to ${m.value}`
+    case 'add_draft_face':
+      return `add draft face ${m.faceQuery}`
+    case 'remove_draft_face':
+      return `remove draft face at index ${m.index}`
+    case 'add_delete_face':
+      return `add delete face ${m.label ?? m.featureId}`
+    case 'add_delete_face_ref':
+      return `add delete face ref ${m.faceQuery}`
+    case 'remove_delete_face_ref':
+      return `remove delete face ref at index ${m.index}`
     case 'add_boolean':
       return `add boolean ${m.label ?? m.featureId}`
     case 'set_boolean_field':
@@ -154,6 +192,10 @@ export function describeMutation(m: Mutation): string {
       return `add variable ${m.label ?? m.featureId}`
     case 'set_variable_field':
       return `set variable ${m.field} to ${m.value}`
+    case 'add_helix':
+      return `add helix ${m.label ?? m.featureId}`
+    case 'set_helix_field':
+      return `set helix ${m.field} to ${m.value}`
     case 'reorder_features':
       return `reorder ${m.featureId} to index ${m.toIndex}`
     case 'set_body_visibility':

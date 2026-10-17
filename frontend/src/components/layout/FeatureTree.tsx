@@ -217,10 +217,12 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   // every kind, so the tree asks the same question for every
                   // kind (utils/core/featureFailure.ts).
                   const { failed, level, message } = featureFailure(feature.id, solveResults, bodies)
-                  // Variables surface their solved value inline: `width = 100`.
+                  // Variables surface their solved value inline: `width = 100`
+                  // and `angle = 45 deg` when the variable carries a unit hint.
                   // The store holds results as `unknown`, hence the cast.
                   const varValue = feature.kind === 'variable' && !failed
                     ? (solveResults?.[feature.id] as { value?: number } | undefined)?.value : undefined
+                  const varUnit = feature.kind === 'variable' ? feature.variable?.unit : undefined
                   const failedClass = failed
                     ? level === 'warning' ? ' feature-name-warning' : ' feature-name-error'
                     : ''
@@ -230,7 +232,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                       title={message}
                     >
                       {feature.label || feature.id}
-                      {varValue !== undefined ? ` = ${varValue}` : ''}
+                      {varValue !== undefined ? ` = ${varValue}${varUnit ? ` ${varUnit}` : ''}` : ''}
                     </span>
                   )
                 })()}

@@ -9,8 +9,8 @@
 // the modifying feature.
 
 import { drainList, type DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccShapeEnumValue, OccShapeFixShape } from './occTypes'
-import { faceCentroid, SubShapeIndexMap } from './primitives'
+import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccModifierHistory, OccShapeEnumValue, OccShapeFixShape } from './occTypes'
+import { faceCentroid, isNullShape, SubShapeIndexMap } from './primitives'
 import { volumeOf } from './booleans'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
 import { canonicalEdges, canonicalVertices, type ShapeNames } from './bodyNames'
@@ -68,11 +68,11 @@ function explore(
   return out
 }
 
-function exploreFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
+export function exploreFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
   return explore(oc, scope, shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, (s) => oc.TopoDS.Face_1(s))
 }
 
-function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
+export function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
   return explore(oc, scope, shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, (s) => oc.TopoDS.Edge_1(s))
 }
 
@@ -93,11 +93,13 @@ function builtFaceOf(builtFaces: OccShape[]): (f: OccShape) => OccSubShape {
   }
 }
 
+export { builtFaceOf }
+
 /** The name maps under construction plus the shared machinery the steps read. */
 interface NameBuildContext {
   oc: OccModule
   scope: DisposeScope
-  maker: OccEdgeModifierMaker
+  maker: OccModifierHistory
   old: OldNames
   builtFace: (f: OccShape) => OccSubShape
   faceNames: Names
@@ -115,7 +117,7 @@ interface NameBuildContext {
 export function extractNames(
   oc: OccModule,
   scope: DisposeScope,
-  maker: OccEdgeModifierMaker,
+  maker: OccModifierHistory,
   newShape: OccShape,
   modifiedEdges: OccShape[],
   old: OldNames,
@@ -134,7 +136,7 @@ export function extractNames(
   }
 
   // Step 1: old named faces -> output faces via Modified() (subshape identity).
-  inheritOldFaceNames(ctx, oldFaces, oldFaceIdx, oldFaceModified)
+  inheritOldFaceNames(oc, scope, maker, old, ctx.builtFace, faceNames, faceAncestry, oldFaces, oldFaceIdx, oldFaceModified)
 
   // Step 2: modified edges -> generated fillet faces, minted role=fillet.
   mintGeneratedFilletFaces(ctx, newShape, modifiedEdges)
@@ -145,14 +147,26 @@ export function extractNames(
   return { faceNames, edgeNames, faceAncestry, edgeAncestry }
 }
 
-/** Carry every named old face to its output image, keyed by the built solid's face. */
-function inheritOldFaceNames(
-  ctx: NameBuildContext,
+/** Carry every named old face to its output image, keyed by the built solid's face.
+ *
+ * Exported and typed on the minimal [[OccModifierHistory]] so a non-fillet
+ * modifier (the shell's thick-solid maker) reuses the identical carry-forward
+ * rather than copying it: a face the maker reports neither deleted nor modified
+ * keeps its UUID verbatim, a face that split into an ordered set of children
+ * mints `split` UUIDs, and a merge collision drops both names for the neighbour
+ * pass to recover. `builtFace` maps any image to the built solid's own face. */
+export function inheritOldFaceNames(
+  oc: OccModule,
+  scope: DisposeScope,
+  maker: OccModifierHistory,
+  old: OldNames,
+  builtFace: (f: OccShape) => OccSubShape,
+  faceNames: Names,
+  faceAncestry: Lineage,
   oldFaces: OccShape[],
   oldFaceIdx: SubShapeIndexMap,
   oldFaceModified: Map<number, OccShape[]>,
 ): void {
-  const { oc, scope, maker, old, builtFace, faceNames, faceAncestry } = ctx
   // Faces a merge collision already cancelled: the two faces that merged into
   // one dropped their names, so the face is up for grabs. A third face
   // modifying to the same output must not re-claim it -- topology order would
@@ -256,7 +270,7 @@ function mintGeneratedFilletFaces(
 function generatedFaces(
   oc: OccModule,
   scope: DisposeScope,
-  maker: OccEdgeModifierMaker,
+  maker: OccModifierHistory,
   oldEdges: OccShape[],
 ): SubShapeDedup {
   const sources: OccShape[] = [...oldEdges]
@@ -285,11 +299,16 @@ function generatedFaces(
  * Classify the modifier output into a BrepDiff (mirrors `ocp_edge_modifier_diff`).
  * Inputs are partitioned via IsDeleted/Modified; outputs partition new vs
  * inherited by IsSame against the preimage pool.
+ *
+ * Typed on the minimal [[OccModifierHistory]] so a non-edge modifier
+ * (delete-face's BRepAlgoAPI_Defeaturing) reuses the identical classification;
+ * the far-edge rule below is what makes "no new faces" fall out correctly for a
+ * heal-only operation.
  */
-function edgeModifierDiff(
+export function edgeModifierDiff(
   oc: OccModule,
   scope: DisposeScope,
-  maker: OccEdgeModifierMaker,
+  maker: OccModifierHistory,
   oldFaces: OccShape[],
   oldEdges: OccShape[],
   newFaces: OccShape[],
@@ -389,7 +408,7 @@ function edgeModifierDiff(
 
 /** Whole-shape validity, geometric checks included. A throwing analyzer is
  *  not a vote of confidence, so it reads as invalid. */
-function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
+export function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
   try {
     const analyzer = new oc.BRepCheck_Analyzer(shape, true)
     try {
@@ -408,7 +427,8 @@ function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape): bool
  * ShapeFix is a projector, not a rebuilder: the defect it is meant to clear
  * here is a missing pcurve on an edge the blend shares with a corner patch.
  * The guards mirror `canonicalSurfaces`: the healed shape must actually come
- * out valid, keep the same solid/face/edge counts, and hold the same volume.
+ * out valid, keep the same solid/face/edge counts, and hold the same positive
+ * volume.
  * A heal that changes the topology count has invented or dropped a face rather
  * than projected a curve, which is the corrupt case wearing a repair, so it is
  * refused. The returned shape is DETACHED, matching `maker.Shape()`: the
@@ -419,7 +439,7 @@ function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape): bool
  * the fixer's own substitution context (its history): the hand-off of names
  * keyed by the input's faces and edges.
  */
-function healShape(
+export function healShape(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
@@ -445,6 +465,9 @@ function healShape(
   }
   const v0 = volumeOf(oc, scope, shape)
   const v1 = volumeOf(oc, scope, healed)
+  // A build with no material (a shell whose walls meet) is collapsed, not
+  // missing a pcurve, and keeping its ~0 volume would pass the check below.
+  if (!(v0 > 1e-9)) return reject()
   if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return reject()
   const context = scope.track(fixer.Context()).get()
   const E = oc.TopAbs_ShapeEnum
@@ -455,7 +478,7 @@ function healShape(
 }
 
 /** `names` re-keyed onto another shape's sub-shapes through `rebase`. */
-function rebaseNames(names: NewNames, rebase: (s: OccSubShape) => OccSubShape): NewNames {
+export function rebaseNames(names: NewNames, rebase: (s: OccSubShape) => OccSubShape): NewNames {
   const move = (from: Names): Names => {
     const out: Names = new SubShapeMap()
     for (const [s, uuid] of from.entries()) out.set(rebase(s), uuid)
@@ -469,7 +492,7 @@ function rebaseNames(names: NewNames, rebase: (s: OccSubShape) => OccSubShape): 
  * `rebase`, so attribution finds the new faces and edges by identity there.
  * The input-side lists name sub-shapes of the old body and stay as they are.
  */
-function rebaseDiff(diff: BrepDiff, rebase: (s: OccSubShape) => OccSubShape): BrepDiff {
+export function rebaseDiff(diff: BrepDiff, rebase: (s: OccSubShape) => OccSubShape): BrepDiff {
   const move = (items: unknown[]): unknown[] => items.map((s) => rebase(s as OccSubShape))
   return {
     ...diff,
@@ -528,7 +551,7 @@ function applyEdgeModifier(
     skippedEdgeIndices: [],
   })
 
-  if ((shape as unknown as { IsNull(): boolean }).IsNull()) return fail('null_shape')
+  if (isNullShape(shape)) return fail('null_shape')
 
   // Old-shape face/edge walks hoisted here for extractNames, edgeModifierDiff
   // and the membership check below -- together they explored the same shape up

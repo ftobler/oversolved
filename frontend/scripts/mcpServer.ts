@@ -21,11 +21,12 @@ import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
-import { runHeadless, measureHeadless, exportHeadless, seedBuiltins } from '@/drive/headlessOps'
+import { runHeadless, measureHeadless, exportHeadless, selectHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createCliJournal } from '@/drive/journal'
 import { createMcpServer, type McpCadOps, type McpFileRef } from '@/drive/mcpServer'
+import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { routeKernelStdoutToStderr } from './kernelStdout'
 
@@ -61,6 +62,8 @@ function readFiles(files: McpFileRef[]): ReadonlyMap<string, Uint8Array> | undef
 }
 
 const ops: McpCadOps = {
+  partDocSchema: () => PART_DOC_SCHEMA_JSON,
+
   async commands() {
     // A fresh seeded session supplies the live enabled verdicts; reading the
     // catalog runs no spec body and starts no solve.
@@ -118,6 +121,25 @@ const ops: McpCadOps = {
     const out = path.resolve(req.out)
     writeFileSync(out, bytes)
     return { ok: true, file: out, format: req.format, bytes: bytes.byteLength }
+  },
+
+  async select(req) {
+    const loaded = loadDocPayload(req.doc)
+    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+    try {
+      const result = await selectHeadless(loaded.doc, req.selector, {
+        docId: req.docId ?? 'mcp',
+        files: readFiles(req.files),
+      })
+      if (!result) {
+        return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
+      }
+      return { ok: true, ...result }
+    } catch (e) {
+      // An empty match or a bad predicate expression is a tool failure, not a
+      // protocol error: the message names the offending clause.
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
   },
 }
 

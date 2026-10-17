@@ -12,6 +12,14 @@
 // also what makes the recipe the unit the minimiser drops steps from.
 
 import { makePrng } from '@/hooks/__tests__/fuzzHarness'
+import { threadDesignations } from '@/kernel/threadTable'
+
+// The thread designations a fuzz hole's cosmetic thread is picked from. The
+// pick is derived from the already-drawn face index (0..3), so the sweep
+// exercises the first four entries (M2x0.4 .. M4x0.7), not the whole table: the
+// threaded PATH is what this step covers, and the table's rows are pinned by its
+// own test plus the M6x1 leaf and oracle cases.
+const DESIGNATIONS = threadDesignations()
 
 // Every placement and size is authored in grid steps and emitted in mm, so the
 // recipe reads in the same units the document does while the seed still
@@ -90,6 +98,10 @@ export interface RecipeHole {
   diameter: number
   depth: number
   depthMode: 'blind' | 'through_all'
+  // The thread-table designation for a cosmetic thread, or null for a plain
+  // bore. The thread changes no geometry; it is derived from `face` at draw
+  // time so the generator's stream does not move.
+  thread: string | null
 }
 
 export interface RecipeLinearArray {
@@ -125,6 +137,42 @@ export interface RecipeMirror {
   merge: boolean
 }
 
+export interface RecipeShell {
+  kind: 'shell'
+  id: string
+  target: string
+  // Index into the target's planar faces; the runner opens that face and keeps
+  // the rest of the wall, so the shell removes material.
+  face: number
+  thickness: number
+}
+
+export interface RecipeHelix {
+  kind: 'helix'
+  id: string
+  target: string
+  // Index into the target's cylinder faces; taken modulo the count at run time.
+  face: number
+  // Axial rise per turn. Kept at least two grid steps so a swept profile would
+  // not immediately self-overlap (the plan's "pitch >= 2x a small profile").
+  pitch: number
+  turns: number
+}
+
+export interface RecipeLoft {
+  kind: 'loft'
+  id: string
+  target: string
+  // Two rectangles above the target's bounding box, in grid steps: the base
+  // section centred on the top face's plane, the top one `top` wide sitting
+  // `height` above it. The loft is always `operation: 'new'`: a separate body
+  // costs no fuse and no overlap with the running one.
+  base: number
+  top: number
+  height: number
+  ruled: boolean
+}
+
 export type RecipeStep =
   | RecipeStart
   | RecipeBoolean
@@ -134,6 +182,9 @@ export type RecipeStep =
   | RecipeLinearArray
   | RecipeCircularArray
   | RecipeMirror
+  | RecipeShell
+  | RecipeHelix
+  | RecipeLoft
 
 export interface Recipe {
   seed: number
@@ -221,10 +272,12 @@ interface StepBudget {
   hole: number
   array: number
   mirror: number
+  shell: number
+  helix: number
 }
 
 function freshBudget(): StepBudget {
-  return { boolean: 2, fillet: 2, chamfer: 2, hole: 2, array: 1, mirror: 1 }
+  return { boolean: 2, fillet: 2, chamfer: 2, hole: 2, array: 1, mirror: 1, shell: 1, helix: 1 }
 }
 
 function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep | null {
@@ -235,12 +288,18 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
     return true
   }
   let kind: keyof StepBudget
-  if (roll < 0.36) kind = 'boolean'
-  else if (roll < 0.54) kind = 'fillet'
-  else if (roll < 0.66) kind = 'chamfer'
-  else if (roll < 0.80) kind = 'hole'
-  else if (roll < 0.90) kind = 'array'
-  else kind = 'mirror'
+  if (roll < 0.33) kind = 'boolean'
+  else if (roll < 0.50) kind = 'fillet'
+  else if (roll < 0.61) kind = 'chamfer'
+  else if (roll < 0.74) kind = 'hole'
+  else if (roll < 0.84) kind = 'array'
+  else if (roll < 0.90) kind = 'mirror'
+  // Shell has the lowest weight: a small thickness keeps most picks buildable,
+  // and a kernel refusal is an allowed failure, not a soundness break.
+  else if (roll < 0.95) kind = 'shell'
+  // The helix is a reference curve, not a body edit: it changes no body, so it
+  // is a cheap extra coverage step with the same lowest weight.
+  else kind = 'helix'
   if (!spend(kind)) return null
   switch (kind) {
     case 'boolean': return drawBoolean(rnd, id)
@@ -248,12 +307,21 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
       return { kind: 'fillet', id, target: PRIMARY_BODY, edge: drawInt(rnd, 0, 11), radius: grid(drawInt(rnd, 1, 2)) }
     case 'chamfer':
       return { kind: 'chamfer', id, target: PRIMARY_BODY, edge: drawInt(rnd, 0, 11), distance: grid(drawInt(rnd, 1, 2)) }
-    case 'hole':
+    case 'hole': {
+      const face = drawInt(rnd, 0, 3)
       return {
-        kind: 'hole', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
+        kind: 'hole', id, target: PRIMARY_BODY, face,
         diameter: grid(drawInt(rnd, 2, 3)), depth: grid(drawInt(rnd, 2, 4)),
         depthMode: rnd() < 0.7 ? 'blind' : 'through_all',
+        // The cosmetic thread is derived from the already-drawn face index, so
+        // the generator consumes no extra randomness: every seed's chain stays
+        // byte-identical to the pre-thread generator and the pinned findings
+        // keep their seeds. That index is drawn 0..3, so only the table's first
+        // four designations appear here (see DESIGNATIONS above); plain bores
+        // are covered by the leaf and oracle tests.
+        thread: DESIGNATIONS[face % DESIGNATIONS.length],
       }
+    }
     case 'array': {
       if (rnd() < 0.7) {
         return { kind: 'linear-array', id, target: PRIMARY_BODY, count: drawInt(rnd, 2, 3), pitch: grid(drawInt(rnd, 2, 4)), axis: drawOf(rnd, ['x', 'y', 'z'] as const) }
@@ -265,6 +333,16 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
         kind: 'mirror', id, target: PRIMARY_BODY,
         plane: drawOf(rnd, ['x', 'y', 'z', 'face'] as const), face: drawInt(rnd, 0, 3),
         keepOriginal: rnd() < 0.7, merge: rnd() < 0.8,
+      }
+    case 'shell':
+      return {
+        kind: 'shell', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
+        thickness: grid(drawInt(rnd, 1, 2)),
+      }
+    case 'helix':
+      return {
+        kind: 'helix', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
+        pitch: grid(drawInt(rnd, 2, 4)), turns: drawInt(rnd, 2, 4),
       }
   }
 }
@@ -283,7 +361,26 @@ export function generateRecipe(seed: number, options: RecipeOptions = {}): Recip
     if (step === null) break
     steps.push(step)
   }
+  // The loft is APPENDED rather than drawn from the cascade: its draws happen
+  // after the chain above, so every seed's earlier steps stay byte-identical to
+  // the pre-loft generator and the pinned findings (seeds 47, 76, 142, ...) keep
+  // their step indices. Its sections are derived from the running body at run
+  // time, so it needs no target pick the drawn steps would have to share.
+  steps.push(drawLoft(rnd, `s${steps.length}`))
   return { seed, steps }
+}
+
+/** The appended loft step: two rectangles above the running body's top face. */
+function drawLoft(rnd: () => number, id: string): RecipeLoft {
+  const base = drawInt(rnd, 4, 8)
+  // At least two grid steps smaller on the side, so the sections never coincide
+  // and the ruled bands have a slope to build.
+  const top = Math.max(2, base - drawInt(rnd, 2, 4))
+  return {
+    kind: 'loft', id, target: PRIMARY_BODY,
+    base: grid(base), top: grid(top), height: grid(drawInt(rnd, 3, 6)),
+    ruled: rnd() < 0.5,
+  }
 }
 
 // ─── perturbation ───

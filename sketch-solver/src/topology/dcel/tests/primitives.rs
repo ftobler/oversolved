@@ -1,8 +1,9 @@
 use crate::radians;
+use crate::tolerance::tangent_gap_tol;
 use crate::topology::dcel::build::{push_half_edge_pair, HalfEdge};
 use crate::topology::dcel::intersect::{cc, collinear_overlap};
 use crate::topology::dcel::trace::{face_area, trace_face_cycles};
-use crate::topology::dcel::{norm_arc_param, Verts, TANGENT_GAP_REL};
+use crate::topology::dcel::{norm_arc_param, Verts};
 use crate::topology::profile_loops::EdgeGeom;
 use crate::topology::{TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI};
 
@@ -48,7 +49,7 @@ fn cc_external_miss_within_tolerance_is_one_point() {
     // the contact the area builder closes on is lost. The miss gap IS the
     // r_tangent residual, so a miss within the tolerance must assert the foot.
     let r: f64 = 5.0;
-    let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+    let tol = tangent_gap_tol(r, MERGE);
     for gap in [1e-9, 1e-8, 1e-7, 1e-6, 1e-5, 0.5 * tol] {
         let pts = cc(0.0, 0.0, r, 2.0 * r + gap, 0.0, r);
         assert_eq!(
@@ -70,7 +71,7 @@ fn cc_external_miss_past_tolerance_stays_empty() {
     // The cliff pinned from the far side so a widened constant cannot pass
     // unnoticed: a genuine separation keeps zero contact.
     let r: f64 = 5.0;
-    let tol = MERGE.max(TANGENT_GAP_REL * r.min(r));
+    let tol = tangent_gap_tol(r, MERGE);
     for gap in [2.0 * tol, 1e-3, 1e-2] {
         assert!(
             cc(0.0, 0.0, r, 2.0 * r + gap, 0.0, r).is_empty(),
@@ -83,7 +84,7 @@ fn cc_external_miss_past_tolerance_stays_empty() {
 fn cc_internal_miss_within_tolerance_is_one_point() {
     // Internal mirror: B nested a hair short of touching A from inside.
     let (r1, r2): (f64, f64) = (5.0, 2.0);
-    let tol = MERGE.max(TANGENT_GAP_REL * r1.min(r2));
+    let tol = tangent_gap_tol(r1.min(r2), MERGE);
     for gap in [1e-9, 1e-7, 0.5 * tol] {
         let pts = cc(0.0, 0.0, r1, r1 - r2 - gap, 0.0, r2);
         assert_eq!(
@@ -103,7 +104,7 @@ fn cc_internal_miss_within_tolerance_is_one_point() {
 #[test]
 fn cc_internal_miss_past_tolerance_stays_empty() {
     let (r1, r2): (f64, f64) = (5.0, 2.0);
-    let tol = MERGE.max(TANGENT_GAP_REL * r1.min(r2));
+    let tol = tangent_gap_tol(r1.min(r2), MERGE);
     let gap = 2.0 * tol;
     assert!(cc(0.0, 0.0, r1, r1 - r2 - gap, 0.0, r2).is_empty());
 }

@@ -6,6 +6,7 @@
 // suite in cliSmoke.test.ts.
 
 import { describe, it, expect } from 'vitest'
+import Ajv from 'ajv'
 import { createMcpServer, MCP_TOOLS, type McpCadOps, type McpToolPayload } from '../mcpServer'
 
 type FakeOps = {
@@ -26,6 +27,8 @@ function fakeOps(answer: (tool: string, args: unknown) => McpToolPayload = () =>
       run: record('run') as McpCadOps['run'],
       measure: record('measure') as McpCadOps['measure'],
       export: record('export') as McpCadOps['export'],
+      partDocSchema: () => '{"title":"Oversolved part document"}',
+      select: record('select') as McpCadOps['select'],
     },
   }
 }
@@ -67,8 +70,22 @@ describe('createMcpServer', () => {
     const server = createMcpServer(fakeOps().ops)
     const response = await request(server, 2, 'tools/list', {})
     const tools = (response as { result: { tools: typeof MCP_TOOLS } }).result.tools
-    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run'])
+    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run', 'select'])
     for (const tool of tools) expect(tool.inputSchema).toMatchObject({ type: 'object' })
+  })
+
+  it('advertises a select schema whose refs compile and rejects unknown predicates', () => {
+    const tool = MCP_TOOLS.find(t => t.name === 'select')
+    expect(tool).toBeDefined()
+    // Compiling resolves every $ref against the inputSchema root; a dangling one
+    // (the definitions nested under properties.selector) throws here.
+    const validate = new Ajv().compile(tool!.inputSchema)
+    const call = (selector: unknown) => validate({ doc: {}, selector })
+    expect(call({ kind: 'edge', where: { parallel: [0, 0, 1] } })).toBe(true)
+    // Nested refs (and/or/not/on_face) resolve through the same hoisted $defs.
+    expect(call({ kind: 'edge', where: { and: [{ parallel: [0, 0, 1] }, { not: { on_face: { kind: 'face' } } }] } })).toBe(true)
+    // An unknown predicate fails additionalProperties on the predicate def.
+    expect(call({ kind: 'edge', where: { frobnicate: [0, 0, 1] } })).toBe(false)
   })
 
   it('calls a tool and returns its payload as text content', async () => {
@@ -106,13 +123,35 @@ describe('createMcpServer', () => {
       ...ops,
       measure: async () => { throw new Error('kernel exploded') },
     })
-    expectError(await request(server, 10, 'resources/list'), -32601)
+    expectError(await request(server, 10, 'prompts/list'), -32601)
     const parseError = await server.handleLine('not json')
     expect(JSON.parse(parseError!)).toMatchObject({ id: null, error: { code: -32700 } })
     expectError(await request(server, 11, 'tools/call', { name: 'measure', arguments: { doc: {} } }), -32603)
     // Still serving after the bug.
     const ok = await request(server, 12, 'tools/call', { name: 'run', arguments: { steps: [] } })
     expect(ok).toMatchObject({ id: 12 })
+  })
+
+  it('advertises the part-document schema as a resource and serves it', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const list = await request(server, 17, 'resources/list', {})
+    expect(list).toMatchObject({
+      id: 17,
+      result: { resources: [{ uri: 'oversolved://schema/part-document', mimeType: 'application/schema+json' }] },
+    })
+    const read = await request(server, 18, 'resources/read', { uri: 'oversolved://schema/part-document' })
+    const contents = (read as { result: { contents: Array<{ uri: string; mimeType: string; text: string }> } }).result.contents
+    expect(contents[0].mimeType).toBe('application/schema+json')
+    expect(JSON.parse(contents[0].text)).toMatchObject({ title: 'Oversolved part document' })
+    expectError(await request(server, 19, 'resources/read', { uri: 'oversolved://nope' }), -32602)
+    expectError(await request(server, 20, 'resources/read', {}), -32602)
+  })
+
+  it('announces the resources capability and answers nothing to a resource notification', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const init = await request(server, 21, 'initialize', {})
+    expect((init as { result: { capabilities: Record<string, unknown> } }).result.capabilities).toMatchObject({ resources: {} })
+    expect(await server.handle({ jsonrpc: '2.0', method: 'resources/list' })).toBeNull()
   })
 
   it('answers nothing to notifications and to messages that are not requests', async () => {
@@ -138,5 +177,29 @@ describe('createMcpServer', () => {
     })
     expect(response).toMatchObject({ id: 15 })
     expect(calls[0].args).toMatchObject({ files: [{ id: 'f1', path: 'box.step' }] })
+  })
+
+  it('validates the select selector and rejects unknown predicates', async () => {
+    const { ops, calls } = fakeOps()
+    const server = createMcpServer(ops)
+
+    // A well-formed selector is validated and reaches the op.
+    const ok = await request(server, 20, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } },
+    })
+    expect(ok).toMatchObject({ id: 20 })
+    expect(calls[0]).toEqual({ tool: 'select', args: expect.objectContaining({ selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } }) })
+
+    // An unknown predicate key is rejected by name, before the op runs.
+    expectError(await request(server, 21, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'edge', where: { frobnicate: [0, 0, 1] } } },
+    }), -32602)
+    expectError(await request(server, 22, 'tools/call', { name: 'select', arguments: { doc: {} } }), -32602)
+    expectError(await request(server, 23, 'tools/call', {
+      name: 'select',
+      arguments: { doc: {}, selector: { kind: 'vertex' } },
+    }), -32602)
   })
 })

@@ -24,6 +24,9 @@ import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/componen
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import UserDefinedPlane from '@/components/Viewport/UserDefinedPlane'
+import HelixCurve from '@/components/Viewport/HelixCurve'
+import ThreadCurves from '@/components/Viewport/ThreadCurves'
+import { collectThreadCurves } from '@/components/Viewport/threadHelices'
 import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
 import { BUILTIN_PLANE_ROTATIONS } from '@/utils/builtinPlanes'
 import { calculatePlaneSize, getActiveSketchPlane } from '@/components/Viewport/viewportPlaneSizing'
@@ -445,6 +448,16 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     return sizes
   }, [features, bodies])
 
+  // The threaded holes' display helices. The hide/rollback filter runs on the
+  // feature list first, so a hidden hole takes its thread line with it.
+  const threadCurves = useMemo(
+    () => collectThreadCurves(
+      (features ?? []).filter(f => isActive(f.id, features, rollbackPosition, visibleFeatures)),
+      solveResults,
+    ),
+    [features, rollbackPosition, visibleFeatures, solveResults],
+  )
+
   // Latch the travel as it happens, then hand the move on to the rubber band. An
   // orbit that swings out and returns near its start would otherwise read as a
   // stationary click when only the two end points are compared.
@@ -554,6 +567,17 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
               />
             )
           })}
+
+        {(features ?? [])
+          .filter(f => f.kind === 'helix')
+          .filter(f => isActive(f.id, features, rollbackPosition, visibleFeatures))
+          .map(f => {
+            const curve = solveResults?.[f.id]?.curve
+            if (!curve) return null
+            return <HelixCurve key={f.id} featureId={f.id} curve={curve} />
+          })}
+
+        <ThreadCurves curves={threadCurves} />
 
         {(() => {
           const sketchPlaneQuery = getActiveSketchPlane(activeFeatureId, features)

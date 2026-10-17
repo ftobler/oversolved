@@ -1,16 +1,17 @@
 # Gitea's full gate. Both forges read this file, but every job is gated to
 # Gitea; GitHub runs its own full suite in ci-github.yaml instead, and keeps
-# main.yaml main-only for the site publish.
+# pages-github.yaml main-only for the site publish.
 #
-# Push and PR run the regular jobs; the schedule and manual dispatch only add
-# the nightly ratchets job, so PR cost is unchanged.
+# Two tiers, keyed on the branch. Every push and PR runs the regular jobs, with
+# the arm64 leg reduced to compiling (it is a slow self-hosted box that falls
+# hours behind dev if it runs vitest on every push). A push to main is the full
+# gate: the arm64 leg runs vitest too, and the long ratchets job runs. A manual
+# dispatch on main reruns that full gate.
 name: CI
 
 on:
   push:
   pull_request:
-  schedule:
-    - cron: '0 3 * * *'  # nightly, 03:00 UTC
   workflow_dispatch:
 
 concurrency:
@@ -84,7 +85,12 @@ jobs:
         include:
           - os: ubuntu-latest-arm64  # self-hosted runner label
             node-version: 26
+            light: true  # build and lint only, except on main
     runs-on: ${{ matrix.os }}
+    env:
+      # 'true' or 'false' as a string; the x86 legs always test, the light arm64
+      # leg only on main.
+      RUN_TESTS: ${{ !matrix.light || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -130,7 +136,9 @@ jobs:
       # fullDocRegression.test.ts (the frozen full-document replay) and the
       # reference-oracle corpus (frontend/oracle, docs/oracle.md drift) run here
       # too and fail, rather than skip, under CI when any of it is missing.
-      # The build is identical across the Node matrix.
+      # sketch-solver's nodejs build carries `--features fuzz` because
+      # sketchRepros.test.ts drives the fuzz-gated oracle export; the web build
+      # stays feature-free. The build is identical across the Node matrix.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install wasm-pack
@@ -139,7 +147,7 @@ jobs:
           tool: wasm-pack
       - name: Build WASM solvers (nodejs for vitest)
         run: |
-          wasm-pack build --target nodejs --out-dir pkg-node --release
+          wasm-pack build --target nodejs --out-dir pkg-node --release -- --features fuzz
           cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
 
@@ -157,11 +165,14 @@ jobs:
         run: npm run licenses:check
         working-directory: frontend
 
+      # OCC.js serves only the tests, so a light leg skips its download too.
       - name: Install OCC.js (opt-in, not a package.json dep)
+        if: env.RUN_TESTS == 'true'
         run: npm run occ:install
         working-directory: frontend
 
       - name: npm test (vitest)
+        if: env.RUN_TESTS == 'true'
         run: npx vitest run
         working-directory: frontend
         env:
@@ -221,16 +232,15 @@ jobs:
           wasm-pack build --target web --out-dir pkg --release
           wasm-pack build --target nodejs --out-dir pkg-node --release
 
-  # The long ratchets, nightly and on demand: the seeded fuzz, the full
-  # action-matrix sweep and the geometry robustness fuzz are minutes long, so
-  # they never join a push or PR run. The provisioning mirrors the frontend job
-  # (nodejs WASM solvers + OCC.js) because all three recipes use the real kernel
-  # where it is installed; the recipes tee their full output to tmp/ and keep
-  # their exit codes, so the job step is the gate, and the logs upload as the
-  # ratchet report artifact. The `if` gates the job to Gitea and to the two
-  # triggers, so the PR runs stay cheap.
-  nightly:
-    if: github.server_url != 'https://github.com' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+  # The long ratchets, on main only: the seeded fuzz, the full action-matrix
+  # sweep and the geometry robustness fuzz take well over an hour together, so
+  # they never join a dev, feature or PR run. The provisioning mirrors the
+  # frontend job (nodejs WASM solvers + OCC.js) because all three recipes use
+  # the real kernel where it is installed; the recipes tee their full output to
+  # tmp/ and keep their exit codes, so the job step is the gate, and the logs
+  # upload as the ratchet report artifact.
+  ratchets:
+    if: github.server_url != 'https://github.com' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -255,9 +265,12 @@ jobs:
         with:
           tool: wasm-pack
 
+      # sketch-solver's nodejs build carries `--features fuzz` for the
+      # sketchRepros oracle export (`just wasm` matches); the web build stays
+      # feature-free.
       - name: Build WASM solvers (nodejs for vitest)
         run: |
-          wasm-pack build --target nodejs --out-dir pkg-node --release
+          wasm-pack build --target nodejs --out-dir pkg-node --release -- --features fuzz
           cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
 
@@ -276,14 +289,15 @@ jobs:
       - name: Full action matrix (real kernel)
         run: just ratchet-matrix
 
-      # 1500 chain seeds (about 25 minutes at the measured per-seed cost,
-      # including the watchdog kills) keeps the nightly inside its 180 minute
-      # job budget alongside the other two ratchets; `just robustness-fuzz
-      # 5000` is the plan's full-scale range for a dedicated run.
+      # 1500 chain seeds (about 31 minutes on a 7800X3D with a fresh kernel
+      # per recipe, including the watchdog kills) keeps the job inside its
+      # 180 minute job budget alongside the other two ratchets; `just
+      # robustness-fuzz 5000` is the plan's full-scale range for a dedicated
+      # run.
       - name: Geometry robustness fuzz (real kernel)
         run: just robustness-fuzz 1500
 
-      # The ratchet logs are the nightly report: a failing sweep leaves the
+      # The ratchet logs are the job's report: a failing sweep leaves the
       # seed, step and refusal lines in its log even when the step aborts.
       - name: Upload ratchet logs
         if: always()

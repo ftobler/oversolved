@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildBodyGeometry, buildEdgeSegments, buildEdgeSegmentGeometry, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties } from '@/components/Geometry3D/bodyGeometry'
+import { buildBodyGeometry, buildEdgeSegments, buildEdgeSegmentGeometry, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties, resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { ARC_SEGMENTS } from '@/components/Geometry3D/constants'
 
@@ -444,5 +444,22 @@ describe('calculateFaceProperties', () => {
     const props = calculateFaceProperties(faceGeo)!
     const norm = Math.sqrt(props.normal[0]**2 + props.normal[1]**2 + props.normal[2]**2)
     expect(norm).toBeGreaterThan(0)
+  })
+})
+
+describe('resolveEdgeQueries accepts a non-body registration', () => {
+  // A helix registers its curve under its own feature id (bodyId === featureId);
+  // the resolver must not assume `bodyId` names an entry in bodyStore. The
+  // supplied query wins, so nothing falls back to a `@<bodyId>/edge/N` path.
+  const spline: EdgeData = { kind: 'spline', points: [[0, 0, 0], [1, 0, 0]] }
+
+  it('uses the supplied curve query for a curve-only body', () => {
+    expect(resolveEdgeQueries([spline], ['@hx1'], 'hx1')).toEqual(['@hx1'])
+  })
+
+  it('pads a missing curve query with a non-body fallback', () => {
+    const q = resolveEdgeQueries([spline], undefined, 'hx1')!
+    expect(q).toHaveLength(1)
+    expect(q[0]).toContain('hx1')
   })
 })

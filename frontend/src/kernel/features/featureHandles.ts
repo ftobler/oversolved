@@ -60,6 +60,7 @@ export function linearHandle(
   dir: number[],
   value: number,
   unitScale = 1.0,
+  min = HANDLE_MIN_VALUE,
 ): FeatureHandle | null {
   const direction = normalize(dir)
   if (direction === null) return null
@@ -70,7 +71,7 @@ export function linearHandle(
     direction,
     value,
     unit_scale: unitScale,
-    min: HANDLE_MIN_VALUE,
+    min,
   }
 }
 

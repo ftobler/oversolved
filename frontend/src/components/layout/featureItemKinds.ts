@@ -11,6 +11,11 @@ export const EDIT_LABELS: Record<string, string> = {
   sweep: 'sweep',
   fillet: 'fillet',
   chamfer: 'chamfer',
+  shell: 'shell',
+  loft: 'loft',
+  draft: 'draft',
+  move_face: 'move face',
+  delete_face: 'delete face',
   boolean: 'boolean',
   array: 'array',
   circular_array: 'circular array',
@@ -19,6 +24,7 @@ export const EDIT_LABELS: Record<string, string> = {
   transform: 'transform',
   mirror: 'mirror',
   variable: 'variable',
+  helix: 'helix',
 }
 
 /** Whether a feature kind opens in the feature editor (or sketch editor) rather

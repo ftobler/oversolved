@@ -28,7 +28,11 @@ import { solveFillet, solveChamfer, resolveFilletEdges } from '@/kernel/features
 import { solveHole } from '@/kernel/features/hole'
 import { solveArray, solveCircularArray } from '@/kernel/features/array'
 import { solveMirror } from '@/kernel/features/transformMirror'
+import { solveShell } from '@/kernel/features/shell'
+import { solveHelix } from '@/kernel/features/helix'
+import { solveLoft } from '@/kernel/features/loft'
 import { extractOccErrorMessage } from '@/kernel/errors'
+import { threadEntry } from '@/kernel/threadTable'
 import type { Repository } from '@/kernel/query'
 import type { Body } from '@/kernel/types3d'
 import type { LoopEdge } from '@/kernel/profileLoops'
@@ -39,6 +43,15 @@ type Dict = Record<string, unknown>
 
 const PLANE_XY: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 const PLANE_XZ: PlaneLike = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, 1, 0] }
+
+// The table entry a drawn designation names, as the document stores it. A
+// designation the table lost is a generator bug, so it throws rather than
+// silently dropping the thread.
+function threadSpec(designation: string): { designation: string; nominal: number; pitch: number } {
+  const entry = threadEntry(designation)
+  if (entry === null) throw new Error(`fuzz: '${designation}' is not in the thread table`)
+  return { designation: entry.designation, nominal: entry.nominal, pitch: entry.pitch }
+}
 
 function axisVec(axis: AxisName): Vec3 {
   return axis === 'x' ? [1, 0, 0] : axis === 'y' ? [0, 1, 0] : [0, 0, 1]
@@ -323,7 +336,8 @@ function checkMonotonic(step: RecipeStep, targetBefore: number | undefined, edit
     || step.kind === 'linear-array'
     || step.kind === 'circular-array'
     || (step.kind === 'mirror' && step.keepOriginal && step.merge)
-  const cutLike = (step.kind === 'boolean' && step.operation === 'subtract') || step.kind === 'hole'
+  // Shell is drawn inward only, so like a cut it never adds material.
+  const cutLike = (step.kind === 'boolean' && step.operation === 'subtract') || step.kind === 'hole' || step.kind === 'shell'
   if (!joinLike && !cutLike) return
   if (targetBefore === undefined) {
     violations.push({ step: stepIndex, message: `the ${step.kind} step ran with no target volume to compare against` })
@@ -640,6 +654,7 @@ function applyStep(
         // the reversed axis or the blind cutter starts outside and removes nothing.
         direction: 'reverse',
         target: step.target,
+        ...(step.thread !== null ? { thread: threadSpec(step.thread) } : {}),
       },
     }, repoForLeaves, bodyStore, { [sketchId]: { entities: [{ id: 'p1', kind: 'point' }] } })
     return { editedIds: result.body_ids }
@@ -668,6 +683,70 @@ function applyStep(
         source_body: step.target, count: step.count, step_angle: step.stepDeg,
         include_source: true, operation: 'add', axis: query,
       },
+    }, repoForLeaves, bodyStore)
+    return { editedIds: result.body_ids }
+  }
+  if (step.kind === 'shell') {
+    const body = requireBody(bodyStore, step.target)
+    const face = expected !== undefined && expected.kind === 'face'
+      ? resolveRecordedFace(oc, scope, table.get<OccShape>(body.shape as OccHandle), body, step.face, expected)
+      : pickFace(facesOf(oc, scope, table.get<OccShape>(body.shape as OccHandle), body), step.face)
+    if (face.query) picks.push({ step: stepIndex, kind: 'face', body: step.target, query: face.query, elementKind: face.surfaceType })
+    const result = solveShell(oc, scope, table, {
+      id: step.id,
+      shell: { faces: [face.query], thickness: step.thickness, direction: 'inward' },
+    }, repoForLeaves, bodyStore)
+    return { editedIds: result.body_ids }
+  }
+  if (step.kind === 'helix') {
+    // A reference curve on a picked cylinder face of the running body: it
+    // changes no body, only registers the `_curve_<id>` descriptor and its
+    // axis/endpoints. The reference resolves through the same repo the leaves
+    // use, so a degenerate body (no cylinder face) refuses by name.
+    const body = requireBody(bodyStore, step.target)
+    const faces = facesOf(oc, scope, table.get<OccShape>(body.shape as OccHandle), body)
+    const cylinders = faces.filter((f) => f.surfaceType === 'cylinderface')
+    if (cylinders.length === 0) throw new Error('the body has no cylinder face to carry a helix')
+    const face = cylinders[step.face % cylinders.length]
+    const query = `@fuzz/helix/${step.id}`
+    repo.registerQuery(query, () => ({
+      type: 'cylinderface', body_id: body.id, face_index: faces.indexOf(face),
+      axis: face.normal, centroid: face.centroid,
+    }))
+    solveHelix(oc, scope, table, {
+      id: step.id,
+      helix: {
+        reference: query, radius_mode: 'derived', mode: 'pitch_turns',
+        pitch: step.pitch, turns: step.turns, hand: 'right', direction: 'normal',
+        start_angle: 0, offset: 0,
+      },
+    }, repoForLeaves, bodyStore)
+    return {}
+  }
+  if (step.kind === 'loft') {
+    // Two rectangles above the running body, registered as solved-sketch
+    // entries exactly the way a real solve leaves them (`_pt_` plane transform
+    // plus a `_topo_` closed region), and lofted into a NEW body. Nothing is
+    // picked off the body, so the step has no persistent reference of its own:
+    // its persistence coverage is the sketches it resolves.
+    const body = requireBody(bodyStore, step.target)
+    const { center, half } = bodyFrame(oc, scope, table.get<OccShape>(body.shape as OccHandle))
+    const bottom = center[2] + half[2]
+    const ids: string[] = []
+    for (const [which, sectionTop, size] of [['a', bottom, step.base], ['b', bottom + step.height, step.top]] as const) {
+      const sketchId = `sk_loft_${step.id}_${which}`
+      ids.push(sketchId)
+      repo.register('_pt_' + sketchId, {
+        origin: [center[0], center[1], sectionTop], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
+      })
+      repo.register('_topo_' + sketchId, {
+        surfaces: [{ query: '', boundary: rectLoop(center[0] - size / 2, center[0] + size / 2, center[1] - size / 2, center[1] + size / 2) }],
+      })
+    }
+    const result = solveLoft(oc, scope, table, {
+      id: step.id,
+      kind: 'loft',
+      loft: { profiles: ids.map((s) => '@' + s), ruled: step.ruled, operation: 'new' },
     }, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }
   }

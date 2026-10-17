@@ -42,41 +42,64 @@ function normalize3(d: number[]): number[] | null {
 }
 
 /**
- * Resolve a query to a 3D line {start, direction}, shared by the direction/axis
- * resolvers. Handles these pickable geometries: straight edge ({start, end}),
- * circular/arc/ellipse edge ({center, axis}), sketch line/circle/arc
- * ({external_params, kind}) lifted through the sketch plane, cylindrical face
- * (type + axis), and planar face (normal).
- *
- * Edge payloads from edgeAncestryPayload carry all geometry keys (start, end,
- * center, axis, ...) regardless of the actual edge kind, with undefined for
- * inapplicable fields. Truthy checks guard against mismatches (a circular edge
- * has undefined start/end; a straight edge has undefined center/axis).
+ * A reference reduced to the axis/radius/extent a helix (or any circular
+ * consumer) needs, resolved from the repo. `faceRef` is the original query when
+ * `kind` is a cylinder face, so a caller can reach the OCC surface for the
+ * radius and axial extent the repo entry does not carry.
  */
-function resolveQueryToLine(
+export interface CircularReference {
+  kind: 'cylinderface' | 'circular_edge' | 'sketch_circle' | 'straight_edge' | 'sketch_line'
+  axis: number[]
+  origin: number[]
+  radius?: number
+  xAxis?: number[]
+  extent?: number
+  faceRef?: string
+}
+
+/**
+ * Resolve a query to a circular/linear reference, shared by the direction/axis
+ * resolvers and the helix leaf. Handles straight edge ({start, end}), circular/
+ * arc/ellipse edge ({center, axis}), sketch line/circle/arc
+ * ({external_params, kind}) lifted through the sketch plane, and cylindrical
+ * face (type + axis). A planar face is NOT handled here: the direction
+ * resolvers fall back to its normal themselves.
+ *
+ * Edge payloads from edgeAncestryPayload carry all geometry keys regardless of
+ * the actual edge kind, with undefined for inapplicable fields; truthy checks
+ * guard against mismatches.
+ */
+export function resolveCircularReference(
   query: string,
   globalRepo: Repository,
   bodyStore: Record<string, unknown> | null,
-): { start: number[]; dir: number[] } | null {
+): CircularReference | null {
   if (!query) return null
   const data = globalRepo.query(query, null, bodyStore) as Dict | null
   if (!data) return null
+
+  // Circular / arc / ellipse edge: truthy center/axis. Checked BEFORE the
+  // straight branch because a registered helix carries BOTH (center/axis for
+  // its axis, start/end for its endpoints); it is a curve about an axis, so
+  // `@<helixId>` must resolve to that axis, not to its start-to-end chord.
+  if (data.center && data.axis) {
+    const dir = normalize3(data.axis as number[])
+    if (dir) {
+      const center = [...(data.center as number[])]
+      const radius = typeof data.radius === 'number' ? data.radius : undefined
+      const xAxis = Array.isArray(data.x_axis) ? (data.x_axis as number[]) : undefined
+      return { kind: 'circular_edge', axis: dir, origin: center, radius, xAxis }
+    }
+  }
 
   // Straight 3D edge: truthy start/end (circular edges carry undefined start/end).
   if (data.start && data.end) {
     const start = data.start as number[]
     const end = data.end as number[]
     const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
-    if (dir) return { start, dir }
-  }
-
-  // Circular / arc / ellipse edge: truthy center/axis (straight edges carry
-  // undefined center/axis).
-  if (data.center && data.axis) {
-    const dir = normalize3(data.axis as number[])
     if (dir) {
-      const center = data.center as number[]
-      return { start: [...center], dir }
+      const extent = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2])
+      return { kind: 'straight_edge', axis: dir, origin: start, extent }
     }
   }
 
@@ -90,12 +113,18 @@ function resolveQueryToLine(
         const start = sketchToWorld2d(params.slice(0, 2), plane)
         const end = sketchToWorld2d(params.slice(2, 4), plane)
         const dir = normalize3([end[0] - start[0], end[1] - start[1], end[2] - start[2]])
-        if (dir) return { start, dir }
+        if (dir) {
+          const extent = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2])
+          return { kind: 'sketch_line', axis: dir, origin: start, extent }
+        }
       } else if (data.kind === 'circle' || data.kind === 'arc') {
         // Circle/arc centre in 2D [cx, cy] → 3D; axis = sketch plane normal.
-        const start = sketchToWorld2d(params.slice(0, 2), plane)
+        const center = sketchToWorld2d(params.slice(0, 2), plane)
         const dir = normalize3(plane.normal)
-        if (dir) return { start, dir }
+        if (dir) {
+          const radius = Number.isFinite(params[2]) ? params[2] : undefined
+          return { kind: 'sketch_circle', axis: dir, origin: center, radius, xAxis: [...plane.x_axis] }
+        }
       }
     }
   }
@@ -105,14 +134,35 @@ function resolveQueryToLine(
   if (data.axis && data.type === 'cylinderface') {
     const dir = normalize3(data.axis as number[])
     if (dir) {
-      const sf = (data.surface_frame as { origin?: number[]; axis?: number[] } | undefined)
+      const sf = (data.surface_frame as { origin?: number[]; axis?: number[]; radius?: number } | undefined)
       const origin = sf?.origin ?? (data.origin as number[] | undefined) ?? (data.centroid as number[] | undefined) ?? [0, 0, 0]
-      return { start: [...origin], dir }
+      const radius = typeof sf?.radius === 'number' ? sf.radius : undefined
+      return { kind: 'cylinderface', axis: dir, origin: [...origin], radius, faceRef: query }
     }
   }
 
+  return null
+}
+
+/**
+ * Resolve a query to a 3D line {start, direction}, shared by the direction/axis
+ * resolvers. Circular/linear references go through resolveCircularReference; a
+ * planar face falls back to its normal (the array runs along it).
+ */
+function resolveQueryToLine(
+  query: string,
+  globalRepo: Repository,
+  bodyStore: Record<string, unknown> | null,
+): { start: number[]; dir: number[] } | null {
+  const circ = resolveCircularReference(query, globalRepo, bodyStore)
+  if (circ) return { start: [...circ.origin], dir: circ.axis }
+
+  if (!query) return null
+  const data = globalRepo.query(query, null, bodyStore) as Dict | null
+  if (!data) return null
+
   // Planar face: the array runs along the face normal.
-  if (data && 'normal' in data) {
+  if ('normal' in data) {
     const dir = normalize3(data.normal as number[])
     if (dir) {
       const origin = (data.origin as number[] | undefined) ?? (data.centroid as number[] | undefined) ?? [0, 0, 0]

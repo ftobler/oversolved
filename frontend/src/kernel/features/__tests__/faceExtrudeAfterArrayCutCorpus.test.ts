@@ -11,7 +11,7 @@
 // instead of resolving it. The build loop now evicts a body that leaves the
 // store mid-build (see clearConsumedBodyAncestry).
 //
-// The fixture is the bug-report AST verbatim, minus the origin/datum-plane
+// The fixture is the bug-report document verbatim, minus the origin/datum-plane
 // features the builder supplies itself. Array count is varied around the
 // reported value because the report ties the failure to it.
 //

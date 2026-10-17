@@ -118,21 +118,23 @@ frontend-test:
     npx vitest run 2>&1 | tee ../tmp/npx_test.log
 
 # Long seeded fuzz run: random mutation and undo/redo sequences over the
-# mutation registry, driven headlessly through DocSession with the real kernel
-# when installed. The PR gate runs a bounded 4 seeds x 6 steps; this recipe
+# mutation registry, driven headlessly through DocSession with the real kernel.
+# The PR gate skips the real side where it is not provisioned; this recipe sets
+# FUZZ_REQUIRE_REAL so a missing build fails instead of passing in seconds on the
+# fake side alone. The PR gate runs a bounded 4 seeds x 6 steps; this recipe
 # widens both sides (fake and real) and settles every step before asserting its
 # document, idle and history-cap invariants. `just fuzz 500 60` for a bigger
 # sweep; a failing seed is printed by number and can be replayed alone.
 [working-directory: "frontend"]
 fuzz seeds="200" steps="40":
     mkdir -p ../tmp
-    FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts 2>&1 | tee ../tmp/fuzz.log
+    FUZZ_REQUIRE_REAL=1 FUZZ_SEEDS={{seeds}} FUZZ_STEPS={{steps}} FUZZ_FAKE_SEEDS={{seeds}} FUZZ_FAKE_STEPS={{steps}} npx vitest run src/hooks/__tests__/fuzz.test.ts 2>&1 | tee ../tmp/fuzz.log
 
 # The full action-matrix sweep: every part command on every target of all 72
 # corpus documents, compared exactly against the committed baseline. The real
 # kernel runs where provisioned (the fake scheduler otherwise; a command's
 # status cannot depend on the scheduler), and the run takes minutes, so it is a
-# nightly, not a PR-gate, cost. The PR gate keeps the bounded smoke slices.
+# main-gate, not a PR-gate, cost. The PR gate keeps the bounded smoke slices.
 # Regenerate the baseline with `npm run regen:action-matrix` from frontend/.
 [working-directory: "frontend"]
 ratchet-matrix:
@@ -149,10 +151,10 @@ ratchet-matrix:
 # frontend/src/testing/robustnessFuzz/chainTimeout.ts). Each chain child holds
 # its own ~0.75 GB OCC kernel, so this recipe pins the pool to 2 and the vitest
 # forks to 1: the two suites run in sequence instead of two extra kernels deep
-# (raise workers on a wide, memory-rich box, not on the nightly runner). The PR
+# (raise workers on a wide, memory-rich box, not on the CI runner). The PR
 # suite runs a bounded 24-chain-seed range and its identity sweep derives a
 # quarter of this one (the default 200 is the plan's acceptance range; the
-# nightly runs 1500 and `just robustness-fuzz 5000` is the plan's full scale).
+# main gate runs 1500 and `just robustness-fuzz 5000` is the plan's full scale).
 [working-directory: "frontend"]
 robustness-fuzz seeds="200" workers="2":
     mkdir -p ../tmp
@@ -174,6 +176,17 @@ rust-fmt:
     mkdir -p tmp
     cargo fmt --all --check 2>&1 | tee tmp/cargo_fmt.log
 
+# Long area-builder fuzz run: seeds <from>..<to> through the motif generator and
+# the invariant oracle, judged against the per-seed catalogue in fuzz/tests.rs.
+# Every new coverage/structure/euler failure is minimised into
+# sketch-solver/src/topology/dcel/tests/fuzz_cases/ and every new failure's
+# catalogue entry is printed for review; stability and order are
+# catalogue-only. The PR gate already runs seeds 0..300 inside `just rust-test`;
+# this is the harvesting sweep, so review what it writes before committing.
+sketch-fuzz from to:
+    mkdir -p tmp
+    SKETCH_FUZZ_FROM={{from}} SKETCH_FUZZ_TO={{to}} SKETCH_FUZZ_WRITE=1 cargo test -p sketch-solver --lib topology::fuzz::tests::fuzz_range_from_env -- --ignored --nocapture 2>&1 | tee tmp/sketch_fuzz.log
+
 
 # --- assets ---
 
@@ -181,12 +194,16 @@ rust-fmt:
 # tests). Two crates, two binaries: the sketch/OCC worker and the anchor solver
 # worker each load only their own. See the workspace root Cargo.toml.
 
-# Build both Rust solvers to WASM and copy them into the frontend.
+# Build both Rust solvers to WASM and copy them into the frontend. The
+# sketch-solver nodejs target carries `--features fuzz`: sketchRepros.test.ts
+# drives the fuzz-gated oracle export and must not skip in a provisioned tree.
+# The web target and the other three builds stay feature-free (the production
+# WASM binary never pays for the oracle).
 wasm:
     mkdir -p tmp
     { \
         (cd sketch-solver && {{wasm_pack}} build --target web --out-dir pkg --release) && \
-        (cd sketch-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release) && \
+        (cd sketch-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release -- --features fuzz) && \
         (cd mate-solver && {{wasm_pack}} build --target web --out-dir pkg --release) && \
         (cd mate-solver && {{wasm_pack}} build --target nodejs --out-dir pkg-node --release) && \
         (cd frontend && node scripts/copyWasm.mjs); \
@@ -200,7 +217,9 @@ icons:
 
 # --- setup ---
 
-# Install all dependencies (Python + frontend + wasm tools + opencascade.js)
+# Install all dependencies (Python + frontend + wasm tools + solver build + opencascade.js).
+# The solver build is not optional for the gates: without pkg-node every real-kernel
+# suite skips silently.
 install:
     mkdir -p tmp
     # note cairo needs apt libcairo2-dev
@@ -209,6 +228,7 @@ install:
         .venv/bin/pip install -e ".[dev]" && \
         just install-npm && \
         just install-wasm && \
+        just wasm && \
         just install-occ; \
     } 2>&1 | tee tmp/just_install.log
 
@@ -218,11 +238,13 @@ install-npm:
     npm install 2>&1 | tee ../tmp/npm_install.log
 
 # wasm-pack is installed project-local so nothing leaks into ~/.cargo/bin.
+# --locked builds from wasm-pack's own Cargo.lock: a fresh resolve fails since
+# every zip 2.x (pulled in by binary-install) was yanked, a lockfile still may pin one.
 
 # Install the wasm build tool into tmp/tools.
 install-wasm:
     mkdir -p tmp
-    cargo install wasm-pack --root tmp/tools 2>&1 | tee tmp/cargo_install_wasm_pack.log
+    cargo install wasm-pack --version 0.15.0 --locked --root tmp/tools 2>&1 | tee tmp/cargo_install_wasm_pack.log
 
 [working-directory: "frontend"]
 install-occ:

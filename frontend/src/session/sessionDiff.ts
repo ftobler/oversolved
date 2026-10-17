@@ -22,6 +22,11 @@ export const PREVIEW_SCOPE = new Set<Mutation['type']>([
 export const NO_FALLBACK_BREP_KINDS = new Set([
   'extrude', 'revolve', 'sweep',
   'fillet', 'chamfer',
+  'shell',
+  'loft',
+  'draft',
+  'move_face',
+  'delete_face',
   'boolean', 'hole',
   'array', 'circular_array',
   'transform', 'mirror',

@@ -32,6 +32,7 @@ import {
   makeWire,
   SubShapeDedup,
   SubShapeMultiIndex,
+  isNullShape,
   type Vec3,
 } from './primitives'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
@@ -72,7 +73,7 @@ function capGeneratedFaces(
       return
     }
     const trackedShape = scope.track(shape)
-    if ((trackedShape as unknown as { IsNull(): boolean }).IsNull()) return
+    if (isNullShape(trackedShape)) return
     const exp = scope.track(new oc.TopExp_Explorer_2(trackedShape, E.TopAbs_FACE, E.TopAbs_SHAPE))
     for (; exp.More(); exp.Next()) {
       const raw = scope.track(exp.Current())
@@ -777,6 +778,10 @@ export function attemptPipeShellSweep(
   spineWire: OccShape,
   outerWire: OccShape,
   modes: OccEnumValue[],
+  // When set, orient the trihedron to this fixed direction (binormal mode)
+  // instead of the default CorrectedFrenet frame. A helix path uses the helix
+  // axis so a radial profile keeps its relation to the axis (a thread).
+  binormal: Vec3 | null = null,
 ): { result: { solid: OccShape; pipeBuilder: OccPipeShellBuilder } | null; lastError: unknown } {
   let lastError: unknown = null
   for (const mode of modes) {
@@ -784,6 +789,10 @@ export function attemptPipeShellSweep(
     const builder = scope.track(new oc.BRepOffsetAPI_MakePipeShell(spineWire))
     try {
       builder.SetTransitionMode(mode)
+      if (binormal !== null) {
+        const dir = scope.track(new oc.gp_Dir_4(binormal[0], binormal[1], binormal[2]))
+        builder.SetMode_3(dir)
+      }
       builder.Add_1(outerWire, false, false)
       builder.Build()
       if (builder.IsDone() && builder.MakeSolid()) {
@@ -816,6 +825,7 @@ export function sweepProfileWithLineage(
   spineEdges: OccShape[],
   sketchId = '',
   createdBy = '',
+  binormal: Vec3 | null = null,
 ): LineageResult {
   if (loops.length === 0) throw new Error('sweep: no profile loops')
   if (spineEdges.length === 0) throw new Error('sweep: empty path')
@@ -834,7 +844,7 @@ export function sweepProfileWithLineage(
     oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner,
     oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_Transformed,
   ]
-  const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, outerWire, modes)
+  const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, outerWire, modes, binormal)
   if (lastError !== null) {
     const msg = extractErrorMessage(lastError)
     throw new Error(`sweep: BRepOffsetAPI_MakePipeShell failed: ${msg}`)

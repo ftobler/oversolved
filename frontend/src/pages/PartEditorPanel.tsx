@@ -10,6 +10,11 @@ import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
 import featureSweepIcon from '@/assets/icons/feature-sweep.svg'
 import featureFilletIcon from '@/assets/icons/feature-fillet.svg'
 import featureChamferIcon from '@/assets/icons/feature-chamfer.svg'
+import featureShellIcon from '@/assets/icons/feature-shell.svg'
+import featureLoftIcon from '@/assets/icons/feature-loft.svg'
+import featureDraftIcon from '@/assets/icons/feature-draft.svg'
+import featureMoveFaceIcon from '@/assets/icons/feature-move-face.svg'
+import featureDeleteFaceIcon from '@/assets/icons/feature-delete-face.svg'
 import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
 import featureArrayIcon from '@/assets/icons/feature-array.svg'
 import featureCircularArrayIcon from '@/assets/icons/feature-circular-array.svg'
@@ -18,6 +23,7 @@ import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
 import featureMirrorIcon from '@/assets/icons/feature-mirror.svg'
 import featureVariableIcon from '@/assets/icons/feature-variable.svg'
+import featureHelixIcon from '@/assets/icons/feature-helix.svg'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import featureAddPlaneIcon from '@/assets/icons/feature-add-plane.svg'
@@ -44,6 +50,7 @@ interface PartEditorPanelProps {
   handleAddPlane: () => void
   handleImportStep: () => void
   handleExportStep: () => void
+  onOpenParameters: () => void
   viewportRef: React.RefObject<ViewportHandle | null>
   handleRightClick: (pos: [number, number], targetId?: string) => void
   // Bottom-right in-viewport overlay (the measurement readout).
@@ -64,6 +71,7 @@ export default function PartEditorPanel({
   handleAddPlane,
   handleImportStep,
   handleExportStep,
+  onOpenParameters,
   viewportRef,
   handleRightClick,
   viewportHud,
@@ -94,8 +102,14 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Extrude (E)" onClick={() => handleAddFeature('extrude', { sketchQuery: '', distance: 10 })}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
               <button className="editor-btn" title="Add Revolve" onClick={() => handleAddFeature('revolve', { sketchQuery: '', angle: 360 })}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
               <button className="editor-btn" title="Add Sweep" onClick={() => handleAddFeature('sweep', { sketchQuery: '', pathQuery: '' })}><img src={featureSweepIcon} alt="Add Sweep" /></button>
+              <button className="editor-btn" title="Add Helix" onClick={() => handleAddFeature('helix')}><img src={featureHelixIcon} alt="Add Helix" /></button>
               <button className="editor-btn" title="Add Fillet" onClick={() => handleAddFeature('fillet')}><img src={featureFilletIcon} alt="Add Fillet" /></button>
               <button className="editor-btn" title="Add Chamfer" onClick={() => handleAddFeature('chamfer')}><img src={featureChamferIcon} alt="Add Chamfer" /></button>
+              <button className="editor-btn" title="Add Shell" onClick={() => handleAddFeature('shell')}><img src={featureShellIcon} alt="Add Shell" /></button>
+              <button className="editor-btn" title="Add Loft" onClick={() => handleAddFeature('loft')}><img src={featureLoftIcon} alt="Add Loft" /></button>
+              <button className="editor-btn" title="Add Draft" onClick={() => handleAddFeature('draft')}><img src={featureDraftIcon} alt="Add Draft" /></button>
+              <button className="editor-btn" title="Move Face" onClick={() => handleAddFeature('move_face')}><img src={featureMoveFaceIcon} alt="Move Face" /></button>
+              <button className="editor-btn" title="Delete Face" onClick={() => handleAddFeature('delete_face')}><img src={featureDeleteFaceIcon} alt="Delete Face" /></button>
               <button className="editor-btn" title="Add Hole" onClick={() => handleAddFeature('hole')}><img src={featureHoleIcon} alt="Add Hole" /></button>
               <button className="editor-btn" title="Add Boolean" onClick={() => handleAddFeature('boolean')}><img src={featureBooleanIcon} alt="Add Boolean" /></button>
               <button className="editor-btn" title="Add Transform" onClick={() => handleAddFeature('transform')}><img src={featureTransformIcon} alt="Add Transform" /></button>
@@ -104,6 +118,7 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Circular Array" onClick={() => handleAddFeature('circular_array')}><img src={featureCircularArrayIcon} alt="Add Circular Array" /></button>
               <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
               <button className="editor-btn" title="Add Variable" onClick={() => handleAddFeature('variable')}><img src={featureVariableIcon} alt="Add Variable" /></button>
+              <button className="editor-btn" title="Parameters" onClick={onOpenParameters}><img src={featureVariableIcon} alt="Parameters" /></button>
 
               <div className="toolbar-separator" />
 

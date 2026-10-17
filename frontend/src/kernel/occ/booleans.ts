@@ -21,6 +21,7 @@ import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
 import { canonicalizeCylinderFaces } from './canonicalSurfaces'
 import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex } from './primitives'
 import { volumeOf } from './volume'
+import { foldCavitySolids } from './cavities'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 
 // Re-exported for the callers that read a body's volume.
@@ -506,7 +507,9 @@ function isClosedByVolume(volume: number): boolean {
   return Math.abs(volume) > 1e-12
 }
 
-function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
+/** Whole-shape BRepCheck gate. Exported because offsetShape.ts validates its
+ *  normalised offset solid with the same rule the boolean fallbacks use. */
+export function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
   return scope.track(new oc.BRepCheck_Analyzer(shape, true)).IsValid_2()
 }
 
@@ -594,6 +597,20 @@ function booleanResultProblem(
   }
 }
 
+/** `attempt` with any void OCC returned as a separate inside-out solid folded
+ *  back into its enclosing solid (cavities.ts); the replaced shape joins the
+ *  scope, since nobody else owns it. */
+function withFoldedCavities(
+  oc: OccModule,
+  scope: DisposeScope,
+  attempt: { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] },
+): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
+  const folded = foldCavitySolids(oc, scope, attempt.shape)
+  if (folded === attempt.shape) return attempt
+  if (!scope.isTracked(attempt.shape)) scope.track(attempt.shape)
+  return { ...attempt, shape: folded }
+}
+
 /** One full boolean pipeline: raw boolean, cylinder canonicalization, clean. */
 function composeBooleanAttempt(
   oc: OccModule,
@@ -657,7 +674,7 @@ export function booleanWithDiff(
   // decides by provenance and passes `unifyFaces: false` for imported targets;
   // the edge merge (always safe) still runs, at the cost of an extra seam face.
   const unifyFaces = opts.unifyFaces ?? true
-  const attempt = composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces)
+  const attempt = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces))
   const problem = booleanResultProblem(oc, scope, target, tool, op, attempt.shape)
   if (problem === null) return attempt
   // A replaced attempt has no owner, so it joins the scope: the fallback result
@@ -671,7 +688,7 @@ export function booleanWithDiff(
   // cut path already runs through shapesIntersect (M18), and it is only paid
   // here, after a result already failed the check.
   shapesIntersect(oc, target, tool)
-  const retry = composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces)
+  const retry = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tool, op, unifyFaces))
   const retryProblem = booleanResultProblem(oc, scope, target, tool, op, retry.shape)
   if (retryProblem === null) return retry
   if (!scope.isTracked(retry.shape)) scope.track(retry.shape)
