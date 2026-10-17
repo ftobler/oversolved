@@ -512,11 +512,17 @@ fn region_samples(region: &[BoundaryEdge], per_arc: usize) -> Vec<Vec2> {
 }
 
 /// Two loops are the same face boundary: the same sides in the same order,
-/// compared by entity id and vertex pair (the traced faces carry both).
+/// compared by entity id, vertex pair AND geometry. The geometry matters: two
+/// complementary arcs of one circle share their endpoints (and their entity),
+/// so id and vertices alone conflate them and a second hole region between the
+/// same vertices would be skipped as a duplicate of the first.
 fn same_loop(a: &[BoundaryEdge], b: &[BoundaryEdge]) -> bool {
     a.len() == b.len()
         && a.iter().zip(b.iter()).all(|(x, y)| {
-            x.id == y.id && x.start_vertex == y.start_vertex && x.end_vertex == y.end_vertex
+            x.id == y.id
+                && x.start_vertex == y.start_vertex
+                && x.end_vertex == y.end_vertex
+                && x.geom == y.geom
         })
 }
 
@@ -640,6 +646,24 @@ mod tests {
                 end_vertex: Some(format!("_v{}", (i + 1) % n)),
             })
             .collect()
+    }
+
+    #[test]
+    fn complementary_arcs_are_not_the_same_loop() {
+        // The two halves of one circle share their entity id and their
+        // endpoints; only the geometry tells them apart. A hole region bounded
+        // by the other half would otherwise be skipped as a duplicate of the
+        // first, and the face it belongs to would keep the region's cells.
+        let halves = circle_arcs(0.0, 0.0, 1.0, "c");
+        assert!(
+            !same_loop(&halves[..1], &halves[1..]),
+            "the two halves of a circle are different loops"
+        );
+        assert!(same_loop(&halves, &halves), "a loop is itself");
+        assert!(
+            same_loop(&halves[..1], &halves[..1]),
+            "the same side alone is the same loop"
+        );
     }
 
     #[test]
