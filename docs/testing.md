@@ -79,11 +79,14 @@ reached again, a completed one also reports references it never reached.
 - Every replay runs in a forked child under a SIGKILL watchdog
   (`chainTimeout.ts`, mirroring `kernel/solveTimeout.ts`): an OCC clean can
   spin forever in synchronous WASM, and the killed seed is reported with the
-  step that hung. Children are pooled: `ROBUSTNESS_FUZZ_WORKERS` (default 2)
-  recipes replay concurrently, a kill drops only its own child, and the seed
-  range is slotted by seed and aggregated in seed order, so the findings do not
-  depend on the pool width. Each child holds its own ~0.75 GB OCC kernel, which
-  is why the recipe pins the pool and `VITEST_MAX_FORKS=1` together; raise
+  step that hung. `ROBUSTNESS_FUZZ_WORKERS` (default 2) recipes replay
+  concurrently, each in a child that replays exactly one recipe and is then
+  retired: a reused child carried OCC state into the next seed and flipped
+  borderline fuses and picks between runs. A kill drops only its own child,
+  and the seed range is slotted by seed and aggregated in seed order, so the
+  findings depend on neither the pool width nor the schedule. Each child
+  holds its own ~0.75 GB OCC kernel, which is why the recipe pins the pool
+  and `VITEST_MAX_FORKS=1` together; raise
   workers only on a wide, memory-rich box. `KNOWN_HANGS` and `KNOWN_STALE_PICKS`
   in `chainReal.test.ts` pin the triaged findings; anything else fails the
   sweep. The pins key on the recipe a seed draws, so a change to the recipe

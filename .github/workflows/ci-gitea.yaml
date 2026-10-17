@@ -289,10 +289,11 @@ jobs:
       - name: Full action matrix (real kernel)
         run: just ratchet-matrix
 
-      # 1500 chain seeds (about 25 minutes at the measured per-seed cost,
-      # including the watchdog kills) keeps the job inside its 180 minute
-      # job budget alongside the other two ratchets; `just robustness-fuzz
-      # 5000` is the plan's full-scale range for a dedicated run.
+      # 1500 chain seeds (about 31 minutes on a 7800X3D with a fresh kernel
+      # per recipe, including the watchdog kills) keeps the job inside its
+      # 180 minute job budget alongside the other two ratchets; `just
+      # robustness-fuzz 5000` is the plan's full-scale range for a dedicated
+      # run.
       - name: Geometry robustness fuzz (real kernel)
         run: just robustness-fuzz 1500
 

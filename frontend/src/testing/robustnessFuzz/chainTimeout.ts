@@ -9,17 +9,26 @@
 // kill can.
 //
 // The child reports the step it is about to run before every step, so a killed
-// run is reported with the step that hung, not just a timeout. Children are
-// pooled across recipes (OCC loads once per child) and the pool is bounded:
-// ROBUSTNESS_FUZZ_WORKERS recipes replay concurrently, one per child. A kill
-// drops that child alone; sibling children and their in-flight recipes are
-// untouched. The default pool is small because each child holds its own OCC
-// kernel (~0.75 GB measured), which the vitest memory budget counts once per
-// fork, not once per child.
+// run is reported with the step that hung, not just a timeout. The pool is
+// bounded: ROBUSTNESS_FUZZ_WORKERS recipes replay concurrently, one per child.
+// A kill drops that child alone; sibling children and their in-flight recipes
+// are untouched.
+//
+// Every child replays exactly one recipe and is then retired, so each seed
+// starts on a freshly loaded kernel. A reused child carried OCC state from the
+// recipes before it, and that state flipped borderline fuses, fillets and
+// persistence picks: identical 1500-seed sweeps disagreed on dozens of seeds,
+// and a seed that spins in a fresh child (762) finished in a warm one. The
+// fresh load costs ~1.5 s per recipe against ~0.12 s for a warm replay; that
+// buys a sweep whose findings are a function of the seed alone. The default
+// pool is small because each child holds its own OCC kernel (~0.75 GB
+// measured), which the vitest memory budget counts once per fork, not once
+// per child.
 //
 // Requests beyond the pool size wait in a FIFO queue, and a queued recipe's
 // timeout clock starts when a child picks it up: queueing can never burn the
-// recipe's budget, and a full pool looks like latency, not a hang.
+// recipe's budget, and a full pool looks like latency, not a hang. The fresh
+// child's kernel load does count against it (~1.5 s of the 30 s).
 
 import { fork, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -135,7 +144,6 @@ function defaultFactory(): ChainChildLike {
 
 let childFactory: () => ChainChildLike = defaultFactory
 const slots: Slot[] = []
-const idle: Slot[] = []
 const queue: Job[] = []
 let nextId = 0
 
@@ -156,7 +164,10 @@ function onMessage(slot: Slot, msg: unknown): void {
   } else {
     p.job.reject(new Error(m.error ?? 'chain replay failed'))
   }
-  release(slot)
+  // One recipe per kernel: retire the child (nothing is pending, so nothing
+  // is rejected) and let the pump start the next recipe on a fresh one.
+  removeSlot(slot, new Error('chain child retired'))
+  pump()
 }
 
 /** Take the slot out of the pool, kill it, and reject whatever it was running. */
@@ -165,8 +176,6 @@ function removeSlot(slot: Slot, err: Error): void {
   slot.dead = true
   const at = slots.indexOf(slot)
   if (at >= 0) slots.splice(at, 1)
-  const idleAt = idle.indexOf(slot)
-  if (idleAt >= 0) idle.splice(idleAt, 1)
   const p = slot.pending
   if (p) {
     clearTimeout(p.timer)
@@ -174,17 +183,6 @@ function removeSlot(slot: Slot, err: Error): void {
     p.job.reject(err)
   }
   slot.child.kill('SIGKILL')
-}
-
-/** A finished slot: hand it the next queued recipe, or park it idle. */
-function release(slot: Slot): void {
-  if (slot.dead) return
-  const next = queue.shift()
-  if (next !== undefined) {
-    dispatch(slot, next)
-    return
-  }
-  idle.push(slot)
 }
 
 function dispatch(slot: Slot, job: Job): void {
@@ -238,21 +236,15 @@ function spawnSlot(): Slot {
   return slot
 }
 
-/** Start queued recipes on idle or freshly spawned slots, up to the bound. */
+/** Start queued recipes on freshly spawned slots, up to the bound. */
 function pump(): void {
-  while (queue.length > 0) {
-    if (idle.length > 0) {
-      dispatch(idle.pop() as Slot, queue.shift() as Job)
-    } else if (slots.length < maxWorkers) {
-      dispatch(spawnSlot(), queue.shift() as Job)
-    } else {
-      return
-    }
+  while (queue.length > 0 && slots.length < maxWorkers) {
+    dispatch(spawnSlot(), queue.shift() as Job)
   }
 }
 
 /**
- * Replay one recipe through the real kernel in a pooled forked child. Resolves
+ * Replay one recipe through the real kernel in its own forked child. Resolves
  * with the child's ChainRun, or with a HangReport when the child was killed
  * after `timeoutMs`. The timeout resolves (rather than rejects) so the sweep
  * can record the hang and keep going; the caller decides whether it is known.

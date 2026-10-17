@@ -10,7 +10,7 @@
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { runChain, runPersistenceCheck } from '@/testing/robustnessFuzz/chain'
 
-/** Loaded once, reused for every recipe the pooled child replays. */
+/** Loaded once per child; the pool retires a child after one recipe. */
 let occPromise = null
 function occ() {
   if (occPromise === null) occPromise = loadOcc()

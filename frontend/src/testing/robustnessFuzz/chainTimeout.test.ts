@@ -1,8 +1,8 @@
 // The chain watchdog pool's contract, pinned with fake children: a done reply
 // settles its recipe, a hang kills only its own child and leaves a sibling in
 // flight, a queued recipe's clock starts at dispatch, zombie events from a
-// killed child are ignored, and a crash or a dispose rejects exactly the
-// recipes involved.
+// killed child are ignored, a crash or a dispose rejects exactly the recipes
+// involved, and every child replays one recipe and is retired.
 
 import { describe, it, expect, afterEach } from 'vitest'
 import {
@@ -79,6 +79,36 @@ describe('the chain watchdog pool', () => {
     fakes[0].reply({ id: fakes[0].sent[0].id, ok: true, run: doneRun, stale: [] })
     const result = await pending
     expect(result).toEqual({ status: 'done', replay: { run: doneRun, stale: [] } })
+  })
+
+  it('retires the child after each recipe so the next one starts on a fresh kernel', async () => {
+    installPool()
+    configureChainWorkers(1)
+    const first = runChainWithTimeout(recipe, { timeoutMs: 1000 })
+    const second = runChainWithTimeout(recipe, { timeoutMs: 1000 })
+    expect(fakes).toHaveLength(1)
+    fakes[0].reply({ id: fakes[0].sent[0].id, ok: true, run: doneRun, stale: [] })
+    expect((await first).status).toBe('done')
+    // A reused child carried kernel state into the next seed and flipped its
+    // outcome; the finished child is killed and a new one takes the queue.
+    expect(fakes[0].killed).toBe(true)
+    expect(fakes[0].sent).toHaveLength(1)
+    expect(fakes).toHaveLength(2)
+    fakes[1].reply({ id: fakes[1].sent[0].id, ok: true, run: doneRun, stale: [] })
+    expect((await second).status).toBe('done')
+  })
+
+  it('retires a child whose replay failed and hands the queue to a fresh one', async () => {
+    installPool()
+    configureChainWorkers(1)
+    const first = runChainWithTimeout(recipe, { timeoutMs: 1000 })
+    const second = runChainWithTimeout(recipe, { timeoutMs: 1000 })
+    fakes[0].reply({ id: fakes[0].sent[0].id, ok: false, error: 'replay threw' })
+    await expect(first).rejects.toThrow('replay threw')
+    expect(fakes[0].killed).toBe(true)
+    expect(fakes).toHaveLength(2)
+    fakes[1].reply({ id: fakes[1].sent[0].id, ok: true, run: doneRun, stale: [] })
+    expect((await second).status).toBe('done')
   })
 
   it('kills only the hung child and leaves its sibling in flight', async () => {
