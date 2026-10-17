@@ -67,6 +67,8 @@ One directory per case: `frontend/oracle/<NN-name>/`.
 | 37-sweep-helix-square | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | ok | ok |
 | 38-sweep-helix-left | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | - | ok |
 | 40-hole-thread | 1 | 1121.46018 | 822.831853 | faces 8, edges 15 | - | ok |
+| 41-move-face-cylinder-wall | 1 | 1539.38040 | 747.699052 | faces 3, edges 3 | - | ok |
+| 42-move-face-bore | 1 | 15717.2567 | 4931.94689 | faces 7, edges 15 | - | ok |
 
 ## Cases
 
@@ -793,3 +795,37 @@ STEP round trip:
   - centroid [10.0000000, 5.00000000, 3.07003353] -> [10.0000000, 5.00000000, 3.07003353] (max dev 2.66e-15)
   - bbox [0.00000000, 0.00000000, 0.00000000, 20.0000000, 10.0000000, 6.00000000] -> [0.00000000, 0.00000000, 0.00000000, 20.0000000, 10.0000000, 6.00000000] (max dev 0)
   - counts faces 8, edges 15 -> faces 8, edges 15
+### 41-move-face-cylinder-wall
+
+`the lateral wall moves along its outward radial normal by 2: r 5 -> 7, V = pi r^2 h = pi * 49 * 10; A = 2 pi r^2 + 2 pi r h; still 3 faces (2 caps + lateral) and 3 edges`
+
+Live build (expected -> measured):
+  - volume 1539.38040 -> 1539.38040 (rel dev 1.48e-16)
+  - area 747.699052 -> 747.699052 (rel dev 0)
+  - centroid [0.00000000, 0.00000000, 5.00000000] -> [2.95409342e-16, 7.18206702e-17, 5.00000000] (max dev 2.95e-16)
+  - bbox [-7.00000000, -7.00000000, 0.00000000, 7.00000000, 7.00000000, 10.0000000] -> [-7.00000000, -7.00000000, 0.00000000, 7.00000000, 7.00000000, 10.0000000] (max dev 0)
+  - counts faces 3, edges 3 -> faces 3, edges 3
+
+STEP round trip:
+  - volume 1539.38040 -> 1539.38040 (rel dev 0)
+  - area 747.699052 -> 747.699052 (rel dev 3.86e-14)
+  - centroid [0.00000000, 0.00000000, 5.00000000] -> [1.36626821e-15, -3.17323829e-16, 5.00000000] (max dev 1.37e-15)
+  - bbox [-7.00000000, -7.00000000, 0.00000000, 7.00000000, 7.00000000, 10.0000000] -> [-7.00000000, -7.00000000, 0.00000000, 7.00000000, 7.00000000, 10.0000000] (max dev 0)
+  - counts faces 3, edges 3 -> faces 3, edges 3
+### 42-move-face-bore
+
+`the bore wall's outward normal points at the axis, so +2 shrinks the hole: r 5 -> 3, V = 16000 - pi r^2 h = 16000 - pi * 9 * 10; A = box + 2 pi r h - 2 pi r^2 (bore added, two discs removed); still 7 faces and 15 edges`
+
+Live build (expected -> measured):
+  - volume 15717.2567 -> 15717.2567 (rel dev 0)
+  - area 4931.94689 -> 4931.94689 (rel dev 0)
+  - centroid [20.0000000, 20.0000000, 5.00000000] -> [20.0000000, 20.0000000, 5.00000000] (max dev 3.55e-15)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 40.0000000, 40.0000000, 10.0000000] -> [0.00000000, 0.00000000, 0.00000000, 40.0000000, 40.0000000, 10.0000000] (max dev 0)
+  - counts faces 7, edges 15 -> faces 7, edges 15
+
+STEP round trip:
+  - volume 15717.2567 -> 15717.2567 (rel dev -6.94e-16)
+  - area 4931.94689 -> 4931.94689 (rel dev 2.58e-15)
+  - centroid [20.0000000, 20.0000000, 5.00000000] -> [20.0000000, 20.0000000, 5.00000000] (max dev 3.55e-15)
+  - bbox [0.00000000, 0.00000000, 0.00000000, 40.0000000, 40.0000000, 10.0000000] -> [0.00000000, 0.00000000, 0.00000000, 40.0000000, 40.0000000, 10.0000000] (max dev 2.00e-11)
+  - counts faces 7, edges 15 -> faces 7, edges 15

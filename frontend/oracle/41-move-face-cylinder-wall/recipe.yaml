@@ -1,0 +1,35 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: c1
+        kind: circle
+    initial:
+      c1:
+        - 0
+        - 0
+        - 5
+    constraints:
+      - id: co1
+        kind: coincident
+        a: "$sk1c1center"
+        b: "@builtin_origin"
+      - id: d1
+        kind: diameter
+        target: "$sk1c1"
+        value: 10
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 10
+      direction: normal
+      operation: new
+  - id: mf1
+    kind: move_face
+    move_face:
+      faces:
+        - "?15,4,9,7;@u|u_b0a566fe2b7de773@ex1@body_ex1@sk1/c1:cylinderface"
+      distance: 2

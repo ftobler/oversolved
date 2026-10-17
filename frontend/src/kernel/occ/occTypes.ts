@@ -262,7 +262,13 @@ export interface OccOffsetAnalyse extends OccDisposable {
 /** BRepClass_FaceClassifier: classify a point against a face (IN / ON / OUT).
  *  Constructed empty, then Perform_2 run per point. */
 export interface OccFaceClassifier extends OccDisposable {
+  // The 3D form: the point is projected onto the face's surface first.
   Perform_2(face: OccShape, pnt: OccPnt, tol: number): void
+  // The 2D form: the point is already in the surface's parameter space, so it
+  // classifies against the face's wires without the projection (which is
+  // unreliable on a closed surface: a point below a cone's base circle
+  // projects onto the other nappe). Move-face's curved kinds use this one.
+  Perform_1(face: OccShape, pnt2d: OccPnt2d, tol: number): void
   State(): OccEnumValue
 }
 
@@ -390,6 +396,7 @@ export interface OccAnalyticTorus extends OccDisposable {
   Axis(): OccAxisDir
   Position(): OccAx3
   MajorRadius(): number
+  MinorRadius(): number
 }
 
 /** gp_Pnt2d / gp_Dir2d: a 2D point or direction on a face's parameter space. */
@@ -582,6 +589,10 @@ export interface OccModule extends OccBaseModule {
     Triangulation(face: OccShape, loc: OccLocation): OccTriangulationHandle
     Pnt(vertex: OccShape): OccXYZ
     Degenerated(edge: OccShape): boolean
+    /** IsClosed(edge, face): the edge is a seam of the face (it bounds the
+     *  face on both sides). The 2-arg overload, pinned by probe and used by
+     *  move-face to skip a curved face's own seam. */
+    IsClosed_2(edge: OccShape, face: OccShape): boolean
   }
   TopAbs_ShapeEnum: {
     TopAbs_FACE: OccShapeEnumValue
@@ -803,7 +814,7 @@ export interface OccModule extends OccBaseModule {
   // BuildCurves3d lifts it to a 3D BSpline edge on the cylinder.
   Geom_CylindricalSurface_1: new (frame: OccDisposable, radius: number) => OccDisposable
   Geom2d_Line_3: new (pnt: OccDisposable, dir: OccDisposable) => OccDisposable
-  gp_Pnt2d_3: new (x: number, y: number) => OccDisposable
+  gp_Pnt2d_3: new (x: number, y: number) => OccPnt2d
   gp_Dir2d_4: new (x: number, y: number) => OccDisposable
   Handle_Geom2d_Curve_2: new (curve: OccDisposable) => OccDisposable
   Handle_Geom_Surface_2: new (surface: OccDisposable) => OccDisposable
@@ -895,6 +906,24 @@ export interface OccModule extends OccBaseModule {
     vmin: number,
     vmax: number,
   ) => OccFaceBuilder
+  // BRepBuilderAPI_MakeFace(surface, wire, inside): a face on the analytic
+  // surface bounded by a wire that lies on it, one overload per surface kind:
+  // _17 cylinder (declared with canonicalSurfaces above, the same binding),
+  // _18 cone, _19 sphere, _20 torus. Move-face builds the classification
+  // regions (the picked face's outer wire and its inner hole/boss loops) with
+  // these; pinned by moveFaceCurvedReal.test.ts.
+  BRepBuilderAPI_MakeFace_18: new (cone: OccDisposable, wire: OccShape, inside: boolean) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_19: new (sphere: OccDisposable, wire: OccShape, inside: boolean) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_20: new (torus: OccDisposable, wire: OccShape, inside: boolean) => OccFaceBuilder
+  // The sphere and torus primitives move-face grows its curved slabs from:
+  // BRepPrimAPI_MakeSphere(point, radius) and BRepPrimAPI_MakeTorus(ax2, R, r).
+  // Pinned by moveFaceCurvedReal.test.ts.
+  BRepPrimAPI_MakeSphere_5: new (centre: OccDisposable, radius: number) => OccPrismBuilder
+  BRepPrimAPI_MakeTorus_5: new (
+    axis: OccDisposable,
+    major: number,
+    minor: number,
+  ) => OccPrismBuilder
 
   // ─── delete-face leaf ───
   // BRepAlgoAPI_Defeaturing: remove picked faces, extend the neighbour surfaces

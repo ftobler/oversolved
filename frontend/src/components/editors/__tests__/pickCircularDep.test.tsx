@@ -135,20 +135,20 @@ describe('rejected-pick feedback', () => {
     expectRefusalInDialog('Pick refused: pick an edge')
   })
 
-  it('a move-face pick of a named cylinder face is refused with the planarity reason', () => {
+  it('a move-face pick of an unclassified face is refused with the analytic-kinds reason', () => {
     // The whole refusal reason comes from the field, so a gate whose rule is not
     // "no named query" cannot misreport one. This is the friction the field
-    // reasons exist for: a perfectly named bore-wall query, refused only because
-    // move-face is planar, used to be announced as "this edge has no named
-    // query" (wrong kind, wrong element, wrong cause).
+    // reasons exist for: a perfectly named face query, refused only because
+    // move-face cannot offset a freeform surface, used to be announced as "this
+    // edge has no named query" (wrong kind, wrong element, wrong cause).
     const onMutation = vi.fn()
     const feature = { id: 'mf1', kind: 'move_face', move_face: { faces: [], distance: 5 } } as unknown as PartFeature
     renderArmed(feature, MOVE_FACE_SCHEMA, onMutation)
 
-    pick('?15,19,1e,2a;@u|u_c1dea7bb6244c5c3@SY-uXCL_uS188WwBa7Hwywkv@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_:cylinderface')
+    pick('?15,19,1e,2a;@u|u_c1dea7bb6244c5c3@SY-uXCL_uS188WwBa7Hwywkv@body_SY-uXCL_uS188WwBa7Hwywkv@UgoC6zEmpmK7z5yqVQHdagP8/Wb0Rxrzw10E_-ag_:face')
 
     expect(onMutation).not.toHaveBeenCalled()
-    expectRefusalInDialog('Pick refused: move face only moves planar faces')
+    expectRefusalInDialog('Pick refused: move face only moves analytic faces (plane, cylinder, cone, sphere, torus)')
   })
 
   it('a build-order rejection shows its reason in the dialog and keeps the field open', () => {

@@ -1,7 +1,7 @@
-// The move-face editor schema: the face pick accepts only a planar (`flatface`)
-// face query -- planarity is a kernel classification, so a cylinder/cone face
-// must be refused at the chip, never sampled from triangles -- and the distance
-// field is signed (no `> 0` validator).
+// The move-face editor schema: the face pick accepts every analytic surface
+// kind (`flatface` through `torusface`) -- the surface kind is a kernel
+// classification, so a bare `:face` is refused at the chip, never sampled from
+// triangles -- and the distance field is signed (no `> 0` validator).
 import { describe, it, expect } from 'vitest'
 import { MOVE_FACE_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import type { PickFieldDef, NumberFieldDef } from '@/components/editors/widgets/fieldTypes'
@@ -20,19 +20,20 @@ describe('MOVE_FACE_SCHEMA', () => {
     expect(MOVE_FACE_SCHEMA.defaults).toEqual({ faces: [], distance: 5 })
   })
 
-  it('accepts a flat face query', () => {
-    expect(facesField().validatePick!('?4;@ex1:flatface')).toBeNull()
+  it('accepts every analytic face query', () => {
+    const validate = facesField().validatePick!
+    for (const t of ['flatface', 'cylinderface', 'coneface', 'sphereface', 'torusface']) {
+      expect(validate(`?4;@ex1:${t}`), t).toBeNull()
+    }
   })
 
-  it('refuses a curved or unclassified face with the planarity reason', () => {
-    // A pick can name a perfectly good named face query and still be refused
-    // here, because move-face moves planar faces only. The reason must name that
-    // rule, not claim the face has no query: the user picked a bore wall, which
-    // the kernel named and the field refused for being curved.
-    const validate = facesField().validatePick!
-    for (const t of ['cylinderface', 'coneface', 'sphereface', 'torusface', 'face']) {
-      expect(validate(`?4;@ex1:${t}`), t).toBe('move face only moves planar faces')
-    }
+  it('refuses an unclassified face with the analytic-kinds reason', () => {
+    // A bare `:face` is a B-spline or an unknown surface: the kernel cannot
+    // offset it, so the chip says which kinds move. The reason must name that
+    // rule, not claim the face has no query.
+    expect(facesField().validatePick!('?4;@ex1:face')).toBe(
+      'move face only moves analytic faces (plane, cylinder, cone, sphere, torus)',
+    )
   })
 
   it('refuses an edge, a vertex, a nameless face and a non-face by kind', () => {

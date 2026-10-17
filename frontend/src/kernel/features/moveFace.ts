@@ -1,8 +1,11 @@
-// The move-face leaf: move one or more planar faces of a solid along their own
-// outward normals by a signed distance, extending (or trimming) the faces that
-// bound them. The OCC construction lives in occ/moveFace.ts; this leaf resolves
-// the picks by construction UUID, threads the names through each move, resplits
-// the body and attaches the editing handle.
+// The move-face leaf: move one or more faces of a solid along their own outward
+// normals by a signed distance, extending (or trimming) the faces that bound
+// them. A face may sit on a plane, cylinder, cone, sphere or torus (the
+// analytic kinds); a freeform face is refused by name. The OCC construction
+// lives in occ/moveFace.ts (with the per-surface descriptors in
+// occ/moveFaceSurfaces.ts); this leaf resolves the picks by construction UUID,
+// threads the names through each move, resplits the body and attaches the
+// editing handle.
 //
 // Several faces are applied one after another in list order, each re-found on
 // the intermediate shape by its construction UUID (never by index). An earlier
@@ -39,9 +42,9 @@ interface MoveFaceResult {
   // Query strings that matched no current face (a stale or consumed pick): the
   // chip strikes them through, re-picking is the fix.
   unresolved_faces?: string[]
-  // Query strings whose face resolved but a guard refused it (non-planar, a
-  // tangent neighbour, an unsupported neighbour, body consumed): the geometry
-  // is the fix, re-picking will not help.
+  // Query strings whose face resolved but a guard refused it (an unsupported
+  // surface, a tangent neighbour, an unbounded face, body consumed): the
+  // geometry is the fix, re-picking will not help.
   failed_faces?: string[]
   exception?: string
   handle?: FeatureHandle
@@ -210,7 +213,7 @@ export function solveMoveFace(
 
 /**
  * Rebuild the body's construction names after one move: a cap face on the
- * moved-to plane inherits the moved face's UUID (the moved face is always
+ * moved-to surface inherits the moved face's UUID (the moved face is always
  * deleted by the boolean, so exactly one live face claims it, or none when the
  * face vanished); a lateral cell face mints `<featureId>|extend|<neighbourUuid>`.
  * `transferBooleanNames` orders a split cap and derives the edge names.

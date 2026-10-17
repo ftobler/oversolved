@@ -391,4 +391,95 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(h.res(r, 'ch1').unresolved_edges).toEqual([topEdge])
     expect((h.res(r, 'ch1').failed_edges as string[] | undefined) ?? []).toEqual([])
   })
+
+  // ─── curved faces (cylinder, cone) ───
+
+  /** A cylinder about +Z at the origin: circle sketch + extrude along the
+   *  plane normal. */
+  function cylinderSpec(r = 5, h = 10): { features: Array<Record<string, unknown>> } {
+    return { features: [
+      {
+        id: 'sk1', kind: 'sketch', label: 'Circle', plane: '@builtin_plane_front',
+        entities: [{ id: 'c1', kind: 'circle' }],
+        initial: { c1: [0, 0, r] },
+        constraints: [
+          { id: 'co1', kind: 'coincident', a: '$sk1c1center', b: '@builtin_origin' },
+          { id: 'd1', kind: 'diameter', target: '$sk1c1', value: 2 * r },
+        ],
+      },
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: h, direction: 'normal', operation: 'new' },
+    ] }
+  }
+
+  /** The lateral (radially normal) face query of a revolved or extruded
+   *  cylinder. */
+  function lateralFaceQuery(bodies: Record<string, unknown>): string {
+    const body = Object.values(bodies)[0] as BodyView
+    const queries = body?.mesh?.face_queries ?? []
+    const data = body?.mesh?.face_data ?? []
+    for (let i = 0; i < queries.length; i++) {
+      const d = data[i]
+      if (d && Math.abs(d.normal[2]) < 1e-6) return queries[i]
+    }
+    throw new Error('no lateral face among ' + queries.join(' | '))
+  }
+
+  it('a cylinder wall +2 moves through a full build, keeps its UUID and anchors on the face', () => {
+    const base = h.run(cylinderSpec())
+    const lateral = lateralFaceQuery(base.bodies)
+    const uuid = uuidOf(lateral)
+    expect(uuid).toBeDefined()
+    const r = h.run({ features: [
+      ...cylinderSpec().features,
+      { id: 'mf1', kind: 'move_face', move_face: { faces: [lateral], distance: 2 } },
+    ] })
+    expect(h.res(r, 'mf1').status).toBe('ok')
+    // The bbox comes from the render mesh, whose chords cut a curved face by
+    // up to the deflection (0.05); two decimals is the honest precision here.
+    const bb = bbox(h.body(r, 'body_ex1'))
+    expect(bb.max[0]).toBeCloseTo(7, 2)
+    expect(bb.max[1]).toBeCloseTo(7, 2)
+    // Exactly one live face claims the moved wall's UUID.
+    const queries = (h.body(r, 'body_ex1') as BodyView).mesh?.face_queries ?? []
+    expect(queries.filter((q) => uuidOf(q) === uuid)).toHaveLength(1)
+    // The extended top cap keeps its own UUID (its query's ancestry gains the
+    // move's token, so the UUID is what is stable).
+    const topUuid = uuidOf(faceQueryAt(base.bodies, 'cls_zp'))
+    expect(queries.filter((q) => uuidOf(q) === topUuid)).toHaveLength(1)
+    // The drag handle anchors ON the moved wall with a radial direction.
+    const handle = h.res(r, 'mf1').handle as { anchor: number[]; direction: number[] } | undefined
+    expect(handle).toBeDefined()
+    expect(Math.hypot(handle!.anchor[0], handle!.anchor[1])).toBeCloseTo(7, 6)
+    expect(Math.abs(handle!.direction[2])).toBeLessThan(1e-6)
+    expect(Math.hypot(handle!.direction[0], handle!.direction[1])).toBeCloseTo(1, 9)
+  })
+
+  it('a downstream fillet on the moved wall edge survives a distance edit', () => {
+    const base = h.run(cylinderSpec())
+    const lateral = lateralFaceQuery(base.bodies)
+    const withMove = (d: number): { features: Array<Record<string, unknown>> } => ({
+      features: [
+        ...cylinderSpec().features,
+        { id: 'mf1', kind: 'move_face', move_face: { faces: [lateral], distance: d } },
+      ],
+    })
+    const r1 = h.run(withMove(2))
+    expect(h.res(r1, 'mf1').status).toBe('ok')
+    const topEdge = ((h.body(r1, 'body_ex1') as BodyView).edge_queries ?? []).find((q) => q.includes('cls_zp'))
+    expect(topEdge).toBeDefined()
+
+    const spec = withMove(2)
+    spec.features.push({ id: 'fil1', kind: 'fillet', edges: [topEdge], radius: 0.5 })
+    const r2 = h.run(spec)
+    expect(h.res(r2, 'fil1').status).toBe('ok')
+
+    // Edit the move distance 2 -> 3 and rebuild incrementally from the move:
+    // the fillet re-finds its edge on the wider wall.
+    const spec3 = withMove(3)
+    spec3.features.push({ id: 'fil1', kind: 'fillet', edges: [topEdge], radius: 0.5 })
+    const r3 = h.run(spec3, { prevState: r2._build_state as BuildState })
+    expect(h.res(r3, 'fil1').status).toBe('ok')
+    const bb = bbox(h.body(r3, 'body_ex1'))
+    expect(Math.max(bb.max[0], bb.max[1])).toBeCloseTo(8, 2)
+  })
 })

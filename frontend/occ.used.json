@@ -37,6 +37,8 @@
     "BRepPrimAPI_MakeCylinder",
     "BRepPrimAPI_MakePrism",
     "BRepPrimAPI_MakeRevol",
+    "BRepPrimAPI_MakeSphere",
+    "BRepPrimAPI_MakeTorus",
     "BRepTools",
     "BRepTools_ReShape",
     "BRepTools_WireExplorer",

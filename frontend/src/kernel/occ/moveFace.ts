@@ -1,21 +1,28 @@
-// Move-face, OCC only (no construction naming): move a planar B-rep face along
-// its outward normal by a signed distance, extending the faces that bound it.
+// Move-face, OCC only (no construction naming): move a B-rep face along its
+// outward normal by a signed distance, extending the faces that bound it.
 //
-// Construction (probed against opencascade.js 1.1.0p1, OCCT 7.4.0p1; every
-// volume pinned by occ/__tests__/moveFaceReal.test.ts):
+// Construction (probed against opencascade.js 1.1.1p1, OCCT 7.4.0p1; every
+// volume pinned by occ/__tests__/moveFaceReal.test.ts and
+// moveFaceCurvedReal.test.ts):
 //
-//   1. Slab: a big planar face on the picked face's plane, swept by n*d, is the
-//      region between the face and its target plane.
+//   1. Slab: the region between the picked face's surface S and its target S_d,
+//      built per surface kind by `moveFaceSurfaces.ts` (a large face on the
+//      plane swept by n*d for a plane; the outer primitive minus the inner one
+//      for a cylinder/cone/sphere/torus).
 //   2. Extended neighbours: for every edge of the face, the adjacent face is
 //      rebuilt as a large bounded face on its underlying surface (plane /
 //      cylinder / cone), wide enough to cross the slab. A cone is stopped at
-//      its apex so only one nappe splits.
+//      its apex so only one nappe splits. A seam edge (a full curved face
+//      bounds itself on both sides) and a degenerated edge (a sphere pole, a
+//      cone apex) belong to the face itself and are skipped.
 //   3. Split: BRepAlgoAPI_Splitter splits the slab by those extended faces into
 //      cells.
-//   4. Cell selection: a cell's face lying on the picked plane is classified
-//      against the picked face's outer wire (one interior triangle centroid per
-//      piece -- a face centroid can fall outside an annulus). Cells inside an
-//      inner wire follow the hole/boss rule below.
+//   4. Cell selection: a cell's piece lying on S is classified against the
+//      picked face's outer-wire region on the same surface (one interior
+//      triangle centroid per piece -- a face centroid can fall outside an
+//      annulus). Pieces inside an inner wire follow the hole/boss rule below.
+//      A curved piece's centroid sits off the surface by the mesh deflection,
+//      which the classifier tolerance absorbs.
 //   5. Apply: outward Fuse, inward Cut, then clean through booleanWithDiff.
 //
 // No naming happens here: the leaf builds the tool name maps from `capFaces`
@@ -23,36 +30,46 @@
 // neighbour), and `booleanWithDiff` carries them.
 
 import { type DisposeScope } from './disposeScope'
-import type { OccEnumValue, OccModule, OccPnt, OccShape, OccSubShape } from './occTypes'
+import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import { canonicalFaces, canonicalEdges } from './bodyNames'
 import { SubShapeMap } from './subshapeIdentity'
-import { faceCentroid, faceNormal } from './primitives'
+import { faceCentroid } from './primitives'
 import { booleanWithDiff, type FaceOrigin } from './booleans'
 import type { BrepDiff } from '../types3d'
 import { TOL_MOVE_FACE_TANGENT } from '../solverConstants'
+import type { Vec3 } from '@/utils/vec3'
+import {
+  faceSurfaceName,
+  MoveFaceRefusal,
+  movedSurface,
+  pointInFace,
+  representativePoints,
+  sameAnalyticSurface,
+  type MovedSurface,
+} from './moveFaceSurfaces'
 
-type Vec3 = [number, number, number]
+export { MoveFaceRefusal } from './moveFaceSurfaces'
 
 /** The edge convexity BRepOffset_Analyse reports, narrowed to the four the
  *  move-face rules care about. */
 export type EdgeKind = 'convex' | 'concave' | 'tangent' | 'other'
 
-/** The three neighbour surface classes a v1 extension can rebuild; anything
+/** The three neighbour surface classes an extension can rebuild; anything
  *  else is refused by name. */
 export type NeighbourSurface = 'plane' | 'cylinder' | 'cone'
 
 export interface MoveFaceCells {
   // The picked cells (tool solids), in splitter order.
   cells: OccShape[]
-  // Cell faces lying on the moved face's target plane (become the moved face).
+  // Cell faces lying on the moved face's target surface (become the moved face).
   capFaces: OccShape[]
   // Cell lateral face -> the body face it extends (its naming source).
   extensionOf: SubShapeMap<OccShape>
 }
 
-/** A guard refusal. The message reaches the user through the feature failure
- *  path, so it names the geometry that blocked the move. */
-export class MoveFaceRefusal extends Error {}
+/** The classifier tolerance for the planar tool-window test, the shipped
+ *  on-plane distance. */
+const TOOL_FACE_TOL = 1e-6
 
 // ─── small OCC readers ───
 
@@ -77,10 +94,8 @@ function exploreWires(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
   return out
 }
 
-const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-
-/** The surface class of a face, or null for the classes v1 cannot extend. */
+/** The surface class of a face, or null for the classes move face cannot
+ *  extend. */
 export function neighbourSurface(oc: OccModule, scope: DisposeScope, face: OccShape): NeighbourSurface | null {
   const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
   const t = adaptor.GetType().value
@@ -90,9 +105,13 @@ export function neighbourSurface(oc: OccModule, scope: DisposeScope, face: OccSh
   return null
 }
 
-function isPlanar(oc: OccModule, scope: DisposeScope, face: OccShape): boolean {
-  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
-  return adaptor.GetType().value === oc.GeomAbs_SurfaceType.GeomAbs_Plane.value
+/** A seam edge of `face`: it bounds the face on both sides (a full cylinder,
+ *  cone, sphere or torus carries one) so it has no neighbour to look across,
+ *  and the analyse reads the join across it as tangent. A degenerated edge (a
+ *  sphere pole, a cone apex) is a point, not a boundary. */
+function isSeamOrDegenerate(oc: OccModule, face: OccShape, edge: OccShape): boolean {
+  if (oc.BRep_Tool.Degenerated?.(edge)) return true
+  return oc.BRep_Tool.IsClosed_2(edge, face)
 }
 
 /**
@@ -109,7 +128,7 @@ export function extendNeighbourFace(
   const kind = neighbourSurface(oc, scope, face)
   if (kind === null) {
     const name = faceSurfaceName(oc, scope, face)
-    throw new MoveFaceRefusal(`move_face: neighbour face of type ${name} cannot be extended (v1)`)
+    throw new MoveFaceRefusal(`move_face: neighbour face of type ${name} cannot be extended`)
   }
   const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
   // adaptor.Plane()/Cylinder()/Cone() each return a fresh by-value gp_* proxy
@@ -137,16 +156,6 @@ export function extendNeighbourFace(
   return scope.track(new oc.BRepBuilderAPI_MakeFace_11(cone, 0, 2 * Math.PI, lo, hi).Face())
 }
 
-/** The GeomAbs surface type name, for a refusal message. */
-function faceSurfaceName(oc: OccModule, scope: DisposeScope, face: OccShape): string {
-  const t = scope.track(new oc.BRepAdaptor_Surface_2(face, true)).GetType().value
-  const S = oc.GeomAbs_SurfaceType
-  for (const [name, v] of Object.entries(S) as [string, OccEnumValue][]) {
-    if (v.value === t) return name.replace(/^GeomAbs_/, '')
-  }
-  return `type ${t}`
-}
-
 /**
  * One `BRepOffset_Analyse_2(body, tol)` per call; the returned function reports
  * each edge's convexity. `TOL_MOVE_FACE_TANGENT` is the angular tolerance, the
@@ -172,57 +181,6 @@ export function classifyFaceEdges(
   }
 }
 
-/** One interior point per planar piece of a face: a mesh triangle centroid.
- *  A face centroid can sit in a hole of an annulus; a triangle centroid cannot. */
-function representativePoints(oc: OccModule, scope: DisposeScope, face: OccShape): Vec3[] {
-  const mesher = scope.track(new oc.BRepMesh_IncrementalMesh_2(face, 0.05, false, 0.3, false))
-  void mesher
-  const loc = scope.track(new oc.TopLoc_Location_1())
-  const handle = scope.track(oc.BRep_Tool.Triangulation(face, loc))
-  if (handle.IsNull()) return []
-  const tri = handle.get()
-  if (tri === null) return []
-  // A face placed by a TopLoc_Location stores its mesh in local coordinates;
-  // transform each node to world so the centroid is classified in the body's
-  // own space. Identity for the solids built here, non-identity for a placed
-  // import.
-  const trsf = scope.track(loc.Transformation())
-  const out: Vec3[] = []
-  for (let i = 1; i <= tri.NbTriangles(); i++) {
-    const t = scope.track(tri.Triangle(i))
-    const a = scope.track(tri.Node(t.Value(1)))
-    const b = scope.track(tri.Node(t.Value(2)))
-    const c = scope.track(tri.Node(t.Value(3)))
-    a.Transform(trsf)
-    b.Transform(trsf)
-    c.Transform(trsf)
-    out.push([(a.X() + b.X() + c.X()) / 3, (a.Y() + b.Y() + c.Y()) / 3, (a.Z() + b.Z() + c.Z()) / 3])
-  }
-  return out
-}
-
-/** Classify `p` against `face`: true when IN or ON (tolerance exercised at the
- *  boundary of an inner wire). */
-function pointInFace(
-  oc: OccModule,
-  scope: DisposeScope,
-  face: OccShape,
-  p: Vec3,
-): boolean {
-  const pnt: OccPnt = scope.track(new oc.gp_Pnt_3(p[0], p[1], p[2]))
-  const classifier = scope.track(new oc.BRepClass_FaceClassifier_1())
-  classifier.Perform_2(face, pnt, 1e-6)
-  const state = classifier.State().value
-  return state === oc.TopAbs_State.TopAbs_IN.value || state === oc.TopAbs_State.TopAbs_ON.value
-}
-
-/** A face on `wire`'s plane (the outer-wire region or an inner hole/boss loop). */
-function faceFromWire(oc: OccModule, scope: DisposeScope, wire: OccShape): OccShape {
-  const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(wire, true))
-  if (!builder.IsDone()) throw new MoveFaceRefusal('move_face: a face loop could not be rebuilt as a planar face')
-  return scope.track(builder.Face())
-}
-
 /** The inner wires of `face` and the single edge kind each is made of. A wire
  *  with mixed kinds refuses rather than guessing the hole/boss rule. */
 function innerWireKinds(
@@ -231,6 +189,7 @@ function innerWireKinds(
   face: OccShape,
   outerWire: OccShape,
   edgeKind: (edge: OccShape) => EdgeKind,
+  regionFace: (wire: OccShape) => OccShape,
 ): { face: OccShape; kind: EdgeKind }[] {
   const out: { face: OccShape; kind: EdgeKind }[] = []
   for (const wire of exploreWires(oc, scope, face)) {
@@ -243,141 +202,9 @@ function innerWireKinds(
     if (kind !== 'convex' && kind !== 'concave') {
       throw new MoveFaceRefusal('move_face: an inner loop is not a plain hole or boss (a tangent or free-boundary edge)')
     }
-    out.push({ face: faceFromWire(oc, scope, wire), kind })
+    out.push({ face: regionFace(wire), kind })
   }
   return out
-}
-
-/** Is the picked cell's planar piece on the picked plane? (parallel normal and
- *  a centroid on the plane through `c0`). */
-function onPickedPlane(oc: OccModule, scope: DisposeScope, face: OccShape, n: Vec3, c0: Vec3): boolean {
-  if (!isPlanar(oc, scope, face)) return false
-  const c = faceCentroid(oc, scope, face)
-  return Math.abs(dot(sub(c, c0), n)) <= 1e-6
-}
-
-/**
- * Build and select the cells for moving `face` by signed `d`. Throws
- * MoveFaceRefusal for every guard: a non-planar or tangent-bounded face, an
- * unsupported neighbour surface, an unbounded cell, a failed split or no cell.
- */
-export function moveFaceCells(
-  oc: OccModule,
-  scope: DisposeScope,
-  body: OccShape,
-  face: OccShape,
-  d: number,
-): MoveFaceCells {
-  if (!isPlanar(oc, scope, face)) {
-    throw new MoveFaceRefusal('move_face: only planar faces can be moved (v1)')
-  }
-  const n = faceNormal(oc, scope, face)
-  const c0 = faceCentroid(oc, scope, face)
-
-  // The plane frame gives the slab's lateral walls their u/v at +-L. Every
-  // accessor below returns a fresh by-value gp_* proxy owning WASM memory, so
-  // scope tracks each (the faceLoops.computeFacePlane rule).
-  const planeAdaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
-  const plane = scope.track(planeAdaptor.Plane())
-  const position = scope.track(plane.Position())
-  const origin = scope.track(position.Location())
-  const pOrigin: Vec3 = [origin.X(), origin.Y(), origin.Z()]
-  const xd = scope.track(position.XDirection())
-  const yd = scope.track(position.YDirection())
-  const pX: Vec3 = [xd.X(), xd.Y(), xd.Z()]
-  const pY: Vec3 = [yd.X(), yd.Y(), yd.Z()]
-
-  const bboxL = bboxDiagonal(oc, scope, body)
-  const L = 4 * (bboxL + Math.abs(d))
-
-  const edgeKind = classifyFaceEdges(oc, scope, body)
-  const edges = exploreEdges(oc, scope, face)
-
-  // Extended neighbour per edge; a tangent-bound face has no meaningful
-  // extension and is refused, an unsupported surface is refused by name.
-  const toolFaces: OccShape[] = []
-  const toolNeighbour: OccShape[] = []
-  for (const e of edges) {
-    const kind = edgeKind(e)
-    if (kind === 'tangent') {
-      throw new MoveFaceRefusal(
-        'move_face: the picked face has a tangent neighbour (a fillet?); move it together or remove the fillet first',
-      )
-    }
-    const neighbour = neighbourAcross(oc, scope, body, face, e)
-    if (neighbour === null) continue
-    const extended = extendNeighbourFace(oc, scope, neighbour, L)
-    toolFaces.push(extended)
-    toolNeighbour.push(neighbour)
-  }
-  if (toolFaces.length === 0) {
-    throw new MoveFaceRefusal('move_face: the picked face has no neighbours to extend')
-  }
-
-  // Slab: a big face on the picked plane, swept by n*d.
-  const bigFace = scope.track(new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L).Face())
-  const slab = makePrism(oc, scope, bigFace, n, d)
-
-  const cells = splitCells(oc, scope, slab, toolFaces)
-
-  // The picked region and its inner loops.
-  const outerWire = scope.track(oc.BRepTools.OuterWire(face))
-  const outerFace = faceFromWire(oc, scope, outerWire)
-  const inner = innerWireKinds(oc, scope, face, outerWire, edgeKind)
-
-  const picked: OccShape[] = []
-  for (const cell of cells) {
-    if (!cellSelected(oc, scope, cell, n, c0, d, outerFace, inner)) continue
-    // Guard the cells the face actually claims: a selected cell reaching the
-    // slab's lateral wall is not enclosed by the neighbours. A cell that is
-    // merely an outer piece (not under the face) is skipped, not a refusal.
-    if (isUnbounded(oc, scope, cell, pOrigin, pX, pY, L)) {
-      throw new MoveFaceRefusal('move_face: the neighbours do not bound the moved face')
-    }
-    picked.push(cell)
-  }
-  if (picked.length === 0) {
-    throw new MoveFaceRefusal('move_face: no cell of the moved face could be selected')
-  }
-
-  // Cap faces (on the target plane) and the neighbour each lateral face extends.
-  const pTarget: Vec3 = [c0[0] + n[0] * d, c0[1] + n[1] * d, c0[2] + n[2] * d]
-  const capFaces: OccShape[] = []
-  const extensionOf = new SubShapeMap<OccShape>()
-  for (const cell of picked) {
-    for (const cf of exploreFaces(oc, scope, cell)) {
-      if (onPickedPlane(oc, scope, cf, n, pTarget)) {
-        capFaces.push(cf)
-        continue
-      }
-      const at = toolFaceContaining(oc, scope, toolFaces, cf)
-      if (at >= 0) extensionOf.set(cf as OccSubShape, toolNeighbour[at] as OccSubShape)
-    }
-  }
-
-  return { cells: picked, capFaces, extensionOf }
-}
-
-function bboxDiagonal(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
-  const box = scope.track(new oc.Bnd_Box_1())
-  oc.BRepBndLib.Add(shape, box, false)
-  return Math.hypot(
-    box.GetXmax() - box.GetXmin(),
-    box.GetYmax() - box.GetYmin(),
-    box.GetZmax() - box.GetZmin(),
-  )
-}
-
-function makePrism(
-  oc: OccModule,
-  scope: DisposeScope,
-  profile: OccShape,
-  dir: Vec3,
-  distance: number,
-): OccShape {
-  const vec = scope.track(new oc.gp_Vec_4(dir[0] * distance, dir[1] * distance, dir[2] * distance))
-  const builder = scope.track(new oc.BRepPrimAPI_MakePrism_1(profile, vec, true, true))
-  return scope.track(builder.Shape())
 }
 
 /** The one body face adjacent to `face` across `edge` (not `face` itself). */
@@ -415,61 +242,56 @@ function splitCells(
   return exploreSolids(oc, scope, scope.track(splitter.Shape()))
 }
 
-/** A picked cell reaching the slab's lateral wall (u or v at +-L) is not
- *  enclosed by the neighbours: an open shell the analyse did not catch. */
-function isUnbounded(
+/** Does the cell have a piece on the source surface inside the picked face
+ *  (honouring the inner wire hole/boss rule)? Returns the pieces so the
+ *  enclosure guard can check them. */
+function selectCell(
   oc: OccModule,
   scope: DisposeScope,
   cell: OccShape,
-  origin: Vec3,
-  xd: Vec3,
-  yd: Vec3,
-  L: number,
-): boolean {
-  const eps = 1e-6 * L
-  for (const f of exploreFaces(oc, scope, cell)) {
-    const c = faceCentroid(oc, scope, f)
-    const rel = sub(c, origin)
-    if (Math.abs(dot(rel, xd)) >= L - eps || Math.abs(dot(rel, yd)) >= L - eps) return true
-  }
-  return false
-}
-
-/** Does the cell have an on-plane piece inside the picked face (honouring the
- *  inner wire hole/boss rule)? */
-function cellSelected(
-  oc: OccModule,
-  scope: DisposeScope,
-  cell: OccShape,
-  n: Vec3,
-  c0: Vec3,
-  d: number,
-  outerFace: OccShape,
+  surface: MovedSurface,
+  outerRegion: OccShape,
   inner: { face: OccShape; kind: EdgeKind }[],
-): boolean {
+  d: number,
+): { selected: boolean; sourceFaces: OccShape[] } {
   let selected = false
+  const sourceFaces: OccShape[] = []
   for (const cf of exploreFaces(oc, scope, cell)) {
-    if (!onPickedPlane(oc, scope, cf, n, c0)) continue
+    if (!surface.onSource(cf)) continue
+    sourceFaces.push(cf)
     for (const p of representativePoints(oc, scope, cf)) {
-      if (!pointInFace(oc, scope, outerFace, p)) continue
+      // A hole mouth moves with the face on an inward move (the floor is
+      // passed, the hole vanishes); a boss root moves with it on an outward
+      // move (a short boss is swallowed).
+      const applyLoopRule = (kind: EdgeKind): void => {
+        if (kind === 'convex' && d < 0) selected = true
+        if (kind === 'concave' && d > 0) selected = true
+      }
+      const inOuter = surface.inRegion(outerRegion, p)
+      if (!inOuter) {
+        // Not plainly in the face: outside the outer wire (skip) or inside an
+        // inner loop (the loop rule decides). A plane's rebuilt outer region
+        // already covers its loops, so this branch only fires for curved kinds.
+        for (const loop of inner) {
+          if (surface.inRegion(loop.face, p)) applyLoopRule(loop.kind)
+        }
+        continue
+      }
       let insideInner = false
       for (const loop of inner) {
-        if (!pointInFace(oc, scope, loop.face, p)) continue
+        if (!surface.inRegion(loop.face, p)) continue
         insideInner = true
-        // A hole mouth moves with the face on an inward move (the floor is
-        // passed, the hole vanishes); a boss root moves with it on an outward
-        // move (a short boss is swallowed).
-        if (loop.kind === 'convex' && d < 0) selected = true
-        if (loop.kind === 'concave' && d > 0) selected = true
+        applyLoopRule(loop.kind)
       }
       if (!insideInner) selected = true
     }
   }
-  return selected
+  return { selected, sourceFaces }
 }
 
-/** The extended tool face `cf` lies on (-1 when none): matched by classifying a
- *  point of `cf` against each tool face's window. */
+/** The extended tool face `cf` lies on (-1 when none): the analytic surface
+ *  compare first (a curved cell piece's centroid sits off its own surface, so
+ *  the classifier alone cannot see it), then the shipped window test. */
 function toolFaceContaining(
   oc: OccModule,
   scope: DisposeScope,
@@ -478,9 +300,104 @@ function toolFaceContaining(
 ): number {
   const p = faceCentroid(oc, scope, cf)
   for (let i = 0; i < toolFaces.length; i++) {
-    if (pointInFace(oc, scope, toolFaces[i], p)) return i
+    if (sameAnalyticSurface(oc, scope, cf, toolFaces[i])) return i
+    if (pointInFace(oc, scope, toolFaces[i], p, TOOL_FACE_TOL)) return i
   }
   return -1
+}
+
+/**
+ * Build and select the cells for moving `face` by signed `d`. Throws
+ * MoveFaceRefusal for every guard: an unsupported or tangent-bounded face, an
+ * unsupported neighbour surface, an unbounded cell, a failed split or no cell.
+ */
+export function moveFaceCells(
+  oc: OccModule,
+  scope: DisposeScope,
+  body: OccShape,
+  face: OccShape,
+  d: number,
+): MoveFaceCells {
+  const surface = movedSurface(oc, scope, face, d)
+
+  const bboxL = bboxDiagonal(oc, scope, body)
+  const L = 4 * (bboxL + Math.abs(d))
+
+  const edgeKind = classifyFaceEdges(oc, scope, body)
+  const edges = exploreEdges(oc, scope, face)
+
+  // Extended neighbour per edge; a tangent-bound face has no meaningful
+  // extension and is refused, an unsupported surface is refused by name. The
+  // face's own seam and point-like (degenerated) edges are skipped.
+  const toolFaces: OccShape[] = []
+  const toolNeighbour: OccShape[] = []
+  for (const e of edges) {
+    if (isSeamOrDegenerate(oc, face, e)) continue
+    const kind = edgeKind(e)
+    if (kind === 'tangent') {
+      throw new MoveFaceRefusal(
+        'move_face: the picked face has a tangent neighbour (a fillet?); move it together or remove the fillet first',
+      )
+    }
+    const neighbour = neighbourAcross(oc, scope, body, face, e)
+    if (neighbour === null) continue
+    const extended = extendNeighbourFace(oc, scope, neighbour, L)
+    toolFaces.push(extended)
+    toolNeighbour.push(neighbour)
+  }
+  if (toolFaces.length === 0) {
+    throw new MoveFaceRefusal('move_face: the picked face has no neighbours to extend')
+  }
+
+  const cells = splitCells(oc, scope, surface.slab(L), toolFaces)
+
+  // The picked region and its inner loops.
+  const outerRegion = surface.outerRegion()
+  const outerWire = scope.track(oc.BRepTools.OuterWire(face))
+  const inner = innerWireKinds(oc, scope, face, outerWire, edgeKind, surface.regionFace)
+
+  const picked: OccShape[] = []
+  for (const cell of cells) {
+    const { selected, sourceFaces } = selectCell(oc, scope, cell, surface, outerRegion, inner, d)
+    if (!selected) continue
+    // Guard the cells the face actually claims: the neighbours must bound the
+    // face's own region (a planar cell reaching the slab's lateral wall, or a
+    // curved cell whose piece leaves the picked region, is an open shell the
+    // analyse did not catch). A cell that is merely an outer piece (not under
+    // the face) is skipped, not a refusal.
+    surface.assertEnclosed(cell, sourceFaces, outerRegion, inner.map((l) => l.face), L)
+    picked.push(cell)
+  }
+  if (picked.length === 0) {
+    throw new MoveFaceRefusal('move_face: no cell of the moved face could be selected')
+  }
+
+  // Cap faces (on the target surface) and the neighbour each lateral face
+  // extends.
+  const capFaces: OccShape[] = []
+  const extensionOf = new SubShapeMap<OccShape>()
+  for (const cell of picked) {
+    for (const cf of exploreFaces(oc, scope, cell)) {
+      if (surface.onTarget(cf)) {
+        capFaces.push(cf)
+        continue
+      }
+      const at = toolFaceContaining(oc, scope, toolFaces, cf)
+      if (at >= 0) extensionOf.set(cf as OccSubShape, toolNeighbour[at] as OccSubShape)
+    }
+  }
+
+  return { cells: picked, capFaces, extensionOf }
+}
+
+function bboxDiagonal(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  const box = scope.track(new oc.Bnd_Box_1())
+  oc.BRepBndLib.Add(shape, box, false)
+  return Math.hypot(
+    box.GetXmax() - box.GetXmin(),
+    box.GetYmax() - box.GetYmin(),
+    box.GetZmax() - box.GetZmin(),
+  )
 }
 
 export interface ApplyMoveFaceResult {
@@ -512,11 +429,15 @@ export function applyMoveFace(
   return { shape: res.shape, faceOrigin: res.faceOrigin, diff: res.diff, cells }
 }
 
-/** A face's outward normal + a point on it, for the leaf's handle anchor. */
+/** A face's outward normal + a point ON it, for the leaf's handle anchor. A
+ *  planar face anchors at its centroid (the shipped behaviour); a curved one at
+ *  its UV-domain midpoint (a full cylinder's centroid lies on its axis, where
+ *  the normal is undefined). */
 export function faceNormalAndCentroid(
   oc: OccModule,
   scope: DisposeScope,
   face: OccShape,
 ): { normal: Vec3; centroid: Vec3 } {
-  return { normal: faceNormal(oc, scope, face), centroid: faceCentroid(oc, scope, face) }
+  const anchor = movedSurface(oc, scope, face, 0).anchor()
+  return { normal: anchor.normal, centroid: anchor.point }
 }

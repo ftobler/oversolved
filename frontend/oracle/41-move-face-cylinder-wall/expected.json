@@ -1,0 +1,21 @@
+{
+  "method": "the lateral wall moves along its outward radial normal by 2: r 5 -> 7, V = pi r^2 h = pi * 49 * 10; A = 2 pi r^2 + 2 pi r h; still 3 faces (2 caps + lateral) and 3 edges",
+  "bodies": 1,
+  "volume": 1539.3804002589986,
+  "area": 747.6990515543707,
+  "centroid": [
+    0,
+    0,
+    5
+  ],
+  "bbox": [
+    -7,
+    -7,
+    0,
+    7,
+    7,
+    10
+  ],
+  "faces": 3,
+  "edges": 3
+}

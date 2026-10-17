@@ -186,15 +186,18 @@ export const MOVE_FACE_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'faces', label: 'Faces', multi: true,
       addMutationType: 'add_move_face_ref', addValueKey: 'faceQuery',
       removeMutationType: 'remove_move_face_ref',
-      // Planarity is a kernel classification, so only a `flatface` restriction
-      // is accepted; a cylinder/cone face is refused at the chip, never sampled
-      // from triangles. A face the kernel refuses is reported, not dropped. The
-      // refusal reason names the rule: the user who picked a bore wall gets
-      // "only moves planar faces", not a bogus claim about its query.
+      // The face's surface kind is a kernel classification, so every analytic
+      // kind is accepted at the chip and only a bare `:face` (a B-spline or an
+      // unknown surface) is refused, never sampled from triangles. A face the
+      // kernel refuses is reported, not dropped. The refusal reason names the
+      // rule: the user who picked a freeform face reads which kinds move, not
+      // a bogus claim about its query.
       validatePick: (id) => {
         const reason = facePickRefusal(id)
         if (reason !== null) return reason
-        return id.endsWith(':flatface') ? null : 'move face only moves planar faces'
+        return id.endsWith(':face')
+          ? 'move face only moves analytic faces (plane, cylinder, cone, sphere, torus)'
+          : null
       } },
     // Signed: positive adds material, negative removes, 0 is the identity, so
     // there is no `> 0` validator (the kernel refuses a non-finite value).

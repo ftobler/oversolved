@@ -349,15 +349,25 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     } finally { scope.dispose() }
   })
 
-  it('refuses a non-planar picked face', () => {
+  it('moves a cylindrical picked face (the planar-only refusal is gone)', () => {
     const scope = new DisposeScope()
     try {
-      const body = cylinderAt(scope, 0, 0, 0, 5, 10)
+      const body = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
       const lateral = canonicalFaces(occ, scope, body).find((f) => neighbourSurface(occ, scope, f as OccShape) === 'cylinder')
+      expectVolume(scope, moved(scope, body, lateral as OccShape, 2), PI * 49 * 10)
+    } finally { scope.dispose() }
+  })
+
+  it('refuses a freeform picked face by surface name', () => {
+    const scope = new DisposeScope()
+    try {
+      const body = splineNeighbour(scope)
+      const curved = canonicalFaces(occ, scope, body).find((f) => neighbourSurface(occ, scope, f as OccShape) === null)
+      expect(curved).toBeDefined()
       let threw: unknown = null
-      try { moved(scope, body, lateral as OccShape, 2) } catch (e) { threw = e }
+      try { moved(scope, body, curved as OccShape, 2) } catch (e) { threw = e }
       expect(threw).toBeInstanceOf(MoveFaceRefusal)
-      expect((threw as Error).message).toContain('planar')
+      expect((threw as Error).message).toContain('cannot move')
     } finally { scope.dispose() }
   })
 
