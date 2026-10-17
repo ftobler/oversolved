@@ -86,7 +86,9 @@ reached again, a completed one also reports references it never reached.
   is why the recipe pins the pool and `VITEST_MAX_FORKS=1` together; raise
   workers only on a wide, memory-rich box. `KNOWN_HANGS` and `KNOWN_STALE_PICKS`
   in `chainReal.test.ts` pin the triaged findings; anything else fails the
-  sweep.
+  sweep. The pins key on the recipe a seed draws, so a change to the recipe
+  generator (a new step kind, a moved roll threshold) redraws most seeds and
+  needs a fresh 1500-seed triage in the same batch.
 - PR gate: bounded 24 chain seeds and 32 identity seeds. On a Node older than
   22.6 the watchdog child cannot start (--experimental-strip-types), so the
   chain sweep skips there rather than fail; the CI matrix runs one such leg.
