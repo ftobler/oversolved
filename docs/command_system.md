@@ -99,7 +99,7 @@ Snap rules for drag; measurement rules for on-canvas display.
 
 ### Command Tables (`commandEntries.ts`, `assemblyCommandEntries.ts`)
 
-`PART_COMMAND_SPECS` (the sketch/part editor, 45 specs) and
+`PART_COMMAND_SPECS` (the sketch/part editor, 50 specs) and
 `ASSEMBLY_COMMAND_SPECS` (the assembly editor, 29 specs) are the single source
 of truth for which commands each editor registers. Both are static data: every
 body reads its inputs from the `CommandContext` it is handed, so the table is
