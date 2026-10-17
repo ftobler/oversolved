@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest, relayOccLoadProgress } from '../solverWorker'
+import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest, relayOccLoadProgress, preloadWorkerWasm } from '../solverWorker'
 import { reportOccCompiling, reportOccDownload, reportOccReady, resetOccLoadProgress } from '../../occ/loadProgress'
 import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from '../solverProtocol'
 import { SUPERSEDED_ERROR } from '../solverProtocol'
@@ -602,5 +602,28 @@ describe('relayOccLoadProgress', () => {
     unsubscribe()
     reportOccDownload(2, 2)
     expect(post).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('preloadWorkerWasm', () => {
+  it('starts the OCC and sketch wasm loads without any request', () => {
+    const occ = vi.fn().mockResolvedValue(null)
+    const sketch = vi.fn().mockResolvedValue(null)
+    preloadWorkerWasm({ occ, sketch })
+    expect(occ).toHaveBeenCalledTimes(1)
+    expect(sketch).toHaveBeenCalledTimes(1)
+  })
+
+  it('swallows a loader rejection so a failed preload is not an unhandled rejection', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const occ = vi.fn().mockRejectedValue(new Error('boom'))
+    const sketch = vi.fn().mockResolvedValue(null)
+    preloadWorkerWasm({ occ, sketch })
+    await vi.waitFor(async () => {
+      if (error.mock.calls.length > 0) return true
+      throw new Error('expected the preload failure to be logged')
+    }, { timeout: 1000 })
+    expect(String(error.mock.calls[0][0])).toContain('OCC preload failed')
+    error.mockRestore()
   })
 })

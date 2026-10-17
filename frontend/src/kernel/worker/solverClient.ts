@@ -213,6 +213,16 @@ function ensureWorker(): SolverWorkerLike | null {
 }
 
 /**
+ * Spawn the Worker ahead of any request. The Worker starts its OCC and sketch
+ * wasm load on spawn (see solverWorker's preloadWorkerWasm), so calling this at
+ * app startup moves that cost off the first document open. Idempotent: a live
+ * Worker is kept. A Worker dropped later respawns on the next request as usual.
+ */
+export function warmSolverWorker(): void {
+  ensureWorker()
+}
+
+/**
  * Post a request to the Worker and resolve once its reply arrives. `extract`
  * pulls the caller's value out of the successful response and must be pure (a
  * field read): it runs after the pending entry is deleted, so a throw would

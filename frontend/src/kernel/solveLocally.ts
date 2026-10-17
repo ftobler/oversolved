@@ -105,6 +105,15 @@ async function ensureOcc(): Promise<OccModule | null> {
 }
 
 /**
+ * Start the OCC load without solving anything, so the first document open
+ * finds the kernel already compiled. Shares ensureOcc's cell: a solve that
+ * arrives mid-load awaits the same promise instead of starting a second one.
+ */
+export function preloadOcc(): Promise<OccModule | null> {
+  return ensureOcc()
+}
+
+/**
  * Tessellate every body in the store and return per-body mesh/edge/vertex
  * data. Used as ``BuildDeps.tessellateBodies``.
  */

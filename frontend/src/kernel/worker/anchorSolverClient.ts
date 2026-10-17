@@ -327,6 +327,15 @@ function ensureWorker(): AnchorSolverWorkerLike | null {
 }
 
 /**
+ * Spawn the anchor solver worker ahead of any request. It inits the mate wasm
+ * on spawn, so calling this at app startup moves that cost off the first
+ * assembly open. Idempotent: a live worker is kept.
+ */
+export function warmAnchorSolverWorker(): void {
+  ensureWorker()
+}
+
+/**
  * Solve an assembly on the anchor solver worker. Sends mates and
  * assemblyId alongside the parts; the worker runs the real orchestration
  * (bundle building, anchor resolution, mate solve, transform application).

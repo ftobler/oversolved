@@ -17,6 +17,7 @@ import {
   getPendingCount,
   relayReplyTransferables,
   BUNDLE_FRESH,
+  warmAnchorSolverWorker,
 } from '../anchorSolverClient'
 import type {
   AnchorSolverWorkerLike,
@@ -956,5 +957,20 @@ describe('relay plumbing', () => {
       expect(relayReplyTransferables('partDocContent', okReply(docPayload))).toEqual([])
       expect(relayReplyTransferables('buildBundle', { kind: 'asr_relayRes', requestId: 1, ok: false, error: 'x' } as AnchorRelayErrResponse)).toEqual([])
     })
+  })
+})
+
+describe('warmAnchorSolverWorker', () => {
+  it('spawns the worker ahead of any request and the first solve reuses it', () => {
+    const factory = vi.fn(() => fakeWorker)
+    setAnchorSolverWorkerForTest(factory)
+    warmAnchorSolverWorker()
+    warmAnchorSolverWorker()
+    expect(factory).toHaveBeenCalledTimes(1)
+    expect(fakeWorker.posted).toHaveLength(0)
+
+    void solveAssemblyViaWorker('asm-1', [], {}, []).catch(() => {})
+    expect(factory).toHaveBeenCalledTimes(1)
+    expect(fakeWorker.posted).toHaveLength(1)
   })
 })

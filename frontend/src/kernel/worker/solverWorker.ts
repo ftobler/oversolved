@@ -15,7 +15,8 @@
  * here persists state the host cannot rebuild from it.
  */
 
-import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader } from '../solveLocally'
+import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, preloadOcc } from '../solveLocally'
+import { loadSolverWasm } from '../../wasm-kernel/solverWasm'
 import { isDevBuild } from '../isDevBuild'
 import { extractErrorMessage } from '../errors'
 import { inWorker } from '../inWorker'
@@ -461,13 +462,33 @@ export function relayOccLoadProgress(
   })
 }
 
+/**
+ * Begin loading every wasm this Worker solves with (OCC and the sketch package,
+ * which also carries topology) the moment it spawns, not on the first request.
+ * The loaders are memoized, so a request that lands mid-load awaits the same
+ * promise. Fire-and-forget: each loader already reports its own failure and
+ * returns null, and a later request retries through the same path. Exported
+ * with injectable loaders so tests can drive it without a real Worker.
+ */
+export function preloadWorkerWasm(
+  loaders: { occ: () => Promise<unknown>; sketch: () => Promise<unknown> } = { occ: preloadOcc, sketch: loadSolverWasm },
+): void {
+  // The catch guards an unexpected rejection only; the loaders resolve null on
+  // failure. Without it a throw would surface as an unhandled rejection.
+  loaders.occ().catch((e: unknown) => { console.error('[solverWorker] OCC preload failed:', e) })
+  loaders.sketch().catch((e: unknown) => { console.error('[solverWorker] sketch wasm preload failed:', e) })
+}
+
 if (inWorker()) {
   // Install the DOM-free OCC loader: the main-thread loadOccWeb uses
   // document/window, which do not exist here.
   setOccLoader(loadOccWorker)
   const ctx = globalThis as unknown as WorkerCtx
   const actor = new WorkerActor()
+  // Subscribe before the preload starts so the main thread sees the download
+  // from its first byte.
   relayOccLoadProgress((message, transfer) => { ctx.postMessage(message, transfer) })
+  preloadWorkerWasm()
   ctx.onmessage = (e) => {
     handleWorkerMessage(e.data, (res, transfer) => { ctx.postMessage(res, transfer) }, actor)
   }

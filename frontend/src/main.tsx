@@ -20,6 +20,8 @@ import { preloadViewportLabelFont } from '@/components/Viewport/labelFont'
 import { ToastProvider } from '@/contexts/ToastContext'
 import { useStoragePersistenceStore } from '@/stores/storagePersistenceStore'
 import { installGlobalErrorHandlers } from '@/recovery/globalErrors'
+import { warmSolverWorker } from '@/kernel/worker/solverClient'
+import { warmAnchorSolverWorker } from '@/kernel/worker/anchorSolverClient'
 
 const theme = createTheme({
   palette: { mode: 'dark', background: { default: '#111' } },
@@ -38,6 +40,11 @@ useStoragePersistenceStore.getState().ensureChecked()
 // Off the gesture on purpose: the first 3D label to mount would otherwise
 // suspend the whole Canvas on the font fetch. See preloadViewportLabelFont.
 preloadViewportLabelFont()
+// Spawn both solver workers now: each starts its wasm load on spawn (OCC and
+// the sketch solver in one, the mate solver in the other), so the kernel is
+// compiled by the time the first document opens instead of after it.
+warmSolverWorker()
+warmAnchorSolverWorker()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

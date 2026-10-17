@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   solveViaWorker, exportViaWorker, exportAssemblyViaWorker, buildBundleViaWorker,
   setSolverWorkerForTest, setSolverTimeoutForTest, setSolverCrashBackoffForTest,
-  cancelSolver, getPendingCount,
+  cancelSolver, getPendingCount, warmSolverWorker,
   EMPTY_BUILD_STATE,
   type SolverWorkerLike,
 } from '../solverClient'
@@ -634,5 +634,20 @@ describe('solveViaWorker', () => {
       fake.reply({ id: fake.posted[1].id, ok: true, payload: { solve_ms: 2, result: { r: 2 }, bodies: {} } })
       await expect(p2).resolves.not.toBeNull()
     })
+  })
+})
+
+describe('warmSolverWorker', () => {
+  it('spawns the Worker ahead of any request and the first solve reuses it', async () => {
+    warmSolverWorker()
+    expect(created).toHaveLength(1)
+    expect(created[0].posted).toHaveLength(0)
+    warmSolverWorker()
+    expect(created).toHaveLength(1)
+
+    const p = solveViaWorker({ id: 'd' })
+    expect(created).toHaveLength(1)
+    created[0].reply({ id: created[0].posted[0].id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
+    await expect(p).resolves.not.toBeNull()
   })
 })
