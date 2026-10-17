@@ -333,6 +333,9 @@ export interface BodyFeatureResult {
   // (e.g. a radius past what the geometry admits); the pick field marks these
   // red. Filled only on a partial result.
   failed_edges?: string[]
+  // The face-pick pair (shell, move/delete face), same meaning as the edges.
+  unresolved_faces?: string[]
+  failed_faces?: string[]
   mesh_warning?: string
   solver_warning?: string
   solve_ms?: number
@@ -1083,6 +1086,15 @@ export interface SketchData {
   body_ids?: string[]  // every body the feature made; body_id is only the first
   value?: number  // a variable's solved value, rendered inline in the tree
   exception?: string
+  // A fallback or no-op the kernel took on an otherwise good solve, read by
+  // featureFailure as a warning.
+  solver_warning?: string
+  mesh_warning?: string
+  // Per-pick verdicts of a partial result, marked on the pick chips.
+  unresolved_edges?: string[]
+  failed_edges?: string[]
+  unresolved_faces?: string[]
+  failed_faces?: string[]
   handle?: FeatureHandleData  // editing handle for brep features (extrude/revolve/fillet/chamfer)
   // A helix's derived quantities (the mode's computed pitch/turns/height/length
   // and the angle) plus the sampled curve the viewport draws.

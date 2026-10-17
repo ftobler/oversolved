@@ -97,6 +97,12 @@ export function useSolver(
       body_ids?: string[]
       value?: number
       exception?: string
+      solver_warning?: string
+      mesh_warning?: string
+      unresolved_edges?: string[]
+      failed_edges?: string[]
+      unresolved_faces?: string[]
+      failed_faces?: string[]
       handle?: FeatureHandleData
       helix?: Record<string, number>
       curve?: import('@/types/cad').EdgeDataSpline
@@ -192,6 +198,14 @@ export function useSolver(
           ...(feature.body_ids !== undefined && { body_ids: feature.body_ids }),
           ...(feature.value !== undefined && { value: feature.value }),
           ...(feature.exception !== undefined && { exception: feature.exception }),
+          // The feature status and the pick chips read these; this seam is
+          // where they were lost (see useSolver.resultFields.test.ts).
+          ...(feature.solver_warning !== undefined && { solver_warning: feature.solver_warning }),
+          ...(feature.mesh_warning !== undefined && { mesh_warning: feature.mesh_warning }),
+          ...(feature.unresolved_edges !== undefined && { unresolved_edges: feature.unresolved_edges }),
+          ...(feature.failed_edges !== undefined && { failed_edges: feature.failed_edges }),
+          ...(feature.unresolved_faces !== undefined && { unresolved_faces: feature.unresolved_faces }),
+          ...(feature.failed_faces !== undefined && { failed_faces: feature.failed_faces }),
           ...(feature.handle !== undefined && { handle: feature.handle }),
           // A helix's solved curve (the viewport draws it) and derived values.
           ...(feature.curve !== undefined && { curve: feature.curve }),

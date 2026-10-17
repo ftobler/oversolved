@@ -75,6 +75,35 @@ describe('applySolveResult -- fields the feature tree reads', () => {
     expect(result.current.solveResults['ex1'].value).toBeUndefined()
   })
 
+  it('keeps the per-pick lists the pick chips mark', async () => {
+    // PickField strikes through `unresolved_*` and reddens `failed_*`; dropped
+    // here, a partial fillet showed a healthy chip in the app while every
+    // widget test (which writes the store directly) passed.
+    const result = setupHook()
+    await solveWith(result, {
+      ex1: {
+        status: 'partial', body_id: 'body_ex1',
+        unresolved_edges: ['?1;e'], failed_edges: ['?2;e'],
+        unresolved_faces: ['?3;f'], failed_faces: ['?4;f'],
+      },
+    })
+    expect(result.current.solveResults.ex1).toMatchObject({
+      unresolved_edges: ['?1;e'], failed_edges: ['?2;e'],
+      unresolved_faces: ['?3;f'], failed_faces: ['?4;f'],
+    })
+  })
+
+  it('keeps the warnings a successful solve carries', async () => {
+    // `solver_warning` rides an 'ok' result (an up-to target that fell back to
+    // a blind distance, a boolean that changed nothing); it is the only trace
+    // of that fallback, so the feature status reads it.
+    const result = setupHook()
+    await solveWith(result, {
+      ex1: { status: 'ok', body_id: 'body_ex1', solver_warning: 'used blind distance', mesh_warning: 'no shape' },
+    })
+    expect(result.current.solveResults.ex1).toMatchObject({ solver_warning: 'used blind distance', mesh_warning: 'no shape' })
+  })
+
   it('keeps per-entity constraint status, defaulting a missing one', async () => {
     const result = setupHook()
     await solveWith(result, {
