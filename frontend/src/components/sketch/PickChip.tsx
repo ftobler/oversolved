@@ -141,7 +141,8 @@ export function PickChip({
               onDragOver={(e) => handleDragOver(e, i)}
               onDrop={(e) => handleDrop(e, i)}
               onDragEnd={handleDragEnd}
-              title={unresolved ? 'Could not be resolved; re-pick this edge'
+              // Kind-neutral: the same chip serves edge and face fields.
+              title={unresolved ? 'Could not be resolved; re-pick it'
                 : failed ? 'Could not be applied in the last solve' : undefined}
             >
               {onReorder && (

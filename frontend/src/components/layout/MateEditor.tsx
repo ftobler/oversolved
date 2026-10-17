@@ -323,9 +323,9 @@ export function MateEditor({
         )
       })}
 
-      {/* The mate's own cause (an unsupported kind, a solver trap) named right
-          where the user is editing, so the chip's red is not a mystery. */}
-      {result?.error && <span className="mate-param-hint">{result.error}</span>}
+      {/* The mate's own cause (an unsupported kind, a solver trap) is not
+          drawn here: the tree heads this editor with the row's mark, the same
+          status line every feature, part and mate editor gets. */}
 
       <div className="mate-param-list">{mateParams(mate.kind).map(renderParam)}</div>
     </div>

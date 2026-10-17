@@ -2,9 +2,10 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { NumberFieldWidget } from './NumberField'
 import type { NumberFieldDef } from './fieldTypes'
+import { positive } from '@/utils/core/valueRules'
 
 const field: NumberFieldDef = {
-  type: 'number', key: 'count', label: 'Count', parse: 'int', validate: (v) => v > 0, min: 1,
+  type: 'number', key: 'count', label: 'Count', parse: 'int', validate: positive, min: 1,
 }
 
 const baseProps = {

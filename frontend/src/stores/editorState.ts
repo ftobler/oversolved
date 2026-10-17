@@ -26,6 +26,8 @@ import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectio
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
 import { activateTool, deactivateTool } from './sketchEditorToolLifecycle'
 import { clampRollbackPosition } from '@/session/DocSession'
+import { refusalText } from '@/utils/core/statusMark'
+import { cannotEvaluate, positive } from '@/utils/core/valueRules'
 
 // The value dialog is UI-store state (sketchEditorStore registers the ports at
 // module scope). A headless consumer of this store that never imported the UI
@@ -819,11 +821,10 @@ export const editorState = createStore<EditorState>((set, get) => ({
       // Cancelling the value dialog abandons the gesture: the projections it
       // materialised were scratch work and are removed with no undo entries.
       onCancel: () => get().cancelBrepProjectionGesture(),
+      // A plain number, not an expression: onConfirm commits parseFloat.
       validate: (input) => {
         const val = parseFloat(input)
-        if (isNaN(val)) return 'Enter a number'
-        if (val <= 0) return 'Must be greater than 0'
-        return null
+        return refusalText('Value', isNaN(val) ? cannotEvaluate(input) : positive(val))
       },
       onConfirm: (input) => {
         // Accepting the rounded default unchanged commits the exact measured

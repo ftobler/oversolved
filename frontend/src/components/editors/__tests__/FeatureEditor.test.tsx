@@ -60,7 +60,7 @@ describe('FeatureEditor number field', () => {
   it('does not dispatch for non-positive value when validate rejects', () => {
     const validatedSchema: FeatureEditorSchema = {
       ...schema,
-      fields: [{ type: 'number', key: 'count', label: 'Count', default: 5, validate: (v) => v > 0 }],
+      fields: [{ type: 'number', key: 'count', label: 'Count', default: 5, validate: (v) => (v > 0 ? null : 'must be greater than 0') }],
     }
     const onMutation = vi.fn()
     render(<FeatureEditor feature={makeFeature('test', 'test', { count: 10 })} onMutation={onMutation} schema={validatedSchema} />)
@@ -238,7 +238,7 @@ describe('FeatureEditor text field', () => {
     fields: [{
       type: 'text', key: 'direction', label: 'Direction', default: '1, 0, 0',
       parse: (s: string) => { const p = s.split(',').map(x => parseFloat(x.trim())); return p.length === 3 && p.every(x => !isNaN(x)) ? p : null },
-      validate: (v: unknown) => Array.isArray(v) && v.length === 3,
+      validate: (v: unknown) => (Array.isArray(v) && v.length === 3 ? null : 'needs three numbers'),
     }],
   }
 

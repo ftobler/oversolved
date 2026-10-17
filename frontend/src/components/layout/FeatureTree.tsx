@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { featureFailure } from '@/utils/core/featureFailure'
+import { markNameClass } from '@/utils/core/statusMark'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -137,6 +138,11 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
         features.map((feature, index) => {
           const isBuiltIn = BUILTIN_FEATURE_IDS.has(feature.id)
           const selectionId = isBuiltIn ? builtinSelectionId(feature.id) : `@${feature.id}`
+          // No kind gate: the kernel reports a failure the same way for every
+          // kind, so the tree asks the same question for every kind
+          // (utils/core/featureFailure.ts). The row and the open editor show
+          // this one mark.
+          const mark = featureFailure(feature.id, solveResults, bodies)
 
           return (
           <Fragment key={`feature-${feature.id}`}>
@@ -213,23 +219,16 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   className="feature-icon"
                 />
                 {(() => {
-                  // No kind gate: the kernel reports a failure the same way for
-                  // every kind, so the tree asks the same question for every
-                  // kind (utils/core/featureFailure.ts).
-                  const { failed, level, message } = featureFailure(feature.id, solveResults, bodies)
                   // Variables surface their solved value inline: `width = 100`
                   // and `angle = 45 deg` when the variable carries a unit hint.
                   // The store holds results as `unknown`, hence the cast.
-                  const varValue = feature.kind === 'variable' && !failed
+                  const varValue = feature.kind === 'variable' && !mark.failed
                     ? (solveResults?.[feature.id] as { value?: number } | undefined)?.value : undefined
                   const varUnit = feature.kind === 'variable' ? feature.variable?.unit : undefined
-                  const failedClass = failed
-                    ? level === 'warning' ? ' feature-name-warning' : ' feature-name-error'
-                    : ''
                   return (
                     <span
-                      className={`feature-name${failedClass}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
-                      title={message}
+                      className={`feature-name${markNameClass(mark)}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
+                      title={mark.message || undefined}
                     >
                       {feature.label || feature.id}
                       {varValue !== undefined ? ` = ${varValue}${varUnit ? ` ${varUnit}` : ''}` : ''}
@@ -264,6 +263,7 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                 onMutation={onMutation}
                 features={features}
                 partLabels={partLabels}
+                status={mark}
               />
             </li>
           </Fragment>

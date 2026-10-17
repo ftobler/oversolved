@@ -27,13 +27,15 @@ function status(overrides: Partial<AssemblySolveStatus> = {}): AssemblySolveStat
   }
 }
 
-function renderTree(statusProp: AssemblySolveStatus) {
+function renderTree(statusProp: AssemblySolveStatus, editing: { mate?: string; instance?: string } = {}) {
   return render(
     <AssemblyTree
       instances={instances}
       builtins={[]}
       mates={mates}
       status={statusProp}
+      editingMateId={editing.mate}
+      editingInstanceHandle={editing.instance}
       onOpenPartNewTab={noop}
       onDuplicateInstance={noop}
       onDeleteInstance={noop}
@@ -136,6 +138,34 @@ describe('AssemblyTree solve-status marks', () => {
     expect(underRow!.getAttribute('data-verdict')).toBe('underconstrained')
     // Informational: the row says how much freedom is left.
     expect(underRow!.textContent).toContain('3')
+  })
+
+  it('heads an open mate editor with the row mark, the same line a feature editor gets', () => {
+    // MateEditor used to print `result.error` in its own grey hint; the cause
+    // now comes from mateFailure through the shared status line, so a stale
+    // reference or a failed part is named there too, not only a trap.
+    const { container } = renderTree(status({
+      mates: { m1: { stale: true, error: "unsupported mate kind 'worm_gear'" } },
+    }), { mate: 'm1' })
+    const row = rowByName(container, 'Fixed 1')
+    const line = row.querySelector('.status-message')!
+    expect(line.classList.contains('status-message--error')).toBe(true)
+    expect(line.textContent).toBe("unsupported mate kind 'worm_gear'")
+    // Row hover and editor line are one mark.
+    expect(row.getAttribute('title')).toBe(line.textContent)
+  })
+
+  it('heads an open part editor with the part mark', () => {
+    const { container } = renderTree(status({
+      parts: { hBad: { failed: true, error: 'part doc not found: hBad' } },
+    }), { instance: 'hBad' })
+    expect(rowByName(container, 'doc-hBad').querySelector('.status-message')!.textContent)
+      .toBe('part doc not found: hBad')
+  })
+
+  it('draws no status line in an open editor of a healthy mate', () => {
+    const { container } = renderTree(status(), { mate: 'm1' })
+    expect(container.querySelector('.status-message')).toBeNull()
   })
 
   it('shows no assembly root row for a fully constrained or trivial verdict', () => {

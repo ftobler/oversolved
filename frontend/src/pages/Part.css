@@ -1090,6 +1090,33 @@
   gap: 2px;
 }
 
+/* A status mark as a line in an open editor (components/shared/StatusMessage).
+   The colours are the tree row's feature-name-error / -warning, so a mark reads
+   the same in the row and in the dialog. */
+.status-message {
+  font-size: 11px;
+  padding: 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.status-message--error {
+  color: #f44336;
+}
+
+.status-message--warning {
+  color: #ecad2b;
+}
+
+/* Inside a single-line field row the message takes its own line under the
+   input instead of squeezing it. */
+.feature-field-row:has(> .status-message) {
+  flex-wrap: wrap;
+}
+
+.feature-field-row > .status-message {
+  flex-basis: 100%;
+}
+
 .feature-field-row--stacked .feature-field-label {
   width: auto;
   height: auto;

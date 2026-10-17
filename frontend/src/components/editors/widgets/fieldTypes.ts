@@ -15,7 +15,10 @@ export interface NumberFieldDef extends BaseFieldDef {
   type: 'number'
   default?: number
   parse?: 'float' | 'int'
-  validate?: (v: number) => boolean
+  // The field's own value rule, the same contract as `validatePick`: null
+  // accepts, a string is the reason the value is refused and what the user
+  // sees. Use the shared rules in numberFieldValidate.ts.
+  validate?: (v: number) => string | null
   unit?: string
   arrayField?: string
   arrayIndex?: number
@@ -65,7 +68,9 @@ export interface TextFieldDef extends BaseFieldDef {
   type: 'text'
   default?: string
   parse?: (value: string) => unknown
-  validate?: (parsed: unknown) => boolean
+  // Same contract as the number and pick rules: null accepts, a string is
+  // the refusal reason.
+  validate?: (parsed: unknown) => string | null
 }
 
 export type EditorFieldDef =

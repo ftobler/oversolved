@@ -11,7 +11,8 @@ import { handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, han
 import { closestParamOnAxis } from '@/utils/gizmoMath'
 import { shouldActivateDrag } from '@/components/Geometry3D/dragLogic'
 import { p2w } from '@/utils/geometry/sketchHelpers'
-import { evalExpr } from '@/kernel/evalExpr'
+import { refusalText } from '@/utils/core/statusMark'
+import { expressionRefusal, positive } from '@/utils/core/valueRules'
 import type { FeatureHandleData, Mutation, PartFeature, SketchData } from '@/types/cad'
 
 // Arrow-head proportions in screen pixels; that part of the arrow is rescaled
@@ -182,12 +183,7 @@ function HandleArrow({ featureId, feature, handle }: {
           position: [clientX, clientY],
           label: `${feature.label || feature.kind} ${handle.field}`,
           defaultValue: String(rawStored ?? handle.value),
-          validate: (input) => {
-            const v = evalExpr(input)
-            if (isNaN(v)) return 'Enter a number or expression'
-            if (v <= 0) return 'Must be greater than 0'
-            return null
-          },
+          validate: (input) => refusalText('Value', expressionRefusal(input, positive)),
           onConfirm: (input) => {
             // Same convention as ExpressionInput: plain numbers store as
             // numbers, anything else as the raw expression string.

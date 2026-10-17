@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSketchEditorStore, useSketchUiStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { evalExpr } from '@/kernel/evalExpr'
+import { refusalText } from '@/utils/core/statusMark'
+import { expressionRefusal, positive } from '@/utils/core/valueRules'
 import { COLOR_CONSTRAINT, COLOR_CONSTRAINT_DIM } from '@/utils/geometry/sketchHelpers'
 import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET } from '@/components/Geometry3D/constants'
 import { useDimensionLabelIdRegistration } from '@/picking/useDimensionLabelIdRegistration'
@@ -90,12 +92,7 @@ export function useDimInteraction(
       position: [ev.clientX, ev.clientY],
       label: interaction.promptLabel,
       defaultValue: String(value),
-      validate: (input) => {
-        const val = evalExpr(input)
-        if (isNaN(val)) return 'Enter a number or expression'
-        if (validatePositive && val <= 0) return 'Must be greater than 0'
-        return null
-      },
+      validate: (input) => refusalText('Value', expressionRefusal(input, validatePositive ? positive : undefined)),
       onConfirm: (input) => {
         const edited = evalExpr(input)
         const stored = encodeValue ? encodeValue(edited) : edited

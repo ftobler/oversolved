@@ -4,6 +4,7 @@ import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { emitAbsoluteSelectionQuery } from '@/utils/query/selectionId'
 import { ExpressionInput } from './widgets/ExpressionInput'
+import { StatusMessage } from '@/components/shared/StatusMessage'
 
 interface PlaneEditorProps {
   feature: PartFeature
@@ -26,7 +27,7 @@ export function PlaneEditor({
   // plane-definition field is active (one hook call, stable across renders).
   const pickingField = activePickField?.featureId === fid ? activePickField.field : null
 
-  usePickField(fid, pickingField ?? '', (selectionId) => {
+  const { refusal } = usePickField(fid, pickingField ?? '', (selectionId) => {
     const value = emitAbsoluteSelectionQuery(selectionId)
     onMutation({ type: 'set_plane_definition_field', featureId: fid, field: pickingField!, value })
   }, {
@@ -39,15 +40,20 @@ export function PlaneEditor({
 
   const pickChip = (field: string, _kind: 'plane' | 'point' | 'line', value: string | undefined) => {
     const isPicking = pickingField === field
+    // The one hook serves every plane field, so its refusal belongs under
+    // whichever chip is armed.
     return (
-      <PickChip
-        values={value && value !== 'None' ? [value] : []}
-        isPicking={isPicking}
-        onActivate={() => setActivePickField(isPicking ? null : { featureId: fid, field })}
-        onRemove={() => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: '' })}
-        features={features}
-        partLabels={partLabels}
-      />
+      <>
+        <PickChip
+          values={value && value !== 'None' ? [value] : []}
+          isPicking={isPicking}
+          onActivate={() => setActivePickField(isPicking ? null : { featureId: fid, field })}
+          onRemove={() => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: '' })}
+          features={features}
+          partLabels={partLabels}
+        />
+        {isPicking && <StatusMessage mark={refusal} />}
+      </>
     )
   }
   const numField = (field: 'offset' | 'angle' | 'rotation', label: string, defaultVal: number) => (

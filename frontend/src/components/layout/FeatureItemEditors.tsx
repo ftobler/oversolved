@@ -6,6 +6,8 @@ import { PlaneSelector } from '@/components/sketch/PlaneSelector'
 import { useFileMeta } from '@/stores/fileRegistry'
 import { formatBytes } from '@/utils/formatBytes'
 import { BUILTIN_FEATURE_IDS } from '@/components/layout/builtinFeatureIds'
+import { StatusMessage } from '@/components/shared/StatusMessage'
+import { NO_MARK, type StatusMark } from '@/utils/core/statusMark'
 
 interface FeatureItemEditorsProps {
   feature: PartFeature
@@ -14,6 +16,8 @@ interface FeatureItemEditorsProps {
   onMutation: (m: Mutation) => void
   features: PartFeature[]
   partLabels: Record<string, string>
+  // The feature's mark from the last solve, the same one its tree row shows.
+  status?: StatusMark
 }
 
 // The row is its own component because useFileMeta is a hook: FeatureItemEditors
@@ -33,16 +37,31 @@ function ImportStepFileRow({ fileId }: { fileId: string | undefined }) {
   )
 }
 
-export function FeatureItemEditors({
+/**
+ * The open editor of the feature being edited, headed by the feature's status
+ * line. The line is drawn here, once, for every kind (schema editors, plane,
+ * sketch plane, STEP import), so no editor carries its own failure display: a
+ * failed build reads the same in every dialog and matches the tree row.
+ */
+export function FeatureItemEditors({ status = NO_MARK, ...props }: FeatureItemEditorsProps) {
+  if (props.editingFeatureId !== props.feature.id) return null
+  const editor = editorFor(props)
+  if (editor === null) return null
+  return (
+    <>
+      <StatusMessage mark={status} />
+      {editor}
+    </>
+  )
+}
+
+function editorFor({
   feature,
-  editingFeatureId,
   doc,
   onMutation,
   features,
   partLabels,
-}: FeatureItemEditorsProps) {
-  if (editingFeatureId !== feature.id) return null
-
+}: Omit<FeatureItemEditorsProps, 'status'>) {
   const kind = feature.kind
 
   if (kind === 'plane' && !BUILTIN_FEATURE_IDS.has(feature.id)) {

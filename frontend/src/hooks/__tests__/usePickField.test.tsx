@@ -34,10 +34,11 @@ function mountPickField(
   },
 ) {
   function Spy() {
-    const { isPicking, toggle, activate } = usePickField(featureId, field, onPick, opts)
+    const { isPicking, toggle, activate, refusal } = usePickField(featureId, field, onPick, opts)
     return (
       <div>
         <span data-testid="spy-picking">{String(isPicking)}</span>
+        <span data-testid="spy-refusal">{refusal.message}</span>
         <button data-testid="spy-toggle" onClick={toggle}>toggle</button>
         <button data-testid="spy-activate" onClick={activate}>activate</button>
       </div>
@@ -47,6 +48,7 @@ function mountPickField(
   const getEl = (testId: string) => result.container.querySelector(`[data-testid="${testId}"]`)
   return {
     get isPicking(): boolean { return getEl('spy-picking')?.textContent === 'true' },
+    get refusal(): string { return getEl('spy-refusal')?.textContent ?? '' },
     toggle: () => { act(() => { fireEvent.click(getEl('spy-toggle')!) }) },
     activate: () => { act(() => { fireEvent.click(getEl('spy-activate')!) }) },
     unmount: result.unmount,
@@ -328,6 +330,61 @@ describe('usePickField  -  auto-close (multi vs single)', () => {
     expect(onPick).toHaveBeenCalledWith('?9;@body_ex1:flatface')
     expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+  })
+})
+
+describe('usePickField  -  refusal reason', () => {
+  it('returns the reason instead of raising a toast, and clears it on an accepted pick', () => {
+    // The hook owns no notification: the reason comes back for the editor to
+    // render next to the field it explains.
+    const onPick = vi.fn()
+    const validatePick = (id: string) => (id.endsWith(':flatface') ? null : 'pick a face')
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'mf1', field: 'faces', multi: true })
+    })
+    const spy = mountPickField('mf1', 'faces', onPick, { multi: true, validatePick })
+
+    act(() => { useSketchEditorStore.getState().setNormalSelection(new Set(['?9;@body_ex1:cylinderface'])) })
+    expect(spy.refusal).toBe('Pick refused: pick a face')
+
+    act(() => { useSketchEditorStore.getState().setNormalSelection(new Set(['?9;@body_ex1:flatface'])) })
+    expect(spy.refusal).toBe('')
+  })
+
+  it('a box mixing good and bad picks still reports the first reason', () => {
+    // Some boxed elements landed and some did not; the user is told why the
+    // rest were left out.
+    const onPick = vi.fn()
+    const validatePick = (id: string) => (id.endsWith(':flatface') ? null : 'pick a face')
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'mf1', field: 'faces', multi: true })
+    })
+    const spy = mountPickField('mf1', 'faces', onPick, { multi: true, validatePick })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set(['?9;@body_ex1:flatface', '@body_ex1/edge/2']))
+    })
+    expect(onPick).toHaveBeenCalledTimes(1)
+    expect(spy.refusal).toBe('Pick refused: pick a face')
+  })
+
+  it('the reason is scoped to the field: switching fields or disarming hides it', () => {
+    const onPick = vi.fn()
+    const features = [{ id: 'sk1' }, { id: 'ex1' }]
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'edges' })
+    })
+    const spy = mountPickField('ex1', 'edges', onPick, { features })
+
+    act(() => { useSketchEditorStore.getState().setNormalSelection(new Set(['@body_ex1'])) })
+    expect(spy.refusal).toBe('Pick refused: can only reference earlier features')
+
+    act(() => { useSketchEditorStore.getState().setActivePickField(null) })
+    expect(spy.refusal).toBe('')
+
+    // Re-arming the same field does not resurrect the old reason.
+    act(() => { useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'edges' }) })
+    expect(spy.refusal).toBe('')
   })
 
   it('single field still takes only the first boxed id', () => {

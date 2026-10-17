@@ -86,8 +86,35 @@ describe('featureFailure', () => {
       .toBe('sketch not found')
   })
 
-  it('still fails with an empty message when the result carried none', () => {
+  it('never shows a mark without words', () => {
+    // The tree tooltip and the editor line both print the message; an empty
+    // one left a red name that explained nothing.
     expect(featureFailure('ex1', { ex1: { status: 'exception' } }, {}))
-      .toEqual({ failed: true, level: 'error', message: '' })
+      .toEqual({ failed: true, level: 'error', message: 'The feature failed to build.' })
+    expect(featureFailure('fl1', { fl1: { status: 'partial' } }, {}))
+      .toEqual({ failed: true, level: 'warning', message: 'Only part of the feature was applied.' })
+  })
+
+  it('marks a good solve that carries a solver warning as a warning', () => {
+    // An up-to target that did not resolve fell back to a blind distance: the
+    // body is valid, but not what was asked for, and this note is its only trace.
+    expect(featureFailure('ex1', { ex1: { status: 'ok', body_id: 'body_ex1', solver_warning: 'used blind distance' } }, {}))
+      .toEqual({ failed: true, level: 'warning', message: 'used blind distance' })
+  })
+
+  it('joins a partial result exception with its solver warning', () => {
+    expect(featureFailure('h1', { h1: { status: 'partial', exception: '1/4 sites missed', solver_warning: 'body deleted' } }, {}))
+      .toEqual({ failed: true, level: 'warning', message: '1/4 sites missed; body deleted' })
+  })
+
+  it('keeps an error an error when a solver warning rides along', () => {
+    // The hard failure is the message; the warning cannot soften it.
+    expect(featureFailure('ex1', { ex1: { status: 'exception', exception: 'boom', solver_warning: 'note' } }, {}))
+      .toEqual({ failed: true, level: 'error', message: 'boom' })
+  })
+
+  it('falls back to the mesh warning when an error result has no exception', () => {
+    expect(featureFailure('ex1', { ex1: { status: 'error', mesh_warning: 'body has no shape' } }, {}).message)
+      .toBe('body has no shape')
   })
 })

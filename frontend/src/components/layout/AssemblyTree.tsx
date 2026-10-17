@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState, type ReactNode, type MouseEvent
 import type { PartInstance, MateFeature } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { mateFailure, partFailure, assemblyVerdict } from '@/utils/core/assemblyStatus'
+import { markNameClass } from '@/utils/core/statusMark'
+import { StatusMessage } from '@/components/shared/StatusMessage'
 import type { AssemblyBuiltinListItem } from '@/utils/assemblyRender'
 import { relatedMateIds, relatedPartHandles } from '@/utils/assemblyTreeHighlight'
 import { readSelection, type AssemblySubject } from '@/utils/assemblySelection'
@@ -178,7 +180,7 @@ export function AssemblyTree({
             data-verdict={verdictMark.verdict}
           >
             <span className="assembly-verdict-name">Assembly</span>
-            <span className={`feature-name feature-name-${verdictMark.level === 'error' ? 'error' : 'warning'}`}>
+            <span className={`feature-name${markNameClass(verdictMark)}`}>
               {verdictMark.message}
             </span>
           </div>
@@ -269,7 +271,7 @@ export function AssemblyTree({
               >
                 <div className="feature-item-title">
                   <img className="feature-icon" src={featurePartIcon} alt="" />
-                  <span className={`feature-name${failMark.failed ? ' feature-name-error' : ''}`}>{label}</span>
+                  <span className={`feature-name${markNameClass(failMark)}`}>{label}</span>
                   {/* A fixed part carries the fixed-mate glyph, greyed, after its
                       name -- the mark of the static frame without stealing a row
                       action. Opening the part now lives in the tridot menu. */}
@@ -337,7 +339,8 @@ export function AssemblyTree({
                     </button>
                   </div>
                 </div>
-                {editing && renderInstanceEditor(inst)}
+                {/* The row's mark heads its open editor, as a feature's does. */}
+                {editing && <><StatusMessage mark={failMark} />{renderInstanceEditor(inst)}</>}
               </li>
             )
           })}
@@ -391,7 +394,6 @@ export function AssemblyTree({
             // mateFailure owns the cause: 'stale' keeps the legacy unresolved-ref
             // look, a model cause reddens the name with its own message.
             const bareStale = mateMark.cause === 'stale'
-            const realCause = mateMark.cause === 'error' || mateMark.cause === 'part'
             const selected = view.mate === id
             const related = highlightedMateIds.has(id)
             const editing = editingMateId === id
@@ -429,7 +431,7 @@ export function AssemblyTree({
               >
                 <div className="feature-item-title">
                   <img className="feature-icon" src={mateIcon} alt="" />
-                  <span className={`feature-name${realCause ? ' feature-name-error' : ''}`}>{name}</span>
+                  <span className={`feature-name${bareStale ? '' : markNameClass(mateMark)}`}>{name}</span>
                   <div className="feature-item-actions">
                     {editing ? (
                       <>
@@ -472,7 +474,7 @@ export function AssemblyTree({
                     </button>
                   </div>
                 </div>
-                {editing && renderMateEditor({ id, mate })}
+                {editing && <><StatusMessage mark={mateMark} />{renderMateEditor({ id, mate })}</>}
               </li>
             )
           })}

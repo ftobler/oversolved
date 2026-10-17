@@ -11,6 +11,8 @@ import { projectSelection } from '@/tools/projectSelectionCommand'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
 import { narrowCommandName } from '@/utils/core/commandNames'
+import { refusalText } from '@/utils/core/statusMark'
+import { cannotEvaluate } from '@/utils/core/valueRules'
 import type { CommandName } from '@/utils/core/commandNames'
 import { noParams, objectParams, Field, type CommandResult, type ErasedCommandSpec, type CommandSpec } from '@/utils/core/commandSpec'
 
@@ -407,7 +409,7 @@ export function openOffsetDialog(onDistance: (distance: number) => void): void {
     position: [cx, cy],
     label: 'Offset distance',
     defaultValue: '5',
-    validate: (input) => (isNaN(parseFloat(input)) ? 'Enter a number' : null),
+    validate: (input) => refusalText('Value', isNaN(parseFloat(input)) ? cannotEvaluate(input) : null),
     onConfirm: (input) => {
       onDistance(parseFloat(input))
       st.closeDialog()

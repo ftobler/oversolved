@@ -2,6 +2,7 @@ import type { PartFeature, SketchFeature, Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
 import { resolveBarePlaneId } from '@/kernel/solverConstants'
+import { StatusMessage } from '@/components/shared/StatusMessage'
 
 /**
  * The query a chip may mirror into the selection. A sketch saved before the
@@ -56,6 +57,7 @@ export function PlaneSelector({
           features={features}
           partLabels={partLabels}
         />
+        <StatusMessage mark={planePick.refusal} />
       </div>
     </div>
   )

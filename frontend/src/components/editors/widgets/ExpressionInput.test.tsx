@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ExpressionInput } from './ExpressionInput'
 import { validateNumberFieldValue } from './numberFieldValidate'
+import { positive } from '@/utils/core/valueRules'
 import type { NumberFieldDef } from './fieldTypes'
 
 function nfField(over: Partial<NumberFieldDef> = {}): NumberFieldDef {
@@ -84,10 +85,41 @@ describe('ExpressionInput', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('rejects a value failing the validate predicate', () => {
-    const { input, onChange } = renderInput({ value: 10, validate: (v) => v > 0 })
+  it('rejects a value failing the validate rule', () => {
+    const { input, onChange } = renderInput({ value: 10, validate: positive })
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: '-5' } })
+    fireEvent.blur(input)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('names why a value is refused, as a field message', () => {
+    // An unparsable expression and a value outside the rule used to share
+    // one red border; the message tells them apart.
+    const { input } = renderInput({ value: 10, validate: positive })
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: '2+/' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Value refused: cannot evaluate "2+/"')
+    fireEvent.change(input, { target: { value: '-5' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Value refused: must be greater than 0')
+    fireEvent.change(input, { target: { value: '5' } })
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('marks a stored value that no longer evaluates without calling it refused', () => {
+    // A deleted variable or an imported doc: the user refused nothing, so the
+    // field keeps the border and the reason on hover, and no field line.
+    const { input } = renderInput({ value: 'gone*2' })
+    expect(input.className).toContain('feature-field-input--error')
+    expect(input.title).toBe('cannot evaluate "gone*2"')
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('shows no message for an empty box, which is unfinished, not refused', () => {
+    const { input, onChange } = renderInput({ value: 10 })
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: '' } })
+    expect(screen.queryByRole('status')).toBeNull()
     fireEvent.blur(input)
     expect(onChange).not.toHaveBeenCalled()
   })
@@ -173,14 +205,14 @@ describe('ExpressionInput wheel step', () => {
   })
 
   it('refuses a step that fails validate and holds at the boundary', () => {
-    const { input, onChange } = renderInput({ value: 1, validate: (v) => v > 0 })
+    const { input, onChange } = renderInput({ value: 1, validate: positive })
     fireEvent.wheel(input, { deltaY: 100 })
     expect(onChange).not.toHaveBeenCalled()
     expect(input.value).toBe('1')
   })
 
   it('still preventDefaults a refused step at the boundary', () => {
-    const { input } = renderInput({ value: 1, validate: (v) => v > 0 })
+    const { input } = renderInput({ value: 1, validate: positive })
     const ev = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true })
     input.dispatchEvent(ev)
     expect(ev.defaultPrevented).toBe(true)

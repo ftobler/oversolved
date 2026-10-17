@@ -10,6 +10,7 @@
  * translate that object into a row mark, no React, no store, no viewport.
  */
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
+import { NO_MARK, type StatusMark } from './statusMark'
 
 /**
  * The rigid-mate acceptance tolerance (mm, or dimensionless for axes), matching
@@ -19,17 +20,15 @@ import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
  */
 export const MATE_RESIDUAL_TOL = 1e-4
 
-export interface StatusMark {
-  failed: boolean
-  level: 'error' | 'warning' | null
-  message: string
+/** The shared item mark (utils/core/statusMark.ts) plus the assembly's cause. */
+export interface AssemblyMark extends StatusMark {
   // Why a mate marked, so a consumer can pick the right row style without
   // re-deriving the cause ('stale' keeps the legacy unresolved-ref look, the
   // others redden the name with the specific message).
   cause?: 'error' | 'stale' | 'part'
 }
 
-const OK: StatusMark = { failed: false, level: null, message: '' }
+const OK: AssemblyMark = NO_MARK
 
 /**
  * Whether mate `id` failed in the last solve, and why.
@@ -47,7 +46,7 @@ export function mateFailure(
   id: string,
   status: AssemblySolveStatus | null,
   refParts?: readonly string[],
-): StatusMark {
+): AssemblyMark {
   const result = status?.mates[id]
   if (!result) return OK
 
@@ -85,7 +84,7 @@ export function mateFailure(
  * Whether part instance `handle` failed to load. Absent means healthy: only a
  * bundle that failed records an entry.
  */
-export function partFailure(handle: string, status: AssemblySolveStatus | null): StatusMark {
+export function partFailure(handle: string, status: AssemblySolveStatus | null): AssemblyMark {
   const result = status?.parts[handle]
   if (!result?.failed) return OK
   return { failed: true, level: 'error', message: result.error || 'The part failed to load.', cause: 'part' }
@@ -104,7 +103,7 @@ export function partFailure(handle: string, status: AssemblySolveStatus | null):
 export function assemblyVerdict(
   status: AssemblySolveStatus | null,
   nameFor?: (id: string) => string | undefined,
-): StatusMark & { verdict: string } {
+): AssemblyMark & { verdict: string } {
   const verdict = status?.verdict ?? 'none'
 
   if (verdict === 'overconstrained') {

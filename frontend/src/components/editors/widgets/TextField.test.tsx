@@ -56,12 +56,24 @@ describe('TextFieldWidget', () => {
   })
 
   it('reverts to the external value after a blur that fails validate', () => {
-    const strict: TextFieldDef = { ...field, validate: (v) => v === 'A' }
+    const strict: TextFieldDef = { ...field, validate: (v) => (v === 'A' ? null : 'must be A') }
     const { input, onMutation } = renderWidget({ value: 'A', field: strict })
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: 'nope' } })
     fireEvent.blur(input)
     expect(onMutation).not.toHaveBeenCalled()
     expect(input.value).toBe('A')
+  })
+
+  it('names the refusal while editing, as every field does', () => {
+    const strict: TextFieldDef = { ...field, parse: (s) => (s === '' ? null : s), validate: (v) => (v === 'A' ? null : 'must be A') }
+    const { input } = renderWidget({ value: 'A', field: strict })
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'nope' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Value refused: must be A')
+    fireEvent.change(input, { target: { value: '' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Value refused: cannot be read')
+    fireEvent.blur(input)
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

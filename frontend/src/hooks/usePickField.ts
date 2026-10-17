@@ -1,8 +1,8 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { failLoud } from '@/stores/stateInvariants'
 import { isPickAllowed } from '@/utils/query/pickOrder'
-import { useNotifySafe } from '@/contexts/ToastContext'
+import { fieldRefusal, type StatusMark } from '@/utils/core/statusMark'
 
 /**
  * Layer-2 pick-field consumer. A pick chip is a consumer of normal selection,
@@ -21,10 +21,14 @@ import { useNotifySafe } from '@/contexts/ToastContext'
  * A refused pick never reaches `onPick`: both refusal guards run here. Passing
  * `features` enables the circular-dependency rule ("only reference earlier
  * features"); `validatePick` is the field's own rule, returning the reason to
- * refuse or null. A refusal raises one warning toast carrying that reason and
- * keeps the field armed, unlike an accepted pick, so the user can go straight
- * for valid geometry. The reason travels with the field's rule, so the toast
- * cannot misstate why the pick was refused.
+ * refuse or null. A refusal keeps the field armed, unlike an accepted pick, so
+ * the user can go straight for valid geometry, and its reason comes back as
+ * the `refusal` field mark (utils/core/statusMark.ts) for the editor to show
+ * next to the field with StatusMessage. The message belongs in
+ * the dialog the user is working in, not in a toast detached from the field it
+ * explains. The reason travels with the field's rule, so it cannot misstate
+ * why the pick was refused. It lasts while the same field stays armed and
+ * clears on the next accepted pick or toggle-off.
  *
  * Re-clicking an already-picked element toggles it out of `normalSelection`
  * (the viewport click path is symmetric). A chip-owned id that has dropped out
@@ -46,7 +50,7 @@ import { useNotifySafe } from '@/contexts/ToastContext'
  * Closing it means normalizing the clicked id the same way before comparing,
  * which belongs with the transform, not here.
  *
- * Returns `{ isPicking, toggle, activate }`: `toggle` activates this field
+ * Returns `{ isPicking, toggle, activate, refusal }`: `toggle` activates this field
  * (clearing any other active field) or deactivates it if already active;
  * `activate` unconditionally arms this field, used after a chip is removed so
  * the user can immediately re-pick the value they just took out.
@@ -61,15 +65,23 @@ export function usePickField(
     features?: readonly { id: string }[]
     validatePick?: (selectionId: string) => string | null
   },
-): { isPicking: boolean; toggle: () => void; activate: () => void } {
+): { isPicking: boolean; toggle: () => void; activate: () => void; refusal: StatusMark } {
   const multi = opts?.multi ?? false
   const onUnpick = opts?.onUnpick
   const features = opts?.features
   const validatePick = opts?.validatePick
   const activePickField = useSketchEditorStore(s => s.activePickField)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
-  const notify = useNotifySafe()
   const isPicking = activePickField?.featureId === featureId && activePickField?.field === field
+  // The last refusal, keyed by the field it was raised in. Disarming or moving
+  // to another field drops it outright (PlaneEditor reuses one hook across its
+  // plane fields, so `isPicking` stays true across a field switch), during
+  // render rather than in an effect, so a re-armed field starts clean instead
+  // of flashing the old reason.
+  const fieldKey = `${featureId}:${field}`
+  const [lastRefusal, setLastRefusal] = useState<{ key: string; reason: string } | null>(null)
+  if (lastRefusal !== null && (!isPicking || lastRefusal.key !== fieldKey)) setLastRefusal(null)
+  const refusal = fieldRefusal('Pick', lastRefusal?.reason ?? null)
 
   useEffect(() => {
     if (!isPicking) return
@@ -79,7 +91,7 @@ export function usePickField(
     // accepted id and closes; a multi field loops over the whole set so a
     // rubber-band box adds every edge instead of just the first one (g2-M3).
     let hasNewPick = false
-    let refused = false
+    let refusedWith: string | null = null
     for (const id of s.normalSelection) {
       if (s.chipOwnedSelection.has(id)) continue
       hasNewPick = true
@@ -87,11 +99,9 @@ export function usePickField(
         // Circular dependency: the host would reference its own output or a
         // later feature's. Drop the pick but keep the field open (unlike an
         // accepted pick) so the user can go straight for valid geometry.
-        if (!refused) {
-          refused = true
-          notify('Pick refused: can only reference earlier features', 'warning')
-        }
+        refusedWith ??= 'can only reference earlier features'
         if (!multi) {
+          setLastRefusal({ key: fieldKey, reason: refusedWith })
           s.clearNormalSelection()
           return
         }
@@ -100,14 +110,12 @@ export function usePickField(
       // The field's own rule, when it has one: it returns the refusal reason,
       // which is what the user is told. A refused pick de-highlights with
       // nothing added and keeps the field open, like the build-order refusal
-      // above; one toast per batch when a box drags in several bad picks.
+      // above; a box dragging in several bad picks reports the first reason.
       const fieldRefusal = validatePick ? validatePick(id) : null
       if (fieldRefusal !== null) {
-        if (!refused) {
-          refused = true
-          notify(`Pick refused: ${fieldRefusal}`, 'warning')
-        }
+        refusedWith ??= fieldRefusal
         if (!multi) {
+          setLastRefusal({ key: fieldKey, reason: refusedWith })
           s.clearNormalSelection()
           return
         }
@@ -115,12 +123,16 @@ export function usePickField(
       }
       onPick(id)
       if (!multi) {
+        setLastRefusal(null)
         s.clearNormalSelection()
         s.setActivePickField(null)
         return
       }
     }
     if (hasNewPick) {
+      // A box that mixed good and bad picks still reports the refusal: the
+      // user should learn why some of the boxed elements did not land.
+      setLastRefusal(refusedWith === null ? null : { key: fieldKey, reason: refusedWith })
       s.clearNormalSelection()
       return
     }
@@ -142,6 +154,7 @@ export function usePickField(
           return
         }
         onUnpick(id)
+        setLastRefusal(null)
         // Mirror the onPick path: empty both selection sets so the unstable
         // callback identity can't re-fire this remove before the async re-solve
         // updates `values` and the chip's sync effect repopulates the survivors.
@@ -149,7 +162,7 @@ export function usePickField(
         return
       }
     }
-  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId, field, notify, validatePick])
+  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId, field, fieldKey, validatePick])
 
   const toggle = useCallback(() => {
     const s = useSketchEditorStore.getState()
@@ -164,9 +177,12 @@ export function usePickField(
   // Unconditional arming, unlike `toggle`: idempotent when this field is already
   // the active one (setActivePickField re-arms the same entry), so a caller can
   // fire it after a remove without worrying about whether the field was active.
+  // It also drops a standing refusal: the chip's x removes a value without the
+  // unpick path, and the reason no longer describes the field it now shows.
   const activate = useCallback(() => {
+    setLastRefusal(null)
     useSketchEditorStore.getState().setActivePickField({ featureId, field, multi })
   }, [featureId, field, multi])
 
-  return { isPicking, toggle, activate }
+  return { isPicking, toggle, activate, refusal }
 }

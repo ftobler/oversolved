@@ -3,6 +3,7 @@ import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PickFieldWidgetProps } from './fieldTypes'
+import { StatusMessage } from '@/components/shared/StatusMessage'
 
 export function PickFieldWidget({
   field, data, fid, onMutation, mutationPrefix, features, partLabels,
@@ -105,6 +106,7 @@ export function PickFieldWidget({
         unresolvedValues={unresolvedValues}
         failedValues={failedValues}
       />
+      <StatusMessage mark={pickState.refusal} />
     </div>
   )
 }

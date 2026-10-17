@@ -204,9 +204,10 @@ describe('FeatureHandles double-click edit', () => {
     act(() => seams.callbacks!.onDoubleClick(0, 0))
     const validate = useSketchUiStore.getState().pendingDialog!.validate!
 
-    expect(validate('abc')).toBe('Enter a number or expression')
-    expect(validate('0')).toBe('Must be greater than 0')
-    expect(validate('-2')).toBe('Must be greater than 0')
+    // The shared value rules' words, the same as a schema field's.
+    expect(validate('abc')).toBe('Value refused: cannot evaluate "abc"')
+    expect(validate('0')).toBe('Value refused: must be greater than 0')
+    expect(validate('-2')).toBe('Value refused: must be greater than 0')
     expect(validate('12')).toBeNull()
   })
 

@@ -147,3 +147,33 @@ describe('PlaneEditor pick chips', () => {
     })
   })
 })
+
+describe('PlaneEditor pick refusal', () => {
+  const arm = (field: string) => act(() => {
+    useSketchEditorStore.getState().setActivePickField({ featureId: 'pl1', field })
+  })
+
+  it('shows the refusal under the armed chip only', () => {
+    renderEditor(vi.fn(), { mode: 'plane_point', plane: '', point: '' })
+    arm('plane')
+    act(() => { useSketchEditorStore.getState().toggleNormalSelection('@pl1') })
+
+    const lines = document.querySelectorAll('.status-message')
+    expect(lines).toHaveLength(1)
+    expect(lines[0].textContent).toBe('Pick refused: can only reference earlier features')
+  })
+
+  it('does not bring an old refusal back when the user returns to its field', () => {
+    // One hook serves every plane field, so `isPicking` stays true across a
+    // field switch; the reason must be dropped, not only hidden, on the switch.
+    renderEditor(vi.fn(), { mode: 'plane_point', plane: '', point: '' })
+    arm('plane')
+    act(() => { useSketchEditorStore.getState().toggleNormalSelection('@pl1') })
+    expect(document.querySelector('.status-message')).not.toBeNull()
+
+    arm('point')
+    expect(document.querySelector('.status-message')).toBeNull()
+    arm('plane')
+    expect(document.querySelector('.status-message')).toBeNull()
+  })
+})

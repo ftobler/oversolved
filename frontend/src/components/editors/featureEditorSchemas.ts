@@ -6,6 +6,7 @@ import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations } from '@/ke
 import type { ThreadSpec } from '@/types/cad'
 import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
 import { stripSelectionWrapper } from '@/utils/query/selectionId'
+import { positive, nonNegative, finite, between } from '@/utils/core/valueRules'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- schema data is a heterogeneous bag of editor values
 type SchemaData = Record<string, any>
@@ -28,7 +29,7 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       transform: stripSelectionWrapper, removeValue: undefined,
       emptyText: '(pick plane, point, or face)' },
     { type: 'number', key: 'distance', label: 'Distance', default: 10,
-      showWhen: (d) => d.termination !== 'up_to', validate: (v) => v > 0 },
+      showWhen: (d) => d.termination !== 'up_to', validate: positive },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
@@ -48,7 +49,7 @@ export const REVOLVE_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_revolve_profile', addValueKey: 'sketchQuery',
       removeMutationType: 'remove_revolve_profile' },
-    { type: 'number', key: 'angle', label: 'Angle', default: 360, validate: (v) => v > 0 },
+    { type: 'number', key: 'angle', label: 'Angle', default: 360, validate: positive },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }, { value: 'symmetric', label: 'Symmetric' }] },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
@@ -102,7 +103,7 @@ export const FILLET_SCHEMA: FeatureEditorSchema = {
       addMutationType: 'add_fillet_edge', addValueKey: 'edgeQuery',
       removeMutationType: 'remove_fillet_edge',
       validatePick: namedEdgePickRefusal },
-    { type: 'number', key: 'radius', label: 'Radius', default: 1, validate: (v) => v > 0 },
+    { type: 'number', key: 'radius', label: 'Radius', default: 1, validate: positive },
   ],
 }
 
@@ -117,9 +118,9 @@ export const CHAMFER_SCHEMA: FeatureEditorSchema = {
       validatePick: namedEdgePickRefusal },
     { type: 'select', key: 'kind', label: 'Kind', default: 'distance',
       options: [{ value: 'distance', label: 'Distance' }, { value: 'angle_distance', label: 'Angle + Distance' }] },
-    { type: 'number', key: 'distance', label: 'Distance', default: 1, validate: (v) => v > 0 },
+    { type: 'number', key: 'distance', label: 'Distance', default: 1, validate: positive },
     { type: 'number', key: 'angle', label: 'Angle', default: 45,
-      showWhen: (d) => d.kind === 'angle_distance', validate: (v) => v > 0 },
+      showWhen: (d) => d.kind === 'angle_distance', validate: positive },
   ],
 }
 
@@ -166,7 +167,7 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
       addMutationType: 'add_shell_face', addValueKey: 'faceQuery',
       removeMutationType: 'remove_shell_face',
       validatePick: facePickRefusal },
-    { type: 'number', key: 'thickness', label: 'Thickness', default: 1, validate: (v) => v > 0, unit: 'mm' },
+    { type: 'number', key: 'thickness', label: 'Thickness', default: 1, validate: positive, unit: 'mm' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'inward',
       options: [{ value: 'inward', label: 'Inward' }, { value: 'outward', label: 'Outward' }] },
     // No face names the body for a closed hollow, so the body pick is the only
@@ -213,7 +214,7 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
       addMutationType: 'add_boolean_tool', addValueKey: 'tool',
       removeMutationType: 'remove_boolean_tool', removeKey: 'tool', removeValueIsIndex: false },
     { type: 'number', key: 'clearance', label: 'Clearance', default: 0, unit: 'mm',
-      showWhen: (d) => d.operation === 'subtract', validate: Number.isFinite },
+      showWhen: (d) => d.operation === 'subtract', validate: finite },
     { type: 'checkbox', key: 'keep_tools', label: 'Keep tools', default: false },
   ],
 }
@@ -224,11 +225,11 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
   defaults: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' },
   fields: [
     { type: 'pick', key: 'sketch', label: 'Sketch', transform: stripSelectionWrapper },
-    { type: 'number', key: 'diameter', label: 'Diameter', default: 10, validate: (v) => v > 0, unit: 'mm' },
+    { type: 'number', key: 'diameter', label: 'Diameter', default: 10, validate: positive, unit: 'mm' },
     { type: 'select', key: 'depth_mode', label: 'Depth mode', default: 'blind',
       options: [{ value: 'blind', label: 'Blind' }, { value: 'through_all', label: 'Through All' }] },
     { type: 'number', key: 'depth', label: 'Depth', default: 20,
-      showWhen: (d) => d.depth_mode === 'blind', validate: (v) => v > 0, unit: 'mm' },
+      showWhen: (d) => d.depth_mode === 'blind', validate: positive, unit: 'mm' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }] },
     // The cosmetic thread: metadata plus a display helix on the bore, no
@@ -317,16 +318,16 @@ export const ARRAY_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'direction_x_query', label: 'Direction X', transform: resolveAxisQuery,
       emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_x', label: 'Invert X', default: false },
-    { type: 'number', key: 'count_x', label: 'Count X', default: 2, parse: 'int', validate: (v) => v > 0, min: 1 },
-    { type: 'number', key: 'pitch_x', label: 'Pitch X', default: 20, validate: (v) => v >= 0, min: 0 },
+    { type: 'number', key: 'count_x', label: 'Count X', default: 2, parse: 'int', validate: positive, min: 1 },
+    { type: 'number', key: 'pitch_x', label: 'Pitch X', default: 20, validate: nonNegative, min: 0 },
     { type: 'pick', key: 'direction_y_query', label: 'Direction Y', transform: resolveAxisQuery,
       showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_y', label: 'Invert Y', default: false,
       showWhen: (d) => d.mode === 'rectangular' },
     { type: 'number', key: 'count_y', label: 'Count Y', default: 2,
-      showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: (v) => v > 0, min: 1 },
+      showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: positive, min: 1 },
     { type: 'number', key: 'pitch_y', label: 'Pitch Y', default: 20,
-      showWhen: (d) => d.mode === 'rectangular', validate: (v) => v >= 0, min: 0 },
+      showWhen: (d) => d.mode === 'rectangular', validate: nonNegative, min: 0 },
   ],
 }
 
@@ -341,7 +342,7 @@ export const CIRCULAR_ARRAY_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
     { type: 'checkbox', key: 'include_source', label: 'Include src', default: true },
-    { type: 'number', key: 'count', label: 'Count', default: 4, parse: 'int', validate: (v) => v > 0, min: 1 },
+    { type: 'number', key: 'count', label: 'Count', default: 4, parse: 'int', validate: positive, min: 1 },
     { type: 'checkbox', key: '_evenly_spaced', label: 'Evenly spaced', default: true,
       isChecked: (d) => d.step_angle == null,
       getMutation: (checked, d) => ({ field: 'step_angle', value: checked ? null : (360 / (d.count ?? 4)) }) },
@@ -426,7 +427,7 @@ export const HELIX_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'radius_mode', label: 'Radius', default: 'derived',
       options: [{ value: 'derived', label: 'From reference' }, { value: 'entered', label: 'Enter' }] },
     { type: 'number', key: 'radius', label: 'Radius', default: 5,
-      showWhen: (d) => d.radius_mode === 'entered', validate: (v) => v > 0, unit: 'mm' },
+      showWhen: (d) => d.radius_mode === 'entered', validate: positive, unit: 'mm' },
     { type: 'select', key: 'mode', label: 'Define by', default: 'pitch_turns',
       options: [
         { value: 'pitch_turns', label: 'Pitch + Turns' },
@@ -435,11 +436,11 @@ export const HELIX_SCHEMA: FeatureEditorSchema = {
         { value: 'angle_turns', label: 'Angle + Turns' },
         { value: 'angle_height', label: 'Angle + Height' },
       ] },
-    { type: 'number', key: 'pitch', label: 'Pitch', default: 1, showWhen: HELIX_USES_PITCH, validate: (v) => v > 0, unit: 'mm' },
-    { type: 'number', key: 'turns', label: 'Turns', default: 5, showWhen: HELIX_USES_TURNS, validate: (v) => v > 0 },
-    { type: 'number', key: 'height', label: 'Height', default: 5, showWhen: HELIX_USES_HEIGHT, validate: (v) => v > 0, unit: 'mm' },
+    { type: 'number', key: 'pitch', label: 'Pitch', default: 1, showWhen: HELIX_USES_PITCH, validate: positive, unit: 'mm' },
+    { type: 'number', key: 'turns', label: 'Turns', default: 5, showWhen: HELIX_USES_TURNS, validate: positive },
+    { type: 'number', key: 'height', label: 'Height', default: 5, showWhen: HELIX_USES_HEIGHT, validate: positive, unit: 'mm' },
     { type: 'number', key: 'helix_angle', label: 'Helix angle', default: 5,
-      showWhen: HELIX_USES_ANGLE, validate: (v) => v > 0 && v < 90, unit: 'deg' },
+      showWhen: HELIX_USES_ANGLE, validate: between(0, 90), unit: 'deg' },
     { type: 'checkbox', key: 'height_from_reference', label: 'Height from reference', default: false,
       showWhen: (d) => HELIX_USES_HEIGHT(d) && HELIX_FACE_REF(d) },
     { type: 'number', key: 'start_angle', label: 'Start angle', default: 0, unit: 'deg' },
