@@ -7,6 +7,7 @@ use super::super::profile_loops::{
 };
 use super::super::{TOL_FACE_EXISTENCE_MIN_AREA, TOL_TOPOLOGY_MERGE as MERGE, TWO_PI};
 use super::build::{bend, depart, HalfEdge};
+use super::holes::HoleShell;
 use super::{dedup, EdgeOut, Split, SurfaceOut, TopoEntity, Verts};
 use crate::radians;
 
@@ -251,7 +252,7 @@ pub(super) fn trace_face_cycles(
     surfaces
 }
 
-fn circle_arcs(cx: f64, cy: f64, r: f64, eid: &str) -> Vec<BoundaryEdge> {
+pub(super) fn circle_arcs(cx: f64, cy: f64, r: f64, eid: &str) -> Vec<BoundaryEdge> {
     vec![
         BoundaryEdge {
             geom: EdgeGeom::Arc {
@@ -401,8 +402,8 @@ const HOLE_COVER_SAMPLES: usize = 64;
 /// Samples per arc of a hole region's own boundary in the same test.
 const FACE_CHAIN_SAMPLES: usize = 16;
 
-/// Subtract the hole regions from the material faces that cover them, then
-/// fold nested loops into the sketch-area model via `subdivide_loops`: every
+/// Subtract the hole shells from the material faces that cover them, then fold
+/// nested loops into the sketch-area model via `subdivide_loops`: every
 /// surviving loop stays its own area, carrying the loops immediately nested
 /// inside it as holes.
 ///
@@ -414,7 +415,8 @@ const FACE_CHAIN_SAMPLES: usize = 16;
 /// its area would silently include a region the rule calls a hole.
 pub(super) fn nest_surfaces(
     surfaces: Vec<SurfaceOut>,
-    hole_regions: &[SurfaceOut],
+    hole_shells: &[HoleShell],
+    island_loops: &[Vec<BoundaryEdge>],
 ) -> Vec<SurfaceOut> {
     let loops: Vec<Vec<BoundaryEdge>> = surfaces.iter().map(|s| s.boundary.clone()).collect();
     let sub = subdivide_loops(&loops);
@@ -434,23 +436,25 @@ pub(super) fn nest_surfaces(
         // `strict_inside` keeps it from being subtracted from a face that
         // never surrounded it.
         let on_tol = polygon_sagitta(&own, HOLE_COVER_SAMPLES);
-        for hole in hole_regions {
-            // The hole region is one traced piece of a shell's interior; every
-            // piece whose region this face covers must be subtracted, or the
-            // face's area swallows a hole.
-            if s.holes.iter().any(|h| same_loop(h, &hole.boundary)) {
-                continue;
-            }
-            let covered = covers_region(&own, &hole.boundary, on_tol);
-            #[cfg(test)]
-            if std::env::var("COVER_DEBUG").is_ok() {
-                eprintln!(
-                    "  surface {oi} vs a hole: covered {covered} (own {} pts, on_tol {on_tol:.3e})",
-                    own.len()
-                );
-            }
-            if covered {
-                s.holes.push(hole.boundary.clone());
+        // Only a standalone island subtracts: a traced face's region is another
+        // component of the same subdivision, so the hole regions inside it are
+        // not its to remove.
+        if !island_loops.iter().any(|l| same_loop(l, &s.boundary)) {
+            out.push(s);
+            continue;
+        }
+        for shell in hole_shells {
+            for region in &shell.regions {
+                // The region is one traced piece of the shell's interior; the
+                // piece whose region this face covers is the wire to subtract
+                // (the shell's whole loop would cross a face that covers only
+                // part of it).
+                if s.holes.iter().any(|h| same_loop(h, &region.boundary)) {
+                    continue;
+                }
+                if covers_region(&own, &region.boundary, on_tol) {
+                    s.holes.push(region.boundary.clone());
+                }
             }
         }
         out.push(s);
