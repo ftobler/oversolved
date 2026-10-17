@@ -946,6 +946,29 @@ fn a_self_crossing_spline_closes_its_lobe() {
 }
 
 #[test]
+fn a_node_at_the_start_still_slices_its_lobe() {
+    // B(0) = B(0.5) = (0, 0): the node sits on ONE end (the start), so it is
+    // not the closure and the lobe between the parameters is a face. The
+    // crossing's vertex is the start's own, so the lobe piece is a self-loop.
+    let geom = vec![(
+        "s0".into(),
+        spline_open([0.0, 0.0], [1.0, 1.0], [0.0, 2.0], [-3.0, -9.0]),
+    )];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 1, "the lobe is the one face");
+    let boundary = &t.surfaces[0].boundary;
+    assert_eq!(boundary.len(), 1, "the lobe is the self-loop piece alone");
+    assert_eq!(
+        boundary[0].start_vertex, boundary[0].end_vertex,
+        "the lobe starts and ends on the node, which is the start vertex"
+    );
+    assert!(
+        crate::topology::profile_loops::loop_signed_area(boundary) > 0.0,
+        "the lobe bounds a positive area"
+    );
+}
+
+#[test]
 fn a_sliced_washer_keeps_the_c_shapes_and_drops_the_bore_halves() {
     // The even/odd rule end to end: a washer sliced across by a line used to
     // emit four bounded regions (two ring halves and two bore halves), because

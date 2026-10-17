@@ -789,6 +789,23 @@ fn a_near_closed_spline_reports_no_crossing() {
 }
 
 #[test]
+fn a_node_at_one_end_of_an_open_curve_is_still_a_crossing() {
+    // B(0) = B(0.5) = (0, 0): the curve leaves its start, loops back through
+    // it and carries on to a distant end. Only ONE end takes part, so this is
+    // a real node and the lobe between the parameters is geometry; the
+    // near-closure rule (both ends merged with the crossing) must not swallow
+    // it.
+    let c: BzCtrl = [[0.0, 0.0], [1.0, 1.0], [0.0, 2.0], [-3.0, -9.0]];
+    let cross = bezier_self_crossing(&c).expect("a node at the start");
+    assert!(
+        cross.t_lo.abs() < 1e-9 && (cross.t_hi - 0.5).abs() < 1e-9,
+        "{cross:?}"
+    );
+    let p = (cross.point[0]).hypot(cross.point[1]);
+    assert!(p < 1e-9, "the node is the start point: {:?}", cross.point);
+}
+
+#[test]
 fn a_self_crossing_is_found_at_every_curve_scale() {
     // The closed form reads control-point differences only, so it must not
     // depend on the curve's size: the same shape at a thousandth and a

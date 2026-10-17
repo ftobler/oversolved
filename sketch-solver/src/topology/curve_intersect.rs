@@ -795,13 +795,15 @@ fn cross2(u: Vec2, v: Vec2) -> f64 {
 ///     pieces, so the curve pinches rather than crosses;
 ///   - the crossing point must lie more than `TOL_TOPOLOGY_MERGE` from BOTH of
 ///     the curve's own ends, the vertex merge: a double point the merge fuses
-///     with an end IS the closure of a spline whose ends sit a sub-merge gap
+///     with BOTH ends IS the closure of a spline whose ends sit a sub-merge gap
 ///     apart (two branches swapping sides over a gap below the merge, so the
 ///     tiny loop they enclose is a point to the pipeline), and splitting there
-///     would slice a phantom lobe out of a curve that merely closes. The ends'
-///     own control points anchor the test: they are the vertices the seed pass
-///     minted, whatever the branch separation at the double point measures (it
-///     is zero by construction).
+///     would slice a phantom lobe out of a curve that merely closes. A double
+///     point at ONE end only is a real node: the curve leaves its start, loops
+///     back through it and carries on, and the lobe that encloses is geometry.
+///     The ends' own control points anchor the test: they are the vertices the
+///     seed pass minted, whatever the branch separation at the double point
+///     measures (it is zero by construction).
 ///
 /// `None` for a curve with no isolated double point inside its own parameter
 /// window: a curve that never meets itself (`v` beyond the roots), a retrace
@@ -841,7 +843,9 @@ pub fn bezier_self_crossing(c: &BzCtrl) -> Option<SelfCross> {
     }
     let pa = bezier_point(c[0], c[1], c[2], c[3], t_lo);
     let closes = |end: Vec2| (pa[0] - end[0]).hypot(pa[1] - end[1]) <= TOL_TOPOLOGY_MERGE;
-    if closes(c[0]) || closes(c[3]) {
+    // Both ends, not either: only a crossing merged with BOTH ends is the
+    // closure of the curve; one end at the double point is a real node.
+    if closes(c[0]) && closes(c[3]) {
         return None;
     }
     let pb = bezier_point(c[0], c[1], c[2], c[3], t_hi);
