@@ -344,14 +344,14 @@ mod tests {
         // quadratic, then the arc endpoint rebuilt from its angle. The closure
         // question reads exactly such an endpoint, so the allowance must cover
         // the rounding the chain leaves at every scale the app models.
-        let cases: [([f64; 2], f64); 5] = [
-            ([-0.005, 0.01], 0.025),
-            ([-0.005, 0.01], 0.01),
-            ([0.0, 0.0], 1.0),
-            ([1500.0, -800.0], 900.0),
-            ([0.02, 0.0], 0.005),
-        ];
-        for (c, r) in cases {
+        //
+        // The witness with teeth is the small radius at the far offset: the
+        // recompute subtracts coordinates of the comparison's own magnitude,
+        // so its rounding is a few ulp of the OFFSET, not of the radius. The
+        // radius-derived constant this allowance replaced (4 * resolution(r))
+        // rejects that miss, so the case pins the derivation, not just the
+        // tolerance's existence.
+        let miss_of = |c: [f64; 2], r: f64| -> f64 {
             // The horizontal line through the centre, in the closed form the
             // dcel's line/circle arm solves.
             let (p0, d) = ([c[0] - 3.0 * r, c[1]], 6.0 * r);
@@ -377,6 +377,22 @@ mod tests {
                 "centre {c:?} r {r}: the recompute leaves {miss:e}, allowance {:e}",
                 on_carrier_tol(magnitude)
             );
+            miss
+        };
+        for (c, r) in [
+            ([-0.005, 0.01], 0.025),
+            ([-0.005, 0.01], 0.01),
+            ([0.0, 0.0], 1.0),
+            ([1500.0, -800.0], 900.0),
+            ([0.02, 0.0], 0.005),
+        ] {
+            miss_of(c, r);
         }
+        let witness = miss_of([1500.0, -800.0], 0.01);
+        let old = 4.0 * resolution(0.01);
+        assert!(
+            witness > old,
+            "the witness leaves {witness:e}, under the old constant {old:e}: no teeth"
+        );
     }
 }
