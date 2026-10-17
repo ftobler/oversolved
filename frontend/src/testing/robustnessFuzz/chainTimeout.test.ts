@@ -2,7 +2,8 @@
 // settles its recipe, a hang kills only its own child and leaves a sibling in
 // flight, a queued recipe's clock starts at dispatch, zombie events from a
 // killed child are ignored, a crash or a dispose rejects exactly the recipes
-// involved, and every child replays one recipe and is retired.
+// involved (a crash naming the signal and the step it reached), and every child
+// replays one recipe and is retired.
 
 import { describe, it, expect, afterEach } from 'vitest'
 import {
@@ -21,13 +22,13 @@ interface FakeChild {
   sent: { id: number; recipe: Recipe }[]
   killed: boolean
   reply(msg: Record<string, unknown>): void
-  exit(code: number): void
+  exit(code: number | null, signal?: string | null): void
 }
 
 function makeFakeChild(): FakeChild {
   const messageCbs: ((msg: unknown) => void)[] = []
   const errorCbs: ((e: unknown) => void)[] = []
-  const exitCbs: ((code: number) => void)[] = []
+  const exitCbs: ((code: number | null, signal: string | null) => void)[] = []
   const sent: { id: number; recipe: Recipe }[] = []
   let killed = false
   const child = {
@@ -35,7 +36,7 @@ function makeFakeChild(): FakeChild {
     on(event: string, cb: (arg: unknown) => void) {
       if (event === 'message') messageCbs.push(cb)
       else if (event === 'error') errorCbs.push(cb)
-      else exitCbs.push(cb as (code: number) => void)
+      else exitCbs.push(cb as (code: number | null, signal: string | null) => void)
     },
     kill() { killed = true },
   } as unknown as ChainChildLike
@@ -44,7 +45,7 @@ function makeFakeChild(): FakeChild {
     sent,
     get killed() { return killed },
     reply(msg) { for (const cb of messageCbs) cb(msg) },
-    exit(code) { for (const cb of exitCbs) cb(code) },
+    exit(code, signal = null) { for (const cb of exitCbs) cb(code, signal) },
   }
 }
 
@@ -156,11 +157,37 @@ describe('the chain watchdog pool', () => {
     expect((await second).status).toBe('done')
   })
 
-  it('rejects the in-flight recipe when its child exits', async () => {
+  it('rejects the in-flight recipe when its child exits, naming the step', async () => {
     installPool()
     const pending = runChainWithTimeout(recipe, { timeoutMs: 1000 })
-    const rejects = expect(pending).rejects.toThrow(/exited with code 1/)
+    const rejects = expect(pending).rejects.toThrow(/exited with code 1 while at step 3 \(boolean\)/)
+    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { step: 3, kind: 'boolean' } })
     fakes[0].exit(1)
+    await rejects
+  })
+
+  it('names the signal and the step when a child is killed from outside', async () => {
+    // A signal death has no exit code (the OOM killer's SIGKILL, a WASM
+    // abort's SIGABRT), so the signal name and the step the child had reached
+    // are the whole diagnosis: a bare "exited with code null" left the triage
+    // of the 2026-10-17 seed-134 crash guessing.
+    installPool()
+    const pending = runChainWithTimeout(recipe, { timeoutMs: 1000 })
+    const rejects = expect(pending).rejects.toThrow(
+      /was killed by signal SIGKILL while at step 2 \(mirror\)/,
+    )
+    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { step: 2, kind: 'mirror' } })
+    fakes[0].exit(null, 'SIGKILL')
+    await rejects
+  })
+
+  it('reports a signal-less kill before the first step as an unknown signal', async () => {
+    installPool()
+    const pending = runChainWithTimeout(recipe, { timeoutMs: 1000 })
+    const rejects = expect(pending).rejects.toThrow(
+      /was killed by an unknown signal before the first step/,
+    )
+    fakes[0].exit(null)
     await rejects
   })
 

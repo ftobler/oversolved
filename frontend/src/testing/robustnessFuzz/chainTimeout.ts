@@ -41,7 +41,7 @@ export interface ChainChildLike {
   send(msg: Record<string, unknown>): void
   on(event: 'message', cb: (msg: unknown) => void): void
   on(event: 'error', cb: (e: unknown) => void): void
-  on(event: 'exit', cb: (code: number) => void): void
+  on(event: 'exit', cb: (code: number | null, signal: string | null) => void): void
   kill(signal?: NodeJS.Signals): void
 }
 
@@ -213,6 +213,27 @@ function onTimeout(slot: Slot): void {
   pump()
 }
 
+/** The diagnosis for a child that left the pool on its own. A watchdog kill is
+ *  handled before this (the slot is dead by then), so an exit reaching here is a
+ *  crash or an outside kill: a signal death carries no exit code, and the signal
+ *  name (the OOM killer's SIGKILL, a WASM abort's SIGABRT) is the only clue, so
+ *  it is named. The step the child had reached gives the same context a hang
+ *  report carries; a death before the first progress message (the kernel load
+ *  runs first, and an OOM is likeliest during that allocation) says so. */
+function childExitError(
+  code: number | null,
+  signal: string | null,
+  at: { step: number; kind: string } | null,
+): Error {
+  const how = code !== null
+    ? `exited with code ${code}`
+    : signal !== null
+      ? `was killed by signal ${signal}`
+      : 'was killed by an unknown signal'
+  const where = at === null ? ' before the first step' : ` while at step ${at.step} (${at.kind})`
+  return new Error(`chain child ${how}${where}`)
+}
+
 function spawnSlot(): Slot {
   const child = childFactory()
   const slot: Slot = { child, pending: null, dead: false }
@@ -227,9 +248,9 @@ function spawnSlot(): Slot {
     removeSlot(slot, new Error('chain child process crashed'))
     pump()
   })
-  child.on('exit', (code: number) => {
+  child.on('exit', (code, signal) => {
     if (slot.dead) return
-    removeSlot(slot, new Error(`chain child exited with code ${code}`))
+    removeSlot(slot, childExitError(code, signal, slot.pending?.lastStep ?? null))
     pump()
   })
   slots.push(slot)
