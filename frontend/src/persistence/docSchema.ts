@@ -510,20 +510,6 @@ function checkShell(sub: DocRecord, field: string): void {
   checkOptional(sub, 'source_body', field, checkRef)
 }
 
-function checkLoft(sub: DocRecord, field: string): void {
-  checkOptional(sub, 'profiles', field, checkRefList)
-  checkOptional(sub, 'ruled', field, checkBoolean)
-  checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, OPERATIONS))
-  checkOptional(sub, 'merge_target', field, checkRef)
-}
-
-function checkDraft(sub: DocRecord, field: string): void {
-  checkOptional(sub, 'faces', field, checkRefList)
-  checkOptional(sub, 'angle', field, checkExpr)
-  checkOptional(sub, 'neutral', field, checkRef)
-  checkOptional(sub, 'direction', field, checkRef)
-}
-
 function checkMoveFace(sub: DocRecord, field: string): void {
   checkOptional(sub, 'faces', field, checkRefList)
   // Signed: 0 is the identity, negative removes material, so no positivity gate.
@@ -681,8 +667,6 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['fillet', checkFillet],
   ['chamfer', checkChamfer],
   ['shell', checkShell],
-  ['loft', checkLoft],
-  ['draft', checkDraft],
   ['move_face', checkMoveFace],
   ['delete_face', checkDeleteFace],
   ['boolean', checkBooleanDef],

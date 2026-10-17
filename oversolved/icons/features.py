@@ -256,55 +256,6 @@ def feature_chamfer(ctx):
     stroke(ctx, 1.5)
 
 
-@icon("frontend/src/assets/icons/feature-loft.svg")
-def feature_loft(ctx):
-    """Icon for Loft: two sections of different sizes bridged by the surface
-    between them (a small circle over a larger quadrilateral, in isometric)."""
-    # The larger bottom section, seen at a slant.
-    ctx.move_to(0.16, 0.76)
-    ctx.line_to(0.52, 0.88)
-    ctx.line_to(0.88, 0.68)
-    ctx.line_to(0.52, 0.56)
-    ctx.close_path()
-    stroke(ctx, 2.0)
-
-    # The smaller top section it lofts to.
-    ctx.arc(0.50, 0.28, px(3.2), 0, 2 * math.pi)
-    ctx.new_sub_path()
-    stroke(ctx, 2.0)
-
-    # The silhouette: the top section's rim down to the matching bottom corners.
-    ctx.move_to(0.36, 0.36)
-    ctx.line_to(0.22, 0.72)
-    ctx.move_to(0.64, 0.36)
-    ctx.line_to(0.82, 0.70)
-    stroke(ctx, 1.5)
-
-
-@icon("frontend/src/assets/icons/feature-draft.svg")
-def feature_draft(ctx):
-    """Icon for Draft: a wall tilted off vertical and hinged on the neutral
-    plane at its base (the dotted baseline)."""
-    # The tapered wall: wide at the neutral plane, narrow at the top.
-    ctx.move_to(0.30, 0.16)
-    ctx.line_to(0.16, 0.78)
-    ctx.line_to(0.84, 0.78)
-    ctx.line_to(0.70, 0.16)
-    ctx.close_path()
-    stroke(ctx, 2.0)
-
-    # The neutral plane the wall rotates about.
-    draw_dotted_line(ctx, 0.08, 0.86, 0.92, 0.86, 6)
-
-    # The draft angle, marked between the wall and the vertical it would have.
-    ctx.move_to(0.50, 0.20)
-    ctx.line_to(0.50, 0.74)
-    stroke(ctx, 1.0)
-    ctx.move_to(0.50, 0.52)
-    ctx.arc(0.50, 0.74, px(5.3), -math.pi / 2, -math.pi / 2 + 0.5)
-    stroke(ctx, 1.0)
-
-
 @icon("frontend/src/assets/icons/feature-shell.svg")
 def feature_shell(ctx):
     """Icon for Shell: a box hollowed to a wall, with the top face open."""

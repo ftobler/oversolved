@@ -52,14 +52,6 @@ import {
   applySetShellField,
   applyAddShellFace,
   applyRemoveShellFace,
-  applyAddLoft,
-  applySetLoftField,
-  applyAddLoftProfile,
-  applyRemoveLoftProfile,
-  applyAddDraft,
-  applySetDraftField,
-  applyAddDraftFace,
-  applyRemoveDraftFace,
   applyAddMoveFace,
   applySetMoveFaceField,
   applyAddMoveFaceRef,
@@ -220,22 +212,6 @@ export const mutationHandlers: MutationHandlers = {
     applyAddShellFace(next, m.featureId, m.faceQuery),
   remove_shell_face: (next, m) =>
     applyRemoveShellFace(next, m.featureId, m.index),
-  add_loft: (next, m) =>
-    applyAddLoft(next, m.featureId, m.label),
-  set_loft_field: (next, m) =>
-    applySetLoftField(next, m.featureId, m.field, m.value),
-  add_loft_profile: (next, m) =>
-    applyAddLoftProfile(next, m.featureId, m.sketchQuery),
-  remove_loft_profile: (next, m) =>
-    applyRemoveLoftProfile(next, m.featureId, m.index),
-  add_draft: (next, m) =>
-    applyAddDraft(next, m.featureId, m.label),
-  set_draft_field: (next, m) =>
-    applySetDraftField(next, m.featureId, m.field, m.value),
-  add_draft_face: (next, m) =>
-    applyAddDraftFace(next, m.featureId, m.faceQuery),
-  remove_draft_face: (next, m) =>
-    applyRemoveDraftFace(next, m.featureId, m.index),
   add_move_face: (next, m) =>
     applyAddMoveFace(next, m.featureId, m.label),
   set_move_face_field: (next, m) =>

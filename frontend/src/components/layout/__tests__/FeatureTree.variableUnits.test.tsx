@@ -1,4 +1,4 @@
-// The parameter table's read-only half in the feature tree: a variable row
+// A variable row in the feature tree
 // shows its solved value, and its unit hint beside it when it carries one.
 import { describe, it, expect, beforeEach } from 'vitest'
 import { screen } from '@testing-library/react'

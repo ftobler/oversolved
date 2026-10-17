@@ -12,13 +12,6 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
-      "id": "add_draft",
-      "label": "Add draft",
-      "params": [],
-      "undoable": true,
-    },
-    {
-      "enabled": true,
       "id": "add_extrude",
       "label": "Add extrude",
       "params": [],
@@ -29,13 +22,6 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
       "enabled": true,
       "id": "add_hole",
       "label": "Add hole",
-      "params": [],
-      "undoable": true,
-    },
-    {
-      "enabled": true,
-      "id": "add_loft",
-      "label": "Add loft",
       "params": [],
       "undoable": true,
     },

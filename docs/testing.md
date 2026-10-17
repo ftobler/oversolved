@@ -23,7 +23,7 @@ session calls the page handlers do.
 
 Each entry records `ok`, `failed` or `refused` plus its error or refusal text
 in `frontend/src/testing/actionMatrix/baseline.json` (74 documents x up to 12
-targets x 50 commands, 37,550 rows, one row per line so the diff is readable).
+targets x 48 commands, 36,048 rows, one row per line so the diff is readable).
 
 - PR gate: `actionMatrix.test.ts` replays a bounded smoke slice (5 documents,
   6 targets) with the fake scheduler, so it needs no OCC.js, and

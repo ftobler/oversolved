@@ -204,42 +204,6 @@ An empty `faces` list makes a closed hollow (one solid with an inner void), so
 `source_body` is required: no face names the body. Faces naming several bodies
 is an error.
 
-### loft
-
-```yaml
-- id: lo1
-  kind: loft
-  loft:
-    profiles: ["@sk1", "@sk2", "@sk3"]  # two or more, in order along the loft
-    ruled: false                        # false (default) smooth, true ruled bands
-    operation: new                      # new | add | cut
-    merge_target: "@body_ex1"           # add/cut target, optional
-```
-
-Each profile resolves like an extrude profile (a whole sketch, a picked area or
-curve, a planar body face); its outer boundary is the section, so a section's
-holes are not carried through the surface. A section that resolves to several
-separate regions is an error. The first profile is the start cap, the last the
-end cap, whatever their world positions.
-
-### draft
-
-```yaml
-- id: dr1
-  kind: draft
-  draft:
-    faces: ["?query;...:flatface"]  # faces to tilt, all on one body
-    angle: 3                        # signed degrees, expression-capable
-    neutral: "@builtin_plane_front" # required: plane or planar face
-    direction: "?query;...:straightedge"  # pull axis, optional
-```
-
-The pull direction is oriented from the neutral plane toward the body's
-bounding-box centre, so the pick's own sign is ignored and a positive `angle`
-always recedes along the pull direction away from the neutral plane (material
-comes off) while a negative angle grows the part. An empty `direction` uses the
-neutral plane's own normal, oriented the same way.
-
 ### move_face
 
 ```yaml
@@ -424,9 +388,8 @@ inline `file_data` spelling is refused by name.
 `value` (number) is reserved for the solver's evaluated result: it is never
 authored, and nothing writes it back into the document today (the solved value
 is rendered from the solve results, not read back from this field). A variable's
-`unit` is a display hint only: nothing converts values from it, and the
-parameter table (the part editor's Parameters view) shows every variable as
-name / expression / unit / solved value, editing all three authored columns.
+`unit` is a display hint only: nothing converts values from it, and the feature
+tree shows it beside the solved value.
 
 ### helix
 

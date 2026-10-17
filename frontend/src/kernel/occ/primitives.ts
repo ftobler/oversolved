@@ -39,17 +39,6 @@ export type Vec3 = [number, number, number]
 /** Heterogeneous edge sort key (type_order, kind, then rounded coords). */
 export type EdgeSortKey = (number | string)[]
 
-/**
- * Whether a shape proxy holds a null shape. Every bound TopoDS_Shape exposes
- * `IsNull()`, but the opaque `OccShape` alias cannot declare it: the same alias
- * types non-shape arguments (a gp_Vec handed to a maker, a gp_Ax1 to a revolve),
- * which carry no IsNull. This helper is the one place that cast lives, so a
- * caller reads the containment question rather than re-deriving it.
- */
-export function isNullShape(shape: OccShape): boolean {
-  return (shape as unknown as { IsNull(): boolean }).IsNull()
-}
-
 // ─── primitive solids ───
 
 /** Axis-aligned box of given dimensions (BRepPrimAPI_MakeBox(dx, dy, dz)).

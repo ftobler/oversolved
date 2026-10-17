@@ -30,7 +30,6 @@ import { solveArray, solveCircularArray } from '@/kernel/features/array'
 import { solveMirror } from '@/kernel/features/transformMirror'
 import { solveShell } from '@/kernel/features/shell'
 import { solveHelix } from '@/kernel/features/helix'
-import { solveLoft } from '@/kernel/features/loft'
 import { extractOccErrorMessage } from '@/kernel/errors'
 import { threadEntry } from '@/kernel/threadTable'
 import type { Repository } from '@/kernel/query'
@@ -722,33 +721,6 @@ function applyStep(
       },
     }, repoForLeaves, bodyStore)
     return {}
-  }
-  if (step.kind === 'loft') {
-    // Two rectangles above the running body, registered as solved-sketch
-    // entries exactly the way a real solve leaves them (`_pt_` plane transform
-    // plus a `_topo_` closed region), and lofted into a NEW body. Nothing is
-    // picked off the body, so the step has no persistent reference of its own:
-    // its persistence coverage is the sketches it resolves.
-    const body = requireBody(bodyStore, step.target)
-    const { center, half } = bodyFrame(oc, scope, table.get<OccShape>(body.shape as OccHandle))
-    const bottom = center[2] + half[2]
-    const ids: string[] = []
-    for (const [which, sectionTop, size] of [['a', bottom, step.base], ['b', bottom + step.height, step.top]] as const) {
-      const sketchId = `sk_loft_${step.id}_${which}`
-      ids.push(sketchId)
-      repo.register('_pt_' + sketchId, {
-        origin: [center[0], center[1], sectionTop], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
-      })
-      repo.register('_topo_' + sketchId, {
-        surfaces: [{ query: '', boundary: rectLoop(center[0] - size / 2, center[0] + size / 2, center[1] - size / 2, center[1] + size / 2) }],
-      })
-    }
-    const result = solveLoft(oc, scope, table, {
-      id: step.id,
-      kind: 'loft',
-      loft: { profiles: ids.map((s) => '@' + s), ruled: step.ruled, operation: 'new' },
-    }, repoForLeaves, bodyStore)
-    return { editedIds: result.body_ids }
   }
   // mirror
   const body = requireBody(bodyStore, step.target)

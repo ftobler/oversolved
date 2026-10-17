@@ -184,8 +184,6 @@ const CREATING_MUTATION_TYPES = new Set<Mutation['type']>([
   'add_extrude', 'add_revolve', 'add_sweep',
   'add_fillet', 'add_chamfer', 'add_boolean',
   'add_shell',
-  'add_loft',
-  'add_draft',
   'add_move_face',
   'add_delete_face',
   'add_array', 'add_circular_array', 'add_delete_body', 'add_hole',

@@ -179,64 +179,6 @@ export interface OccOffsetShapeMaker extends OccModifierHistory {
 }
 
 /**
- * BRepOffsetAPI_ThruSections: loft a solid through a sequence of section wires.
- * The build binds exactly one constructor, taking all three arguments
- * (isSolid, ruled, pres3d), and `AddWire` WITHOUT the isClosing flag: a call
- * with two arguments is a BindingError, exactly like the thick-solid maker's
- * short form (pinned by thruSectionsProbeReal.test.ts).
- *
- * History (a BRepBuilderAPI_MakeShape subclass): `Generated(edge)` returns the
- * image of that edge in EVERY band it belongs to -- both the band below and the
- * band above a middle section, so a band is reachable from either of its two
- * sections and a name must be minted from the LOWEST section that reaches it.
- * `FirstShape()`/`LastShape()` each hold the cap face of the first/last added
- * wire, in add order, never the world axis. `Modified`/`IsDeleted` report
- * nothing useful for a wire input.
- */
-export interface OccThruSectionsMaker extends OccModifierHistory {
-  AddWire(wire: OccShape): void
-  CheckCompatibility(check: boolean): void
-  SetSmoothing(use: boolean): void
-  SetMaxDegree(degree: number): void
-  SetContinuity(continuity: OccEnumValue): void
-  SetParType(parType: OccEnumValue): void
-  Build(): void
-  IsDone(): boolean
-  Shape(): OccShape
-  FirstShape(): OccShape
-  LastShape(): OccShape
-}
-
-/**
- * BRepOffsetAPI_DraftAngle: tilt picked faces about their intersection with a
- * neutral plane. `Init(shape)` seeds the maker; `Add(face, direction, angle,
- * neutralPlane, flag)` adds one drafted face in RADIANS and reports NOTHING (the
- * `_1` ctor and the 5-argument Add are the bound forms; pinned by
- * draftAngleProbeReal.test.ts). `AddDone()` is the per-pick verdict: it answers
- * true when every pick so far is usable and false when the maker recorded the
- * last one as its bad shape, without throwing; it must be called before
- * `Build()`. Once a bad shape is recorded, every later `Add` and `Build` throws.
- *
- * History: a DRAFTED face is `Generated()` into its new tilted face (its old
- * self is gone), a face whose geometry the draft changed because it borders a
- * drafted face is `Modified()` into its new image, and an untouched face is
- * `IsSame` in the output. `gp_Dir` and `gp_Pln` are passed as the opaque
- * shapes this build wraps them in.
- */
-export interface OccDraftAngleMaker extends OccModifierHistory {
-  Init(shape: OccShape): void
-  // direction is a gp_Dir proxy and neutralPlane a gp_Pln one. They are typed on
-  // the opaque OccDisposable rather than OccShape because they are NOT shapes:
-  // OccShape doubles as the argument alias for such proxies, but reading them as
-  // shapes would be a lie the type system should not tell.
-  Add(face: OccShape, direction: OccDisposable, angle: number, neutralPlane: OccDisposable, flag: boolean): void
-  AddDone(): boolean
-  Build(): void
-  IsDone(): boolean
-  Shape(): OccShape
-}
-
-/**
  * BRepAlgoAPI_Defeaturing: remove faces and heal the gap by extending the
  * neighbours' surfaces. It is a BRepAlgoAPI_BuilderAlgo, so it shares the
  * boolean-style history surface (IsDeleted / Modified / Generated, present only
@@ -597,10 +539,6 @@ export type OccShapeEnumValue = object
  */
 export interface OccBaseModule {
   gp_Pnt_3: new (x: number, y: number, z: number) => OccPnt
-  // gp_Pln(origin, normal): the draft's neutral plane. The `_3` overload is the
-  // one that takes the point-and-direction pair in this build (verified by
-  // draftAngleProbeReal.test.ts, which drafts a box through it).
-  gp_Pln_3: new (origin: OccPnt, normal: OccXYZ) => OccPln
   gp_Vec_4: new (x: number, y: number, z: number) => OccVec
   BRepBuilderAPI_MakePolygon_1: new () => OccPolygonBuilder
   BRepBuilderAPI_MakeFace_15: new (wire: OccShape, onlyPlane: boolean) => OccFaceBuilder
@@ -908,21 +846,6 @@ export interface OccModule extends OccBaseModule {
   // 1.1.1, OCCT 7.4.0p1). It shares BRepOffsetAPI_MakeOffsetShape (declared with
   // the clearance block above) and the two join enums.
   BRepOffsetAPI_MakeThickSolid_1: new () => OccThickSolidMaker
-
-  // ─── loft leaf ───
-  // BRepOffsetAPI_ThruSections: loft a solid through a sequence of section
-  // wires. Only ONE constructor overload is bound in this build (no `_1`
-  // suffix) and it takes all three arguments: isSolid, ruled, pres3d. AddWire
-  // is bound WITHOUT the isClosing flag. Pinned by
-  // occ/__tests__/thruSectionsProbeReal.test.ts.
-  BRepOffsetAPI_ThruSections: new (isSolid: boolean, ruled: boolean, pres3d: number) => OccThruSectionsMaker
-
-  // ─── draft leaf ───
-  // BRepOffsetAPI_DraftAngle: tilt picked faces about their intersection with a
-  // neutral plane. `_1` is the default ctor and `_2` the Init-in-ctor form; the
-  // leaf uses `_1` + Init, pinning the bound 5-argument Add.
-  BRepOffsetAPI_DraftAngle_1: new () => OccDraftAngleMaker
-  BRepOffsetAPI_DraftAngle_2: new (shape: OccShape) => OccDraftAngleMaker
 
   // ─── move-face leaf ───
   // Split a slab by extended neighbour faces, then fuse/cut the cells under the

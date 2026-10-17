@@ -64,35 +64,6 @@ export type MoveFaceFeatureDef = {
   distance: NumberOrExpr
 }
 
-export type LoftFeatureDef = {
-  // Two or more profile refs, in order along the loft (the first is the start
-  // cap). Each ref is a whole sketch (`@sk2`), a picked area or curve
-  // (`?...`/`entity:...`), or a planar body face; the profiles sit on planes the
-  // loft passes through, not necessarily parallel.
-  profiles: string[]
-  // false (default) builds one smooth surface through every section; true
-  // builds straight ruled bands between consecutive sections.
-  ruled?: boolean
-  operation?: 'new' | 'add' | 'cut'
-  merge_target?: string
-}
-
-export type DraftFeatureDef = {
-  // Faces to tilt. All picks must resolve on one body, like the shell's.
-  faces: string[]
-  // Signed degrees. A positive angle tilts each picked face so the section
-  // RECEDES as it moves along the pull direction away from the neutral plane
-  // (material comes off); a negative angle grows the part instead.
-  angle: NumberOrExpr
-  // The neutral plane the faces rotate about: a datum plane or a planar face.
-  // Required; there is no stored default.
-  neutral: string
-  // The pull direction: an edge/face axis pick, oriented from the neutral plane
-  // toward the body's bounding-box centre (the pick's own sign is ignored).
-  // Empty means the neutral plane's own normal, oriented the same way.
-  direction?: string
-}
-
 // Removed faces and healed by extending the neighbours' surfaces. No parameters:
 // the picked set IS the whole spec. A connected group of picks (faces sharing an
 // edge) is removed or refused as a unit, so a partial pick heals what it can.
@@ -514,16 +485,6 @@ export type MoveFaceFeature = FeatureBase & {
   move_face: MoveFaceFeatureDef
 }
 
-export type LoftFeature = FeatureBase & {
-  kind: 'loft'
-  loft: LoftFeatureDef
-}
-
-export type DraftFeature = FeatureBase & {
-  kind: 'draft'
-  draft: DraftFeatureDef
-}
-
 export type DeleteFaceFeature = FeatureBase & {
   kind: 'delete_face'
   delete_face: DeleteFaceFeatureDef
@@ -594,8 +555,6 @@ export type PartFeature =
   | ChamferFeature
   | ShellFeature
   | MoveFaceFeature
-  | LoftFeature
-  | DraftFeature
   | DeleteFaceFeature
   | BooleanFeature
   | ArrayFeature
@@ -1195,14 +1154,6 @@ export type Mutation =
   | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
   | { type: 'add_shell_face'; featureId: string; faceQuery: string }
   | { type: 'remove_shell_face'; featureId: string; index: number }
-  | { type: 'add_loft'; featureId: string; label?: string }
-  | { type: 'set_loft_field'; featureId: string; field: keyof LoftFeatureDef; value: unknown }
-  | { type: 'add_loft_profile'; featureId: string; sketchQuery: string }
-  | { type: 'remove_loft_profile'; featureId: string; index: number }
-  | { type: 'add_draft'; featureId: string; label?: string }
-  | { type: 'set_draft_field'; featureId: string; field: keyof DraftFeatureDef; value: unknown }
-  | { type: 'add_draft_face'; featureId: string; faceQuery: string }
-  | { type: 'remove_draft_face'; featureId: string; index: number }
   | { type: 'add_move_face'; featureId: string; label?: string }
   | { type: 'set_move_face_field'; featureId: string; field: keyof MoveFaceFeatureDef; value: unknown }
   | { type: 'add_move_face_ref'; featureId: string; faceQuery: string }

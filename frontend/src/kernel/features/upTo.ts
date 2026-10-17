@@ -47,12 +47,11 @@ function inPlaneAxes(normal: Vec3): [Vec3, Vec3] {
 /**
  * Resolve an `up_to` ref to a cutting plane. Handles registered planes/flatfaces
  * (origin + normal), planar body faces (body_id + face_index), and points
- * (point/position coordinate, plane normal = the given direction). Returns null
- * when the ref does not resolve (the extrude caller falls back to the blind
- * distance; the draft refuses). Rethrows AmbiguousQueryError so the caller can
- * report ambiguity distinctly from a dangling pick. Throws when a face target is
- * non-planar, so a bad pick surfaces as an error. `label` names the caller in
- * those messages.
+ * (point/position coordinate, plane normal = the extrude direction). Returns null
+ * when the ref does not resolve (caller falls back to the blind distance).
+ * Rethrows AmbiguousQueryError so the caller can report ambiguity distinctly
+ * from a dangling pick. Throws when a face target is non-planar, so a bad pick
+ * surfaces as an error.
  */
 export function resolveUpToPlane(
   oc: OccModule,
@@ -62,10 +61,6 @@ export function resolveUpToPlane(
   directionVec: Vec3,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-  // The caller's own name for what it is resolving, so a refusal reads as the
-  // feature that made it ('extrude up_to: ...' / 'draft: ...') rather than as
-  // whichever shared caller came first.
-  label = 'extrude up_to',
 ): CutPlane | null {
   if (!upToRef) return null
   let entry: Dict | null
@@ -89,7 +84,7 @@ export function resolveUpToPlane(
   const planeOrigin = (entry.origin ?? entry.centroid) as number[] | undefined
   if ((entry.type === 'flatface' || entry.type === 'plane') && Array.isArray(entry.normal) && Array.isArray(planeOrigin)) {
     const n = normalize(entry.normal as number[])
-    if (n === null) throw new Error(`${label}: degenerate normal on registered plane`)
+    if (n === null) throw new Error('extrude up_to: degenerate normal on registered plane')
     return { origin: [...(planeOrigin as number[])] as Vec3, normal: n }
   }
 
@@ -104,10 +99,10 @@ export function resolveUpToPlane(
     try {
       plane = computeFacePlane(oc, scope, face)
     } catch {
-      throw new Error(`${label}: target face is not planar (v1 supports planar targets only)`)
+      throw new Error('extrude up_to: target face is not planar (v1 supports planar targets only)')
     }
     const n = normalize(plane.normal)
-    if (n === null) throw new Error(`${label}: degenerate face normal`)
+    if (n === null) throw new Error('extrude up_to: degenerate face normal')
     return { origin: [...plane.origin] as Vec3, normal: n }
   }
 
@@ -115,7 +110,7 @@ export function resolveUpToPlane(
   const pt = (entry.point ?? entry.position) as number[] | undefined
   if (Array.isArray(pt) && pt.length === 3) {
     const n = normalize(directionVec)
-    if (n === null) throw new Error(`${label}: degenerate direction vector`)
+    if (n === null) throw new Error('extrude up_to: degenerate direction vector')
     return { origin: [...pt] as Vec3, normal: n }
   }
 

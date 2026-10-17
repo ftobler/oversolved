@@ -29,7 +29,6 @@ describe('PORTED_FEATURE_KINDS', () => {
       'variable',
       'shell', 'helix',
       'move_face', 'delete_face',
-      'loft', 'draft',
     ]
     expect(PORTED_FEATURE_KINDS.size).toBe(expected.length)
     for (const kind of expected) {

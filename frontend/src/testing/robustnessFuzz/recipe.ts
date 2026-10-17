@@ -159,20 +159,6 @@ export interface RecipeHelix {
   turns: number
 }
 
-export interface RecipeLoft {
-  kind: 'loft'
-  id: string
-  target: string
-  // Two rectangles above the target's bounding box, in grid steps: the base
-  // section centred on the top face's plane, the top one `top` wide sitting
-  // `height` above it. The loft is always `operation: 'new'`: a separate body
-  // costs no fuse and no overlap with the running one.
-  base: number
-  top: number
-  height: number
-  ruled: boolean
-}
-
 export type RecipeStep =
   | RecipeStart
   | RecipeBoolean
@@ -184,7 +170,6 @@ export type RecipeStep =
   | RecipeMirror
   | RecipeShell
   | RecipeHelix
-  | RecipeLoft
 
 export interface Recipe {
   seed: number
@@ -361,26 +346,7 @@ export function generateRecipe(seed: number, options: RecipeOptions = {}): Recip
     if (step === null) break
     steps.push(step)
   }
-  // The loft is APPENDED rather than drawn from the cascade: its draws happen
-  // after the chain above, so every seed's earlier steps stay byte-identical to
-  // the pre-loft generator and the pinned findings (seeds 47, 76, 142, ...) keep
-  // their step indices. Its sections are derived from the running body at run
-  // time, so it needs no target pick the drawn steps would have to share.
-  steps.push(drawLoft(rnd, `s${steps.length}`))
   return { seed, steps }
-}
-
-/** The appended loft step: two rectangles above the running body's top face. */
-function drawLoft(rnd: () => number, id: string): RecipeLoft {
-  const base = drawInt(rnd, 4, 8)
-  // At least two grid steps smaller on the side, so the sections never coincide
-  // and the ruled bands have a slope to build.
-  const top = Math.max(2, base - drawInt(rnd, 2, 4))
-  return {
-    kind: 'loft', id, target: PRIMARY_BODY,
-    base: grid(base), top: grid(top), height: grid(drawInt(rnd, 3, 6)),
-    ruled: rnd() < 0.5,
-  }
 }
 
 // ─── perturbation ───

@@ -66,7 +66,6 @@ One directory per case: `frontend/oracle/<NN-name>/`.
 | 36-shell-cylinder-open-top | 1 | 333.008821 | 697.433829 | faces 5, edges 6 | - | ok |
 | 37-sweep-helix-square | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | ok | ok |
 | 38-sweep-helix-left | 1 | 251.327482 | 1007.88300 | faces 6, edges 12 | - | ok |
-| 39-loft-face-to-sketch | 2 | 1653.33333 | 1062.33725 | faces 12, edges 24 | ok | ok |
 | 40-hole-thread | 1 | 1121.46018 | 822.831853 | faces 8, edges 15 | - | ok |
 
 ## Cases
@@ -777,39 +776,6 @@ STEP round trip:
   - centroid [0.00000384546401, 0.00000000, 6.00000000] -> [0.00000384546768, 1.27749431e-12, 6.00000000] (max dev 3.67e-12)
   - bbox [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] -> [-16.8963650, -15.3630615, -0.500000000, 10.5000000, 15.3630615, 12.5000000] (max dev 5.75e-12)
   - counts faces 6, edges 12 -> faces 6, edges 12
-### 39-loft-face-to-sketch
-
-`Box 10x10x10 plus a ruled loft from its top face (10x10 at z=10) to a 6x6 square at z=20: V = 1000 + 10/3*(100+36+60) = 1653.3333; A = 600 + 4*(8*sqrt(104)) + 136 = 1062.3372; 12 faces, 24 edges`
-
-Live build (expected -> measured):
-  - volume 1653.33333 -> 1653.33333 (rel dev -1.38e-16)
-  - area 1062.33725 -> 1062.33725 (rel dev 0)
-  - centroid [5.00000000, 5.00000000, 8.62903226] -> [5.00000000, 5.00000000, 8.62903226] (max dev 8.88e-16)
-  - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] -> [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] (max dev 0)
-  - counts faces 12, edges 24 -> faces 12, edges 24
-
-STEP round trip:
-  - volume 1653.33333 -> 1653.33333 (rel dev 1.38e-16)
-  - area 1062.33725 -> 1062.33725 (rel dev 2.14e-16)
-  - centroid [5.00000000, 5.00000000, 8.62903226] -> [5.00000000, 5.00000000, 8.62903226] (max dev 1.78e-15)
-  - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] -> [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] (max dev 0)
-  - counts faces 12, edges 24 -> faces 12, edges 24
-
-Edit: `edit ex1.extrude.distance 10 -> 14` (ex1.distance = 14).
-`The box grows to 10x10x14 (V=1400, A=760) and the same stored top-face pick stays the loft's start section, so the loft shortens to h=6: V = 6/3*(100+36+60) = 392, A = 136 + 4*(8*sqrt(40)) = 338.3858; totals V = 1792, A = 1098.3858, centroid z = (1400*7 + 392*16.5102)/1792 = 9.080357`
-
-  - volume 1792.00000 -> 1792.00000 (rel dev 0)
-  - area 1098.38577 -> 1098.38577 (rel dev 0)
-  - centroid [5.00000000, 5.00000000, 9.08035714] -> [5.00000000, 5.00000000, 9.08035714] (max dev 0)
-  - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] -> [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] (max dev 0)
-  - counts faces 12, edges 24 -> faces 12, edges 24
-
-Edit STEP round trip:
-  - volume 1792.00000 -> 1792.00000 (rel dev 0)
-  - area 1098.38577 -> 1098.38577 (rel dev 0)
-  - centroid [5.00000000, 5.00000000, 9.08035714] -> [5.00000000, 5.00000000, 9.08035714] (max dev 0)
-  - bbox [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] -> [0.00000000, 0.00000000, 0.00000000, 10.0000000, 10.0000000, 20.0000000] (max dev 0)
-  - counts faces 12, edges 24 -> faces 12, edges 24
 ### 40-hole-thread
 
 `A cosmetic thread is metadata: the plate carries exactly the blind bore it would without one, so V = 1200 - pi r^2 h with r = 2.5, h = 4, 8 faces (the top face gains the bore's rim, the wall and the floor are the two new faces) and 15 edges; the solve reports M6x1 (nominal 6, pitch 1) with a display helix on the bore`

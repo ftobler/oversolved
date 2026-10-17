@@ -177,61 +177,8 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
-// A sketch profile is the classic loft section, but any element a profile field
-// can resolve works too (a picked area, a planar face), so the chip accepts what
-// the kernel's collector can resolve and lets the solve name a bad pick.
-const isProfilePick = (id: string): boolean =>
-  id.startsWith('?') || id.startsWith('@') || id.startsWith('entity:') || id.startsWith('$')
-
-/** The loft profile pick rule: the chip takes every form the kernel's collector
- *  can resolve and this reason answers the rest (a sketch vertex, a constraint,
- *  a dock/intersection tag). */
-const loftPickRefusal = (id: string): string | null =>
-  isProfilePick(id) ? null : 'pick a sketch area, sketch element or face'
-
-export const LOFT_SCHEMA: FeatureEditorSchema = {
-  mutationPrefix: 'set_loft',
-  subKey: 'loft',
-  defaults: { profiles: [], ruled: false, operation: 'new' },
-  normalize: (raw) => ({ ...raw, profiles: normalizeRefList(raw.profiles) }),
-  fields: [
-    // Two or more: the kernel refuses fewer, so the field says so in the chip's
-    // empty text rather than silently building a one-section shell.
-    { type: 'pick', key: 'profiles', label: 'Profiles', multi: true,
-      addMutationType: 'add_loft_profile', addValueKey: 'sketchQuery',
-      removeMutationType: 'remove_loft_profile', validatePick: loftPickRefusal,
-      emptyText: '(pick two or more profiles, in order)' },
-    { type: 'checkbox', key: 'ruled', label: 'Ruled', default: false },
-    { type: 'select', key: 'operation', label: 'Operation', default: 'new',
-      options: [{ value: 'new', label: 'New' }, { value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }] },
-    { type: 'pick', key: 'merge_target', label: 'Merge Target',
-      showWhen: showMergeTarget, transform: resolveBodyPickRef, removeValue: undefined,
-      emptyText: '(all bodies)' },
-  ],
-}
-
-export const DRAFT_SCHEMA: FeatureEditorSchema = {
-  mutationPrefix: 'set_draft',
-  subKey: 'draft',
-  defaults: { faces: [], angle: 3, neutral: '' },
-  fields: [
-    { type: 'pick', key: 'faces', label: 'Faces', multi: true,
-      addMutationType: 'add_draft_face', addValueKey: 'faceQuery',
-      removeMutationType: 'remove_draft_face', validatePick: facePickRefusal },
-    // Signed: positive recedes along the pull direction away from the neutral
-    // plane, negative grows the part. Zero is a no-op, so it is refused here.
-    { type: 'number', key: 'angle', label: 'Angle', default: 3,
-      validate: (v) => Number.isFinite(v) && v !== 0, unit: 'deg' },
-    // A neutral plane is required: a draft has no stored default plane, so an
-    // unpicked one is a solve error rather than a silent world-XY neutral.
-    { type: 'pick', key: 'neutral', label: 'Neutral Plane', transform: stripSelectionWrapper,
-      emptyText: '(pick plane or face, required)' },
-    { type: 'pick', key: 'direction', label: 'Pull Direction', transform: resolveAxisQuery,
-      emptyText: '(neutral normal)' },
-  ],
-}
-
-export const MOVE_FACE_SCHEMA: FeatureEditorSchema = {  mutationPrefix: 'set_move_face',
+export const MOVE_FACE_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_move_face',
   subKey: 'move_face',
   defaults: { faces: [], distance: 5 },
   fields: [
@@ -511,8 +458,6 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   fillet: FILLET_SCHEMA,
   chamfer: CHAMFER_SCHEMA,
   shell: SHELL_SCHEMA,
-  loft: LOFT_SCHEMA,
-  draft: DRAFT_SCHEMA,
   move_face: MOVE_FACE_SCHEMA,
   delete_face: DELETE_FACE_SCHEMA,
   boolean: BOOLEAN_SCHEMA,
