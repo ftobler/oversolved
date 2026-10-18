@@ -9,6 +9,13 @@
      a gizmo resize can be checked against this one number. */
   --floating-inset: 12px;
   --hud-clearance: 190px;
+  /* The part editor's two left cards reserve their height up front instead of
+     hugging their content, so a short list keeps its card at its size and a
+     long one scrolls inside. Together they fill this share of the column; the
+     leftover splits around them, and that is what centers the pair on the
+     left side. The Features card takes the larger part of the share
+     (58/42, .document-panel below). */
+  --left-cards-height: 85%;
 }
 
 .document-viewer {
@@ -40,7 +47,9 @@
 
 /* Positioning-only overlay columns: pointer-events stay off so the gaps
    between the cards orbit and pick in the viewport underneath; each card
-   opts back in (Glass.css `.glass-panel`). */
+   opts back in (Glass.css `.glass-panel`). Both columns center what they
+   hold vertically, so each side's cards sit on the middle of that side
+   instead of hanging off its top edge. */
 .floating-left,
 .floating-right {
   position: absolute;
@@ -48,6 +57,7 @@
   z-index: 5;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   pointer-events: none;
 }
 
@@ -57,9 +67,10 @@
   width: 280px;
 }
 
-/* The edit card grows downward only as far as its content, but never into the
-   bottom-right HUD stack (cube gizmo + measurement readout): the reserved
-   clearance plus the top inset keeps them apart, and the card's own body
+/* The edit card sizes to its content, but never grows into the bottom-right
+   HUD stack (cube gizmo + measurement readout): the reserved clearance plus
+   the top inset bound the column, and the card centers in what is left, so a
+   short editor sits on the middle of the right side. The card's own body
    scrolls when the editor is taller than that. */
 .floating-right {
   right: var(--floating-inset);
@@ -67,24 +78,29 @@
   width: 300px;
 }
 
-/* The two left cards, Features over Parts: each sizes to its content (so a
-   short list leaves the model visible below it) under a max-height, and its
-   list scrolls internally. Features stops at 60% of the column, Parts takes
-   the rest up to its content. */
+/* The two left cards, Features over Parts, share --left-cards-height of the
+   column between them (the gap comes out of that share, it is a flex gap
+   inside the panel): each reserves its height up front, so a short list
+   keeps its card at size and a long one scrolls internally. The Features
+   card takes the larger part, 58/42, the balance the old 60% cap gave it.
+   The panel itself carries that share and centers in the column (the
+   .floating-left rule above). */
 .document-panel {
-  flex: 1;
+  flex: 0 1 var(--left-cards-height);
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
 }
 
 .document-panel > .sidebar-top {
-  max-height: 60%;
+  flex: 58 1 0;
+  min-height: 0;
 }
 
 .document-panel > .sidebar-bottom {
-  flex: 0 1 auto;
+  flex: 42 1 0;
+  min-height: 0;
 }
 
 /* The part cards float over a bright model, so their row states keep the
