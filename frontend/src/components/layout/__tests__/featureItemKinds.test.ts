@@ -5,7 +5,8 @@
 // it draws a frame. A kind the tree opens but no editor body answers would
 // strand an edit session with no fields and no OK/Cancel, and a kind with an
 // editor body but no edit label is unreachable from the tree. Both are silent
-// in production and fail here instead.
+// in production and fail here; a broken bespoke branch inside `editorFor` is
+// caught by FeatureEditPanel.test.tsx, which renders each body.
 import { describe, it, expect } from 'vitest'
 import type { PartFeature } from '@/types/cad'
 import { EDIT_LABELS } from '@/components/layout/featureItemKinds'
