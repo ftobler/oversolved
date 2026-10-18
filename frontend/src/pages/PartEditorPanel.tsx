@@ -1,8 +1,9 @@
-import { type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
 import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
 import SketchToolbar from '@/components/Toolbar/SketchToolbar'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
+import { PanelsToggle } from '@/components/layout/PanelsToggle'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
@@ -79,10 +80,15 @@ export default function PartEditorPanel({
   handleRightClick,
   viewportHud,
 }: PartEditorPanelProps) {
+  // The phone drawer's open flag. It only means anything below the breakpoint
+  // (Part.css): above it the cards are always out and the toggle is not shown.
+  const [panelsOpen, setPanelsOpen] = useState(false)
+
   return (
-    <div className="doc-container">
+    <div className={`doc-container${panelsOpen ? ' panels-open' : ''}`}>
       <div className="doc-editor">
         <div className="editor-toolbar">
+          <PanelsToggle open={panelsOpen} onToggle={() => setPanelsOpen(v => !v)} />
           <div className="mode-selector">
             <button className={`mode-btn ${mode === 'sketch' ? 'active' : ''}`} onClick={() => setMode('sketch')} title="Sketch mode">
               <img src={featureSketchIcon} alt="Sketch" />

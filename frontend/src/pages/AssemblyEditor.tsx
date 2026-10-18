@@ -31,6 +31,7 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { PanelsToggle } from '@/components/layout/PanelsToggle'
 import { MateEditor } from '@/components/layout/MateEditor'
 import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
@@ -126,6 +127,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const editingSubject = useAssemblyStore(s => s.editingSubject)
   const editingMateId = editingMateIdOf(editingSubject)
   const editingInstanceHandle = editingInstanceHandleOf(editingSubject)
+
+  // The phone drawer's open flag, the part editor's twin: below the breakpoint
+  // Part.css hides the tree and the toolbar's one toggle reopens it as a strip
+  // over the editor. Above it the flag is inert.
+  const [panelsOpen, setPanelsOpen] = useState(false)
 
   // The pose basis each instance editor was opened against. Frozen so a
   // background solve cannot move the number fields the user is typing in;
@@ -631,7 +637,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
           </button>
         }
       />
-      <div className="doc-container">
+      <div className={`doc-container${panelsOpen ? ' panels-open' : ''}`}>
         <Sidebar
           documentPanel={
             <AssemblyTree
@@ -668,6 +674,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         />
         <div className="doc-editor">
           <div className="editor-toolbar">
+            <PanelsToggle open={panelsOpen} onToggle={() => setPanelsOpen(v => !v)} />
             <button
               className="editor-btn"
               title="Insert part"
