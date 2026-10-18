@@ -20,6 +20,7 @@ import { createMatrixHarness, installTarget, type MatrixHarness, type MatrixSolv
 export type { MatrixSolver } from './harness'
 import { targetsForSweep, type CorpusDoc, type MatrixTarget } from './corpus'
 import type { MatrixRow, MatrixStatus } from './baseline'
+import { yieldToEventLoop } from '../yieldToEventLoop'
 
 // The command set is the real part table, enumerated in its declaration order.
 export const PART_COMMANDS: CommandName[] = PART_COMMAND_SPECS.map(spec => spec.id)
@@ -96,10 +97,6 @@ export function expectedBaselineRows(
 // loop (a worker's RPC pings included) for minutes. Hand the loop a macrotask
 // every so often; the cost is unmeasurable at this granularity.
 const YIELD_EVERY = 256
-
-function yieldToEventLoop(): Promise<void> {
-  return new Promise(resolve => { setTimeout(resolve, 0) })
-}
 
 export async function runMatrix(sweep: MatrixSweep, options: MatrixRunOptions): Promise<MatrixRow[]> {
   const rows: MatrixRow[] = []

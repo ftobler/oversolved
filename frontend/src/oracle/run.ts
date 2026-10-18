@@ -23,6 +23,7 @@ import {
 } from '../kernel/occ/measureTolerance'
 import { persistentTableForTest, solveLocally } from '../kernel/solveLocally'
 import { partSpecFromText } from '@/utils/partExport'
+import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 import type { BuildState } from '../kernel/types3d'
 import { applyOracleEdit, type OracleCase, type OracleMeasures } from './corpus'
 
@@ -109,6 +110,9 @@ export interface BuildOutcome {
 
 /** Build a spec and measure the live bodies plus their STEP round trip. */
 export async function buildAndMeasure(oc: OccModule, spec: Record<string, unknown>): Promise<BuildOutcome> {
+  // Callers loop over whole corpora; one macrotask per build keeps a sweep
+  // from holding the event loop for its entire length.
+  await yieldToEventLoop()
   const response = await solveLocally(spec)
   if (response === null) {
     // A provisioned environment never returns null; the suite's provisioning
