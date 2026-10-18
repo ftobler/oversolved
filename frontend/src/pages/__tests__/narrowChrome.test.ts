@@ -9,12 +9,13 @@
 // Scope: class-only selectors and the plain descendant space, which is what
 // every rule these pins rest on is written with. A rule that reaches one of the
 // pinned elements through another form (a pseudo-class, another combinator, an
-// attribute test) is skipped rather than guessed at, so extend the matcher
+// attribute test, a tag-qualified compound such as `div.x`, `!important`, a
+// non-media at-rule) is skipped rather than guessed at, so extend the matcher
 // before writing one of those.
 //
-// Each pin is read twice: once with only the top-level rules, which is the
-// desktop layout, and once with the phone-width blocks in play, which is a
-// 375px portrait phone.
+// Each pin is read in the contexts it names: the top-level rules (a window
+// above the breakpoint, and a landscape phone's chrome) and/or the narrow
+// blocks (a 375px portrait phone).
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
@@ -289,5 +290,15 @@ describe('phone-width chrome', () => {
       .filter(({ rule }) => rule.declarations.some(d => d.prop === 'margin-left' && d.value === '-8px'))
     expect(pulls).toHaveLength(1)
     expect(pulls[0].selector).toContain(':not(.panels-toggle)')
+    // The pin above is keyed on `.editor-btn`, so a pull re-added from the
+    // toggle's own side (`.panels-toggle + button { margin-left: -8px }`) would
+    // slip past it; the toggle's selectors must declare no negative pull.
+    const togglePulls = sheet('pages/Part.css')
+      .flatMap(rule => rule.selectors.map(selector => ({ selector, rule })))
+      .filter(({ selector }) => selector.startsWith('.panels-toggle'))
+      .flatMap(({ selector, rule }) => rule.declarations
+        .filter(d => d.prop === 'margin-left' && d.value.startsWith('-'))
+        .map(d => `${selector} { margin-left: ${d.value} }`))
+    expect(togglePulls).toEqual([])
   })
 })
