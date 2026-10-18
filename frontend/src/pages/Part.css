@@ -987,8 +987,11 @@
 
 /* Buttons overlap by 4px. `gap` rejects negative lengths, so cancel the
    toolbar's 4px gap and pull 4px further. Scoped to button-to-button
-   adjacency to leave .toolbar-separator and .mode-selector spacing intact. */
-.editor-btn + .editor-btn {
+   adjacency to leave .toolbar-separator and .mode-selector spacing intact.
+   The panels toggle is excluded: it is the first button in both toolbars, and
+   the opaque background it takes on a phone (it sticks over the scroll strip)
+   would otherwise cover the left edge of the button following it. */
+.editor-btn:not(.panels-toggle) + .editor-btn {
   margin-left: -8px;
 }
 
@@ -1016,8 +1019,8 @@
   filter: invert(0.8);
 }
 
-/* The navigator drawer's handle is a phone control: above the breakpoint below
-   the panel columns are always out, so there is nothing to toggle. */
+/* The navigator drawer's handle is a phone control: above the breakpoint the
+   panel columns are always in place, so there is nothing to toggle. */
 .panels-toggle {
   display: none;
 }
@@ -1095,8 +1098,11 @@
   }
 
   /* The debug drawer's 260px column would squeeze the editor to a sliver; it
-     floats over it instead, still under the header. Its width stays the base
-     rule's, which is declared further down this sheet. */
+     floats over it instead. It covers the editor toolbar's right end by
+     design: the drawer is a development tool, the toolbar is a scroll strip
+     and the panels toggle (the way back to the navigator) sticks at the
+     strip's left edge, clear of it. Its width stays the base rule's, declared
+     further down this sheet. */
   .debug-drawer {
     position: absolute;
     top: 0;

@@ -18,7 +18,9 @@ export function PanelsToggle({ open, onToggle }: PanelsToggleProps) {
       type="button"
       className={`editor-btn panels-toggle${open ? ' active' : ''}`}
       aria-label={label}
-      aria-pressed={open}
+      // A disclosure, not a toggle button: the state it reports is whether the
+      // navigator it controls is shown.
+      aria-expanded={open}
       title={label}
       onClick={onToggle}
     >

@@ -48,11 +48,11 @@ describe('PartEditorPanel panels toggle', () => {
 
     fireEvent.click(toggle)
     expect(containerEl.classList.contains('panels-open')).toBe(true)
-    expect(screen.getByRole('button', { name: 'Hide panels' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Hide panels' })).toHaveAttribute('aria-expanded', 'true')
 
     fireEvent.click(screen.getByRole('button', { name: 'Hide panels' }))
     expect(containerEl.classList.contains('panels-open')).toBe(false)
-    expect(screen.getByRole('button', { name: 'Show panels' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Show panels' })).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('offers exactly one panels control, not one per panel', () => {
