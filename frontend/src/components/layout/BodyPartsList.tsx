@@ -6,11 +6,7 @@ import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
 import iconDotsIcon from '@/assets/icons/dots.svg'
 
-interface BodyPartsListProps {
-  splitPercent: number
-}
-
-export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
+export function BodyPartsList() {
   const doc = usePartEditorStore(s => s.doc)
   const bodies = usePartEditorStore(s => s.bodies)
   const visibleBodies = usePartEditorStore(s => s.visibleBodies)
@@ -28,7 +24,7 @@ export function BodyPartsList({ splitPercent }: BodyPartsListProps) {
   }
 
   return (
-    <div className="sidebar-bottom" style={{ height: `${100 - splitPercent}%` }}>
+    <div className="sidebar-bottom glass-panel">
       <div className="sidebar-header">Parts</div>
       <ul className="parts-list">
         {doc && Object.keys(bodies || {}).length === 0 ? (

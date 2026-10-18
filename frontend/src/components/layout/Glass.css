@@ -1,0 +1,31 @@
+/* The part editor's floating panels (features/parts on the left, the open
+   feature editor on the right) share one frost style: a translucent dark tint
+   over a backdrop blur, so the model stays readable behind them. The panel
+   layout that places these lives in Part.css; the palette lives here so the
+   blur and the tint can be tuned in one place. */
+:root {
+  --glass-bg: rgba(17, 17, 17, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: blur(14px) saturate(1.2);
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  /* Row states over the frost. Opaque palette colours (#222, #1a1a2a, #1a0f1a)
+     would mask the blur wherever a row is hovered, selected or open; these are
+     the same hues at alpha, so a bright model still shows through. */
+  --glass-hover-bg: rgba(255, 255, 255, 0.08);
+  --glass-selected-bg: rgba(79, 195, 247, 0.18);
+  --glass-editing-bg: rgba(184, 59, 136, 0.22);
+  --glass-editing-hover-bg: rgba(184, 59, 136, 0.32);
+  --glass-field-bg: rgba(26, 15, 26, 0.7);
+}
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  box-shadow: var(--glass-shadow);
+  /* The overlay containers are click-through; each panel opts back in so the
+     gaps between them still orbit and pick in the viewport. */
+  pointer-events: auto;
+}

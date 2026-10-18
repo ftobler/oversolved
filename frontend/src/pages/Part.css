@@ -1,6 +1,10 @@
 :root {
   --tiling-sine: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='15' height='9' viewBox='0 0 10 6'><path d='M-1 2 L0 3 Q2.5 0 5 3 T10 3 L11 4' stroke='gray' fill='transparent' stroke-width='1'/></svg>");
   --tiling-sine-fine: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='7.5' height='4.5' viewBox='0 0 10 6'><path d='M-1 2 L0 3 Q2.5 0 5 3 T10 3 L11 4' stroke='%23666' fill='transparent' stroke-width='0.5'/></svg>");
+  /* Edge distance of the floating part panels, and the space the right panel
+     leaves free at the bottom for the HUD stack (cube gizmo + readout). */
+  --floating-inset: 12px;
+  --hud-clearance: 190px;
 }
 
 .document-viewer {
@@ -16,6 +20,133 @@
   overflow: hidden;
 }
 
+/* The viewport stage is the positioning context for the part editor's floating
+   overlays. It is always full width: the navigator no longer takes a column of
+   its own, so the canvas never resizes with it. */
+.viewport-stage {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Positioning-only overlay columns: pointer-events stay off so the gaps
+   between the cards orbit and pick in the viewport underneath; each card
+   opts back in (Glass.css `.glass-panel`). */
+.floating-left,
+.floating-right {
+  position: absolute;
+  top: var(--floating-inset);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.floating-left {
+  left: var(--floating-inset);
+  bottom: var(--floating-inset);
+  width: 280px;
+}
+
+/* The edit card grows downward only as far as its content, but never into the
+   bottom-right HUD stack (cube gizmo + measurement readout): the reserved
+   clearance plus the top inset keeps them apart, and the card's own body
+   scrolls when the editor is taller than that. */
+.floating-right {
+  right: var(--floating-inset);
+  height: calc(100% - var(--hud-clearance) - var(--floating-inset));
+  width: 300px;
+}
+
+/* The two left cards, Features over Parts: each sizes to its content (so a
+   short list leaves the model visible below it) under a max-height, and its
+   list scrolls internally. Features stops at 60% of the column, Parts takes
+   the rest up to its content. */
+.document-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.document-panel > .sidebar-top {
+  max-height: 60%;
+}
+
+.document-panel > .sidebar-bottom {
+  flex: 0 1 auto;
+}
+
+/* The part cards float over a bright model, so their row states keep the
+   palette hues at alpha instead of the opaque column backgrounds the assembly
+   sidebar still uses. */
+.document-panel .feature-item:hover,
+.document-panel .part-item:hover {
+  background: var(--glass-hover-bg);
+}
+
+.document-panel .feature-item.selected,
+.document-panel .part-item.selected {
+  background: var(--glass-selected-bg);
+}
+
+.document-panel .feature-item.editing {
+  background: var(--glass-editing-bg);
+}
+
+.document-panel .feature-item.editing:hover {
+  background: var(--glass-editing-hover-bg);
+}
+
+.document-panel .rollback-bar:hover {
+  background-color: var(--glass-hover-bg);
+}
+
+.feature-edit-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.feature-edit-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+
+.feature-edit-panel-title {
+  flex: 1 1 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: #e060b0;
+  /* #root centers text app-wide; a header line reads left-aligned. */
+  text-align: left;
+}
+
+.feature-edit-panel-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px 8px;
+}
+
+/* Frost shows through the open editor's fields; they keep their own dark tint
+   for contrast, just at alpha instead of opaque. */
+.feature-edit-panel .feature-field-select,
+.feature-edit-panel .feature-field-input {
+  background: var(--glass-field-bg);
+}
+
+/* The opaque navigator column. The part editor no longer uses it (its panels
+   float over the viewport, see `.floating-left` above); it stays for the
+   assembly tree until phase 2 moves that editor to the same panels. */
 .doc-sidebar {
   width: 288px;
   border-right: 1px solid #333;
@@ -900,6 +1031,17 @@
     max-height: 150px;
     border-right: none;
     border-bottom: 1px solid #333;
+  }
+
+  /* The part editor is not a column any more: at narrow widths the left cards
+     shrink and the right card keeps its own scroll, so a tall editor stays
+     reachable instead of pushing the model off screen. */
+  .floating-left {
+    width: 200px;
+  }
+
+  .floating-right {
+    width: 240px;
   }
 }
 

@@ -29,7 +29,13 @@ import featureImportIcon from '@/assets/icons/icon-upload.svg'
 import featureExportIcon from '@/assets/icons/icon-download.svg'
 
 interface PartEditorPanelProps {
-  children: ReactNode
+  // The part editor's floating overlays: the features/parts navigator on the
+  // left, the open feature editor on the right (FeatureEditPanel.tsx). Both
+  // render inside the viewport stage; the stage itself stays click-through
+  // between the panels, so orbit and pick work through the gaps. The assembly
+  // editor does not use these yet (phase 2).
+  leftOverlay?: ReactNode
+  rightOverlay?: ReactNode
   rightPanel?: ReactNode
   mode: 'sketch' | 'feature'
   setMode: (newMode: 'sketch' | 'feature') => void
@@ -55,7 +61,8 @@ interface PartEditorPanelProps {
 }
 
 export default function PartEditorPanel({
-  children,
+  leftOverlay,
+  rightOverlay,
   rightPanel,
   mode, setMode,
   solveError, setSolveError,
@@ -74,8 +81,6 @@ export default function PartEditorPanel({
 }: PartEditorPanelProps) {
   return (
     <div className="doc-container">
-      {children}
-
       <div className="doc-editor">
         <div className="editor-toolbar">
           <div className="mode-selector">
@@ -127,11 +132,15 @@ export default function PartEditorPanel({
             onDismiss={() => { setSolveError(null); setError(null); onDismissAutosaveError?.() }}
           />
         )}
-        <div style={{ position: 'relative', width: '100%', flex: 1 }}>
+        <div className="viewport-stage">
           <EditorErrorBoundary label="viewport">
             <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} />
           </EditorErrorBoundary>
           <LoadingOverlay isDocumentLoading={loading} />
+          {/* The overlay containers are positioning-only and click-through;
+              each panel opts back in (Glass.css `.glass-panel`). */}
+          {leftOverlay && <div className="floating-left">{leftOverlay}</div>}
+          {rightOverlay && <div className="floating-right">{rightOverlay}</div>}
         </div>
       </div>
       {rightPanel}
