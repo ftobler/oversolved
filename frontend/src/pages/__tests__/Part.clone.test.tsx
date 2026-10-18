@@ -26,7 +26,7 @@ vi.mock('../../components/layout/AppHeader', () => ({
 vi.mock('../../components/layout/MeasurementDisplay', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))
-vi.mock('../../components/layout/Sidebar', () => ({ Sidebar: () => null }))
+vi.mock('../../components/layout/PartDocumentPanel', () => ({ PartDocumentPanel: () => null }))
 
 // Cloning used to fire straight off the toolbar with a server-picked name. It
 // now prompts, so these cover the whole path: button -> dialog -> clone call.

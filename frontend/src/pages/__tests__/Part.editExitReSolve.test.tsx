@@ -94,8 +94,8 @@ describe('edit exit reSolve', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Fillet 1')).toBeInTheDocument()
-      expect(screen.getByText('Chamfer 1')).toBeInTheDocument()
+      expect(screen.getByText('Fillet 1', { selector: '.feature-name' })).toBeInTheDocument()
+      expect(screen.getByText('Chamfer 1', { selector: '.feature-name' })).toBeInTheDocument()
     }, { timeout: 10000 })
 
     // Enter edit on Fillet 1 (middle feature)
@@ -103,7 +103,7 @@ describe('edit exit reSolve', () => {
     await act(async () => { fireEvent.click(editBtns[0]) })
 
     await waitFor(() => {
-      const fil = screen.getByText('Fillet 1').closest('.feature-item')
+      const fil = screen.getByText('Fillet 1', { selector: '.feature-name' }).closest('.feature-item')
       expect(fil?.classList.contains('editing')).toBe(true)
     }, { timeout: 10000 })
 
@@ -155,7 +155,7 @@ describe('edit exit reSolve', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Sketch 1')).toBeInTheDocument()
+      expect(screen.getByText('Sketch 1', { selector: '.feature-name' })).toBeInTheDocument()
     }, { timeout: 10000 })
 
     // Enter edit on the sketch.

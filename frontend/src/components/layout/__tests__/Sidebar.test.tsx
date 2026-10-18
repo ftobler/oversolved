@@ -11,7 +11,10 @@ import { useEditorState } from '@/hooks/useEditorState'
 // J4: the editor has no workspace layer. The workspace tree, the files and
 // origins panels and the rail that switched between them left with the
 // redesign, so the sidebar hosts one thing and hosts it unconditionally --
-// there is no activity bar to find and no hidden second panel behind it.
+// there is no activity bar to find and no hidden second panel behind it. The
+// part editor mounts its navigator in the viewport overlay now
+// (PartDocumentPanel in pages/PartEditorPanel.tsx); this host and its default
+// part stack stay for the assembly editor, which is the production caller.
 
 function makeCallbacks() {
   return {
@@ -58,7 +61,7 @@ beforeEach(() => {
 })
 
 describe('Sidebar hosts the document navigator alone', () => {
-  it('gives the part editor its feature stack and no workspace layer', () => {
+  it('gives the default part stack the feature tree and no workspace layer', () => {
     const { container } = render(
       <MemoryRouter>
         <PartEditorProvider value={makeCallbacks()}>

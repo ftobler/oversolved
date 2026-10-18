@@ -2,6 +2,9 @@
 // selects the feature (FeatureTree.tsx). Any action button that lets the click
 // bubble therefore performs its action AND changes the selection, which is
 // never what the user asked for. The sketch edit button was the lone leak.
+// While a feature is edited the row carries no action beyond the context menu:
+// the OK/Cancel pair moved to the floating FeatureEditPanel, so there is no
+// exit button left in the row to leak.
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { FeatureItemActions } from '@/components/layout/FeatureItemActions'
@@ -12,8 +15,6 @@ function makeHandlers() {
   return {
     onEnterEditSketch: vi.fn(),
     onEnterEditFeature: vi.fn(),
-    onEditCommit: vi.fn(),
-    onEditCancel: vi.fn(),
     onToggleVisibility: vi.fn(),
     onRightClick: vi.fn(),
   }
@@ -70,13 +71,12 @@ describe('FeatureItemActions click isolation', () => {
     expect(rowClick).not.toHaveBeenCalled()
   })
 
-  it('keeps the editing OK/Cancel buttons from reaching the row', () => {
+  it('shows no OK/Cancel in the row while the feature is edited', () => {
     const handlers = makeHandlers()
-    const rowClick = renderRow({ featureKind: 'sketch', isEditing: true }, handlers)
-    fireEvent.click(document.querySelector('.feature-ok-btn')!)
-    fireEvent.click(document.querySelector('.feature-cancel-btn')!)
-    expect(handlers.onEditCommit).toHaveBeenCalledTimes(1)
-    expect(handlers.onEditCancel).toHaveBeenCalledTimes(1)
-    expect(rowClick).not.toHaveBeenCalled()
+    renderRow({ featureKind: 'sketch', isEditing: true }, handlers)
+    expect(document.querySelector('.feature-ok-btn')).toBeNull()
+    expect(document.querySelector('.feature-cancel-btn')).toBeNull()
+    // The context menu stays: it is the row's only action while editing.
+    expect(document.querySelector('.feature-context-btn')).not.toBeNull()
   })
 })

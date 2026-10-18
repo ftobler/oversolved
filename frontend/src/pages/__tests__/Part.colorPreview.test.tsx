@@ -55,8 +55,8 @@ vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null 
 vi.mock('../../components/dialogs/RightClickMenu', async () =>
   (await import('@/__tests__/test-utils')).rightClickMenuMockModule())
 
-vi.mock('../../components/layout/Sidebar', async () =>
-  (await import('@/__tests__/test-utils')).sidebarMockModule())
+vi.mock('../../components/layout/PartDocumentPanel', async () =>
+  (await import('@/__tests__/test-utils')).partDocumentPanelMockModule())
 
 describe('Part Color Preview', () => {
   beforeEach(() => {

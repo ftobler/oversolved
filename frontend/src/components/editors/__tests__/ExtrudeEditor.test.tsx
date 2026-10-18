@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
 import type { PartFeature, Mutation } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
@@ -57,6 +58,7 @@ function renderSidebar(storeState: StoreState = {}, callbacks: Partial<PartEdito
   return render(
     <PartEditorProvider value={makeCallbacks(callbacks)}>
       <Sidebar />
+      <FeatureEditPanel />
     </PartEditorProvider>
   )
 }

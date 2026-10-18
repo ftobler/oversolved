@@ -97,11 +97,11 @@ vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null 
 vi.mock('../../components/dialogs/RightClickMenu', async () =>
   (await import('@/__tests__/test-utils')).rightClickMenuMockModule())
 
-// A sidebar stand-in with the page callbacks this suite drives: the body
+// A navigator stand-in with the page callbacks this suite drives: the body
 // context menu (which opens the popover), the live color edit the popover's
 // swatches make, and an ordinary mutation unrelated to the preview.
-vi.mock('../../components/layout/Sidebar', () => ({
-  Sidebar: () => {
+vi.mock('../../components/layout/PartDocumentPanel', () => ({
+  PartDocumentPanel: () => {
     const { onRightClick, onMutation } = usePartEditorCallbacks()
     return (
       <div>

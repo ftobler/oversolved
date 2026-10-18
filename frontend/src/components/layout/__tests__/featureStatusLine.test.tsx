@@ -1,8 +1,9 @@
 /**
- * The feature status model, end to end through the real sidebar: one mark per
- * feature (featureFailure), drawn the same way in the tree row and as the
- * first line of the open editor, for every kind. These pin the few states a
- * user can observe so no editor grows its own failure display again:
+ * The feature status model, end to end through the real part panels: one mark
+ * per feature (featureFailure), drawn the same way in the tree row and as the
+ * first line of the open editor in the floating FeatureEditPanel, for every
+ * kind. These pin the few states a user can observe so no editor grows its own
+ * failure display again:
  *   - healthy: no tint, no line
  *   - error: red row, red line, same words
  *   - warning (partial result or solver fallback): amber row, amber line
@@ -11,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
 import type { PartFeature, BodyResult } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { PartEditorProvider, type PartEditorCallbacks } from '@/contexts/PartEditorContext'
@@ -25,7 +27,8 @@ function callbacks(): PartEditorCallbacks {
   }
 }
 
-/** Render the sidebar with `feature` open in its editor. */
+/** Render the navigator and the floating edit panel with `feature` open, the
+ *  way the part editor mounts them on either side of the viewport. */
 function renderEditing(feature: PartFeature, solveResults: Record<string, unknown>, bodies: Record<string, BodyResult> = {}) {
   usePartEditorStore.setState({
     features: [feature], visibleFeatures: new Set([feature.id]), doc: { version: 1, kind: 'part', features: [feature] } as never,
@@ -35,7 +38,12 @@ function renderEditing(feature: PartFeature, solveResults: Record<string, unknow
     editingFeatureId: feature.id, rollbackPosition: null,
     normalSelection: new Set(), chipOwnedSelection: new Set(), activePickField: null, modeStack: [],
   })
-  return render(<PartEditorProvider value={callbacks()}><Sidebar /></PartEditorProvider>)
+  return render(
+    <PartEditorProvider value={callbacks()}>
+      <Sidebar />
+      <FeatureEditPanel />
+    </PartEditorProvider>,
+  )
 }
 
 /** The row name and the editor line must agree on level and words. */
@@ -43,7 +51,7 @@ function expectSameMark(level: 'error' | 'warning', message: string) {
   const name = document.querySelector('.feature-name')!
   expect(name.classList.contains(`feature-name-${level}`)).toBe(true)
   expect(name.getAttribute('title')).toBe(message)
-  const line = document.querySelector('.feature-item .status-message')!
+  const line = document.querySelector('.feature-edit-panel .status-message')!
   expect(line).not.toBeNull()
   expect(line.classList.contains(`status-message--${level}`)).toBe(true)
   expect(line.textContent).toBe(message)
@@ -103,16 +111,17 @@ describe('feature status line', () => {
     expect(items[2].className).not.toMatch(/unresolved|failed/)
   })
 
-  it('a click on the status line does not reach the row', () => {
-    // The row's onClick toggles `@<feature>` into the selection, which an
-    // armed pick field would consume (and refuse) as a pick.
+  it('a click on the status line does not select the edited feature', () => {
+    // The line used to sit inside the row whose onClick toggles `@<feature>`
+    // into the selection, which an armed pick field would consume (and refuse)
+    // as a pick. It lives in the floating panel now; the guard stays.
     const cb = callbacks()
     usePartEditorStore.setState({
       features: [EXTRUDE], visibleFeatures: new Set(['ex1']), doc: null, visibleBodies: new Set(), partLabels: {},
       solveResults: { ex1: { status: 'exception', exception: 'sketch not found' } }, bodies: {}, isRebuilding: false, featureTimings: {},
     })
     useEditorState.setState({ editingFeatureId: 'ex1', normalSelection: new Set(), activePickField: null, modeStack: [] })
-    render(<PartEditorProvider value={cb}><Sidebar /></PartEditorProvider>)
+    render(<PartEditorProvider value={cb}><Sidebar /><FeatureEditPanel /></PartEditorProvider>)
     fireEvent.click(document.querySelector('.status-message')!)
     expect(cb.onToggleSelect).not.toHaveBeenCalled()
   })

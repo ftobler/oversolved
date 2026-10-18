@@ -1,6 +1,10 @@
+// The OK/Cancel pair lives in the floating FeatureEditPanel now, not in the
+// tree row, so these render the panel beside the navigator, the way the part
+// editor mounts it on either side of the viewport.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
@@ -49,6 +53,7 @@ function renderSidebar(features: PartFeature[], editingFeatureId: string | null,
   return render(
     <PartEditorProvider value={makeCallbacks(callbacks)}>
       <Sidebar />
+      <FeatureEditPanel />
     </PartEditorProvider>
   )
 }

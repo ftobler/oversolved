@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
@@ -78,6 +79,7 @@ describe('plane pick-chip on new sketch', () => {
     render(
       <PartEditorProvider value={makeCallbacks()}>
         <Sidebar />
+        <FeatureEditPanel />
       </PartEditorProvider>
     )
 
@@ -102,6 +104,7 @@ describe('plane pick-chip on new sketch', () => {
     render(
       <PartEditorProvider value={makeCallbacks()}>
         <Sidebar />
+        <FeatureEditPanel />
       </PartEditorProvider>
     )
 

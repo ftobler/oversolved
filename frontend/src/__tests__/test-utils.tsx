@@ -204,19 +204,21 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
 }
 
 /**
- * Module shape for `vi.mock('.../components/layout/Sidebar', ...)`: one row per
- * body with a button that fires the page's body context menu, which is the only
- * part of the real sidebar these tests reach through.
+ * Module shape for `vi.mock('.../components/layout/PartDocumentPanel', ...)`:
+ * one row per body with a button that fires the page's body context menu, which
+ * is the only part of the real navigator these tests reach through. The part
+ * editor mounts the navigator as its left overlay (floating-panels phase 1);
+ * it is no longer rendered through Sidebar.
  */
-export async function sidebarMockModule() {
+export async function partDocumentPanelMockModule() {
   const { usePartEditorStore } = await import('@/stores/partEditorStore')
   const { usePartEditorCallbacks } = await import('@/contexts/PartEditorContext')
   return {
-    Sidebar: vi.fn(() => {
+    PartDocumentPanel: vi.fn(() => {
       const bodies = usePartEditorStore(s => s.bodies)
       const { onRightClick } = usePartEditorCallbacks()
       return (
-        <div data-testid="sidebar">
+        <div data-testid="document-panel">
           {Object.keys(bodies || {}).map((bodyId: string) => (
             <div key={bodyId} data-testid={`body-${bodyId}`}>
               <button

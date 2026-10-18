@@ -1,7 +1,9 @@
-// The rollback bar and the two sidebar splits are pointer-only today: a
-// keyboard-only user can neither set the rollback position nor resize either
-// pane. They are exposed as sliders with arrow-key stepping so both are
-// reachable without a mouse, while the pointer paths stay unchanged.
+// The rollback bar and the assembly split are pointer-only today: a
+// keyboard-only user can neither set the rollback position nor resize the
+// assembly panes. They are exposed as sliders with arrow-key stepping so both
+// are reachable without a mouse, while the pointer paths stay unchanged. The
+// part editor's splitter went with the floating panels: its Features/Parts
+// cards size to content and do not split one column any more.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -128,20 +130,6 @@ describe('rollback bar keyboard slider', () => {
 
     fireEvent.keyDown(bar, { key: 'ArrowUp' })
     expect(onSetRollbackPosition).not.toHaveBeenCalled()
-  })
-})
-
-describe('sidebar split handle keyboard slider', () => {
-  it('exposes the part splitter as a slider stepped by arrow keys', () => {
-    setupStore([...builtInFeatures, ...extraFeatures], null)
-    renderSidebar()
-    const handle = screen.getByTitle('Drag to resize')
-    expect(handle.getAttribute('role')).toBe('slider')
-    expect(handle.getAttribute('tabindex')).toBe('0')
-    const before = Number(handle.getAttribute('aria-valuenow'))
-
-    fireEvent.keyDown(handle, { key: 'ArrowDown' })
-    expect(Number(handle.getAttribute('aria-valuenow'))).toBeGreaterThan(before)
   })
 })
 

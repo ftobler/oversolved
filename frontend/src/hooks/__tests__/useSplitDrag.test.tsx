@@ -1,6 +1,7 @@
 // The shared split-resize mechanism: default band, pointer-drag clamping,
-// mouseup disarm, arrow-key stepping, and listener cleanup on unmount. Both
-// editors (PartDocumentPanel and AssemblyTree) consume this one hook.
+// mouseup disarm, arrow-key stepping, and listener cleanup on unmount.
+// AssemblyTree is the one editor consuming this hook now: the part editor's
+// Features/Parts cards float separately and do not split one column any more.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { renderHook, act } from '@testing-library/react'

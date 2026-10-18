@@ -78,7 +78,7 @@ describe('feature edit rollback restore', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Extrude 1')).toBeInTheDocument()
+      expect(screen.getByText('Extrude 1', { selector: '.feature-name' })).toBeInTheDocument()
     })
 
     // Enter edit mode on Extrude 1: with no sketch before it, the pick boundary
@@ -95,7 +95,7 @@ describe('feature edit rollback restore', () => {
 
     // Fillet 1 is now rolled back (grayed out)
     await waitFor(() => {
-      const fil1 = screen.getByText('Fillet 1').closest('.feature-item')
+      const fil1 = screen.getByText('Fillet 1', { selector: '.feature-name' }).closest('.feature-item')
       expect(fil1?.classList.contains('rolled-back')).toBe(true)
     })
 
@@ -103,7 +103,7 @@ describe('feature edit rollback restore', () => {
     fireEvent.click(screen.getByTitle('OK'))
 
     await waitFor(() => {
-      const fil1 = screen.getByText('Fillet 1').closest('.feature-item')
+      const fil1 = screen.getByText('Fillet 1', { selector: '.feature-name' }).closest('.feature-item')
       expect(fil1?.classList.contains('rolled-back')).toBe(false)
     })
   })
@@ -121,8 +121,8 @@ describe('feature edit rollback restore', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Fillet 1')).toBeInTheDocument()
-      expect(screen.getByText('Fillet 2')).toBeInTheDocument()
+      expect(screen.getByText('Fillet 1', { selector: '.feature-name' })).toBeInTheDocument()
+      expect(screen.getByText('Fillet 2', { selector: '.feature-name' })).toBeInTheDocument()
     })
 
     // Rollback bar starts at the end (after Fillet 2, no feature is rolled back)
@@ -138,7 +138,7 @@ describe('feature edit rollback restore', () => {
 
     // Fillet 2 should now be rolled back (grayed out)
     await waitFor(() => {
-      const fil2 = screen.getByText('Fillet 2').closest('.feature-item')
+      const fil2 = screen.getByText('Fillet 2', { selector: '.feature-name' }).closest('.feature-item')
       expect(fil2?.classList.contains('rolled-back')).toBe(true)
     })
 
@@ -147,7 +147,7 @@ describe('feature edit rollback restore', () => {
 
     // Fillet 2 must no longer be rolled back -- rollback is restored to full stack
     await waitFor(() => {
-      const fil2 = screen.getByText('Fillet 2').closest('.feature-item')
+      const fil2 = screen.getByText('Fillet 2', { selector: '.feature-name' }).closest('.feature-item')
       expect(fil2?.classList.contains('rolled-back')).toBe(false)
     })
   })
@@ -165,7 +165,7 @@ describe('feature edit rollback restore', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Fillet 2')).toBeInTheDocument()
+      expect(screen.getByText('Fillet 2', { selector: '.feature-name' })).toBeInTheDocument()
     })
 
     // Enter edit mode on Fillet 2 (the last feature)
@@ -174,7 +174,7 @@ describe('feature edit rollback restore', () => {
 
     // Fillet 2 itself is now in edit mode -- nothing after it to roll back
     await waitFor(() => {
-      const fil2 = screen.getByText('Fillet 2').closest('.feature-item')
+      const fil2 = screen.getByText('Fillet 2', { selector: '.feature-name' }).closest('.feature-item')
       expect(fil2?.classList.contains('editing')).toBe(true)
     })
 
@@ -183,8 +183,8 @@ describe('feature edit rollback restore', () => {
 
     // Everything still visible and not rolled back
     await waitFor(() => {
-      const fil1 = screen.getByText('Fillet 1').closest('.feature-item')
-      const fil2 = screen.getByText('Fillet 2').closest('.feature-item')
+      const fil1 = screen.getByText('Fillet 1', { selector: '.feature-name' }).closest('.feature-item')
+      const fil2 = screen.getByText('Fillet 2', { selector: '.feature-name' }).closest('.feature-item')
       expect(fil1?.classList.contains('rolled-back')).toBe(false)
       expect(fil2?.classList.contains('rolled-back')).toBe(false)
     })

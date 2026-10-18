@@ -118,11 +118,11 @@ vi.mock('@/components/Viewport', async () => {
   }
 })
 
-vi.mock('@/components/layout/Sidebar', async () => {
+vi.mock('@/components/layout/PartDocumentPanel', async () => {
   const { usePartEditorStore: useStore } = await import('@/stores/partEditorStore')
   const { usePartEditorCallbacks } = await import('@/contexts/PartEditorContext')
   return {
-    Sidebar: () => {
+    PartDocumentPanel: () => {
       const features = useStore(s => s.features)
       const bodies = useStore(s => s.bodies)
       const { onRightClick, onRebuild, onSetRollbackPosition, onRename } = usePartEditorCallbacks()
