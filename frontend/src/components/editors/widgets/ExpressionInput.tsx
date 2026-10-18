@@ -26,7 +26,7 @@ interface ExpressionInputProps {
  *  drift); local edit state exists only between focus and blur.
  *
  *  A refused value is a field refusal like a refused pick: while the user
- *  edits, the reason shows as a line in the row, so "cannot evaluate" and
+ *  edits, the reason shows as a line under the field, so "cannot evaluate" and
  *  "must be greater than 0" are told apart instead of both reading as one red
  *  border. */
 export function ExpressionInput({

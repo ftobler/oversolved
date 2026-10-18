@@ -15,7 +15,8 @@ import { usePartDoc } from '@/hooks/usePartDoc'
 import { capturePreview } from '@/stores/previewStore/capture'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
+import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
 import MeasurementDisplay from '@/components/layout/MeasurementDisplay'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
@@ -1284,11 +1285,17 @@ export default function Part() {
         rightPanel={
           <PartDebugPanel debugOpen={debugOpen} />
         }
-      >
-        <PartEditorProvider value={partEditorCallbacks}>
-          <Sidebar />
-        </PartEditorProvider>
-      </PartEditorPanel>
+        leftOverlay={
+          <PartEditorProvider value={partEditorCallbacks}>
+            <PartDocumentPanel />
+          </PartEditorProvider>
+        }
+        rightOverlay={
+          <PartEditorProvider value={partEditorCallbacks}>
+            <FeatureEditPanel />
+          </PartEditorProvider>
+        }
+      />
 
       {contextMenu && (
         <RightClickMenu

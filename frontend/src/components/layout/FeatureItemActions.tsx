@@ -2,8 +2,6 @@ import contextEditIcon from '@/assets/icons/context-edit.svg'
 import iconDotsIcon from '@/assets/icons/dots.svg'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
-import okIcon from '@/assets/icons/dialog-ok.svg'
-import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 import { EDIT_LABELS } from '@/components/layout/featureItemKinds'
 
 interface FeatureItemActionsProps {
@@ -16,12 +14,13 @@ interface FeatureItemActionsProps {
   hasVisibility: boolean
   onEnterEditSketch: (id: string) => void
   onEnterEditFeature: (id: string) => void
-  onEditCommit: () => void
-  onEditCancel: () => void
   onToggleVisibility: (id: string) => void
   onRightClick: (pos: [number, number], id: string) => void
 }
 
+// The row's action buttons. While the feature is edited the row keeps only its
+// `editing` highlight and the context menu; the OK / Cancel pair and the editor
+// body live in the floating FeatureEditPanel on the other side of the viewport.
 export function FeatureItemActions({
   featureKind,
   featureId,
@@ -32,13 +31,10 @@ export function FeatureItemActions({
   hasVisibility,
   onEnterEditSketch,
   onEnterEditFeature,
-  onEditCommit,
-  onEditCancel,
   onToggleVisibility,
   onRightClick,
 }: FeatureItemActionsProps) {
   const showEditBtn = !isEditing
-  const showExitBtn = isEditing
   const showVisBtn = !isEditing
   const kind = featureKind
 
@@ -61,16 +57,6 @@ export function FeatureItemActions({
             <img src={contextEditIcon} alt="Edit" />
           </button>
         )
-      )}
-      {canEdit && showExitBtn && (
-        <>
-          <button className="feature-ok-btn" onClick={(e) => { e.stopPropagation(); onEditCommit() }} title="OK">
-            <img src={okIcon} alt="OK" />
-          </button>
-          <button className="feature-cancel-btn" onClick={(e) => { e.stopPropagation(); onEditCancel() }} title="Cancel">
-            <img src={cancelIcon} alt="Cancel" />
-          </button>
-        </>
       )}
       {hasVisibility && showVisBtn && (
         <button

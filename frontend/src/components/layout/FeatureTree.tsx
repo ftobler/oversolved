@@ -8,24 +8,22 @@ import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { RebuildButton } from '@/components/rebuild/RebuildButton'
 import { FeatureItemActions } from '@/components/layout/FeatureItemActions'
 import { isEditableFeatureKind } from '@/components/layout/featureItemKinds'
-import { FeatureItemEditors } from '@/components/layout/FeatureItemEditors'
 import { RollbackSlider } from '@/components/layout/RollbackSlider'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
 import { BUILTIN_FEATURE_IDS } from '@/components/layout/builtinFeatureIds'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { domHandleProps } from '@/picking'
 
-interface FeatureTreeProps {
-  splitPercent: number
-}
-
-export function FeatureTree({ splitPercent }: FeatureTreeProps) {
+// The features list is one of the part editor's floating cards now: it sizes to
+// its content under a max-height and scrolls internally, with the open feature's
+// editor a separate panel on the other side of the viewport
+// (FeatureEditPanel.tsx). The row only keeps its `editing` highlight.
+export function FeatureTree() {
   const features = usePartEditorStore(s => s.features)
   const doc = usePartEditorStore(s => s.doc)
   const rollbackPosition = useEditorState(s => s.rollbackPosition)
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
-  const partLabels = usePartEditorStore(s => s.partLabels)
   const solveResults = usePartEditorStore(s => s.solveResults)
   const bodies = usePartEditorStore(s => s.bodies)
   const isRebuilding = usePartEditorStore(s => s.isRebuilding)
@@ -38,8 +36,6 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
     onToggleSelect,
     onEnterEditSketch,
     onEnterEditFeature,
-    onEditCommit,
-    onEditCancel,
     onToggleVisibility,
     onRightClick,
     onMutation,
@@ -110,8 +106,8 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
   }, [draggedRollback, rollbackTargetAt, onSetRollbackPosition, effectiveRollback])
 
   // Enter/Space on a focused row selects it, mirroring the row's click. Only the
-  // row itself reacts: a key event bubbling from a control inside the row (an
-  // action button or an inline editor input) must not re-select the feature.
+  // row itself reacts: a key event bubbling from an action button inside the row
+  // must not re-select the feature.
   const rowKeyDown = (e: ReactKeyboardEvent<HTMLLIElement>, select: () => void) => {
     if (e.target !== e.currentTarget) return
     if (e.key !== 'Enter' && e.key !== ' ') return
@@ -120,11 +116,18 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
     select()
   }
 
+  // The open editor is its own card now, so the edited row can sit outside the
+  // list's scroll window. Pull it back into view when an edit starts; `nearest`
+  // leaves an already-visible row where it is.
+  useEffect(() => {
+    if (editingFeatureId === null) return
+    const row = listRef.current?.querySelector<HTMLElement>('.feature-item.editing')
+    // jsdom (the unit tests) has no scrollIntoView; browsers all do.
+    if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' })
+  }, [editingFeatureId])
+
   return (
-    <div
-      className="sidebar-top"
-      style={{ height: `${splitPercent}%` }}
-    >
+    <div className="sidebar-top glass-panel">
       <div className="sidebar-header">
         <span>Features</span>
         {onRebuild && (
@@ -209,7 +212,6 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   onEnterEditFeature(feature.id)
                 }
               }}
-              style={{ flexWrap: 'wrap' }}
               {...domHandleProps(`tree:feature:${feature.id}`)}
             >
               <div className="feature-item-title">
@@ -250,21 +252,10 @@ export function FeatureTree({ splitPercent }: FeatureTreeProps) {
                   }
                   onEnterEditSketch={onEnterEditSketch}
                   onEnterEditFeature={onEnterEditFeature}
-                  onEditCommit={onEditCommit}
-                  onEditCancel={onEditCancel}
                   onToggleVisibility={onToggleVisibility}
                   onRightClick={onRightClick}
                 />
               </div>
-              <FeatureItemEditors
-                feature={feature}
-                editingFeatureId={editingFeatureId}
-                doc={doc}
-                onMutation={onMutation}
-                features={features}
-                partLabels={partLabels}
-                status={mark}
-              />
             </li>
           </Fragment>
         )})

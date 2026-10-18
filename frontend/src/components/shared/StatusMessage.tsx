@@ -7,9 +7,11 @@ import type { StatusMark } from '@/utils/core/statusMark'
  * build read alike. `role="status"` is announced without stealing focus from
  * the viewport the user keeps picking in.
  *
- * Clicks stop here: the line sits inside a tree row whose onClick selects the
- * row, which would disarm a mate field or feed `@<feature>` to an armed pick.
- */
+ * Clicks stop here: in the assembly tree the line sits inside a row whose
+ * onClick selects the row, which would disarm a mate field or feed
+ * `@<feature>` to an armed pick. The part editor's line lives in the floating
+ * edit panel now; the stop there is harmless and keeps one mark component for
+ * both. */
 export function StatusMessage({ mark }: { mark: Pick<StatusMark, 'level' | 'message'> }) {
   if (mark.level === null) return null
   return (

@@ -1,12 +1,13 @@
 /**
- * useSplitDrag -- the pointer + keyboard resize mechanism shared by the part
- * editor's document panel and the assembly tree. Both editors split their
- * navigator into a top and a bottom pane with the same band, step, document
- * mousemove/mouseup listeners, and container-height math; this hook is the one
- * copy so a clamping or cleanup fix cannot drift between them.
+ * useSplitDrag -- the pointer + keyboard resize mechanism for the assembly
+ * tree's navigator. The assembly splits its panel into a top and a bottom pane
+ * with the same band, step, document mousemove/mouseup listeners, and
+ * container-height math the part editor once shared; the part editor moved to
+ * separate floating cards (PartDocumentPanel.tsx) and no longer splits a
+ * column, but the hook stays for the assembly until phase 2 does the same.
  *
  * The caller owns the container element (the ref), the splitter's markup and
- * its aria-label, since the two editors render different containers.
+ * its aria-label, since callers render their own containers.
  */
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
 
