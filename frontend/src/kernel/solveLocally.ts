@@ -14,6 +14,7 @@ import { createFeatureSolver } from './solverRegistry'
 import { initSketchSolver } from './features/sketch'
 import { postRegister } from './features/postRegister'
 import { loadOccWeb } from './occ/loadOccWeb'
+import { memoizedLoad } from './occ/memoizedLoad'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, readShapeFaceMetadata, bodyFrame } from './occ/tessellation'
@@ -28,9 +29,6 @@ import { canonicalEdges, canonicalFaces, canonicalVertices } from './occ/bodyNam
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
 import type { Transform3D } from '../types/cad'
-
-let occModule: OccModule | null = null
-let occLoading: Promise<OccModule | null> | null = null
 
 // ─── cross-solve checkpoint cache ───
 // The checkpoint cache is not a side table: it IS the OCC handles in this
@@ -66,14 +64,24 @@ function resetLocalSolveCache(): void {
 // MEMFS-backed module to drive the real production entry off-thread.
 let occLoaderOverride: (() => Promise<OccModule | null>) | null = null
 
+// The OCC module cell, memoized per successful result. The null/rejection
+// eviction matters here: the Worker preloads the kernel at spawn, so that one
+// load is the only early attempt a session gets, and pinning a failure would
+// read as "OCC unavailable" for the Worker's whole lifetime. The loaders below
+// this cell already evict their own failed promises so the next call retries.
+const occCell = memoizedLoad(async (): Promise<OccModule | null> => {
+  const loader = occLoaderOverride ?? loadOccWeb
+  return loader()
+})
+
 /**
  * Install the OCC loader. The Worker bootstrap calls this with the DOM-free
- * worker loader; without it the main-thread loadOccWeb is used.
+ * worker loader; without it the main-thread loadOccWeb is used. Resetting the
+ * cell drops whatever a previous loader had cached.
  */
 export function setOccLoader(loader: (() => Promise<OccModule | null>) | null): void {
   occLoaderOverride = loader
-  occModule = null
-  occLoading = null
+  occCell.reset()
 }
 
 /** @internal test-only: inject an OCC loader and reset all cached state. */
@@ -91,17 +99,10 @@ export function persistentTableForTest(): HandleTable | null {
   return persistentTable
 }
 
-/** Load (or return the already-loaded) OCC module. */
-async function ensureOcc(): Promise<OccModule | null> {
-  if (occModule) return occModule
-  if (!occLoading) {
-    const loader = occLoaderOverride ?? loadOccWeb
-    occLoading = loader().then((m) => {
-      occModule = m
-      return m
-    })
-  }
-  return occLoading
+/** Load (or return the already-loaded) OCC module; a failed load retries on the
+ *  next call instead of pinning "unavailable". */
+function ensureOcc(): Promise<OccModule | null> {
+  return occCell.load()
 }
 
 /**

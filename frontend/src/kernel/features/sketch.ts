@@ -34,6 +34,7 @@ import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, ty
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadSolverWasm, loadTopologyWasm } from '@/wasm-kernel/solverWasm'
+import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, type PlaneFrame } from './projectionLowering'
 import type { SolveBytes } from '@/wasm-kernel/codec'
@@ -65,17 +66,39 @@ export interface SketchResult {
 }
 
 let solverBytes: SolveBytes | null = null
-let solverLoading: Promise<SolveBytes | null> | null = null
 // The Rust area builder (`detect_topology_bytes`). The browser wires it in
 // `initSketchSolver` (awaited alongside the solver); the node harness injects it
 // via `setSketchTopology`. Only null on a fresh checkout with no `just wasm`, in
 // which case the missing solver makes `solveSketch` throw first.
 let topologyBytes: TopologyBytes | null = null
 
+// The auto-loaded solver, memoized per successful result. The null/rejection
+// eviction matters here: `loadSolverWasm` evicts its own failed package so a
+// later call retries, and pinning this cell's null would leave every sketch
+// failing with "Rust solver not initialised" for the session after one
+// transient failure. The injectors (`setSketchSolver`/`resetSketchSolver`)
+// reset the cell and put their bytes ahead of any auto-load.
+const solverCell = memoizedLoad(async (): Promise<SolveBytes | null> => {
+  // Wire the area builder alongside the solver (they share one wasm module) and
+  // AWAIT both, so the first synchronous solve never races a half-loaded
+  // topology. A null topology loader (mock / fresh checkout) leaves any
+  // already-injected loader in place.
+  let topoLoad: Promise<TopologyBytes | null>
+  try {
+    topoLoad = loadTopologyWasm?.() ?? Promise.resolve(null)
+  } catch {
+    topoLoad = Promise.resolve(null)
+  }
+  const [bytes, topo] = await Promise.all([loadSolverWasm(), topoLoad.catch(() => null)])
+  if (topo) topologyBytes = topo
+  solverBytes = bytes
+  return bytes
+})
+
 /** Inject a pre-loaded solver (node tests call this with ``loadSolver()``). */
 export function setSketchSolver(bytes: SolveBytes | null): void {
   solverBytes = bytes
-  solverLoading = null
+  solverCell.reset()
 }
 
 /** Inject a pre-loaded Rust area builder; null restores the TS fallback. */
@@ -83,27 +106,11 @@ export function setSketchTopology(bytes: TopologyBytes | null): void {
   topologyBytes = bytes
 }
 
-/** Start loading the Rust solver + area builder from ``/wasm/`` (browser path). */
-export async function initSketchSolver(): Promise<SolveBytes | null> {
-  if (solverBytes) return solverBytes
-  if (!solverLoading) {
-    // Wire the area builder alongside the solver (they share one wasm module) and
-    // AWAIT both, so the first synchronous solve never races a half-loaded
-    // topology. A null topology loader (mock / fresh checkout) leaves any
-    // already-injected loader in place.
-    let topoLoad: Promise<TopologyBytes | null>
-    try {
-      topoLoad = loadTopologyWasm?.() ?? Promise.resolve(null)
-    } catch {
-      topoLoad = Promise.resolve(null)
-    }
-    solverLoading = Promise.all([loadSolverWasm(), topoLoad.catch(() => null)]).then(([b, t]) => {
-      solverBytes = b
-      if (t) topologyBytes = t
-      return b
-    })
-  }
-  return solverLoading
+/** Start loading the Rust solver + area builder from ``/wasm/`` (browser path);
+ *  a failed auto-load is retried on the next call instead of pinned. */
+export function initSketchSolver(): Promise<SolveBytes | null> {
+  if (solverBytes) return Promise.resolve(solverBytes)
+  return solverCell.load()
 }
 
 /** Clear the cached solver (tests). The area builder loader is environment
@@ -111,7 +118,7 @@ export async function initSketchSolver(): Promise<SolveBytes | null> {
  *  solver reset; use `setSketchTopology(null)` to drop it explicitly. */
 export function resetSketchSolver(): void {
   solverBytes = null
-  solverLoading = null
+  solverCell.reset()
 }
 
 /**

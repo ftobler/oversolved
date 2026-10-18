@@ -41,6 +41,22 @@ describe('initSketchSolver', () => {
     })
     await expect(initSketchSolver()).resolves.toBeNull()
   })
+
+  it('retries a failed solver load instead of pinning the null', async () => {
+    const bytes = () => new Uint8Array(0)
+    vi.mocked(solverWasm.loadSolverWasm)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(bytes)
+    vi.mocked(solverWasm.loadTopologyWasm).mockResolvedValue(null)
+
+    await expect(initSketchSolver()).resolves.toBeNull()
+
+    // The failed auto-load was evicted, so the retry installs the now-available
+    // solver instead of replaying the pinned null (which would leave every
+    // sketch failing "Rust solver not initialised" for the rest of the session).
+    await expect(initSketchSolver()).resolves.toBe(bytes)
+    expect(solverWasm.loadSolverWasm).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('solveSketch lowering refusals', () => {
