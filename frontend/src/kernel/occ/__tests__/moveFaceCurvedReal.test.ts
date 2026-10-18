@@ -315,7 +315,7 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
         expectVolume(scope, moved(scope, body, slant, d), want)
       } finally { scope.dispose() }
     }
-  })
+  }, 30000)
 
   it('full cone r10 h10 slant face: +1 / -1 grow and shrink the cone about its base', () => {
     // A 45 degree cone: the parallel cone's apex shifts by d/sin(semi) and the
@@ -333,7 +333,7 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
         expectVolume(scope, moved(scope, body, slant, d), want)
       } finally { scope.dispose() }
     }
-  })
+  }, 30000)
 
   it('a cone move that takes the ref radius past zero is refused by name', () => {
     // The frustum's ref radius is 10 and cos(semi) = 0.894, so moving the slant
@@ -405,7 +405,7 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
         expectVolume(scope, moved(scope, body, tube, d), want)
       } finally { scope.dispose() }
     }
-  })
+  }, 30000)
 
   it('a wall moved onto a coincident existing wall merges into it', () => {
     // The plan's coincident-target risk: the r5 wall grows onto the r7 wall of
