@@ -1,8 +1,9 @@
-// Feature kinds that expose edit (and, while editing, OK/Cancel) buttons, keyed
-// to the word used in the edit tooltip. `sketch` is the lone exception: it edits
-// via onEnterEditSketch rather than onEnterEditFeature. This is the single source
+// Feature kinds that expose an edit action in the tree, keyed to the word used
+// in the edit tooltip. `sketch` is the lone exception: it edits via
+// onEnterEditSketch rather than onEnterEditFeature. This is the single source
 // for both the placeholder slot and the tree's double-click gate, so the two
-// cannot drift.
+// cannot drift. The OK/Cancel pair of an open edit is not here: it lives in
+// FeatureEditPanel, the panel the tree row no longer carries.
 export const EDIT_LABELS: Record<string, string> = {
   sketch: 'sketch',
   plane: 'plane',

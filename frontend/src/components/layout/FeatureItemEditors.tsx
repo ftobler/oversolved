@@ -59,7 +59,8 @@ export function FeatureItemEditors({ status = NO_MARK, ...props }: FeatureItemEd
  * Whether the feature kind has an editor body at all. FeatureItemEditors
  * renders nothing exactly when this is false (a built-in plane, a kind with no
  * schema), which is the check the right-side panel needs before drawing its
- * frame around an empty body. Keep this in step with `editorFor` below.
+ * frame around an empty body. __tests__/featureItemKinds.test.ts pins this
+ * against the edit gate and the schema table.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- pure kind predicate exported beside the editor component
 export function featureHasEditor(feature: PartFeature): boolean {
