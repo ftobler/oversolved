@@ -19,7 +19,13 @@ vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   useFrame: () => {},
   // domElement is real so SceneController's right-button remap can attach.
-  useThree: () => ({ camera: testCamera, gl: { domElement: document.createElement('canvas') }, scene: new THREE.Scene() }),
+  // Selector-aware with a callable invalidate, like the real hook:
+  // RenderOnChange reads the Canvas's invalidate through a selector. The camera
+  // is the suite's real test camera, so the whole-state form still hands it out.
+  useThree: (selector?: (state: Record<string, unknown>) => unknown) => {
+    const state = { camera: testCamera, gl: { domElement: document.createElement('canvas') }, scene: new THREE.Scene(), invalidate: () => {}, size: { width: 0, height: 0 } }
+    return selector ? selector(state) : state
+  },
 }))
 
 vi.mock('@react-three/drei', () => ({

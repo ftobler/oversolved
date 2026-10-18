@@ -5,9 +5,10 @@ The frontend 3D viewport is an R3F (React Three Fiber) scene inside a single `Ca
 ## Component Tree (render order)
 
 ```
-<Canvas orthographic camera={INITIAL_CAMERA}> (antialias, logarithmicDepthBuffer, background #111)
+<Canvas orthographic camera={INITIAL_CAMERA} frameloop="demand"> (antialias, logarithmicDepthBuffer, background #111)
                                            (camera: pos [20,20,100], zoom 80, near=-500, far=500)
-  <SceneController />                       (OrbitControls + CubeGizmo per-frame)
+  <RenderOnChange />                        (asks for a frame on every scene-store change)
+  <SceneController />                       (OrbitControls + CubeGizmo on drawn frames)
   <IdPickingDriver />                       (offscreen ID render target; pick source)
   <SceneProbeDriver />                      (publishes camera + canvas to the scene probe)
   <Environment /> + <EnvLight />           (IBL env map; EnvLight rotates the env to follow the camera)
@@ -69,7 +70,7 @@ Transforms raw events into clean primitives:
 - **SceneController**: OrbitControls + CubeGizmo + keyboard modifiers + snap-to-direction animation in one `useFrame`
 - **OrbitControls**: Left button disabled (reserved for selection), Middle=pan, Right=rotate. Ctrl=pan, Shift=dolly
 - **Camera alignment**: `autoZoomToFit`, `alignCameraToPlane` (Front/Top/Right/etc.), `alignCameraToFace`
-- **CubeGizmo**: 2D canvas overlay, rendered each frame with face/edge/vertex hit detection
+- **CubeGizmo**: 2D canvas overlay, painted on drawn frames with face/edge/vertex hit detection
 
 ### Layer 3B: Selection Subsystem
 
@@ -174,9 +175,16 @@ plain, JSON-safe snapshot of the scene, readable without a devtools connection:
 
 ## Rendering Pipeline
 
-- R3F render loop drives all rendering. Per-frame `useFrame`: scene controller, env light, Body3D vertex scaling, dot/hit geometry pixel scaling, origin billboarding.
+- The Canvas runs `frameloop="demand"`: an idle viewport draws nothing (no per-frame canvas for the frosted navigator cards' `backdrop-filter` to resample). A frame is requested by:
+  - R3F itself: every scene instance it creates, updates or reveals, and every root-store change (size, dpr, scene, camera);
+  - drei's `OrbitControls`, whose change listener invalidates on every camera move;
+  - `RenderOnChange` (inside the Canvas), which asks through `subscribeSceneInvalidation` (`Viewport/sceneInvalidation.ts`) on every change in the stores that feed the scene: `usePartEditorStore`, `editorState` (`useSketchEditorStore` is that same store) and `useSketchUiStore`;
+  - `RenderOnChange`'s other two cases: a restored GL context (`webglcontextrestored` leaves a blank canvas and touches no store), and `RenderOnce`, mounted beside `Environment` inside the Suspense boundary because the landed HDR map applies scene state from a layout effect and creates no R3F instance;
+  - the imperative camera paths (fit, plane/face alignment) and the orientation cube's hover/snap (only when the drawn highlight changed), which reach the Canvas's own invalidate through the `invalidateRef` `RenderOnChange` publishes. `SceneController` also feeds that invalidate to `drawCubeGizmo`'s `onFontReady`, so a label font landing after the frame repaints the cube.
+- `useFrame` therefore runs only on drawn frames. Per-frame work: scene controller, env light, Body3D vertex scaling, dot/hit geometry pixel scaling, origin billboarding. All of it is driven by the camera or by props, and both request a frame.
+- `captureThumbnail` resizes the live renderer and restores it; because a resize clears the drawing buffer it redraws a full-size frame before returning, or a demand-mode viewport would sit blank until the next change.
 - Render order constants: DEFAULT=0, EDITING=10, HIGHLIGHT=999 (in `partColors.ts`).
-- Screenshot capture: imperative `gl.render(scene, camera)`, `captureScreenshotForSaving` renders at 1/4 resolution scaled to max 512px.
+- Screenshot capture: imperative `gl.render(scene, camera)`, `captureScreenshotForSaving` renders at 1/4 resolution scaled to max 1024px.
 - Colors defined in `partColors.ts` (body: mint green, sketch: blue/white/red, selected: orange, etc.).
 - Body meshes use `meshPhysicalMaterial` (roughness 0.7 by default) with `vertexColors` for per-face coloring.
 

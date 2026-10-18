@@ -69,7 +69,7 @@ interface SceneControllerProps {
 }
 
 export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled, onReady }: SceneControllerProps) {
-  const { camera, gl } = useThree()
+  const { camera, gl, invalidate } = useThree()
   const ctrlRef = useRef<OrbitControlsImpl | null>(null)
   const cameraRefStable = useRef(camera)
   // eslint-disable-next-line react-hooks/refs -- mirror the latest camera into a ref without triggering a re-render
@@ -158,7 +158,10 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
     }
 
     if (gizmoCanvasRef.current)
-      pvRef.current = drawCubeGizmo(gizmoCanvasRef.current, camera, hoverRef.current)
+      // The 4th argument is what a demand-rendered Canvas needs: the label font
+      // can land after the frame that requested it, and the arrival asks for
+      // the repaint itself instead of waiting for the next unrelated frame.
+      pvRef.current = drawCubeGizmo(gizmoCanvasRef.current, camera, hoverRef.current, invalidate)
   })
 
   const drag = useSketchEditorStore(s => s.drag)

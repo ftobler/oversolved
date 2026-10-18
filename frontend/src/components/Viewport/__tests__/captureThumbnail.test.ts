@@ -95,6 +95,23 @@ describe('captureThumbnail', () => {
     vi.restoreAllMocks()
   })
 
+  it('repaints a full-size frame after restoring, so a demand-mode viewport is not left blank', async () => {
+    // The size restore clears the drawing buffer, and the part viewport draws
+    // on demand: without this redraw the quarter-size capture would be the last
+    // frame drawn and the user would face a blank viewport until the next
+    // unrelated change.
+    stubImage(320, 200)
+    stubCanvas()
+    const { gl, render, setSize } = makeFakeGl()
+
+    await captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera)
+
+    expect(render).toHaveBeenCalledTimes(2)
+    // ...and in that order: the repaint has to land after the size is restored,
+    // or the viewport would be left at the quarter-size capture.
+    expect(render.mock.invocationCallOrder[1]).toBeGreaterThan(setSize.mock.invocationCallOrder[1])
+  })
+
   it('scales an oversized capture down so the longest side is capped at MAX_SIZE', async () => {
     stubImage(4096, 2048)
     const { canvas, ctx } = stubCanvas()

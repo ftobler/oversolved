@@ -18,7 +18,7 @@ const identityCamera = () => {
   return cam
 }
 
-function mount() {
+function mount(onRequestRender?: () => void) {
   const canvasRef = createRef<HTMLCanvasElement>()
   const pvRef = { current: [{ sx: 1, sy: 1, z: 0 }] as Pv[] }  // non-empty passes the guard
   const hoverRef = { current: null as Hit | null }
@@ -41,6 +41,7 @@ function mount() {
         hoverRef={hoverRef}
         snapRef={snapRef}
         cameraRef={cameraRef}
+        onRequestRender={onRequestRender}
       />
     </div>,
   )
@@ -122,6 +123,63 @@ describe('CubeGizmo hover cursor', () => {
     expect(m.canvas.style.cursor).toBe('pointer')
     fireEvent.mouseLeave(m.canvas)
     expect(m.canvas.style.cursor).toBe('default')
+  })
+})
+
+describe('CubeGizmo asks for its frame', () => {
+  // The gizmo is painted from the render loop's useFrame (SceneController), and
+  // the part viewport draws on demand: hover and snap change what that frame
+  // would draw while touching nothing React can see, so each has to request a
+  // frame itself.
+  it('hover, leave and a snapping click each request a frame', () => {
+    const onRequestRender = vi.fn()
+    const m = mount(onRequestRender)
+    const C = GIZMO_SIZE / 2
+
+    fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
+    expect(onRequestRender).toHaveBeenCalledTimes(1)
+
+    fireEvent.mouseLeave(m.canvas)
+    expect(onRequestRender).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(m.canvas, { clientX: C, clientY: C })
+    expect(onRequestRender).toHaveBeenCalledTimes(3)
+  })
+
+  it('a move that stays on the same face requests no second frame', () => {
+    const onRequestRender = vi.fn()
+    const m = mount(onRequestRender)
+    const C = GIZMO_SIZE / 2
+
+    fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
+    fireEvent.mouseMove(m.canvas, { clientX: C + 3, clientY: C + 3 })
+
+    // Same face: the highlight did not change, so grazing the cube must not
+    // redraw the scene and the pick buffer per pointermove.
+    expect(onRequestRender).toHaveBeenCalledTimes(1)
+  })
+
+  it('a move off the cube requests the clear, but leaving an unhovered cube requests nothing', () => {
+    const onRequestRender = vi.fn()
+    const m = mount(onRequestRender)
+    const C = GIZMO_SIZE / 2
+
+    fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
+    fireEvent.mouseMove(m.canvas, { clientX: 3, clientY: 3 })
+    expect(onRequestRender).toHaveBeenCalledTimes(2)
+
+    onRequestRender.mockClear()
+    fireEvent.mouseLeave(m.canvas)
+    expect(onRequestRender).not.toHaveBeenCalled()
+  })
+
+  it('a click that hits nothing requests no frame', () => {
+    const onRequestRender = vi.fn()
+    const m = mount(onRequestRender)
+
+    fireEvent.click(m.canvas, { clientX: 2, clientY: 2 })
+
+    expect(onRequestRender).not.toHaveBeenCalled()
   })
 })
 

@@ -22,7 +22,12 @@ vi.mock('@react-three/fiber', () => ({
     return <div data-testid="canvas">{children}</div>
   },
   useFrame: () => {},
-  useThree: () => ({ camera: {}, gl: {}, scene: {} }),
+  // Selector-aware with a callable invalidate, like the real hook:
+  // RenderOnChange reads the Canvas's invalidate through a selector.
+  useThree: (selector?: (state: Record<string, unknown>) => unknown) => {
+    const state = { camera: {}, gl: { domElement: document.createElement('canvas') }, scene: {}, invalidate: () => {}, size: { width: 0, height: 0 } }
+    return selector ? selector(state) : state
+  },
 }))
 
 vi.mock('@react-three/drei', () => ({

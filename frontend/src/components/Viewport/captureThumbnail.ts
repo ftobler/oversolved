@@ -30,12 +30,22 @@ export async function captureThumbnail(
   // viewport for an incidental thumbnail capture. The original error is
   // rethrown after cleanup; callers (saveDoc) already catch around it.
   let dataUrl: string
+  let captured = false
   try {
     gl.setSize(smallWidth, smallHeight)
     gl.render(scene, camera)
     dataUrl = gl.domElement.toDataURL('image/png')
+    captured = true
   } finally {
     gl.setSize(originalSize.width, originalSize.height)
+    // A resize clears the drawing buffer, and the part viewport draws on demand
+    // (frameloop="demand"): without a redraw the quarter-size capture would be
+    // the last frame drawn and the viewport would sit blank until the next
+    // unrelated change. Only after a capture that succeeded: on the error path
+    // the renderer may be gone, and a second render would mask the original
+    // failure. The assembly viewport (a continuous loop) only pays one extra
+    // full-size draw.
+    if (captured) gl.render(scene, camera)
   }
 
   const img = new Image()

@@ -19,6 +19,7 @@ import OriginMarker from '@/components/Viewport/OriginMarker'
 import FeatureHandles from '@/components/Viewport/FeatureHandles'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
+import { RenderOnChange, RenderOnce } from '@/components/Viewport/RenderOnChange'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -140,6 +141,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const controlsRef = useRef<OrbitControlsImpl | null>(null)
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
+  // The Canvas's own invalidate, published by RenderOnChange. The viewport
+  // draws on demand, so the camera paths below (fit, plane/face alignment) have
+  // to ask for their frame themselves.
+  const invalidateRef = useRef<(() => void) | null>(null)
   const bodiesRef = useRef<Record<string, BodyResult> | undefined>(undefined)
   // eslint-disable-next-line react-hooks/refs -- mirror latest bodies into a ref for use inside stable callbacks
   bodiesRef.current = bodies
@@ -205,6 +210,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     // find no bounds; stay pending and retry as `bodies` populate.
     if (fitToContent(camera, controlsRef.current, bodiesRef.current, sceneRef.current)) {
       fitPendingRef.current = false
+      invalidateRef.current?.()  // the fit moved the camera outside React
       traceCamera('fit:done')
     }
   }, [])
@@ -246,6 +252,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
     alignToPlane(camera, controlsRef.current, planeId)
+    invalidateRef.current?.()  // camera move outside React, same as the fit
   }, [cameraRef])
 
   const alignCameraToFace = useCallback(
@@ -253,9 +260,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       const camera = cameraRef.current as THREE.OrthographicCamera | null
       if (!camera) return
       alignToFace(camera, controlsRef.current, faceNormal, faceCenter)
+      invalidateRef.current?.()  // camera move outside React, same as the fit
     },
     [cameraRef],
   )
+
+  // One stable callback for every component that asks the Canvas for a frame
+  // while acting through refs (the orientation cube's hover and snap).
+  const requestRender = useCallback(() => invalidateRef.current?.(), [])
 
   useImperativeHandle(
     ref,
@@ -520,9 +532,19 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         camera={INITIAL_CAMERA}
         style={CANVAS_STYLE}
         gl={CANVAS_GL}
+        // Demand, not the R3F default "always": the scene draws when something
+        // that feeds it changed (RenderOnChange below, the reconciler's own
+        // instance invalidations, OrbitControls' change listener), never once
+        // per display refresh. An idle viewport is what keeps the frosted
+        // navigator cards' backdrop-filter from resampling a live canvas every
+        // frame (the two together read as a flickering viewport), and it is
+        // the battery/GPU win that comes with it.
+        frameloop="demand"
         onCreated={onCreated}
         onPointerMissed={onPointerMissed}
       >
+        <RenderOnChange invalidateRef={invalidateRef} />
+
         <SceneController
           key="scene-ctrl"
           gizmoCanvasRef={canvasRef}
@@ -543,6 +565,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
             every cold new-tab reveal). Mirrors PlaneVisual's <Text> boundary. */}
         <Suspense fallback={null}>
           <Environment files={`${import.meta.env.BASE_URL}env.hdr`} background={false} environmentIntensity={ENV_INTENSITY} />
+          {/* The env map lands after the first painted frame and touches no
+              R3F instance, so on demand it asks for its own frame. */}
+          <RenderOnce />
         </Suspense>
         <EnvLight />
 
@@ -684,6 +709,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           hoverRef={hoverRef}
           snapRef={snapRef}
           cameraRef={cameraRef}
+          // The cube's hover highlight and its click-to-snap move the camera
+          // through refs, and its 2D canvas is painted from the render loop's
+          // useFrame; with the loop on demand each of those needs a frame.
+          onRequestRender={requestRender}
         />
         <div className="viewport-hud-readout">{hud}</div>
       </div>

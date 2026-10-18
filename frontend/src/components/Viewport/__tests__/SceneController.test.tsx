@@ -9,10 +9,21 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Pv, Hit } from '@/components/misc/CubeGizmo.utils'
 import { useEditorState } from '@/hooks/useEditorState'
 
+const h = vi.hoisted(() => ({ frameCallbacks: [] as Array<() => void> }))
+
 vi.mock('@react-three/fiber', () => ({
   useThree: vi.fn(),
-  useFrame: () => {},
+  // Captured, not run: the frame callback is the cube's paint path, and only
+  // the tests that ask for it call it.
+  useFrame: (cb: () => void) => { h.frameCallbacks.push(cb) },
 }))
+
+// Passthrough spy on the paint call: the demand-mode contract (the Canvas's
+// invalidate reaches the cube's font-ready hook) is asserted at the call site.
+vi.mock('@/components/misc/CubeGizmo.utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/misc/CubeGizmo.utils')>()
+  return { ...actual, drawCubeGizmo: vi.fn(actual.drawCubeGizmo) }
+})
 
 // A fuller OrbitControls mock than a bare `() => null`: it wires the ref up to
 // a minimal fake controls object (target + mouseButtons + update) so
@@ -298,8 +309,7 @@ describe('SceneController orbit pose across a Suspense reveal', () => {
   })
 })
 
-describe('SceneController right-button remap binding', () => {
-  it('listens on the renderer canvas so the modifier remap works outside the gizmo corner', async () => {
+describe('SceneController right-button remap binding', () => {  it('listens on the renderer canvas so the modifier remap works outside the gizmo corner', async () => {
     const { useThree } = await import('@react-three/fiber')
 
     const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
@@ -355,5 +365,40 @@ describe('SceneController right-button remap binding', () => {
     expect(props.controlsRef.current).toBeNull()
     pressRightButton(rendererCanvas, { ctrlKey: true })
     expect(controlsAtUnmount.mouseButtons.RIGHT).toBe(THREE.MOUSE.ROTATE)
+  })
+})
+
+describe('SceneController gizmo paint', () => {
+  it('hands the Canvas invalidate to the cube paint so a late label font repaints on demand', async () => {
+    const { useThree } = await import('@react-three/fiber')
+    const { drawCubeGizmo } = await import('@/components/misc/CubeGizmo.utils')
+
+    const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
+    const invalidate = vi.fn()
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      camera: cam,
+      gl: { domElement: document.createElement('canvas') },
+      invalidate,
+    })
+
+    const gizmoOverlay = document.createElement('canvas')
+    render(
+      <SceneController
+        gizmoCanvasRef={makeRef<HTMLCanvasElement | null>(gizmoOverlay)}
+        pvRef={makeRef<Pv[]>([])}
+        hoverRef={makeRef<Hit | null>(null)}
+        snapRef={makeRef<THREE.Vector3 | null>(null)}
+        cameraRef={makeRef<THREE.Camera | null>(null)}
+        controlsRef={makeRef<OrbitControlsImpl | null>(null)}
+      />
+    )
+
+    // The frame callback stands in for a drawn frame; the paint must receive
+    // the invalidate as its font-ready hook, or a Roboto face that loads after
+    // the frame that requested it would never repaint the cube.
+    const frame = h.frameCallbacks.at(-1)!
+    frame()
+
+    expect(drawCubeGizmo).toHaveBeenCalledWith(gizmoOverlay, cam, null, invalidate)
   })
 })

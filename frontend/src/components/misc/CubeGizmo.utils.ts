@@ -382,11 +382,10 @@ export function drawCubeGizmo(
   onFontReady?: () => void,
 ): Pv[] {
   // Idempotent, so calling it per frame costs one boolean check after the
-  // first. SceneController drives this from useFrame on a frameloop="always"
-  // Canvas, so a font arriving late is picked up by the next frame on its own
-  // and the cube self-corrects within ~16ms. onFontReady exists so that
-  // guarantee does not silently depend on the caller: a demand-rendered or
-  // one-shot caller passes an invalidate and gets the same repaint.
+  // first. The cube is painted from the caller's frame callback, and the part
+  // viewport draws on demand: a font arriving after the frame that requested it
+  // would otherwise wait for the next unrelated change, so the caller hands in
+  // its invalidate through onFontReady and the arrival asks for that repaint.
   ensureGizmoLabelFont(onFontReady)
 
   const ctx = canvas.getContext('2d')
