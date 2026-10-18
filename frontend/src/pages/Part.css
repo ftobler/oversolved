@@ -2,7 +2,11 @@
   --tiling-sine: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='15' height='9' viewBox='0 0 10 6'><path d='M-1 2 L0 3 Q2.5 0 5 3 T10 3 L11 4' stroke='gray' fill='transparent' stroke-width='1'/></svg>");
   --tiling-sine-fine: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='7.5' height='4.5' viewBox='0 0 10 6'><path d='M-1 2 L0 3 Q2.5 0 5 3 T10 3 L11 4' stroke='%23666' fill='transparent' stroke-width='0.5'/></svg>");
   /* Edge distance of the floating part panels, and the space the right panel
-     leaves free at the bottom for the HUD stack (cube gizmo + readout). */
+     leaves free at the bottom for the HUD stack (cube gizmo + measurement
+     readout). Clearance arithmetic: GIZMO_SIZE 140
+     (components/misc/CubeGizmo.utils.ts) + the 16px readout floor and 4px
+     stack gap (ViewportHud.css) + the 12px inset = 172; 190 leaves margin, so
+     a gizmo resize can be checked against this one number. */
   --floating-inset: 12px;
   --hud-clearance: 190px;
 }

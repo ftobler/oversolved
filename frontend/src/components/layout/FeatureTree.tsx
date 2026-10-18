@@ -247,8 +247,7 @@ export function FeatureTree() {
                   hasVisibility={
                     feature.kind === 'sketch' ||
                     feature.kind === 'plane' ||
-                    (isBuiltIn && feature.id !== 'Origin') ||
-                    feature.id === editingFeatureId
+                    (isBuiltIn && feature.id !== 'Origin')
                   }
                   onEnterEditSketch={onEnterEditSketch}
                   onEnterEditFeature={onEnterEditFeature}

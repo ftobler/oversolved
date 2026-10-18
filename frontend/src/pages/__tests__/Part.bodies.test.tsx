@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
 import type { PartFeature, BodyResult, Mesh3D } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -64,7 +64,7 @@ function renderSidebar(features: PartFeature[], solveResults?: Record<string, un
   })
   return render(
     <PartEditorProvider value={makeCallbacks()}>
-      <Sidebar />
+      <PartDocumentPanel />
     </PartEditorProvider>
   )
 }

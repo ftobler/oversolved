@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
 import type { PartFeature, BodyResult } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -40,7 +40,7 @@ function renderEditing(feature: PartFeature, solveResults: Record<string, unknow
   })
   return render(
     <PartEditorProvider value={callbacks()}>
-      <Sidebar />
+      <PartDocumentPanel />
       <FeatureEditPanel />
     </PartEditorProvider>,
   )
@@ -111,19 +111,29 @@ describe('feature status line', () => {
     expect(items[2].className).not.toMatch(/unresolved|failed/)
   })
 
-  it('a click on the status line does not select the edited feature', () => {
-    // The line used to sit inside the row whose onClick toggles `@<feature>`
-    // into the selection, which an armed pick field would consume (and refuse)
-    // as a pick. It lives in the floating panel now; the guard stays.
+  it('a click on the status line stops before a surrounding row sees it', () => {
+    // The line used to sit inside the tree row whose onClick toggles
+    // `@<feature>` into the selection, which an armed pick field would consume
+    // (and refuse) as a pick. It lives in the floating panel now, and its
+    // stopPropagation is what keeps a mark a status line rather than a click
+    // target for any host that frames it; the spy row stands in for such a
+    // host, so the guard is observable instead of tautological.
+    const rowClick = vi.fn()
     const cb = callbacks()
     usePartEditorStore.setState({
       features: [EXTRUDE], visibleFeatures: new Set(['ex1']), doc: null, visibleBodies: new Set(), partLabels: {},
       solveResults: { ex1: { status: 'exception', exception: 'sketch not found' } }, bodies: {}, isRebuilding: false, featureTimings: {},
     })
     useEditorState.setState({ editingFeatureId: 'ex1', normalSelection: new Set(), activePickField: null, modeStack: [] })
-    render(<PartEditorProvider value={cb}><Sidebar /><FeatureEditPanel /></PartEditorProvider>)
+    render(
+      <PartEditorProvider value={cb}>
+        <div onClick={rowClick}>
+          <FeatureEditPanel />
+        </div>
+      </PartEditorProvider>,
+    )
     fireEvent.click(document.querySelector('.status-message')!)
-    expect(cb.onToggleSelect).not.toHaveBeenCalled()
+    expect(rowClick).not.toHaveBeenCalled()
   })
 
   it('a closed editor shows the mark only on the row', () => {

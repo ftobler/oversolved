@@ -1132,7 +1132,7 @@ export default function Part() {
           // The pick was abandoned (Escape/cancel_draw, or the chip toggled
           // off) before a plane landed. Nothing else resolves this session,
           // so close it here rather than stranding editingFeatureId with only
-          // the feature tree's own OK/Cancel left to escape it.
+          // the floating edit panel's OK/Cancel left to escape it.
           cancelEditFeature()
         }
       }
@@ -1261,41 +1261,37 @@ export default function Part() {
         }
       />
 
-      <PartEditorPanel
-        mode={mode}
-        setMode={setMode}
-        solveError={solveError}
-        setSolveError={setSolveError}
-        error={error}
-        setError={setError}
-        autosaveError={autosaveStatus === 'error' ? autosaveError : null}
-        onDismissAutosaveError={() => useAutosaveStore.setState({ status: 'idle', error: null })}
-        loading={loading}
-        planeSelectionFeatureId={planeSelectionFeatureId}
-        handleAddFeature={handleAddFeature}
-        handleAddSketch={handleAddSketch}
-        handleAddPlane={handleAddPlane}
-        handleImportStep={handleImportStep}
-        handleExportStep={handleExportStep}
-        viewportRef={viewportRef}
-        handleRightClick={handleRightClick}
-        viewportHud={
-          <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
-        }
-        rightPanel={
-          <PartDebugPanel debugOpen={debugOpen} />
-        }
-        leftOverlay={
-          <PartEditorProvider value={partEditorCallbacks}>
-            <PartDocumentPanel />
-          </PartEditorProvider>
-        }
-        rightOverlay={
-          <PartEditorProvider value={partEditorCallbacks}>
-            <FeatureEditPanel />
-          </PartEditorProvider>
-        }
-      />
+      {/* One provider for both overlays and the editor chrome between them:
+          the part panels and the toolbar all answer the same callbacks. */}
+      <PartEditorProvider value={partEditorCallbacks}>
+        <PartEditorPanel
+          mode={mode}
+          setMode={setMode}
+          solveError={solveError}
+          setSolveError={setSolveError}
+          error={error}
+          setError={setError}
+          autosaveError={autosaveStatus === 'error' ? autosaveError : null}
+          onDismissAutosaveError={() => useAutosaveStore.setState({ status: 'idle', error: null })}
+          loading={loading}
+          planeSelectionFeatureId={planeSelectionFeatureId}
+          handleAddFeature={handleAddFeature}
+          handleAddSketch={handleAddSketch}
+          handleAddPlane={handleAddPlane}
+          handleImportStep={handleImportStep}
+          handleExportStep={handleExportStep}
+          viewportRef={viewportRef}
+          handleRightClick={handleRightClick}
+          viewportHud={
+            <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} />
+          }
+          rightPanel={
+            <PartDebugPanel debugOpen={debugOpen} />
+          }
+          leftOverlay={<PartDocumentPanel />}
+          rightOverlay={<FeatureEditPanel />}
+        />
+      </PartEditorProvider>
 
       {contextMenu && (
         <RightClickMenu

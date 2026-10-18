@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
@@ -33,7 +33,7 @@ function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditor
 function renderSidebar(callbacks: PartEditorCallbacks = makeCallbacks()) {
   return render(
     <PartEditorProvider value={callbacks}>
-      <Sidebar />
+      <PartDocumentPanel />
     </PartEditorProvider>
   )
 }

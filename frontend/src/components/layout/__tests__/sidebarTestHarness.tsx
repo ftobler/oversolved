@@ -1,8 +1,10 @@
-// Shared harness for the Sidebar/FeatureTree layout tests: callbacks, render
-// wrapper, store fixtures and the pointer/drag event helpers.
+// Shared harness for the part navigator layout tests: callbacks, render
+// wrapper, store fixtures and the pointer/drag event helpers. renderSidebar
+// keeps its historical name; it mounts PartDocumentPanel, the stack the part
+// editor floats over the viewport, not the Sidebar aside.
 import { vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
@@ -30,7 +32,7 @@ export function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): Par
 export function renderSidebar(callbacks: PartEditorCallbacks = makeCallbacks()) {
   return render(
     <PartEditorProvider value={callbacks}>
-      <Sidebar />
+      <PartDocumentPanel />
     </PartEditorProvider>
   )
 }

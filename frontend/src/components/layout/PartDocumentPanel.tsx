@@ -1,6 +1,7 @@
 import { FeatureTree } from '@/components/layout/FeatureTree'
 import { BodyPartsList } from '@/components/layout/BodyPartsList'
 import '@/components/layout/Glass.css'
+import '@/pages/Part.css'
 
 // The part editor's navigator as two floating cards: Features on top, Parts
 // below, each sized to its content under a max-height and scrolling internally

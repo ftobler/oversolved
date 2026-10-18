@@ -1,84 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+// J4: the editor has no workspace layer. The workspace tree, the files and
+// origins panels and the rail that switched between them left with the
+// redesign, so the aside hosts one navigator and nothing else -- no activity
+// bar to find and no hidden second panel behind it. Phase 1 left this host to
+// the assembly editor (its only production caller): the part navigator is
+// PartDocumentPanel, mounted directly in the viewport overlay, and its own
+// stack is pinned in PartDocumentPanel.test.tsx.
+import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
-import type { PartFeature } from '@/types/cad'
-import { usePartEditorStore } from '@/stores/partEditorStore'
-
-import { PartEditorProvider } from '@/contexts/PartEditorContext'
-import { useEditorState } from '@/hooks/useEditorState'
-
-// J4: the editor has no workspace layer. The workspace tree, the files and
-// origins panels and the rail that switched between them left with the
-// redesign, so the sidebar hosts one thing and hosts it unconditionally --
-// there is no activity bar to find and no hidden second panel behind it. The
-// part editor mounts its navigator in the viewport overlay now
-// (PartDocumentPanel in pages/PartEditorPanel.tsx); this host and its default
-// part stack stay for the assembly editor, which is the production caller.
-
-function makeCallbacks() {
-  return {
-    onToggleSelect: vi.fn(),
-    onEnterEditSketch: vi.fn(),
-    onExitEditSketch: vi.fn(),
-    onEnterEditFeature: vi.fn(),
-    onExitEditFeature: vi.fn(),
-    onEditCommit: vi.fn(),
-    onEditCancel: vi.fn(),
-    onToggleVisibility: vi.fn(),
-    onRightClick: vi.fn(),
-    onMutation: vi.fn(),
-    onSetRollbackPosition: vi.fn(),
-  }
-}
-
-const features: PartFeature[] = [
-  { id: 'Origin', kind: 'origin' },
-  { id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10, direction: 'normal' } },
-]
-
-beforeEach(() => {
-  usePartEditorStore.setState({
-    features,
-    visibleFeatures: new Set(features.map(f => f.id)),
-    doc: null,
-    visibleBodies: new Set(),
-    partLabels: {},
-    solveResults: {},
-    bodies: {},
-    isRebuilding: false,
-    featureTimings: {},
-  })
-  useEditorState.setState({
-    rollbackPosition: null,
-    editingFeatureId: null,
-  })
-  useEditorState.setState({
-    normalSelection: new Set(),
-    activePickField: null,
-    modeStack: [],
-  })
-})
 
 describe('Sidebar hosts the document navigator alone', () => {
-  it('gives the default part stack the feature tree and no workspace layer', () => {
-    const { container } = render(
-      <MemoryRouter>
-        <PartEditorProvider value={makeCallbacks()}>
-          <Sidebar />
-        </PartEditorProvider>
-      </MemoryRouter>,
-    )
-    const aside = container.querySelector('.doc-sidebar') as HTMLElement
-    expect(aside.children).toHaveLength(1)
-    expect(aside.children[0]).toHaveClass('document-panel')
-    expect(screen.queryByRole('toolbar', { name: 'Panels' })).toBeNull()
-    expect(container.querySelector('.workspace-tree')).toBeNull()
-    expect(container.querySelector('.files-panel')).toBeNull()
-    expect(container.querySelector('.origins-panel')).toBeNull()
-  })
-
-  it('gives the assembly editor its own navigator and nothing beside it', () => {
+  it('renders exactly the navigator it is handed, with no workspace layer', () => {
     const { container } = render(
       <MemoryRouter>
         <Sidebar documentPanel={<div data-testid="doc-panel" />} />
