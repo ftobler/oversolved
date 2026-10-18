@@ -55,3 +55,24 @@
   min-width: 0;
   min-height: 0;
 }
+
+/* Phone widths: the page list becomes a strip above the content, the shape the
+   library's rail takes at the same width. */
+@media (max-width: 768px) {
+  .docs-body {
+    flex-direction: column;
+  }
+
+  .docs-sidebar {
+    flex-direction: row;
+    width: auto;
+    gap: 4px;
+    padding: 8px 12px;
+    overflow-x: auto;
+  }
+
+  .docs-nav-item {
+    flex: none;
+    padding: 8px 12px;
+  }
+}

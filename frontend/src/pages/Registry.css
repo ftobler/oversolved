@@ -255,3 +255,39 @@
   letter-spacing: 0.05em;
   padding: 10px 12px !important;
 }
+
+/* Phone widths: the section list becomes a strip above the table, the shape the
+   docs shell's page list takes at the same width. The second nav would leave a
+   320px screen 120px for the table. */
+@media (max-width: 768px) {
+  .reg-container {
+    flex-direction: column;
+  }
+
+  .reg-nav {
+    flex-direction: row;
+    width: auto;
+    padding: 8px 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid #222;
+  }
+
+  .reg-nav ul {
+    display: flex;
+    gap: 4px;
+  }
+
+  /* The counts are a summary of what the strip already lists; on one line they
+     would take the width the section links need to scroll. */
+  .reg-nav-stats {
+    display: none;
+  }
+
+  .reg-nav-link {
+    width: auto;
+    padding: 8px 12px;
+    white-space: nowrap;
+  }
+}

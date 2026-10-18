@@ -440,4 +440,29 @@ button.workspace-entry-open:focus-visible {
   .workspace-entry-origin {
     display: none;
   }
+
+  /* A row can carry five 40px controls. Beside an 84px-tall thumb (134px wide)
+     they leave the name nothing, so they take their own line under the face
+     instead; the face keeps the row height, which is what keeps the thumb the
+     tile's ratio. */
+  .workspace-entry-row {
+    flex-wrap: wrap;
+    height: auto;
+  }
+
+  .workspace-entry-open {
+    flex: 1 0 100%;
+    height: var(--ws-row-height);
+  }
+
+  .workspace-entry-actions {
+    margin-left: auto;
+    padding-bottom: 4px;
+  }
+
+  /* The identity banner's 160px preview would leave its five controls less
+     room than the row above them. */
+  .workspace-identity-preview {
+    width: 120px;
+  }
 }

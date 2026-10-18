@@ -206,7 +206,14 @@ button.breadcrumb-name:disabled {
    at this width. Without a rule of its own the three crumbs asked for ~600px
    and squashed the toolbar buttons instead, since `.toolbar-btn` sets no
    flex-shrink. The ancestors concede first; the last crumb is the one that has
-   to stay readable. */
+   to stay readable.
+
+   The same width drops the wordmark and the two side minimums. The burger
+   beside the logo is the way home and the logo's 100px is the largest thing
+   the row can give up; the minimums were what forced a horizontal scroll under
+   it, so the icon buttons become the only thing setting the floor. Width only:
+   a landscape phone is wide enough for the whole header, whatever its height
+   does to the editor below it. */
 @media (max-width: 768px) {
   .breadcrumb-crumb {
     max-width: 90px;
@@ -218,5 +225,29 @@ button.breadcrumb-name:disabled {
 
   .breadcrumb-input {
     max-width: 160px;
+  }
+
+  .app-header {
+    gap: 6px;
+  }
+
+  .app-header-left,
+  .app-header-right {
+    min-width: 0;
+  }
+
+  .logo {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .breadcrumb-crumb {
+    max-width: 60px;
+  }
+
+  .breadcrumb-current,
+  .breadcrumb-input {
+    max-width: 110px;
   }
 }
