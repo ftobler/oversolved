@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { presentFrame } from '@/components/Viewport/msaaPresenter'
 
 // Render the current scene into a small PNG data URL for a document thumbnail.
 // Shared by the part Viewport and the AssemblyViewport so both editors capture
@@ -33,7 +34,7 @@ export async function captureThumbnail(
   let captured = false
   try {
     gl.setSize(smallWidth, smallHeight)
-    gl.render(scene, camera)
+    presentFrame(gl, scene, camera)
     dataUrl = gl.domElement.toDataURL('image/png')
     captured = true
   } finally {
@@ -45,7 +46,7 @@ export async function captureThumbnail(
     // the renderer may be gone, and a second render would mask the original
     // failure. The assembly viewport (a continuous loop) only pays one extra
     // full-size draw.
-    if (captured) gl.render(scene, camera)
+    if (captured) presentFrame(gl, scene, camera)
   }
 
   const img = new Image()

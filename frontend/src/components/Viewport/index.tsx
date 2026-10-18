@@ -20,6 +20,7 @@ import FeatureHandles from '@/components/Viewport/FeatureHandles'
 import ReferencePlane from '@/components/Viewport/ReferencePlane'
 import SceneController from '@/components/Viewport/SceneController'
 import { RenderOnChange, RenderOnce } from '@/components/Viewport/RenderOnChange'
+import { MsaaRender } from '@/components/Viewport/MsaaRender'
 import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, alignToPlane, alignToFace, traceCamera } from '@/components/Viewport/cameraController'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -72,7 +73,9 @@ import type { SketchData } from '@/types/cad'
 // Stabilized props for the R3F Canvas. Inline objects would produce new
 // references every Viewport render, forcing CanvasImpl to re-render needlessly.
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#0b0b0b' }
-const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
+// No browser antialiasing: MsaaRender multisamples into its own target and
+// hands the canvas a resolved image (msaaPresenter.ts says why).
+const CANVAS_GL = { antialias: false, logarithmicDepthBuffer: true }
 // `isolation: isolate` makes this div a stacking context, which pens every
 // overlay drei portals next to the canvas inside the viewport. drei hands each
 // `<Html>` a z-index interpolated over its default range -- up to ~16.8 million
@@ -535,15 +538,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         // Demand, not the R3F default "always": the scene draws when something
         // that feeds it changed (RenderOnChange below, the reconciler's own
         // instance invalidations, OrbitControls' change listener), never once
-        // per display refresh. An idle viewport is what keeps the frosted
-        // navigator cards' backdrop-filter from resampling a live canvas every
-        // frame (the two together read as a flickering viewport), and it is
-        // the battery/GPU win that comes with it.
+        // per display refresh. An idle viewport presents nothing, so a
+        // compositor that mishandles a re-presented canvas has no frame to get
+        // wrong, and the GPU and battery stay idle with it.
         frameloop="demand"
         onCreated={onCreated}
         onPointerMissed={onPointerMissed}
       >
         <RenderOnChange invalidateRef={invalidateRef} />
+        <MsaaRender />
 
         <SceneController
           key="scene-ctrl"

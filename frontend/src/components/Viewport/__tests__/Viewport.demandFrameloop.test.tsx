@@ -131,12 +131,19 @@ beforeEach(() => {
 
 describe('Viewport demand rendering', () => {
   it('renders its Canvas on demand, not once per display refresh, and draws its first frame on mount', () => {
-    // The whole point: an idle viewport must stop feeding the frosted cards'
-    // backdrop-filter a new canvas every frame; the mount frame is what draws
-    // the initial, otherwise-empty scene.
+    // The whole point: an idle viewport presents no frame at all; the mount
+    // frame is what draws the initial, otherwise-empty scene.
     mountViewport()
     expect(h.canvasProps?.frameloop).toBe('demand')
     expect(h.invalidate).toHaveBeenCalled()
+  })
+
+  it('asks the browser for a single-sampled canvas, leaving antialiasing to MsaaRender', () => {
+    // A multisampled canvas is resolved by the browser on every present, which
+    // shimmered fine lines on some GPU/compositor paths; MsaaRender resolves
+    // into its own target instead (msaaPresenter.test.ts pins that path).
+    mountViewport()
+    expect((h.canvasProps?.gl as { antialias?: boolean }).antialias).toBe(false)
   })
 
   it('requests a frame when a store that feeds the scene changes', () => {
