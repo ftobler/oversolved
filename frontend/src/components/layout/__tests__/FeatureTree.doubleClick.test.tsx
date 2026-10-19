@@ -65,4 +65,17 @@ describe('FeatureTree double-click to edit', () => {
 
     expect(onEnterEditFeature).not.toHaveBeenCalled()
   })
+
+  it('double-clicking a row action button does not open the editor', () => {
+    // After Cancel closes an edit the second click of a double-click can land
+    // on the returned edit button; the row must not read that as a request.
+    const onEnterEditFeature = vi.fn()
+    const features = [...builtInFeatures, extrudeFeature]
+    setupStore(features)
+    renderSidebar(makeCallbacks({ onEnterEditFeature }))
+
+    fireEvent.doubleClick(document.querySelector('.feature-context-btn')!)
+
+    expect(onEnterEditFeature).not.toHaveBeenCalled()
+  })
 })

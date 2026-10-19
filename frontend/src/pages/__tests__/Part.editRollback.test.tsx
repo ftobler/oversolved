@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
 import type { PartFeature } from '@/types/cad'
@@ -113,7 +113,7 @@ describe('feature edit and exit buttons', () => {
     const onEditCommit = vi.fn()
     const onEditCancel = vi.fn()
     renderSidebar([feature], feature.id, { onEditCommit, onEditCancel })
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(within(document.querySelector('.feature-item.editing') as HTMLElement).getByTitle('OK'))
     expect(onEditCommit).toHaveBeenCalledOnce()
     expect(onEditCancel).not.toHaveBeenCalled()
   })

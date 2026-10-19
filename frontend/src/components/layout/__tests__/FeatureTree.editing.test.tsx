@@ -1,5 +1,6 @@
-// The tree row only marks which feature is being edited; the editor body and
-// the OK/Cancel pair live in the floating FeatureEditPanel. Before floating
+// The tree row marks which feature is being edited and swaps its edit button
+// for the OK/Cancel pair, so an edit can be ended where it started. The editor
+// body itself still lives in the floating FeatureEditPanel; before floating
 // panels the row grew by a whole form when a feature opened, which is the
 // problem this feature set out to fix, so these pin that the row stays a row.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -29,8 +30,8 @@ describe('FeatureTree editing row', () => {
     expect(row.classList.contains('editing')).toBe(true)
     expect(row.querySelector('.plane-editor')).toBeNull()
     expect(row.querySelector('input, select, textarea')).toBeNull()
-    expect(container.querySelector('.feature-ok-btn')).toBeNull()
-    expect(container.querySelector('.feature-cancel-btn')).toBeNull()
+    expect(row.querySelector('.feature-ok-btn')).not.toBeNull()
+    expect(row.querySelector('.feature-cancel-btn')).not.toBeNull()
     expect(container.querySelector('.status-message')).toBeNull()
   })
 

@@ -88,7 +88,7 @@ describe('selection across a re-solve (clearSelectedPicks contract)', () => {
     expect(afterEnter.selectedPicks.size).toBe(0)
 
     const solvesBeforeExit = solveMock.mock.calls.length
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!)
     await waitFor(() => { expect(useEditorState.getState().editingFeatureId).toBeNull() })
     await waitFor(() => { expect(solveMock.mock.calls.length).toBeGreaterThan(solvesBeforeExit) })
 

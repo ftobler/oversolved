@@ -81,7 +81,7 @@ features:
     await waitFor(() => expect(shown('sk1')).toBe(true))
 
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
-    await waitFor(() => expect(screen.getByTitle('OK')).toBeInTheDocument())
+    await waitFor(() => expect(document.querySelector('.feature-item.editing .feature-ok-btn')!).toBeInTheDocument())
     const q = area('sk1')
     act(() => { useSketchEditorStore.getState().toggleNormalSelection(q, 'pick') })
     await waitFor(() => {
@@ -91,7 +91,7 @@ features:
     // The open editor keeps its own profile on screen as the selection.
     expect(shown('sk1')).toBe(true)
 
-    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBeNull())
     expect(shown('sk1')).toBe(false)
   })
@@ -118,7 +118,7 @@ features:
     expect(shown('sk1')).toBe(false)
 
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
-    await waitFor(() => expect(screen.getByTitle('OK')).toBeInTheDocument())
+    await waitFor(() => expect(document.querySelector('.feature-item.editing .feature-ok-btn')!).toBeInTheDocument())
     const face = makeAncestryQuery(['@u|u_0a3cb58fde38f980', '@ex1', '@body_ex1', '@sk1/left', '@cls_xn'], 'flatface')
     act(() => { useSketchEditorStore.getState().toggleNormalSelection(face, 'pick') })
     await waitFor(() => {

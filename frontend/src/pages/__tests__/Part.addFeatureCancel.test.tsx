@@ -54,14 +54,14 @@ describe('Part - Cancel on a just-added feature reverts the add', () => {
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle(title)) })
     await waitFor(() => expect(userFeatures()).toHaveLength(1))
-    await waitFor(() => expect(screen.getByTitle('Cancel')).toBeInTheDocument())
+    await waitFor(() => expect(document.querySelector('.feature-item.editing .feature-cancel-btn')!).toBeInTheDocument())
   }
 
   it('Cancel on a just-added extrude removes it', async () => {
     await addFeatureAndWait('Add Extrude (E)')
     expect(userFeatures().map(f => f.kind)).toEqual(['extrude'])
 
-    await act(async () => { fireEvent.click(screen.getByTitle('Cancel')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-cancel-btn')!) })
 
     await waitFor(() => expect(userFeatures()).toHaveLength(0))
   })
@@ -70,7 +70,7 @@ describe('Part - Cancel on a just-added feature reverts the add', () => {
     await addFeatureAndWait('Add plane')
     expect(userFeatures().map(f => f.kind)).toEqual(['plane'])
 
-    await act(async () => { fireEvent.click(screen.getByTitle('Cancel')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-cancel-btn')!) })
 
     await waitFor(() => expect(userFeatures()).toHaveLength(0))
   })
@@ -78,7 +78,7 @@ describe('Part - Cancel on a just-added feature reverts the add', () => {
   it('OK on a just-added extrude commits exactly one entry that undo removes', async () => {
     await addFeatureAndWait('Add Extrude (E)')
 
-    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
     await waitFor(() => expect(usePartEditorStore.getState().undoStack).toHaveLength(1))
 
     await act(async () => { executeCommand('undo') })
@@ -95,7 +95,7 @@ describe('Part - Cancel on a just-added feature reverts the add', () => {
     expect(userFeatures().map(f => f.kind)).toEqual(['extrude', 'revolve'])
     expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
 
-    await act(async () => { fireEvent.click(screen.getByTitle('Cancel')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-cancel-btn')!) })
     await waitFor(() => expect(userFeatures().map(f => f.kind)).toEqual(['extrude']))
     // The committed first add is untouched by the second's Cancel.
     expect(usePartEditorStore.getState().undoStack).toHaveLength(1)

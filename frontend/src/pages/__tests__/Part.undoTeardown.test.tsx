@@ -104,7 +104,7 @@ describe('Part - undo tears down transient editor state', () => {
     // pop and actually reaches the teardown.
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
-    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
 
     await act(async () => { fireEvent.click(screen.getByTitle('Edit sketch')) })
     await waitFor(() => {
@@ -129,7 +129,7 @@ describe('Part - undo tears down transient editor state', () => {
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
-    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
     expect(useEditorState.getState().editingFeatureId).toBeNull()
 
     act(() => {
@@ -155,7 +155,7 @@ describe('Part - undo tears down transient editor state', () => {
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
-    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
 
     act(() => {
       useEditorState.setState({
@@ -202,7 +202,7 @@ describe('Part - undo tears down transient editor state', () => {
 
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
-    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
 
     act(() => {
       useEditorState.setState({

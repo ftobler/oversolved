@@ -1,8 +1,8 @@
-// The OK/Cancel pair lives in the floating FeatureEditPanel now, not in the
-// tree row, so these render the panel beside the navigator, the way the part
-// editor mounts it on either side of the viewport.
+// The OK/Cancel pair is reachable at both ends of an edit: in the feature row
+// (where Edit was clicked) and in the floating FeatureEditPanel beside the
+// fields. These drive the row pair; FeatureEditPanel.test.tsx pins the panel's.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
 import type { PartFeature } from '@/types/cad'
@@ -92,17 +92,22 @@ const sketchFeature: PartFeature = {
   kind: 'sketch',
 }
 
+/** Queries scoped to the edited row, since the panel carries the same pair. */
+function editedRow() {
+  return within(document.querySelector('.feature-item.editing') as HTMLElement)
+}
+
 describe('edit commit / cancel buttons', () => {
   it('shows OK and Cancel buttons when editing a feature', () => {
     renderSidebar([extrudeFeature], 'ex1')
-    expect(screen.getByTitle('OK')).toBeDefined()
-    expect(screen.getByTitle('Cancel')).toBeDefined()
+    expect(editedRow().getByTitle('OK')).toBeDefined()
+    expect(editedRow().getByTitle('Cancel')).toBeDefined()
   })
 
   it('shows OK and Cancel buttons when editing a sketch', () => {
     renderSidebar([sketchFeature], 'sk1')
-    expect(screen.getByTitle('OK')).toBeDefined()
-    expect(screen.getByTitle('Cancel')).toBeDefined()
+    expect(editedRow().getByTitle('OK')).toBeDefined()
+    expect(editedRow().getByTitle('Cancel')).toBeDefined()
   })
 
   it('shows no exit button when not editing', () => {
@@ -114,28 +119,28 @@ describe('edit commit / cancel buttons', () => {
   it('calls onEditCommit when OK is clicked on extrude', () => {
     const onEditCommit = vi.fn()
     renderSidebar([extrudeFeature], 'ex1', { onEditCommit })
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(editedRow().getByTitle('OK'))
     expect(onEditCommit).toHaveBeenCalled()
   })
 
   it('calls onEditCancel when Cancel is clicked on extrude', () => {
     const onEditCancel = vi.fn()
     renderSidebar([extrudeFeature], 'ex1', { onEditCancel })
-    fireEvent.click(screen.getByTitle('Cancel'))
+    fireEvent.click(editedRow().getByTitle('Cancel'))
     expect(onEditCancel).toHaveBeenCalled()
   })
 
   it('calls onEditCommit when OK is clicked on sketch', () => {
     const onEditCommit = vi.fn()
     renderSidebar([sketchFeature], 'sk1', { onEditCommit })
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(editedRow().getByTitle('OK'))
     expect(onEditCommit).toHaveBeenCalled()
   })
 
   it('calls onEditCancel when Cancel is clicked on sketch', () => {
     const onEditCancel = vi.fn()
     renderSidebar([sketchFeature], 'sk1', { onEditCancel })
-    fireEvent.click(screen.getByTitle('Cancel'))
+    fireEvent.click(editedRow().getByTitle('Cancel'))
     expect(onEditCancel).toHaveBeenCalled()
   })
 
@@ -143,7 +148,7 @@ describe('edit commit / cancel buttons', () => {
     const onEditCommit = vi.fn()
     const onEditCancel = vi.fn()
     renderSidebar([extrudeFeature], 'ex1', { onEditCommit, onEditCancel })
-    fireEvent.click(screen.getByTitle('Cancel'))
+    fireEvent.click(editedRow().getByTitle('Cancel'))
     expect(onEditCommit).not.toHaveBeenCalled()
     expect(onEditCancel).toHaveBeenCalled()
   })
@@ -152,7 +157,7 @@ describe('edit commit / cancel buttons', () => {
     const onEditCommit = vi.fn()
     const onEditCancel = vi.fn()
     renderSidebar([extrudeFeature], 'ex1', { onEditCommit, onEditCancel })
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(editedRow().getByTitle('OK'))
     expect(onEditCancel).not.toHaveBeenCalled()
     expect(onEditCommit).toHaveBeenCalled()
   })
@@ -162,7 +167,7 @@ describe('commit does not call cancel', () => {
   it('commit does not call onEditCancel', () => {
     const onEditCancel = vi.fn()
     renderSidebar([extrudeFeature], 'ex1', { onEditCancel })
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(editedRow().getByTitle('OK'))
     expect(onEditCancel).not.toHaveBeenCalled()
   })
 })
