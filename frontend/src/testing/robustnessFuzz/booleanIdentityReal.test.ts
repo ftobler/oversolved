@@ -28,6 +28,7 @@ import { booleanWithDiff, volumeOf, BooleanSoundnessError } from '@/kernel/occ/b
 import { makePrng } from '@/hooks/__tests__/fuzzHarness'
 import { makeSphereAt } from './chain'
 import { FUZZ_GRID_MM } from './recipe'
+import { yieldToEventLoop } from '../yieldToEventLoop'
 import type { OccModule, OccShape } from '@/kernel/occ/occTypes'
 
 const oc = await loadOcc()
@@ -44,6 +45,12 @@ const CHAIN_SEEDS = envInt('ROBUSTNESS_FUZZ_SEEDS', 24)
 // override too, so a small value cannot fail the pairing assertion for a
 // reason unrelated to the kernel.
 const SEEDS = Math.max(32, envInt('ROBUSTNESS_FUZZ_IDENTITIES', Math.ceil(CHAIN_SEEDS / 4)))
+
+// A 375-seed sweep holds the event loop for over a minute; the stall guard
+// fails that locally (CI only warns), and the worker's RPC reply needs a
+// macrotask. Sixteen seeds per turn keeps every gap far below the 30 s limit
+// without measurably slowing the sweep.
+const YIELD_EVERY = 16
 
 function drawInt(rnd: () => number, lo: number, hi: number): number {
   return lo + Math.floor(rnd() * (hi - lo + 1))
@@ -130,13 +137,14 @@ function buildPair(scope: DisposeScope, draw: PairDraw): { shapeA: OccShape; sha
 const IDENTITY_TIMEOUT_MS = Math.min(60 * 60_000, 60_000 + SEEDS * 1_000)
 
 describe.skipIf(!oc)('boolean identities on primitive pairs (real OCC)', () => {
-  it('V(A u B) + V(A n B) = V(A) + V(B) within 0.2%, over a seeded range', { timeout: IDENTITY_TIMEOUT_MS }, () => {
+  it('V(A u B) + V(A n B) = V(A) + V(B) within 0.2%, over a seeded range', { timeout: IDENTITY_TIMEOUT_MS }, async () => {
     if (!oc) throw new Error('unreachable: skipIf guards this')
     const failures: string[] = []
     const refusals: string[] = []
     const kindsSeen = new Set<string>()
 
     for (let seed = 0; seed < SEEDS; seed++) {
+      if (seed > 0 && seed % YIELD_EVERY === 0) await yieldToEventLoop()
       const draw = drawPair(seed)
       kindsSeen.add(`${draw.a.kind}+${draw.b.kind}`)
 
