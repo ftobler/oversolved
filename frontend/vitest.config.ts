@@ -1,5 +1,6 @@
 import os from 'node:os'
 import path from 'path'
+import { pathToFileURL } from 'node:url'
 import { defineConfig, type ViteUserConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
@@ -62,7 +63,15 @@ const maxForks = Number(process.env.VITEST_MAX_FORKS) || Math.max(1, Math.min(6,
 // Switching Node's off in the forks hands the global back to jsdom. Older
 // majors have it off already (and 22 before 22.4 rejects the flag).
 const nodeMajor = Number(process.versions.node.split('.')[0])
-const execArgv = nodeMajor >= 25 ? ['--no-experimental-webstorage'] : []
+const storageArgv = nodeMajor >= 25 ? ['--no-experimental-webstorage'] : []
+
+// Vitest 3 hard-codes the worker RPC timeout at 60 s in its bundled birpc, and
+// a loaded host can answer an `onTaskUpdate` after it, failing a green run. The
+// preload doubles the constant in the worker process (the side that owns that
+// timeout); see scripts/vitestRpcTimeout.loader.mjs. It rides the forks pool's
+// execArgv, the only pool this config uses.
+const rpcTimeoutPreload = pathToFileURL(path.resolve(__dirname, 'scripts/vitestRpcTimeout.register.mjs')).href
+const execArgv = [...storageArgv, '--import', rpcTimeoutPreload]
 
 // @vitejs/plugin-react is typed against the app's own vite install while
 // vitest/config resolves a nested one, so the identical plugin object fails

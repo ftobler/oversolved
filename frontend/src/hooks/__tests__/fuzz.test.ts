@@ -175,7 +175,7 @@ describe.skipIf(!oc || !solveBytes)('the seeded fuzz ratchet (real kernel)', () 
       expect(persistentTableForTest(), `seed ${seed} cache not reset`).toBeNull()
       // The solves chain through microtasks only, so a long sweep never hands
       // the loop a macrotask turn and vitest's worker RPC replies sit unread
-      // until its 60 s timer fails the run ("Timeout calling onTaskUpdate").
+      // until the RPC timer fails the run ("Timeout calling onTaskUpdate").
       await new Promise(resolve => setImmediate(resolve))
 
       const result = await runFuzzSequence(generateSequence(seed, FUZZ_STEPS), {

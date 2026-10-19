@@ -21,12 +21,13 @@ beforeEach(async () => {
 
 // Event-loop starvation watchdog. A test that awaits only settled promises
 // (the real kernel is synchronous WASM behind async signatures) never lets the
-// fork read its RPC replies, and past birpc's fixed 60 s the run dies with an
-// unattributed `Timeout calling "onTaskUpdate"` although every test passed.
-// A ticking interval measures the longest gap per test. Locally a gap past half
-// that budget fails the test by name, so the starvation is caught on a fast box
-// long before a slow runner turns it into flakiness; under CI, where load
-// stretches every gap, it only warns, naming the test the timeout came from.
+// fork read its RPC replies, and past the worker RPC timeout the run dies with
+// an unattributed `Timeout calling "onTaskUpdate"` although every test passed.
+// A ticking interval measures the longest gap per test. Locally a gap past 30 s
+// fails the test by name, so starvation is caught on a fast box long before the
+// runner's 120 s budget (scripts/vitestRpcTimeout.loader.mjs doubles vitest 3's
+// 60 s); under CI, where load stretches every gap, it only warns, naming the
+// test the timeout came from.
 // The clock and the interval are captured before any test can fake them.
 const STALL_LIMIT_MS = 30_000
 const realNow = performance.now.bind(performance)
