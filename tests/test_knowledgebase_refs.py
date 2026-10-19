@@ -153,3 +153,20 @@ def test_knowledgebase_has_no_line_number_refs() -> None:
         f"{len(hits)} line-number ref(s) in feature/knowledgebase.agent.md; name the function or symbol instead:\n  "
         + "\n  ".join(hits)
     )
+
+
+def test_knowledgebase_names_the_current_fuzz_gate() -> None:
+    """The main-gate suite is `just fuzz` on main, not a nightly job.
+
+    The rename in 83c82d2e changed the workflow, docs and code comments but
+    could not touch `feature/` (its own repo), so the knowledge base kept the
+    old name and sent a reader hunting for a `nightly` job that no longer
+    exists. Pin the current names here.
+    """
+    text = _kb_text()
+    assert "nightly" not in text.lower(), (
+        "feature/knowledgebase.agent.md calls the main-gate suite nightly; it is "
+        "the `fuzz` job, gated to refs/heads/main."
+    )
+    for name in ("`just fuzz`", "fuzz-session", "action-matrix", "fuzz-geometry", "fuzz-sketch"):
+        assert name in text, f"feature/knowledgebase.agent.md lost the current fuzz name {name}"

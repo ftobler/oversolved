@@ -4,7 +4,7 @@
 // command table and compares row by row: a status or error-text change, a row
 // the baseline lost and a row the baseline never saw all fail. The full
 // corpus sweep lives in actionMatrixReal.test.ts behind ACTION_MATRIX_FULL=1;
-// `just ratchet-matrix` runs it.
+// `just action-matrix` runs it.
 //
 // The baseline was regenerated with npm run regen:action-matrix; its rows are
 // the full sweep, and the smoke keys are a deterministic prefix of it.

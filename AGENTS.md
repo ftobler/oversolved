@@ -48,6 +48,30 @@ just licenses       # npm run licenses:check
 just build          # npm run build
 ```
 
+## Fuzz Suite
+from the justfile: `just fuzz`
+
+`just fuzz` is the top-level entry point for the main-gate suite: `fuzz-session`
+(seeded mutation and undo/redo sequences, 200 x 40), `action-matrix` (the full
+command sweep against its baseline), then `fuzz-geometry` (seeded feature chains,
+1500 seeds). It runs on a main push only and takes roughly 40 minutes; the
+aggregate tees to `tmp/just_fuzz.log` and each recipe to its own log.
+
+A fuzz is a seeded generator plus invariant checks. A ratchet is a committed
+baseline that fails when it moves: the action matrix, the volume oracle, and the
+pinned seeds of every fuzz. The other fuzzes are outside the long suite: the
+document loader fuzz and the volume oracle run in `just frontend-test`, and the
+sketch area-builder fuzz runs in `just rust-test` (`just fuzz-sketch <from> <to>`
+harvests wider ranges).
+
+```bash
+just fuzz                    # the full main-gate suite
+just fuzz-session 500 60     # bigger session sweep
+just fuzz-geometry 5000 4    # dedicated full-scale geometry sweep
+just action-matrix           # the matrix alone
+just fuzz-sketch 0 300       # harvest a sketch range (writes fixtures)
+```
+
 ## Conventions
 - The frontend goal is: If I delete the Viewport, the logic should still pass unit tests.
 - `code_guideline.md` should help navigate the codebase.

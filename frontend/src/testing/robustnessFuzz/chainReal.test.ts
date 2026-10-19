@@ -20,7 +20,7 @@
 // and their order do not depend on the pool width (sweep.ts).
 //
 // The default sweep is bounded for the PR gate; ROBUSTNESS_FUZZ_SEEDS widens it
-// for `just robustness-fuzz` and the main gate. The suite skips where OCC.js is
+// for `just fuzz-geometry` and the main gate. The suite skips where OCC.js is
 // not installed, like every *Real suite, and on a Node too old to run the
 // watchdog child (--experimental-strip-types needs 22.6).
 

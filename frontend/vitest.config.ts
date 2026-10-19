@@ -28,7 +28,7 @@ const ci = !!process.env.CI
 // The geometry robustness fuzz (testing/robustnessFuzz) forks its own watchdog
 // children on top of the pool: each child loads its own OCC kernel (~0.75 GB
 // measured), so one chain-sweep fork holds up to one + ROBUSTNESS_FUZZ_WORKERS
-// kernels (default 2). That is why the `just robustness-fuzz` recipe pins
+// kernels (default 2). That is why the `just fuzz-geometry` recipe pins
 // VITEST_MAX_FORKS=1 and the child pool together: the two suites run in
 // sequence and the tree stays inside the budget this file computes.
 

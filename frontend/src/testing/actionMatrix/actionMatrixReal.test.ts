@@ -8,7 +8,7 @@
 // thrown solve error, not a row.
 //
 // With ACTION_MATRIX_FULL=1 this file also replays the whole corpus sweep
-// (`just ratchet-matrix`, the main gate): the real kernel where installed, the
+// (`just action-matrix`, the main gate): the real kernel where installed, the
 // fake scheduler otherwise, always compared exactly against the baseline so a
 // vanished row or a new command fails rather than being silently skipped.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'

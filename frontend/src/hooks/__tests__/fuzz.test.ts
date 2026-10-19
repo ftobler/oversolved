@@ -8,8 +8,8 @@
 // only sizes the runs and pins the regression seeds.
 //
 // The default suite is bounded (a handful of seeds); FUZZ_SEEDS and FUZZ_STEPS
-// size the long run the `just fuzz` recipe carries (the main-branch CI gate runs
-// it). The real kernel runs where installed, exactly like
+// size the long run the `just fuzz-session` recipe carries (the main gate's
+// `just fuzz` runs it at 200 x 40). The real kernel runs where installed, exactly like
 // the other Real suites; the fake scheduler covers the history mechanics
 // everywhere.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
@@ -37,7 +37,7 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(raw) && raw > 0 ? raw : fallback
 }
 
-// The bounded defaults keep the PR gate fast; `just fuzz` widens them.
+// The bounded defaults keep the PR gate fast; `just fuzz-session` widens them.
 const FUZZ_SEEDS = envInt('FUZZ_SEEDS', 4)
 const FUZZ_STEPS = envInt('FUZZ_STEPS', 6)
 const FAKE_SEEDS = envInt('FUZZ_FAKE_SEEDS', 24)
@@ -142,9 +142,9 @@ describe('the history cap', () => {
 })
 
 // The real suite below skips where the kernel is not provisioned, which keeps the
-// PR gate runnable on a fresh checkout but let `just fuzz` pass in 3 s on the fake
-// side alone while reporting green. The recipe sets FUZZ_REQUIRE_REAL so the long
-// run refuses to count without the real kernel.
+// PR gate runnable on a fresh checkout but let `just fuzz-session` pass in 3 s
+// on the fake side alone while reporting green. The recipe sets FUZZ_REQUIRE_REAL
+// so the long run refuses to count without the real kernel.
 describe.runIf(process.env.FUZZ_REQUIRE_REAL === '1')('the fuzz real-kernel requirement', () => {
   it('has opencascade.js and the solver build loaded', () => {
     expect(oc, 'opencascade.js missing: run `just install-occ`').not.toBeNull()

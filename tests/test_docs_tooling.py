@@ -35,6 +35,7 @@ DOC_AND_TOOLING_SURFACE = (
     "AGENTS.md",
     "code_guideline.md",
     "docs/setup.md",
+    "docs/testing.md",
     "justfile",
     "pyproject.toml",
     ".github/workflows/ci-gitea.yaml",
@@ -52,6 +53,21 @@ def test_no_dead_server_env_vars_are_documented() -> None:
         "the app is browser-only; these variables configure a server that no "
         "longer exists:\n" + "\n".join(stale)
     )
+
+
+def test_main_gate_is_named_fuzz_not_nightly() -> None:
+    """The long suite is the `fuzz` job on `refs/heads/main`, run by `just fuzz`.
+
+    It was called nightly before 83c82d2e; the schedule is gone. Prose that
+    still says nightly sends the next reader looking for a job that does not
+    exist.
+    """
+    for rel in ("AGENTS.md", "docs/testing.md", ".github/workflows/ci-gitea.yaml"):
+        assert "nightly" not in _read(rel).lower(), (
+            f"{rel} calls the main-gate suite nightly; it is the `fuzz` job, "
+            "gated to refs/heads/main and workflow_dispatch."
+        )
+    assert "run: just fuzz" in _read(".github/workflows/ci-gitea.yaml")
 
 
 def test_env_example_is_gone() -> None:

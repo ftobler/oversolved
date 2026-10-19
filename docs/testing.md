@@ -1,14 +1,28 @@
-# Regression ratchets
+# Fuzz and regression ratchets
 
-Four ratchets catch regressions the unit suites cannot: the action matrix
-(every command on every element of a document corpus), the fuzz (seeded random
-edit and undo/redo sequences), the geometry robustness fuzz (seeded feature
-chains against the real kernel) and the volume oracle (analytic geometry
-against the real kernel). Their baselines are committed and reviewed like code.
-The Gitea `ratchets` job in `.github/workflows/ci-gitea.yaml` runs on main only
-(a push or a manual dispatch there): it provisions the WASM solvers and OCC.js
-and runs `just fuzz`, `just ratchet-matrix` then `just robustness-fuzz 1500`,
-teeing every recipe to tmp/ and uploading the logs as its report artifact.
+A fuzz is a seeded generator plus invariant checks. A ratchet is a committed
+baseline that fails when it moves: the action matrix, the volume oracle, and the
+pinned seeds of every fuzz. These are not separate suites: every fuzz is a
+ratchet, and the matrix and oracle are ratchets without a generator.
+
+The long-running checks catch regressions the unit suites cannot: the action
+matrix (every command on every element of a document corpus), the session fuzz
+(seeded random edit and undo/redo sequences), the geometry fuzz (seeded feature
+chains against the real kernel), the volume oracle (analytic geometry against
+the real kernel), the document loader fuzz, and the Rust sketch area-builder
+fuzz. Their baselines are committed and reviewed like code.
+
+The Gitea `fuzz` job in `.github/workflows/ci-gitea.yaml` runs on main only (a
+push or a manual dispatch there): it provisions the WASM solvers and OCC.js and
+runs `just fuzz`, which runs `just fuzz-session 200 40`, `just action-matrix`
+then `just fuzz-geometry 1500 2`. Every recipe tees its output to tmp/ and the
+job uploads the logs as its report artifact.
+
+The other fuzzes are not in the long job: the document loader fuzz
+(`frontend/src/persistence/__tests__/docSchema.fuzz.test.ts`) and the volume
+oracle run in the regular `just frontend-test`; the sketch area-builder fuzz
+runs in `just rust-test` (seeds 0..300) and `just fuzz-sketch <from> <to>`
+harvests wider ranges.
 
 ## Action matrix
 
@@ -29,7 +43,7 @@ targets x 48 commands, 36,048 rows, one row per line so the diff is readable).
   6 targets) with the fake scheduler, so it needs no OCC.js, and
   `actionMatrixReal.test.ts` replays three cheap documents on the real kernel
   where installed.
-- Main gate: `just ratchet-matrix` (`ACTION_MATRIX_FULL=1`) replays the whole
+- Main gate: `just action-matrix` (`ACTION_MATRIX_FULL=1`) replays the whole
   corpus exactly against the baseline, with the real kernel when provisioned
   and the fake scheduler otherwise (a command's status cannot depend on the
   scheduler). It takes minutes, not seconds, hence the separate recipe.
@@ -38,7 +52,7 @@ targets x 48 commands, 36,048 rows, one row per line so the diff is readable).
   baseline is regenerated and reviewed. A row that disappears or changes status
   is a regression.
 
-## Fuzz
+## Session fuzz
 
 `frontend/src/hooks/__tests__/fuzz.test.ts` (harness `fuzzHarness.ts`,
 minimiser `fuzzMinimizer.ts`) generates seeded sequences over the 84-type
@@ -51,12 +65,13 @@ document, by deep equality.
 
 - PR gate: bounded defaults (`FUZZ_SEEDS=4`, `FUZZ_STEPS=6` real; 24 x 16
   fake) plus pinned regression seeds and the minimiser tests.
-- Long run: `just fuzz <seeds> <steps>` (defaults 200 x 40), widening both the
-  fake and real sweeps.
+- Long run: `just fuzz-session <seeds> <steps>` (defaults 200 x 40; the main
+  gate's `just fuzz` uses those defaults), widening both the fake and real
+  sweeps.
 - Failure: a failing seed becomes a pinned regression entry with the seed kept;
   `minimizeSequence` reduces the sequence while a replay still fails.
 
-## Geometry robustness fuzz
+## Geometry fuzz
 
 `frontend/src/testing/robustnessFuzz/` is the geometry side of the fuzz, built
 on the same seeded PRNG (`makePrng` from `hooks/__tests__/fuzzHarness.ts`) and
@@ -95,7 +110,7 @@ reached again, a completed one also reports references it never reached.
 - PR gate: bounded 24 chain seeds and 32 identity seeds. On a Node older than
   22.6 the watchdog child cannot start (--experimental-strip-types), so the
   chain sweep skips there rather than fail; the CI matrix runs one such leg.
-- Long run: `just robustness-fuzz <seeds> <workers>` (chain default 200, the
+- Long run: `just fuzz-geometry <seeds> <workers>` (chain default 200, the
   plan's acceptance range; identity a quarter of it, floored at 32), 1500 in
   the main gate and 5000 for a dedicated full-scale run; the tee'd log is the
   report.

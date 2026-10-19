@@ -20,6 +20,6 @@ minimised fixture here; stability and order entries are catalogue-only (they
 are numerous and the most seed-sensitive), so their fixtures, if present, are
 bonus regressions.
 
-Harvest a new range with `just sketch-fuzz <from> <to>`, which minimises each
+Harvest a new range with `just fuzz-sketch <from> <to>`, which minimises each
 new failure, writes the required-class fixtures here, and prints the catalogue
 entries to add to `fuzz.rs` for review.

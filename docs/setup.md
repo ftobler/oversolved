@@ -151,8 +151,8 @@ is documented, not executed. Once a machine has those:
 
 The long-term step is the same pipeline against a newer OCCT tag, and it is
 gated: the reference corpora must pass on both builds before a switch.
-Concretely, `just ratchet-matrix` (the full action-matrix sweep over the corpus
-documents) and `just fuzz 500 60` (the seeded fuzz sweep, real kernel) run
+Concretely, `just action-matrix` (the full action-matrix sweep over the corpus
+documents) and `just fuzz-session 500 60` (the seeded fuzz sweep, real kernel) run
 against the old and the new artifact, and a regression in either blocks the new
 one.
 

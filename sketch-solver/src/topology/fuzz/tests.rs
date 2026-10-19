@@ -1220,7 +1220,7 @@ fn fuzz_seeds_0_300() {
 #[test]
 #[ignore]
 fn fuzz_range_from_env() {
-    // The long sweep. `just sketch-fuzz <from> <to>` sets the range, writes a
+    // The long sweep. `just fuzz-sketch <from> <to>` sets the range, writes a
     // minimised fixture for every new coverage/structure/euler failure into
     // fuzz_cases/, and prints the catalogue entries to add to
     // KNOWN_FAILING_SEEDS for review; a run that finds nothing prints the

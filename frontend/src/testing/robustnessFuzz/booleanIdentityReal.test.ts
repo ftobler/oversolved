@@ -18,7 +18,7 @@
 // inside it.
 //
 // Seeds are sized by ROBUSTNESS_FUZZ_SEEDS (a quarter of the chain sweep, at
-// least the bounded default) so `just robustness-fuzz` widens both.
+// least the bounded default) so `just fuzz-geometry` widens both.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '@/kernel/occ/loadOcc'

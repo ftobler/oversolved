@@ -56,3 +56,21 @@ def test_every_recipe_has_a_one_line_summary() -> None:
         "each recipe needs exactly one summary comment line, a sentence, with any "
         "longer explanation in its own block above a blank line:\n" + "\n".join(bad)
     )
+
+
+def test_fuzz_recipe_is_the_full_main_gate_suite() -> None:
+    """`just fuzz` is the one entry point the main gate calls.
+
+    Its body pins the three long sweeps and their main-gate sizes, so renaming
+    or resizing a sub-recipe cannot silently drop one from the suite.
+    """
+    lines = (ROOT / "justfile").read_text().splitlines()
+    start = lines.index("fuzz:")
+    body: list[str] = []
+    for line in lines[start + 1:]:
+        if not line.strip():
+            break
+        body.append(line)
+    text = "\n".join(body)
+    for command in ("just fuzz-session 200 40", "just action-matrix", "just fuzz-geometry 1500 2"):
+        assert command in text, f"`just fuzz` no longer runs `{command}`"
