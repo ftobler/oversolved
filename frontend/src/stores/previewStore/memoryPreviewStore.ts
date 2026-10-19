@@ -26,6 +26,19 @@ export class MemoryPreviewStore implements PreviewStore {
     bumpPreviewRevision()
   }
 
+  async putIfAbsent(workspace: string, entry: string, image: string): Promise<void> {
+    if (this.records.has(previewKey(workspace, entry))) return
+    await this.put(workspace, entry, image)
+  }
+
+  async putMany(records: Array<PreviewKey & { image: string }>): Promise<void> {
+    const now = Date.now()
+    for (const { workspace, entry, image } of records) {
+      this.records.set(previewKey(workspace, entry), { workspace, entry, image, updatedAt: now })
+    }
+    if (records.length > 0) bumpPreviewRevision()
+  }
+
   async remove(workspace: string, entry: string): Promise<void> {
     this.records.delete(previewKey(workspace, entry))
     bumpPreviewRevision()

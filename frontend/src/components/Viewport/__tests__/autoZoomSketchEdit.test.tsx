@@ -118,6 +118,53 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     expect(testCamera.zoom).not.toBe(zoomBefore)
   })
 
+  it('reports the fit only on the attempt that actually framed geometry', async () => {
+    const ref = createRef<ViewportHandle>()
+    render(<Viewport ref={ref} />)
+    const settled = vi.fn()
+
+    ref.current?.autoZoomToFit(false, settled)
+    // No bodies yet: the request is armed, not settled.
+    expect(settled).not.toHaveBeenCalled()
+
+    await act(async () => {
+      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+    })
+
+    expect(settled).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the waiter when the fit is cancelled, so a later unrelated fit cannot capture', async () => {
+    const ref = createRef<ViewportHandle>()
+    render(<Viewport ref={ref} />)
+    const settled = vi.fn()
+
+    ref.current?.autoZoomToFit(false, settled)
+    ref.current?.cancelPendingFit()
+
+    await act(async () => {
+      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+    })
+
+    expect(settled).not.toHaveBeenCalled()
+  })
+
+  it('a new fit request without a waiter does not inherit the first solve capture', async () => {
+    const ref = createRef<ViewportHandle>()
+    render(<Viewport ref={ref} />)
+    const settled = vi.fn()
+
+    ref.current?.autoZoomToFit(false, settled)
+    // Reset Viewport while the first fit is still pending.
+    ref.current?.autoZoomToFit(true)
+
+    await act(async () => {
+      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+    })
+
+    expect(settled).not.toHaveBeenCalled()
+  })
+
   it('does not zoom when bodies arrive while a sketch is being edited', async () => {
     const ref = createRef<ViewportHandle>()
     render(<Viewport ref={ref} />)

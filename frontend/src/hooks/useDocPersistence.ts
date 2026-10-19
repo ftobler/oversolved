@@ -60,9 +60,19 @@ export function useDocPersistence<D>({
         // workspace is the route's id and the entry is the document uuid; the
         // reader (tiles, pickers) uses the same pair, so a multi-document
         // workspace paints the right thumbnail and purge clears it by prefix.
+        //
+        // The capture is taken before the write so it shows the scene the user
+        // is saving, but it is derived data twice over: a capture that fails or
+        // yields an empty frame (a null) and a preview store that refuses the
+        // write must both leave the save itself untouched.
+        let preview: string | undefined
         if (screenshot) {
-          const dataUrl = await screenshot()
-          if (dataUrl) await getPreviewStore().put(workspace ?? uuid, uuid, dataUrl.split(',')[1])
+          try {
+            const dataUrl = await screenshot()
+            preview = dataUrl?.split(',')[1]
+          } catch {
+            // A lost thumbnail is a re-render, never a lost document.
+          }
         }
         await store.save(uuid, { content: text })
         // The bytes are on disk, so the fingerprint of this exact text is
@@ -82,6 +92,17 @@ export function useDocPersistence<D>({
           void clearRecoveryJournal(uuid).catch(e => {
             console.error('[recovery] failed to clear the journal after save:', e)
           })
+        }
+        // The document is durable and the save bookkeeping has landed; the
+        // preview is the last, cosmetic write. It still runs before the save
+        // resolves so a Save & Exit paints the row it lands on, but a refusal
+        // here cannot turn a successful save into a failure.
+        if (preview) {
+          try {
+            await getPreviewStore().put(workspace ?? uuid, uuid, preview)
+          } catch {
+            // Same rule: the thumbnail is cosmetic and cannot fail the save.
+          }
         }
         return true
       } catch (e) {

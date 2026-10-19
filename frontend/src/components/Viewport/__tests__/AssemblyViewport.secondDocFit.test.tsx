@@ -4,7 +4,7 @@
 // absent, so the bodies-driven fit effect fires as a no-op and never fires
 // again -- the fit must be re-attempted when the camera becomes live.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useEffect } from 'react'
+import { createRef, useEffect } from 'react'
 import { render, act } from '@testing-library/react'
 import * as THREE from 'three'
 
@@ -48,7 +48,7 @@ vi.mock('@/components/Viewport/assembly/GizmoPickLayer', () => ({ default: () =>
 vi.mock('@/components/Viewport/assembly/RollGuideGizmo', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/TriadGizmo', () => ({ default: () => null }))
 
-import AssemblyViewport from '../AssemblyViewport'
+import AssemblyViewport, { type AssemblyViewportHandle } from '../AssemblyViewport'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 
 // Non-degenerate vertices so fitToContent has real bounds to frame.
@@ -98,5 +98,28 @@ describe('AssemblyViewport fit on a late scene camera', () => {
     })
 
     expect(cam.zoom).not.toBe(1)
+  })
+
+  it('reports framed only after the fit lands, then immediately once it has', () => {
+    const cam = probeCamera()
+    useAssemblyStore.setState({ bodies: bodyWithVertices() } as never)
+    const ref = createRef<AssemblyViewportHandle>()
+
+    const { rerender } = render(<AssemblyViewport ref={ref} />)
+    const framed = vi.fn()
+    act(() => ref.current!.whenFramed(framed))
+    // No camera yet: the request waits for the fit, it does not report early.
+    expect(framed).not.toHaveBeenCalled()
+
+    act(() => {
+      probe.camera = cam
+      probe.gen++
+      rerender(<AssemblyViewport ref={ref} />)
+    })
+    expect(framed).toHaveBeenCalledTimes(1)
+
+    // A waiter arriving after the fit runs at once.
+    act(() => ref.current!.whenFramed(framed))
+    expect(framed).toHaveBeenCalledTimes(2)
   })
 })

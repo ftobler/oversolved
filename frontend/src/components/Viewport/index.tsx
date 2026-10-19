@@ -75,7 +75,10 @@ import type { SketchData } from '@/types/cad'
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#0b0b0b' }
 // No browser antialiasing: MsaaRender multisamples into its own target and
 // hands the canvas a resolved image (msaaPresenter.ts says why).
-const CANVAS_GL = { antialias: false, logarithmicDepthBuffer: true }
+// `alpha` is stated rather than inherited: the thumbnail's empty-frame check
+// reads the cleared alpha channel, so a renderer that turned it off would make
+// every empty view look like content.
+const CANVAS_GL = { antialias: false, logarithmicDepthBuffer: true, alpha: true }
 // `isolation: isolate` makes this div a stacking context, which pens every
 // overlay drei portals next to the canvas inside the viewport. drei hands each
 // `<Html>` a z-index interpolated over its default range -- up to ~16.8 million
@@ -107,7 +110,11 @@ export function isActive(
 
 export interface ViewportHandle {
   captureScreenshotForSaving: () => Promise<string | null>
-  autoZoomToFit: (force?: boolean) => void
+  // `onSettled` runs once the camera actually framed content, on the attempt
+  // that succeeds rather than on the call that armed the fit. The first-solve
+  // thumbnail hangs off it: a capture taken a tick after the request photographs
+  // whatever camera happened to be live, often before the fit landed.
+  autoZoomToFit: (force?: boolean, onSettled?: () => void) => void
   cancelPendingFit: () => void
   alignCameraToPlane: (planeId: string) => void
   alignCameraToFace: (faceNormal: [number, number, number], faceCenter: [number, number, number]) => void
@@ -199,6 +206,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // it is a re-armable intent, not a permanent latch, loading a second document
   // into the same Viewport re-fits. Camera-only; never mutates app state.
   const fitPendingRef = useRef(false)
+  // The waiter for the next successful fit, if any. One at a time: the only
+  // caller that arms one is the editor's first solve, and a remount replaces it.
+  const fitSettledRef = useRef<(() => void) | null>(null)
 
   const tryFit = useCallback((force = false) => {
     if (!fitPendingRef.current) return
@@ -215,6 +225,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
       fitPendingRef.current = false
       invalidateRef.current?.()  // the fit moved the camera outside React
       traceCamera('fit:done')
+      const settled = fitSettledRef.current
+      fitSettledRef.current = null
+      settled?.()
     }
   }, [])
 
@@ -223,10 +236,14 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // it (unforced) on each document's first solve, and the Reset Viewport button
   // calls it with force=true to reframe on demand. Guards (editing / no
   // geometry yet) live in tryFit, so a stale or mid-edit unforced call is
-  // harmless.
-  const autoZoomToFit = useCallback((force = false) => {
+  // harmless. A document with nothing measurable (a sketch-only part) never
+  // settles; its thumbnail is a miss rather than an unframed or blank capture.
+  const autoZoomToFit = useCallback((force = false, onSettled?: () => void) => {
     traceCamera('fit:request', 'force=', force)
     fitPendingRef.current = true
+    // A new request owns the waiter: a Reset Viewport press must not inherit
+    // the first solve's capture and fire it on the forced fit.
+    fitSettledRef.current = onSettled ?? null
     tryFit(force)
   }, [tryFit])
 
@@ -249,6 +266,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const cancelPendingFit = useCallback(() => {
     if (fitPendingRef.current) traceCamera('fit:cancel')
     fitPendingRef.current = false
+    // A cancelled fit must not hand a stale thumbnail a frame from a later,
+    // unrelated fit (a Reset Viewport press, for instance).
+    fitSettledRef.current = null
   }, [])
 
   const alignCameraToPlane = useCallback((planeId: string) => {

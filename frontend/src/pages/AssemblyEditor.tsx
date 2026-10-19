@@ -100,10 +100,14 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const handleFirstSolve = useCallback(() => {
     // Thumbnail the solved scene, the part editor's first-solve capture for the
     // assembly: saving was the only writer of a preview, so an assembly opened
-    // and never saved had none. Best-effort and fire-and-forget -- a viewport
-    // that is absent or has no GL context is a miss, never an error -- and the
-    // key is the save path's, so both writers address one record.
-    void capturePreview(viewportRef.current?.captureScreenshotForSaving, workspaceId, uuid)
+    // and never saved had none. It waits for the viewport's own fit, so the
+    // capture frames the assembly rather than whatever camera was live when the
+    // solve landed. Best-effort and fire-and-forget -- a viewport that is absent,
+    // has no GL context or never fits is a miss, never an error -- and the key
+    // is the save path's, so both writers address one record.
+    viewportRef.current?.whenFramed?.(() => {
+      void capturePreview(viewportRef.current?.captureScreenshotForSaving, workspaceId, uuid)
+    })
   }, [uuid, workspaceId])
   const { requestSolve } = useAssemblySolve(uuid, doc, { onFirstSolve: handleFirstSolve })
   const {

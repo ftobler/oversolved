@@ -90,7 +90,10 @@ export function viewportMockModule(handle: Record<string, unknown> = {}) {
     __esModule: true,
     default: forwardRef(function MockViewport(props: Record<string, unknown>, ref: React.Ref<unknown>) {
       useImperativeHandle(ref, () => ({
-        autoZoomToFit: vi.fn(),
+        // The real fit reports through `onSettled` on the attempt that lands;
+        // the mock has no geometry, so it reports at once. Without this a page
+        // that captures off the settled signal would never capture in a test.
+        autoZoomToFit: (_force?: boolean, onSettled?: () => void) => { onSettled?.() },
         captureScreenshotForSaving: vi.fn(),
         alignCameraToPlane: vi.fn(),
         alignCameraToFace: vi.fn(),

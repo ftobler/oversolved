@@ -144,25 +144,22 @@ export default function Part() {
   const viewportRef = useRef<ViewportHandle>(null)
   const exportImportRef = useRef<PartExportImportHandle>(null)
   const handleFirstSolve = useCallback(() => {
-    // Re-arm auto-fit for this freshly loaded document. Fires via setTimeout(0)
-    // after first solve; the editing / no-geometry-yet guards live in Viewport.
-    viewportRef.current?.autoZoomToFit()  // camera-only; intentional no-op when Viewport absent
-    // Thumbnail the solved scene. Saving was the only writer of a preview, so a
-    // document opened and never saved had none and its row painted a
-    // placeholder; the first solve is the earliest moment there is geometry to
-    // photograph. Best-effort and fire-and-forget: the key is the save path's,
-    // and a failed capture never reaches the editor.
-    //
-    // KNOWN LIMIT: the tick does NOT guarantee the fit above has landed.
-    // autoZoomToFit only arms fitPendingRef; tryFit bails while the binary
-    // geometry is still arriving and retries on its own [bodies, sceneTick]
-    // effect, so this often photographs the default camera and the row gets a
-    // correct but badly framed thumbnail. The fix is to capture off a
-    // fit-settled signal from the Viewport rather than a fixed delay.
-    if (!uuid) return
-    setTimeout(() => {
+    if (!uuid) {
+      viewportRef.current?.autoZoomToFit()
+      return
+    }
+    // Re-arm auto-fit for this freshly loaded document, then thumbnail the
+    // solved scene on the fit's own settled signal. Saving was the only writer
+    // of a preview, so a document opened and never saved had none and its row
+    // painted a placeholder; the first solve is the earliest moment there is
+    // geometry to photograph. Capturing on a fixed tick instead of the settled
+    // fit photographed whatever camera happened to be live, often the default
+    // one, and an empty frame then replaced a good thumbnail. Best-effort and
+    // fire-and-forget: the key is the save path's, and a failed capture never
+    // reaches the editor. A null Viewport is an intentional no-op.
+    viewportRef.current?.autoZoomToFit(false, () => {
       void capturePreview(viewportRef.current?.captureScreenshotForSaving, workspaceId, uuid)
-    }, 0)
+    })
   }, [uuid, workspaceId])
   const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)

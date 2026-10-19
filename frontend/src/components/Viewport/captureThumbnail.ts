@@ -17,8 +17,11 @@ export async function captureThumbnail(
   if (!gl || !scene || !camera) return null
 
   const originalSize = gl.getSize(new THREE.Vector2())
-  const smallWidth = Math.floor(originalSize.width / 4)
-  const smallHeight = Math.floor(originalSize.height / 4)
+  // A hidden or not-yet-laid-out viewport has no pixels to read; resizing it to
+  // zero first would only make the pixel read fail later.
+  if (originalSize.width < 1 || originalSize.height < 1) return null
+  const smallWidth = Math.max(1, Math.floor(originalSize.width / 4))
+  const smallHeight = Math.max(1, Math.floor(originalSize.height / 4))
 
   // Yield a tick so any pending React-driven scene update has committed before
   // the one-off render we read the pixels from.
@@ -63,9 +66,29 @@ export async function captureThumbnail(
   const canvas = document.createElement('canvas')
   canvas.width = newWidth
   canvas.height = newHeight
+  // A zero-sized viewport (hidden or not laid out yet) has nothing to read and
+  // getImageData rejects a zero rectangle.
+  if (newWidth === 0 || newHeight === 0) return null
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
 
   ctx.drawImage(img, 0, 0, newWidth, newHeight)
+  // A frame with no geometry at all renders as a fully transparent canvas (the
+  // viewport clears to alpha 0 and shows its CSS background through it; both
+  // Canvases keep `alpha` on). Storing that would replace a real thumbnail with
+  // an empty tile, so an empty frame is a miss: the caller keeps whatever
+  // preview it already had. A context lost between draw and read has no usable
+  // pixels either, so the same miss is the right answer.
+  let pixels: Uint8ClampedArray
+  try {
+    pixels = ctx.getImageData(0, 0, newWidth, newHeight).data
+  } catch {
+    return null
+  }
+  let hasContent = false
+  for (let i = 3; i < pixels.length; i += 4) {
+    if (pixels[i] !== 0) { hasContent = true; break }
+  }
+  if (!hasContent) return null
   return canvas.toDataURL('image/png')
 }

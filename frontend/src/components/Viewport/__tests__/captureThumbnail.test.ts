@@ -76,8 +76,11 @@ describe('captureThumbnail', () => {
     vi.stubGlobal('Image', FakeImage)
   }
 
-  function stubCanvas() {
-    const ctx = { drawImage: vi.fn() }
+  function stubCanvas(alpha = 255) {
+    const ctx = {
+      drawImage: vi.fn(),
+      getImageData: vi.fn(() => ({ data: new Uint8ClampedArray([0, 0, 0, alpha]) })),
+    }
     const canvas = {
       width: 0,
       height: 0,
@@ -134,6 +137,52 @@ describe('captureThumbnail', () => {
 
     expect(canvas.width).toBe(320)
     expect(canvas.height).toBe(200)
+  })
+
+  it('returns null for a frame with no drawn pixels, so an empty view cannot replace a thumbnail', async () => {
+    // The viewport clears to alpha 0 and shows its CSS background through the
+    // canvas, so "nothing rendered" is a fully transparent image. That is a
+    // miss: storing it would swap a real thumbnail for a blank tile.
+    stubImage(320, 200)
+    const { canvas } = stubCanvas(0)
+    const { gl } = makeFakeGl()
+
+    expect(await captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera)).toBeNull()
+    expect(canvas.toDataURL).not.toHaveBeenCalled()
+  })
+
+  it('finds content after leading transparent pixels', async () => {
+    stubImage(320, 200)
+    const { ctx } = stubCanvas()
+    ctx.getImageData.mockReturnValueOnce({ data: new Uint8ClampedArray([0, 0, 0, 0, 0, 0, 0, 255]) })
+    const { gl } = makeFakeGl()
+
+    expect(await captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera))
+      .toBe('data:image/png;base64,THUMB')
+  })
+
+  it('treats a failed pixel read as a miss instead of throwing through the save', async () => {
+    stubImage(320, 200)
+    const { ctx } = stubCanvas()
+    ctx.getImageData.mockImplementationOnce(() => { throw new Error('context lost') })
+    const { gl } = makeFakeGl()
+
+    expect(await captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera)).toBeNull()
+  })
+
+  it('returns before resizing a viewport with no laid-out size', async () => {
+    const setSize = vi.fn()
+    const toDataURL = vi.fn()
+    const gl = {
+      getSize: (target: THREE.Vector2) => target.set(0, 0),
+      setSize,
+      render: vi.fn(),
+      domElement: { toDataURL },
+    } as unknown as THREE.WebGLRenderer
+
+    expect(await captureThumbnail(gl, {} as THREE.Scene, {} as THREE.Camera)).toBeNull()
+    expect(setSize).not.toHaveBeenCalled()
+    expect(toDataURL).not.toHaveBeenCalled()
   })
 
   it('returns null when the downscale canvas has no 2D context', async () => {

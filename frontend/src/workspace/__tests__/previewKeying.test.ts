@@ -46,3 +46,36 @@ describe('document previews are keyed by (workspace, entry)', () => {
     expect(await getPreviewStore().get('ws-1', 'entry-1')).toBeUndefined()
   })
 })
+
+describe('copies carry the source preview', () => {
+  beforeEach(() => {
+    resetWorkspaceIdb()
+  })
+
+  it('a cloned entry gets its source thumbnail under the new id', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Widget', { docKind: 'part' })
+    const [source] = await store.listEntries(workspace)
+    await getPreviewStore().put(workspace, source.id, 'SU1H')
+
+    const cloneId = await store.cloneEntry(workspace, source.id)
+
+    expect(cloneId).not.toBe(source.id)
+    expect(await getPreviewStore().get(workspace, cloneId)).toBe('SU1H')
+  })
+
+  it('a duplicated workspace gets its thumbnails under the new ids and workspace', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Widget', { docKind: 'part' })
+    const [source] = await store.listEntries(workspace)
+    await getPreviewStore().put(workspace, source.id, 'SU1H')
+
+    const { workspace: copy } = await store.duplicate(workspace)
+    const [copied] = await store.listEntries(copy)
+
+    expect(copied.id).not.toBe(source.id)
+    expect(await getPreviewStore().get(copy, copied.id)).toBe('SU1H')
+    // The source key is untouched: a copy does not move its preview.
+    expect(await getPreviewStore().get(workspace, source.id)).toBe('SU1H')
+  })
+})

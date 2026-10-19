@@ -89,7 +89,9 @@ const EMPTY_ENTITIES: ReadonlySet<string> = new Set()
 const pointerOf = (e: { pointerId: number; button: number }): PointerRef => ({ id: e.pointerId, button: e.button })
 
 const CANVAS_STYLE = { width: '100%', height: '100%', background: '#0b0b0b' }
-const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true }
+// `alpha` is stated rather than inherited, for the same reason as the part
+// viewport: the thumbnail's empty-frame check depends on a transparent clear.
+const CANVAS_GL = { antialias: true, logarithmicDepthBuffer: true, alpha: true }
 // `isolation: isolate` makes this div a stacking context, penning anything drei
 // portals next to the canvas inside the viewport. The assembly scene draws its
 // overlays in-canvas (Text/Billboard) and mounts no `<Html>` today, so this is
@@ -104,6 +106,11 @@ const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 
 // alone would leave a gesture the adapter still believes is live.
 export interface AssemblyViewportHandle {
   captureScreenshotForSaving: () => Promise<string | null>
+  // Run `onFramed` once the first auto-fit has actually framed the assembly, or
+  // immediately when it already has. The editor's first-solve thumbnail rides
+  // this instead of a fixed tick, which could photograph the default camera
+  // before the fit landed.
+  whenFramed: (onFramed: () => void) => void
   cancelGesture: () => void
 }
 
@@ -199,8 +206,23 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     setSceneTick(t => t + 1)
   }, [])
 
+  // Frame the assembly once, when its first geometry lands. `fittedRef` doubles
+  // as the abandon latch: see shouldAutoFit for why a grab has to retire a fit
+  // that never got its chance rather than merely postpone it. `framedRef` is
+  // the truthful half: a retired fit leaves it false, so a late `whenFramed`
+  // does not mistake "the fit was abandoned" for "the assembly is framed".
+  const fittedRef = useRef(false)
+  const framedRef = useRef(false)
+  // The first-solve preview's waiter for that fit, if the editor asked for one
+  // before the geometry or the camera was live.
+  const frameWaiterRef = useRef<(() => void) | null>(null)
+
   useImperativeHandle(ref, () => ({
     captureScreenshotForSaving: () => captureThumbnail(glRef.current, sceneRef.current, cameraRef.current),
+    whenFramed: (onFramed: () => void) => {
+      if (framedRef.current) onFramed()
+      else if (!fittedRef.current) frameWaiterRef.current = onFramed
+    },
     // The same teardown the Escape and unmount effects run: adapter.cancel()
     // clears the pointer machine and the store's manipulation and gizmoDrag, so
     // a drag abandoned from outside the viewport cannot linger as a live gesture.
@@ -315,18 +337,24 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     return origin && orientation ? { origin, orientation } : null
   }, [aiming, selectedPartHandle, groups, transforms, instances])
 
-  // Frame the assembly once, when its first geometry lands. `fittedRef` doubles
-  // as the abandon latch: see shouldAutoFit for why a grab has to retire a fit
-  // that never got its chance rather than merely postpone it.
-  const fittedRef = useRef(false)
   useEffect(() => {
-    if (manipulating) fittedRef.current = true
+    if (!manipulating) return
+    fittedRef.current = true
+    // A grab retires the pending fit, so no thumbnail should be captured from
+    // the drag view it leaves behind.
+    frameWaiterRef.current = null
   }, [manipulating])
   useEffect(() => {
     if (!shouldAutoFit(fittedRef.current, Object.keys(bodies).length, manipulating)) return
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
-    if (fitToContent(camera, controlsRef.current, bodies, sceneRef.current)) fittedRef.current = true
+    if (fitToContent(camera, controlsRef.current, bodies, sceneRef.current)) {
+      fittedRef.current = true
+      framedRef.current = true
+      const framed = frameWaiterRef.current
+      frameWaiterRef.current = null
+      framed?.()
+    }
   }, [bodies, manipulating, sceneTick])
 
   // A drag continues while the pointer is outside the pane, so the move/up

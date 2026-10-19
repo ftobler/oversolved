@@ -18,6 +18,13 @@ export interface PreviewStore {
   get(workspace: string, entry: string): Promise<string | undefined>
   getMany(keys: PreviewKey[]): Promise<Map<string, string>>
   put(workspace: string, entry: string, image: string): Promise<void>
+  // A batch write in one transaction (a whole-workspace copy): one revision
+  // bump for the set instead of one per row.
+  putMany(records: Array<PreviewKey & { image: string }>): Promise<void>
+  // The first-solve writer's counterpart to `put`: it never replaces a record
+  // that exists, even one that landed while the capture was in flight (a save
+  // racing the capture must win). A no-op when the key is already present.
+  putIfAbsent(workspace: string, entry: string, image: string): Promise<void>
   remove(workspace: string, entry: string): Promise<void>
   clearWorkspace(workspace: string): Promise<void>  // purge path
 }

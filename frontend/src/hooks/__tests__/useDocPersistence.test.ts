@@ -301,6 +301,38 @@ describe('useDocPersistence', () => {
     expect(h.previewPut).toHaveBeenCalledWith('S2', 'S2', 'X')
   })
 
+  it('still saves when the thumbnail capture fails', async () => {
+    const { result, docRef, setError } = renderPersist('ws1')
+
+    let savePromise!: Promise<boolean>
+    await act(async () => {
+      savePromise = result.current.saveDoc('S', docRef.current!, async () => {
+        throw new Error('WebGL context lost')
+      })
+    })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+
+    expect(await savePromise).toBe(true)
+    expect(h.saves).toHaveLength(1)
+    expect(h.previewPut).not.toHaveBeenCalled()
+    expect(setError).not.toHaveBeenCalled()
+  })
+
+  it('still saves when the preview store refuses the write', async () => {
+    h.previewPut.mockRejectedValueOnce(new Error('quota exceeded'))
+    const { result, docRef, setError } = renderPersist('ws1')
+
+    let savePromise!: Promise<boolean>
+    await act(async () => {
+      savePromise = result.current.saveDoc('S', docRef.current!, async () => 'data:image/png;base64,SHOT')
+    })
+    await act(async () => { h.saveGates[0].resolve(undefined) })
+
+    expect(await savePromise).toBe(true)
+    expect(h.saves).toHaveLength(1)
+    expect(setError).not.toHaveBeenCalled()
+  })
+
   it('renames on success and reports failure without advancing the name', async () => {
     const { result, setDocName, setError } = renderPersist()
 

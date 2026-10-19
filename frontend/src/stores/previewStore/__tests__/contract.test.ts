@@ -58,6 +58,16 @@ describe.each(adapters)('PreviewStore contract: $name', (adapter) => {
     expect(await store.get('ws-1', 'e1')).toBe('new')
   })
 
+  it('putIfAbsent keeps the first image, so a first-solve capture cannot replace a save', async () => {
+    await store.putIfAbsent('ws-1', 'e1', 'first')
+    await store.putIfAbsent('ws-1', 'e1', 'second')
+    expect(await store.get('ws-1', 'e1')).toBe('first')
+
+    // A new key still lands.
+    await store.putIfAbsent('ws-1', 'e2', 'other')
+    expect(await store.get('ws-1', 'e2')).toBe('other')
+  })
+
   it('getMany batches the requested keys and omits misses', async () => {
     await store.put('ws-1', 'e1', 'one')
     await store.put('ws-1', 'e2', 'two')
@@ -69,6 +79,23 @@ describe.each(adapters)('PreviewStore contract: $name', (adapter) => {
     expect(many.get(previewKey('ws-1', 'e1'))).toBe('one')
     expect(many.get(previewKey('ws-1', 'e2'))).toBe('two')
     expect(many.size).toBe(2)
+  })
+
+  it('putMany writes the set and overwrites existing keys', async () => {
+    await store.put('ws-1', 'old', 'before')
+    await store.putMany([
+      { workspace: 'ws-1', entry: 'old', image: 'after' },
+      { workspace: 'ws-1', entry: 'new', image: 'two' },
+      { workspace: 'ws-2', entry: 'e1', image: 'three' },
+    ])
+
+    expect(await store.get('ws-1', 'old')).toBe('after')
+    expect(await store.get('ws-1', 'new')).toBe('two')
+    expect(await store.get('ws-2', 'e1')).toBe('three')
+  })
+
+  it('putMany accepts an empty batch', async () => {
+    await expect(store.putMany([])).resolves.toBeUndefined()
   })
 
   it('remove drops one key', async () => {

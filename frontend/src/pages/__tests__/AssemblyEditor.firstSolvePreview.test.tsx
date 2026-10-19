@@ -34,7 +34,11 @@ vi.mock('@/adapters/backend', () => ({
 // capture rides on, which is the whole surface this suite drives.
 vi.mock('@/components/Viewport/AssemblyViewport', () => ({
   default: forwardRef((_props, ref) => {
-    useImperativeHandle(ref, () => ({ captureScreenshotForSaving: h.capture }))
+    useImperativeHandle(ref, () => ({
+      captureScreenshotForSaving: h.capture,
+      // The test scene is framed as far as this mock is concerned.
+      whenFramed: (onFramed: () => void) => { onFramed() },
+    }))
     return <div data-testid="assembly-viewport" />
   }),
 }))

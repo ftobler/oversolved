@@ -37,6 +37,7 @@ import { docLoadErrorMessage, loadDocText } from '@/persistence/docSchema'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { fileIdsInSpec } from '@/stores/fileRegistry/resolve'
 import { getPreviewStore } from '@/stores/previewStore'
+import { copyPreview, copyWorkspacePreviews } from '@/stores/previewStore/capture'
 import { bumpWorkspaceStoreRevision } from './storeEvents'
 
 export interface WorkspaceSummary {
@@ -271,7 +272,7 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     const tree = await carrier.open()
     await materializeFiles(id => carrier.readPayload(id), tree)
     const nextWorkspace = randomUuid()
-    const { tree: copy } = remapTree(tree, {
+    const { tree: copy, idMap } = remapTree(tree, {
       workspace: nextWorkspace,
       mintIds: true,
       origin: 'duplicate',
@@ -289,6 +290,17 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     }
     await replaceWorkspaceRows(nextWorkspace, nextMeta, records)
     await this.carrier(nextWorkspace).checkpoint()
+    // The copy is the same documents under fresh ids, so it looks like the
+    // source from the first paint instead of a grid of placeholders. Files have
+    // no preview; filtering them out keeps the batch to the rows that can have
+    // one.
+    const documentPreviews = new Map<string, string>()
+    for (const [id, row] of Object.entries(tree.manifest.entries)) {
+      if (row.kind !== 'document') continue
+      const mapped = idMap.get(id)
+      if (mapped !== undefined) documentPreviews.set(id, mapped)
+    }
+    await copyWorkspacePreviews(workspace, nextWorkspace, documentPreviews)
     bumpWorkspaceStoreRevision()
     return { workspace: nextWorkspace }
   }
@@ -400,6 +412,8 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     const references = await carrier.referencesOf(entry)
     const cloneId = await carrier.clone(entry, name)
     for (const to of references) await carrier.addReference(cloneId, to)
+    // The clone row sits beside its source, so it should look like it.
+    await copyPreview(workspace, entry, workspace, cloneId)
     bumpWorkspaceStoreRevision()
     return cloneId
   }

@@ -62,10 +62,17 @@ export class IndexedDbPreviewStore implements PreviewStore {
 
   async getMany(keys: PreviewKey[]): Promise<Map<string, string>> {
     const out = new Map<string, string>()
-    for (const key of keys) {
-      const image = await this.get(key.workspace, key.entry)
+    if (keys.length === 0) return out
+    const db = await openDb()
+    // One readonly transaction: a workspace copy reads every candidate at once
+    // instead of paying a transaction per row.
+    const store = db.transaction(STORE, 'readonly').objectStore(STORE)
+    const records = await Promise.all(keys.map(key =>
+      promisify(store.get([key.workspace, key.entry]) as IDBRequest<PreviewRecord | undefined>)))
+    keys.forEach((key, i) => {
+      const image = records[i]?.image
       if (image !== undefined) out.set(previewKey(key.workspace, key.entry), image)
-    }
+    })
     return out
   }
 
@@ -73,6 +80,44 @@ export class IndexedDbPreviewStore implements PreviewStore {
     const db = await openDb()
     const store = db.transaction(STORE, 'readwrite').objectStore(STORE)
     await promisify(store.put({ workspace, entry, image, updatedAt: Date.now() }))
+    bumpPreviewRevision()
+  }
+
+  async putIfAbsent(workspace: string, entry: string, image: string): Promise<void> {
+    const db = await openDb()
+    // Get-then-put inside one readwrite transaction: write transactions on a
+    // store are serialized, so a save's preview cannot slip between the test
+    // and the write, and `add`'s abort-on-ConstraintError is avoided.
+    const wrote = await new Promise<boolean>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      const store = tx.objectStore(STORE)
+      let wrote = false
+      const current = store.get([workspace, entry])
+      current.onsuccess = () => {
+        if (current.result !== undefined) return
+        store.put({ workspace, entry, image, updatedAt: Date.now() })
+        wrote = true
+      }
+      current.onerror = () => reject(current.error)
+      tx.oncomplete = () => resolve(wrote)
+      tx.onerror = () => reject(tx.error ?? new Error('preview write failed'))
+      tx.onabort = () => reject(tx.error ?? new Error('preview write aborted'))
+    })
+    if (wrote) bumpPreviewRevision()
+  }
+
+  async putMany(records: Array<PreviewKey & { image: string }>): Promise<void> {
+    if (records.length === 0) return
+    const db = await openDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite')
+      const store = tx.objectStore(STORE)
+      const updatedAt = Date.now()
+      for (const record of records) store.put({ ...record, updatedAt })
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error ?? new Error('preview write failed'))
+      tx.onabort = () => reject(tx.error ?? new Error('preview write aborted'))
+    })
     bumpPreviewRevision()
   }
 
