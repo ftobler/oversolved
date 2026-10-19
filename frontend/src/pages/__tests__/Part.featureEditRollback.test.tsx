@@ -100,7 +100,7 @@ describe('feature edit rollback restore', () => {
     })
 
     // Exit edit mode
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!)
 
     await waitFor(() => {
       const fil1 = screen.getByText('Fillet 1', { selector: '.feature-name' }).closest('.feature-item')
@@ -143,7 +143,7 @@ describe('feature edit rollback restore', () => {
     })
 
     // Exit edit mode on Fillet 1
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!)
 
     // Fillet 2 must no longer be rolled back -- rollback is restored to full stack
     await waitFor(() => {
@@ -179,7 +179,7 @@ describe('feature edit rollback restore', () => {
     })
 
     // Exit
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!)
 
     // Everything still visible and not rolled back
     await waitFor(() => {

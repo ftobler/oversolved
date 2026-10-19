@@ -12,8 +12,10 @@ import cancelIcon from '@/assets/icons/dialog-cancel.svg'
  * The open feature editor as a floating card on the right side of the
  * viewport: the feature's icon and name over the OK / Cancel pair, then the
  * same editor body the tree row used to carry inline. The row no longer grows
- * a whole form when a feature opens; it only keeps its `editing` highlight
- * (FeatureTree.tsx), and this panel is the one place the editor lives.
+ * a whole form when a feature opens; it keeps its `editing` highlight and swaps
+ * its edit button for its own OK / Cancel pair (FeatureItemActions.tsx), so an
+ * edit can also be ended where it started. The editor body itself lives only
+ * here, in this panel.
  *
  * The body is FeatureItemEditors, unchanged, so every kind (schema editors,
  * plane, sketch plane selector, STEP import) reads exactly as it did in the

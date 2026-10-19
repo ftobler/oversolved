@@ -90,7 +90,7 @@ describe('Part - undo/redo never move the camera', () => {
     // unconditional disarm already does.
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
-    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
     expect(usePartEditorStore.getState().undoStack).toHaveLength(1)
 
     await act(async () => { executeCommand('undo') })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
 import type { PartFeature } from '@/types/cad'
@@ -109,7 +109,7 @@ describe('sketch exit without viewport', () => {
   it('calls onEditCommit when the exit button is clicked', () => {
     const onEditCommit = vi.fn()
     renderSidebar([sketchFeature], 'sk1', { onEditCommit })
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(within(document.querySelector('.feature-item.editing') as HTMLElement).getByTitle('OK'))
     expect(onEditCommit).toHaveBeenCalled()
   })
 
@@ -121,7 +121,7 @@ describe('sketch exit without viewport', () => {
   })
     })
     renderSidebar([sketchFeature], 'sk1', { onEditCommit })
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(within(document.querySelector('.feature-item.editing') as HTMLElement).getByTitle('OK'))
     expect(useEditorState.getState().editingFeatureId).toBeNull()
   })
 })

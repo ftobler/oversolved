@@ -4,7 +4,7 @@
 // floating panels (phase 1) the part navigator and the open feature editor are
 // overlay cards inside the viewport stage as well, not sidebar columns.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, cleanup, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import Part from '@/pages/Part'
@@ -102,7 +102,9 @@ describe('Part editor chrome', () => {
     expect(panel).not.toBeNull()
     expect(stage.contains(panel)).toBe(true)
 
-    fireEvent.click(screen.getByTitle('OK'))
+    // OK in the row closes the panel too: the edit can be ended where it began.
+    const row = within(document.querySelector('.feature-item.editing') as HTMLElement)
+    fireEvent.click(row.getByTitle('OK'))
     await waitFor(() => expect(document.querySelector('.feature-edit-panel')).toBeNull())
   })
 
@@ -114,7 +116,8 @@ describe('Part editor chrome', () => {
     fireEvent.click(screen.getByTitle('Edit extrude'))
     expect(document.querySelector('.feature-edit-panel')).not.toBeNull()
 
-    fireEvent.click(screen.getByTitle('Cancel'))
+    const row = within(document.querySelector('.feature-item.editing') as HTMLElement)
+    fireEvent.click(row.getByTitle('Cancel'))
     await waitFor(() => expect(document.querySelector('.feature-edit-panel')).toBeNull())
   })
 })

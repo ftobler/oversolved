@@ -1,8 +1,9 @@
 /**
  * The open feature editor is a floating card on the right side of the viewport
- * (floating-panels phase 1). The tree row only marks the edited feature; this
- * panel is the one place the editor body and the OK/Cancel pair render, so the
- * features list no longer grows by a whole form when a feature opens.
+ * (floating-panels phase 1). The tree row only marks the edited feature and
+ * carries its own OK/Cancel pair; this panel is the one place the editor body
+ * renders, and it also carries a pair for working at that end. The features
+ * list no longer grows by a whole form when a feature opens.
  *
  * The panel reuses FeatureItemEditors unchanged, so these pin what the row used
  * to render inline: the status line, the schema fields, the plane editor, the

@@ -2,8 +2,8 @@
 // in the edit tooltip. `sketch` is the lone exception: it edits via
 // onEnterEditSketch rather than onEnterEditFeature. This is the single source
 // for both the placeholder slot and the tree's double-click gate, so the two
-// cannot drift. The OK/Cancel pair of an open edit is not here: it lives in
-// FeatureEditPanel, the panel the tree row no longer carries.
+// cannot drift. The OK/Cancel pair of an open edit is drawn from this gate by
+// FeatureItemActions (row) and FeatureEditPanel (panel), not defined here.
 export const EDIT_LABELS: Record<string, string> = {
   sketch: 'sketch',
   plane: 'plane',

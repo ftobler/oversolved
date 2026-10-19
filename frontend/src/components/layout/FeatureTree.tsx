@@ -16,8 +16,9 @@ import { domHandleProps } from '@/picking'
 
 // The features list is one of the part editor's floating cards now: it sizes to
 // its content under a max-height and scrolls internally, with the open feature's
-// editor a separate panel on the other side of the viewport
-// (FeatureEditPanel.tsx). The row only keeps its `editing` highlight.
+// editor body a separate panel on the other side of the viewport
+// (FeatureEditPanel.tsx). The row keeps its `editing` highlight and swaps the
+// edit button for OK / Cancel, so an edit can be ended where it began.
 export function FeatureTree() {
   const features = usePartEditorStore(s => s.features)
   const doc = usePartEditorStore(s => s.doc)
@@ -36,6 +37,8 @@ export function FeatureTree() {
     onToggleSelect,
     onEnterEditSketch,
     onEnterEditFeature,
+    onEditCommit,
+    onEditCancel,
     onToggleVisibility,
     onRightClick,
     onMutation,
@@ -200,7 +203,11 @@ export function FeatureTree() {
                 onToggleSelect(selectionId)
               }}
               onKeyDown={(e) => rowKeyDown(e, () => onToggleSelect(selectionId))}
-              onDoubleClick={() => {
+              onDoubleClick={(e) => {
+                // A double-click in the action cluster is two button presses,
+                // not an edit request: after Cancel closes the row the second
+                // press can land on the returned edit button.
+                if (e.target instanceof Element && e.target.closest('.feature-item-actions')) return
                 if (isBuiltIn) return  // Origin/planes are not editable here
                 // A double-click on the row already being edited would stack a
                 // second editor session on the same feature. The Edit button
@@ -251,6 +258,8 @@ export function FeatureTree() {
                   }
                   onEnterEditSketch={onEnterEditSketch}
                   onEnterEditFeature={onEnterEditFeature}
+                  onEditCommit={onEditCommit}
+                  onEditCancel={onEditCancel}
                   onToggleVisibility={onToggleVisibility}
                   onRightClick={onRightClick}
                 />

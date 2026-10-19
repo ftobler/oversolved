@@ -128,7 +128,7 @@ describe('Part - eliminate redundant solves', () => {
 
     // Adding a feature enters edit mode on it, and the rollback bar is not
     // draggable while editing. Commit the edit first, then drag.
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!)
     await waitFor(() => {
       expect(countSolveCalls()).toBe(2)
     })

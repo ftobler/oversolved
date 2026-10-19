@@ -110,7 +110,7 @@ describe('edit exit reSolve', () => {
     const callsBeforeExit = solveMock.mock.calls.length
 
     // Exit edit
-    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
 
     // Wait on the observable solve count rather than a fixed sleep.
     await waitFor(() => { expect(solveMock.mock.calls.length).toBeGreaterThan(callsBeforeExit) })
@@ -161,13 +161,13 @@ describe('edit exit reSolve', () => {
     // Enter edit on the sketch.
     await act(async () => { fireEvent.click(screen.getByTitle('Edit sketch')) })
     await waitFor(() => {
-      expect(screen.getByTitle('OK')).toBeInTheDocument()
+      expect(document.querySelector('.feature-item.editing .feature-ok-btn')!).toBeInTheDocument()
     }, { timeout: 10000 })
 
     const callsBeforeExit = solveMock.mock.calls.length
 
     // Exit edit
-    await act(async () => { fireEvent.click(screen.getByTitle('OK')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
 
     // The OK button disappearing is the edit actually closing.
     await waitFor(() => {

@@ -1,10 +1,9 @@
 // The action buttons sit inside the feature row, and that row's own onClick
 // selects the feature (FeatureTree.tsx). Any action button that lets the click
 // bubble therefore performs its action AND changes the selection, which is
-// never what the user asked for. The sketch edit button was the lone leak.
-// While a feature is edited the row carries no action beyond the context menu:
-// the OK/Cancel pair moved to the floating FeatureEditPanel, so there is no
-// exit button left in the row to leak.
+// never what the user asked for. While a feature is edited the row swaps its
+// edit button for the OK/Cancel pair, so ending the edit does not require a
+// trip to the floating FeatureEditPanel on the other side of the viewport.
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { FeatureItemActions } from '@/components/layout/FeatureItemActions'
@@ -15,6 +14,8 @@ function makeHandlers() {
   return {
     onEnterEditSketch: vi.fn(),
     onEnterEditFeature: vi.fn(),
+    onEditCommit: vi.fn(),
+    onEditCancel: vi.fn(),
     onToggleVisibility: vi.fn(),
     onRightClick: vi.fn(),
   }
@@ -71,12 +72,17 @@ describe('FeatureItemActions click isolation', () => {
     expect(rowClick).not.toHaveBeenCalled()
   })
 
-  it('shows no OK/Cancel in the row while the feature is edited', () => {
+  it('shows the OK/Cancel pair in the row while the feature is edited', () => {
     const handlers = makeHandlers()
-    renderRow({ featureKind: 'sketch', isEditing: true }, handlers)
-    expect(document.querySelector('.feature-ok-btn')).toBeNull()
-    expect(document.querySelector('.feature-cancel-btn')).toBeNull()
-    // The context menu stays: it is the row's only action while editing.
+    const rowClick = renderRow({ featureKind: 'sketch', isEditing: true }, handlers)
+    fireEvent.click(document.querySelector('.feature-ok-btn')!)
+    fireEvent.click(document.querySelector('.feature-cancel-btn')!)
+    expect(handlers.onEditCommit).toHaveBeenCalledTimes(1)
+    expect(handlers.onEditCancel).toHaveBeenCalledTimes(1)
+    expect(rowClick).not.toHaveBeenCalled()
+    // The context menu stays; the edit and visibility buttons make way.
     expect(document.querySelector('.feature-context-btn')).not.toBeNull()
+    expect(document.querySelector('.feature-edit-btn')).toBeNull()
+    expect(document.querySelector('.feature-visibility-btn')).toBeNull()
   })
 })

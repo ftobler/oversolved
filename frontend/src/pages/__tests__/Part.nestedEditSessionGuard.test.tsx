@@ -182,7 +182,8 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     // entry, then undo. One undo must land all the way back on the untouched
     // radius: the sketch's empty session left no phantom entry of its own
     // behind for this undo to pop through first.
-    fireEvent.click(screen.getByTitle('OK'))
+    const panel = within(document.querySelector('.feature-edit-panel') as HTMLElement)
+    fireEvent.click(panel.getByTitle('OK'))
     await act(async () => { executeCommand('undo') })
     await waitFor(() => expect(radiusOf('fil1')).toBe(1))
   })

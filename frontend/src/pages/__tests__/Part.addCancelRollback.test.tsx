@@ -89,9 +89,9 @@ describe('Part - cancelling an added feature keeps the rollback bar and the docu
     fireEvent.click(screen.getByTitle('Feature mode'))
     await act(async () => { fireEvent.click(screen.getByTitle('Add Extrude (E)')) })
     await waitFor(() => expect(userFeatures()).toHaveLength(5))
-    await waitFor(() => expect(screen.getByTitle('Cancel')).toBeInTheDocument())
+    await waitFor(() => expect(document.querySelector('.feature-item.editing .feature-cancel-btn')!).toBeInTheDocument())
 
-    await act(async () => { fireEvent.click(screen.getByTitle('Cancel')) })
+    await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-cancel-btn')!) })
     await waitFor(() => expect(userFeatures()).toHaveLength(4))
 
     // The store and the document name the same position after the rewind, so the
