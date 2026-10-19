@@ -25,7 +25,7 @@ process.on('message', async ({ id, recipe }) => {
       return
     }
     const run = runChain(oc, recipe, {
-      onStep: (step, kind) => process.send?.({ id, progress: { step, kind } }),
+      onStep: (step, kind) => process.send?.({ id, progress: { phase: 'base', step, kind } }),
     })
     // The perturbed replay is a second full chain run, so it gets its own
     // progress mark: a hang there is reported as the persistence phase. It runs
@@ -42,8 +42,11 @@ process.on('message', async ({ id, recipe }) => {
     const persistentPicks = run.picks.filter((pick) => builtSteps.has(pick.step))
     let stale = []
     if (run.violations.length === 0 && persistentPicks.length > 0) {
-      process.send?.({ id, progress: { step: -1, kind: 'persistence' } })
-      stale = runPersistenceCheck(oc, recipe, persistentPicks, { reportUnreached: run.completed })
+      process.send?.({ id, progress: { phase: 'persistence', step: -1, kind: 'persistence' } })
+      stale = runPersistenceCheck(oc, recipe, persistentPicks, {
+        reportUnreached: run.completed,
+        onStep: (step, kind) => process.send?.({ id, progress: { phase: 'persistence', step, kind } }),
+      })
     }
     process.send?.({ id, ok: true, run, stale })
   } catch (e) {

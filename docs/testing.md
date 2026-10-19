@@ -14,9 +14,12 @@ fuzz. Their baselines are committed and reviewed like code.
 
 The Gitea `fuzz` job in `.github/workflows/ci-gitea.yaml` runs on main only (a
 push or a manual dispatch there): it provisions the WASM solvers and OCC.js and
-runs `just fuzz`, which runs `just fuzz-session 200 40`, `just action-matrix`
-then `just fuzz-geometry 1500 2`. Every recipe tees its output to tmp/ and the
-job uploads the logs as its report artifact.
+runs `just fuzz-session 200 40`, `just action-matrix` and
+`just fuzz-geometry 1500 2` as three separate steps, so the job view names the
+failing suite and its duration. `just fuzz` remains the one-command local
+aggregate of the same three recipes. Every recipe tees its output to tmp/ and
+the job uploads the logs as its report artifact; the fuzz steps use
+`!cancelled()` so a failure in one still lets the others report.
 
 The other fuzzes are not in the long job: the document loader fuzz
 (`frontend/src/persistence/__tests__/docSchema.fuzz.test.ts`) and the volume
@@ -94,7 +97,11 @@ reached again, a completed one also reports references it never reached.
 - Every replay runs in a forked child under a SIGKILL watchdog
   (`chainTimeout.ts`, mirroring `kernel/solveTimeout.ts`): an OCC clean can
   spin forever in synchronous WASM, and the killed seed is reported with the
-  step that hung. `ROBUSTNESS_FUZZ_WORKERS` (default 2) recipes replay
+  step that hung. The watchdog is a per-step liveness window: every progress
+  report (each base step, then each step of the perturbed persistence replay,
+  tagged with its phase) re-arms it, so a long but advancing chain is not
+  mistaken for a hang while one spinning step still is.
+  `ROBUSTNESS_FUZZ_WORKERS` (default 2) recipes replay
   concurrently, each in a child that replays exactly one recipe and is then
   retired: a reused child carried OCC state into the next seed and flipped
   borderline fuses and picks between runs. A kill drops only its own child,

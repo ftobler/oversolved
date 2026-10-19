@@ -12,8 +12,9 @@
 #   setup      install (install-npm, install-wasm, install-occ)
 #   cleanup    clean, deepclean
 #
-# `just fuzz` is the one command for the full main-gate suite. The fuzz section
-# below says what it runs and how fuzz and ratchet differ.
+# `just fuzz` is the one command for the full main-gate suite locally; the CI
+# job calls the same three recipes as separate steps. The fuzz section below
+# says what it runs and how fuzz and ratchet differ.
 #
 # Start here: `just install` once, then `just dev` to run the app. The everyday
 # gate is `just default` (Python + frontend).
@@ -145,12 +146,14 @@ frontend-test:
 # These are not two suites: every fuzz is a ratchet, and the matrix and oracle
 # are ratchets without a generator.
 #
-# `just fuzz` is the top-level entry point for the main gate. It runs the
-# session fuzz, the action matrix and the geometry fuzz at the sizes main runs,
-# in that order, and takes roughly 40 minutes. The loader fuzz and the volume
-# oracle run in `just frontend-test`; the sketch fuzz's PR range runs in `just
-# rust-test`, and `fuzz-sketch` harvests wider ranges. A bigger sweep is a
-# sub-recipe call, e.g. `just fuzz-session 500 60` or `just fuzz-geometry 5000 4`.
+# `just fuzz` is the top-level entry point for a local main-gate run. It runs
+# the session fuzz, the action matrix and the geometry fuzz at the sizes main
+# runs, in that order, and takes roughly an hour. The CI main-gate job calls
+# those three recipes as separate steps so each suite reports its own status
+# and duration. The loader fuzz and the volume oracle run in `just frontend-test`;
+# the sketch fuzz's PR range runs in `just rust-test`, and `fuzz-sketch`
+# harvests wider ranges. A bigger sweep is a sub-recipe call, e.g.
+# `just fuzz-session 500 60` or `just fuzz-geometry 5000 4`.
 
 # The full main-gate fuzz suite: session fuzz, action matrix, geometry fuzz.
 fuzz:

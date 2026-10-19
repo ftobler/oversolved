@@ -31,7 +31,7 @@ import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { minimizeSequence } from '@/hooks/__tests__/fuzzMinimizer'
 import { generateRecipe, type RecipeStep } from './recipe'
 import { runChain } from './chain'
-import { chainWorkerCount, configureChainWorkers, disposeChainChild, runChainWithTimeout } from './chainTimeout'
+import { chainWorkerCount, configureChainWorkers, disposeChainChild, runChainWithTimeout, type ChainPhase } from './chainTimeout'
 import { runSeedsBounded } from './sweep'
 import { writeMinimalRecipe, defaultRegressionsDir } from './regressions'
 
@@ -57,7 +57,7 @@ function envInt(name: string, fallback: number): number {
 // it (200 is the plan's acceptance range, 1500 the main gate's). The budget per
 // seed covers the fresh child's kernel load (~1.5 s, chainTimeout), the base
 // replay, the persistence replay and an amortised share of the watchdog kills
-// (a hanging seed costs the full 30 s).
+// (a hanging seed costs the full 60 s).
 const SEEDS = envInt('ROBUSTNESS_FUZZ_SEEDS', 24)
 // The pool bound lives in the test (the source module cannot read process.env
 // by convention): 2 keeps the forked OCC kernels inside the runner's memory,
@@ -69,9 +69,12 @@ const BUDGET_MS = 4_000
 // the pool turns the per-seed cost into a per-worker cost, so the cap divides
 // with it or a wide run would fail a sweep the job budget still allows.
 const TIMEOUT_MS = Math.min(90 * 60_000, 120_000 + Math.ceil(SEEDS / WORKERS) * BUDGET_MS)
-// The watchdog ceiling per replay, the same 30 s the browser worker gives a
-// solve; a healthy chain step is well under a second.
-const REPLAY_TIMEOUT_MS = 30_000
+// The watchdog's silence window per step: twice the 30 s the browser worker
+// gives a solve, so a loaded CI runner has headroom. A healthy chain step is
+// well under a second. The timer re-arms on every progress report, so this
+// covers one step, not the whole base-plus-persistence replay (which can
+// legitimately pass 30 s together).
+const REPLAY_TIMEOUT_MS = 60_000
 // Minimisation replays are prefixes of a recipe the sweep already ran, so they
 // are cheaper than a full seed; this keeps a hanging candidate from dominating
 // the reduction.
@@ -89,23 +92,23 @@ const MINIMIZE_TIMEOUT_MS = 10_000
 // (mirror, circular-array and one plain union, seed 535; seed 762 joined once
 // every recipe ran on a fresh kernel). Seed 268 is not a spin: its perturbed
 // rebuild's shell spends ~22 s in MakeThickSolidByJoin before refusing
-// build_not_done (backlog.md). It fits the 30 s ceiling on a fresh kernel on
-// a fast machine and crossed it when children were reused, so both progress
-// marks the kill can land on (the shell step or the persistence phase) stay
-// pinned for slower runners.
-const KNOWN_HANGS: readonly { seed: number; step: number; kind: string }[] = [
-  { seed: 49, step: 1, kind: 'mirror' },
-  { seed: 268, step: -1, kind: 'persistence' },
-  { seed: 268, step: 3, kind: 'shell' },
-  { seed: 355, step: 5, kind: 'circular-array' },
-  { seed: 378, step: 3, kind: 'mirror' },
-  { seed: 535, step: 3, kind: 'boolean' },
-  { seed: 622, step: 3, kind: 'circular-array' },
-  { seed: 639, step: 2, kind: 'mirror' },
-  { seed: 762, step: 2, kind: 'mirror' },
-  { seed: 1215, step: 2, kind: 'circular-array' },
-  { seed: 1359, step: 1, kind: 'mirror' },
-  { seed: 1469, step: 2, kind: 'mirror' },
+// build_not_done (backlog.md). The liveness window re-arms at that step, so it
+// fits on the CI box; it is still pinned in both phases because a slower
+// runner can spend more than the 60 s window inside that one call, and the
+// kill has to be attributed to the step that owns it either way.
+const KNOWN_HANGS: readonly { seed: number; phase: ChainPhase; step: number; kind: string }[] = [
+  { seed: 49, phase: 'base', step: 1, kind: 'mirror' },
+  { seed: 268, phase: 'persistence', step: 3, kind: 'shell' },
+  { seed: 268, phase: 'base', step: 3, kind: 'shell' },
+  { seed: 355, phase: 'base', step: 5, kind: 'circular-array' },
+  { seed: 378, phase: 'base', step: 3, kind: 'mirror' },
+  { seed: 535, phase: 'base', step: 3, kind: 'boolean' },
+  { seed: 622, phase: 'base', step: 3, kind: 'circular-array' },
+  { seed: 639, phase: 'base', step: 2, kind: 'mirror' },
+  { seed: 762, phase: 'base', step: 2, kind: 'mirror' },
+  { seed: 1215, phase: 'base', step: 2, kind: 'circular-array' },
+  { seed: 1359, phase: 'base', step: 1, kind: 'mirror' },
+  { seed: 1469, phase: 'base', step: 2, kind: 'mirror' },
 ]
 
 // Known red picks, pinned by seed and step. The naming check reaches the step
@@ -207,8 +210,15 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
         // The pin names the step and kind: a hang that MOVES to another step
         // (or kind) is a changed finding and needs its own triage, not the
         // old note.
-        const known = KNOWN_HANGS.some((h) => h.seed === seed && h.step === guarded.hang.step && h.kind === guarded.hang.kind)
-        const text = `seed ${seed}: HANG at step ${guarded.hang.step} (${guarded.hang.kind})`
+        const known = KNOWN_HANGS.some((h) =>
+          h.seed === seed
+          && h.phase === guarded.hang.phase
+          && h.step === guarded.hang.step
+          && h.kind === guarded.hang.kind)
+        const where = guarded.hang.step === null
+          ? 'before the first step'
+          : `at ${guarded.hang.phase} step ${guarded.hang.step} (${guarded.hang.kind})`
+        const text = `seed ${seed}: HANG ${where}`
         if (known) hangs.push(text)
         else problems.push(`${text}; not in KNOWN_HANGS (add it with the triage note if accepted)`)
         continue
@@ -369,7 +379,7 @@ describe.skipIf(!occAvailable)('one kernel replaying a seed twice', () => {
 // This runs without a kernel, so it guards the tables on every leg.
 describe('the robustness fuzz pin tables', () => {
   it('keys every pin by a unique seed and step', () => {
-    const hangKeys = KNOWN_HANGS.map((h) => `${h.seed}:${h.step}`)
+    const hangKeys = KNOWN_HANGS.map((h) => `${h.seed}:${h.phase}:${h.step}`)
     expect(new Set(hangKeys).size).toBe(hangKeys.length)
     const pickKeys = KNOWN_STALE_PICKS.map((p) => `${p.seed}:${p.step}`)
     expect(new Set(pickKeys).size).toBe(pickKeys.length)

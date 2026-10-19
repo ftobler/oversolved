@@ -839,12 +839,21 @@ export function runPersistenceCheck(
   oc: OccModule,
   recipe: Recipe,
   picks: readonly PickRecord[],
-  options: { reportUnreached?: boolean } = {},
+  options: {
+    reportUnreached?: boolean
+    // The perturbed replay is a second full chain, so the watchdog child
+    // reports its steps too (phase `persistence`): a hang there must name the
+    // step, and each report re-arms the liveness window.
+    onStep?: (step: number, kind: RecipeStep['kind']) => void
+  } = {},
 ): StalePick[] {
   if (picks.length === 0) return []
   const overrides = new Map<number, PickRecord>()
   for (const pick of picks) overrides.set(pick.step, pick)
-  const live = executeChain(oc, perturbStart(recipe), { overridePicks: overrides })
+  const live = executeChain(oc, perturbStart(recipe), {
+    overridePicks: overrides,
+    onStep: options.onStep,
+  })
   try {
     const stale = [...live.run.stalePicks]
     const reportUnreached = options.reportUnreached ?? false

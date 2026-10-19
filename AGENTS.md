@@ -54,8 +54,10 @@ from the justfile: `just fuzz`
 `just fuzz` is the top-level entry point for the main-gate suite: `fuzz-session`
 (seeded mutation and undo/redo sequences, 200 x 40), `action-matrix` (the full
 command sweep against its baseline), then `fuzz-geometry` (seeded feature chains,
-1500 seeds). It runs on a main push only and takes roughly 40 minutes; the
-aggregate tees to `tmp/just_fuzz.log` and each recipe to its own log.
+1500 seeds). It runs on a main push only and takes roughly an hour; the CI job
+calls the three recipes as separate steps so each suite has its own status and
+duration, while the aggregate tees to `tmp/just_fuzz.log` and each recipe to its
+own log.
 
 A fuzz is a seeded generator plus invariant checks. A ratchet is a committed
 baseline that fails when it moves: the action matrix, the volume oracle, and the

@@ -56,18 +56,25 @@ def test_no_dead_server_env_vars_are_documented() -> None:
 
 
 def test_main_gate_is_named_fuzz_not_nightly() -> None:
-    """The long suite is the `fuzz` job on `refs/heads/main`, run by `just fuzz`.
+    """The long suite is the `fuzz` job on `refs/heads/main`.
 
     It was called nightly before 83c82d2e; the schedule is gone. Prose that
     still says nightly sends the next reader looking for a job that does not
-    exist.
+    exist. The job calls the three sweeps as separate steps so a failure and
+    its duration are attributable without reading the aggregate log.
     """
     for rel in ("AGENTS.md", "docs/testing.md", ".github/workflows/ci-gitea.yaml"):
         assert "nightly" not in _read(rel).lower(), (
             f"{rel} calls the main-gate suite nightly; it is the `fuzz` job, "
             "gated to refs/heads/main and workflow_dispatch."
         )
-    assert "run: just fuzz" in _read(".github/workflows/ci-gitea.yaml")
+    ci = _read(".github/workflows/ci-gitea.yaml")
+    for command in (
+        "run: just fuzz-session 200 40",
+        "run: just action-matrix",
+        "run: just fuzz-geometry 1500 2",
+    ):
+        assert command in ci, f"the fuzz job no longer runs `{command}` as its own step"
 
 
 def test_env_example_is_gone() -> None:

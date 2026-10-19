@@ -233,12 +233,15 @@ jobs:
           wasm-pack build --target nodejs --out-dir pkg-node --release
 
   # The long fuzz suite, on main only: the seeded session fuzz, the full
-  # action-matrix sweep and the geometry fuzz take about 40 minutes together, so
+  # action-matrix sweep and the geometry fuzz take about an hour together, so
   # they never join a dev, feature or PR run. The provisioning mirrors the
   # frontend job (nodejs WASM solvers + OCC.js) because all three recipes use
   # the real kernel where it is installed; the recipes tee their full output to
-  # tmp/ and keep their exit codes, so the job step is the gate, and the logs
-  # upload as the fuzz report artifact.
+  # tmp/ and keep their exit codes, so each job step is its own gate, and the
+  # logs upload as the fuzz report artifact. The three sweeps are separate
+  # steps so the job view names the failing suite and shows its own duration;
+  # `!cancelled()` lets the remaining sweeps run after one fails, because the
+  # artifact is the report and any failed step still fails the job.
   fuzz:
     if: github.server_url != 'https://github.com' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -283,8 +286,17 @@ jobs:
         with:
           tool: just
 
-      - name: Main-gate fuzz suite (real kernel)
-        run: just fuzz
+      - name: Fuzz session (real kernel)
+        if: ${{ !cancelled() }}
+        run: just fuzz-session 200 40
+
+      - name: Action matrix (real kernel)
+        if: ${{ !cancelled() }}
+        run: just action-matrix
+
+      - name: Geometry fuzz (real kernel)
+        if: ${{ !cancelled() }}
+        run: just fuzz-geometry 1500 2
 
       # The fuzz logs are the job's report: a failing sweep leaves the seed,
       # step and refusal lines in its log even when the step aborts.

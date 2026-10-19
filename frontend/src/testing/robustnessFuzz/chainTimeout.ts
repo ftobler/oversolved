@@ -9,10 +9,16 @@
 // kill can.
 //
 // The child reports the step it is about to run before every step, so a killed
-// run is reported with the step that hung, not just a timeout. The pool is
-// bounded: ROBUSTNESS_FUZZ_WORKERS recipes replay concurrently, one per child.
-// A kill drops that child alone; sibling children and their in-flight recipes
-// are untouched.
+// run is reported with the step that hung, not just a timeout. The timer is a
+// liveness window, not a budget for the whole replay: every progress report
+// re-arms it. A recipe runs the base chain and then a second, perturbed chain
+// for the persistence check, so a healthy seed can legitimately take longer
+// than one step's window (seed 1131 takes ~40 s on a fast box); a total-replay
+// timer killed it mid-persistence and reported a hang that never happened. A
+// single step that truly spins still reports no progress and is killed after
+// the full window. The pool is bounded: ROBUSTNESS_FUZZ_WORKERS recipes replay
+// concurrently, one per child. A kill drops that child alone; sibling children
+// and their in-flight recipes are untouched.
 //
 // Every child replays exactly one recipe and is then retired, so each seed
 // starts on a freshly loaded kernel. A reused child carried OCC state from the
@@ -28,7 +34,8 @@
 // Requests beyond the pool size wait in a FIFO queue, and a queued recipe's
 // timeout clock starts when a child picks it up: queueing can never burn the
 // recipe's budget, and a full pool looks like latency, not a hang. The fresh
-// child's kernel load does count against it (~1.5 s of the 30 s).
+// child's kernel load counts against the first window (~1.5 s of the 60 s),
+// before any step progress can re-arm it.
 
 import { fork, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -45,7 +52,9 @@ export interface ChainChildLike {
   kill(signal?: NodeJS.Signals): void
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000
+// Twice the browser worker's 30 s solve watchdog: the fuzz child also pays
+// the fresh kernel load and OCC work on a possibly loaded CI runner.
+const DEFAULT_TIMEOUT_MS = 60_000
 
 // The pool size: more than one child for throughput, few enough that the
 // kernels stay inside the runner's memory. The sweep reads the knob
@@ -65,11 +74,17 @@ export function chainWorkerCount(): number {
   return maxWorkers
 }
 
+// Which of the two passes the child was in. The base replay and the perturbed
+// persistence replay both number their steps from zero, so the phase is what
+// tells their hangs apart.
+export type ChainPhase = 'base' | 'persistence'
+
 export interface HangReport {
   // The step the child was running when it was killed, or null when it hung
   // before the first step report.
   step: number | null
   kind: string | null
+  phase: ChainPhase | null
 }
 
 // One child replay: the chain run plus, when the chain completed clean, the
@@ -95,7 +110,7 @@ interface Job {
 interface Pending {
   id: number
   job: Job
-  lastStep: { step: number; kind: string } | null
+  lastStep: { step: number; kind: string; phase: ChainPhase } | null
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -114,7 +129,7 @@ interface ChildMsg {
   run?: ChainRun
   stale?: StalePick[]
   error?: string
-  progress?: { step: number; kind: string }
+  progress?: { step: number; kind: string; phase?: ChainPhase }
 }
 
 function runnerPath(): string {
@@ -154,7 +169,15 @@ function onMessage(slot: Slot, msg: unknown): void {
   const m = msg as ChildMsg
   if (m.id !== p.id) return
   if (m.progress !== undefined) {
-    p.lastStep = m.progress
+    p.lastStep = {
+      step: m.progress.step,
+      kind: m.progress.kind,
+      phase: m.progress.phase ?? 'base',
+    }
+    // Progress is the liveness signal: watching for silence within one step
+    // is what distinguishes a spin from a long, healthy chain. Without this
+    // re-arm the whole base-plus-persistence replay shared one window.
+    armTimer(slot, p)
     return
   }
   clearTimeout(p.timer)
@@ -185,6 +208,12 @@ function removeSlot(slot: Slot, err: Error): void {
   slot.child.kill('SIGKILL')
 }
 
+/** (Re)start the liveness window for the step the child just announced. */
+function armTimer(slot: Slot, p: Pending): void {
+  clearTimeout(p.timer)
+  p.timer = setTimeout(() => onTimeout(slot), p.job.timeoutMs)
+}
+
 function dispatch(slot: Slot, job: Job): void {
   const id = nextId++
   const p: Pending = {
@@ -203,6 +232,7 @@ function onTimeout(slot: Slot): void {
   const hang: HangReport = {
     step: p.lastStep?.step ?? null,
     kind: p.lastStep?.kind ?? null,
+    phase: p.lastStep?.phase ?? null,
   }
   // The recipe is settled as a hang, not an error: detach it before the slot
   // is removed so the removal does not reject it, then kill the child (it

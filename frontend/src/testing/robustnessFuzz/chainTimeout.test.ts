@@ -76,7 +76,7 @@ describe('the chain watchdog pool', () => {
     const pending = runChainWithTimeout(recipe, { timeoutMs: 1000 })
     expect(fakes).toHaveLength(1)
     expect(fakes[0].sent).toHaveLength(1)
-    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { step: 0, kind: 'start' } })
+    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { phase: 'base', step: 0, kind: 'start' } })
     fakes[0].reply({ id: fakes[0].sent[0].id, ok: true, run: doneRun, stale: [] })
     const result = await pending
     expect(result).toEqual({ status: 'done', replay: { run: doneRun, stale: [] } })
@@ -117,12 +117,42 @@ describe('the chain watchdog pool', () => {
     const hung = runChainWithTimeout(recipe, { timeoutMs: 30 })
     const healthy = runChainWithTimeout(recipe, { timeoutMs: 1000 })
     expect(fakes).toHaveLength(2)
-    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { step: 2, kind: 'mirror' } })
-    expect(await hung).toEqual({ status: 'hang', hang: { step: 2, kind: 'mirror' } })
+    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { phase: 'base', step: 2, kind: 'mirror' } })
+    expect(await hung).toEqual({ status: 'hang', hang: { step: 2, kind: 'mirror', phase: 'base' } })
     expect(fakes[0].killed).toBe(true)
     expect(fakes[1].killed).toBe(false)
     fakes[1].reply({ id: fakes[1].sent[0].id, ok: true, run: doneRun, stale: [] })
     expect((await healthy).status).toBe('done')
+  })
+
+  it('re-arms the window on every progress report so a live chain is not killed', async () => {
+    installPool()
+    // Each gap is well under the 300 ms window, but the whole replay is
+    // longer: this is seed 1131's shape (a slow base pass plus a slow
+    // persistence pass), which a single total-replay timer misreported as a
+    // hang. The margins keep a loaded runner from tripping the window.
+    const pending = runChainWithTimeout(recipe, { timeoutMs: 300 })
+    const id = fakes[0].sent[0].id
+    for (let step = 0; step < 6; step++) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      fakes[0].reply({ id, progress: { phase: 'base', step, kind: 'start' } })
+    }
+    fakes[0].reply({ id, ok: true, run: doneRun, stale: [] })
+    await expect(pending).resolves.toEqual({ status: 'done', replay: { run: doneRun, stale: [] } })
+    expect(fakes[0].killed).toBe(true)
+  })
+
+  it('names the persistence phase when the perturbed replay hangs', async () => {
+    installPool()
+    const pending = runChainWithTimeout(recipe, { timeoutMs: 30 })
+    fakes[0].reply({
+      id: fakes[0].sent[0].id,
+      progress: { phase: 'persistence', step: 3, kind: 'shell' },
+    })
+    expect(await pending).toEqual({
+      status: 'hang',
+      hang: { step: 3, kind: 'shell', phase: 'persistence' },
+    })
   })
 
   it('starts a queued recipe timeout only when a child picks it up', async () => {
@@ -161,7 +191,7 @@ describe('the chain watchdog pool', () => {
     installPool()
     const pending = runChainWithTimeout(recipe, { timeoutMs: 1000 })
     const rejects = expect(pending).rejects.toThrow(/exited with code 1 while at step 3 \(boolean\)/)
-    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { step: 3, kind: 'boolean' } })
+    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { phase: 'base', step: 3, kind: 'boolean' } })
     fakes[0].exit(1)
     await rejects
   })
@@ -176,7 +206,7 @@ describe('the chain watchdog pool', () => {
     const rejects = expect(pending).rejects.toThrow(
       /was killed by signal SIGKILL while at step 2 \(mirror\)/,
     )
-    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { step: 2, kind: 'mirror' } })
+    fakes[0].reply({ id: fakes[0].sent[0].id, progress: { phase: 'base', step: 2, kind: 'mirror' } })
     fakes[0].exit(null, 'SIGKILL')
     await rejects
   })
