@@ -832,12 +832,13 @@ describe('teardown, guard and solve-option rows', () => {
   })
 
   it('D07: a raw append after an undo mirrors the restored store position, not the end', () => {
-    // The mirror writes whatever position the store holds. Production append
-    // paths pre-sync the store to the end (Part.tsx setRollbackForNewFeature),
-    // but the hook alone does not: after an undo of the only feature the store
-    // is parked at 0, and the next raw append bakes rollback: 0 into the doc
-    // holding the new feature. Pinned as the current behaviour; the behaviour
-    // table records the caller obligation as ambiguous.
+    // The mirror writes whatever position the store holds. Production add
+    // paths pre-sync the store to the insertion slot (Part.tsx
+    // newFeatureInsertIndex / setRollbackAfterInsertions), but the hook alone
+    // does not: after an undo of the only feature the store is parked at 0, and
+    // the next raw append bakes rollback: 0 into the doc holding the new
+    // feature. Pinned as the current behaviour; the behaviour table records the
+    // caller obligation as ambiguous.
     const result = runPartTranscript(makeDoc(), [
       { kind: 'mutation', mutation: { type: 'add_extrude', featureId: 'ex1', label: 'Ext', sketchQuery: '@sk1', distance: 10 } },
       { kind: 'undo' },

@@ -184,8 +184,11 @@ remount.
 
 - **Part funnel.** `usePartDoc.handleMutation` calls `session.execute(m)`; the
   session clones the doc, runs `mutationHandlers[m.type]` on the clone (the
-  appliers in `utils/yamlMutations/` mutate that clone in place), mirrors the
-  rollback bar through its injected editor facts when no edit is open, drops
+  appliers in `utils/yamlMutations/` mutate that clone in place), moves a
+  feature-add's freshly appended row into its `insertAt` slot, mirrors the
+  rollback bar through its injected editor facts when no edit is open (an
+  insertion derives the position from the rows it added, so a replay with no
+  editor facts writes the same bar), drops
   byte-identical results for the variants `IDEMPOTENT_MUTATION` classifies as
   idempotent (`hooks/mutationIdempotence.ts`, total over the union so a new
   variant cannot be added unclassified), then routes the change through the

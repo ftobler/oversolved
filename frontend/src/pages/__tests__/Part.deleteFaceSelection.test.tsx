@@ -35,6 +35,25 @@ features:
     extrude: { sketch: '$sk1', distance: 10, direction: 'normal' }
 `
 
+// A second downstream feature gives the delete a mid-stack slot to insert at.
+const ROLLED_BACK_DOC = `version: 1
+kind: part
+rollback: 2
+features:
+  - id: sk1
+    kind: sketch
+    label: Sketch 1
+  - id: ex1
+    kind: extrude
+    label: Extrude 1
+    extrude: { sketch: '$sk1', distance: 10, direction: 'normal' }
+  - id: f2
+    kind: fillet
+    label: Fillet 1
+    edges: []
+    radius: 1
+`
+
 const BODIES = { body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] } }
 
 const FACE_A = '?4;@ex1:flatface'
@@ -57,8 +76,8 @@ function currentFeatures(): { id: string; kind: string; delete_face?: { faces: s
   return usePartEditorStore.getState().features as unknown as { id: string; kind: string; delete_face?: { faces: string[] } }[]
 }
 
-async function mountPart() {
-  partDocStoreMock({ content: DOC })
+async function mountPart(content = DOC) {
+  partDocStoreMock({ content })
   render(
     <MemoryRouter initialEntries={['/documents/doc-1']}>
       <Routes>
@@ -105,6 +124,33 @@ describe('Delete key on a face selection', () => {
     const features = currentFeatures()
     expect(features.filter(f => f.kind === 'delete_face')).toHaveLength(1)
     expect(features.find(f => f.kind === 'delete_face')!.delete_face!.faces).toEqual([FACE_A, FACE_B])
+  })
+
+  it('inserts the delete_face at the rollback bar and solves it in the same press', async () => {
+    await mountPart(ROLLED_BACK_DOC)
+    await waitFor(() => expect(useEditorState.getState().rollbackPosition).toBe(2))
+    act(() => {
+      useEditorState.setState({ normalSelection: new Set([FACE_A]) })
+    })
+    await act(async () => { executeCommand('delete_selected') })
+    await waitFor(() => expect(usePartEditorStore.getState().undoStack).toHaveLength(1))
+
+    const features = currentFeatures()
+    const deleteFace = features.find(f => f.kind === 'delete_face')!
+    expect(features.map(f => f.kind)).toEqual(['sketch', 'extrude', 'delete_face', 'fillet'])
+    expect(useEditorState.getState().rollbackPosition).toBe(3)
+    expect(usePartEditorStore.getState().doc?.rollback).toBe(3)
+
+    // The delete feature is inside the same solve, and the bar stops at it:
+    // the downstream fillet stays rolled back.
+    const calls = mockSolveViaWorker.mock.calls
+    const payload = calls[calls.length - 1][0] as {
+      features: { id: string }[]
+      rollback_position: number
+    }
+    expect(payload.features.map(f => f.id)).toContain(deleteFace.id)
+    expect(payload.features.map(f => f.id)).not.toContain('f2')
+    expect(payload.rollback_position).toBe(3)
   })
 
   it('an edge-only selection inserts no delete_face', async () => {

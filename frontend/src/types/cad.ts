@@ -1108,6 +1108,12 @@ export type EntityStatus = Record<string, ConstraintStatus>
 
 // ─── Mutation Types ───
 
+// A feature add appends to the flat log unless the user has parked the rollback
+// bar mid-stack, in which case the feature belongs in the bar's slot. The
+// absolute index rides on the mutation so undo entries and journal replays
+// reproduce the insertion instead of re-deriving it from transient editor state.
+type FeatureInsertion = { insertAt?: number }
+
 export type Mutation =
   | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: Point; solvedGeometry?: Record<string, number[]> }
   | { type: 'move_vertex_with_constraint'; featureId: string; entityId: string; vertexKey: string; to: Point; constraintKind: string; snapVertexId?: string; snapEntityRef?: string; solvedGeometry?: Record<string, number[]> }
@@ -1131,62 +1137,62 @@ export type Mutation =
   | { type: 'apply_offset'; featureId: string; sourceIds: string[]; distance: number }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string }
-  | { type: 'add_sketch'; featureId: string; label?: string; plane?: string }
+  | ({ type: 'add_sketch'; featureId: string; label?: string; plane?: string } & FeatureInsertion)
   | { type: 'delete_feature'; featureId: string }
   | { type: 'set_feature_visibility'; featureId: string; visible: boolean }
-  | { type: 'add_plane'; featureId: string; label?: string; definition?: PlaneDef }
+  | ({ type: 'add_plane'; featureId: string; label?: string; definition?: PlaneDef } & FeatureInsertion)
   | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number }
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
   | { type: 'toggle_plane_visibility' }
-  | { type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number }
+  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number } & FeatureInsertion)
   | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
-  | { type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number }
+  | ({ type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number } & FeatureInsertion)
   | { type: 'set_revolve_field'; featureId: string; field: keyof RevolveFeatureDef; value: unknown }
   | { type: 'add_revolve_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_revolve_profile'; featureId: string; index: number }
-  | { type: 'add_sweep'; featureId: string; label?: string; sketchQuery: string; pathQuery: string }
+  | ({ type: 'add_sweep'; featureId: string; label?: string; sketchQuery: string; pathQuery: string } & FeatureInsertion)
   | { type: 'set_sweep_field'; featureId: string; field: keyof SweepFeatureDef; value: unknown }
   | { type: 'add_sweep_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_sweep_profile'; featureId: string; index: number }
   | { type: 'add_sweep_path'; featureId: string; pathQuery: string }
   | { type: 'remove_sweep_path'; featureId: string; index: number }
-  | { type: 'add_import_step'; featureId: string; fileId: string; label?: string }
-  | { type: 'add_fillet'; featureId: string; label?: string }
-  | { type: 'add_chamfer'; featureId: string; label?: string }
+  | ({ type: 'add_import_step'; featureId: string; fileId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_fillet'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_chamfer'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_fillet_field'; featureId: string; field: keyof FilletFeatureDef; value: unknown }
   | { type: 'set_chamfer_field'; featureId: string; field: keyof ChamferFeatureDef; value: unknown }
   | { type: 'add_fillet_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
   | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
-  | { type: 'add_shell'; featureId: string; label?: string }
+  | ({ type: 'add_shell'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
   | { type: 'add_shell_face'; featureId: string; faceQuery: string }
   | { type: 'remove_shell_face'; featureId: string; index: number }
-  | { type: 'add_move_face'; featureId: string; label?: string }
+  | ({ type: 'add_move_face'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_move_face_field'; featureId: string; field: keyof MoveFaceFeatureDef; value: unknown }
   | { type: 'add_move_face_ref'; featureId: string; faceQuery: string }
   | { type: 'remove_move_face_ref'; featureId: string; index: number }
-  | { type: 'add_delete_face'; featureId: string; label?: string; faces?: string[] }
+  | ({ type: 'add_delete_face'; featureId: string; label?: string; faces?: string[] } & FeatureInsertion)
   | { type: 'add_delete_face_ref'; featureId: string; faceQuery: string }
   | { type: 'remove_delete_face_ref'; featureId: string; index: number }
-  | { type: 'add_boolean'; featureId: string; label?: string }
+  | ({ type: 'add_boolean'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }
-  | { type: 'add_array'; featureId: string; label?: string }
+  | ({ type: 'add_array'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_array_field'; featureId: string; field: keyof ArrayFeatureDef; value: unknown }
-  | { type: 'add_circular_array'; featureId: string; label?: string }
+  | ({ type: 'add_circular_array'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_circular_array_field'; featureId: string; field: keyof CircularArrayFeatureDef; value: unknown }
-  | { type: 'add_delete_body'; featureId: string; bodies?: string[]; label?: string }
+  | ({ type: 'add_delete_body'; featureId: string; bodies?: string[]; label?: string } & FeatureInsertion)
   | { type: 'add_delete_body_ref'; featureId: string; bodyQuery: string }
   | { type: 'remove_delete_body_ref'; featureId: string; index: number }
-  | { type: 'add_hole'; featureId: string; label?: string }
+  | ({ type: 'add_hole'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_hole_field'; featureId: string; field: keyof HoleFeatureDef; value: unknown }
-  | { type: 'add_transform'; featureId: string; label?: string }
+  | ({ type: 'add_transform'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_transform_field'; featureId: string; field: keyof TransformFeatureDef; value: unknown }
   | { type: 'add_transform_body'; featureId: string; bodyQuery: string }
   | { type: 'remove_transform_body'; featureId: string; index: number }
@@ -1196,11 +1202,11 @@ export type Mutation =
   | { type: 'set_part_metalness'; bodyId: string; metalness: number }
   | { type: 'set_part_roughness'; bodyId: string; roughness: number }
   | { type: 'set_part_transmission'; bodyId: string; transmission: number }
-  | { type: 'add_mirror'; featureId: string; label?: string }
+  | ({ type: 'add_mirror'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
-  | { type: 'add_variable'; featureId: string; label?: string }
+  | ({ type: 'add_variable'; featureId: string; label?: string } & FeatureInsertion)
   | { type: 'set_variable_field'; featureId: string; field: keyof VariableFeatureDef; value: unknown }
-  | { type: 'add_helix'; featureId: string; label?: string; reference?: string }
+  | ({ type: 'add_helix'; featureId: string; label?: string; reference?: string } & FeatureInsertion)
   | { type: 'set_helix_field'; featureId: string; field: keyof HelixFeatureDef; value: unknown }
   | { type: 'reorder_features'; featureId: string; toIndex: number }
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }

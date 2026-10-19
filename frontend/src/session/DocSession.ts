@@ -5,6 +5,7 @@ import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { applySetRollback } from '@/utils/yamlMutations'
 import { pruneSolveResults } from '@/utils/yamlMutations/solveResults'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { isDimensionKind } from '@/registry/constraintRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { History, type HistoryEntry } from '@/session/History'
@@ -167,6 +168,44 @@ export type SessionEvent =
 export function clampRollbackPosition(doc: PartDoc): number {
   const featureCount = doc.features?.length ?? 0
   return Math.min(Math.max(doc.rollback ?? featureCount, 0), featureCount)
+}
+
+/**
+ * Move an already-appended feature into the slot its add named. Add handlers
+ * keep appending, so the flat-log shape stays independent of where the row
+ * goes; this is the one place the insertion semantics live, which is what makes
+ * a recorded add and its replay agree. A non-integer index is ignored rather
+ * than truncated (nothing valid produces one), and an out-of-range index clamps
+ * to the neighbours it could have named.
+ */
+export function insertFeatureAt(doc: PartDoc, featureId: string, insertAt: number): boolean {
+  const features = doc.features
+  if (!features || !Number.isInteger(insertAt)) return false
+  const from = features.findIndex(f => f.id === featureId)
+  if (from < 0) return false
+  // The bar cannot sit above the built-ins, so an add cannot either. A doc may
+  // legitimately have no built-ins (fixtures, hand-authored logs): there the
+  // first non-builtin is position 0 and nothing is reserved.
+  const firstUserIndex = features.findIndex(f => !BUILTIN_FEATURE_IDS.has(f.id))
+  const floor = firstUserIndex < 0 ? features.length : firstUserIndex
+  const to = Math.max(floor, Math.min(insertAt, features.length - 1))
+  if (from !== to) {
+    const [feature] = features.splice(from, 1)
+    features.splice(to, 0, feature)
+  }
+  // True even when the append position already is the target slot: the row
+  // exists, it just did not have to move.
+  return true
+}
+
+// The bar position just past the last inserted row, or undefined when the
+// apply inserted nothing (the editor facts then decide). A refused add is not
+// in the list, so it cannot move the bar on its own.
+function rollbackAfterInsertions(doc: PartDoc, insertedIds: readonly string[]): number | undefined {
+  const features = doc.features ?? []
+  let last = -1
+  for (const id of insertedIds) last = Math.max(last, features.findIndex(f => f.id === id))
+  return last < 0 ? undefined : last + 1
 }
 
 // The label a preview commit falls back to when no caller mutation is handed
@@ -608,12 +647,29 @@ export class DocSession {
     const handlers = mutationHandlers as Record<string, AnyHandler | undefined>
     let restorable: Record<string, SketchData> | null = null
     let nextSolveResults = this.deps.solveResults.get()
+    // The features this apply inserted. The bar lands just past the last one.
+    const insertedIds: string[] = []
+    let attemptedInsertion = false
     for (const m of mutations) {
       const handler = handlers[m.type]
       if (import.meta.env.DEV && !handler) {
         console.error(`[DocSession] no handler for mutation type: ${m.type}`)
       }
+      // A feature add may carry the rollback bar's slot. The handler appends it
+      // like every other add, then the row moves into place. Detecting the
+      // creation (the id was absent before the handler) keeps this keyed on the
+      // document rather than a hand-maintained list of add kinds; a mutation
+      // that edits an existing feature and happens to carry the field moves
+      // nothing. Check the slot first so the drag path never pays for a scan.
+      const insertAt = 'insertAt' in m ? m.insertAt : undefined
+      if (insertAt !== undefined) attemptedInsertion = true
+      const addedId = insertAt !== undefined && 'featureId' in m && !next.features?.some(f => f.id === m.featureId)
+        ? m.featureId
+        : null
       handler?.(next, m)
+      if (addedId !== null && insertAt !== undefined && insertFeatureAt(next, addedId, insertAt)) {
+        insertedIds.push(addedId)
+      }
       // Content-removing edits invalidate the affected features' last solve;
       // prune it so stale geometry cannot linger while the re-solve is in
       // flight. Only whole-feature removals carry a restorable snapshot.
@@ -626,9 +682,23 @@ export class DocSession {
     // is: during an edit the bar is pinned just after the edited feature, which
     // is transient. Outside an edit the mirror runs so an append or delete can
     // never leave a stale position behind.
+    //
+    // An insertion derives the bar from the rows it actually added, not only
+    // from the editor facts: the mutation payload is then self-describing, so a
+    // journal replay (whose editor facts are empty) writes the same position
+    // the recording did. The added rows are located after every mutation so a
+    // group that deletes earlier features cannot leave the bar one row off.
+    // A refused add added no row: the store may have staged a position for it,
+    // so keep the doc's existing park instead of moving the bar for nothing.
     const facts = this.deps.editorFacts()
     if (facts.editingFeatureId === null) {
-      applySetRollback(next, facts.rollbackPosition)
+      if (insertedIds.length > 0) {
+        applySetRollback(next, rollbackAfterInsertions(next, insertedIds) ?? facts.rollbackPosition)
+      } else if (attemptedInsertion) {
+        applySetRollback(next, current.rollback ?? null)
+      } else {
+        applySetRollback(next, facts.rollbackPosition)
+      }
     }
     return { next, restorable, nextSolveResults }
   }

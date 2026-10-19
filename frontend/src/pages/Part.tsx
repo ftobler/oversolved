@@ -67,8 +67,28 @@ const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
 type PartColorPopoverState = { bodyId: string; position: [number, number]; session: number } | null
 
-function setRollbackForNewFeature(features: PartFeature[]) {
-  editorState.getState().setRollbackPosition(features.length + 1)
+// A new feature belongs in the rollback bar's slot when the user parked it
+// mid-stack, and at the end otherwise. The bar can never sit above the
+// built-ins, so neither may an insertion. A doc with no built-ins (fixtures,
+// hand-authored logs) reserves nothing.
+function newFeatureInsertIndex(features: PartFeature[], rollbackPosition: number | null): number {
+  const firstUserIndex = features.findIndex(f => !BUILT_IN_IDS.has(f.id))
+  const floor = firstUserIndex < 0 ? features.length : firstUserIndex
+  return Math.max(floor, Math.min(rollbackPosition ?? features.length, features.length))
+}
+
+// The non-builtin count before an absolute feature index: the pick_boundary a
+// feature inserted there solves under.
+function nonBuiltInCountBefore(features: PartFeature[], index: number): number {
+  return features.slice(0, index).filter(f => !BUILT_IN_IDS.has(f.id)).length
+}
+
+// Pin the bar just after the inserted features so the add's solve includes them
+// and the downstream stack stays rolled back. At the end of the stack this is
+// the end again: applySetRollback drops the key once the position reaches the
+// new feature count.
+function setRollbackAfterInsertions(firstInsertAt: number, count = 1) {
+  editorState.getState().setRollbackPosition(firstInsertAt + count)
 }
 
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
@@ -546,6 +566,12 @@ export default function Part() {
     const bodyIds = new Set(Object.keys(bodies))
     const bodyDeletes: Mutation[] = []
     const featureDeletes: Mutation[] = []
+    // An edit pins the bar just after the edited feature; moving it here would
+    // break that invariant, so a delete during an edit keeps the old append
+    // behaviour and leaves the bar alone.
+    const insertAtBar = editorState.getState().editingFeatureId === null
+    const insertBase = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)
+    const insertion = (offset: number) => insertAtBar ? { insertAt: insertBase + offset } : {}
     // Every selected face pick folds into ONE add_delete_face for the whole
     // press (delete_face heals all of them in one feature), so a Delete with
     // faces selected is one undo entry, the same pattern add_delete_body
@@ -578,20 +604,27 @@ export default function Part() {
         // the final doc no longer contains, failing every later solve.
         const creator = bodies[ref]?.created_by
         if (creator && deletingFeatures.has(creator)) continue
-        bodyDeletes.push({ type: 'add_delete_body', featureId: randomId(18), bodies: [id], label: 'Delete Body' })
+        bodyDeletes.push({
+          type: 'add_delete_body', featureId: randomId(18), bodies: [id], label: 'Delete Body',
+          ...insertion(bodyDeletes.length),
+        })
         continue
       }
       if (features.some(f => f.id === ref)) {
         featureDeletes.push({ type: 'delete_feature', featureId: ref })
       }
     }
-    // One Delete action on N targets is one undo step, not N. commitMutationGroup
-    // applies every handler to one doc clone and solves once at the end, so the
-    // array order below only groups the mutations, it does not sequence them.
+    // One Delete action on N targets is one undo step, not N: commitMutationGroup
+    // applies every handler to one doc clone and solves once at the end. When no
+    // edit pins the bar, the add_delete_* features carry increasing insertAt
+    // slots so they land as one contiguous block, in the order listed, at it.
     const threeD = [
       ...bodyDeletes,
       ...(facePicks.length > 0
-        ? [{ type: 'add_delete_face', featureId: randomId(18), faces: facePicks, label: 'Delete Face' } as Mutation]
+        ? [{
+          type: 'add_delete_face', featureId: randomId(18), faces: facePicks, label: 'Delete Face',
+          ...insertion(bodyDeletes.length),
+        } as Mutation]
         : []),
       ...featureDeletes,
     ]
@@ -607,6 +640,17 @@ export default function Part() {
       const mutations: Mutation[] = sketchDelete.length > 0
         ? [{ type: 'delete', targets: sketchDelete }, ...threeD]
         : threeD
+      // A Delete while rolled back inserts its delete features at the bar and
+      // solves them in the same press. Deleting a feature above the bar shifts
+      // the inserted block (and the bar) down with the list.
+      const addCount = bodyDeletes.length + (facePicks.length > 0 ? 1 : 0)
+      if (insertAtBar && addCount > 0) {
+        const deletedBeforeBar = featureDeletes.filter(m => {
+          const idx = m.type === 'delete_feature' ? features.findIndex(f => f.id === m.featureId) : -1
+          return idx >= 0 && idx < insertBase
+        }).length
+        setRollbackAfterInsertions(insertBase - deletedBeforeBar, addCount)
+      }
       commitMutationGroup(mutations)
       // The shared post-delete wipe, not a bare clearNormalSelection: a mixed
       // Delete must leave the same post-condition the sketch-only branch's
@@ -640,6 +684,7 @@ export default function Part() {
     closeOpenEditorForAdd()
     const fid = randomId(18)
     const label = `${kind} ${Object.keys(bodies).length + 1}`
+    const insertAt = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)
     const store = editorState.getState()
     // Start the edit session against the PRE-add doc and let it suppress the
     // add: OK then folds the add and any in-session field edits into one
@@ -647,14 +692,14 @@ export default function Part() {
     // after the dispatch would pin the post-add doc, so Cancel would leave the
     // new feature standing.
     startEditSession(true)
-    // Extend rollback so the mutation-triggered reSolve includes the new
-    // feature, and pre-stage pick_boundary as if the new feature were the
-    // edit target. The new feature will land at non-builtin index
-    // = current non-builtin count, so the solve is cached under that key.
-    // When the user later clicks Edit on the new feature, enterEditFeature
-    // recomputes the same pick_boundary and the cache hit is free.
-    setRollbackForNewFeature(features)
-    store.setPickBoundary(features.filter(f => !BUILT_IN_IDS.has(f.id)).length)
+    // Pin the bar just past the new feature so the mutation-triggered reSolve
+    // includes it, and pre-stage pick_boundary as if the new feature were the
+    // edit target. The new feature lands at the bar (or the end when none is
+    // parked), so the solve is cached under that key. When the user later
+    // clicks Edit on the new feature, enterEditFeature recomputes the same
+    // pick_boundary and the cache hit is free.
+    setRollbackAfterInsertions(insertAt)
+    store.setPickBoundary(nonBuiltInCountBefore(features, insertAt))
     // Starting the Delete Face tool with faces already selected pre-fills them,
     // the same convenience handleAddPlane gives the on-face plane. Other kinds
     // that take their faces as a list seed nothing.
@@ -664,6 +709,7 @@ export default function Part() {
     const result = handleMutation({
       type: `add_${kind}`, featureId: fid, label, ...extra,
       ...(seedFaces.length > 0 ? { faces: seedFaces } : {}),
+      insertAt,
     } as Mutation)
     // Move Face starts from what the user already has selected: pre-fill the
     // pick list with the selected flat faces, the way Add Plane takes a face
@@ -704,9 +750,10 @@ export default function Part() {
     const definition = faceQuery
       ? { mode: 'on_face', face: faceQuery } as const
       : undefined
-    setRollbackForNewFeature(features)
+    const insertAt = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)
+    setRollbackAfterInsertions(insertAt)
     startEditSession(true)
-    handleMutation({ type: 'add_plane', featureId, label, definition })
+    handleMutation({ type: 'add_plane', featureId, label, definition, insertAt })
     editorState.getState().setEditingFeatureId(featureId)
     const firstPick = FIRST_PICK_FIELD['plane']
     if (firstPick) setActivePickField({ featureId, ...firstPick })
@@ -718,8 +765,9 @@ export default function Part() {
     const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
-    setRollbackForNewFeature(features)
-    handleMutation({ type: 'add_sketch', featureId, label })
+    const insertAt = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)
+    setRollbackAfterInsertions(insertAt)
+    handleMutation({ type: 'add_sketch', featureId, label, insertAt })
     setActivePickField({ featureId, field: 'plane' })
   }, [doc, features, handleMutation, setActivePickField, closeOpenEditorForAdd])
 
@@ -729,8 +777,9 @@ export default function Part() {
     const featureId = randomId(18)
     const sketchCount = (doc.features ?? []).filter(f => f.kind === 'sketch').length
     const label = `sketch ${sketchCount + 1}`
-    setRollbackForNewFeature(features)
-    handleMutation({ type: 'add_sketch', featureId, label, plane })
+    const insertAt = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)
+    setRollbackAfterInsertions(insertAt)
+    handleMutation({ type: 'add_sketch', featureId, label, plane, insertAt })
     // enterEditSketch resolves the feature out of `features`, which React has
     // not re-rendered with the new sketch yet. Defer to the effect below.
     pendingEditSketchId.current = featureId
@@ -785,14 +834,16 @@ export default function Part() {
         // at solve time (kernel/features/importStep.ts), so a bad file lands as
         // a feature whose solve errors like any other.
         closeOpenEditorForAdd()
-        setRollbackForNewFeature(features)
-        handleMutation({ type: 'add_import_step', featureId, fileId: entry.id, label })
+        const liveFeatures = docRef.current?.features ?? features
+        const insertAt = newFeatureInsertIndex(liveFeatures, editorState.getState().rollbackPosition)
+        setRollbackAfterInsertions(insertAt)
+        handleMutation({ type: 'add_import_step', featureId, fileId: entry.id, label, insertAt })
       } catch (e) {
         setError(errorMessage(e, 'Failed to import STEP'))
       }
     }
     input.click()
-  }, [handleMutation, features, setError, closeOpenEditorForAdd])
+  }, [handleMutation, features, setError, closeOpenEditorForAdd, docRef])
 
   const handleExportStep = useCallback(() => {
     exportImportRef.current?.openExport(null, docName || 'export')

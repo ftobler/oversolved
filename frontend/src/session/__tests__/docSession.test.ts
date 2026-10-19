@@ -8,6 +8,7 @@ import { stringify as stringifyYaml } from 'yaml'
 import {
   clampRollbackPosition,
   createDocSession,
+  insertFeatureAt,
   type DocSession,
   type DocSessionDeps,
   type EditorFacts,
@@ -89,6 +90,34 @@ function makeSession(doc: PartDoc | null = baseDoc(), overrides: Partial<DocSess
   }
 }
 
+describe('insertFeatureAt', () => {
+  const docWithBuiltins = () => makeDoc(
+    { id: 'Origin', kind: 'origin' },
+    { id: 'Top', kind: 'plane' },
+    { id: 'f1', kind: 'sketch' },
+    { id: 'new', kind: 'sketch' },
+  )
+
+  it('never places a user feature above the built-ins', () => {
+    const doc = docWithBuiltins()
+    insertFeatureAt(doc, 'new', 0)
+    expect(doc.features!.map(f => f.id)).toEqual(['Origin', 'Top', 'new', 'f1'])
+  })
+
+  it('clamps an index past the end to the last slot', () => {
+    const doc = docWithBuiltins()
+    insertFeatureAt(doc, 'new', 99)
+    expect(doc.features!.map(f => f.id)).toEqual(['Origin', 'Top', 'f1', 'new'])
+  })
+
+  it('ignores a non-integer or missing feature instead of splicing', () => {
+    const doc = docWithBuiltins()
+    insertFeatureAt(doc, 'new', 1.5)
+    insertFeatureAt(doc, 'missing', 0)
+    expect(doc.features!.map(f => f.id)).toEqual(['Origin', 'Top', 'f1', 'new'])
+  })
+})
+
 describe('execute', () => {
   it('lands a real mutation as one labelled entry, dirty, with an edit re-solve', () => {
     const { session, solve } = makeSession()
@@ -101,6 +130,72 @@ describe('execute', () => {
     expect(solve.calls).toHaveLength(1)
     expect(solve.calls[0].doc).toEqual(session.getDoc())
     expect(solve.calls[0].opts).toEqual({ bypassCache: false, _suppressFirstSolve: true })
+  })
+
+  it('inserts a feature add at the slot it names instead of appending', () => {
+    const { session } = makeSession(rollbackDoc())
+
+    session.execute({
+      type: 'add_fillet', featureId: 'new', label: 'Fillet 2', insertAt: 1,
+    })
+
+    expect(session.getDoc()!.features!.map(f => f.id)).toEqual(['f1', 'new', 'f2', 'f3'])
+  })
+
+  it('appends a feature add that names no slot', () => {
+    const { session } = makeSession(rollbackDoc())
+
+    session.execute({ type: 'add_fillet', featureId: 'new', label: 'Fillet 2' })
+
+    expect(session.getDoc()!.features!.map(f => f.id)).toEqual(['f1', 'f2', 'f3', 'new'])
+  })
+
+  it('inserts a plane add through the same slot rule', () => {
+    const { session } = makeSession(rollbackDoc())
+
+    session.execute({ type: 'add_plane', featureId: 'plane1', insertAt: 2 })
+
+    expect(session.getDoc()!.features!.map(f => f.id)).toEqual(['f1', 'f2', 'plane1', 'f3'])
+  })
+
+  it('a refused insertion leaves the parked bar alone', () => {
+    const { session, facts } = makeSession(rollbackDoc())
+    facts.rollbackPosition = 3  // staged by the page for a row that never lands
+
+    session.execute({
+      type: 'add_extrude', featureId: 'bad', label: 'Bad', sketchQuery: '', distance: NaN, insertAt: 2,
+    })
+
+    expect(session.getDoc()!.features!.map(f => f.id)).toEqual(['f1', 'f2', 'f3'])
+    expect(session.getDoc()!.rollback).toBe(2)
+  })
+
+  it('bars a group just past its inserts after a later mutation deletes an earlier feature', () => {
+    // The selection-delete group inserts at the bar and can also delete a
+    // feature above it; the bar follows the inserted row, not its old index.
+    const { session } = makeSession(rollbackDoc())
+
+    session.executeGroup([
+      { type: 'add_fillet', featureId: 'new', insertAt: 2 },
+      { type: 'delete_feature', featureId: 'f1' },
+    ])
+
+    expect(session.getDoc()!.features!.map(f => f.id)).toEqual(['f2', 'new', 'f3'])
+    expect(session.getDoc()!.rollback).toBe(2)
+  })
+
+  it('keeps a group of inserts in the order its slots name', () => {
+    // The delete-selection path emits one add per target at consecutive slots;
+    // the session runs them in array order, so each lands after the last.
+    const { session } = makeSession(rollbackDoc())
+
+    session.executeGroup([
+      { type: 'add_sketch', featureId: 'a', insertAt: 1 },
+      { type: 'add_sketch', featureId: 'b', insertAt: 2 },
+    ])
+
+    expect(session.getDoc()!.features!.map(f => f.id)).toEqual(['f1', 'a', 'b', 'f2', 'f3'])
+    expect(session.getDoc()!.rollback).toBe(3)
   })
 
   it('reports the ids a dispatch created', () => {

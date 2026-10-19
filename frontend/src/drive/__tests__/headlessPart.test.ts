@@ -109,6 +109,36 @@ describe('createHeadlessPart', () => {
     expect(fresh.getDoc()?.features?.map(f => f.id)).toEqual(['sk1', 'ex1'])
   })
 
+  it('replays a mid-stack insertion from the mutation payload alone', async () => {
+    // The add records doc.rollback just past the inserted row. Replay has no
+    // page store to supply that position, so the payload's insertAt must drive
+    // the same mirror write or the after-hash diverges.
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      rollback: 1,
+      features: [
+        { id: 'f1', kind: 'sketch', label: 'First' },
+        { id: 'f2', kind: 'sketch', label: 'Second' },
+      ],
+    }
+    const journal = new CommandJournal()
+    const part = createHeadlessPart({ doc, journal })
+    const outcome = await part.run([
+      { mutation: { type: 'add_sketch', featureId: 'f1b', label: 'Inserted', insertAt: 1 } },
+    ])
+    expect(outcome.ok).toBe(true)
+    expect(part.getDoc()?.features?.map(f => f.id)).toEqual(['f1', 'f1b', 'f2'])
+    expect(part.getDoc()?.rollback).toBe(2)
+
+    const repro = journal.repro()
+    expect(repro).not.toBeNull()
+    const fresh = createHeadlessPart({ doc: repro!.doc as PartDoc, docId: 'replay' })
+    const replay = await replayJournal(repro!, fresh.session, () => fresh.idle())
+    expect(replay.ok).toBe(true)
+    expect(replay.finalHash).toBe(docHashOf(part.getDoc()))
+  })
+
   it('builds the canonical script byte-identically across two seeded runs', async () => {
     // The box script mints its rect entities inside the handler, so the doc
     // hash can only repeat when the id source is seeded. A fresh source per

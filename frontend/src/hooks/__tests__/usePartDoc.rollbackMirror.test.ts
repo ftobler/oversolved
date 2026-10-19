@@ -103,10 +103,11 @@ describe('doc.rollback mirrors the rollback bar', () => {
   })
 
   it('drops a stale position when a feature is appended past the bar', () => {
-    // Adding a feature moves the bar to the end of the (longer) stack. Were the
-    // old position left in the doc, reopening it would hide the new feature.
+    // An end-of-stack add parks the bar past the longer stack. Were the old
+    // position left in the doc, reopening it would hide the new feature. A
+    // mid-stack add now stages its insertion slot instead of features.length.
     setDoc(makeDoc(2))
-    useEditorState.getState().setRollbackPosition(4)  // setRollbackForNewFeature: features.length + 1
+    useEditorState.getState().setRollbackPosition(4)
     const { result } = renderPartDoc()
 
     act(() => { result.current.handleMutation({ type: 'add_sketch', featureId: 'sk2' }) })

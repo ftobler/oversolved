@@ -595,11 +595,11 @@ describe('usePartDoc undo/redo integration', () => {
   })
 
   // The add path pins the session against the PRE-add doc and only then moves the
-  // bar to the end of the longer stack, so on Cancel the bar has to travel back
+  // bar just past the inserted feature, so on Cancel the bar has to travel back
   // with the doc: the re-solve reads its position off the STORE (useSolver), and
-  // a bar left past the end rebuilds the whole stack while the restored doc
-  // parks it where the user left it. Reloading then reads the parked value out of
-  // the document and every feature past it disappears.
+  // a bar left on the longer stack rebuilds features the restored doc parks. A
+  // reload would then read the parked value out of the document and every
+  // feature past it disappears.
   it('cancelling a session re-syncs the rollback store from the restored doc', () => {
     docRef.current = {
       version: 1,
@@ -616,7 +616,7 @@ describe('usePartDoc undo/redo integration', () => {
     useEditorState.getState().setRollbackPosition(2)
     useEditorState.getState().setEditingFeatureId('f1')
     act(() => { result.current.startEditSession(true) })
-    // The add that landed inside the session moved the bar to the end.
+    // The add that landed inside the session moved the bar past the new row.
     useEditorState.getState().setRollbackPosition(4)
 
     act(() => { result.current.cancelEditSession() })

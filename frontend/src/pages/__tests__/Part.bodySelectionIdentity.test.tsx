@@ -72,6 +72,7 @@ function resetSelection() {
     activeTool: null,
     activePickField: null,
     modeStack: [],
+    rollbackPosition: null,
   })
 }
 
@@ -103,6 +104,18 @@ describe('Delete key on body and feature selections', () => {
     const group = mockCommitMutationGroup.mock.calls[0][0]
     expect(group).toHaveLength(1)
     expect(group[0]).toMatchObject({ type: 'add_delete_body', bodies: ['@body_ex1'], label: 'Delete Body' })
+  })
+
+  it('inserts the delete feature at the rollback bar and moves the bar past it', async () => {
+    await renderPartInFeatureMode()
+    act(() => { useEditorState.getState().setRollbackPosition(1) })
+
+    act(() => { useSketchEditorStore.getState().addToNormalSelection('@body_ex2') })
+    await act(async () => { executeCommand('delete_selected') })
+
+    const group = mockCommitMutationGroup.mock.calls[0][0]
+    expect(group[0]).toMatchObject({ type: 'add_delete_body', insertAt: 1 })
+    expect(useEditorState.getState().rollbackPosition).toBe(2)
   })
 
   it('skips the body delete when its generator feature is deleted in the same selection', async () => {

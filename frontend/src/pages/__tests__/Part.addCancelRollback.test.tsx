@@ -1,10 +1,10 @@
 // Cancel on a just-added feature rewinds the doc to the session snapshot, which
-// was taken before the add moved the rollback bar to the end of the longer
-// stack. The bar is document content, but the re-solve that follows reads its
-// position off the STORE (useSolver), so a cancel that left the store where the
-// add parked it would rebuild the whole stack while the document says most of it
-// is rolled back - and the next reload would then read the parked value out of
-// the document and the features past it would vanish.
+// was taken before the add parked the rollback bar just past the new row. The
+// bar is document content, but the re-solve that follows reads its position off
+// the STORE (useSolver), so a cancel that left the store where the add parked it
+// would rebuild a longer stack while the document says most of it is rolled
+// back - and the next reload would then read the parked value out of the
+// document and the features past it would vanish.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
