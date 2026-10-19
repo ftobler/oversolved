@@ -19,7 +19,7 @@ import {
 } from '../primitives'
 import { applyMoveFace, faceNormalAndCentroid, MoveFaceRefusal } from '../moveFace'
 import { valueWithinTolerance } from '../measureTolerance'
-import type { OccModule, OccShape } from '../occTypes'
+import type { OccShape } from '../occTypes'
 
 const oc = await loadOcc()
 
@@ -51,7 +51,12 @@ const ballV = (r: number): number => (4 / 3) * PI * r * r * r
 const torusV = (major: number, minor: number): number => 2 * PI * PI * major * minor * minor
 
 describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
-  const occ = oc as OccModule
+  // Vitest still runs a skipIf suite's callback to collect its tests, so an
+  // unprovisioned (or failed) OCC load would throw at `occ.` below before the
+  // skip took effect. The explicit guard keeps that a skip, not a collection
+  // failure.
+  if (!oc) return
+  const occ = oc
   const S = occ.GeomAbs_SurfaceType
 
   // ─── fixture builders ───
