@@ -62,7 +62,12 @@ export interface BundleRequest {
 /** Export options that survive a structured clone. */
 export interface ExportRequestOptions {
   format: 'step' | 'stl'
+  // Export this one body; null/omitted exports the whole document.
   bodyId?: string | null
+  // Export a chosen subset of bodies (the document's selected parts). A
+  // non-empty list takes precedence over `bodyId`, and the bodies are
+  // compounded into one file so a consolidated export still holds them all.
+  bodyIds?: string[] | null
   // STL only: the mesh quality the dialog chose. The worker resolves the name
   // through tessellationPresets; STEP ignores it.
   tessellation?: TessellationPreset
@@ -86,8 +91,8 @@ export interface AssemblyExportPartSpec {
 /**
  * Build every part of an assembly Worker-side, place it, and serialise the
  * union. Routed to the OCC bundle-builder worker because the anchor solver holds
- * meshes only and cannot rehydrate B-rep. `options.bodyId` is meaningless here
- * and ignored: an assembly exports whole.
+ * meshes only and cannot rehydrate B-rep. The body filters are meaningless here
+ * and ignored: each request carries only the instances it should export.
  */
 export interface ExportAssemblyRequest {
   id: number

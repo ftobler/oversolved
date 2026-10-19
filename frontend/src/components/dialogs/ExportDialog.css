@@ -1,6 +1,57 @@
 /* Only the export-specific controls live here. Overlay, header, footer buttons
    and the base input styling come from the shared dialog shell. */
 
+/* The format tabs and the two part choices need more room than a message box;
+   the shared shell stays at its own width for every other dialog. */
+.dialog-component.export-dialog {
+  max-width: 600px;
+}
+
+.export-dialog-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #151515;
+  border: 1px solid #2c2c2c;
+  border-radius: 10px;
+}
+
+.export-dialog-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #888;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.export-dialog-tab:hover:not(:disabled):not([aria-selected='true']) {
+  background: #222;
+  color: #ccc;
+}
+
+.export-dialog-tab[aria-selected='true'] {
+  background: #2d2d2d;
+  color: #f3f4f6;
+  box-shadow: inset 0 0 0 1px #3a3a3a;
+}
+
+.export-dialog-tab:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.export-dialog-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 64px;
+}
+
 .export-dialog-section {
   display: flex;
   flex-direction: column;
@@ -13,42 +64,85 @@
   margin: 0;
 }
 
-.export-dialog-radio-group {
+.export-dialog-choices {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.export-dialog-radio {
+/* A choice is a small card rather than a bare radio row: the scope and bundle
+   options carry enough meaning that the selected state should be obvious from
+   the whole pill, not only from the dot. */
+.export-dialog-choice {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #191919;
+  color: #bbb;
+  font-size: 13px;
   cursor: pointer;
 }
 
+.export-dialog-choice:hover:has(input:not(:disabled)) {
+  border-color: #444;
+  color: #ddd;
+}
+
+.export-dialog-choice:has(input:checked) {
+  border-color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.08);
+  color: #f3f4f6;
+}
+
+.export-dialog-choice:has(input:disabled) {
+  cursor: default;
+  opacity: 0.55;
+}
+
 /* `.dialog-component input` stretches every field to full width, which would
-   blow up the inline radios and the slider. */
-.export-dialog-radio input {
+   blow up the inline radios. */
+.export-dialog-choice input {
   width: auto;
   padding: 0;
+  margin: 0;
   accent-color: #4fc3f7;
 }
 
-/* The parts the export may cover; capped so a large assembly does not push the
-   filename field and the buttons off screen. */
-.export-dialog-parts {
-  list-style: none;
+.export-dialog-count {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 9px;
+  background: #333;
+  color: #ccc;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.export-dialog-hint,
+.export-dialog-note {
   margin: 0;
-  padding: 0;
-  max-height: 160px;
-  overflow-y: auto;
+  color: #777;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.export-dialog-note {
+  padding: 10px 12px;
+  border: 1px solid #2c2c2c;
+  border-radius: 8px;
+  background: #191919;
 }
 
 .export-dialog-filename {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-top: 12px;
+  padding-top: 2px;
 }
 
 .export-dialog-filename .export-dialog-filename-input {

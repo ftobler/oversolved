@@ -13,7 +13,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-const EVERYTHING = { mode: 'everything', selectedIds: [] } as const
+const ALL_PARTS = { scope: 'all', bundle: 'consolidated', selectedIds: [] } as const
 
 describe('ExportDialog', () => {
   beforeEach(() => {
@@ -47,7 +47,7 @@ describe('ExportDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Download' }))
     })
     expect(onDownload).toHaveBeenCalledWith({
-      format: 'step', tessellation: 'normal', fileName: 'part.step', selection: EVERYTHING,
+      format: 'step', tessellation: 'normal', fileName: 'part.step', selection: ALL_PARTS,
     })
   })
 
@@ -60,8 +60,24 @@ describe('ExportDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Download' }))
     })
     expect(onDownload).toHaveBeenCalledWith({
-      format: 'stl', tessellation: 'normal', fileName: 'part.stl', selection: EVERYTHING,
+      format: 'stl', tessellation: 'normal', fileName: 'part.stl', selection: ALL_PARTS,
     })
+  })
+
+  it('does not rewrite the file name when the active tab is clicked', () => {
+    render(<ExportDialog isOpen defaultName="bracket" onDownload={vi.fn()} onCancel={vi.fn()} />)
+
+    fireEvent.change(screen.getByDisplayValue('bracket.step'), { target: { value: 'v1.2 bracket' } })
+    fireEvent.click(screen.getByRole('tab', { name: 'STEP' }))
+    expect(screen.getByDisplayValue('v1.2 bracket')).toBeInTheDocument()
+  })
+
+  it('moves between format tabs with the arrow keys', () => {
+    render(<ExportDialog isOpen defaultName="bracket" onDownload={vi.fn()} onCancel={vi.fn()} />)
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'STEP' }), { key: 'ArrowRight' })
+    expect(screen.getByRole('tab', { name: 'STL' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByDisplayValue('bracket.stl')).toBeInTheDocument()
   })
 
   // The three presets replace the old free slider: no fourth value is reachable.
@@ -80,7 +96,7 @@ describe('ExportDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Download' }))
     })
     expect(onDownload).toHaveBeenCalledWith({
-      format: 'stl', tessellation: 'coarse', fileName: 'part.stl', selection: EVERYTHING,
+      format: 'stl', tessellation: 'coarse', fileName: 'part.stl', selection: ALL_PARTS,
     })
   })
 
@@ -96,7 +112,7 @@ describe('ExportDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Download' }))
     })
     expect(onDownload).toHaveBeenCalledWith({
-      format: 'yaml', tessellation: 'normal', fileName: 'part.yaml', selection: EVERYTHING,
+      format: 'yaml', tessellation: 'normal', fileName: 'part.yaml', selection: ALL_PARTS,
     })
   })
 
@@ -111,7 +127,7 @@ describe('ExportDialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Download' }))
     })
     expect(onDownload).toHaveBeenCalledWith({
-      format: 'yaml', tessellation: 'normal', fileName: 'gearbox.yaml', selection: EVERYTHING,
+      format: 'yaml', tessellation: 'normal', fileName: 'gearbox.yaml', selection: ALL_PARTS,
     })
   })
 
@@ -124,6 +140,19 @@ describe('ExportDialog', () => {
     // picked for a part must not survive into an assembly that cannot offer it.
     rerender(<ExportDialog isOpen defaultName="gearbox" formats={['yaml']} {...props} />)
     expect(screen.getByDisplayValue('gearbox.yaml')).toBeInTheDocument()
+  })
+
+  it('pins a fallback format when its active tab is clicked', () => {
+    const props = { onDownload: vi.fn(), onCancel: vi.fn(), defaultName: 'doc' }
+    const { rerender } = render(<ExportDialog isOpen {...props} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'STL' }))
+
+    rerender(<ExportDialog isOpen={false} {...props} />)
+    rerender(<ExportDialog isOpen formats={['yaml']} {...props} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'YAML' }))
+    rerender(<ExportDialog isOpen {...props} />)
+
+    expect(screen.getByRole('tab', { name: 'YAML' })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('seeds the file name from the document name when it opens', async () => {
@@ -155,7 +184,7 @@ describe('ExportDialog', () => {
     })
 
     expect(onDownload).toHaveBeenCalledWith({
-      format: 'step', tessellation: 'normal', fileName: 'bracket.step', selection: EVERYTHING,
+      format: 'step', tessellation: 'normal', fileName: 'bracket.step', selection: ALL_PARTS,
     })
     expect(screen.getByDisplayValue('bracket.step')).toBeInTheDocument()
   })
@@ -239,8 +268,8 @@ describe('ExportDialog', () => {
   })
 })
 
-// Choosing what to export: the parts section appears only when the caller can
-// offer more than one part, and the chosen mode/ticks ride the request.
+// Choosing what to export: the parts scope mirrors the document selection made
+// before the dialog opened, and the bundle choice decides one file versus a zip.
 describe('ExportDialog parts selection', () => {
   const PARTS = [
     { id: 'h1', name: 'Bracket' },
@@ -258,61 +287,126 @@ describe('ExportDialog parts selection', () => {
     render(
       <ExportDialog isOpen defaultName="part" parts={[{ id: 'a', name: 'A' }]} onDownload={vi.fn()} onCancel={vi.fn()} />
     )
-    expect(screen.queryByText('Parts')).toBeNull()
+    expect(screen.queryByText('All Parts')).toBeNull()
+    expect(screen.queryByText('Selected Parts')).toBeNull()
+    expect(screen.queryByLabelText('ZIP archive')).toBeNull()
   })
 
-  it('defaults to everything: all parts ticked and one file, unchanged from before', async () => {
+  it('defaults to All Parts with one consolidated file and no in-dialog part list', async () => {
     const onDownload = vi.fn()
     render(<ExportDialog isOpen defaultName="asm" parts={PARTS} onDownload={onDownload} onCancel={vi.fn()} />)
 
-    expect(screen.getAllByText('Bracket')).toHaveLength(2)
-    expect(screen.getByText('Plate')).toBeInTheDocument()
-    const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
-    expect(boxes).toHaveLength(3)
-    expect(boxes.every(box => box.checked && box.disabled)).toBe(true)
+    expect((screen.getByLabelText('All Parts') as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByLabelText('Selected Parts')).toBeDisabled()
+    expect(screen.queryByText('Bracket')).toBeNull()  // the dialog no longer ticks parts
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
 
     await act(async () => { download() })
     expect(onDownload).toHaveBeenCalledWith({
       format: 'step', tessellation: 'normal', fileName: 'asm.step',
-      selection: { mode: 'everything', selectedIds: [] },
+      selection: { scope: 'all', bundle: 'consolidated', selectedIds: [] },
     })
   })
 
-  it('selected mode forwards only the ticked ids', async () => {
+  it('uses the ids selected in the document, not ticks in the dialog', async () => {
     const onDownload = vi.fn()
-    render(<ExportDialog isOpen defaultName="asm" parts={PARTS} onDownload={onDownload} onCancel={vi.fn()} />)
+    render(
+      <ExportDialog
+        isOpen
+        defaultName="asm"
+        parts={PARTS}
+        selectedPartIds={['h1', 'h3']}
+        onDownload={onDownload}
+        onCancel={vi.fn()}
+      />
+    )
 
-    fireEvent.click(screen.getByLabelText('Selected parts'))
-    // Switching to selected starts from the whole list; untick Plate.
-    fireEvent.click(screen.getByLabelText('Plate'))
+    expect(screen.getByLabelText('Selected Parts')).toBeEnabled()
+    fireEvent.click(screen.getByLabelText('Selected Parts'))
     await act(async () => { download() })
 
     expect(onDownload).toHaveBeenCalledWith({
       format: 'step', tessellation: 'normal', fileName: 'asm.step',
-      selection: { mode: 'selected', selectedIds: ['h1', 'h2'] },
+      selection: { scope: 'selected', bundle: 'consolidated', selectedIds: ['h1', 'h3'] },
     })
   })
 
-  it('separate mode forwards the mode and the ticks', async () => {
-    const onDownload = vi.fn()
-    render(<ExportDialog isOpen defaultName="asm" parts={PARTS} onDownload={onDownload} onCancel={vi.fn()} />)
+  it('honours defaultScope and the captured ids when mounted already open', () => {
+    render(
+      <ExportDialog
+        isOpen
+        defaultName="asm"
+        parts={PARTS}
+        selectedPartIds={['h2']}
+        defaultScope="selected"
+        onDownload={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    expect((screen.getByLabelText('Selected Parts') as HTMLInputElement).checked).toBe(true)
+  })
 
-    fireEvent.click(screen.getByLabelText('Each part separately'))
+  it('keeps the selection captured at open when the document selection changes behind the modal', async () => {
+    const onDownload = vi.fn()
+    const props = { onDownload, onCancel: vi.fn() }
+    const { rerender } = render(
+      <ExportDialog isOpen defaultName="asm" parts={PARTS} selectedPartIds={['h1']} {...props} />
+    )
+
+    rerender(<ExportDialog isOpen defaultName="asm" parts={PARTS} selectedPartIds={[]} {...props} />)
+    expect(screen.getByLabelText('Selected Parts')).toBeEnabled()
+    fireEvent.click(screen.getByLabelText('Selected Parts'))
     await act(async () => { download() })
 
     expect(onDownload).toHaveBeenCalledWith({
       format: 'step', tessellation: 'normal', fileName: 'asm.step',
-      selection: { mode: 'separate', selectedIds: ['h1', 'h2', 'h3'] },
+      selection: { scope: 'selected', bundle: 'consolidated', selectedIds: ['h1'] },
     })
   })
 
-  it('disables the export button when nothing is ticked', () => {
-    render(<ExportDialog isOpen defaultName="asm" parts={PARTS} onDownload={vi.fn()} onCancel={vi.fn()} />)
+  it('forwards the zip bundle when multiple parts are available', async () => {
+    const onDownload = vi.fn()
+    render(<ExportDialog isOpen defaultName="asm" parts={PARTS} onDownload={onDownload} onCancel={vi.fn()} />)
 
-    fireEvent.click(screen.getByLabelText('Selected parts'))
-    for (const box of screen.getAllByLabelText('Bracket')) fireEvent.click(box)
-    fireEvent.click(screen.getByLabelText('Plate'))
+    fireEvent.click(screen.getByLabelText('ZIP archive'))
+    await act(async () => { download() })
 
-    expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled()
+    expect(onDownload).toHaveBeenCalledWith({
+      format: 'step', tessellation: 'normal', fileName: 'asm.step',
+      selection: { scope: 'all', bundle: 'zip', selectedIds: [] },
+    })
+  })
+
+  it('hides every part and bundle option for YAML', () => {
+    render(
+      <ExportDialog
+        isOpen
+        defaultName="asm"
+        parts={PARTS}
+        selectedPartIds={['h1']}
+        onDownload={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
+    fireEvent.click(screen.getByLabelText('YAML'))
+    expect(screen.queryByText('All Parts')).toBeNull()
+    expect(screen.queryByText('Selected Parts')).toBeNull()
+    expect(screen.queryByLabelText('ZIP archive')).toBeNull()
+    expect(screen.getByText(/complete document/i)).toBeInTheDocument()
+  })
+
+  it('ignores ids from a previous document that are not in this parts list', () => {
+    render(
+      <ExportDialog
+        isOpen
+        defaultName="asm"
+        parts={PARTS}
+        selectedPartIds={['gone']}
+        onDownload={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Selected Parts')).toBeDisabled()
   })
 })

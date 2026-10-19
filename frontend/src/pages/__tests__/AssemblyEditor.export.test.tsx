@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { screen, fireEvent, act, waitFor } from '@testing-library/react'
+import JSZip from 'jszip'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 
 const navigateSpy = vi.fn()
@@ -124,11 +125,12 @@ describe('AssemblyEditor export (Stage 9)', () => {
     installSessionFromList(h)
   })
 
-  async function openExportDialog() {
+  async function openExportDialog(selectedHandle?: string) {
     renderEditor()
     await tick()
     await tick()
     await waitFor(() => expect(useAssemblyStore.getState().transforms.hA).toBeTruthy())
+    if (selectedHandle) act(() => { useAssemblyStore.getState().selectPart(selectedHandle) })
     fireEvent.click(screen.getByLabelText('Export assembly'))
     await waitFor(() => screen.getByText('Export Model'))
   }
@@ -229,9 +231,10 @@ describe('AssemblyEditor export (Stage 9)', () => {
     expect(h.exportAssemblyViaWorker).not.toHaveBeenCalled()
   })
 
-  // Choosing what to export: two instances of the same part, so the parts list
-  // has a duplicate name to disambiguate.
-  describe('parts selection', () => {
+  // Choosing what to export: two instances of the same part. The dialog reads
+  // the tree/viewport selection made before it opened, rather than rendering
+  // its own part list.
+  describe('parts scope and bundling', () => {
     const ASSEMBLY_TWO_HANDLES = [
       'kind: assembly',
       'features:',
@@ -257,13 +260,12 @@ describe('AssemblyEditor export (Stage 9)', () => {
       h.solveAssemblyViaWorker.mockResolvedValue({
         payload: { transforms: { hA: SOLVED_TRANSFORM, hB: SECOND_TRANSFORM }, bodies: SOLVED_BODIES },
       })
+      useAssemblyStore.getState().selectPart(null)
     })
 
-    it('selected mode builds only the ticked parts into one file', async () => {
-      await openExportDialog()
-      fireEvent.click(screen.getByLabelText('Selected parts'))
-      // Untick the first copy, leaving the second (the tx=5 one).
-      fireEvent.click(screen.getAllByLabelText('Bracket')[0])
+    it('selected scope builds the part selected in the document into one file', async () => {
+      await openExportDialog('hB')
+      fireEvent.click(screen.getByLabelText('Selected Parts'))
       download()
       await waitFor(() => expect(h.exportAssemblyViaWorker).toHaveBeenCalledTimes(1))
 
@@ -274,9 +276,15 @@ describe('AssemblyEditor export (Stage 9)', () => {
       expect(h.downloadBlob.mock.calls[0][1]).toBe('My_Assembly.step')
     })
 
-    it('separate mode zips one file per ticked part', async () => {
+    it('disables Selected Parts when nothing is selected in the document', async () => {
       await openExportDialog()
-      fireEvent.click(screen.getByLabelText('Each part separately'))
+      expect(screen.getByLabelText('Selected Parts')).toBeDisabled()
+      expect((screen.getByLabelText('All Parts') as HTMLInputElement).checked).toBe(true)
+    })
+
+    it('zip bundles one file per part into one archive', async () => {
+      await openExportDialog()
+      fireEvent.click(screen.getByLabelText('ZIP archive'))
       download()
       await waitFor(() => expect(h.downloadBlob).toHaveBeenCalledTimes(1))
 
@@ -286,13 +294,14 @@ describe('AssemblyEditor export (Stage 9)', () => {
       expect(name).toBe('My_Assembly.zip')
       expect(blob.type).toBe('application/zip')
       expect(blob.size).toBeGreaterThan(0)
+      const zip = await JSZip.loadAsync(blob)
+      expect(Object.keys(zip.files).sort()).toEqual(['Bracket (2).step', 'Bracket.step'])
     })
 
-    it('separate mode still zips when only one part is ticked', async () => {
-      await openExportDialog()
-      fireEvent.click(screen.getByLabelText('Each part separately'))
-      // Leave one of the two ticked copies.
-      fireEvent.click(screen.getAllByLabelText('Bracket')[0])
+    it('zip still makes one archive when only one part is selected', async () => {
+      await openExportDialog('hA')
+      fireEvent.click(screen.getByLabelText('Selected Parts'))
+      fireEvent.click(screen.getByLabelText('ZIP archive'))
       download()
       await waitFor(() => expect(h.downloadBlob).toHaveBeenCalledTimes(1))
 
@@ -301,13 +310,8 @@ describe('AssemblyEditor export (Stage 9)', () => {
       expect(name).toBe('My_Assembly.zip')
       expect(blob.type).toBe('application/zip')
       expect(blob.size).toBeGreaterThan(0)
-    })
-
-    it('disables the download when every part is unticked', async () => {
-      await openExportDialog()
-      fireEvent.click(screen.getByLabelText('Selected parts'))
-      for (const box of screen.getAllByLabelText('Bracket')) fireEvent.click(box)
-      expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled()
+      const zip = await JSZip.loadAsync(blob)
+      expect(Object.keys(zip.files)).toEqual(['Bracket.step'])
     })
   })
 })

@@ -436,15 +436,19 @@ export interface LocalExportOptions {
   format: 'step' | 'stl'
   // Export this single body; omitted/null exports the whole assembly.
   bodyId?: string | null
+  // Export a chosen subset of bodies. A non-empty list takes precedence over
+  // `bodyId`; the bodies are compounded so one file can hold all of them.
+  bodyIds?: string[] | null
   // STL only: the mesh quality preset from the export dialog. STEP ignores it.
   tessellation?: TessellationPreset
 }
 
 /**
  * Resolve the TopoDS shape to export from a completed build. With a ``bodyId``
- * it returns that body's solid; otherwise it returns the lone body's solid, or
- * a compound of every body's solid for a multi-body assembly. A compound,
- * not a boolean fuse, so disjoint parts export cleanly.
+ * or a non-empty ``bodyIds`` it returns that body's solid / a compound of those
+ * solids; otherwise it returns the lone body's solid, or a compound of every
+ * body's solid for a multi-body assembly. A compound, not a boolean fuse, so
+ * disjoint parts export cleanly.
  */
 function resolveExportShape(
   oc: OccModule,
@@ -452,6 +456,7 @@ function resolveExportShape(
   table: HandleTable,
   state: BuildState,
   bodyId: string | null,
+  bodyIds: readonly string[] | null,
 ): OccShape | null {
   const order = state.feature_order
   if (!order.length) return null
@@ -461,12 +466,18 @@ function resolveExportShape(
   const lastCp = state.checkpoints[order[order.length - 1]]
   if (!lastCp) return null
   const bodies = lastCp.body_store_snapshot
-  if (bodyId) {
-    const body = bodies[bodyId]
-    if (!body || body.shape == null) {
-      throw new Error(`export: body '${bodyId}' not found`)
-    }
-    return table.get<OccShape>(body.shape)
+  const chosen = bodyIds && bodyIds.length > 0
+    ? [...new Set(bodyIds)]
+    : bodyId ? [bodyId] : null
+  if (chosen) {
+    const solids = chosen.map((id) => {
+      const body = bodies[id]
+      if (!body || body.shape == null) {
+        throw new Error(`export: body '${id}' not found`)
+      }
+      return table.get<OccShape>(body.shape)
+    })
+    return compoundOf(oc, scope, solids)
   }
   const solids = Object.values(bodies).filter((b) => b.shape != null)
   if (solids.length === 0) return null
@@ -508,7 +519,7 @@ export async function exportLocally(
   const table = new HandleTable()
   try {
     const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, files))
-    const shape = resolveExportShape(oc, scope, table, response._build_state, opts.bodyId ?? null)
+    const shape = resolveExportShape(oc, scope, table, response._build_state, opts.bodyId ?? null, opts.bodyIds ?? null)
     if (!shape) return null
     return serialiseShape(oc, scope, shape, opts)
   } finally {
@@ -669,7 +680,7 @@ export async function exportAssemblyLocally(
       const response = build(part.spec, { prevState: null }, buildDeps(oc, scope, table, files))
       // A part with no solid (an empty doc, a sketch-only doc) contributes
       // nothing rather than failing the whole export.
-      const shape = resolveExportShape(oc, scope, table, response._build_state, null)
+      const shape = resolveExportShape(oc, scope, table, response._build_state, null, null)
       if (!shape) continue
       // `transformCopy` hands back a fresh shape nobody owns: the compound is
       // read (serialised) before `scope.dispose()`, so the scope is its owner.

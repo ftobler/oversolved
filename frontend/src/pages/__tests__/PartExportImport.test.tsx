@@ -4,7 +4,8 @@
 // solid depends on.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createRef } from 'react'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import JSZip from 'jszip'
 
 const downloadBlob = vi.fn()
 const exportViaWorker = vi.fn()
@@ -14,14 +15,20 @@ vi.mock('@/kernel/worker/solverClient', () => ({ exportViaWorker: (...args: unkn
 import PartExportImport from '@/pages/PartExportImport'
 import type { PartExportImportHandle } from '@/pages/PartExportImport'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { ToastProvider } from '@/contexts/ToastContext'
-import type { PartDoc } from '@/types/cad'
+import type { BodyResult, PartDoc } from '@/types/cad'
 
 const DOC: PartDoc = {
   features: [
     { id: 'Origin', kind: 'origin' },
     { id: 'extrude1', kind: 'extrude', extrude: { sketch: 'S1', distance: 10 } },
   ],
+}
+
+const TWO_BODIES: Record<string, BodyResult> = {
+  body_a: { id: 'body_a', created_by: 'extrude1', modified_by: [] },
+  body_b: { id: 'body_b', created_by: 'extrude2', modified_by: [] },
 }
 
 function renderDialog() {
@@ -44,6 +51,7 @@ describe('PartExportImport worker export', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     usePartEditorStore.setState({ ...DEFAULT_PART_EDITOR_DATA, doc: DOC })
+    useSketchEditorStore.getState().clearNormalSelection()
   })
 
   it('cancelling closes the dialog without asking the kernel for bytes', () => {
@@ -123,6 +131,110 @@ describe('PartExportImport worker export', () => {
     await clickDownload()
 
     expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ bodyId: 'body-1' })
+  })
+
+  it('exports All Parts through the whole-document path, not the displayed solve ids', async () => {
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      doc: DOC,
+      bodies: TWO_BODIES,
+      partLabels: { body_a: 'Bracket', body_b: 'Plate' },
+    })
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const ref = renderDialog()
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    await clickDownload()
+
+    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ bodyId: null })
+    expect(exportViaWorker.mock.calls[0][1]).not.toHaveProperty('bodyIds')
+  })
+
+  it('exports All Parts through the whole-document path even when one body is known', async () => {
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      doc: DOC,
+      bodies: { body_a: TWO_BODIES.body_a },
+      partLabels: { body_a: 'Bracket' },
+    })
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const ref = renderDialog()
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    await clickDownload()
+
+    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ bodyId: null })
+    expect(exportViaWorker.mock.calls[0][1]).not.toHaveProperty('bodyIds')
+  })
+
+  it('exports the bodies selected in the document as one compound file', async () => {
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      doc: DOC,
+      bodies: TWO_BODIES,
+      partLabels: { body_a: 'Bracket', body_b: 'Plate' },
+    })
+    useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a', '@body_b']))
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const ref = renderDialog()
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('Selected Parts'))
+    await clickDownload()
+
+    expect(exportViaWorker).toHaveBeenCalledTimes(1)
+    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({
+      format: 'step', bodyId: null, bodyIds: ['body_a', 'body_b'],
+    })
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect((downloadBlob.mock.calls[0][1] as string).endsWith('.step')).toBe(true)
+  })
+
+  it('zips one entry per selected body and downloads one archive', async () => {
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      doc: DOC,
+      bodies: TWO_BODIES,
+      partLabels: { body_a: 'Bracket', body_b: 'Plate' },
+    })
+    useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a', '@body_b']))
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const ref = renderDialog()
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('Selected Parts'))
+    fireEvent.click(screen.getByLabelText('ZIP archive'))
+    await clickDownload()
+
+    expect(exportViaWorker).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    const [blob, filename] = downloadBlob.mock.calls[0] as [Blob, string]
+    expect(filename).toBe('bracket.zip')
+    expect(blob.type).toBe('application/zip')
+    const zip = await JSZip.loadAsync(blob)
+    expect(Object.keys(zip.files).sort()).toEqual(['Bracket.step', 'Plate.step'])
+  })
+
+  it('zips a single selected body as a one-entry archive', async () => {
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      doc: DOC,
+      bodies: TWO_BODIES,
+      partLabels: { body_a: 'Bracket', body_b: 'Plate' },
+    })
+    useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a']))
+    exportViaWorker.mockResolvedValue(new Uint8Array([1]))
+    const ref = renderDialog()
+    act(() => ref.current!.openExport(null, 'bracket'))
+
+    fireEvent.click(screen.getByLabelText('Selected Parts'))
+    fireEvent.click(screen.getByLabelText('ZIP archive'))
+    await clickDownload()
+
+    expect(exportViaWorker).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    const zip = await JSZip.loadAsync(downloadBlob.mock.calls[0][0] as Blob)
+    expect(Object.keys(zip.files)).toEqual(['Bracket.step'])
   })
 
   it('does nothing when no document is loaded', async () => {

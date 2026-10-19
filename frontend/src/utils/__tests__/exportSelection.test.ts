@@ -7,6 +7,7 @@ import {
   selectedParts,
   zipExportFiles,
   type ExportPart,
+  type ExportSelection,
 } from '../exportSelection'
 
 const PARTS: ExportPart[] = [
@@ -15,51 +16,63 @@ const PARTS: ExportPart[] = [
   { id: 'h3', name: 'Motor Mount' },
 ]
 
+const SELECTED: ExportSelection = {
+  scope: 'selected',
+  bundle: 'consolidated',
+  selectedIds: ['h1', 'h3'],
+}
+
 describe('selectedParts', () => {
-  it('covers every part in everything mode', () => {
+  it('covers every part in all scope', () => {
     expect(selectedParts(PARTS, DEFAULT_EXPORT_SELECTION).map(p => p.id)).toEqual(['h1', 'h2', 'h3'])
   })
 
-  it('keeps only the ticked ids, in part order', () => {
-    expect(selectedParts(PARTS, { mode: 'selected', selectedIds: ['h3', 'h1'] }).map(p => p.id))
+  it('keeps only the selected ids, in part order', () => {
+    expect(selectedParts(PARTS, { ...SELECTED, selectedIds: ['h3', 'h1'] }).map(p => p.id))
       .toEqual(['h1', 'h3'])
   })
 })
 
 describe('exportHasOutput', () => {
-  it('is true for everything and for a non-empty tick set', () => {
+  it('is true for all scope and for a non-empty document selection', () => {
     expect(exportHasOutput(PARTS, DEFAULT_EXPORT_SELECTION)).toBe(true)
-    expect(exportHasOutput(PARTS, { mode: 'selected', selectedIds: ['h2'] })).toBe(true)
+    expect(exportHasOutput(PARTS, { ...SELECTED, selectedIds: ['h2'] })).toBe(true)
   })
 
-  it('is false when a selection mode has nothing ticked', () => {
-    expect(exportHasOutput(PARTS, { mode: 'selected', selectedIds: [] })).toBe(false)
-    expect(exportHasOutput(PARTS, { mode: 'separate', selectedIds: [] })).toBe(false)
+  it('is false when the selected ids name no part in this list', () => {
+    expect(exportHasOutput(PARTS, { ...SELECTED, selectedIds: [] })).toBe(false)
+    expect(exportHasOutput(PARTS, { ...SELECTED, selectedIds: ['gone'] })).toBe(false)
   })
 })
 
 describe('planExport', () => {
-  it('everything is one file covering all parts, named by the dialog', () => {
+  it('all parts in one consolidated file, named by the dialog', () => {
     expect(planExport(PARTS, DEFAULT_EXPORT_SELECTION, 'step', 'assembly.step')).toEqual([
       { name: 'assembly.step', partIds: ['h1', 'h2', 'h3'] },
     ])
   })
 
-  it('selected is one file covering only the ticked parts', () => {
-    expect(planExport(PARTS, { mode: 'selected', selectedIds: ['h1', 'h3'] }, 'stl', 'assembly.stl')).toEqual([
+  it('selected consolidated is one file covering only the selected parts', () => {
+    expect(planExport(PARTS, SELECTED, 'stl', 'assembly.stl')).toEqual([
       { name: 'assembly.stl', partIds: ['h1', 'h3'] },
     ])
   })
 
-  it('separate is one file per ticked part, named after the part', () => {
-    expect(planExport(PARTS, { mode: 'separate', selectedIds: ['h1', 'h3'] }, 'stl', 'assembly.stl')).toEqual([
+  it('zip is one entry per chosen part, named after the part', () => {
+    expect(planExport(PARTS, { ...SELECTED, bundle: 'zip' }, 'stl', 'assembly.stl')).toEqual([
       { name: 'Bracket.stl', partIds: ['h1'] },
       { name: 'Motor_Mount.stl', partIds: ['h3'] },
     ])
   })
 
+  it('keeps a one-entry zip when the user chose the zip bundle', () => {
+    expect(planExport(PARTS, { ...SELECTED, bundle: 'zip', selectedIds: ['h2'] }, 'step', 'a.step')).toEqual([
+      { name: 'Bracket.step', partIds: ['h2'] },
+    ])
+  })
+
   it('disambiguates duplicate part names deterministically', () => {
-    const selection = { mode: 'separate' as const, selectedIds: ['h1', 'h2', 'h3'] }
+    const selection: ExportSelection = { scope: 'all', bundle: 'zip', selectedIds: [] }
     const first = planExport(PARTS, selection, 'stl', 'assembly.stl')
     const again = planExport(PARTS, selection, 'stl', 'assembly.stl')
     expect(first.map(f => f.name)).toEqual(['Bracket.stl', 'Bracket (2).stl', 'Motor_Mount.stl'])
@@ -71,7 +84,7 @@ describe('planExport', () => {
       { id: 'x', name: 'a/../b' },
       { id: 'y', name: '..\\..\\etc' },
     ]
-    const files = planExport(parts, { mode: 'separate', selectedIds: ['x', 'y'] }, 'stl', 'asm.stl')
+    const files = planExport(parts, { ...SELECTED, bundle: 'zip', selectedIds: ['x', 'y'] }, 'stl', 'asm.stl')
     for (const file of files) {
       expect(file.name).not.toMatch(/[\\/]/)
       expect(file.name).not.toContain('..')
@@ -80,7 +93,7 @@ describe('planExport', () => {
   })
 
   it('yields no files for an empty selection', () => {
-    expect(planExport(PARTS, { mode: 'separate', selectedIds: [] }, 'stl', 'a.stl')).toEqual([])
+    expect(planExport(PARTS, { ...SELECTED, selectedIds: [] }, 'stl', 'a.stl')).toEqual([])
   })
 })
 

@@ -17,6 +17,9 @@ export interface PartExportOptions {
   format: GeometryFormat
   // One body of the part, or null for the compound of all of them.
   bodyId: string | null
+  // A chosen subset of bodies. Non-empty takes precedence over `bodyId`; the
+  // worker compounds them into the one requested file.
+  bodyIds?: string[] | null
   // STL mesh quality; resolved by the worker through tessellationPresets. STEP
   // ignores it, but the dialog always names the current choice.
   tessellation: TessellationPreset

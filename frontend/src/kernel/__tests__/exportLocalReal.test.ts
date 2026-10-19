@@ -2,8 +2,9 @@
 //
 // End-to-end gated test for local-WASM STEP/STL export (exportLocally): build a
 // real two-body document and serialise it, with no backend round-trip. Covers
-// both export targets -- the whole assembly (a compound of every body) and a
-// single body -- for both formats, asserting valid bytes and round-trip parity.
+// the export targets -- the whole assembly (a compound of every body), a single
+// body, and a chosen body subset -- for both formats, asserting valid bytes and
+// round-trip parity.
 //
 // Skips when OCC.js or the Rust sketch solver is absent. Install OCC with:
 //   cd frontend && npm run occ:install
@@ -124,6 +125,27 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
     }
   })
 
+  it('STEP-exports only the chosen body subset', async () => {
+    const scope = new DisposeScope()
+    try {
+      const bytes = await exportLocally(twoBodyDoc(), { format: 'step', bodyIds: ['body_ex1'] })
+      expect(bytes).not.toBeNull()
+      const shape = scope.track(stepBytesToShape(occ, scope, bytes!))
+      expect(volumeOf(occ, scope, shape)).toBeCloseTo(VOL_A, 1)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('STL-exports only the chosen body subset', async () => {
+    const whole = await exportLocally(twoBodyDoc(), { format: 'stl', tessellation: 'normal' })
+    const subset = await exportLocally(twoBodyDoc(), { format: 'stl', bodyIds: ['body_ex1'], tessellation: 'normal' })
+    expect(whole).not.toBeNull()
+    expect(subset).not.toBeNull()
+    expect(stlTriangleCount(subset!)).toBeGreaterThanOrEqual(12)
+    expect(stlTriangleCount(whole!)).toBeGreaterThan(stlTriangleCount(subset!))
+  })
+
   it('STL-exports the whole assembly (both boxes meshed)', async () => {
     const whole = await exportLocally(twoBodyDoc(), { format: 'stl', tessellation: 'normal' })
     const single = await exportLocally(twoBodyDoc(), { format: 'stl', bodyId: 'body_ex1', tessellation: 'normal' })
@@ -139,6 +161,11 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
 
   it('throws for an unknown body id', async () => {
     await expect(exportLocally(twoBodyDoc(), { format: 'step', bodyId: 'nope' }))
+      .rejects.toThrow(/not found/)
+  })
+
+  it('throws when one id in a chosen subset is unknown', async () => {
+    await expect(exportLocally(twoBodyDoc(), { format: 'step', bodyIds: ['body_ex1', 'nope'] }))
       .rejects.toThrow(/not found/)
   })
 

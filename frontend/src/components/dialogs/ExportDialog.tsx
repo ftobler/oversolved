@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import Dialog from '@/components/dialogs/Dialog'
 import { Spinner } from '@/components/shared/Spinner'
 import { defaultExportFileName, ensureExtension, swapExtension } from '@/utils/core/exportFileName'
@@ -11,8 +12,9 @@ import {
 import {
   DEFAULT_EXPORT_SELECTION,
   exportHasOutput,
-  type ExportMode,
+  type ExportBundle,
   type ExportPart,
+  type ExportScope,
   type ExportSelection,
 } from '@/utils/exportSelection'
 import '@/components/dialogs/ExportDialog.css'
@@ -25,8 +27,7 @@ export interface ExportRequest {
   // STL mesh quality; the caller forwards it to the kernel (STEP ignores it).
   tessellation: TessellationPreset
   fileName: string
-  // Which parts to cover and how to bundle them. Everything when the caller
-  // offered no parts.
+  // Which parts to cover and how to bundle them. The full document for YAML.
   selection: ExportSelection
 }
 
@@ -42,11 +43,24 @@ export interface ExportDialogProps {
    */
   showTessellation?: boolean
   /**
-   * The parts the caller can export. Omitted for a single-document export
-   * (part editor, workspace row): the selection controls are hidden and the
-   * export covers everything, as before.
+   * The parts the caller can export. Omitted when the caller has no part list
+   * to offer (a workspace row, a part whose solve published no bodies): the
+   * scope controls are hidden and the export covers everything.
    */
   parts?: readonly ExportPart[]
+  /**
+   * The parts selected in the document before this dialog opened. The dialog
+   * never edits this selection: the modal hides the viewport, so the choice is
+   * a snapshot. Omitted or empty disables "Selected Parts"; the option stays
+   * visible so the user can see why.
+   */
+  selectedPartIds?: readonly string[]
+  /**
+   * Which scope starts selected when there is a multi-part list. The body
+   * context menu opens the dialog already aimed at that body; the toolbar
+   * export starts from All Parts.
+   */
+  defaultScope?: ExportScope
   /**
    * The formats offered, in display order; the first is the one selected when
    * the current pick is not offered. The editor's assembly export emits only
@@ -60,12 +74,7 @@ export interface ExportDialogProps {
 const ALL_FORMATS: readonly ExportFormat[] = ['step', 'stl', 'yaml']
 const FORMAT_LABEL: Record<ExportFormat, string> = { step: 'STEP', stl: 'STL', yaml: 'YAML' }
 const PRESET_LABEL: Record<TessellationPreset, string> = { fine: 'Fine', normal: 'Normal', coarse: 'Coarse' }
-const MODE_LABEL: Record<ExportMode, string> = {
-  everything: 'Everything',
-  selected: 'Selected parts',
-  separate: 'Each part separately',
-}
-const MODES: readonly ExportMode[] = ['everything', 'selected', 'separate']
+const BUNDLE_LABEL: Record<ExportBundle, string> = { consolidated: 'One file', zip: 'ZIP archive' }
 
 export default function ExportDialog({
   isOpen,
@@ -74,6 +83,8 @@ export default function ExportDialog({
   onCancel,
   showTessellation = true,
   parts,
+  selectedPartIds = [],
+  defaultScope = 'all',
   formats = ALL_FORMATS,
 }: ExportDialogProps) {
   const [picked, setFormat] = useState<ExportFormat>(formats[0])
@@ -85,48 +96,84 @@ export default function ExportDialog({
   const [selection, setSelection] = useState<ExportSelection>(DEFAULT_EXPORT_SELECTION)
   const [fileName, setFileName] = useState(() => defaultExportFileName(defaultName, format))
   const [isExporting, setIsExporting] = useState(false)
-  const wasOpen = useRef(isOpen)
+  // Starts false, not `isOpen`: a caller that mounts the dialog already open
+  // must still take the opening snapshot once, like one that opens it later.
+  const wasOpen = useRef(false)
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const tabPanelId = useId()
 
   // The dialog stays mounted between exports, so the document name only reaches
-  // it after the first open. Re-seed the field and the parts selection on every
+  // it after the first open. Re-seed the field and the part choice on every
   // open, but never while it is open: that would wipe whatever the user typed or
-  // ticked. The selection is reset because the parts list belongs to one caller
-  // and can change between opens.
+  // chose. The selected ids are captured here, not read live: the viewport that
+  // made the selection is covered by this modal.
   useEffect(() => {
     if (isOpen && !wasOpen.current) {
+      const ids = [...selectedPartIds]
       setFileName(defaultExportFileName(defaultName, format))
-      setSelection(DEFAULT_EXPORT_SELECTION)
+      setSelection({
+        ...DEFAULT_EXPORT_SELECTION,
+        scope: defaultScope === 'selected' && ids.length > 0 ? 'selected' : 'all',
+        selectedIds: ids,
+      })
     }
     wasOpen.current = isOpen
-  }, [isOpen, defaultName, format])
+  }, [isOpen, defaultName, format, defaultScope, selectedPartIds])
 
-  const showParts = !!parts && parts.length > 1
+  // Read the captured ids, never the live prop: once the modal is up, the
+  // document selection behind it is no longer the user's answer to this
+  // question. Parts still have to exist in this caller's list so a stale id
+  // from another document cannot keep "Selected Parts" available.
+  const selectedIdSet = new Set(selection.selectedIds)
+  const validSelectedIds = parts
+    ? parts.filter(part => selectedIdSet.has(part.id)).map(part => part.id)
+    : []
+  const showScope = format !== 'yaml' && !!parts && parts.length > 1
+  const showBundle = format !== 'yaml' && !!parts && parts.length > 1
+  const selectedCount = validSelectedIds.length
+  // Even when the caller offers only one part (so the scope controls are
+  // hidden), a body context-menu export still starts on its explicit target.
+  // The request keeps that narrower scope rather than widening it to All Parts.
+  const scope: ExportScope = selection.scope === 'selected' && selectedCount > 0
+    ? 'selected'
+    : 'all'
+  const bundle: ExportBundle = showBundle ? selection.bundle : 'consolidated'
 
   const handleFormatChange = (newFormat: ExportFormat) => {
+    // A click on the active tab (or Home/End landing on it) is not a format
+    // change: swapping the extension would mangle a hand-typed file name. Still
+    // pin the shown format, which can be a fallback when the last pick is not in
+    // this caller's set.
+    if (newFormat === format) {
+      setFormat(newFormat)
+      return
+    }
     setFormat(newFormat)
     setFileName(prev => swapExtension(prev, newFormat))
   }
 
-  // Everything starts from the whole list, so switching to a narrower mode does
-  // not silently drop parts the user can still see ticked. Everything ignores
-  // the ticks, so it clears them rather than keeping dead state.
-  const handleModeChange = (mode: ExportMode) => {
-    setSelection(prev => ({
-      mode,
-      selectedIds: mode === 'everything'
-        ? []
-        : (prev.mode === 'everything' && parts ? parts.map(part => part.id) : prev.selectedIds),
-    }))
+  // A tablist is expected to move with the arrow keys, not only Tab and click.
+  // Roving tabIndex keeps one stop in the tab order while the arrows walk the
+  // formats that this caller actually offers.
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index
+    if (event.key === 'ArrowRight') next = (index + 1) % formats.length
+    else if (event.key === 'ArrowLeft') next = (index - 1 + formats.length) % formats.length
+    else if (event.key === 'Home') next = 0
+    else if (event.key === 'End') next = formats.length - 1
+    else return
+    event.preventDefault()
+    handleFormatChange(formats[next])
+    tabRefs.current[next]?.focus()
   }
 
-  const togglePart = (id: string) => {
-    setSelection(prev => {
-      const ticked = new Set(prev.selectedIds)
-      if (ticked.has(id)) ticked.delete(id)
-      else ticked.add(id)
-      return { ...prev, selectedIds: [...ticked] }
-    })
-  }
+  const requestSelection: ExportSelection = format === 'yaml'
+    ? { ...DEFAULT_EXPORT_SELECTION }
+    : {
+        scope,
+        bundle,
+        selectedIds: scope === 'selected' ? validSelectedIds : [],
+      }
 
   // The worker rebuild + tessellation + STEP/STL serialisation can take seconds on
   // a heavy body. Freeze the whole dialog for the duration: there is no way to
@@ -137,7 +184,7 @@ export default function ExportDialog({
     setFileName(name)
     setIsExporting(true)
     try {
-      await onDownload({ format, tessellation, fileName: name, selection })
+      await onDownload({ format, tessellation, fileName: name, selection: requestSelection })
     } catch (e) {
       // The parent surfaces the failure; log it only under a dev build so the
       // dialog can still reset its busy state without prod console chatter.
@@ -152,9 +199,11 @@ export default function ExportDialog({
     onCancel()
   }
 
-  // Nothing ticked means nothing to write; the caller owns the outcome, so the
-  // button is simply held down rather than letting an empty export through.
-  const nothingToExport = showParts && !exportHasOutput(parts!, selection)
+  // No resolvable part means nothing to write; the caller owns the outcome, so
+  // the button is held down rather than letting an empty export through. The
+  // scope falls back to All Parts when no captured id resolves, so this is a
+  // last guard rather than a normal path.
+  const nothingToExport = showScope && !exportHasOutput(parts!, requestSelection)
 
   return (
     <Dialog
@@ -171,87 +220,124 @@ export default function ExportDialog({
       ) : 'Download'}
       busy={isExporting}
       confirmDisabled={nothingToExport}
+      className="export-dialog"
     >
-      <div className="export-dialog-section">
-        <label className="export-dialog-label">Format</label>
-        <div className="export-dialog-radio-group">
-          {formats.map(option => (
-            <label className="export-dialog-radio" key={option}>
-              <input
-                type="radio"
-                name="format"
-                value={option}
-                checked={format === option}
-                disabled={isExporting}
-                onChange={() => handleFormatChange(option)}
-              />
-              <span>{FORMAT_LABEL[option]}</span>
-            </label>
-          ))}
-        </div>
+      <div className="export-dialog-tabs" role="tablist" aria-label="Export format">
+        {formats.map((option, index) => (
+          <button
+            key={option}
+            ref={element => { tabRefs.current[index] = element }}
+            type="button"
+            role="tab"
+            className="export-dialog-tab"
+            aria-label={FORMAT_LABEL[option]}
+            aria-selected={format === option}
+            aria-controls={tabPanelId}
+            id={`${tabPanelId}-tab-${option}`}
+            tabIndex={format === option ? 0 : -1}
+            disabled={isExporting}
+            onClick={() => handleFormatChange(option)}
+            onKeyDown={event => handleTabKeyDown(event, index)}
+          >
+            {FORMAT_LABEL[option]}
+          </button>
+        ))}
       </div>
 
-      {format === 'stl' && showTessellation && (
-        <div className="export-dialog-section">
-          <label className="export-dialog-label">Tessellation</label>
-          <div className="export-dialog-radio-group">
-            {TESSELLATION_PRESET_ORDER.map(preset => (
-              <label className="export-dialog-radio" key={preset}>
-                <input
-                  type="radio"
-                  name="tessellation"
-                  value={preset}
-                  checked={tessellation === preset}
-                  disabled={isExporting}
-                  onChange={() => setTessellation(preset)}
-                />
-                <span>{PRESET_LABEL[preset]}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
+      <div
+        className="export-dialog-panel"
+        role="tabpanel"
+        id={tabPanelId}
+        aria-labelledby={`${tabPanelId}-tab-${format}`}
+      >
+        {format === 'yaml' ? (
+          <p className="export-dialog-note">YAML exports the complete document. Part options do not apply.</p>
+        ) : (
+          <>
+            {format === 'stl' && showTessellation && (
+              <div className="export-dialog-section">
+                <span className="export-dialog-label">Tessellation</span>
+                <div className="export-dialog-choices">
+                  {TESSELLATION_PRESET_ORDER.map(preset => (
+                    <label className="export-dialog-choice" key={preset}>
+                      <input
+                        type="radio"
+                        name="tessellation"
+                        value={preset}
+                        checked={tessellation === preset}
+                        disabled={isExporting}
+                        onChange={() => setTessellation(preset)}
+                      />
+                      <span>{PRESET_LABEL[preset]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
-      {showParts && (
-        <div className="export-dialog-section">
-          <label className="export-dialog-label">Parts</label>
-          <div className="export-dialog-radio-group">
-            {MODES.map(mode => (
-              <label className="export-dialog-radio" key={mode}>
-                <input
-                  type="radio"
-                  name="export-mode"
-                  value={mode}
-                  checked={selection.mode === mode}
-                  disabled={isExporting}
-                  onChange={() => handleModeChange(mode)}
-                />
-                <span>{MODE_LABEL[mode]}</span>
-              </label>
-            ))}
-          </div>
-          <ul className="export-dialog-parts">
-            {parts!.map(part => {
-              // Everything shows every part ticked; the boxes are then a picture
-              // of the mode, not something to toggle.
-              const checked = selection.mode === 'everything' || selection.selectedIds.includes(part.id)
-              return (
-                <li key={part.id}>
-                  <label className="export-dialog-radio">
+            {showScope && (
+              <div className="export-dialog-section">
+                <span className="export-dialog-label">Parts</span>
+                <div className="export-dialog-choices">
+                  <label className="export-dialog-choice">
                     <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={isExporting || selection.mode === 'everything'}
-                      onChange={() => togglePart(part.id)}
+                      type="radio"
+                      name="export-scope"
+                      value="all"
+                      aria-label="All Parts"
+                      checked={scope === 'all'}
+                      disabled={isExporting}
+                      onChange={() => setSelection(prev => ({ ...prev, scope: 'all' }))}
                     />
-                    <span>{part.name}</span>
+                    <span>All Parts</span>
                   </label>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
+                  <label className="export-dialog-choice">
+                    <input
+                      type="radio"
+                      name="export-scope"
+                      value="selected"
+                      aria-label="Selected Parts"
+                      checked={scope === 'selected'}
+                      disabled={isExporting || selectedCount === 0}
+                      onChange={() => setSelection(prev => ({ ...prev, scope: 'selected' }))}
+                    />
+                    <span>Selected Parts</span>
+                    <span className="export-dialog-count" aria-hidden="true">{selectedCount}</span>
+                  </label>
+                </div>
+                {selectedCount === 0 && (
+                  <p className="export-dialog-hint">Select parts in the document before opening Export.</p>
+                )}
+              </div>
+            )}
+
+            {showBundle && (
+              <div className="export-dialog-section">
+                <span className="export-dialog-label">Output</span>
+                <div className="export-dialog-choices">
+                  {(Object.keys(BUNDLE_LABEL) as ExportBundle[]).map(option => (
+                    <label className="export-dialog-choice" key={option}>
+                      <input
+                        type="radio"
+                        name="export-bundle"
+                        value={option}
+                        aria-label={BUNDLE_LABEL[option]}
+                        checked={bundle === option}
+                        disabled={isExporting}
+                        onChange={() => setSelection(prev => ({ ...prev, bundle: option }))}
+                      />
+                      <span>{BUNDLE_LABEL[option]}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="export-dialog-hint">
+                  One file holds every chosen part. ZIP downloads one archive with an entry per part.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="export-dialog-filename">
         <span className="export-dialog-label">File</span>

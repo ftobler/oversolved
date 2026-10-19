@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useState } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useState } from 'react'
 import ExportDialog from '@/components/dialogs/ExportDialog'
 import type { ExportRequest } from '@/components/dialogs/ExportDialog'
 import { useAssemblyStore } from '@/stores/assemblyStore'
@@ -35,13 +35,15 @@ interface AssemblyExportProps {
  * worker and compounds the placed solids; STL re-encodes the solved bundle
  * meshes in place. See `utils/assemblyExport.ts` for why the two paths differ.
  *
- * The parts list lets the user narrow the export to ticked parts, as one file
- * (Everything / Selected) or one file each inside a zip (Each part separately).
+ * The parts choice comes from the document: the selection made in the tree or
+ * viewport before the dialog opened, or every visible instance. Multiple parts
+ * can become one consolidated file or a zip with an entry per part.
  */
 const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
   function AssemblyExport({ doc, docName, docNames = {} }, ref) {
     const notify = useNotify()
     const [isOpen, setIsOpen] = useState(false)
+    const subject = useAssemblyStore(s => s.subject)
 
     useImperativeHandle(ref, () => ({ openExport: () => setIsOpen(true) }))
 
@@ -50,6 +52,10 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
       id: inst.handle,
       name: docNames[inst.doc_id] || inst.doc_id,
     }))
+    const selectedPartIds = useMemo(
+      () => subject?.kind === 'part' ? [subject.handle] : [],
+      [subject],
+    )
 
     const handleDownload = async (request: ExportRequest) => {
       const { format, fileName, selection } = request
@@ -76,9 +82,9 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
         const bytesFor = (ids: string[]): Promise<Uint8Array | null> =>
           buildBytes(format, subsetInstances(instances, ids), poses)
 
-        if (selection.mode === 'separate') {
-          // Separate mode is one archive, always: a single ticked part still
-          // arrives as a one-entry zip rather than a bare file.
+        if (selection.bundle === 'zip') {
+          // One archive, always: a single chosen part still arrives as a
+          // one-entry zip rather than a bare file.
           const files = await Promise.all(plan.map(async entry => {
             const bytes = await bytesFor(entry.partIds)
             if (!bytes) throw new EmptyAssemblyError()
@@ -87,7 +93,8 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
           const zip = await zipExportFiles(files)
           downloadBlob(new Blob([zip as BlobPart], { type: 'application/zip' }), swapExtension(fileName, 'zip'))
         } else {
-          // Everything and selected collapse into one file.
+          // All Parts and Selected Parts both collapse into one file here; the
+          // plan names the subset when the scope is selected.
           const bytes = await bytesFor(plan[0].partIds)
           if (!bytes) throw new EmptyAssemblyError()
           downloadBlob(new Blob([bytes as BlobPart], { type: exportMime(format) }), plan[0].name)
@@ -111,6 +118,7 @@ const AssemblyExport = forwardRef<AssemblyExportHandle, AssemblyExportProps>(
         showTessellation={false}
         formats={GEOMETRY_FORMATS}
         parts={exportParts.length > 0 ? exportParts : undefined}
+        selectedPartIds={selectedPartIds}
         onDownload={handleDownload}
         onCancel={() => setIsOpen(false)}
       />
