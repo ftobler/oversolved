@@ -1119,14 +1119,14 @@ fn a_traced_face_subtracts_the_bore_it_owns() {
 }
 
 #[test]
-fn a_face_that_does_not_surround_a_hole_region_keeps_it_out() {
-    // The frontend's peanut-with-hole sketch (the extrude add-hole regression):
-    // two crossing circles, their chord line and a hole circle centred on one
-    // lobe. The crescent face's loop walks along the hole's own arc, but the
-    // crescent only TOUCHES the hole's pieces, it does not surround them: the
-    // pieces belong to the lens faces on the other side. A loop-based coverage
-    // test that read the region's samples as covered wired the hole pieces into
-    // the crescent, and the extrude's add-fuse lost the hole.
+fn a_hole_circle_crossed_by_a_shell_keeps_its_pieces_as_material() {
+    // The frontend's peanut-with-hole sketch: two crossing circles, their chord
+    // line and a hole circle centred on one lobe, cut in two by the other
+    // circle. The hole is not a clean bore: the right circle splits it into
+    // pieces that belong to different faces, so it takes no nesting level. The
+    // peanut's four faces plus the hole's two pieces are the areas; the pieces
+    // used to be hole regions (the old rule dropped them and the extrude's
+    // add-fuse had to avoid wiring them into the crescent).
     let geom = vec![
         ("cL".into(), circle([-6.614378452301025, 7.5], 10.0)),
         ("cR".into(), circle([6.614378452301025, 7.5], 10.0)),
@@ -1137,12 +1137,16 @@ fn a_face_that_does_not_surround_a_hole_region_keeps_it_out() {
         ),
     ];
     let t = detect_topology(&geom);
-    assert_eq!(t.surfaces.len(), 4, "the four material faces of the peanut");
-    assert_eq!(t.hole_regions.len(), 2, "the hole circle is cut in two");
+    assert_eq!(
+        t.surfaces.len(),
+        6,
+        "the four peanut faces plus the hole's two pieces"
+    );
+    assert_eq!(t.hole_regions.len(), 0, "the crossed hole takes no level");
     for s in &t.surfaces {
         assert!(
             s.holes.is_empty(),
-            "no face surrounds the hole: {:?} carries {}",
+            "nothing is a hole here: {:?} carries {}",
             s.face_entity_ids,
             s.holes.len()
         );
@@ -1218,4 +1222,50 @@ fn quarter_arc_split_by_a_bezier_makes_two_faces() {
         .filter(|e| matches!(e.geom, EdgeGeom::Arc { .. }))
         .count();
     assert_eq!(arcs, 2, "the arc is cut at the bezier crossing");
+}
+
+#[test]
+fn a_hole_circle_crossed_by_another_circle_keeps_its_pieces_as_areas() {
+    // Bug report 20261020_0019_sketch_area: a r=15 hole circle concentric with
+    // the r=25 outer circle, and a second r=25 circle 30 away that crosses both.
+    // The hole is not a clean bore: the offset circle splits it in two, and
+    // each piece is its own bounded region. The even/odd rule used to read the
+    // pieces as an even-level hole and drop them, leaving only the three faces
+    // outside the r=15 disk.
+    let geom = vec![
+        ("outer".into(), circle([0.0, 0.0], 25.0)),
+        ("hole".into(), circle([0.0, 0.0], 15.0)),
+        ("offset".into(), circle([30.0, 0.0], 25.0)),
+    ];
+    let t = detect_topology(&geom);
+    assert_eq!(t.surfaces.len(), 5, "all five bounded regions are areas");
+    assert_eq!(t.hole_regions.len(), 0, "nothing is a clean bore here");
+    let hole_pieces = t
+        .surfaces
+        .iter()
+        .filter(|s| {
+            let mut ids = s.face_entity_ids.clone();
+            ids.sort();
+            ids == vec!["hole".to_string(), "offset".to_string()]
+        })
+        .count();
+    assert_eq!(hole_pieces, 2, "the two pieces of the hole disk");
+    // The areas partition the union of the outer and offset disks: the hole
+    // disk adds nothing (it lies inside the outer one).
+    let area: f64 = t
+        .surfaces
+        .iter()
+        .map(|s| crate::topology::oracle::loop_area_centroid(&s.boundary).0)
+        .sum();
+    let lens = 2.0 * 25.0f64.powi(2) * (30.0f64 / 50.0).acos() - 15.0 * (2500.0f64 - 900.0).sqrt();
+    let union = 2.0 * std::f64::consts::PI * 25.0f64.powi(2) - lens;
+    assert!(
+        (area - union).abs() < 1e-3,
+        "the five areas cover the disk union: {area} vs {union}"
+    );
+    let violations = crate::topology::oracle::check_input(&geom)
+        .iter()
+        .map(|v| v.render())
+        .collect::<Vec<_>>();
+    assert!(violations.is_empty(), "{violations:?}");
 }
