@@ -9,13 +9,14 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
-import { measureLocally, setSolveLocalsForTest } from '../solveLocally'
+import { measureLocally, persistentTableForTest, setSolveLocalsForTest, solveLocally } from '../solveLocally'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { DisposeScope } from '../occ/disposeScope'
-import { measureBodies } from '../occ/measure'
+import { measureBodies, type Bbox6 } from '../occ/measure'
 import { readOracleCase } from '@/oracle/corpus'
 import { partSpecFromText } from '@/utils/partExport'
+import type { BuildState } from '../types3d'
 import type { OccModule, OccShape } from '../occ/occTypes'
 
 const oc = await loadOcc()
@@ -164,6 +165,65 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
       expect(measure!.bbox![axis]).toBeCloseTo(expected.bbox[axis], 9)
     }
     expect(measure!.volume).toBeCloseTo(expected.volume, 6)
+  })
+
+  it('reads the tight AddOptimal bbox on a B-spline sweep, not the control net (oracle 37)', { timeout: 120_000 }, async () => {
+    const kernel = oc!
+    const { doc } = oracleDoc('37-sweep-helix-square')
+    const response = await solveLocally(doc)
+    expect(response).not.toBeNull()
+
+    const state = response!._build_state as BuildState
+    const last = state.feature_order[state.feature_order.length - 1]
+    const snapshot = last !== undefined ? state.checkpoints[last]?.body_store_snapshot : undefined
+    const table = persistentTableForTest()
+    expect(table).not.toBeNull()
+    const shapes: OccShape[] = []
+    for (const body of Object.values(snapshot ?? {})) {
+      if (body.shape != null) shapes.push(table!.get<OccShape>(body.shape))
+    }
+    expect(shapes).toHaveLength(1)
+
+    // The loose read is pinned for contrast: the oracle and `measureBodies`
+    // use AddOptimal, while Add boxes this B-spline surface's control net and
+    // overshoots the swept solid by more than six units.
+    const looseScope = new DisposeScope()
+    let loose: Bbox6
+    try {
+      const box = looseScope.track(new kernel.Bnd_Box_1())
+      for (const shape of shapes) kernel.BRepBndLib.Add(shape, box, false)
+      loose = [
+        box.GetXmin(), box.GetYmin(), box.GetZmin(),
+        box.GetXmax(), box.GetYmax(), box.GetZmax(),
+      ]
+    } finally {
+      looseScope.dispose()
+    }
+
+    const measureScope = new DisposeScope()
+    try {
+      const record = measureBodies(kernel, measureScope, shapes)
+      // Frozen from the real kernel: the tight box the swept surface occupies.
+      const tight: Bbox6 = [
+        -10.499988797020961, -10.499999483832946, -0.5000000999999998,
+        10.500000100000927, 10.499999483832985, 12.500000099999998,
+      ]
+      expect(record.bbox).not.toBeNull()
+      for (let axis = 0; axis < 6; axis++) {
+        expect(record.bbox![axis]).toBeCloseTo(tight[axis], 6)
+      }
+      // The control-net box is the one the corpus froze before the shared
+      // measure; pin it too so the gap is reproducible, not assumed.
+      expect(loose.map((value) => +value.toFixed(6))).toEqual(
+        [-16.896365, -15.363061, -0.5, 10.5, 15.363061, 12.5],
+      )
+      // Add is not a slightly larger box here; it is a different box, which is
+      // why an external tool's bbox cannot be compared against it.
+      const maxOvershoot = Math.max(...loose.map((value, axis) => Math.abs(value - tight[axis])))
+      expect(maxOvershoot).toBeGreaterThan(6)
+    } finally {
+      measureScope.dispose()
+    }
   })
 
   it('keeps the open-shell fallback finite instead of dividing by a zero volume', () => {

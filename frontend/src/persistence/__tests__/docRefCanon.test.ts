@@ -16,10 +16,11 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { setSketchSolver, resetSketchSolver } from '@/kernel/features/sketch'
 import { setSolveLocalsForTest } from '@/kernel/solveLocally'
 import { DEFAULT_MEASURE_TOLERANCE, valueWithinTolerance, vectorWithinTolerance } from '@/kernel/occ/measureTolerance'
+import type { MeasureRecord } from '@/kernel/occ/measure'
 import { partSpecFromText } from '@/utils/partExport'
 import { loadPartDoc } from '@/persistence/docSchema'
 import { unportedKinds } from '@/kernel/solverRegistry'
-import { listOracleCases, type OracleMeasures } from '@/oracle/corpus'
+import { listOracleCases } from '@/oracle/corpus'
 import { buildAndMeasure, type BuildOutcome } from '@/oracle/run'
 import type { OccModule } from '@/kernel/occ/occTypes'
 
@@ -35,22 +36,28 @@ interface BaselineEntry {
 
 const baselineEntries = (baseline as unknown as BaselineEntry[]).filter(e => e.ok && e.spec)
 
-function diffMeasures(a: OracleMeasures, b: OracleMeasures, label: string): string[] {
+/** Two optional vectors agree, including both being absent (an empty body set). */
+function sameVector(a: readonly number[] | null, b: readonly number[] | null): boolean {
+  if (a === null || b === null) return a === b
+  return vectorWithinTolerance(a, b, DEFAULT_MEASURE_TOLERANCE)
+}
+
+function diffMeasures(a: MeasureRecord, b: MeasureRecord, label: string): string[] {
   const issues: string[] = []
   if (a.bodies !== b.bodies) issues.push(`${label} bodies: ${a.bodies} vs ${b.bodies}`)
-  // An empty body set has no finite centroid or bbox (they stay at their
-  // Infinity sentinels); when both sides are empty there is nothing to compare.
+  // An empty body set has no centroid or bbox (both null); when both sides are
+  // empty there is nothing further to compare.
   if (a.bodies === 0 && b.bodies === 0) return issues
   if (!valueWithinTolerance(a.volume, b.volume)) issues.push(`${label} volume: ${a.volume} vs ${b.volume}`)
   if (!valueWithinTolerance(a.area, b.area)) issues.push(`${label} area: ${a.area} vs ${b.area}`)
-  if (!vectorWithinTolerance(a.centroid, b.centroid, DEFAULT_MEASURE_TOLERANCE)) {
+  if (!sameVector(a.centroid, b.centroid)) {
     issues.push(`${label} centroid: [${a.centroid}] vs [${b.centroid}]`)
   }
-  if (!vectorWithinTolerance(a.bbox, b.bbox, DEFAULT_MEASURE_TOLERANCE)) {
+  if (!sameVector(a.bbox, b.bbox)) {
     issues.push(`${label} bbox: [${a.bbox}] vs [${b.bbox}]`)
   }
-  if ((a.faces ?? 0) !== (b.faces ?? 0)) issues.push(`${label} faces: ${a.faces} vs ${b.faces}`)
-  if ((a.edges ?? 0) !== (b.edges ?? 0)) issues.push(`${label} edges: ${a.edges} vs ${b.edges}`)
+  if (a.faces !== b.faces) issues.push(`${label} faces: ${a.faces} vs ${b.faces}`)
+  if (a.edges !== b.edges) issues.push(`${label} edges: ${a.edges} vs ${b.edges}`)
   return issues
 }
 
