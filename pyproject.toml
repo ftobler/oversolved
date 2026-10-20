@@ -9,7 +9,8 @@ include = ["oversolved*"]
 [project]
 name = "oversolved"
 version = "0.1.0"
-requires-python = ">=3.12"
+# The version developers and CI run, not a support promise.
+requires-python = ">=3.13"
 # The app is browser-only (IndexedDB + WASM); no Python runs at runtime. What
 # is left of the package is build-time icon generation, whose only dependency
 # (pycairo) belongs to the dev extra alongside the lint/type/test gates.

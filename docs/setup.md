@@ -12,7 +12,7 @@ own lint/test gates. It is never deployed.
 
 - Node.js >= 20.19
 - npm
-- Python >= 3.12 (build tooling only)
+- Python 3.13 (build tooling only; CI tests this version only)
 - Rust + `wasm-pack` (only to rebuild the solver crates)
 
 ## System Dependencies
