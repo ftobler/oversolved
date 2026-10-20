@@ -20,6 +20,13 @@ export interface PickChipProps {
   // Values whose edge resolved but the modifier did not apply (kernel
   // `failed_edges`, e.g. a radius past what the geometry admits). Marked red.
   failedValues?: ReadonlySet<string>
+  // Values that are still valid picks but not part of what is on screen now,
+  // such as a bug-report pick made at another rollback position. Dimmed, not
+  // struck through: the pick is not stale, just not in view.
+  inactiveValues?: ReadonlySet<string>
+  // Per-value hover text for consumers whose values need more than the shared
+  // fault wording (the bug report says which bar position a pick came from).
+  valueTitles?: Record<string, string>
 }
 
 export function PickChip({
@@ -33,6 +40,8 @@ export function PickChip({
   partLabels,
   unresolvedValues,
   failedValues,
+  inactiveValues,
+  valueTitles,
 }: PickChipProps) {
   const syncChipSelection = useSketchEditorStore(s => s.syncChipSelection)
   const clearChipSelection = useSketchEditorStore(s => s.clearChipSelection)
@@ -131,11 +140,12 @@ export function PickChip({
           const dropClass = isDropTarget && dropSide ? `drop-target-${dropSide}` : ''
           const unresolved = unresolvedValues?.has(v) ?? false
           const failed = failedValues?.has(v) ?? false
+          const inactive = inactiveValues?.has(v) ?? false
           const faultyClass = unresolved ? ' unresolved' : failed ? ' failed' : ''
           return (
             <div
               key={`${v}-${i}`}
-              className={`feature-pick-chip-item ${isDragging ? 'dragging' : ''} ${dropClass}${faultyClass}`}
+              className={`feature-pick-chip-item ${isDragging ? 'dragging' : ''} ${dropClass}${faultyClass}${inactive && !unresolved && !failed ? ' inactive' : ''}`}
               draggable={!!onReorder}
               onDragStart={(e) => handleDragStart(e, i)}
               onDragOver={(e) => handleDragOver(e, i)}
@@ -143,7 +153,8 @@ export function PickChip({
               onDragEnd={handleDragEnd}
               // Kind-neutral: the same chip serves edge and face fields.
               title={unresolved ? 'Could not be resolved; re-pick it'
-                : failed ? 'Could not be applied in the last solve' : undefined}
+                : failed ? 'Could not be applied in the last solve'
+                  : valueTitles?.[v]}
             >
               {onReorder && (
                 <span className="feature-pick-chip-item-drag" title="Drag to reorder">

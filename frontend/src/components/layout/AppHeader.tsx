@@ -3,10 +3,12 @@ import { useNavigate, useLocation, Link } from 'react-router-dom'
 import type { MouseEvent, ReactNode } from 'react'
 import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAboutDialogStore } from '@/stores/aboutDialogStore'
+import { useBugReportStore } from '@/stores/bugReportStore'
+import { editorState } from '@/stores/editorState'
 import { isEditableTarget } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import MessageDialog from '@/components/dialogs/MessageDialog'
-import BugReportDialog from '@/components/dialogs/BugReportDialog'
+import BugReportPanel from '@/components/bugReport/BugReportPanel'
 import '@/components/layout/AppHeader.css'
 
 // The copyright note rides on the logo's tooltip rather than a footer bar: it
@@ -34,15 +36,24 @@ interface AppHeaderProps {
   // rules that make room for them key on this, so a header without the group
   // keeps its wider breadcrumb caps.
   hasFileActions?: boolean
+  // The part editor mounts the same panel inside its right overlay column, so
+  // its toolbar turns the header mount off rather than rendering a second card.
+  mountBugReport?: boolean
 }
 
-export default function AppHeader({ title, breadcrumb, children, rightContent, hasFileActions = false }: AppHeaderProps) {
+export default function AppHeader({
+  title,
+  breadcrumb,
+  children,
+  rightContent,
+  hasFileActions = false,
+  mountBugReport = true,
+}: AppHeaderProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
   const saveHandler = useUnsavedChangesStore(s => s.saveHandler)
-  const [bugReportOpen, setBugReportOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const handleUnsavedConfirm = () => {
@@ -166,7 +177,7 @@ export default function AppHeader({ title, breadcrumb, children, rightContent, h
           className="toolbar-btn"
           aria-label="Report a bug"
           title="Report a bug"
-          onClick={() => setBugReportOpen(true)}
+          onClick={() => useBugReportStore.getState().openReport([...editorState.getState().normalSelection])}
         >
           <span className="material-icons-outlined">bug_report</span>
         </button>
@@ -203,7 +214,7 @@ export default function AppHeader({ title, breadcrumb, children, rightContent, h
       cancelLabel="Stay"
     />
 
-    <BugReportDialog isOpen={bugReportOpen} onClose={() => setBugReportOpen(false)} />
+    {mountBugReport && <BugReportPanel placement="header" canPick={false} />}
     </>
   )
 }

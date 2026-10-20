@@ -78,6 +78,21 @@
   width: 300px;
 }
 
+/* The open feature editor and the bug report can both live in the right
+   column; they stack with the same gap the left column uses and share the
+   available height, each scrolling internally. */
+.right-overlay-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.right-overlay-stack > * {
+  min-height: 0;
+}
+
 /* The two left cards, Features over Parts, share --left-cards-height of the
    column between them (the gap comes out of that share, it is a flex gap
    inside the panel): each reserves its height up front, so a short list
@@ -1094,6 +1109,13 @@
      instead of pushing the model off screen. */
   .floating-right {
     width: 240px;
+  }
+
+  /* On a phone the right column is the one disclosure slot both the feature
+     editor and the report share. The stack scrolls as a unit, so opening the
+     second card cannot push it off the bottom of the slot. */
+  .right-overlay-stack {
+    overflow-y: auto;
   }
 
   .panels-toggle {

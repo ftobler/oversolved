@@ -117,6 +117,26 @@ describe('PickChip', () => {
     expect(items[1].getAttribute('title')).toContain('Could not be applied')
   })
 
+  // A bug-report pick made at another rollback position is a valid pick that is
+  // simply not in view: dimmed and explained, never struck through as stale.
+  it('dims an inactive value and shows its own tooltip', () => {
+    render(
+      <PickChip
+        values={['@edge_ok', '@edge_elsewhere']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+        inactiveValues={new Set(['@edge_elsewhere'])}
+        valueTitles={{ '@edge_elsewhere': 'Picked after extrude1' }}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    expect(items[0].classList.contains('inactive')).toBe(false)
+    expect(items[1].classList.contains('inactive')).toBe(true)
+    expect(items[1].classList.contains('unresolved')).toBe(false)
+    expect(items[1].getAttribute('title')).toBe('Picked after extrude1')
+  })
+
   it('applies picking class when isPicking is true', () => {
     render(
       <PickChip

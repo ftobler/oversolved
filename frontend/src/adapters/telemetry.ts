@@ -10,6 +10,8 @@
 // the user pastes it into an issue tracker or a chat. The bulky attachments stay
 // fenced JSON inside it so they remain machine-readable for whoever triages.
 
+import { linkReferences, selectionSetAnchor } from '@/utils/core/reportReferences'
+
 export type BugReport = Record<string, unknown>
 
 export interface BugReportSink {
@@ -23,26 +25,99 @@ function jsonBlock(value: unknown): string {
 // Keys the formatter gives a shaped rendering to. Anything else the debug panel
 // starts attaching later still reaches the file as a generic JSON section rather
 // than being silently dropped.
-const SHAPED_KEYS = ['title', 'description', 'doc', 'selection', 'history']
+const SHAPED_KEYS = ['title', 'description', 'doc', 'selection', 'selectionSets', 'rollback', 'history']
+
+interface RenderedPick {
+  query?: unknown
+  label?: unknown
+  rollback?: unknown
+  barFeatureId?: unknown
+}
+
+function pickLabel(pick: RenderedPick): string {
+  if (typeof pick.label === 'string' && pick.label.trim()) return pick.label
+  if (typeof pick.query === 'string' && pick.query.trim()) return pick.query
+  return 'Pick'
+}
+
+// The list line says where the pick was made, which is the half a triager
+// cannot recover from the document: the bar may sit somewhere else today.
+function pickOrigin(pick: RenderedPick): string {
+  if (typeof pick.barFeatureId === 'string' && pick.barFeatureId) {
+    return `picked after ${pick.barFeatureId}`
+  }
+  if (typeof pick.rollback === 'number') {
+    return `picked with the bar at ${pick.rollback}`
+  }
+  return 'picked with the bar at the end'
+}
+
+function selectionSetName(set: unknown, index: number): string {
+  const name = (set as { name?: unknown } | null)?.name
+  return typeof name === 'string' && name.trim() ? name : `set${index + 1}`
+}
+
+function renderSelectionSets(sets: unknown[], description: string | null): string[] {
+  const names = sets.map(selectionSetName)
+  const sections: string[] = []
+  // The description goes first and links into the sections below it; each
+  // section carries an explicit anchor because a heading's auto anchor also
+  // includes the pick count.
+  if (description && description.trim()) {
+    sections.push(linkReferences(description.trim(), names))
+  }
+  sets.forEach((raw, i) => {
+    const name = names[i]
+    const picks = Array.isArray((raw as { picks?: unknown })?.picks)
+      ? (raw as { picks: RenderedPick[] }).picks
+      : []
+    sections.push(`<a id="${selectionSetAnchor(name)}"></a>`)
+    sections.push(`## Selection set #${name} (${picks.length} picks)`)
+    for (const pick of picks) {
+      sections.push(`- ${pickLabel(pick)} - ${pickOrigin(pick)}`)
+    }
+    sections.push(jsonBlock(raw))
+  })
+  return sections
+}
+
+function renderRollback(rollback: unknown): string {
+  if (typeof rollback === 'number') return `Bar position: ${rollback}`
+  return 'Bar at the end'
+}
 
 export function formatBugReportMarkdown(report: BugReport): string {
   const title = typeof report.title === 'string' && report.title.trim()
     ? report.title.trim()
     : 'Bug report'
   const sections: string[] = [`# ${title}`]
+  const description = typeof report.description === 'string' ? report.description : null
+  const selectionSets = Array.isArray(report.selectionSets) ? report.selectionSets : null
 
-  if (typeof report.description === 'string' && report.description.trim()) {
-    sections.push(report.description.trim())
+  if (selectionSets) {
+    sections.push(...renderSelectionSets(selectionSets, description))
+  } else if (description && description.trim()) {
+    sections.push(description.trim())
   }
 
   if (report.doc !== undefined) {
     sections.push('## Document', jsonBlock(report.doc))
   }
 
+  // Old reports and other callers still attach a flat selection; keep its
+  // rendering so a forwarded file from an older build reads as it did.
   if (report.selection !== undefined) {
     const items = Array.isArray(report.selection) ? report.selection : null
     sections.push(items ? `## Selection (${items.length} items)` : '## Selection')
     sections.push(jsonBlock(report.selection))
+  }
+
+  if (report.rollback !== undefined) {
+    sections.push('## Rollback', renderRollback(report.rollback))
+  }
+
+  if (report.selectionSets !== undefined && !selectionSets) {
+    sections.push('## Selection sets', jsonBlock(report.selectionSets))
   }
 
   if (report.history !== undefined) {

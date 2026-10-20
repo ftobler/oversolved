@@ -237,6 +237,14 @@ describe('phone-width chrome', () => {
     expect(pinned('pages/Part.css', 'width', editCard, TOP_LEVEL)).toBe('300px')
   })
 
+  it('lets both right cards share the phone disclosure slot by scrolling the stack', () => {
+    const stack = chain('doc-container', 'doc-editor', 'viewport-stage', 'floating-right', 'right-overlay-stack')
+    expect(pinned('pages/Part.css', 'overflow-y', stack, PORTRAIT)).toBe('auto')
+    // Above the breakpoint the cards sit in the full-height column; there is
+    // no disclosure slot to scroll, so the rule must stay phone-only.
+    expect(effective('pages/Part.css', 'overflow-y', stack, TOP_LEVEL)).toBeNull()
+  })
+
   it('turns the editor toolbar into a scroll strip on a phone', () => {
     expect(pinned('pages/Part.css', 'overflow-x', toolbar, PORTRAIT)).toBe('auto')
     expect(pinned('pages/Part.css', 'overflow-x', toolbar, TOP_LEVEL)).toBe('hidden')

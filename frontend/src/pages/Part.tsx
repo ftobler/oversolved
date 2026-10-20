@@ -18,6 +18,8 @@ import RightClickMenu from '@/components/dialogs/RightClickMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
+import BugReportPanel from '@/components/bugReport/BugReportPanel'
+import { planeSelectionFeatureId as derivePlaneSelectionFeatureId } from '@/pages/planePickSelection'
 import MeasurementDisplay from '@/components/layout/MeasurementDisplay'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 
@@ -274,11 +276,7 @@ export default function Part() {
   const autosaveError = useAutosaveStore(s => s.error)
 
   const features = useMemo(() => extractFeatures(doc), [doc])
-  // The sketch-on-face FSM only cares about a sketch's plane field being picked.
-  const planeSelectionFeatureId = activePickField?.field === 'plane'
-    && features.find(f => f.id === activePickField.featureId)?.kind === 'sketch'
-    ? activePickField.featureId
-    : null
+  const planeSelectionFeatureId = derivePlaneSelectionFeatureId(activePickField, features)
   const partStyle = useMemo(() => doc?.part_style ?? {}, [doc])
   const { partLabels, partColors } = useMemo(() => {
     const labels: Record<string, string> = {}
@@ -1329,7 +1327,12 @@ export default function Part() {
             <PartDebugPanel debugOpen={debugOpen} />
           }
           leftOverlay={<PartDocumentPanel />}
-          rightOverlay={<FeatureEditPanel />}
+          rightOverlay={(
+            <div className="right-overlay-stack">
+              <FeatureEditPanel />
+              <BugReportPanel canPick />
+            </div>
+          )}
         />
       </PartEditorProvider>
 

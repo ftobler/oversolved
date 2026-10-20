@@ -4,11 +4,12 @@
 // floating panels (phase 1) the part navigator and the open feature editor are
 // overlay cards inside the viewport stage as well, not sidebar columns.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, cleanup, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { render, cleanup, screen, waitFor, fireEvent, within, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import Part from '@/pages/Part'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { useBugReportStore } from '@/stores/bugReportStore'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 vi.mock('../../components/Viewport', async () =>
@@ -59,7 +60,10 @@ describe('Part editor chrome', () => {
     vi.clearAllMocks()
     partDocStoreMock()
   })
-  afterEach(() => cleanup())
+  afterEach(() => {
+    act(() => { useBugReportStore.getState().discard() })
+    cleanup()
+  })
 
   it('renders no footer bar at all', async () => {
     await renderPageLoaded()
@@ -119,5 +123,16 @@ describe('Part editor chrome', () => {
     const row = within(document.querySelector('.feature-item.editing') as HTMLElement)
     fireEvent.click(row.getByTitle('Cancel'))
     await waitFor(() => expect(document.querySelector('.feature-edit-panel')).toBeNull())
+  })
+
+  it('stacks the bug report beside the feature editor in the right overlay', async () => {
+    await renderPageLoaded()
+    act(() => { useBugReportStore.getState().openReport([]) })
+
+    const panel = document.querySelector('.bug-report-panel')!
+    expect(panel).not.toBeNull()
+    const stage = document.querySelector('.viewport-stage')!
+    expect(stage.contains(panel)).toBe(true)
+    expect(document.querySelector('.right-overlay-stack')!.contains(panel)).toBe(true)
   })
 })

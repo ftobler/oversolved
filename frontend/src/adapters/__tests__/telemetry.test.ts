@@ -137,5 +137,32 @@ describe('telemetry adapter', () => {
       expect(md).toContain('## viewport')
       expect(md).toContain('"zoom": 2')
     })
+
+    it('renders one section per selection set and links the description tokens to them', () => {
+      const md = formatBugReportMarkdown({
+        title: 'boom',
+        description: 'see #before and #missing',
+        rollback: 5,
+        selectionSets: [{
+          name: 'before',
+          picks: [
+            { query: 'q1', label: 'Face of extrude1', rollback: 5, barFeatureId: 'fillet1', editingFeatureId: null },
+            { query: 'q2', label: 'Edge of extrude1', rollback: 3, barFeatureId: null, editingFeatureId: null },
+          ],
+        }],
+      })
+      expect(md).toContain('see [#before](#selection-set-before) and #missing')
+      expect(md).toContain('<a id="selection-set-before"></a>')
+      expect(md).toContain('## Selection set #before (2 picks)')
+      expect(md).toContain('- Face of extrude1 - picked after fillet1')
+      expect(md).toContain('- Edge of extrude1 - picked with the bar at 3')
+      expect(md).toContain('## Rollback\n\nBar position: 5')
+      expect(md).not.toContain('[#missing]')
+    })
+
+    it('keeps a shapeless selectionSets attachment rather than dropping it', () => {
+      const md = formatBugReportMarkdown({ title: 'boom', selectionSets: 'raw' })
+      expect(md).toContain('## Selection sets\n\n```json\n"raw"\n```')
+    })
   })
 })

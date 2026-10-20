@@ -525,7 +525,10 @@ export function useSolver(
   }
 }
 
-function assertEditingInvariant(
+// Exported for the bug-report pick suite, which pins that a report pick leaves
+// an open feature edit's rollback/pickBoundary contract untouched even though
+// the report writes neither field.
+export function assertEditingInvariant(
   editingFeatureId: string | null,
   allFeatures: PartDoc['features'],
   rollback: number,

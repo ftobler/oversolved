@@ -1,0 +1,352 @@
+/* The bug report card uses the same frost tokens as the other floating part
+   panels (Glass.css). It is not a modal: no backdrop, no pointer capture, so
+   the viewport underneath keeps orbiting and picking while it is open. */
+
+.bug-report-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  text-align: left;
+}
+
+/* The header mount is the only panel on pages without a right-overlay column,
+   so it places itself in the same corner the part editor uses. */
+.bug-report-panel--header {
+  position: fixed;
+  top: 60px;
+  right: var(--floating-inset, 12px);
+  z-index: 40;
+  width: 340px;
+  max-height: calc(100dvh - 80px);
+}
+
+.bug-report-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+
+.bug-report-icon {
+  font-size: 18px;
+  color: #e060b0;
+}
+
+.bug-report-panel-title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: #e060b0;
+}
+
+.bug-report-submit,
+.bug-report-discard,
+.bug-report-add-set,
+.bug-report-set-action {
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.bug-report-submit:hover,
+.bug-report-discard:hover,
+.bug-report-add-set:hover,
+.bug-report-set-action:hover {
+  background: var(--glass-hover-bg);
+  border-color: #b83b88;
+}
+
+.bug-report-submit:disabled,
+.bug-report-discard:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bug-report-submit {
+  border-color: #4fc3f7;
+  color: #9adcff;
+}
+
+.bug-report-close {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.bug-report-close:hover {
+  color: #eee;
+}
+
+.bug-report-panel-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bug-report-title-input,
+.bug-report-textarea,
+.bug-report-set-name {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--glass-field-bg);
+  color: #ddd;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.bug-report-title-input:focus,
+.bug-report-textarea:focus,
+.bug-report-set-name:focus {
+  outline: none;
+  border-color: #4fc3f7;
+  box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
+}
+
+.bug-report-title-input:disabled,
+.bug-report-textarea:disabled {
+  opacity: 0.5;
+}
+
+.bug-report-textarea {
+  height: 130px;
+  resize: vertical;
+}
+
+.bug-report-set-name--error {
+  border-color: #ef5350;
+}
+
+.bug-report-warning {
+  color: #ecad2b;
+  font-size: 12px;
+}
+
+.bug-report-error {
+  color: #ef5350;
+  font-size: 12px;
+}
+
+.bug-report-sets-title,
+.bug-report-attachments-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bug-report-sets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bug-report-set {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  padding: 6px;
+}
+
+.bug-report-set-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bug-report-set-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bug-report-set-action {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  line-height: 1;
+}
+
+.bug-report-pick-note {
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+}
+
+.bug-report-hint {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.4;
+}
+
+.bug-report-add-set {
+  align-self: flex-start;
+}
+
+.bug-report-attachments {
+  border-top: 1px solid var(--glass-border);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bug-report-attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bug-report-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.bug-report-checkbox-label input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.bug-report-checkbox-label input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.bug-report-checkbox-label .bug-report-history-input {
+  width: 52px;
+  padding: 2px 4px;
+  margin: 0 4px;
+  font-size: 12px;
+  background: var(--glass-field-bg);
+  color: #aaa;
+  border: 1px solid #333;
+  border-radius: 2px;
+}
+
+/* The chip's base styles live with the part editor (Part.css). The header
+   mount can appear on pages that never load that sheet, so the report scopes
+   its own copy of the shell here. */
+.bug-report-panel .feature-pick-chip {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+  max-height: 96px;
+  border: 1px solid #3a2a3a;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  gap: 3px;
+  font-size: 12px;
+  color: #bbb;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-wrap: wrap;
+  box-sizing: border-box;
+}
+
+.bug-report-panel .feature-pick-chip:hover {
+  border-color: #b83b88;
+}
+
+.bug-report-panel .feature-pick-chip.picking {
+  border-color: #ff9800;
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.bug-report-panel .feature-pick-chip.empty {
+  color: #555;
+  font-style: italic;
+  min-height: 28px;
+  height: 28px;
+  padding: 0 0 0 4px;
+  overflow-y: hidden;
+}
+
+.bug-report-panel .feature-pick-chip-empty-text {
+  font-size: 12px;
+  color: #555;
+  font-style: italic;
+  line-height: 28px;
+}
+
+.bug-report-panel .feature-pick-chip-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #b83b88;
+  border: none;
+  border-radius: 2px;
+  padding: 10px 4px;
+  color: #fff;
+  flex-shrink: 0;
+  height: 16px;
+}
+
+.bug-report-panel .feature-pick-chip-item-text {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #fff;
+  padding-right: 2px;
+}
+
+/* A pick from another rollback position is not stale, just not on screen:
+   dim it instead of striking it through. */
+.bug-report-panel .feature-pick-chip-item.inactive {
+  opacity: 0.55;
+}
+
+.bug-report-panel .feature-pick-chip-item-remove {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
+  font-size: 16px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 768px), (max-height: 480px) {
+  .bug-report-panel--header {
+    width: min(340px, calc(100vw - 24px));
+  }
+}

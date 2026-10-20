@@ -29,10 +29,11 @@ import featureAddPlaneIcon from '@/assets/icons/feature-add-plane.svg'
 
 interface PartEditorPanelProps {
   // The part editor's floating overlays: the features/parts navigator on the
-  // left, the open feature editor on the right (FeatureEditPanel.tsx). Both
-  // render inside the viewport stage; the stage itself stays click-through
-  // between the panels, so orbit and pick work through the gaps. The assembly
-  // editor does not use these yet (phase 2).
+  // left, the open feature editor and the bug report on the right
+  // (FeatureEditPanel.tsx, bugReport/BugReportPanel.tsx). Both render inside
+  // the viewport stage; the stage itself stays click-through between the
+  // panels, so orbit and pick work through the gaps. The assembly editor does
+  // not use these yet (phase 2).
   leftOverlay?: ReactNode
   rightOverlay?: ReactNode
   rightPanel?: ReactNode
