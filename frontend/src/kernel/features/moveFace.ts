@@ -34,7 +34,7 @@ import {
   MoveFaceRefusal,
   type MoveFaceCells,
 } from '../occ/moveFace'
-import type { FaceOrigin } from '../occ/booleans'
+import { BooleanSoundnessError, type FaceOrigin } from '../occ/booleans'
 import { transferBooleanNames } from './booleanLineage'
 import { mintFaceUuid, moveFaceExtendPath, moveFaceSetExtendPath } from '../constructionName'
 import { linearHandle, type FeatureHandle } from './featureHandles'
@@ -205,7 +205,10 @@ export function solveMoveFace(
           diff = res.diff
           bodyApplied++
         } catch (e) {
-          if (e instanceof MoveFaceRefusal) {
+          // An unsound boolean on the intermediate shape is the same signal as
+          // a refusal: the sequential order cannot be trusted, so retry the
+          // group as one set on the original body.
+          if (e instanceof MoveFaceRefusal || e instanceof BooleanSoundnessError) {
             refusedHere = true
             groupFailed.push(q)
             groupRefusals.push(e.message)
