@@ -417,6 +417,56 @@ describe('useSolver', () => {
       expect(payload.features.map((f: { id: string }) => f.id)).toEqual(['f1', 'f2'])
     })
 
+    // A load/restore solve runs before the page can mirror the loaded bar into
+    // the editor store. The doc's parked rollback is authoritative until then;
+    // reading only the store would rebuild the rolled-back tail (and hang on a
+    // move_face the user had rolled back past).
+    it('falls back to the doc rollback when the store has not mirrored it yet', async () => {
+      const { result } = setupHook()
+      const doc = makeDoc({
+        rollback: 1,
+        features: [
+          { id: 'feat1', kind: 'sketch' },
+          { id: 'feat2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+        ],
+      })
+      await act(async () => { await result.current.reSolve(doc) })
+      const payload = mockSolveLocally.mock.calls[0][0]
+      expect(payload.features.map((f: { id: string }) => f.id)).toEqual(['feat1'])
+      expect(payload.rollback_position).toBe(1)
+      expect(payload.is_preview).toBe(true)
+    })
+
+    it('clamps a doc rollback past the end before falling back to it', async () => {
+      const { result } = setupHook()
+      const doc = makeDoc({
+        rollback: 99,
+        features: [
+          { id: 'feat1', kind: 'sketch' },
+          { id: 'feat2', kind: 'sketch' },
+        ],
+      })
+      await act(async () => { await result.current.reSolve(doc) })
+      const payload = mockSolveLocally.mock.calls[0][0]
+      expect(payload.features.map((f: { id: string }) => f.id)).toEqual(['feat1', 'feat2'])
+      expect(payload.rollback_position).toBe(2)
+    })
+
+    it('a null store with no doc rollback still means the end of the stack', async () => {
+      const { result } = setupHook()
+      const doc = makeDoc({
+        features: [
+          { id: 'feat1', kind: 'sketch' },
+          { id: 'feat2', kind: 'sketch' },
+        ],
+      })
+      await act(async () => { await result.current.reSolve(doc) })
+      const payload = mockSolveLocally.mock.calls[0][0]
+      expect(payload.features).toHaveLength(2)
+      expect(payload.rollback_position).toBe(2)
+      expect(payload.is_preview).toBe(false)
+    })
+
     it('handles pickBoundary for preview solves', async () => {
       const { result } = setupHook()
       useEditorState.getState().setPickBoundary(5)

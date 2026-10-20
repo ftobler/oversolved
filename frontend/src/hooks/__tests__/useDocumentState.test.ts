@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS, useDocumentState } from '@/hooks/useDocumentState'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { editorState } from '@/stores/editorState'
 import {
   requestRecoveryRestore,
   resetRecoveryRestore,
@@ -253,6 +254,55 @@ describe('useDocumentState saveDoc vs concurrent edits', () => {
     expect(h.bodies).toHaveLength(2)
     expect(h.bodies[1]).toContain('V2')
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
+  })
+})
+
+// The load seam is the last point before the first solve: the editor store's
+// rollback must already describe the document being solved, or a null fresh
+// session means "bar at the end" and the load rebuilds rolled-back features.
+describe('useDocumentState mirrors the parked rollback before solving', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    editorState.getState().resetEditorState()
+    resetRecoveryRestore()
+  })
+
+  it('syncs a loaded document bar before the first solve', async () => {
+    h.loadMock.mockResolvedValue({
+      content: `version: 1
+kind: part
+rollback: 1
+features:
+  - id: sk1
+    kind: sketch
+  - id: sk2
+    kind: sketch
+`,
+      name: 'Parked',
+    })
+    const seenAtSolve: Array<number | null> = []
+    const reSolveRef = { current: vi.fn(() => {
+      seenAtSolve.push(editorState.getState().rollbackPosition)
+    }) }
+    renderHook(() => useDocumentState('P', reSolveRef, { solveOnLoad: true }))
+    await tick()
+
+    expect(seenAtSolve).toEqual([1])
+  })
+
+  it('syncs a recovery snapshot bar before the first solve', async () => {
+    h.loadMock.mockResolvedValue({ content: 'version: 1\nkind: part\nfeatures: []\n', name: 'Stored' })
+    const restored = makeDoc(makeSketch('a'), makeSketch('b'))
+    restored.rollback = 1
+    requestRecoveryRestore({ docId: 'P', doc: restored })
+    const seenAtSolve: Array<number | null> = []
+    const reSolveRef = { current: vi.fn(() => {
+      seenAtSolve.push(editorState.getState().rollbackPosition)
+    }) }
+    renderHook(() => useDocumentState('P', reSolveRef, { solveOnLoad: true }))
+    await tick()
+
+    expect(seenAtSolve).toEqual([1])
   })
 })
 

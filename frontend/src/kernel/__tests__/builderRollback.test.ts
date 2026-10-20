@@ -56,6 +56,40 @@ describe('rollback transitions', () => {
     expect(rRollback.result.ex1).toEqual(rFull.result.ex1)
   })
 
+  // Opening a document parked at 6 over a worker that still holds a full
+  // 7-feature generation must reuse the clean prefix and drop the rolled-back
+  // checkpoint, never rebuild the tail from the old generation.
+  it('a rolled-back feature is not rebuilt from a previous full generation', () => {
+    const solved: string[] = []
+    const released: string[] = []
+    const deps = makeDeps({
+      trySolveFeature: feature => {
+        solved.push(String(feature.id))
+        return { status: 'ok', solved: feature.id }
+      },
+      releaseCheckpoint: id => { released.push(id) },
+    })
+    const features = Array.from({ length: 7 }, (_, i) => ({ id: `f${i + 1}`, kind: 'sketch' }))
+    const full = build({ features }, {}, deps)
+    expect(solved).toEqual(['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7'])
+
+    solved.length = 0
+    // The browser's worker payload is already clamped to the bar, so the
+    // reopened build sees six features and a matching rollback position.
+    const reopened = build(
+      { features: features.slice(0, 6) },
+      { prevState: full._build_state, rollbackPosition: 6 },
+      deps,
+    )
+
+    expect(solved).toEqual([])
+    expect('f7' in reopened.result).toBe(false)
+    expect(reopened._build_state.feature_order).toEqual(['f1', 'f2', 'f3', 'f4', 'f5', 'f6'])
+    // The outgoing generation's rolled-back checkpoint is released, so the
+    // cache no longer owns a shape for a feature outside the bar.
+    expect(released).toEqual(['f7'])
+  })
+
   it('increasing rollback solves newly included features', () => {
     // Increasing rollback from 2 to 3 solves the newly included feature.
     const deps = makeTrackerDeps()
