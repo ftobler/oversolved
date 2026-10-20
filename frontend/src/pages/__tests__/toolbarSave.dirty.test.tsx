@@ -13,10 +13,13 @@ import { assemblyRegistry, partRegistry, storeBackedAssemblyContext } from './co
 
 function renderToolbar(Toolbar: typeof PartToolbar, handleSave: () => Promise<boolean>) {
   const registry = Toolbar === PartToolbar ? partRegistry() : assemblyRegistry(storeBackedAssemblyContext())
+  const common = { docName: 'Doc', onRename: vi.fn(), handleSave, handleClone: vi.fn() }
   return render(
     <CommandRegistryProvider value={registry}>
       <MemoryRouter initialEntries={['/workspaces/w/doc']}>
-        <Toolbar docName="Doc" onRename={vi.fn()} handleSave={handleSave} handleClone={vi.fn()} />
+        {Toolbar === PartToolbar
+          ? <PartToolbar {...common} onImport={vi.fn()} onExport={vi.fn()} />
+          : <AssemblyToolbar {...common} onExport={vi.fn()} />}
       </MemoryRouter>
     </CommandRegistryProvider>,
   )

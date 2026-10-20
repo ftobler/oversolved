@@ -30,9 +30,13 @@ interface AppHeaderProps {
   breadcrumb?: ReactNode
   children?: ReactNode
   rightContent?: ReactNode
+  // The editors' document group carries file actions after Clone; the phone
+  // rules that make room for them key on this, so a header without the group
+  // keeps its wider breadcrumb caps.
+  hasFileActions?: boolean
 }
 
-export default function AppHeader({ title, breadcrumb, children, rightContent }: AppHeaderProps) {
+export default function AppHeader({ title, breadcrumb, children, rightContent, hasFileActions = false }: AppHeaderProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const pendingCallback = useUnsavedChangesStore(s => s.pendingCallback)
@@ -120,7 +124,7 @@ export default function AppHeader({ title, breadcrumb, children, rightContent }:
 
   return (
     <>
-    <header className="app-header">
+    <header className={`app-header${hasFileActions ? ' has-file-actions' : ''}`}>
       <div className="app-header-left">
         <Link
           to="/workspaces"

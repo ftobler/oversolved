@@ -58,6 +58,43 @@
   font-size: 20px;
 }
 
+/* The generated icon SVGs are black; the header is dark, so they take the same
+   inverted tint the editor toolbars give them. */
+.app-header .toolbar-btn img {
+  width: 20px;
+  height: 20px;
+  filter: invert(0.8);
+}
+
+/* An icon-font glyph takes the UA's disabled colour; an <img> does not, so the
+   generated SVGs need their own fade. */
+.app-header .toolbar-btn:disabled img {
+  opacity: 0.4;
+}
+
+/* Disabled buttons stay visibly inert even under the pointer, which the hover
+   rule above would otherwise light up. */
+.toolbar-btn:disabled {
+  cursor: default;
+}
+
+.toolbar-btn:disabled:hover {
+  background: transparent;
+}
+
+/* The header's document-group divider: the same sine tile the editor toolbars
+   use (Part.css's --tiling-sine-fine), turned on its side and fitted to the
+   header row. The negative margins absorb the side's gap so the divider reads
+   as a line between the groups, not as a third button. */
+.app-header-separator {
+  width: 32px;
+  height: 10px;
+  background: var(--tiling-sine-fine) repeat-x;
+  transform: rotate(90deg) translateY(3px);
+  margin: 0 -10px;
+  flex-shrink: 0;
+}
+
 /* Unsaved edits tint the Save button's icon; that tint is the whole indicator.
    It holds on hover so the state does not vanish under the pointer. */
 .toolbar-btn.save-btn.dirty,
@@ -239,6 +276,24 @@ button.breadcrumb-name:disabled {
   .logo {
     display: none;
   }
+
+  /* The editors' document group carries two more buttons than the other
+     headers, so its trail concedes width first. A header without the group
+     (the workspace pages) keeps the caps above. */
+  .app-header.has-file-actions .breadcrumb-crumb {
+    max-width: 70px;
+  }
+
+  .app-header.has-file-actions .breadcrumb-current,
+  .app-header.has-file-actions .breadcrumb-input {
+    max-width: 120px;
+  }
+
+  /* The divider is the first thing the row gives up. Without it the two file
+     buttons still read as the document group after Clone. */
+  .app-header.has-file-actions .app-header-separator {
+    display: none;
+  }
 }
 
 @media (max-width: 480px) {
@@ -249,5 +304,14 @@ button.breadcrumb-name:disabled {
   .breadcrumb-current,
   .breadcrumb-input {
     max-width: 110px;
+  }
+
+  .app-header.has-file-actions .breadcrumb-crumb {
+    max-width: 40px;
+  }
+
+  .app-header.has-file-actions .breadcrumb-current,
+  .app-header.has-file-actions .breadcrumb-input {
+    max-width: 80px;
   }
 }

@@ -45,7 +45,6 @@ import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
 import type { MateKind, MateFeatureDef, PartInstance, Transform3D } from '@/types/cad'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
-import exportIcon from '@/assets/icons/icon-download.svg'
 import measurementIcon from '@/assets/icons/measurement.svg'
 import mateFixedIcon from '@/assets/icons/mate-fixed.svg'
 import mateSlidingIcon from '@/assets/icons/mate-sliding.svg'
@@ -630,6 +629,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         onRename={handleRename}
         handleSave={handleSave}
         handleClone={handleClone}
+        onExport={() => executeCommand('export_assembly')}
         rightContent={
           <button
             className="toolbar-btn"
@@ -699,15 +699,6 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 <img src={MATE_KIND_ICONS[kind]} alt={MATE_KIND_LABELS[kind]} />
               </button>
             ))}
-            <div className="toolbar-separator" />
-            <button
-              className="editor-btn"
-              title="Export assembly"
-              aria-label="Export assembly"
-              onClick={() => executeCommand('export_assembly')}
-            >
-              <img src={exportIcon} alt="Export assembly" />
-            </button>
           </div>
           <div className="assembly-viewport-host">
             <EditorErrorBoundary label="assembly viewport">

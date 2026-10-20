@@ -442,6 +442,15 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().editingSubject.kind).toBe('instance')
   })
 
+  // Export moved to the header's document group; the editor toolbar keeps only
+  // the authoring tools (insert part and the mate kinds).
+  it('keeps Export assembly out of the editor toolbar', async () => {
+    await renderLoaded()
+    const exportButton = screen.getByLabelText('Export assembly')
+    expect(document.querySelector('.editor-toolbar')?.contains(exportButton)).toBe(false)
+    expect(exportButton.closest('.app-header')).not.toBeNull()
+  })
+
   // Every toolbar button routes through the command registry, so a test can
   // replace the registered handler and prove the click reaches it.
   it('routes the toolbar through the command registry', async () => {

@@ -167,7 +167,12 @@ function renderPart() {
   )
 }
 
-const menuItem = (name: string | RegExp) => screen.getByRole('button', { name })
+// The header now also carries an Export button, so a menu label can name more
+// than one control. The context-menu callers want the item inside the open menu.
+const menuItem = (name: string | RegExp) => {
+  const buttons = screen.getAllByRole('button', { name })
+  return buttons.find(button => button.closest('[data-testid="context-menu"]')) ?? buttons[0]
+}
 
 describe('Part page actions', () => {
   beforeEach(() => {
@@ -421,7 +426,7 @@ describe('Part page actions', () => {
     expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_part_transmission', bodyId: 'body-1', transmission: 0.1 })
   })
 
-  it('the toolbar Export opens the export dialog with the document name', () => {
+  it('the header Export opens the export dialog with the document name', () => {
     renderPart()
 
     fireEvent.click(screen.getByTitle('Feature mode'))

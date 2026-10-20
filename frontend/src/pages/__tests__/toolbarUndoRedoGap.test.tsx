@@ -28,14 +28,13 @@ function ruleBody(cssPath: string, selector: string): string {
 }
 
 describe('undo/redo button spacing', () => {
-  it.each([
-    ['PartToolbar', PartToolbar],
-    ['AssemblyToolbar', AssemblyToolbar],
-  ])('%s wraps undo and redo in the one group', (name, Toolbar) => {
+  it.each(['PartToolbar', 'AssemblyToolbar'])('%s wraps undo and redo in the one group', (name) => {
     const registry = name === 'PartToolbar' ? partRegistry() : assemblyRegistry(storeBackedAssemblyContext())
     render(
       <CommandRegistryProvider value={registry}>
-        <Toolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} />
+        {name === 'PartToolbar'
+          ? <PartToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} />
+          : <AssemblyToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} onExport={vi.fn()} />}
       </CommandRegistryProvider>,
     )
     const undo = screen.getByRole('button', { name: 'Undo' })

@@ -26,8 +26,6 @@ import featureHelixIcon from '@/assets/icons/feature-helix.svg'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import featureAddPlaneIcon from '@/assets/icons/feature-add-plane.svg'
-import featureImportIcon from '@/assets/icons/icon-upload.svg'
-import featureExportIcon from '@/assets/icons/icon-download.svg'
 
 interface PartEditorPanelProps {
   // The part editor's floating overlays: the features/parts navigator on the
@@ -53,8 +51,6 @@ interface PartEditorPanelProps {
   handleAddFeature: (kind: string, extra?: Record<string, unknown>) => void
   handleAddSketch: () => void
   handleAddPlane: () => void
-  handleImportStep: () => void
-  handleExportStep: () => void
   viewportRef: React.RefObject<ViewportHandle | null>
   handleRightClick: (pos: [number, number], targetId?: string) => void
   // Bottom-right in-viewport overlay (the measurement readout).
@@ -74,8 +70,6 @@ export default function PartEditorPanel({
   handleAddFeature,
   handleAddSketch,
   handleAddPlane,
-  handleImportStep,
-  handleExportStep,
   viewportRef,
   handleRightClick,
   viewportHud,
@@ -123,11 +117,6 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Circular Array" onClick={() => handleAddFeature('circular_array')}><img src={featureCircularArrayIcon} alt="Add Circular Array" /></button>
               <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
               <button className="editor-btn" title="Add Variable" onClick={() => handleAddFeature('variable')}><img src={featureVariableIcon} alt="Add Variable" /></button>
-
-              <div className="toolbar-separator" />
-
-              <button className="editor-btn" title="Import STEP" onClick={handleImportStep}><img src={featureImportIcon} alt="Import STEP" /></button>
-              <button className="editor-btn" title="Export" onClick={handleExportStep}><img src={featureExportIcon} alt="Export" /></button>
             </>
           )}
         </div>

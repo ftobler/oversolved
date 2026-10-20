@@ -1279,6 +1279,8 @@ export default function Part() {
         onRename={(name) => renameDoc(uuid!, name)}
         handleSave={handleSave}
         handleClone={handleClone}
+        onImport={handleImportStep}
+        onExport={handleExportStep}
         rightContent={
           <>
             <button
@@ -1318,8 +1320,6 @@ export default function Part() {
           handleAddFeature={handleAddFeature}
           handleAddSketch={handleAddSketch}
           handleAddPlane={handleAddPlane}
-          handleImportStep={handleImportStep}
-          handleExportStep={handleExportStep}
           viewportRef={viewportRef}
           handleRightClick={handleRightClick}
           viewportHud={

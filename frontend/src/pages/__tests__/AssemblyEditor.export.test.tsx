@@ -137,7 +137,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
 
   const download = () => fireEvent.click(screen.getByRole('button', { name: 'Download' }))
 
-  it('opens from the sidebar button and from the export_assembly command', async () => {
+  it('opens from the header button and from the export_assembly command', async () => {
     await openExportDialog()
     fireEvent.click(screen.getByTitle('Close'))
     expect(screen.queryByText('Export Model')).toBeNull()

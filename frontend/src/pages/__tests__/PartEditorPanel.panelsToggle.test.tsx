@@ -26,8 +26,6 @@ function renderPanel() {
       handleAddFeature={vi.fn()}
       handleAddSketch={vi.fn()}
       handleAddPlane={vi.fn()}
-      handleImportStep={vi.fn()}
-      handleExportStep={vi.fn()}
       viewportRef={{ current: null }}
       handleRightClick={vi.fn()}
     />,
@@ -58,5 +56,13 @@ describe('PartEditorPanel panels toggle', () => {
   it('offers exactly one panels control, not one per panel', () => {
     renderPanel()
     expect(screen.getAllByRole('button', { name: /panels/i })).toHaveLength(1)
+  })
+
+  // The file actions moved to the header's document group. Leaving them in the
+  // feature toolbar would give the part two import buttons and two exports.
+  it('no longer carries the STEP import or the export', () => {
+    renderPanel()
+    expect(screen.queryByTitle('Import STEP')).toBeNull()
+    expect(screen.queryByTitle('Export')).toBeNull()
   })
 })

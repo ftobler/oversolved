@@ -22,6 +22,7 @@ function renderToolbar(context = storeBackedAssemblyContext()) {
         onRename={vi.fn()}
         handleSave={vi.fn()}
         handleClone={vi.fn()}
+        onExport={vi.fn()}
       />
     </CommandRegistryProvider>,
   )

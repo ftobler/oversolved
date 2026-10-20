@@ -256,6 +256,35 @@ describe('phone-width chrome', () => {
     expect(pinned(css, 'min-width', chain('app-header', 'app-header-right'), TOP_LEVEL)).toBe('100px')
   })
 
+  it('drops the document separator on a phone and trims the trail for the extra buttons', () => {
+    const css = 'components/layout/AppHeader.css'
+    const separator = chain('app-header has-file-actions', 'app-header-left', 'app-header-separator')
+    const plainSeparator = chain('app-header', 'app-header-left', 'app-header-separator')
+    const crumb = chain('app-header has-file-actions', 'app-header-left', 'breadcrumb', 'breadcrumb-crumb')
+    const current = chain('app-header has-file-actions', 'app-header-left', 'breadcrumb', 'breadcrumb-current')
+    const plainCrumb = chain('app-header', 'app-header-left', 'breadcrumb', 'breadcrumb-crumb')
+    const plainCurrent = chain('app-header', 'app-header-left', 'breadcrumb', 'breadcrumb-current')
+
+    // The two file buttons still read as the document group after Clone; the
+    // divider is the chrome that goes first when the row runs out of width.
+    expect(pinned(css, 'display', separator, NARROW)).toBe('none')
+    expect(effective(css, 'display', separator, TOP_LEVEL)).toBeNull()
+
+    // The trail concedes width before the buttons do, at both narrow steps.
+    expect(pinned(css, 'max-width', crumb, [NARROW_WIDTH])).toBe('70px')
+    expect(pinned(css, 'max-width', current, [NARROW_WIDTH])).toBe('120px')
+    expect(pinned(css, 'max-width', crumb, NARROW)).toBe('40px')
+    expect(pinned(css, 'max-width', current, NARROW)).toBe('80px')
+
+    // A header without the document group (the workspace pages) keeps the
+    // wider caps and never hides a divider it does not render.
+    expect(effective(css, 'display', plainSeparator, NARROW)).toBeNull()
+    expect(pinned(css, 'max-width', plainCrumb, [NARROW_WIDTH])).toBe('90px')
+    expect(pinned(css, 'max-width', plainCurrent, [NARROW_WIDTH])).toBe('160px')
+    expect(pinned(css, 'max-width', plainCrumb, NARROW)).toBe('60px')
+    expect(pinned(css, 'max-width', plainCurrent, NARROW)).toBe('110px')
+  })
+
   it('stacks the library rail above the grid instead of beside it', () => {
     const css = 'pages/Documents.css'
     expect(pinned(css, 'flex-direction', chain('documents-layout'), NARROW)).toBe('column')

@@ -24,6 +24,8 @@ function renderToolbar(context = sessionBackedPartContext()) {
         onRename={vi.fn()}
         handleSave={vi.fn()}
         handleClone={vi.fn()}
+        onImport={vi.fn()}
+        onExport={vi.fn()}
       />
     </CommandRegistryProvider>,
   )

@@ -81,7 +81,9 @@ function makeEditor(useDoc: () => DocHook, Toolbar: typeof PartToolbar) {
     const registry = Toolbar === PartToolbar ? partRegistry() : assemblyRegistry(storeBackedAssemblyContext())
     return (
       <CommandRegistryProvider value={registry}>
-        <Toolbar docName="Doc" onRename={async () => true} handleSave={handleSave} handleClone={() => {}} />
+        {Toolbar === PartToolbar
+          ? <PartToolbar docName="Doc" onRename={async () => true} handleSave={handleSave} handleClone={() => {}} onImport={() => {}} onExport={() => {}} />
+          : <AssemblyToolbar docName="Doc" onRename={async () => true} handleSave={handleSave} handleClone={() => {}} onExport={() => {}} />}
       </CommandRegistryProvider>
     )
   }

@@ -20,6 +20,8 @@ function renderToolbar(handleSave: () => Promise<boolean>) {
         onRename={vi.fn()}
         handleSave={handleSave}
         handleClone={vi.fn()}
+        onImport={vi.fn()}
+        onExport={vi.fn()}
       />
     </CommandRegistryProvider>,
   )

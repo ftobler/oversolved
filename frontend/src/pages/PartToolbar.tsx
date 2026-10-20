@@ -5,10 +5,13 @@ import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
+import { useEditorState } from '@/hooks/useEditorState'
 import { domHandleProps } from '@/picking'
 import AppHeader from '@/components/layout/AppHeader'
 import Breadcrumb from '@/components/layout/Breadcrumb'
 import SaveButton from '@/components/layout/SaveButton'
+import featureImportIcon from '@/assets/icons/icon-upload.svg'
+import featureExportIcon from '@/assets/icons/icon-download.svg'
 
 type StackEntry = { mutation: Mutation }
 
@@ -27,6 +30,8 @@ interface PartToolbarProps {
   // told apart from a successful one.
   handleSave: () => boolean | Promise<boolean>
   handleClone: () => void
+  onImport: () => void
+  onExport: () => void
   // Header-right slot (the page's debug toggles). The header owns the layout;
   // the page owns the state behind the buttons.
   rightContent?: ReactNode
@@ -37,6 +42,8 @@ export default function PartToolbar({
   onRename,
   handleSave,
   handleClone,
+  onImport,
+  onExport,
   rightContent,
 }: PartToolbarProps) {
   const undoStack = usePartEditorStore(s => s.undoStack) as StackEntry[]
@@ -49,11 +56,17 @@ export default function PartToolbar({
   const ownsDocument = useEditorModeStore(s => s.activeEditor) !== 'assembly'
   const undoDisabled = !ownsDocument || registry.enabled('undo') !== true
   const redoDisabled = !ownsDocument || registry.enabled('redo') !== true
+  // The file actions are direct page callbacks, not registry commands, so they
+  // act on this page's part whatever editor the keymap resolves to. Only an
+  // open edit gates them: an import is an add path and an export would read a
+  // half-edited doc.
+  const editingFeatureId = useEditorState(s => s.editingFeatureId)
+  const editInProgress = editingFeatureId !== null
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
 
   return (
-    <AppHeader rightContent={rightContent} breadcrumb={<Breadcrumb docName={docName} onRename={onRename} />}>
+    <AppHeader hasFileActions rightContent={rightContent} breadcrumb={<Breadcrumb docName={docName} onRename={onRename} />}>
       <div className="undo-redo-btn-group">
         <button
           className="toolbar-btn"
@@ -107,6 +120,27 @@ export default function PartToolbar({
         {...domHandleProps('toolbar:clone_document')}
       >
         <span className="material-icons-outlined">file_copy</span>
+      </button>
+      <div className="app-header-separator" />
+      <button
+        className="toolbar-btn"
+        aria-label="Import STEP"
+        title={editInProgress ? 'Finish the edit to import' : 'Import STEP'}
+        onClick={onImport}
+        disabled={editInProgress}
+        {...domHandleProps('toolbar:import_step')}
+      >
+        <img src={featureImportIcon} alt="" />
+      </button>
+      <button
+        className="toolbar-btn"
+        aria-label="Export"
+        title={editInProgress ? 'Finish the edit to export' : 'Export'}
+        onClick={onExport}
+        disabled={editInProgress}
+        {...domHandleProps('toolbar:export')}
+      >
+        <img src={featureExportIcon} alt="" />
       </button>
     </AppHeader>
   )

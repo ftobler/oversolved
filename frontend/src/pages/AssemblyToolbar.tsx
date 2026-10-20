@@ -3,9 +3,11 @@ import type { ReactNode } from 'react'
 import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
+import { isSessionOpen } from '@/utils/assemblyEditingSubject'
 import AppHeader from '@/components/layout/AppHeader'
 import Breadcrumb from '@/components/layout/Breadcrumb'
 import SaveButton from '@/components/layout/SaveButton'
+import exportIcon from '@/assets/icons/icon-download.svg'
 
 interface AssemblyToolbarProps {
   docName: string | null
@@ -14,6 +16,7 @@ interface AssemblyToolbarProps {
   // told apart from a successful one.
   handleSave: () => boolean | Promise<boolean>
   handleClone: () => void
+  onExport: () => void
   // Header-right slot (the page's debug toggles). Mirrors PartToolbar.
   rightContent?: ReactNode
 }
@@ -36,6 +39,7 @@ export default function AssemblyToolbar({
   onRename,
   handleSave,
   handleClone,
+  onExport,
   rightContent,
 }: AssemblyToolbarProps) {
   const undoStack = useAssemblyStore(s => s.undoStack) as AssemblyUndoEntry[]
@@ -48,11 +52,16 @@ export default function AssemblyToolbar({
   const ownsDocument = useEditorModeStore(s => s.activeEditor) === 'assembly'
   const undoDisabled = !ownsDocument || registry.enabled('undo') !== true
   const redoDisabled = !ownsDocument || registry.enabled('redo') !== true
+  // The same one-editor session closeOpenEditor acts on: an export mid-edit
+  // would read a half-authored assembly. Export is a direct page callback, so
+  // it does not take the undo/redo mode gate.
+  const editingSubject = useAssemblyStore(s => s.editingSubject)
+  const editInProgress = isSessionOpen(editingSubject)
   const [undoHover, setUndoHover] = useState(false)
   const [redoHover, setRedoHover] = useState(false)
 
   return (
-    <AppHeader rightContent={rightContent} breadcrumb={<Breadcrumb docName={docName} fallbackName="Untitled Assembly" onRename={onRename} />}>
+    <AppHeader hasFileActions rightContent={rightContent} breadcrumb={<Breadcrumb docName={docName} fallbackName="Untitled Assembly" onRename={onRename} />}>
       <div className="undo-redo-btn-group">
         <button
           className="toolbar-btn"
@@ -94,6 +103,16 @@ export default function AssemblyToolbar({
       <SaveButton save={handleSave} />
       <button className="toolbar-btn" aria-label="Clone document" title="Clone document" onClick={handleClone}>
         <span className="material-icons-outlined">file_copy</span>
+      </button>
+      <div className="app-header-separator" />
+      <button
+        className="toolbar-btn"
+        aria-label="Export assembly"
+        title={editInProgress ? 'Finish the edit to export' : 'Export assembly'}
+        onClick={onExport}
+        disabled={editInProgress}
+      >
+        <img src={exportIcon} alt="" />
       </button>
     </AppHeader>
   )

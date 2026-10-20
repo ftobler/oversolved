@@ -25,7 +25,7 @@ vi.mock('@/components/layout/AppHeader', () => ({
 function renderPart(context = sessionBackedPartContext()) {
   return render(
     <CommandRegistryProvider value={partRegistry(context)}>
-      <PartToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} />
+      <PartToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} />
     </CommandRegistryProvider>,
   )
 }
@@ -33,7 +33,7 @@ function renderPart(context = sessionBackedPartContext()) {
 function renderAssembly(context = storeBackedAssemblyContext()) {
   return render(
     <CommandRegistryProvider value={assemblyRegistry(context)}>
-      <AssemblyToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} />
+      <AssemblyToolbar docName="Doc" onRename={vi.fn()} handleSave={vi.fn()} handleClone={vi.fn()} onExport={vi.fn()} />
     </CommandRegistryProvider>,
   )
 }
