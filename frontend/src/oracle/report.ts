@@ -10,14 +10,15 @@
  */
 
 import type { OracleExpected, OracleMeasures } from './corpus'
+import type { MeasureRecord } from '@/kernel/occ/measure'
 
 /** One case's run, reduced to what the report renders. */
 export interface CaseReport {
   name: string
   expected: OracleExpected
-  live: OracleMeasures
-  step: OracleMeasures
-  edited: { live: OracleMeasures; step: OracleMeasures } | null
+  live: MeasureRecord
+  step: MeasureRecord
+  edited: { live: MeasureRecord; step: MeasureRecord } | null
   ok: boolean
 }
 
@@ -60,12 +61,17 @@ function counts(expected: OracleMeasures): string {
   return parts.length > 0 ? parts.join(', ') : '-'
 }
 
-function measureLines(measured: OracleMeasures, expected: OracleMeasures): string[] {
+function vectorLine(label: string, measured: readonly number[] | null, expected: readonly number[]): string {
+  const shown = measured === null ? 'none' : `${fmtVec(measured)} (max dev ${maxVecDev(measured, expected)})`
+  return `  - ${label} ${fmtVec(expected)} -> ${shown}`
+}
+
+function measureLines(measured: MeasureRecord, expected: OracleMeasures): string[] {
   const lines = [
     `  - volume ${fmt(expected.volume)} -> ${fmt(measured.volume)} (rel dev ${relDev(measured.volume, expected.volume)})`,
     `  - area ${fmt(expected.area)} -> ${fmt(measured.area)} (rel dev ${relDev(measured.area, expected.area)})`,
-    `  - centroid ${fmtVec(expected.centroid)} -> ${fmtVec(measured.centroid)} (max dev ${maxVecDev(measured.centroid, expected.centroid)})`,
-    `  - bbox ${fmtVec(expected.bbox)} -> ${fmtVec(measured.bbox)} (max dev ${maxVecDev(measured.bbox, expected.bbox)})`,
+    vectorLine('centroid', measured.centroid, expected.centroid),
+    vectorLine('bbox', measured.bbox, expected.bbox),
   ]
   if (expected.faces !== undefined || expected.edges !== undefined) {
     lines.push(

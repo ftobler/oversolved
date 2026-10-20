@@ -1,9 +1,11 @@
 /**
  * The reference-oracle runner: builds one recipe through the real solve path
  * (`solveLocally`, the persistent kernel pipeline the app uses), measures the
- * final body set with OCC GProp (volume, surface area, centroid) and Bnd_Box
- * (exact bbox), round-trips the whole part through STEP and re-measures, and
- * applies an optional upstream edit to assert persistent naming.
+ * final body set with the shared `measureBodies` record (`occ/measure.ts`),
+ * round-trips the whole part through STEP and re-measures, and applies an
+ * optional upstream edit to assert persistent naming. Comparison goes through
+ * the same `compareMeasures` rows as the translations tier and the CLI/MCP
+ * `compare` verb; the oracle enforces topology strictly.
  *
  * The measurement reads the final checkpoint's bodies from the live handle
  * table, so what is measured is exactly what an export would contain. The STEP
@@ -14,81 +16,14 @@
 
 import type { OccModule, OccShape } from '../kernel/occ/occTypes'
 import { DisposeScope } from '../kernel/occ/disposeScope'
-import { canonicalEdges, canonicalFaces } from '../kernel/occ/bodyNames'
 import { stepBytesToShape, stepShapeToBytes } from '../kernel/occ/stepIo'
-import {
-  DEFAULT_MEASURE_TOLERANCE,
-  valueWithinTolerance,
-  vectorWithinTolerance,
-} from '../kernel/occ/measureTolerance'
+import { measureBodies, type MeasureRecord } from '../kernel/occ/measure'
+import { compareMeasures, type MeasureRow } from '../kernel/occ/measureTolerance'
 import { persistentTableForTest, solveLocally } from '../kernel/solveLocally'
 import { partSpecFromText } from '@/utils/partExport'
 import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 import type { BuildState } from '../kernel/types3d'
 import { applyOracleEdit, type OracleCase, type OracleMeasures } from './corpus'
-
-/** How one body's measures aggregate: sum, volume-weighted, union. */
-function emptyMeasures(): OracleMeasures {
-  return {
-    bodies: 0,
-    volume: 0,
-    area: 0,
-    centroid: [0, 0, 0],
-    bbox: [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity],
-    faces: 0,
-    edges: 0,
-  }
-}
-
-function addBody(acc: OracleMeasures, body: Omit<OracleMeasures, 'bodies'>): void {
-  acc.bodies += 1
-  acc.volume += body.volume
-  acc.area += body.area
-  for (let i = 0; i < 3; i++) acc.centroid[i] += body.volume * body.centroid[i]
-  for (let i = 0; i < 3; i++) {
-    acc.bbox[i] = Math.min(acc.bbox[i], body.bbox[i])
-    acc.bbox[i + 3] = Math.max(acc.bbox[i + 3], body.bbox[i + 3])
-  }
-  acc.faces = (acc.faces ?? 0) + (body.faces ?? 0)
-  acc.edges = (acc.edges ?? 0) + (body.edges ?? 0)
-}
-
-function finalize(acc: OracleMeasures): OracleMeasures {
-  if (acc.volume !== 0) {
-    for (let i = 0; i < 3; i++) acc.centroid[i] /= acc.volume
-  }
-  return acc
-}
-
-/** Measure one shape in full: volume, area, centroid, exact bbox, counts. */
-export function measureShape(oc: OccModule, scope: DisposeScope, shape: OccShape): Omit<OracleMeasures, 'bodies'> {
-  const vprops = scope.track(new oc.GProp_GProps_1())
-  oc.BRepGProp.VolumeProperties_1(shape, vprops, true, false, false)
-  const volume = vprops.Mass()
-  const c = vprops.CentreOfMass()
-  const centroid: [number, number, number] = [c.X(), c.Y(), c.Z()]
-  c.delete()
-
-  const sprops = scope.track(new oc.GProp_GProps_1())
-  oc.BRepGProp.SurfaceProperties_1(shape, sprops, false, false)
-  const area = sprops.Mass()
-
-  const box = scope.track(new oc.Bnd_Box_1())
-  oc.BRepBndLib.Add(shape, box, false)
-  const bbox: [number, number, number, number, number, number] = [
-    box.GetXmin(), box.GetYmin(), box.GetZmin(),
-    box.GetXmax(), box.GetYmax(), box.GetZmax(),
-  ]
-
-  return {
-    volume,
-    area,
-    centroid,
-    bbox,
-    faces: canonicalFaces(oc, scope, shape).length,
-    edges: canonicalEdges(oc, scope, shape).length,
-  }
-}
 
 /** A compound of `shapes`, or the lone shape when there is only one. */
 function compoundOf(oc: OccModule, scope: DisposeScope, shapes: OccShape[]): OccShape {
@@ -100,10 +35,10 @@ function compoundOf(oc: OccModule, scope: DisposeScope, shapes: OccShape[]): Occ
   return compound
 }
 
-/** What one build produced: the measures and the per-feature solve statuses. */
+/** What one build produced: the shared measure records and the solve statuses. */
 export interface BuildOutcome {
-  measures: OracleMeasures
-  stepMeasures: OracleMeasures
+  measures: MeasureRecord
+  stepMeasures: MeasureRecord
   statuses: Record<string, string>
   details: Record<string, string>
 }
@@ -139,77 +74,61 @@ export async function buildAndMeasure(oc: OccModule, spec: Record<string, unknow
   const scope = new DisposeScope()
   try {
     const shapes: OccShape[] = []
-    const acc = emptyMeasures()
     for (const body of Object.values(snapshot ?? {})) {
       if (body.shape == null) continue
-      const shape = table!.get<OccShape>(body.shape)
-      shapes.push(shape)
-      addBody(acc, measureShape(oc, scope, shape))
+      shapes.push(table!.get<OccShape>(body.shape))
     }
-    const measures = finalize(acc)
+    const measures = measureBodies(oc, scope, shapes)
 
     // The STEP round trip mirrors the app's whole-part export: one body alone,
     // several as one compound. A document with no solid has nothing to
     // serially measure; the (failing) bodies count already names that case.
-    const stepMeasures = emptyMeasures()
+    let stepMeasures = measureBodies(oc, scope, [])
     if (shapes.length > 0) {
       const bytes = stepShapeToBytes(oc, scope, compoundOf(oc, scope, shapes))
       const imported = scope.track(stepBytesToShape(oc, scope, bytes))
-      addBody(stepMeasures, measureShape(oc, scope, imported))
+      stepMeasures = measureBodies(oc, scope, [imported])
     }
-    return { measures, stepMeasures: finalize(stepMeasures), statuses, details }
+    return { measures, stepMeasures, statuses, details }
   } finally {
     scope.dispose()
   }
 }
 
-function numberIssue(label: string, actual: number, expected: number, issues: string[]): void {
-  if (!valueWithinTolerance(actual, expected)) {
-    issues.push(`${label}: measured ${actual} expected ${expected}`)
-  }
+/** The long-standing issue wording, rendered from one comparator row. */
+function rowIssue(row: MeasureRow, label: string): string {
+  const ours = Array.isArray(row.ours) ? `[${row.ours}]` : `${row.ours}`
+  const theirs = Array.isArray(row.theirs) ? `[${row.theirs}]` : `${row.theirs}`
+  return `${label}${row.measure}: measured ${ours} expected ${theirs}`
 }
 
 function measuresIssues(
-  actual: OracleMeasures,
+  actual: MeasureRecord,
   expected: OracleMeasures,
   label: string,
   issues: string[],
 ): void {
-  if (actual.bodies !== expected.bodies) {
-    issues.push(`${label}bodies: measured ${actual.bodies} expected ${expected.bodies}`)
-  }
-  numberIssue(`${label}volume`, actual.volume, expected.volume, issues)
-  numberIssue(`${label}area`, actual.area, expected.area, issues)
-  if (!vectorWithinTolerance(actual.centroid, expected.centroid, DEFAULT_MEASURE_TOLERANCE)) {
-    issues.push(`${label}centroid: measured [${actual.centroid}] expected [${expected.centroid}]`)
-  }
-  if (!vectorWithinTolerance(actual.bbox, expected.bbox, DEFAULT_MEASURE_TOLERANCE)) {
-    issues.push(`${label}bbox: measured [${actual.bbox}] expected [${expected.bbox}]`)
-  }
-  if (expected.faces !== undefined && actual.faces !== expected.faces) {
-    issues.push(`${label}faces: measured ${actual.faces} expected ${expected.faces}`)
-  }
-  if (expected.edges !== undefined && actual.edges !== expected.edges) {
-    issues.push(`${label}edges: measured ${actual.edges} expected ${expected.edges}`)
+  // The oracle's counts are the persistent-naming assertion, so structural
+  // rows are enforced here while translations report them by default.
+  const { rows } = compareMeasures(actual, expected, { topology: 'strict' })
+  for (const row of rows) {
+    if (row.enforced && !row.within) issues.push(rowIssue(row, label))
   }
 }
 
 /** STEP re-measures the core integrals only: faces/edges may re-seam on read. */
-function stepIssues(actual: OracleMeasures, expected: OracleMeasures, label: string, issues: string[]): void {
-  numberIssue(`${label}volume`, actual.volume, expected.volume, issues)
-  numberIssue(`${label}area`, actual.area, expected.area, issues)
-  if (!vectorWithinTolerance(actual.centroid, expected.centroid, DEFAULT_MEASURE_TOLERANCE)) {
-    issues.push(`${label}centroid: measured [${actual.centroid}] expected [${expected.centroid}]`)
-  }
-  if (!vectorWithinTolerance(actual.bbox, expected.bbox, DEFAULT_MEASURE_TOLERANCE)) {
-    issues.push(`${label}bbox: measured [${actual.bbox}] expected [${expected.bbox}]`)
+function stepIssues(actual: MeasureRecord, expected: OracleMeasures, label: string, issues: string[]): void {
+  const { rows } = compareMeasures(actual, expected)
+  for (const row of rows) {
+    if (row.measure === 'bodies' || row.measure === 'faces' || row.measure === 'edges') continue
+    if (!row.within) issues.push(rowIssue(row, label))
   }
 }
 
 /** The whole run for one case: live build, STEP round trip, optional edit. */
 export interface CaseRun {
-  live: OracleMeasures
-  step: OracleMeasures
+  live: MeasureRecord
+  step: MeasureRecord
   statuses: Record<string, string>
   edited: BuildOutcome | null
   issues: string[]

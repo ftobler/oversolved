@@ -1,12 +1,12 @@
 /**
  * The one measure record for a solved body set. It lives in an OCC leaf module
- * (no solve imports) so `solveLocally` and, in phase 2, the oracle runner can
- * share it without a cycle.
+ * (no solve imports) so `solveLocally`, the oracle runner and the translations
+ * tier share one record without a cycle.
  *
  * The bbox is `BRepBndLib.AddOptimal`, the read an external tool reports:
  * `BRepBndLib.Add` enlarges the box by each sub-shape's tolerance and boxes a
  * B-spline's control net, both of which make it useless as a comparison value.
- * `Add` remains the oracle's read until phase 2 moves the oracle here too.
+ * `measureLocallyReal.test.ts` pins the difference on a B-spline sweep.
  */
 
 import type { DisposeScope } from './disposeScope'
