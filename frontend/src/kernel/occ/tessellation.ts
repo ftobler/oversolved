@@ -244,7 +244,9 @@ const SAMPLES_PER_EDGE = 16
  * vertex-only box, which disagreed on curved bodies. On a cylinder the circular
  * edges sample the full diameter so this matches the old mesh box; it degrades
  * only on edgeless bulging surfaces (a full sphere), absorbed by the classifier
- * tolerance. `BRepBndLib` would be the one-line swap if that corner ever matters.
+ * tolerance. Exact bounds are available (`BRepBndLib.AddOptimal`, used by the
+ * measure record), but this frame stays edge-sampled on purpose: identification
+ * runs on every solve and the classifiers only need a stable, cheap frame.
  */
 export function bodyFrame(oc: OccModule, scope: DisposeScope, solid: OccShape): { center: Vec3; half: Vec3 } {
   // The two point sets are folded separately, never concatenated: an imported

@@ -21,7 +21,7 @@ import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
-import { runHeadless, measureHeadless, exportHeadless, selectHeadless, seedBuiltins } from '@/drive/headlessOps'
+import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createCliJournal } from '@/drive/journal'
@@ -104,6 +104,22 @@ const ops: McpCadOps = {
       return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
     }
     return { ok: true, ...measure }
+  },
+
+  async compare(req) {
+    const loaded = loadDocPayload(req.doc)
+    if (!loaded.ok) return { ok: false, error: docLoadErrorMessage(loaded.error) }
+    const result = await compareHeadless(loaded.doc, req.reference, {
+      docId: req.docId ?? 'mcp',
+      files: readFiles(req.files),
+    })
+    return {
+      ok: result.ok,
+      pass: result.pass,
+      rows: result.rows,
+      measures: result.measures,
+      ...(result.error !== undefined && { error: result.error }),
+    }
   },
 
   async export(req) {

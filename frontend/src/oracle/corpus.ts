@@ -8,19 +8,27 @@
  * This module is a leaf: node fs and parsing only, no OCC. The suite that
  * builds and measures the cases is `src/oracle/__tests__/oracleReal.test.ts`;
  * `corpusMeta.test.ts` guards the corpus and the generated report without a
- * kernel. A sibling feature (minimised fuzz recipes) can drop new case
- * directories in beside these; every directory is a case and must carry both
- * files, so the layout is the whole contract.
+ * kernel. The translations tier (`frontend/translations/`, parsed by
+ * `src/translations/corpus.ts`) is the second sibling corpus: it reuses the
+ * `require*` validators here but its truth is another tool's report, not a
+ * closed form. Minimised fuzz recipes are not documents and live under
+ * `testing/robustnessFuzz/regressions/`, not here.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// `import.meta.url` rather than `__dirname`: the translations tier imports
+// these validators from a plain Node ESM entry (the drive CLI and MCP server),
+// which has no `__dirname`.
+const CORPUS_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 /** `frontend/oracle` - the corpus directory, one subdirectory per case. */
-export const ORACLE_DIR = join(__dirname, '..', '..', 'oracle')
+export const ORACLE_DIR = join(CORPUS_ROOT, 'oracle')
 
 /** `docs/oracle.md`, the generated report the drift check compares. */
-export const ORACLE_DOC_PATH = join(__dirname, '..', '..', '..', 'docs', 'oracle.md')
+export const ORACLE_DOC_PATH = join(CORPUS_ROOT, '..', 'docs', 'oracle.md')
 
 export interface OracleMeasures {
   bodies: number
@@ -76,21 +84,21 @@ export function listOracleDirs(): string[] {
     .sort()
 }
 
-function requireFiniteNumber(where: string, value: unknown): number {
+export function requireFiniteNumber(where: string, value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new Error(`${where}: expected a finite number, got ${JSON.stringify(value)}`)
   }
   return value
 }
 
-function requireVector(where: string, value: unknown, length: number): number[] {
+export function requireVector(where: string, value: unknown, length: number): number[] {
   if (!Array.isArray(value) || value.length !== length) {
     throw new Error(`${where}: expected an array of ${length} numbers, got ${JSON.stringify(value)}`)
   }
   return value.map((v, i) => requireFiniteNumber(`${where}[${i}]`, v))
 }
 
-function requireMeasures(where: string, value: unknown, withMethod: boolean): OracleMeasures & { method?: string } {
+export function requireMeasures(where: string, value: unknown, withMethod: boolean): OracleMeasures & { method?: string } {
   if (typeof value !== 'object' || value === null) throw new Error(`${where}: expected an object`)
   const m = value as Record<string, unknown>
   if (withMethod && (typeof m.method !== 'string' || m.method.trim() === '')) {

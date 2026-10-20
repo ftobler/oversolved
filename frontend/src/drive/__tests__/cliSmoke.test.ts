@@ -72,6 +72,14 @@ async function drive(...args: string[]): Promise<CliResult> {
   return { status, payload: JSON.parse(lastLine) as Record<string, unknown>, stdout }
 }
 
+// AddOptimal can land a coordinate a few ulp off the analytic corner on a
+// curved body (a fillet), so bboxes compare component-wise, not by identity.
+function expectBbox(actual: unknown, expected: number[]): void {
+  const bbox = actual as number[]
+  expect(bbox).toHaveLength(expected.length)
+  bbox.forEach((value, i) => expect(value).toBeCloseTo(expected[i], 9))
+}
+
 const BOX_SCRIPT = {
   steps: [
     { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_front' } },
@@ -141,8 +149,9 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     // 10 x 10 x 5 box: 6 faces, 12 edges, 8 vertices, volume 500.
     const measure = await drive('measure', boxDoc)
     expect(measure.status).toBe(0)
-    expect(measure.payload).toMatchObject({ ok: true, bodyCount: 1, faces: 6, edges: 12, vertices: 8 })
+    expect(measure.payload).toMatchObject({ ok: true, bodies: 1, faces: 6, edges: 12, vertices: 8 })
     expect(measure.payload.volume as number).toBeCloseTo(500, 6)
+    expectBbox(measure.payload.bbox, [0, 0, 0, 10, 10, 5])
 
     const exported = await drive('export', boxDoc, '--format', 'step', '--out', stepFile)
     expect(exported.status).toBe(0)
@@ -204,11 +213,11 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     // is unchanged.
     const fillet = await drive('measure', filletDoc)
     expect(fillet.status).toBe(0)
-    expect(fillet.payload).toMatchObject({ ok: true, bodyCount: 1, faces: 7 })
+    expect(fillet.payload).toMatchObject({ ok: true, bodies: 1, faces: 7 })
     expect(fillet.payload.volume as number).toBeCloseTo(500 - (1 - Math.PI / 4) * 5, 6)
     expect(fillet.payload.area as number).toBeCloseTo(397.42477796076935, 6)
     expect(fillet.payload.centroid as number[]).toHaveLength(3)
-    expect(fillet.payload.bbox).toMatchObject({ min: [0, 0, 0], max: [10, 10, 5] })
+    expectBbox(fillet.payload.bbox, [0, 0, 0, 10, 10, 5])
 
     const builtBox = await drive('run', boxScript, '--out', boxDoc)
     expect(builtBox.status).toBe(0)
@@ -221,7 +230,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     expect(edited.payload.ok).toBe(true)
     const measure = await drive('measure', boxTall)
     expect(measure.payload.volume as number).toBeCloseTo(800, 6)
-    expect(measure.payload.bbox).toMatchObject({ min: [0, 0, 0], max: [10, 10, 8] })
+    expectBbox(measure.payload.bbox, [0, 0, 0, 10, 10, 8])
     expect(measure.payload.centroid as number[]).toHaveLength(3)
   }, 180_000)
 
@@ -272,7 +281,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
 
     const after = await drive('measure', importDoc, '--file', fileFlag)
     expect(after.status).toBe(0)
-    expect(after.payload.bodyCount).toBe(before.payload.bodyCount)
+    expect(after.payload.bodies).toBe(before.payload.bodies)
     expect(after.payload.faces).toBe(before.payload.faces)
     expect(after.payload.edges).toBe(before.payload.edges)
     expect(after.payload.vertices).toBe(before.payload.vertices)
@@ -283,8 +292,49 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('drive CLI (real OCC + Rust s
     for (let axis = 0; axis < 3; axis++) {
       expect(afterCentroid[axis]).toBeCloseTo(beforeCentroid[axis], 6)
     }
-    expect(after.payload.bbox).toMatchObject({ min: [0, 0, 0], max: [10, 10, 5] })
+    expectBbox(after.payload.bbox, [0, 0, 0, 10, 10, 5])
   }, 180_000)
+
+  it('compares the seed translation against its reference and fails a perturbed one by name', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const seedDir = path.join(FRONTEND_DIR, 'translations/01-cylinder')
+    const referenceFile = path.join(seedDir, 'reference.json')
+
+    const passed = await drive('compare', path.join(seedDir, 'recipe.yaml'), referenceFile)
+    expect(passed.status).toBe(0)
+    expect(passed.payload).toMatchObject({ ok: true, pass: true })
+    const rows = passed.payload.rows as Array<{ measure: string; within: boolean; enforced: boolean }>
+    expect(rows.map(row => row.measure)).toEqual(['bodies', 'volume', 'area', 'centroid', 'bbox', 'faces', 'edges'])
+    expect(rows.every(row => row.within)).toBe(true)
+
+    // Move only the reference volume by 1e-3 relative: the compare must fail
+    // on the volume row and leave every other row within.
+    const reference = JSON.parse(readFileSync(referenceFile, 'utf8')) as { volume: number }
+    reference.volume *= 1 + 1e-3
+    const perturbedFile = path.join(TMP_DIR, 'perturbed-reference.json')
+    writeFileSync(perturbedFile, JSON.stringify(reference, null, 1))
+
+    const failed = await drive('compare', path.join(seedDir, 'recipe.yaml'), perturbedFile)
+    expect(failed.status).toBe(1)
+    expect(failed.payload).toMatchObject({ ok: true, pass: false })
+    const failedRows = failed.payload.rows as Array<{ measure: string; within: boolean }>
+    expect(failedRows.find(row => row.measure === 'volume')).toMatchObject({ within: false })
+    expect(failedRows.filter(row => row.measure !== 'volume').every(row => row.within)).toBe(true)
+  }, 180_000)
+
+  it('rejects a compare reference without tolerance as a named error', async () => {
+    mkdirSync(TMP_DIR, { recursive: true })
+    const seedDir = path.join(FRONTEND_DIR, 'translations/01-cylinder')
+    const reference = JSON.parse(readFileSync(path.join(seedDir, 'reference.json'), 'utf8')) as Record<string, unknown>
+    delete reference.tolerance
+    const badFile = path.join(TMP_DIR, 'bad-reference.json')
+    writeFileSync(badFile, JSON.stringify(reference, null, 1))
+
+    const result = await drive('compare', path.join(seedDir, 'recipe.yaml'), badFile)
+    expect(result.status).toBe(1)
+    expect(result.payload.ok).toBe(false)
+    expect(result.payload.error).toContain('tolerance')
+  }, 60_000)
 })
 
 // ─── MCP server ───
@@ -376,7 +426,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
 
       const list = await client.request('tools/list', {})
       const tools = (list.result as { tools: Array<{ name: string; inputSchema: unknown }> }).tools
-      expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run', 'select'])
+      expect(tools.map(t => t.name).sort()).toEqual(['commands', 'compare', 'export', 'measure', 'run', 'select'])
 
       const built = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
       expect(built.ok).toBe(true)
@@ -396,7 +446,28 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP server (real OCC + Rust 
 
       const measure = toolPayload(await client.request('tools/call', { name: 'measure', arguments: { doc: edited.doc } }))
       expect(measure.volume as number).toBeCloseTo(800, 6)
-      expect(measure.bbox).toMatchObject({ min: [0, 0, 0], max: [10, 10, 8] })
+      expectBbox(measure.bbox, [0, 0, 0, 10, 10, 8])
+
+      // Compare the same document against a reference stated from its own
+      // measures: the call passes, and the rows name every measure.
+      const reference = {
+        source: { tool: 'cliSmoke', version: '1', file: 'inline' },
+        tolerance: { rel: 1e-6, abs: 1e-6 },
+        bodies: measure.bodies,
+        volume: measure.volume,
+        area: measure.area,
+        centroid: measure.centroid,
+        bbox: measure.bbox,
+        faces: measure.faces,
+        edges: measure.edges,
+      }
+      const compared = toolPayload(await client.request('tools/call', {
+        name: 'compare',
+        arguments: { doc: edited.doc, reference },
+      }))
+      expect(compared).toMatchObject({ ok: true, pass: true })
+      expect((compared.rows as Array<{ measure: string }>).map(row => row.measure))
+        .toEqual(['bodies', 'volume', 'area', 'centroid', 'bbox', 'faces', 'edges'])
 
       const exported = toolPayload(await client.request('tools/call', {
         name: 'export',

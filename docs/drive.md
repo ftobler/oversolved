@@ -262,15 +262,17 @@ way.
 
 The CLI runs beside `frontend/scripts/regenCorpus.ts` with the same
 `--experimental-strip-types` recipe, plus a loader shim for `import.meta.env`.
-Its operations (run, measure, export) live in `frontend/src/drive/headlessOps.ts`
-and are shared with the MCP server (which adds `select`, a predicate selector
-over the solve output), so the two external surfaces cannot drift:
+Its operations (run, measure, compare, export) live in
+`frontend/src/drive/headlessOps.ts` and are shared with the MCP server (which
+adds `select`, a predicate selector over the solve output), so the two external
+surfaces cannot drift:
 
 ```bash
 cd frontend
 npm run drive -- run script.json [--doc doc.yaml] [--out out.yaml] [--repro repro.json] [--file id=path] [--doc-id id]
 npm run drive -- commands
 npm run drive -- measure doc.yaml [--file id=path]
+npm run drive -- compare doc.yaml reference.json [--file id=path] [--doc-id id]
 npm run drive -- export doc.yaml --format step|stl [--out out.step] [--body bodyId] [--file id=path]
 npm run drive -- replay repro.json
 ```
@@ -290,9 +292,17 @@ npm run drive -- replay repro.json
   seeded session. Reading the catalog runs no spec body and starts no solve.
   The catalog is the part editor's table (`PART_COMMAND_SPECS`); the assembly
   editor's commands are not on this surface in v1.
-- `measure` reports `bodyCount`, `volume`, `area`, `centroid` (volume-weighted)
-  and `bbox` (the union of the bodies' edge-sampled frames), plus face, edge
-  and vertex counts from the final checkpoint's bodies.
+- `measure` reports a `MeasureRecord`: `bodies`, `volume`, `area`, `centroid`
+  (volume-weighted), `bbox` (an exact six-number AddOptimal box:
+  `[xmin, ymin, zmin, xmax, ymax, zmax]`), plus face, edge and vertex counts
+  from the final checkpoint's bodies.
+- `compare` measures the document and compares it against a `reference.json`
+  (the translation format: `source`, a required `tolerance`, an optional
+  `topology` mode and the measure fields) with `compareMeasures`. It prints
+  `{ ok, pass, rows, measures }`, one row per measure with `ours`, `theirs`,
+  `delta`, `within` and `enforced`; exit 0 on pass, 1 on a failing row (or a
+  build or kernel error), 2 on a usage error. A failing row is data, not an
+  error: `ok` stays true so an agent loop reads which measure diverged.
 - `export` writes STEP or STL bytes.
 - `replay` applies the recorded mutations to a fresh session under the
   payload's seed, verifies each step's before and after hash and exits nonzero
@@ -342,7 +352,8 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | none | the command catalog, the same shape as the CLI's `commands` |
 | `run` | `steps`, optional `doc`, `docId`, `files` | `{ ok, steps, docHash, solve, doc }`; pass `doc` back in to chain edits |
-| `measure` | `doc`, optional `docId`, `files` | `{ ok, bodyCount, volume, area, centroid, bbox, faces, edges, vertices }` |
+| `measure` | `doc`, optional `docId`, `files` | `{ ok, bodies, volume, area, centroid, bbox, faces, edges, vertices }` |
+| `compare` | `doc`, `reference` (inline), optional `docId`, `files` | `{ ok, pass, rows, measures }`; a failing row is data, not an MCP error |
 | `export` | `doc`, `format` (step/stl), `out`, optional `body`, `docId`, `files` | writes the file, returns `{ ok, file, format, bytes }` |
 | `select` | `doc`, `selector`, optional `docId`, `files` | `{ ok, queries, items }`: the query strings a click would store, plus a geometry summary per item |
 
@@ -362,6 +373,24 @@ banner on stdout, so a client config must use the direct node invocation.
 
 - `files` is `[{ id, path }]`, the CLI's `--file` flags in JSON form; paths
   resolve against the server's cwd.
+- `compare` takes its `reference` inline (the agent has just produced it) and
+  validates it through the corpus parser, so a reference missing `tolerance`
+  or carrying a malformed bbox is JSON-RPC invalid-params, not a tool error.
+  The reference shape is the translation file format:
+
+  ```jsonc
+  {
+    "source": { "tool": "cadquery", "version": "2.4.0", "file": "source.py" },
+    "tolerance": { "rel": 1e-5, "abs": 1e-6 },
+    "topology": "report",
+    "bodies": 1, "volume": 800, "area": 720,
+    "centroid": [5, 5, 4], "bbox": [0, 0, 0, 10, 10, 8]
+  }
+  ```
+
+  `topology` is optional (`"report"` by default, `"strict"` to enforce the
+  face/edge counts); `tolerance` is required so every reference states its own
+  budget.
 - The server also serves one resource, `oversolved://schema/part-document`
   (`resources/list`, `resources/read`): the JSON Schema for a part document
   (`persistence/partDocSchema.ts`). Read it before authoring a document instead
@@ -394,8 +423,15 @@ previous call):
   "steps":[{"mutation":{"type":"set_extrude_field","featureId":"ex1","field":"distance","value":8}}]
 }}}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"measure","arguments":{"doc":"<doc from call 2>"}}}
-// {"ok":true,"bodyCount":1,"volume":800,...}
-{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"export","arguments":{
+// {"ok":true,"bodies":1,"volume":800,...}
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"compare","arguments":{
+  "doc":"<doc from call 2>",
+  "reference":{"source":{"tool":"cadquery","version":"2.4.0","file":"source.py"},
+    "tolerance":{"rel":1e-5,"abs":1e-6},
+    "bodies":1,"volume":800,"area":720,"centroid":[5,5,4],"bbox":[0,0,0,10,10,8]}
+}}}
+// {"ok":true,"pass":true,"rows":[...],"measures":{...}}
+{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"export","arguments":{
   "doc":"<doc from call 2>","format":"step","out":"box.step"
 }}}
 ```

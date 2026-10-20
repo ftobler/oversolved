@@ -15,6 +15,7 @@
 //                     [--file <id>=<path>] [--doc-id <id>]
 //   npm run drive -- commands
 //   npm run drive -- measure <doc.(yaml|json)> [--file <id>=<path>]
+//   npm run drive -- compare <doc.(yaml|json)> <reference.json> [--file <id>=<path>] [--doc-id <id>]
 //   npm run drive -- export <doc.(yaml|json)> --format step|stl [--out <file>] [--body <id>] [--file <id>=<path>]
 //   npm run drive -- replay <repro.json>
 //
@@ -32,11 +33,12 @@ import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { PartDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDoc } from '@/persistence/docSchema'
 import { createHeadlessPart } from '@/drive/headlessPart'
-import { runHeadless, measureHeadless, exportHeadless, seedBuiltins } from '@/drive/headlessOps'
+import { runHeadless, measureHeadless, compareHeadless, exportHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { createCliJournal, type ReproPayload } from '@/drive/journal'
 import { replayJournal } from '@/drive/replay'
+import { parseReference } from '@/translations/corpus'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { routeKernelStdoutToStderr } from './kernelStdout'
 
@@ -95,10 +97,11 @@ function parseArgs(argv: string[]): Args {
   return { command, positional, flags, repeated }
 }
 
-const USAGE = `usage: drive <run|commands|measure|export|replay> [args] [--flags]
+const USAGE = `usage: drive <run|commands|measure|compare|export|replay> [args] [--flags]
   run <script.(json|yaml)> [--doc <file>] [--out <doc.yaml>] [--repro <file>] [--file <id>=<path>] [--doc-id <id>]
   commands
   measure <doc.(yaml|json)> [--file <id>=<path>] [--doc-id <id>]
+  compare <doc.(yaml|json)> <reference.json> [--file <id>=<path>] [--doc-id <id>]
   export <doc.(yaml|json)> --format step|stl [--out <file>] [--body <id>] [--file <id>=<path>]
   replay <repro.json>`
 
@@ -226,6 +229,24 @@ async function measureCommand(args: Args): Promise<number> {
   return 0
 }
 
+async function compareCommand(args: Args): Promise<number> {
+  const file = args.positional[0]
+  const referenceFile = args.positional[1]
+  if (!file) throw new UsageError('compare needs a document file')
+  if (!referenceFile) throw new UsageError('compare needs a reference.json file')
+  const doc = readDoc(file)
+  // Name the parse errors by the case directory, as the corpus suite does.
+  const referenceName = path.basename(path.dirname(path.resolve(referenceFile)))
+  const reference = parseReference(referenceName, readFileSync(referenceFile, 'utf8'))
+  const result = await compareHeadless(doc, reference, {
+    docId: args.flags['doc-id'] ?? 'cli',
+    files: readFiles(args),
+  })
+  printJson(result)
+  if (!result.ok) return 1
+  return result.pass ? 0 : 1
+}
+
 async function exportCommand(args: Args): Promise<number> {
   const file = args.positional[0]
   if (!file) throw new UsageError('export needs a document file')
@@ -277,6 +298,7 @@ async function main(): Promise<number> {
     case 'run': return runCommand(args)
     case 'commands': return commandsCommand()
     case 'measure': return measureCommand(args)
+    case 'compare': return compareCommand(args)
     case 'export': return exportCommand(args)
     case 'replay': return replayCommand(args)
     default:

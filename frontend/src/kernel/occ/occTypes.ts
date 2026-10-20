@@ -709,7 +709,7 @@ export interface OccModule extends OccBaseModule {
     TopAbs_REVERSED: OccEnumValue
   }
 
-  // ─── bounding box (the oracle's exact bbox read) ───
+  // ─── bounding box ───
   // The embind suffix is `_1` (the plain `Bnd_Box` name is bound without a
   // constructor), and `Get` takes six out-params emscripten does not marshal,
   // so the per-corner accessors are the working read. Verified against
@@ -723,7 +723,19 @@ export interface OccModule extends OccBaseModule {
     GetZmax(): number
   }
   BRepBndLib: {
+    // Enlarges by each sub-shape's tolerance and boxes a B-spline's control
+    // net. Tight enough for the oracle's analytic surfaces, not what an
+    // external tool reports.
     Add(shape: OccShape, box: OccDisposable, useTriangulation: boolean): void
+    // The exact box: no triangulation, no shape tolerance. `AddOptimal` is the
+    // 4-arg binding in this build (the wasm also names AddOptimal_1/_2, which
+    // embind does not expose); pinned by measureLocallyReal.test.ts.
+    AddOptimal(
+      shape: OccShape,
+      box: OccDisposable,
+      useTriangulation: boolean,
+      useShapeTolerance: boolean,
+    ): void
   }
 
   // ─── boolean ops + history + clean ───

@@ -1,0 +1,16 @@
+{
+  "source": {
+    "tool": "analytic",
+    "version": "1",
+    "file": "source.md"
+  },
+  "tolerance": { "rel": 1e-6, "abs": 1e-6 },
+  "topology": "report",
+  "bodies": 1,
+  "volume": 603.1857894892403,
+  "area": 402.1238596594935,
+  "centroid": [10, 10, 6],
+  "bbox": [6, 6, 0, 14, 14, 12],
+  "faces": 3,
+  "edges": 3
+}
