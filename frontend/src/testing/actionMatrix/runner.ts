@@ -95,18 +95,24 @@ export function expectedBaselineRows(
 
 // Every entry awaits only microtasks, so a long sweep can starve the event
 // loop (a worker's RPC pings included) for minutes. Hand the loop a macrotask
-// every so often; the cost is unmeasurable at this granularity.
-const YIELD_EVERY = 256
+// on a wall-clock budget, not an entry count: entry cost spans three orders of
+// magnitude, and 256 entries of a heavy fixture (faceExtrudeAfterArrayCut)
+// held the loop past the 30 s stall watchdog in test-setup.ts.
+const YIELD_AFTER_MS = 1000
 
 export async function runMatrix(sweep: MatrixSweep, options: MatrixRunOptions): Promise<MatrixRow[]> {
   const rows: MatrixRow[] = []
+  let lastYield = performance.now()
   for (const doc of sweep.docs) {
     await options.onDocStart?.(doc)
     const targets = targetsForSweep(doc.spec, sweep.maxTargetsPerDoc)
     for (const target of targets) {
       for (const command of PART_COMMANDS) {
         rows.push(await runMatrixEntry(doc, target, command, options))
-        if (rows.length % YIELD_EVERY === 0) await yieldToEventLoop()
+        if (performance.now() - lastYield > YIELD_AFTER_MS) {
+          await yieldToEventLoop()
+          lastYield = performance.now()
+        }
       }
     }
     options.onProgress?.(rows.length, `${doc.label}: ${targets.length} target(s)`)
