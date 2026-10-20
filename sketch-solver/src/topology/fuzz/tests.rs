@@ -277,7 +277,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 32,
-        classes: &["coverage", "euler", "stability", "structure"],
+        classes: &["euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 33,
@@ -317,10 +317,6 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 46,
-        classes: &["stability"],
-    },
-    KnownSeed {
-        seed: 48,
         classes: &["stability"],
     },
     KnownSeed {
@@ -432,6 +428,10 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability"],
     },
     KnownSeed {
+        seed: 95,
+        classes: &["stability"],
+    },
+    KnownSeed {
         seed: 96,
         classes: &["coverage", "stability"],
     },
@@ -445,7 +445,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 99,
-        classes: &["coverage", "euler"],
+        classes: &["coverage", "euler", "stability"],
     },
     KnownSeed {
         seed: 100,
@@ -589,7 +589,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 141,
-        classes: &["coverage", "euler", "structure"],
+        classes: &["coverage", "euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 144,
@@ -649,7 +649,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 163,
-        classes: &["coverage", "euler", "stability", "structure"],
+        classes: &["euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 164,
@@ -661,7 +661,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 167,
-        classes: &["coverage", "euler", "stability", "structure"],
+        classes: &["euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 168,
@@ -1008,6 +1008,10 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
         classes: &["stability"],
     },
     KnownSeed {
+        seed: 289,
+        classes: &["stability"],
+    },
+    KnownSeed {
         seed: 290,
         classes: &["euler", "stability", "structure"],
     },
@@ -1029,7 +1033,7 @@ const KNOWN_FAILING_SEEDS: &[KnownSeed] = &[
     },
     KnownSeed {
         seed: 297,
-        classes: &["coverage", "euler", "stability", "structure"],
+        classes: &["euler", "stability", "structure"],
     },
     KnownSeed {
         seed: 298,

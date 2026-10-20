@@ -5,8 +5,10 @@
 //! within the merge) is a shell; a shell strictly inside another alternates
 //! the fill of its interior (outer shell's interior material, a nested
 //! shell's interior a hole, material again inside that). Two shells that meet
-//! are fused and never nest. The coverage check reads `region_level` per grid
-//! cell to decide whether the cell is expected to sit in a face.
+//! are fused and never nest, and a shell another shell crosses takes no
+//! nesting level at all (its pieces are separate regions, not one bore). The
+//! coverage check reads `region_level` per grid cell to decide whether the
+//! cell is expected to sit in a face.
 //!
 //! Containment is decided on the shells' own sample points against a strict
 //! region test, so a shell that crosses or merely touches another is never
@@ -30,7 +32,7 @@ use super::geometry::{point_in_polygon, sample_curve};
 use super::Curve;
 use crate::radians;
 use crate::tolerance::on_carrier_tol;
-use crate::topology::profile_loops::Vec2;
+use crate::topology::profile_loops::{point_polygon_dist, Vec2};
 use crate::topology::TOL_TOPOLOGY_MERGE as MERGE;
 use crate::MIN_SEMI_AXIS_SQ;
 
@@ -96,6 +98,17 @@ impl Carrier {
             Carrier::Polygon(ref pts) => point_in_polygon(p, pts),
         }
     }
+
+    /// World distance from `p` to the carrier's boundary. Zero on the curve,
+    /// used to read a sample near the boundary as a fused contact rather than
+    /// as a crossing side.
+    fn boundary_gap(&self, p: Vec2) -> f64 {
+        match *self {
+            Carrier::Circle { c, r } => ((p[0] - c[0]).hypot(p[1] - c[1]) - r).abs(),
+            Carrier::Ellipse { c, a, b, theta } => conic_gap(c, a, b, theta, p).abs(),
+            Carrier::Polygon(ref pts) => point_polygon_dist(p, pts),
+        }
+    }
 }
 
 /// The conic residual `F(p)` of an ellipse: negative inside, zero on it.
@@ -143,6 +156,10 @@ pub(crate) struct Chain {
     /// model's standalone loop: its interior is its own face (the unsliced
     /// washer's bore is still an area).
     subdivided: bool,
+    /// True when another closed carrier crosses this shell. Such a shell has
+    /// no single interior to alternate: the crossing splits it into pieces,
+    /// so it takes no nesting level and its pieces stay material.
+    crossed: bool,
 }
 
 fn closed_carrier(c: &Curve, chord_tol: f64) -> Option<Carrier> {
@@ -224,14 +241,24 @@ pub(crate) fn chains_of(
             bbox,
             depth: 0,
             subdivided,
+            crossed: false,
         });
+    }
+    // A shell another closed carrier crosses has no single interior to
+    // alternate, so it takes no nesting level (the builder marks the same
+    // shell on its own carriers).
+    let crossed: Vec<bool> = (0..chains.len())
+        .map(|i| (0..chains.len()).any(|j| i != j && chains_cross(&chains[i], &chains[j])))
+        .collect();
+    for (c, crossed) in chains.iter_mut().zip(crossed) {
+        c.crossed = crossed;
     }
     for _ in 0..chains.len() {
         let mut changed = false;
         for i in 0..chains.len() {
             let mut deepest = 0;
             for j in 0..chains.len() {
-                if i != j && chain_inside(&chains[i], &chains[j]) {
+                if i != j && !chains[i].crossed && chain_inside(&chains[i], &chains[j]) {
                     deepest = deepest.max(chains[j].depth + 1);
                 }
             }
@@ -245,6 +272,33 @@ pub(crate) fn chains_of(
         }
     }
     chains
+}
+
+/// True when two shells cross: samples of one fall strictly inside the other
+/// and samples fall strictly outside it. A sample within MERGE of the other's
+/// boundary is a fused contact, not a crossing side (the same identity rule
+/// the builder's vertex merge applies), so a contained, disjoint, tangent or
+/// duplicated pair does not read as crossed.
+fn chains_cross(a: &Chain, b: &Chain) -> bool {
+    fn straddles(samples: &[Vec2], other: &Carrier) -> bool {
+        let mut inside = false;
+        let mut outside = false;
+        for &p in samples {
+            if other.boundary_gap(p) <= MERGE {
+                continue;
+            }
+            if other.holds(p) {
+                inside = true;
+            } else {
+                outside = true;
+            }
+            if inside && outside {
+                return true;
+            }
+        }
+        false
+    }
+    straddles(&a.poly, &b.carrier) || straddles(&b.poly, &a.carrier)
 }
 
 /// True when shell `inner` lies strictly inside shell `outer`: every sample
@@ -358,6 +412,28 @@ mod tests {
         assert_eq!(region_level([2.5, 0.0], &cs), 1);
         assert!(is_hole_level(region_level([1.5, 0.0], &cs)));
         assert_eq!(region_level([0.5, 0.0], &cs), 3);
+    }
+
+    #[test]
+    fn a_crossed_nested_shell_takes_no_fill_level() {
+        // B is concentric with A; C crosses B. B has no single interior to
+        // alternate, so the region inside it stays at the first (material)
+        // level instead of becoming a hole. Without C it is a hole.
+        let clean = chains(&[circ([0.0, 0.0], 3.0), circ([0.0, 0.0], 1.0)]);
+        assert!(
+            is_hole_level(region_level([0.0, 0.0], &clean)),
+            "the uncrossed bore is a hole"
+        );
+        let crossed = chains(&[
+            circ([0.0, 0.0], 3.0),
+            circ([0.0, 0.0], 1.0),
+            circ([1.5, 0.0], 1.0),
+        ]);
+        assert_eq!(region_level([0.0, 0.0], &crossed), 1);
+        assert!(!hole_expected([0.0, 0.0], &crossed));
+        // Two carriers within MERGE are one fused curve, not a crossing.
+        let fused = chains(&[circ([0.0, 0.0], 3.0), circ([MERGE / 2.0, 0.0], 3.0)]);
+        assert!(!fused[0].crossed && !fused[1].crossed);
     }
 
     #[test]

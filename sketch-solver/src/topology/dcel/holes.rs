@@ -26,7 +26,11 @@
 //! vertex in the split graph, and a fused pair never nests. That is the same
 //! identity rule the vertex merge applies everywhere else in the builder: the
 //! shells are the same curve at that point, so the fill cannot alternate
-//! across it.
+//! across it. The same rule applies one step out: a shell another shell
+//! crosses is not a clean bore boundary either, because the crossing carrier
+//! splits its interior into separate regions. Such a shell does not take a
+//! nesting level at all, so its pieces stay material instead of being an
+//! unrepresentable hole (a hole must be a single closed wire inside one face).
 //!
 //! Nested-hole wiring (`subdivide_loops` / `loop_containment`) is untouched:
 //! every surviving loop keeps its own area, carrying the loops nested inside it
@@ -153,6 +157,17 @@ impl Carrier {
             Carrier::Polygon(ref pts) => pts.clone(),
         }
     }
+
+    /// World distance from `p` to the carrier's boundary. Zero on the curve,
+    /// used to read a sample near the boundary as a fused contact rather than
+    /// as a crossing side.
+    fn boundary_gap(&self, p: Vec2) -> f64 {
+        match *self {
+            Carrier::Circle { c, r } => ((p[0] - c[0]).hypot(p[1] - c[1]) - r).abs(),
+            Carrier::Ellipse { c, a, b, theta } => conic_gap(c, a, b, theta, p).abs(),
+            Carrier::Polygon(ref pts) => point_polygon_dist(p, pts),
+        }
+    }
 }
 
 /// The conic residual `F(p)` of an ellipse: negative inside, zero on it.
@@ -209,6 +224,11 @@ struct Chain {
     /// standalone loop: its interior is its own face (the unsliced washer's
     /// bore is still an area), and so is every traced face inside it.
     subdivided: bool,
+    /// True when another closed carrier crosses this shell. A crossed shell
+    /// cannot be a hole boundary: its interior is split into pieces that each
+    /// belong to a different region, and a hole is a single closed wire. It
+    /// therefore takes no nesting level, and its pieces are material.
+    crossed: bool,
 }
 
 /// The loop one closed entity bounds, in the same edge vocabulary the
@@ -340,19 +360,31 @@ fn chains_of(
             carrier,
             subdivided: subdivided_ids.contains(id.as_str()),
             depth: 0,
+            crossed: false,
         });
+    }
+
+    // A shell another closed carrier crosses has no single interior to
+    // alternate: the crossing splits it into pieces. Mark it before nesting so
+    // it takes no depth (and its pieces are not read as an even-level hole).
+    let crossed: Vec<bool> = (0..chains.len())
+        .map(|i| (0..chains.len()).any(|j| i != j && chains_cross(&chains[i], &chains[j])))
+        .collect();
+    for (c, crossed) in chains.iter_mut().zip(crossed) {
+        c.crossed = crossed;
     }
 
     // Nesting depth over the strict-containment relation, relaxed to a
     // fixpoint: a chain inside a chain inside a chain ends at depth two. The
     // relation is a DAG (containment is a strict partial order), so the
-    // relaxation settles in at most `chains.len()` rounds.
+    // relaxation settles in at most `chains.len()` rounds. Only an uncrossed
+    // inner shell can take a level; a crossed one is not a bore boundary.
     for _ in 0..chains.len() {
         let mut changed = false;
         for i in 0..chains.len() {
             let mut deepest = 0;
             for j in 0..chains.len() {
-                if i != j && chain_inside(&chains[i], &chains[j]) {
+                if i != j && !chains[i].crossed && chain_inside(&chains[i], &chains[j]) {
                     deepest = deepest.max(chains[j].depth + 1);
                 }
             }
@@ -366,6 +398,35 @@ fn chains_of(
         }
     }
     chains
+}
+
+/// True when two shells' carriers cross: samples of one fall strictly inside
+/// the other and samples fall strictly outside it. A contained pair is all
+/// inside-or-on, and a disjoint or external pair all outside, so neither reads
+/// as crossed. A sample within MERGE of the other's boundary is a fused
+/// contact, not a crossing side, which is the same identity rule the vertex
+/// merge applies; ignoring it keeps an internal tangency (or a duplicated
+/// carrier) stable under jitter.
+fn chains_cross(a: &Chain, b: &Chain) -> bool {
+    fn straddles(samples: &[Vec2], other: &Carrier) -> bool {
+        let mut inside = false;
+        let mut outside = false;
+        for &p in samples {
+            if other.boundary_gap(p) <= MERGE {
+                continue;
+            }
+            if other.holds(p) {
+                inside = true;
+            } else {
+                outside = true;
+            }
+            if inside && outside {
+                return true;
+            }
+        }
+        false
+    }
+    straddles(&a.carrier.samples(), &b.carrier) || straddles(&b.carrier.samples(), &a.carrier)
 }
 
 /// True when chain `inner` lies strictly inside `outer`: every sample point of
@@ -535,6 +596,7 @@ mod tests {
             carrier: Carrier::Circle { c: [0.0, 0.0], r },
             subdivided: true,
             depth,
+            crossed: false,
         }
     }
 
@@ -626,6 +688,67 @@ mod tests {
     }
 
     #[test]
+    fn a_shell_another_shell_crosses_takes_no_nesting_level() {
+        // B is concentric with A, and C crosses B. B is not a clean bore
+        // boundary: C splits its interior into pieces that belong to separate
+        // faces, so B stays at depth zero and a face inside it is material.
+        // Without C the same B nests in A and the face is a hole.
+        let circle_at = |c: Vec2, r: f64| TopoEntity::Circle {
+            construction: false,
+            center: c,
+            radius: r,
+        };
+        let splits: HashMap<String, Vec<Split>> = HashMap::new();
+        let cut: HashSet<&str> = HashSet::new();
+        let check =
+            |entities: &[(String, TopoEntity)]| chains_of(entities, &[], &[], &splits, &cut);
+        let nested = vec![
+            ("outer".to_string(), circle_at([0.0, 0.0], 3.0)),
+            ("inner".to_string(), circle_at([0.0, 0.0], 1.0)),
+        ];
+        let clean = check(&nested);
+        assert_eq!(clean[1].depth, 1, "the uncrossed inner shell is nested");
+        assert!(!clean[1].crossed);
+        assert_eq!(
+            face_state(&face_at([0.0, 0.0]).boundary, &clean).0,
+            2,
+            "a face in the uncrossed bore is a hole level"
+        );
+
+        let mut crossed = nested;
+        crossed.push(("offset".to_string(), circle_at([1.5, 0.0], 1.0)));
+        let split = check(&crossed);
+        assert!(
+            split[1].crossed,
+            "the offset circle crosses the inner shell"
+        );
+        assert_eq!(split[1].depth, 0, "a crossed shell takes no nesting level");
+        let inside = face_at([0.0, 0.0]);
+        assert_eq!(
+            face_state(&inside.boundary, &split).0,
+            1,
+            "the crossed shell's pieces are material"
+        );
+        assert!(
+            hole_owner(&inside.boundary, &split).is_none(),
+            "nothing is a hole here"
+        );
+
+        // A fused contact is not a crossing: two carriers within MERGE read as
+        // one curve, so neither takes the exclusion (the vertex merge's own
+        // identity rule, applied to the sampled sides).
+        let duplicated = vec![
+            ("a".to_string(), circle_at([0.0, 0.0], 3.0)),
+            ("b".to_string(), circle_at([MERGE / 2.0, 0.0], 3.0)),
+        ];
+        let fused = check(&duplicated);
+        assert!(
+            !fused[0].crossed && !fused[1].crossed,
+            "a fused contact is not a crossing"
+        );
+    }
+
+    #[test]
     fn crossing_and_touching_chains_do_not_nest() {
         // A lens inside a venn: both circles are roots, so a point inside both
         // stays at level one. A chain crossing another keeps sample points on
@@ -638,6 +761,7 @@ mod tests {
             },
             subdivided: true,
             depth: 0,
+            crossed: false,
         };
         assert!(!chain_inside(&crossing, &a), "a crossing pair never nests");
         assert_eq!(
@@ -654,6 +778,7 @@ mod tests {
             },
             subdivided: true,
             depth: 0,
+            crossed: false,
         };
         assert!(!chain_inside(&small, &a));
     }
