@@ -6,8 +6,7 @@ use super::super::profile_loops::{EdgeGeom, Vec2};
 use super::super::{TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI};
 use super::intersect::{collinear_overlap, intersect, Classified};
 use super::{
-    angle_in_arc, arc_tangent, dedup, degrees, has_param, norm_arc_param, pymod, Split, TopoEntity,
-    Verts,
+    angle_in_arc, arc_tangent, dedup, degrees, has_param, norm_arc_param, Split, TopoEntity, Verts,
 };
 use crate::radians;
 
@@ -214,35 +213,13 @@ pub(super) fn bend(eg: &EdgeGeom) -> f64 {
 
 pub(super) type HalfEdge = (String, String, EdgeGeom);
 
-/// Force each arc's CCW span <= pi by swapping its endpoints. Every consumer of
-/// `angle_start`/`angle_end` (the split params, `angle_in_arc`) reads the
-/// normalized form, so construction arcs run through this too before their
-/// crossings are tested.
-pub(super) fn normalize_arc_spans(arcs: &mut [(String, TopoEntity)]) {
-    for (_eid, e) in arcs.iter_mut() {
-        let TopoEntity::Arc {
-            angle_start,
-            angle_end,
-            start,
-            end,
-            ..
-        } = e
-        else {
-            continue;
-        };
-        let a0_rad = radians(*angle_start);
-        let a1_rad = radians(*angle_end);
-        let ccw_span = pymod(a1_rad - a0_rad, TWO_PI);
-        if ccw_span > std::f64::consts::PI + EPS {
-            std::mem::swap(angle_start, angle_end);
-            std::mem::swap(start, end);
-        }
-    }
-}
-
-/// Normalize arcs (force CCW span <= pi by swapping endpoints) and seed splits.
+/// Seed the arc split lists from the authored sweep. An arc is CCW from
+/// `angle_start` to `angle_end`, and that span may exceed pi: forcing the minor
+/// complement would close the same endpoints on the other side and could
+/// publish a region that is not in the sketch (a projected long body arc inside
+/// a cutout was the "ghost area" report).
 #[allow(clippy::type_complexity)]
-pub(super) fn normalize_arcs_and_init_splits(
+pub(super) fn init_arc_splits(
     arcs_in: &[(String, TopoEntity)],
     arc_verts: &mut Verts,
 ) -> (
@@ -250,11 +227,9 @@ pub(super) fn normalize_arcs_and_init_splits(
     HashMap<String, Vec<Split>>,
     Vec<(String, TopoEntity)>,
 ) {
-    let mut arcs: Vec<(String, TopoEntity)> = arcs_in.to_vec();
+    let arcs: Vec<(String, TopoEntity)> = arcs_in.to_vec();
     let mut arc_a0: HashMap<String, f64> = HashMap::new();
     let mut splits: HashMap<String, Vec<Split>> = HashMap::new();
-
-    normalize_arc_spans(&mut arcs);
 
     for (eid, e) in &arcs {
         let TopoEntity::Arc {
@@ -495,8 +470,8 @@ pub(super) fn add_curve_intersections(
 }
 
 /// Tag the buckets with their `TopoEntity`, which already carries the kind.
-/// `arcs` comes in separately because the caller tags the span-normalized arc
-/// copies, not the raw `cls.arcs`.
+/// `arcs` comes in separately because the caller supplies the classified arcs
+/// (the construction pass tags its own copy).
 pub(super) fn tag_entities(cls: &Classified, arcs: &[(String, TopoEntity)]) -> Vec<Tagged> {
     let mut tagged: Vec<Tagged> = Vec::new();
     let mut push = |src: &[(String, TopoEntity)]| {

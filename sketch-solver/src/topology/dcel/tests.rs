@@ -388,7 +388,7 @@ fn arc_endpoint_tangency_tolerance_is_world_scaled() {
 
 #[test]
 fn arc_with_huge_decoded_angles_completes_and_keeps_the_square_intact() {
-    // angle_start = 3e38 echoes through normalize_arcs_and_init_splits for
+    // angle_start = 3e38 echoes through init_arc_splits for
     // an unconstrained arc whose seed survives LM. Normalization walked one
     // 2*pi step per iteration (~9e35 steps): detect_topology effectively
     // never returned and the Worker wedged. The square alongside must still
