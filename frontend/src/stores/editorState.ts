@@ -110,6 +110,14 @@ export function clampRollback(doc: PartDoc): number {
   return clampRollbackPosition(doc)
 }
 
+// A whole-document seam (open, recovery restore, a swap) carries its own parked
+// bar. Write it into the store BEFORE the first solve: reSolve reads the store
+// live, and on a fresh session a null there means "bar at the end", which would
+// rebuild the very features the document rolled back.
+export function syncRollbackFromDoc(doc: PartDoc): void {
+  editorState.getState().setRollbackPosition(clampRollback(doc))
+}
+
 // The values the unmount reset restores for the part-side fields.
 export const DEFAULT_EDITOR_STATE = {
   rollbackPosition: null,

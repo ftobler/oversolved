@@ -7,6 +7,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { useDocPersistence } from '@/hooks/useDocPersistence'
 import { takeRecoveryRestore } from '@/recovery/restore'
+import { syncRollbackFromDoc } from '@/stores/editorState'
 
 export { BUILTIN_FEATURE_DEFAULTS, BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 
@@ -64,6 +65,9 @@ export function useDocumentState(
         const restored = takeRecoveryRestore(uuid)
         if (restored) {
           docRef.current = restored
+          // The recovery snapshot's parked bar is authoritative for its first
+          // solve, exactly as the stored document's is below.
+          syncRollbackFromDoc(restored)
           setDoc(restored)
           setLoadFailure(null)
           setDocName(data.name)
@@ -81,6 +85,10 @@ export function useDocumentState(
           parsed.features = BUILTIN_FEATURE_DEFAULTS.map(f => ({ ...f }))
         }
         docRef.current = parsed
+        // Mirror the loaded bar BEFORE the first solve: reSolve reads the store
+        // live, so waiting for the page's effect would let the load solve run
+        // with a null (end-of-stack) store and rebuild the rolled-back tail.
+        syncRollbackFromDoc(parsed)
         setDoc(parsed)
         setLoadFailure(null)
         setDocName(data.name)

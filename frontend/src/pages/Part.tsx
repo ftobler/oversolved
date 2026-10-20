@@ -11,6 +11,7 @@ import { wouldOverconstrain } from '@/kernel/features/constraintProbe'
 import { visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, sketchOwnedDeleteTargets, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
+import { syncRollbackFromDoc } from '@/stores/editorState'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { capturePreview } from '@/stores/previewStore/capture'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
@@ -93,15 +94,6 @@ function setRollbackAfterInsertions(firstInsertAt: number, count = 1) {
 
 function extractFeatures(doc: PartDoc | null): PartFeature[] {
   return doc?.features ?? []
-}
-
-// Re-derive the rollback store from a whole-document swap (the load seam). The
-// swapped-in doc's parked `rollback` is authoritative; a position past the end
-// of the feature list (features removed, or the old store value left over from
-// the previous doc) falls back to the end.
-function syncRollbackFromDoc(doc: PartDoc) {
-  const count = extractFeatures(doc).length
-  editorState.getState().setRollbackPosition(Math.min(doc.rollback ?? count, count))
 }
 
 const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {

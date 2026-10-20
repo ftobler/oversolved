@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, RebuildValidation, FeatureHandleData } from '@/types/cad'
 import { useSolverStore } from '@/stores/solverStore'
-import { editorState } from '@/stores/editorState'
+import { editorState, clampRollback } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
@@ -334,7 +334,14 @@ export function useSolver(
       const storeRollback = store.rollbackPosition
       const pickBoundary = store.pickBoundary
       const editingFeatureId = store.editingFeatureId
-      const effectiveRollback = storeRollback ?? allFeatures.length
+      // The store is the live bar, but a load/restore solve can run before the
+      // page mirrors the doc into it. Until then the doc's parked `rollback` is
+      // authoritative; a null store still means "bar at the end" when the doc
+      // carries no key. A non-null store always wins (a swap re-derives it from
+      // the swapped doc, which may legitimately disagree with the stale doc).
+      const docRollback = typeof d.rollback === 'number' ? clampRollback(d) : null
+      const unmirroredRollback = storeRollback === null ? docRollback : null
+      const effectiveRollback = storeRollback ?? unmirroredRollback ?? allFeatures.length
 
       let solveFeatures = allFeatures.slice(0, effectiveRollback).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
       const dragAnchor = opts?.dragAnchor
@@ -347,7 +354,7 @@ export function useSolver(
         )
       }
       const adjustedRollback = solveFeatures.length
-      const isPreview = storeRollback !== null || pickBoundary !== null
+      const isPreview = storeRollback !== null || unmirroredRollback !== null || pickBoundary !== null
 
       assertEditingInvariant(editingFeatureId, allFeatures, effectiveRollback, pickBoundary)
 
