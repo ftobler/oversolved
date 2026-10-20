@@ -3,8 +3,8 @@ use crate::tolerance::tangent_gap_tol;
 use crate::topology::dcel::build::{push_half_edge_pair, HalfEdge};
 use crate::topology::dcel::intersect::{cc, collinear_overlap};
 use crate::topology::dcel::trace::{face_area, trace_face_cycles};
-use crate::topology::dcel::{norm_arc_param, Verts};
-use crate::topology::profile_loops::EdgeGeom;
+use crate::topology::dcel::{detect_topology, norm_arc_param, InputEntity, Verts};
+use crate::topology::profile_loops::{loop_pts, BoundaryEdge, EdgeGeom};
 use crate::topology::{TOL_TOPOLOGY_MERGE as MERGE, TOL_TOPOLOGY_SPLIT as SPLIT_EPS, TWO_PI};
 
 use super::helpers::*;
@@ -230,4 +230,101 @@ fn collinear_overlap_degenerate_and_normal() {
         &topo(line([1.0, 0.0], [3.0, 0.0]))
     )
     .is_empty());
+}
+
+/// The four projected arcs from the "ghost area" report, as the document baked
+/// them (center, radius, degree angles). `enrichSketchEntity` rebuilds the
+/// endpoints from those angles; that is what the area builder receives.
+fn ghost_area_arcs() -> Vec<(String, InputEntity)> {
+    let arc = |cx: f64, cy: f64, r: f64, a0: f64, a1: f64| InputEntity {
+        center: Some([cx, cy]),
+        radius: Some(r),
+        start: Some([cx + r * radians(a0).cos(), cy + r * radians(a0).sin()]),
+        end: Some([cx + r * radians(a1).cos(), cy + r * radians(a1).sin()]),
+        angle_start: Some(a0),
+        angle_end: Some(a1),
+        ..Default::default()
+    };
+    vec![
+        (
+            "UxOQSPUQKvG6Bmop".into(),
+            arc(0.0, -7.695343, 25.0, -36.869898, -143.130102),
+        ),
+        (
+            "rzQrzQ3-X0Flhbi4".into(),
+            arc(0.0, -37.695343, 25.0, 119.926435, 143.130102),
+        ),
+        (
+            "umqalNCIsgQ8fI-v".into(),
+            arc(0.0, -7.695343, 15.0, -33.748989, -146.251011),
+        ),
+        (
+            "1apelpHb5HfHR2I4".into(),
+            arc(0.0, -37.695343, 25.0, 36.869898, 60.073565),
+        ),
+    ]
+}
+
+fn sampled_area(edges: &[BoundaryEdge]) -> f64 {
+    let pts = loop_pts(edges, 512);
+    let n = pts.len();
+    let mut sum = 0.0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        sum += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
+    }
+    (sum / 2.0).abs()
+}
+
+#[test]
+fn projected_long_arcs_keep_their_authored_sweep() {
+    // The report's projection lowers long top-face arcs (>180 degrees CCW) to
+    // their authored params. Collapsing every arc to its <=180 complement
+    // instead closed the same endpoints on the far side, inside the body's
+    // cutouts, and published a region that does not exist.
+    let t = detect_topology(&ghost_area_arcs());
+    assert_eq!(
+        t.surfaces.len(),
+        1,
+        "the four arcs bound exactly the real crescent"
+    );
+    let boundary = &t.surfaces[0].boundary;
+    assert_eq!(boundary.len(), 4);
+
+    let span = |id: &str| {
+        boundary
+            .iter()
+            .find(|e| e.id.as_deref() == Some(id))
+            .and_then(|e| match e.geom {
+                EdgeGeom::Arc {
+                    angle_start_deg,
+                    angle_end_deg,
+                    ccw,
+                    ..
+                } => {
+                    let span = if ccw {
+                        (angle_end_deg - angle_start_deg) % 360.0
+                    } else {
+                        (angle_start_deg - angle_end_deg) % 360.0
+                    };
+                    Some((span + 360.0) % 360.0)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{id} is not a boundary arc"))
+    };
+    // The outer C1 and inner C3 boundary arcs are long; the two C2 caps are
+    // short. The authored sweep, not its complement, is what closes the face.
+    assert!((span("UxOQSPUQKvG6Bmop") - 253.739796).abs() < 1e-3);
+    assert!((span("umqalNCIsgQ8fI-v") - 247.497978).abs() < 1e-3);
+    assert!((span("rzQrzQ3-X0Flhbi4") - 23.203667).abs() < 1e-3);
+    assert!((span("1apelpHb5HfHR2I4") - 23.203667).abs() < 1e-3);
+
+    // The real crescent's area is the body's top face (volume 8706.9627 / 10).
+    // The complement at the same endpoints encloses a different region.
+    assert!(
+        (sampled_area(boundary) - 870.696269).abs() < 0.05,
+        "boundary area {} is not the crescent",
+        sampled_area(boundary)
+    );
 }

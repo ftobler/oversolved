@@ -44,8 +44,7 @@ mod tests;
 
 use build::{
     add_curve_intersections, add_spline_self_intersections, build_half_edge_graph,
-    find_all_intersections, normalize_arc_spans, normalize_arcs_and_init_splits,
-    seed_construction_crossings, tag_entities,
+    find_all_intersections, init_arc_splits, seed_construction_crossings, tag_entities,
 };
 use holes::split_hole_faces;
 use intersect::classify;
@@ -454,8 +453,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     // Seed arc vertex registration with line-endpoint data so coincident arc/line
     // endpoints share vertex ids, then merge new arc vertices back.
     let mut arc_verts = verts.clone();
-    let (a0_from_norm, arc_splits, arcs) =
-        normalize_arcs_and_init_splits(&cls.arcs, &mut arc_verts);
+    let (a0_from_norm, arc_splits, arcs) = init_arc_splits(&cls.arcs, &mut arc_verts);
     for (k, v) in a0_from_norm {
         arc_a0.insert(k, v);
     }
@@ -499,8 +497,7 @@ pub fn detect_topology(geometry: &[(String, InputEntity)]) -> TopologyOut {
     add_curve_intersections(&tagged, &mut splits, &mut verts, &arc_a0);
 
     if !con.is_empty() {
-        let mut c_arcs = con.arcs.clone();
-        normalize_arc_spans(&mut c_arcs);
+        let c_arcs = con.arcs.clone();
         let c_tagged = tag_entities(&con, &c_arcs);
         seed_construction_crossings(&tagged, &c_tagged, &mut verts);
     }
