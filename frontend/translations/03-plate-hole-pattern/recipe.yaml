@@ -1,0 +1,52 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom: [0, 0, 40, 0]
+      right: [40, 0, 40, 30]
+      top: [40, 30, 0, 30]
+      left: [0, 30, 0, 0]
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 6
+      direction: normal
+      operation: new
+  - id: sk2
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: p1
+        kind: point
+      - id: p2
+        kind: point
+      - id: p3
+        kind: point
+      - id: p4
+        kind: point
+    initial:
+      p1: [10, 7]
+      p2: [30, 7]
+      p3: [10, 23]
+      p4: [30, 23]
+  - id: h1
+    kind: hole
+    hole:
+      sketch: "@sk2"
+      diameter: 6
+      depth_mode: through_all
+      depth: 1
+      target: "@body_ex1"
+      direction: normal

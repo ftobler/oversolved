@@ -80,20 +80,22 @@ python:
 # Aggregate and asset recipes tee their whole run to tmp/just_<recipe>.log on
 # top of that, so `just frontend` needs no hand-written `| tee` to be re-grepped.
 
-# frontend/scripts/mergeCorpus.py is the one Python file outside the package,
-# and lint.py is the repo linter, so both are checked alongside the package.
+# frontend/scripts/ holds two Python files outside the package
+# (mergeCorpus.py and cadqueryReference.py), and lint.py is the repo linter, so
+# all three are checked alongside the package. CadQuery is imported lazily by
+# the reference runner, so mypy sees it without requiring the optional extra.
 
 # Type-check the surviving Python tooling.
 mypy:
     mkdir -p tmp
-    .venv/bin/python -m mypy tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py 2>&1 | tee tmp/mypy.log
+    .venv/bin/python -m mypy tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py frontend/scripts/cadqueryReference.py 2>&1 | tee tmp/mypy.log
 
 # CI still runs flake8 (same E/F/W rule set) as the safety net.
 
 # Lint the Python tooling with ruff.
 ruff:
     mkdir -p tmp
-    .venv/bin/python -m ruff check tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py 2>&1 | tee tmp/ruff.log
+    .venv/bin/python -m ruff check tests/ oversolved/ lint.py frontend/scripts/mergeCorpus.py frontend/scripts/cadqueryReference.py 2>&1 | tee tmp/ruff.log
 
 # lint.py itself is not listed: it holds the rule fixtures and is not a folder.
 
@@ -300,7 +302,7 @@ install:
     # note cairo needs apt libcairo2-dev
     { \
         (test -d .venv || python3 -m venv .venv) && \
-        .venv/bin/pip install -e ".[dev]" && \
+        .venv/bin/pip install -e ".[dev,cadquery]" && \
         just install-npm && \
         just install-wasm && \
         just wasm && \

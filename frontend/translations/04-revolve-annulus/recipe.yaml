@@ -1,0 +1,35 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom: [10, 0, 20, 0]
+      right: [20, 0, 20, 5]
+      top: [20, 5, 10, 5]
+      left: [10, 5, 10, 0]
+  - id: sk2
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: axis
+        kind: line
+        construction: true
+    initial:
+      axis: [0, 0, 0, 5]
+  - id: rv1
+    kind: revolve
+    revolve:
+      sketch: $sk1
+      angle: 360
+      axis: "@sk2/axis"
+      operation: new

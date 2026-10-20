@@ -28,6 +28,12 @@ dev = [
     "ruff>=0.6,<1",
     "pycairo>=1.25,<2",
 ]
+# The translation reference runner executes CadQuery scripts to produce the
+# committed reference.json files. It is not part of [dev]: CI installs [dev] in
+# every Python job and must not download the OCP wheel for one optional test.
+cadquery = [
+    "cadquery>=2.4,<3",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

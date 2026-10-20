@@ -1,0 +1,35 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom: [0, 0, 20, 0]
+      right: [20, 0, 20, 14]
+      top: [20, 14, 0, 14]
+      left: [0, 14, 0, 0]
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 10
+      direction: normal
+      operation: new
+  - id: fi1
+    kind: fillet
+    fillet:
+      edges:
+        - ?15,4,9,b,9,7,7;@u|e_9cc5e0e181099253@ex1@body_ex1@sk1/bottom@sk1/left@cls_xn@cls_yn:straightedge
+        - ?15,4,9,8,9,7,7;@u|e_2a45636be3f3c69d@ex1@body_ex1@sk1/top@sk1/left@cls_xn@cls_yp:straightedge
+        - ?15,4,9,b,a,7,7;@u|e_de451d9580d77ce3@ex1@body_ex1@sk1/bottom@sk1/right@cls_xp@cls_yn:straightedge
+        - ?15,4,9,a,8,7,7;@u|e_581912f80769e2fd@ex1@body_ex1@sk1/right@sk1/top@cls_xp@cls_yp:straightedge
+      radius: 3

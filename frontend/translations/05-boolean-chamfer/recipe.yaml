@@ -1,0 +1,53 @@
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    entities:
+      - id: bottom
+        kind: line
+      - id: right
+        kind: line
+      - id: top
+        kind: line
+      - id: left
+        kind: line
+    initial:
+      bottom: [-15, -10, 15, -10]
+      right: [15, -10, 15, 10]
+      top: [15, 10, -15, 10]
+      left: [-15, 10, -15, -10]
+  - id: ex1
+    kind: extrude
+    extrude:
+      sketch: $sk1
+      distance: 8
+      direction: normal
+      operation: new
+  - id: pl1
+    kind: plane
+    definition:
+      mode: offset
+      plane: "@builtin_plane_front"
+      offset: 8
+  - id: sk2
+    kind: sketch
+    plane: "@pl1"
+    entities:
+      - id: c
+        kind: circle
+    initial:
+      c: [0, 0, 6]
+  - id: ex2
+    kind: extrude
+    extrude:
+      sketch: $sk2
+      distance: 6
+      direction: normal
+      operation: add
+  - id: ch1
+    kind: chamfer
+    chamfer:
+      edges:
+        - ?15,4,9,6,7;@u|e_0e7e6da76c39be69@ex2@body_ex1@sk2/c@cls_zp:edge
+      distance: 1
