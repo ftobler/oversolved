@@ -407,6 +407,41 @@ export interface ApplyMoveFaceResult {
   cells: MoveFaceCells
 }
 
+/** One picked face and the cells selected for it on the SAME body shape. */
+export interface MoveFaceStep {
+  face: OccShape
+  cells: MoveFaceCells
+}
+
+export interface ApplyMoveFaceSetResult {
+  shape: OccShape
+  faceOrigin: FaceOrigin[]
+  diff: BrepDiff
+}
+
+/**
+ * Apply cells that were all selected on the SAME body shape in one boolean.
+ * Moving several faces together is a function of the picked set, not its order:
+ * computing every slab against the original body and fusing (or cutting) the
+ * union avoids the interference a sequential move creates at a shared
+ * boundary, where an earlier move can leave a neighbour surface that no longer
+ * crosses the next slab.
+ */
+export function combineMoveFaceCells(
+  oc: OccModule,
+  scope: DisposeScope,
+  body: OccShape,
+  steps: MoveFaceStep[],
+  d: number,
+): ApplyMoveFaceSetResult {
+  const compound = scope.track(new oc.TopoDS_Compound())
+  const builder = scope.track(new oc.BRep_Builder())
+  builder.MakeCompound(compound)
+  for (const step of steps) for (const c of step.cells.cells) builder.Add(compound, c)
+  const res = booleanWithDiff(oc, scope, body, compound, d > 0 ? 'fuse' : 'cut')
+  return { shape: res.shape, faceOrigin: res.faceOrigin, diff: res.diff }
+}
+
 /**
  * Move `face` on `body` by signed `d`: select the cells, then fuse (d > 0) or
  * cut (d < 0) them through `booleanWithDiff` (history + clean + soundness). The
@@ -421,11 +456,7 @@ export function applyMoveFace(
   d: number,
 ): ApplyMoveFaceResult {
   const cells = moveFaceCells(oc, scope, body, face, d)
-  const compound = scope.track(new oc.TopoDS_Compound())
-  const builder = scope.track(new oc.BRep_Builder())
-  builder.MakeCompound(compound)
-  for (const c of cells.cells) builder.Add(compound, c)
-  const res = booleanWithDiff(oc, scope, body, compound, d > 0 ? 'fuse' : 'cut')
+  const res = combineMoveFaceCells(oc, scope, body, [{ face, cells }], d)
   return { shape: res.shape, faceOrigin: res.faceOrigin, diff: res.diff, cells }
 }
 

@@ -80,6 +80,17 @@ export function moveFaceExtendPath(createdBy: string, neighbourUuid: string): st
   return `${createdBy}|extend|${neighbourUuid}`
 }
 
+/**
+ * A lateral cell face in a multi-pick move set. Two picks applied in one
+ * boolean can extend the same neighbour, which would otherwise mint one name
+ * for both pieces and make `transferBooleanNames` read them as split siblings.
+ * The pick index keeps each moved face's extension its own; single-pick moves
+ * keep `moveFaceExtendPath` unchanged.
+ */
+export function moveFaceSetExtendPath(createdBy: string, neighbourUuid: string, pickIndex: number): string {
+  return `${moveFaceExtendPath(createdBy, neighbourUuid)}|set|${pickIndex}`
+}
+
 /** What a hole's cutter face is: the bore wall, or one of the cutter's discs,
  *  `mouth` where the cutter starts and `floor` where it ends. A through_all
  *  cutter starts backed off outside the body and ends past it, so neither disc

@@ -7,6 +7,8 @@ import {
   sideFacePath,
   capFacePath,
   filletFacePath,
+  moveFaceExtendPath,
+  moveFaceSetExtendPath,
   splitFacePath,
   importedFacePath,
   importedInstanceFacePath,
@@ -34,6 +36,18 @@ describe('construction path grammar', () => {
       importedInstanceFacePath('import1', 17, 1),
     ]
     for (const p of paths) expect(p).not.toMatch(FLOAT_RE)
+  })
+
+  it('gives each pick in a multi-pick move its own extend name', () => {
+    // Single-pick moves keep the shipped path unchanged.
+    expect(moveFaceExtendPath('mf1', 'u_n')).toBe('mf1|extend|u_n')
+    expect(moveFaceSetExtendPath('mf1', 'u_n', 0)).toBe('mf1|extend|u_n|set|0')
+    expect(moveFaceSetExtendPath('mf1', 'u_n', 1)).toBe('mf1|extend|u_n|set|1')
+    expect(new Set([
+      moveFaceExtendPath('mf1', 'u_n'),
+      moveFaceSetExtendPath('mf1', 'u_n', 0),
+      moveFaceSetExtendPath('mf1', 'u_n', 1),
+    ]).size).toBe(3)
   })
 
   it('round-trips the expected path shapes', () => {
