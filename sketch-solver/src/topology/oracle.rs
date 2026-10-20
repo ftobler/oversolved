@@ -70,9 +70,17 @@ use coverage::{coverage_violations, face_polys};
 use geometry::bbox_of;
 use structure::{check_loop, euler_violations, half_edge_usage_violations, hole_wiring_violations};
 
-pub(crate) use coverage::{CELLS_PER_DIAGONAL, FACE_POLY_MAX_PTS};
-pub(crate) use geometry::{compare_face_multisets, face_summaries, FaceSummary};
-pub(crate) use geometry::{edge_polyline, loop_area_centroid, loop_polygon, point_in_polygon};
+// The fuzz-feature build reaches only the JSON entry, so the helpers the
+// tests and the generator drive are re-exported for `cfg(test)` alone.
+pub(crate) use coverage::CELLS_PER_DIAGONAL;
+#[cfg(test)]
+pub(crate) use coverage::FACE_POLY_MAX_PTS;
+pub(crate) use geometry::{compare_face_multisets, face_summaries};
+#[cfg(test)]
+pub(crate) use geometry::{
+    edge_polyline, loop_area_centroid, loop_polygon, point_in_polygon, FaceSummary,
+};
+#[cfg(test)]
 pub(crate) use structure::edge_end;
 
 // ─── Violations ───
