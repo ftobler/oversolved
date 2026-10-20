@@ -36,10 +36,21 @@ import {
 } from './primitives'
 import { classifyLoops, type LoopEdge } from '../profileLoops'
 import { booleanWithHistory, cleanWithHistory, composeOriginThroughClean, countSolids } from './booleans'
-import { FaceEdgeTable, nameFacesFromNeighbours } from './constructionLineage'
+import {
+  FaceEdgeTable,
+  nameFacesFromNeighbours,
+  faceSplitKey,
+} from './constructionLineage'
 import { canonicalFaces, carryFaceNames, emptyShapeNames, type ShapeNames } from './bodyNames'
 import { SubShapeMap } from './subshapeIdentity'
-import { mintFaceUuid, sideFacePath, capFacePath } from '../constructionName'
+import {
+  mintFaceUuid,
+  sideFacePath,
+  capFacePath,
+  splitFacePath,
+  orderSplitChildren,
+  type SplitChild,
+} from '../constructionName'
 import { sketchLoopsToFace, canonicalizeFaceCircles } from './prismProfile'
 import { entityForEdges, derivePrismEdgeNames } from './prismEdgeNaming'
 
@@ -272,6 +283,41 @@ export function buildPrismLineageMap(
     capRoles = geo.capRoles
   }
 
+  // One profile entity can generate several solid faces: a circle split into
+  // arcs where it meets another loop gives each arc its own lateral face. Mint
+  // one UUID per face, not per entity, or the body carries the same identity on
+  // two faces and the face index collapses them. Deterministic split indices
+  // reuse `orderSplitChildren`; a near-tie leaves the faces unnamed for the
+  // neighbour pass, never one UUID shared by several faces.
+  const sideRows = new Map<string, OccSubShape[]>()
+  for (const row of faces.rows) {
+    const match = genIdx.get(row.face)[0]
+    if (match === undefined) continue
+    const slot = sketchId ? `${sketchId}/${match.eid}` : match.eid
+    const group = sideRows.get(slot)
+    if (group) group.push(row.face)
+    else sideRows.set(slot, [row.face])
+  }
+  const sideUuids = new SubShapeMap<string>()
+  for (const [slot, group] of sideRows) {
+    const base = mintFaceUuid(sideFacePath(createdBy, slot))
+    if (group.length === 1) {
+      sideUuids.set(group[0], base)
+      continue
+    }
+    // The split key is relative to the PROFILE face these walls grew from, not
+    // the whole solid, so the refusal threshold means the same fraction of the
+    // parent surface and a body-wide resize cannot flip the order.
+    const ordered = orderSplitChildren(
+      group.map<SplitChild<OccSubShape>>((face) => ({
+        item: face,
+        key: faceSplitKey(oc, scope, occFace, face),
+      })),
+    )
+    if (ordered === null) continue
+    ordered.forEach((face, i) => sideUuids.set(face, mintFaceUuid(splitFacePath(base, i))))
+  }
+
   // solid face -> construction uuid, its tokens the generating profile entity.
   const faceNames = new SubShapeMap<string>()
   const faceAncestry: Record<string, string[]> = {}
@@ -281,8 +327,7 @@ export function buildPrismLineageMap(
     if (createdBy) {
       let uuid: string | null = null
       if (match !== undefined) {
-        const slot = sketchId ? `${sketchId}/${match.eid}` : match.eid
-        uuid = mintFaceUuid(sideFacePath(createdBy, slot))
+        uuid = sideUuids.get(sf) ?? null
       } else {
         // capCandidates is at most two faces; a linear IsSame find over it is
         // cheaper than an index build, so it stays a find.
