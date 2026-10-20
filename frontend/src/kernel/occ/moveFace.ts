@@ -39,6 +39,7 @@ import type { BrepDiff } from '../types3d'
 import { TOL_MOVE_FACE_TANGENT } from '../solverConstants'
 import type { Vec3 } from '@/utils/vec3'
 import {
+  extendedNeighbourSolid,
   faceSurfaceName,
   MoveFaceRefusal,
   movedSurface,
@@ -331,6 +332,17 @@ export function moveFaceCells(
   // face's own seam and point-like (degenerated) edges are skipped.
   const toolFaces: OccShape[] = []
   const toolNeighbour: OccShape[] = []
+  const solidTools: (OccShape | null)[] = []
+  // A full curved splitter FACE is a closed shell with no free boundary and
+  // does not partition the slab, so a cell can span a sibling the user did not
+  // pick. Keep the shipped face tools by default and offer a solid replacement
+  // only for a neighbour cylinder that lies inside the picked surface's radius
+  // (the bore that fails to cut); a solid on a same-radius or larger neighbour
+  // feeds UnifySameDomain an invalid weld.
+  const sourceRadius =
+    surface.kind === 'cylinder'
+      ? scope.track(scope.track(new oc.BRepAdaptor_Surface_2(face, true)).Cylinder()).Radius()
+      : null
   for (const e of edges) {
     if (isSeamOrDegenerate(oc, face, e)) continue
     const kind = edgeKind(e)
@@ -341,36 +353,91 @@ export function moveFaceCells(
     }
     const neighbour = neighbourAcross(oc, scope, body, face, e)
     if (neighbour === null) continue
-    const extended = extendNeighbourFace(oc, scope, neighbour, L)
-    toolFaces.push(extended)
+    toolFaces.push(extendNeighbourFace(oc, scope, neighbour, L))
     toolNeighbour.push(neighbour)
+    let solid: OccShape | null = null
+    if (sourceRadius !== null) {
+      const nad = scope.track(new oc.BRepAdaptor_Surface_2(neighbour, true))
+      if (nad.GetType().value === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) {
+        const radius = scope.track(nad.Cylinder()).Radius()
+        if (radius < sourceRadius - 1e-6) solid = extendedNeighbourSolid(oc, scope, neighbour, L)
+      }
+    }
+    solidTools.push(solid)
   }
   if (toolFaces.length === 0) {
     throw new MoveFaceRefusal('move_face: the picked face has no neighbours to extend')
   }
 
-  const cells = splitCells(oc, scope, surface.slab(L), toolFaces)
+  const slab = surface.slab(L)
 
   // The picked region and its inner loops.
   const outerRegion = surface.outerRegion()
   const outerWire = scope.track(oc.BRepTools.OuterWire(face))
   const inner = innerWireKinds(oc, scope, face, outerWire, edgeKind, surface.regionFace)
+  const innerFaces = inner.map((l) => l.face)
 
-  const picked: OccShape[] = []
-  for (const cell of cells) {
-    const { selected, sourceFaces } = selectCell(oc, scope, cell, surface, outerRegion, inner, d)
-    if (!selected) continue
-    // Guard the cells the face actually claims: the neighbours must bound the
-    // face's own region (a planar cell reaching the slab's lateral wall, or a
-    // curved cell whose piece leaves the picked region, is an open shell the
-    // analyse did not catch). A cell that is merely an outer piece (not under
-    // the face) is skipped, not a refusal.
-    surface.assertEnclosed(cell, sourceFaces, outerRegion, inner.map((l) => l.face), L)
-    picked.push(cell)
+  /** Split the slab with `tools` and select the cells the face claims. A
+   *  refusal means the split is unusable (a cell reaching outside the picked
+   *  region, or no cell at all), so the caller may retry with other tools. */
+  const trySplit = (tools: OccShape[]): { picked: OccShape[]; refusal: string | null } => {
+    let cells: OccShape[]
+    try {
+      cells = splitCells(oc, scope, slab, tools)
+    } catch (e) {
+      if (e instanceof MoveFaceRefusal) return { picked: [], refusal: e.message }
+      throw e
+    }
+    const picked: OccShape[] = []
+    for (const cell of cells) {
+      const { selected, sourceFaces } = selectCell(oc, scope, cell, surface, outerRegion, inner, d)
+      if (!selected) continue
+      // Guard the cells the face actually claims: the neighbours must bound the
+      // face's own region (a planar cell reaching the slab's lateral wall, or a
+      // curved cell whose piece leaves the picked region, is an open shell the
+      // analyse did not catch). A cell that is merely an outer piece (not under
+      // the face) is skipped, not a refusal.
+      try {
+        surface.assertEnclosed(cell, sourceFaces, outerRegion, innerFaces, L)
+      } catch (e) {
+        if (e instanceof MoveFaceRefusal) return { picked: [], refusal: e.message }
+        throw e
+      }
+      picked.push(cell)
+    }
+    if (picked.length === 0) {
+      return { picked: [], refusal: 'move_face: no cell of the moved face could be selected' }
+    }
+    return { picked, refusal: null }
   }
-  if (picked.length === 0) {
-    throw new MoveFaceRefusal('move_face: no cell of the moved face could be selected')
+
+  let result = trySplit(toolFaces)
+  if (result.refusal !== null) {
+    // Re-split with one or more neighbour tools replaced by a solid on the same
+    // surface. The smallest replacement set that bounds the picked region wins,
+    // so a single failing tool does not drag every lateral face into the
+    // coincident-face merge that can spin on a pair of solid cuts.
+    const usable = solidTools
+      .map((solid, index) => (solid === null ? -1 : index))
+      .filter((index) => index >= 0)
+    const subsets: number[][] = []
+    for (let mask = 1; mask < 1 << usable.length; mask++) {
+      subsets.push(usable.filter((_, bit) => (mask & (1 << bit)) !== 0))
+    }
+    subsets.sort((a, b) => a.length - b.length)
+    for (const subset of subsets) {
+      const tools = toolFaces.map((f, index) =>
+        subset.includes(index) ? solidTools[index] ?? f : f,
+      )
+      const attempt = trySplit(tools)
+      if (attempt.refusal === null) {
+        result = attempt
+        break
+      }
+    }
   }
+  if (result.refusal !== null) throw new MoveFaceRefusal(result.refusal)
+  const picked = result.picked
 
   // Cap faces (on the target surface) and the neighbour each lateral face
   // extends.

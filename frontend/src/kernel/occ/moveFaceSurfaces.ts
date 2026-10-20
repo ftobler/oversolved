@@ -178,6 +178,24 @@ function baseFrame(oc: OccModule, scope: DisposeScope, origin: Vec3, dir: Vec3):
   )
 }
 
+/** The same frame with the surface's own X direction, so a solid built on it
+ *  shares the surface parameterisation (and seam) with the body face. */
+function surfaceFrame(
+  oc: OccModule,
+  scope: DisposeScope,
+  origin: Vec3,
+  dir: Vec3,
+  xDir: Vec3,
+): OccDisposable {
+  return scope.track(
+    new oc.gp_Ax2_2(
+      scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
+      scope.track(new oc.gp_Dir_4(dir[0], dir[1], dir[2])),
+      scope.track(new oc.gp_Dir_4(xDir[0], xDir[1], xDir[2])),
+    ),
+  )
+}
+
 function cutShapes(oc: OccModule, scope: DisposeScope, target: OccShape, tool: OccShape): OccShape {
   const algo = scope.track(new oc.BRepAlgoAPI_Cut_1())
   const args = scope.track(new oc.TopTools_ListOfShape_1())
@@ -474,9 +492,11 @@ function solidCylinder(
   lo: number,
   hi: number,
   radius: number,
+  xDir?: Vec3,
 ): OccShape {
   const base = add(origin, scale(dir, lo))
-  const builder = scope.track(new oc.BRepPrimAPI_MakeCylinder_3(baseFrame(oc, scope, base, dir), radius, hi - lo))
+  const frame = xDir ? surfaceFrame(oc, scope, base, dir, xDir) : baseFrame(oc, scope, base, dir)
+  const builder = scope.track(new oc.BRepPrimAPI_MakeCylinder_3(frame, radius, hi - lo))
   return scope.track(builder.Shape())
 }
 
@@ -533,6 +553,52 @@ function coneSlab(
   const innerShape = coneFrustum(oc, scope, loc, dir, semi, inner, vLo, vHi)
   if (innerShape === null) return outerShape
   return cutShapes(oc, scope, outerShape, innerShape)
+}
+
+// ─── neighbour split tools ───
+
+/**
+ * A SOLID on `face`'s own surface that spans the slab, the splitter counterpart
+ * of `extendNeighbourFace`. A full cylindrical or conical FACE is a closed
+ * shell with no free boundary and OCCT's splitter leaves the argument whole
+ * when it is the only tool; a solid on the same surface partitions the slab on
+ * both sides. Planes need no solid: a bounded planar face cuts.
+ */
+export function extendedNeighbourSolid(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+  L: number,
+): OccShape | null {
+  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  const t = adaptor.GetType().value
+  const S = oc.GeomAbs_SurfaceType
+  if (t === S.GeomAbs_Cylinder.value) {
+    const cyl = scope.track(adaptor.Cylinder())
+    const dir = takeAxisDir(cyl.Axis())
+    const srf = takeAx3(cyl.Position())
+    const range = axialRange(oc, scope, face, srf.origin, dir)
+    return solidCylinder(oc, scope, srf.origin, dir, range.lo - L, range.hi + L, cyl.Radius(), srf.x)
+  }
+  if (t === S.GeomAbs_Cone.value) {
+    const cone = scope.track(adaptor.Cone())
+    const semi = cone.SemiAngle()
+    const srf = takeAx3(cone.Position())
+    const range = axialRange(oc, scope, face, srf.origin, srf.z)
+    const cos = Math.cos(semi)
+    // The gp_Cone slant parameter is the axial coordinate over cos(semi).
+    return coneFrustum(
+      oc,
+      scope,
+      srf.origin,
+      srf.z,
+      semi,
+      cone.RefRadius(),
+      range.lo / cos - L,
+      range.hi / cos + L,
+    )
+  }
+  return null
 }
 
 // ─── the enclosure guards ───
