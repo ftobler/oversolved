@@ -21,13 +21,12 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.13"
 
       - name: Install system dependencies
         run: |
@@ -38,8 +37,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       # The package declares no runtime dependencies, so this proves the icon
-      # generator still runs off the dev extra alone (pycairo) on every
-      # supported Python.
+      # generator still runs off the dev extra alone (pycairo).
       - name: Smoke test (icon generation)
         run: python oversolved/icons.py
 
@@ -66,7 +64,7 @@ jobs:
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:
-          name: oversolved-wheel-${{ matrix.python-version }}
+          name: oversolved-wheel
           path: dist/*.whl
 
   frontend:
