@@ -26,6 +26,7 @@ function fakeOps(answer: (tool: string, args: unknown) => McpToolPayload = () =>
       commands: async () => { calls.push({ tool: 'commands', args: undefined }); return answer('commands', undefined) },
       run: record('run') as McpCadOps['run'],
       measure: record('measure') as McpCadOps['measure'],
+      compare: record('compare') as McpCadOps['compare'],
       export: record('export') as McpCadOps['export'],
       partDocSchema: () => '{"title":"Oversolved part document"}',
       select: record('select') as McpCadOps['select'],
@@ -58,6 +59,8 @@ describe('createMcpServer', () => {
         serverInfo: { name: 'oversolved-mcp' },
       },
     })
+    const instructions = (response as { result: { instructions: string } }).result.instructions
+    expect(instructions).toContain('compare')
   })
 
   it('falls back to the oldest known version for an unknown one', async () => {
@@ -70,7 +73,7 @@ describe('createMcpServer', () => {
     const server = createMcpServer(fakeOps().ops)
     const response = await request(server, 2, 'tools/list', {})
     const tools = (response as { result: { tools: typeof MCP_TOOLS } }).result.tools
-    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'export', 'measure', 'run', 'select'])
+    expect(tools.map(t => t.name).sort()).toEqual(['commands', 'compare', 'export', 'measure', 'run', 'select'])
     for (const tool of tools) expect(tool.inputSchema).toMatchObject({ type: 'object' })
   })
 
@@ -201,5 +204,78 @@ describe('createMcpServer', () => {
       name: 'select',
       arguments: { doc: {}, selector: { kind: 'vertex' } },
     }), -32602)
+  })
+
+  it('validates a compare reference through the corpus parser and passes it to the op', async () => {
+    const { ops, calls } = fakeOps()
+    const server = createMcpServer(ops)
+    const reference = {
+      source: { tool: 'test', version: '1', file: 'source.md' },
+      tolerance: { rel: 1e-5, abs: 1e-6 },
+      bodies: 1,
+      volume: 10,
+      area: 20,
+      centroid: [0, 0, 0],
+      bbox: [0, 0, 0, 1, 1, 1],
+    }
+
+    const ok = await request(server, 24, 'tools/call', {
+      name: 'compare',
+      arguments: { doc: { features: [] }, reference },
+    })
+    expect(ok).toMatchObject({ id: 24 })
+    expect(calls[0]).toEqual({
+      tool: 'compare',
+      args: expect.objectContaining({
+        reference: expect.objectContaining({ tolerance: { rel: 1e-5, abs: 1e-6 }, topology: 'report' }),
+      }),
+    })
+  })
+
+  it('rejects a malformed compare reference as invalid params', async () => {
+    const server = createMcpServer(fakeOps().ops)
+    const base = {
+      source: { tool: 'test', version: '1', file: 'source.md' },
+      tolerance: { rel: 1e-5, abs: 1e-6 },
+      bodies: 1,
+      volume: 10,
+      area: 20,
+      centroid: [0, 0, 0],
+      bbox: [0, 0, 0, 1, 1, 1],
+    }
+    const noTolerance = { ...base } as Record<string, unknown>
+    delete noTolerance.tolerance
+    expectError(await request(server, 25, 'tools/call', {
+      name: 'compare',
+      arguments: { doc: {}, reference: noTolerance },
+    }), -32602)
+    expectError(await request(server, 26, 'tools/call', {
+      name: 'compare',
+      arguments: { doc: {}, reference: { ...base, bbox: [0, 0, 0, 1, 1] } },
+    }), -32602)
+    expectError(await request(server, 27, 'tools/call', { name: 'compare', arguments: { doc: {} } }), -32602)
+  })
+
+  it('returns a failing compare as data, not an error result', async () => {
+    const { ops } = fakeOps(() => ({ ok: true, pass: false, rows: [{ measure: 'volume', within: false }] }))
+    const server = createMcpServer(ops)
+    const response = await request(server, 28, 'tools/call', {
+      name: 'compare',
+      arguments: {
+        doc: {},
+        reference: {
+          source: { tool: 'test', version: '1', file: 'source.md' },
+          tolerance: { rel: 1e-5, abs: 1e-6 },
+          bodies: 1,
+          volume: 10,
+          area: 20,
+          centroid: [0, 0, 0],
+          bbox: [0, 0, 0, 1, 1, 1],
+        },
+      },
+    })
+    const result = (response as { result: { isError?: boolean; content: Array<{ text: string }> } }).result
+    expect(result.isError).toBeUndefined()
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ ok: true, pass: false })
   })
 })

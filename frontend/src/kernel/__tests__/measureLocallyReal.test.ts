@@ -12,6 +12,11 @@ import { loadOcc } from '../occ/loadOcc'
 import { measureLocally, setSolveLocalsForTest } from '../solveLocally'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { DisposeScope } from '../occ/disposeScope'
+import { measureBodies } from '../occ/measure'
+import { readOracleCase } from '@/oracle/corpus'
+import { partSpecFromText } from '@/utils/partExport'
+import type { OccModule, OccShape } from '../occ/occTypes'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -62,6 +67,33 @@ function twoBodyDoc() {
   }
 }
 
+// A corpus recipe as a doc with its own id, plus the case's analytic measures.
+function oracleDoc(name: string): { doc: Record<string, unknown>; expected: ReturnType<typeof readOracleCase>['expected'] } {
+  const oracleCase = readOracleCase(name)
+  const doc = partSpecFromText(oracleCase.recipe)
+  doc.id = `measure-${name}`
+  return { doc, expected: oracleCase.expected }
+}
+
+// An open planar face: a 10 x 10 square at x, with no solid to close it.
+function openSquare(oc: OccModule, scope: DisposeScope, x: number): OccShape {
+  const corners = [[x, 0, 0], [x, 10, 0], [x, 10, 10], [x, 0, 10]]
+  const poly = scope.track(new oc.BRepBuilderAPI_MakePolygon_1())
+  for (const [px, py, pz] of corners) {
+    const p = scope.track(new oc.gp_Pnt_3(px, py, pz))
+    poly.Add_1(p)
+  }
+  poly.Close()
+  const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(poly.Wire(), true))
+  return scope.track(builder.Face())
+}
+
+// A cube small enough that its volume stays below measureBodies' weight floor.
+function tinyBox(oc: OccModule, scope: DisposeScope, corner: [number, number, number]): OccShape {
+  const p = scope.track(new oc.gp_Pnt_3(corner[0], corner[1], corner[2]))
+  return scope.track(new oc.BRepPrimAPI_MakeBox_2(p, 5e-5, 5e-5, 5e-5).Shape())
+}
+
 describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', () => {
   beforeAll(() => {
     resetSketchSolver()
@@ -76,14 +108,13 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
   it('measures a box: volume, area, centroid, AABB and counts', async () => {
     const measure = await measureLocally(boxDoc())
     expect(measure).not.toBeNull()
-    expect(measure!.bodyCount).toBe(1)
+    expect(measure!.bodies).toBe(1)
     expect(measure!.volume).toBeCloseTo(500, 6)
     expect(measure!.area).toBeCloseTo(400, 6)
     expect(measure!.centroid![0]).toBeCloseTo(5, 6)
     expect(measure!.centroid![1]).toBeCloseTo(5, 6)
     expect(measure!.centroid![2]).toBeCloseTo(2.5, 6)
-    expect(measure!.bbox!.min.map(v => +v.toFixed(6))).toEqual([0, 0, 0])
-    expect(measure!.bbox!.max.map(v => +v.toFixed(6))).toEqual([10, 10, 5])
+    expect(measure!.bbox!.map(v => +v.toFixed(6))).toEqual([0, 0, 0, 10, 10, 5])
     expect(measure!.faces).toBe(6)
     expect(measure!.edges).toBe(12)
     expect(measure!.vertices).toBe(8)
@@ -92,7 +123,7 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
   it('sums volumes and areas over two bodies and unions their AABBs', async () => {
     const measure = await measureLocally(twoBodyDoc())
     expect(measure).not.toBeNull()
-    expect(measure!.bodyCount).toBe(2)
+    expect(measure!.bodies).toBe(2)
     expect(measure!.volume).toBeCloseTo(644, 6)
     // Box 1: 2*100 + 4*50 = 400. Box 2 (6x6x4): 2*36 + 4*24 = 168.
     expect(measure!.area).toBeCloseTo(568, 6)
@@ -102,13 +133,80 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
     // The union contains the first box's AABB regardless of where the second
     // one sits on the right plane.
     for (let axis = 0; axis < 3; axis++) {
-      expect(measure!.bbox!.min[axis]).toBeLessThanOrEqual(1e-6)
-      expect(measure!.bbox!.max[axis]).toBeGreaterThanOrEqual([10, 10, 5][axis] - 1e-6)
+      expect(measure!.bbox![axis]).toBeLessThanOrEqual(1e-6)
+      expect(measure!.bbox![axis + 3]).toBeGreaterThanOrEqual([10, 10, 5][axis] - 1e-6)
     }
   })
 
   it('reports an empty measure for a document with no solid body', async () => {
     const measure = await measureLocally({ id: 'empty', features: [rectSketch('sk1', 4, 4)] })
-    expect(measure).toMatchObject({ bodyCount: 0, volume: 0, area: 0, centroid: null, bbox: null, faces: 0 })
+    expect(measure).toMatchObject({ bodies: 0, volume: 0, area: 0, centroid: null, bbox: null, faces: 0 })
+  })
+
+  it('reads an exact AddOptimal bbox for the analytic cylinder (oracle 04)', async () => {
+    const { doc, expected } = oracleDoc('04-cylinder')
+    const measure = await measureLocally(doc)
+    expect(measure).not.toBeNull()
+    for (let axis = 0; axis < 6; axis++) {
+      // 1e-9 is far below the Bnd_Box gap Add would add, so this also pins the
+      // chosen binding as the no-shape-tolerance AddOptimal overload.
+      expect(measure!.bbox![axis]).toBeCloseTo(expected.bbox[axis], 9)
+    }
+    expect(measure!.volume).toBeCloseTo(expected.volume, 6)
+    expect(measure!.area).toBeCloseTo(expected.area, 6)
+  })
+
+  it('reads an exact AddOptimal bbox for the enclosed-sphere union (oracle 22)', async () => {
+    const { doc, expected } = oracleDoc('22-boolean-union-enclosed-sphere')
+    const measure = await measureLocally(doc)
+    expect(measure).not.toBeNull()
+    for (let axis = 0; axis < 6; axis++) {
+      expect(measure!.bbox![axis]).toBeCloseTo(expected.bbox[axis], 9)
+    }
+    expect(measure!.volume).toBeCloseTo(expected.volume, 6)
+  })
+
+  it('keeps the open-shell fallback finite instead of dividing by a zero volume', () => {
+    const kernel = oc!
+    const build = new DisposeScope()
+    const measureScope = new DisposeScope()
+    try {
+      const record = measureBodies(kernel, measureScope, [openSquare(kernel, build, 20)])
+
+      expect(record.bodies).toBe(1)
+      expect(record.volume).toBeCloseTo(0)
+      // The only-closed volume pass has no material to place in an unclosed
+      // shell, so BRepGProp reports the origin. The fallback must keep that
+      // value finite rather than divide the weighted sum by ~0, and the bbox
+      // still describes the shell.
+      expect(record.centroid).toEqual([0, 0, 0])
+      expect(record.bbox).toEqual([20, 0, 0, 20, 10, 10])
+    } finally {
+      measureScope.dispose()
+      build.dispose()
+    }
+  })
+
+  it('averages the known body centres when every body integrates to zero volume', () => {
+    const kernel = oc!
+    const build = new DisposeScope()
+    const measureScope = new DisposeScope()
+    try {
+      // Two 5e-5 cubes: 1.25e-13 each, so the summed volume is below the
+      // 1e-12 weight floor and the plain body average is the fallback.
+      const shapes = [tinyBox(kernel, build, [0, 0, 0]), tinyBox(kernel, build, [20, 0, 0])]
+      const record = measureBodies(kernel, measureScope, shapes)
+
+      expect(record.volume).toBeGreaterThan(0)
+      expect(record.volume).toBeLessThan(1e-12)
+      // Each cube's centre is its corner plus half a side; the expected values
+      // are the geometric mean of those centres, not a weighted division.
+      expect(record.centroid![0]).toBeCloseTo(10 + 2.5e-5, 6)
+      expect(record.centroid![1]).toBeCloseTo(2.5e-5, 6)
+      expect(record.centroid![2]).toBeCloseTo(2.5e-5, 6)
+    } finally {
+      measureScope.dispose()
+      build.dispose()
+    }
   })
 })

@@ -320,8 +320,8 @@ describe('buildKeyString', () => {
 - `window.__oversolved` exists in dev/test builds only; it is a test and
   debugging surface, not a product API.
 - A document can be driven headlessly with one `DocSession` per operation:
-  `npm run drive -- run|commands|measure|export|replay ...` from `frontend/`.
-- The same surface (plus `measure` and `export`) is served over MCP stdio by
+  `npm run drive -- run|commands|measure|compare|export|replay ...` from `frontend/`.
+- The same surface (plus `compare`, `measure` and `export`) is served over MCP stdio by
   `npm run mcp`, a hand-rolled JSON-RPC loop with no SDK dependency; the tool
   ops and the CLI share `src/drive/headlessOps.ts`.
 - Scripts, the inspect shape, the journal format, the CLI usage and the MCP

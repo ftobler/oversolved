@@ -12,7 +12,10 @@
 
 import type { PartDoc, BodyResult } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
-import { measureLocally, exportLocally, solveLocally, type LocalExportOptions, type LocalMeasure } from '@/kernel/solveLocally'
+import { measureLocally, exportLocally, solveLocally, type LocalExportOptions } from '@/kernel/solveLocally'
+import { compareMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
+import type { MeasureRecord } from '@/kernel/occ/measure'
+import type { TranslationReference } from '@/translations/corpus'
 import { selectByPredicate, type SelectResult, type Selector } from '@/kernel/select'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/utils/builtins'
 import { createHeadlessPart, type HeadlessPart } from '@/drive/headlessPart'
@@ -80,8 +83,56 @@ export interface HeadlessMeasureOptions {
 }
 
 /** Measure a document through the local kernel; null when OCC is unavailable. */
-export async function measureHeadless(doc: PartDoc, opts: HeadlessMeasureOptions = {}): Promise<LocalMeasure | null> {
+export async function measureHeadless(doc: PartDoc, opts: HeadlessMeasureOptions = {}): Promise<MeasureRecord | null> {
   return measureLocally(partSolvePayload(doc, opts.docId ?? 'headless'), opts.files)
+}
+
+export interface HeadlessCompareResult {
+  ok: boolean
+  pass: boolean
+  rows: MeasureRow[]
+  measures: MeasureRecord | null
+  error?: string
+}
+
+/**
+ * Measure a document and compare it against a reference at the reference's
+ * tolerance and topology mode. `ok: false` only means the kernel is
+ * unavailable or the document did not build (what `measureHeadless` reports
+ * as null or throws); a failing row is data: `ok: true, pass: false`, so an
+ * agent loop can read which measure diverged.
+ */
+export async function compareHeadless(
+  doc: PartDoc,
+  reference: TranslationReference,
+  opts: HeadlessMeasureOptions = {},
+): Promise<HeadlessCompareResult> {
+  let measures: MeasureRecord | null
+  try {
+    measures = await measureHeadless(doc, opts)
+  } catch (e) {
+    return {
+      ok: false,
+      pass: false,
+      rows: [],
+      measures: null,
+      error: e instanceof Error ? e.message : String(e),
+    }
+  }
+  if (!measures) {
+    return {
+      ok: false,
+      pass: false,
+      rows: [],
+      measures: null,
+      error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)',
+    }
+  }
+  const { pass, rows } = compareMeasures(measures, reference, {
+    tolerance: reference.tolerance,
+    topology: reference.topology,
+  })
+  return { ok: true, pass, rows, measures }
 }
 
 export interface HeadlessExportOptions extends LocalExportOptions {

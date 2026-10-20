@@ -6,9 +6,9 @@
 // The tool table is data (name, description, inputSchema) declared here, and
 // every call is validated against the same shape before the injected ops run,
 // so tools/list cannot advertise a call the server would refuse. The ops are
-// injected: this module is framework-free and node-free, the entry script
-// frontend/scripts/mcpServer.ts wires the real kernel, the shared headless
-// operations and the filesystem.
+// injected: this module is framework-free and does no I/O itself, the entry
+// script frontend/scripts/mcpServer.ts wires the real kernel, the shared
+// headless operations and the filesystem.
 //
 // One warning for ops implementers: DocSession work must be serialized. The
 // stdio loop awaits each message before reading the next, so the process-wide
@@ -17,6 +17,7 @@
 
 import { PART_DOC_SCHEMA_URI } from '@/persistence/partDocSchema'
 import { validateSelector, type Selector } from '@/kernel/select'
+import { parseReference, type TranslationReference } from '@/translations/corpus'
 
 // The protocol revisions whose initialize handshake this server accepts. The
 // three methods implemented here exist unchanged in all of them, so a client
@@ -63,6 +64,13 @@ export interface McpSelectRequest {
   files: McpFileRef[]
 }
 
+export interface McpCompareRequest {
+  doc: unknown
+  reference: TranslationReference
+  docId?: string
+  files: McpFileRef[]
+}
+
 // A tool payload: JSON-safe, carrying `ok` like every other Result in the
 // project. `ok: false` means the tool ran and failed (a bad document, no
 // solid, an unavailable kernel) and the server sets the MCP isError flag; an
@@ -76,6 +84,7 @@ export interface McpCadOps {
   commands(): Promise<McpToolPayload>
   run(req: McpRunRequest): Promise<McpToolPayload>
   measure(req: McpMeasureRequest): Promise<McpToolPayload>
+  compare(req: McpCompareRequest): Promise<McpToolPayload>
   export(req: McpExportRequest): Promise<McpToolPayload>
   // The part-document JSON Schema, served as the MCP resource. Injected as a
   // string so the server does not depend on the schema's build graph; only the
@@ -196,6 +205,27 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       required: ['doc'],
       properties: {
         doc: { type: 'object' },
+        docId: { type: 'string' },
+        files: FILE_LIST_SCHEMA,
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'compare',
+    description: 'Measure a document and compare it against a reference at the reference\'s tolerance. '
+      + 'Returns pass plus one row per measure (ours, theirs, delta, within); a failing row is data, not a tool error.',
+    inputSchema: {
+      type: 'object',
+      required: ['doc', 'reference'],
+      properties: {
+        doc: { type: 'object' },
+        reference: {
+          type: 'object',
+          description: 'A reference.json payload: source {tool, version, file}, tolerance {rel, abs}, '
+            + 'optional topology ("report" | "strict"), and the measures bodies, volume, area, centroid, '
+            + 'bbox, optional faces and edges.',
+        },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
@@ -350,6 +380,26 @@ function parseMeasureArgs(raw: unknown): McpMeasureRequest {
   }
 }
 
+function parseCompareArgs(raw: unknown): McpCompareRequest {
+  const record = asObject(raw ?? {}, 'arguments')
+  rejectUnknown(record, ['doc', 'reference', 'docId', 'files'])
+  const referenceRaw = requiredObject(record.reference, 'reference')
+  let reference: TranslationReference
+  try {
+    // The same validator the corpus and the CLI use, so a malformed reference
+    // is invalid params here rather than a tool error after a build.
+    reference = parseReference('reference', JSON.stringify(referenceRaw))
+  } catch (e) {
+    throw new McpInvalidParams(`field "reference": ${e instanceof Error ? e.message : String(e)}`)
+  }
+  return {
+    doc: requiredObject(record.doc, 'doc'),
+    reference,
+    ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
+    files: readFiles(record.files),
+  }
+}
+
 function parseExportArgs(raw: unknown): McpExportRequest {
   const record = asObject(raw ?? {}, 'arguments')
   rejectUnknown(record, ['doc', 'format', 'out', 'body', 'docId', 'files'])
@@ -394,6 +444,7 @@ async function callTool(ops: McpCadOps, name: string, args: unknown): Promise<Mc
       return ops.commands()
     case 'run': return ops.run(parseRunArgs(args))
     case 'measure': return ops.measure(parseMeasureArgs(args))
+    case 'compare': return ops.compare(parseCompareArgs(args))
     case 'export': return ops.export(parseExportArgs(args))
     case 'select': return ops.select(parseSelectArgs(args))
     default: throw new McpInvalidParams(`unknown tool "${name}"`)
@@ -429,7 +480,8 @@ export function createMcpServer(ops: McpCadOps): McpServer {
             capabilities: { tools: {}, resources: {} },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
             instructions: 'Drive the CAD document headlessly: commands lists the registry, run executes scripts, '
-              + 'measure reports geometry facts, select finds faces/edges by predicate over the solve output, '
+              + 'measure reports geometry facts, compare checks a document against a reference, '
+              + 'select finds faces/edges by predicate over the solve output, '
               + 'and export writes STEP or STL. The part-document JSON Schema is '
               + 'served as the resource ' + PART_DOC_SCHEMA_URI + '.',
           })
