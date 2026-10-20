@@ -59,6 +59,8 @@ describe('createMcpServer', () => {
         serverInfo: { name: 'oversolved-mcp' },
       },
     })
+    const instructions = (response as { result: { instructions: string } }).result.instructions
+    expect(instructions).toContain('compare')
   })
 
   it('falls back to the oldest known version for an unknown one', async () => {

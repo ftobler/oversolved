@@ -69,14 +69,39 @@ describe('translation corpus meta', () => {
     expect(() => loadTranslationCase('01-broken', root)).toThrow(/source\.file "source\.md"/)
   })
 
+  it('rejects a source.file with a .. segment even when the file exists', () => {
+    const root = join(workDir, 'escape-relative')
+    writeCase(root, '01-broken', {
+      reference: { ...VALID_REFERENCE, source: { ...VALID_REFERENCE.source, file: '../outside.md' } },
+    })
+    writeFileSync(join(root, 'outside.md'), '# outside\n')
+    expect(() => loadTranslationCase('01-broken', root)).toThrow(/must stay inside the case directory/)
+  })
+
+  it('rejects an absolute source.file before checking whether it exists', () => {
+    const root = join(workDir, 'escape-absolute')
+    writeCase(root, '01-broken', {
+      reference: { ...VALID_REFERENCE, source: { ...VALID_REFERENCE.source, file: '/etc/passwd' } },
+    })
+    expect(() => loadTranslationCase('01-broken', root)).toThrow(/must stay inside the case directory/)
+  })
+
   it('rejects a reference without tolerance', () => {
     const noTolerance = { ...VALID_REFERENCE } as Record<string, unknown>
     delete noTolerance.tolerance
     expect(() => parseReference('01-broken', JSON.stringify(noTolerance))).toThrow(/tolerance/)
   })
 
-  it('rejects an unknown topology value', () => {
+  it('rejects an unknown or explicit-null topology value', () => {
     expect(() => parseReference('01-broken', JSON.stringify({ ...VALID_REFERENCE, topology: 'loose' }))).toThrow(/topology/)
+    expect(() => parseReference('01-broken', JSON.stringify({ ...VALID_REFERENCE, topology: null }))).toThrow(/topology/)
+  })
+
+  it('rejects a fractional or negative face or edge count', () => {
+    expect(() => parseReference('01-broken', JSON.stringify({ ...VALID_REFERENCE, faces: 1.5 })))
+      .toThrow(/faces: must be a non-negative integer/)
+    expect(() => parseReference('01-broken', JSON.stringify({ ...VALID_REFERENCE, edges: -1 })))
+      .toThrow(/edges: must be a non-negative integer/)
   })
 
   it('defaults topology to report and keeps optional faces and edges', () => {

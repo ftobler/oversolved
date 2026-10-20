@@ -13,7 +13,7 @@ import { measureLocally, setSolveLocalsForTest } from '../solveLocally'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { DisposeScope } from '../occ/disposeScope'
-import { measureBodies, measureShape } from '../occ/measure'
+import { measureBodies } from '../occ/measure'
 import { readOracleCase } from '@/oracle/corpus'
 import { partSpecFromText } from '@/utils/partExport'
 import type { OccModule, OccShape } from '../occ/occTypes'
@@ -88,6 +88,12 @@ function openSquare(oc: OccModule, scope: DisposeScope, x: number): OccShape {
   return scope.track(builder.Face())
 }
 
+// A cube small enough that its volume stays below measureBodies' weight floor.
+function tinyBox(oc: OccModule, scope: DisposeScope, corner: [number, number, number]): OccShape {
+  const p = scope.track(new oc.gp_Pnt_3(corner[0], corner[1], corner[2]))
+  return scope.track(new oc.BRepPrimAPI_MakeBox_2(p, 5e-5, 5e-5, 5e-5).Shape())
+}
+
 describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', () => {
   beforeAll(() => {
     resetSketchSolver()
@@ -160,23 +166,44 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
     expect(measure!.volume).toBeCloseTo(expected.volume, 6)
   })
 
-  it('falls back to the plain body average for open shells instead of NaN', () => {
+  it('keeps the open-shell fallback finite instead of dividing by a zero volume', () => {
     const kernel = oc!
     const build = new DisposeScope()
     const measureScope = new DisposeScope()
     try {
-      const shapes = [openSquare(kernel, build, 0), openSquare(kernel, build, 20)]
-      const perBody = shapes.map((shape) => measureShape(kernel, measureScope, shape))
+      const record = measureBodies(kernel, measureScope, [openSquare(kernel, build, 20)])
+
+      expect(record.bodies).toBe(1)
+      expect(record.volume).toBeCloseTo(0)
+      // The only-closed volume pass has no material to place in an unclosed
+      // shell, so BRepGProp reports the origin. The fallback must keep that
+      // value finite rather than divide the weighted sum by ~0, and the bbox
+      // still describes the shell.
+      expect(record.centroid).toEqual([0, 0, 0])
+      expect(record.bbox).toEqual([20, 0, 0, 20, 10, 10])
+    } finally {
+      measureScope.dispose()
+      build.dispose()
+    }
+  })
+
+  it('averages the known body centres when every body integrates to zero volume', () => {
+    const kernel = oc!
+    const build = new DisposeScope()
+    const measureScope = new DisposeScope()
+    try {
+      // Two 5e-5 cubes: 1.25e-13 each, so the summed volume is below the
+      // 1e-12 weight floor and the plain body average is the fallback.
+      const shapes = [tinyBox(kernel, build, [0, 0, 0]), tinyBox(kernel, build, [20, 0, 0])]
       const record = measureBodies(kernel, measureScope, shapes)
 
-      expect(record.bodies).toBe(2)
-      expect(record.volume).toBeCloseTo(0)
-      expect(record.centroid).not.toBeNull()
-      for (let axis = 0; axis < 3; axis++) {
-        const average = perBody.reduce((sum, body) => sum + body.centroid![axis], 0) / shapes.length
-        expect(record.centroid![axis]).toBe(average)
-        expect(Number.isFinite(record.centroid![axis])).toBe(true)
-      }
+      expect(record.volume).toBeGreaterThan(0)
+      expect(record.volume).toBeLessThan(1e-12)
+      // Each cube's centre is its corner plus half a side; the expected values
+      // are the geometric mean of those centres, not a weighted division.
+      expect(record.centroid![0]).toBeCloseTo(10 + 2.5e-5, 6)
+      expect(record.centroid![1]).toBeCloseTo(2.5e-5, 6)
+      expect(record.centroid![2]).toBeCloseTo(2.5e-5, 6)
     } finally {
       measureScope.dispose()
       build.dispose()

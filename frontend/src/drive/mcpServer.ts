@@ -480,7 +480,8 @@ export function createMcpServer(ops: McpCadOps): McpServer {
             capabilities: { tools: {}, resources: {} },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
             instructions: 'Drive the CAD document headlessly: commands lists the registry, run executes scripts, '
-              + 'measure reports geometry facts, select finds faces/edges by predicate over the solve output, '
+              + 'measure reports geometry facts, compare checks a document against a reference, '
+              + 'select finds faces/edges by predicate over the solve output, '
               + 'and export writes STEP or STL. The part-document JSON Schema is '
               + 'served as the resource ' + PART_DOC_SCHEMA_URI + '.',
           })

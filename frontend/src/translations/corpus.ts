@@ -11,7 +11,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { requireFiniteNumber, requireMeasures, type OracleMeasures } from '@/oracle/corpus'
 import type { MeasureTolerance } from '@/kernel/occ/measureTolerance'
@@ -73,6 +73,15 @@ export function parseReference(name: string, text: string): TranslationReference
   }
   const record = raw as { [key: string]: unknown }
   const measures = requireMeasures(where, record, false)
+  // The oracle's parser leaves the counts optional and untyped beyond finite,
+  // because its cases are hand-checked. A reference is machine-produced, so a
+  // fractional or negative structural count is a malformed reference.
+  for (const field of ['faces', 'edges'] as const) {
+    const value = measures[field]
+    if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
+      throw new Error(`${where}.${field}: must be a non-negative integer, got ${JSON.stringify(value)}`)
+    }
+  }
 
   const sourceRaw = record.source
   if (typeof sourceRaw !== 'object' || sourceRaw === null || Array.isArray(sourceRaw)) {
@@ -94,7 +103,7 @@ export function parseReference(name: string, text: string): TranslationReference
   const abs = requireFiniteNumber(`${where}.tolerance.abs`, toleranceRecord.abs)
   if (rel < 0 || abs < 0) throw new Error(`${where}.tolerance: rel and abs must be non-negative`)
 
-  const topology = record.topology ?? 'report'
+  const topology = record.topology === undefined ? 'report' : record.topology
   if (topology !== 'report' && topology !== 'strict') {
     throw new Error(`${where}.topology: must be "report" or "strict", got ${JSON.stringify(topology)}`)
   }
@@ -111,6 +120,18 @@ function requireFile(path: string, what: string): void {
   if (!existsSync(path)) throw new Error(`${what}: file does not exist`)
 }
 
+/**
+ * A reference names its source relative to the case directory. Refuse an
+ * absolute path or a `..` segment rather than letting a reference read outside
+ * the corpus.
+ */
+function requireConfinedSource(name: string, file: string): void {
+  const segments = file.split(/[\\/]/)
+  if (isAbsolute(file) || segments.includes('..')) {
+    throw new Error(`${name}/reference.json.source.file "${file}": must stay inside the case directory`)
+  }
+}
+
 /** One case: its recipe text and its parsed, validated reference. */
 export function loadTranslationCase(name: string, dir = TRANSLATIONS_DIR): TranslationCase {
   const caseDir = join(dir, name)
@@ -120,6 +141,7 @@ export function loadTranslationCase(name: string, dir = TRANSLATIONS_DIR): Trans
   if (!existsSync(referencePath)) throw new Error(`${name}/reference.json: missing`)
 
   const reference = parseReference(name, readFileSync(referencePath, 'utf8'))
+  requireConfinedSource(name, reference.source.file)
   requireFile(join(caseDir, reference.source.file), `${name}/reference.json.source.file "${reference.source.file}"`)
 
   return { name, recipe: readFileSync(recipePath, 'utf8'), reference }
