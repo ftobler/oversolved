@@ -9,10 +9,22 @@ import type { DisposeScope } from '../../occ/disposeScope'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { HandleTable } from '../../occ/handleTable'
 import type { Body } from '../../types3d'
-import { Repository, AmbiguousQueryError, ref, parseAncestry, constructionUuidToken, isClassifierId, bodyIdOf } from '../../query'
+import {
+  Repository,
+  AmbiguousQueryError,
+  ref,
+  parseAncestry,
+  constructionUuidToken,
+  isClassifierId,
+  isConstructionUuidId,
+  parseConstructionUuidId,
+  makeAncestryQuery,
+  bodyIdOf,
+} from '../../query'
 import { canonicalFaces, assertAligned } from '../../occ/bodyNames'
 import { faceCentroid, faceSurfaceType, type Vec3 } from '../../occ/primitives'
 import { geometryClassifiers } from '../../geomHash'
+import { mintFaceUuid, sideFacePath } from '../../constructionName'
 import { bodyFrame } from '../../occ/tessellation'
 
 /** Payload registered per face in the ancestry repo; carries the OCC shape out. */
@@ -114,6 +126,35 @@ export function bodyOfQuery(
   return null
 }
 
+/** True when `uuid` is the pre-split prism side-face UUID recomputed from
+ *  exactly one `(createdBy, sketchId/entityId)` pair in the query's own lineage.
+ *  The old producer named a whole profile entity's lateral face
+ *  `<createdBy>|side|<sketchId>/<entity>`; before split side faces existed that
+ *  uuid was unique. Only a query whose lineage reproduces the dead uuid this
+ *  way may migrate, so an arbitrary stale uuid still misses. */
+function isPreSplitPrismSideFaceUuid(ids: string[], uuid: string): boolean {
+  const features: string[] = []
+  const slots: string[] = []
+  for (const id of ids) {
+    if (!id.startsWith('@') || isConstructionUuidId(id) || isClassifierId(id)) continue
+    const token = id.slice(1)
+    if (token.startsWith('body_')) continue
+    const parts = token.split('/')
+    if (parts.length === 1) {
+      if (token.length > 0) features.push(token)
+    } else if (parts.length === 2 && parts[0].length > 0 && parts[1].length > 0) {
+      slots.push(token)
+    }
+  }
+  const matches = new Set<string>()
+  for (const feature of features) {
+    for (const slot of slots) {
+      if (mintFaceUuid(sideFacePath(feature, slot)) === uuid) matches.add(`${feature}|${slot}`)
+    }
+  }
+  return matches.size === 1
+}
+
 /** Stable-ancestry tier: recover a face whose UUID died, validated by its
  *  classifiers. An ambiguous match stays unresolved (fail-safe, never wrong). */
 function resolveByStableAncestry(
@@ -121,14 +162,36 @@ function resolveByStableAncestry(
   q: string,
   bodyStore: Record<string, unknown> | null,
 ): OccShape | null {
-  try {
-    const resolved = repo.query(q, null, bodyStore)
+  const [ids, typeRestriction, classifier] = parseAncestry(q)
+  const wanted = ids.filter(isClassifierId).map((i) => i.slice(1))
+  const accept = (resolved: unknown): OccShape | null => {
     if (resolved !== null && typeof resolved === 'object' && 'shape' in resolved) {
       const payload = resolved as FaceAncestryPayload
-      const [ids] = parseAncestry(q)
-      const wanted = ids.filter(isClassifierId).map((i) => i.slice(1))
       if (wanted.every((c) => payload.classifiers.includes(c))) return payload.shape
     }
+    return null
+  }
+  try {
+    const hit = accept(repo.query(q, null, bodyStore))
+    if (hit !== null) return hit
+  } catch (e) {
+    if (!(e instanceof AmbiguousQueryError)) throw e
+  }
+  // Migration for a pick minted before split prism side faces got their own
+  // UUIDs: the old per-entity uuid is dead, but the query's lineage still
+  // recomputes it and its classifiers name the surviving sibling. Retry
+  // without the dead uuid only for that verified case; the repository keeps
+  // its foreign-uuid exclusion for every other stale pick.
+  const uuidTokens = ids
+    .map(parseConstructionUuidId)
+    .filter((u): u is string => u !== null)
+  if (uuidTokens.length !== 1 || wanted.length === 0) return null
+  const deadUuid = uuidTokens[0]
+  const live = (repo.byUuid.get(deadUuid) ?? []).some((eid) => repo.elements.has(eid))
+  if (live || !isPreSplitPrismSideFaceUuid(ids, deadUuid)) return null
+  const withoutUuid = ids.filter((id) => !isConstructionUuidId(id))
+  try {
+    return accept(repo.query(makeAncestryQuery(withoutUuid, typeRestriction, classifier), null, bodyStore))
   } catch (e) {
     if (!(e instanceof AmbiguousQueryError)) throw e
   }

@@ -79,8 +79,9 @@ describe.skipIf(!oc)('extrudeProfileWithLineage (real OCC)', () => {
           'feat',
         )
         expect(volumeOf(occ, scope, solid)).toBeCloseTo(c.volume, 3)
-        // Distinct token-lists: the name layer keys faces by UUID, so a profile
-        // entity generating more than one face dedupes to a single entry.
+        // Distinct token-lists: the name layer keys faces by UUID. One profile
+        // entity generating several faces now gives each its own split UUID, so
+        // the same token list appears once per sibling; compare as a set.
         expect(new Set(tokenMultiset(faceAncestry))).toEqual(new Set(tokenMultiset(c.face_lineage)))
         // Edge token attribution is a SUBSET of the old edge_lineage: edgeAncestry
         // drops the cylinder seam edge (same-face pair -> no UUID). deriveEdgeNames
