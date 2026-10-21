@@ -8,11 +8,13 @@
 // curves rather than pulled off the tessellation, so a hole's rim stays a circle
 // at any zoom while its face is still a facetted mesh.
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
-import { buildBodyGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { buildBodySurfaceGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import {
   COLOR_BODY_DEFAULT,
   COLOR_BODY_EDGE,
@@ -41,15 +43,7 @@ interface AssemblyBodyProps {
 }
 
 export default function AssemblyBody({ item, curves, selected, aiming, onGrab, showFaces = true, showEdges = true }: AssemblyBodyProps) {
-  const geometry = useMemo(() => {
-    const { positions, indices } = buildBodyGeometry(item.mesh)
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    g.setIndex(new THREE.BufferAttribute(indices, 1))
-    // The bundle ships positions only; shading needs normals.
-    g.computeVertexNormals()
-    return g
-  }, [item.mesh])
+  const geometry = useMemo(() => buildBodySurfaceGeometry(item.mesh), [item.mesh])
 
   useEffect(() => () => geometry.dispose(), [geometry])
 
@@ -62,6 +56,21 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
   }, [curves])
 
   useEffect(() => () => edgeGeometry?.dispose(), [edgeGeometry])
+
+  // The assembly has no vertex-colour highlight (selection is the overlay
+  // below), so the zebra program does not reference vColor.
+  const zebra = useViewOptionsStore(s => s.zebra)
+  const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
+  const analysisMode = showFaces && zebra ? 'zebra' : 'none'
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null)
+  useBodyAnalysisMaterial(materialRef, {
+    mode: analysisMode,
+    mixVertexColor: false,
+    baseColor: selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT,
+    zebraStripes,
+    curvatureKind: 'mean',
+    curvatureRange: [0, 1],
+  })
 
   return (
     <>
@@ -82,6 +91,8 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
           }}
         >
           <meshStandardMaterial
+            ref={materialRef}
+            name={analysisMaterialName(analysisMode)}
             color={selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT}
             roughness={DEFAULT_PART_ROUGHNESS}
             metalness={0}

@@ -17,7 +17,7 @@ import {
   EDGE_HIGHLIGHT_LINE_WIDTH,
 } from '@/components/Geometry3D/constants'
 import {
-  buildBodyGeometry,
+  buildBodySurfaceGeometry,
   buildFaceBoundarySegments,
   planarFaceFrame,
   buildEdgeSegments,
@@ -28,6 +28,8 @@ import {
   resolveEdgeQueries,
   resolveVertexQueries,
 } from '@/components/Geometry3D/bodyGeometry'
+import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 import { faceRuns, triangleRuns, edgeRuns, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
 import { useHighlightColors, paletteRGB } from '@/components/Geometry3D/useHighlightColors'
@@ -256,13 +258,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   )
 
   const geometry = useMemo(() => {
-    const indexed = new THREE.BufferGeometry()
-    const { positions, indices } = buildBodyGeometry(mesh)
-    indexed.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    indexed.setIndex(new THREE.BufferAttribute(indices, 1))
-    indexed.computeVertexNormals()
+    const indexed = buildBodySurfaceGeometry(mesh)
     // toNonIndexed gives each triangle its own vertex slots so faceColors[i*9..i*9+8]
-    // maps 1:1 to face i without bleeding into shared-vertex neighbors.
+    // maps 1:1 to face i without bleeding into shared-vertex neighbors. The
+    // smooth normals computed on the indexed form are copied per split vertex,
+    // which is what zebra keeps continuous across a curved face.
     const geo = indexed.toNonIndexed()
     indexed.dispose()
     // Pre-fill color attribute so vertexColors=true doesn't flash black on first render.
@@ -308,6 +308,23 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     selected: isBodySelected, doomed, color, transparency, metalness, roughness, transmission,
   })
   const bodyColor = surface.color
+
+  // The analysis material replaces the surface colour only where faces are
+  // drawn; with shading off there is nothing for it to paint.
+  const zebra = useViewOptionsStore(s => s.zebra)
+  const zebraStripes = useViewOptionsStore(s => s.zebra_stripes)
+  const analysisMode = showFaces && zebra ? 'zebra' : 'none'
+  const bodyMaterialRef = useRef<THREE.MeshPhysicalMaterial>(null)
+  useBodyAnalysisMaterial(bodyMaterialRef, {
+    mode: analysisMode,
+    // The part editor is the one place with a vertex-colour highlight, so the
+    // zebra program mixes it back in instead of overwriting the selection.
+    mixVertexColor: true,
+    baseColor: bodyColor,
+    zebraStripes,
+    curvatureKind: 'mean',
+    curvatureRange: [0, 1],
+  })
 
   // The wireframe is where the removal mark lives now the doomed face is
   // see-through: a consumed body's edges turn pink so the mark shows WHICH
@@ -518,6 +535,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
           geometry={geometry}
         >
           <meshPhysicalMaterial
+            ref={bodyMaterialRef}
+            name={analysisMaterialName(analysisMode)}
             color="white"
             roughness={surface.roughness}
             metalness={surface.metalness}

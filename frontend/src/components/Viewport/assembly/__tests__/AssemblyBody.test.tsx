@@ -17,6 +17,9 @@ vi.mock('@/components/Geometry3D/bodyGeometry', () => ({
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     indices: new Uint32Array([0, 1, 2]),
   }),
+  // The item carries no real mesh; these tests only need the element to mount
+  // and the geometry to be disposable.
+  buildBodySurfaceGeometry: () => ({ dispose: () => {} }),
 }))
 
 vi.mock('@/utils/edgeSampling', () => ({
