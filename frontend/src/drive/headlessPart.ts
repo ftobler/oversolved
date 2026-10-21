@@ -19,6 +19,7 @@ import { editorState } from '@/stores/editorState'
 import { partSolvePayload, applySolveToDoc } from '@/drive/solveWriteBack'
 import { journalSink, type CommandJournal } from '@/drive/journal'
 import { runScript, type ScriptRunOutcome, type ScriptStep } from '@/drive/scriptRunner'
+import { validateMutation } from '@/drive/mutationCatalog'
 
 export interface HeadlessPartOptions {
   doc: PartDoc
@@ -139,7 +140,11 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
       steps,
       step => {
         if ('command' in step) return registry.execute(step.command as CommandName, step.params)
-        return session.execute(step.mutation)
+        // The script carries untyped JSON; validate before the cast so a typo
+        // is a named step failure and the doc stays as it was.
+        const validated = validateMutation(step.mutation)
+        if (!validated.ok) return { ok: false, code: validated.error.code, message: validated.error.message }
+        return session.execute(validated.mutation)
       },
       () => solve.idle(),
     )

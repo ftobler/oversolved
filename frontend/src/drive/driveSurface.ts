@@ -13,6 +13,7 @@ import {
   type ProbeCamera, type ProbeHandle, type ProbeHit,
 } from '@/picking'
 import { runScript, type ScriptFailure, type ScriptRunOutcome, type ScriptStep } from './scriptRunner'
+import { validateMutation } from './mutationCatalog'
 import type { JournalEntry, ReproPayload } from './journal'
 
 // The registry failures plus the bridge's own guard for an executor that
@@ -244,12 +245,18 @@ export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
     }
   }
 
-  const executeMutation = (mutation: Mutation): DriveExecuteResult => {
+  const executeMutation = (raw: unknown): DriveExecuteResult => {
+    // Both external surfaces validate at the same boundary, so the bridge and
+    // the headless runner refuse an untyped mutation identically.
+    const validated = validateMutation(raw)
+    if (!validated.ok) {
+      return { ok: false, code: validated.error.code, message: validated.error.message }
+    }
     if (!deps.executeMutation) {
       return { ok: false, code: 'bridge-error', message: 'mutation steps are not supported by this surface' }
     }
     try {
-      const result = deps.executeMutation(mutation)
+      const result = deps.executeMutation(validated.mutation)
       // The adapter's no-document no-op reads as success: nothing was wrong
       // with the step, there was simply no document to apply it to.
       return result ?? { ok: true, createdIds: [] }
