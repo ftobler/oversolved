@@ -103,6 +103,7 @@ export {
   applyRenameFeature,
   applyToggleSketchPlaneVisibility,
   applyTogglePlaneVisibility,
+  hidePlanes,
   applyAddPlane,
   applySetPlaneDefinitionField,
   applyReorderPickField,

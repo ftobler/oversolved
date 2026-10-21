@@ -409,6 +409,37 @@ describe('undo and redo', () => {
     })
   })
 
+  it('undoes the first plane bind and its plane hide as one step, and redo hides them again', () => {
+    const doc = makeDoc(
+      { id: 'Origin', kind: 'origin' },
+      { id: 'Top', kind: 'plane' },
+      { id: 'Front', kind: 'plane' },
+      { id: 'Right', kind: 'plane' },
+      { id: 'sk1', kind: 'sketch' },
+    )
+    const { session } = makeSession(doc)
+    const before = structuredClone(session.getDoc())
+    const planeVisible = (id: string) =>
+      session.getDoc()!.features!.find(f => f.id === id)?.visible
+    const sketchPlane = () => {
+      const feature = session.getDoc()!.features!.find(f => f.id === 'sk1')
+      return feature?.kind === 'sketch' ? feature.plane : undefined
+    }
+
+    session.execute({ type: 'set_feature_plane', featureId: 'sk1', plane: '@builtin_plane_front' })
+
+    // The hide rides in the bind's own entry; there is no second step to undo.
+    expect(session.inspect().history.undo).toEqual(['set plane of sk1 to @builtin_plane_front'])
+    for (const id of ['Top', 'Front', 'Right']) expect(planeVisible(id)).toBe(false)
+
+    expect(session.undo()).toBe(true)
+    expect(session.getDoc()).toEqual(before)
+
+    expect(session.redo()).toBe(true)
+    expect(sketchPlane()).toBe('@builtin_plane_front')
+    for (const id of ['Top', 'Front', 'Right']) expect(planeVisible(id)).toBe(false)
+  })
+
   it('H04/H05: undo and redo on an empty stack are inert', () => {
     const { session, solve } = makeSession()
     const listener = vi.fn()

@@ -18,6 +18,19 @@
 import type { PartFeature } from '@/types/cad'
 import { allConsumedSketchIds, consumedSketchIds } from '@/utils/query/consumedSketches'
 
+/**
+ * Whether `feature` is one of the reference planes the bulk plane toggle works
+ * on. It lives here so the toggle, the first-sketch hide, and the plane-pick
+ * display rule all read one target set. A builtin id counts even if a document
+ * mistyped its kind: the id is what the viewport draws a reference plane for.
+ * The origin is not a plane and stays out.
+ */
+export function isPlaneVisibilityTarget(feature: PartFeature): boolean {
+  if (feature.id === 'Origin') return false
+  if (feature.kind === 'plane') return true
+  return feature.id === 'Top' || feature.id === 'Front' || feature.id === 'Right'
+}
+
 /** Whether the document itself shows `feature`, before any editor override. */
 function shownInDoc(feature: PartFeature, consumed: ReadonlySet<string>): boolean {
   if (feature.visible === false) return false
@@ -41,6 +54,11 @@ export interface EditVisibility {
   editingFeatureId?: string | null
   // Ids the open edit forces on screen (the sketch being edited).
   forcedVisible?: Iterable<string>
+  // A sketch's plane pick field is armed. The first sketch hides the reference
+  // planes by a document write, but picking a plane for a later sketch (or a
+  // re-pick) needs them drawn: a hidden plane has no geometry to click. Derived
+  // here, never written, so the field closing puts them straight back.
+  planePickArmed?: boolean
 }
 
 /**
@@ -54,6 +72,11 @@ export interface EditVisibility {
  */
 export function visibleFeatureIds(features: PartFeature[], edit: EditVisibility = {}): Set<string> {
   const out = docVisibleFeatureIds(features)
+  if (edit.planePickArmed) {
+    for (const feature of features) {
+      if (isPlaneVisibilityTarget(feature)) out.add(feature.id)
+    }
+  }
   for (const id of edit.forcedVisible ?? []) out.add(id)
   const edited = edit.editingFeatureId ? features.find(f => f.id === edit.editingFeatureId) : undefined
   if (edited) for (const id of consumedSketchIds(edited, features)) out.add(id)

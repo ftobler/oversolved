@@ -3,7 +3,7 @@ import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { findFeature, warn } from './helpers'
 import { isValidVariableName } from '@/kernel/features/variable'
 import { allConsumedSketchIds } from '@/utils/query/consumedSketches'
-import { docVisibleFeatureIds } from '@/utils/featureVisibility'
+import { docVisibleFeatureIds, isPlaneVisibilityTarget } from '@/utils/featureVisibility'
 
 // ─── Part Style ───
 
@@ -70,6 +70,9 @@ export function applyAddSketch(doc: PartDoc, featureId: string, label?: string, 
   if (label) feature.label = label
   if (plane) feature.plane = plane  // pre-bound plane skips the pick step
   doc.features.push(feature)
+  // A pre-bound plane is the first sketch's "inserted" moment too; hiding the
+  // planes before the push would look for the wrong feature list.
+  if (plane) hidePlanesIfFirstBoundSketch(doc, featureId)
 }
 
 export function applyDeleteFeature(doc: PartDoc, featureId: string): void {
@@ -197,12 +200,27 @@ export function applyToggleSketchPlaneVisibility(doc: PartDoc): void {
 }
 
 export function applyTogglePlaneVisibility(doc: PartDoc): void {
-  toggleVisibility(doc, f => {
-    if (f.id === 'Origin') return false
-    if (f.kind === 'plane') return true
-    if (f.id === 'Top' || f.id === 'Front' || f.id === 'Right') return true
-    return false
-  })
+  toggleVisibility(doc, isPlaneVisibilityTarget)
+}
+
+// One-way bulk hide, the half `toggleVisibility` cannot be: showing anything is
+// never wanted here. A plane the user hid stays hidden with its explicit flag.
+export function hidePlanes(doc: PartDoc): void {
+  for (const feature of doc.features ?? []) {
+    if (isPlaneVisibilityTarget(feature)) feature.visible = false
+  }
+}
+
+// The reference planes are only needed until the first sketch has one: after
+// that they are clutter around the sketch being drawn. Only the first bind
+// hides them, so a user who shows them again is never overruled by a second
+// sketch. Called from the bind's own applier, so the hide shares its Mutation
+// and its undo entry and undoing the bind brings the planes back.
+export function hidePlanesIfFirstBoundSketch(doc: PartDoc, sketchId: string): void {
+  const anotherBound = (doc.features ?? []).some(
+    f => f.kind === 'sketch' && f.id !== sketchId && !!f.plane,
+  )
+  if (!anotherBound) hidePlanes(doc)
 }
 
 export function applyAddPlane(doc: PartDoc, featureId: string, label?: string, definition?: Record<string, unknown>): void {

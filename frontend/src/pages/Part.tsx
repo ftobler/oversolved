@@ -456,11 +456,15 @@ export default function Part() {
   }, [registerUndoTeardown, tearDownEditorState])
 
   // The whole rule (consumed sketches hidden, the open editor's own geometry
-  // forced back on screen) lives in visibleFeatureIds so it is tested without
-  // the page or the viewport.
+  // forced back on screen, the planes drawn while a plane field is armed) lives
+  // in visibleFeatureIds so it is tested without the page or the viewport.
   const visibleFeaturesWithEdit = useMemo(
-    () => visibleFeatureIds(features, { editingFeatureId, forcedVisible: editForcedVisible }),
-    [features, editForcedVisible, editingFeatureId]
+    () => visibleFeatureIds(features, {
+      editingFeatureId,
+      forcedVisible: editForcedVisible,
+      planePickArmed: planeSelectionFeatureId !== null,
+    }),
+    [features, editForcedVisible, editingFeatureId, planeSelectionFeatureId]
   )
 
   const effectiveVisibleBodies = useMemo(
