@@ -241,7 +241,7 @@ jobs:
   # `!cancelled()` lets the remaining sweeps run after one fails, because the
   # artifact is the report and any failed step still fails the job.
   fuzz:
-    if: github.server_url != 'https://github.com' && github.ref == 'refs/heads/main'
+    if: github.server_url != 'https://github.com' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fuzz')
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
